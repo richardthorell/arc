@@ -12,7 +12,7 @@
 namespace arc::render
 {
 
-inline constexpr std::uint32_t texture_artifact_schema_version = 2;
+inline constexpr std::uint32_t texture_artifact_schema_version = 3;
 inline constexpr std::uint32_t texture_artifact_alignment = 4096;
 inline constexpr std::uint32_t virtual_texture_tile_size = 128;
 inline constexpr std::uint32_t virtual_texture_tile_border = 4;

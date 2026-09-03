@@ -1,8 +1,10 @@
 #include <arc/render/texture_artifact.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <limits>
+#include <unordered_set>
 
 namespace arc::render
 {
@@ -10,9 +12,11 @@ namespace
 {
 
 constexpr std::uint64_t artifact_magic = 0x3158455443524141ull; // "AARCTEX1" little endian.
-constexpr std::uint32_t header_bytes = 156;
+constexpr std::uint32_t header_bytes = 164;
 constexpr std::uint32_t mip_entry_bytes = 32;
 constexpr std::uint32_t tile_entry_bytes = 44;
+constexpr std::size_t table_hash_offset = 148;
+constexpr std::size_t header_hash_offset = 156;
 
 texture_artifact_error failure(texture_artifact_error_code code, std::string message)
 {
@@ -177,6 +181,59 @@ bool valid_range(std::uint64_t offset, std::uint32_t size, std::uint64_t lower, 
     return offset >= lower && offset % texture_artifact_alignment == 0 && offset <= total && size <= total - offset;
 }
 
+std::uint64_t payload_bytes(std::uint32_t width, std::uint32_t height, texture_format format) noexcept
+{
+    const auto layout = layout_for(format);
+    if (layout.unit_bytes == 0 || width == 0 || height == 0) return 0;
+    const auto units_x = (static_cast<std::uint64_t>(width) + layout.unit_width - 1u) / layout.unit_width;
+    const auto units_y = (static_cast<std::uint64_t>(height) + layout.unit_height - 1u) / layout.unit_height;
+    if (units_x > std::numeric_limits<std::uint64_t>::max() / units_y ||
+        units_x * units_y > std::numeric_limits<std::uint64_t>::max() / layout.unit_bytes)
+        return 0;
+    return units_x * units_y * layout.unit_bytes;
+}
+
+std::uint32_t complete_mip_count(std::uint32_t width, std::uint32_t height) noexcept
+{
+    std::uint32_t count = 1;
+    while (width > 1 || height > 1)
+    {
+        width = std::max(1u, width / 2u);
+        height = std::max(1u, height / 2u);
+        ++count;
+    }
+    return count;
+}
+
+bool finite_metadata(const texture_artifact_metadata& metadata) noexcept
+{
+    return std::isfinite(metadata.anisotropy) && metadata.anisotropy >= 1.0f &&
+           std::isfinite(metadata.lod_bias) && std::isfinite(metadata.minimum_lod) &&
+           std::isfinite(metadata.maximum_lod) && metadata.minimum_lod <= metadata.maximum_lod &&
+           std::isfinite(metadata.alpha_coverage_threshold) && metadata.alpha_coverage_threshold >= 0.0f &&
+           metadata.alpha_coverage_threshold <= 1.0f;
+}
+
+bool ranges_do_not_overlap(std::span<const texture_artifact_mip_range> mips,
+                           std::span<const texture_artifact_tile_range> tiles) noexcept
+{
+    struct interval
+    {
+        std::uint64_t first{};
+        std::uint64_t last{};
+    };
+    std::vector<interval> ranges;
+    ranges.reserve(mips.size() + tiles.size());
+    for (const auto& range : mips)
+        ranges.push_back({range.offset, range.offset + range.stored_size});
+    for (const auto& range : tiles)
+        ranges.push_back({range.offset, range.offset + range.stored_size});
+    std::sort(ranges.begin(), ranges.end(), [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+    for (std::size_t index = 1; index < ranges.size(); ++index)
+        if (ranges[index].first < ranges[index - 1].last) return false;
+    return true;
+}
+
 } // namespace
 
 texture_artifact_bytes_result encode_texture_artifact(const texture_data& texture, texture_streaming_mode mode,
@@ -190,6 +247,24 @@ texture_artifact_bytes_result encode_texture_artifact(const texture_data& textur
     if (layout_for(texture.format).unit_bytes == 0)
         return texture_artifact_bytes_result::failure(
             failure(texture_artifact_error_code::unsupported_texture, "texture format is not pageable"));
+    if (texture.mips.front().width != texture.width || texture.mips.front().height != texture.height ||
+        ((mode == texture_streaming_mode::streamed_mips || mode == texture_streaming_mode::virtual_tiles) &&
+         texture.mips.size() != complete_mip_count(texture.width, texture.height)))
+        return texture_artifact_bytes_result::failure(
+            failure(texture_artifact_error_code::invalid_data, "texture artifact mip chain is incomplete"));
+
+    std::uint32_t expected_width = texture.width;
+    std::uint32_t expected_height = texture.height;
+    for (const auto& mip : texture.mips)
+    {
+        const auto expected_bytes = payload_bytes(expected_width, expected_height, texture.format);
+        if (mip.width != expected_width || mip.height != expected_height || expected_bytes == 0 ||
+            mip.size != expected_bytes)
+            return texture_artifact_bytes_result::failure(
+                failure(texture_artifact_error_code::invalid_data, "texture artifact mip layout is invalid"));
+        expected_width = std::max(1u, expected_width / 2u);
+        expected_height = std::max(1u, expected_height / 2u);
+    }
 
     std::uint32_t tail_first = static_cast<std::uint32_t>(texture.mips.size() - 1u);
     for (std::uint32_t mip = 0; mip < texture.mips.size(); ++mip)
@@ -292,6 +367,9 @@ texture_artifact_bytes_result encode_texture_artifact(const texture_data& textur
     if (metadata.source_width == 0) metadata.source_width = texture.width;
     if (metadata.source_height == 0) metadata.source_height = texture.height;
     if (metadata.resolved_max_size == 0) metadata.resolved_max_size = std::max(texture.width, texture.height);
+    if (!finite_metadata(metadata))
+        return texture_artifact_bytes_result::failure(
+            failure(texture_artifact_error_code::invalid_data, "texture artifact import metadata is invalid"));
     output.value(metadata.source_width);
     output.value(metadata.source_height);
     output.value(metadata.requested_max_size);
@@ -318,6 +396,7 @@ texture_artifact_bytes_result encode_texture_artifact(const texture_data& textur
     output.value(table_end);
     output.value(cursor);
     output.value(std::uint64_t{});
+    output.value(std::uint64_t{});
     for (std::uint32_t mip = 0; mip < texture.mips.size(); ++mip)
     {
         output.value(texture.mips[mip].width);
@@ -340,7 +419,9 @@ texture_artifact_bytes_result encode_texture_artifact(const texture_data& textur
         output.value(tile.range.content_hash);
     }
     const auto table_hash = hash_bytes(std::span(output.data()).subspan(header_bytes, table_end - header_bytes));
-    output.patch(148, table_hash);
+    output.patch(table_hash_offset, table_hash);
+    const auto header_hash = hash_bytes(std::span(output.data()).first(header_hash_offset));
+    output.patch(header_hash_offset, header_hash);
     output.align(texture_artifact_alignment);
     for (const auto& payload : mip_payloads)
     {
@@ -377,6 +458,7 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
     std::uint32_t wrap_v{};
     std::uint32_t processing_flags{};
     std::uint64_t table_hash{};
+    std::uint64_t header_hash{};
     texture_artifact_index result;
     if (!input.value(magic) || !input.value(schema) || !input.value(declared_header) || !input.value(mode) ||
         !input.value(format) || !input.value(color_space) || !input.value(semantic) || !input.value(result.width) ||
@@ -389,7 +471,8 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
         !input.value(wrap_v) || !input.value(result.metadata.anisotropy) || !input.value(result.metadata.lod_bias) ||
         !input.value(result.metadata.minimum_lod) || !input.value(result.metadata.maximum_lod) ||
         !input.value(result.metadata.alpha_coverage_threshold) || !input.value(processing_flags) ||
-        !input.value(result.table_end) || !input.value(result.artifact_size) || !input.value(table_hash))
+        !input.value(result.table_end) || !input.value(result.artifact_size) || !input.value(table_hash) ||
+        !input.value(header_hash))
         return texture_artifact_index_result::failure(
             failure(texture_artifact_error_code::invalid_data, "texture artifact header is truncated"));
     if (magic != artifact_magic)
@@ -398,6 +481,9 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
     if (schema != texture_artifact_schema_version || declared_header != header_bytes)
         return texture_artifact_index_result::failure(
             failure(texture_artifact_error_code::unsupported_version, "texture artifact schema is unsupported"));
+    if (hash_bytes(bytes.first(header_hash_offset)) != header_hash)
+        return texture_artifact_index_result::failure(
+            failure(texture_artifact_error_code::integrity_failure, "texture artifact header hash is invalid"));
     if (mode > static_cast<std::uint32_t>(texture_streaming_mode::virtual_tiles) ||
         format > static_cast<std::uint32_t>(texture_format::bc7_rgba_srgb) ||
         color_space > static_cast<std::uint32_t>(texture_color_space::srgb) ||
@@ -411,7 +497,13 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
         wrap_v > static_cast<std::uint32_t>(texture_address_mode::mirrored_repeat) || result.width == 0 ||
         result.height == 0 || result.mip_count == 0 || mip_entries != result.mip_count ||
         result.tail_first_mip >= result.mip_count || result.table_end < header_bytes ||
-        result.table_end > bytes.size() || result.artifact_size != bytes.size())
+        result.table_end > bytes.size() || result.artifact_size != bytes.size() ||
+        !finite_metadata(result.metadata) ||
+        ((mode == static_cast<std::uint32_t>(texture_streaming_mode::streamed_mips) ||
+          mode == static_cast<std::uint32_t>(texture_streaming_mode::virtual_tiles)) &&
+         result.mip_count != complete_mip_count(result.width, result.height)) ||
+        (mode != static_cast<std::uint32_t>(texture_streaming_mode::virtual_tiles) && tile_entries != 0) ||
+        result.tile_size != virtual_texture_tile_size || result.tile_border != virtual_texture_tile_border)
         return texture_artifact_index_result::failure(
             failure(texture_artifact_error_code::invalid_data, "texture artifact metadata is invalid"));
     const auto expected_table = static_cast<std::uint64_t>(header_bytes) +
@@ -440,18 +532,27 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
     result.metadata.normal_mips_renormalized = (processing_flags & (1u << 3u)) != 0;
     result.metadata.alpha_coverage_preserved = (processing_flags & (1u << 4u)) != 0;
     result.mips.reserve(mip_entries);
+    std::uint32_t expected_width = result.width;
+    std::uint32_t expected_height = result.height;
+    const auto payload_begin = (result.table_end + texture_artifact_alignment - 1u) / texture_artifact_alignment *
+                               texture_artifact_alignment;
     for (std::uint32_t mip = 0; mip < mip_entries; ++mip)
     {
         texture_artifact_mip_range range;
+        const auto expected_size = payload_bytes(expected_width, expected_height, result.format);
         if (!input.value(range.width) || !input.value(range.height) || !input.value(range.offset) ||
             !input.value(range.stored_size) || !input.value(range.decoded_size) || !input.value(range.content_hash) ||
-            range.width == 0 || range.height == 0 ||
-            !valid_range(range.offset, range.stored_size, result.table_end, bytes.size()))
+            range.width != expected_width || range.height != expected_height || expected_size == 0 ||
+            range.decoded_size != expected_size || range.stored_size != range.decoded_size ||
+            !valid_range(range.offset, range.stored_size, payload_begin, bytes.size()))
             return texture_artifact_index_result::failure(
                 failure(texture_artifact_error_code::out_of_bounds, "texture artifact mip range is invalid"));
         result.mips.push_back(range);
+        expected_width = std::max(1u, expected_width / 2u);
+        expected_height = std::max(1u, expected_height / 2u);
     }
     result.tiles.reserve(tile_entries);
+    std::unordered_set<std::uint64_t> tile_keys;
     for (std::uint32_t tile = 0; tile < tile_entries; ++tile)
     {
         texture_artifact_tile_range range;
@@ -459,12 +560,28 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
             !input.value(range.height) || !input.value(range.offset) || !input.value(range.stored_size) ||
             !input.value(range.decoded_size) || !input.value(range.content_hash) ||
             range.mip >= result.tail_first_mip || range.width != result.tile_size + result.tile_border * 2u ||
-            range.height != result.tile_size + result.tile_border * 2u ||
-            !valid_range(range.offset, range.stored_size, result.table_end, bytes.size()))
+            range.height != result.tile_size + result.tile_border * 2u || range.x >=
+                (result.mips[range.mip].width + result.tile_size - 1u) / result.tile_size ||
+            range.y >= (result.mips[range.mip].height + result.tile_size - 1u) / result.tile_size ||
+            range.decoded_size != payload_bytes(range.width, range.height, result.format) ||
+            range.stored_size != range.decoded_size ||
+            !valid_range(range.offset, range.stored_size, payload_begin, bytes.size()) ||
+            !tile_keys.insert((static_cast<std::uint64_t>(range.mip) << 48u) |
+                              (static_cast<std::uint64_t>(range.y) << 24u) | range.x)
+                 .second)
             return texture_artifact_index_result::failure(
                 failure(texture_artifact_error_code::out_of_bounds, "texture artifact tile range is invalid"));
         result.tiles.push_back(range);
     }
+    std::uint64_t expected_tiles{};
+    if (result.mode == texture_streaming_mode::virtual_tiles)
+        for (std::uint32_t mip = 0; mip < result.tail_first_mip; ++mip)
+            expected_tiles += static_cast<std::uint64_t>((result.mips[mip].width + result.tile_size - 1u) /
+                                                         result.tile_size) *
+                              ((result.mips[mip].height + result.tile_size - 1u) / result.tile_size);
+    if (result.tiles.size() != expected_tiles || !ranges_do_not_overlap(result.mips, result.tiles))
+        return texture_artifact_index_result::failure(
+            failure(texture_artifact_error_code::invalid_data, "texture artifact payload topology is invalid"));
     return texture_artifact_index_result::success(std::move(result));
 }
 

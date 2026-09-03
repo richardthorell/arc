@@ -350,7 +350,7 @@ void texture_residency_manager::note_feedback_overflow(std::uint32_t count) noex
     implementation_->feedback_overflow += count;
 }
 
-std::vector<texture_stream_load> texture_residency_manager::take_load_requests()
+std::vector<texture_stream_load> texture_residency_manager::take_load_requests(std::uint32_t maximum_requests)
 {
     std::vector<texture_stream_load> result;
     for (const auto& [key, resource] : implementation_->resources)
@@ -390,7 +390,8 @@ std::vector<texture_stream_load> texture_residency_manager::take_load_requests()
                      });
     std::uint64_t bytes{};
     std::size_t count{};
-    while (count < result.size() && count < implementation_->config.maximum_requests_per_frame)
+    const auto request_limit = std::min(implementation_->config.maximum_requests_per_frame, maximum_requests);
+    while (count < result.size() && count < request_limit)
     {
         if (count > 0 && bytes + result[count].byte_size > implementation_->config.upload_budget_per_frame) break;
         bytes += result[count].byte_size;

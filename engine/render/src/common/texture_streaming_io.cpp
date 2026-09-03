@@ -30,6 +30,12 @@ filesystem_texture_artifact_source::filesystem_texture_artifact_source(io::async
     implementation_->files = &files;
 }
 
+filesystem_texture_artifact_source::~filesystem_texture_artifact_source() = default;
+filesystem_texture_artifact_source::filesystem_texture_artifact_source(
+    filesystem_texture_artifact_source&&) noexcept = default;
+filesystem_texture_artifact_source&
+filesystem_texture_artifact_source::operator=(filesystem_texture_artifact_source&&) noexcept = default;
+
 void filesystem_texture_artifact_source::register_file(texture_stream_source_id source, std::filesystem::path path,
                                                        std::uint64_t size)
 {
@@ -145,10 +151,10 @@ void texture_streaming_controller::update(const jobs::cancellation_token& cancel
         state.pending.pop_back();
     }
 
-    auto loads = state.target->take_texture_stream_loads();
+    const auto available = state.maximum_in_flight - static_cast<std::uint32_t>(state.pending.size());
+    auto loads = state.target->take_texture_stream_loads(available);
     for (auto& load : loads)
     {
-        if (state.pending.size() >= state.maximum_in_flight) break;
         auto future = state.source->read_range(load.source, load.byte_offset, load.byte_size, cancellation);
         state.pending.push_back(
             {.load = load, .future = std::move(future), .started = std::chrono::steady_clock::now()});

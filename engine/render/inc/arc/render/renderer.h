@@ -239,7 +239,8 @@ public:
     [[nodiscard]] texture_residency_manager& texture_residency() noexcept;
     [[nodiscard]] const texture_residency_manager& texture_residency() const noexcept;
     void submit_texture_feedback(const texture_feedback_readback& feedback);
-    [[nodiscard]] std::vector<texture_stream_load> take_texture_stream_loads();
+    [[nodiscard]] std::vector<texture_stream_load>
+    take_texture_stream_loads(std::uint32_t maximum_requests = std::numeric_limits<std::uint32_t>::max());
     [[nodiscard]] bool publish_texture_subresource(texture_stream_upload upload);
     void fail_texture_subresource(const texture_stream_load& load);
 

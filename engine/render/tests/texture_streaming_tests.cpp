@@ -3,8 +3,11 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <vector>
 
@@ -113,6 +116,47 @@ TEST_CASE("texture artifacts are deterministic range-readable and include virtua
     const auto corrupt_mip = read_texture_artifact_mip(corrupt, index, 0);
     REQUIRE_FALSE(corrupt_mip.has_value());
     CHECK(corrupt_mip.error().code == texture_artifact_error_code::integrity_failure);
+
+    auto corrupt_header = first.value();
+    corrupt_header[28] ^= std::byte{1};
+    const auto rejected_header = inspect_texture_artifact(corrupt_header);
+    REQUIRE_FALSE(rejected_header.has_value());
+    CHECK(rejected_header.error().code == texture_artifact_error_code::integrity_failure);
+
+    auto incomplete = texture;
+    incomplete.mips.pop_back();
+    const auto rejected_chain = encode_texture_artifact(incomplete, texture_streaming_mode::streamed_mips);
+    REQUIRE_FALSE(rejected_chain.has_value());
+    CHECK(rejected_chain.error().code == texture_artifact_error_code::invalid_data);
+}
+
+TEST_CASE("texture artifact sources constrain loose and package-relative ranges")
+{
+    using namespace arc;
+    jobs::job_system jobs({.worker_count = 1, .run_inline = false, .io_worker_count = 1});
+    io::async_file_service files(jobs);
+    render::filesystem_texture_artifact_source source(files);
+    const auto path = std::filesystem::temp_directory_path() / "arc_texture_package_range.bin";
+    std::filesystem::remove(path);
+    {
+        std::ofstream output(path, std::ios::binary);
+        const std::array<char, 12> bytes{'p', 'r', 'e', 'f', 'A', 'R', 'C', 'T', 'E', 'X', 'x', 'x'};
+        output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    }
+
+    source.register_package_range(44, path, 4, 6);
+    const auto payload = source.read_range(44, 0, 6).get();
+    REQUIRE(payload.succeeded());
+    REQUIRE(payload.value().size() == 6);
+    CHECK(payload.value()[0] == std::byte{'A'});
+    CHECK(payload.value()[5] == std::byte{'X'});
+    const auto outside = source.read_range(44, 5, 2).get();
+    REQUIRE_FALSE(outside.succeeded());
+    CHECK(outside.error().code == io::file_error_code::invalid_range);
+    source.unregister(44);
+    const auto removed = source.read_range(44, 0, 1).get();
+    REQUIRE_FALSE(removed.succeeded());
+    std::filesystem::remove(path);
 }
 
 TEST_CASE("texture residency deduplicates demand rejects stale work and evicts unprotected fine mips")
@@ -233,4 +277,20 @@ TEST_CASE("resident texture mode pins and requests the complete mip chain")
     const auto loads = residency.take_load_requests();
     REQUIRE(loads.size() == descriptor.artifact.mips.size());
     CHECK(loads.front().mip == 0);
+}
+
+TEST_CASE("texture residency only claims requests accepted by an IO capacity window")
+{
+    using namespace arc::render;
+    texture_residency_manager residency;
+    const texture_handle handle{12, 1};
+    const auto descriptor = make_streamed_descriptor();
+    residency.register_resource(handle, descriptor);
+
+    const auto first = residency.take_load_requests(1);
+    REQUIRE(first.size() == 1);
+    residency.mark_loading(first.front());
+    const auto second = residency.take_load_requests(1);
+    REQUIRE(second.size() == 1);
+    CHECK(second.front().mip != first.front().mip);
 }

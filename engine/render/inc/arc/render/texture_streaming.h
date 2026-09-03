@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <span>
@@ -197,7 +198,8 @@ public:
     void begin_frame(std::uint64_t frame_index);
     void request(std::span<const texture_mip_feedback> mips, std::span<const texture_tile_feedback> tiles);
     void note_feedback_overflow(std::uint32_t count) noexcept;
-    [[nodiscard]] std::vector<texture_stream_load> take_load_requests();
+    [[nodiscard]] std::vector<texture_stream_load>
+    take_load_requests(std::uint32_t maximum_requests = std::numeric_limits<std::uint32_t>::max());
     void mark_loading(const texture_stream_load& load);
     void mark_uploading(const texture_stream_upload& upload);
     void complete(const texture_stream_upload_result& result);

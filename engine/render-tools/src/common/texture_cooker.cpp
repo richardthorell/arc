@@ -1536,7 +1536,7 @@ texture_cook_processor::texture_cook_processor()
 {
     descriptor_ = {.id = assets::cook_processor_ids::texture,
                    .name = "ARC Texture Cooker",
-                   .version = 8,
+                   .version = 9,
                    .schema = assets::artifact_schemas::texture,
                    .schema_version = texture_artifact_schema_version,
                    .affinity = jobs::job_affinity::any_worker,
@@ -1548,7 +1548,7 @@ const assets::asset_cook_processor_descriptor& texture_cook_processor::descripto
 }
 std::string texture_cook_processor::toolchain_fingerprint() const
 {
-    return "arc-texture-cooker-v8:arctex-v2:stage6-bc-compression:stb-dxt";
+    return "arc-texture-cooker-v9:arctex-v3:checksummed-range-streaming:stb-dxt";
 }
 
 assets::asset_cook_result texture_cook_processor::cook(const assets::asset_cook_context& context)

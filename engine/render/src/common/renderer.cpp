@@ -1135,9 +1135,9 @@ void renderer::submit_texture_feedback(const texture_feedback_readback& feedback
     texture_residency_.note_feedback_overflow(feedback.overflow);
 }
 
-std::vector<texture_stream_load> renderer::take_texture_stream_loads()
+std::vector<texture_stream_load> renderer::take_texture_stream_loads(std::uint32_t maximum_requests)
 {
-    auto result = texture_residency_.take_load_requests();
+    auto result = texture_residency_.take_load_requests(maximum_requests);
     for (const auto& load : result)
         texture_residency_.mark_loading(load);
     return result;
