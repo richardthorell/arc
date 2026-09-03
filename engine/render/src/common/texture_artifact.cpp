@@ -207,11 +207,10 @@ std::uint32_t complete_mip_count(std::uint32_t width, std::uint32_t height) noex
 
 bool finite_metadata(const texture_artifact_metadata& metadata) noexcept
 {
-    return std::isfinite(metadata.anisotropy) && metadata.anisotropy >= 1.0f &&
-           std::isfinite(metadata.lod_bias) && std::isfinite(metadata.minimum_lod) &&
-           std::isfinite(metadata.maximum_lod) && metadata.minimum_lod <= metadata.maximum_lod &&
-           std::isfinite(metadata.alpha_coverage_threshold) && metadata.alpha_coverage_threshold >= 0.0f &&
-           metadata.alpha_coverage_threshold <= 1.0f;
+    return std::isfinite(metadata.anisotropy) && metadata.anisotropy >= 1.0f && std::isfinite(metadata.lod_bias) &&
+           std::isfinite(metadata.minimum_lod) && std::isfinite(metadata.maximum_lod) &&
+           metadata.minimum_lod <= metadata.maximum_lod && std::isfinite(metadata.alpha_coverage_threshold) &&
+           metadata.alpha_coverage_threshold >= 0.0f && metadata.alpha_coverage_threshold <= 1.0f;
 }
 
 bool ranges_do_not_overlap(std::span<const texture_artifact_mip_range> mips,
@@ -497,8 +496,7 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
         wrap_v > static_cast<std::uint32_t>(texture_address_mode::mirrored_repeat) || result.width == 0 ||
         result.height == 0 || result.mip_count == 0 || mip_entries != result.mip_count ||
         result.tail_first_mip >= result.mip_count || result.table_end < header_bytes ||
-        result.table_end > bytes.size() || result.artifact_size != bytes.size() ||
-        !finite_metadata(result.metadata) ||
+        result.table_end > bytes.size() || result.artifact_size != bytes.size() || !finite_metadata(result.metadata) ||
         ((mode == static_cast<std::uint32_t>(texture_streaming_mode::streamed_mips) ||
           mode == static_cast<std::uint32_t>(texture_streaming_mode::virtual_tiles)) &&
          result.mip_count != complete_mip_count(result.width, result.height)) ||
@@ -534,8 +532,8 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
     result.mips.reserve(mip_entries);
     std::uint32_t expected_width = result.width;
     std::uint32_t expected_height = result.height;
-    const auto payload_begin = (result.table_end + texture_artifact_alignment - 1u) / texture_artifact_alignment *
-                               texture_artifact_alignment;
+    const auto payload_begin =
+        (result.table_end + texture_artifact_alignment - 1u) / texture_artifact_alignment * texture_artifact_alignment;
     for (std::uint32_t mip = 0; mip < mip_entries; ++mip)
     {
         texture_artifact_mip_range range;
@@ -560,14 +558,15 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
             !input.value(range.height) || !input.value(range.offset) || !input.value(range.stored_size) ||
             !input.value(range.decoded_size) || !input.value(range.content_hash) ||
             range.mip >= result.tail_first_mip || range.width != result.tile_size + result.tile_border * 2u ||
-            range.height != result.tile_size + result.tile_border * 2u || range.x >=
-                (result.mips[range.mip].width + result.tile_size - 1u) / result.tile_size ||
+            range.height != result.tile_size + result.tile_border * 2u ||
+            range.x >= (result.mips[range.mip].width + result.tile_size - 1u) / result.tile_size ||
             range.y >= (result.mips[range.mip].height + result.tile_size - 1u) / result.tile_size ||
             range.decoded_size != payload_bytes(range.width, range.height, result.format) ||
             range.stored_size != range.decoded_size ||
             !valid_range(range.offset, range.stored_size, payload_begin, bytes.size()) ||
-            !tile_keys.insert((static_cast<std::uint64_t>(range.mip) << 48u) |
-                              (static_cast<std::uint64_t>(range.y) << 24u) | range.x)
+            !tile_keys
+                 .insert((static_cast<std::uint64_t>(range.mip) << 48u) | (static_cast<std::uint64_t>(range.y) << 24u) |
+                         range.x)
                  .second)
             return texture_artifact_index_result::failure(
                 failure(texture_artifact_error_code::out_of_bounds, "texture artifact tile range is invalid"));
@@ -576,9 +575,9 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
     std::uint64_t expected_tiles{};
     if (result.mode == texture_streaming_mode::virtual_tiles)
         for (std::uint32_t mip = 0; mip < result.tail_first_mip; ++mip)
-            expected_tiles += static_cast<std::uint64_t>((result.mips[mip].width + result.tile_size - 1u) /
-                                                         result.tile_size) *
-                              ((result.mips[mip].height + result.tile_size - 1u) / result.tile_size);
+            expected_tiles +=
+                static_cast<std::uint64_t>((result.mips[mip].width + result.tile_size - 1u) / result.tile_size) *
+                ((result.mips[mip].height + result.tile_size - 1u) / result.tile_size);
     if (result.tiles.size() != expected_tiles || !ranges_do_not_overlap(result.mips, result.tiles))
         return texture_artifact_index_result::failure(
             failure(texture_artifact_error_code::invalid_data, "texture artifact payload topology is invalid"));
