@@ -1,0 +1,33 @@
+name: Temporary model thumbnail PNG validation
+on:
+  push:
+    branches: [feature/model-content-thumbnails]
+permissions:
+  contents: write
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/model-content-thumbnails
+          fetch-depth: 0
+      - name: Apply patch
+        run: python3 tools/temporary_patch_model_thumbnail_png.py
+      - name: Format
+        run: clang-format-18 -i editor/native/src/model_preview.cpp editor/native/src/arc_host_base.inc
+      - name: Configure
+        run: cmake -S . -B out/model-thumb-png -G Ninja -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DARC_BUILD_EDITOR=ON -DARC_BUILD_RENDER_VULKAN=OFF -DBUILD_TESTING=ON
+      - name: Build
+        run: cmake --build out/model-thumb-png --target arc_editor_host_tests arc_host_process -j2
+      - name: Test
+        run: ctest --test-dir out/model-thumb-png --output-on-failure -R "model preview"
+      - name: Commit implementation
+        run: |
+          rm tools/temporary_patch_model_thumbnail_png.py
+          rm .github/workflows/temporary-model-thumbnail-png.yml
+          git add editor/native/src/model_preview.cpp editor/native/src/arc_host_base.inc tools/temporary_patch_model_thumbnail_png.py .github/workflows/temporary-model-thumbnail-png.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Preserve transparency in model thumbnails"
+          git push origin HEAD:feature/model-content-thumbnails
