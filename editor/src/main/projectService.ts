@@ -466,6 +466,27 @@ export class ProjectService {
         descriptorPath = created.project.descriptorPath;
       } else descriptorPath = resolveDescriptorPath(projectRoot);
 
+      const legacyScenePath = 'Content/Scenes/Startup.arcscene';
+      if (descriptorPath && fs.existsSync(descriptorPath)) {
+        const rawDescriptor = JSON.parse(fs.readFileSync(descriptorPath, 'utf8')) as Record<string, unknown>;
+        const defaultScene = objectValue(rawDescriptor.defaultScene);
+        const startupScenes = Array.isArray(rawDescriptor.startupScenes) ? rawDescriptor.startupScenes : [];
+        const normalizedPath = (value: unknown): string =>
+          typeof value === 'string' ? value.replaceAll('\\', '/') : '';
+        const referencesLegacyScene =
+          normalizedPath(defaultScene.pathHint) === legacyScenePath ||
+          startupScenes.some((entry) =>
+            normalizedPath(typeof entry === 'string' ? entry : objectValue(entry).pathHint) === legacyScenePath,
+          );
+        if (referencesLegacyScene) {
+          rawDescriptor.defaultScene = null;
+          rawDescriptor.startupScenes = [];
+          writeJsonAtomic(descriptorPath, rawDescriptor);
+          fs.rmSync(path.join(projectRoot, legacyScenePath), { force: true });
+          fs.rmSync(path.join(projectRoot, `${legacyScenePath}.arcmeta`), { force: true });
+        }
+      }
+
       return await this.open(descriptorPath, { upgrade: true });
     } catch (error) {
       return { succeeded: false, error: error instanceof Error ? error.message : String(error) };
