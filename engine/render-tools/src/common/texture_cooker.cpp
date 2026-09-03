@@ -4,8 +4,17 @@
 
 #include <nlohmann/json.hpp>
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4244)
+#endif
+
 #define STB_DXT_IMPLEMENTATION
 #include <stb_dxt.h>
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 #include <algorithm>
 #include <array>
