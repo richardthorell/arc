@@ -5,7 +5,10 @@ arc_add_module(
     NO_TESTS
 )
 
-target_link_libraries(arc-render-tools PRIVATE "$<BUILD_INTERFACE:arc-third-party-json>")
+target_link_libraries(arc-render-tools PRIVATE
+    "$<BUILD_INTERFACE:arc-third-party-json>"
+    "$<BUILD_INTERFACE:arc-third-party-stb>"
+)
 target_sources(arc-render-tools PRIVATE
     src/common/material_asset.cpp
     src/common/material_function.cpp
