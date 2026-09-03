@@ -1,0 +1,34 @@
+name: Temporary Main Formatting Fix 2
+
+on:
+  push:
+    branches:
+      - fix/main-code-quality-formatting-2
+    paths:
+      - .github/workflows/temp-fix-main-formatting-2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/main-code-quality-formatting-2
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format-18
+      - name: Format failing file
+        run: clang-format-18 -i engine/render/src/common/texture_streaming.cpp
+      - name: Verify formatting
+        run: python3 tools/check_format.py --clang-format clang-format-18
+      - name: Remove temporary workflow
+        run: rm .github/workflows/temp-fix-main-formatting-2.yml
+      - name: Commit fix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Fix texture streaming formatting"
+          git push origin HEAD:fix/main-code-quality-formatting-2
