@@ -1,0 +1,50 @@
+name: Temporary Grid Fix
+
+on:
+  push:
+    branches:
+      - fix/default-white-infinite-grid
+    paths:
+      - .github/workflows/temp-grid-fix.yml
+      - .github/scripts/temp_grid_fix.py
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/default-white-infinite-grid
+          fetch-depth: 0
+      - name: Apply grid fix
+        run: python3 .github/scripts/temp_grid_fix.py
+      - name: Format native code
+        run: clang-format-18 -i editor/native/inc/arc/editor/host_protocol_base.h editor/native/src/editor_gizmo.cpp editor/native/tests/multi_viewport_surface_tests.cpp editor/native/tests/editor_tests.cpp
+      - name: Configure
+        run: >-
+          cmake -S . -B out/build/grid-fix -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_C_COMPILER=clang-18
+          -DCMAKE_CXX_COMPILER=clang++-18
+          -DARC_BUILD_RENDER_VULKAN=OFF
+          -DARC_BUILD_EDITOR=ON
+          -DARC_BUILD_SAMPLES=OFF
+          -DBUILD_TESTING=ON
+      - name: Build editor host tests
+        run: cmake --build out/build/grid-fix --target arc_editor_host_tests -j2
+      - name: Run grid and viewport tests
+        run: ctest --test-dir out/build/grid-fix -R "editor grid is white|viewport surfaces keep dimensions" --output-on-failure
+      - name: Check formatting
+        run: python3 tools/check_format.py --clang-format clang-format-18
+      - name: Commit implementation
+        run: |
+          rm .github/workflows/temp-grid-fix.yml
+          rm .github/scripts/temp_grid_fix.py
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Improve default editor grid"
+          git push origin HEAD:fix/default-white-infinite-grid
