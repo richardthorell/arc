@@ -388,3 +388,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.texture-curve-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px 0;
+}

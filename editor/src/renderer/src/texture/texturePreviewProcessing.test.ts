@@ -27,6 +27,27 @@ const settings: TextureSettingsSnapshot = {
   debandMips: false,
   debandStrength: 0.25,
   brightness: 0,
+  curvesEnabled: false,
+  curveMaster: [
+    { x: 0, y: 0, inTangent: 1, outTangent: 1, interpolation: 'smooth' },
+    { x: 1, y: 1, inTangent: 1, outTangent: 1, interpolation: 'smooth' },
+  ],
+  curveR: [
+    { x: 0, y: 0, inTangent: 1, outTangent: 1, interpolation: 'smooth' },
+    { x: 1, y: 1, inTangent: 1, outTangent: 1, interpolation: 'smooth' },
+  ],
+  curveG: [
+    { x: 0, y: 0, inTangent: 1, outTangent: 1, interpolation: 'smooth' },
+    { x: 1, y: 1, inTangent: 1, outTangent: 1, interpolation: 'smooth' },
+  ],
+  curveB: [
+    { x: 0, y: 0, inTangent: 1, outTangent: 1, interpolation: 'smooth' },
+    { x: 1, y: 1, inTangent: 1, outTangent: 1, interpolation: 'smooth' },
+  ],
+  curveA: [
+    { x: 0, y: 0, inTangent: 1, outTangent: 1, interpolation: 'smooth' },
+    { x: 1, y: 1, inTangent: 1, outTangent: 1, interpolation: 'smooth' },
+  ],
   gamma: 1,
   contrast: 1,
   saturation: 1,

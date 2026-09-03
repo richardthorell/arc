@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace arc::render::tools
 {
@@ -41,9 +42,31 @@ enum class texture_channel_source : std::uint8_t
     one
 };
 
+enum class texture_curve_interpolation : std::uint8_t
+{
+    constant,
+    linear,
+    smooth,
+    manual
+};
+
+struct texture_curve_point
+{
+    float x{};
+    float y{};
+    float in_tangent{1.0f};
+    float out_tangent{1.0f};
+    texture_curve_interpolation interpolation{texture_curve_interpolation::smooth};
+};
+
+struct texture_curve
+{
+    std::vector<texture_curve_point> points{{.x = 0.0f, .y = 0.0f}, {.x = 1.0f, .y = 1.0f}};
+};
+
 struct texture_import_settings
 {
-    static constexpr std::uint32_t current_version = 6;
+    static constexpr std::uint32_t current_version = 7;
     texture_import_preset preset{texture_import_preset::custom};
     texture_semantic semantic{texture_semantic::generic_color};
     texture_color_space color_space{texture_color_space::srgb};
@@ -78,6 +101,12 @@ struct texture_import_settings
     float input_white{1.0f};
     float output_black{};
     float output_white{1.0f};
+    bool curves_enabled{};
+    texture_curve curve_master{};
+    texture_curve curve_r{};
+    texture_curve curve_g{};
+    texture_curve curve_b{};
+    texture_curve curve_a{};
     texture_channel_source channel_r{texture_channel_source::red};
     texture_channel_source channel_g{texture_channel_source::green};
     texture_channel_source channel_b{texture_channel_source::blue};
@@ -125,6 +154,10 @@ parse_texture_power_of_two_policy(std::string_view value) noexcept;
 [[nodiscard]] std::optional<texture_mip_generation_filter>
 parse_texture_mip_generation_filter(std::string_view value) noexcept;
 [[nodiscard]] std::optional<texture_channel_source> parse_texture_channel_source(std::string_view value) noexcept;
+[[nodiscard]] std::string_view texture_curve_interpolation_name(texture_curve_interpolation interpolation) noexcept;
+[[nodiscard]] core::result<texture_curve, std::string> parse_texture_curve(std::string_view canonical_json);
+[[nodiscard]] std::string serialize_texture_curve(const texture_curve& curve);
+[[nodiscard]] float evaluate_texture_curve(const texture_curve& curve, float value) noexcept;
 
 [[nodiscard]] texture_import_settings texture_import_settings_for_preset(texture_import_preset preset) noexcept;
 [[nodiscard]] texture_import_settings_result

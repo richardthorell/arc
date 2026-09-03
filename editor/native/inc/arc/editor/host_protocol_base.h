@@ -902,6 +902,11 @@ struct host_patch_texture_settings_command
     std::string channel_g;
     std::string channel_b;
     std::string channel_a;
+    std::string curve_master;
+    std::string curve_r;
+    std::string curve_g;
+    std::string curve_b;
+    std::string curve_a;
     std::optional<std::uint32_t> max_size;
     std::optional<float> anisotropy;
     std::optional<float> lod_bias;
@@ -928,6 +933,7 @@ struct host_patch_texture_settings_command
     std::optional<bool> invert_g;
     std::optional<bool> invert_b;
     std::optional<bool> invert_a;
+    std::optional<bool> curves_enabled;
     std::optional<bool> generate_mips;
     std::optional<bool> preserve_alpha_coverage;
 };

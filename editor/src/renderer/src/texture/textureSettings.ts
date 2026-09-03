@@ -21,6 +21,15 @@ export type TextureMipFilterMode = 'nearest' | 'linear';
 export type TextureAddressMode = 'repeat' | 'clamp_to_edge' | 'mirrored_repeat';
 export type TextureMipGenerationFilter = 'nearest' | 'box' | 'bilinear' | 'bicubic' | 'lanczos' | 'kaiser';
 export type TextureChannelSource = 'red' | 'green' | 'blue' | 'alpha' | 'zero' | 'one';
+export type TextureCurveInterpolation = 'constant' | 'linear' | 'smooth' | 'manual';
+export type TextureCurvePoint = {
+  x: number;
+  y: number;
+  inTangent: number;
+  outTangent: number;
+  interpolation: TextureCurveInterpolation;
+};
+export type TextureCurve = TextureCurvePoint[];
 
 export type TextureSettingsSnapshot = {
   settingsVersion: number;
@@ -58,6 +67,12 @@ export type TextureSettingsSnapshot = {
   inputWhite: number;
   outputBlack: number;
   outputWhite: number;
+  curvesEnabled: boolean;
+  curveMaster: TextureCurve;
+  curveR: TextureCurve;
+  curveG: TextureCurve;
+  curveB: TextureCurve;
+  curveA: TextureCurve;
   channelR: TextureChannelSource;
   channelG: TextureChannelSource;
   channelB: TextureChannelSource;
@@ -83,10 +98,11 @@ export async function getTextureSettings(guid: string): Promise<TextureSettingsS
 
 export async function patchTextureSettings(guid: string, patch: TextureSettingsPatch): Promise<void> {
   if (!window.arc?.host?.command) throw new Error('ARC host is unavailable');
-  const response = (await window.arc.host.command('texture.settings.patch', {
-    guid,
-    ...patch,
-  })) as HostResponse<unknown>;
+  const payload: Record<string, unknown> = { guid, ...patch };
+  for (const key of ['curveMaster', 'curveR', 'curveG', 'curveB', 'curveA'] as const) {
+    if (patch[key]) payload[key] = JSON.stringify(patch[key]);
+  }
+  const response = (await window.arc.host.command('texture.settings.patch', payload)) as HostResponse<unknown>;
   if (!response.succeeded) throw new Error(response.error || 'Could not update texture settings');
   window.dispatchEvent(new CustomEvent('arc:texture-settings-changed', { detail: { guid } }));
 }

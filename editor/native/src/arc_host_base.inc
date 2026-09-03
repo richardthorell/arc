@@ -2145,6 +2145,21 @@ host_response arc_host::execute(const host_command_envelope& command)
                     if (payload.invert_g) settings.invert_g = *payload.invert_g;
                     if (payload.invert_b) settings.invert_b = *payload.invert_b;
                     if (payload.invert_a) settings.invert_a = *payload.invert_a;
+                    if (payload.curves_enabled) settings.curves_enabled = *payload.curves_enabled;
+                    const auto parse_curve_patch = [&](const std::string& source, render::tools::texture_curve& target)
+                    {
+                        if (source.empty()) return true;
+                        const auto parsed = render::tools::parse_texture_curve(source);
+                        if (!parsed) return false;
+                        target = parsed.value();
+                        return true;
+                    };
+                    if (!parse_curve_patch(payload.curve_master, settings.curve_master) ||
+                        !parse_curve_patch(payload.curve_r, settings.curve_r) ||
+                        !parse_curve_patch(payload.curve_g, settings.curve_g) ||
+                        !parse_curve_patch(payload.curve_b, settings.curve_b) ||
+                        !parse_curve_patch(payload.curve_a, settings.curve_a))
+                        return fail("Texture curve payload is invalid");
                     if (payload.generate_mips) settings.generate_mips = *payload.generate_mips;
                     if (payload.preserve_alpha_coverage)
                         settings.preserve_alpha_coverage = *payload.preserve_alpha_coverage;
@@ -4663,6 +4678,12 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"ditherMips\":" + std::string(value.dither_mips ? "true" : "false") +
                     ",\"debandMips\":" + std::string(value.deband_mips ? "true" : "false") +
                     ",\"debandStrength\":" + std::to_string(value.deband_strength) +
+                    ",\"curvesEnabled\":" + std::string(value.curves_enabled ? "true" : "false") +
+                    ",\"curveMaster\":" + render::tools::serialize_texture_curve(value.curve_master) +
+                    ",\"curveR\":" + render::tools::serialize_texture_curve(value.curve_r) +
+                    ",\"curveG\":" + render::tools::serialize_texture_curve(value.curve_g) +
+                    ",\"curveB\":" + render::tools::serialize_texture_curve(value.curve_b) +
+                    ",\"curveA\":" + render::tools::serialize_texture_curve(value.curve_a) +
                     ",\"brightness\":" + std::to_string(value.brightness) +
                     ",\"gamma\":" + std::to_string(value.gamma) + ",\"contrast\":" + std::to_string(value.contrast) +
                     ",\"saturation\":" + std::to_string(value.saturation) +

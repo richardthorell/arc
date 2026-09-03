@@ -1,0 +1,62 @@
+.ui-curve-editor {
+  display: grid;
+  gap: 4px;
+  padding: 6px 8px;
+}
+.ui-curve-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.ui-curve-toolbar select {
+  margin-right: auto;
+  min-width: 90px;
+  height: 24px;
+  background: var(--arc-color-surface-control, #20262c);
+  color: var(--arc-color-text, #e7e9ed);
+  border: 1px solid var(--arc-color-border, #303841);
+  border-radius: 3px;
+}
+.ui-curve-canvas {
+  width: 100%;
+  height: 190px;
+  border: 1px solid var(--arc-color-border, #303841);
+  border-radius: 3px;
+  background: #11161b;
+  touch-action: none;
+  cursor: crosshair;
+}
+.ui-curve-grid path {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 0.35;
+}
+.ui-curve-histogram {
+  fill: rgba(255, 255, 255, 0.08);
+  stroke: none;
+}
+.ui-curve-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.1;
+  vector-effect: non-scaling-stroke;
+}
+.ui-curve-point {
+  fill: #171c22;
+  stroke: currentColor;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  cursor: grab;
+}
+.ui-curve-point.selected {
+  fill: currentColor;
+}
+.ui-curve-readout {
+  min-height: 14px;
+  color: var(--arc-color-text-muted, #9ca3ad);
+  font:
+    10px/1.2 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+}

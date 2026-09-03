@@ -2229,6 +2229,11 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             string_value(payload, "channelG", command.channel_g);
             string_value(payload, "channelB", command.channel_b);
             string_value(payload, "channelA", command.channel_a);
+            string_value(payload, "curveMaster", command.curve_master);
+            string_value(payload, "curveR", command.curve_r);
+            string_value(payload, "curveG", command.curve_g);
+            string_value(payload, "curveB", command.curve_b);
+            string_value(payload, "curveA", command.curve_a);
             const auto optional_number = [&](std::string_view key, auto& target)
             {
                 using value_type = typename std::decay_t<decltype(target)>::value_type;
@@ -2263,7 +2268,9 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
                 !optional_number("outputBlack", command.output_black) ||
                 !optional_number("outputWhite", command.output_white) || !optional_bool("invertR", command.invert_r) ||
                 !optional_bool("invertG", command.invert_g) || !optional_bool("invertB", command.invert_b) ||
-                !optional_bool("invertA", command.invert_a) || !optional_bool("generateMips", command.generate_mips) ||
+                !optional_bool("invertA", command.invert_a) ||
+                !optional_bool("curvesEnabled", command.curves_enabled) ||
+                !optional_bool("generateMips", command.generate_mips) ||
                 !optional_bool("preserveAlphaCoverage", command.preserve_alpha_coverage))
             {
                 error = "Texture settings patch contains an invalid value";
@@ -2274,13 +2281,15 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
                 command.min_filter.empty() && command.mag_filter.empty() && command.mip_filter.empty() &&
                 command.wrap_u.empty() && command.wrap_v.empty() && command.mip_generation_filter.empty() &&
                 command.channel_r.empty() && command.channel_g.empty() && command.channel_b.empty() &&
-                command.channel_a.empty() && !command.max_size && !command.anisotropy && !command.lod_bias &&
-                !command.minimum_lod && !command.maximum_lod && !command.alpha_coverage_threshold &&
-                !command.mip_sharpen && !command.deband_strength && !command.dither_mips && !command.deband_mips &&
-                !command.brightness && !command.gamma && !command.contrast && !command.saturation &&
-                !command.vibrance && !command.tint_r && !command.tint_g && !command.tint_b && !command.input_black &&
-                !command.input_white && !command.output_black && !command.output_white && !command.invert_r &&
-                !command.invert_g && !command.invert_b && !command.invert_a && !command.generate_mips &&
+                command.channel_a.empty() && command.curve_master.empty() && command.curve_r.empty() &&
+                command.curve_g.empty() && command.curve_b.empty() && command.curve_a.empty() && !command.max_size &&
+                !command.anisotropy && !command.lod_bias && !command.minimum_lod && !command.maximum_lod &&
+                !command.alpha_coverage_threshold && !command.mip_sharpen && !command.deband_strength &&
+                !command.dither_mips && !command.deband_mips && !command.brightness && !command.gamma &&
+                !command.contrast && !command.saturation && !command.vibrance && !command.tint_r && !command.tint_g &&
+                !command.tint_b && !command.input_black && !command.input_white && !command.output_black &&
+                !command.output_white && !command.invert_r && !command.invert_g && !command.invert_b &&
+                !command.invert_a && !command.curves_enabled && !command.generate_mips &&
                 !command.preserve_alpha_coverage)
             {
                 error = "Texture settings patch requires at least one setting";
