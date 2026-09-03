@@ -5,7 +5,13 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { AssetItem } from '../services/editorHostTypes';
-import { assetDisplayName, assetFileExtension, assetHoverPosition, ContentAssetCard } from './ContentAssetCard';
+import {
+  assetDisplayName,
+  assetFileExtension,
+  assetHoverPosition,
+  assetSpecificHoverDetails,
+  ContentAssetCard,
+} from './ContentAssetCard';
 
 const mesh: AssetItem = {
   id: 'cabin',
@@ -29,6 +35,37 @@ const texture: AssetItem = {
   width: 2048,
   height: 1024,
   mipLevels: 12,
+};
+
+const materialWithTextureDefaults: AssetItem = {
+  id: 'material',
+  name: 'M_Wood.arcmat',
+  path: 'Content/Materials/M_Wood.arcmat',
+  kind: 'material',
+  status: 'ready',
+  width: 0,
+  height: 0,
+  mipLevels: 0,
+  streamingMode: 'resident',
+  materialShader: 'default_phong',
+  materialParameterCount: 6,
+  materialTextureCount: 2,
+};
+
+const model: AssetItem = {
+  id: 'model',
+  name: 'Cabin.glb',
+  path: 'Content/Models/Cabin.glb',
+  kind: 'scene',
+  status: 'ready',
+  width: 0,
+  height: 0,
+  vertexCount: 18432,
+  triangleCount: 12288,
+  meshCount: 3,
+  materialSlotCount: 2,
+  nodeCount: 5,
+  animationCount: 0,
 };
 
 const renderCard = (asset: AssetItem) =>
@@ -85,12 +122,124 @@ describe('ContentAssetCard', () => {
     expect(tooltip).toHaveTextContent('12,288');
   });
 
-  it('shows texture dimensions and mip levels when registry metadata is available', async () => {
-    const view = renderCard(texture);
+  it('shows texture metadata only for texture-like asset types', async () => {
+    const textureView = renderCard(texture);
+    const textureTooltip = await revealTooltip(textureView);
+
+    expect(textureTooltip).toHaveTextContent('2048 × 1024');
+    expect(textureTooltip).toHaveTextContent('12');
+    cleanup();
+    vi.useRealTimers();
+
+    const materialView = renderCard(materialWithTextureDefaults);
+    const materialTooltip = await revealTooltip(materialView);
+    expect(materialTooltip).not.toHaveTextContent('Resolution');
+    expect(materialTooltip).not.toHaveTextContent('Mip levels');
+    expect(materialTooltip).not.toHaveTextContent('Streaming');
+    expect(materialTooltip).toHaveTextContent('default_phong');
+  });
+
+  it('defines useful per-type details for every current asset presentation kind', () => {
+    expect(assetSpecificHoverDetails(model)).toEqual([
+      { label: 'Meshes', value: '3' },
+      { label: 'Vertices', value: '18,432' },
+      { label: 'Triangles', value: '12,288' },
+      { label: 'Material slots', value: '2' },
+      { label: 'Nodes', value: '5' },
+      { label: 'Animations', value: '0' },
+    ]);
+    expect(
+      assetSpecificHoverDetails({
+        id: 'environment',
+        name: 'Studio.hdr',
+        path: 'Content/Environment/Studio.hdr',
+        kind: 'environment',
+        status: 'ready',
+        width: 4096,
+        height: 2048,
+        textureFormat: 'RGBA16F',
+        mipLevels: 13,
+      }),
+    ).toEqual([
+      { label: 'Resolution', value: '4096 × 2048' },
+      { label: 'Format', value: 'RGBA16F' },
+      { label: 'Mip levels', value: '13' },
+    ]);
+    expect(
+      assetSpecificHoverDetails({
+        id: 'shader',
+        name: 'Surface.arcshader',
+        path: 'Content/Shaders/Surface.arcshader',
+        kind: 'shader',
+        status: 'ready',
+        shaderStages: ['Vertex', 'Fragment'],
+        shaderEntryPoints: ['vs_main', 'fs_main'],
+        shaderCompileStatus: 'Compiled',
+        shaderVariantCount: 4,
+      }),
+    ).toHaveLength(4);
+    expect(
+      assetSpecificHoverDetails({
+        id: 'prefab',
+        name: 'Cabin.arcprefab',
+        path: 'Content/Prefabs/Cabin.arcprefab',
+        kind: 'prefab',
+        status: 'ready',
+        entityCount: 8,
+        componentCount: 21,
+        nestedPrefabCount: 1,
+        rootEntityName: 'Cabin',
+      }),
+    ).toHaveLength(4);
+    expect(
+      assetSpecificHoverDetails({
+        id: 'scene',
+        name: 'Village.arcscene',
+        path: 'Content/Scenes/Village.arcscene',
+        kind: 'scene',
+        status: 'ready',
+        entityCount: 42,
+        meshCount: 12,
+        cameraCount: 2,
+        lightCount: 5,
+      }),
+    ).toHaveLength(4);
+    expect(
+      assetSpecificHoverDetails({
+        id: 'folder',
+        name: 'Props',
+        path: 'Content/Props',
+        kind: 'folder',
+        status: 'ready',
+        itemCount: 17,
+      }),
+    ).toEqual([{ label: 'Items', value: '17' }]);
+    expect(
+      assetSpecificHoverDetails({
+        id: 'unknown',
+        name: 'Data.bin',
+        path: 'Content/Data.bin',
+        kind: 'unknown',
+        status: 'ready',
+        width: 2048,
+        height: 2048,
+      }),
+    ).toEqual([]);
+  });
+
+  it('keeps engine implementation metadata out of the user-facing hover', async () => {
+    const view = renderCard({
+      ...mesh,
+      importerId: 'ufbx-importer-v2',
+      residency: 'device',
+      readOnly: true,
+    });
     const tooltip = await revealTooltip(view);
 
-    expect(tooltip).toHaveTextContent('2048 × 1024');
-    expect(tooltip).toHaveTextContent('12');
+    expect(tooltip).not.toHaveTextContent('Importer');
+    expect(tooltip).not.toHaveTextContent('ufbx-importer-v2');
+    expect(tooltip).not.toHaveTextContent('Residency');
+    expect(tooltip).not.toHaveTextContent('Engine · Read-only');
   });
 
   it('places hover details down-right when there is room and up-right near the bottom edge', () => {

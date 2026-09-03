@@ -9,7 +9,12 @@ import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import { trackEditorJob } from '../jobs/editorJobProgress';
 import type { AssetItem } from '../services/editorHostTypes';
 import { UiFloatingSurface } from '../ui';
-import { assetDragType, assetPresentationIcon, assetPresentationLabel } from './assetPresentation';
+import {
+  assetDragType,
+  assetPresentationIcon,
+  assetPresentationKind,
+  assetPresentationLabel,
+} from './assetPresentation';
 
 const TOOLTIP_DELAY_MS = 350;
 const TOOLTIP_GAP = 14;
@@ -59,6 +64,106 @@ const formatBytes = (bytes: number | undefined) => {
 const formatCount = (value: number | undefined) =>
   value === undefined || !Number.isFinite(value) ? null : Math.max(0, Math.round(value)).toLocaleString();
 
+const positiveCount = (value: number | undefined) =>
+  value !== undefined && Number.isFinite(value) && value > 0 ? Math.round(value).toLocaleString() : null;
+
+export type AssetHoverDetail = { label: string; value: string };
+
+const pushCount = (rows: AssetHoverDetail[], label: string, value: number | undefined, includeZero = false) => {
+  const formatted = includeZero ? formatCount(value) : positiveCount(value);
+  if (formatted) rows.push({ label, value: formatted });
+};
+
+const pushReferences = (rows: AssetHoverDetail[], asset: AssetItem) => {
+  if (asset.dependencies?.length)
+    rows.push({ label: 'Referenced assets', value: asset.dependencies.length.toLocaleString() });
+};
+
+export const assetSpecificHoverDetails = (asset: AssetItem): AssetHoverDetail[] => {
+  const rows: AssetHoverDetail[] = [];
+  const kind = assetPresentationKind(asset);
+  const dimensions =
+    asset.width !== undefined && asset.height !== undefined && asset.width > 0 && asset.height > 0
+      ? `${asset.width} × ${asset.height}${asset.depth && asset.depth > 1 ? ` × ${asset.depth}` : ''}`
+      : null;
+
+  switch (kind) {
+    case 'texture':
+      if (dimensions) rows.push({ label: 'Resolution', value: dimensions });
+      if (asset.textureFormat) rows.push({ label: 'Format', value: asset.textureFormat });
+      if (asset.mipLevels !== undefined && asset.mipLevels > 0)
+        rows.push({ label: 'Mip levels', value: String(asset.mipLevels) });
+      if (asset.streamingMode)
+        rows.push({
+          label: 'Streaming',
+          value:
+            asset.streamingMode === 'streamed_mips'
+              ? 'Streamed mips'
+              : asset.streamingMode === 'virtual_tiles'
+                ? 'Virtual texture'
+                : 'Resident',
+        });
+      pushCount(rows, 'Virtual tiles', asset.tileCount);
+      if (asset.streamingEligibilityError)
+        rows.push({ label: 'Streaming note', value: asset.streamingEligibilityError });
+      break;
+    case 'environment':
+      if (dimensions) rows.push({ label: 'Resolution', value: dimensions });
+      if (asset.textureFormat) rows.push({ label: 'Format', value: asset.textureFormat });
+      if (asset.mipLevels !== undefined && asset.mipLevels > 0)
+        rows.push({ label: 'Mip levels', value: String(asset.mipLevels) });
+      break;
+    case 'model':
+      pushCount(rows, 'Meshes', asset.meshCount);
+      pushCount(rows, 'Vertices', asset.vertexCount);
+      pushCount(rows, 'Triangles', asset.triangleCount);
+      pushCount(rows, 'Material slots', asset.materialSlotCount);
+      pushCount(rows, 'Nodes', asset.nodeCount);
+      pushCount(rows, 'Animations', asset.animationCount, true);
+      break;
+    case 'mesh':
+      pushCount(rows, 'Vertices', asset.vertexCount);
+      pushCount(rows, 'Triangles', asset.triangleCount);
+      pushCount(rows, 'Material slots', asset.materialSlotCount);
+      pushCount(rows, 'LODs', asset.lodCount);
+      break;
+    case 'material':
+      if (asset.materialShader) rows.push({ label: 'Shader', value: asset.materialShader });
+      pushCount(rows, 'Parameters', asset.materialParameterCount, true);
+      pushCount(rows, 'Textures', asset.materialTextureCount, true);
+      pushReferences(rows, asset);
+      break;
+    case 'shader':
+      if (asset.shaderStages?.length) rows.push({ label: 'Stages', value: asset.shaderStages.join(', ') });
+      if (asset.shaderEntryPoints?.length)
+        rows.push({ label: 'Entry points', value: asset.shaderEntryPoints.join(', ') });
+      if (asset.shaderCompileStatus) rows.push({ label: 'Compile status', value: asset.shaderCompileStatus });
+      pushCount(rows, 'Variants', asset.shaderVariantCount, true);
+      break;
+    case 'prefab':
+      pushCount(rows, 'Entities', asset.entityCount, true);
+      pushCount(rows, 'Components', asset.componentCount, true);
+      pushCount(rows, 'Nested prefabs', asset.nestedPrefabCount, true);
+      if (asset.rootEntityName) rows.push({ label: 'Root', value: asset.rootEntityName });
+      pushReferences(rows, asset);
+      break;
+    case 'scene':
+      pushCount(rows, 'Entities', asset.entityCount, true);
+      pushCount(rows, 'Meshes', asset.meshCount, true);
+      pushCount(rows, 'Cameras', asset.cameraCount, true);
+      pushCount(rows, 'Lights', asset.lightCount, true);
+      pushReferences(rows, asset);
+      break;
+    case 'folder':
+      pushCount(rows, 'Items', asset.itemCount, true);
+      break;
+    case 'unknown':
+      break;
+  }
+
+  return rows;
+};
+
 function AssetDetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="content-asset-hover-row">
@@ -70,12 +175,7 @@ function AssetDetailRow({ label, value }: { label: string; value: string }) {
 
 function AssetHoverDetails({ asset }: { asset: AssetItem }) {
   const extension = assetFileExtension(asset);
-  const dimensions =
-    asset.width !== undefined && asset.height !== undefined
-      ? `${asset.width} × ${asset.height}${asset.depth && asset.depth > 1 ? ` × ${asset.depth}` : ''}`
-      : null;
-  const vertices = formatCount(asset.vertexCount);
-  const triangles = formatCount(asset.triangleCount);
+  const specificRows = assetSpecificHoverDetails(asset);
 
   return (
     <UiFloatingSurface className="content-asset-hover" role="tooltip" width={TOOLTIP_WIDTH}>
@@ -85,23 +185,19 @@ function AssetHoverDetails({ asset }: { asset: AssetItem }) {
       </header>
       <div className="content-asset-hover-section">
         <AssetDetailRow label="Size" value={formatBytes(asset.sourceBytes)} />
+        {asset.artifactSize !== undefined && asset.artifactSize > 0 && (
+          <AssetDetailRow label="Cooked size" value={formatBytes(asset.artifactSize)} />
+        )}
         <AssetDetailRow label="Extension" value={extension ? `.${extension}` : 'None'} />
         <AssetDetailRow label="Status" value={asset.status} />
         <AssetDetailRow label="Path" value={asset.path} />
+        {asset.diagnostic && <AssetDetailRow label="Issue" value={asset.diagnostic} />}
       </div>
-      {(dimensions || asset.mipLevels !== undefined || vertices || triangles) && (
+      {specificRows.length > 0 && (
         <div className="content-asset-hover-section asset-specific">
-          {dimensions && <AssetDetailRow label="Dimensions" value={dimensions} />}
-          {asset.mipLevels !== undefined && <AssetDetailRow label="Mip levels" value={String(asset.mipLevels)} />}
-          {vertices && <AssetDetailRow label="Vertices" value={vertices} />}
-          {triangles && <AssetDetailRow label="Triangles" value={triangles} />}
-        </div>
-      )}
-      {(asset.importerId || asset.residency || asset.readOnly) && (
-        <div className="content-asset-hover-section secondary">
-          {asset.importerId && <AssetDetailRow label="Importer" value={asset.importerId} />}
-          {asset.residency && <AssetDetailRow label="Residency" value={asset.residency} />}
-          {asset.readOnly && <AssetDetailRow label="Source" value="Engine · Read-only" />}
+          {specificRows.map((row) => (
+            <AssetDetailRow key={row.label} label={row.label} value={row.value} />
+          ))}
         </div>
       )}
     </UiFloatingSurface>
