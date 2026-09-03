@@ -1,0 +1,39 @@
+name: Temporary model thumbnail implementation
+on:
+  push:
+    branches: [feature/model-content-thumbnails]
+permissions:
+  contents: write
+jobs:
+  implement-and-validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/model-content-thumbnails
+      - name: Apply host integration
+        run: python3 .tmp_patch_model_thumbnails.py
+      - name: Format touched native files
+        run: |
+          clang-format-18 -i \
+            editor/native/inc/arc/editor/model_preview.h \
+            editor/native/src/model_preview.cpp \
+            editor/native/tests/model_preview_tests.cpp \
+            editor/native/src/arc_host_base.inc
+      - name: Configure
+        env:
+          CC: clang-18
+          CXX: clang++-18
+        run: cmake -S . -B out/build/model-thumbnail -G Ninja -DARC_BUILD_ENGINE_TESTS=ON -DARC_BUILD_EDITOR=ON -DARC_BUILD_RENDER_VULKAN=OFF -DCMAKE_BUILD_TYPE=Release
+      - name: Build editor host tests
+        run: cmake --build out/build/model-thumbnail --target arc_editor_host_tests arc_host_process --parallel 2
+      - name: Run model preview tests
+        run: ctest --test-dir out/build/model-thumbnail -R 'model preview' --output-on-failure
+      - name: Cleanup and commit
+        run: |
+          rm .tmp_patch_model_thumbnails.py .github/workflows/temporary-model-thumbnail-implementation.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Add model previews to Content Browser'
+          git push
