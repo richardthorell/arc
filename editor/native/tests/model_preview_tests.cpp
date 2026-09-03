@@ -2,10 +2,12 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
-TEST_CASE("model preview renders imported geometry with default material", "[editor][thumbnail][model]")
+TEST_CASE("model preview renders centered geometry on a transparent background", "[editor][thumbnail][model]")
 {
     arc::render::scene_import_result scene;
     arc::render::mesh_data mesh;
@@ -19,23 +21,41 @@ TEST_CASE("model preview renders imported geometry with default material", "[edi
     scene.meshes.push_back(std::move(mesh));
     scene.nodes.push_back({.name = "triangle", .mesh_index = 0});
 
-    const auto preview = arc::editor::render_model_preview(scene, {.size = 64});
+    constexpr std::uint32_t size = 64;
+    const auto preview = arc::editor::render_model_preview(scene, {.size = size});
     REQUIRE(preview.succeeded());
-    CHECK(preview.texture.width == 64);
-    CHECK(preview.texture.height == 64);
+    CHECK(preview.texture.width == size);
+    CHECK(preview.texture.height == size);
 
-    constexpr std::uint8_t background_r = 22u;
-    constexpr std::uint8_t background_g = 25u;
-    constexpr std::uint8_t background_b = 30u;
     std::size_t shaded_pixels{};
-    for (std::size_t offset = 0; offset + 3u < preview.texture.pixels.size(); offset += 4u)
+    std::uint32_t minimum_x = size;
+    std::uint32_t minimum_y = size;
+    std::uint32_t maximum_x{};
+    std::uint32_t maximum_y{};
+    for (std::uint32_t y = 0; y < size; ++y)
     {
-        const auto r = std::to_integer<std::uint8_t>(preview.texture.pixels[offset]);
-        const auto g = std::to_integer<std::uint8_t>(preview.texture.pixels[offset + 1u]);
-        const auto b = std::to_integer<std::uint8_t>(preview.texture.pixels[offset + 2u]);
-        if (r != background_r || g != background_g || b != background_b) ++shaded_pixels;
+        for (std::uint32_t x = 0; x < size; ++x)
+        {
+            const auto offset = (static_cast<std::size_t>(y) * size + x) * 4u;
+            const auto alpha = std::to_integer<std::uint8_t>(preview.texture.pixels[offset + 3u]);
+            if (alpha == 0u) continue;
+            ++shaded_pixels;
+            minimum_x = std::min(minimum_x, x);
+            minimum_y = std::min(minimum_y, y);
+            maximum_x = std::max(maximum_x, x);
+            maximum_y = std::max(maximum_y, y);
+        }
     }
+
     CHECK(shaded_pixels > 50u);
+    CHECK(std::to_integer<std::uint8_t>(preview.texture.pixels[3u]) == 0u);
+    REQUIRE(minimum_x <= maximum_x);
+    REQUIRE(minimum_y <= maximum_y);
+    const float bounds_center_x = (static_cast<float>(minimum_x) + static_cast<float>(maximum_x)) * 0.5f;
+    const float bounds_center_y = (static_cast<float>(minimum_y) + static_cast<float>(maximum_y)) * 0.5f;
+    const float image_center = static_cast<float>(size - 1u) * 0.5f;
+    CHECK(std::abs(bounds_center_x - image_center) <= 3.0f);
+    CHECK(std::abs(bounds_center_y - image_center) <= 3.0f);
 }
 
 TEST_CASE("model preview material can be overridden", "[editor][thumbnail][model]")
