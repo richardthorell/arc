@@ -1,0 +1,147 @@
+name: Temporary Texture Stage 7
+
+on:
+  push:
+    branches: [feat/texture-streaming-stage7]
+    paths: [.github/workflows/temp-texture-stage7.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/texture-streaming-stage7
+          fetch-depth: 0
+      - name: Apply Stage 7 completion
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'pattern not found in {path}: {old[:100]}')
+              p.write_text(text.replace(old, new, 1))
+
+          header = 'engine/render/inc/arc/render/texture_streaming.h'
+          replace(header, '#include <memory>\n#include <span>', '#include <memory>\n#include <optional>\n#include <span>')
+          replace(header,
+          '''using texture_stream_source_id = std::uint64_t;\n\nenum class texture_subresource_kind''',
+          '''using texture_stream_source_id = std::uint64_t;\n\nstruct texture_streaming_capabilities\n{\n    bool mip_streaming{true};\n    bool virtual_textures{};\n};\n\n[[nodiscard]] texture_streaming_mode resolve_texture_streaming_mode(\n    texture_streaming_mode authored, texture_streaming_capabilities capabilities) noexcept;\n\n[[nodiscard]] std::uint32_t texture_requested_mip(std::uint32_t width, std::uint32_t height,\n                                                  std::uint32_t mip_count, float projected_texel_extent,\n                                                  float lod_bias = 0.0f) noexcept;\n\nenum class texture_subresource_kind''')
+          replace(header,
+          '''struct texture_residency_snapshot\n{''',
+          '''struct texture_streaming_resource_snapshot\n{\n    texture_handle resource{};\n    std::uint32_t content_generation{};\n    texture_streaming_mode authored_mode{texture_streaming_mode::resident};\n    texture_streaming_mode resolved_mode{texture_streaming_mode::resident};\n    std::uint32_t requested_mip{};\n    std::uint32_t resident_first_mip{};\n    std::uint32_t tail_first_mip{};\n    std::uint64_t resident_bytes{};\n    std::optional<std::uint32_t> forced_mip;\n};\n\nstruct texture_residency_snapshot\n{''')
+          replace(header,
+          '''    explicit texture_residency_manager(texture_residency_config config = {});''',
+          '''    explicit texture_residency_manager(texture_residency_config config = {},\n                                       texture_streaming_capabilities capabilities = {});''')
+          replace(header,
+          '''    void configure(texture_residency_config config);\n    void register_resource''',
+          '''    void configure(texture_residency_config config);\n    void set_capabilities(texture_streaming_capabilities capabilities);\n    void register_resource''')
+          replace(header,
+          '''    void note_parent_fallback() noexcept;\n    [[nodiscard]] texture_residency_snapshot snapshot() const noexcept;''',
+          '''    void note_parent_fallback() noexcept;\n    void set_forced_mip(texture_handle resource, std::uint32_t generation, std::optional<std::uint32_t> mip) noexcept;\n    [[nodiscard]] texture_residency_snapshot snapshot() const noexcept;\n    [[nodiscard]] std::vector<texture_streaming_resource_snapshot> resource_snapshots() const;''')
+
+          source = 'engine/render/src/common/texture_streaming.cpp'
+          replace(source, '#include <algorithm>\n#include <limits>', '#include <algorithm>\n#include <cmath>\n#include <limits>')
+          replace(source,
+          '''namespace\n{\n\nstd::uint64_t resource_key''',
+          '''texture_streaming_mode resolve_texture_streaming_mode(texture_streaming_mode authored,\n                                                               texture_streaming_capabilities capabilities) noexcept\n{\n    if (authored == texture_streaming_mode::resident) return texture_streaming_mode::resident;\n    if (authored == texture_streaming_mode::streamed_mips)\n        return capabilities.mip_streaming ? texture_streaming_mode::streamed_mips : texture_streaming_mode::resident;\n    if (capabilities.virtual_textures) return texture_streaming_mode::virtual_tiles;\n    return capabilities.mip_streaming ? texture_streaming_mode::streamed_mips : texture_streaming_mode::resident;\n}\n\nstd::uint32_t texture_requested_mip(std::uint32_t width, std::uint32_t height, std::uint32_t mip_count,\n                                    float projected_texel_extent, float lod_bias) noexcept\n{\n    if (mip_count == 0) return 0;\n    const auto maximum = static_cast<float>(std::max(width, height));\n    if (!(projected_texel_extent > 0.0f) || !(maximum > 0.0f)) return mip_count - 1;\n    const auto lod = std::log2(maximum / projected_texel_extent) + lod_bias;\n    return static_cast<std::uint32_t>(std::clamp(std::floor(std::max(0.0f, lod)), 0.0f,\n                                                static_cast<float>(mip_count - 1)));\n}\n\nnamespace\n{\n\nstd::uint64_t resource_key''')
+          replace(source,
+          '''        std::unordered_map<std::uint64_t, std::uint32_t> tile_lookup;\n    };\n\n    texture_residency_config config{};''',
+          '''        std::unordered_map<std::uint64_t, std::uint32_t> tile_lookup;\n        texture_streaming_mode authored_mode{texture_streaming_mode::resident};\n        std::optional<std::uint32_t> forced_mip;\n        std::uint32_t requested_mip{};\n    };\n\n    texture_residency_config config{};\n    texture_streaming_capabilities capabilities{};''')
+          replace(source,
+          '''texture_residency_manager::texture_residency_manager(texture_residency_config config)\n    : implementation_(std::make_unique<implementation>())\n{\n    configure(config);\n}''',
+          '''texture_residency_manager::texture_residency_manager(texture_residency_config config,\n                                                       texture_streaming_capabilities capabilities)\n    : implementation_(std::make_unique<implementation>())\n{\n    implementation_->capabilities = capabilities;\n    configure(config);\n}''')
+          replace(source,
+          '''void texture_residency_manager::register_resource(texture_handle resource,\n                                                  const streamed_texture_descriptor& descriptor)\n{\n    unregister_resource(resource);\n    implementation::resource_entry entry(resource, descriptor);''',
+          '''void texture_residency_manager::set_capabilities(texture_streaming_capabilities capabilities)\n{\n    implementation_->capabilities = capabilities;\n}\n\nvoid texture_residency_manager::register_resource(texture_handle resource,\n                                                  const streamed_texture_descriptor& descriptor)\n{\n    unregister_resource(resource);\n    implementation::resource_entry entry(resource, descriptor);\n    entry.authored_mode = descriptor.mode;\n    entry.descriptor.mode = resolve_texture_streaming_mode(descriptor.mode, implementation_->capabilities);\n    entry.requested_mip = descriptor.artifact.tail_first_mip;''')
+          replace(source,
+          '''        const bool pinned = mip >= descriptor.artifact.tail_first_mip;''',
+          '''        const bool pinned = entry.descriptor.mode == texture_streaming_mode::resident ||\n                            mip >= descriptor.artifact.tail_first_mip;''')
+          replace(source,
+          '''        const auto desired = std::min(\n            feedback.desired_mip, static_cast<std::uint32_t>(resource->mips.empty() ? 0 : resource->mips.size() - 1));\n        for (std::uint32_t mip = desired; mip < resource->mips.size(); ++mip)''',
+          '''        const auto requested = resource->forced_mip.value_or(feedback.desired_mip);\n        const auto desired = std::min(\n            requested, static_cast<std::uint32_t>(resource->mips.empty() ? 0 : resource->mips.size() - 1));\n        resource->requested_mip = desired;\n        for (std::uint32_t mip = desired; mip < resource->mips.size(); ++mip)''')
+          replace(source,
+          '''void texture_residency_manager::note_parent_fallback() noexcept\n{\n    ++implementation_->parent_fallbacks;\n}\n\ntexture_residency_snapshot''',
+          '''void texture_residency_manager::note_parent_fallback() noexcept\n{\n    ++implementation_->parent_fallbacks;\n}\n\nvoid texture_residency_manager::set_forced_mip(texture_handle resource, std::uint32_t generation,\n                                               std::optional<std::uint32_t> mip) noexcept\n{\n    auto* entry = implementation_->find_resource(resource, generation);\n    if (!entry) return;\n    if (mip && !entry->mips.empty()) *mip = std::min(*mip, static_cast<std::uint32_t>(entry->mips.size() - 1));\n    entry->forced_mip = mip;\n    if (!mip) return;\n    entry->requested_mip = *mip;\n    for (std::uint32_t level = *mip; level < entry->mips.size(); ++level)\n        implementation_->demand(entry->mips[level],\n                                mip_priority(entry->descriptor.artifact.mip_count, level, 1.0f,\n                                             entry->mips[level].pinned));\n}\n\ntexture_residency_snapshot''')
+          replace(source,
+          '''    return result;\n}\n\n} // namespace arc::render''',
+          '''    return result;\n}\n\nstd::vector<texture_streaming_resource_snapshot> texture_residency_manager::resource_snapshots() const\n{\n    std::vector<texture_streaming_resource_snapshot> result;\n    result.reserve(implementation_->resources.size());\n    for (const auto& [_, resource] : implementation_->resources)\n    {\n        std::uint32_t resident_first = resource.mips.empty() ? 0 : static_cast<std::uint32_t>(resource.mips.size());\n        std::uint64_t resident_bytes{};\n        for (const auto& mip : resource.mips)\n            if (mip.state == texture_residency_state::resident)\n            {\n                resident_first = std::min(resident_first, mip.mip);\n                resident_bytes += mip.gpu_bytes;\n            }\n        for (const auto& tile : resource.tiles)\n            if (tile.state == texture_residency_state::resident) resident_bytes += tile.gpu_bytes;\n        if (resident_first == resource.mips.size()) resident_first = resource.descriptor.artifact.tail_first_mip;\n        result.push_back({.resource = resource.handle,\n                          .content_generation = resource.descriptor.content_generation,\n                          .authored_mode = resource.authored_mode,\n                          .resolved_mode = resource.descriptor.mode,\n                          .requested_mip = resource.requested_mip,\n                          .resident_first_mip = resident_first,\n                          .tail_first_mip = resource.descriptor.artifact.tail_first_mip,\n                          .resident_bytes = resident_bytes,\n                          .forced_mip = resource.forced_mip});\n    }\n    std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs) { return lhs.resource.index < rhs.resource.index; });\n    return result;\n}\n\n} // namespace arc::render''')
+
+          tests = 'engine/render/tests/texture_streaming_tests.cpp'
+          p = Path(tests)
+          text = p.read_text()
+          text += r'''
+
+TEST_CASE("texture streaming resolves backend capabilities and projected mip demand")
+{
+    using namespace arc::render;
+    CHECK(resolve_texture_streaming_mode(texture_streaming_mode::virtual_tiles, {.mip_streaming = true}) ==
+          texture_streaming_mode::streamed_mips);
+    CHECK(resolve_texture_streaming_mode(texture_streaming_mode::virtual_tiles, {.mip_streaming = false}) ==
+          texture_streaming_mode::resident);
+    CHECK(resolve_texture_streaming_mode(texture_streaming_mode::virtual_tiles,
+                                         {.mip_streaming = true, .virtual_textures = true}) ==
+          texture_streaming_mode::virtual_tiles);
+    CHECK(texture_requested_mip(2048, 2048, 12, 2048.0f) == 0);
+    CHECK(texture_requested_mip(2048, 2048, 12, 512.0f) == 2);
+    CHECK(texture_requested_mip(2048, 2048, 12, 512.0f, 1.0f) == 3);
+}
+
+TEST_CASE("texture residency exposes resolved mode and supports forced mip debugging")
+{
+    using namespace arc::render;
+    texture_residency_manager residency({}, {.mip_streaming = true, .virtual_textures = false});
+    auto descriptor = make_streamed_descriptor();
+    descriptor.mode = texture_streaming_mode::virtual_tiles;
+    const texture_handle handle{8, 1};
+    residency.register_resource(handle, descriptor);
+    auto resources = residency.resource_snapshots();
+    REQUIRE(resources.size() == 1);
+    CHECK(resources[0].authored_mode == texture_streaming_mode::virtual_tiles);
+    CHECK(resources[0].resolved_mode == texture_streaming_mode::streamed_mips);
+    CHECK(resources[0].tail_first_mip == 2);
+
+    residency.set_forced_mip(handle, descriptor.content_generation, 1);
+    resources = residency.resource_snapshots();
+    REQUIRE(resources[0].forced_mip.has_value());
+    CHECK(*resources[0].forced_mip == 1);
+    const auto loads = residency.take_load_requests();
+    CHECK(std::any_of(loads.begin(), loads.end(), [](const auto& load) { return load.mip == 1; }));
+}
+
+TEST_CASE("resident texture mode pins and requests the complete mip chain")
+{
+    using namespace arc::render;
+    texture_residency_manager residency;
+    auto descriptor = make_streamed_descriptor();
+    descriptor.mode = texture_streaming_mode::resident;
+    residency.register_resource({9, 1}, descriptor);
+    const auto loads = residency.take_load_requests();
+    REQUIRE(loads.size() == descriptor.artifact.mips.size());
+    CHECK(loads.front().mip == 0);
+}
+'''
+          p.write_text(text)
+          PY
+          rm .github/workflows/temp-texture-stage7.yml
+      - name: Format
+        run: clang-format -i engine/render/inc/arc/render/texture_streaming.h engine/render/src/common/texture_streaming.cpp engine/render/tests/texture_streaming_tests.cpp
+      - name: Configure
+        run: cmake -S . -B out/build/stage7 -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DARC_BUILD_RENDER_VULKAN=OFF -DARC_BUILD_ENGINE_TESTS=ON -DARC_BUILD_EDITOR=OFF
+      - name: Build
+        run: cmake --build out/build/stage7 --target arc_render_tests -j2
+      - name: Test
+        run: ctest --test-dir out/build/stage7 -R arc_render_tests --output-on-failure
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Complete Stage 7 texture residency foundation"
+          git push origin HEAD:feat/texture-streaming-stage7
