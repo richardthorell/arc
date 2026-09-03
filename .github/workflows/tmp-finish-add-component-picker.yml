@@ -1,0 +1,27 @@
+name: Temporary Add Component picker cleanup
+
+on:
+  push:
+    branches:
+      - fix/ui-lab-asset-card-stage-width
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Trigger Add Component test update'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/ui-lab-asset-card-stage-width
+      - name: Update Inspector test
+        run: python3 .github/scripts/tmp_finish_add_component_picker.py
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor/src/renderer/src/inspector/InspectorPanel.test.tsx
+          git commit -m "Update Add Component inspector test"
+          git push origin HEAD:fix/ui-lab-asset-card-stage-width
