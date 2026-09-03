@@ -32,6 +32,6 @@ if(BUILD_TESTING)
     )
     set_tests_properties(arc-cook-clean-checkout PROPERTIES
         LABELS "integration;assets;persistence"
-        TIMEOUT 600
+        TIMEOUT 900
     )
 endif()

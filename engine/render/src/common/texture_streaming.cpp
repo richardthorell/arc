@@ -529,27 +529,26 @@ void texture_residency_manager::set_forced_mip(texture_handle resource, std::uin
 
 texture_residency_snapshot texture_residency_manager::snapshot() const noexcept
 {
-    texture_residency_snapshot result{.frame_index = implementation_->frame_index,
-                                      .gpu_budget_bytes = implementation_->config.gpu_budget_bytes,
-                                      .gpu_resident_bytes = implementation_->gpu_bytes,
-                                      .cpu_cache_budget_bytes = implementation_->config.cpu_cache_budget_bytes,
-                                      .cpu_cached_bytes = implementation_->cpu_bytes,
-                                      .upload_budget_per_frame = implementation_->config.upload_budget_per_frame,
-                                      .uploaded_bytes = implementation_->uploaded_bytes,
-                                      .resource_count = static_cast<std::uint32_t>(implementation_->resources.size()),
-                                      .evictions = implementation_->eviction_count,
-                                      .deduplicated_requests = implementation_->deduplicated_requests,
-                                      .stale_requests = implementation_->stale_requests,
-                                      .feedback_overflow = implementation_->feedback_overflow,
-                                      .parent_fallbacks = implementation_->parent_fallbacks,
-                                      .upload_latency_milliseconds = implementation_->upload_latency_milliseconds,
-                                      .cache_hit_rate = implementation_->demand_count == 0
-                                                            ? 1.0f
-                                                            : static_cast<float>(implementation_->cache_hit_count) /
-                                                                  static_cast<float>(implementation_->demand_count),
-                                      .over_budget =
-                                          implementation_->gpu_bytes > implementation_->config.gpu_budget_bytes ||
-                                          implementation_->cpu_bytes > implementation_->config.cpu_cache_budget_bytes};
+    texture_residency_snapshot result{
+        .frame_index = implementation_->frame_index,
+        .gpu_budget_bytes = implementation_->config.gpu_budget_bytes,
+        .gpu_resident_bytes = implementation_->gpu_bytes,
+        .cpu_cache_budget_bytes = implementation_->config.cpu_cache_budget_bytes,
+        .cpu_cached_bytes = implementation_->cpu_bytes,
+        .upload_budget_per_frame = implementation_->config.upload_budget_per_frame,
+        .uploaded_bytes = implementation_->uploaded_bytes,
+        .resource_count = static_cast<std::uint32_t>(implementation_->resources.size()),
+        .evictions = implementation_->eviction_count,
+        .deduplicated_requests = implementation_->deduplicated_requests,
+        .stale_requests = implementation_->stale_requests,
+        .feedback_overflow = implementation_->feedback_overflow,
+        .parent_fallbacks = implementation_->parent_fallbacks,
+        .upload_latency_milliseconds = implementation_->upload_latency_milliseconds,
+        .cache_hit_rate = implementation_->demand_count == 0 ? 1.0f
+                                                             : static_cast<float>(implementation_->cache_hit_count) /
+                                                                   static_cast<float>(implementation_->demand_count),
+        .over_budget = implementation_->gpu_bytes > implementation_->config.gpu_budget_bytes ||
+                       implementation_->cpu_bytes > implementation_->config.cpu_cache_budget_bytes};
     for (const auto& [_, resource] : implementation_->resources)
     {
         if (resource.descriptor.mode == texture_streaming_mode::streamed_mips) ++result.streamed_mip_resources;
