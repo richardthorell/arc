@@ -1,0 +1,132 @@
+.inspector-add-component-picker {
+  position: relative;
+  padding: 8px 6px 10px;
+}
+
+.inspector-add-component-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 31px;
+  padding: 0 10px;
+  border: 1px solid #34414b;
+  border-radius: 3px;
+  color: #d6dde2;
+  background: linear-gradient(180deg, #27313a, #1e272e);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.inspector-add-component-trigger:hover,
+.inspector-add-component-trigger[aria-expanded='true'] {
+  border-color: #4a6275;
+  color: #f2f5f7;
+  background: linear-gradient(180deg, #303c46, #242e36);
+}
+
+.inspector-add-component-popover {
+  position: absolute;
+  right: 6px;
+  bottom: calc(100% - 2px);
+  left: 6px;
+  z-index: 80;
+  max-height: min(420px, 60vh);
+  overflow: hidden;
+  border: 1px solid #3a4853;
+  border-radius: 4px;
+  background: #172027;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.48);
+}
+
+.inspector-add-component-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 7px;
+  border-bottom: 1px solid #2a343c;
+  background: #1b242b;
+}
+
+.inspector-add-component-search svg {
+  position: absolute;
+  left: 16px;
+  color: #89949d;
+  pointer-events: none;
+}
+
+.inspector-add-component-search input {
+  width: 100%;
+  min-width: 0;
+  height: 29px;
+  padding: 0 9px 0 31px;
+  border: 1px solid #34414a;
+  border-radius: 3px;
+  color: #e5eaee;
+  background: #10171c;
+  outline: none;
+  font: inherit;
+  font-size: 12px;
+}
+
+.inspector-add-component-search input:focus {
+  border-color: #4e718c;
+  box-shadow: 0 0 0 2px rgba(67, 128, 176, 0.18);
+}
+
+.inspector-add-component-results {
+  max-height: min(360px, 52vh);
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.inspector-add-component-group {
+  display: grid;
+  gap: 1px;
+  padding: 3px 0 5px;
+}
+
+.inspector-add-component-group + .inspector-add-component-group {
+  border-top: 1px solid #263139;
+}
+
+.inspector-add-component-group h4 {
+  margin: 0;
+  padding: 5px 8px 3px;
+  color: #78848d;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+}
+
+.inspector-add-component-group button {
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 2px;
+  color: #cbd3d9;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inspector-add-component-group button:hover,
+.inspector-add-component-group button:focus-visible {
+  color: #f2f5f7;
+  background: #26343e;
+  outline: none;
+}
+
+.inspector-add-component-empty {
+  padding: 18px 10px;
+  color: #7e8992;
+  font-size: 11px;
+  text-align: center;
+}

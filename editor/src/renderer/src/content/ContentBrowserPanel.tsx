@@ -218,7 +218,6 @@ export function ContentBrowserPanel({
   onCommand,
   onInstantiatePrefab,
   onAssetAction,
-  onTextureStreamingMode,
   thumbnailProvider,
 }: Props) {
   const [folder, setFolder] = useState('');
@@ -321,7 +320,6 @@ export function ContentBrowserPanel({
         }),
     [browserSource, contentRootName, folder, kind, scopedAssets, search, sort, state],
   );
-  const selected = scopedAssets.find((asset) => asset.id === selectedAssetId) ?? null;
   const activeOnlineSource = onlineSources.find((source) => source.id === browserSource) ?? null;
   const crumbs = browserSource === 'favorites' || !folder ? [] : folder.split('/');
   const sourceTitle = browserSource === 'builtin' ? 'Engine' : browserSource === 'favorites' ? 'Favorites' : 'Content';
@@ -776,80 +774,6 @@ export function ContentBrowserPanel({
               )}
             </div>
           </div>
-          {selected && (
-            <aside className="content-asset-details">
-              <strong>{selected.name}</strong>
-              <code>{selected.guid ?? 'Legacy path'}</code>
-              <span>{selected.path}</span>
-              <span>
-                {selected.kind} · {selected.status}
-                {selected.readOnly ? ' · Built-in · Read-only' : ''}
-              </span>
-              {selected.kind === 'texture' && (
-                <div className="content-texture-streaming">
-                  <span>
-                    {selected.width || 0} × {selected.height || 0} · {selected.textureFormat || 'Unknown'} ·{' '}
-                    {selected.mipLevels || 0} mips
-                    {selected.tileCount ? ` · ${selected.tileCount} tiles` : ''}
-                  </span>
-                  <label>
-                    Streaming mode
-                    <select
-                      aria-label="Texture streaming mode"
-                      value={selected.streamingMode ?? 'resident'}
-                      disabled={selected.readOnly || selected.status === 'importing'}
-                      onChange={(event) =>
-                        selected.guid &&
-                        onTextureStreamingMode?.(
-                          selected.guid,
-                          event.target.value as 'resident' | 'streamed_mips' | 'virtual_tiles',
-                        )
-                      }
-                    >
-                      <option value="resident">Resident</option>
-                      <option value="streamed_mips" disabled={Boolean(selected.streamingEligibilityError)}>
-                        Streamed Mips
-                      </option>
-                      <option value="virtual_tiles" disabled={Boolean(selected.streamingEligibilityError)}>
-                        Virtual Tiles
-                      </option>
-                    </select>
-                  </label>
-                  {selected.streamingEligibilityError && (
-                    <span className="content-texture-streaming-error">{selected.streamingEligibilityError}</span>
-                  )}
-                  <span>
-                    Settings v{selected.settingsVersion ?? 1}
-                    {selected.artifactSize ? ` · ${(selected.artifactSize / (1024 * 1024)).toFixed(2)} MiB cooked` : ''}
-                  </span>
-                </div>
-              )}
-              <details>
-                <summary>Dependencies ({selected.dependencies?.length ?? 0})</summary>
-                {(selected.dependencies ?? []).map((item) => (
-                  <code key={item}>{item}</code>
-                ))}
-              </details>
-              <details>
-                <summary>References ({selected.reverseDependencies?.length ?? 0})</summary>
-                {(selected.reverseDependencies ?? []).map((item) => (
-                  <code key={item}>{item}</code>
-                ))}
-              </details>
-              {selected.guid && (!selected.readOnly || selected.status === 'importing') && (
-                <button
-                  onClick={() =>
-                    onAssetAction(
-                      selected.status === 'importing' ? 'asset.cancelImport' : 'asset.reimport',
-                      selected.guid!,
-                    )
-                  }
-                >
-                  {selected.status === 'importing' ? 'Cancel Import' : 'Reimport'}
-                </button>
-              )}
-            </aside>
-          )}
         </>
       )}
       {createContextMenu && createMenu(createContextMenu.folder, true)}

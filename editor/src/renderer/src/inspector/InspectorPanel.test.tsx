@@ -260,7 +260,7 @@ describe('data-driven InspectorPanel', () => {
       />,
     );
     await userEvent.click(screen.getByText('Add Component'));
-    await userEvent.click(screen.getByRole('button', { name: 'Gameplay / Gameplay Stats' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Gameplay Stats' }));
     await waitFor(() => expect(command).toHaveBeenCalledWith('component.add', { component: schema.id }));
   });
 

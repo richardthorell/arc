@@ -119,6 +119,15 @@ describe('ContentBrowserPanel', () => {
     expect(localStorage.getItem('arc.content.treeWidth')).toBe('190');
   });
 
+  it('selects assets without opening a persistent details side panel', () => {
+    const view = renderBrowser();
+    fireEvent.click(view.getByText('Hero Rock'));
+
+    expect(view.container.querySelector('.content-asset-details')).not.toBeInTheDocument();
+    expect(view.queryByText('Dependencies (0)')).not.toBeInTheDocument();
+    expect(view.queryByText('References (0)')).not.toBeInTheDocument();
+  });
+
   it('filters registry assets and emits GUID drag payloads', () => {
     const view = renderBrowser();
     fireEvent.change(view.getByLabelText('Search assets'), { target: { value: 'rock' } });

@@ -4,6 +4,7 @@ import { Filter, Globe2, MoreVertical, Search } from 'lucide-react';
 import type { SceneEntity } from '../services/editorHostTypes';
 import { UiPanel } from '../ui';
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
+import { AddComponentPicker } from './AddComponentPicker';
 
 import { schemaForSnapshot, setPathValue } from './componentSchemas';
 import type { HostProjectComponentSchema, InspectorComponentId } from './componentSchemas';
@@ -634,51 +635,20 @@ export function InspectorPanel({
           />
         ))}
         {!schemas.length && <div className="inspector-state compact">No components match “{filter}”.</div>}
-        <details className="inspector-add-component">
-          <summary>Add Component</summary>
-          {[
-            ['camera', 'Camera'],
-            ['meshRenderer', 'Mesh Renderer'],
-            ['directionalLight', 'Directional Light'],
-            ['pointLight', 'Point Light'],
-            ['spotLight', 'Spot Light'],
-            ['areaLight', 'Area Light'],
-          ].map(([component, label]) => (
-            <button
-              key={component}
-              onClick={() =>
-                void command('component.add', { component }).then(async (response) => {
-                  if (!response.succeeded) setError(response.error || `Could not add ${label}`);
-                  else await refresh();
-                })
-              }
-              type="button"
-            >
-              {label}
-            </button>
-          ))}
-          {projectSchemas
-            .filter(
-              (schema) =>
-                schema.projectComponent && !draft.projectComponents.some((component) => component.typeId === schema.id),
-            )
-            .map((schema) => (
-              <button
-                key={schema.id}
-                onClick={() =>
-                  void command('component.add', { component: schema.id }).then(async (response) => {
-                    if (!response.succeeded) setError(response.error || `Could not add ${schema.displayName}`);
-                    else await refresh();
-                  })
-                }
-                title={schema.tooltip}
-                type="button"
-              >
-                {schema.category ? `${schema.category} / ` : ''}
-                {schema.displayName}
-              </button>
-            ))}
-        </details>
+        <AddComponentPicker
+          snapshot={draft}
+          projectSchemas={projectSchemas}
+          onAdd={async (component, label) => {
+            const response = await command('component.add', { component });
+            if (!response.succeeded) {
+              setError(response.error || `Could not add ${label}`);
+              return false;
+            }
+            onStatus?.(`${label} added`);
+            await refresh();
+            return true;
+          }}
+        />
       </div>
     </UiPanel>
   );

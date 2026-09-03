@@ -306,7 +306,7 @@
   fill: currentColor;
 }
 
-/* Reimport remains available from the selected-asset details pane. */
+/* Keep secondary card actions out of the dense grid; asset selection no longer opens a side details pane. */
 .content-browser-v2 .content-asset-actions > button:not(:first-child) {
   display: none;
 }
