@@ -1,0 +1,458 @@
+name: Temporary Texture Stage 6
+
+on:
+  push:
+    branches:
+      - feat/texture-compression-stage6
+    paths:
+      - .github/workflows/temp-texture-stage6.yml
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/texture-compression-stage6
+          fetch-depth: 0
+      - name: Apply Stage 6 implementation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          cmake = Path('engine/render-tools/CMakeLists.txt')
+          text = cmake.read_text()
+          old = 'target_link_libraries(arc-render-tools PRIVATE "$<BUILD_INTERFACE:arc-third-party-json>")'
+          new = 'target_link_libraries(arc-render-tools PRIVATE\n    "$<BUILD_INTERFACE:arc-third-party-json>"\n    "$<BUILD_INTERFACE:arc-third-party-stb>"\n)'
+          if old not in text:
+              raise SystemExit('render-tools link marker missing')
+          cmake.write_text(text.replace(old, new, 1))
+
+          cooker = Path('engine/render-tools/src/common/texture_cooker.cpp')
+          text = cooker.read_text()
+          include_marker = '#include <nlohmann/json.hpp>\n'
+          include_replacement = '#include <nlohmann/json.hpp>\n\n#define STB_DXT_IMPLEMENTATION\n#include <stb_dxt.h>\n'
+          if include_marker not in text:
+              raise SystemExit('texture cooker include marker missing')
+          text = text.replace(include_marker, include_replacement, 1)
+          text = text.replace('#include <algorithm>\n', '#include <algorithm>\n#include <array>\n', 1)
+
+          marker = '''std::uint32_t platform_max_size(const assets::cook_target& target) noexcept
+          {
+              switch (target.textures)
+              {
+                  case assets::cook_texture_family::bc:
+                      return 16384;
+                  case assets::cook_texture_family::astc:
+                  case assets::cook_texture_family::etc2:
+                      return 8192;
+                  case assets::cook_texture_family::portable:
+                      return 4096;
+              }
+              return 4096;
+          }
+          '''
+          compression = r'''
+
+          bool rgba8_texture(const texture_data& texture) noexcept
+          {
+              return texture.format == texture_format::rgba8_unorm || texture.format == texture_format::rgba8_srgb;
+          }
+
+          bool has_nonopaque_alpha(const texture_data& texture) noexcept
+          {
+              if (!texture.has_pixels() || texture.mips.empty()) return false;
+              const auto& mip = texture.mips.front();
+              if (mip.offset > texture.pixels.size() || mip.size > texture.pixels.size() - mip.offset) return false;
+              const auto pixels = std::span(texture.pixels).subspan(mip.offset, mip.size);
+              for (std::size_t index = 3; index < pixels.size(); index += 4u)
+                  if (std::to_integer<std::uint8_t>(pixels[index]) != 255u) return true;
+              return false;
+          }
+
+          texture_compression_policy resolved_compression_policy(const texture_import_settings& settings) noexcept
+          {
+              if (settings.compression != texture_compression_policy::automatic) return settings.compression;
+              switch (settings.semantic)
+              {
+                  case texture_semantic::normal:
+                      return texture_compression_policy::normal;
+                  case texture_semantic::occlusion:
+                  case texture_semantic::metallic_roughness:
+                  case texture_semantic::clear_coat:
+                  case texture_semantic::anisotropy:
+                  case texture_semantic::thickness:
+                  case texture_semantic::transmission:
+                  case texture_semantic::lightmap:
+                      return texture_compression_policy::mask;
+                  case texture_semantic::environment:
+                  case texture_semantic::generic_color:
+                  case texture_semantic::base_color:
+                  case texture_semantic::emissive:
+                      return texture_compression_policy::color;
+              }
+              return texture_compression_policy::color;
+          }
+
+          std::array<std::uint8_t, 8> bc4_palette(std::uint8_t maximum, std::uint8_t minimum) noexcept
+          {
+              std::array<std::uint8_t, 8> palette{};
+              palette[0] = maximum;
+              palette[1] = minimum;
+              if (maximum > minimum)
+              {
+                  for (std::uint32_t index = 1; index <= 6; ++index)
+                      palette[index + 1u] = static_cast<std::uint8_t>(
+                          ((7u - index) * static_cast<std::uint32_t>(maximum) +
+                           index * static_cast<std::uint32_t>(minimum) + 3u) /
+                          7u);
+              }
+              else
+              {
+                  for (std::uint32_t index = 1; index <= 4; ++index)
+                      palette[index + 1u] = static_cast<std::uint8_t>(
+                          ((5u - index) * static_cast<std::uint32_t>(maximum) +
+                           index * static_cast<std::uint32_t>(minimum) + 2u) /
+                          5u);
+                  palette[6] = 0;
+                  palette[7] = 255;
+              }
+              return palette;
+          }
+
+          void encode_bc4_block(std::span<const std::uint8_t, 16> values, std::byte* output) noexcept
+          {
+              const auto [minimum_it, maximum_it] = std::minmax_element(values.begin(), values.end());
+              const std::uint8_t minimum = *minimum_it;
+              const std::uint8_t maximum = *maximum_it;
+              output[0] = static_cast<std::byte>(maximum);
+              output[1] = static_cast<std::byte>(minimum);
+              const auto palette = bc4_palette(maximum, minimum);
+              std::uint64_t indices{};
+              for (std::uint32_t texel = 0; texel < 16u; ++texel)
+              {
+                  std::uint32_t best{};
+                  std::uint32_t best_error = 256u;
+                  for (std::uint32_t candidate = 0; candidate < palette.size(); ++candidate)
+                  {
+                      const auto error = static_cast<std::uint32_t>(
+                          std::abs(static_cast<int>(values[texel]) - static_cast<int>(palette[candidate])));
+                      if (error < best_error)
+                      {
+                          best = candidate;
+                          best_error = error;
+                      }
+                  }
+                  indices |= static_cast<std::uint64_t>(best) << (texel * 3u);
+              }
+              for (std::uint32_t byte = 0; byte < 6u; ++byte)
+                  output[2u + byte] = static_cast<std::byte>((indices >> (byte * 8u)) & 0xffu);
+          }
+
+          std::array<std::uint8_t, 64> gather_rgba_block(std::span<const std::byte> source, std::uint32_t width,
+                                                         std::uint32_t height, std::uint32_t block_x,
+                                                         std::uint32_t block_y)
+          {
+              std::array<std::uint8_t, 64> block{};
+              for (std::uint32_t y = 0; y < 4u; ++y)
+                  for (std::uint32_t x = 0; x < 4u; ++x)
+                  {
+                      const auto source_x = std::min(width - 1u, block_x * 4u + x);
+                      const auto source_y = std::min(height - 1u, block_y * 4u + y);
+                      const auto source_offset = (static_cast<std::size_t>(source_y) * width + source_x) * 4u;
+                      const auto destination = (y * 4u + x) * 4u;
+                      for (std::uint32_t channel = 0; channel < 4u; ++channel)
+                          block[destination + channel] =
+                              std::to_integer<std::uint8_t>(source[source_offset + channel]);
+                  }
+              return block;
+          }
+
+          std::vector<std::byte> compress_bc_mip(std::span<const std::byte> source, std::uint32_t width,
+                                                 std::uint32_t height, texture_format format)
+          {
+              const auto blocks_x = std::max(1u, (width + 3u) / 4u);
+              const auto blocks_y = std::max(1u, (height + 3u) / 4u);
+              const bool bc1 = format == texture_format::bc1_rgba_unorm || format == texture_format::bc1_rgba_srgb;
+              const bool bc4 = format == texture_format::bc4_r_unorm;
+              const bool bc5 = format == texture_format::bc5_rg_unorm;
+              const std::uint32_t block_bytes = bc1 || bc4 ? 8u : 16u;
+              std::vector<std::byte> result(static_cast<std::size_t>(blocks_x) * blocks_y * block_bytes);
+              for (std::uint32_t block_y = 0; block_y < blocks_y; ++block_y)
+                  for (std::uint32_t block_x = 0; block_x < blocks_x; ++block_x)
+                  {
+                      const auto block = gather_rgba_block(source, width, height, block_x, block_y);
+                      auto* destination = result.data() +
+                                          (static_cast<std::size_t>(block_y) * blocks_x + block_x) * block_bytes;
+                      if (bc1)
+                      {
+                          stb_compress_dxt_block(reinterpret_cast<unsigned char*>(destination), block.data(), 0,
+                                                 STB_DXT_HIGHQUAL);
+                      }
+                      else if (bc4 || bc5)
+                      {
+                          std::array<std::uint8_t, 16> channel{};
+                          for (std::uint32_t texel = 0; texel < 16u; ++texel)
+                              channel[texel] = block[texel * 4u];
+                          encode_bc4_block(channel, destination);
+                          if (bc5)
+                          {
+                              for (std::uint32_t texel = 0; texel < 16u; ++texel)
+                                  channel[texel] = block[texel * 4u + 1u];
+                              encode_bc4_block(channel, destination + 8u);
+                          }
+                      }
+                      else
+                      {
+                          stb_compress_dxt_block(reinterpret_cast<unsigned char*>(destination), block.data(), 1,
+                                                 STB_DXT_HIGHQUAL);
+                      }
+                  }
+              return result;
+          }
+
+          texture_format bc_format_for(const texture_data& texture, texture_compression_policy policy) noexcept
+          {
+              switch (policy)
+              {
+                  case texture_compression_policy::normal:
+                      return texture_format::bc5_rg_unorm;
+                  case texture_compression_policy::mask:
+                      if (texture.semantic == texture_semantic::occlusion) return texture_format::bc4_r_unorm;
+                      return texture.color_space == texture_color_space::srgb ? texture_format::bc3_rgba_srgb
+                                                                             : texture_format::bc3_rgba_unorm;
+                  case texture_compression_policy::color:
+                  case texture_compression_policy::automatic:
+                      if (has_nonopaque_alpha(texture))
+                          return texture.color_space == texture_color_space::srgb ? texture_format::bc3_rgba_srgb
+                                                                                 : texture_format::bc3_rgba_unorm;
+                      return texture.color_space == texture_color_space::srgb ? texture_format::bc1_rgba_srgb
+                                                                             : texture_format::bc1_rgba_unorm;
+                  case texture_compression_policy::hdr:
+                  case texture_compression_policy::uncompressed:
+                      return texture.format;
+              }
+              return texture.format;
+          }
+
+          bool compress_texture_for_target(texture_data& texture, const texture_import_settings& settings,
+                                           const assets::cook_target& target,
+                                           std::vector<assets::asset_diagnostic>& diagnostics, std::string& error)
+          {
+              if (texture.compressed)
+              {
+                  if (settings.compression == texture_compression_policy::uncompressed)
+                      diagnostics.push_back({.severity = assets::asset_diagnostic_severity::warning,
+                                             .category = "texture.compression",
+                                             .message = "Authored compressed texture is preserved because the cooker does not decode DDS blocks for uncompressed output"});
+                  return true;
+              }
+              const auto policy = resolved_compression_policy(settings);
+              if (policy == texture_compression_policy::uncompressed) return true;
+              if (target.textures != assets::cook_texture_family::bc)
+              {
+                  diagnostics.push_back({.severity = assets::asset_diagnostic_severity::warning,
+                                         .category = "texture.compression",
+                                         .message = "Requested target texture family has no production encoder yet; keeping deterministic uncompressed RGBA payload"});
+                  return true;
+              }
+              if (policy == texture_compression_policy::hdr)
+              {
+                  diagnostics.push_back({.severity = assets::asset_diagnostic_severity::warning,
+                                         .category = "texture.compression",
+                                         .message = "BC6H encoding is not available yet; HDR texture remains uncompressed"});
+                  return true;
+              }
+              if (!rgba8_texture(texture) || !texture.has_pixels())
+              {
+                  error = "BC compression currently requires decoded RGBA8 source data";
+                  return false;
+              }
+              const auto target_format = bc_format_for(texture, policy);
+              std::vector<std::byte> encoded;
+              std::vector<texture_mip_data> mips;
+              encoded.reserve(texture.pixels.size());
+              mips.reserve(texture.mips.size());
+              for (const auto& mip : texture.mips)
+              {
+                  if (mip.offset > texture.pixels.size() || mip.size > texture.pixels.size() - mip.offset)
+                  {
+                      error = "decoded texture mip payload is invalid before BC compression";
+                      return false;
+                  }
+                  const auto source = std::span(texture.pixels).subspan(mip.offset, mip.size);
+                  auto compressed = compress_bc_mip(source, mip.width, mip.height, target_format);
+                  const auto offset = encoded.size();
+                  const auto size = compressed.size();
+                  encoded.insert(encoded.end(), compressed.begin(), compressed.end());
+                  mips.push_back({.width = mip.width, .height = mip.height, .offset = offset, .size = size});
+              }
+              texture.encoded = std::move(encoded);
+              texture.pixels.clear();
+              texture.mips = std::move(mips);
+              texture.mip_levels = static_cast<std::uint32_t>(texture.mips.size());
+              texture.format = target_format;
+              texture.compressed = true;
+              texture.dds = false;
+              return true;
+          }
+          '''
+          if marker not in text:
+              raise SystemExit('platform max marker missing')
+          text = text.replace(marker, marker + compression, 1)
+
+          old = '''    auto processed = preprocess_texture_for_cook(std::move(loaded.texture), settings.value(), context.target);
+              if (!processed) return cook_failure(context, processed.error());
+              auto encoded =
+                  encode_texture_artifact(processed.value().texture, settings.value().streaming_mode, processed.value().metadata);
+          '''
+          new = '''    auto processed = preprocess_texture_for_cook(std::move(loaded.texture), settings.value(), context.target);
+              if (!processed) return cook_failure(context, processed.error());
+              std::string compression_error;
+              if (!compress_texture_for_target(processed.value().texture, settings.value(), context.target,
+                                               processed.value().diagnostics, compression_error))
+                  return cook_failure(context, std::move(compression_error));
+              auto encoded =
+                  encode_texture_artifact(processed.value().texture, settings.value().streaming_mode, processed.value().metadata);
+          '''
+          if old not in text:
+              raise SystemExit('cook compression insertion marker missing')
+          text = text.replace(old, new, 1)
+          text = text.replace('.version = 7,\n                   .schema', '.version = 8,\n                   .schema', 1)
+          text = text.replace('return "arc-texture-cooker-v7:arctex-v2:color-curves:deterministic-lut-equivalent";',
+                              'return "arc-texture-cooker-v8:arctex-v2:stage6-bc-compression:stb-dxt";', 1)
+          cooker.write_text(text)
+
+          tests = Path('engine/render-tools/tests/texture_cooker_tests.cpp')
+          text = tests.read_text()
+          text = text.replace('CHECK(inspected.value().format == render::texture_format::rgba8_unorm);',
+                              'CHECK(inspected.value().format == render::texture_format::bc5_rg_unorm);\n    CHECK(cooked.artifacts[0].gpu_compressed);', 1)
+          addition = r'''
+
+          TEST_CASE("Stage 6 color textures cook to deterministic BC blocks")
+          {
+              using namespace arc;
+              render::tools::texture_cook_processor processor;
+              assets::asset_cook_context context;
+              context.asset.guid = {6, 1};
+              context.asset.type = assets::asset_types::texture_2d;
+              context.source.source_path = "checker_albedo.bmp";
+              context.source.bytes = checker_bmp();
+              context.settings_version = render::tools::texture_import_settings::current_version;
+              auto settings = render::tools::texture_import_settings_for_preset(render::tools::texture_import_preset::color);
+              context.canonical_settings = render::tools::serialize_texture_import_settings(settings);
+              context.target = assets::windows_vulkan_cook_target();
+              const auto first = processor.cook(context);
+              const auto second = processor.cook(context);
+              REQUIRE(first.succeeded());
+              REQUIRE(second.succeeded());
+              REQUIRE(first.artifacts.size() == 1u);
+              CHECK(first.artifacts[0].gpu_compressed);
+              CHECK(first.artifacts[0].bytes == second.artifacts[0].bytes);
+              const auto inspected = render::inspect_texture_artifact(first.artifacts[0].bytes);
+              REQUIRE(inspected.has_value());
+              CHECK(inspected.value().format == render::texture_format::bc1_rgba_srgb);
+              REQUIRE(inspected.value().mips.size() == 2u);
+              CHECK(inspected.value().mips[0].stored_size == 8u);
+              CHECK(inspected.value().mips[1].stored_size == 8u);
+          }
+
+          TEST_CASE("Stage 6 normal maps use two-channel BC5")
+          {
+              using namespace arc;
+              render::tools::texture_cook_processor processor;
+              assets::asset_cook_context context;
+              context.asset.guid = {6, 2};
+              context.asset.type = assets::asset_types::texture_2d;
+              context.source.source_path = "checker_normal.bmp";
+              context.source.bytes = checker_bmp();
+              context.settings_version = render::tools::texture_import_settings::current_version;
+              auto settings =
+                  render::tools::texture_import_settings_for_preset(render::tools::texture_import_preset::normal_map);
+              context.canonical_settings = render::tools::serialize_texture_import_settings(settings);
+              context.target = assets::windows_vulkan_cook_target();
+              const auto cooked = processor.cook(context);
+              REQUIRE(cooked.succeeded());
+              CHECK(cooked.artifacts[0].gpu_compressed);
+              const auto inspected = render::inspect_texture_artifact(cooked.artifacts[0].bytes);
+              REQUIRE(inspected.has_value());
+              CHECK(inspected.value().format == render::texture_format::bc5_rg_unorm);
+              CHECK(inspected.value().mips[0].stored_size == 16u);
+          }
+
+          TEST_CASE("Stage 6 single channel masks use BC4")
+          {
+              using namespace arc;
+              render::tools::texture_cook_processor processor;
+              assets::asset_cook_context context;
+              context.asset.guid = {6, 3};
+              context.asset.type = assets::asset_types::texture_2d;
+              context.source.source_path = "checker_occlusion.bmp";
+              context.source.bytes = checker_bmp();
+              context.settings_version = render::tools::texture_import_settings::current_version;
+              auto settings = render::tools::texture_import_settings_for_preset(render::tools::texture_import_preset::data);
+              settings.semantic = render::texture_semantic::occlusion;
+              settings.compression = render::texture_compression_policy::mask;
+              context.canonical_settings = render::tools::serialize_texture_import_settings(settings);
+              context.target = assets::windows_vulkan_cook_target();
+              const auto cooked = processor.cook(context);
+              REQUIRE(cooked.succeeded());
+              const auto inspected = render::inspect_texture_artifact(cooked.artifacts[0].bytes);
+              REQUIRE(inspected.has_value());
+              CHECK(inspected.value().format == render::texture_format::bc4_r_unorm);
+              CHECK(inspected.value().mips[0].stored_size == 8u);
+          }
+
+          TEST_CASE("Stage 6 unsupported target families fall back without lying about GPU compression")
+          {
+              using namespace arc;
+              render::tools::texture_cook_processor processor;
+              assets::asset_cook_context context;
+              context.asset.guid = {6, 4};
+              context.asset.type = assets::asset_types::texture_2d;
+              context.source.source_path = "checker_albedo.bmp";
+              context.source.bytes = checker_bmp();
+              context.settings_version = render::tools::texture_import_settings::current_version;
+              auto settings = render::tools::texture_import_settings_for_preset(render::tools::texture_import_preset::color);
+              context.canonical_settings = render::tools::serialize_texture_import_settings(settings);
+              context.target = assets::windows_vulkan_cook_target();
+              context.target.textures = assets::cook_texture_family::astc;
+              const auto cooked = processor.cook(context);
+              REQUIRE(cooked.succeeded());
+              CHECK_FALSE(cooked.artifacts[0].gpu_compressed);
+              const auto inspected = render::inspect_texture_artifact(cooked.artifacts[0].bytes);
+              REQUIRE(inspected.has_value());
+              CHECK(inspected.value().format == render::texture_format::rgba8_srgb);
+              REQUIRE_FALSE(cooked.diagnostics.empty());
+              CHECK(cooked.diagnostics.back().category == "texture.compression");
+          }
+          '''
+          tests.write_text(text + addition)
+          PY
+      - name: Format
+        run: |
+          clang-format-18 -i engine/render-tools/src/common/texture_cooker.cpp engine/render-tools/tests/texture_cooker_tests.cpp
+      - name: Configure
+        run: >-
+          cmake -S . -B out/build/texture-stage6 -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_C_COMPILER=clang-18
+          -DCMAKE_CXX_COMPILER=clang++-18
+          -DARC_BUILD_RENDER_VULKAN=OFF
+          -DARC_BUILD_EDITOR=OFF
+          -DARC_BUILD_ENGINE_TESTS=ON
+      - name: Build
+        run: cmake --build out/build/texture-stage6 --target arc_render_tools_tests -j2
+      - name: Test
+        run: ctest --test-dir out/build/texture-stage6 -R arc_render_tools_tests --output-on-failure
+      - name: Commit implementation
+        run: |
+          rm .github/workflows/temp-texture-stage6.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Add Stage 6 texture compression pipeline"
+          git push origin HEAD:feat/texture-compression-stage6
