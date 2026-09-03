@@ -318,6 +318,34 @@ TEST_CASE("editor selection keeps one selected entity")
     REQUIRE_FALSE(scene.get<arc::scene::selection_component>(second).selected);
 }
 
+TEST_CASE("editor grid is white and extends beyond the default floor")
+{
+    arc::ecs::world registry;
+    const auto camera_entity = registry.create();
+    arc::scene::transform_component camera_transform;
+    camera_transform.position = {0.0f, 5.0f, 8.0f};
+    registry.emplace<arc::scene::transform_component>(camera_entity, camera_transform);
+    registry.emplace<arc::scene::camera_component>(camera_entity);
+    arc::scene::update_world_transforms(registry);
+
+    arc::render::debug_overlay_stream overlay;
+    arc::editor::append_editor_grid_overlay(overlay, registry.get<arc::scene::camera_component>(camera_entity),
+                                            registry.get<arc::scene::transform_component>(camera_entity), 720u);
+    REQUIRE_FALSE(overlay.lines.empty());
+
+    float maximum_extent = 0.0f;
+    for (const auto& line : overlay.lines)
+    {
+        CHECK(line.color[0] == Catch::Approx(line.color[1]));
+        CHECK(line.color[1] == Catch::Approx(line.color[2]));
+        maximum_extent = std::max(maximum_extent, std::abs(line.start[0]));
+        maximum_extent = std::max(maximum_extent, std::abs(line.start[2]));
+        maximum_extent = std::max(maximum_extent, std::abs(line.end[0]));
+        maximum_extent = std::max(maximum_extent, std::abs(line.end[2]));
+    }
+    CHECK(maximum_extent >= 50.0f);
+}
+
 TEST_CASE("editor gizmos keep constant screen size and hit test colored axes")
 {
     arc::ecs::world registry;

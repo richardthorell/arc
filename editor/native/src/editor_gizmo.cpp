@@ -21,7 +21,8 @@ constexpr float scale_handle_extent = 0.075f;
 constexpr float uniform_scale_handle_extent = 0.09f;
 constexpr float ring_half_width = 0.025f;
 constexpr float highlighted_width_scale = 1.45f;
-constexpr int grid_half_line_count = 50;
+constexpr int grid_min_half_line_count = 50;
+constexpr int grid_max_half_line_count = 512;
 constexpr int grid_major_interval = 10;
 constexpr float grid_target_pixel_spacing = 32.0f;
 constexpr float grid_height = 0.003f;
@@ -285,33 +286,35 @@ void append_editor_grid_overlay(render::debug_overlay_stream& stream, const scen
     const float spacing = magnitude * step;
     const float center_x = std::floor(camera_position[0] / spacing) * spacing;
     const float center_z = std::floor(camera_position[2] / spacing) * spacing;
-    const float extent = spacing * static_cast<float>(grid_half_line_count);
+    const float minimum_extent = spacing * static_cast<float>(grid_min_half_line_count);
+    const float requested_extent = std::max(150.0f, visible_height * 16.0f);
+    const float maximum_extent = spacing * static_cast<float>(grid_max_half_line_count);
+    const float extent = std::clamp(requested_extent, minimum_extent, maximum_extent);
+    const int half_line_count =
+        std::clamp(static_cast<int>(std::ceil(extent / spacing)), grid_min_half_line_count, grid_max_half_line_count);
+    const float rendered_extent = spacing * static_cast<float>(half_line_count);
 
-    constexpr math::vector4f minor_color{0.30f, 0.33f, 0.37f, 0.42f};
-    constexpr math::vector4f major_color{0.42f, 0.45f, 0.50f, 0.62f};
-    constexpr math::vector4f x_axis_color{0.76f, 0.22f, 0.18f, 0.90f};
-    constexpr math::vector4f z_axis_color{0.18f, 0.40f, 0.78f, 0.90f};
-    const auto grid_color = [&](float coordinate, float center, const math::vector4f& axis_color)
+    constexpr math::vector4f minor_color{1.0f, 1.0f, 1.0f, 0.20f};
+    constexpr math::vector4f major_color{1.0f, 1.0f, 1.0f, 0.38f};
+    constexpr math::vector4f axis_color{1.0f, 1.0f, 1.0f, 0.55f};
+    const auto grid_color = [&](float coordinate)
     {
         if (std::abs(coordinate) <= spacing * 0.25f) return axis_color;
         const auto world_line = static_cast<long long>(std::llround(coordinate / spacing));
-        auto color = world_line % grid_major_interval == 0 ? major_color : minor_color;
-        const float edge = std::clamp(std::abs(coordinate - center) / extent, 0.0f, 1.0f);
-        color[3] *= 1.0f - edge * edge;
-        return color;
+        return world_line % grid_major_interval == 0 ? major_color : minor_color;
     };
 
-    for (int line = -grid_half_line_count; line <= grid_half_line_count; ++line)
+    for (int line = -half_line_count; line <= half_line_count; ++line)
     {
         const float x = center_x + static_cast<float>(line) * spacing;
         const float z = center_z + static_cast<float>(line) * spacing;
-        stream.lines.push_back({.start = {center_x - extent, grid_height, z},
-                                .end = {center_x + extent, grid_height, z},
-                                .color = grid_color(z, center_z, x_axis_color),
+        stream.lines.push_back({.start = {center_x - rendered_extent, grid_height, z},
+                                .end = {center_x + rendered_extent, grid_height, z},
+                                .color = grid_color(z),
                                 .depth = render::debug_overlay_depth_mode::tested});
-        stream.lines.push_back({.start = {x, grid_height, center_z - extent},
-                                .end = {x, grid_height, center_z + extent},
-                                .color = grid_color(x, center_x, z_axis_color),
+        stream.lines.push_back({.start = {x, grid_height, center_z - rendered_extent},
+                                .end = {x, grid_height, center_z + rendered_extent},
+                                .color = grid_color(x),
                                 .depth = render::debug_overlay_depth_mode::tested});
     }
 }
