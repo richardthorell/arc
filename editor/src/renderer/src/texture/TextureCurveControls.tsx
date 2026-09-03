@@ -26,6 +26,7 @@ export function TextureCurveControls({
   const { settings } = useTextureSettings(asset.guid, asset.generation);
   const [draft, setDraft] = useState<TextureSettingsSnapshot | null>(settings);
   const [active, setActive] = useState<CurveKey>('curveMaster');
+  const [collapsed, setCollapsed] = useState(true);
   const timer = useRef<number | null>(null);
   useEffect(() => setDraft(settings), [settings]);
   useEffect(
@@ -54,7 +55,12 @@ export function TextureCurveControls({
               ? histogram.r.map((v, i) => v + histogram.g[i] + histogram.b[i])
               : undefined;
   return (
-    <UiPanelSection className="texture-inspector-section" collapsed title="Curves">
+    <UiPanelSection
+      className="texture-inspector-section"
+      collapsed={collapsed}
+      onToggle={() => setCollapsed((value) => !value)}
+      title="Curves"
+    >
       <label className="inspector-property texture-inspector-property">
         <span className="inspector-property-label">Enable Curves</span>
         <input
