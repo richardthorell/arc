@@ -22,7 +22,10 @@ export const assetPresentationLabel = (asset: Pick<AssetItem, 'kind' | 'path'>) 
 
 export const assetPresentationIcon = (asset: Pick<AssetItem, 'kind' | 'path'>): DocumentTypeIconKind => {
   const kind = assetPresentationKind(asset);
-  return kind === 'model' ? 'mesh' : kind;
+  if (kind === 'model') return 'mesh';
+  if (kind === 'environment') return 'image';
+  if (kind === 'unknown') return 'settings';
+  return kind;
 };
 
 export const assetDragType = (asset: Pick<AssetItem, 'kind' | 'path'>) =>

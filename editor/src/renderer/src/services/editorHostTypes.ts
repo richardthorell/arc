@@ -36,7 +36,7 @@ export type AssetItem = {
   path: string;
   scope?: 'builtin' | 'project' | 'user' | 'organization';
   readOnly?: boolean;
-  kind: 'scene' | 'mesh' | 'material' | 'texture' | 'shader' | 'prefab' | 'folder';
+  kind: 'scene' | 'mesh' | 'material' | 'texture' | 'environment' | 'shader' | 'prefab' | 'folder' | 'unknown';
   status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'stale' | 'importing' | 'failed' | 'missing';
   guid?: string;
   typeId?: string;
@@ -59,6 +59,25 @@ export type AssetItem = {
   streamingEligibilityError?: string;
   vertexCount?: number;
   triangleCount?: number;
+  meshCount?: number;
+  materialSlotCount?: number;
+  nodeCount?: number;
+  animationCount?: number;
+  lodCount?: number;
+  entityCount?: number;
+  componentCount?: number;
+  nestedPrefabCount?: number;
+  rootEntityName?: string;
+  cameraCount?: number;
+  lightCount?: number;
+  materialShader?: string;
+  materialParameterCount?: number;
+  materialTextureCount?: number;
+  shaderStages?: string[];
+  shaderEntryPoints?: string[];
+  shaderCompileStatus?: string;
+  shaderVariantCount?: number;
+  itemCount?: number;
 };
 
 export type ConsoleEvent = {
