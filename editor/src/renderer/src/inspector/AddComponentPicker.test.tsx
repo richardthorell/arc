@@ -55,6 +55,24 @@ describe('AddComponentPicker', () => {
     expect(screen.queryByRole('button', { name: 'Camera' })).not.toBeInTheDocument();
   });
 
+  it('closes when clicking outside the picker', async () => {
+    render(
+      <div>
+        <AddComponentPicker snapshot={snapshot()} projectSchemas={[]} onAdd={vi.fn()} />
+        <button type="button">Outside</button>
+      </div>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Add Component' }));
+    await userEvent.type(screen.getByLabelText('Search add components'), 'camera');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Outside' }));
+
+    expect(screen.queryByRole('dialog', { name: 'Add Component' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add Component' }));
+    expect(screen.getByLabelText('Search add components')).toHaveValue('');
+  });
+
   it('hides built-in single-instance components that are already attached', async () => {
     render(
       <AddComponentPicker
