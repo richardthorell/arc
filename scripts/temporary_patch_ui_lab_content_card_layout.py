@@ -11,6 +11,11 @@ text = cards.read_text()
 text = text.replace("      <p>Hover any card to preview the production asset-details tooltip.</p>\n", "")
 cards.write_text(text)
 
+cards_test = Path('editor/src/renderer/src/uiLab/UiLabContentCards.test.tsx')
+text = cards_test.read_text()
+text = text.replace("    expect(view.getByText(/Hover any card/)).toBeVisible();\n", "    expect(view.queryByText(/Hover any card/)).not.toBeInTheDocument();\n")
+cards_test.write_text(text)
+
 css = Path('editor/src/renderer/src/uiLab/uiLab.css')
 text = css.read_text()
 anchor = ".ui-lab-card-wide {\n  grid-column: span 2;\n}\n"
