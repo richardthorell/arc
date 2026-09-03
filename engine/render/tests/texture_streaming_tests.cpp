@@ -296,3 +296,31 @@ TEST_CASE("texture residency only claims requests accepted by an IO capacity win
     REQUIRE(second.size() == 1);
     CHECK(second.front().mip != first.front().mip);
 }
+
+TEST_CASE("virtual texture page tables resolve the closest generation-valid ancestor")
+{
+    using namespace arc::render;
+    std::vector<virtual_texture_page_table_entry> pages(3);
+    pages[0] = {.generation = 7,
+                .parent_page = 1,
+                .flags = virtual_texture_page_flag::none,
+                .mip = 0,
+                .x = 1,
+                .y = 1};
+    pages[1] = {.cache_descriptor = 2,
+                .cache_layer = 11,
+                .generation = 7,
+                .parent_page = 2,
+                .flags = virtual_texture_page_flag::resident,
+                .mip = 1};
+    pages[2] = {.cache_descriptor = 2,
+                .cache_layer = 12,
+                .generation = 6,
+                .parent_page = resource_handle::invalid_index,
+                .flags = virtual_texture_page_flag::resident,
+                .mip = 2};
+    REQUIRE(resolve_virtual_texture_page(pages, 0, 7) == 1u);
+    CHECK_FALSE(resolve_virtual_texture_page(pages, 0, 8).has_value());
+    pages[1].flags = virtual_texture_page_flag::none;
+    CHECK_FALSE(resolve_virtual_texture_page(pages, 0, 7).has_value());
+}

@@ -1072,10 +1072,6 @@ bool renderer::update_texture(texture_handle handle, texture_data texture)
 texture_handle renderer::create_streamed_texture(streamed_texture_descriptor descriptor)
 {
     if (!valid_streamed_texture_descriptor(descriptor)) return {};
-    if (descriptor.mode == texture_streaming_mode::virtual_tiles && backend_ &&
-        !resolved_config_.features.virtual_textures)
-        descriptor.mode = texture_streaming_mode::streamed_mips;
-
     const texture_handle handle = texture_handles_.allocate();
     auto shared_descriptor = std::make_shared<streamed_texture_descriptor>(std::move(descriptor));
     streamed_texture_data_[renderer_resource_key(handle)] = shared_descriptor;
@@ -1094,9 +1090,6 @@ bool renderer::update_streamed_texture(texture_handle handle, streamed_texture_d
     const auto previous = streamed_texture_data_.find(key);
     if (previous == streamed_texture_data_.end()) return false;
     descriptor.content_generation = std::max(descriptor.content_generation, previous->second->content_generation + 1u);
-    if (descriptor.mode == texture_streaming_mode::virtual_tiles && backend_ &&
-        !resolved_config_.features.virtual_textures)
-        descriptor.mode = texture_streaming_mode::streamed_mips;
     auto shared_descriptor = std::make_shared<streamed_texture_descriptor>(std::move(descriptor));
     previous->second = shared_descriptor;
     texture_residency_.register_resource(handle, *shared_descriptor);

@@ -242,7 +242,7 @@ struct material_runtime_texture_binding
 struct material_runtime_program
 {
     std::uint32_t contract_version{1};
-    std::uint32_t material_abi{1};
+    std::uint32_t material_abi{2};
     std::uint64_t generation{1};
     std::vector<material_runtime_pass> passes;
     std::vector<shader_parameter_descriptor> parameters;

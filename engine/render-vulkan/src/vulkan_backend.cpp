@@ -476,6 +476,7 @@ public:
         destroy_buffer(gpu_scene_transform_buffer_);
         destroy_gpu_visibility_resources();
         destroy_texture_feedback_resources();
+        destroy_virtual_texture_resources();
 #if ARC_VULKAN_SHARED_VIEWPORT
         destroy_all_shared_viewports();
 #endif
@@ -1489,6 +1490,25 @@ private:
         std::uint64_t reuse_after_frame{};
     };
 
+    struct virtual_texture_cache_slot
+    {
+        std::uint32_t page{resource_handle::invalid_index};
+        std::uint32_t generation{};
+        std::uint64_t reusable_after_frame{};
+    };
+
+    struct virtual_texture_physical_cache
+    {
+        VkImage image{};
+        VmaAllocation allocation{};
+        VkImageView view{};
+        VkSampler sampler{};
+        VkFormat format{};
+        VkImageLayout layout{VK_IMAGE_LAYOUT_UNDEFINED};
+        std::vector<virtual_texture_cache_slot> slots;
+        std::vector<std::uint32_t> free_slots;
+    };
+
     struct debug_overlay_vertex
     {
         math::vector3f position{};
@@ -1597,6 +1617,9 @@ private:
         std::uint32_t mip_count{1};
         std::uint32_t mip_window_base{};
         std::uint32_t feedback_slot{resource_handle::invalid_index};
+        std::uint32_t virtual_metadata_index{resource_handle::invalid_index};
+        std::uint32_t virtual_page_base{resource_handle::invalid_index};
+        std::uint32_t virtual_page_count{};
         bool streamable{};
     };
 
@@ -3873,6 +3896,7 @@ private:
         const auto found = textures_.find(resource_key(handle));
         if (found == textures_.end()) return;
         retire_texture_feedback_slot(found->second.feedback_slot);
+        retire_virtual_texture(found->second);
         auto retired = std::move(found->second);
         textures_.erase(found);
         defer_texture_release(std::move(retired));
@@ -3901,8 +3925,10 @@ private:
         if (const auto found = textures_.find(key); found != textures_.end())
         {
             retire_texture_feedback_slot(found->second.feedback_slot);
+            retire_virtual_texture(found->second);
             defer_texture_release(std::move(found->second));
         }
+        register_virtual_texture(texture);
         textures_[key] = std::move(texture);
     }
 
@@ -3948,6 +3974,9 @@ private:
         replacement.streamable = true;
         replacement.mip_window_base = base;
         replacement.feedback_slot = texture.feedback_slot;
+        replacement.virtual_metadata_index = texture.virtual_metadata_index;
+        replacement.virtual_page_base = texture.virtual_page_base;
+        replacement.virtual_page_count = texture.virtual_page_count;
         replacement.data = data;
         if (!upload_texture_image(data, replacement)) return false;
         auto retired = std::move(texture);
@@ -3973,6 +4002,12 @@ private:
             return;
         }
         auto& texture = found->second;
+        if (upload.kind == texture_subresource_kind::tile)
+        {
+            result.succeeded = upload_virtual_texture_page(texture, upload, result);
+            frame_texture_upload_results_.push_back(result);
+            return;
+        }
         if (upload.kind != texture_subresource_kind::mip || upload.mip >= texture.streamed_mips.size())
         {
             frame_texture_upload_results_.push_back(result);
@@ -3989,13 +4024,343 @@ private:
         const auto& eviction = event.eviction;
         const auto found = textures_.find(resource_key(eviction.resource));
         if (found == textures_.end() || !found->second.streamable ||
-            found->second.streaming.content_generation != eviction.content_generation ||
-            eviction.kind != texture_subresource_kind::mip || eviction.mip >= found->second.streamed_mips.size())
+            found->second.streaming.content_generation != eviction.content_generation)
             return;
         auto& texture = found->second;
+        if (eviction.kind == texture_subresource_kind::tile)
+        {
+            if (texture.virtual_page_base == resource_handle::invalid_index) return;
+            const auto tile = std::ranges::find_if(texture.streaming.artifact.tiles,
+                                                   [&](const texture_artifact_tile_range& candidate)
+                                                   {
+                                                       return candidate.mip == eviction.mip && candidate.x == eviction.x &&
+                                                              candidate.y == eviction.y;
+                                                   });
+            if (tile == texture.streaming.artifact.tiles.end()) return;
+            const auto page_index = texture.virtual_page_base +
+                                    static_cast<std::uint32_t>(tile - texture.streaming.artifact.tiles.begin());
+            if (page_index >= virtual_texture_pages_.size()) return;
+            auto& page = virtual_texture_pages_[page_index];
+            if (virtual_texture_page_resident(page) && page.cache_descriptor < virtual_texture_caches_.size() &&
+                page.cache_layer < virtual_texture_caches_[page.cache_descriptor].slots.size())
+            {
+                auto& slot = virtual_texture_caches_[page.cache_descriptor].slots[page.cache_layer];
+                slot.page = resource_handle::invalid_index;
+                slot.reusable_after_frame = last_profile_.frame_index + frame_resource_count();
+            }
+            page.cache_descriptor = resource_handle::invalid_index;
+            page.cache_layer = resource_handle::invalid_index;
+            page.flags = virtual_texture_page_flag::none;
+            (void)ensure_virtual_texture_table_capacity();
+            return;
+        }
+        if (eviction.kind != texture_subresource_kind::mip || eviction.mip >= texture.streamed_mips.size()) return;
         texture.streamed_mips[eviction.mip].reset();
         if (!rebuild_streamed_mip_window(texture))
             arc::diagnostics::warn("render.vulkan", "Failed to shrink a streamed texture mip window");
+    }
+
+    bool update_host_visible_buffer(gpu_buffer& buffer, const void* data, VkDeviceSize bytes)
+    {
+        if (buffer.buffer == VK_NULL_HANDLE || buffer.allocation == VK_NULL_HANDLE || !data || bytes == 0) return false;
+        void* mapped{};
+        if (vmaMapMemory(allocator_, buffer.allocation, &mapped) != VK_SUCCESS) return false;
+        std::memcpy(mapped, data, static_cast<std::size_t>(bytes));
+        vmaFlushAllocation(allocator_, buffer.allocation, 0, bytes);
+        vmaUnmapMemory(allocator_, buffer.allocation);
+        return true;
+    }
+
+    bool ensure_virtual_texture_table_capacity()
+    {
+        const auto metadata_capacity = std::max(
+            64u, std::bit_ceil(std::max(static_cast<std::uint32_t>(virtual_texture_metadata_.size()), 1u)));
+        const auto page_capacity = std::max(
+            256u, std::bit_ceil(std::max(static_cast<std::uint32_t>(virtual_texture_pages_.size()), 1u)));
+        const auto replace = [&](gpu_buffer& buffer, std::uint32_t& capacity, std::uint32_t required,
+                                 VkDeviceSize stride, const void* contents, std::size_t count)
+        {
+            if (buffer.buffer != VK_NULL_HANDLE && capacity >= required)
+                return count == 0 || update_host_visible_buffer(buffer, contents, buffer_size(count, stride));
+            gpu_buffer replacement{};
+            if (!create_buffer(buffer_size(required, stride),
+                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                               VMA_MEMORY_USAGE_CPU_TO_GPU, replacement) ||
+                (count != 0 && !update_host_visible_buffer(replacement, contents, buffer_size(count, stride))))
+            {
+                destroy_buffer(replacement);
+                return false;
+            }
+            auto retired = buffer;
+            buffer = replacement;
+            capacity = required;
+            if (retired.buffer != VK_NULL_HANDLE)
+                deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
+                                         [this, retired]() mutable { destroy_buffer(retired); });
+            virtual_texture_descriptors_dirty_ = true;
+            return true;
+        };
+        return replace(virtual_texture_metadata_buffer_, virtual_texture_metadata_capacity_, metadata_capacity,
+                       sizeof(virtual_texture_gpu_metadata), virtual_texture_metadata_.data(),
+                       virtual_texture_metadata_.size()) &&
+               replace(virtual_texture_page_table_buffer_, virtual_texture_page_capacity_, page_capacity,
+                       sizeof(virtual_texture_page_table_entry), virtual_texture_pages_.data(),
+                       virtual_texture_pages_.size());
+    }
+
+    void register_virtual_texture(gpu_texture& texture)
+    {
+        if (texture.streaming.mode != texture_streaming_mode::virtual_tiles) return;
+        texture.virtual_metadata_index = static_cast<std::uint32_t>(virtual_texture_metadata_.size());
+        texture.virtual_page_base = static_cast<std::uint32_t>(virtual_texture_pages_.size());
+        texture.virtual_page_count = static_cast<std::uint32_t>(texture.streaming.artifact.tiles.size());
+        virtual_texture_metadata_.push_back({.width = texture.streaming.texture.width,
+                                             .height = texture.streaming.texture.height,
+                                             .mip_count = texture.streaming.artifact.mip_count,
+                                             .tail_first_mip = texture.streaming.artifact.tail_first_mip,
+                                             .page_table_base = texture.virtual_page_base,
+                                             .page_count = texture.virtual_page_count,
+                                             .feedback_slot = texture.feedback_slot,
+                                             .generation = texture.streaming.content_generation});
+        for (const auto& tile : texture.streaming.artifact.tiles)
+        {
+            std::uint32_t parent = resource_handle::invalid_index;
+            if (tile.mip + 1u < texture.streaming.artifact.tail_first_mip)
+            {
+                const auto found = std::ranges::find_if(
+                    texture.streaming.artifact.tiles,
+                    [&](const texture_artifact_tile_range& candidate)
+                    {
+                        return candidate.mip == tile.mip + 1u && candidate.x == tile.x / 2u &&
+                               candidate.y == tile.y / 2u;
+                    });
+                if (found != texture.streaming.artifact.tiles.end())
+                    parent = texture.virtual_page_base + static_cast<std::uint32_t>(
+                                                             found - texture.streaming.artifact.tiles.begin());
+            }
+            virtual_texture_pages_.push_back({.generation = texture.streaming.content_generation,
+                                              .parent_page = parent,
+                                              .mip = tile.mip,
+                                              .x = tile.x,
+                                              .y = tile.y});
+        }
+        if (!ensure_virtual_texture_table_capacity())
+            arc::diagnostics::warn("render.vulkan", "Failed to publish virtual-texture metadata tables");
+    }
+
+    void retire_virtual_texture(gpu_texture& texture)
+    {
+        if (texture.virtual_metadata_index < virtual_texture_metadata_.size())
+            virtual_texture_metadata_[texture.virtual_metadata_index].generation = 0;
+        if (texture.virtual_page_base == resource_handle::invalid_index) return;
+        for (std::uint32_t index = 0; index < texture.virtual_page_count; ++index)
+        {
+            const auto page_index = texture.virtual_page_base + index;
+            if (page_index >= virtual_texture_pages_.size()) break;
+            auto& page = virtual_texture_pages_[page_index];
+            if (virtual_texture_page_resident(page) && page.cache_descriptor < virtual_texture_caches_.size() &&
+                page.cache_layer < virtual_texture_caches_[page.cache_descriptor].slots.size())
+            {
+                auto& slot = virtual_texture_caches_[page.cache_descriptor].slots[page.cache_layer];
+                slot.page = resource_handle::invalid_index;
+                slot.reusable_after_frame = last_profile_.frame_index + frame_resource_count();
+            }
+            page.flags = virtual_texture_page_flag::none;
+            page.generation = 0;
+        }
+        (void)ensure_virtual_texture_table_capacity();
+    }
+
+    bool ensure_virtual_texture_cache(texture_format source_format, std::uint32_t& cache_index)
+    {
+        const auto format = vulkan_texture_format(source_format);
+        if (!format || !texture_format_supported(*format)) return false;
+        if (const auto found = virtual_texture_cache_lookup_.find(static_cast<std::uint32_t>(*format));
+            found != virtual_texture_cache_lookup_.end())
+        {
+            cache_index = found->second;
+            return true;
+        }
+        constexpr std::uint32_t cache_layers = 512u;
+        virtual_texture_physical_cache cache;
+        cache.format = *format;
+        VkImageCreateInfo image{};
+        image.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        image.imageType = VK_IMAGE_TYPE_2D;
+        image.format = *format;
+        image.extent = {virtual_texture_tile_size + virtual_texture_tile_border * 2u,
+                        virtual_texture_tile_size + virtual_texture_tile_border * 2u, 1u};
+        image.mipLevels = 1;
+        image.arrayLayers = cache_layers;
+        image.samples = VK_SAMPLE_COUNT_1_BIT;
+        image.tiling = VK_IMAGE_TILING_OPTIMAL;
+        image.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        VmaAllocationCreateInfo allocation{};
+        allocation.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+        if (vmaCreateImage(allocator_, &image, &allocation, &cache.image, &cache.allocation, nullptr) != VK_SUCCESS)
+            return false;
+        VkImageViewCreateInfo view{};
+        view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        view.image = cache.image;
+        view.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+        view.format = cache.format;
+        view.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        view.subresourceRange.levelCount = 1;
+        view.subresourceRange.layerCount = cache_layers;
+        if (vkCreateImageView(device_, &view, nullptr, &cache.view) != VK_SUCCESS)
+        {
+            vmaDestroyImage(allocator_, cache.image, cache.allocation);
+            return false;
+        }
+        VkPhysicalDeviceProperties properties{};
+        vkGetPhysicalDeviceProperties(physical_device_, &properties);
+        VkSamplerCreateInfo sampler{};
+        sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        sampler.magFilter = VK_FILTER_LINEAR;
+        sampler.minFilter = VK_FILTER_LINEAR;
+        sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        sampler.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        sampler.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        if (resolved_config_.features.sampler_anisotropy)
+        {
+            sampler.anisotropyEnable = VK_TRUE;
+            sampler.maxAnisotropy = std::min(4.0f, properties.limits.maxSamplerAnisotropy);
+        }
+        if (vkCreateSampler(device_, &sampler, nullptr, &cache.sampler) != VK_SUCCESS)
+        {
+            vkDestroyImageView(device_, cache.view, nullptr);
+            vmaDestroyImage(allocator_, cache.image, cache.allocation);
+            return false;
+        }
+        cache.slots.resize(cache_layers);
+        cache.free_slots.reserve(cache_layers);
+        for (std::uint32_t layer = cache_layers; layer > 0; --layer)
+            cache.free_slots.push_back(layer - 1u);
+        cache_index = static_cast<std::uint32_t>(virtual_texture_caches_.size());
+        virtual_texture_cache_lookup_.emplace(static_cast<std::uint32_t>(*format), cache_index);
+        virtual_texture_caches_.push_back(std::move(cache));
+        virtual_texture_descriptors_dirty_ = true;
+        return true;
+    }
+
+    std::optional<std::uint32_t> allocate_virtual_texture_cache_slot(virtual_texture_physical_cache& cache)
+    {
+        for (std::uint32_t index = 0; index < cache.slots.size(); ++index)
+            if (cache.slots[index].page == resource_handle::invalid_index &&
+                cache.slots[index].reusable_after_frame != 0 &&
+                cache.slots[index].reusable_after_frame <= last_completed_frame_)
+            {
+                cache.slots[index].reusable_after_frame = 0;
+                cache.free_slots.push_back(index);
+            }
+        if (cache.free_slots.empty()) return std::nullopt;
+        const auto result = cache.free_slots.back();
+        cache.free_slots.pop_back();
+        return result;
+    }
+
+    bool upload_virtual_texture_page(gpu_texture& texture, const texture_stream_upload& upload,
+                                     texture_stream_upload_result& result)
+    {
+        if (texture.virtual_page_base == resource_handle::invalid_index || !upload.bytes) return false;
+        const auto tile = std::ranges::find_if(texture.streaming.artifact.tiles,
+                                               [&](const texture_artifact_tile_range& candidate)
+                                               {
+                                                   return candidate.mip == upload.mip && candidate.x == upload.x &&
+                                                          candidate.y == upload.y;
+                                               });
+        if (tile == texture.streaming.artifact.tiles.end()) return false;
+        const auto local_page = static_cast<std::uint32_t>(tile - texture.streaming.artifact.tiles.begin());
+        const auto page_index = texture.virtual_page_base + local_page;
+        if (page_index >= virtual_texture_pages_.size()) return false;
+        std::uint32_t cache_index{};
+        if (!ensure_virtual_texture_cache(texture.streaming.texture.format, cache_index)) return false;
+        auto& cache = virtual_texture_caches_[cache_index];
+        const auto layer = allocate_virtual_texture_cache_slot(cache);
+        if (!layer) return false;
+        const auto staging = reserve_upload(upload.bytes->size(), 16u);
+        if (!staging)
+        {
+            cache.free_slots.push_back(*layer);
+            return false;
+        }
+        std::memcpy(staging.bytes.data(), upload.bytes->data(), upload.bytes->size());
+        vmaFlushAllocation(allocator_, upload_staging_.allocation, static_cast<VkDeviceSize>(staging.offset),
+                           upload.bytes->size());
+        VkImageMemoryBarrier to_copy{};
+        to_copy.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        const bool reused = cache.slots[*layer].generation != 0;
+        to_copy.oldLayout = reused ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
+        to_copy.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        to_copy.srcAccessMask = reused ? VK_ACCESS_SHADER_READ_BIT : 0;
+        to_copy.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        to_copy.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        to_copy.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        to_copy.image = cache.image;
+        to_copy.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        to_copy.subresourceRange.baseArrayLayer = *layer;
+        to_copy.subresourceRange.layerCount = 1;
+        to_copy.subresourceRange.levelCount = 1;
+        vkCmdPipelineBarrier(upload_command_buffer_,
+                             reused ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &to_copy);
+        VkBufferImageCopy copy{};
+        copy.bufferOffset = static_cast<VkDeviceSize>(staging.offset);
+        copy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        copy.imageSubresource.baseArrayLayer = *layer;
+        copy.imageSubresource.layerCount = 1;
+        copy.imageExtent = {tile->width, tile->height, 1};
+        vkCmdCopyBufferToImage(upload_command_buffer_, upload_staging_.buffer, cache.image,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+        auto to_shader = to_copy;
+        to_shader.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        to_shader.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        to_shader.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        to_shader.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        vkCmdPipelineBarrier(upload_command_buffer_, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &to_shader);
+        upload_batch_has_work_ = true;
+        // Page-table publication is an acknowledgement boundary: a failed copy
+        // must never make a page visible to shaders.
+        if (!flush_upload_batch())
+        {
+            cache.slots[*layer].page = resource_handle::invalid_index;
+            cache.slots[*layer].generation = texture.streaming.content_generation;
+            cache.slots[*layer].reusable_after_frame = last_profile_.frame_index + frame_resource_count();
+            return false;
+        }
+        cache.slots[*layer] = {.page = page_index, .generation = texture.streaming.content_generation};
+        auto& page = virtual_texture_pages_[page_index];
+        page.cache_descriptor = cache_index;
+        page.cache_layer = *layer;
+        page.generation = texture.streaming.content_generation;
+        page.flags = virtual_texture_page_flag::resident;
+        if (!ensure_virtual_texture_table_capacity())
+        {
+            page.flags = virtual_texture_page_flag::none;
+            cache.slots[*layer].page = resource_handle::invalid_index;
+            cache.slots[*layer].reusable_after_frame = last_profile_.frame_index + frame_resource_count();
+            return false;
+        }
+        result.gpu_bytes = tile->decoded_size;
+        return true;
+    }
+
+    void destroy_virtual_texture_resources() noexcept
+    {
+        destroy_buffer(virtual_texture_metadata_buffer_);
+        destroy_buffer(virtual_texture_page_table_buffer_);
+        for (auto& cache : virtual_texture_caches_)
+        {
+            if (cache.sampler != VK_NULL_HANDLE) vkDestroySampler(device_, cache.sampler, nullptr);
+            if (cache.view != VK_NULL_HANDLE) vkDestroyImageView(device_, cache.view, nullptr);
+            if (cache.image != VK_NULL_HANDLE) vmaDestroyImage(allocator_, cache.image, cache.allocation);
+        }
+        virtual_texture_caches_.clear();
+        virtual_texture_cache_lookup_.clear();
+        virtual_texture_metadata_.clear();
+        virtual_texture_pages_.clear();
     }
 
     void destroy_texture_feedback_resources() noexcept
@@ -10919,6 +11284,15 @@ private:
     VkDescriptorPool texture_feedback_descriptor_pool_{};
     VkPipelineLayout texture_feedback_pipeline_layout_{};
     VkPipeline texture_feedback_pipeline_{};
+    std::vector<virtual_texture_gpu_metadata> virtual_texture_metadata_;
+    std::vector<virtual_texture_page_table_entry> virtual_texture_pages_;
+    gpu_buffer virtual_texture_metadata_buffer_;
+    gpu_buffer virtual_texture_page_table_buffer_;
+    std::uint32_t virtual_texture_metadata_capacity_{};
+    std::uint32_t virtual_texture_page_capacity_{};
+    std::vector<virtual_texture_physical_cache> virtual_texture_caches_;
+    std::unordered_map<std::uint32_t, std::uint32_t> virtual_texture_cache_lookup_;
+    bool virtual_texture_descriptors_dirty_{true};
     std::unordered_map<std::uint64_t, gpu_material> materials_;
     std::unordered_map<std::uint64_t, gpu_environment> environments_;
     std::unordered_set<std::uint64_t> texture_semantic_diagnostics_;

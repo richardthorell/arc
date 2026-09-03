@@ -8,7 +8,7 @@ namespace arc::render
 {
 
 /** @brief Versioned contract shared by authored material implementations and ARC render passes. */
-inline constexpr std::uint32_t material_abi_version = 1;
+inline constexpr std::uint32_t material_abi_version = 2;
 
 /** @brief Per-fragment inputs available to a surface material implementation. */
 struct material_inputs

@@ -44,6 +44,49 @@ enum class texture_residency_state : std::uint8_t
     failed
 };
 
+enum class virtual_texture_page_flag : std::uint32_t
+{
+    none = 0,
+    resident = 1u << 0u
+};
+
+/** @brief Backend-neutral GPU metadata for one virtual texture. */
+struct virtual_texture_gpu_metadata
+{
+    std::uint32_t width{};
+    std::uint32_t height{};
+    std::uint32_t mip_count{};
+    std::uint32_t tail_first_mip{};
+    std::uint32_t page_table_base{};
+    std::uint32_t page_count{};
+    std::uint32_t feedback_slot{};
+    std::uint32_t generation{};
+};
+
+/** @brief Software page-table entry mirrored by rendering backends. */
+struct virtual_texture_page_table_entry
+{
+    std::uint32_t cache_descriptor{resource_handle::invalid_index};
+    std::uint32_t cache_layer{resource_handle::invalid_index};
+    std::uint32_t generation{};
+    std::uint32_t parent_page{resource_handle::invalid_index};
+    virtual_texture_page_flag flags{virtual_texture_page_flag::none};
+    std::uint32_t mip{};
+    std::uint32_t x{};
+    std::uint32_t y{};
+};
+
+[[nodiscard]] constexpr bool virtual_texture_page_resident(const virtual_texture_page_table_entry& page) noexcept
+{
+    return (static_cast<std::uint32_t>(page.flags) &
+            static_cast<std::uint32_t>(virtual_texture_page_flag::resident)) != 0u;
+}
+
+/** @brief Walk software page-table parents to the closest resident mapping. */
+[[nodiscard]] std::optional<std::uint32_t>
+resolve_virtual_texture_page(std::span<const virtual_texture_page_table_entry> pages, std::uint32_t requested_page,
+                             std::uint32_t generation) noexcept;
+
 /** @brief Immutable renderer registration for a cooked streamable texture. */
 struct streamed_texture_descriptor
 {

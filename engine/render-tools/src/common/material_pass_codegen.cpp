@@ -13,8 +13,13 @@ namespace
 constexpr std::string_view standalone_harness_marker = "struct ArcCompilerInput\n";
 
 constexpr std::string_view custom_material_abi =
-    R"(// ARC Material ABI v1. Engine-owned declarations for handwritten Material Shaders.
-static const uint ARC_MATERIAL_ABI_VERSION = 1;
+    R"(// ARC Material ABI v2. Engine-owned declarations for handwritten Material Shaders.
+static const uint ARC_MATERIAL_ABI_VERSION = 2;
+float4 arcSampleTexture2D(Texture2D<float4> textureResource, SamplerState samplerResource, float2 uv,
+                          uint textureMetadataIndex)
+{
+    return textureResource.Sample(samplerResource, uv);
+}
 struct ArcSurfaceInput
 {
     float3 positionWS;

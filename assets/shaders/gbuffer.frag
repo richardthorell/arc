@@ -2,6 +2,7 @@
 #extension GL_GOOGLE_include_directive : require
 
 #include "include/arc_material_parameters.glsl"
+#include "include/arc_texture_sampling.glsl"
 
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec3 in_world_position;
@@ -53,27 +54,27 @@ vec3 material_normal()
     vec3 t = normalize(in_tangent.xyz);
     t = normalize(t - n * dot(n, t));
     vec3 b = normalize(cross(n, t) * in_tangent.w);
-    vec3 mapped = texture(normal_texture, in_texcoord).xyz * 2.0 - vec3(1.0);
+    vec3 mapped = arc_sample_texture_2d(normal_texture, in_texcoord, 2u).xyz * 2.0 - vec3(1.0);
     mapped.xy *= constants.material_params.x;
     return normalize(mat3(t, b, n) * mapped);
 }
 
 void main()
 {
-    vec4 sampled_base = has_texture(1.0) ? texture(base_texture, in_texcoord) : vec4(1.0);
+    vec4 sampled_base = has_texture(1.0) ? arc_sample_texture_2d(base_texture, in_texcoord, 0u) : vec4(1.0);
     vec4 material_color = sampled_base * in_color;
     int alpha_mode = int(constants.material_params.w + 0.5);
     if (alpha_mode == 1 && material_color.a < constants.visualization.w)
         discard;
 
-    vec4 mr = has_texture(2.0) ? texture(metallic_roughness_texture, in_texcoord) : vec4(1.0);
+    vec4 mr = has_texture(2.0) ? arc_sample_texture_2d(metallic_roughness_texture, in_texcoord, 1u) : vec4(1.0);
     float roughness = clamp(constants.visualization.z * mr.g, 0.04, 1.0);
     float metallic = clamp(constants.visualization.y * mr.b, 0.0, 1.0);
     float ao = has_texture(8.0)
-        ? mix(1.0, texture(occlusion_texture, in_texcoord).r, constants.material_params.y)
+        ? mix(1.0, arc_sample_texture_2d(occlusion_texture, in_texcoord, 3u).r, constants.material_params.y)
         : 1.0;
     vec3 emissive = has_texture(16.0)
-        ? texture(emissive_texture, in_texcoord).rgb *
+        ? arc_sample_texture_2d(emissive_texture, in_texcoord, 4u).rgb *
             material_parameters.emissive_factor.rgb * material_parameters.emissive_factor.w
         : material_parameters.emissive_factor.rgb * material_parameters.emissive_factor.w;
 

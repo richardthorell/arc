@@ -7,6 +7,20 @@
 
 namespace arc::render
 {
+std::optional<std::uint32_t>
+resolve_virtual_texture_page(std::span<const virtual_texture_page_table_entry> pages, std::uint32_t requested_page,
+                             std::uint32_t generation) noexcept
+{
+    for (std::uint32_t remaining = 0; remaining <= pages.size() && requested_page < pages.size(); ++remaining)
+    {
+        const auto& page = pages[requested_page];
+        if (page.generation == generation && virtual_texture_page_resident(page)) return requested_page;
+        if (page.parent_page == resource_handle::invalid_index || page.parent_page == requested_page) break;
+        requested_page = page.parent_page;
+    }
+    return std::nullopt;
+}
+
 texture_streaming_mode resolve_texture_streaming_mode(texture_streaming_mode authored,
                                                       texture_streaming_capabilities capabilities) noexcept
 {

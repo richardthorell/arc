@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#include "include/arc_texture_sampling.glsl"
 
 layout(location = 0) in vec2 in_texcoord;
 layout(set = 0, binding = 0) uniform sampler2D base_texture;
@@ -30,7 +32,7 @@ void main()
     if (alpha_mode == 0)
         return;
 
-    float alpha = texture(base_texture, in_texcoord).a * constants.base_color.a;
+    float alpha = arc_sample_texture_2d(base_texture, in_texcoord, 0u).a * constants.base_color.a;
     if (alpha_mode == 1)
     {
         if (alpha < constants.visualization.w)

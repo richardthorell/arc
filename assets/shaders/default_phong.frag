@@ -3,6 +3,7 @@
 
 #include "include/arc_material_surface.glsl"
 #include "include/arc_material_parameters.glsl"
+#include "include/arc_texture_sampling.glsl"
 #define ARC_LIGHT_BUFFER_BINDING 15
 #include "include/arc_lighting.glsl"
 #include "include/arc_shadows.glsl"
@@ -97,7 +98,7 @@ vec3 material_normal(arc_material_inputs material_input)
     vec3 t = normalize(material_input.tangent_ws.xyz);
     t = normalize(t - n * dot(n, t));
     vec3 b = normalize(cross(n, t) * material_input.tangent_ws.w);
-    vec3 mapped = texture(normal_texture, material_input.uv0).xyz * 2.0 - vec3(1.0);
+    vec3 mapped = arc_sample_texture_2d(normal_texture, material_input.uv0, 2u).xyz * 2.0 - vec3(1.0);
     mapped.xy *= constants.material_params.x;
     return normalize(mat3(t, b, n) * mapped);
 }
@@ -109,16 +110,16 @@ vec3 material_clear_coat_normal(arc_material_inputs material_input, vec3 fallbac
     vec3 t = normalize(material_input.tangent_ws.xyz);
     t = normalize(t - fallback * dot(fallback, t));
     vec3 b = normalize(cross(fallback, t) * material_input.tangent_ws.w);
-    vec3 mapped = texture(clear_coat_normal_texture, material_input.uv0).xyz * 2.0 - vec3(1.0);
+    vec3 mapped = arc_sample_texture_2d(clear_coat_normal_texture, material_input.uv0, 7u).xyz * 2.0 - vec3(1.0);
     return normalize(mat3(t, b, fallback) * mapped);
 }
 
 arc_material_surface arc_evaluate_legacy_material(arc_material_inputs material_input)
 {
     arc_material_surface material = arc_default_material_surface(material_input);
-    vec4 sampled_base = has_texture(1.0) ? texture(base_texture, material_input.uv0) : vec4(1.0);
+    vec4 sampled_base = has_texture(1.0) ? arc_sample_texture_2d(base_texture, material_input.uv0, 0u) : vec4(1.0);
     vec4 material_color = sampled_base * material_input.vertex_color * constants.base_color;
-    vec4 mr = has_texture(2.0) ? texture(metallic_roughness_texture, material_input.uv0) : vec4(1.0);
+    vec4 mr = has_texture(2.0) ? arc_sample_texture_2d(metallic_roughness_texture, material_input.uv0, 1u) : vec4(1.0);
 
     material.base_color = material_color.rgb;
     material.opacity = material_color.a;
@@ -129,28 +130,28 @@ arc_material_surface arc_evaluate_legacy_material(arc_material_inputs material_i
     material.roughness = clamp(constants.visualization.z * mr.g, 0.04, 1.0);
     material.metallic = clamp(constants.visualization.y * mr.b, 0.0, 1.0);
     material.ambient_occlusion = has_texture(8.0)
-        ? mix(1.0, texture(occlusion_texture, material_input.uv0).r, constants.material_params.y)
+        ? mix(1.0, arc_sample_texture_2d(occlusion_texture, material_input.uv0, 3u).r, constants.material_params.y)
         : 1.0;
     material.emissive_radiance = has_texture(16.0)
-        ? texture(emissive_texture, material_input.uv0).rgb *
+        ? arc_sample_texture_2d(emissive_texture, material_input.uv0, 4u).rgb *
             material_parameters.emissive_factor.rgb * material_parameters.emissive_factor.w
         : material_parameters.emissive_factor.rgb * material_parameters.emissive_factor.w;
     material.clear_coat = material_parameters.material_lobes.x *
-        (has_advanced_texture(1.0) ? texture(clear_coat_texture, material_input.uv0).r : 1.0);
+        (has_advanced_texture(1.0) ? arc_sample_texture_2d(clear_coat_texture, material_input.uv0, 5u).r : 1.0);
     material.clear_coat_roughness = material_parameters.material_lobes.y *
-        (has_advanced_texture(2.0) ? texture(clear_coat_roughness_texture, material_input.uv0).g : 1.0);
+        (has_advanced_texture(2.0) ? arc_sample_texture_2d(clear_coat_roughness_texture, material_input.uv0, 6u).g : 1.0);
     material.anisotropy = material_parameters.material_lobes.z *
-        (has_advanced_texture(8.0) ? texture(anisotropy_texture, material_input.uv0).b : 1.0);
+        (has_advanced_texture(8.0) ? arc_sample_texture_2d(anisotropy_texture, material_input.uv0, 8u).b : 1.0);
     material.transmission = material_parameters.material_lobes.w *
-        (has_advanced_texture(64.0) ? texture(transmission_texture, material_input.uv0).r : 1.0);
+        (has_advanced_texture(64.0) ? arc_sample_texture_2d(transmission_texture, material_input.uv0, 11u).r : 1.0);
     material.index_of_refraction = material_parameters.volume_params.y;
     material.thickness = material_parameters.volume_params.z *
-        (has_advanced_texture(32.0) ? texture(thickness_texture, material_input.uv0).r : 1.0);
+        (has_advanced_texture(32.0) ? arc_sample_texture_2d(thickness_texture, material_input.uv0, 10u).r : 1.0);
     material.attenuation_color = material_parameters.attenuation_color.rgb;
     material.attenuation_distance = material_parameters.volume_params.w;
     material.subsurface_color = material_parameters.subsurface_color_factor.rgb;
     material.subsurface = material_parameters.subsurface_color_factor.w *
-        (has_advanced_texture(16.0) ? texture(subsurface_texture, material_input.uv0).r : 1.0);
+        (has_advanced_texture(16.0) ? arc_sample_texture_2d(subsurface_texture, material_input.uv0, 9u).r : 1.0);
     return material;
 }
 

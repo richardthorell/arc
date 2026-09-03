@@ -51,7 +51,8 @@ TEST_CASE("Material IR codegen deterministically implements the full material AB
     REQUIRE(first.value().generated_line_nodes == second.value().generated_line_nodes);
 
     const auto& source = first.value().source;
-    REQUIRE(source.find("ARC_MATERIAL_ABI_VERSION = 1") != std::string::npos);
+    REQUIRE(source.find("ARC_MATERIAL_ABI_VERSION = 2") != std::string::npos);
+    REQUIRE(source.find("float4 arcSampleTexture2D") != std::string::npos);
     REQUIRE(source.find("ArcSurfaceData arc_evaluate_material(ArcSurfaceInput input)") != std::string::npos);
     REQUIRE(source.find("surface.clearCoatNormalWS = surface.normalWS") != std::string::npos);
     REQUIRE(source.find("surface.clearCoatRoughness = 0.1") != std::string::npos);
@@ -65,8 +66,10 @@ TEST_CASE("Material IR codegen deterministically implements the full material AB
     REQUIRE(source.find("ParameterBlock<ArcMaterialParameters>") == std::string::npos);
     REQUIRE(source.find("ParameterBlock<ArcFrame>") == std::string::npos);
     REQUIRE(source.find("Texture2D<float4> arcMaterialTextures[2];") != std::string::npos);
-    REQUIRE(source.find("float3 arc_node_a_texture_rgb = arcMaterialTextures[0].Sample") != std::string::npos);
-    REQUIRE(source.find("float3 arc_node_z_texture_rgb = arcMaterialTextures[1].Sample") != std::string::npos);
+    REQUIRE(source.find("float3 arc_node_a_texture_rgb = arcSampleTexture2D(arcMaterialTextures[0]") !=
+            std::string::npos);
+    REQUIRE(source.find("float3 arc_node_z_texture_rgb = arcSampleTexture2D(arcMaterialTextures[1]") !=
+            std::string::npos);
     REQUIRE(source.find("float3 arc_node_tinted_result =") != std::string::npos);
     REQUIRE(source.find("float arc_node_clock_time = arcFrame.timeSeconds") != std::string::npos);
     REQUIRE(source.find("input.uv0") != std::string::npos);

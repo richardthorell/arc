@@ -652,8 +652,9 @@ private:
                 const auto slot = texture_slots_.find(node.id);
                 if (slot == texture_slots_.end())
                     throw std::runtime_error("material IR texture node has no descriptor slot: " + node.id);
-                const auto sample = "arcMaterialTextures[" + std::to_string(slot->second) +
-                                    "].Sample(arcMaterialSampler," + input(node.id, "uv", "input.uv0") + ')';
+                const auto sample = "arcSampleTexture2D(arcMaterialTextures[" + std::to_string(slot->second) +
+                                    "],arcMaterialSampler," + input(node.id, "uv", "input.uv0") + ',' +
+                                    std::to_string(slot->second) + ')';
                 expression = pin == "rgb" ? sample + ".rgb" : pin == "rgba" ? sample : sample + '.' + pin;
                 break;
             }
@@ -729,7 +730,12 @@ private:
 
 void append_material_abi(source_builder& source)
 {
-    source.append("static const uint ARC_MATERIAL_ABI_VERSION = 1;");
+    source.append("static const uint ARC_MATERIAL_ABI_VERSION = 2;");
+    source.append("float4 arcSampleTexture2D(Texture2D<float4> textureResource, SamplerState samplerResource, "
+                  "float2 uv, uint textureMetadataIndex)");
+    source.append("{");
+    source.append("    return textureResource.Sample(samplerResource, uv);");
+    source.append("}");
     source.append("struct ArcSurfaceInput");
     source.append("{");
     source.append("    float3 positionWS;");
@@ -893,7 +899,7 @@ material_shader_codegen_result generate_material_slang(const material_graph_comp
         const auto subsurface = expressions.output(material_surface_output::subsurface, {});
 
         source_builder source{generated};
-        source.append("// ARC generated Material IR v1; Material ABI v1; codegen v4.");
+        source.append("// ARC generated Material IR v1; Material ABI v2; codegen v5.");
         append_material_abi(source);
 
         const auto has_material_parameters =
