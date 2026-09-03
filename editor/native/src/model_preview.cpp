@@ -185,7 +185,7 @@ model_preview_result render_model_preview(const render::scene_import_result& sce
     const float radius = std::max(length(extent) * 0.5f, 0.001f);
     const float fov = 35.0f * std::numbers::pi_v<float> / 180.0f;
     const float focal = 1.0f / std::tan(fov * 0.5f);
-    const float distance = radius * focal * 1.34f;
+    const float distance = radius * focal * 1.12f;
     const vec3 camera_direction = normalize(vec3{1.0f, 0.72f, 1.0f});
     vec3 camera_position = add(center, mul(camera_direction, distance));
     const vec3 forward = normalize(sub(center, camera_position));
@@ -212,8 +212,8 @@ model_preview_result render_model_preview(const render::scene_import_result& sce
     {
         const float center_x = (screen_bounds.minimum_x + screen_bounds.maximum_x) * 0.5f;
         const float center_y = (screen_bounds.minimum_y + screen_bounds.maximum_y) * 0.5f;
-        camera_position = add(camera_position, add(mul(right, center_x * distance / focal),
-                                                   mul(up, center_y * distance / focal)));
+        camera_position =
+            add(camera_position, add(mul(right, center_x * distance / focal), mul(up, center_y * distance / focal)));
     }
 
     render::texture_data texture;

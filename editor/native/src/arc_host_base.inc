@@ -42,6 +42,7 @@
 #include <utility>
 #include <vector>
 #include <nlohmann/json.hpp>
+#include <png.h>
 
 namespace arc::editor
 {
@@ -314,6 +315,26 @@ std::uint8_t preview_channel(float linear_value)
     const float mapped = std::max(0.0f, linear_value) / (1.0f + std::max(0.0f, linear_value));
     const float srgb = mapped <= 0.0031308f ? mapped * 12.92f : 1.055f * std::pow(mapped, 1.0f / 2.4f) - 0.055f;
     return static_cast<std::uint8_t>(std::clamp(std::lround(srgb * 255.0f), 0l, 255l));
+}
+
+std::vector<std::byte> texture_preview_png_rgba(const render::texture_data& texture)
+{
+    if (!texture.has_pixels() || texture.width == 0u || texture.height == 0u) return {};
+    if (texture.format != render::texture_format::rgba8_unorm && texture.format != render::texture_format::rgba8_srgb)
+        return {};
+
+    png_image image{};
+    image.version = PNG_IMAGE_VERSION;
+    image.width = texture.width;
+    image.height = texture.height;
+    image.format = PNG_FORMAT_RGBA;
+
+    png_alloc_size_t byte_count{};
+    if (!png_image_write_to_memory(&image, nullptr, &byte_count, 0, texture.pixels.data(), 0, nullptr)) return {};
+    std::vector<std::byte> bytes(static_cast<std::size_t>(byte_count));
+    if (!png_image_write_to_memory(&image, bytes.data(), &byte_count, 0, texture.pixels.data(), 0, nullptr)) return {};
+    bytes.resize(static_cast<std::size_t>(byte_count));
+    return bytes;
 }
 
 std::vector<std::byte> texture_preview_bmp(const render::texture_data& texture, std::uint32_t max_size)
@@ -5473,15 +5494,15 @@ std::optional<host_asset_thumbnail_snapshot> arc_host::asset_thumbnail(std::stri
         if (!rendered.succeeded()) return std::nullopt;
         preview = std::move(rendered.texture);
 
-        const auto bmp = texture_preview_bmp(preview, requested_size);
-        if (bmp.empty()) return std::nullopt;
+        const auto png = texture_preview_png_rgba(preview);
+        if (png.empty()) return std::nullopt;
         const float scale = std::min(1.0f, static_cast<float>(requested_size) /
                                                static_cast<float>(std::max(preview.width, preview.height)));
         host_asset_thumbnail_snapshot snapshot{
             .path = std::string(path),
             .width = std::max(1u, static_cast<std::uint32_t>(std::lround(preview.width * scale))),
             .height = std::max(1u, static_cast<std::uint32_t>(std::lround(preview.height * scale))),
-            .data_url = "data:image/bmp;base64," + base64_encode(bmp)};
+            .data_url = "data:image/png;base64," + base64_encode(png)};
         if (!timestamp_error) model_thumbnail_cache[cache_key] = {.source_time = source_time, .snapshot = snapshot};
         return snapshot;
     }
