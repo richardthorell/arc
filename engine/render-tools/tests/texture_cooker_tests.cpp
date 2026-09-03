@@ -91,7 +91,8 @@ TEST_CASE("decoded textures cook authored semantic and color space into artifact
     CHECK(inspected.value().mode == render::texture_streaming_mode::virtual_tiles);
     CHECK(inspected.value().semantic == render::texture_semantic::normal);
     CHECK(inspected.value().color_space == render::texture_color_space::linear);
-    CHECK(inspected.value().format == render::texture_format::rgba8_unorm);
+    CHECK(inspected.value().format == render::texture_format::bc5_rg_unorm);
+    CHECK(cooked.artifacts[0].gpu_compressed);
 }
 
 TEST_CASE("texture presets resolve deterministic group sampling policy")
@@ -234,4 +235,101 @@ TEST_CASE("texture curve settings round trip in version seven")
     REQUIRE(parsed.has_value());
     CHECK(parsed.value().curves_enabled);
     CHECK(parsed.value().curve_master.points.back().y == Catch::Approx(0.75f));
+}
+
+TEST_CASE("Stage 6 color textures cook to deterministic BC blocks")
+{
+    using namespace arc;
+    render::tools::texture_cook_processor processor;
+    assets::asset_cook_context context;
+    context.asset.guid = {6, 1};
+    context.asset.type = assets::asset_types::texture_2d;
+    context.source.source_path = "checker_albedo.bmp";
+    context.source.bytes = checker_bmp();
+    context.settings_version = render::tools::texture_import_settings::current_version;
+    auto settings = render::tools::texture_import_settings_for_preset(render::tools::texture_import_preset::color);
+    context.canonical_settings = render::tools::serialize_texture_import_settings(settings);
+    context.target = assets::windows_vulkan_cook_target();
+    const auto first = processor.cook(context);
+    const auto second = processor.cook(context);
+    REQUIRE(first.succeeded());
+    REQUIRE(second.succeeded());
+    REQUIRE(first.artifacts.size() == 1u);
+    CHECK(first.artifacts[0].gpu_compressed);
+    CHECK(first.artifacts[0].bytes == second.artifacts[0].bytes);
+    const auto inspected = render::inspect_texture_artifact(first.artifacts[0].bytes);
+    REQUIRE(inspected.has_value());
+    CHECK(inspected.value().format == render::texture_format::bc1_rgba_srgb);
+    REQUIRE(inspected.value().mips.size() == 2u);
+    CHECK(inspected.value().mips[0].stored_size == 8u);
+    CHECK(inspected.value().mips[1].stored_size == 8u);
+}
+
+TEST_CASE("Stage 6 normal maps use two-channel BC5")
+{
+    using namespace arc;
+    render::tools::texture_cook_processor processor;
+    assets::asset_cook_context context;
+    context.asset.guid = {6, 2};
+    context.asset.type = assets::asset_types::texture_2d;
+    context.source.source_path = "checker_normal.bmp";
+    context.source.bytes = checker_bmp();
+    context.settings_version = render::tools::texture_import_settings::current_version;
+    auto settings = render::tools::texture_import_settings_for_preset(render::tools::texture_import_preset::normal_map);
+    context.canonical_settings = render::tools::serialize_texture_import_settings(settings);
+    context.target = assets::windows_vulkan_cook_target();
+    const auto cooked = processor.cook(context);
+    REQUIRE(cooked.succeeded());
+    CHECK(cooked.artifacts[0].gpu_compressed);
+    const auto inspected = render::inspect_texture_artifact(cooked.artifacts[0].bytes);
+    REQUIRE(inspected.has_value());
+    CHECK(inspected.value().format == render::texture_format::bc5_rg_unorm);
+    CHECK(inspected.value().mips[0].stored_size == 16u);
+}
+
+TEST_CASE("Stage 6 single channel masks use BC4")
+{
+    using namespace arc;
+    render::tools::texture_cook_processor processor;
+    assets::asset_cook_context context;
+    context.asset.guid = {6, 3};
+    context.asset.type = assets::asset_types::texture_2d;
+    context.source.source_path = "checker_occlusion.bmp";
+    context.source.bytes = checker_bmp();
+    context.settings_version = render::tools::texture_import_settings::current_version;
+    auto settings = render::tools::texture_import_settings_for_preset(render::tools::texture_import_preset::data);
+    settings.semantic = render::texture_semantic::occlusion;
+    settings.compression = render::texture_compression_policy::mask;
+    context.canonical_settings = render::tools::serialize_texture_import_settings(settings);
+    context.target = assets::windows_vulkan_cook_target();
+    const auto cooked = processor.cook(context);
+    REQUIRE(cooked.succeeded());
+    const auto inspected = render::inspect_texture_artifact(cooked.artifacts[0].bytes);
+    REQUIRE(inspected.has_value());
+    CHECK(inspected.value().format == render::texture_format::bc4_r_unorm);
+    CHECK(inspected.value().mips[0].stored_size == 8u);
+}
+
+TEST_CASE("Stage 6 unsupported target families fall back without lying about GPU compression")
+{
+    using namespace arc;
+    render::tools::texture_cook_processor processor;
+    assets::asset_cook_context context;
+    context.asset.guid = {6, 4};
+    context.asset.type = assets::asset_types::texture_2d;
+    context.source.source_path = "checker_albedo.bmp";
+    context.source.bytes = checker_bmp();
+    context.settings_version = render::tools::texture_import_settings::current_version;
+    auto settings = render::tools::texture_import_settings_for_preset(render::tools::texture_import_preset::color);
+    context.canonical_settings = render::tools::serialize_texture_import_settings(settings);
+    context.target = assets::windows_vulkan_cook_target();
+    context.target.textures = assets::cook_texture_family::astc;
+    const auto cooked = processor.cook(context);
+    REQUIRE(cooked.succeeded());
+    CHECK_FALSE(cooked.artifacts[0].gpu_compressed);
+    const auto inspected = render::inspect_texture_artifact(cooked.artifacts[0].bytes);
+    REQUIRE(inspected.has_value());
+    CHECK(inspected.value().format == render::texture_format::rgba8_srgb);
+    REQUIRE_FALSE(cooked.diagnostics.empty());
+    CHECK(cooked.diagnostics.back().category == "texture.compression");
 }
