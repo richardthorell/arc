@@ -40,12 +40,24 @@ function builtInAlreadyPresent(snapshot: InspectorEntitySnapshot, id: string) {
 export function AddComponentPicker({ snapshot, projectSchemas, onAdd }: AddComponentPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const frame = window.requestAnimationFrame(() => searchRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (rootRef.current?.contains(event.target as Node)) return;
+      setOpen(false);
+      setQuery('');
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
   }, [open]);
 
   const options = useMemo(() => {
@@ -86,7 +98,7 @@ export function AddComponentPicker({ snapshot, projectSchemas, onAdd }: AddCompo
   };
 
   return (
-    <div className="inspector-add-component-picker">
+    <div className="inspector-add-component-picker" ref={rootRef}>
       <button
         aria-expanded={open}
         className="inspector-add-component-trigger"
