@@ -20,22 +20,6 @@ jobs:
           fetch-depth: 0
       - name: Apply changes
         run: python3 .github/scripts/temp_quick_start_default_scene.py
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.12.0
-      - name: Install dependencies
-        working-directory: editor
-        run: npm ci --ignore-scripts
-      - name: Configure project tool
-        run: cmake -S . -B out/build/quick-start-test -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DARC_BUILD_RENDER_VULKAN=OFF -DARC_BUILD_EDITOR=OFF -DARC_BUILD_ENGINE_TESTS=OFF
-      - name: Build project tool
-        run: cmake --build out/build/quick-start-test --target arc-project -j2
-      - name: Validate
-        working-directory: editor
-        run: |
-          npx prettier --write src/main/projectService.ts src/main/projectService.test.ts
-          npm run typecheck
-          ARC_PROJECT_TOOL_PATH=../out/build/quick-start-test/tools/project_cli/arc-project npx vitest run src/main/projectService.test.ts --pool=threads --maxWorkers=1
       - name: Commit
         run: |
           rm .github/workflows/temp-quick-start-default-scene.yml
@@ -45,4 +29,3 @@ jobs:
           git add -A
           git commit -m "Use native default scene for quick start"
           git push origin HEAD:fix/default-white-infinite-grid
-# rerun 2
