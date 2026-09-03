@@ -173,7 +173,8 @@ TEST_CASE("texture residency deduplicates demand rejects stale work and evicts u
     residency.begin_frame(1);
     auto loads = residency.take_load_requests();
     REQUIRE(loads.size() == 2);
-    CHECK(loads[0].mip == 2);
+    CHECK(loads[0].mip == 3);
+    CHECK(loads[1].mip == 2);
     for (const auto& load : loads)
     {
         residency.mark_loading(load);
@@ -276,7 +277,8 @@ TEST_CASE("resident texture mode pins and requests the complete mip chain")
     residency.register_resource({9, 1}, descriptor);
     const auto loads = residency.take_load_requests();
     REQUIRE(loads.size() == descriptor.artifact.mips.size());
-    CHECK(loads.front().mip == 0);
+    CHECK(loads.front().mip == descriptor.artifact.mips.size() - 1u);
+    CHECK(loads.back().mip == 0);
 }
 
 TEST_CASE("texture residency only claims requests accepted by an IO capacity window")

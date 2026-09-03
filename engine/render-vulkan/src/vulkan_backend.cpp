@@ -243,6 +243,31 @@ struct packed_gpu_scene_instance
     gpu_scene_visibility_record visibility;
 };
 
+struct alignas(16) gpu_texture_mip_demand
+{
+    std::uint32_t slot{};
+    std::uint32_t generation{};
+    std::uint32_t desired_mip{};
+    std::uint32_t coverage{};
+};
+static_assert(sizeof(gpu_texture_mip_demand) == 16);
+
+struct alignas(16) gpu_texture_mip_slot
+{
+    std::uint32_t desired_mip{std::numeric_limits<std::uint32_t>::max()};
+    std::uint32_t generation{};
+    std::uint32_t coverage{};
+    std::uint32_t reserved{};
+};
+static_assert(sizeof(gpu_texture_mip_slot) == 16);
+
+struct texture_feedback_push_constants
+{
+    std::uint32_t demand_count{};
+    std::uint32_t slot_count{};
+};
+static_assert(sizeof(texture_feedback_push_constants) == 8);
+
 struct alignas(16) gpu_visibility_push_constants
 {
     float view_projection[16]{};
@@ -450,6 +475,7 @@ public:
         destroy_buffer(gpu_scene_visibility_buffer_);
         destroy_buffer(gpu_scene_transform_buffer_);
         destroy_gpu_visibility_resources();
+        destroy_texture_feedback_resources();
 #if ARC_VULKAN_SHARED_VIEWPORT
         destroy_all_shared_viewports();
 #endif
@@ -896,6 +922,7 @@ public:
 
         auto* frame = &swapchain_.frames[swapchain_.frame_index];
         vkWaitForFences(device_, 1, &frame->fence, VK_TRUE, UINT64_MAX);
+        collect_texture_mip_feedback(swapchain_.frame_index);
         collect_timestamp_results();
         collect_object_pick_result();
         collect_frame_capture_result();
@@ -1326,6 +1353,7 @@ private:
         if (viewport_image_ == VK_NULL_HANDLE)
             return surface_frame_result::failure({.code = surface_frame_error_code::backend_failure,
                                                   .message = "viewport render target is unavailable"});
+        collect_texture_mip_feedback(slot_index);
         collect_timestamp_results();
         collect_object_pick_result();
         collect_frame_capture_result();
@@ -1435,6 +1463,32 @@ private:
         VmaAllocation allocation{};
     };
 
+    struct texture_feedback_frame
+    {
+        gpu_buffer demands;
+        gpu_buffer slots;
+        VkDescriptorSet descriptor_set{};
+        std::uint32_t demand_capacity{};
+        std::uint32_t slot_capacity{};
+        std::uint32_t submitted_slot_count{};
+        std::uint64_t submitted_frame{};
+    };
+
+    struct texture_feedback_slot
+    {
+        texture_handle resource{};
+        std::uint32_t content_generation{};
+        std::uint32_t slot_generation{1};
+        std::uint32_t mip_count{};
+        bool active{};
+    };
+
+    struct retired_texture_feedback_slot
+    {
+        std::uint32_t slot{};
+        std::uint64_t reuse_after_frame{};
+    };
+
     struct debug_overlay_vertex
     {
         math::vector3f position{};
@@ -1542,6 +1596,7 @@ private:
         VkImageLayout layout{VK_IMAGE_LAYOUT_UNDEFINED};
         std::uint32_t mip_count{1};
         std::uint32_t mip_window_base{};
+        std::uint32_t feedback_slot{resource_handle::invalid_index};
         bool streamable{};
     };
 
@@ -1962,6 +2017,7 @@ private:
     void retire_completed_resources()
     {
         deferred_releases_.collect(last_completed_frame_);
+        collect_texture_feedback_slots();
         frame_arena_.reset();
     }
 
@@ -3761,10 +3817,62 @@ private:
                                  [this, texture = std::move(texture)]() mutable { destroy_texture(texture); });
     }
 
+    void collect_texture_feedback_slots()
+    {
+        for (std::size_t index = 0; index < retired_texture_feedback_slots_.size();)
+        {
+            if (retired_texture_feedback_slots_[index].reuse_after_frame > last_completed_frame_)
+            {
+                ++index;
+                continue;
+            }
+            free_texture_feedback_slots_.push_back(retired_texture_feedback_slots_[index].slot);
+            retired_texture_feedback_slots_[index] = retired_texture_feedback_slots_.back();
+            retired_texture_feedback_slots_.pop_back();
+        }
+    }
+
+    std::uint32_t allocate_texture_feedback_slot(texture_handle resource, std::uint32_t content_generation,
+                                                 std::uint32_t mip_count)
+    {
+        collect_texture_feedback_slots();
+        std::uint32_t index{};
+        if (!free_texture_feedback_slots_.empty())
+        {
+            index = free_texture_feedback_slots_.back();
+            free_texture_feedback_slots_.pop_back();
+            auto& slot = texture_feedback_slots_[index];
+            slot.slot_generation = slot.slot_generation == std::numeric_limits<std::uint32_t>::max()
+                                       ? 1u
+                                       : slot.slot_generation + 1u;
+        }
+        else
+        {
+            index = static_cast<std::uint32_t>(texture_feedback_slots_.size());
+            texture_feedback_slots_.push_back({});
+        }
+        auto& slot = texture_feedback_slots_[index];
+        slot.resource = resource;
+        slot.content_generation = content_generation;
+        slot.mip_count = mip_count;
+        slot.active = true;
+        return index;
+    }
+
+    void retire_texture_feedback_slot(std::uint32_t slot)
+    {
+        if (slot >= texture_feedback_slots_.size() || !texture_feedback_slots_[slot].active) return;
+        texture_feedback_slots_[slot].active = false;
+        texture_feedback_slots_[slot].resource = {};
+        retired_texture_feedback_slots_.push_back(
+            {.slot = slot, .reuse_after_frame = last_profile_.frame_index + frame_resource_count()});
+    }
+
     void retire_texture(texture_handle handle)
     {
         const auto found = textures_.find(resource_key(handle));
         if (found == textures_.end()) return;
+        retire_texture_feedback_slot(found->second.feedback_slot);
         auto retired = std::move(found->second);
         textures_.erase(found);
         defer_texture_release(std::move(retired));
@@ -3787,9 +3895,14 @@ private:
         texture.data.color_space = texture.streaming.texture.color_space;
         texture.data.semantic = texture.streaming.texture.semantic;
         texture.data.mip_levels = texture.streaming.texture.mip_levels;
+        texture.feedback_slot = allocate_texture_feedback_slot(event.handle, texture.streaming.content_generation,
+                                                               texture.streaming.artifact.mip_count);
         const auto key = resource_key(event.handle);
         if (const auto found = textures_.find(key); found != textures_.end())
+        {
+            retire_texture_feedback_slot(found->second.feedback_slot);
             defer_texture_release(std::move(found->second));
+        }
         textures_[key] = std::move(texture);
     }
 
@@ -3834,6 +3947,7 @@ private:
         replacement.streamed_mips = texture.streamed_mips;
         replacement.streamable = true;
         replacement.mip_window_base = base;
+        replacement.feedback_slot = texture.feedback_slot;
         replacement.data = data;
         if (!upload_texture_image(data, replacement)) return false;
         auto retired = std::move(texture);
@@ -3884,6 +3998,296 @@ private:
             arc::diagnostics::warn("render.vulkan", "Failed to shrink a streamed texture mip window");
     }
 
+    void destroy_texture_feedback_resources() noexcept
+    {
+        for (auto& frame : texture_feedback_frames_)
+        {
+            destroy_buffer(frame.demands);
+            destroy_buffer(frame.slots);
+        }
+        texture_feedback_frames_.clear();
+        if (texture_feedback_pipeline_ != VK_NULL_HANDLE)
+            vkDestroyPipeline(device_, texture_feedback_pipeline_, nullptr);
+        if (texture_feedback_pipeline_layout_ != VK_NULL_HANDLE)
+            vkDestroyPipelineLayout(device_, texture_feedback_pipeline_layout_, nullptr);
+        if (texture_feedback_descriptor_pool_ != VK_NULL_HANDLE)
+            vkDestroyDescriptorPool(device_, texture_feedback_descriptor_pool_, nullptr);
+        if (texture_feedback_descriptor_set_layout_ != VK_NULL_HANDLE)
+            vkDestroyDescriptorSetLayout(device_, texture_feedback_descriptor_set_layout_, nullptr);
+        texture_feedback_pipeline_ = VK_NULL_HANDLE;
+        texture_feedback_pipeline_layout_ = VK_NULL_HANDLE;
+        texture_feedback_descriptor_pool_ = VK_NULL_HANDLE;
+        texture_feedback_descriptor_set_layout_ = VK_NULL_HANDLE;
+    }
+
+    bool ensure_texture_feedback_pipeline()
+    {
+        if (texture_feedback_pipeline_ != VK_NULL_HANDLE) return true;
+        std::array<VkDescriptorSetLayoutBinding, 2> bindings{};
+        for (std::uint32_t binding = 0; binding < bindings.size(); ++binding)
+            bindings[binding] = {binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+        VkDescriptorSetLayoutCreateInfo set_layout{};
+        set_layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        set_layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
+        set_layout.pBindings = bindings.data();
+        if (vkCreateDescriptorSetLayout(device_, &set_layout, nullptr, &texture_feedback_descriptor_set_layout_) !=
+            VK_SUCCESS)
+            return false;
+
+        VkDescriptorPoolSize pool_size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 128u};
+        VkDescriptorPoolCreateInfo pool{};
+        pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pool.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        pool.maxSets = 64u;
+        pool.poolSizeCount = 1;
+        pool.pPoolSizes = &pool_size;
+        if (vkCreateDescriptorPool(device_, &pool, nullptr, &texture_feedback_descriptor_pool_) != VK_SUCCESS)
+            return false;
+
+        VkPushConstantRange push{VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(texture_feedback_push_constants)};
+        VkPipelineLayoutCreateInfo pipeline_layout{};
+        pipeline_layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipeline_layout.setLayoutCount = 1;
+        pipeline_layout.pSetLayouts = &texture_feedback_descriptor_set_layout_;
+        pipeline_layout.pushConstantRangeCount = 1;
+        pipeline_layout.pPushConstantRanges = &push;
+        if (vkCreatePipelineLayout(device_, &pipeline_layout, nullptr, &texture_feedback_pipeline_layout_) !=
+            VK_SUCCESS)
+            return false;
+
+        const auto shader = create_shader_module(builtin::texture_mip_feedback_comp_spv,
+                                                 std::size(builtin::texture_mip_feedback_comp_spv));
+        if (shader == VK_NULL_HANDLE) return false;
+        VkPipelineShaderStageCreateInfo stage{};
+        stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        stage.module = shader;
+        stage.pName = "main";
+        VkComputePipelineCreateInfo pipeline{};
+        pipeline.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        pipeline.stage = stage;
+        pipeline.layout = texture_feedback_pipeline_layout_;
+        const auto result =
+            vkCreateComputePipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &texture_feedback_pipeline_);
+        vkDestroyShaderModule(device_, shader, nullptr);
+        return result == VK_SUCCESS;
+    }
+
+    bool ensure_texture_feedback_frame(texture_feedback_frame& frame, std::uint32_t demand_count,
+                                       std::uint32_t slot_count)
+    {
+        if (!ensure_texture_feedback_pipeline()) return false;
+        const auto demand_capacity = std::max(64u, std::bit_ceil(std::max(demand_count, 1u)));
+        const auto slot_capacity = std::max(64u, std::bit_ceil(std::max(slot_count, 1u)));
+        if (frame.demands.buffer != VK_NULL_HANDLE && frame.demand_capacity >= demand_capacity &&
+            frame.slot_capacity >= slot_capacity)
+            return true;
+
+        if (frame.descriptor_set != VK_NULL_HANDLE)
+            vkFreeDescriptorSets(device_, texture_feedback_descriptor_pool_, 1, &frame.descriptor_set);
+        destroy_buffer(frame.demands);
+        destroy_buffer(frame.slots);
+        frame = {};
+        if (!create_buffer(buffer_size(demand_capacity, sizeof(gpu_texture_mip_demand)),
+                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, frame.demands) ||
+            !create_buffer(buffer_size(slot_capacity, sizeof(gpu_texture_mip_slot)),
+                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, frame.slots))
+        {
+            destroy_buffer(frame.demands);
+            destroy_buffer(frame.slots);
+            return false;
+        }
+        frame.demand_capacity = demand_capacity;
+        frame.slot_capacity = slot_capacity;
+        VkDescriptorSetAllocateInfo allocate{};
+        allocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocate.descriptorPool = texture_feedback_descriptor_pool_;
+        allocate.descriptorSetCount = 1;
+        allocate.pSetLayouts = &texture_feedback_descriptor_set_layout_;
+        if (vkAllocateDescriptorSets(device_, &allocate, &frame.descriptor_set) != VK_SUCCESS) return false;
+        const std::array<VkDescriptorBufferInfo, 2> infos{
+            VkDescriptorBufferInfo{frame.demands.buffer, 0, VK_WHOLE_SIZE},
+            VkDescriptorBufferInfo{frame.slots.buffer, 0, VK_WHOLE_SIZE}};
+        std::array<VkWriteDescriptorSet, 2> writes{};
+        for (std::uint32_t binding = 0; binding < writes.size(); ++binding)
+        {
+            writes[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[binding].dstSet = frame.descriptor_set;
+            writes[binding].dstBinding = binding;
+            writes[binding].descriptorCount = 1;
+            writes[binding].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            writes[binding].pBufferInfo = &infos[binding];
+        }
+        vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
+        return true;
+    }
+
+    float projected_texture_extent(const geometric::box3f& bounds) const noexcept
+    {
+        const auto dimensions = geometric::size(bounds);
+        const float diameter = std::max({dimensions[0], dimensions[1], dimensions[2]});
+        if (!frame_camera_valid_ || !(diameter > 0.0f)) return std::numeric_limits<float>::max();
+        const auto center = geometric::center(bounds);
+        const math::vector3f offset{center[0] - frame_camera_.position[0], center[1] - frame_camera_.position[1],
+                                    center[2] - frame_camera_.position[2]};
+        const float distance = std::max(std::sqrt(math::length_squared(offset)), diameter * 0.5f);
+        const float render_height = static_cast<float>(std::max(frame_camera_.render_height, viewport_height_));
+        return diameter * std::abs(frame_camera_.projection(1, 1)) * render_height /
+               std::max(2.0f * distance, 0.001f);
+    }
+
+    std::vector<gpu_texture_mip_demand> build_texture_mip_demands() const
+    {
+        std::vector<gpu_texture_mip_demand> demands;
+        const auto append_texture = [&](texture_handle handle, float extent)
+        {
+            const auto found = textures_.find(resource_key(handle));
+            if (found == textures_.end() || !found->second.streamable ||
+                found->second.feedback_slot == resource_handle::invalid_index)
+                return;
+            const auto slot_index = found->second.feedback_slot;
+            if (slot_index >= texture_feedback_slots_.size() || !texture_feedback_slots_[slot_index].active) return;
+            const auto& texture = found->second;
+            const auto desired = texture_requested_mip(texture.streaming.texture.width,
+                                                       texture.streaming.texture.height,
+                                                       texture.streaming.artifact.mip_count, extent);
+            const float coverage = std::clamp(extent / static_cast<float>(std::max(
+                                                  texture.streaming.texture.width, texture.streaming.texture.height)),
+                                              0.0f, 1.0f);
+            demands.push_back({.slot = slot_index,
+                               .generation = texture_feedback_slots_[slot_index].slot_generation,
+                               .desired_mip = desired,
+                               .coverage = static_cast<std::uint32_t>(
+                                   coverage * static_cast<float>(std::numeric_limits<std::uint32_t>::max()))});
+        };
+        const auto append_material = [&](material_handle handle, float extent)
+        {
+            const auto found = materials_.find(resource_key(handle));
+            if (found == materials_.end()) return;
+            const auto& material = found->second.data;
+            for (const auto texture : material.runtime_textures)
+                append_texture(texture, extent);
+            const std::array textures{material.base_color_texture,
+                                      material.metallic_roughness_texture,
+                                      material.normal_texture,
+                                      material.occlusion_texture,
+                                      material.emissive_texture,
+                                      material.clear_coat_texture,
+                                      material.clear_coat_roughness_texture,
+                                      material.clear_coat_normal_texture,
+                                      material.anisotropy_texture,
+                                      material.subsurface_texture,
+                                      material.thickness_texture,
+                                      material.transmission_texture};
+            for (const auto texture : textures)
+                append_texture(texture, extent);
+        };
+        for (const auto& draw : frame_draws_)
+            append_material(draw.material, projected_texture_extent(draw.world_bounds));
+        for (const auto& draw : frame_virtual_draws_)
+            append_material(draw.draw.material, projected_texture_extent(draw.draw.world_bounds));
+        for (const auto& draw : frame_terrain_draws_)
+            append_material(draw.terrain.material, projected_texture_extent(draw.terrain.world_bounds));
+        return demands;
+    }
+
+    void dispatch_texture_mip_feedback(VkCommandBuffer command_buffer)
+    {
+        if (!resolved_config_.features.texture_streaming || texture_feedback_slots_.empty()) return;
+        auto demands = build_texture_mip_demands();
+        if (demands.empty()) return;
+        if (texture_feedback_frames_.size() < frame_resource_count())
+            texture_feedback_frames_.resize(frame_resource_count());
+        auto& frame = texture_feedback_frames_[current_frame_slot()];
+        const auto slot_count = static_cast<std::uint32_t>(texture_feedback_slots_.size());
+        if (!ensure_texture_feedback_frame(frame, static_cast<std::uint32_t>(demands.size()), slot_count))
+        {
+            last_profile_.texture_streaming.fallback_reason = "texture feedback resources are unavailable";
+            return;
+        }
+
+        std::vector<gpu_texture_mip_slot> slots(slot_count);
+        for (std::uint32_t index = 0; index < slot_count; ++index)
+            slots[index].generation = texture_feedback_slots_[index].active
+                                          ? texture_feedback_slots_[index].slot_generation
+                                          : 0u;
+        void* mapped{};
+        if (vmaMapMemory(allocator_, frame.demands.allocation, &mapped) != VK_SUCCESS) return;
+        std::memcpy(mapped, demands.data(), demands.size() * sizeof(gpu_texture_mip_demand));
+        vmaFlushAllocation(allocator_, frame.demands.allocation, 0,
+                           demands.size() * sizeof(gpu_texture_mip_demand));
+        vmaUnmapMemory(allocator_, frame.demands.allocation);
+        if (vmaMapMemory(allocator_, frame.slots.allocation, &mapped) != VK_SUCCESS) return;
+        std::memcpy(mapped, slots.data(), slots.size() * sizeof(gpu_texture_mip_slot));
+        vmaFlushAllocation(allocator_, frame.slots.allocation, 0, slots.size() * sizeof(gpu_texture_mip_slot));
+        vmaUnmapMemory(allocator_, frame.slots.allocation);
+
+        std::array<VkBufferMemoryBarrier, 2> input_barriers{};
+        const std::array<gpu_buffer, 2> buffers{frame.demands, frame.slots};
+        for (std::size_t index = 0; index < input_barriers.size(); ++index)
+        {
+            input_barriers[index].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            input_barriers[index].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+            input_barriers[index].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            input_barriers[index].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            input_barriers[index].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            input_barriers[index].buffer = buffers[index].buffer;
+            input_barriers[index].size = VK_WHOLE_SIZE;
+        }
+        vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0,
+                             nullptr, static_cast<std::uint32_t>(input_barriers.size()), input_barriers.data(), 0,
+                             nullptr);
+        const texture_feedback_push_constants constants{static_cast<std::uint32_t>(demands.size()), slot_count};
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, texture_feedback_pipeline_);
+        vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, texture_feedback_pipeline_layout_, 0,
+                                1, &frame.descriptor_set, 0, nullptr);
+        vkCmdPushConstants(command_buffer, texture_feedback_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           sizeof(constants), &constants);
+        vkCmdDispatch(command_buffer, (constants.demand_count + 63u) / 64u, 1u, 1u);
+        VkBufferMemoryBarrier output{};
+        output.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        output.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        output.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        output.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        output.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        output.buffer = frame.slots.buffer;
+        output.size = VK_WHOLE_SIZE;
+        vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0,
+                             nullptr, 1, &output, 0, nullptr);
+        frame.submitted_slot_count = slot_count;
+        frame.submitted_frame = last_profile_.frame_index;
+    }
+
+    void collect_texture_mip_feedback(std::uint32_t frame_index)
+    {
+        if (frame_index >= texture_feedback_frames_.size()) return;
+        auto& frame = texture_feedback_frames_[frame_index];
+        if (frame.submitted_frame == 0 || frame.submitted_slot_count == 0) return;
+        void* mapped{};
+        if (vmaMapMemory(allocator_, frame.slots.allocation, &mapped) != VK_SUCCESS) return;
+        vmaInvalidateAllocation(allocator_, frame.slots.allocation, 0,
+                                frame.submitted_slot_count * sizeof(gpu_texture_mip_slot));
+        const auto* slots = static_cast<const gpu_texture_mip_slot*>(mapped);
+        completed_texture_feedback_.frame_index = frame.submitted_frame;
+        for (std::uint32_t index = 0; index < frame.submitted_slot_count && index < texture_feedback_slots_.size();
+             ++index)
+        {
+            const auto& owner = texture_feedback_slots_[index];
+            if (!owner.active || slots[index].generation != owner.slot_generation ||
+                slots[index].desired_mip == std::numeric_limits<std::uint32_t>::max())
+                continue;
+            completed_texture_feedback_.mips.push_back(
+                {.resource = owner.resource,
+                 .content_generation = owner.content_generation,
+                 .desired_mip = std::min(slots[index].desired_mip, owner.mip_count - 1u),
+                 .screen_coverage = static_cast<float>(slots[index].coverage) /
+                                    static_cast<float>(std::numeric_limits<std::uint32_t>::max())});
+        }
+        vmaUnmapMemory(allocator_, frame.slots.allocation);
+        frame.submitted_frame = 0;
+        frame.submitted_slot_count = 0;
+    }
+
     void upload_texture(const texture_upload_event& event)
     {
         if (!event.texture) return;
@@ -3904,7 +4308,11 @@ private:
         }
 
         const std::uint64_t key = resource_key(event.handle);
-        if (auto found = textures_.find(key); found != textures_.end()) defer_texture_release(std::move(found->second));
+        if (auto found = textures_.find(key); found != textures_.end())
+        {
+            retire_texture_feedback_slot(found->second.feedback_slot);
+            defer_texture_release(std::move(found->second));
+        }
         textures_[key] = std::move(texture);
     }
 
@@ -8950,6 +9358,8 @@ private:
         frame_fxaa_enabled_ = std::any_of(last_profile_.graph.passes.begin(), last_profile_.graph.passes.end(),
                                           [](const auto& pass) { return pass.builtin == builtin_render_pass::fxaa; });
 
+        dispatch_texture_mip_feedback(command_buffer);
+
         for (const auto& pass : last_profile_.graph.passes)
         {
             const auto scope = begin_gpu_scope(command_buffer, pass.name.c_str());
@@ -10501,6 +10911,14 @@ private:
     texture_feedback_readback completed_texture_feedback_;
     std::vector<texture_stream_upload_result> frame_texture_upload_results_;
     std::vector<texture_stream_upload_result> completed_texture_upload_results_;
+    std::vector<texture_feedback_slot> texture_feedback_slots_;
+    std::vector<std::uint32_t> free_texture_feedback_slots_;
+    std::vector<retired_texture_feedback_slot> retired_texture_feedback_slots_;
+    std::vector<texture_feedback_frame> texture_feedback_frames_;
+    VkDescriptorSetLayout texture_feedback_descriptor_set_layout_{};
+    VkDescriptorPool texture_feedback_descriptor_pool_{};
+    VkPipelineLayout texture_feedback_pipeline_layout_{};
+    VkPipeline texture_feedback_pipeline_{};
     std::unordered_map<std::uint64_t, gpu_material> materials_;
     std::unordered_map<std::uint64_t, gpu_environment> environments_;
     std::unordered_set<std::uint64_t> texture_semantic_diagnostics_;
@@ -10870,7 +11288,8 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.compute_shaders = capabilities.compute_queue;
     capabilities.storage_buffers = properties.limits.maxStorageBufferRange >= 128u * 1024u * 1024u;
     capabilities.storage_images = properties.limits.maxPerStageDescriptorStorageImages > 0;
-    capabilities.texture_mip_streaming = capabilities.graphics_queue && capabilities.transfer_queue;
+    capabilities.texture_mip_streaming = capabilities.graphics_queue && capabilities.transfer_queue &&
+                                         capabilities.compute_shaders && capabilities.storage_buffers;
     // Software page-table sampling is advertised only once feedback compaction,
     // cache publication, and the shared sampling ABI are all executable.
     capabilities.virtual_texture_feedback = false;

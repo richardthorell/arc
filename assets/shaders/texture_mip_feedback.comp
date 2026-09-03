@@ -1,0 +1,49 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct texture_mip_demand
+{
+    uint slot;
+    uint generation;
+    uint desired_mip;
+    uint coverage;
+};
+
+struct texture_mip_slot
+{
+    uint desired_mip;
+    uint generation;
+    uint coverage;
+    uint reserved;
+};
+
+layout(set = 0, binding = 0, std430) readonly buffer demand_buffer
+{
+    texture_mip_demand demands[];
+};
+
+layout(set = 0, binding = 1, std430) buffer slot_buffer
+{
+    texture_mip_slot slots[];
+};
+
+layout(push_constant) uniform feedback_constants
+{
+    uint demand_count;
+    uint slot_count;
+} constants;
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= constants.demand_count)
+        return;
+
+    texture_mip_demand demand = demands[index];
+    if (demand.slot >= constants.slot_count || slots[demand.slot].generation != demand.generation)
+        return;
+
+    atomicMin(slots[demand.slot].desired_mip, demand.desired_mip);
+    atomicMax(slots[demand.slot].coverage, demand.coverage);
+}

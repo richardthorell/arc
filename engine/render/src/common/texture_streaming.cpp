@@ -381,6 +381,9 @@ std::vector<texture_stream_load> texture_residency_manager::take_load_requests(s
     std::stable_sort(result.begin(), result.end(),
                      [](const auto& lhs, const auto& rhs)
                      {
+                         if (lhs.resource == rhs.resource && lhs.kind == texture_subresource_kind::mip &&
+                             rhs.kind == texture_subresource_kind::mip && lhs.mip != rhs.mip)
+                             return lhs.mip > rhs.mip;
                          if (lhs.priority != rhs.priority) return lhs.priority > rhs.priority;
                          if (lhs.resource.index != rhs.resource.index) return lhs.resource.index < rhs.resource.index;
                          if (lhs.kind != rhs.kind) return lhs.kind < rhs.kind;
