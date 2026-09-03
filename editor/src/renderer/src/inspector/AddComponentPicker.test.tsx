@@ -76,7 +76,10 @@ describe('AddComponentPicker', () => {
   it('hides built-in single-instance components that are already attached', async () => {
     render(
       <AddComponentPicker
-        snapshot={snapshot({ camera: {} as InspectorEntitySnapshot['camera'], light: {} as InspectorEntitySnapshot['light'] })}
+        snapshot={snapshot({
+          camera: {} as InspectorEntitySnapshot['camera'],
+          light: {} as InspectorEntitySnapshot['light'],
+        })}
         projectSchemas={[]}
         onAdd={vi.fn()}
       />,

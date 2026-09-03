@@ -131,12 +131,7 @@ export function AddComponentPicker({ snapshot, projectSchemas, onAdd }: AddCompo
               <section className="inspector-add-component-group" key={category}>
                 <h4>{category}</h4>
                 {entries.map((option) => (
-                  <button
-                    key={option.id}
-                    onClick={() => void add(option)}
-                    title={option.tooltip}
-                    type="button"
-                  >
+                  <button key={option.id} onClick={() => void add(option)} title={option.tooltip} type="button">
                     {option.label}
                   </button>
                 ))}
