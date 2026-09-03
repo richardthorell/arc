@@ -40,6 +40,7 @@ struct editor_scene_state
     render::mesh_handle default_mesh;
     render::material_handle default_material;
     render::material_handle primitive_material;
+    render::material_handle floor_material;
     assets::asset_reference primitive_material_asset;
     render::material_handle terrain_material;
     render::material_descriptor terrain_material_descriptor;
@@ -193,6 +194,8 @@ const char* selected_entity_name(const editor_scene_state& scene, const char* fa
 const char* primitive_type_name(editor_primitive_type type) noexcept;
 
 ecs::entity add_primitive_to_scene(editor_scene_state& scene, render::renderer& renderer, editor_primitive_type type);
+
+ecs::entity add_default_floor_to_scene(editor_scene_state& scene, render::renderer& renderer);
 
 ecs::entity add_world_environment_to_scene(editor_scene_state& scene);
 

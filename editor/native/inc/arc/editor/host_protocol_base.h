@@ -1350,7 +1350,7 @@ struct host_viewport_set_render_options_command
     host_visualization_mode visualization{host_visualization_mode::standard};
     host_overlay_mode overlay{host_overlay_mode::selected_wireframe};
     bool shadows{true};
-    bool grid{true};
+    bool grid{false};
     bool realtime{true};
     float camera_speed{4.0f};
     host_camera_anti_aliasing anti_aliasing{host_camera_anti_aliasing::inherit};
@@ -1627,7 +1627,7 @@ struct host_viewport_request
     host_visualization_mode visualization{host_visualization_mode::standard};
     host_overlay_mode overlay{host_overlay_mode::selected_wireframe};
     bool shadows{true};
-    bool grid{true};
+    bool grid{false};
     bool realtime{true};
     float camera_speed{4.0f};
     host_camera_anti_aliasing anti_aliasing{host_camera_anti_aliasing::inherit};

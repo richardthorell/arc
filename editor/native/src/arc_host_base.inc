@@ -1630,7 +1630,7 @@ editor_scene_state create_blank_scene(render::renderer& renderer, bool include_f
     if (editor_assets != nullptr) create_default_primitive_material(state, renderer, *editor_assets);
     if (include_floor)
     {
-        const auto floor = add_primitive_to_scene(state, renderer, editor_primitive_type::plane);
+        const auto floor = add_default_floor_to_scene(state, renderer);
         if (state.scene.alive(floor))
         {
             state.scene.get<scene::name_component>(floor).value = "Floor";
