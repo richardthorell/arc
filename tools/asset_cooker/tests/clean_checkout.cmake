@@ -68,6 +68,7 @@ file(WRITE "${ARC_TEST_ROOT}/CookFixture.arcproject" [=[
 set(output "${ARC_TEST_ROOT}/out")
 set(manifest "${output}/windows-x64-vulkan.arccookmanifest")
 
+message(STATUS "arc-cook-clean-checkout: starting cold cook (timeout: 180s)")
 execute_process(
     COMMAND "${ARC_COOK}" cook --project "${ARC_TEST_ROOT}"
         --root assets/fixtures/persistence_fixture.arcscene
@@ -75,11 +76,14 @@ execute_process(
     RESULT_VARIABLE first_result
     OUTPUT_VARIABLE first_output
     ERROR_VARIABLE first_error
+    TIMEOUT 180
 )
 if(NOT first_result EQUAL 0)
-    message(FATAL_ERROR "clean checkout cook failed:\n${first_output}\n${first_error}")
+    message(FATAL_ERROR "clean checkout cook failed (${first_result}):\n${first_output}\n${first_error}")
 endif()
+message(STATUS "arc-cook-clean-checkout: cold cook completed")
 
+message(STATUS "arc-cook-clean-checkout: starting warm cache cook (timeout: 90s)")
 execute_process(
     COMMAND "${ARC_COOK}" cook --project "${ARC_TEST_ROOT}"
         --root assets/fixtures/persistence_fixture.arcscene
@@ -87,29 +91,37 @@ execute_process(
     RESULT_VARIABLE second_result
     OUTPUT_VARIABLE second_output
     ERROR_VARIABLE second_error
+    TIMEOUT 90
 )
 if(NOT second_result EQUAL 0 OR NOT second_output MATCHES "\"cooked\":0")
-    message(FATAL_ERROR "incremental cook was not a complete cache hit:\n${second_output}\n${second_error}")
+    message(FATAL_ERROR "incremental cook was not a complete cache hit (${second_result}):\n${second_output}\n${second_error}")
 endif()
+message(STATUS "arc-cook-clean-checkout: warm cache cook completed")
 
+message(STATUS "arc-cook-clean-checkout: starting package (timeout: 120s)")
 execute_process(
     COMMAND "${ARC_COOK}" package --project "${ARC_TEST_ROOT}"
         --manifest "${manifest}" --output "${output}" --json
     RESULT_VARIABLE package_result
     OUTPUT_VARIABLE package_output
     ERROR_VARIABLE package_error
+    TIMEOUT 120
 )
 if(NOT package_result EQUAL 0)
-    message(FATAL_ERROR "clean checkout package failed:\n${package_output}\n${package_error}")
+    message(FATAL_ERROR "clean checkout package failed (${package_result}):\n${package_output}\n${package_error}")
 endif()
+message(STATUS "arc-cook-clean-checkout: package completed")
 
+message(STATUS "arc-cook-clean-checkout: starting verification (timeout: 60s)")
 execute_process(
     COMMAND "${ARC_COOK}" verify --project "${ARC_TEST_ROOT}"
         --manifest "${manifest}" --output "${output}" --json
     RESULT_VARIABLE verify_result
     OUTPUT_VARIABLE verify_output
     ERROR_VARIABLE verify_error
+    TIMEOUT 60
 )
 if(NOT verify_result EQUAL 0)
-    message(FATAL_ERROR "clean checkout package verification failed:\n${verify_output}\n${verify_error}")
+    message(FATAL_ERROR "clean checkout package verification failed (${verify_result}):\n${verify_output}\n${verify_error}")
 endif()
+message(STATUS "arc-cook-clean-checkout: verification completed")
