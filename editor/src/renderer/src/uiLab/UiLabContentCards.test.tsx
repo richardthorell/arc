@@ -19,7 +19,7 @@ describe('UiLabContentCards', () => {
     expect(view.getByText('Texture')).toBeVisible();
     expect(view.getByText('Material')).toBeVisible();
     expect(view.getByText('Model')).toBeVisible();
-    expect(view.getByText(/Hover any card/)).toBeVisible();
+    expect(view.queryByText(/Hover any card/)).not.toBeInTheDocument();
   });
 
   it('keeps the production hover details enabled in the lab', async () => {

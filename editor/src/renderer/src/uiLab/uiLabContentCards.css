@@ -10,12 +10,6 @@
   width: 100%;
 }
 
-.ui-lab-content-card-showcase > p {
-  margin: 10px 0 0;
-  color: var(--arc-color-text-muted);
-  font-size: var(--arc-text-xxs);
-}
-
 @media (max-width: 820px) {
   .ui-lab-content-card-showcase .content-assets.grid {
     grid-template-columns: repeat(auto-fit, minmax(184px, 1fr));

@@ -199,15 +199,18 @@ function LabCard({
   title,
   caption,
   wide = false,
+  fullWidth = false,
   children,
 }: {
   title: string;
   caption?: string;
   wide?: boolean;
+  fullWidth?: boolean;
   children: React.ReactNode;
 }) {
+  const widthClass = fullWidth ? 'ui-lab-card-full' : wide ? 'ui-lab-card-wide' : '';
   return (
-    <article className={`ui-lab-card ${wide ? 'ui-lab-card-wide' : ''}`}>
+    <article className={`ui-lab-card ${widthClass}`}>
       <header>
         <strong>{title}</strong>
         {caption && <code>{caption}</code>}
@@ -553,7 +556,7 @@ export function UiLab() {
           title="Content Browser cards"
           description="Production asset cards with representative image, material, and model previews. Hover a card to inspect its asset-details surface."
         >
-          <LabCard title="Asset cards + hover" caption="ContentAssetCard" wide>
+          <LabCard title="Asset cards + hover" caption="ContentAssetCard" fullWidth>
             <UiLabContentCards />
           </LabCard>
         </LabSection>
