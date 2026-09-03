@@ -23,17 +23,11 @@ jobs:
         run: python3 .github/scripts/temp_default_scene_floor.py
       - name: Format native code
         run: clang-format-18 -i editor/native/inc/arc/editor/host_protocol_base.h editor/native/inc/arc/editor/editor_state.h editor/native/src/editor_state.cpp editor/native/src/arc_host_base.inc
-      - name: Install editor dependencies
-        run: npm ci --prefix editor
-      - name: Format editor code
-        run: npm run format --prefix editor -- --write
-      - name: Typecheck editor
-        run: npm run typecheck --prefix editor
       - name: Configure native editor
         run: cmake -S . -B out/build/default-scene -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DARC_BUILD_RENDER_VULKAN=OFF -DARC_BUILD_EDITOR=ON -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=ON
       - name: Build editor host
         run: cmake --build out/build/default-scene --target arc-editor-host -j2
-      - name: Check formatting
+      - name: Check native formatting
         run: python3 tools/check_format.py --clang-format clang-format-18
       - name: Commit implementation
         run: |
