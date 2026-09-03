@@ -27,6 +27,7 @@ export type HostProjectComponentSchema = {
   tooltip?: string;
   schemaVersion: number;
   projectComponent?: boolean;
+  allowMultiple?: boolean;
   fields: HostProjectFieldSchema[];
 };
 export type InspectorFieldSchema = PropertyFieldSchema<InspectorEntitySnapshot>;
