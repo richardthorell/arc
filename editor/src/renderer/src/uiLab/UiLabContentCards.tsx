@@ -118,14 +118,16 @@ const thumbnails = new Map<string, string>([
 ]);
 
 export function UiLabContentCards() {
-  const thumbnailProvider = useMemo<AssetThumbnailProvider>(
-    () => async (path) => thumbnails.get(path) ?? null,
-    [],
-  );
+  const thumbnailProvider = useMemo<AssetThumbnailProvider>(() => async (path) => thumbnails.get(path) ?? null, []);
 
   return (
     <div className="ui-lab-content-card-showcase content-browser-v2">
-      <div aria-label="Content Browser card examples" aria-multiselectable="true" className="content-assets grid" role="listbox">
+      <div
+        aria-label="Content Browser card examples"
+        aria-multiselectable="true"
+        className="content-assets grid"
+        role="listbox"
+      >
         {assets.map((asset, index) => (
           <ContentAssetCard
             asset={asset}
