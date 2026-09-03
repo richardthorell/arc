@@ -1,11 +1,33 @@
 #include <arc/render/texture_streaming.h>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <unordered_map>
 
 namespace arc::render
 {
+texture_streaming_mode resolve_texture_streaming_mode(texture_streaming_mode authored,
+                                                      texture_streaming_capabilities capabilities) noexcept
+{
+    if (authored == texture_streaming_mode::resident) return texture_streaming_mode::resident;
+    if (authored == texture_streaming_mode::streamed_mips)
+        return capabilities.mip_streaming ? texture_streaming_mode::streamed_mips : texture_streaming_mode::resident;
+    if (capabilities.virtual_textures) return texture_streaming_mode::virtual_tiles;
+    return capabilities.mip_streaming ? texture_streaming_mode::streamed_mips : texture_streaming_mode::resident;
+}
+
+std::uint32_t texture_requested_mip(std::uint32_t width, std::uint32_t height, std::uint32_t mip_count,
+                                    float projected_texel_extent, float lod_bias) noexcept
+{
+    if (mip_count == 0) return 0;
+    const auto maximum = static_cast<float>(std::max(width, height));
+    if (!(projected_texel_extent > 0.0f) || !(maximum > 0.0f)) return mip_count - 1;
+    const auto lod = std::log2(maximum / projected_texel_extent) + lod_bias;
+    return static_cast<std::uint32_t>(
+        std::clamp(std::floor(std::max(0.0f, lod)), 0.0f, static_cast<float>(mip_count - 1)));
+}
+
 namespace
 {
 
@@ -71,9 +93,13 @@ struct texture_residency_manager::implementation
         std::vector<subresource_entry> mips;
         std::vector<subresource_entry> tiles;
         std::unordered_map<std::uint64_t, std::uint32_t> tile_lookup;
+        texture_streaming_mode authored_mode{texture_streaming_mode::resident};
+        std::optional<std::uint32_t> forced_mip;
+        std::uint32_t requested_mip{};
     };
 
     texture_residency_config config{};
+    texture_streaming_capabilities capabilities{};
     std::unordered_map<std::uint64_t, resource_entry> resources;
     std::vector<texture_stream_eviction> evictions;
     std::uint64_t frame_index{};
@@ -189,9 +215,11 @@ struct texture_residency_manager::implementation
     }
 };
 
-texture_residency_manager::texture_residency_manager(texture_residency_config config)
+texture_residency_manager::texture_residency_manager(texture_residency_config config,
+                                                     texture_streaming_capabilities capabilities)
     : implementation_(std::make_unique<implementation>())
 {
+    implementation_->capabilities = capabilities;
     configure(config);
 }
 
@@ -207,16 +235,25 @@ void texture_residency_manager::configure(texture_residency_config config)
     implementation_->trim();
 }
 
+void texture_residency_manager::set_capabilities(texture_streaming_capabilities capabilities)
+{
+    implementation_->capabilities = capabilities;
+}
+
 void texture_residency_manager::register_resource(texture_handle resource,
                                                   const streamed_texture_descriptor& descriptor)
 {
     unregister_resource(resource);
     implementation::resource_entry entry(resource, descriptor);
+    entry.authored_mode = descriptor.mode;
+    entry.descriptor.mode = resolve_texture_streaming_mode(descriptor.mode, implementation_->capabilities);
+    entry.requested_mip = descriptor.artifact.tail_first_mip;
     entry.mips.reserve(descriptor.artifact.mips.size());
     for (std::uint32_t mip = 0; mip < descriptor.artifact.mips.size(); ++mip)
     {
         const auto& range = descriptor.artifact.mips[mip];
-        const bool pinned = mip >= descriptor.artifact.tail_first_mip;
+        const bool pinned =
+            entry.descriptor.mode == texture_streaming_mode::resident || mip >= descriptor.artifact.tail_first_mip;
         entry.mips.push_back({.kind = texture_subresource_kind::mip,
                               .mip = mip,
                               .byte_offset = range.offset,
@@ -284,8 +321,10 @@ void texture_residency_manager::request(std::span<const texture_mip_feedback> mi
             ++implementation_->stale_requests;
             continue;
         }
-        const auto desired = std::min(
-            feedback.desired_mip, static_cast<std::uint32_t>(resource->mips.empty() ? 0 : resource->mips.size() - 1));
+        const auto requested = resource->forced_mip.value_or(feedback.desired_mip);
+        const auto desired =
+            std::min(requested, static_cast<std::uint32_t>(resource->mips.empty() ? 0 : resource->mips.size() - 1));
+        resource->requested_mip = desired;
         for (std::uint32_t mip = desired; mip < resource->mips.size(); ++mip)
             implementation_->demand(resource->mips[mip],
                                     mip_priority(resource->descriptor.artifact.mip_count, mip, feedback.screen_coverage,
@@ -439,6 +478,20 @@ void texture_residency_manager::note_parent_fallback() noexcept
     ++implementation_->parent_fallbacks;
 }
 
+void texture_residency_manager::set_forced_mip(texture_handle resource, std::uint32_t generation,
+                                               std::optional<std::uint32_t> mip) noexcept
+{
+    auto* entry = implementation_->find_resource(resource, generation);
+    if (!entry) return;
+    if (mip && !entry->mips.empty()) *mip = std::min(*mip, static_cast<std::uint32_t>(entry->mips.size() - 1));
+    entry->forced_mip = mip;
+    if (!mip) return;
+    entry->requested_mip = *mip;
+    for (std::uint32_t level = *mip; level < entry->mips.size(); ++level)
+        implementation_->demand(entry->mips[level], mip_priority(entry->descriptor.artifact.mip_count, level, 1.0f,
+                                                                 entry->mips[level].pinned));
+}
+
 texture_residency_snapshot texture_residency_manager::snapshot() const noexcept
 {
     texture_residency_snapshot result{.frame_index = implementation_->frame_index,
@@ -480,6 +533,38 @@ texture_residency_snapshot texture_residency_manager::snapshot() const noexcept
         for (const auto& tile : resource.tiles)
             accumulate(tile);
     }
+    return result;
+}
+
+std::vector<texture_streaming_resource_snapshot> texture_residency_manager::resource_snapshots() const
+{
+    std::vector<texture_streaming_resource_snapshot> result;
+    result.reserve(implementation_->resources.size());
+    for (const auto& [_, resource] : implementation_->resources)
+    {
+        std::uint32_t resident_first = resource.mips.empty() ? 0 : static_cast<std::uint32_t>(resource.mips.size());
+        std::uint64_t resident_bytes{};
+        for (const auto& mip : resource.mips)
+            if (mip.state == texture_residency_state::resident)
+            {
+                resident_first = std::min(resident_first, mip.mip);
+                resident_bytes += mip.gpu_bytes;
+            }
+        for (const auto& tile : resource.tiles)
+            if (tile.state == texture_residency_state::resident) resident_bytes += tile.gpu_bytes;
+        if (resident_first == resource.mips.size()) resident_first = resource.descriptor.artifact.tail_first_mip;
+        result.push_back({.resource = resource.handle,
+                          .content_generation = resource.descriptor.content_generation,
+                          .authored_mode = resource.authored_mode,
+                          .resolved_mode = resource.descriptor.mode,
+                          .requested_mip = resource.requested_mip,
+                          .resident_first_mip = resident_first,
+                          .tail_first_mip = resource.descriptor.artifact.tail_first_mip,
+                          .resident_bytes = resident_bytes,
+                          .forced_mip = resource.forced_mip});
+    }
+    std::sort(result.begin(), result.end(),
+              [](const auto& lhs, const auto& rhs) { return lhs.resource.index < rhs.resource.index; });
     return result;
 }
 

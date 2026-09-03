@@ -185,3 +185,52 @@ TEST_CASE("texture residency deduplicates demand rejects stale work and evicts u
     CHECK(evictions.front().mip == 0);
     CHECK(residency.snapshot().over_budget == false);
 }
+
+TEST_CASE("texture streaming resolves backend capabilities and projected mip demand")
+{
+    using namespace arc::render;
+    CHECK(resolve_texture_streaming_mode(texture_streaming_mode::virtual_tiles, {.mip_streaming = true}) ==
+          texture_streaming_mode::streamed_mips);
+    CHECK(resolve_texture_streaming_mode(texture_streaming_mode::virtual_tiles, {.mip_streaming = false}) ==
+          texture_streaming_mode::resident);
+    CHECK(resolve_texture_streaming_mode(texture_streaming_mode::virtual_tiles,
+                                         {.mip_streaming = true, .virtual_textures = true}) ==
+          texture_streaming_mode::virtual_tiles);
+    CHECK(texture_requested_mip(2048, 2048, 12, 2048.0f) == 0);
+    CHECK(texture_requested_mip(2048, 2048, 12, 512.0f) == 2);
+    CHECK(texture_requested_mip(2048, 2048, 12, 512.0f, 1.0f) == 3);
+}
+
+TEST_CASE("texture residency exposes resolved mode and supports forced mip debugging")
+{
+    using namespace arc::render;
+    texture_residency_manager residency({}, {.mip_streaming = true, .virtual_textures = false});
+    auto descriptor = make_streamed_descriptor();
+    descriptor.mode = texture_streaming_mode::virtual_tiles;
+    const texture_handle handle{8, 1};
+    residency.register_resource(handle, descriptor);
+    auto resources = residency.resource_snapshots();
+    REQUIRE(resources.size() == 1);
+    CHECK(resources[0].authored_mode == texture_streaming_mode::virtual_tiles);
+    CHECK(resources[0].resolved_mode == texture_streaming_mode::streamed_mips);
+    CHECK(resources[0].tail_first_mip == 2);
+
+    residency.set_forced_mip(handle, descriptor.content_generation, 1);
+    resources = residency.resource_snapshots();
+    REQUIRE(resources[0].forced_mip.has_value());
+    CHECK(*resources[0].forced_mip == 1);
+    const auto loads = residency.take_load_requests();
+    CHECK(std::any_of(loads.begin(), loads.end(), [](const auto& load) { return load.mip == 1; }));
+}
+
+TEST_CASE("resident texture mode pins and requests the complete mip chain")
+{
+    using namespace arc::render;
+    texture_residency_manager residency;
+    auto descriptor = make_streamed_descriptor();
+    descriptor.mode = texture_streaming_mode::resident;
+    residency.register_resource({9, 1}, descriptor);
+    const auto loads = residency.take_load_requests();
+    REQUIRE(loads.size() == descriptor.artifact.mips.size());
+    CHECK(loads.front().mip == 0);
+}

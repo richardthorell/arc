@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -13,6 +14,18 @@ namespace arc::render
 {
 
 using texture_stream_source_id = std::uint64_t;
+
+struct texture_streaming_capabilities
+{
+    bool mip_streaming{true};
+    bool virtual_textures{};
+};
+
+[[nodiscard]] texture_streaming_mode
+resolve_texture_streaming_mode(texture_streaming_mode authored, texture_streaming_capabilities capabilities) noexcept;
+
+[[nodiscard]] std::uint32_t texture_requested_mip(std::uint32_t width, std::uint32_t height, std::uint32_t mip_count,
+                                                  float projected_texel_extent, float lod_bias = 0.0f) noexcept;
 
 enum class texture_subresource_kind : std::uint8_t
 {
@@ -128,6 +141,19 @@ struct texture_residency_config
     std::uint32_t protected_frame_count{30};
 };
 
+struct texture_streaming_resource_snapshot
+{
+    texture_handle resource{};
+    std::uint32_t content_generation{};
+    texture_streaming_mode authored_mode{texture_streaming_mode::resident};
+    texture_streaming_mode resolved_mode{texture_streaming_mode::resident};
+    std::uint32_t requested_mip{};
+    std::uint32_t resident_first_mip{};
+    std::uint32_t tail_first_mip{};
+    std::uint64_t resident_bytes{};
+    std::optional<std::uint32_t> forced_mip;
+};
+
 struct texture_residency_snapshot
 {
     std::uint64_t frame_index{};
@@ -156,7 +182,8 @@ struct texture_residency_snapshot
 class texture_residency_manager
 {
 public:
-    explicit texture_residency_manager(texture_residency_config config = {});
+    explicit texture_residency_manager(texture_residency_config config = {},
+                                       texture_streaming_capabilities capabilities = {});
     ~texture_residency_manager();
     texture_residency_manager(texture_residency_manager&&) noexcept;
     texture_residency_manager& operator=(texture_residency_manager&&) noexcept;
@@ -164,6 +191,7 @@ public:
     texture_residency_manager& operator=(const texture_residency_manager&) = delete;
 
     void configure(texture_residency_config config);
+    void set_capabilities(texture_streaming_capabilities capabilities);
     void register_resource(texture_handle resource, const streamed_texture_descriptor& descriptor);
     void unregister_resource(texture_handle resource);
     void begin_frame(std::uint64_t frame_index);
@@ -178,7 +206,9 @@ public:
     [[nodiscard]] bool resident(texture_handle resource, std::uint32_t generation, texture_subresource_kind kind,
                                 std::uint32_t mip, std::uint32_t x = 0, std::uint32_t y = 0) const noexcept;
     void note_parent_fallback() noexcept;
+    void set_forced_mip(texture_handle resource, std::uint32_t generation, std::optional<std::uint32_t> mip) noexcept;
     [[nodiscard]] texture_residency_snapshot snapshot() const noexcept;
+    [[nodiscard]] std::vector<texture_streaming_resource_snapshot> resource_snapshots() const;
 
 private:
     struct implementation;
