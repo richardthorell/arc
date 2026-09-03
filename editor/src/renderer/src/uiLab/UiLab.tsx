@@ -20,6 +20,7 @@ import type { Vec3, Vec4 } from '../inspector/inspectorTypes';
 import { setPathValue } from '../inspector/propertySchema';
 import type { PropertyComponentSchema } from '../inspector/propertySchema';
 import { MenuBar } from '../layout/MenuBar';
+import { UiLabContentCards } from './UiLabContentCards';
 import { TerrainRange } from '../terrain/TerrainToolsPanel';
 import {
   UiButton,
@@ -545,6 +546,15 @@ export function UiLab() {
           </LabCard>
           <LabCard title="Prefab" caption="PrefabPicker">
             <PrefabPicker assets={filteredAssets} label="Prefab" value={prefab} onChange={setPrefab} />
+          </LabCard>
+        </LabSection>
+
+        <LabSection
+          title="Content Browser cards"
+          description="Production asset cards with representative image, material, and model previews. Hover a card to inspect its asset-details surface."
+        >
+          <LabCard title="Asset cards + hover" caption="ContentAssetCard" wide>
+            <UiLabContentCards />
           </LabCard>
         </LabSection>
 
