@@ -16,6 +16,16 @@ if addition not in text:
     text = text.replace(anchor, addition, 1)
 types.write_text(text)
 
+presentation = Path('editor/src/renderer/src/content/assetPresentation.ts')
+text = presentation.read_text()
+old = """export const assetPresentationIcon = (asset: Pick<AssetItem, 'kind' | 'path'>): DocumentTypeIconKind => {\n  const kind = assetPresentationKind(asset);\n  return kind === 'model' ? 'mesh' : kind;\n};"""
+new = """export const assetPresentationIcon = (asset: Pick<AssetItem, 'kind' | 'path'>): DocumentTypeIconKind => {\n  const kind = assetPresentationKind(asset);\n  if (kind === 'model') return 'mesh';\n  if (kind === 'environment') return 'image';\n  if (kind === 'unknown') return 'settings';\n  return kind;\n};"""
+if old in text:
+    text = text.replace(old, new, 1)
+elif new not in text:
+    raise SystemExit('assetPresentationIcon anchor not found')
+presentation.write_text(text)
+
 card = Path('editor/src/renderer/src/content/ContentAssetCard.tsx')
 text = card.read_text()
 text = text.replace(
