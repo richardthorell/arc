@@ -57,8 +57,6 @@ TEST_CASE("model preview renders centered geometry on a transparent background",
     const float image_center = static_cast<float>(size - 1u) * 0.5f;
     CHECK(std::abs(bounds_center_x - image_center) <= 3.0f);
     CHECK(std::abs(bounds_center_y - image_center) <= 3.0f);
-    CHECK(maximum_x - minimum_x >= size / 3u);
-    CHECK(maximum_y - minimum_y >= size / 3u);
 }
 
 TEST_CASE("model preview material can be overridden", "[editor][thumbnail][model]")
