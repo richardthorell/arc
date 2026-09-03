@@ -12,23 +12,10 @@ text = viewport.read_text()
 if "grid: true," not in text:
     raise SystemExit("viewport grid default marker missing")
 text = text.replace("grid: true,", "grid: false,", 1)
-old_floor = "drawCube([-0.35, -0.05, -0.35], [0.35, 0.05, 0.35], colors.floor);"
-if old_floor not in text:
-    raise SystemExit("fallback floor marker missing")
-new_floor = """const fallbackFloorHalfSize = 1.8;
-    const fallbackFloorTiles = 16;
-    const fallbackTileSize = (fallbackFloorHalfSize * 2) / fallbackFloorTiles;
-    const fallbackFloorLight: [number, number, number, number] = [0.36, 0.38, 0.4, 1];
-    const fallbackFloorDark: [number, number, number, number] = [0.23, 0.25, 0.27, 1];
-    for (let z = 0; z < fallbackFloorTiles; z += 1) {
-      for (let x = 0; x < fallbackFloorTiles; x += 1) {
-        const minX = -fallbackFloorHalfSize + x * fallbackTileSize;
-        const minZ = -fallbackFloorHalfSize + z * fallbackTileSize;
-        const color = (x + z) % 2 === 0 ? fallbackFloorLight : fallbackFloorDark;
-        drawCube([minX, -0.035, minZ], [minX + fallbackTileSize, -0.015, minZ + fallbackTileSize], color);
-      }
-    }"""
-viewport.write_text(text.replace(old_floor, new_floor, 1))
+if "useState(true);" not in text:
+    raise SystemExit("local grid state marker missing")
+text = text.replace("const [localGridVisible, setLocalGridVisible] = useState(true);", "const [localGridVisible, setLocalGridVisible] = useState(false);", 1)
+viewport.write_text(text)
 
 state_h = Path("editor/native/inc/arc/editor/editor_state.h")
 text = state_h.read_text()
