@@ -12,9 +12,7 @@ if next_method < 0:
 if next_method < 0:
     raise SystemExit("next ProjectService method not found")
 method = service[start:next_method]
-open_marker = "      return await this.open(descriptorPath);"
-if open_marker not in method:
-    open_marker = "      return this.open(descriptorPath);"
+open_marker = "      return await this.open(descriptorPath, { upgrade: true });"
 if open_marker not in method:
     raise SystemExit("quick-start open return not found")
 
