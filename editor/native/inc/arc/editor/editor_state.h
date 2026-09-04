@@ -42,6 +42,7 @@ struct editor_scene_state
     render::material_handle primitive_material;
     render::material_handle floor_material;
     assets::asset_reference primitive_material_asset;
+    assets::asset_reference floor_material_asset;
     render::material_handle terrain_material;
     render::material_descriptor terrain_material_descriptor;
     std::array<std::filesystem::path, 4> terrain_layer_paths{};
@@ -96,6 +97,9 @@ struct editor_scene_state
 
 render::material_handle create_default_primitive_material(editor_scene_state& scene, render::renderer& renderer,
                                                           const editor_asset_state& assets);
+
+render::material_handle create_default_floor_material(editor_scene_state& scene, render::renderer& renderer,
+                                                      const editor_asset_state& assets);
 
 void ensure_scene_authoring_metadata(editor_scene_state& scene);
 ecs::entity find_entity_by_guid(const editor_scene_state& scene, ecs::entity_guid guid) noexcept;

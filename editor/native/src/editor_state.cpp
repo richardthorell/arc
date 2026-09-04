@@ -22,7 +22,7 @@ render::mesh_data make_primitive_mesh(editor_primitive_type type)
     switch (type)
     {
         case editor_primitive_type::plane:
-            return render::make_plane_mesh(4.0f);
+            return render::make_plane_mesh(10.0f);
         case editor_primitive_type::cube:
             return render::make_cube_mesh(1.0f);
         case editor_primitive_type::sphere:
@@ -34,7 +34,7 @@ render::mesh_data make_primitive_mesh(editor_primitive_type type)
         case editor_primitive_type::capsule:
             return render::make_capsule_mesh(0.5f, 1.0f, 32, 8);
     }
-    return render::make_plane_mesh(4.0f);
+    return render::make_plane_mesh(10.0f);
 }
 
 geometric::box3f bounds_for_mesh(const render::mesh_data& mesh)
@@ -69,46 +69,6 @@ render::material_handle ensure_default_material(editor_scene_state& scene, rende
     material.roughness = 0.62f;
     scene.primitive_material = renderer.create_material(material);
     return scene.primitive_material;
-}
-
-render::material_handle ensure_default_floor_material(editor_scene_state& scene, render::renderer& renderer)
-{
-    if (scene.floor_material.valid()) return scene.floor_material;
-
-    constexpr std::uint32_t texture_size = 256u;
-    constexpr std::uint32_t checker_size = 4u;
-    render::texture_data checker;
-    checker.name = "Default Checker Floor";
-    checker.width = texture_size;
-    checker.height = texture_size;
-    checker.format = render::texture_format::rgba8_srgb;
-    checker.color_space = render::texture_color_space::srgb;
-    checker.semantic = render::texture_semantic::base_color;
-    checker.pixels.resize(static_cast<std::size_t>(texture_size) * texture_size * 4u);
-
-    constexpr std::array<std::uint8_t, 4> light{108u, 113u, 119u, 255u};
-    constexpr std::array<std::uint8_t, 4> dark{66u, 71u, 77u, 255u};
-    for (std::uint32_t y = 0; y < texture_size; ++y)
-    {
-        for (std::uint32_t x = 0; x < texture_size; ++x)
-        {
-            const auto& color = ((x / checker_size) + (y / checker_size)) % 2u == 0u ? light : dark;
-            const auto offset = (static_cast<std::size_t>(y) * texture_size + x) * 4u;
-            for (std::size_t channel = 0; channel < color.size(); ++channel)
-                checker.pixels[offset + channel] = static_cast<std::byte>(color[channel]);
-        }
-    }
-
-    const auto checker_texture = renderer.create_texture(std::move(checker));
-    if (checker_texture.valid()) scene.default_textures.push_back(checker_texture);
-
-    render::material_descriptor material;
-    material.name = "Default Checker Floor Material";
-    material.base_color = math::vector4f::one;
-    material.roughness = 0.82f;
-    material.base_color_texture = checker_texture;
-    scene.floor_material = renderer.create_material(material);
-    return scene.floor_material.valid() ? scene.floor_material : ensure_default_material(scene, renderer);
 }
 
 render::material_handle ensure_terrain_material(editor_scene_state& scene, render::renderer& renderer)
@@ -331,6 +291,30 @@ render::material_handle create_default_primitive_material(editor_scene_state& sc
     return ensure_default_material(scene, renderer);
 }
 
+render::material_handle create_default_floor_material(editor_scene_state& scene, render::renderer& renderer,
+                                                      const editor_asset_state& editor_assets)
+{
+    scene.floor_material_asset = {};
+    for (const auto& builtin_root : editor_assets.builtin_roots)
+    {
+        const auto authored_path = builtin_root / "materials" / "default_checker_floor.arcmat";
+        if (!std::filesystem::is_regular_file(authored_path)) continue;
+
+        material_asset authored;
+        const auto authored_handle =
+            load_material_for_editor(scene.material_library, renderer, builtin_root, authored_path, &authored);
+        if (!authored_handle.valid()) continue;
+
+        scene.floor_material = authored_handle;
+        scene.floor_material_asset.expected_type = assets::asset_types::material;
+        scene.floor_material_asset.path_hint = "builtin/materials/default_checker_floor.arcmat";
+        return authored_handle;
+    }
+
+    scene.floor_material = ensure_default_material(scene, renderer);
+    return scene.floor_material;
+}
+
 render::material_handle create_default_terrain_material(editor_scene_state& scene, render::renderer& renderer,
                                                         const std::filesystem::path& asset_root)
 {
@@ -497,9 +481,7 @@ ecs::entity add_primitive_to_scene(editor_scene_state& scene, render::renderer& 
 
 ecs::entity add_default_floor_to_scene(editor_scene_state& scene, render::renderer& renderer)
 {
-    constexpr float floor_size = 100.0f;
-    auto mesh = render::make_plane_mesh(floor_size);
-    mesh.name = "Default Checker Floor";
+    auto mesh = make_primitive_mesh(editor_primitive_type::plane);
     const auto local_bounds = bounds_for_mesh(mesh);
     const auto mesh_handle = renderer.create_mesh(mesh);
     if (!mesh_handle.valid()) return {};
@@ -515,13 +497,15 @@ ecs::entity add_default_floor_to_scene(editor_scene_state& scene, render::render
     scene.scene.emplace<scene::transform_component>(entity, transform);
     scene::mesh_renderer_component renderer_component;
     renderer_component.mesh = mesh_handle;
-    renderer_component.material = ensure_default_floor_material(scene, renderer);
+    renderer_component.material =
+        scene.floor_material.valid() ? scene.floor_material : ensure_default_material(scene, renderer);
     scene.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
     scene.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
     scene.scene.emplace<scene::hierarchy_component>(entity);
     scene.asset_bindings.push_back({.entity = scene.scene.get<scene::persistent_id_component>(entity).value,
-                                    .source_kind = "builtin",
-                                    .subresource = "Checker Floor"});
+                                    .source_kind = "primitive",
+                                    .subresource = primitive_type_name(editor_primitive_type::plane),
+                                    .material = scene.floor_material_asset});
     scene.primitive_entities.push_back(entity);
     select_entity(scene.scene, entity, scene.selected_entity);
     return entity;

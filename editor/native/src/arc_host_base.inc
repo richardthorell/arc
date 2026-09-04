@@ -1635,7 +1635,11 @@ editor_scene_state create_blank_scene(render::renderer& renderer, bool include_f
     state.scene.emplace<scene::camera_component>(game_camera, game_camera_settings);
 
     add_default_sky_to_scene(state);
-    if (editor_assets != nullptr) create_default_primitive_material(state, renderer, *editor_assets);
+    if (editor_assets != nullptr)
+    {
+        create_default_primitive_material(state, renderer, *editor_assets);
+        create_default_floor_material(state, renderer, *editor_assets);
+    }
     if (include_floor)
     {
         const auto floor = add_default_floor_to_scene(state, renderer);
@@ -4462,8 +4466,7 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"materialTableEntries\":" + std::to_string(profile.gpu_scene.material_table_entries) +
                     ",\"textureTableEntries\":" + std::to_string(profile.gpu_scene.texture_table_entries) +
                     ",\"samplerTableEntries\":" + std::to_string(profile.gpu_scene.sampler_table_entries) +
-                    ",\"skinPaletteTableEntries\":" +
-                    std::to_string(profile.gpu_scene.skin_palette_table_entries) +
+                    ",\"skinPaletteTableEntries\":" + std::to_string(profile.gpu_scene.skin_palette_table_entries) +
                     ",\"sharedVertexHeapBytes\":" + std::to_string(profile.gpu_scene.shared_vertex_heap_bytes) +
                     ",\"sharedIndexHeapBytes\":" + std::to_string(profile.gpu_scene.shared_index_heap_bytes) +
                     ",\"candidateInstances\":" + std::to_string(profile.gpu_scene.candidate_instances) +
@@ -4488,8 +4491,7 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"ioCompletedReads\":" + std::to_string(profile.texture_streaming.io_completed_reads) +
                     ",\"ioFailedReads\":" + std::to_string(profile.texture_streaming.io_failed_reads) +
                     ",\"ioInFlightReads\":" + std::to_string(profile.texture_streaming.io_in_flight_reads) +
-                    ",\"ioLatencyMilliseconds\":" +
-                    std::to_string(profile.texture_streaming.io_latency_milliseconds) +
+                    ",\"ioLatencyMilliseconds\":" + std::to_string(profile.texture_streaming.io_latency_milliseconds) +
                     ",\"uploadLatencyMilliseconds\":" +
                     std::to_string(profile.texture_streaming.upload_latency_milliseconds) +
                     ",\"streamedTextures\":" + std::to_string(profile.texture_streaming.streamed_textures) +
@@ -4505,17 +4507,16 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"parentFallbacks\":" + std::to_string(profile.texture_streaming.parent_fallbacks) +
                     ",\"cacheHitRate\":" + std::to_string(profile.texture_streaming.cache_hit_rate) +
                     ",\"overBudget\":" + std::string(profile.texture_streaming.over_budget ? "true" : "false") +
-                    ",\"fallback\":" + to_json_string(profile.texture_streaming.fallback_reason) +
-                    ",\"resources\":[";
+                    ",\"fallback\":" + to_json_string(profile.texture_streaming.fallback_reason) + ",\"resources\":[";
                 for (std::size_t index = 0; index < texture_resources.size(); ++index)
                 {
                     if (index != 0) json += ',';
                     const auto& resource = texture_resources[index];
                     const auto mode_name = [](render::texture_streaming_mode mode)
                     {
-                        return mode == render::texture_streaming_mode::virtual_tiles       ? "virtual_tiles"
+                        return mode == render::texture_streaming_mode::virtual_tiles   ? "virtual_tiles"
                                : mode == render::texture_streaming_mode::streamed_mips ? "streamed_mips"
-                                                                                      : "resident";
+                                                                                       : "resident";
                     };
                     json += "{\"resourceIndex\":" + std::to_string(resource.resource.index) +
                             ",\"resourceGeneration\":" + std::to_string(resource.resource.generation) +
@@ -4526,10 +4527,11 @@ host_response arc_host::query(const host_query_envelope& query) const
                             ",\"residentMip\":" + std::to_string(resource.resident_first_mip) +
                             ",\"tailFirstMip\":" + std::to_string(resource.tail_first_mip) +
                             ",\"residentBytes\":" + std::to_string(resource.resident_bytes) +
-                            ",\"forcedMip\":" +
-                            (resource.forced_mip ? std::to_string(*resource.forced_mip) : "null") + '}';
+                            ",\"forcedMip\":" + (resource.forced_mip ? std::to_string(*resource.forced_mip) : "null") +
+                            '}';
                 }
-                json += "]},\"virtualGeometry\":{\"enabled\":" +
+                json +=
+                    "]},\"virtualGeometry\":{\"enabled\":" +
                     std::string(profile.virtual_geometry.enabled ? "true" : "false") + ",\"rasterPath\":" +
                     to_json_string(profile.virtual_geometry.raster_path == render::virtual_geometry_raster_path::compute
                                        ? "compute"
