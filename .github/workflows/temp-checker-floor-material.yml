@@ -1,0 +1,155 @@
+name: Implement default checker floor material
+
+on:
+  push:
+    branches:
+      - feature/default-checker-floor-material
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feature/default-checker-floor-material
+          fetch-depth: 0
+
+      - name: Implement authored checker floor material
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, struct, zlib, uuid
+
+          root = Path('.')
+          tex_dir = root / 'assets' / 'textures' / 'editor'
+          tex_dir.mkdir(parents=True, exist_ok=True)
+
+          # 1024x1024 checker texture, same 64x64 checker layout as the old 256/4 runtime texture.
+          width = height = 1024
+          cell = 16
+          light = (108, 113, 119, 255)
+          dark = (66, 71, 77, 255)
+          raw = bytearray()
+          for y in range(height):
+              raw.append(0)
+              for x in range(width):
+                  raw.extend(light if ((x // cell) + (y // cell)) % 2 == 0 else dark)
+
+          def chunk(kind, data):
+              return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)
+
+          png = bytearray(b'\x89PNG\r\n\x1a\n')
+          png += chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0))
+          png += chunk(b'IDAT', zlib.compress(bytes(raw), 9))
+          png += chunk(b'IEND', b'')
+          (tex_dir / 'default_checker_floor.png').write_bytes(png)
+
+          texture_meta = {
+              'format': 'arc.asset-meta', 'formatVersion': 1,
+              'guid': '9e8bf0e7-b0a1-4f5f-8e17-5af6b0ef1f21',
+              'importer': 'a7ca55e7-0000-0002-0000-000000000005',
+              'settings': {}, 'settingsVersion': 1, 'subassets': [],
+              'type': 'a7ca55e7-0000-0001-0000-000000000005'
+          }
+          (tex_dir / 'default_checker_floor.png.arcmeta').write_text(json.dumps(texture_meta, indent=2) + '\n')
+
+          material = {
+              'version': 4,
+              'name': 'Default Checker Floor',
+              'domain': 'surface',
+              'blendMode': 'opaque',
+              'shadingModel': 'standard',
+              'doubleSided': False,
+              'graph': {
+                  'version': 1,
+                  'nodes': [
+                      {'id':'material-output','type':'output','position':[620,240],'values':{}},
+                      {'id':'base-color-texture','type':'textureSample','position':[40,120],
+                       'values':{'texture':'textures/editor/default_checker_floor.png'},
+                       'parameter':{'exposed':True,'name':'Checker Texture'}},
+                      {'id':'roughness','type':'constant','position':[40,420],
+                       'values':{'value':0.82},'parameter':{'exposed':True,'name':'Roughness'}},
+                      {'id':'metallic','type':'constant','position':[40,540],
+                       'values':{'value':0.0},'parameter':{'exposed':True,'name':'Metallic'}}
+                  ],
+                  'connections': [
+                      {'id':'checker-base-color','from':{'nodeId':'base-color-texture','pin':'rgb'},
+                       'to':{'nodeId':'material-output','pin':'baseColor'}},
+                      {'id':'roughness-out','from':{'nodeId':'roughness','pin':'value'},
+                       'to':{'nodeId':'material-output','pin':'roughness'}},
+                      {'id':'metallic-out','from':{'nodeId':'metallic','pin':'value'},
+                       'to':{'nodeId':'material-output','pin':'metallic'}}
+                  ],
+                  'viewport': {'x':24,'y':24,'zoom':0.9}
+              }
+          }
+          mat_path = root / 'assets' / 'materials' / 'default_checker_floor.arcmat'
+          mat_path.write_text(json.dumps(material, separators=(',', ':')) + '\n')
+          material_meta = {
+              'format': 'arc.asset-meta', 'formatVersion': 1,
+              'guid': 'fd7ad408-39ef-44cb-9bc3-b7dc4f3ac4c7',
+              'importer': 'a7ca55e7-0000-0002-0000-000000000003',
+              'settings': {}, 'settingsVersion': 1, 'subassets': [],
+              'type': 'a7ca55e7-0000-0001-0000-000000000003'
+          }
+          (root / 'assets' / 'materials' / 'default_checker_floor.arcmat.arcmeta').write_text(json.dumps(material_meta, indent=2) + '\n')
+
+          header = root / 'editor/native/inc/arc/editor/editor_state.h'
+          text = header.read_text()
+          text = text.replace('    render::material_handle floor_material;\n    assets::asset_reference primitive_material_asset;\n',
+                              '    render::material_handle floor_material;\n    assets::asset_reference primitive_material_asset;\n    assets::asset_reference floor_material_asset;\n')
+          text = text.replace('render::material_handle create_default_primitive_material(editor_scene_state& scene, render::renderer& renderer,\n                                                          const editor_asset_state& assets);\n',
+                              'render::material_handle create_default_primitive_material(editor_scene_state& scene, render::renderer& renderer,\n                                                          const editor_asset_state& assets);\n\nrender::material_handle create_default_floor_material(editor_scene_state& scene, render::renderer& renderer,\n                                                      const editor_asset_state& assets);\n')
+          header.write_text(text)
+
+          state_cpp = root / 'editor/native/src/editor_state.cpp'
+          text = state_cpp.read_text()
+          marker = '''render::material_handle create_default_terrain_material(editor_scene_state& scene, render::renderer& renderer,\n                                                        const std::filesystem::path& asset_root)\n'''
+          insert = '''render::material_handle create_default_floor_material(editor_scene_state& scene, render::renderer& renderer,\n                                                      const editor_asset_state& editor_assets)\n{\n    scene.floor_material_asset = {};\n    for (const auto& builtin_root : editor_assets.builtin_roots)\n    {\n        const auto authored_path = builtin_root / "materials" / "default_checker_floor.arcmat";\n        if (!std::filesystem::is_regular_file(authored_path)) continue;\n\n        material_asset authored;\n        const auto authored_handle =\n            load_material_for_editor(scene.material_library, renderer, builtin_root, authored_path, &authored);\n        if (!authored_handle.valid()) continue;\n\n        scene.floor_material = authored_handle;\n        scene.floor_material_asset.expected_type = assets::asset_types::material;\n        scene.floor_material_asset.path_hint = "builtin/materials/default_checker_floor.arcmat";\n        return authored_handle;\n    }\n\n    return ensure_default_floor_material(scene, renderer);\n}\n\n'''
+          if marker not in text:
+              raise SystemExit('terrain material marker not found')
+          text = text.replace(marker, insert + marker, 1)
+          text = text.replace('    renderer_component.material = ensure_default_floor_material(scene, renderer);\n',
+                              '    renderer_component.material =\n        scene.floor_material.valid() ? scene.floor_material : ensure_default_floor_material(scene, renderer);\n', 1)
+          text = text.replace('                                    .source_kind = "builtin",\n                                    .subresource = "Checker Floor"});\n',
+                              '                                    .source_kind = "builtin",\n                                    .subresource = "Checker Floor",\n                                    .material = scene.floor_material_asset});\n', 1)
+          state_cpp.write_text(text)
+
+          host = root / 'editor/native/src/arc_host_base.inc'
+          text = host.read_text()
+          old = '    if (editor_assets != nullptr) create_default_primitive_material(state, renderer, *editor_assets);\n'
+          new = '''    if (editor_assets != nullptr)\n    {\n        create_default_primitive_material(state, renderer, *editor_assets);\n        create_default_floor_material(state, renderer, *editor_assets);\n    }\n'''
+          if old not in text:
+              raise SystemExit('create_blank_scene material init marker not found')
+          host.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Install Clang 18 and Ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 clang-format-18 ninja-build
+
+      - name: Format native changes
+        run: clang-format-18 -i editor/native/inc/arc/editor/editor_state.h editor/native/src/editor_state.cpp editor/native/src/arc_host_base.inc
+
+      - name: Configure
+        run: cmake -S . -B out/build/checker-material -G Ninja -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_BUILD_TYPE=RelWithDebInfo -DARC_BUILD_EDITOR=ON -DARC_BUILD_RENDER_VULKAN=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=ON
+
+      - name: Build editor host tests
+        run: cmake --build out/build/checker-material --target arc_editor_host_tests --parallel
+
+      - name: Run floor/editor tests
+        run: out/build/checker-material/editor/native/tests/arc_editor_host_tests "*floor*" || true
+
+      - name: Commit implementation
+        run: |
+          rm .github/workflows/temp-checker-floor-material.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/materials/default_checker_floor.arcmat assets/materials/default_checker_floor.arcmat.arcmeta assets/textures/editor/default_checker_floor.png assets/textures/editor/default_checker_floor.png.arcmeta editor/native/inc/arc/editor/editor_state.h editor/native/src/editor_state.cpp editor/native/src/arc_host_base.inc .github/workflows/temp-checker-floor-material.yml
+          git commit -m "Add authored default checker floor material"
+          git push origin HEAD:feature/default-checker-floor-material
