@@ -11,8 +11,8 @@
     {"id":"{{PROJECT_TOKEN}}.editor","kind":"editor","target":"{{PROJECT_TOKEN}}Editor","sourceRoot":"Source/{{PROJECT_TOKEN}}Editor","enabled":true,"dependencies":[{"kind":"project","id":"{{PROJECT_TOKEN}}.runtime","version":""},{"kind":"engine","id":"ARC.EditorModuleSDK","version":"{{ENGINE_VERSION}}"}]}
   ],
   "plugins": [],
-  "defaultScene": null,
-  "startupScenes": [],
+  "defaultScene": {"guid":"{{SCENE_ASSET_GUID}}","expectedType":"scene","pathHint":"Content/Scenes/Startup.arcscene"},
+  "startupScenes": [{"guid":"{{SCENE_ASSET_GUID}}","expectedType":"scene","pathHint":"Content/Scenes/Startup.arcscene"}],
   "targetPlatforms": [{"id":"windows-x64-vulkan","enabled":true}],
   "toolchain": {"compiler":"auto","minimumVersion":"","generator":"auto","architecture":"x86_64","cppStandard":20},
   "buildConfigurations": ["Debug","RelWithDebInfo","Shipping"],

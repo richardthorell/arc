@@ -276,9 +276,7 @@ export function RenderGraphPanel({
           {reason}
         </div>
       ))}
-      {snapshot?.textureStreaming?.fallback && (
-        <div className="tool-warning">{snapshot.textureStreaming.fallback}</div>
-      )}
+      {snapshot?.textureStreaming?.fallback && <div className="tool-warning">{snapshot.textureStreaming.fallback}</div>}
       {error && <div className="tool-error">{error}</div>}
     </section>
   );

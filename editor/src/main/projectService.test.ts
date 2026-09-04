@@ -62,7 +62,7 @@ describe('ProjectService', () => {
     expect(service.snapshot().recentProjects[0].guid).toBe(created.project?.descriptor.guid);
   });
 
-  it('creates and reuses a Blank 3D quick-start project', async () => {
+  it('creates and reuses a Blank 3D quick-start project with the native default scene', async () => {
     const root = temporary();
     const commands: string[] = [];
     const service = new ProjectService({
@@ -84,7 +84,9 @@ describe('ProjectService', () => {
     const first = await service.openOrCreateQuickStartProject(destination);
     expect(first.succeeded, first.error).toBe(true);
     expect(first.project?.descriptor.name).toBe('ARC Editor Development');
-    expect(first.project?.descriptor.defaultScene?.pathHint).toBe('Content/Scenes/Startup.arcscene');
+    expect(first.project?.descriptor.defaultScene).toBeNull();
+    expect(first.project?.descriptor.startupScenes).toEqual([]);
+    expect(fs.existsSync(path.join(destination, 'Content/Scenes/Startup.arcscene'))).toBe(false);
 
     await service.close();
     const second = await service.openOrCreateQuickStartProject(destination);
