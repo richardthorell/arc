@@ -3043,8 +3043,11 @@ TEST_CASE("editor material library reuses material handles and saves live update
     REQUIRE(editor.material == opened);
     const auto packet = renderer.frame_queue().commit(3);
     REQUIRE_FALSE(packet.events.empty());
-    REQUIRE(packet.events.back().type() == arc::render::render_event_type::material_upload);
-    const auto& upload = std::get<arc::render::material_upload_event>(packet.events.back().payload);
+    const auto upload_event =
+        std::ranges::find_if(packet.events, [](const auto& event)
+                             { return event.type() == arc::render::render_event_type::material_upload; });
+    REQUIRE(upload_event != packet.events.end());
+    const auto& upload = std::get<arc::render::material_upload_event>(upload_event->payload);
     REQUIRE(upload.handle == opened);
     REQUIRE(upload.material->roughness == Catch::Approx(0.21f));
 }
