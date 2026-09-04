@@ -340,12 +340,12 @@ std::vector<gpu_table_dirty_range> coalesce_gpu_table_dirty_ranges(std::span<con
 }
 
 gpu_draw_compaction_result compact_gpu_draw_records(std::span<const gpu_draw_record> records,
-                                                     std::uint32_t pipeline_bin_capacity,
-                                                     std::uint32_t maximum_visible_draws)
+                                                    std::uint32_t pipeline_bin_capacity,
+                                                    std::uint32_t maximum_visible_draws)
 {
     gpu_draw_compaction_result result;
-    result.statistics.candidates = static_cast<std::uint32_t>(
-        std::min<std::size_t>(records.size(), std::numeric_limits<std::uint32_t>::max()));
+    result.statistics.candidates =
+        static_cast<std::uint32_t>(std::min<std::size_t>(records.size(), std::numeric_limits<std::uint32_t>::max()));
     result.bin_offsets.resize(pipeline_bin_capacity);
     result.bin_counts.resize(pipeline_bin_capacity);
 

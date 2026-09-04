@@ -445,7 +445,7 @@ struct gpu_visibility_statistics
 };
 
 /** @brief Stable CPU reference for the GPU count/prefix/scatter compaction stages. */
-struct gpu_draw_compaction_result
+struct [[nodiscard]] gpu_draw_compaction_result
 {
     /** Draw records in pipeline-bin order, preserving input order within each bin. */
     std::vector<gpu_draw_record> visible_draws;
