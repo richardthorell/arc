@@ -331,6 +331,29 @@ render::material_handle create_default_primitive_material(editor_scene_state& sc
     return ensure_default_material(scene, renderer);
 }
 
+render::material_handle create_default_floor_material(editor_scene_state& scene, render::renderer& renderer,
+                                                      const editor_asset_state& editor_assets)
+{
+    scene.floor_material_asset = {};
+    for (const auto& builtin_root : editor_assets.builtin_roots)
+    {
+        const auto authored_path = builtin_root / "materials" / "default_checker_floor.arcmat";
+        if (!std::filesystem::is_regular_file(authored_path)) continue;
+
+        material_asset authored;
+        const auto authored_handle =
+            load_material_for_editor(scene.material_library, renderer, builtin_root, authored_path, &authored);
+        if (!authored_handle.valid()) continue;
+
+        scene.floor_material = authored_handle;
+        scene.floor_material_asset.expected_type = assets::asset_types::material;
+        scene.floor_material_asset.path_hint = "builtin/materials/default_checker_floor.arcmat";
+        return authored_handle;
+    }
+
+    return ensure_default_floor_material(scene, renderer);
+}
+
 render::material_handle create_default_terrain_material(editor_scene_state& scene, render::renderer& renderer,
                                                         const std::filesystem::path& asset_root)
 {
@@ -515,13 +538,15 @@ ecs::entity add_default_floor_to_scene(editor_scene_state& scene, render::render
     scene.scene.emplace<scene::transform_component>(entity, transform);
     scene::mesh_renderer_component renderer_component;
     renderer_component.mesh = mesh_handle;
-    renderer_component.material = ensure_default_floor_material(scene, renderer);
+    renderer_component.material =
+        scene.floor_material.valid() ? scene.floor_material : ensure_default_floor_material(scene, renderer);
     scene.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
     scene.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
     scene.scene.emplace<scene::hierarchy_component>(entity);
     scene.asset_bindings.push_back({.entity = scene.scene.get<scene::persistent_id_component>(entity).value,
                                     .source_kind = "builtin",
-                                    .subresource = "Checker Floor"});
+                                    .subresource = "Checker Floor",
+                                    .material = scene.floor_material_asset});
     scene.primitive_entities.push_back(entity);
     select_entity(scene.scene, entity, scene.selected_entity);
     return entity;
