@@ -622,6 +622,16 @@ std::vector<texture_stream_upload_result> render_backend::take_texture_stream_up
     return {};
 }
 
+virtual_geometry_feedback_readback render_backend::take_virtual_geometry_feedback()
+{
+    return {};
+}
+
+std::vector<virtual_geometry_page_upload_result> render_backend::take_virtual_geometry_page_upload_results()
+{
+    return {};
+}
+
 void render_backend::request_object_pick(render_object_pick_request) {}
 
 render_object_pick_result render_backend::last_object_pick() const
@@ -1437,9 +1447,6 @@ bool renderer::publish_virtual_geometry_page(virtual_geometry_page_upload upload
         upload.decoded_bytes->size() != geometry->second->pages[upload.page_index].uncompressed_size)
         return false;
 
-    virtual_geometry_residency_.publish(upload.resource, upload.resource_generation, upload.page_index,
-                                        static_cast<std::uint32_t>(upload.decoded_bytes->size()),
-                                        upload.compressed_cpu_bytes);
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.virtual_geometry_page_upload(std::move(upload));
@@ -1604,6 +1611,15 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
     submit_texture_feedback(backend_->take_texture_feedback());
     for (const auto& result : backend_->take_texture_stream_upload_results())
         texture_residency_.complete(result);
+    submit_virtual_geometry_feedback(backend_->take_virtual_geometry_feedback());
+    for (const auto& result : backend_->take_virtual_geometry_page_upload_results())
+    {
+        if (result.succeeded)
+            virtual_geometry_residency_.publish(result.resource, result.resource_generation, result.page_index,
+                                                result.gpu_bytes, result.compressed_cpu_bytes);
+        else
+            virtual_geometry_residency_.fail(result.resource, result.resource_generation, result.page_index);
+    }
     auto evictions = texture_residency_.take_evictions();
     if (!evictions.empty())
     {

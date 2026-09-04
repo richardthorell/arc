@@ -81,6 +81,21 @@ public:
         return profile;
     }
 
+    arc::render::virtual_geometry_feedback_readback take_virtual_geometry_feedback() override
+    {
+        auto result = std::move(virtual_feedback);
+        virtual_feedback = {};
+        return result;
+    }
+
+    std::vector<arc::render::virtual_geometry_page_upload_result>
+    take_virtual_geometry_page_upload_results() override
+    {
+        auto result = std::move(virtual_upload_results);
+        virtual_upload_results.clear();
+        return result;
+    }
+
     void request_object_pick(arc::render::render_object_pick_request request) override
     {
         pick_request = request;
@@ -102,6 +117,8 @@ public:
     arc::render::render_object_pick_request pick_request{};
     arc::render::render_frame_capture_request capture_request{};
     arc::render::render_frame_capture_result capture_result{};
+    arc::render::virtual_geometry_feedback_readback virtual_feedback{};
+    std::vector<arc::render::virtual_geometry_page_upload_result> virtual_upload_results;
     std::uint64_t last_frame{};
     std::size_t last_event_count{};
     std::size_t last_pass_count{};
@@ -1897,6 +1914,38 @@ TEST_CASE("renderer create virtual mesh enqueues typed upload and keeps CPU clus
     REQUIRE(destroy.events[0].type() == arc::render::render_event_type::virtual_mesh_destroy);
     REQUIRE(std::get<arc::render::virtual_mesh_destroy_event>(destroy.events[0].payload).handle == handle);
     REQUIRE_FALSE(renderer.destroy_virtual_mesh(handle));
+}
+
+TEST_CASE("virtual geometry residency waits for backend page publication acknowledgement")
+{
+    using namespace arc::render;
+    auto backend = std::make_unique<recording_backend>();
+    auto* backend_pointer = backend.get();
+    renderer renderer;
+    renderer.set_backend(std::move(backend));
+
+    virtual_mesh_data mesh;
+    mesh.vertices.resize(3);
+    mesh.indices = {0, 1, 2};
+    mesh.clusters.push_back({.first_index = 0, .index_count = 3, .page_index = 0});
+    mesh.pages.push_back({.uncompressed_size = 4, .compressed_size = 4});
+    const auto handle = renderer.create_virtual_mesh(std::move(mesh));
+    auto bytes = std::make_shared<const std::vector<std::byte>>(4, std::byte{0x2a});
+    REQUIRE(renderer.publish_virtual_geometry_page({.resource = handle,
+                                                     .resource_generation = 1,
+                                                     .page_index = 0,
+                                                     .decoded_bytes = bytes,
+                                                     .compressed_cpu_bytes = 4}));
+    REQUIRE(renderer.virtual_geometry_residency().snapshot().resident_pages == 0);
+
+    backend_pointer->virtual_upload_results.push_back({.resource = handle,
+                                                       .resource_generation = 1,
+                                                       .page_index = 0,
+                                                       .gpu_bytes = 4,
+                                                       .compressed_cpu_bytes = 4,
+                                                       .succeeded = true});
+    REQUIRE(renderer.render_frame(1, render_graph{}));
+    REQUIRE(renderer.virtual_geometry_residency().snapshot().resident_pages == 1);
 }
 
 TEST_CASE("renderer realizes and retires one unified cooked geometry resource")

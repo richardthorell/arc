@@ -295,6 +295,34 @@ struct alignas(16) gpu_visibility_counter_data
 };
 static_assert(sizeof(gpu_visibility_counter_data) == 32);
 
+struct alignas(16) virtual_geometry_traversal_counter_data
+{
+    std::uint32_t visible_count{};
+    std::uint32_t request_count{};
+    std::uint32_t frustum_rejected{};
+    std::uint32_t cone_rejected{};
+    std::uint32_t hzb_rejected{};
+    std::uint32_t projected_size_rejected{};
+    std::uint32_t visible_overflow{};
+    std::uint32_t request_overflow{};
+    std::uint32_t fallback_instances{};
+    std::uint32_t parent_fallbacks{};
+    std::uint32_t traversal_overflow{};
+    std::uint32_t reserved{};
+};
+static_assert(sizeof(virtual_geometry_traversal_counter_data) == 48);
+
+struct virtual_geometry_traversal_push_constants
+{
+    float view_projection[16]{};
+    float camera_position_and_error[4]{};
+    std::uint32_t capacities[4]{};
+    float viewport_hzb[4]{};
+    std::uint32_t hzb_generation{};
+    std::uint32_t camera_cut{};
+};
+static_assert(sizeof(virtual_geometry_traversal_push_constants) == 120);
+
 struct material_uniform_data
 {
     float emissive_factor[4]{0.0f, 0.0f, 0.0f, 1.0f};
@@ -681,15 +709,24 @@ public:
             else if (const auto* marker = std::get_if<debug_marker_event>(&event.payload))
                 pending_debug_markers_.push_back(marker->label);
         }
+        if (virtual_geometry_tables_dirty_ && !rebuild_virtual_geometry_tables()) upload_batch_failed_ = true;
         if (!flush_gpu_resource_tables()) upload_batch_failed_ = true;
         if (!flush_upload_batch()) upload_batch_failed_ = true;
         if (upload_batch_failed_)
+        {
             for (auto& result : frame_texture_upload_results_)
                 result.succeeded = false;
+            for (auto& result : frame_virtual_geometry_upload_results_)
+                result.succeeded = false;
+        }
         completed_texture_upload_results_.insert(completed_texture_upload_results_.end(),
                                                  frame_texture_upload_results_.begin(),
                                                  frame_texture_upload_results_.end());
         frame_texture_upload_results_.clear();
+        completed_virtual_geometry_upload_results_.insert(completed_virtual_geometry_upload_results_.end(),
+                                                          frame_virtual_geometry_upload_results_.begin(),
+                                                          frame_virtual_geometry_upload_results_.end());
+        frame_virtual_geometry_upload_results_.clear();
 
         last_profile_.graph = graph;
         last_profile_.summary.clear();
@@ -810,6 +847,20 @@ public:
     {
         auto result = std::move(completed_texture_upload_results_);
         completed_texture_upload_results_.clear();
+        return result;
+    }
+
+    virtual_geometry_feedback_readback take_virtual_geometry_feedback() override
+    {
+        auto result = std::move(completed_virtual_geometry_feedback_);
+        completed_virtual_geometry_feedback_ = {};
+        return result;
+    }
+
+    std::vector<virtual_geometry_page_upload_result> take_virtual_geometry_page_upload_results() override
+    {
+        auto result = std::move(completed_virtual_geometry_upload_results_);
+        completed_virtual_geometry_upload_results_.clear();
         return result;
     }
 
@@ -943,6 +994,7 @@ public:
         vkWaitForFences(device_, 1, &frame->fence, VK_TRUE, UINT64_MAX);
         collect_texture_mip_feedback(swapchain_.frame_index);
         collect_gpu_visibility_feedback(swapchain_.frame_index);
+        collect_virtual_geometry_feedback(swapchain_.frame_index);
         collect_timestamp_results();
         collect_object_pick_result();
         collect_frame_capture_result();
@@ -1375,6 +1427,7 @@ private:
                                                   .message = "viewport render target is unavailable"});
         collect_texture_mip_feedback(slot_index);
         collect_gpu_visibility_feedback(slot_index);
+        collect_virtual_geometry_feedback(slot_index);
         collect_timestamp_results();
         collect_object_pick_result();
         collect_frame_capture_result();
@@ -1521,6 +1574,14 @@ private:
     struct gpu_visibility_feedback_frame
     {
         gpu_buffer counters;
+        std::uint64_t submitted_frame{};
+    };
+
+    struct virtual_geometry_feedback_frame
+    {
+        gpu_buffer requests;
+        gpu_buffer counters;
+        std::uint32_t submitted_request_count{};
         std::uint64_t submitted_frame{};
     };
 
@@ -3849,20 +3910,36 @@ private:
                                      [this, retired]() mutable { destroy_virtual_mesh_buffers(retired); });
         }
         virtual_meshes_[key] = std::move(mesh);
+        virtual_geometry_tables_dirty_ = true;
     }
 
     void upload_virtual_geometry_page(const virtual_geometry_page_upload_event& event)
     {
+        virtual_geometry_page_upload_result result{.resource = event.upload.resource,
+                                                   .resource_generation = event.upload.resource_generation,
+                                                   .page_index = event.upload.page_index,
+                                                   .compressed_cpu_bytes = event.upload.compressed_cpu_bytes};
         const auto found = virtual_meshes_.find(resource_key(event.upload.resource));
         if (found == virtual_meshes_.end() || found->second.resource_generation != event.upload.resource_generation ||
             !event.upload.decoded_bytes || event.upload.page_index >= found->second.page_records.size())
+        {
+            frame_virtual_geometry_upload_results_.push_back(result);
             return;
+        }
         auto& mesh = found->second;
         auto& page = mesh.page_records[event.upload.page_index];
-        if (event.upload.decoded_bytes->size() != page.decoded_size) return;
+        if (event.upload.decoded_bytes->size() != page.decoded_size)
+        {
+            frame_virtual_geometry_upload_results_.push_back(result);
+            return;
+        }
+        result.gpu_bytes = page.decoded_size;
         if (!upload_buffer_region(event.upload.decoded_bytes->data(), event.upload.decoded_bytes->size(),
                                   mesh.page_heap, mesh.page_offsets[event.upload.page_index]))
+        {
+            frame_virtual_geometry_upload_results_.push_back(result);
             return;
+        }
         page.flags = static_cast<virtual_geometry_gpu_page_flag>(
             static_cast<std::uint32_t>(page.flags) |
             static_cast<std::uint32_t>(virtual_geometry_gpu_page_flag::resident));
@@ -3870,6 +3947,10 @@ private:
             static_cast<VkDeviceSize>(event.upload.page_index) * sizeof(virtual_geometry_gpu_page_record);
         if (!upload_buffer_region(&page, sizeof(page), mesh.page_table, offset))
             arc::diagnostics::warn("render.vulkan", "Failed to update virtual-geometry page-table residency");
+        else
+            result.succeeded = true;
+        frame_virtual_geometry_upload_results_.push_back(result);
+        if (result.succeeded) virtual_geometry_tables_dirty_ = true;
     }
 
     void retire_virtual_mesh(virtual_mesh_handle handle)
@@ -3878,6 +3959,7 @@ private:
         if (found == virtual_meshes_.end()) return;
         auto retired = std::move(found->second);
         virtual_meshes_.erase(found);
+        virtual_geometry_tables_dirty_ = true;
         deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
                                  [this, retired]() mutable { destroy_virtual_mesh_buffers(retired); });
     }
@@ -5100,6 +5182,7 @@ private:
         gpu_scene_visibility_mirror_.resize(new_capacity);
         gpu_scene_transform_mirror_.resize(new_capacity);
         gpu_visibility_descriptors_dirty_ = true;
+        virtual_geometry_traversal_descriptors_dirty_ = true;
 
         const auto upload_mirror = [&](gpu_buffer& destination, const auto& mirror) -> bool
         {
@@ -5221,6 +5304,7 @@ private:
 
     void destroy_gpu_visibility_resources()
     {
+        destroy_virtual_geometry_traversal_resources();
         destroy_buffer(gpu_visibility_commands_);
         destroy_buffer(gpu_visibility_counters_);
         for (auto& frame : gpu_visibility_feedback_frames_)
@@ -5240,6 +5324,125 @@ private:
         gpu_visibility_descriptor_set_ = VK_NULL_HANDLE;
         gpu_visibility_capacity_ = 0;
         gpu_visibility_active_ = false;
+    }
+
+    bool rebuild_virtual_geometry_tables()
+    {
+        std::vector<std::pair<std::uint64_t, gpu_virtual_mesh*>> ordered;
+        ordered.reserve(virtual_meshes_.size());
+        for (auto& [key, mesh] : virtual_meshes_)
+            ordered.emplace_back(key, &mesh);
+        std::ranges::sort(ordered, {}, &std::pair<std::uint64_t, gpu_virtual_mesh*>::first);
+
+        std::uint32_t resource_capacity{1u};
+        for (const auto& [key, _] : ordered)
+            resource_capacity = std::max(resource_capacity, static_cast<std::uint32_t>(key) + 1u);
+        virtual_geometry_resource_mirror_.assign(resource_capacity, {});
+        virtual_geometry_node_mirror_.clear();
+        virtual_geometry_cluster_mirror_.clear();
+        virtual_geometry_child_mirror_.clear();
+        virtual_geometry_root_mirror_.clear();
+        virtual_geometry_page_mirror_.clear();
+
+        for (const auto& [key, mesh] : ordered)
+        {
+            if (!mesh->source) continue;
+            const auto resource_index = static_cast<std::uint32_t>(key);
+            const auto handle_generation = static_cast<std::uint32_t>(key >> 32u);
+            const auto node_base = static_cast<std::uint32_t>(virtual_geometry_node_mirror_.size());
+            const auto cluster_base = static_cast<std::uint32_t>(virtual_geometry_cluster_mirror_.size());
+            const auto child_base = static_cast<std::uint32_t>(virtual_geometry_child_mirror_.size());
+            const auto page_base = static_cast<std::uint32_t>(virtual_geometry_page_mirror_.size());
+            const auto root_base = static_cast<std::uint32_t>(virtual_geometry_root_mirror_.size());
+            auto tables = make_virtual_geometry_gpu_table_update(
+                {resource_index, handle_generation}, *mesh->source, mesh->resource_generation);
+            if (tables.resources.empty()) continue;
+            auto resource = tables.resources.front();
+            resource.first_node = node_base;
+            resource.first_cluster = cluster_base;
+            resource.first_child = child_base;
+            resource.first_page = page_base;
+            resource.first_root = root_base;
+            resource.flags = handle_generation;
+            virtual_geometry_resource_mirror_[resource_index] = resource;
+            for (auto node : tables.nodes)
+            {
+                node.first_cluster += cluster_base;
+                node.first_child += child_base;
+                node.page_index += page_base;
+                virtual_geometry_node_mirror_.push_back(node);
+            }
+            for (auto cluster : tables.clusters)
+            {
+                cluster.page_index += page_base;
+                cluster.hierarchy_node += node_base;
+                virtual_geometry_cluster_mirror_.push_back(cluster);
+            }
+            for (const auto child : tables.children)
+                virtual_geometry_child_mirror_.push_back(child + node_base);
+            for (const auto root : tables.roots)
+                virtual_geometry_root_mirror_.push_back(root + node_base);
+            virtual_geometry_page_mirror_.insert(virtual_geometry_page_mirror_.end(), mesh->page_records.begin(),
+                                                 mesh->page_records.end());
+        }
+
+        if (virtual_geometry_node_mirror_.empty()) virtual_geometry_node_mirror_.push_back({});
+        if (virtual_geometry_cluster_mirror_.empty()) virtual_geometry_cluster_mirror_.push_back({});
+        if (virtual_geometry_child_mirror_.empty()) virtual_geometry_child_mirror_.push_back(0u);
+        if (virtual_geometry_root_mirror_.empty()) virtual_geometry_root_mirror_.push_back(0u);
+        if (virtual_geometry_page_mirror_.empty()) virtual_geometry_page_mirror_.push_back({});
+
+        const auto replace = [&](gpu_buffer& destination, const auto& values)
+        {
+            return replace_gpu_mirror_buffer(destination, std::as_bytes(std::span{values}),
+                                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        };
+        const bool succeeded = replace(virtual_geometry_resource_buffer_, virtual_geometry_resource_mirror_) &&
+                               replace(virtual_geometry_node_buffer_, virtual_geometry_node_mirror_) &&
+                               replace(virtual_geometry_cluster_buffer_, virtual_geometry_cluster_mirror_) &&
+                               replace(virtual_geometry_child_buffer_, virtual_geometry_child_mirror_) &&
+                               replace(virtual_geometry_root_buffer_, virtual_geometry_root_mirror_) &&
+                               replace(virtual_geometry_page_buffer_, virtual_geometry_page_mirror_);
+        if (succeeded)
+        {
+            virtual_geometry_tables_dirty_ = false;
+            virtual_geometry_traversal_descriptors_dirty_ = true;
+        }
+        return succeeded;
+    }
+
+    void destroy_virtual_geometry_traversal_resources()
+    {
+        destroy_buffer(virtual_geometry_resource_buffer_);
+        destroy_buffer(virtual_geometry_node_buffer_);
+        destroy_buffer(virtual_geometry_cluster_buffer_);
+        destroy_buffer(virtual_geometry_child_buffer_);
+        destroy_buffer(virtual_geometry_root_buffer_);
+        destroy_buffer(virtual_geometry_page_buffer_);
+        destroy_buffer(virtual_geometry_visible_buffer_);
+        destroy_buffer(virtual_geometry_request_buffer_);
+        destroy_buffer(virtual_geometry_counter_buffer_);
+        for (auto& frame : virtual_geometry_feedback_frames_)
+        {
+            destroy_buffer(frame.requests);
+            destroy_buffer(frame.counters);
+        }
+        virtual_geometry_feedback_frames_.clear();
+        if (virtual_geometry_traversal_pipeline_ != VK_NULL_HANDLE)
+            vkDestroyPipeline(device_, virtual_geometry_traversal_pipeline_, nullptr);
+        if (virtual_geometry_traversal_pipeline_layout_ != VK_NULL_HANDLE)
+            vkDestroyPipelineLayout(device_, virtual_geometry_traversal_pipeline_layout_, nullptr);
+        if (virtual_geometry_traversal_descriptor_pool_ != VK_NULL_HANDLE)
+            vkDestroyDescriptorPool(device_, virtual_geometry_traversal_descriptor_pool_, nullptr);
+        if (virtual_geometry_traversal_descriptor_set_layout_ != VK_NULL_HANDLE)
+            vkDestroyDescriptorSetLayout(device_, virtual_geometry_traversal_descriptor_set_layout_, nullptr);
+        virtual_geometry_traversal_pipeline_ = VK_NULL_HANDLE;
+        virtual_geometry_traversal_pipeline_layout_ = VK_NULL_HANDLE;
+        virtual_geometry_traversal_descriptor_pool_ = VK_NULL_HANDLE;
+        virtual_geometry_traversal_descriptor_set_layout_ = VK_NULL_HANDLE;
+        virtual_geometry_traversal_descriptor_set_ = VK_NULL_HANDLE;
+        virtual_geometry_visible_capacity_ = 0u;
+        virtual_geometry_request_capacity_ = 0u;
     }
 
     bool ensure_gpu_visibility_resources()
@@ -5549,6 +5752,309 @@ private:
                                  static_cast<VkDeviceSize>(handle.index) * indexed_indirect_command_stride, 1u,
                                  static_cast<std::uint32_t>(indexed_indirect_command_stride));
         return true;
+    }
+
+    bool ensure_virtual_geometry_traversal_resources()
+    {
+        if (!capabilities_.virtual_geometry_streaming || virtual_meshes_.empty() || gpu_scene_capacity_ == 0u ||
+            virtual_geometry_resource_buffer_.buffer == VK_NULL_HANDLE)
+            return false;
+        const auto requested_visible_capacity = std::clamp(
+            std::bit_ceil(std::max(1u, static_cast<std::uint32_t>(virtual_geometry_cluster_mirror_.size()))), 256u,
+            1u << 20u);
+        constexpr std::uint32_t requested_page_capacity = 4096u;
+        if (virtual_geometry_visible_capacity_ < requested_visible_capacity ||
+            virtual_geometry_request_capacity_ < requested_page_capacity ||
+            virtual_geometry_visible_buffer_.buffer == VK_NULL_HANDLE)
+        {
+            gpu_buffer visible{};
+            gpu_buffer requests{};
+            gpu_buffer counters{};
+            if (!create_buffer(buffer_size(requested_visible_capacity, sizeof(virtual_geometry_visible_cluster_record)),
+                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                               VMA_MEMORY_USAGE_GPU_ONLY, visible) ||
+                !create_buffer(buffer_size(requested_page_capacity, sizeof(virtual_geometry_gpu_page_request)),
+                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                               VMA_MEMORY_USAGE_GPU_ONLY, requests) ||
+                !create_buffer(sizeof(virtual_geometry_traversal_counter_data),
+                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                   VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                               VMA_MEMORY_USAGE_GPU_ONLY, counters))
+            {
+                destroy_buffer(visible);
+                destroy_buffer(requests);
+                destroy_buffer(counters);
+                return false;
+            }
+            auto retired_visible = virtual_geometry_visible_buffer_;
+            auto retired_requests = virtual_geometry_request_buffer_;
+            auto retired_counters = virtual_geometry_counter_buffer_;
+            virtual_geometry_visible_buffer_ = visible;
+            virtual_geometry_request_buffer_ = requests;
+            virtual_geometry_counter_buffer_ = counters;
+            virtual_geometry_visible_capacity_ = requested_visible_capacity;
+            virtual_geometry_request_capacity_ = requested_page_capacity;
+            virtual_geometry_traversal_descriptors_dirty_ = true;
+            if (retired_visible.buffer != VK_NULL_HANDLE || retired_requests.buffer != VK_NULL_HANDLE ||
+                retired_counters.buffer != VK_NULL_HANDLE)
+                deferred_releases_.defer(
+                    last_profile_.frame_index + frame_resource_count(),
+                    [this, retired_visible, retired_requests, retired_counters]() mutable
+                    {
+                        destroy_buffer(retired_visible);
+                        destroy_buffer(retired_requests);
+                        destroy_buffer(retired_counters);
+                    });
+        }
+
+        if (virtual_geometry_traversal_descriptor_set_layout_ == VK_NULL_HANDLE)
+        {
+            std::array<VkDescriptorSetLayoutBinding, 11> bindings{};
+            for (std::uint32_t binding = 0; binding < 10u; ++binding)
+                bindings[binding] = {binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT,
+                                     nullptr};
+            bindings[10] = {10u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+            VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+            layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
+            layout.pBindings = bindings.data();
+            if (vkCreateDescriptorSetLayout(device_, &layout, nullptr,
+                                            &virtual_geometry_traversal_descriptor_set_layout_) != VK_SUCCESS)
+                return false;
+            virtual_geometry_traversal_descriptors_dirty_ = true;
+        }
+
+        if (virtual_geometry_traversal_descriptors_dirty_)
+        {
+            VkDescriptorPool replacement_pool{};
+            VkDescriptorSet replacement_set{};
+            const std::array pool_sizes{VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10u},
+                                        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2u}};
+            VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+            pool.maxSets = 1u;
+            pool.poolSizeCount = static_cast<std::uint32_t>(pool_sizes.size());
+            pool.pPoolSizes = pool_sizes.data();
+            if (vkCreateDescriptorPool(device_, &pool, nullptr, &replacement_pool) != VK_SUCCESS) return false;
+            VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+            allocate.descriptorPool = replacement_pool;
+            allocate.descriptorSetCount = 1u;
+            allocate.pSetLayouts = &virtual_geometry_traversal_descriptor_set_layout_;
+            if (vkAllocateDescriptorSets(device_, &allocate, &replacement_set) != VK_SUCCESS)
+            {
+                vkDestroyDescriptorPool(device_, replacement_pool, nullptr);
+                return false;
+            }
+            const std::array buffers{
+                VkDescriptorBufferInfo{gpu_scene_visibility_buffer_.buffer, 0, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{gpu_scene_transform_buffer_.buffer, 0, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{virtual_geometry_resource_buffer_.buffer, 0, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{virtual_geometry_node_buffer_.buffer, 0, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{virtual_geometry_child_buffer_.buffer, 0, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{virtual_geometry_root_buffer_.buffer, 0, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{virtual_geometry_page_buffer_.buffer, 0, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{virtual_geometry_visible_buffer_.buffer, 0, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{virtual_geometry_request_buffer_.buffer, 0, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{virtual_geometry_counter_buffer_.buffer, 0, VK_WHOLE_SIZE},
+            };
+            std::array<VkWriteDescriptorSet, 10> writes{};
+            for (std::uint32_t binding = 0; binding < writes.size(); ++binding)
+            {
+                writes[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writes[binding].dstSet = replacement_set;
+                writes[binding].dstBinding = binding;
+                writes[binding].descriptorCount = 1u;
+                writes[binding].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                writes[binding].pBufferInfo = &buffers[binding];
+            }
+            vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0u, nullptr);
+            const VkDescriptorImageInfo fallback{white_sampler_, white_view_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+            std::array<VkDescriptorImageInfo, 2> hzb_images{fallback, fallback};
+            if (ensure_hzb_resources(viewport_width_, viewport_height_))
+                for (std::size_t index = 0; index < hzb_images.size(); ++index)
+                    hzb_images[index] = {hzb_sampler_, hzb_history_[index].view, VK_IMAGE_LAYOUT_GENERAL};
+            VkWriteDescriptorSet image_write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+            image_write.dstSet = replacement_set;
+            image_write.dstBinding = 10u;
+            image_write.descriptorCount = static_cast<std::uint32_t>(hzb_images.size());
+            image_write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            image_write.pImageInfo = hzb_images.data();
+            vkUpdateDescriptorSets(device_, 1u, &image_write, 0u, nullptr);
+            const auto retired_pool = virtual_geometry_traversal_descriptor_pool_;
+            virtual_geometry_traversal_descriptor_pool_ = replacement_pool;
+            virtual_geometry_traversal_descriptor_set_ = replacement_set;
+            if (retired_pool != VK_NULL_HANDLE)
+                deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(), [this, retired_pool]()
+                                         { vkDestroyDescriptorPool(device_, retired_pool, nullptr); });
+            virtual_geometry_traversal_descriptors_dirty_ = false;
+        }
+
+        if (virtual_geometry_traversal_pipeline_ == VK_NULL_HANDLE)
+        {
+            const auto shader = create_shader_module(builtin::virtual_geometry_traversal_comp_spv,
+                                                     std::size(builtin::virtual_geometry_traversal_comp_spv));
+            if (shader == VK_NULL_HANDLE) return false;
+            VkPushConstantRange push{VK_SHADER_STAGE_COMPUTE_BIT, 0u,
+                                     sizeof(virtual_geometry_traversal_push_constants)};
+            VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+            layout.setLayoutCount = 1u;
+            layout.pSetLayouts = &virtual_geometry_traversal_descriptor_set_layout_;
+            layout.pushConstantRangeCount = 1u;
+            layout.pPushConstantRanges = &push;
+            if (vkCreatePipelineLayout(device_, &layout, nullptr, &virtual_geometry_traversal_pipeline_layout_) !=
+                VK_SUCCESS)
+            {
+                vkDestroyShaderModule(device_, shader, nullptr);
+                return false;
+            }
+            VkComputePipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+            pipeline.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+            pipeline.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+            pipeline.stage.module = shader;
+            pipeline.stage.pName = "main";
+            pipeline.layout = virtual_geometry_traversal_pipeline_layout_;
+            const auto status = vkCreateComputePipelines(device_, vk_pipeline_cache_, 1u, &pipeline, nullptr,
+                                                         &virtual_geometry_traversal_pipeline_);
+            vkDestroyShaderModule(device_, shader, nullptr);
+            if (status != VK_SUCCESS) return false;
+        }
+        return true;
+    }
+
+    bool ensure_virtual_geometry_feedback_frame(virtual_geometry_feedback_frame& frame)
+    {
+        if (frame.requests.buffer == VK_NULL_HANDLE &&
+            !create_buffer(buffer_size(virtual_geometry_request_capacity_, sizeof(virtual_geometry_gpu_page_request)),
+                           VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU, frame.requests))
+            return false;
+        return frame.counters.buffer != VK_NULL_HANDLE ||
+               create_buffer(sizeof(virtual_geometry_traversal_counter_data), VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                             VMA_MEMORY_USAGE_GPU_TO_CPU, frame.counters);
+    }
+
+    void dispatch_virtual_geometry_traversal(VkCommandBuffer command_buffer)
+    {
+        if (!ensure_virtual_geometry_traversal_resources()) return;
+        vkCmdFillBuffer(command_buffer, virtual_geometry_counter_buffer_.buffer, 0u, VK_WHOLE_SIZE, 0u);
+        VkBufferMemoryBarrier counter_input{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        counter_input.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        counter_input.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        counter_input.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        counter_input.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        counter_input.buffer = virtual_geometry_counter_buffer_.buffer;
+        counter_input.size = VK_WHOLE_SIZE;
+        vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u,
+                             0u, nullptr, 1u, &counter_input, 0u, nullptr);
+
+        virtual_geometry_traversal_push_constants constants{};
+        std::copy_n(frame_camera_.view_projection.data(), 16u, constants.view_projection);
+        constants.camera_position_and_error[0] = frame_camera_.position[0];
+        constants.camera_position_and_error[1] = frame_camera_.position[1];
+        constants.camera_position_and_error[2] = frame_camera_.position[2];
+        constants.camera_position_and_error[3] = resolved_config_.geometry_error_threshold;
+        constants.capacities[0] = gpu_scene_capacity_;
+        constants.capacities[1] = static_cast<std::uint32_t>(virtual_geometry_resource_mirror_.size());
+        constants.capacities[2] = virtual_geometry_visible_capacity_;
+        constants.capacities[3] = virtual_geometry_request_capacity_;
+        constants.viewport_hzb[0] = static_cast<float>(viewport_width_);
+        constants.viewport_hzb[1] = static_cast<float>(viewport_height_);
+        constants.viewport_hzb[2] = static_cast<float>(hzb_mip_count_);
+        constants.viewport_hzb[3] = hzb_history_valid_ && !frame_camera_.camera_cut ? 1.0f : 0.0f;
+        constants.hzb_generation = static_cast<std::uint32_t>(
+            (last_profile_.frame_index + hzb_history_.size() - 1u) % hzb_history_.size());
+        constants.camera_cut = frame_camera_.camera_cut ? 1u : 0u;
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, virtual_geometry_traversal_pipeline_);
+        vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                virtual_geometry_traversal_pipeline_layout_, 0u, 1u,
+                                &virtual_geometry_traversal_descriptor_set_, 0u, nullptr);
+        vkCmdPushConstants(command_buffer, virtual_geometry_traversal_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                           0u, sizeof(constants), &constants);
+        vkCmdDispatch(command_buffer, (gpu_scene_capacity_ + 63u) / 64u, 1u, 1u);
+
+        std::array<VkBufferMemoryBarrier, 2> outputs{};
+        const std::array output_buffers{virtual_geometry_request_buffer_.buffer,
+                                        virtual_geometry_counter_buffer_.buffer};
+        for (std::size_t index = 0; index < outputs.size(); ++index)
+        {
+            outputs[index].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            outputs[index].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            outputs[index].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            outputs[index].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            outputs[index].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            outputs[index].buffer = output_buffers[index];
+            outputs[index].size = VK_WHOLE_SIZE;
+        }
+        vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0u,
+                             0u, nullptr, static_cast<std::uint32_t>(outputs.size()), outputs.data(), 0u, nullptr);
+        if (virtual_geometry_feedback_frames_.size() < frame_resource_count())
+            virtual_geometry_feedback_frames_.resize(frame_resource_count());
+        auto& feedback = virtual_geometry_feedback_frames_[current_frame_slot()];
+        if (ensure_virtual_geometry_feedback_frame(feedback))
+        {
+            VkBufferCopy request_copy{.size = buffer_size(virtual_geometry_request_capacity_,
+                                                          sizeof(virtual_geometry_gpu_page_request))};
+            VkBufferCopy counter_copy{.size = sizeof(virtual_geometry_traversal_counter_data)};
+            vkCmdCopyBuffer(command_buffer, virtual_geometry_request_buffer_.buffer, feedback.requests.buffer, 1u,
+                            &request_copy);
+            vkCmdCopyBuffer(command_buffer, virtual_geometry_counter_buffer_.buffer, feedback.counters.buffer, 1u,
+                            &counter_copy);
+            std::array<VkBufferMemoryBarrier, 2> host_barriers{};
+            const std::array host_buffers{feedback.requests.buffer, feedback.counters.buffer};
+            for (std::size_t index = 0; index < host_barriers.size(); ++index)
+            {
+                host_barriers[index].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+                host_barriers[index].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                host_barriers[index].dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+                host_barriers[index].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                host_barriers[index].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                host_barriers[index].buffer = host_buffers[index];
+                host_barriers[index].size = VK_WHOLE_SIZE;
+            }
+            vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0u, 0u,
+                                 nullptr, static_cast<std::uint32_t>(host_barriers.size()), host_barriers.data(), 0u,
+                                 nullptr);
+            feedback.submitted_frame = last_profile_.frame_index;
+        }
+    }
+
+    void collect_virtual_geometry_feedback(std::uint32_t frame_index)
+    {
+        if (frame_index >= virtual_geometry_feedback_frames_.size()) return;
+        auto& frame = virtual_geometry_feedback_frames_[frame_index];
+        if (frame.submitted_frame == 0u) return;
+        void* counters_mapped{};
+        if (vmaMapMemory(allocator_, frame.counters.allocation, &counters_mapped) != VK_SUCCESS) return;
+        vmaInvalidateAllocation(allocator_, frame.counters.allocation, 0u,
+                                sizeof(virtual_geometry_traversal_counter_data));
+        virtual_geometry_traversal_counter_data counters{};
+        std::memcpy(&counters, counters_mapped, sizeof(counters));
+        vmaUnmapMemory(allocator_, frame.counters.allocation);
+        const auto request_count = std::min(counters.request_count, virtual_geometry_request_capacity_);
+        completed_virtual_geometry_feedback_ = {.frame_index = frame.submitted_frame,
+                                                .overflow = {.visible_cluster_overflow = counters.visible_overflow,
+                                                             .page_request_overflow = counters.request_overflow,
+                                                             .fallback_instance_count = counters.fallback_instances}};
+        if (request_count != 0u)
+        {
+            void* requests_mapped{};
+            if (vmaMapMemory(allocator_, frame.requests.allocation, &requests_mapped) == VK_SUCCESS)
+            {
+                const auto bytes = buffer_size(request_count, sizeof(virtual_geometry_gpu_page_request));
+                vmaInvalidateAllocation(allocator_, frame.requests.allocation, 0u, bytes);
+                const auto* requests = static_cast<const virtual_geometry_gpu_page_request*>(requests_mapped);
+                completed_virtual_geometry_feedback_.page_requests.assign(requests, requests + request_count);
+                vmaUnmapMemory(allocator_, frame.requests.allocation);
+            }
+        }
+        auto& profile = last_profile_.virtual_geometry;
+        profile.visible_clusters = std::min(counters.visible_count, virtual_geometry_visible_capacity_);
+        profile.frustum_rejected = counters.frustum_rejected;
+        profile.cone_rejected = counters.cone_rejected;
+        profile.hzb_rejected = counters.hzb_rejected;
+        profile.projected_size_rejected = counters.projected_size_rejected;
+        profile.requested_pages = request_count;
+        profile.parent_fallbacks = counters.parent_fallbacks;
+        profile.overflowed_clusters = counters.visible_overflow + counters.traversal_overflow;
+        profile.fallback_instances = counters.fallback_instances;
+        frame.submitted_frame = 0u;
     }
 
     void update_light_buffer()
@@ -10077,6 +10583,7 @@ private:
                     if (!gpu_visibility_executed)
                     {
                         dispatch_gpu_visibility(command_buffer);
+                        dispatch_virtual_geometry_traversal(command_buffer);
                         gpu_visibility_executed = true;
                     }
                     break;
@@ -11584,6 +12091,9 @@ private:
     texture_feedback_readback completed_texture_feedback_;
     std::vector<texture_stream_upload_result> frame_texture_upload_results_;
     std::vector<texture_stream_upload_result> completed_texture_upload_results_;
+    virtual_geometry_feedback_readback completed_virtual_geometry_feedback_;
+    std::vector<virtual_geometry_page_upload_result> frame_virtual_geometry_upload_results_;
+    std::vector<virtual_geometry_page_upload_result> completed_virtual_geometry_upload_results_;
     std::vector<texture_feedback_slot> texture_feedback_slots_;
     std::vector<std::uint32_t> free_texture_feedback_slots_;
     std::vector<retired_texture_feedback_slot> retired_texture_feedback_slots_;
@@ -11642,6 +12152,31 @@ private:
     VkPipeline gpu_visibility_pipeline_{};
     bool gpu_visibility_active_{};
     bool gpu_visibility_descriptors_dirty_{true};
+    std::vector<virtual_geometry_gpu_resource_record> virtual_geometry_resource_mirror_;
+    std::vector<virtual_geometry_gpu_node_record> virtual_geometry_node_mirror_;
+    std::vector<virtual_geometry_gpu_cluster_record> virtual_geometry_cluster_mirror_;
+    std::vector<std::uint32_t> virtual_geometry_child_mirror_;
+    std::vector<std::uint32_t> virtual_geometry_root_mirror_;
+    std::vector<virtual_geometry_gpu_page_record> virtual_geometry_page_mirror_;
+    gpu_buffer virtual_geometry_resource_buffer_;
+    gpu_buffer virtual_geometry_node_buffer_;
+    gpu_buffer virtual_geometry_cluster_buffer_;
+    gpu_buffer virtual_geometry_child_buffer_;
+    gpu_buffer virtual_geometry_root_buffer_;
+    gpu_buffer virtual_geometry_page_buffer_;
+    gpu_buffer virtual_geometry_visible_buffer_;
+    gpu_buffer virtual_geometry_request_buffer_;
+    gpu_buffer virtual_geometry_counter_buffer_;
+    std::uint32_t virtual_geometry_visible_capacity_{};
+    std::uint32_t virtual_geometry_request_capacity_{};
+    std::vector<virtual_geometry_feedback_frame> virtual_geometry_feedback_frames_;
+    VkDescriptorSetLayout virtual_geometry_traversal_descriptor_set_layout_{};
+    VkDescriptorPool virtual_geometry_traversal_descriptor_pool_{};
+    VkDescriptorSet virtual_geometry_traversal_descriptor_set_{};
+    VkPipelineLayout virtual_geometry_traversal_pipeline_layout_{};
+    VkPipeline virtual_geometry_traversal_pipeline_{};
+    bool virtual_geometry_tables_dirty_{true};
+    bool virtual_geometry_traversal_descriptors_dirty_{true};
     std::vector<gpu_buffer> shadow_uniform_buffers_;
     std::vector<debug_overlay_frame_buffer> debug_overlay_buffers_;
     std::uint32_t active_frame_index_{};
@@ -12005,7 +12540,8 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.fxaa = true;
     capabilities.virtual_geometry_compute = false;
     capabilities.virtual_geometry_mesh_shader = false;
-    capabilities.virtual_geometry_streaming = false;
+    capabilities.virtual_geometry_streaming = capabilities.compute_shaders && capabilities.storage_buffers &&
+                                              capabilities.hzb_occlusion && capabilities.transfer_queue;
     // VSM support is advertised only after allocation, feedback, caster rendering,
     // sampling, and contact-shadow pipelines are all executable. Resource plumbing
     // alone must not cause Ultra to select an incomplete path.

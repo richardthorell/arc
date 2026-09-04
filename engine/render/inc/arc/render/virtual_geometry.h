@@ -162,6 +162,17 @@ struct virtual_geometry_page_upload
     std::uint32_t compressed_cpu_bytes{};
 };
 
+/** @brief Generation-safe backend acknowledgement for one virtual-geometry page publication. */
+struct virtual_geometry_page_upload_result
+{
+    virtual_mesh_handle resource{};
+    std::uint32_t resource_generation{};
+    std::uint32_t page_index{};
+    std::uint32_t gpu_bytes{};
+    std::uint32_t compressed_cpu_bytes{};
+    bool succeeded{};
+};
+
 /** @brief Asynchronous feedback copied from one completed GPU traversal frame. */
 struct virtual_geometry_feedback_readback
 {

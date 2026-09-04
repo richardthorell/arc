@@ -1232,6 +1232,13 @@ public:
     /** @brief Take generation-safe publication acknowledgements from the backend. */
     [[nodiscard]] virtual std::vector<texture_stream_upload_result> take_texture_stream_upload_results();
 
+    /** @brief Take fenced virtual-geometry traversal feedback completed by the backend. */
+    [[nodiscard]] virtual virtual_geometry_feedback_readback take_virtual_geometry_feedback();
+
+    /** @brief Take page publications acknowledged after both heap and page-table writes completed. */
+    [[nodiscard]] virtual std::vector<virtual_geometry_page_upload_result>
+    take_virtual_geometry_page_upload_results();
+
     /**
      * @brief Request an async ObjectID readback at viewport pixel coordinates.
      */

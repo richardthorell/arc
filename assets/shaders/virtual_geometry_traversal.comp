@@ -1,0 +1,283 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct gpu_scene_instance
+{
+    vec4 bounds_min;
+    vec4 bounds_max;
+    uvec4 geometry;
+    uvec4 material_flags;
+    uvec4 draw_metadata;
+    vec4 distance_error;
+};
+
+struct gpu_scene_transform
+{
+    mat4 model;
+    mat4 previous_model;
+};
+
+struct virtual_resource
+{
+    uvec4 nodes_clusters;
+    uvec4 children_pages;
+    uvec4 roots_generation;
+};
+
+struct virtual_node
+{
+    vec4 sphere;
+    vec4 normal_cone;
+    float geometric_error;
+    uint first_cluster;
+    uint cluster_count;
+    uint first_child;
+    uint child_count;
+    uint page_index;
+    uint level;
+    uint flags;
+};
+
+struct virtual_page
+{
+    uint heap_index;
+    uint heap_byte_offset;
+    uint stored_size;
+    uint decoded_size;
+    uint resource_generation;
+    uint flags;
+    uint last_used_frame;
+    uint reserved;
+};
+
+struct visible_cluster
+{
+    uint instance_index;
+    uint resource_index;
+    uint cluster_index;
+    uint page_index;
+    uint material_index;
+    uint hierarchy_level;
+    uint flags;
+    float view_depth;
+};
+
+struct page_request
+{
+    uint resource_index;
+    uint handle_generation;
+    uint resource_generation;
+    uint page_index;
+    float projected_error;
+    float screen_coverage;
+    float distance;
+    uint flags;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer gpu_scene_buffer { gpu_scene_instance instances[]; } scene;
+layout(std430, set = 0, binding = 1) readonly buffer transform_buffer { gpu_scene_transform transforms[]; } transform_table;
+layout(std430, set = 0, binding = 2) readonly buffer resource_buffer { virtual_resource resources[]; } resource_table;
+layout(std430, set = 0, binding = 3) readonly buffer node_buffer { virtual_node nodes[]; } node_table;
+layout(std430, set = 0, binding = 4) readonly buffer child_buffer { uint children[]; } child_table;
+layout(std430, set = 0, binding = 5) readonly buffer root_buffer { uint roots[]; } root_table;
+layout(std430, set = 0, binding = 6) readonly buffer page_buffer { virtual_page pages[]; } page_table;
+layout(std430, set = 0, binding = 7) writeonly buffer visible_buffer { visible_cluster visible[]; } output_clusters;
+layout(std430, set = 0, binding = 8) writeonly buffer request_buffer { page_request requests[]; } output_requests;
+layout(std430, set = 0, binding = 9) buffer counter_buffer
+{
+    uint visible_count;
+    uint request_count;
+    uint frustum_rejected;
+    uint cone_rejected;
+    uint hzb_rejected;
+    uint projected_size_rejected;
+    uint visible_overflow;
+    uint request_overflow;
+    uint fallback_instances;
+    uint parent_fallbacks;
+    uint traversal_overflow;
+    uint reserved;
+} counters;
+layout(set = 0, binding = 10) uniform sampler2D hzb_generations[2];
+
+layout(push_constant) uniform traversal_constants
+{
+    mat4 view_projection;
+    vec4 camera_position_and_error;
+    uvec4 capacities;
+    vec4 viewport_hzb;
+    uint hzb_generation;
+    uint camera_cut;
+} constants;
+
+bool sphere_in_frustum(vec3 center, float radius)
+{
+    vec4 clip = constants.view_projection * vec4(center, 1.0);
+    float extent = max(abs(clip.w), 1.0e-4);
+    return clip.x >= -extent - radius && clip.x <= extent + radius && clip.y >= -extent - radius &&
+           clip.y <= extent + radius && clip.z >= -radius && clip.z <= extent + radius;
+}
+
+bool page_resident(uint page_index, uint generation)
+{
+    virtual_page page = page_table.pages[page_index];
+    return (page.flags & 1u) != 0u && page.resource_generation == generation;
+}
+
+void request_page(uint resource_index, uint handle_generation, uint generation, uint page_index,
+                  float projected_error, float distance_to_node, uint flags)
+{
+    uint request_index = atomicAdd(counters.request_count, 1u);
+    if (request_index >= constants.capacities.w)
+    {
+        atomicAdd(counters.request_overflow, 1u);
+        return;
+    }
+    output_requests.requests[request_index].resource_index = resource_index;
+    output_requests.requests[request_index].handle_generation = handle_generation;
+    output_requests.requests[request_index].resource_generation = generation;
+    output_requests.requests[request_index].page_index = page_index;
+    output_requests.requests[request_index].projected_error = projected_error;
+    output_requests.requests[request_index].screen_coverage =
+        clamp(projected_error / max(constants.viewport_hzb.y, 1.0), 0.0, 1.0);
+    output_requests.requests[request_index].distance = distance_to_node;
+    output_requests.requests[request_index].flags = flags;
+}
+
+void main()
+{
+    uint instance_index = gl_GlobalInvocationID.x;
+    if (instance_index >= constants.capacities.x)
+        return;
+    gpu_scene_instance instance = scene.instances[instance_index];
+    if (instance.geometry.w != 3u || (instance.material_flags.w & 1u) == 0u ||
+        instance.geometry.x >= constants.capacities.y)
+        return;
+
+    virtual_resource resource_record = resource_table.resources[instance.geometry.x];
+    uint resource_generation = resource_record.roots_generation.z;
+    if (resource_record.roots_generation.w != instance.geometry.y || resource_generation == 0u)
+        return;
+
+    uint stack[64];
+    uint stack_count = 0u;
+    for (uint root = 0u; root < resource_record.roots_generation.y; ++root)
+    {
+        if (stack_count == 64u)
+        {
+            atomicAdd(counters.traversal_overflow, 1u);
+            atomicAdd(counters.fallback_instances, 1u);
+            return;
+        }
+        stack[stack_count++] = root_table.roots[resource_record.roots_generation.x + root];
+    }
+
+    mat4 model = transform_table.transforms[instance_index].model;
+    float scale = max(length(model[0].xyz), max(length(model[1].xyz), length(model[2].xyz)));
+    bool instance_fallback = false;
+    while (stack_count != 0u)
+    {
+        virtual_node node = node_table.nodes[stack[--stack_count]];
+        vec3 center = (model * vec4(node.sphere.xyz, 1.0)).xyz;
+        float radius = node.sphere.w * scale;
+        if (!sphere_in_frustum(center, radius))
+        {
+            atomicAdd(counters.frustum_rejected, 1u);
+            continue;
+        }
+        vec3 to_camera = constants.camera_position_and_error.xyz - center;
+        float distance_to_node = max(length(to_camera), 1.0e-4);
+        if ((instance.material_flags.w & (1u << 8u)) == 0u && node.normal_cone.w >= 0.0)
+        {
+            vec3 cone_axis = normalize(mat3(model) * node.normal_cone.xyz);
+            float cone_sine = sqrt(max(0.0, 1.0 - node.normal_cone.w * node.normal_cone.w));
+            if (dot(cone_axis, to_camera / distance_to_node) <= -cone_sine)
+            {
+                atomicAdd(counters.cone_rejected, 1u);
+                continue;
+            }
+        }
+        float nearest_distance = max(distance_to_node - radius, 1.0e-4);
+        float projected_radius = radius * constants.viewport_hzb.y / nearest_distance;
+        if (projected_radius < 0.5)
+        {
+            atomicAdd(counters.projected_size_rejected, 1u);
+            continue;
+        }
+        if (constants.camera_cut == 0u && constants.viewport_hzb.w > 0.5)
+        {
+            vec4 clip = constants.view_projection * vec4(center, 1.0);
+            vec2 uv = clip.xy / max(clip.w, 1.0e-5) * 0.5 + 0.5;
+            float depth = clip.z / max(clip.w, 1.0e-5);
+            float mip = clamp(floor(log2(max(projected_radius, 1.0))), 0.0,
+                              max(constants.viewport_hzb.z - 1.0, 0.0));
+            float farthest = textureLod(hzb_generations[constants.hzb_generation & 1u], uv, mip).g;
+            if (all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0))) &&
+                depth - radius / max(abs(clip.w), 1.0e-4) > farthest + 1.0e-4)
+            {
+                atomicAdd(counters.hzb_rejected, 1u);
+                continue;
+            }
+        }
+
+        float projected_error = node.geometric_error * instance.distance_error.y * constants.viewport_hzb.y /
+                                nearest_distance;
+        bool descend = node.child_count != 0u && projected_error > constants.camera_position_and_error.w;
+        if (descend)
+        {
+            for (uint child_offset = 0u; child_offset < node.child_count; ++child_offset)
+            {
+                uint child_index = child_table.children[node.first_child + child_offset];
+                virtual_node child = node_table.nodes[child_index];
+                if (!page_resident(child.page_index, resource_generation))
+                {
+                    descend = false;
+                    request_page(instance.geometry.x, instance.geometry.y, resource_generation, child.page_index,
+                                 projected_error, distance_to_node, 1u);
+                }
+            }
+        }
+        if (descend)
+        {
+            if (stack_count + node.child_count > 64u)
+            {
+                atomicAdd(counters.traversal_overflow, 1u);
+                instance_fallback = true;
+                break;
+            }
+            for (uint child_offset = node.child_count; child_offset != 0u; --child_offset)
+                stack[stack_count++] = child_table.children[node.first_child + child_offset - 1u];
+            continue;
+        }
+        if (node.child_count != 0u && projected_error > constants.camera_position_and_error.w)
+            atomicAdd(counters.parent_fallbacks, 1u);
+        if (!page_resident(node.page_index, resource_generation))
+        {
+            request_page(instance.geometry.x, instance.geometry.y, resource_generation, node.page_index,
+                         projected_error, distance_to_node, 1u);
+            instance_fallback = true;
+            continue;
+        }
+        for (uint cluster = 0u; cluster < node.cluster_count; ++cluster)
+        {
+            uint visible_index = atomicAdd(counters.visible_count, 1u);
+            if (visible_index >= constants.capacities.z)
+            {
+                atomicAdd(counters.visible_overflow, 1u);
+                instance_fallback = true;
+                break;
+            }
+            output_clusters.visible[visible_index].instance_index = instance_index;
+            output_clusters.visible[visible_index].resource_index = instance.geometry.x;
+            output_clusters.visible[visible_index].cluster_index = node.first_cluster + cluster;
+            output_clusters.visible[visible_index].page_index = node.page_index;
+            output_clusters.visible[visible_index].material_index = instance.material_flags.x;
+            output_clusters.visible[visible_index].hierarchy_level = node.level;
+            output_clusters.visible[visible_index].flags = node.flags;
+            output_clusters.visible[visible_index].view_depth = distance_to_node;
+        }
+    }
+    if (instance_fallback)
+        atomicAdd(counters.fallback_instances, 1u);
+}
