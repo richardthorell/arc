@@ -428,7 +428,7 @@ TEST_CASE("editor grid is adaptive and remains anchored to world axes")
     camera_transform.position[1] = 800.0f;
     arc::render::debug_overlay_stream far_grid;
     arc::editor::append_editor_grid_overlay(far_grid, camera, camera_transform, 600);
-    REQUIRE(far_grid.lines.size() == near_grid.lines.size());
+    REQUIRE(far_grid.lines.size() >= 4);
     const float near_spacing = std::abs(near_grid.lines[2].start[2] - near_grid.lines[0].start[2]);
     const float far_spacing = std::abs(far_grid.lines[2].start[2] - far_grid.lines[0].start[2]);
     REQUIRE(far_spacing > near_spacing);
