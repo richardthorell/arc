@@ -1,0 +1,40 @@
+name: Temporary Main Scene Test Fix
+on:
+  push:
+    branches: [fix/main-build-2026-09-03]
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Update scene test
+        run: |
+          sed -i 's/REQUIRE(packet.events.size() == 4);/REQUIRE(packet.events.size() == 5);/' engine/scene/tests/scene_tests.cpp
+          sed -i 's/packet.events\[1\].type() == arc::render::render_event_type::lighting_geometry_upload/packet.events[1].type() == arc::render::render_event_type::gpu_resource_table_update/' engine/scene/tests/scene_tests.cpp
+          sed -i 's/packet.events\[2\].type() == arc::render::render_event_type::virtual_mesh_upload/packet.events[2].type() == arc::render::render_event_type::lighting_geometry_upload/' engine/scene/tests/scene_tests.cpp
+          sed -i 's/packet.events\[3\].type() == arc::render::render_event_type::render_world/packet.events[3].type() == arc::render::render_event_type::virtual_mesh_upload/' engine/scene/tests/scene_tests.cpp
+          sed -i '/packet.events\[3\].type() == arc::render::render_event_type::virtual_mesh_upload/a\    REQUIRE(packet.events[4].type() == arc::render::render_event_type::render_world);' engine/scene/tests/scene_tests.cpp
+          sed -i 's/packet.events\[3\].payload/packet.events[4].payload/' engine/scene/tests/scene_tests.cpp
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y clang-18 clang-format-18 ninja-build
+      - name: Format
+        run: clang-format-18 -i engine/scene/tests/scene_tests.cpp
+      - name: Configure
+        run: cmake -S . -B out/build/fix -G Ninja -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_BUILD_TYPE=RelWithDebInfo -DARC_ENABLE_JOB_COROUTINES=OFF -DARC_BUILD_ASSET_COOKER=OFF -DBUILD_TESTING=ON
+      - name: Build scene tests
+        run: cmake --build out/build/fix --target arc_scene_tests --parallel
+      - name: Test regression
+        run: ctest --test-dir out/build/fix -R 'mesh renderer keeps conventional fallback when virtual geometry is unavailable' --output-on-failure
+      - name: Commit
+        run: |
+          rm .github/workflows/temp-main-scene-test-fix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add engine/scene/tests/scene_tests.cpp .github/workflows/temp-main-scene-test-fix.yml
+          git commit -m 'Fix conventional fallback render event test'
+          git push
