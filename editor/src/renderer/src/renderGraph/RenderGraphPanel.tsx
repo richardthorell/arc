@@ -154,6 +154,21 @@ export function RenderGraphPanel({
           )}
         </div>
       )}
+      {snapshot?.gpuScene && (
+        <div className="tool-summary-strip" aria-label="GPU Scene resource tables">
+          <span>
+            Tables {snapshot.gpuScene.geometryTableEntries} geometry · {snapshot.gpuScene.materialTableEntries}{' '}
+            materials · {snapshot.gpuScene.textureTableEntries} textures
+          </span>
+          <span>
+            Heaps {bytes(snapshot.gpuScene.sharedVertexHeapBytes)} vertices ·{' '}
+            {bytes(snapshot.gpuScene.sharedIndexHeapBytes)} indices
+          </span>
+          <span>
+            Sparse upload {bytes(snapshot.gpuScene.uploadedBytes)} in {snapshot.gpuScene.uploadedRanges} ranges
+          </span>
+        </div>
+      )}
       {pinned && snapshot && (
         <div className="tool-comparison">
           <GitCompareArrows size={14} />

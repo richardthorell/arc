@@ -3,8 +3,12 @@
 #include <arc/core/id.h>
 #include <arc/render/handles.h>
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
+#include <unordered_map>
 #include <vector>
 
 namespace arc::render
@@ -160,6 +164,8 @@ struct gpu_table_update_batch
     std::uint32_t table_generation{};
     /** Required number of addressable slots after publication. */
     std::uint32_t capacity{};
+    /** Byte stride of one complete GPU-visible table record. */
+    std::uint32_t element_stride{};
     /** Earliest completed frame after which tombstoned slots may be reused. */
     std::uint64_t reuse_after_frame{};
     /** Individual slot mutations. */
@@ -168,6 +174,217 @@ struct gpu_table_update_batch
     std::vector<gpu_table_dirty_range> dirty_ranges;
     /** Packed immutable bytes referenced by update payload offsets. */
     std::vector<std::byte> payload;
+    /** Monotonic generation of the shared geometry heaps. */
+    std::uint32_t geometry_heap_generation{};
+    /** Required vertex heap capacity after applying this batch. */
+    std::uint64_t vertex_heap_capacity{};
+    /** Required index heap capacity after applying this batch. */
+    std::uint64_t index_heap_capacity{};
+    /** Sparse byte updates targeting the shared vertex/index heaps. */
+    struct heap_update
+    {
+        /** False targets the vertex heap; true targets the index heap. */
+        bool index_heap{};
+        /** Destination byte offset in the selected heap. */
+        std::uint64_t destination_offset{};
+        /** Byte offset into @ref heap_payload. */
+        std::uint32_t payload_offset{};
+        /** Number of bytes copied by this update. */
+        std::uint32_t payload_size{};
+    };
+    std::vector<heap_update> heap_updates;
+    /** Immutable bytes referenced by @ref heap_updates. */
+    std::vector<std::byte> heap_payload;
+};
+
+/** @brief GPU record describing conventional indexed geometry in shared heaps. */
+struct alignas(16) gpu_geometry_table_record
+{
+    std::uint32_t generation{};
+    std::uint32_t flags{};
+    std::uint64_t vertex_offset{};
+    std::uint64_t index_offset{};
+    std::uint32_t vertex_count{};
+    std::uint32_t index_count{};
+    std::uint32_t vertex_stride{};
+    std::uint32_t index_stride{sizeof(std::uint32_t)};
+    std::uint32_t reserved[2]{};
+};
+
+/** @brief GPU record describing a stable sampled-image table entry. */
+struct alignas(16) gpu_texture_table_record
+{
+    std::uint32_t generation{};
+    std::uint32_t descriptor_index{resource_handle::invalid_index};
+    std::uint32_t descriptor_generation{};
+    std::uint32_t flags{};
+    std::uint32_t mip_window_base{};
+    std::uint32_t mip_count{1};
+    std::uint32_t width{};
+    std::uint32_t height{};
+};
+
+/** @brief GPU record describing one immutable sampler descriptor. */
+struct alignas(16) gpu_sampler_table_record
+{
+    std::uint32_t generation{};
+    std::uint32_t descriptor_index{resource_handle::invalid_index};
+    std::uint32_t descriptor_generation{};
+    std::uint32_t flags{};
+};
+
+/** @brief GPU record describing current and previous skin-palette ranges. */
+struct alignas(16) gpu_skin_palette_table_record
+{
+    std::uint32_t generation{};
+    std::uint32_t joint_count{};
+    std::uint64_t current_offset{};
+    std::uint64_t previous_offset{};
+    std::uint64_t byte_size{};
+};
+
+/** @brief GPU record containing packed material constants and stable texture references. */
+struct alignas(16) gpu_material_table_record
+{
+    static constexpr std::size_t texture_slot_count = 12;
+
+    std::uint32_t generation{};
+    std::uint32_t flags{};
+    float base_color[4]{1.0f, 1.0f, 1.0f, 1.0f};
+    float emissive[4]{};
+    float surface[4]{};
+    std::array<std::uint32_t, texture_slot_count> texture_indices{};
+    std::array<std::uint32_t, texture_slot_count> texture_generations{};
+    std::uint32_t reserved[2]{};
+};
+
+static_assert(sizeof(gpu_geometry_table_record) == 48);
+static_assert(sizeof(gpu_texture_table_record) == 32);
+static_assert(sizeof(gpu_sampler_table_record) == 16);
+static_assert(sizeof(gpu_skin_palette_table_record) == 32);
+static_assert(sizeof(gpu_material_table_record) == 160);
+
+/** @brief Untyped stable slot reference returned by the resource-table authority. */
+struct gpu_resource_table_reference
+{
+    std::uint32_t index{resource_handle::invalid_index};
+    std::uint32_t generation{};
+
+    [[nodiscard]] constexpr bool valid() const noexcept
+    {
+        return index != resource_handle::invalid_index && generation != 0u;
+    }
+
+    friend constexpr bool operator==(gpu_resource_table_reference, gpu_resource_table_reference) noexcept = default;
+};
+
+/** @brief Occupancy and generation state for one renderer-owned stable table. */
+struct gpu_resource_table_snapshot
+{
+    gpu_resource_table_kind table{gpu_resource_table_kind::geometry};
+    std::uint32_t table_generation{};
+    std::uint32_t capacity{};
+    std::uint32_t live_entries{};
+    std::uint32_t tombstones{};
+    std::uint32_t element_stride{};
+    std::uint64_t sparse_upload_bytes{};
+};
+
+/** @brief Capacity state for the renderer-owned shared conventional-geometry heaps. */
+struct gpu_geometry_heap_snapshot
+{
+    std::uint32_t generation{};
+    std::uint64_t vertex_bytes{};
+    std::uint64_t index_bytes{};
+    std::uint64_t live_vertex_bytes{};
+    std::uint64_t live_index_bytes{};
+    std::uint32_t live_allocations{};
+};
+
+/**
+ * @brief Renderer-owned authority for generational GPU resource tables and shared geometry heaps.
+ *
+ * Table indices intentionally match renderer handle indices. A replacement record carries the new handle generation,
+ * while backends retain prior table-buffer generations until their frames retire. This keeps scene handles stable and
+ * prevents an in-flight frame from observing a recycled record.
+ */
+class gpu_resource_tables
+{
+public:
+    gpu_resource_tables();
+
+    [[nodiscard]] gpu_table_update_batch publish_geometry(resource_handle handle, std::span<const std::byte> vertices,
+                                                          std::uint32_t vertex_stride,
+                                                          std::span<const std::byte> indices,
+                                                          std::uint32_t index_stride, std::uint64_t frame_index);
+    [[nodiscard]] gpu_table_update_batch publish_material(resource_handle handle,
+                                                          const gpu_material_table_record& record,
+                                                          std::uint64_t frame_index);
+    [[nodiscard]] gpu_table_update_batch publish_texture(resource_handle handle,
+                                                         const gpu_texture_table_record& record,
+                                                         std::uint64_t frame_index);
+    [[nodiscard]] gpu_table_update_batch publish_sampler(resource_handle handle,
+                                                         const gpu_sampler_table_record& record,
+                                                         std::uint64_t frame_index);
+    [[nodiscard]] gpu_table_update_batch publish_skin_palette(resource_handle handle,
+                                                              const gpu_skin_palette_table_record& record,
+                                                              std::uint64_t frame_index);
+    [[nodiscard]] gpu_table_update_batch tombstone(gpu_resource_table_kind table, resource_handle handle,
+                                                   std::uint64_t frame_index);
+
+    [[nodiscard]] std::optional<gpu_resource_table_reference> find(gpu_resource_table_kind table,
+                                                                  resource_handle handle) const noexcept;
+    [[nodiscard]] gpu_resource_table_snapshot snapshot(gpu_resource_table_kind table) const noexcept;
+    [[nodiscard]] gpu_geometry_heap_snapshot geometry_heap_snapshot() const noexcept;
+    void reset();
+
+private:
+    struct table_slot
+    {
+        std::uint32_t generation{};
+        bool live{};
+    };
+
+    struct table_state
+    {
+        gpu_resource_table_kind kind{gpu_resource_table_kind::geometry};
+        std::uint32_t generation{1};
+        std::uint32_t stride{};
+        std::uint32_t live_entries{};
+        std::uint32_t tombstones{};
+        std::uint64_t sparse_upload_bytes{};
+        std::vector<table_slot> slots;
+    };
+
+    struct heap_range
+    {
+        std::uint64_t offset{};
+        std::uint64_t size{};
+    };
+
+    struct geometry_allocation
+    {
+        heap_range vertices;
+        heap_range indices;
+    };
+
+    [[nodiscard]] gpu_table_update_batch publish_record(gpu_resource_table_kind table, resource_handle handle,
+                                                        std::span<const std::byte> record,
+                                                        std::uint64_t frame_index);
+    [[nodiscard]] heap_range allocate_heap_range(std::vector<std::byte>& heap, std::vector<heap_range>& free_ranges,
+                                                 std::uint64_t size, std::uint64_t alignment);
+    void release_heap_range(std::vector<heap_range>& free_ranges, heap_range range);
+    [[nodiscard]] static std::size_t table_offset(gpu_resource_table_kind table) noexcept;
+
+    std::array<table_state, 7> tables_;
+    std::vector<std::byte> vertex_heap_;
+    std::vector<std::byte> index_heap_;
+    std::vector<heap_range> free_vertex_ranges_;
+    std::vector<heap_range> free_index_ranges_;
+    std::unordered_map<std::uint64_t, geometry_allocation> geometry_allocations_;
+    std::uint32_t geometry_heap_generation_{1};
+    std::uint64_t live_vertex_bytes_{};
+    std::uint64_t live_index_bytes_{};
 };
 
 /** @brief Compact draw metadata consumed by indirect-command generation. */

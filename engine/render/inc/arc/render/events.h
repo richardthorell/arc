@@ -60,6 +60,7 @@ enum class render_event_type : std::uint8_t
     point_light,
     spot_light,
     area_light,
+    gpu_resource_table_update,
     gpu_scene_update,
     lighting_scene_update,
     render_world,
@@ -457,6 +458,12 @@ struct gpu_scene_update_event
     std::shared_ptr<const gpu_scene_update_batch> batch;
 };
 
+/** @brief Sparse stable resource-table and shared-heap mutations for one publication. */
+struct gpu_resource_table_update_event
+{
+    std::shared_ptr<const gpu_table_update_batch> batch;
+};
+
 /** @brief Incremental backend-neutral Lighting Scene mutations for one submitted frame. */
 struct lighting_scene_update_event
 {
@@ -479,8 +486,9 @@ using render_event_payload =
                  lighting_geometry_destroy_event, texture_upload_event, texture_stream_register_event,
                  texture_stream_upload_event, texture_stream_evict_event, texture_destroy_event, material_upload_event,
                  environment_upload_event, environment_destroy_event, viewport_resize_event, draw_mesh_event,
-                 directional_light_event, point_light_event, spot_light_event, area_light_event, gpu_scene_update_event,
-                 lighting_scene_update_event, render_world_event, debug_marker_event>;
+                 directional_light_event, point_light_event, spot_light_event, area_light_event,
+                 gpu_resource_table_update_event, gpu_scene_update_event, lighting_scene_update_event,
+                 render_world_event, debug_marker_event>;
 
 /**
  * @brief Thread-producible typed render event.
@@ -673,6 +681,9 @@ public:
 
     /** @brief Append persistent GPU Scene mutations. */
     void gpu_scene_update(std::shared_ptr<const gpu_scene_update_batch> batch);
+
+    /** @brief Append renderer-owned resource-table and shared-heap mutations. */
+    void gpu_resource_table_update(std::shared_ptr<const gpu_table_update_batch> batch);
 
     /**
      * @brief Append a prepared scene render packet.

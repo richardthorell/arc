@@ -102,6 +102,29 @@ export type EditorDiagnosticsSnapshot = {
     virtualMemoryBytes: number;
     fallback: string;
   };
+  gpuScene?: {
+    enabled: boolean;
+    hzbOcclusion: boolean;
+    historyValid: boolean;
+    capacity: number;
+    activeInstances: number;
+    uploadedInstances: number;
+    uploadedRanges: number;
+    uploadedBytes: number;
+    geometryTableEntries: number;
+    materialTableEntries: number;
+    textureTableEntries: number;
+    samplerTableEntries: number;
+    skinPaletteTableEntries: number;
+    sharedVertexHeapBytes: number;
+    sharedIndexHeapBytes: number;
+    visibleInstances: number;
+    frustumRejected: number;
+    distanceRejected: number;
+    occlusionRejected: number;
+    indirectCommands: number;
+    fallback: string;
+  };
   textureStreaming?: {
     gpuBudgetBytes: number;
     gpuResidentBytes: number;

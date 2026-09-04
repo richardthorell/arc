@@ -474,6 +474,7 @@ public:
         destroy_buffer(exposure_buffer_);
         destroy_buffer(gpu_scene_visibility_buffer_);
         destroy_buffer(gpu_scene_transform_buffer_);
+        destroy_gpu_resource_tables();
         destroy_gpu_visibility_resources();
         destroy_texture_feedback_resources();
         destroy_virtual_texture_resources();
@@ -657,6 +658,8 @@ public:
                 frame_spot_lights_.push_back(*spot_light);
             else if (const auto* area_light = std::get_if<area_light_event>(&event.payload))
                 frame_area_lights_.push_back(*area_light);
+            else if (const auto* table_update = std::get_if<gpu_resource_table_update_event>(&event.payload))
+                apply_gpu_resource_table_update(*table_update);
             else if (const auto* gpu_scene_update = std::get_if<gpu_scene_update_event>(&event.payload))
                 apply_gpu_scene_update(*gpu_scene_update);
             else if (const auto* world = std::get_if<render_world_event>(&event.payload))
@@ -664,6 +667,7 @@ public:
             else if (const auto* marker = std::get_if<debug_marker_event>(&event.payload))
                 pending_debug_markers_.push_back(marker->label);
         }
+        if (!flush_gpu_resource_tables()) upload_batch_failed_ = true;
         if (!flush_upload_batch()) upload_batch_failed_ = true;
         if (upload_batch_failed_)
             for (auto& result : frame_texture_upload_results_)
@@ -1464,6 +1468,29 @@ private:
         VmaAllocation allocation{};
     };
 
+    struct gpu_resource_table_buffer
+    {
+        gpu_buffer storage;
+        std::vector<std::byte> mirror;
+        std::vector<std::uint32_t> generations;
+        std::vector<bool> live;
+        std::uint32_t table_generation{};
+        std::uint32_t element_stride{};
+        std::uint32_t live_entries{};
+        bool dirty{};
+    };
+
+    struct gpu_shared_geometry_buffers
+    {
+        gpu_buffer vertices;
+        gpu_buffer indices;
+        std::vector<std::byte> vertex_mirror;
+        std::vector<std::byte> index_mirror;
+        std::uint32_t generation{};
+        bool vertices_dirty{};
+        bool indices_dirty{};
+    };
+
     struct texture_feedback_frame
     {
         gpu_buffer demands;
@@ -1605,6 +1632,7 @@ private:
 
     struct gpu_texture
     {
+        texture_handle handle{};
         texture_data data;
         streamed_texture_descriptor streaming;
         std::vector<std::shared_ptr<const std::vector<std::byte>>> streamed_mips;
@@ -3905,6 +3933,7 @@ private:
     {
         if (!event.descriptor) return;
         gpu_texture texture;
+        texture.handle = event.handle;
         texture.streaming = *event.descriptor;
         texture.streamable = true;
         texture.mip_window_base = texture.streaming.artifact.mip_count;
@@ -3929,6 +3958,26 @@ private:
         }
         register_virtual_texture(texture);
         textures_[key] = std::move(texture);
+    }
+
+    void update_gpu_texture_table_window(const gpu_texture& texture)
+    {
+        if (!texture.handle.valid()) return;
+        auto& table = gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::texture)];
+        if (table.element_stride != sizeof(gpu_texture_table_record) || texture.handle.index >= table.live.size() ||
+            !table.live[texture.handle.index] || table.generations[texture.handle.index] != texture.handle.generation)
+            return;
+        const auto offset = static_cast<std::size_t>(texture.handle.index) * table.element_stride;
+        if (offset > table.mirror.size() || sizeof(gpu_texture_table_record) > table.mirror.size() - offset) return;
+        gpu_texture_table_record record{};
+        std::memcpy(&record, table.mirror.data() + offset, sizeof(record));
+        record.mip_window_base = texture.mip_window_base;
+        record.mip_count = texture.mip_count;
+        if (++record.descriptor_generation == 0u) record.descriptor_generation = 1u;
+        std::memcpy(table.mirror.data() + offset, &record, sizeof(record));
+        table.dirty = true;
+        last_profile_.gpu_scene.uploaded_bytes += sizeof(record);
+        ++last_profile_.gpu_scene.uploaded_ranges;
     }
 
     bool rebuild_streamed_mip_window(gpu_texture& texture)
@@ -3969,6 +4018,7 @@ private:
 
         gpu_texture replacement;
         replacement.streaming = texture.streaming;
+        replacement.handle = texture.handle;
         replacement.streamed_mips = texture.streamed_mips;
         replacement.streamable = true;
         replacement.mip_window_base = base;
@@ -3981,6 +4031,7 @@ private:
         auto retired = std::move(texture);
         texture = std::move(replacement);
         defer_texture_release(std::move(retired));
+        update_gpu_texture_table_window(texture);
         return true;
     }
 
@@ -4646,7 +4697,7 @@ private:
     {
         if (!event.texture) return;
 
-        gpu_texture texture{.data = *event.texture};
+        gpu_texture texture{.handle = event.handle, .data = *event.texture};
         const bool uploaded = upload_texture_image(*event.texture, texture);
         if (!uploaded && event.texture->dds && event.texture->compressed)
         {
@@ -4826,6 +4877,175 @@ private:
         result.visibility.distance_error[0] = source.maximum_draw_distance;
         result.visibility.distance_error[1] = source.geometry_error_scale;
         return result;
+    }
+
+    static std::size_t gpu_table_offset(gpu_resource_table_kind table) noexcept
+    {
+        return static_cast<std::size_t>(table);
+    }
+
+    void apply_gpu_resource_table_update(const gpu_resource_table_update_event& event)
+    {
+        if (!event.batch) return;
+        const auto& batch = *event.batch;
+        const auto table_index = gpu_table_offset(batch.table);
+        if (table_index >= gpu_resource_tables_.size() || batch.element_stride == 0u) return;
+        auto& table = gpu_resource_tables_[table_index];
+        if (table.element_stride != 0u && table.element_stride != batch.element_stride)
+        {
+            last_profile_.gpu_scene.fallback_reason =
+                "GPU resource table stride changed unexpectedly; retaining the prior table generation";
+            return;
+        }
+        table.element_stride = batch.element_stride;
+        table.table_generation = batch.table_generation;
+        const auto required_bytes = static_cast<std::size_t>(batch.capacity) * batch.element_stride;
+        if (required_bytes > table.mirror.size()) table.mirror.resize(required_bytes);
+        if (batch.capacity > table.generations.size())
+        {
+            table.generations.resize(batch.capacity);
+            table.live.resize(batch.capacity);
+        }
+
+        for (const auto& update : batch.updates)
+        {
+            if (update.slot >= table.generations.size()) continue;
+            const auto destination_offset = static_cast<std::size_t>(update.slot) * batch.element_stride;
+            if (update.kind == gpu_table_update_kind::reset)
+            {
+                std::fill(table.mirror.begin(), table.mirror.end(), std::byte{});
+                std::fill(table.generations.begin(), table.generations.end(), 0u);
+                std::fill(table.live.begin(), table.live.end(), false);
+                table.live_entries = 0u;
+            }
+            else if (update.kind == gpu_table_update_kind::tombstone)
+            {
+                std::fill_n(table.mirror.begin() + static_cast<std::ptrdiff_t>(destination_offset),
+                            batch.element_stride, std::byte{});
+                if (table.live[update.slot]) --table.live_entries;
+                table.live[update.slot] = false;
+                table.generations[update.slot] = update.generation;
+            }
+            else if (update.payload_size == batch.element_stride &&
+                     update.payload_offset <= batch.payload.size() &&
+                     update.payload_size <= batch.payload.size() - update.payload_offset)
+            {
+                std::copy_n(batch.payload.begin() + static_cast<std::ptrdiff_t>(update.payload_offset),
+                            update.payload_size,
+                            table.mirror.begin() + static_cast<std::ptrdiff_t>(destination_offset));
+                if (!table.live[update.slot]) ++table.live_entries;
+                table.live[update.slot] = true;
+                table.generations[update.slot] = update.generation;
+            }
+        }
+        if (!batch.updates.empty()) table.dirty = true;
+
+        if (batch.geometry_heap_generation != 0u)
+        {
+            shared_geometry_buffers_.generation = batch.geometry_heap_generation;
+            if (batch.vertex_heap_capacity > shared_geometry_buffers_.vertex_mirror.size())
+                shared_geometry_buffers_.vertex_mirror.resize(static_cast<std::size_t>(batch.vertex_heap_capacity));
+            if (batch.index_heap_capacity > shared_geometry_buffers_.index_mirror.size())
+                shared_geometry_buffers_.index_mirror.resize(static_cast<std::size_t>(batch.index_heap_capacity));
+            for (const auto& update : batch.heap_updates)
+            {
+                auto& mirror = update.index_heap ? shared_geometry_buffers_.index_mirror
+                                                 : shared_geometry_buffers_.vertex_mirror;
+                if (update.destination_offset > mirror.size() || update.payload_offset > batch.heap_payload.size() ||
+                    update.payload_size > mirror.size() - update.destination_offset ||
+                    update.payload_size > batch.heap_payload.size() - update.payload_offset)
+                    continue;
+                std::copy_n(batch.heap_payload.begin() + static_cast<std::ptrdiff_t>(update.payload_offset),
+                            update.payload_size,
+                            mirror.begin() + static_cast<std::ptrdiff_t>(update.destination_offset));
+                if (update.index_heap)
+                    shared_geometry_buffers_.indices_dirty = true;
+                else
+                    shared_geometry_buffers_.vertices_dirty = true;
+            }
+        }
+
+        auto& profile = last_profile_.gpu_scene;
+        profile.uploaded_ranges += static_cast<std::uint32_t>(batch.dirty_ranges.size());
+        profile.uploaded_bytes += batch.payload.size() + batch.heap_payload.size();
+    }
+
+    bool replace_gpu_mirror_buffer(gpu_buffer& destination, std::span<const std::byte> mirror,
+                                   VkBufferUsageFlags usage)
+    {
+        if (mirror.empty()) return true;
+        gpu_buffer replacement{};
+        if (!create_buffer(mirror.size(), usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU,
+                           replacement))
+            return false;
+        void* mapped{};
+        if (vmaMapMemory(allocator_, replacement.allocation, &mapped) != VK_SUCCESS)
+        {
+            destroy_buffer(replacement);
+            return false;
+        }
+        std::memcpy(mapped, mirror.data(), mirror.size());
+        vmaFlushAllocation(allocator_, replacement.allocation, 0, mirror.size());
+        vmaUnmapMemory(allocator_, replacement.allocation);
+        auto retired = destination;
+        destination = replacement;
+        if (retired.buffer != VK_NULL_HANDLE)
+            deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
+                                     [this, retired]() mutable { destroy_buffer(retired); });
+        return true;
+    }
+
+    bool flush_gpu_resource_tables()
+    {
+        bool succeeded = true;
+        for (auto& table : gpu_resource_tables_)
+        {
+            if (!table.dirty) continue;
+            if (replace_gpu_mirror_buffer(table.storage, table.mirror, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
+                table.dirty = false;
+            else
+                succeeded = false;
+        }
+        if (shared_geometry_buffers_.vertices_dirty)
+        {
+            if (replace_gpu_mirror_buffer(shared_geometry_buffers_.vertices,
+                                          shared_geometry_buffers_.vertex_mirror,
+                                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT))
+                shared_geometry_buffers_.vertices_dirty = false;
+            else
+                succeeded = false;
+        }
+        if (shared_geometry_buffers_.indices_dirty)
+        {
+            if (replace_gpu_mirror_buffer(shared_geometry_buffers_.indices, shared_geometry_buffers_.index_mirror,
+                                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT))
+                shared_geometry_buffers_.indices_dirty = false;
+            else
+                succeeded = false;
+        }
+
+        auto& profile = last_profile_.gpu_scene;
+        profile.geometry_table_entries = gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::geometry)].live_entries;
+        profile.material_table_entries = gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::material)].live_entries;
+        profile.texture_table_entries = gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::texture)].live_entries;
+        profile.sampler_table_entries = gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::sampler)].live_entries;
+        profile.skin_palette_table_entries =
+            gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::skin_palette)].live_entries;
+        profile.shared_vertex_heap_bytes = shared_geometry_buffers_.vertex_mirror.size();
+        profile.shared_index_heap_bytes = shared_geometry_buffers_.index_mirror.size();
+        return succeeded;
+    }
+
+    void destroy_gpu_resource_tables() noexcept
+    {
+        for (auto& table : gpu_resource_tables_)
+        {
+            destroy_buffer(table.storage);
+            table = {};
+        }
+        destroy_buffer(shared_geometry_buffers_.vertices);
+        destroy_buffer(shared_geometry_buffers_.indices);
+        shared_geometry_buffers_ = {};
     }
 
     bool ensure_gpu_scene_buffer(std::uint32_t required_capacity)
@@ -11306,6 +11526,8 @@ private:
     gpu_buffer light_buffer_;
     gpu_buffer gpu_scene_visibility_buffer_;
     gpu_buffer gpu_scene_transform_buffer_;
+    std::array<gpu_resource_table_buffer, 7> gpu_resource_tables_;
+    gpu_shared_geometry_buffers shared_geometry_buffers_;
     std::vector<gpu_scene_visibility_record> gpu_scene_visibility_mirror_;
     std::vector<gpu_scene_transform_record> gpu_scene_transform_mirror_;
     std::uint32_t gpu_scene_capacity_{};

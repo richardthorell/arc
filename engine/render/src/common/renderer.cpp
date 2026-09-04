@@ -61,6 +61,73 @@ bool valid_streamed_texture_descriptor(const streamed_texture_descriptor& descri
            artifact.tail_first_mip < artifact.mip_count;
 }
 
+gpu_texture_table_record texture_table_record(texture_handle handle, const texture_descriptor& texture,
+                                              std::uint32_t mip_window_base, std::uint32_t flags) noexcept
+{
+    return {.generation = handle.generation,
+            .descriptor_index = handle.index,
+            .descriptor_generation = handle.generation,
+            .flags = flags,
+            .mip_window_base = mip_window_base,
+            .mip_count = texture.mip_levels > mip_window_base ? texture.mip_levels - mip_window_base : 1u,
+            .width = texture.width,
+            .height = texture.height};
+}
+
+gpu_texture_table_record texture_table_record(texture_handle handle, const texture_data& texture) noexcept
+{
+    return texture_table_record(handle,
+                                {.name = texture.name,
+                                 .width = texture.width,
+                                 .height = texture.height,
+                                 .depth = texture.depth,
+                                 .dimension = texture.dimension,
+                                 .mip_levels = texture.mip_levels,
+                                 .format = texture.format,
+                                 .color_space = texture.color_space,
+                                 .semantic = texture.semantic},
+                                0u, 0u);
+}
+
+gpu_material_table_record material_table_record(const material_descriptor& material,
+                                                const gpu_resource_tables& tables) noexcept
+{
+    gpu_material_table_record record{};
+    record.generation = material.handle.generation;
+    record.flags = static_cast<std::uint32_t>(material.alpha_mode) |
+                   (static_cast<std::uint32_t>(material.shading_model) << 4u) |
+                   (material.double_sided ? 1u << 8u : 0u);
+    for (std::uint32_t component = 0; component < 4u; ++component)
+        record.base_color[component] = material.base_color[component];
+    record.emissive[0] = material.emissive_factor[0];
+    record.emissive[1] = material.emissive_factor[1];
+    record.emissive[2] = material.emissive_factor[2];
+    record.surface[0] = material.metallic;
+    record.surface[1] = material.roughness;
+    record.surface[2] = material.alpha_cutoff;
+    record.surface[3] = material.normal_scale;
+    const std::array textures{material.base_color_texture,
+                              material.metallic_roughness_texture,
+                              material.normal_texture,
+                              material.occlusion_texture,
+                              material.emissive_texture,
+                              material.clear_coat_texture,
+                              material.clear_coat_roughness_texture,
+                              material.clear_coat_normal_texture,
+                              material.anisotropy_texture,
+                              material.subsurface_texture,
+                              material.thickness_texture,
+                              material.transmission_texture};
+    record.texture_indices.fill(resource_handle::invalid_index);
+    for (std::size_t index = 0; index < textures.size(); ++index)
+        if (const auto reference = tables.find(gpu_resource_table_kind::texture, textures[index]))
+        {
+            record.texture_indices[index] = reference->index;
+            record.texture_generations[index] = reference->generation;
+        }
+    return record;
+}
+
 } // namespace
 
 anti_aliasing_method resolve_anti_aliasing(anti_aliasing_method requested, render_path path, float render_scale,
@@ -688,6 +755,16 @@ const resolved_render_config& renderer::resolved_config() const noexcept
     return resolved_config_;
 }
 
+gpu_resource_tables& renderer::gpu_resources() noexcept
+{
+    return gpu_resources_;
+}
+
+const gpu_resource_tables& renderer::gpu_resources() const noexcept
+{
+    return gpu_resources_;
+}
+
 anti_aliasing_method renderer::resolve_view_anti_aliasing(anti_aliasing_method requested) const noexcept
 {
     if (!backend_) return anti_aliasing_method::disabled;
@@ -709,6 +786,11 @@ mesh_handle renderer::create_mesh(mesh_data mesh)
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.mesh_upload(handle, shared_mesh, shared_mesh->name);
+    auto table_update = gpu_resources_.publish_geometry(
+        handle, std::as_bytes(std::span{shared_mesh->vertices}), sizeof(mesh_vertex),
+        std::as_bytes(std::span{shared_mesh->indices}), sizeof(std::uint32_t), resource_frame_index_);
+    if (!table_update.updates.empty())
+        writer.gpu_resource_table_update(std::make_shared<gpu_table_update_batch>(std::move(table_update)));
     if (shared_mesh->usage == mesh_usage::static_gpu && !shared_mesh->vertices.empty() && !shared_mesh->indices.empty())
     {
         auto built = build_lighting_geometry(*shared_mesh);
@@ -734,6 +816,11 @@ bool renderer::update_mesh_vertices(mesh_handle handle, std::vector<mesh_vertex>
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.mesh_upload(handle, replacement, replacement->name);
+    auto table_update = gpu_resources_.publish_geometry(
+        handle, std::as_bytes(std::span{replacement->vertices}), sizeof(mesh_vertex),
+        std::as_bytes(std::span{replacement->indices}), sizeof(std::uint32_t), resource_frame_index_);
+    if (!table_update.updates.empty())
+        writer.gpu_resource_table_update(std::make_shared<gpu_table_update_batch>(std::move(table_update)));
     const auto mesh_key = renderer_resource_key(handle);
     const auto lighting_entry = mesh_lighting_geometry_.find(mesh_key);
     if (replacement->usage == mesh_usage::static_gpu && lighting_entry != mesh_lighting_geometry_.end())
@@ -760,6 +847,10 @@ bool renderer::destroy_mesh(mesh_handle handle)
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.mesh_destroy(handle);
+    auto table_update =
+        gpu_resources_.tombstone(gpu_resource_table_kind::geometry, handle, resource_frame_index_);
+    if (!table_update.updates.empty())
+        writer.gpu_resource_table_update(std::make_shared<gpu_table_update_batch>(std::move(table_update)));
     if (const auto found = mesh_lighting_geometry_.find(mesh_key); found != mesh_lighting_geometry_.end())
     {
         const auto lighting_handle = found->second;
@@ -1053,6 +1144,9 @@ texture_handle renderer::create_texture(texture_data texture)
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.texture_upload(handle, shared_texture, shared_texture->name);
+    auto table_update =
+        gpu_resources_.publish_texture(handle, texture_table_record(handle, *shared_texture), resource_frame_index_);
+    writer.gpu_resource_table_update(std::make_shared<gpu_table_update_batch>(std::move(table_update)));
     frame_queue_.submit(std::move(buffer));
     return handle;
 }
@@ -1065,6 +1159,9 @@ bool renderer::update_texture(texture_handle handle, texture_data texture)
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.texture_upload(handle, shared_texture, shared_texture->name);
+    auto table_update =
+        gpu_resources_.publish_texture(handle, texture_table_record(handle, *shared_texture), resource_frame_index_);
+    writer.gpu_resource_table_update(std::make_shared<gpu_table_update_batch>(std::move(table_update)));
     frame_queue_.submit(std::move(buffer));
     return true;
 }
@@ -1079,6 +1176,12 @@ texture_handle renderer::create_streamed_texture(streamed_texture_descriptor des
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.texture_stream_register(handle, shared_descriptor, shared_descriptor->texture.name);
+    const auto flags = 1u | (shared_descriptor->mode == texture_streaming_mode::virtual_tiles ? 2u : 0u);
+    auto table_update = gpu_resources_.publish_texture(
+        handle,
+        texture_table_record(handle, shared_descriptor->texture, shared_descriptor->artifact.tail_first_mip, flags),
+        resource_frame_index_);
+    writer.gpu_resource_table_update(std::make_shared<gpu_table_update_batch>(std::move(table_update)));
     frame_queue_.submit(std::move(buffer));
     return handle;
 }
@@ -1096,6 +1199,12 @@ bool renderer::update_streamed_texture(texture_handle handle, streamed_texture_d
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.texture_stream_register(handle, shared_descriptor, shared_descriptor->texture.name);
+    const auto flags = 1u | (shared_descriptor->mode == texture_streaming_mode::virtual_tiles ? 2u : 0u);
+    auto table_update = gpu_resources_.publish_texture(
+        handle,
+        texture_table_record(handle, shared_descriptor->texture, shared_descriptor->artifact.tail_first_mip, flags),
+        resource_frame_index_);
+    writer.gpu_resource_table_update(std::make_shared<gpu_table_update_batch>(std::move(table_update)));
     frame_queue_.submit(std::move(buffer));
     return true;
 }
@@ -1108,6 +1217,9 @@ bool renderer::destroy_texture(texture_handle handle)
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.texture_destroy(handle);
+    auto table_update = gpu_resources_.tombstone(gpu_resource_table_kind::texture, handle, resource_frame_index_);
+    if (!table_update.updates.empty())
+        writer.gpu_resource_table_update(std::make_shared<gpu_table_update_batch>(std::move(table_update)));
     frame_queue_.submit(std::move(buffer));
     return true;
 }
@@ -1185,6 +1297,9 @@ material_handle renderer::create_material(material_descriptor material)
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.material_upload(handle, shared_material, shared_material->name);
+    auto table_update = gpu_resources_.publish_material(
+        handle, material_table_record(*shared_material, gpu_resources_), resource_frame_index_);
+    writer.gpu_resource_table_update(std::make_shared<gpu_table_update_batch>(std::move(table_update)));
     frame_queue_.submit(std::move(buffer));
     return handle;
 }
@@ -1200,6 +1315,9 @@ bool renderer::update_material(material_handle handle, material_descriptor mater
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.material_upload(handle, shared_material, shared_material->name);
+    auto table_update = gpu_resources_.publish_material(
+        handle, material_table_record(*shared_material, gpu_resources_), resource_frame_index_);
+    writer.gpu_resource_table_update(std::make_shared<gpu_table_update_batch>(std::move(table_update)));
     frame_queue_.submit(std::move(buffer));
     return true;
 }
@@ -1478,6 +1596,7 @@ render_frame_capture_result renderer::last_frame_capture() const
 
 render_submit_result renderer::render_frame(std::uint64_t frame_index, const render_graph& graph)
 {
+    resource_frame_index_ = frame_index;
     virtual_geometry_residency_.begin_frame(frame_index);
     texture_residency_.begin_frame(frame_index);
     if (!backend_)

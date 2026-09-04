@@ -119,6 +119,29 @@ const diagnostics = {
     fallback: '',
     resources: [],
   },
+  gpuScene: {
+    enabled: true,
+    hzbOcclusion: true,
+    historyValid: true,
+    capacity: 256,
+    activeInstances: 12,
+    uploadedInstances: 2,
+    uploadedRanges: 2,
+    uploadedBytes: 640,
+    geometryTableEntries: 4,
+    materialTableEntries: 3,
+    textureTableEntries: 7,
+    samplerTableEntries: 1,
+    skinPaletteTableEntries: 0,
+    sharedVertexHeapBytes: 4096,
+    sharedIndexHeapBytes: 1024,
+    visibleInstances: 9,
+    frustumRejected: 2,
+    distanceRejected: 1,
+    occlusionRejected: 0,
+    indirectCommands: 4,
+    fallback: '',
+  },
 };
 
 afterEach(() => {
@@ -143,6 +166,7 @@ describe('RenderGraphPanel', () => {
     expect(screen.getAllByText(/scene_depth/).length).toBeGreaterThan(0);
     expect(document.querySelector('.render-graph-transition')).toBeInTheDocument();
     expect(screen.getByLabelText('Texture streaming diagnostics')).toHaveTextContent('Hit 87.5%');
+    expect(screen.getByLabelText('GPU Scene resource tables')).toHaveTextContent('4 geometry');
 
     await userEvent.type(screen.getByLabelText('Filter render graph'), 'scene_depth');
     expect(screen.getByRole('img', { name: 'Executed graph for frame 42' })).toBeInTheDocument();

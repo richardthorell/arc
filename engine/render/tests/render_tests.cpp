@@ -3,6 +3,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <array>
 #include <cmath>
@@ -45,6 +46,9 @@ public:
     {
         last_frame = packet.frame_index;
         last_event_count = packet.events.size();
+        last_event_types.clear();
+        for (const auto& event : packet.events)
+            last_event_types.push_back(event.type());
         last_pass_count = graph.passes.size();
         profile.frame_index = packet.frame_index;
         profile.graph = graph;
@@ -101,6 +105,7 @@ public:
     std::uint64_t last_frame{};
     std::size_t last_event_count{};
     std::size_t last_pass_count{};
+    std::vector<arc::render::render_event_type> last_event_types;
     std::uint64_t texture_id{99};
     std::uint32_t viewport_width{};
     std::uint32_t viewport_height{};
@@ -1331,6 +1336,126 @@ TEST_CASE("GPU table dirty ranges are sorted coalesced and duplicate free")
                           {.first = 2, .count = 3}, {.first = 9, .count = 1}, {.first = 12, .count = 1}});
 }
 
+TEST_CASE("GPU resource tables publish generational records and reusable shared heap ranges")
+{
+    using namespace arc::render;
+    gpu_resource_tables tables;
+    const resource_handle first{.index = 5, .generation = 2};
+    const std::array<mesh_vertex, 3> vertices{};
+    const std::array<std::uint32_t, 3> indices{0, 1, 2};
+
+    const auto initial = tables.publish_geometry(first, std::as_bytes(std::span{vertices}), sizeof(mesh_vertex),
+                                                 std::as_bytes(std::span{indices}), sizeof(std::uint32_t), 10);
+    REQUIRE(initial.table == gpu_resource_table_kind::geometry);
+    REQUIRE(initial.element_stride == sizeof(gpu_geometry_table_record));
+    REQUIRE(initial.capacity >= 6);
+    REQUIRE(initial.updates.size() == 1);
+    REQUIRE(initial.heap_updates.size() == 2);
+    REQUIRE(initial.reuse_after_frame == 10 + default_gpu_table_slot_reuse_delay_frames);
+    REQUIRE(tables.find(gpu_resource_table_kind::geometry, first) ==
+            gpu_resource_table_reference{.index = 5, .generation = 2});
+
+    gpu_geometry_table_record first_record{};
+    std::memcpy(&first_record, initial.payload.data(), sizeof(first_record));
+    REQUIRE(first_record.generation == 2);
+    REQUIRE(first_record.vertex_count == 3);
+    REQUIRE(first_record.index_count == 3);
+    const auto first_vertex_offset = first_record.vertex_offset;
+    const auto first_index_offset = first_record.index_offset;
+
+    const auto update = tables.publish_geometry(first, std::as_bytes(std::span{vertices}), sizeof(mesh_vertex),
+                                                std::as_bytes(std::span{indices}), sizeof(std::uint32_t), 11);
+    gpu_geometry_table_record updated_record{};
+    std::memcpy(&updated_record, update.payload.data(), sizeof(updated_record));
+    REQUIRE(updated_record.vertex_offset == first_vertex_offset);
+    REQUIRE(updated_record.index_offset == first_index_offset);
+
+    const auto retired = tables.tombstone(gpu_resource_table_kind::geometry, first, 12);
+    REQUIRE(retired.updates.size() == 1);
+    REQUIRE(retired.updates[0].kind == gpu_table_update_kind::tombstone);
+    REQUIRE_FALSE(tables.find(gpu_resource_table_kind::geometry, first));
+    REQUIRE(tables.snapshot(gpu_resource_table_kind::geometry).tombstones == 1);
+
+    const resource_handle recycled{.index = 5, .generation = 3};
+    const auto replacement = tables.publish_geometry(
+        recycled, std::as_bytes(std::span{vertices}), sizeof(mesh_vertex), std::as_bytes(std::span{indices}),
+        sizeof(std::uint32_t), 13);
+    gpu_geometry_table_record replacement_record{};
+    std::memcpy(&replacement_record, replacement.payload.data(), sizeof(replacement_record));
+    REQUIRE(replacement_record.generation == 3);
+    REQUIRE(replacement_record.vertex_offset == first_vertex_offset);
+    REQUIRE(replacement_record.index_offset == first_index_offset);
+    REQUIRE(tables.snapshot(gpu_resource_table_kind::geometry).live_entries == 1);
+    REQUIRE(tables.geometry_heap_snapshot().live_allocations == 1);
+}
+
+TEST_CASE("GPU material tables retain stable texture generations")
+{
+    using namespace arc::render;
+    gpu_resource_tables tables;
+    const texture_handle texture{.index = 7, .generation = 4};
+    gpu_texture_table_record texture_record{.generation = texture.generation,
+                                            .descriptor_index = 12,
+                                            .descriptor_generation = 3,
+                                            .mip_count = 8,
+                                            .width = 2048,
+                                            .height = 2048};
+    const auto texture_update = tables.publish_texture(texture, texture_record, 1);
+    REQUIRE(texture_update.updates.size() == 1);
+
+    const material_handle material{.index = 2, .generation = 9};
+    gpu_material_table_record material_record{};
+    material_record.generation = material.generation;
+    material_record.texture_indices.fill(resource_handle::invalid_index);
+    material_record.texture_indices[0] = texture.index;
+    material_record.texture_generations[0] = texture.generation;
+    const auto material_update = tables.publish_material(material, material_record, 1);
+    REQUIRE(material_update.updates.size() == 1);
+    gpu_material_table_record published{};
+    std::memcpy(&published, material_update.payload.data(), sizeof(published));
+    REQUIRE(published.generation == material.generation);
+    REQUIRE(published.texture_indices[0] == texture.index);
+    REQUIRE(published.texture_generations[0] == texture.generation);
+    REQUIRE(tables.snapshot(gpu_resource_table_kind::texture).live_entries == 1);
+    REQUIRE(tables.snapshot(gpu_resource_table_kind::material).live_entries == 1);
+}
+
+TEST_CASE("renderer resource creation publishes GPU tables without changing public handles")
+{
+    using namespace arc::render;
+    auto backend = std::make_unique<recording_backend>();
+    auto* backend_ptr = backend.get();
+    renderer renderer;
+    renderer.set_backend(std::move(backend));
+
+    texture_data texture_data;
+    texture_data.width = 1;
+    texture_data.height = 1;
+    texture_data.pixels.resize(4);
+    const auto texture = renderer.create_texture(std::move(texture_data));
+
+    material_descriptor material_data;
+    material_data.base_color_texture = texture;
+    const auto material = renderer.create_material(std::move(material_data));
+
+    mesh_data mesh_data;
+    mesh_data.usage = mesh_usage::dynamic_per_frame;
+    mesh_data.vertices.resize(3);
+    mesh_data.indices = {0, 1, 2};
+    const auto mesh = renderer.create_mesh(std::move(mesh_data));
+
+    REQUIRE(texture.valid());
+    REQUIRE(material.valid());
+    REQUIRE(mesh.valid());
+    REQUIRE(renderer.gpu_resources().find(gpu_resource_table_kind::texture, texture));
+    REQUIRE(renderer.gpu_resources().find(gpu_resource_table_kind::material, material));
+    REQUIRE(renderer.gpu_resources().find(gpu_resource_table_kind::geometry, mesh));
+
+    REQUIRE(renderer.render_frame(1, make_clear_present_graph("viewport")));
+    REQUIRE(std::count(backend_ptr->last_event_types.begin(), backend_ptr->last_event_types.end(),
+                       render_event_type::gpu_resource_table_update) == 3);
+}
+
 TEST_CASE("GPU transparent keys preserve bin then back-to-front depth and stable ties")
 {
     using arc::render::make_gpu_transparent_sort_key;
@@ -1655,14 +1780,15 @@ TEST_CASE("renderer create mesh enqueues typed upload and tracks handle lifetime
     REQUIRE(renderer.mesh_alive(handle));
 
     const auto packet = renderer.frame_queue().commit(1);
-    REQUIRE(packet.events.size() == 2);
+    REQUIRE(packet.events.size() == 3);
     REQUIRE(packet.events[0].type() == arc::render::render_event_type::mesh_upload);
     const auto& upload = std::get<arc::render::mesh_upload_event>(packet.events[0].payload);
     REQUIRE(upload.handle == handle);
     REQUIRE(upload.mesh->vertices.size() == 3);
     REQUIRE(upload.mesh->indices.size() == 3);
-    REQUIRE(packet.events[1].type() == arc::render::render_event_type::lighting_geometry_upload);
-    const auto& lighting_upload = std::get<arc::render::lighting_geometry_upload_event>(packet.events[1].payload);
+    REQUIRE(packet.events[1].type() == arc::render::render_event_type::gpu_resource_table_update);
+    REQUIRE(packet.events[2].type() == arc::render::render_event_type::lighting_geometry_upload);
+    const auto& lighting_upload = std::get<arc::render::lighting_geometry_upload_event>(packet.events[2].payload);
     REQUIRE(lighting_upload.geometry->cards.size() == 6);
     REQUIRE(lighting_upload.geometry->distance_field.mode ==
             arc::render::distance_field_mode::two_sided_unsigned_distance);
@@ -1683,8 +1809,9 @@ TEST_CASE("renderer updates mesh vertices and retires stale handles")
     vertices[0].position[1] = 3.0f;
     REQUIRE(renderer.update_mesh_vertices(handle, vertices));
     auto update = renderer.frame_queue().commit(2);
-    REQUIRE(update.events.size() == 1);
+    REQUIRE(update.events.size() == 2);
     REQUIRE(update.events[0].type() == arc::render::render_event_type::mesh_upload);
+    REQUIRE(update.events[1].type() == arc::render::render_event_type::gpu_resource_table_update);
     REQUIRE(std::get<arc::render::mesh_upload_event>(update.events[0].payload).mesh->indices.size() == 6);
     REQUIRE(std::get<arc::render::mesh_upload_event>(update.events[0].payload).mesh->usage ==
             arc::render::mesh_usage::dynamic_per_frame);
@@ -1693,8 +1820,9 @@ TEST_CASE("renderer updates mesh vertices and retires stale handles")
     REQUIRE(renderer.destroy_mesh(handle));
     REQUIRE_FALSE(renderer.mesh_alive(handle));
     auto destroy = renderer.frame_queue().commit(3);
-    REQUIRE(destroy.events.size() == 1);
+    REQUIRE(destroy.events.size() == 2);
     REQUIRE(destroy.events[0].type() == arc::render::render_event_type::mesh_destroy);
+    REQUIRE(destroy.events[1].type() == arc::render::render_event_type::gpu_resource_table_update);
     REQUIRE_FALSE(renderer.destroy_mesh(handle));
 }
 
@@ -1759,14 +1887,14 @@ TEST_CASE("renderer realizes and retires one unified cooked geometry resource")
     REQUIRE(renderer.mesh_alive(geometry.conventional));
     REQUIRE(renderer.virtual_mesh_alive(geometry.virtualized));
     const auto uploads = renderer.frame_queue().commit(1);
-    REQUIRE(uploads.events.size() == 9);
+    REQUIRE(uploads.events.size() == 13);
     REQUIRE(uploads.events.back().type() == arc::render::render_event_type::virtual_mesh_upload);
 
     REQUIRE(renderer.destroy_geometry_resource(geometry));
     REQUIRE_FALSE(renderer.mesh_alive(geometry.conventional));
     REQUIRE_FALSE(renderer.virtual_mesh_alive(geometry.virtualized));
     const auto destroys = renderer.frame_queue().commit(2);
-    REQUIRE(destroys.events.size() == 9);
+    REQUIRE(destroys.events.size() == 13);
     REQUIRE(destroys.events.back().type() == arc::render::render_event_type::virtual_mesh_destroy);
 }
 
@@ -1792,10 +1920,12 @@ TEST_CASE("renderer creates texture and material resources")
     REQUIRE(renderer.material_alive(material_handle));
 
     const auto packet = renderer.frame_queue().commit(1);
-    REQUIRE(packet.events.size() == 2);
+    REQUIRE(packet.events.size() == 4);
     REQUIRE(packet.events[0].type() == arc::render::render_event_type::texture_upload);
-    REQUIRE(packet.events[1].type() == arc::render::render_event_type::material_upload);
-    const auto& uploaded = std::get<arc::render::material_upload_event>(packet.events[1].payload);
+    REQUIRE(packet.events[1].type() == arc::render::render_event_type::gpu_resource_table_update);
+    REQUIRE(packet.events[2].type() == arc::render::render_event_type::material_upload);
+    REQUIRE(packet.events[3].type() == arc::render::render_event_type::gpu_resource_table_update);
+    const auto& uploaded = std::get<arc::render::material_upload_event>(packet.events[2].payload);
     REQUIRE(uploaded.handle == material_handle);
     REQUIRE(uploaded.material->handle == material_handle);
     REQUIRE(uploaded.material->base_color_texture == texture_handle);
@@ -1808,8 +1938,9 @@ TEST_CASE("renderer creates texture and material resources")
 
     REQUIRE(renderer.update_material(material_handle, updated));
     const auto update_packet = renderer.frame_queue().commit(2);
-    REQUIRE(update_packet.events.size() == 1);
+    REQUIRE(update_packet.events.size() == 2);
     REQUIRE(update_packet.events[0].type() == arc::render::render_event_type::material_upload);
+    REQUIRE(update_packet.events[1].type() == arc::render::render_event_type::gpu_resource_table_update);
     const auto& material_update = std::get<arc::render::material_upload_event>(update_packet.events[0].payload);
     REQUIRE(material_update.handle == material_handle);
     REQUIRE(material_update.material->handle == material_handle);
@@ -1823,7 +1954,8 @@ TEST_CASE("renderer creates texture and material resources")
     replacement.pixels.resize(8);
     REQUIRE(renderer.update_texture(texture_handle, replacement));
     const auto texture_update_packet = renderer.frame_queue().commit(3);
-    REQUIRE(texture_update_packet.events.size() == 1);
+    REQUIRE(texture_update_packet.events.size() == 2);
+    REQUIRE(texture_update_packet.events[1].type() == arc::render::render_event_type::gpu_resource_table_update);
     const auto& texture_update = std::get<arc::render::texture_upload_event>(texture_update_packet.events[0].payload);
     REQUIRE(texture_update.handle == texture_handle);
     REQUIRE(texture_update.texture->width == 2);

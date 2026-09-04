@@ -857,6 +857,12 @@ struct render_gpu_scene_profile
     std::uint32_t texture_table_entries{};
     /** Occupied bindless sampler slots. */
     std::uint32_t sampler_table_entries{};
+    /** Live skin-palette records. */
+    std::uint32_t skin_palette_table_entries{};
+    /** Allocated bytes in the shared conventional vertex heap. */
+    std::uint64_t shared_vertex_heap_bytes{};
+    /** Allocated bytes in the shared conventional index heap. */
+    std::uint64_t shared_index_heap_bytes{};
     /** Instances rejected by view-frustum tests. */
     std::uint32_t frustum_rejected{};
     /** Instances rejected by authored distance limits. */

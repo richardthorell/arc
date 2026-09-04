@@ -157,6 +157,11 @@ public:
      */
     [[nodiscard]] const resolved_render_config& resolved_config() const noexcept;
 
+    /** @return Renderer-owned stable GPU resource tables and shared geometry heaps. */
+    [[nodiscard]] gpu_resource_tables& gpu_resources() noexcept;
+    /** @return Read-only renderer-owned stable GPU resource tables and shared geometry heaps. */
+    [[nodiscard]] const gpu_resource_tables& gpu_resources() const noexcept;
+
     /**
      * @brief Resolve a per-view anti-aliasing request against the active backend.
      * @param requested
@@ -382,6 +387,7 @@ private:
     resolved_render_config resolved_config_{};
     std::unique_ptr<render_backend> backend_;
     render_frame_queue frame_queue_;
+    gpu_resource_tables gpu_resources_;
     gpu_scene gpu_scene_;
     virtual_geometry_residency_manager virtual_geometry_residency_;
     texture_residency_manager texture_residency_;
@@ -395,6 +401,7 @@ private:
     handle_pool environment_handles_;
     std::uint32_t viewport_width_{};
     std::uint32_t viewport_height_{};
+    std::uint64_t resource_frame_index_{};
     frame_budget_controller frame_budget_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const virtual_mesh_data>> virtual_mesh_data_;
     std::unordered_map<std::uint64_t, std::shared_ptr<terrain_resource_descriptor>> terrain_data_;

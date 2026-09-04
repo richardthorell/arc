@@ -4453,7 +4453,19 @@ host_response arc_host::query(const host_query_envelope& query) const
                     "},\"gpuScene\":{\"enabled\":" + std::string(profile.gpu_scene.enabled ? "true" : "false") +
                     ",\"hzbOcclusion\":" + std::string(profile.gpu_scene.hzb_occlusion ? "true" : "false") +
                     ",\"historyValid\":" + std::string(profile.gpu_scene.history_valid ? "true" : "false") +
+                    ",\"capacity\":" + std::to_string(profile.gpu_scene.capacity) +
                     ",\"activeInstances\":" + std::to_string(profile.gpu_scene.active_instances) +
+                    ",\"uploadedInstances\":" + std::to_string(profile.gpu_scene.uploaded_instances) +
+                    ",\"uploadedRanges\":" + std::to_string(profile.gpu_scene.uploaded_ranges) +
+                    ",\"uploadedBytes\":" + std::to_string(profile.gpu_scene.uploaded_bytes) +
+                    ",\"geometryTableEntries\":" + std::to_string(profile.gpu_scene.geometry_table_entries) +
+                    ",\"materialTableEntries\":" + std::to_string(profile.gpu_scene.material_table_entries) +
+                    ",\"textureTableEntries\":" + std::to_string(profile.gpu_scene.texture_table_entries) +
+                    ",\"samplerTableEntries\":" + std::to_string(profile.gpu_scene.sampler_table_entries) +
+                    ",\"skinPaletteTableEntries\":" +
+                    std::to_string(profile.gpu_scene.skin_palette_table_entries) +
+                    ",\"sharedVertexHeapBytes\":" + std::to_string(profile.gpu_scene.shared_vertex_heap_bytes) +
+                    ",\"sharedIndexHeapBytes\":" + std::to_string(profile.gpu_scene.shared_index_heap_bytes) +
                     ",\"visibleInstances\":" + std::to_string(profile.gpu_scene.visible_instances) +
                     ",\"frustumRejected\":" + std::to_string(profile.gpu_scene.frustum_rejected) +
                     ",\"distanceRejected\":" + std::to_string(profile.gpu_scene.distance_rejected) +

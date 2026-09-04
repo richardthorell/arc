@@ -36,6 +36,8 @@ render_event_type render_event::type() const noexcept
     if (std::holds_alternative<point_light_event>(payload)) return render_event_type::point_light;
     if (std::holds_alternative<spot_light_event>(payload)) return render_event_type::spot_light;
     if (std::holds_alternative<area_light_event>(payload)) return render_event_type::area_light;
+    if (std::holds_alternative<gpu_resource_table_update_event>(payload))
+        return render_event_type::gpu_resource_table_update;
     if (std::holds_alternative<gpu_scene_update_event>(payload)) return render_event_type::gpu_scene_update;
     if (std::holds_alternative<lighting_scene_update_event>(payload)) return render_event_type::lighting_scene_update;
     if (std::holds_alternative<render_world_event>(payload)) return render_event_type::render_world;
@@ -339,6 +341,13 @@ void render_event_writer::gpu_scene_update(std::shared_ptr<const gpu_scene_updat
 {
     render_event event{};
     event.payload = gpu_scene_update_event{.batch = std::move(batch)};
+    buffer_->push(std::move(event));
+}
+
+void render_event_writer::gpu_resource_table_update(std::shared_ptr<const gpu_table_update_batch> batch)
+{
+    render_event event{};
+    event.payload = gpu_resource_table_update_event{.batch = std::move(batch)};
     buffer_->push(std::move(event));
 }
 
