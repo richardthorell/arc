@@ -317,14 +317,11 @@ public:
                                                           std::uint32_t vertex_stride,
                                                           std::span<const std::byte> indices,
                                                           std::uint32_t index_stride, std::uint64_t frame_index);
-    [[nodiscard]] gpu_table_update_batch publish_material(resource_handle handle,
-                                                          const gpu_material_table_record& record,
-                                                          std::uint64_t frame_index);
-    [[nodiscard]] gpu_table_update_batch publish_texture(resource_handle handle,
-                                                         const gpu_texture_table_record& record,
+    [[nodiscard]] gpu_table_update_batch
+    publish_material(resource_handle handle, const gpu_material_table_record& record, std::uint64_t frame_index);
+    [[nodiscard]] gpu_table_update_batch publish_texture(resource_handle handle, const gpu_texture_table_record& record,
                                                          std::uint64_t frame_index);
-    [[nodiscard]] gpu_table_update_batch publish_sampler(resource_handle handle,
-                                                         const gpu_sampler_table_record& record,
+    [[nodiscard]] gpu_table_update_batch publish_sampler(resource_handle handle, const gpu_sampler_table_record& record,
                                                          std::uint64_t frame_index);
     [[nodiscard]] gpu_table_update_batch publish_skin_palette(resource_handle handle,
                                                               const gpu_skin_palette_table_record& record,
@@ -333,7 +330,7 @@ public:
                                                    std::uint64_t frame_index);
 
     [[nodiscard]] std::optional<gpu_resource_table_reference> find(gpu_resource_table_kind table,
-                                                                  resource_handle handle) const noexcept;
+                                                                   resource_handle handle) const noexcept;
     [[nodiscard]] gpu_resource_table_snapshot snapshot(gpu_resource_table_kind table) const noexcept;
     [[nodiscard]] gpu_geometry_heap_snapshot geometry_heap_snapshot() const noexcept;
     void reset();
@@ -369,8 +366,7 @@ private:
     };
 
     [[nodiscard]] gpu_table_update_batch publish_record(gpu_resource_table_kind table, resource_handle handle,
-                                                        std::span<const std::byte> record,
-                                                        std::uint64_t frame_index);
+                                                        std::span<const std::byte> record, std::uint64_t frame_index);
     [[nodiscard]] heap_range allocate_heap_range(std::vector<std::byte>& heap, std::vector<heap_range>& free_ranges,
                                                  std::uint64_t size, std::uint64_t alignment);
     void release_heap_range(std::vector<heap_range>& free_ranges, heap_range range);

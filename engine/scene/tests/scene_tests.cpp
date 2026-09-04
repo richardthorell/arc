@@ -726,12 +726,13 @@ TEST_CASE("mesh renderer keeps conventional fallback when virtual geometry is un
     REQUIRE(result.culled_virtual_cluster_count == 0);
 
     const auto packet = renderer.frame_queue().commit(1);
-    REQUIRE(packet.events.size() == 4);
+    REQUIRE(packet.events.size() == 5);
     REQUIRE(packet.events[0].type() == arc::render::render_event_type::mesh_upload);
-    REQUIRE(packet.events[1].type() == arc::render::render_event_type::lighting_geometry_upload);
-    REQUIRE(packet.events[2].type() == arc::render::render_event_type::virtual_mesh_upload);
-    REQUIRE(packet.events[3].type() == arc::render::render_event_type::render_world);
-    const auto& world_event = std::get<arc::render::render_world_event>(packet.events[3].payload);
+    REQUIRE(packet.events[1].type() == arc::render::render_event_type::gpu_resource_table_update);
+    REQUIRE(packet.events[2].type() == arc::render::render_event_type::lighting_geometry_upload);
+    REQUIRE(packet.events[3].type() == arc::render::render_event_type::virtual_mesh_upload);
+    REQUIRE(packet.events[4].type() == arc::render::render_event_type::render_world);
+    const auto& world_event = std::get<arc::render::render_world_event>(packet.events[4].payload);
     REQUIRE(world_event.packet);
     REQUIRE(world_event.packet->visible_items.size() == 1);
     REQUIRE(world_event.packet->virtual_items.empty());

@@ -1094,8 +1094,7 @@ TEST_CASE("texture asset diagnostics and streaming debug modes serialize through
     CHECK(json.find("\"artifactSize\":67108864") != std::string::npos);
     CHECK(std::string(arc::editor::to_string(arc::editor::host_visualization_mode::texture_desired_mip)) ==
           "textureDesiredMip");
-    CHECK(std::string(arc::editor::to_string(
-              arc::editor::host_visualization_mode::virtual_texture_recent_requests)) ==
+    CHECK(std::string(arc::editor::to_string(arc::editor::host_visualization_mode::virtual_texture_recent_requests)) ==
           "virtualTextureRecentRequests");
 
     arc::editor::host_command_envelope envelope;
@@ -1547,8 +1546,7 @@ TEST_CASE("arc host executes scene commands and exposes snapshots")
 
     REQUIRE(host->query({.request_id = 4, .payload = arc::editor::host_scene_hierarchy_query{}}).succeeded);
     REQUIRE(host->query({.request_id = 5, .payload = arc::editor::host_project_assets_query{}}).succeeded);
-    const auto diagnostics =
-        host->query({.request_id = 6, .payload = arc::editor::host_gateway_diagnostics_query{}});
+    const auto diagnostics = host->query({.request_id = 6, .payload = arc::editor::host_gateway_diagnostics_query{}});
     REQUIRE(diagnostics.succeeded);
     CHECK(diagnostics.payload_json.find("\"textureStreaming\"") != std::string::npos);
     CHECK(diagnostics.payload_json.find("\"resources\":[") != std::string::npos);
@@ -3045,8 +3043,11 @@ TEST_CASE("editor material library reuses material handles and saves live update
     REQUIRE(editor.material == opened);
     const auto packet = renderer.frame_queue().commit(3);
     REQUIRE_FALSE(packet.events.empty());
-    REQUIRE(packet.events.back().type() == arc::render::render_event_type::material_upload);
-    const auto& upload = std::get<arc::render::material_upload_event>(packet.events.back().payload);
+    const auto upload_event =
+        std::ranges::find_if(packet.events, [](const auto& event)
+                             { return event.type() == arc::render::render_event_type::material_upload; });
+    REQUIRE(upload_event != packet.events.end());
+    const auto& upload = std::get<arc::render::material_upload_event>(upload_event->payload);
     REQUIRE(upload.handle == opened);
     REQUIRE(upload.material->roughness == Catch::Approx(0.21f));
 }
