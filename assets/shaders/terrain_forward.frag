@@ -2,6 +2,7 @@
 #extension GL_GOOGLE_include_directive : require
 
 #include "include/arc_pbr.glsl"
+#include "include/arc_texture_sampling.glsl"
 #define ARC_LIGHT_BUFFER_BINDING 15
 #include "include/arc_lighting.glsl"
 
@@ -22,19 +23,20 @@ layout(push_constant) uniform mesh_constants {
     vec4 fog_params; vec4 material_params;
 } constants;
 bool has_layer(float flag) { return mod(floor(constants.light_color.w / flag), 2.0) >= 1.0; }
-vec3 sample_layer(sampler2D source, vec2 uv, float scale, vec3 fallback, bool ready)
+vec3 sample_layer(sampler2D source, vec2 uv, float scale, vec3 fallback, bool ready, uint texture_metadata_index)
 {
     if (!ready) return fallback;
     vec2 mapped = uv / max(scale, 0.01);
-    return mix(texture(source, mapped).rgb, texture(source, mapped * 0.873 + vec2(3.7, 8.1)).rgb, 0.38);
+    return mix(arc_sample_texture_2d(source, mapped, texture_metadata_index).rgb,
+        arc_sample_texture_2d(source, mapped * 0.873 + vec2(3.7, 8.1), texture_metadata_index).rgb, 0.38);
 }
 void main()
 {
     vec4 weights = max(in_weights, vec4(0.0)); weights /= max(dot(weights, vec4(1.0)), 0.0001);
-    vec3 color = sample_layer(grass_texture, in_world_position.xz, constants.material_params.x, vec3(0.19,0.30,0.10), has_layer(1.0)) * weights.x;
-    color += sample_layer(dirt_texture, in_world_position.xz, constants.material_params.y, vec3(0.27,0.19,0.11), has_layer(2.0)) * weights.y;
-    color += sample_layer(rock_texture, in_world_position.xz, constants.material_params.z, vec3(0.23,0.24,0.22), has_layer(4.0)) * weights.z;
-    color += sample_layer(sand_texture, in_world_position.xz, constants.material_params.w, vec3(0.52,0.43,0.27), has_layer(8.0)) * weights.w;
+    vec3 color = sample_layer(grass_texture, in_world_position.xz, constants.material_params.x, vec3(0.19,0.30,0.10), has_layer(1.0), 0u) * weights.x;
+    color += sample_layer(dirt_texture, in_world_position.xz, constants.material_params.y, vec3(0.27,0.19,0.11), has_layer(2.0), 1u) * weights.y;
+    color += sample_layer(rock_texture, in_world_position.xz, constants.material_params.z, vec3(0.23,0.24,0.22), has_layer(4.0), 2u) * weights.z;
+    color += sample_layer(sand_texture, in_world_position.xz, constants.material_params.w, vec3(0.52,0.43,0.27), has_layer(8.0), 3u) * weights.w;
     vec3 normal = normalize(in_normal);
     vec3 light_dir = normalize(-constants.light_direction_intensity.xyz);
     vec3 view_dir = normalize(constants.camera_position.xyz - in_world_position);

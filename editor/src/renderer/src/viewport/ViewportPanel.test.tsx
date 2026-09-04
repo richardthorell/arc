@@ -285,6 +285,62 @@ describe('ViewportPanel', () => {
     );
   });
 
+  it('selects texture residency debug visualization modes', async () => {
+    const command = vi.fn().mockResolvedValue({ succeeded: true });
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        host: {
+          command,
+          query: vi.fn().mockResolvedValue({
+            succeeded: true,
+            payload: {
+              width: 640,
+              height: 480,
+              fps: 60,
+              frameTimeMs: 16.6,
+              drawCalls: 1,
+              frameIndex: 1,
+              submitted: true,
+              renderOptions: {
+                renderMode: 'shaded',
+                visualization: 'standard',
+                shadows: true,
+                environment: true,
+                lighting: true,
+                grid: true,
+              },
+            },
+          }),
+        },
+        viewport: {
+          attach: vi.fn().mockResolvedValue({ succeeded: true }),
+          resize: vi.fn().mockResolvedValue({ succeeded: true }),
+          detach: vi.fn().mockResolvedValue({ succeeded: true }),
+          cameraInput: vi.fn().mockResolvedValue({ succeeded: true }),
+        },
+      },
+    });
+
+    const view = render(
+      <ViewportPanel
+        project={null}
+        startupState={{ appVersion: '0.1.0', engineHostConnected: true, viewportMode: 'native' }}
+        onCommand={vi.fn()}
+        onReconnect={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    fireEvent.click(view.getAllByText('Lit')[0]);
+    fireEvent.click(await view.findByText('Texture Desired Mip'));
+
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith(
+        'viewport.setRenderOptions',
+        expect.objectContaining({ renderMode: 'shaded', visualization: 'textureDesiredMip' }),
+      ),
+    );
+  });
+
   it('retries an idle native viewport attachment until rendering starts', async () => {
     const attach = vi.fn().mockResolvedValue({ succeeded: true });
     const resize = vi.fn().mockResolvedValue({ succeeded: true });

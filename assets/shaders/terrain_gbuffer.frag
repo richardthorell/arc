@@ -1,4 +1,7 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+
+#include "include/arc_texture_sampling.glsl"
 
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec3 in_world_position;
@@ -38,38 +41,38 @@ bool has_layer(float flag) { return mod(floor(constants.light_color.w / flag), 2
 bool has_normal(float flag) { return mod(floor(constants.visualization.y / flag), 2.0) >= 1.0; }
 bool has_surface(float flag) { return mod(floor(constants.visualization.z / flag), 2.0) >= 1.0; }
 float hash21(vec2 value) { return fract(sin(dot(value, vec2(127.1, 311.7))) * 43758.5453); }
-vec3 antitile(sampler2D source, vec2 world_uv, float scale)
+vec3 antitile(sampler2D source, vec2 world_uv, float scale, uint texture_metadata_index)
 {
     vec2 uv = world_uv / max(scale, 0.01);
     vec2 macro_cell = floor(world_uv / 18.0);
     vec2 offset = vec2(hash21(macro_cell), hash21(macro_cell + 19.7));
-    vec3 primary = texture(source, uv).rgb;
-    vec3 secondary = texture(source, uv * 0.873 + offset * 7.0).rgb;
+    vec3 primary = arc_sample_texture_2d(source, uv, texture_metadata_index).rgb;
+    vec3 secondary = arc_sample_texture_2d(source, uv * 0.873 + offset * 7.0, texture_metadata_index).rgb;
     float variation = hash21(floor(world_uv * 0.12)) * 0.12 - 0.06;
     return mix(primary, secondary, 0.38) * (1.0 + variation);
 }
 vec3 layer_sample(int layer)
 {
     vec2 world_uv = in_world_position.xz;
-    if (layer == 0) return has_layer(1.0) ? antitile(grass_texture, world_uv, constants.material_params.x) : vec3(0.19, 0.30, 0.10);
-    if (layer == 1) return has_layer(2.0) ? antitile(dirt_texture, world_uv, constants.material_params.y) : vec3(0.27, 0.19, 0.11);
-    if (layer == 3) return has_layer(8.0) ? antitile(sand_texture, world_uv, constants.material_params.w) : vec3(0.52, 0.43, 0.27);
+    if (layer == 0) return has_layer(1.0) ? antitile(grass_texture, world_uv, constants.material_params.x, 0u) : vec3(0.19, 0.30, 0.10);
+    if (layer == 1) return has_layer(2.0) ? antitile(dirt_texture, world_uv, constants.material_params.y, 1u) : vec3(0.27, 0.19, 0.11);
+    if (layer == 3) return has_layer(8.0) ? antitile(sand_texture, world_uv, constants.material_params.w, 3u) : vec3(0.52, 0.43, 0.27);
     if (!has_layer(4.0)) return vec3(0.23, 0.24, 0.22);
     vec3 n = abs(normalize(in_normal));
     n = pow(n, vec3(5.0)); n /= max(n.x + n.y + n.z, 0.0001);
     float scale = max(constants.material_params.z, 0.01);
-    vec3 x = antitile(rock_texture, in_world_position.zy, scale);
-    vec3 y = antitile(rock_texture, in_world_position.xz, scale);
-    vec3 z = antitile(rock_texture, in_world_position.xy, scale);
+    vec3 x = antitile(rock_texture, in_world_position.zy, scale, 2u);
+    vec3 y = antitile(rock_texture, in_world_position.xz, scale, 2u);
+    vec3 z = antitile(rock_texture, in_world_position.xy, scale, 2u);
     return x * n.x + y * n.y + z * n.z;
 }
 vec3 surface_sample(int layer)
 {
     vec2 uv = in_world_position.xz;
-    if (layer == 0 && has_surface(1.0)) return texture(grass_surface_texture, uv / max(constants.material_params.x, 0.01)).rgb;
-    if (layer == 1 && has_surface(2.0)) return texture(dirt_surface_texture, uv / max(constants.material_params.y, 0.01)).rgb;
-    if (layer == 2 && has_surface(4.0)) return texture(rock_surface_texture, uv / max(constants.material_params.z, 0.01)).rgb;
-    if (layer == 3 && has_surface(8.0)) return texture(sand_surface_texture, uv / max(constants.material_params.w, 0.01)).rgb;
+    if (layer == 0 && has_surface(1.0)) return arc_sample_texture_2d(grass_surface_texture, uv / max(constants.material_params.x, 0.01), 8u).rgb;
+    if (layer == 1 && has_surface(2.0)) return arc_sample_texture_2d(dirt_surface_texture, uv / max(constants.material_params.y, 0.01), 9u).rgb;
+    if (layer == 2 && has_surface(4.0)) return arc_sample_texture_2d(rock_surface_texture, uv / max(constants.material_params.z, 0.01), 10u).rgb;
+    if (layer == 3 && has_surface(8.0)) return arc_sample_texture_2d(sand_surface_texture, uv / max(constants.material_params.w, 0.01), 11u).rgb;
     return vec3(1.0, layer == 0 ? 0.82 : layer == 1 ? 0.88 : layer == 2 ? 0.72 : 0.91, 0.5);
 }
 vec3 layer_normal(int layer, vec3 geometric_normal)
@@ -79,9 +82,10 @@ vec3 layer_normal(int layer, vec3 geometric_normal)
     vec2 scale = vec2(layer == 0 ? constants.material_params.x : layer == 1 ? constants.material_params.y :
         layer == 2 ? constants.material_params.z : constants.material_params.w);
     vec2 uv = in_world_position.xz / max(scale, vec2(0.01));
-    vec3 mapped = layer == 0 ? texture(grass_normal_texture, uv).xyz :
-        layer == 1 ? texture(dirt_normal_texture, uv).xyz :
-        layer == 2 ? texture(rock_normal_texture, uv).xyz : texture(sand_normal_texture, uv).xyz;
+    vec3 mapped = layer == 0 ? arc_sample_texture_2d(grass_normal_texture, uv, 4u).xyz :
+        layer == 1 ? arc_sample_texture_2d(dirt_normal_texture, uv, 5u).xyz :
+        layer == 2 ? arc_sample_texture_2d(rock_normal_texture, uv, 6u).xyz :
+        arc_sample_texture_2d(sand_normal_texture, uv, 7u).xyz;
     mapped = mapped * 2.0 - 1.0;
     vec3 tangent = normalize(vec3(1.0, 0.0, 0.0) - geometric_normal * geometric_normal.x);
     vec3 bitangent = normalize(cross(tangent, geometric_normal));

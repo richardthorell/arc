@@ -131,6 +131,29 @@ export function RenderGraphPanel({
           )}
         </div>
       )}
+      {snapshot?.textureStreaming && (
+        <div className="tool-summary-strip" aria-label="Texture streaming diagnostics">
+          <span>
+            Texture GPU {bytes(snapshot.textureStreaming.gpuResidentBytes)} /{' '}
+            {bytes(snapshot.textureStreaming.gpuBudgetBytes)}
+          </span>
+          <span>
+            CPU {bytes(snapshot.textureStreaming.cpuCachedBytes)} / {bytes(snapshot.textureStreaming.cpuBudgetBytes)}
+          </span>
+          <span>
+            {snapshot.textureStreaming.residentMips} mips · {snapshot.textureStreaming.residentPages} pages resident
+          </span>
+          <span>
+            {snapshot.textureStreaming.requestedMips + snapshot.textureStreaming.requestedPages} requested ·{' '}
+            {snapshot.textureStreaming.failedMips + snapshot.textureStreaming.failedPages} failed
+          </span>
+          <span>Hit {(snapshot.textureStreaming.cacheHitRate * 100).toFixed(1)}%</span>
+          <span>{snapshot.textureStreaming.evictions} evictions</span>
+          {snapshot.textureStreaming.feedbackOverflow > 0 && (
+            <span>{snapshot.textureStreaming.feedbackOverflow} feedback overflow</span>
+          )}
+        </div>
+      )}
       {pinned && snapshot && (
         <div className="tool-comparison">
           <GitCompareArrows size={14} />
@@ -238,6 +261,9 @@ export function RenderGraphPanel({
           {reason}
         </div>
       ))}
+      {snapshot?.textureStreaming?.fallback && (
+        <div className="tool-warning">{snapshot.textureStreaming.fallback}</div>
+      )}
       {error && <div className="tool-error">{error}</div>}
     </section>
   );

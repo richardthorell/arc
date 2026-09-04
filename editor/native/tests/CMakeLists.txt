@@ -36,6 +36,9 @@ endforeach()
 
 add_executable(arc_editor_host_tests ${TEST_SOURCES})
 arc_configure_first_party_target(arc_editor_host_tests)
+if(MSVC)
+  target_compile_options(arc_editor_host_tests PRIVATE /bigobj)
+endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   # Some validation cases intentionally iterate a temporary initializer list of
   # camera snapshots by value. Keep GCC's copy diagnostic visible but non-fatal.

@@ -539,6 +539,9 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
             <TextureProperty label="Mode" value={asset.streamingMode ?? 'Not reported'} />
           )}
           <TextureProperty label="Residency" value={asset.residency ?? 'Not reported'} />
+          {asset.hasLastGood && asset.status !== 'ready' && (
+            <TextureProperty label="Runtime" value="Using last-good cooked artifact" />
+          )}
           <TextureProperty
             label="Tile Count"
             value={asset.tileCount === undefined ? 'Not reported' : String(asset.tileCount)}

@@ -929,6 +929,14 @@ const char* to_string(host_visualization_mode value) noexcept
             return "temporalRejection";
         case host_visualization_mode::temporal_sample_weight:
             return "temporalSampleWeight";
+        case host_visualization_mode::texture_desired_mip:
+            return "textureDesiredMip";
+        case host_visualization_mode::texture_resident_mip:
+            return "textureResidentMip";
+        case host_visualization_mode::virtual_texture_page_residency:
+            return "virtualTexturePageResidency";
+        case host_visualization_mode::virtual_texture_recent_requests:
+            return "virtualTextureRecentRequests";
     }
     return "standard";
 }
@@ -2051,7 +2059,8 @@ std::string to_json(const host_project_assets_snapshot& snapshot)
             json += quote(asset.reverse_dependencies[dependency]);
         }
         json += "],\"readOnly\":" + bool_json(asset.read_only) + ",\"imported\":" + bool_json(asset.imported) +
-                ",\"importRunning\":" + bool_json(asset.import_running) + ",\"width\":" + std::to_string(asset.width) +
+                ",\"importRunning\":" + bool_json(asset.import_running) +
+                ",\"hasLastGood\":" + bool_json(asset.has_last_good) + ",\"width\":" + std::to_string(asset.width) +
                 ",\"height\":" + std::to_string(asset.height) + ",\"textureFormat\":" + quote(asset.texture_format) +
                 ",\"mipCount\":" + std::to_string(asset.mip_count) +
                 ",\"tileCount\":" + std::to_string(asset.tile_count) +
@@ -2998,7 +3007,11 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             {"temporalDisocclusion", host_visualization_mode::temporal_disocclusion},
             {"temporalConfidence", host_visualization_mode::temporal_confidence},
             {"temporalRejection", host_visualization_mode::temporal_rejection},
-            {"temporalSampleWeight", host_visualization_mode::temporal_sample_weight}};
+            {"temporalSampleWeight", host_visualization_mode::temporal_sample_weight},
+            {"textureDesiredMip", host_visualization_mode::texture_desired_mip},
+            {"textureResidentMip", host_visualization_mode::texture_resident_mip},
+            {"virtualTexturePageResidency", host_visualization_mode::virtual_texture_page_residency},
+            {"virtualTextureRecentRequests", host_visualization_mode::virtual_texture_recent_requests}};
         static constexpr std::pair<std::string_view, host_overlay_mode> overlays[]{
             {"none", host_overlay_mode::none},
             {"selectedWireframe", host_overlay_mode::selected_wireframe},

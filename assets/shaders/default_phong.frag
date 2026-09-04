@@ -237,6 +237,14 @@ void main()
         color = vec3(key_n_dot_l * shadow);
     else if (mode == 10)
         color = vec3(material_input.uv0, 0.0);
+    else if (mode == 48 && has_texture(1.0))
+        color = arc_texture_desired_mip_debug(base_texture, material_input.uv0);
+    else if (mode == 49 && has_texture(1.0))
+        color = arc_texture_resident_mip_debug(base_texture);
+    else if (mode == 50)
+        color = vec3(1.0, 0.0, 1.0);
+    else if (mode == 51)
+        color = vec3(0.0, 0.85, 1.0);
     else
         color = apply_height_fog(color);
 

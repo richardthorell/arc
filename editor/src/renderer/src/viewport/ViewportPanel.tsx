@@ -764,6 +764,10 @@ export function ViewportPanel({
                 ['temporalConfidence', 'History Confidence'],
                 ['temporalRejection', 'History Rejection'],
                 ['temporalSampleWeight', 'Temporal Weight'],
+                ['textureDesiredMip', 'Texture Desired Mip'],
+                ['textureResidentMip', 'Texture Resident Mip'],
+                ['virtualTexturePageResidency', 'Virtual Texture Residency'],
+                ['virtualTextureRecentRequests', 'Virtual Texture Requests'],
               ].map(([mode, label]) => (
                 <button
                   key={mode}

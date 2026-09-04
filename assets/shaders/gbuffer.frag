@@ -83,6 +83,16 @@ void main()
 
     vec3 normal = material_normal();
 
+    int visualization_mode = int(constants.visualization.x + 0.5);
+    if (visualization_mode == 48 && has_texture(1.0))
+        material_color.rgb = arc_texture_desired_mip_debug(base_texture, in_texcoord);
+    else if (visualization_mode == 49 && has_texture(1.0))
+        material_color.rgb = arc_texture_resident_mip_debug(base_texture);
+    else if (visualization_mode == 50)
+        material_color.rgb = vec3(1.0, 0.0, 1.0);
+    else if (visualization_mode == 51)
+        material_color.rgb = vec3(0.0, 0.85, 1.0);
+
     out_albedo = vec4(material_color.rgb, material_color.a);
     out_normal = vec4(normal * 0.5 + vec3(0.5), ao);
     out_material = vec4(metallic, roughness, 1.0, 0.0);

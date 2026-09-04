@@ -818,6 +818,9 @@ export function ContentBrowserPanel({
                   {selected.streamingEligibilityError && (
                     <span className="content-texture-streaming-error">{selected.streamingEligibilityError}</span>
                   )}
+                  {selected.hasLastGood && selected.status !== 'ready' && (
+                    <span>Last-good cooked artifact remains active during this import.</span>
+                  )}
                   <span>
                     Settings v{selected.settingsVersion ?? 1}
                     {selected.artifactSize ? ` · ${(selected.artifactSize / (1024 * 1024)).toFixed(2)} MiB cooked` : ''}

@@ -255,6 +255,8 @@ void main()
             : vec3(1.0);
     else if (mode == 12)
         color = vec3(shadow);
+    else if (mode >= 48 && mode <= 51)
+        color = albedo.rgb;
 
     out_color = vec4(color, 1.0);
 }

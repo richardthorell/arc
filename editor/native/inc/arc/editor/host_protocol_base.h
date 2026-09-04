@@ -261,7 +261,11 @@ enum class host_visualization_mode : std::uint8_t
     temporal_disocclusion,
     temporal_confidence,
     temporal_rejection,
-    temporal_sample_weight
+    temporal_sample_weight,
+    texture_desired_mip,
+    texture_resident_mip,
+    virtual_texture_page_residency,
+    virtual_texture_recent_requests
 };
 enum class host_indirect_lighting_method : std::uint8_t
 {
@@ -718,6 +722,7 @@ struct host_asset_snapshot
     bool read_only{};
     bool imported{};
     bool import_running{};
+    bool has_last_good{};
     std::uint32_t width{};
     std::uint32_t height{};
     std::string texture_format;

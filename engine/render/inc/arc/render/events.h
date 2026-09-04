@@ -127,7 +127,11 @@ enum class mesh_visualization_mode : std::uint8_t
     temporal_disocclusion,
     temporal_confidence,
     temporal_rejection,
-    temporal_sample_weight
+    temporal_sample_weight,
+    texture_desired_mip,
+    texture_resident_mip,
+    virtual_texture_page_residency,
+    virtual_texture_recent_requests
 };
 
 /**

@@ -89,6 +89,36 @@ const diagnostics = {
     virtualMemoryBytes: 0,
     fallback: '',
   },
+  textureStreaming: {
+    gpuBudgetBytes: 512 * 1024 * 1024,
+    gpuResidentBytes: 96 * 1024 * 1024,
+    cpuBudgetBytes: 128 * 1024 * 1024,
+    cpuCachedBytes: 12 * 1024 * 1024,
+    uploadBudgetBytes: 64 * 1024 * 1024,
+    uploadedBytes: 4 * 1024 * 1024,
+    ioReadBytes: 6 * 1024 * 1024,
+    ioFailedBytes: 0,
+    ioCompletedReads: 18,
+    ioFailedReads: 0,
+    ioInFlightReads: 3,
+    ioLatencyMilliseconds: 4.5,
+    uploadLatencyMilliseconds: 1.2,
+    streamedTextures: 4,
+    virtualTextures: 1,
+    residentMips: 19,
+    residentPages: 72,
+    requestedMips: 2,
+    requestedPages: 5,
+    failedMips: 0,
+    failedPages: 1,
+    evictions: 3,
+    feedbackOverflow: 0,
+    parentFallbacks: 2,
+    cacheHitRate: 0.875,
+    overBudget: false,
+    fallback: '',
+    resources: [],
+  },
 };
 
 afterEach(() => {
@@ -112,6 +142,7 @@ describe('RenderGraphPanel', () => {
     expect(screen.getAllByText('depth_prepass').length).toBeGreaterThan(0);
     expect(screen.getAllByText(/scene_depth/).length).toBeGreaterThan(0);
     expect(document.querySelector('.render-graph-transition')).toBeInTheDocument();
+    expect(screen.getByLabelText('Texture streaming diagnostics')).toHaveTextContent('Hit 87.5%');
 
     await userEvent.type(screen.getByLabelText('Filter render graph'), 'scene_depth');
     expect(screen.getByRole('img', { name: 'Executed graph for frame 42' })).toBeInTheDocument();

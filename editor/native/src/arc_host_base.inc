@@ -996,6 +996,14 @@ render::mesh_visualization_mode to_visualization(host_visualization_mode mode) n
             return render::mesh_visualization_mode::temporal_rejection;
         case host_visualization_mode::temporal_sample_weight:
             return render::mesh_visualization_mode::temporal_sample_weight;
+        case host_visualization_mode::texture_desired_mip:
+            return render::mesh_visualization_mode::texture_desired_mip;
+        case host_visualization_mode::texture_resident_mip:
+            return render::mesh_visualization_mode::texture_resident_mip;
+        case host_visualization_mode::virtual_texture_page_residency:
+            return render::mesh_visualization_mode::virtual_texture_page_residency;
+        case host_visualization_mode::virtual_texture_recent_requests:
+            return render::mesh_visualization_mode::virtual_texture_recent_requests;
         case host_visualization_mode::standard:
             break;
     }
@@ -4249,6 +4257,7 @@ host_response arc_host::query(const host_query_envelope& query) const
             else if constexpr (std::is_same_v<query_type, host_gateway_diagnostics_query>)
             {
                 const auto profile = state_->renderer->last_frame_profile();
+                const auto texture_resources = state_->renderer->texture_residency().resource_snapshots();
                 const auto usage_name = [](render::render_resource_usage usage)
                 {
                     switch (usage)
@@ -4451,7 +4460,60 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"occlusionRejected\":" + std::to_string(profile.gpu_scene.occlusion_rejected) +
                     ",\"indirectCommands\":" + std::to_string(profile.gpu_scene.indirect_commands) +
                     ",\"fallback\":" + to_json_string(profile.gpu_scene.fallback_reason) +
-                    "},\"virtualGeometry\":{\"enabled\":" +
+                    "},\"textureStreaming\":{\"gpuBudgetBytes\":" +
+                    std::to_string(profile.texture_streaming.gpu_budget_bytes) +
+                    ",\"gpuResidentBytes\":" + std::to_string(profile.texture_streaming.gpu_resident_bytes) +
+                    ",\"cpuBudgetBytes\":" + std::to_string(profile.texture_streaming.cpu_budget_bytes) +
+                    ",\"cpuCachedBytes\":" + std::to_string(profile.texture_streaming.cpu_cached_bytes) +
+                    ",\"uploadBudgetBytes\":" + std::to_string(profile.texture_streaming.upload_budget_bytes) +
+                    ",\"uploadedBytes\":" + std::to_string(profile.texture_streaming.uploaded_bytes) +
+                    ",\"ioReadBytes\":" + std::to_string(profile.texture_streaming.io_read_bytes) +
+                    ",\"ioFailedBytes\":" + std::to_string(profile.texture_streaming.io_failed_bytes) +
+                    ",\"ioCompletedReads\":" + std::to_string(profile.texture_streaming.io_completed_reads) +
+                    ",\"ioFailedReads\":" + std::to_string(profile.texture_streaming.io_failed_reads) +
+                    ",\"ioInFlightReads\":" + std::to_string(profile.texture_streaming.io_in_flight_reads) +
+                    ",\"ioLatencyMilliseconds\":" +
+                    std::to_string(profile.texture_streaming.io_latency_milliseconds) +
+                    ",\"uploadLatencyMilliseconds\":" +
+                    std::to_string(profile.texture_streaming.upload_latency_milliseconds) +
+                    ",\"streamedTextures\":" + std::to_string(profile.texture_streaming.streamed_textures) +
+                    ",\"virtualTextures\":" + std::to_string(profile.texture_streaming.virtual_textures) +
+                    ",\"residentMips\":" + std::to_string(profile.texture_streaming.resident_mips) +
+                    ",\"residentPages\":" + std::to_string(profile.texture_streaming.resident_pages) +
+                    ",\"requestedMips\":" + std::to_string(profile.texture_streaming.requested_mips) +
+                    ",\"requestedPages\":" + std::to_string(profile.texture_streaming.requested_pages) +
+                    ",\"failedMips\":" + std::to_string(profile.texture_streaming.failed_mips) +
+                    ",\"failedPages\":" + std::to_string(profile.texture_streaming.failed_pages) +
+                    ",\"evictions\":" + std::to_string(profile.texture_streaming.evictions) +
+                    ",\"feedbackOverflow\":" + std::to_string(profile.texture_streaming.feedback_overflow) +
+                    ",\"parentFallbacks\":" + std::to_string(profile.texture_streaming.parent_fallbacks) +
+                    ",\"cacheHitRate\":" + std::to_string(profile.texture_streaming.cache_hit_rate) +
+                    ",\"overBudget\":" + std::string(profile.texture_streaming.over_budget ? "true" : "false") +
+                    ",\"fallback\":" + to_json_string(profile.texture_streaming.fallback_reason) +
+                    ",\"resources\":[";
+                for (std::size_t index = 0; index < texture_resources.size(); ++index)
+                {
+                    if (index != 0) json += ',';
+                    const auto& resource = texture_resources[index];
+                    const auto mode_name = [](render::texture_streaming_mode mode)
+                    {
+                        return mode == render::texture_streaming_mode::virtual_tiles       ? "virtual_tiles"
+                               : mode == render::texture_streaming_mode::streamed_mips ? "streamed_mips"
+                                                                                      : "resident";
+                    };
+                    json += "{\"resourceIndex\":" + std::to_string(resource.resource.index) +
+                            ",\"resourceGeneration\":" + std::to_string(resource.resource.generation) +
+                            ",\"contentGeneration\":" + std::to_string(resource.content_generation) +
+                            ",\"authoredMode\":" + to_json_string(mode_name(resource.authored_mode)) +
+                            ",\"resolvedMode\":" + to_json_string(mode_name(resource.resolved_mode)) +
+                            ",\"desiredMip\":" + std::to_string(resource.requested_mip) +
+                            ",\"residentMip\":" + std::to_string(resource.resident_first_mip) +
+                            ",\"tailFirstMip\":" + std::to_string(resource.tail_first_mip) +
+                            ",\"residentBytes\":" + std::to_string(resource.resident_bytes) +
+                            ",\"forcedMip\":" +
+                            (resource.forced_mip ? std::to_string(*resource.forced_mip) : "null") + '}';
+                }
+                json += "]},\"virtualGeometry\":{\"enabled\":" +
                     std::string(profile.virtual_geometry.enabled ? "true" : "false") + ",\"rasterPath\":" +
                     to_json_string(profile.virtual_geometry.raster_path == render::virtual_geometry_raster_path::compute
                                        ? "compute"
@@ -5331,6 +5393,8 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
                                            .pins = asset.pins,
                                            .diagnostic = asset.diagnostics.empty() ? std::string{}
                                                                                    : asset.diagnostics.back().message};
+            for (const auto& artifact : asset.artifacts)
+                host_asset.artifact_size += artifact.size;
             if (asset.type == arc::assets::asset_types::texture_2d)
             {
                 const auto metadata_path = assets::metadata_path_for(absolute_path);
@@ -5392,6 +5456,7 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
             host_asset.read_only = asset.read_only;
             host_asset.imported = asset.state == arc::assets::asset_state::ready;
             host_asset.import_running = running;
+            host_asset.has_last_good = asset.has_last_good;
             snapshot.assets.push_back(std::move(host_asset));
         }
         return snapshot;

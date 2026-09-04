@@ -1072,6 +1072,41 @@ TEST_CASE("profiler snapshots serialize scheduler and allocation telemetry")
             "profiler.snapshot");
 }
 
+TEST_CASE("texture asset diagnostics and streaming debug modes serialize through the host protocol")
+{
+    arc::editor::host_project_assets_snapshot snapshot;
+    snapshot.assets.push_back({.guid = "texture-guid",
+                               .path = "textures/terrain.png",
+                               .kind = "texture",
+                               .state = "importing",
+                               .has_last_good = true,
+                               .width = 8192,
+                               .height = 4096,
+                               .texture_format = "RGBA8 sRGB",
+                               .mip_count = 14,
+                               .tile_count = 2730,
+                               .streaming_mode = "virtual_tiles",
+                               .settings_version = 7,
+                               .artifact_size = 64ull * 1024ull * 1024ull});
+    const auto json = arc::editor::to_json(snapshot);
+    CHECK(json.find("\"hasLastGood\":true") != std::string::npos);
+    CHECK(json.find("\"streamingMode\":\"virtual_tiles\"") != std::string::npos);
+    CHECK(json.find("\"artifactSize\":67108864") != std::string::npos);
+    CHECK(std::string(arc::editor::to_string(arc::editor::host_visualization_mode::texture_desired_mip)) ==
+          "textureDesiredMip");
+    CHECK(std::string(arc::editor::to_string(
+              arc::editor::host_visualization_mode::virtual_texture_recent_requests)) ==
+          "virtualTextureRecentRequests");
+
+    arc::editor::host_command_envelope envelope;
+    std::string error;
+    REQUIRE(arc::editor::from_json(
+        R"({"requestId":9,"type":"viewport.setRenderOptions","payload":{"visualization":"textureResidentMip"}})",
+        envelope, error));
+    const auto& command = std::get<arc::editor::host_viewport_set_render_options_command>(envelope.payload);
+    CHECK(command.visualization == arc::editor::host_visualization_mode::texture_resident_mip);
+}
+
 TEST_CASE("arc host resolves material thumbnails from secondary project asset roots")
 {
     const auto root = std::filesystem::temp_directory_path() / "arc-editor-secondary-material-thumbnail";
@@ -1512,9 +1547,14 @@ TEST_CASE("arc host executes scene commands and exposes snapshots")
 
     REQUIRE(host->query({.request_id = 4, .payload = arc::editor::host_scene_hierarchy_query{}}).succeeded);
     REQUIRE(host->query({.request_id = 5, .payload = arc::editor::host_project_assets_query{}}).succeeded);
+    const auto diagnostics =
+        host->query({.request_id = 6, .payload = arc::editor::host_gateway_diagnostics_query{}});
+    REQUIRE(diagnostics.succeeded);
+    CHECK(diagnostics.payload_json.find("\"textureStreaming\"") != std::string::npos);
+    CHECK(diagnostics.payload_json.find("\"resources\":[") != std::string::npos);
     REQUIRE(host
                 ->execute(arc::editor::host_command_envelope{
-                    .request_id = 6, .payload = arc::editor::host_delete_entity_command{.entity = created_entity}})
+                    .request_id = 7, .payload = arc::editor::host_delete_entity_command{.entity = created_entity}})
                 .succeeded);
     REQUIRE_FALSE(host->selected_entity_snapshot().entity.valid());
 

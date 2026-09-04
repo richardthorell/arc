@@ -57,6 +57,7 @@ export type AssetItem = {
   settingsVersion?: number;
   artifactSize?: number;
   streamingEligibilityError?: string;
+  hasLastGood?: boolean;
   vertexCount?: number;
   triangleCount?: number;
   meshCount?: number;

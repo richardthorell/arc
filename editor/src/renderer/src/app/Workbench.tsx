@@ -164,6 +164,7 @@ type HostAssetSnapshot = {
   reverseDependencies: string[];
   imported: boolean;
   importRunning: boolean;
+  hasLastGood: boolean;
   width: number;
   height: number;
   textureFormat: string;
@@ -955,6 +956,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         settingsVersion: asset.settingsVersion,
         artifactSize: asset.artifactSize,
         streamingEligibilityError: asset.streamingEligibilityError,
+        hasLastGood: asset.hasLastGood,
       })) ??
       project?.assets ??
       [];
