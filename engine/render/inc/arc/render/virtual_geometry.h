@@ -163,7 +163,7 @@ struct virtual_geometry_page_upload
 };
 
 /** @brief Generation-safe backend acknowledgement for one virtual-geometry page publication. */
-struct virtual_geometry_page_upload_result
+struct [[nodiscard]] virtual_geometry_page_upload_result
 {
     virtual_mesh_handle resource{};
     std::uint32_t resource_generation{};
