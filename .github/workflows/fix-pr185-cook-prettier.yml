@@ -21,8 +21,6 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22.12.0
-          cache: npm
-          cache-dependency-path: editor/package-lock.json
 
       - name: Fix cook fixture roots
         shell: python
@@ -32,17 +30,15 @@ jobs:
           text = path.read_text()
           old = 'out/build/cook/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan'
           new = old + ' --root Content/Scenes/Startup.arcscene'
-          if text.count(old) != 2:
-              raise SystemExit(f'expected 2 cook package commands, found {text.count(old)}')
-          path.write_text(text.replace(old, new))
-
-      - name: Install editor dependencies
-        working-directory: editor
-        run: npm ci
+          count = text.count(old)
+          if count not in (0, 2):
+              raise SystemExit(f'expected 0 or 2 cook package commands, found {count}')
+          if count == 2:
+              path.write_text(text.replace(old, new))
 
       - name: Prettify RenderGraphPanel
         working-directory: editor
-        run: npx prettier --write src/renderer/src/renderGraph/RenderGraphPanel.tsx
+        run: npx --yes prettier@3.9.6 --write src/renderer/src/renderGraph/RenderGraphPanel.tsx
 
       - name: Commit fixes
         run: |
@@ -50,5 +46,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .github/workflows/build-msvc.yml editor/src/renderer/src/renderGraph/RenderGraphPanel.tsx
           git diff --cached --check
-          git commit -m "Fix cook fixture root and format render graph panel"
-          git push origin HEAD:fix/default-white-infinite-grid
+          if git diff --cached --quiet; then
+            echo "No fixes required"
+          else
+            git commit -m "Fix cook fixture root and format render graph panel"
+            git push origin HEAD:fix/default-white-infinite-grid
+          fi
