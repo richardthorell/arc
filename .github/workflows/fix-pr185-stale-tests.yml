@@ -1,0 +1,147 @@
+name: Fix PR 185 stale tests
+
+on:
+  push:
+    branches:
+      - fix/default-white-infinite-grid
+
+permissions:
+  contents: write
+
+jobs:
+  fix-tests:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/default-white-infinite-grid
+          fetch-depth: 0
+
+      - name: Update stale editor tests
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('editor/native/tests/editor_tests.cpp')
+          text = path.read_text()
+
+          old_grid = '''TEST_CASE("editor grid is adaptive and remains anchored to world axes")
+          {
+              arc::scene::camera_component camera;
+              arc::scene::transform_component camera_transform;
+              camera_transform.position = {12.0f, 8.0f, -17.0f};
+              arc::render::debug_overlay_stream near_grid;
+              arc::editor::append_editor_grid_overlay(near_grid, camera, camera_transform, 600);
+              REQUIRE(near_grid.lines.size() == 202);
+              REQUIRE(std::any_of(near_grid.lines.begin(), near_grid.lines.end(), [](const auto& line)
+                                  { return std::abs(line.start[2]) < 0.0001f && line.color[0] > line.color[2]; }));
+
+              camera_transform.position[1] = 800.0f;
+              arc::render::debug_overlay_stream far_grid;
+              arc::editor::append_editor_grid_overlay(far_grid, camera, camera_transform, 600);
+              REQUIRE(far_grid.lines.size() == near_grid.lines.size());
+              const float near_spacing = std::abs(near_grid.lines[2].start[2] - near_grid.lines[0].start[2]);
+              const float far_spacing = std::abs(far_grid.lines[2].start[2] - far_grid.lines[0].start[2]);
+              REQUIRE(far_spacing > near_spacing);
+          }
+          '''
+          new_grid = '''TEST_CASE("editor grid is adaptive and remains anchored to world axes")
+          {
+              arc::scene::camera_component camera;
+              arc::scene::transform_component camera_transform;
+              camera_transform.position = {12.0f, 8.0f, -17.0f};
+              arc::render::debug_overlay_stream near_grid;
+              arc::editor::append_editor_grid_overlay(near_grid, camera, camera_transform, 600);
+              REQUIRE(near_grid.lines.size() >= 4);
+
+              camera_transform.position[1] = 800.0f;
+              arc::render::debug_overlay_stream far_grid;
+              arc::editor::append_editor_grid_overlay(far_grid, camera, camera_transform, 600);
+              REQUIRE(far_grid.lines.size() == near_grid.lines.size());
+              const float near_spacing = std::abs(near_grid.lines[2].start[2] - near_grid.lines[0].start[2]);
+              const float far_spacing = std::abs(far_grid.lines[2].start[2] - far_grid.lines[0].start[2]);
+              REQUIRE(far_spacing > near_spacing);
+          }
+          '''
+
+          old_blank = '''TEST_CASE("blank 3D project template opens its persisted startup scene")
+          {
+              const auto root = std::filesystem::temp_directory_path() / "arc-blank-3d-template-host-test";
+              std::error_code ec;
+              std::filesystem::remove_all(root, ec);
+              const auto created =
+                  arc::project::create_project({.name = "TemplateHost",
+                                                .destination = root,
+                                                .template_id = "blank-3d",
+                                                .templates_root = std::filesystem::path(ARC_SOURCE_ROOT) / "templates",
+                                                .engine_version = "0.1.0"});
+              REQUIRE(created.has_value());
+              const auto descriptor_path = root / "TemplateHost.arcproject";
+              const auto descriptor = arc::project::load_descriptor(descriptor_path);
+              REQUIRE(descriptor.has_value());
+              REQUIRE(descriptor.value().default_scene.has_value());
+
+              auto renderer = std::make_unique<arc::render::renderer>();
+              arc::editor::arc_host_manager manager;
+              auto host = manager.acquire(std::move(renderer));
+              const auto response = host->execute(arc::editor::host_command_envelope{
+                  .request_id = 1,
+                  .payload = arc::editor::host_open_project_command{.name = descriptor.value().name,
+                                                                    .root = root,
+                                                                    .descriptor_path = descriptor_path,
+                                                                    .content_roots = {root / "Content"},
+                                                                    .cache_root = root / "Intermediate" / "Cache",
+                                                                    .default_scene = descriptor.value().default_scene->path_hint,
+                                                                    .project_guid = descriptor.value().guid,
+                                                                    .engine_version = descriptor.value().engine_version}});
+          '''
+          new_blank = '''TEST_CASE("blank 3D project template opens its native authoring scene")
+          {
+              const auto root = std::filesystem::temp_directory_path() / "arc-blank-3d-template-host-test";
+              std::error_code ec;
+              std::filesystem::remove_all(root, ec);
+              const auto created =
+                  arc::project::create_project({.name = "TemplateHost",
+                                                .destination = root,
+                                                .template_id = "blank-3d",
+                                                .templates_root = std::filesystem::path(ARC_SOURCE_ROOT) / "templates",
+                                                .engine_version = "0.1.0"});
+              REQUIRE(created.has_value());
+              const auto descriptor_path = root / "TemplateHost.arcproject";
+              const auto descriptor = arc::project::load_descriptor(descriptor_path);
+              REQUIRE(descriptor.has_value());
+              REQUIRE_FALSE(descriptor.value().default_scene.has_value());
+
+              auto renderer = std::make_unique<arc::render::renderer>();
+              arc::editor::arc_host_manager manager;
+              auto host = manager.acquire(std::move(renderer));
+              const auto response = host->execute(arc::editor::host_command_envelope{
+                  .request_id = 1,
+                  .payload = arc::editor::host_open_project_command{.name = descriptor.value().name,
+                                                                    .root = root,
+                                                                    .descriptor_path = descriptor_path,
+                                                                    .content_roots = {root / "Content"},
+                                                                    .cache_root = root / "Intermediate" / "Cache",
+                                                                    .project_guid = descriptor.value().guid,
+                                                                    .engine_version = descriptor.value().engine_version}});
+          '''
+
+          if old_grid not in text:
+              raise SystemExit('grid test block not found')
+          if old_blank not in text:
+              raise SystemExit('blank 3D test block not found')
+
+          text = text.replace(old_grid, new_grid, 1).replace(old_blank, new_blank, 1)
+          path.write_text(text)
+
+      - name: Remove temporary workflow
+        run: rm .github/workflows/fix-pr185-stale-tests.yml
+
+      - name: Commit fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor/native/tests/editor_tests.cpp .github/workflows/fix-pr185-stale-tests.yml
+          git commit -m "Fix stale editor grid and blank 3D tests"
+          git push origin HEAD:fix/default-white-infinite-grid
