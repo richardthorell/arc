@@ -218,6 +218,7 @@ export function ContentBrowserPanel({
   onCommand,
   onInstantiatePrefab,
   onAssetAction,
+  onTextureStreamingMode,
   thumbnailProvider,
 }: Props) {
   const [folder, setFolder] = useState('');
@@ -274,6 +275,7 @@ export function ContentBrowserPanel({
   }, [creating]);
 
   const assets = useMemo(() => project?.assets ?? [], [project?.assets]);
+  const selected = assets.find((asset) => asset.id === selectedAssetId) ?? null;
   const projectAssets = useMemo(() => assets.filter((asset) => (asset.scope ?? 'project') === 'project'), [assets]);
   const builtinAssets = useMemo(() => assets.filter((asset) => asset.scope === 'builtin'), [assets]);
   const favoriteAssets = useMemo(() => assets.filter((asset) => favorites.has(favoriteId(asset))), [assets, favorites]);
