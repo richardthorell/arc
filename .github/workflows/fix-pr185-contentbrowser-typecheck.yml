@@ -1,0 +1,65 @@
+name: Fix PR 185 Content Browser typecheck
+
+on:
+  push:
+    branches:
+      - fix/default-white-infinite-grid
+    paths:
+      - .github/workflows/fix-pr185-contentbrowser-typecheck.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/default-white-infinite-grid
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.12.0
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+
+      - name: Repair ContentBrowserPanel selection bindings
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('editor/src/renderer/src/content/ContentBrowserPanel.tsx')
+          text = path.read_text()
+
+          old = "  onAssetAction,\n  thumbnailProvider,\n}: Props) {"
+          new = "  onAssetAction,\n  onTextureStreamingMode,\n  thumbnailProvider,\n}: Props) {"
+          if old not in text:
+              raise SystemExit('could not find ContentBrowserPanel prop destructuring anchor')
+          text = text.replace(old, new, 1)
+
+          old = "  const assets = useMemo(() => project?.assets ?? [], [project?.assets]);\n"
+          new = old + "  const selected = assets.find((asset) => asset.id === selectedAssetId) ?? null;\n"
+          if old not in text:
+              raise SystemExit('could not find assets declaration anchor')
+          text = text.replace(old, new, 1)
+
+          path.write_text(text)
+
+      - name: Install editor dependencies
+        working-directory: editor
+        run: npm ci
+
+      - name: Format and typecheck
+        working-directory: editor
+        run: |
+          npx prettier --write src/renderer/src/content/ContentBrowserPanel.tsx
+          npm run typecheck
+
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor/src/renderer/src/content/ContentBrowserPanel.tsx
+          git diff --cached --check
+          git commit -m "Fix Content Browser selection bindings"
+          git push origin HEAD:fix/default-white-infinite-grid
