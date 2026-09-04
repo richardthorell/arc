@@ -1,6 +1,9 @@
 .ui-lab-content-card-showcase {
+  display: block;
   width: 100%;
   min-width: 0;
+  max-width: none;
+  overflow: visible;
 }
 
 .ui-lab-content-card-showcase .content-assets.grid {
@@ -8,6 +11,15 @@
   grid-template-columns: repeat(3, minmax(184px, 1fr));
   gap: 10px;
   width: 100%;
+  min-width: 0;
+  max-width: none;
+  overflow: visible;
+}
+
+.ui-lab-content-card-showcase .content-assets.grid > .content-asset {
+  width: auto;
+  min-width: 0;
+  max-width: none;
 }
 
 @media (max-width: 820px) {

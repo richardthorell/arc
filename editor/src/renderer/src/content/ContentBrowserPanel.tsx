@@ -218,7 +218,6 @@ export function ContentBrowserPanel({
   onCommand,
   onInstantiatePrefab,
   onAssetAction,
-  onTextureStreamingMode,
   thumbnailProvider,
 }: Props) {
   const [folder, setFolder] = useState('');
@@ -321,7 +320,6 @@ export function ContentBrowserPanel({
         }),
     [browserSource, contentRootName, folder, kind, scopedAssets, search, sort, state],
   );
-  const selected = scopedAssets.find((asset) => asset.id === selectedAssetId) ?? null;
   const activeOnlineSource = onlineSources.find((source) => source.id === browserSource) ?? null;
   const crumbs = browserSource === 'favorites' || !folder ? [] : folder.split('/');
   const sourceTitle = browserSource === 'builtin' ? 'Engine' : browserSource === 'favorites' ? 'Favorites' : 'Content';

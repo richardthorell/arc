@@ -1,3 +1,7 @@
+.data-inspector {
+  --inspector-row-label: 140px;
+}
+
 .data-inspector .inspector-property-label,
 .data-inspector .inspector-number-property .inspector-scalar-scrub {
   font-size: var(--arc-text-xs);
@@ -13,7 +17,7 @@
 
 .inspector-subsection,
 .inspector-procedural-mesh-controls {
-  --inspector-row-label: 96px;
+  --inspector-row-label: 140px;
   display: grid;
   min-width: 0;
   margin: 3px 0 5px 10px;
