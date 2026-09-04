@@ -44,7 +44,6 @@ jobs:
         run: |
           python3 tools/check_format.py --clang-format clang-format-18
           cmake -S . -B out/build/policy -G Ninja -DARC_BUILD_EDITOR=OFF -DARC_BUILD_RENDER_VULKAN=OFF -DBUILD_TESTING=ON
-          cmake --build out/build/policy --target arc-public-api-policy --parallel 2
           ctest --test-dir out/build/policy -R '^arc-public-api-policy$' --output-on-failure
 
       - name: Commit fix
