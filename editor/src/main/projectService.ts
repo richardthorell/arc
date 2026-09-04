@@ -475,8 +475,9 @@ export class ProjectService {
           typeof value === 'string' ? value.replaceAll('\\', '/') : '';
         const referencesLegacyScene =
           normalizedPath(defaultScene.pathHint) === legacyScenePath ||
-          startupScenes.some((entry) =>
-            normalizedPath(typeof entry === 'string' ? entry : objectValue(entry).pathHint) === legacyScenePath,
+          startupScenes.some(
+            (entry) =>
+              normalizedPath(typeof entry === 'string' ? entry : objectValue(entry).pathHint) === legacyScenePath,
           );
         if (referencesLegacyScene) {
           rawDescriptor.defaultScene = null;
