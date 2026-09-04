@@ -88,8 +88,7 @@ public:
         return result;
     }
 
-    std::vector<arc::render::virtual_geometry_page_upload_result>
-    take_virtual_geometry_page_upload_results() override
+    std::vector<arc::render::virtual_geometry_page_upload_result> take_virtual_geometry_page_upload_results() override
     {
         auto result = std::move(virtual_upload_results);
         virtual_upload_results.clear();
@@ -1932,10 +1931,10 @@ TEST_CASE("virtual geometry residency waits for backend page publication acknowl
     const auto handle = renderer.create_virtual_mesh(std::move(mesh));
     auto bytes = std::make_shared<const std::vector<std::byte>>(4, std::byte{0x2a});
     REQUIRE(renderer.publish_virtual_geometry_page({.resource = handle,
-                                                     .resource_generation = 1,
-                                                     .page_index = 0,
-                                                     .decoded_bytes = bytes,
-                                                     .compressed_cpu_bytes = 4}));
+                                                    .resource_generation = 1,
+                                                    .page_index = 0,
+                                                    .decoded_bytes = bytes,
+                                                    .compressed_cpu_bytes = 4}));
     REQUIRE(renderer.virtual_geometry_residency().snapshot().resident_pages == 0);
 
     backend_pointer->virtual_upload_results.push_back({.resource = handle,

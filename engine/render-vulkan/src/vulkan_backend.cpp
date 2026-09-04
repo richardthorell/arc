@@ -5354,8 +5354,8 @@ private:
             const auto child_base = static_cast<std::uint32_t>(virtual_geometry_child_mirror_.size());
             const auto page_base = static_cast<std::uint32_t>(virtual_geometry_page_mirror_.size());
             const auto root_base = static_cast<std::uint32_t>(virtual_geometry_root_mirror_.size());
-            auto tables = make_virtual_geometry_gpu_table_update(
-                {resource_index, handle_generation}, *mesh->source, mesh->resource_generation);
+            auto tables = make_virtual_geometry_gpu_table_update({resource_index, handle_generation}, *mesh->source,
+                                                                 mesh->resource_generation);
             if (tables.resources.empty()) continue;
             auto resource = tables.resources.front();
             resource.first_node = node_base;
@@ -5759,9 +5759,9 @@ private:
         if (!capabilities_.virtual_geometry_streaming || virtual_meshes_.empty() || gpu_scene_capacity_ == 0u ||
             virtual_geometry_resource_buffer_.buffer == VK_NULL_HANDLE)
             return false;
-        const auto requested_visible_capacity = std::clamp(
-            std::bit_ceil(std::max(1u, static_cast<std::uint32_t>(virtual_geometry_cluster_mirror_.size()))), 256u,
-            1u << 20u);
+        const auto requested_visible_capacity =
+            std::clamp(std::bit_ceil(std::max(1u, static_cast<std::uint32_t>(virtual_geometry_cluster_mirror_.size()))),
+                       256u, 1u << 20u);
         constexpr std::uint32_t requested_page_capacity = 4096u;
         if (virtual_geometry_visible_capacity_ < requested_visible_capacity ||
             virtual_geometry_request_capacity_ < requested_page_capacity ||
@@ -5797,14 +5797,13 @@ private:
             virtual_geometry_traversal_descriptors_dirty_ = true;
             if (retired_visible.buffer != VK_NULL_HANDLE || retired_requests.buffer != VK_NULL_HANDLE ||
                 retired_counters.buffer != VK_NULL_HANDLE)
-                deferred_releases_.defer(
-                    last_profile_.frame_index + frame_resource_count(),
-                    [this, retired_visible, retired_requests, retired_counters]() mutable
-                    {
-                        destroy_buffer(retired_visible);
-                        destroy_buffer(retired_requests);
-                        destroy_buffer(retired_counters);
-                    });
+                deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
+                                         [this, retired_visible, retired_requests, retired_counters]() mutable
+                                         {
+                                             destroy_buffer(retired_visible);
+                                             destroy_buffer(retired_requests);
+                                             destroy_buffer(retired_counters);
+                                         });
         }
 
         if (virtual_geometry_traversal_descriptor_set_layout_ == VK_NULL_HANDLE)
@@ -5958,15 +5957,15 @@ private:
         constants.viewport_hzb[1] = static_cast<float>(viewport_height_);
         constants.viewport_hzb[2] = static_cast<float>(hzb_mip_count_);
         constants.viewport_hzb[3] = hzb_history_valid_ && !frame_camera_.camera_cut ? 1.0f : 0.0f;
-        constants.hzb_generation = static_cast<std::uint32_t>(
-            (last_profile_.frame_index + hzb_history_.size() - 1u) % hzb_history_.size());
+        constants.hzb_generation =
+            static_cast<std::uint32_t>((last_profile_.frame_index + hzb_history_.size() - 1u) % hzb_history_.size());
         constants.camera_cut = frame_camera_.camera_cut ? 1u : 0u;
         vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, virtual_geometry_traversal_pipeline_);
         vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
                                 virtual_geometry_traversal_pipeline_layout_, 0u, 1u,
                                 &virtual_geometry_traversal_descriptor_set_, 0u, nullptr);
-        vkCmdPushConstants(command_buffer, virtual_geometry_traversal_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0u, sizeof(constants), &constants);
+        vkCmdPushConstants(command_buffer, virtual_geometry_traversal_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0u,
+                           sizeof(constants), &constants);
         vkCmdDispatch(command_buffer, (gpu_scene_capacity_ + 63u) / 64u, 1u, 1u);
 
         std::array<VkBufferMemoryBarrier, 2> outputs{};
@@ -5989,8 +5988,8 @@ private:
         auto& feedback = virtual_geometry_feedback_frames_[current_frame_slot()];
         if (ensure_virtual_geometry_feedback_frame(feedback))
         {
-            VkBufferCopy request_copy{.size = buffer_size(virtual_geometry_request_capacity_,
-                                                          sizeof(virtual_geometry_gpu_page_request))};
+            VkBufferCopy request_copy{
+                .size = buffer_size(virtual_geometry_request_capacity_, sizeof(virtual_geometry_gpu_page_request))};
             VkBufferCopy counter_copy{.size = sizeof(virtual_geometry_traversal_counter_data)};
             vkCmdCopyBuffer(command_buffer, virtual_geometry_request_buffer_.buffer, feedback.requests.buffer, 1u,
                             &request_copy);

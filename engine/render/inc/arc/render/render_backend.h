@@ -1236,8 +1236,7 @@ public:
     [[nodiscard]] virtual virtual_geometry_feedback_readback take_virtual_geometry_feedback();
 
     /** @brief Take page publications acknowledged after both heap and page-table writes completed. */
-    [[nodiscard]] virtual std::vector<virtual_geometry_page_upload_result>
-    take_virtual_geometry_page_upload_results();
+    [[nodiscard]] virtual std::vector<virtual_geometry_page_upload_result> take_virtual_geometry_page_upload_results();
 
     /**
      * @brief Request an async ObjectID readback at viewport pixel coordinates.
