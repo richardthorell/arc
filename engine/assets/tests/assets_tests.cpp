@@ -128,6 +128,8 @@ TEST_CASE("asset metadata round trips stable subasset identities")
     asset_source_metadata source{.guid = generate_asset_guid(),
                                  .type = asset_types::imported_scene,
                                  .importer = importer_ids::gltf,
+                                 .title = "Cabin Model",
+                                 .description = "A reusable cabin asset for metadata testing.",
                                  .settings_version = 2,
                                  .canonical_settings = R"({"normalizeAxes":true})",
                                  .subassets = {{.persistent_key = "mesh:Cabin",
@@ -147,6 +149,8 @@ TEST_CASE("asset metadata round trips stable subasset identities")
     REQUIRE(loaded.guid == source.guid);
     REQUIRE(loaded.type == source.type);
     REQUIRE(loaded.importer == source.importer);
+    REQUIRE(loaded.title == "Cabin Model");
+    REQUIRE(loaded.description == "A reusable cabin asset for metadata testing.");
     REQUIRE(loaded.settings_version == 2);
     REQUIRE(loaded.subassets.size() == 2);
     REQUIRE(loaded.subassets[1].tombstoned);

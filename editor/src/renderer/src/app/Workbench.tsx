@@ -149,6 +149,8 @@ type HostRuntimeSnapshot = {
 type HostAssetSnapshot = {
   guid: string;
   path: string;
+  title: string;
+  description: string;
   scope: 'builtin' | 'project' | 'user' | 'organization';
   readOnly: boolean;
   kind: AssetItem['kind'] | 'environment' | 'unknown';
@@ -933,7 +935,9 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     const assets =
       hostAssets?.assets.map((asset): AssetItem => ({
         id: asset.guid || asset.path,
-        name: assetNameFromPath(asset.path),
+        name: asset.title?.trim() || assetNameFromPath(asset.path),
+        title: asset.title || undefined,
+        description: asset.description || undefined,
         path: asset.path,
         scope: asset.scope,
         readOnly: asset.readOnly,

@@ -1723,6 +1723,8 @@ asset_scan_result asset_manager::scan()
             value.snapshot.type = source.metadata.type;
             value.snapshot.importer = source.metadata.importer;
             value.snapshot.source_path = relative_text;
+            value.snapshot.title = source.metadata.title;
+            value.snapshot.description = source.metadata.description;
             value.snapshot.source_hash = source.hash;
             value.snapshot.state = asset_state::stale;
             value.snapshot.residency = asset_residency::source;
@@ -1783,6 +1785,8 @@ asset_scan_result asset_manager::scan()
             implementation_->emit(asset_event_kind::moved, value.snapshot.guid, value.snapshot.state,
                                   "Asset path changed");
         }
+        value.snapshot.title = source.metadata.title;
+        value.snapshot.description = source.metadata.description;
         value.metadata = source.metadata;
         value.absolute_path = source.absolute;
         if (!observed_file_change || debounce_complete)
@@ -1901,7 +1905,10 @@ std::vector<asset_snapshot> asset_manager::search(std::string_view text, std::op
     for (const auto& [_, value] : implementation_->records)
     {
         if (type && value.snapshot.type != *type) continue;
-        if (!needle.empty() && path_key(value.snapshot.source_path).find(needle) == std::string::npos) continue;
+        if (!needle.empty() && path_key(value.snapshot.source_path).find(needle) == std::string::npos &&
+            path_key(value.snapshot.title).find(needle) == std::string::npos &&
+            path_key(value.snapshot.description).find(needle) == std::string::npos)
+            continue;
         auto snapshot = value.snapshot;
         snapshot.strong_references =
             value.slot.use_count() > 0 ? static_cast<std::uint32_t>(value.slot.use_count() - 1) : 0;

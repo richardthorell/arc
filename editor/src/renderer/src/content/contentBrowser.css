@@ -395,3 +395,11 @@
   color: var(--arc-color-text, var(--text-secondary, #c7cbd1));
   font-weight: 400;
 }
+
+.content-asset-hover-description {
+  margin: 0;
+  padding: 0 12px 10px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
