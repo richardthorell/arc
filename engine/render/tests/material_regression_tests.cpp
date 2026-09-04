@@ -3,6 +3,20 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstring>
+
+namespace
+{
+
+float read_parameter_float(const arc::render::material_runtime_program& program, std::size_t offset)
+{
+    float value{};
+    std::memcpy(&value, program.parameter_defaults.data() + offset, sizeof(value));
+    return value;
+}
+
+} // namespace
+
 TEST_CASE("material descriptor production defaults remain stable")
 {
     const arc::render::material_descriptor material;
@@ -74,6 +88,73 @@ TEST_CASE("material descriptor production defaults remain stable")
         REQUIRE(layer.world_scale == Catch::Approx(4.0f));
         REQUIRE(layer.roughness == Catch::Approx(0.8f));
     }
+}
+
+TEST_CASE("material instances bake numeric overrides into isolated runtime parameter blocks")
+{
+    constexpr arc::render::shader_parameter_id roughness_id{.value = 1};
+    constexpr arc::render::shader_parameter_id tint_id{.value = 2};
+
+    auto runtime = std::make_shared<arc::render::material_runtime_program>();
+    runtime->parameter_block_size = 32;
+    runtime->parameter_defaults.resize(runtime->parameter_block_size);
+    runtime->parameters = {{.id = roughness_id,
+                            .name = "roughness",
+                            .type = arc::render::shader_parameter_type::float32,
+                            .offset = 0,
+                            .size = 4},
+                           {.id = tint_id,
+                            .name = "tint",
+                            .type = arc::render::shader_parameter_type::float3,
+                            .offset = 16,
+                            .size = 12}};
+
+    const float default_roughness = 0.25f;
+    const float default_tint[3]{1.0f, 1.0f, 1.0f};
+    std::memcpy(runtime->parameter_defaults.data(), &default_roughness, sizeof(default_roughness));
+    std::memcpy(runtime->parameter_defaults.data() + 16, default_tint, sizeof(default_tint));
+
+    arc::render::material_definition_descriptor definition;
+    definition.material.handle = {.index = 3, .generation = 1};
+    definition.material.runtime_program = runtime;
+    definition.parameter_layout = runtime->parameters;
+
+    arc::render::material_instance_descriptor warm_instance;
+    warm_instance.parent = definition.material.handle;
+    warm_instance.overrides = {
+        {.id = roughness_id, .name = "roughness", .value = 0.8f},
+        {.id = tint_id, .name = "tint", .value = arc::math::vector3f{1.0f, 0.35f, 0.1f}}};
+
+    arc::render::material_instance_descriptor cool_instance;
+    cool_instance.parent = definition.material.handle;
+    cool_instance.overrides = {
+        {.id = roughness_id, .name = "roughness", .value = 0.1f},
+        {.id = tint_id, .name = "tint", .value = arc::math::vector3f{0.1f, 0.4f, 1.0f}}};
+
+    const auto warm = arc::render::resolve_material_instance(definition, warm_instance);
+    const auto cool = arc::render::resolve_material_instance(definition, cool_instance);
+    REQUIRE(warm);
+    REQUIRE(cool);
+    REQUIRE(warm.value().runtime_program);
+    REQUIRE(cool.value().runtime_program);
+    REQUIRE(warm.value().runtime_program != definition.material.runtime_program);
+    REQUIRE(cool.value().runtime_program != definition.material.runtime_program);
+    REQUIRE(warm.value().runtime_program != cool.value().runtime_program);
+
+    REQUIRE(read_parameter_float(*definition.material.runtime_program, 0) == Catch::Approx(0.25f));
+    REQUIRE(read_parameter_float(*definition.material.runtime_program, 16) == Catch::Approx(1.0f));
+    REQUIRE(read_parameter_float(*definition.material.runtime_program, 20) == Catch::Approx(1.0f));
+    REQUIRE(read_parameter_float(*definition.material.runtime_program, 24) == Catch::Approx(1.0f));
+
+    REQUIRE(read_parameter_float(*warm.value().runtime_program, 0) == Catch::Approx(0.8f));
+    REQUIRE(read_parameter_float(*warm.value().runtime_program, 16) == Catch::Approx(1.0f));
+    REQUIRE(read_parameter_float(*warm.value().runtime_program, 20) == Catch::Approx(0.35f));
+    REQUIRE(read_parameter_float(*warm.value().runtime_program, 24) == Catch::Approx(0.1f));
+
+    REQUIRE(read_parameter_float(*cool.value().runtime_program, 0) == Catch::Approx(0.1f));
+    REQUIRE(read_parameter_float(*cool.value().runtime_program, 16) == Catch::Approx(0.1f));
+    REQUIRE(read_parameter_float(*cool.value().runtime_program, 20) == Catch::Approx(0.4f));
+    REQUIRE(read_parameter_float(*cool.value().runtime_program, 24) == Catch::Approx(1.0f));
 }
 
 TEST_CASE("representative advanced material preserves the shader permutation contract")
