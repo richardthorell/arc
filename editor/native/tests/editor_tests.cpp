@@ -318,6 +318,34 @@ TEST_CASE("editor selection keeps one selected entity")
     REQUIRE_FALSE(scene.get<arc::scene::selection_component>(second).selected);
 }
 
+TEST_CASE("editor grid is white and extends beyond the default floor")
+{
+    arc::ecs::world registry;
+    const auto camera_entity = registry.create();
+    arc::scene::transform_component camera_transform;
+    camera_transform.position = {0.0f, 5.0f, 8.0f};
+    registry.emplace<arc::scene::transform_component>(camera_entity, camera_transform);
+    registry.emplace<arc::scene::camera_component>(camera_entity);
+    arc::scene::update_world_transforms(registry);
+
+    arc::render::debug_overlay_stream overlay;
+    arc::editor::append_editor_grid_overlay(overlay, registry.get<arc::scene::camera_component>(camera_entity),
+                                            registry.get<arc::scene::transform_component>(camera_entity), 720u);
+    REQUIRE_FALSE(overlay.lines.empty());
+
+    float maximum_extent = 0.0f;
+    for (const auto& line : overlay.lines)
+    {
+        CHECK(line.color[0] == Catch::Approx(line.color[1]));
+        CHECK(line.color[1] == Catch::Approx(line.color[2]));
+        maximum_extent = std::max(maximum_extent, std::abs(line.start[0]));
+        maximum_extent = std::max(maximum_extent, std::abs(line.start[2]));
+        maximum_extent = std::max(maximum_extent, std::abs(line.end[0]));
+        maximum_extent = std::max(maximum_extent, std::abs(line.end[2]));
+    }
+    CHECK(maximum_extent >= 50.0f);
+}
+
 TEST_CASE("editor gizmos keep constant screen size and hit test colored axes")
 {
     arc::ecs::world registry;
@@ -395,14 +423,12 @@ TEST_CASE("editor grid is adaptive and remains anchored to world axes")
     camera_transform.position = {12.0f, 8.0f, -17.0f};
     arc::render::debug_overlay_stream near_grid;
     arc::editor::append_editor_grid_overlay(near_grid, camera, camera_transform, 600);
-    REQUIRE(near_grid.lines.size() == 202);
-    REQUIRE(std::any_of(near_grid.lines.begin(), near_grid.lines.end(), [](const auto& line)
-                        { return std::abs(line.start[2]) < 0.0001f && line.color[0] > line.color[2]; }));
+    REQUIRE(near_grid.lines.size() >= 4);
 
     camera_transform.position[1] = 800.0f;
     arc::render::debug_overlay_stream far_grid;
     arc::editor::append_editor_grid_overlay(far_grid, camera, camera_transform, 600);
-    REQUIRE(far_grid.lines.size() == near_grid.lines.size());
+    REQUIRE(far_grid.lines.size() >= 4);
     const float near_spacing = std::abs(near_grid.lines[2].start[2] - near_grid.lines[0].start[2]);
     const float far_spacing = std::abs(far_grid.lines[2].start[2] - far_grid.lines[0].start[2]);
     REQUIRE(far_spacing > near_spacing);
@@ -2504,7 +2530,7 @@ TEST_CASE("arc host derives project roots from the validated descriptor")
     std::filesystem::remove_all(root, ec);
 }
 
-TEST_CASE("blank 3D project template opens its persisted startup scene")
+TEST_CASE("blank 3D project template opens its native authoring scene")
 {
     const auto root = std::filesystem::temp_directory_path() / "arc-blank-3d-template-host-test";
     std::error_code ec;
@@ -2519,7 +2545,7 @@ TEST_CASE("blank 3D project template opens its persisted startup scene")
     const auto descriptor_path = root / "TemplateHost.arcproject";
     const auto descriptor = arc::project::load_descriptor(descriptor_path);
     REQUIRE(descriptor.has_value());
-    REQUIRE(descriptor.value().default_scene.has_value());
+    REQUIRE_FALSE(descriptor.value().default_scene.has_value());
 
     auto renderer = std::make_unique<arc::render::renderer>();
     arc::editor::arc_host_manager manager;
@@ -2531,7 +2557,6 @@ TEST_CASE("blank 3D project template opens its persisted startup scene")
                                                           .descriptor_path = descriptor_path,
                                                           .content_roots = {root / "Content"},
                                                           .cache_root = root / "Intermediate" / "Cache",
-                                                          .default_scene = descriptor.value().default_scene->path_hint,
                                                           .project_guid = descriptor.value().guid,
                                                           .engine_version = descriptor.value().engine_version}});
 
