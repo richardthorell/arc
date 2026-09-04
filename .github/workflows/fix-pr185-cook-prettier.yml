@@ -1,4 +1,4 @@
-name: Fix PR 185 cook and prettier
+name: Fix PR 185 prettier
 
 on:
   push:
@@ -22,33 +22,19 @@ jobs:
         with:
           node-version: 22.12.0
 
-      - name: Fix cook fixture roots
-        shell: python
-        run: |
-          from pathlib import Path
-          path = Path('.github/workflows/build-msvc.yml')
-          text = path.read_text()
-          old = 'out/build/cook/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan'
-          new = old + ' --root Content/Scenes/Startup.arcscene'
-          count = text.count(old)
-          if count not in (0, 2):
-              raise SystemExit(f'expected 0 or 2 cook package commands, found {count}')
-          if count == 2:
-              path.write_text(text.replace(old, new))
-
       - name: Prettify RenderGraphPanel
         working-directory: editor
         run: npx --yes prettier@3.9.6 --write src/renderer/src/renderGraph/RenderGraphPanel.tsx
 
-      - name: Commit fixes
+      - name: Commit formatting
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/build-msvc.yml editor/src/renderer/src/renderGraph/RenderGraphPanel.tsx
+          git add editor/src/renderer/src/renderGraph/RenderGraphPanel.tsx
           git diff --cached --check
           if git diff --cached --quiet; then
-            echo "No fixes required"
+            echo "No formatting changes required"
           else
-            git commit -m "Fix cook fixture root and format render graph panel"
+            git commit -m "Format render graph panel"
             git push origin HEAD:fix/default-white-infinite-grid
           fi
