@@ -14,11 +14,11 @@ inline constexpr math::vector3f fallback_mesh_bounds_max{0.5f, 0.5f, 0.5f};
 inline constexpr float fallback_mesh_radius = 1.0f;
 inline constexpr float imported_mesh_fit_size = 1.8f;
 
-inline constexpr math::vector3f default_camera_position{30.0f, 27.0f, 48.0f};
-inline constexpr math::vector3f default_camera_focus{0.0f, 7.0f, -15.0f};
-inline constexpr float default_camera_focus_radius = 22.0f;
-inline constexpr float default_camera_orbit_x = -55.0f;
-inline constexpr float default_camera_orbit_y = 35.0f;
+inline constexpr math::vector3f default_camera_position{8.0f, 6.0f, 8.0f};
+inline constexpr math::vector3f default_camera_focus{0.0f, 0.0f, 0.0f};
+inline constexpr float default_camera_focus_radius = 8.0f;
+inline constexpr float default_camera_orbit_x = -45.0f;
+inline constexpr float default_camera_orbit_y = 32.0f;
 inline constexpr float default_camera_near_plane = 0.25f;
 inline constexpr float default_camera_far_plane = 500.0f;
 
