@@ -1377,9 +1377,8 @@ TEST_CASE("GPU resource tables publish generational records and reusable shared 
     REQUIRE(tables.snapshot(gpu_resource_table_kind::geometry).tombstones == 1);
 
     const resource_handle recycled{.index = 5, .generation = 3};
-    const auto replacement = tables.publish_geometry(
-        recycled, std::as_bytes(std::span{vertices}), sizeof(mesh_vertex), std::as_bytes(std::span{indices}),
-        sizeof(std::uint32_t), 13);
+    const auto replacement = tables.publish_geometry(recycled, std::as_bytes(std::span{vertices}), sizeof(mesh_vertex),
+                                                     std::as_bytes(std::span{indices}), sizeof(std::uint32_t), 13);
     gpu_geometry_table_record replacement_record{};
     std::memcpy(&replacement_record, replacement.payload.data(), sizeof(replacement_record));
     REQUIRE(replacement_record.generation == 3);

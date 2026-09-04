@@ -1094,8 +1094,7 @@ TEST_CASE("texture asset diagnostics and streaming debug modes serialize through
     CHECK(json.find("\"artifactSize\":67108864") != std::string::npos);
     CHECK(std::string(arc::editor::to_string(arc::editor::host_visualization_mode::texture_desired_mip)) ==
           "textureDesiredMip");
-    CHECK(std::string(arc::editor::to_string(
-              arc::editor::host_visualization_mode::virtual_texture_recent_requests)) ==
+    CHECK(std::string(arc::editor::to_string(arc::editor::host_visualization_mode::virtual_texture_recent_requests)) ==
           "virtualTextureRecentRequests");
 
     arc::editor::host_command_envelope envelope;
@@ -1547,8 +1546,7 @@ TEST_CASE("arc host executes scene commands and exposes snapshots")
 
     REQUIRE(host->query({.request_id = 4, .payload = arc::editor::host_scene_hierarchy_query{}}).succeeded);
     REQUIRE(host->query({.request_id = 5, .payload = arc::editor::host_project_assets_query{}}).succeeded);
-    const auto diagnostics =
-        host->query({.request_id = 6, .payload = arc::editor::host_gateway_diagnostics_query{}});
+    const auto diagnostics = host->query({.request_id = 6, .payload = arc::editor::host_gateway_diagnostics_query{}});
     REQUIRE(diagnostics.succeeded);
     CHECK(diagnostics.payload_json.find("\"textureStreaming\"") != std::string::npos);
     CHECK(diagnostics.payload_json.find("\"resources\":[") != std::string::npos);

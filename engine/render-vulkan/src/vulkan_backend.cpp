@@ -4926,8 +4926,7 @@ private:
                 table.live[update.slot] = false;
                 table.generations[update.slot] = update.generation;
             }
-            else if (update.payload_size == batch.element_stride &&
-                     update.payload_offset <= batch.payload.size() &&
+            else if (update.payload_size == batch.element_stride && update.payload_offset <= batch.payload.size() &&
                      update.payload_size <= batch.payload.size() - update.payload_offset)
             {
                 std::copy_n(batch.payload.begin() + static_cast<std::ptrdiff_t>(update.payload_offset),
@@ -4949,8 +4948,8 @@ private:
                 shared_geometry_buffers_.index_mirror.resize(static_cast<std::size_t>(batch.index_heap_capacity));
             for (const auto& update : batch.heap_updates)
             {
-                auto& mirror = update.index_heap ? shared_geometry_buffers_.index_mirror
-                                                 : shared_geometry_buffers_.vertex_mirror;
+                auto& mirror =
+                    update.index_heap ? shared_geometry_buffers_.index_mirror : shared_geometry_buffers_.vertex_mirror;
                 if (update.destination_offset > mirror.size() || update.payload_offset > batch.heap_payload.size() ||
                     update.payload_size > mirror.size() - update.destination_offset ||
                     update.payload_size > batch.heap_payload.size() - update.payload_offset)
@@ -4970,8 +4969,7 @@ private:
         profile.uploaded_bytes += batch.payload.size() + batch.heap_payload.size();
     }
 
-    bool replace_gpu_mirror_buffer(gpu_buffer& destination, std::span<const std::byte> mirror,
-                                   VkBufferUsageFlags usage)
+    bool replace_gpu_mirror_buffer(gpu_buffer& destination, std::span<const std::byte> mirror, VkBufferUsageFlags usage)
     {
         if (mirror.empty()) return true;
         gpu_buffer replacement{};
@@ -5008,8 +5006,7 @@ private:
         }
         if (shared_geometry_buffers_.vertices_dirty)
         {
-            if (replace_gpu_mirror_buffer(shared_geometry_buffers_.vertices,
-                                          shared_geometry_buffers_.vertex_mirror,
+            if (replace_gpu_mirror_buffer(shared_geometry_buffers_.vertices, shared_geometry_buffers_.vertex_mirror,
                                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT))
                 shared_geometry_buffers_.vertices_dirty = false;
             else
@@ -5025,10 +5022,14 @@ private:
         }
 
         auto& profile = last_profile_.gpu_scene;
-        profile.geometry_table_entries = gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::geometry)].live_entries;
-        profile.material_table_entries = gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::material)].live_entries;
-        profile.texture_table_entries = gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::texture)].live_entries;
-        profile.sampler_table_entries = gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::sampler)].live_entries;
+        profile.geometry_table_entries =
+            gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::geometry)].live_entries;
+        profile.material_table_entries =
+            gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::material)].live_entries;
+        profile.texture_table_entries =
+            gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::texture)].live_entries;
+        profile.sampler_table_entries =
+            gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::sampler)].live_entries;
         profile.skin_palette_table_entries =
             gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::skin_palette)].live_entries;
         profile.shared_vertex_heap_bytes = shared_geometry_buffers_.vertex_mirror.size();

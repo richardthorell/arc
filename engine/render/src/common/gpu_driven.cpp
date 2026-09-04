@@ -46,8 +46,7 @@ std::size_t gpu_resource_tables::table_offset(gpu_resource_table_kind table) noe
 }
 
 gpu_table_update_batch gpu_resource_tables::publish_record(gpu_resource_table_kind table, resource_handle handle,
-                                                           std::span<const std::byte> record,
-                                                           std::uint64_t frame_index)
+                                                           std::span<const std::byte> record, std::uint64_t frame_index)
 {
     gpu_table_update_batch batch{.table = table,
                                  .reuse_after_frame = frame_index + default_gpu_table_slot_reuse_delay_frames};
@@ -89,8 +88,7 @@ gpu_table_update_batch gpu_resource_tables::publish_record(gpu_resource_table_ki
 
 gpu_resource_tables::heap_range gpu_resource_tables::allocate_heap_range(std::vector<std::byte>& heap,
                                                                          std::vector<heap_range>& free_ranges,
-                                                                         std::uint64_t size,
-                                                                         std::uint64_t alignment)
+                                                                         std::uint64_t size, std::uint64_t alignment)
 {
     if (size == 0u || alignment == 0u || (alignment & (alignment - 1u)) != 0u) return {};
     for (auto iterator = free_ranges.begin(); iterator != free_ranges.end(); ++iterator)
@@ -125,9 +123,9 @@ void gpu_resource_tables::release_heap_range(std::vector<heap_range>& free_range
     for (const auto candidate : free_ranges)
     {
         if (!merged.empty() && merged.back().offset + merged.back().size >= candidate.offset)
-            merged.back().size = std::max(merged.back().offset + merged.back().size,
-                                          candidate.offset + candidate.size) -
-                                 merged.back().offset;
+            merged.back().size =
+                std::max(merged.back().offset + merged.back().size, candidate.offset + candidate.size) -
+                merged.back().offset;
         else
             merged.push_back(candidate);
     }
@@ -172,8 +170,10 @@ gpu_table_update_batch gpu_resource_tables::publish_geometry(resource_handle han
     }
 
     const auto allocation = found->second;
-    std::copy(vertices.begin(), vertices.end(), vertex_heap_.begin() + static_cast<std::ptrdiff_t>(allocation.vertices.offset));
-    std::copy(indices.begin(), indices.end(), index_heap_.begin() + static_cast<std::ptrdiff_t>(allocation.indices.offset));
+    std::copy(vertices.begin(), vertices.end(),
+              vertex_heap_.begin() + static_cast<std::ptrdiff_t>(allocation.vertices.offset));
+    std::copy(indices.begin(), indices.end(),
+              index_heap_.begin() + static_cast<std::ptrdiff_t>(allocation.indices.offset));
 
     gpu_geometry_table_record record{.generation = handle.generation,
                                      .vertex_offset = allocation.vertices.offset,
@@ -182,8 +182,8 @@ gpu_table_update_batch gpu_resource_tables::publish_geometry(resource_handle han
                                      .index_count = static_cast<std::uint32_t>(indices.size() / index_stride),
                                      .vertex_stride = vertex_stride,
                                      .index_stride = index_stride};
-    auto batch = publish_record(gpu_resource_table_kind::geometry, handle, std::as_bytes(std::span{&record, 1}),
-                                frame_index);
+    auto batch =
+        publish_record(gpu_resource_table_kind::geometry, handle, std::as_bytes(std::span{&record, 1}), frame_index);
     if (batch.updates.empty()) return batch;
     if (++geometry_heap_generation_ == 0u) geometry_heap_generation_ = 1u;
     batch.geometry_heap_generation = geometry_heap_generation_;
@@ -205,8 +205,7 @@ gpu_table_update_batch gpu_resource_tables::publish_material(resource_handle han
                                                              const gpu_material_table_record& record,
                                                              std::uint64_t frame_index)
 {
-    return publish_record(gpu_resource_table_kind::material, handle, std::as_bytes(std::span{&record, 1}),
-                          frame_index);
+    return publish_record(gpu_resource_table_kind::material, handle, std::as_bytes(std::span{&record, 1}), frame_index);
 }
 
 gpu_table_update_batch gpu_resource_tables::publish_texture(resource_handle handle,

@@ -95,8 +95,7 @@ gpu_material_table_record material_table_record(const material_descriptor& mater
     gpu_material_table_record record{};
     record.generation = material.handle.generation;
     record.flags = static_cast<std::uint32_t>(material.alpha_mode) |
-                   (static_cast<std::uint32_t>(material.shading_model) << 4u) |
-                   (material.double_sided ? 1u << 8u : 0u);
+                   (static_cast<std::uint32_t>(material.shading_model) << 4u) | (material.double_sided ? 1u << 8u : 0u);
     for (std::uint32_t component = 0; component < 4u; ++component)
         record.base_color[component] = material.base_color[component];
     record.emissive[0] = material.emissive_factor[0];
@@ -847,8 +846,7 @@ bool renderer::destroy_mesh(mesh_handle handle)
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.mesh_destroy(handle);
-    auto table_update =
-        gpu_resources_.tombstone(gpu_resource_table_kind::geometry, handle, resource_frame_index_);
+    auto table_update = gpu_resources_.tombstone(gpu_resource_table_kind::geometry, handle, resource_frame_index_);
     if (!table_update.updates.empty())
         writer.gpu_resource_table_update(std::make_shared<gpu_table_update_batch>(std::move(table_update)));
     if (const auto found = mesh_lighting_geometry_.find(mesh_key); found != mesh_lighting_geometry_.end())
@@ -1297,8 +1295,8 @@ material_handle renderer::create_material(material_descriptor material)
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.material_upload(handle, shared_material, shared_material->name);
-    auto table_update = gpu_resources_.publish_material(
-        handle, material_table_record(*shared_material, gpu_resources_), resource_frame_index_);
+    auto table_update = gpu_resources_.publish_material(handle, material_table_record(*shared_material, gpu_resources_),
+                                                        resource_frame_index_);
     writer.gpu_resource_table_update(std::make_shared<gpu_table_update_batch>(std::move(table_update)));
     frame_queue_.submit(std::move(buffer));
     return handle;
@@ -1315,8 +1313,8 @@ bool renderer::update_material(material_handle handle, material_descriptor mater
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.material_upload(handle, shared_material, shared_material->name);
-    auto table_update = gpu_resources_.publish_material(
-        handle, material_table_record(*shared_material, gpu_resources_), resource_frame_index_);
+    auto table_update = gpu_resources_.publish_material(handle, material_table_record(*shared_material, gpu_resources_),
+                                                        resource_frame_index_);
     writer.gpu_resource_table_update(std::make_shared<gpu_table_update_batch>(std::move(table_update)));
     frame_queue_.submit(std::move(buffer));
     return true;
