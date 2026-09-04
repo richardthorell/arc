@@ -1,0 +1,211 @@
+name: Asset Metadata Implementation
+
+on:
+  push:
+    branches:
+      - feature/asset-titles-descriptions
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: ${{ !contains(github.event.head_commit.message, '[asset-meta-impl]') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feature/asset-titles-descriptions
+          fetch-depth: 0
+
+      - name: Apply asset title and description support
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import json
+          import re
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"missing replacement in {path}: {old[:100]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          # Asset metadata/runtime model.
+          replace_once(
+              'engine/assets/inc/arc/assets/assets.h',
+              '    asset_type_id type{};\n    asset_importer_id importer{};\n    std::uint32_t settings_version{1};',
+              '    asset_type_id type{};\n    asset_importer_id importer{};\n    std::string title;\n    std::string description;\n    std::uint32_t settings_version{1};')
+          replace_once(
+              'engine/assets/inc/arc/assets/assets.h',
+              '    std::filesystem::path source_path;\n    asset_hash source_hash{};',
+              '    std::filesystem::path source_path;\n    std::string title;\n    std::string description;\n    asset_hash source_hash{};')
+
+          replace_once(
+              'engine/assets/src/common/asset_metadata.cpp',
+              '    parsed.type = *type;\n    parsed.importer = *importer;\n    parsed.settings_version = document.value("settingsVersion", 1u);',
+              '    parsed.type = *type;\n    parsed.importer = *importer;\n    parsed.title = document.value("title", std::string{});\n    parsed.description = document.value("description", std::string{});\n    parsed.settings_version = document.value("settingsVersion", 1u);')
+          replace_once(
+              'engine/assets/src/common/asset_metadata.cpp',
+              '                  {"settings", std::move(settings)},\n                  {"subassets", json::array()}};\n    for (const asset_subasset_metadata& subasset : metadata.subassets)',
+              '                  {"settings", std::move(settings)},\n                  {"subassets", json::array()}};\n    if (!metadata.title.empty()) document["title"] = metadata.title;\n    if (!metadata.description.empty()) document["description"] = metadata.description;\n    for (const asset_subasset_metadata& subasset : metadata.subassets)')
+
+          replace_once(
+              'engine/assets/src/common/asset_manager.cpp',
+              '            value.snapshot.source_path = relative_text;\n            value.snapshot.source_hash = source.hash;',
+              '            value.snapshot.source_path = relative_text;\n            value.snapshot.title = source.metadata.title;\n            value.snapshot.description = source.metadata.description;\n            value.snapshot.source_hash = source.hash;')
+          replace_once(
+              'engine/assets/src/common/asset_manager.cpp',
+              '        value.metadata = source.metadata;\n        value.absolute_path = source.absolute;',
+              '        value.snapshot.title = source.metadata.title;\n        value.snapshot.description = source.metadata.description;\n        value.metadata = source.metadata;\n        value.absolute_path = source.absolute;')
+          replace_once(
+              'engine/assets/src/common/asset_manager.cpp',
+              '        if (!needle.empty() && path_key(value.snapshot.source_path).find(needle) == std::string::npos) continue;',
+              '        if (!needle.empty() && path_key(value.snapshot.source_path).find(needle) == std::string::npos &&\n            path_key(value.snapshot.title).find(needle) == std::string::npos &&\n            path_key(value.snapshot.description).find(needle) == std::string::npos)\n            continue;')
+
+          # Native host protocol.
+          replace_once(
+              'editor/native/inc/arc/editor/host_protocol_base.h',
+              'struct host_asset_snapshot\n{\n    std::string guid;\n    std::string path;\n    std::string scope{"project"};',
+              'struct host_asset_snapshot\n{\n    std::string guid;\n    std::string path;\n    std::string title;\n    std::string description;\n    std::string scope{"project"};')
+          replace_once(
+              'editor/native/src/arc_host_base.inc',
+              '            host_asset_snapshot host_asset{.guid = arc::assets::to_string(asset.guid),\n                                           .path = arc::assets::normalize_asset_path(display_path),\n                                           .scope = asset.read_only ? "builtin" : "project",',
+              '            host_asset_snapshot host_asset{.guid = arc::assets::to_string(asset.guid),\n                                           .path = arc::assets::normalize_asset_path(display_path),\n                                           .title = asset.title,\n                                           .description = asset.description,\n                                           .scope = asset.read_only ? "builtin" : "project",')
+          replace_once(
+              'editor/native/src/host_protocol_base.inc',
+              '        json += "{\\\"guid\\\":" + quote(asset.guid) + ",\\\"path\\\":" + quote(asset.path) +\n                ",\\\"scope\\\":" + quote(asset.scope) + ",\\\"kind\\\":" + quote(asset.kind) +',
+              '        json += "{\\\"guid\\\":" + quote(asset.guid) + ",\\\"path\\\":" + quote(asset.path) +\n                ",\\\"title\\\":" + quote(asset.title) + ",\\\"description\\\":" + quote(asset.description) +\n                ",\\\"scope\\\":" + quote(asset.scope) + ",\\\"kind\\\":" + quote(asset.kind) +')
+
+          # Renderer types and presentation.
+          replace_once(
+              'editor/src/renderer/src/services/editorHostTypes.ts',
+              '  name: string;\n  path: string;\n  scope?:',
+              '  name: string;\n  title?: string;\n  description?: string;\n  path: string;\n  scope?:')
+          replace_once(
+              'editor/src/renderer/src/app/Workbench.tsx',
+              'type HostAssetSnapshot = {\n  guid: string;\n  path: string;\n  scope:',
+              'type HostAssetSnapshot = {\n  guid: string;\n  path: string;\n  title: string;\n  description: string;\n  scope:')
+          replace_once(
+              'editor/src/renderer/src/app/Workbench.tsx',
+              '        name: assetNameFromPath(asset.path),\n        path: asset.path,',
+              '        name: asset.title?.trim() || assetNameFromPath(asset.path),\n        title: asset.title || undefined,\n        description: asset.description || undefined,\n        path: asset.path,')
+          replace_once(
+              'editor/src/renderer/src/content/ContentAssetCard.tsx',
+              'export const assetDisplayName = (asset: AssetItem) => {\n  const extension = assetFileExtension(asset);',
+              'export const assetDisplayName = (asset: AssetItem) => {\n  const title = asset.title?.trim();\n  if (title) return title;\n  const extension = assetFileExtension(asset);')
+          replace_once(
+              'editor/src/renderer/src/content/ContentAssetCard.tsx',
+              '      <header>\n        <strong>{assetDisplayName(asset)}</strong>\n        <span>{assetPresentationLabel(asset)}</span>\n      </header>\n      <div className="content-asset-hover-section">',
+              '      <header>\n        <strong>{assetDisplayName(asset)}</strong>\n        <span>{assetPresentationLabel(asset)}</span>\n      </header>\n      {asset.description && <p className="content-asset-hover-description">{asset.description}</p>}\n      <div className="content-asset-hover-section">')
+          css = Path('editor/src/renderer/src/content/contentBrowser.css')
+          css.write_text(css.read_text() + '\n.content-asset-hover-description {\n  margin: 0;\n  padding: 0 12px 10px;\n  color: var(--text-secondary);\n  font-size: 11px;\n  line-height: 1.45;\n}\n')
+
+          # Tests: metadata persistence and title/fallback display behavior.
+          replace_once(
+              'engine/assets/tests/assets_tests.cpp',
+              '                                 .importer = importer_ids::gltf,\n                                 .settings_version = 2,',
+              '                                 .importer = importer_ids::gltf,\n                                 .title = "Cabin Model",\n                                 .description = "A reusable cabin asset for metadata testing.",\n                                 .settings_version = 2,')
+          replace_once(
+              'engine/assets/tests/assets_tests.cpp',
+              '    REQUIRE(loaded.importer == source.importer);\n    REQUIRE(loaded.settings_version == 2);',
+              '    REQUIRE(loaded.importer == source.importer);\n    REQUIRE(loaded.title == "Cabin Model");\n    REQUIRE(loaded.description == "A reusable cabin asset for metadata testing.");\n    REQUIRE(loaded.settings_version == 2);')
+          replace_once(
+              'editor/src/renderer/src/content/ContentAssetCard.test.tsx',
+              "    expect(assetDisplayName(mesh)).toBe('SM_Cabin');\n    expect(assetFileExtension(mesh)).toBe('glb');",
+              "    expect(assetDisplayName(mesh)).toBe('SM_Cabin');\n    expect(assetDisplayName({ ...mesh, title: 'Starter Cabin' })).toBe('Starter Cabin');\n    expect(assetFileExtension(mesh)).toBe('glb');")
+
+          # Author titles/descriptions on built-in materials.
+          material_descriptions = {
+              'brushed_metal': 'Brushed metallic surface with directional highlights for machined and brushed metal.',
+              'dark_rubber': 'Dark high-roughness rubber for tires, grips, seals, and other matte elastic surfaces.',
+              'default_checker_floor': 'Neutral checker material used by the default floor for scale, orientation, and UV reference.',
+              'default_phong': 'General-purpose neutral surface material used by ARC built-in primitives and fallback geometry.',
+              'emissive_blue': 'Blue emissive surface for lights, indicators, holographic accents, and glow tests.',
+              'foliage_leaf': 'Two-sided foliage surface tuned for leaves and lightweight vegetation.',
+              'forest_ground': 'Natural forest-ground surface for soil, moss, leaf litter, and ground cover.',
+              'layered_terrain': 'Layered terrain material combining the built-in grass, dirt, rock, and sand surface sets.',
+          }
+
+          def human_title(stem):
+              return ' '.join(part.capitalize() if part.lower() not in {'ao', 'hdr', 'uv'} else part.upper()
+                              for part in re.split(r'[_-]+', stem) if part)
+
+          for meta_path in sorted(Path('assets/materials').glob('*.arcmat.arcmeta')):
+              source_path = Path(str(meta_path)[:-8])
+              key = source_path.stem
+              title = human_title(key)
+              try:
+                  material_doc = json.loads(source_path.read_text())
+                  authored_name = str(material_doc.get('name', '')).strip()
+                  if authored_name:
+                      title = authored_name
+              except Exception:
+                  pass
+              description = material_descriptions.get(key, f'Built-in ARC material: {title}.')
+              doc = json.loads(meta_path.read_text())
+              doc['title'] = title
+              doc['description'] = description
+              meta_path.write_text(json.dumps(doc, indent=2) + '\n')
+
+          # Texture metadata uses the same optional fields, so built-in textures can be labeled too.
+          for meta_path in sorted(Path('assets/textures').rglob('*.arcmeta')):
+              source_name = meta_path.name[:-8]
+              source_path = meta_path.with_name(source_name)
+              stem = source_path.stem
+              title = human_title(stem)
+              lower = stem.lower()
+              if lower == 'default_checker_floor':
+                  title = 'Default Checker Floor Texture'
+                  description = 'High-resolution checker texture used by the built-in Default Checker Floor material.'
+              elif any(token in lower for token in ('normal', '_nor', '_nrm')):
+                  description = f'Built-in normal-map texture for {title}.'
+              elif any(token in lower for token in ('rough', 'roughness')):
+                  description = f'Built-in roughness texture for {title}.'
+              elif any(token in lower for token in ('ao', 'ambient_occlusion')):
+                  description = f'Built-in ambient-occlusion texture for {title}.'
+              elif any(token in lower for token in ('height', 'disp', 'displacement')):
+                  description = f'Built-in height/displacement texture for {title}.'
+              else:
+                  description = f'Built-in color texture for {title}.'
+              doc = json.loads(meta_path.read_text())
+              doc['title'] = title
+              doc['description'] = description
+              meta_path.write_text(json.dumps(doc, indent=2) + '\n')
+          PY
+
+      - name: Format changed sources
+        shell: bash
+        run: |
+          clang-format-18 -i \
+            engine/assets/inc/arc/assets/assets.h \
+            engine/assets/src/common/asset_metadata.cpp \
+            engine/assets/src/common/asset_manager.cpp \
+            engine/assets/tests/assets_tests.cpp \
+            editor/native/inc/arc/editor/host_protocol_base.h \
+            editor/native/src/arc_host_base.inc \
+            editor/native/src/host_protocol_base.inc
+          npm ci --prefix editor
+          npx --prefix editor prettier --write \
+            src/renderer/src/services/editorHostTypes.ts \
+            src/renderer/src/app/Workbench.tsx \
+            src/renderer/src/content/ContentAssetCard.tsx \
+            src/renderer/src/content/ContentAssetCard.test.tsx \
+            src/renderer/src/content/contentBrowser.css
+
+      - name: Validate editor
+        run: |
+          npm run typecheck --prefix editor
+          npm test --prefix editor -- --run src/renderer/src/content/ContentAssetCard.test.tsx
+
+      - name: Commit implementation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add engine/assets editor/native editor/src/renderer assets/materials assets/textures
+          git commit -m "feat(assets): add asset titles and descriptions [asset-meta-impl]"
+          git push origin HEAD:feature/asset-titles-descriptions
