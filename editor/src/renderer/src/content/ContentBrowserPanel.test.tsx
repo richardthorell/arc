@@ -160,13 +160,13 @@ describe('ContentBrowserPanel', () => {
     expect(localStorage.getItem('arc.content.treeWidth')).toBe('190');
   });
 
-  it('selects assets without opening a persistent details side panel', () => {
+  it('selects assets and opens the persistent asset details side panel', () => {
     const view = renderBrowser();
     fireEvent.click(view.getByText('Hero Rock'));
 
-    expect(view.container.querySelector('.content-asset-details')).not.toBeInTheDocument();
-    expect(view.queryByText('Dependencies (0)')).not.toBeInTheDocument();
-    expect(view.queryByText('References (0)')).not.toBeInTheDocument();
+    expect(view.container.querySelector('.content-asset-details')).toBeInTheDocument();
+    expect(view.getByText('Dependencies (0)')).toBeInTheDocument();
+    expect(view.getByText('References (0)')).toBeInTheDocument();
   });
 
   it('filters registry assets and emits GUID drag payloads', () => {

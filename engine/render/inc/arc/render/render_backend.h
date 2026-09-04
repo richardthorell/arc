@@ -863,6 +863,8 @@ struct render_gpu_scene_profile
     std::uint64_t shared_vertex_heap_bytes{};
     /** Allocated bytes in the shared conventional index heap. */
     std::uint64_t shared_index_heap_bytes{};
+    /** Instances considered by completed GPU visibility feedback. */
+    std::uint32_t candidate_instances{};
     /** Instances rejected by view-frustum tests. */
     std::uint32_t frustum_rejected{};
     /** Instances rejected by authored distance limits. */

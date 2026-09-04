@@ -282,6 +282,19 @@ static_assert(sizeof(gpu_visibility_push_constants) == 112);
 
 inline constexpr VkDeviceSize indexed_indirect_command_stride = sizeof(VkDrawIndexedIndirectCommand);
 
+struct alignas(16) gpu_visibility_counter_data
+{
+    std::uint32_t visible_count{};
+    std::uint32_t frustum_rejected{};
+    std::uint32_t distance_rejected{};
+    std::uint32_t occlusion_rejected{};
+    std::uint32_t candidate_count{};
+    std::uint32_t active_bins{};
+    std::uint32_t overflow_count{};
+    std::uint32_t reserved{};
+};
+static_assert(sizeof(gpu_visibility_counter_data) == 32);
+
 struct material_uniform_data
 {
     float emissive_factor[4]{0.0f, 0.0f, 0.0f, 1.0f};
@@ -564,6 +577,7 @@ public:
     {
         last_profile_.frame_index = packet.frame_index;
         last_profile_.gpu_scene = {};
+        apply_gpu_visibility_statistics(completed_gpu_visibility_statistics_);
         last_profile_.temporal = {};
         temporal_output_view_ = VK_NULL_HANDLE;
         last_profile_.terrain = {};
@@ -928,6 +942,7 @@ public:
         auto* frame = &swapchain_.frames[swapchain_.frame_index];
         vkWaitForFences(device_, 1, &frame->fence, VK_TRUE, UINT64_MAX);
         collect_texture_mip_feedback(swapchain_.frame_index);
+        collect_gpu_visibility_feedback(swapchain_.frame_index);
         collect_timestamp_results();
         collect_object_pick_result();
         collect_frame_capture_result();
@@ -1359,6 +1374,7 @@ private:
             return surface_frame_result::failure({.code = surface_frame_error_code::backend_failure,
                                                   .message = "viewport render target is unavailable"});
         collect_texture_mip_feedback(slot_index);
+        collect_gpu_visibility_feedback(slot_index);
         collect_timestamp_results();
         collect_object_pick_result();
         collect_frame_capture_result();
@@ -1499,6 +1515,12 @@ private:
         std::uint32_t demand_capacity{};
         std::uint32_t slot_capacity{};
         std::uint32_t submitted_slot_count{};
+        std::uint64_t submitted_frame{};
+    };
+
+    struct gpu_visibility_feedback_frame
+    {
+        gpu_buffer counters;
         std::uint64_t submitted_frame{};
     };
 
@@ -5201,6 +5223,9 @@ private:
     {
         destroy_buffer(gpu_visibility_commands_);
         destroy_buffer(gpu_visibility_counters_);
+        for (auto& frame : gpu_visibility_feedback_frames_)
+            destroy_buffer(frame.counters);
+        gpu_visibility_feedback_frames_.clear();
         if (gpu_visibility_pipeline_ != VK_NULL_HANDLE) vkDestroyPipeline(device_, gpu_visibility_pipeline_, nullptr);
         if (gpu_visibility_pipeline_layout_ != VK_NULL_HANDLE)
             vkDestroyPipelineLayout(device_, gpu_visibility_pipeline_layout_, nullptr);
@@ -5230,11 +5255,13 @@ private:
             const auto capacity = std::max(256u, std::bit_ceil(gpu_scene_capacity_));
             gpu_buffer commands{};
             gpu_buffer counters{};
-            if (!create_buffer(static_cast<VkDeviceSize>(capacity) * indexed_indirect_command_stride,
+            if (!create_buffer(static_cast<VkDeviceSize>(capacity) * indexed_indirect_command_stride * 2u,
                                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
                                    VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                VMA_MEMORY_USAGE_GPU_ONLY, commands) ||
-                !create_buffer(16u, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                !create_buffer(sizeof(gpu_visibility_counter_data),
+                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                   VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
                                VMA_MEMORY_USAGE_GPU_ONLY, counters))
             {
                 destroy_buffer(commands);
@@ -5371,6 +5398,52 @@ private:
         return true;
     }
 
+    bool ensure_gpu_visibility_feedback_frame(gpu_visibility_feedback_frame& frame)
+    {
+        return frame.counters.buffer != VK_NULL_HANDLE ||
+               create_buffer(sizeof(gpu_visibility_counter_data), VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                             VMA_MEMORY_USAGE_GPU_TO_CPU, frame.counters);
+    }
+
+    void apply_gpu_visibility_statistics(const gpu_visibility_statistics& statistics)
+    {
+        last_profile_.gpu_scene.candidate_instances = statistics.candidates;
+        last_profile_.gpu_scene.visible_instances = statistics.visible;
+        last_profile_.gpu_scene.frustum_rejected = statistics.frustum_rejected;
+        last_profile_.gpu_scene.distance_rejected = statistics.distance_rejected;
+        last_profile_.gpu_scene.occlusion_rejected = statistics.occlusion_rejected;
+        last_profile_.gpu_scene.active_pipeline_bins = statistics.active_bins;
+        last_profile_.gpu_scene.indirect_commands = statistics.indirect_commands;
+        last_profile_.gpu_scene.overflow_records = statistics.overflow_records;
+        last_profile_.gpu_scene.cpu_submissions = statistics.cpu_submissions;
+    }
+
+    void collect_gpu_visibility_feedback(std::uint32_t frame_index)
+    {
+        if (frame_index >= gpu_visibility_feedback_frames_.size()) return;
+        auto& frame = gpu_visibility_feedback_frames_[frame_index];
+        if (frame.submitted_frame == 0u || frame.counters.allocation == VK_NULL_HANDLE) return;
+        void* mapped{};
+        if (vmaMapMemory(allocator_, frame.counters.allocation, &mapped) != VK_SUCCESS) return;
+        vmaInvalidateAllocation(allocator_, frame.counters.allocation, 0, sizeof(gpu_visibility_counter_data));
+        gpu_visibility_counter_data counters{};
+        std::memcpy(&counters, mapped, sizeof(counters));
+        vmaUnmapMemory(allocator_, frame.counters.allocation);
+        completed_gpu_visibility_statistics_ = {
+            .candidates = counters.candidate_count,
+            .visible = std::min(counters.visible_count, gpu_visibility_capacity_),
+            .frustum_rejected = counters.frustum_rejected,
+            .distance_rejected = counters.distance_rejected,
+            .occlusion_rejected = counters.occlusion_rejected,
+            .active_bins = counters.active_bins,
+            .indirect_commands = std::min(counters.visible_count, gpu_visibility_capacity_),
+            .overflow_records = counters.overflow_count,
+            .cpu_submissions = counters.overflow_count,
+        };
+        apply_gpu_visibility_statistics(completed_gpu_visibility_statistics_);
+        frame.submitted_frame = 0u;
+    }
+
     void dispatch_gpu_visibility(VkCommandBuffer command_buffer)
     {
         gpu_visibility_active_ = false;
@@ -5429,16 +5502,41 @@ private:
                            sizeof(constants), &constants);
         vkCmdDispatch(command_buffer, (gpu_scene_capacity_ + 63u) / 64u, 1u, 1u);
 
-        VkBufferMemoryBarrier output_barrier{};
-        output_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-        output_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        output_barrier.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
-        output_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        output_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        output_barrier.buffer = gpu_visibility_commands_.buffer;
-        output_barrier.size = VK_WHOLE_SIZE;
-        vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
-                             0, 0, nullptr, 1, &output_barrier, 0, nullptr);
+        VkBufferMemoryBarrier command_barrier{};
+        command_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        command_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        command_barrier.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+        command_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        command_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        command_barrier.buffer = gpu_visibility_commands_.buffer;
+        command_barrier.size = VK_WHOLE_SIZE;
+        VkBufferMemoryBarrier counter_output_barrier = command_barrier;
+        counter_output_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+        counter_output_barrier.buffer = gpu_visibility_counters_.buffer;
+        const std::array output_barriers{command_barrier, counter_output_barrier};
+        vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr,
+                             static_cast<std::uint32_t>(output_barriers.size()), output_barriers.data(), 0, nullptr);
+
+        if (gpu_visibility_feedback_frames_.size() < frame_resource_count())
+            gpu_visibility_feedback_frames_.resize(frame_resource_count());
+        auto& feedback = gpu_visibility_feedback_frames_[current_frame_slot()];
+        if (ensure_gpu_visibility_feedback_frame(feedback))
+        {
+            VkBufferCopy copy{.size = sizeof(gpu_visibility_counter_data)};
+            vkCmdCopyBuffer(command_buffer, gpu_visibility_counters_.buffer, feedback.counters.buffer, 1u, &copy);
+            VkBufferMemoryBarrier host_barrier{};
+            host_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            host_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            host_barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+            host_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            host_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            host_barrier.buffer = feedback.counters.buffer;
+            host_barrier.size = VK_WHOLE_SIZE;
+            vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0,
+                                 nullptr, 1u, &host_barrier, 0, nullptr);
+            feedback.submitted_frame = last_profile_.frame_index;
+        }
         gpu_visibility_active_ = true;
         last_profile_.gpu_scene.enabled = true;
         last_profile_.gpu_scene.submission = gpu_submission_path::indirect;
@@ -11535,6 +11633,8 @@ private:
     gpu_buffer gpu_visibility_commands_;
     gpu_buffer gpu_visibility_counters_;
     std::uint32_t gpu_visibility_capacity_{};
+    std::vector<gpu_visibility_feedback_frame> gpu_visibility_feedback_frames_;
+    gpu_visibility_statistics completed_gpu_visibility_statistics_{};
     VkDescriptorSetLayout gpu_visibility_descriptor_set_layout_{};
     VkDescriptorPool gpu_visibility_descriptor_pool_{};
     VkDescriptorSet gpu_visibility_descriptor_set_{};

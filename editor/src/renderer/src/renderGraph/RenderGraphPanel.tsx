@@ -167,6 +167,13 @@ export function RenderGraphPanel({
           <span>
             Sparse upload {bytes(snapshot.gpuScene.uploadedBytes)} in {snapshot.gpuScene.uploadedRanges} ranges
           </span>
+          <span>
+            Visibility {snapshot.gpuScene.visibleInstances}/{snapshot.gpuScene.candidateInstances} ·{' '}
+            {snapshot.gpuScene.activePipelineBins} bins · {snapshot.gpuScene.indirectCommands} commands
+          </span>
+          {snapshot.gpuScene.overflowRecords > 0 && (
+            <span>{snapshot.gpuScene.overflowRecords} overflow fallback records</span>
+          )}
         </div>
       )}
       {pinned && snapshot && (
@@ -276,9 +283,7 @@ export function RenderGraphPanel({
           {reason}
         </div>
       ))}
-      {snapshot?.textureStreaming?.fallback && (
-        <div className="tool-warning">{snapshot.textureStreaming.fallback}</div>
-      )}
+      {snapshot?.textureStreaming?.fallback && <div className="tool-warning">{snapshot.textureStreaming.fallback}</div>}
       {error && <div className="tool-error">{error}</div>}
     </section>
   );

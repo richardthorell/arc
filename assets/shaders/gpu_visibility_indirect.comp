@@ -36,6 +36,10 @@ layout(std430, set = 0, binding = 2) buffer visibility_counter_buffer
     uint visible_count;
     uint frustum_rejected;
     uint distance_rejected;
+    uint occlusion_rejected;
+    uint candidate_count;
+    uint active_bins;
+    uint overflow_count;
     uint reserved;
 } counters;
 layout(set = 0, binding = 3) uniform sampler2D hzb_generations[2];
@@ -91,6 +95,8 @@ void main()
 
     bool enabled = (instance.material_flags.w & 1u) != 0u && command.index_count != 0u &&
                    (instance.material_flags.z & constants.render_layer_mask) != 0u;
+    if (enabled)
+        atomicAdd(counters.candidate_count, 1u);
     if (enabled && !intersects_frustum(instance.bounds_min.xyz, instance.bounds_max.xyz))
     {
         enabled = false;
@@ -121,13 +127,21 @@ void main()
         if (inside_view && conservative_near_depth > farthest_occluder + 1.0e-4)
         {
             enabled = false;
-            atomicAdd(counters.reserved, 1u);
+            atomicAdd(counters.occlusion_rejected, 1u);
         }
     }
     if (enabled)
     {
         command.instance_count = 1u;
-        atomicAdd(counters.visible_count, 1u);
+        command.first_instance = index;
+        uint compact_index = atomicAdd(counters.visible_count, 1u);
+        if (compact_index < constants.instance_capacity)
+        {
+            commands[constants.instance_capacity + compact_index] = command;
+            atomicMax(counters.active_bins, 1u);
+        }
+        else
+            atomicAdd(counters.overflow_count, 1u);
     }
     commands[index] = command;
 }

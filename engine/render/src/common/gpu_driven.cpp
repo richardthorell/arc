@@ -339,6 +339,60 @@ std::vector<gpu_table_dirty_range> coalesce_gpu_table_dirty_ranges(std::span<con
     return ranges;
 }
 
+gpu_draw_compaction_result compact_gpu_draw_records(std::span<const gpu_draw_record> records,
+                                                     std::uint32_t pipeline_bin_capacity,
+                                                     std::uint32_t maximum_visible_draws)
+{
+    gpu_draw_compaction_result result;
+    result.statistics.candidates = static_cast<std::uint32_t>(
+        std::min<std::size_t>(records.size(), std::numeric_limits<std::uint32_t>::max()));
+    result.bin_offsets.resize(pipeline_bin_capacity);
+    result.bin_counts.resize(pipeline_bin_capacity);
+
+    for (const auto& record : records)
+    {
+        if (record.pipeline_bin >= pipeline_bin_capacity)
+        {
+            result.overflow_draws.push_back(record);
+            continue;
+        }
+        ++result.bin_counts[record.pipeline_bin];
+    }
+
+    std::uint32_t running_offset{};
+    for (std::uint32_t bin = 0; bin < pipeline_bin_capacity; ++bin)
+    {
+        result.bin_offsets[bin] = running_offset;
+        if (result.bin_counts[bin] != 0u) ++result.statistics.active_bins;
+        const auto available = maximum_visible_draws - std::min(maximum_visible_draws, running_offset);
+        const auto retained = std::min(result.bin_counts[bin], available);
+        running_offset += retained;
+    }
+
+    result.visible_draws.resize(running_offset);
+    auto write_offsets = result.bin_offsets;
+    auto retained_counts = std::vector<std::uint32_t>(pipeline_bin_capacity);
+    for (const auto& record : records)
+    {
+        if (record.pipeline_bin >= pipeline_bin_capacity) continue;
+        const auto bin = record.pipeline_bin;
+        const auto bin_limit = bin + 1u < pipeline_bin_capacity ? result.bin_offsets[bin + 1u] : running_offset;
+        if (write_offsets[bin] >= bin_limit)
+        {
+            result.overflow_draws.push_back(record);
+            continue;
+        }
+        result.visible_draws[write_offsets[bin]++] = record;
+        ++retained_counts[bin];
+    }
+    result.bin_counts = std::move(retained_counts);
+    result.statistics.visible = static_cast<std::uint32_t>(result.visible_draws.size());
+    result.statistics.indirect_commands = result.statistics.visible;
+    result.statistics.overflow_records = static_cast<std::uint32_t>(result.overflow_draws.size());
+    result.statistics.cpu_submissions = result.statistics.overflow_records;
+    return result;
+}
+
 std::uint64_t make_gpu_transparent_sort_key(float normalized_depth, std::uint16_t pipeline_bin,
                                             std::uint32_t stable_instance_index) noexcept
 {

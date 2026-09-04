@@ -118,11 +118,15 @@ export type EditorDiagnosticsSnapshot = {
     skinPaletteTableEntries: number;
     sharedVertexHeapBytes: number;
     sharedIndexHeapBytes: number;
+    candidateInstances: number;
     visibleInstances: number;
     frustumRejected: number;
     distanceRejected: number;
     occlusionRejected: number;
+    activePipelineBins: number;
     indirectCommands: number;
+    overflowRecords: number;
+    cpuSubmissions: number;
     fallback: string;
   };
   textureStreaming?: {

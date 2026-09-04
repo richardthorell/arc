@@ -444,6 +444,29 @@ struct gpu_visibility_statistics
     std::uint32_t cpu_submissions{};
 };
 
+/** @brief Stable CPU reference for the GPU count/prefix/scatter compaction stages. */
+struct gpu_draw_compaction_result
+{
+    /** Draw records in pipeline-bin order, preserving input order within each bin. */
+    std::vector<gpu_draw_record> visible_draws;
+    /** First compacted record for every configured pipeline bin. */
+    std::vector<std::uint32_t> bin_offsets;
+    /** Number of compacted records in every configured pipeline bin. */
+    std::vector<std::uint32_t> bin_counts;
+    /** Records rejected because either the output or pipeline-bin capacity was exceeded. */
+    std::vector<gpu_draw_record> overflow_draws;
+    /** Aggregate counters matching the executable compute path. */
+    gpu_visibility_statistics statistics;
+};
+
+/**
+ * @brief Count, prefix, and stably scatter visible records into bounded pipeline bins.
+ * @details Invalid bins and records beyond @p maximum_visible_draws are returned for the classic correctness path.
+ */
+[[nodiscard]] gpu_draw_compaction_result compact_gpu_draw_records(std::span<const gpu_draw_record> records,
+                                                                  std::uint32_t pipeline_bin_capacity,
+                                                                  std::uint32_t maximum_visible_draws);
+
 /**
  * @brief Coalesce unordered changed slot indices into ascending adjacent ranges.
  * @param indices Changed slots; duplicates are permitted.

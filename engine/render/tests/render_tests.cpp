@@ -1336,6 +1336,35 @@ TEST_CASE("GPU table dirty ranges are sorted coalesced and duplicate free")
                           {.first = 2, .count = 3}, {.first = 9, .count = 1}, {.first = 12, .count = 1}});
 }
 
+TEST_CASE("GPU draw compaction stably scatters bins and preserves overflow for CPU fallback")
+{
+    using namespace arc::render;
+    const std::array records{
+        gpu_draw_record{.instance_index = 10, .pipeline_bin = 2},
+        gpu_draw_record{.instance_index = 11, .pipeline_bin = 0},
+        gpu_draw_record{.instance_index = 12, .pipeline_bin = 2},
+        gpu_draw_record{.instance_index = 13, .pipeline_bin = 7},
+        gpu_draw_record{.instance_index = 14, .pipeline_bin = 1},
+    };
+
+    const auto compacted = compact_gpu_draw_records(records, 3, 3);
+    REQUIRE(compacted.visible_draws.size() == 3);
+    REQUIRE(compacted.visible_draws[0].instance_index == 11);
+    REQUIRE(compacted.visible_draws[1].instance_index == 14);
+    REQUIRE(compacted.visible_draws[2].instance_index == 10);
+    REQUIRE(compacted.bin_offsets == std::vector<std::uint32_t>{0, 1, 2});
+    REQUIRE(compacted.bin_counts == std::vector<std::uint32_t>{1, 1, 1});
+    REQUIRE(compacted.overflow_draws.size() == 2);
+    REQUIRE(compacted.overflow_draws[0].instance_index == 13);
+    REQUIRE(compacted.overflow_draws[1].instance_index == 12);
+    REQUIRE(compacted.statistics.candidates == records.size());
+    REQUIRE(compacted.statistics.visible == 3);
+    REQUIRE(compacted.statistics.active_bins == 3);
+    REQUIRE(compacted.statistics.indirect_commands == 3);
+    REQUIRE(compacted.statistics.overflow_records == 2);
+    REQUIRE(compacted.statistics.cpu_submissions == 2);
+}
+
 TEST_CASE("GPU resource tables publish generational records and reusable shared heap ranges")
 {
     using namespace arc::render;
