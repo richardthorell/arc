@@ -497,7 +497,8 @@ ecs::entity add_default_floor_to_scene(editor_scene_state& scene, render::render
     scene.scene.emplace<scene::transform_component>(entity, transform);
     scene::mesh_renderer_component renderer_component;
     renderer_component.mesh = mesh_handle;
-    renderer_component.material = scene.floor_material.valid() ? scene.floor_material : ensure_default_material(scene, renderer);
+    renderer_component.material =
+        scene.floor_material.valid() ? scene.floor_material : ensure_default_material(scene, renderer);
     scene.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
     scene.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
     scene.scene.emplace<scene::hierarchy_component>(entity);
