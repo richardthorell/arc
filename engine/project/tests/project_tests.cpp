@@ -189,7 +189,17 @@ TEST_CASE("project validation rejects a default scene whose asset identity does 
     const auto descriptor_path = destination / "SceneIdentity.arcproject";
     auto descriptor = arc::project::load_descriptor(descriptor_path);
     REQUIRE(descriptor);
-    REQUIRE(descriptor.value().default_scene);
+
+    const auto scene_path = destination / "Content" / "Scenes" / "Identity.arcscene";
+    std::filesystem::create_directories(scene_path.parent_path());
+    std::ofstream(scene_path) << "{}";
+    const std::string scene_guid = "12345678-1234-4234-8234-123456789abe";
+    std::ofstream(scene_path.string() + ".arcmeta")
+        << R"({"format":"arc.asset-meta","guid":")" << scene_guid << R"("})";
+    descriptor.value().default_scene = arc::project::project_asset_reference{
+        .guid = scene_guid, .expected_type = "scene", .path_hint = "Content/Scenes/Identity.arcscene"};
+    REQUIRE(arc::project::validate_descriptor(descriptor_path, descriptor.value(), {.require_paths = true}));
+
     descriptor.value().default_scene->guid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     const auto validation =
         arc::project::validate_descriptor(descriptor_path, descriptor.value(), {.require_paths = true});
