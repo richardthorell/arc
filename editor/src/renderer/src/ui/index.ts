@@ -14,3 +14,5 @@ export { UiSelectButton } from './UiSelectButton';
 export { UiTab, UiTabs } from './UiTabs';
 export { UiSearchInput, UiTextInput } from './UiTextInput';
 export { UiTreeRow } from './UiTreeRow';
+export { UiTreeView } from './UiTreeView';
+export type { UiTreeNode } from './UiTreeView';

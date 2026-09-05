@@ -10,10 +10,10 @@
 }
 
 .settings-dialog {
-  width: min(980px, calc(100vw - 64px));
-  height: min(720px, calc(100vh - 64px));
-  min-width: min(680px, calc(100vw - 32px));
-  min-height: min(460px, calc(100vh - 32px));
+  width: min(1040px, calc(100vw - 64px));
+  height: min(760px, calc(100vh - 64px));
+  min-width: min(720px, calc(100vw - 32px));
+  min-height: min(480px, calc(100vh - 32px));
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
@@ -71,18 +71,8 @@
   gap: 7px;
 }
 
-.settings-dialog-scope select {
-  height: 28px;
-  padding: 0 26px 0 8px;
-  border: 1px solid #34444e;
-  border-radius: 3px;
-  outline: none;
-  color: var(--arc-text-primary);
-  background: #10191f;
-}
-
-.settings-dialog-scope select:focus {
-  border-color: #58aee9;
+.settings-dialog-scope .ui-select {
+  min-width: 148px;
 }
 
 .settings-dialog-body {
@@ -95,12 +85,44 @@
   width: 100%;
   height: 100%;
   min-height: 0;
-  grid-template-columns: 200px minmax(0, 1fr);
+  display: grid;
+  grid-template-columns: 244px minmax(0, 1fr);
 }
 
-.settings-dialog .settings-layout nav {
+.settings-navigation {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+  padding: 12px 9px;
+  border-right: 1px solid var(--arc-border-subtle);
+  background: #111a20;
+}
+
+.settings-navigation > .ui-search-input {
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+.settings-navigation > .ui-tree-view {
   min-height: 0;
   overflow-y: auto;
+}
+
+.settings-navigation .ui-tree-view-row {
+  border-radius: 3px;
+  color: var(--arc-text-secondary);
+}
+
+.settings-navigation .ui-tree-view-row:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.settings-navigation .ui-tree-view-row.is-selected {
+  color: var(--arc-text-primary);
+  background: rgba(88, 174, 233, 0.13);
 }
 
 .settings-dialog .settings-fields {
@@ -109,15 +131,99 @@
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding: 22px 24px 28px;
+  padding: 22px 28px 32px;
 }
 
-.settings-dialog .settings-fields > label {
-  grid-template-columns: minmax(190px, 1fr) minmax(180px, 260px) 28px;
+.settings-page-header {
+  margin-bottom: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--arc-border-subtle);
+}
+
+.settings-page-header h2 {
+  margin: 0;
+  color: var(--arc-text-primary);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.settings-page-header p {
+  max-width: 620px;
+  margin: 5px 0 0;
+  color: var(--arc-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.settings-field-row {
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(190px, 260px) 28px;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--arc-border-subtle);
+}
+
+.settings-field-description {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settings-field-description strong {
+  color: var(--arc-text-secondary);
+  line-height: 1.25;
+}
+
+.settings-field-description small {
+  line-height: 1.45;
+}
+
+.settings-value-control,
+.settings-value-control.ui-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.settings-value-control.ui-select .ui-select-trigger {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.settings-checkbox {
+  justify-self: start;
+}
+
+.settings-field-row > .ui-icon-button {
+  justify-self: end;
 }
 
 .settings-dialog .settings-fields > .ui-button {
   margin-top: 18px;
+}
+
+.settings-empty-page {
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 16px;
+  border: 1px dashed var(--arc-border-subtle);
+  border-radius: 4px;
+  color: var(--arc-text-muted);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.settings-empty-page strong {
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+}
+
+.settings-empty-page span {
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .settings-dialog-message {
@@ -146,15 +252,25 @@
   }
 
   .settings-dialog .settings-layout {
-    grid-template-columns: 150px minmax(0, 1fr);
+    grid-template-columns: 190px minmax(0, 1fr);
   }
 
-  .settings-dialog .settings-fields > label {
+  .settings-dialog .settings-fields {
+    padding: 18px;
+  }
+
+  .settings-field-row {
     grid-template-columns: minmax(0, 1fr) 28px;
-    padding: 8px 0;
+    gap: 8px;
+    padding: 13px 0;
   }
 
-  .settings-dialog .settings-fields > label > span {
+  .settings-field-description {
     grid-column: 1 / -1;
+  }
+
+  .settings-value-control,
+  .settings-value-control.ui-select {
+    grid-column: 1;
   }
 }
