@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent, KeyboardEvent, PointerEvent, WheelEvent } from 'react';
 import { Box, Camera, Eye, EyeOff, Focus, Maximize2, RefreshCw } from 'lucide-react';
 
 import type { CommandId } from '../app/workbenchTypes';
 import type { StartupState } from '../app/workbenchTypes';
 import type { ProjectSnapshot } from '../services/editorHostTypes';
+import { collectSceneCameraSources } from './viewportCameraSource';
 import { arcAssetDragMime, arcEnvironmentDragMime, readArcAssetDragPayload } from '../services/assetDragPayload';
 import { assignDroppedMaterialToViewport, instantiateDroppedMeshInViewport } from './viewportAssetDrop';
 
@@ -150,6 +151,10 @@ export function ViewportPanel({
   const [viewportStats, setViewportStats] = useState<ViewportStats>(() => fallbackStats(project));
   const [localGridVisible, setLocalGridVisible] = useState(true);
   const [projection, setProjection] = useState('perspective');
+  const [cameraSourceId, setCameraSourceId] = useState('editor');
+  const editorCameraRef = useRef<NonNullable<ViewportStats['camera']> | null>(null);
+  const editorProjectionRef = useRef('perspective');
+  const sceneCameras = useMemo(() => collectSceneCameraSources(project?.scene ?? []), [project?.scene]);
   const [transport, setTransport] = useState<'unavailable' | 'native' | 'streamed'>(
     startupState?.viewportMode ?? 'unavailable',
   );
@@ -368,6 +373,7 @@ export function ViewportPanel({
   }, [attachViewport, project, streamedAvailable, viewportActive, viewportId]);
 
   const sendCameraInput = (input: Parameters<typeof window.arc.viewport.cameraInput>[0]) => {
+    if (cameraSourceId !== 'editor') return;
     void window.arc.viewport.cameraInput({ ...input, viewportId }).catch((error) => {
       setViewportError(error instanceof Error ? error.message : String(error));
     });
@@ -384,7 +390,7 @@ export function ViewportPanel({
 
     const timer = window.setInterval(() => {
       const now = performance.now();
-      if (!flyNavigationActiveRef.current || movementKeysRef.current.size === 0) {
+      if (cameraSourceId !== 'editor' || !flyNavigationActiveRef.current || movementKeysRef.current.size === 0) {
         movementLastTickRef.current = now;
         return;
       }
@@ -399,7 +405,7 @@ export function ViewportPanel({
     }, 16);
 
     return () => window.clearInterval(timer);
-  }, [viewportActive, viewportId]);
+  }, [cameraSourceId, viewportActive, viewportId]);
 
   const pointerCoordinates = (clientX: number, clientY: number) => {
     const rect = bodyRef.current?.getBoundingClientRect();
@@ -484,6 +490,7 @@ export function ViewportPanel({
     event.currentTarget.focus();
     onFocusChange?.(true);
     if (!viewportActive) return;
+    if (cameraSourceId !== 'editor' && event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     if (event.button === 2) {
       flyNavigationActiveRef.current = true;
@@ -540,7 +547,7 @@ export function ViewportPanel({
   };
 
   const onViewportKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (flyNavigationActiveRef.current && viewportFlyMovementCodes.has(event.code)) {
+    if (cameraSourceId === 'editor' && flyNavigationActiveRef.current && viewportFlyMovementCodes.has(event.code)) {
       event.preventDefault();
       movementKeysRef.current.add(event.code);
       consumedMovementKeysRef.current.add(event.code);
@@ -569,7 +576,7 @@ export function ViewportPanel({
   };
 
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (!viewportActive) return;
+    if (!viewportActive || cameraSourceId !== 'editor') return;
     event.preventDefault();
     const zoom = normalizeViewportWheel(event.deltaY, event.deltaMode);
     if (zoom === 0) return;
@@ -659,6 +666,44 @@ export function ViewportPanel({
     }
   };
 
+  const selectCameraSource = async (sourceId: string) => {
+    if (sourceId === cameraSourceId) return;
+    try {
+      if (sourceId === 'editor') {
+        const saved = editorCameraRef.current;
+        if (saved) {
+          await window.arc.host.command('viewport.setPose', {
+            viewportId,
+            position: saved.transform.position,
+            target: saved.focus.position,
+          });
+        }
+        const projectionMode = editorProjectionRef.current === 'perspective' ? 'perspective' : 'orthographic';
+        await window.arc.host.command('viewport.setCameraMode', { viewportId, projection: projectionMode });
+        setProjection(editorProjectionRef.current);
+        setCameraSourceId('editor');
+        return;
+      }
+
+      const source = sceneCameras.find((camera) => camera.id === sourceId);
+      if (!source) throw new Error('Scene camera is no longer available');
+      if (cameraSourceId === 'editor') {
+        editorCameraRef.current = viewportStats.camera ?? null;
+        editorProjectionRef.current = projection;
+      }
+      await window.arc.host.command('viewport.setPose', {
+        viewportId,
+        position: source.position,
+        target: source.target,
+      });
+      await window.arc.host.command('viewport.setCameraMode', { viewportId, projection: 'perspective' });
+      setProjection('perspective');
+      setCameraSourceId(sourceId);
+    } catch (error) {
+      setViewportError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const saveBookmark = (slot: number) => {
     if (!viewportStats.camera) return;
     window.localStorage.setItem(`arc.viewport.bookmark.${viewportId}.${slot}`, JSON.stringify(viewportStats.camera));
@@ -686,6 +731,10 @@ export function ViewportPanel({
       : renderOptions.visualization === 'lighting'
         ? 'Unlit'
         : 'Lit';
+  const cameraSourceLabel =
+    cameraSourceId === 'editor'
+      ? 'Editor Camera'
+      : (sceneCameras.find((camera) => camera.id === cameraSourceId)?.name ?? 'Scene Camera');
   const transportLabel =
     transport === 'streamed'
       ? 'GPU Shared'
@@ -713,6 +762,18 @@ export function ViewportPanel({
           <span>{viewportId === 'viewport-1' ? 'Viewport 1' : viewportId.replace('viewport-', 'Viewport ')}</span>
         </div>
         <div className="arc-viewport-view-options">
+          <details className="arc-viewport-show-menu">
+            <summary>{cameraSourceLabel}</summary>
+            <div className="arc-viewport-show-popup viewport-camera-source-menu">
+              <button onClick={() => void selectCameraSource('editor')}>Editor Camera</button>
+              {sceneCameras.map((camera) => (
+                <button key={camera.id} onClick={() => void selectCameraSource(camera.id)}>
+                  {camera.name}
+                </button>
+              ))}
+              {sceneCameras.length === 0 && <span className="arc-viewport-menu-empty">No scene cameras</span>}
+            </div>
+          </details>
           <details className="arc-viewport-show-menu">
             <summary>
               {projection === 'perspective' ? 'Perspective' : projection[0].toUpperCase() + projection.slice(1)}
