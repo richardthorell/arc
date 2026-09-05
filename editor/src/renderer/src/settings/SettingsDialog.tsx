@@ -7,7 +7,7 @@ import type {
   RecoverySnapshot,
 } from '../../../common/editorWorkflowTypes';
 import type { ArcExtensionSnapshot } from '../../../common/extensionTypes';
-import { UiButton, UiIconButton, UiSearchInput, UiTreeView } from '../ui';
+import { UiButton, UiIconButton, UiSearchInput, UiSelect, UiTextInput, UiTreeView } from '../ui';
 import type { UiTreeNode } from '../ui';
 import { defaultExpandedSettingsNodes, editorSettingsNavigation, getEditorSettingsPage } from './settingsNavigation';
 
@@ -55,6 +55,9 @@ export function SettingsDialog({ onClose, onResetLayout }: SettingsDialogProps) 
 
   useEffect(() => {
     closeButtonRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
@@ -90,23 +93,26 @@ export function SettingsDialog({ onClose, onResetLayout }: SettingsDialogProps) 
     }
   };
 
-  const editor = (key: string, value: unknown) => {
-    const descriptor = snapshot?.schema.find((entry) => entry.key === key);
-    const disabled = !descriptor?.scopes.includes(scope);
-    if (descriptor?.type === 'enum')
+  const editor = (descriptor: EditorSettingDescriptor, value: unknown) => {
+    const { key } = descriptor;
+    const disabled = !descriptor.scopes.includes(scope);
+    if (descriptor.type === 'enum')
       return (
-        <select disabled={disabled} onChange={(event) => void update(key, event.target.value)} value={String(value)}>
-          {descriptor.options?.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+        <UiSelect
+          ariaLabel={descriptor.label}
+          className="settings-value-control"
+          disabled={disabled}
+          onValueChange={(nextValue) => void update(key, nextValue)}
+          options={(descriptor.options ?? []).map((option) => ({ label: option, value: option }))}
+          value={String(value)}
+        />
       );
     if (typeof value === 'boolean')
       return (
         <input
+          aria-label={descriptor.label}
           checked={value}
+          className="settings-checkbox"
           disabled={disabled}
           onChange={(event) => void update(key, event.target.checked)}
           type="checkbox"
@@ -114,19 +120,23 @@ export function SettingsDialog({ onClose, onResetLayout }: SettingsDialogProps) 
       );
     if (typeof value === 'number')
       return (
-        <input
+        <UiTextInput
+          aria-label={descriptor.label}
+          className="settings-value-control"
           disabled={disabled}
-          max={descriptor?.maximum}
-          min={descriptor?.minimum}
+          max={descriptor.maximum}
+          min={descriptor.minimum}
           onBlur={(event) => void update(key, Number(event.target.value))}
           defaultValue={String(value)}
           key={`${key}-${String(value)}`}
-          step={descriptor?.step}
+          step={descriptor.step}
           type="number"
         />
       );
     return (
-      <input
+      <UiTextInput
+        aria-label={descriptor.label}
+        className="settings-value-control"
         disabled={disabled}
         onBlur={(event) => void update(key, event.target.value)}
         defaultValue={String(value)}
@@ -155,14 +165,15 @@ export function SettingsDialog({ onClose, onResetLayout }: SettingsDialogProps) 
           </div>
           <label className="settings-dialog-scope">
             <span>Scope</span>
-            <select
-              aria-label="Settings scope"
+            <UiSelect
+              ariaLabel="Settings scope"
+              onValueChange={(value) => setScope(value as 'user' | 'project')}
+              options={[
+                { label: 'User settings', value: 'user' },
+                { label: 'Project settings', value: 'project' },
+              ]}
               value={scope}
-              onChange={(event) => setScope(event.target.value as 'user' | 'project')}
-            >
-              <option value="user">User settings</option>
-              <option value="project">Project settings</option>
-            </select>
+            />
           </label>
           <UiIconButton label="Close settings" onClick={onClose} ref={closeButtonRef}>
             <X size={15} />
@@ -198,8 +209,8 @@ export function SettingsDialog({ onClose, onResetLayout }: SettingsDialogProps) 
               </header>
 
               {entries.map((descriptor) => (
-                <label key={descriptor.key}>
-                  <span>
+                <div className="settings-field-row" key={descriptor.key}>
+                  <span className="settings-field-description">
                     <strong>{descriptor.label}</strong>
                     <small>
                       {descriptor.description}
@@ -209,16 +220,15 @@ export function SettingsDialog({ onClose, onResetLayout }: SettingsDialogProps) 
                       {!descriptor.scopes.includes(scope) ? ` · unavailable in ${scope} settings` : ''}
                     </small>
                   </span>
-                  {editor(descriptor.key, snapshot?.values[descriptor.key])}
-                  <button
-                    aria-label={`Reset ${descriptor.key}`}
+                  {editor(descriptor, snapshot?.values[descriptor.key])}
+                  <UiIconButton
+                    label={`Reset ${descriptor.key}`}
                     disabled={!descriptor.scopes.includes(scope)}
                     onClick={() => void update(descriptor.key, undefined)}
-                    type="button"
                   >
                     <RotateCcw size={13} />
-                  </button>
-                </label>
+                  </UiIconButton>
+                </div>
               ))}
 
               {page.id === 'general' && (
