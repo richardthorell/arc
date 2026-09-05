@@ -416,6 +416,42 @@ TEST_CASE("editor gizmos keep constant screen size and hit test colored axes")
     REQUIRE(arc::math::length(uniform_direction) == Catch::Approx(1.0f));
 }
 
+TEST_CASE("editor viewport shows camera and light icons plus selected camera frustum")
+{
+    arc::ecs::world registry;
+    const auto view_camera = registry.create();
+    arc::scene::transform_component view_transform;
+    view_transform.position = {0.0f, 2.0f, 8.0f};
+    registry.emplace<arc::scene::transform_component>(view_camera, view_transform);
+    registry.emplace<arc::scene::camera_component>(view_camera);
+
+    const auto scene_camera = registry.create();
+    arc::scene::transform_component scene_camera_transform;
+    scene_camera_transform.position = {0.0f, 1.0f, 0.0f};
+    registry.emplace<arc::scene::transform_component>(scene_camera, scene_camera_transform);
+    registry.emplace<arc::scene::camera_component>(scene_camera);
+
+    const auto light = registry.create();
+    arc::scene::transform_component light_transform;
+    light_transform.position = {2.0f, 3.0f, 1.0f};
+    registry.emplace<arc::scene::transform_component>(light, light_transform);
+    registry.emplace<arc::scene::point_light_component>(light);
+    arc::scene::update_world_transforms(registry);
+
+    const auto overlay = arc::editor::build_editor_gizmo_overlay(
+        registry, scene_camera, view_camera,
+        {.tool = arc::editor::editor_tool::select, .viewport_width = 1280, .viewport_height = 720});
+    REQUIRE(overlay.lines.size() >= 40);
+    const auto frustum_lines = std::count_if(overlay.lines.begin(), overlay.lines.end(),
+                                             [](const auto& line)
+                                             {
+                                                 return line.depth == arc::render::debug_overlay_depth_mode::tested &&
+                                                        line.color[0] > 0.9f && line.color[1] > 0.5f &&
+                                                        line.color[1] < 0.8f;
+                                             });
+    REQUIRE(frustum_lines == 12);
+}
+
 TEST_CASE("editor grid is adaptive and remains anchored to world axes")
 {
     arc::scene::camera_component camera;
