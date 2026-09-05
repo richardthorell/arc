@@ -1,0 +1,28 @@
+name: Inspect Editor Overlay
+
+on:
+  push:
+    branches:
+      - feature/viewport-scene-camera-switching
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feature/viewport-scene-camera-switching
+      - name: Inspect overlay and ECS APIs
+        shell: bash
+        run: |
+          echo '=== gizmo callers ==='
+          rg -n "build_editor_gizmo_overlay|debug_overlay_stream|append_editor_grid_overlay" editor/native engine | head -200
+          echo '=== ECS iteration ==='
+          rg -n "\.view<|view<scene::|each<|for_each.*scene::" editor/native engine | head -200
+          echo '=== camera component ==='
+          rg -n "struct camera_component|class camera_component|camera_projection" engine editor/native/inc | head -120
+          echo '=== light components ==='
+          rg -n "struct (directional_light_component|point_light_component|spot_light_component|area_light_component)" engine | head -100
