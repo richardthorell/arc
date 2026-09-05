@@ -358,6 +358,9 @@ struct draw_mesh_event
     render_mode mode{render_mode::shaded};
     mesh_visualization_mode visualization{mesh_visualization_mode::standard};
     render_object_id object_id{};
+    /** Optional current/previous joint palette for a skinned mesh instance. */
+    buffer_handle skin_palette{};
+    std::uint32_t skin_joint_count{};
     bool selected{};
     bool casts_shadows{true};
     bool receives_shadows{true};

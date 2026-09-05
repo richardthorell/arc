@@ -50,6 +50,7 @@ struct accessor
     std::uint32_t component_type{};
     std::size_t count{};
     std::string type;
+    bool normalized{};
 };
 
 struct primitive
@@ -57,10 +58,13 @@ struct primitive
     std::size_t position_accessor{};
     std::size_t normal_accessor{};
     std::size_t texcoord_accessor{};
+    std::size_t joints_accessor{};
+    std::size_t weights_accessor{};
     std::size_t index_accessor{};
     std::size_t material_index{material_texture_indices::invalid};
     bool has_normal{};
     bool has_texcoord{};
+    bool has_skin{};
 };
 
 std::uint32_t read_u32_le(const std::vector<std::byte>& bytes, std::size_t offset)
@@ -287,7 +291,8 @@ std::vector<accessor> parse_accessors(std::string_view json)
                           .byte_offset = parse_size(object, "byteOffset").value_or(0),
                           .component_type = static_cast<std::uint32_t>(parse_size(object, "componentType").value_or(0)),
                           .count = parse_size(object, "count").value_or(0),
-                          .type = parse_string(object, "type").value_or("")});
+                          .type = parse_string(object, "type").value_or(""),
+                          .normalized = parse_bool(object, "normalized").value_or(false)});
     }
     return result;
 }
@@ -306,10 +311,14 @@ std::optional<primitive> parse_first_primitive(std::string_view json)
     result.position_accessor = parse_size(object, "POSITION").value_or(static_cast<std::size_t>(-1));
     result.normal_accessor = parse_size(object, "NORMAL").value_or(0);
     result.texcoord_accessor = parse_size(object, "TEXCOORD_0").value_or(0);
+    result.joints_accessor = parse_size(object, "JOINTS_0").value_or(0);
+    result.weights_accessor = parse_size(object, "WEIGHTS_0").value_or(0);
     result.index_accessor = parse_size(object, "indices").value_or(static_cast<std::size_t>(-1));
     result.material_index = parse_size(object, "material").value_or(material_texture_indices::invalid);
     result.has_normal = object.find("\"NORMAL\"") != std::string::npos;
     result.has_texcoord = object.find("\"TEXCOORD_0\"") != std::string::npos;
+    result.has_skin = object.find("\"JOINTS_0\"") != std::string::npos &&
+                      object.find("\"WEIGHTS_0\"") != std::string::npos;
     return result;
 }
 
@@ -476,6 +485,8 @@ std::size_t component_size(std::uint32_t component_type)
     {
         case 5123:
             return sizeof(std::uint16_t);
+        case 5121:
+            return sizeof(std::uint8_t);
         case 5125:
             return sizeof(std::uint32_t);
         case 5126:
@@ -594,6 +605,57 @@ bool read_vec_f32(const accessor& value, const std::vector<buffer_view>& views, 
     if (!base || index >= value.count) return false;
 
     std::memcpy(out, base + index * stride, sizeof(float) * count);
+    return true;
+}
+
+bool read_joint_indices(const accessor& value, const std::vector<buffer_view>& views, std::span<const std::byte> bin,
+                        std::size_t index, std::uint32_t* out)
+{
+    if (value.type != "VEC4") return false;
+    std::size_t stride{};
+    const std::byte* base = accessor_data(value, views, bin, stride);
+    if (!base || index >= value.count) return false;
+    const auto* source = base + index * stride;
+    for (std::size_t component = 0; component < 4; ++component)
+    {
+        if (value.component_type == 5121)
+            out[component] = std::to_integer<std::uint8_t>(source[component]);
+        else if (value.component_type == 5123)
+        {
+            std::uint16_t joint{};
+            std::memcpy(&joint, source + component * sizeof(joint), sizeof(joint));
+            out[component] = joint;
+        }
+        else if (value.component_type == 5125)
+            std::memcpy(out + component, source + component * sizeof(std::uint32_t), sizeof(std::uint32_t));
+        else
+            return false;
+    }
+    return true;
+}
+
+bool read_joint_weights(const accessor& value, const std::vector<buffer_view>& views, std::span<const std::byte> bin,
+                        std::size_t index, float* out)
+{
+    if (value.type != "VEC4") return false;
+    if (value.component_type == 5126) return read_vec_f32(value, views, bin, index, out, 4);
+    std::size_t stride{};
+    const std::byte* base = accessor_data(value, views, bin, stride);
+    if (!base || index >= value.count || !value.normalized) return false;
+    const auto* source = base + index * stride;
+    for (std::size_t component = 0; component < 4; ++component)
+    {
+        if (value.component_type == 5121)
+            out[component] = static_cast<float>(std::to_integer<std::uint8_t>(source[component])) / 255.0f;
+        else if (value.component_type == 5123)
+        {
+            std::uint16_t weight{};
+            std::memcpy(&weight, source + component * sizeof(weight), sizeof(weight));
+            out[component] = static_cast<float>(weight) / 65535.0f;
+        }
+        else
+            return false;
+    }
     return true;
 }
 
@@ -1468,6 +1530,14 @@ mesh_load_result load_gltf_mesh(const std::filesystem::path& path)
     mesh.name = path.stem().string();
     mesh.material_index = primitive->material_index;
     mesh.vertices.resize(positions.count);
+    if (primitive->has_skin)
+    {
+        if (primitive->joints_accessor >= accessors.size() || primitive->weights_accessor >= accessors.size() ||
+            accessors[primitive->joints_accessor].count != positions.count ||
+            accessors[primitive->weights_accessor].count != positions.count)
+            return {.message = "GLB skin accessors must match POSITION count"};
+        mesh.skin_vertices.resize(positions.count);
+    }
 
     for (std::size_t index = 0; index < positions.count; ++index)
     {
@@ -1490,6 +1560,12 @@ mesh_load_result load_gltf_mesh(const std::filesystem::path& path)
                 return {.message = "failed to read TEXCOORD_0 data"};
             }
         }
+        if (primitive->has_skin &&
+            (!read_joint_indices(accessors[primitive->joints_accessor], views, bin, index,
+                                 mesh.skin_vertices[index].joint_indices) ||
+             !read_joint_weights(accessors[primitive->weights_accessor], views, bin, index,
+                                 mesh.skin_vertices[index].joint_weights)))
+            return {.message = "failed to read JOINTS_0 or WEIGHTS_0 data"};
     }
 
     const auto& indices = accessors[primitive->index_accessor];

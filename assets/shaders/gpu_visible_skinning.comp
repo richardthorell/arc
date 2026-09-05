@@ -1,0 +1,107 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct draw_indexed_indirect_command
+{
+    uint index_count;
+    uint instance_count;
+    uint first_index;
+    int vertex_offset;
+    uint first_instance;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer source_vertex_buffer { uint words[]; } source_vertices;
+struct skin_vertex
+{
+    uvec4 joint_indices;
+    vec4 joint_weights;
+};
+layout(std430, set = 0, binding = 1) readonly buffer skin_input_buffer { skin_vertex vertices[]; } skin_input;
+layout(std430, set = 0, binding = 2) readonly buffer current_palette_buffer { mat4 joints[]; } current_palette;
+layout(std430, set = 0, binding = 3) readonly buffer previous_palette_buffer { mat4 joints[]; } previous_palette;
+layout(std430, set = 0, binding = 4) writeonly buffer current_output_buffer { uint words[]; } current_output;
+layout(std430, set = 0, binding = 5) writeonly buffer previous_output_buffer { uint words[]; } previous_output;
+layout(std430, set = 0, binding = 6) readonly buffer visibility_command_buffer
+{
+    draw_indexed_indirect_command commands[];
+} visibility;
+
+layout(push_constant) uniform skinning_constants
+{
+    uint vertex_count;
+    uint joint_count;
+    uint visibility_command;
+    uint vertex_stride_words;
+} constants;
+
+vec3 read_vec3(uint base)
+{
+    return vec3(uintBitsToFloat(source_vertices.words[base]),
+                uintBitsToFloat(source_vertices.words[base + 1u]),
+                uintBitsToFloat(source_vertices.words[base + 2u]));
+}
+
+void write_vec3(uint base, vec3 value, bool previous)
+{
+    if (previous)
+    {
+        previous_output.words[base] = floatBitsToUint(value.x);
+        previous_output.words[base + 1u] = floatBitsToUint(value.y);
+        previous_output.words[base + 2u] = floatBitsToUint(value.z);
+    }
+    else
+    {
+        current_output.words[base] = floatBitsToUint(value.x);
+        current_output.words[base + 1u] = floatBitsToUint(value.y);
+        current_output.words[base + 2u] = floatBitsToUint(value.z);
+    }
+}
+
+mat4 blended_skin(uvec4 indices, vec4 weights, bool previous)
+{
+    mat4 result = mat4(0.0);
+    float total = 0.0;
+    for (uint influence = 0u; influence < 4u; ++influence)
+    {
+        uint joint = indices[influence];
+        float weight = max(weights[influence], 0.0);
+        if (joint >= constants.joint_count || weight <= 0.0)
+            continue;
+        result += (previous ? previous_palette.joints[joint] : current_palette.joints[joint]) * weight;
+        total += weight;
+    }
+    return total > 1.0e-6 ? result / total : mat4(1.0);
+}
+
+void main()
+{
+    uint vertex = gl_GlobalInvocationID.x;
+    if (vertex >= constants.vertex_count)
+        return;
+    if (constants.visibility_command != 0xffffffffu &&
+        visibility.commands[constants.visibility_command].instance_count == 0u)
+        return;
+
+    uint base = vertex * constants.vertex_stride_words;
+    uvec4 indices = skin_input.vertices[vertex].joint_indices;
+    vec4 weights = skin_input.vertices[vertex].joint_weights;
+    vec3 position = read_vec3(base);
+    vec3 normal = read_vec3(base + 3u);
+    vec3 tangent = read_vec3(base + 6u);
+    mat4 current_skin = blended_skin(indices, weights, false);
+    mat4 previous_skin = blended_skin(indices, weights, true);
+
+    write_vec3(base, (current_skin * vec4(position, 1.0)).xyz, false);
+    write_vec3(base + 3u, normalize(mat3(current_skin) * normal), false);
+    write_vec3(base + 6u, normalize(mat3(current_skin) * tangent), false);
+    write_vec3(base, (previous_skin * vec4(position, 1.0)).xyz, true);
+    write_vec3(base + 3u, normalize(mat3(previous_skin) * normal), true);
+    write_vec3(base + 6u, normalize(mat3(previous_skin) * tangent), true);
+
+    for (uint word = 9u; word < constants.vertex_stride_words; ++word)
+    {
+        current_output.words[base + word] = source_vertices.words[base + word];
+        previous_output.words[base + word] = source_vertices.words[base + word];
+    }
+}
