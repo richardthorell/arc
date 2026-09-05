@@ -18,11 +18,13 @@ jobs:
       - name: Inspect overlay and ECS APIs
         shell: bash
         run: |
+          set +e
           echo '=== gizmo callers ==='
-          rg -n "build_editor_gizmo_overlay|debug_overlay_stream|append_editor_grid_overlay" editor/native engine | head -200
+          grep -RInE "build_editor_gizmo_overlay|debug_overlay_stream|append_editor_grid_overlay" editor/native engine | head -200
           echo '=== ECS iteration ==='
-          rg -n "\.view<|view<scene::|each<|for_each.*scene::" editor/native engine | head -200
+          grep -RInE "\.view<|view<scene::|\.each\(|for_each" editor/native engine | head -200
           echo '=== camera component ==='
-          rg -n "struct camera_component|class camera_component|camera_projection" engine editor/native/inc | head -120
+          grep -RInE "struct camera_component|class camera_component|camera_projection" engine editor/native/inc | head -120
           echo '=== light components ==='
-          rg -n "struct (directional_light_component|point_light_component|spot_light_component|area_light_component)" engine | head -100
+          grep -RInE "struct (directional_light_component|point_light_component|spot_light_component|area_light_component)" engine | head -100
+          exit 0
