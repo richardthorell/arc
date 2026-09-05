@@ -463,6 +463,8 @@ export function ViewportPanel({
       viewportId,
       ...position,
       path: dropped.pathHint,
+      control: event.ctrlKey,
+      shift: event.shiftKey,
     }).then((result) => {
       if (result.succeeded) setViewportError('');
       else setViewportError(result.error);
