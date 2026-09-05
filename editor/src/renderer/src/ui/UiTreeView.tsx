@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 
 import { UiTreeRow } from './UiTreeRow';
@@ -80,7 +80,6 @@ export function UiTreeView({
     () => new Set(defaultExpandedIds),
   );
   const [focusedId, setFocusedId] = useState<string | null>(selectedId);
-  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const expandedIds = controlledExpandedIds ?? uncontrolledExpandedIds;
   const normalizedQuery = normalize(query);
 
@@ -116,7 +115,10 @@ export function UiTreeView({
   const focusNode = (id: string | null) => {
     if (!id) return;
     setFocusedId(id);
-    queueMicrotask(() => rowRefs.current.get(id)?.focus());
+    queueMicrotask(() => {
+      const element = document.querySelector<HTMLButtonElement>(`[data-ui-tree-node-id="${CSS.escape(id)}"]`);
+      element?.focus();
+    });
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, entry: VisibleTreeNode) => {
@@ -175,6 +177,7 @@ export function UiTreeView({
             aria-level={entry.depth + 1}
             aria-selected={entry.node.id === selectedId}
             className="ui-tree-view-row"
+            data-ui-tree-node-id={entry.node.id}
             depth={entry.depth}
             disabled={entry.node.disabled}
             key={entry.node.id}
@@ -184,10 +187,6 @@ export function UiTreeView({
             }}
             onDoubleClick={() => toggle(entry.node)}
             onKeyDown={(event) => handleKeyDown(event, entry)}
-            ref={(element) => {
-              if (element) rowRefs.current.set(entry.node.id, element);
-              else rowRefs.current.delete(entry.node.id);
-            }}
             role="treeitem"
             selected={entry.node.id === selectedId}
             tabIndex={entry.node.id === focusedId ? 0 : -1}
