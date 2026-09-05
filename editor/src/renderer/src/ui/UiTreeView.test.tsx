@@ -43,7 +43,9 @@ describe('UiTreeView', () => {
   });
 
   it('navigates visible nodes with the keyboard', () => {
-    render(<UiTreeView ariaLabel="Editor settings" defaultExpandedIds={['editing']} nodes={nodes} selectedId="editing" />);
+    render(
+      <UiTreeView ariaLabel="Editor settings" defaultExpandedIds={['editing']} nodes={nodes} selectedId="editing" />,
+    );
 
     const editing = screen.getByRole('treeitem', { name: /Editing/ });
     editing.focus();

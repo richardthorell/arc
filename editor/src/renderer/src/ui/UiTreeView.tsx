@@ -40,7 +40,8 @@ const nodeMatches = (node: UiTreeNode, query: string) => {
 };
 
 const filterTree = (nodes: readonly UiTreeNode[], query: string): UiTreeNode[] => {
-  if (!query) return nodes.map((node) => ({ ...node, children: node.children ? filterTree(node.children, '') : undefined }));
+  if (!query)
+    return nodes.map((node) => ({ ...node, children: node.children ? filterTree(node.children, '') : undefined }));
 
   return nodes.flatMap((node) => {
     const children = node.children ? filterTree(node.children, query) : [];

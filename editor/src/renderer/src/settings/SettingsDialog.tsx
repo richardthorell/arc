@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { RotateCcw, Settings, X } from 'lucide-react';
 
-import type { EditorSettingDescriptor, EditorSettingsSnapshot, RecoverySnapshot } from '../../../common/editorWorkflowTypes';
+import type {
+  EditorSettingDescriptor,
+  EditorSettingsSnapshot,
+  RecoverySnapshot,
+} from '../../../common/editorWorkflowTypes';
 import type { ArcExtensionSnapshot } from '../../../common/extensionTypes';
 import { UiButton, UiIconButton, UiSearchInput, UiTreeView } from '../ui';
 import type { UiTreeNode } from '../ui';
-import {
-  defaultExpandedSettingsNodes,
-  editorSettingsNavigation,
-  getEditorSettingsPage,
-} from './settingsNavigation';
+import { defaultExpandedSettingsNodes, editorSettingsNavigation, getEditorSettingsPage } from './settingsNavigation';
 
 import '../tools/tools.css';
 import './SettingsDialog.css';
@@ -296,7 +296,9 @@ export function SettingsDialog({ onClose, onResetLayout }: SettingsDialogProps) 
 
               {showEmptyPage && (
                 <div className="settings-empty-page">
-                  <strong>{normalizedQuery ? 'No matching settings on this page' : 'No settings registered yet'}</strong>
+                  <strong>
+                    {normalizedQuery ? 'No matching settings on this page' : 'No settings registered yet'}
+                  </strong>
                   <span>
                     {normalizedQuery
                       ? 'Choose another matching category from the tree or clear the search.'
