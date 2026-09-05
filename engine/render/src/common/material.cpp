@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <functional>
 #include <unordered_set>
 
@@ -36,6 +37,95 @@ bool parameter_type_matches(shader_parameter_type expected, const material_param
             return std::holds_alternative<resource_handle>(value);
     }
     return false;
+}
+
+template <typename T>
+bool write_runtime_parameter(std::vector<std::byte>& block, const shader_parameter_descriptor& parameter,
+                             const T* values, std::size_t value_count) noexcept
+{
+    const auto byte_count = sizeof(T) * value_count;
+    const auto offset = static_cast<std::size_t>(parameter.offset);
+    if (offset > block.size() || byte_count > static_cast<std::size_t>(parameter.size) ||
+        byte_count > block.size() - offset)
+        return false;
+
+    std::memcpy(block.data() + offset, values, byte_count);
+    return true;
+}
+
+bool apply_runtime_parameter_override(material_runtime_program& program,
+                                      const material_parameter_override& override_value) noexcept
+{
+    const auto parameter = std::ranges::find(program.parameters, override_value.id, &shader_parameter_descriptor::id);
+    if (parameter == program.parameters.end()) return false;
+
+    switch (parameter->type)
+    {
+        case shader_parameter_type::boolean:
+        {
+            const std::uint32_t value = std::get<bool>(override_value.value) ? 1u : 0u;
+            return write_runtime_parameter(program.parameter_defaults, *parameter, &value, 1u);
+        }
+        case shader_parameter_type::int32:
+        {
+            const auto value = std::get<std::int32_t>(override_value.value);
+            return write_runtime_parameter(program.parameter_defaults, *parameter, &value, 1u);
+        }
+        case shader_parameter_type::uint32:
+        {
+            const auto value = std::get<std::uint32_t>(override_value.value);
+            return write_runtime_parameter(program.parameter_defaults, *parameter, &value, 1u);
+        }
+        case shader_parameter_type::float32:
+        {
+            const auto value = std::get<float>(override_value.value);
+            return write_runtime_parameter(program.parameter_defaults, *parameter, &value, 1u);
+        }
+        case shader_parameter_type::float2:
+        {
+            const auto& value = std::get<math::vector2f>(override_value.value);
+            const std::array values{value[0], value[1]};
+            return write_runtime_parameter(program.parameter_defaults, *parameter, values.data(), values.size());
+        }
+        case shader_parameter_type::float3:
+        {
+            const auto& value = std::get<math::vector3f>(override_value.value);
+            const std::array values{value[0], value[1], value[2]};
+            return write_runtime_parameter(program.parameter_defaults, *parameter, values.data(), values.size());
+        }
+        case shader_parameter_type::float4:
+        {
+            const auto& value = std::get<math::vector4f>(override_value.value);
+            const std::array values{value[0], value[1], value[2], value[3]};
+            return write_runtime_parameter(program.parameter_defaults, *parameter, values.data(), values.size());
+        }
+        case shader_parameter_type::matrix4x4:
+        {
+            const auto& value = std::get<math::matrix4x4f>(override_value.value);
+            return write_runtime_parameter(program.parameter_defaults, *parameter, value.data(), 16u);
+        }
+        case shader_parameter_type::texture_2d:
+        case shader_parameter_type::texture_cube:
+        case shader_parameter_type::sampler:
+            return false;
+    }
+    return false;
+}
+
+void apply_runtime_parameter_overrides(material_descriptor& material,
+                                       std::span<const material_parameter_override> overrides)
+{
+    if (!material.runtime_program || overrides.empty()) return;
+
+    auto runtime_program = std::make_shared<material_runtime_program>(*material.runtime_program);
+    if (runtime_program->parameter_defaults.size() < runtime_program->parameter_block_size)
+        runtime_program->parameter_defaults.resize(runtime_program->parameter_block_size);
+
+    bool changed = false;
+    for (const auto& override_value : overrides)
+        changed |= apply_runtime_parameter_override(*runtime_program, override_value);
+
+    if (changed) material.runtime_program = std::move(runtime_program);
 }
 
 } // namespace
@@ -93,6 +183,7 @@ material_instance_result resolve_material_instance(const material_definition_des
         else
             *existing = override_value;
     }
+    apply_runtime_parameter_overrides(result, instance.overrides);
     result.render_path = resolve_material_render_path(result);
     return material_instance_result::success(std::move(result));
 }
