@@ -24,8 +24,7 @@ export type ViewportMaterialDropResult =
 export type ViewportMeshDropIntent = 'create' | 'createChild' | 'replace';
 
 export type ViewportMeshDropResult =
-  | { succeeded: true; entity: HostEntityId; intent: ViewportMeshDropIntent }
-  | { succeeded: false; error: string };
+  { succeeded: true; entity: HostEntityId; intent: ViewportMeshDropIntent } | { succeeded: false; error: string };
 
 type WaitOptions = {
   attempts?: number;
@@ -183,7 +182,8 @@ export async function instantiateDroppedMeshInViewport(
   }
 
   const created = (await host.command('entity.create', { kind: 'cube' })) as HostResponse;
-  if (created?.succeeded === false) return { succeeded: false, error: created.error || 'Could not create model entity' };
+  if (created?.succeeded === false)
+    return { succeeded: false, error: created.error || 'Could not create model entity' };
   const entity = parseEntity(created?.payload);
   if (!entity) return { succeeded: false, error: 'Host did not return the created model entity' };
 
