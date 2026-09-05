@@ -50,4 +50,4 @@ jobs:
         run: npm run typecheck --prefix editor
 
       - name: Settings tests
-        run: npm test --prefix editor -- --run editor/src/renderer/src/ui/UiTreeView.test.tsx editor/src/renderer/src/settings/SettingsDialog.test.tsx
+        run: npm test --prefix editor -- --run src/renderer/src/ui/UiTreeView.test.tsx src/renderer/src/settings/SettingsDialog.test.tsx
