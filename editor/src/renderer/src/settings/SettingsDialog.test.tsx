@@ -21,9 +21,39 @@ beforeEach(() => {
             defaultValue: true,
             scopes: ['user'],
           },
+          {
+            key: 'renderer.qualityTier',
+            section: 'Renderer',
+            label: 'Quality Tier',
+            description: 'Renderer quality profile used by editor viewports.',
+            type: 'enum',
+            defaultValue: 'auto',
+            options: ['auto', 'low', 'high'],
+            scopes: ['user', 'project'],
+          },
+          {
+            key: 'renderer.temporalHistoryWeight',
+            section: 'Renderer',
+            label: 'Temporal History Weight',
+            description: 'Contribution retained from validated temporal history samples.',
+            type: 'number',
+            defaultValue: 0.9,
+            minimum: 0,
+            maximum: 1,
+            step: 0.01,
+            scopes: ['user', 'project'],
+          },
         ],
-        values: { 'renderer.defaultGrid': true },
-        sources: { 'renderer.defaultGrid': 'default' },
+        values: {
+          'renderer.defaultGrid': true,
+          'renderer.qualityTier': 'auto',
+          'renderer.temporalHistoryWeight': 0.9,
+        },
+        sources: {
+          'renderer.defaultGrid': 'default',
+          'renderer.qualityTier': 'default',
+          'renderer.temporalHistoryWeight': 'default',
+        },
         restartRequired: [],
       }),
       update: vi.fn(),
@@ -57,7 +87,7 @@ describe('SettingsDialog', () => {
     expect(screen.getByRole('treeitem', { name: /AI/ })).toBeInTheDocument();
     expect(screen.getByRole('treeitem', { name: /Source Control/ })).toBeInTheDocument();
     expect(screen.getByRole('treeitem', { name: /Platforms/ })).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Settings scope' })).toHaveValue('user');
+    expect(screen.getByRole('combobox', { name: 'Settings scope' })).toHaveTextContent('User settings');
     expect(screen.getByRole('searchbox', { name: 'Search settings' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset workbench layout' }));
@@ -77,6 +107,24 @@ describe('SettingsDialog', () => {
     expect(screen.getByRole('heading', { name: 'Viewport' })).toBeInTheDocument();
     expect(screen.getByText('Default Grid')).toBeInTheDocument();
     expect(screen.queryByRole('treeitem', { name: /Platforms/ })).not.toBeInTheDocument();
+  });
+
+  it('uses shared controls without stealing focus when callback props change', async () => {
+    const { rerender } = render(<SettingsDialog onClose={vi.fn()} onResetLayout={vi.fn()} />);
+    await waitFor(() => expect(window.arc.settings.snapshot).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('treeitem', { name: /Viewport/ }));
+
+    const qualityTier = screen.getByRole('combobox', { name: 'Quality Tier' });
+    fireEvent.click(qualityTier);
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+
+    const historyWeight = screen.getByRole('spinbutton', { name: 'Temporal History Weight' });
+    historyWeight.focus();
+    expect(historyWeight).toHaveFocus();
+
+    rerender(<SettingsDialog onClose={vi.fn()} onResetLayout={vi.fn()} />);
+    expect(historyWeight).toHaveFocus();
   });
 
   it('shows framework pages that do not have registered settings yet', () => {
