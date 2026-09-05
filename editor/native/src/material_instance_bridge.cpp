@@ -220,12 +220,13 @@ const editor_material_record* base_material_record(editor_scene_state& scene, ec
     if (instance_record != scene.material_library.materials.end() &&
         instance_record->asset.name.find(instance_name_marker) != std::string::npos)
     {
-        const auto base = std::ranges::find_if(scene.material_library.materials, [&](const editor_material_record& value)
-                                               {
-                                                   return value.asset.name.find(instance_name_marker) == std::string::npos &&
-                                                          value.path.lexically_normal() ==
-                                                              instance_record->path.lexically_normal();
-                                               });
+        const auto base =
+            std::ranges::find_if(scene.material_library.materials,
+                                 [&](const editor_material_record& value)
+                                 {
+                                     return value.asset.name.find(instance_name_marker) == std::string::npos &&
+                                            value.path.lexically_normal() == instance_record->path.lexically_normal();
+                                 });
         if (base != scene.material_library.materials.end()) return &*base;
     }
 
