@@ -783,6 +783,38 @@ TEST_CASE("editor default sun rotation points downward at an angle")
     REQUIRE(direction[2] < -0.10f);
 }
 
+TEST_CASE("snap to floor drops a bounded entity and participates in undo")
+{
+    auto host = std::make_shared<arc::editor::arc_host>(std::make_unique<arc::render::renderer>());
+    REQUIRE(host);
+    REQUIRE(host->execute(arc::editor::host_new_scene_command{.name = "Snap Floor"}).succeeded);
+    const auto created =
+        host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::cube});
+    REQUIRE(created.succeeded);
+    const auto selected = host->selected_entity_snapshot();
+    REQUIRE(selected.entity.valid());
+    REQUIRE(selected.transform.has_value());
+
+    auto raised = *selected.transform;
+    raised.position.y = 4.0f;
+    REQUIRE(host->execute(arc::editor::host_set_transform_command{.entity = selected.entity, .transform = raised})
+                .succeeded);
+    const auto before_snap = host->selected_entity_snapshot();
+    REQUIRE(before_snap.transform.has_value());
+    REQUIRE(before_snap.transform->position.y == Catch::Approx(4.0f));
+
+    const auto snapped = host->execute(arc::editor::host_snap_to_floor_command{.entity = selected.entity});
+    REQUIRE(snapped.succeeded);
+    const auto after_snap = host->selected_entity_snapshot();
+    REQUIRE(after_snap.transform.has_value());
+    REQUIRE(after_snap.transform->position.y < 1.0f);
+
+    REQUIRE(host->execute(arc::editor::host_history_undo_command{}).succeeded);
+    const auto restored = host->selected_entity_snapshot();
+    REQUIRE(restored.transform.has_value());
+    REQUIRE(restored.transform->position.y == Catch::Approx(4.0f));
+}
+
 TEST_CASE("editor tool shortcuts update active tool")
 {
     arc::input::input_manager input;

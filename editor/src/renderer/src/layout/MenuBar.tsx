@@ -264,6 +264,7 @@ export function MenuBar({
       placeholder('Copy', { shortcut: 'Ctrl+C', icon: Copy }),
       placeholder('Paste', { shortcut: 'Ctrl+V', icon: ClipboardPaste }),
       { label: 'Duplicate', command: 'entity.duplicate', shortcut: 'Ctrl+D', icon: Copy },
+      { label: 'Snap to Floor', command: 'viewport.snapToFloor', shortcut: 'End' },
       separator(),
       placeholder('Rename', { shortcut: 'F2', icon: Pencil }),
       { label: 'Delete', command: 'entity.delete', shortcut: 'Delete', icon: Trash2 },

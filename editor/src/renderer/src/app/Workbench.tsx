@@ -846,7 +846,11 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         } else if (command === 'scene.step') {
           response = (await window.arc.host.command('runtime.step', { ticks: 1 })) as HostResponse<HostRuntimeSnapshot>;
         } else if (command.startsWith('viewport.')) {
-          if (command === 'viewport.frameSelected') {
+          if (command === 'viewport.snapToFloor' && selectedSnapshot) {
+            response = (await window.arc.host.command('entity.snapToFloor', {
+              entity: selectedSnapshot.entity,
+            })) as HostResponse;
+          } else if (command === 'viewport.frameSelected') {
             await window.arc.viewport.cameraInput({ focusSelected: true });
             return setLastCommand('Framed selected entity');
           }
@@ -883,7 +887,8 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
             command === 'edit.undo' ||
             command === 'edit.redo' ||
             command === 'entity.duplicate' ||
-            command === 'entity.delete';
+            command === 'entity.delete' ||
+            command === 'viewport.snapToFloor';
           if (response.succeeded && refreshesScene) await refreshProjectFromHost(responsePath);
           if (response.succeeded && command === 'viewport.terrain')
             setLayout((current) => ({ ...current, leftVisible: true }));

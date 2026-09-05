@@ -982,6 +982,10 @@ struct host_duplicate_entity_command
 {
     host_entity_id entity{};
 };
+struct host_snap_to_floor_command
+{
+    host_entity_id entity{};
+};
 struct host_create_prefab_command
 {
     host_entity_id entity{};
@@ -1470,8 +1474,8 @@ using host_command_payload = std::variant<
     host_open_recovery_scene_command, host_asset_reimport_command, host_set_texture_streaming_mode_command,
     host_patch_texture_settings_command, host_shader_compile_command, host_asset_cancel_import_command,
     host_asset_move_command, host_asset_rename_command, host_create_entity_command, host_delete_entity_command,
-    host_duplicate_entity_command, host_create_prefab_command, host_instantiate_prefab_command,
-    host_apply_prefab_command, host_revert_prefab_command, host_unpack_prefab_command,
+    host_duplicate_entity_command, host_snap_to_floor_command, host_create_prefab_command,
+    host_instantiate_prefab_command, host_apply_prefab_command, host_revert_prefab_command, host_unpack_prefab_command,
     host_revert_prefab_override_command, host_reparent_entity_command, host_reorder_entity_command,
     host_rename_entity_command, host_select_entity_command, host_clear_selection_command, host_set_active_command,
     host_set_tag_command, host_set_transform_command, host_set_render_layer_command, host_set_mobility_command,
