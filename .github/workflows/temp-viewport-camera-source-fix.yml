@@ -1,0 +1,80 @@
+name: Viewport Camera Source Implementation Fix
+
+on:
+  push:
+    branches:
+      - feature/viewport-scene-camera-switching
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: ${{ !contains(github.event.head_commit.message, '[camera-source-impl]') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feature/viewport-scene-camera-switching
+      - name: Implement viewport camera switching
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          Path('editor/src/renderer/src/viewport/viewportCameraSource.ts').write_text('''import type { SceneEntity } from '../services/editorHostTypes';\n\nexport type SceneCameraSource = {\n  id: string;\n  name: string;\n  position: [number, number, number];\n  target: [number, number, number];\n};\n\nconst degreesToRadians = (value: number) => (value * Math.PI) / 180;\n\nexport const cameraTargetFromTransform = (entity: SceneEntity): SceneCameraSource | null => {\n  if (entity.kind !== 'camera' || !entity.active || !entity.transform) return null;\n  const { position, rotation } = entity.transform;\n  const pitch = degreesToRadians(rotation.x);\n  const yaw = degreesToRadians(rotation.y);\n  const cosPitch = Math.cos(pitch);\n  const forward: [number, number, number] = [\n    -Math.sin(yaw) * cosPitch,\n    Math.sin(pitch),\n    -Math.cos(yaw) * cosPitch,\n  ];\n  return {\n    id: entity.id,\n    name: entity.name,\n    position: [position.x, position.y, position.z],\n    target: [position.x + forward[0] * 10, position.y + forward[1] * 10, position.z + forward[2] * 10],\n  };\n};\n\nexport const collectSceneCameraSources = (entities: SceneEntity[]): SceneCameraSource[] =>\n  entities.flatMap((entity) => {\n    const camera = cameraTargetFromTransform(entity);\n    return [...(camera ? [camera] : []), ...collectSceneCameraSources(entity.children ?? [])];\n  });\n''')
+
+          Path('editor/src/renderer/src/viewport/viewportCameraSource.test.ts').write_text('''import { describe, expect, it } from 'vitest';\n\nimport type { SceneEntity } from '../services/editorHostTypes';\nimport { cameraTargetFromTransform, collectSceneCameraSources } from './viewportCameraSource';\n\nconst camera = (rotation = { x: 0, y: 0, z: 0 }): SceneEntity => ({\n  id: 'camera-1',\n  name: 'Gameplay Camera',\n  kind: 'camera',\n  active: true,\n  transform: {\n    position: { x: 1, y: 2, z: 3 },\n    rotation,\n    scale: { x: 1, y: 1, z: 1 },\n  },\n});\n\ndescribe('viewport camera sources', () => {\n  it('converts an unrotated scene camera into a -Z viewport target', () => {\n    expect(cameraTargetFromTransform(camera())).toEqual({\n      id: 'camera-1',\n      name: 'Gameplay Camera',\n      position: [1, 2, 3],\n      target: [1, 2, -7],\n    });\n  });\n\n  it('collects active scene cameras recursively and skips inactive cameras', () => {\n    const inactive = { ...camera(), id: 'inactive', active: false };\n    const root: SceneEntity = {\n      id: 'folder',\n      name: 'Cameras',\n      kind: 'folder',\n      active: true,\n      children: [camera({ x: 0, y: 90, z: 0 }), inactive],\n    };\n    const sources = collectSceneCameraSources([root]);\n    expect(sources).toHaveLength(1);\n    expect(sources[0]?.id).toBe('camera-1');\n    expect(sources[0]?.target[0]).toBeCloseTo(-9);\n  });\n});\n''')
+
+          p = Path('editor/src/renderer/src/viewport/ViewportPanel.tsx')
+          text = p.read_text()
+          replacements = [
+            ("import { useCallback, useEffect, useRef, useState } from 'react';", "import { useCallback, useEffect, useMemo, useRef, useState } from 'react';"),
+            ("import type { ProjectSnapshot } from '../services/editorHostTypes';", "import type { ProjectSnapshot } from '../services/editorHostTypes';\nimport { collectSceneCameraSources } from './viewportCameraSource';"),
+            ("  const [projection, setProjection] = useState('perspective');", "  const [projection, setProjection] = useState('perspective');\n  const [cameraSourceId, setCameraSourceId] = useState('editor');\n  const editorCameraRef = useRef<NonNullable<ViewportStats['camera']> | null>(null);\n  const editorProjectionRef = useRef('perspective');\n  const sceneCameras = useMemo(() => collectSceneCameraSources(project?.scene ?? []), [project?.scene]);"),
+            ("  const sendCameraInput = (input: Parameters<typeof window.arc.viewport.cameraInput>[0]) => {\n    void window.arc.viewport.cameraInput({ ...input, viewportId }).catch((error) => {", "  const sendCameraInput = (input: Parameters<typeof window.arc.viewport.cameraInput>[0]) => {\n    if (cameraSourceId !== 'editor') return;\n    void window.arc.viewport.cameraInput({ ...input, viewportId }).catch((error) => {"),
+            ("      if (!flyNavigationActiveRef.current || movementKeysRef.current.size === 0) {", "      if (cameraSourceId !== 'editor' || !flyNavigationActiveRef.current || movementKeysRef.current.size === 0) {"),
+            ("    event.currentTarget.focus();\n    onFocusChange?.(true);\n    if (!viewportActive) return;", "    event.currentTarget.focus();\n    onFocusChange?.(true);\n    if (!viewportActive) return;\n    if (cameraSourceId !== 'editor' && event.button !== 0) return;"),
+            ("  const onViewportKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {\n    if (flyNavigationActiveRef.current && viewportFlyMovementCodes.has(event.code)) {", "  const onViewportKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {\n    if (cameraSourceId === 'editor' && flyNavigationActiveRef.current && viewportFlyMovementCodes.has(event.code)) {"),
+            ("  const onWheel = (event: WheelEvent<HTMLDivElement>) => {\n    if (!viewportActive) return;", "  const onWheel = (event: WheelEvent<HTMLDivElement>) => {\n    if (!viewportActive || cameraSourceId !== 'editor') return;"),
+          ]
+          for old, new in replacements:
+            if old not in text:
+              raise SystemExit(f'missing replacement: {old[:80]}')
+            text = text.replace(old, new, 1)
+
+          fly_effect = "  }, [viewportActive, viewportId]);\n\n  const pointerCoordinates"
+          if fly_effect not in text:
+            raise SystemExit('fly effect dependency marker missing')
+          text = text.replace(fly_effect, "  }, [cameraSourceId, viewportActive, viewportId]);\n\n  const pointerCoordinates", 1)
+
+          marker = "  const saveBookmark = (slot: number) => {"
+          insert = '''  const selectCameraSource = async (sourceId: string) => {\n    if (sourceId === cameraSourceId) return;\n    try {\n      if (sourceId === 'editor') {\n        const saved = editorCameraRef.current;\n        if (saved) {\n          await window.arc.host.command('viewport.setPose', {\n            viewportId,\n            position: saved.transform.position,\n            target: saved.focus.position,\n          });\n        }\n        const projectionMode = editorProjectionRef.current === 'perspective' ? 'perspective' : 'orthographic';\n        await window.arc.host.command('viewport.setCameraMode', { viewportId, projection: projectionMode });\n        setProjection(editorProjectionRef.current);\n        setCameraSourceId('editor');\n        return;\n      }\n\n      const source = sceneCameras.find((camera) => camera.id === sourceId);\n      if (!source) throw new Error('Scene camera is no longer available');\n      if (cameraSourceId === 'editor') {\n        editorCameraRef.current = viewportStats.camera ?? null;\n        editorProjectionRef.current = projection;\n      }\n      await window.arc.host.command('viewport.setPose', {\n        viewportId,\n        position: source.position,\n        target: source.target,\n      });\n      await window.arc.host.command('viewport.setCameraMode', { viewportId, projection: 'perspective' });\n      setProjection('perspective');\n      setCameraSourceId(sourceId);\n    } catch (error) {\n      setViewportError(error instanceof Error ? error.message : String(error));\n    }\n  };\n\n'''
+          if marker not in text:
+            raise SystemExit('bookmark marker missing')
+          text = text.replace(marker, insert + marker, 1)
+          text = text.replace(
+            "  const transportLabel =",
+            "  const cameraSourceLabel =\n    cameraSourceId === 'editor'\n      ? 'Editor Camera'\n      : (sceneCameras.find((camera) => camera.id === cameraSourceId)?.name ?? 'Scene Camera');\n  const transportLabel =",
+            1,
+          )
+          toolbar = '''        <div className="arc-viewport-view-options">\n          <details className="arc-viewport-show-menu">\n            <summary>{cameraSourceLabel}</summary>\n            <div className="arc-viewport-show-popup viewport-camera-source-menu">\n              <button onClick={() => void selectCameraSource('editor')}>Editor Camera</button>\n              {sceneCameras.map((camera) => (\n                <button key={camera.id} onClick={() => void selectCameraSource(camera.id)}>\n                  {camera.name}\n                </button>\n              ))}\n              {sceneCameras.length === 0 && <span className="arc-viewport-menu-empty">No scene cameras</span>}\n            </div>\n          </details>'''
+          if '        <div className="arc-viewport-view-options">' not in text:
+            raise SystemExit('toolbar marker missing')
+          text = text.replace('        <div className="arc-viewport-view-options">', toolbar, 1)
+          p.write_text(text)
+          PY
+          npm ci --prefix editor
+          npx --prefix editor prettier --write editor/src/renderer/src/viewport/ViewportPanel.tsx editor/src/renderer/src/viewport/viewportCameraSource.ts editor/src/renderer/src/viewport/viewportCameraSource.test.ts
+          npm run format:check --prefix editor
+          npm run lint --prefix editor
+          npm run typecheck --prefix editor
+          npm test --prefix editor -- --run src/renderer/src/viewport/viewportCameraSource.test.ts src/renderer/src/viewport/ViewportPanel.test.tsx
+      - name: Commit implementation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898218+github-actions[bot]@users.noreply.github.com"
+          git add editor/src/renderer/src/viewport
+          git commit -m "feat(editor): switch viewport between editor and scene cameras [camera-source-impl]"
+          git push origin HEAD:feature/viewport-scene-camera-switching
