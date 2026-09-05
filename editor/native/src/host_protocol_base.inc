@@ -2040,6 +2040,7 @@ std::string to_json(const host_project_assets_snapshot& snapshot)
         const auto& asset = snapshot.assets[index];
         if (index != 0) json += ',';
         json += "{\"guid\":" + quote(asset.guid) + ",\"path\":" + quote(asset.path) +
+                ",\"title\":" + quote(asset.title) + ",\"description\":" + quote(asset.description) +
                 ",\"scope\":" + quote(asset.scope) + ",\"kind\":" + quote(asset.kind) +
                 ",\"typeId\":" + quote(asset.type_id) + ",\"importerId\":" + quote(asset.importer_id) +
                 ",\"state\":" + quote(asset.state) + ",\"residency\":" + quote(asset.residency) +

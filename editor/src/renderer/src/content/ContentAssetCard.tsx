@@ -42,6 +42,8 @@ export const assetFileExtension = (asset: AssetItem) => {
 };
 
 export const assetDisplayName = (asset: AssetItem) => {
+  const title = asset.title?.trim();
+  if (title) return title;
   const extension = assetFileExtension(asset);
   const suffix = extension ? `.${extension}` : '';
   const name = asset.name.trim() || fileNameFromPath(asset.path);
@@ -183,6 +185,7 @@ function AssetHoverDetails({ asset }: { asset: AssetItem }) {
         <strong>{assetDisplayName(asset)}</strong>
         <span>{assetPresentationLabel(asset)}</span>
       </header>
+      {asset.description && <p className="content-asset-hover-description">{asset.description}</p>}
       <div className="content-asset-hover-section">
         <AssetDetailRow label="Size" value={formatBytes(asset.sourceBytes)} />
         {asset.artifactSize !== undefined && asset.artifactSize > 0 && (

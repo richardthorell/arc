@@ -92,6 +92,8 @@ asset_metadata_result load_asset_metadata(const std::filesystem::path& path)
     parsed.guid = *guid;
     parsed.type = *type;
     parsed.importer = *importer;
+    parsed.title = document.value("title", std::string{});
+    parsed.description = document.value("description", std::string{});
     parsed.settings_version = document.value("settingsVersion", 1u);
     if (parsed.settings_version == 0)
     {
@@ -161,6 +163,8 @@ asset_status save_asset_metadata(const std::filesystem::path& path, const asset_
                   {"settingsVersion", metadata.settings_version},
                   {"settings", std::move(settings)},
                   {"subassets", json::array()}};
+    if (!metadata.title.empty()) document["title"] = metadata.title;
+    if (!metadata.description.empty()) document["description"] = metadata.description;
     for (const asset_subasset_metadata& subasset : metadata.subassets)
         document["subassets"].push_back(subasset_json(subasset));
 

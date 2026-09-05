@@ -102,6 +102,7 @@ describe('ContentAssetCard', () => {
     const view = renderCard(mesh);
 
     expect(assetDisplayName(mesh)).toBe('SM_Cabin');
+    expect(assetDisplayName({ ...mesh, title: 'Starter Cabin' })).toBe('Starter Cabin');
     expect(assetFileExtension(mesh)).toBe('glb');
     expect(view.getByTitle('SM_Cabin')).toHaveClass('content-asset-name');
     expect(view.getByText('Mesh')).toBeVisible();

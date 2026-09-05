@@ -707,6 +707,8 @@ struct host_asset_snapshot
 {
     std::string guid;
     std::string path;
+    std::string title;
+    std::string description;
     std::string scope{"project"};
     std::string kind;
     std::string type_id;

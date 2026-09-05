@@ -275,7 +275,8 @@ export function ContentBrowserPanel({
   }, [creating]);
 
   const assets = useMemo(() => project?.assets ?? [], [project?.assets]);
-  const selected = assets.find((asset) => asset.id === selectedAssetId) ?? null;
+  const selected =
+    assets.find((asset) => asset.id === selectedAssetId) ?? assets.find((asset) => selection.has(asset.id)) ?? null;
   const projectAssets = useMemo(() => assets.filter((asset) => (asset.scope ?? 'project') === 'project'), [assets]);
   const builtinAssets = useMemo(() => assets.filter((asset) => asset.scope === 'builtin'), [assets]);
   const favoriteAssets = useMemo(() => assets.filter((asset) => favorites.has(favoriteId(asset))), [assets, favorites]);

@@ -33,6 +33,8 @@ export type SceneEntity = {
 export type AssetItem = {
   id: string;
   name: string;
+  title?: string;
+  description?: string;
   path: string;
   scope?: 'builtin' | 'project' | 'user' | 'organization';
   readOnly?: boolean;

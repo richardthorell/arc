@@ -5400,6 +5400,8 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
                 display_path = asset.source_path;
             host_asset_snapshot host_asset{.guid = arc::assets::to_string(asset.guid),
                                            .path = arc::assets::normalize_asset_path(display_path),
+                                           .title = asset.title,
+                                           .description = asset.description,
                                            .scope = asset.read_only ? "builtin" : "project",
                                            .kind = kind_name(asset.type),
                                            .type_id = arc::assets::to_string(asset.type),
