@@ -98,16 +98,13 @@ TEST_CASE("material instances bake numeric overrides into isolated runtime param
     auto runtime = std::make_shared<arc::render::material_runtime_program>();
     runtime->parameter_block_size = 32;
     runtime->parameter_defaults.resize(runtime->parameter_block_size);
-    runtime->parameters = {{.id = roughness_id,
-                            .name = "roughness",
-                            .type = arc::render::shader_parameter_type::float32,
-                            .offset = 0,
-                            .size = 4},
-                           {.id = tint_id,
-                            .name = "tint",
-                            .type = arc::render::shader_parameter_type::float3,
-                            .offset = 16,
-                            .size = 12}};
+    runtime->parameters = {
+        {.id = roughness_id,
+         .name = "roughness",
+         .type = arc::render::shader_parameter_type::float32,
+         .offset = 0,
+         .size = 4},
+        {.id = tint_id, .name = "tint", .type = arc::render::shader_parameter_type::float3, .offset = 16, .size = 12}};
 
     const float default_roughness = 0.25f;
     const float default_tint[3]{1.0f, 1.0f, 1.0f};
@@ -121,15 +118,13 @@ TEST_CASE("material instances bake numeric overrides into isolated runtime param
 
     arc::render::material_instance_descriptor warm_instance;
     warm_instance.parent = definition.material.handle;
-    warm_instance.overrides = {
-        {.id = roughness_id, .name = "roughness", .value = 0.8f},
-        {.id = tint_id, .name = "tint", .value = arc::math::vector3f{1.0f, 0.35f, 0.1f}}};
+    warm_instance.overrides = {{.id = roughness_id, .name = "roughness", .value = 0.8f},
+                               {.id = tint_id, .name = "tint", .value = arc::math::vector3f{1.0f, 0.35f, 0.1f}}};
 
     arc::render::material_instance_descriptor cool_instance;
     cool_instance.parent = definition.material.handle;
-    cool_instance.overrides = {
-        {.id = roughness_id, .name = "roughness", .value = 0.1f},
-        {.id = tint_id, .name = "tint", .value = arc::math::vector3f{0.1f, 0.4f, 1.0f}}};
+    cool_instance.overrides = {{.id = roughness_id, .name = "roughness", .value = 0.1f},
+                               {.id = tint_id, .name = "tint", .value = arc::math::vector3f{0.1f, 0.4f, 1.0f}}};
 
     const auto warm = arc::render::resolve_material_instance(definition, warm_instance);
     const auto cool = arc::render::resolve_material_instance(definition, cool_instance);
