@@ -48,6 +48,7 @@ export type CommandId =
   | 'viewport.scale'
   | 'viewport.terrain'
   | 'viewport.frameSelected'
+  | 'viewport.snapToFloor'
   | 'layout.reset'
   | 'layout.levelDesign'
   | 'layout.materials'

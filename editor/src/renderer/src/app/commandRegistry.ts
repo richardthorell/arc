@@ -166,6 +166,15 @@ export const commandRegistry: Record<CommandId, CommandRegistration> = {
     defaultKeybindings: ['F'],
     enabled: (context) => context.viewportFocused && context.hasSelection,
   },
+  'viewport.snapToFloor': {
+    id: 'viewport.snapToFloor',
+    label: 'Snap to Floor',
+    description: 'Drop the selected entity onto the nearest queryable surface below it.',
+    category: 'Viewport',
+    defaultKeybindings: ['End'],
+    enabled: (context) => context.viewportFocused && context.hasSelection,
+    disabledReason: () => 'Focus the viewport and select an entity first',
+  },
   'layout.reset': {
     id: 'layout.reset',
     label: 'Reset Layout',

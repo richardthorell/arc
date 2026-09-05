@@ -1084,6 +1084,8 @@ std::string command_type(const host_command_payload& payload)
                 return "entity.delete";
             else if constexpr (std::is_same_v<type, host_duplicate_entity_command>)
                 return "entity.duplicate";
+            else if constexpr (std::is_same_v<type, host_snap_to_floor_command>)
+                return "entity.snapToFloor";
             else if constexpr (std::is_same_v<type, host_create_prefab_command>)
                 return "prefab.create";
             else if constexpr (std::is_same_v<type, host_instantiate_prefab_command>)
@@ -1536,7 +1538,8 @@ std::string to_json(const host_command_envelope& envelope)
             else if constexpr (std::is_same_v<type, host_create_entity_command>)
                 return "{\"kind\":" + quote(to_string(payload.kind)) + ",\"parent\":" + to_json(payload.parent) + '}';
             else if constexpr (std::is_same_v<type, host_delete_entity_command> ||
-                               std::is_same_v<type, host_duplicate_entity_command>)
+                               std::is_same_v<type, host_duplicate_entity_command> ||
+                               std::is_same_v<type, host_snap_to_floor_command>)
                 return "{\"entity\":" + to_json(payload.entity) + '}';
             else if constexpr (std::is_same_v<type, host_select_entity_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"additive\":" + bool_json(payload.additive) +
@@ -2458,6 +2461,16 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             return false;
         }
         entity_field_value(payload, "beforeSibling", command.before_sibling);
+        envelope.payload = command;
+    }
+    else if (type == "entity.snapToFloor")
+    {
+        host_snap_to_floor_command command;
+        if (!entity_field_value(payload, "entity", command.entity))
+        {
+            error = "Snap-to-floor command requires entity";
+            return false;
+        }
         envelope.payload = command;
     }
     else if (type == "entity.rename")

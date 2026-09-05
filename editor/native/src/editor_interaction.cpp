@@ -79,35 +79,6 @@ float bounds_radius(const geometric::box3f& bounds) noexcept
     return std::max(0.1f, math::length(geometric::size(bounds)) * 0.5f);
 }
 
-bool intersect_ray_triangle(const editor_ray& ray, const math::vector3f& a, const math::vector3f& b,
-                            const math::vector3f& c, float& distance) noexcept
-{
-    constexpr float epsilon = 1.0e-7f;
-    const auto edge1 = math::sub(b, a);
-    const auto edge2 = math::sub(c, a);
-    const auto p = math::cross(ray.direction, edge2);
-    const float determinant = math::dot(edge1, p);
-    if (std::abs(determinant) <= epsilon) return false;
-    const float inverse_determinant = 1.0f / determinant;
-    const auto offset = math::sub(ray.origin, a);
-    const float u = math::dot(offset, p) * inverse_determinant;
-    if (u < 0.0f || u > 1.0f) return false;
-    const auto q = math::cross(offset, edge1);
-    const float v = math::dot(ray.direction, q) * inverse_determinant;
-    if (v < 0.0f || u + v > 1.0f) return false;
-    const float hit = math::dot(edge2, q) * inverse_determinant;
-    if (hit < 0.0f) return false;
-    distance = hit;
-    return true;
-}
-
-float world_hit_distance(const editor_ray& world_ray, const math::matrix4f& world,
-                         const math::vector3f& local_position) noexcept
-{
-    const auto world_position = math::transform_point(world, local_position);
-    return math::dot(math::sub(world_position, world_ray.origin), world_ray.direction);
-}
-
 } // namespace
 
 editor_camera_controller::editor_camera_controller() noexcept
@@ -349,73 +320,14 @@ ecs::entity pick_bounded_entity(const ecs::world& registry, const editor_ray& ra
 editor_pick_result pick_scene_entity(const ecs::world& registry, const render::renderer& renderer,
                                      const editor_ray& ray) noexcept
 {
-    editor_pick_result picked{.distance = std::numeric_limits<float>::max()};
-
-    registry.view<scene::transform_component, scene::bounds_component>().each(
-        [&](ecs::entity value, const scene::transform_component& transform, const scene::bounds_component& bounds)
-        {
-            const auto* active = registry.try_get<scene::active_component>(value);
-            if (active && !active->active) return;
-            if (const auto* mesh_renderer = registry.try_get<scene::mesh_renderer_component>(value);
-                mesh_renderer && !mesh_renderer->visible)
-                return;
-
-            float broad_distance{};
-            if (!intersect_ray_box(ray, transformed_bounds(bounds.local_bounds, transform), broad_distance)) return;
-
-            const auto world = transform.dirty ? scene::local_matrix(transform) : transform.world;
-            math::matrix4f inverse_world;
-            if (!scene::inverse_affine(world, inverse_world)) return;
-            const editor_ray local_ray{.origin = math::transform_point(inverse_world, ray.origin),
-                                       .direction =
-                                           math::normalize(math::transform_vector(inverse_world, ray.direction))};
-
-            float hit_distance = broad_distance;
-            bool exact = false;
-            if (const auto* terrain = registry.try_get<scene::terrain_component>(value))
-            {
-                const auto terrain_hit = scene::raycast_terrain(*terrain, local_ray.origin, local_ray.direction);
-                if (!terrain_hit.hit) return;
-                hit_distance = world_hit_distance(ray, world, terrain_hit.position);
-                exact = true;
-            }
-            else if (const auto* mesh_renderer = registry.try_get<scene::mesh_renderer_component>(value))
-            {
-                const auto* mesh = renderer.mesh_data_for(mesh_renderer->mesh);
-                if (mesh && mesh->indices.size() >= 3)
-                {
-                    float local_distance = std::numeric_limits<float>::max();
-                    for (std::size_t index = 0; index + 2 < mesh->indices.size(); index += 3)
-                    {
-                        const auto ia = mesh->indices[index];
-                        const auto ib = mesh->indices[index + 1];
-                        const auto ic = mesh->indices[index + 2];
-                        if (ia >= mesh->vertices.size() || ib >= mesh->vertices.size() || ic >= mesh->vertices.size())
-                            continue;
-                        const auto position = [](const render::mesh_vertex& vertex)
-                        { return math::vector3f{vertex.position[0], vertex.position[1], vertex.position[2]}; };
-                        float triangle_distance{};
-                        if (intersect_ray_triangle(local_ray, position(mesh->vertices[ia]),
-                                                   position(mesh->vertices[ib]), position(mesh->vertices[ic]),
-                                                   triangle_distance))
-                            local_distance = std::min(local_distance, triangle_distance);
-                    }
-                    if (local_distance == std::numeric_limits<float>::max()) return;
-                    hit_distance = world_hit_distance(
-                        ray, world, math::add(local_ray.origin, math::mul(local_ray.direction, local_distance)));
-                    exact = true;
-                }
-            }
-
-            if (hit_distance < 0.0f || hit_distance >= picked.distance) return;
-            picked = {.entity = value,
-                      .distance = hit_distance,
-                      .exact = exact,
-                      .background = registry.has<scene::terrain_component>(value) ||
-                                    registry.has<scene::water_component>(value) ||
-                                    registry.has<scene::world_environment_component>(value)};
-        });
-    return picked;
+    const auto hit = scene::raycast_scene(registry, &renderer, ray.origin, ray.direction);
+    if (!hit) return {.distance = std::numeric_limits<float>::max()};
+    return {.entity = hit.entity,
+            .distance = hit.distance,
+            .exact = hit.exact,
+            .background = registry.has<scene::terrain_component>(hit.entity) ||
+                          registry.has<scene::water_component>(hit.entity) ||
+                          registry.has<scene::world_environment_component>(hit.entity)};
 }
 
 editor_ray screen_ray_from_camera(const scene::camera_component& camera,
