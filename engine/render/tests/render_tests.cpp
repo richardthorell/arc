@@ -1508,6 +1508,23 @@ TEST_CASE("GPU transparent keys preserve bin then back-to-front depth and stable
     REQUIRE(make_gpu_transparent_sort_key(0.5f, 2u, 4u) < make_gpu_transparent_sort_key(0.5f, 2u, 5u));
 }
 
+TEST_CASE("GPU transparent reference sort is stable back to front within pipeline bins")
+{
+    using namespace arc::render;
+    const std::array records{
+        gpu_draw_record{.instance_index = 5u, .pipeline_bin = 2u,
+                        .sort_key = make_gpu_transparent_sort_key(0.2f, 2u, 5u)},
+        gpu_draw_record{.instance_index = 8u, .pipeline_bin = 1u,
+                        .sort_key = make_gpu_transparent_sort_key(0.4f, 1u, 8u)},
+        gpu_draw_record{.instance_index = 3u, .pipeline_bin = 2u,
+                        .sort_key = make_gpu_transparent_sort_key(0.8f, 2u, 3u)},
+    };
+    const auto sorted = sort_gpu_transparent_records(records);
+    REQUIRE(sorted[0].pipeline_bin == 1u);
+    REQUIRE(sorted[1].instance_index == 3u);
+    REQUIRE(sorted[2].instance_index == 5u);
+}
+
 TEST_CASE("renderer submits committed packets to attached backend")
 {
     auto backend = std::make_unique<recording_backend>();

@@ -1,0 +1,118 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct gpu_scene_instance
+{
+    vec4 bounds_min;
+    vec4 bounds_max;
+    uvec4 geometry;
+    uvec4 material_flags;
+    uvec4 draw_metadata;
+    vec4 distance_error;
+};
+
+struct draw_indexed_indirect_command
+{
+    uint index_count;
+    uint instance_count;
+    uint first_index;
+    int vertex_offset;
+    uint first_instance;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer gpu_scene_buffer
+{
+    gpu_scene_instance instances[];
+} scene;
+layout(std430, set = 0, binding = 1) buffer indirect_command_buffer
+{
+    draw_indexed_indirect_command commands[];
+};
+layout(std430, set = 0, binding = 2) buffer visibility_counter_buffer
+{
+    uint visible_count;
+    uint frustum_rejected;
+    uint distance_rejected;
+    uint occlusion_rejected;
+    uint candidate_count;
+    uint active_bins;
+    uint overflow_count;
+    uint transparent_count;
+} counters;
+layout(set = 0, binding = 3) uniform sampler2D unused_hzb[2];
+
+layout(push_constant) uniform visibility_constants
+{
+    mat4 view_projection;
+    vec4 camera_position_and_error;
+    uint instance_capacity;
+    uint render_layer_mask;
+    uint camera_cut;
+    uint reserved;
+    vec4 hzb_parameters;
+} constants;
+
+shared uvec2 sort_keys[1024];
+shared draw_indexed_indirect_command sort_commands[1024];
+
+bool key_greater(uvec2 lhs, uvec2 rhs)
+{
+    return lhs.x > rhs.x || (lhs.x == rhs.x && lhs.y > rhs.y);
+}
+
+void main()
+{
+    uint count = min(counters.transparent_count, 1024u);
+    uint base = constants.instance_capacity * 2u;
+    for (uint slot = gl_LocalInvocationIndex; slot < 1024u; slot += 256u)
+    {
+        if (slot < count)
+        {
+            draw_indexed_indirect_command command = commands[base + slot];
+            gpu_scene_instance instance = scene.instances[command.first_instance];
+            vec3 center = (instance.bounds_min.xyz + instance.bounds_max.xyz) * 0.5;
+            vec4 clip = constants.view_projection * vec4(center, 1.0);
+            float depth = clamp(clip.z / max(abs(clip.w), 1.0e-6), 0.0, 1.0);
+            uint quantized = uint(depth * 16777215.0);
+            sort_keys[slot] = uvec2(0x00ffffffu - quantized, command.first_instance);
+            sort_commands[slot] = command;
+        }
+        else
+        {
+            sort_keys[slot] = uvec2(0xffffffffu);
+            sort_commands[slot].instance_count = 0u;
+        }
+    }
+    barrier();
+
+    for (uint sequence = 2u; sequence <= 1024u; sequence <<= 1u)
+        for (uint distance = sequence >> 1u; distance > 0u; distance >>= 1u)
+        {
+            for (uint slot = gl_LocalInvocationIndex; slot < 1024u; slot += 256u)
+            {
+                uint partner = slot ^ distance;
+                if (partner > slot)
+                {
+                    bool ascending = (slot & sequence) == 0u;
+                    bool swap_values = ascending ? key_greater(sort_keys[slot], sort_keys[partner])
+                                                 : key_greater(sort_keys[partner], sort_keys[slot]);
+                    if (swap_values)
+                    {
+                        uvec2 key = sort_keys[slot];
+                        sort_keys[slot] = sort_keys[partner];
+                        sort_keys[partner] = key;
+                        draw_indexed_indirect_command command = sort_commands[slot];
+                        sort_commands[slot] = sort_commands[partner];
+                        sort_commands[partner] = command;
+                    }
+                }
+            }
+            barrier();
+        }
+
+    for (uint slot = gl_LocalInvocationIndex; slot < count; slot += 256u)
+        commands[base + slot] = sort_commands[slot];
+    if (gl_LocalInvocationIndex == 0u && counters.transparent_count > 1024u)
+        atomicAdd(counters.overflow_count, counters.transparent_count - 1024u);
+}

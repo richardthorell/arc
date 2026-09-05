@@ -40,7 +40,7 @@ layout(std430, set = 0, binding = 2) buffer visibility_counter_buffer
     uint candidate_count;
     uint active_bins;
     uint overflow_count;
-    uint reserved;
+    uint transparent_count;
 } counters;
 layout(set = 0, binding = 3) uniform sampler2D hzb_generations[2];
 
@@ -134,14 +134,36 @@ void main()
     {
         command.instance_count = 1u;
         command.first_instance = index;
-        uint compact_index = atomicAdd(counters.visible_count, 1u);
-        if (compact_index < constants.instance_capacity)
+        bool bindless_compatible = (instance.material_flags.w & (1u << 31u)) != 0u;
+        bool transparent = (instance.material_flags.w & (1u << 2u)) != 0u;
+        if (bindless_compatible && transparent)
         {
-            commands[constants.instance_capacity + compact_index] = command;
-            atomicMax(counters.active_bins, 1u);
+            uint compact_index = atomicAdd(counters.transparent_count, 1u);
+            if (compact_index < constants.instance_capacity)
+            {
+                commands[constants.instance_capacity * 2u + compact_index] = command;
+                atomicMax(counters.active_bins, 2u);
+            }
+            else
+                atomicAdd(counters.overflow_count, 1u);
         }
-        else
-            atomicAdd(counters.overflow_count, 1u);
+        else if (bindless_compatible)
+        {
+            uint compact_index = atomicAdd(counters.visible_count, 1u);
+            if (compact_index < constants.instance_capacity)
+            {
+                commands[constants.instance_capacity + compact_index] = command;
+                atomicMax(counters.active_bins, 1u);
+            }
+            else
+                atomicAdd(counters.overflow_count, 1u);
+        }
     }
-    commands[index] = command;
+    draw_indexed_indirect_command stable_command = command;
+    if ((instance.material_flags.w & (1u << 31u)) != 0u)
+    {
+        stable_command.first_index = 0u;
+        stable_command.vertex_offset = 0;
+    }
+    commands[index] = stable_command;
 }
