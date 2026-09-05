@@ -1,0 +1,53 @@
+name: Verify Settings Stage 1
+
+on:
+  push:
+    branches:
+      - feat/editor-settings-stage-1
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feat/editor-settings-stage-1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.12.0
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+
+      - name: Install editor dependencies
+        run: npm ci --prefix editor
+
+      - name: Apply formatting
+        run: npm run format --prefix editor
+
+      - name: Commit formatting fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor
+          if ! git diff --cached --quiet; then
+            git commit -m "Apply editor formatting"
+            git push origin HEAD:feat/editor-settings-stage-1
+          fi
+
+      - name: Verify formatting
+        run: npm run format:check --prefix editor
+
+      - name: Lint
+        run: npm run lint --prefix editor
+
+      - name: Typecheck
+        run: npm run typecheck --prefix editor
+
+      - name: Settings tests
+        run: npm test --prefix editor -- --run editor/src/renderer/src/ui/UiTreeView.test.tsx editor/src/renderer/src/settings/SettingsDialog.test.tsx
