@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { UiTreeView } from './UiTreeView';
@@ -42,7 +42,7 @@ describe('UiTreeView', () => {
     expect(screen.queryByRole('treeitem', { name: /System/ })).not.toBeInTheDocument();
   });
 
-  it('navigates visible nodes with the keyboard', () => {
+  it('navigates visible nodes with the keyboard', async () => {
     render(
       <UiTreeView ariaLabel="Editor settings" defaultExpandedIds={['editing']} nodes={nodes} selectedId="editing" />,
     );
@@ -50,6 +50,6 @@ describe('UiTreeView', () => {
     const editing = screen.getByRole('treeitem', { name: /Editing/ });
     editing.focus();
     fireEvent.keyDown(editing, { key: 'ArrowDown' });
-    expect(screen.getByRole('treeitem', { name: /Viewport/ })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole('treeitem', { name: /Viewport/ })).toHaveFocus());
   });
 });
