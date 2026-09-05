@@ -137,6 +137,37 @@ terrain_hierarchy build_terrain_hierarchy(std::span<const float> heights, std::u
     return result;
 }
 
+terrain_gpu_hierarchy make_terrain_gpu_hierarchy(const terrain_hierarchy& hierarchy)
+{
+    terrain_gpu_hierarchy result{.root = hierarchy.root,
+                                 .leaf_count = hierarchy.leaf_count,
+                                 .maximum_depth = hierarchy.maximum_depth,
+                                 .patch_quads = hierarchy.patch_quads};
+    result.nodes.reserve(hierarchy.nodes.size());
+    for (const auto& node : hierarchy.nodes)
+    {
+        gpu_terrain_node_record packed{};
+        for (std::uint32_t component = 0; component < 3; ++component)
+        {
+            packed.bounds_min[component] = node.local_bounds.min[component];
+            packed.bounds_max[component] = node.local_bounds.max[component];
+        }
+        packed.bounds_min[3] = node.minimum_height;
+        packed.bounds_max[3] = node.maximum_height;
+        packed.samples[0] = node.samples.min_x;
+        packed.samples[1] = node.samples.min_z;
+        packed.samples[2] = node.samples.max_x;
+        packed.samples[3] = node.samples.max_z;
+        std::copy(node.children.begin(), node.children.end(), packed.children);
+        packed.geometric_error = node.geometric_error;
+        packed.depth = node.depth;
+        packed.leaf = node.leaf() ? 1u : 0u;
+        result.nodes.push_back(packed);
+    }
+    if (result.root >= result.nodes.size()) result.root = invalid_terrain_node;
+    return result;
+}
+
 bool update_terrain_hierarchy(terrain_hierarchy& hierarchy, std::span<const float> heights,
                               std::uint32_t sample_resolution, float width, float depth,
                               terrain_sample_region dirty_region, const terrain_lod_settings& settings)
@@ -271,6 +302,25 @@ terrain_selection_result select_terrain_patches(terrain_handle terrain, const te
         for (const auto& patch : result.patches)
             scratch->previous_nodes.push_back(patch.node_index);
     }
+    return result;
+}
+
+bounded_terrain_selection select_terrain_patches_bounded(
+    terrain_handle terrain, const terrain_hierarchy& hierarchy, const math::matrix4f& model,
+    const render_camera& camera, float geometry_error_threshold, std::uint32_t capacity, float terrain_error_bias,
+    terrain_selection_scratch* scratch)
+{
+    bounded_terrain_selection result;
+    result.capacity = capacity;
+    result.selection = select_terrain_patches(terrain, hierarchy, model, camera, geometry_error_threshold,
+                                              terrain_error_bias, scratch);
+    if (result.selection.patches.size() <= capacity) return result;
+    result.overflowed = true;
+    result.use_conventional_fallback = true;
+    result.selection.patches.clear();
+    result.selection.statistics.selected_patches = 0u;
+    result.selection.statistics.rendered_triangles = 0u;
+    result.selection.statistics.patches_per_lod.fill(0u);
     return result;
 }
 

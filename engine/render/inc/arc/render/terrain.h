@@ -165,6 +165,46 @@ struct terrain_selection_scratch
     std::vector<std::uint32_t> previous_nodes;
 };
 
+/** @brief Std430-compatible terrain hierarchy node consumed by GPU traversal backends. */
+struct alignas(16) gpu_terrain_node_record
+{
+    float bounds_min[4]{};
+    float bounds_max[4]{};
+    std::uint32_t samples[4]{};
+    std::uint32_t children[4]{invalid_terrain_node, invalid_terrain_node, invalid_terrain_node,
+                              invalid_terrain_node};
+    float geometric_error{};
+    std::uint32_t depth{};
+    std::uint32_t leaf{};
+    std::uint32_t reserved{};
+};
+
+/** @brief Immutable packed hierarchy plus its stable root index. */
+struct terrain_gpu_hierarchy
+{
+    std::vector<gpu_terrain_node_record> nodes;
+    std::uint32_t root{invalid_terrain_node};
+    std::uint32_t leaf_count{};
+    std::uint32_t maximum_depth{};
+    std::uint32_t patch_quads{32};
+
+    [[nodiscard]] bool valid() const noexcept
+    {
+        return root < nodes.size() && !nodes.empty();
+    }
+};
+
+/** @brief Result of bounded terrain traversal used to validate GPU overflow fallback. */
+struct bounded_terrain_selection
+{
+    terrain_selection_result selection;
+    std::uint32_t capacity{};
+    bool overflowed{};
+    bool use_conventional_fallback{};
+};
+
+static_assert(sizeof(gpu_terrain_node_record) == 80);
+
 /**
  * @brief Build the deterministic hierarchy for square row-major height data.
  * @param heights Authoritative row-major height samples.
@@ -177,6 +217,9 @@ struct terrain_selection_scratch
 [[nodiscard]] terrain_hierarchy build_terrain_hierarchy(std::span<const float> heights, std::uint32_t sample_resolution,
                                                         float width, float depth,
                                                         const terrain_lod_settings& settings = {});
+
+/** @brief Pack a CPU terrain hierarchy into a deterministic Vulkan/Metal/D3D-neutral table. */
+[[nodiscard]] terrain_gpu_hierarchy make_terrain_gpu_hierarchy(const terrain_hierarchy& hierarchy);
 
 /**
  * @brief Incrementally recompute nodes affected by a height edit.
@@ -194,6 +237,18 @@ bool update_terrain_hierarchy(terrain_hierarchy& hierarchy, std::span<const floa
 select_terrain_patches(terrain_handle terrain, const terrain_hierarchy& hierarchy, const math::matrix4f& model,
                        const render_camera& camera, float geometry_error_threshold, float terrain_error_bias = 1.0f,
                        terrain_selection_scratch* scratch = nullptr);
+
+/**
+ * @brief Run the reference selector under a GPU-equivalent output capacity.
+ *
+ * Overflow deliberately discards the partial result and requests conventional
+ * fallback for the whole terrain instance so the rendered surface remains hole-free.
+ */
+[[nodiscard]] bounded_terrain_selection
+select_terrain_patches_bounded(terrain_handle terrain, const terrain_hierarchy& hierarchy,
+                               const math::matrix4f& model, const render_camera& camera,
+                               float geometry_error_threshold, std::uint32_t capacity,
+                               float terrain_error_bias = 1.0f, terrain_selection_scratch* scratch = nullptr);
 
 /**
  * @brief Build one shared grid index variant.

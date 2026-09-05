@@ -3447,6 +3447,60 @@ TEST_CASE("terrain stitched topology variants remain valid and deterministic")
     }
 }
 
+TEST_CASE("terrain GPU hierarchy packing preserves deterministic std430 records")
+{
+    constexpr std::uint32_t resolution = 65u;
+    std::vector<float> heights(static_cast<std::size_t>(resolution) * resolution);
+    for (std::uint32_t z = 0; z < resolution; ++z)
+        for (std::uint32_t x = 0; x < resolution; ++x)
+            heights[static_cast<std::size_t>(z) * resolution + x] = static_cast<float>(x + z) * 0.125f;
+    const auto hierarchy = arc::render::build_terrain_hierarchy(
+        heights, resolution, 64.0f, 64.0f, {.patch_quads = 16u});
+    const auto first = arc::render::make_terrain_gpu_hierarchy(hierarchy);
+    const auto second = arc::render::make_terrain_gpu_hierarchy(hierarchy);
+    REQUIRE(first.valid());
+    REQUIRE(first.root == hierarchy.root);
+    REQUIRE(first.nodes.size() == hierarchy.nodes.size());
+    REQUIRE(std::memcmp(first.nodes.data(), second.nodes.data(),
+                        first.nodes.size() * sizeof(arc::render::gpu_terrain_node_record)) == 0);
+    const auto& source = hierarchy.nodes[first.root];
+    const auto& packed = first.nodes[first.root];
+    REQUIRE(packed.samples[0] == source.samples.min_x);
+    REQUIRE(packed.samples[3] == source.samples.max_z);
+    REQUIRE(packed.bounds_min[3] == Catch::Approx(source.minimum_height));
+    REQUIRE(packed.bounds_max[3] == Catch::Approx(source.maximum_height));
+    REQUIRE(packed.leaf == (source.leaf() ? 1u : 0u));
+}
+
+TEST_CASE("bounded terrain traversal discards partial output on overflow")
+{
+    constexpr std::uint32_t resolution = 65u;
+    std::vector<float> heights(static_cast<std::size_t>(resolution) * resolution);
+    for (std::uint32_t z = 0; z < resolution; ++z)
+        for (std::uint32_t x = 0; x < resolution; ++x)
+            heights[static_cast<std::size_t>(z) * resolution + x] =
+                std::sin(static_cast<float>(x) * 0.31f) * std::cos(static_cast<float>(z) * 0.27f);
+    const auto hierarchy = arc::render::build_terrain_hierarchy(
+        heights, resolution, 64.0f, 64.0f, {.patch_quads = 8u});
+    arc::render::render_camera camera;
+    camera.view_projection = arc::math::identity<float, 4>();
+    camera.render_width = 1920u;
+    camera.render_height = 1080u;
+    const auto unbounded = arc::render::select_terrain_patches(
+        {.index = 1u, .generation = 1u}, hierarchy, arc::math::identity<float, 4>(), camera, 0.0f);
+    REQUIRE(unbounded.patches.size() > 1u);
+    const auto overflow = arc::render::select_terrain_patches_bounded(
+        {.index = 1u, .generation = 1u}, hierarchy, arc::math::identity<float, 4>(), camera, 0.0f, 1u);
+    REQUIRE(overflow.overflowed);
+    REQUIRE(overflow.use_conventional_fallback);
+    REQUIRE(overflow.selection.patches.empty());
+    const auto complete = arc::render::select_terrain_patches_bounded(
+        {.index = 1u, .generation = 1u}, hierarchy, arc::math::identity<float, 4>(), camera, 0.0f,
+        static_cast<std::uint32_t>(unbounded.patches.size()));
+    REQUIRE_FALSE(complete.overflowed);
+    REQUIRE(complete.selection.patches.size() == unbounded.patches.size());
+}
+
 TEST_CASE("terrain selection responds to projected error and balances neighboring LODs")
 {
     constexpr std::uint32_t resolution = 129u;
