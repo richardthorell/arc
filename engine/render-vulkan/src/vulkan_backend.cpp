@@ -323,6 +323,25 @@ struct virtual_geometry_traversal_push_constants
 };
 static_assert(sizeof(virtual_geometry_traversal_push_constants) == 120);
 
+struct alignas(16) virtual_geometry_gpu_raster_bin
+{
+    std::uint32_t visible_index{};
+    std::uint32_t minimum_tile_x{};
+    std::uint32_t minimum_tile_y{};
+    std::uint32_t maximum_tile_x{};
+    std::uint32_t maximum_tile_y{};
+    std::uint32_t flags{};
+    std::uint32_t reserved[2]{};
+};
+static_assert(sizeof(virtual_geometry_gpu_raster_bin) == 32);
+
+struct virtual_geometry_raster_push_constants
+{
+    float view_projection[16]{};
+    std::uint32_t viewport_capacities[4]{};
+};
+static_assert(sizeof(virtual_geometry_raster_push_constants) == 80);
+
 struct material_uniform_data
 {
     float emissive_factor[4]{0.0f, 0.0f, 0.0f, 1.0f};
@@ -1665,6 +1684,7 @@ private:
         std::vector<virtual_mesh_cluster> clusters;
         std::vector<virtual_geometry_gpu_page_record> page_records;
         std::vector<VkDeviceSize> page_offsets;
+        std::vector<std::shared_ptr<const std::vector<std::byte>>> resident_page_bytes;
         std::shared_ptr<const virtual_mesh_data> source;
         std::uint32_t resource_generation{};
         std::uint32_t index_count{};
@@ -3859,6 +3879,7 @@ private:
 
         mesh.page_records = std::move(tables.pages);
         mesh.page_offsets.resize(mesh.page_records.size());
+        mesh.resident_page_bytes.resize(mesh.page_records.size());
         VkDeviceSize heap_size{};
         for (std::size_t page_index = 0; page_index < mesh.page_records.size(); ++page_index)
         {
@@ -3891,6 +3912,8 @@ private:
                                                              event.label + "'");
                 return;
             }
+            mesh.resident_page_bytes[page_index] =
+                std::make_shared<const std::vector<std::byte>>(decoded.begin(), decoded.end());
         }
         if (!upload_table(mesh.page_records, VK_BUFFER_USAGE_TRANSFER_DST_BIT, mesh.page_table))
         {
@@ -3948,7 +3971,10 @@ private:
         if (!upload_buffer_region(&page, sizeof(page), mesh.page_table, offset))
             arc::diagnostics::warn("render.vulkan", "Failed to update virtual-geometry page-table residency");
         else
+        {
             result.succeeded = true;
+            mesh.resident_page_bytes[event.upload.page_index] = event.upload.decoded_bytes;
+        }
         frame_virtual_geometry_upload_results_.push_back(result);
         if (result.succeeded) virtual_geometry_tables_dirty_ = true;
     }
@@ -5343,6 +5369,7 @@ private:
         virtual_geometry_child_mirror_.clear();
         virtual_geometry_root_mirror_.clear();
         virtual_geometry_page_mirror_.clear();
+        virtual_geometry_page_heap_mirror_.clear();
 
         for (const auto& [key, mesh] : ordered)
         {
@@ -5382,8 +5409,21 @@ private:
                 virtual_geometry_child_mirror_.push_back(child + node_base);
             for (const auto root : tables.roots)
                 virtual_geometry_root_mirror_.push_back(root + node_base);
-            virtual_geometry_page_mirror_.insert(virtual_geometry_page_mirror_.end(), mesh->page_records.begin(),
-                                                 mesh->page_records.end());
+            for (std::size_t page_index = 0; page_index < mesh->page_records.size(); ++page_index)
+            {
+                auto page = mesh->page_records[page_index];
+                const auto aligned_offset = (virtual_geometry_page_heap_mirror_.size() + 15u) & ~std::size_t{15u};
+                virtual_geometry_page_heap_mirror_.resize(aligned_offset, std::byte{});
+                page.heap_index = 0u;
+                page.heap_byte_offset = static_cast<std::uint32_t>(aligned_offset);
+                if (page_index < mesh->resident_page_bytes.size() && mesh->resident_page_bytes[page_index])
+                {
+                    const auto& bytes = *mesh->resident_page_bytes[page_index];
+                    virtual_geometry_page_heap_mirror_.insert(virtual_geometry_page_heap_mirror_.end(), bytes.begin(),
+                                                              bytes.end());
+                }
+                virtual_geometry_page_mirror_.push_back(page);
+            }
         }
 
         if (virtual_geometry_node_mirror_.empty()) virtual_geometry_node_mirror_.push_back({});
@@ -5391,6 +5431,7 @@ private:
         if (virtual_geometry_child_mirror_.empty()) virtual_geometry_child_mirror_.push_back(0u);
         if (virtual_geometry_root_mirror_.empty()) virtual_geometry_root_mirror_.push_back(0u);
         if (virtual_geometry_page_mirror_.empty()) virtual_geometry_page_mirror_.push_back({});
+        if (virtual_geometry_page_heap_mirror_.empty()) virtual_geometry_page_heap_mirror_.resize(4u);
 
         const auto replace = [&](gpu_buffer& destination, const auto& values)
         {
@@ -5402,11 +5443,15 @@ private:
                                replace(virtual_geometry_cluster_buffer_, virtual_geometry_cluster_mirror_) &&
                                replace(virtual_geometry_child_buffer_, virtual_geometry_child_mirror_) &&
                                replace(virtual_geometry_root_buffer_, virtual_geometry_root_mirror_) &&
-                               replace(virtual_geometry_page_buffer_, virtual_geometry_page_mirror_);
+                               replace(virtual_geometry_page_buffer_, virtual_geometry_page_mirror_) &&
+                               replace_gpu_mirror_buffer(virtual_geometry_page_heap_buffer_,
+                                                        virtual_geometry_page_heap_mirror_,
+                                                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         if (succeeded)
         {
             virtual_geometry_tables_dirty_ = false;
             virtual_geometry_traversal_descriptors_dirty_ = true;
+            virtual_geometry_raster_descriptors_dirty_ = true;
         }
         return succeeded;
     }
@@ -5419,9 +5464,13 @@ private:
         destroy_buffer(virtual_geometry_child_buffer_);
         destroy_buffer(virtual_geometry_root_buffer_);
         destroy_buffer(virtual_geometry_page_buffer_);
+        destroy_buffer(virtual_geometry_page_heap_buffer_);
         destroy_buffer(virtual_geometry_visible_buffer_);
         destroy_buffer(virtual_geometry_request_buffer_);
         destroy_buffer(virtual_geometry_counter_buffer_);
+        destroy_buffer(virtual_geometry_raster_bin_buffer_);
+        destroy_graph_image(virtual_geometry_encoded_depth_);
+        destroy_graph_image(virtual_geometry_visibility_ids_);
         for (auto& frame : virtual_geometry_feedback_frames_)
         {
             destroy_buffer(frame.requests);
@@ -5436,13 +5485,27 @@ private:
             vkDestroyDescriptorPool(device_, virtual_geometry_traversal_descriptor_pool_, nullptr);
         if (virtual_geometry_traversal_descriptor_set_layout_ != VK_NULL_HANDLE)
             vkDestroyDescriptorSetLayout(device_, virtual_geometry_traversal_descriptor_set_layout_, nullptr);
+        for (const auto pipeline : virtual_geometry_raster_pipelines_)
+            if (pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device_, pipeline, nullptr);
+        if (virtual_geometry_raster_pipeline_layout_ != VK_NULL_HANDLE)
+            vkDestroyPipelineLayout(device_, virtual_geometry_raster_pipeline_layout_, nullptr);
+        if (virtual_geometry_raster_descriptor_pool_ != VK_NULL_HANDLE)
+            vkDestroyDescriptorPool(device_, virtual_geometry_raster_descriptor_pool_, nullptr);
+        if (virtual_geometry_raster_descriptor_set_layout_ != VK_NULL_HANDLE)
+            vkDestroyDescriptorSetLayout(device_, virtual_geometry_raster_descriptor_set_layout_, nullptr);
         virtual_geometry_traversal_pipeline_ = VK_NULL_HANDLE;
         virtual_geometry_traversal_pipeline_layout_ = VK_NULL_HANDLE;
         virtual_geometry_traversal_descriptor_pool_ = VK_NULL_HANDLE;
         virtual_geometry_traversal_descriptor_set_layout_ = VK_NULL_HANDLE;
         virtual_geometry_traversal_descriptor_set_ = VK_NULL_HANDLE;
+        virtual_geometry_raster_pipelines_.fill(VK_NULL_HANDLE);
+        virtual_geometry_raster_pipeline_layout_ = VK_NULL_HANDLE;
+        virtual_geometry_raster_descriptor_pool_ = VK_NULL_HANDLE;
+        virtual_geometry_raster_descriptor_set_layout_ = VK_NULL_HANDLE;
+        virtual_geometry_raster_descriptor_set_ = VK_NULL_HANDLE;
         virtual_geometry_visible_capacity_ = 0u;
         virtual_geometry_request_capacity_ = 0u;
+        virtual_geometry_raster_bin_capacity_ = 0u;
     }
 
     bool ensure_gpu_visibility_resources()
@@ -5754,6 +5817,265 @@ private:
         return true;
     }
 
+    bool ensure_virtual_geometry_raster_resources()
+    {
+        if (!capabilities_.storage_images || !ensure_virtual_geometry_traversal_resources()) return false;
+        const auto previous_depth_view = virtual_geometry_encoded_depth_.view;
+        const auto previous_visibility_view = virtual_geometry_visibility_ids_.view;
+        if (!ensure_graph_image(virtual_geometry_encoded_depth_, std::max(viewport_width_, 1u),
+                                std::max(viewport_height_, 1u), VK_FORMAT_R32_UINT,
+                                VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                                VK_IMAGE_ASPECT_COLOR_BIT) ||
+            !ensure_graph_image(virtual_geometry_visibility_ids_, std::max(viewport_width_, 1u),
+                                std::max(viewport_height_, 1u), VK_FORMAT_R32_UINT,
+                                VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                                VK_IMAGE_ASPECT_COLOR_BIT))
+            return false;
+        if (previous_depth_view != virtual_geometry_encoded_depth_.view ||
+            previous_visibility_view != virtual_geometry_visibility_ids_.view)
+            virtual_geometry_raster_descriptors_dirty_ = true;
+
+        if (virtual_geometry_raster_bin_capacity_ < virtual_geometry_visible_capacity_ ||
+            virtual_geometry_raster_bin_buffer_.buffer == VK_NULL_HANDLE)
+        {
+            gpu_buffer replacement{};
+            if (!create_buffer(buffer_size(virtual_geometry_visible_capacity_, sizeof(virtual_geometry_gpu_raster_bin)),
+                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY, replacement))
+                return false;
+            auto retired = virtual_geometry_raster_bin_buffer_;
+            virtual_geometry_raster_bin_buffer_ = replacement;
+            virtual_geometry_raster_bin_capacity_ = virtual_geometry_visible_capacity_;
+            virtual_geometry_raster_descriptors_dirty_ = true;
+            if (retired.buffer != VK_NULL_HANDLE)
+                deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
+                                         [this, retired]() mutable { destroy_buffer(retired); });
+        }
+
+        if (virtual_geometry_raster_descriptor_set_layout_ == VK_NULL_HANDLE)
+        {
+            std::array<VkDescriptorSetLayoutBinding, 9> bindings{};
+            for (std::uint32_t binding = 0; binding < 7u; ++binding)
+                bindings[binding] = {binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT,
+                                     nullptr};
+            bindings[7] = {7u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+            bindings[8] = {8u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+            VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+            layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
+            layout.pBindings = bindings.data();
+            if (vkCreateDescriptorSetLayout(device_, &layout, nullptr, &virtual_geometry_raster_descriptor_set_layout_) !=
+                VK_SUCCESS)
+                return false;
+            virtual_geometry_raster_descriptors_dirty_ = true;
+        }
+
+        if (virtual_geometry_raster_descriptors_dirty_)
+        {
+            VkDescriptorPool replacement_pool{};
+            VkDescriptorSet replacement_set{};
+            const std::array pool_sizes{VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 7u},
+                                        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2u}};
+            VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+            pool.maxSets = 1u;
+            pool.poolSizeCount = static_cast<std::uint32_t>(pool_sizes.size());
+            pool.pPoolSizes = pool_sizes.data();
+            if (vkCreateDescriptorPool(device_, &pool, nullptr, &replacement_pool) != VK_SUCCESS) return false;
+            VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+            allocate.descriptorPool = replacement_pool;
+            allocate.descriptorSetCount = 1u;
+            allocate.pSetLayouts = &virtual_geometry_raster_descriptor_set_layout_;
+            if (vkAllocateDescriptorSets(device_, &allocate, &replacement_set) != VK_SUCCESS)
+            {
+                vkDestroyDescriptorPool(device_, replacement_pool, nullptr);
+                return false;
+            }
+            const std::array buffers{
+                VkDescriptorBufferInfo{virtual_geometry_visible_buffer_.buffer, 0u, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{virtual_geometry_cluster_buffer_.buffer, 0u, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{gpu_scene_transform_buffer_.buffer, 0u, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{virtual_geometry_page_buffer_.buffer, 0u, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{virtual_geometry_page_heap_buffer_.buffer, 0u, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{virtual_geometry_counter_buffer_.buffer, 0u, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{virtual_geometry_raster_bin_buffer_.buffer, 0u, VK_WHOLE_SIZE},
+            };
+            std::array<VkWriteDescriptorSet, 7> writes{};
+            for (std::uint32_t binding = 0; binding < writes.size(); ++binding)
+            {
+                writes[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writes[binding].dstSet = replacement_set;
+                writes[binding].dstBinding = binding;
+                writes[binding].descriptorCount = 1u;
+                writes[binding].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                writes[binding].pBufferInfo = &buffers[binding];
+            }
+            vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0u, nullptr);
+            const std::array images{
+                VkDescriptorImageInfo{VK_NULL_HANDLE, virtual_geometry_encoded_depth_.view, VK_IMAGE_LAYOUT_GENERAL},
+                VkDescriptorImageInfo{VK_NULL_HANDLE, virtual_geometry_visibility_ids_.view, VK_IMAGE_LAYOUT_GENERAL},
+            };
+            std::array<VkWriteDescriptorSet, 2> image_writes{};
+            for (std::uint32_t index = 0; index < image_writes.size(); ++index)
+            {
+                image_writes[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                image_writes[index].dstSet = replacement_set;
+                image_writes[index].dstBinding = 7u + index;
+                image_writes[index].descriptorCount = 1u;
+                image_writes[index].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                image_writes[index].pImageInfo = &images[index];
+            }
+            vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(image_writes.size()), image_writes.data(), 0u,
+                                   nullptr);
+            const auto retired_pool = virtual_geometry_raster_descriptor_pool_;
+            virtual_geometry_raster_descriptor_pool_ = replacement_pool;
+            virtual_geometry_raster_descriptor_set_ = replacement_set;
+            if (retired_pool != VK_NULL_HANDLE)
+                deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(), [this, retired_pool]()
+                                         { vkDestroyDescriptorPool(device_, retired_pool, nullptr); });
+            virtual_geometry_raster_descriptors_dirty_ = false;
+        }
+
+        if (virtual_geometry_raster_pipeline_layout_ == VK_NULL_HANDLE)
+        {
+            VkPushConstantRange push{VK_SHADER_STAGE_COMPUTE_BIT, 0u, sizeof(virtual_geometry_raster_push_constants)};
+            VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+            layout.setLayoutCount = 1u;
+            layout.pSetLayouts = &virtual_geometry_raster_descriptor_set_layout_;
+            layout.pushConstantRangeCount = 1u;
+            layout.pPushConstantRanges = &push;
+            if (vkCreatePipelineLayout(device_, &layout, nullptr, &virtual_geometry_raster_pipeline_layout_) !=
+                VK_SUCCESS)
+                return false;
+        }
+        const std::array shader_words{
+            std::pair{builtin::virtual_geometry_binning_comp_spv,
+                      std::size(builtin::virtual_geometry_binning_comp_spv)},
+            std::pair{builtin::virtual_geometry_software_depth_comp_spv,
+                      std::size(builtin::virtual_geometry_software_depth_comp_spv)},
+            std::pair{builtin::virtual_geometry_visibility_resolve_comp_spv,
+                      std::size(builtin::virtual_geometry_visibility_resolve_comp_spv)},
+        };
+        for (std::size_t index = 0; index < virtual_geometry_raster_pipelines_.size(); ++index)
+        {
+            if (virtual_geometry_raster_pipelines_[index] != VK_NULL_HANDLE) continue;
+            const auto shader = create_shader_module(shader_words[index].first, shader_words[index].second);
+            if (shader == VK_NULL_HANDLE) return false;
+            VkComputePipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+            pipeline.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+            pipeline.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+            pipeline.stage.module = shader;
+            pipeline.stage.pName = "main";
+            pipeline.layout = virtual_geometry_raster_pipeline_layout_;
+            const auto status = vkCreateComputePipelines(device_, vk_pipeline_cache_, 1u, &pipeline, nullptr,
+                                                         &virtual_geometry_raster_pipelines_[index]);
+            vkDestroyShaderModule(device_, shader, nullptr);
+            if (status != VK_SUCCESS) return false;
+        }
+        return true;
+    }
+
+    void dispatch_virtual_geometry_raster(VkCommandBuffer command_buffer)
+    {
+        if (!ensure_virtual_geometry_raster_resources()) return;
+        transition_graph_image(command_buffer, virtual_geometry_encoded_depth_, VK_IMAGE_LAYOUT_GENERAL);
+        transition_graph_image(command_buffer, virtual_geometry_visibility_ids_, VK_IMAGE_LAYOUT_GENERAL);
+        VkClearColorValue clear{};
+        clear.uint32[0] = std::numeric_limits<std::uint32_t>::max();
+        clear.uint32[1] = clear.uint32[0];
+        clear.uint32[2] = clear.uint32[0];
+        clear.uint32[3] = clear.uint32[0];
+        const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0u, 1u, 0u, 1u};
+        vkCmdClearColorImage(command_buffer, virtual_geometry_encoded_depth_.image, VK_IMAGE_LAYOUT_GENERAL, &clear,
+                             1u, &range);
+        vkCmdClearColorImage(command_buffer, virtual_geometry_visibility_ids_.image, VK_IMAGE_LAYOUT_GENERAL, &clear,
+                             1u, &range);
+
+        std::array<VkImageMemoryBarrier, 2> clear_barriers{};
+        const std::array clear_images{virtual_geometry_encoded_depth_.image,
+                                      virtual_geometry_visibility_ids_.image};
+        for (std::size_t index = 0; index < clear_barriers.size(); ++index)
+        {
+            clear_barriers[index].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            clear_barriers[index].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            clear_barriers[index].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            clear_barriers[index].oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+            clear_barriers[index].newLayout = VK_IMAGE_LAYOUT_GENERAL;
+            clear_barriers[index].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            clear_barriers[index].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            clear_barriers[index].image = clear_images[index];
+            clear_barriers[index].subresourceRange = range;
+        }
+        vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u,
+                             0u, nullptr, 0u, nullptr, static_cast<std::uint32_t>(clear_barriers.size()),
+                             clear_barriers.data());
+
+        std::array<VkBufferMemoryBarrier, 2> traversal_barriers{};
+        const std::array traversal_buffers{virtual_geometry_visible_buffer_.buffer,
+                                           virtual_geometry_counter_buffer_.buffer};
+        for (std::size_t index = 0; index < traversal_barriers.size(); ++index)
+        {
+            traversal_barriers[index].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            traversal_barriers[index].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            traversal_barriers[index].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            traversal_barriers[index].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            traversal_barriers[index].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            traversal_barriers[index].buffer = traversal_buffers[index];
+            traversal_barriers[index].size = VK_WHOLE_SIZE;
+        }
+        vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, nullptr,
+                             static_cast<std::uint32_t>(traversal_barriers.size()), traversal_barriers.data(), 0u,
+                             nullptr);
+
+        virtual_geometry_raster_push_constants constants{};
+        std::copy_n(frame_camera_.view_projection.data(), 16u, constants.view_projection);
+        constants.viewport_capacities[0] = viewport_width_;
+        constants.viewport_capacities[1] = viewport_height_;
+        constants.viewport_capacities[2] = virtual_geometry_visible_capacity_;
+        constants.viewport_capacities[3] = virtual_geometry_raster_bin_capacity_;
+        const auto bind_and_dispatch = [&](VkPipeline pipeline)
+        {
+            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+            vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    virtual_geometry_raster_pipeline_layout_, 0u, 1u,
+                                    &virtual_geometry_raster_descriptor_set_, 0u, nullptr);
+            vkCmdPushConstants(command_buffer, virtual_geometry_raster_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+                               0u, sizeof(constants), &constants);
+            vkCmdDispatch(command_buffer, (virtual_geometry_visible_capacity_ + 63u) / 64u, 1u, 1u);
+        };
+        bind_and_dispatch(virtual_geometry_raster_pipelines_[0]);
+
+        std::array<VkBufferMemoryBarrier, 2> bin_barriers{};
+        const std::array bin_buffers{virtual_geometry_raster_bin_buffer_.buffer,
+                                     virtual_geometry_counter_buffer_.buffer};
+        for (std::size_t index = 0; index < bin_barriers.size(); ++index)
+        {
+            bin_barriers[index].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            bin_barriers[index].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            bin_barriers[index].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            bin_barriers[index].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            bin_barriers[index].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            bin_barriers[index].buffer = bin_buffers[index];
+            bin_barriers[index].size = VK_WHOLE_SIZE;
+        }
+        vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, nullptr,
+                             static_cast<std::uint32_t>(bin_barriers.size()), bin_barriers.data(), 0u, nullptr);
+        bind_and_dispatch(virtual_geometry_raster_pipelines_[1]);
+
+        VkImageMemoryBarrier depth_barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+        depth_barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+        depth_barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        depth_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        depth_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        depth_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        depth_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        depth_barrier.image = virtual_geometry_encoded_depth_.image;
+        depth_barrier.subresourceRange = range;
+        vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, nullptr, 0u, nullptr, 1u,
+                             &depth_barrier);
+        bind_and_dispatch(virtual_geometry_raster_pipelines_[2]);
+    }
+
     bool ensure_virtual_geometry_traversal_resources()
     {
         if (!capabilities_.virtual_geometry_streaming || virtual_meshes_.empty() || gpu_scene_capacity_ == 0u ||
@@ -5795,6 +6117,7 @@ private:
             virtual_geometry_visible_capacity_ = requested_visible_capacity;
             virtual_geometry_request_capacity_ = requested_page_capacity;
             virtual_geometry_traversal_descriptors_dirty_ = true;
+            virtual_geometry_raster_descriptors_dirty_ = true;
             if (retired_visible.buffer != VK_NULL_HANDLE || retired_requests.buffer != VK_NULL_HANDLE ||
                 retired_counters.buffer != VK_NULL_HANDLE)
                 deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
@@ -5967,6 +6290,8 @@ private:
         vkCmdPushConstants(command_buffer, virtual_geometry_traversal_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0u,
                            sizeof(constants), &constants);
         vkCmdDispatch(command_buffer, (gpu_scene_capacity_ + 63u) / 64u, 1u, 1u);
+
+        dispatch_virtual_geometry_raster(command_buffer);
 
         std::array<VkBufferMemoryBarrier, 2> outputs{};
         const std::array output_buffers{virtual_geometry_request_buffer_.buffer,
@@ -10663,6 +10988,9 @@ private:
     void prepare_frame_gpu_resources()
     {
         update_dynamic_mesh_vertices();
+        if (!virtual_meshes_.empty() && !ensure_virtual_geometry_raster_resources())
+            last_profile_.virtual_geometry.fallback_reason =
+                "virtual-geometry software visibility resources are unavailable; using conventional LODs";
         const auto* light = active_directional_shadow_light();
         auto settings = light ? light->shadow : shadow_settings{.enabled = false, .resolution = 2048};
         settings.resolution =
@@ -12157,25 +12485,37 @@ private:
     std::vector<std::uint32_t> virtual_geometry_child_mirror_;
     std::vector<std::uint32_t> virtual_geometry_root_mirror_;
     std::vector<virtual_geometry_gpu_page_record> virtual_geometry_page_mirror_;
+    std::vector<std::byte> virtual_geometry_page_heap_mirror_;
     gpu_buffer virtual_geometry_resource_buffer_;
     gpu_buffer virtual_geometry_node_buffer_;
     gpu_buffer virtual_geometry_cluster_buffer_;
     gpu_buffer virtual_geometry_child_buffer_;
     gpu_buffer virtual_geometry_root_buffer_;
     gpu_buffer virtual_geometry_page_buffer_;
+    gpu_buffer virtual_geometry_page_heap_buffer_;
     gpu_buffer virtual_geometry_visible_buffer_;
     gpu_buffer virtual_geometry_request_buffer_;
     gpu_buffer virtual_geometry_counter_buffer_;
+    gpu_buffer virtual_geometry_raster_bin_buffer_;
+    graph_image virtual_geometry_encoded_depth_;
+    graph_image virtual_geometry_visibility_ids_;
     std::uint32_t virtual_geometry_visible_capacity_{};
     std::uint32_t virtual_geometry_request_capacity_{};
+    std::uint32_t virtual_geometry_raster_bin_capacity_{};
     std::vector<virtual_geometry_feedback_frame> virtual_geometry_feedback_frames_;
     VkDescriptorSetLayout virtual_geometry_traversal_descriptor_set_layout_{};
     VkDescriptorPool virtual_geometry_traversal_descriptor_pool_{};
     VkDescriptorSet virtual_geometry_traversal_descriptor_set_{};
     VkPipelineLayout virtual_geometry_traversal_pipeline_layout_{};
     VkPipeline virtual_geometry_traversal_pipeline_{};
+    VkDescriptorSetLayout virtual_geometry_raster_descriptor_set_layout_{};
+    VkDescriptorPool virtual_geometry_raster_descriptor_pool_{};
+    VkDescriptorSet virtual_geometry_raster_descriptor_set_{};
+    VkPipelineLayout virtual_geometry_raster_pipeline_layout_{};
+    std::array<VkPipeline, 3> virtual_geometry_raster_pipelines_{};
     bool virtual_geometry_tables_dirty_{true};
     bool virtual_geometry_traversal_descriptors_dirty_{true};
+    bool virtual_geometry_raster_descriptors_dirty_{true};
     std::vector<gpu_buffer> shadow_uniform_buffers_;
     std::vector<debug_overlay_frame_buffer> debug_overlay_buffers_;
     std::uint32_t active_frame_index_{};

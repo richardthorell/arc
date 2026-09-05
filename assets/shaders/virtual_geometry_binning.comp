@@ -1,0 +1,44 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "include/virtual_geometry_raster.glsl"
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+void main()
+{
+    uint visible_index = gl_GlobalInvocationID.x;
+    uint retained_visible = min(counters.visible_count, constants.viewport_capacities.z);
+    if (visible_index >= retained_visible)
+        return;
+    virtual_visible_cluster visible = visible_clusters[visible_index];
+    virtual_cluster cluster = clusters[visible.cluster_index];
+    mat4 model_view_projection = constants.view_projection * transforms[visible.instance_index].model;
+    vec2 minimum_pixel = vec2(constants.viewport_capacities.xy);
+    vec2 maximum_pixel = vec2(0.0);
+    for (uint corner = 0u; corner < 8u; ++corner)
+    {
+        vec3 position = vec3((corner & 1u) != 0u ? cluster.bounds_max.x : cluster.bounds_min_error.x,
+                             (corner & 2u) != 0u ? cluster.bounds_max.y : cluster.bounds_min_error.y,
+                             (corner & 4u) != 0u ? cluster.bounds_max.z : cluster.bounds_min_error.z);
+        vec2 pixel = screen_position(model_view_projection * vec4(position, 1.0));
+        minimum_pixel = min(minimum_pixel, pixel);
+        maximum_pixel = max(maximum_pixel, pixel);
+    }
+    uint bin_index = atomicAdd(counters.bin_count, 1u);
+    if (bin_index >= constants.viewport_capacities.w)
+    {
+        atomicAdd(counters.traversal_overflow, 1u);
+        atomicAdd(counters.fallback_instances, 1u);
+        return;
+    }
+    bins[bin_index].visible_index = visible_index;
+    bins[bin_index].minimum_tile_x = uint(clamp(floor(minimum_pixel.x / 8.0), 0.0,
+                                                   float((constants.viewport_capacities.x + 7u) / 8u)));
+    bins[bin_index].minimum_tile_y = uint(clamp(floor(minimum_pixel.y / 8.0), 0.0,
+                                                   float((constants.viewport_capacities.y + 7u) / 8u)));
+    bins[bin_index].maximum_tile_x = uint(clamp(ceil(maximum_pixel.x / 8.0), 0.0,
+                                                   float((constants.viewport_capacities.x + 7u) / 8u)));
+    bins[bin_index].maximum_tile_y = uint(clamp(ceil(maximum_pixel.y / 8.0), 0.0,
+                                                   float((constants.viewport_capacities.y + 7u) / 8u)));
+    bins[bin_index].flags = visible.flags;
+}

@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <span>
 #include <vector>
@@ -128,6 +129,30 @@ struct virtual_geometry_raster_bin_record
     std::uint32_t tile_x{};
     std::uint32_t tile_y{};
 };
+
+/** @brief One software-raster depth/identity candidate used by deterministic validation. */
+struct virtual_geometry_visibility_candidate
+{
+    float depth{1.0f};
+    std::uint32_t visible_cluster{};
+    std::uint32_t triangle{};
+};
+
+/** @brief Race-free result of depth arbitration followed by identity resolve. */
+struct virtual_geometry_visibility_sample
+{
+    std::uint32_t encoded_depth{std::numeric_limits<std::uint32_t>::max()};
+    std::uint32_t identity{std::numeric_limits<std::uint32_t>::max()};
+};
+
+/** @brief Encode a normalized depth for unsigned atomic-min rasterization. */
+[[nodiscard]] std::uint32_t encode_virtual_geometry_depth(float depth) noexcept;
+/** @brief Pack the visible-cluster and local triangle identity used by material resolve. */
+[[nodiscard]] std::uint32_t encode_virtual_geometry_visibility_id(std::uint32_t visible_cluster,
+                                                                  std::uint32_t triangle) noexcept;
+/** @brief Reference two-phase depth then identity arbitration used by the Vulkan compute path. */
+[[nodiscard]] virtual_geometry_visibility_sample resolve_virtual_geometry_visibility(
+    std::span<const virtual_geometry_visibility_candidate> candidates) noexcept;
 
 /** @brief Bounded traversal counters and correctness-fallback information. */
 struct virtual_geometry_overflow_record

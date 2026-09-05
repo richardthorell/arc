@@ -1,0 +1,53 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "include/virtual_geometry_raster.glsl"
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+void main()
+{
+    uint bin_index = gl_GlobalInvocationID.x;
+    if (bin_index >= min(counters.bin_count, constants.viewport_capacities.w))
+        return;
+    uint visible_index = bins[bin_index].visible_index;
+    virtual_visible_cluster visible = visible_clusters[visible_index];
+    virtual_cluster cluster = clusters[visible.cluster_index];
+    virtual_page page = pages[cluster.page_index];
+    if ((page.flags & 1u) == 0u)
+        return;
+    mat4 model_view_projection = constants.view_projection * transforms[visible.instance_index].model;
+    for (uint triangle = 0u; triangle < cluster.triangle_count; ++triangle)
+    {
+        vec4 clip0 = model_view_projection * vec4(decode_position(cluster, page, load_triangle_index(cluster, page, triangle, 0u)), 1.0);
+        vec4 clip1 = model_view_projection * vec4(decode_position(cluster, page, load_triangle_index(cluster, page, triangle, 1u)), 1.0);
+        vec4 clip2 = model_view_projection * vec4(decode_position(cluster, page, load_triangle_index(cluster, page, triangle, 2u)), 1.0);
+        if (clip0.w <= 0.0 || clip1.w <= 0.0 || clip2.w <= 0.0)
+            continue;
+        vec2 p0 = screen_position(clip0);
+        vec2 p1 = screen_position(clip1);
+        vec2 p2 = screen_position(clip2);
+        ivec2 minimum_pixel = max(ivec2(floor(min(p0, min(p1, p2)))), ivec2(0));
+        ivec2 maximum_pixel = min(ivec2(ceil(max(p0, max(p1, p2)))), ivec2(constants.viewport_capacities.xy) - 1);
+        float area = edge_function(p0, p1, p2);
+        if (abs(area) < 1.0e-8)
+            continue;
+        for (int y = minimum_pixel.y; y <= maximum_pixel.y; ++y)
+            for (int x = minimum_pixel.x; x <= maximum_pixel.x; ++x)
+            {
+                vec2 sample_position = vec2(x, y) + vec2(0.5);
+                vec3 edge = vec3(edge_function(p1, p2, sample_position), edge_function(p2, p0, sample_position),
+                                 edge_function(p0, p1, sample_position));
+                if (!all(greaterThanEqual(edge * sign(area), vec3(0.0))))
+                    continue;
+                vec3 barycentric = edge / area;
+                float depth = barycentric.x * clip0.z / clip0.w + barycentric.y * clip1.z / clip1.w +
+                              barycentric.z * clip2.z / clip2.w;
+                uint encoded = floatBitsToUint(clamp(depth, 0.0, 1.0));
+                if (encoded == imageLoad(encoded_depth, ivec2(x, y)).x)
+                {
+                    uint identity = (visible_index << 8u) | min(triangle, 255u);
+                    imageAtomicMin(visibility_ids, ivec2(x, y), identity);
+                }
+            }
+    }
+}

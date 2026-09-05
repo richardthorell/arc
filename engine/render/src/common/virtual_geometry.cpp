@@ -1,6 +1,7 @@
 #include <arc/render/virtual_geometry.h>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <limits>
 #include <unordered_map>
@@ -37,6 +38,32 @@ bool page_resident(std::span<const std::uint8_t> pages, std::uint32_t page) noex
 }
 
 } // namespace
+
+std::uint32_t encode_virtual_geometry_depth(float depth) noexcept
+{
+    if (!std::isfinite(depth)) return std::numeric_limits<std::uint32_t>::max();
+    return std::bit_cast<std::uint32_t>(std::clamp(depth, 0.0f, 1.0f));
+}
+
+std::uint32_t encode_virtual_geometry_visibility_id(std::uint32_t visible_cluster,
+                                                    std::uint32_t triangle) noexcept
+{
+    return (std::min(visible_cluster, 0x00ffffffu) << 8u) | std::min(triangle, 0xffu);
+}
+
+virtual_geometry_visibility_sample resolve_virtual_geometry_visibility(
+    std::span<const virtual_geometry_visibility_candidate> candidates) noexcept
+{
+    virtual_geometry_visibility_sample result;
+    for (const auto& candidate : candidates)
+        result.encoded_depth = std::min(result.encoded_depth, encode_virtual_geometry_depth(candidate.depth));
+    for (const auto& candidate : candidates)
+        if (encode_virtual_geometry_depth(candidate.depth) == result.encoded_depth)
+            result.identity =
+                std::min(result.identity,
+                         encode_virtual_geometry_visibility_id(candidate.visible_cluster, candidate.triangle));
+    return result;
+}
 
 virtual_geometry_reference_result traverse_virtual_geometry_reference(const virtual_mesh_data& geometry,
                                                                       std::span<const std::uint8_t> resident_pages,

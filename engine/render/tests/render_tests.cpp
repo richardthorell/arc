@@ -3208,6 +3208,22 @@ TEST_CASE("virtual geometry reference traversal selects resident children or a h
     REQUIRE(overflow.feedback.overflow.fallback_instance_count == 1);
 }
 
+TEST_CASE("virtual geometry software visibility resolves depth before stable primitive identity")
+{
+    using namespace arc::render;
+    const std::array candidates{
+        virtual_geometry_visibility_candidate{.depth = 0.75f, .visible_cluster = 8u, .triangle = 2u},
+        virtual_geometry_visibility_candidate{.depth = 0.25f, .visible_cluster = 9u, .triangle = 4u},
+        virtual_geometry_visibility_candidate{.depth = 0.25f, .visible_cluster = 3u, .triangle = 7u},
+    };
+    const auto result = resolve_virtual_geometry_visibility(candidates);
+    REQUIRE(result.encoded_depth == encode_virtual_geometry_depth(0.25f));
+    REQUIRE(result.identity == encode_virtual_geometry_visibility_id(3u, 7u));
+    REQUIRE(encode_virtual_geometry_visibility_id(0x01ffffffu, 400u) == 0xffffffffu);
+    REQUIRE(encode_virtual_geometry_depth(-1.0f) == encode_virtual_geometry_depth(0.0f));
+    REQUIRE(encode_virtual_geometry_depth(2.0f) == encode_virtual_geometry_depth(1.0f));
+}
+
 TEST_CASE("GLB mesh loader reads checked-in editor startup mesh")
 {
     const std::filesystem::path path =
