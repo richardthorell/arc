@@ -39,7 +39,12 @@ export const editorSettingsPages: readonly EditorSettingsPage[] = [
     legacySection: 'Editor',
     keywords: ['editor', 'startup', 'layout', 'project'],
   },
-  { id: 'appearance', label: 'Appearance', description: 'Theme, scale and editor presentation.', keywords: ['theme', 'ui', 'scale'] },
+  {
+    id: 'appearance',
+    label: 'Appearance',
+    description: 'Theme, scale and editor presentation.',
+    keywords: ['theme', 'ui', 'scale'],
+  },
   {
     id: 'editing.viewport',
     label: 'Viewport',
@@ -54,13 +59,48 @@ export const editorSettingsPages: readonly EditorSettingsPage[] = [
     legacySection: 'Input',
     keywords: ['input', 'mouse', 'keyboard', 'camera'],
   },
-  { id: 'editing.gizmos', label: 'Gizmos & Snapping', description: 'Transform gizmos and snapping defaults.', keywords: ['transform', 'snap'] },
-  { id: 'editing.scene', label: 'Scene', description: 'Scene editing behavior and defaults.', keywords: ['entity', 'selection'] },
-  { id: 'content.browser', label: 'Content Browser', description: 'Asset browser defaults and presentation.', keywords: ['asset', 'thumbnail'] },
-  { id: 'content.import', label: 'Asset Import', description: 'Default import and reimport behavior.', keywords: ['asset', 'import', 'reimport'] },
-  { id: 'ai.providers', label: 'Providers', description: 'AI provider accounts and available models.', keywords: ['openai', 'anthropic', 'google', 'model'] },
-  { id: 'ai.assistant', label: 'Assistant', description: 'Built-in AI assistant behavior and permissions.', keywords: ['prompt', 'agent', 'model'] },
-  { id: 'ai.remote', label: 'Remote Access', description: 'Remote agent gateway access and permissions.', keywords: ['gateway', 'remote', 'agent'] },
+  {
+    id: 'editing.gizmos',
+    label: 'Gizmos & Snapping',
+    description: 'Transform gizmos and snapping defaults.',
+    keywords: ['transform', 'snap'],
+  },
+  {
+    id: 'editing.scene',
+    label: 'Scene',
+    description: 'Scene editing behavior and defaults.',
+    keywords: ['entity', 'selection'],
+  },
+  {
+    id: 'content.browser',
+    label: 'Content Browser',
+    description: 'Asset browser defaults and presentation.',
+    keywords: ['asset', 'thumbnail'],
+  },
+  {
+    id: 'content.import',
+    label: 'Asset Import',
+    description: 'Default import and reimport behavior.',
+    keywords: ['asset', 'import', 'reimport'],
+  },
+  {
+    id: 'ai.providers',
+    label: 'Providers',
+    description: 'AI provider accounts and available models.',
+    keywords: ['openai', 'anthropic', 'google', 'model'],
+  },
+  {
+    id: 'ai.assistant',
+    label: 'Assistant',
+    description: 'Built-in AI assistant behavior and permissions.',
+    keywords: ['prompt', 'agent', 'model'],
+  },
+  {
+    id: 'ai.remote',
+    label: 'Remote Access',
+    description: 'Remote agent gateway access and permissions.',
+    keywords: ['gateway', 'remote', 'agent'],
+  },
   {
     id: 'source-control',
     label: 'Source Control',
@@ -68,7 +108,12 @@ export const editorSettingsPages: readonly EditorSettingsPage[] = [
     legacySection: 'Source Control',
     keywords: ['git', 'perforce', 'version control'],
   },
-  { id: 'platforms', label: 'Platforms', description: 'Installed SDKs and platform toolchains.', keywords: ['android', 'windows', 'linux', 'apple', 'sdk'] },
+  {
+    id: 'platforms',
+    label: 'Platforms',
+    description: 'Installed SDKs and platform toolchains.',
+    keywords: ['android', 'windows', 'linux', 'apple', 'sdk'],
+  },
   {
     id: 'tools.external',
     label: 'External Tools',
@@ -76,7 +121,12 @@ export const editorSettingsPages: readonly EditorSettingsPage[] = [
     legacySection: 'Paths & Tools',
     keywords: ['path', 'ide', 'terminal', 'diff'],
   },
-  { id: 'tools.shortcuts', label: 'Keyboard Shortcuts', description: 'Editor command keybindings.', keywords: ['keyboard', 'shortcut', 'keybinding'] },
+  {
+    id: 'tools.shortcuts',
+    label: 'Keyboard Shortcuts',
+    description: 'Editor command keybindings.',
+    keywords: ['keyboard', 'shortcut', 'keybinding'],
+  },
   {
     id: 'tools.extensions',
     label: 'Extensions',
@@ -91,7 +141,12 @@ export const editorSettingsPages: readonly EditorSettingsPage[] = [
     legacySection: 'Recovery',
     keywords: ['recovery', 'autosave', 'snapshot'],
   },
-  { id: 'system.performance', label: 'Performance', description: 'Editor responsiveness and background work budgets.', keywords: ['fps', 'background', 'performance'] },
+  {
+    id: 'system.performance',
+    label: 'Performance',
+    description: 'Editor responsiveness and background work budgets.',
+    keywords: ['fps', 'background', 'performance'],
+  },
   {
     id: 'system.cache',
     label: 'Cache',
@@ -99,10 +154,17 @@ export const editorSettingsPages: readonly EditorSettingsPage[] = [
     legacySection: 'Cache',
     keywords: ['derived data', 'disk', 'cache'],
   },
-  { id: 'system.diagnostics', label: 'Diagnostics', description: 'Logging, crash reporting and developer diagnostics.', keywords: ['log', 'crash', 'diagnostic'] },
+  {
+    id: 'system.diagnostics',
+    label: 'Diagnostics',
+    description: 'Logging, crash reporting and developer diagnostics.',
+    keywords: ['log', 'crash', 'diagnostic'],
+  },
 ] as const;
 
-const pageById = new Map<EditorSettingsPageId, EditorSettingsPage>(editorSettingsPages.map((page) => [page.id, page]));
+const pageById = new Map<EditorSettingsPageId, EditorSettingsPage>(
+  editorSettingsPages.map((page) => [page.id, page] as const),
+);
 
 export const getEditorSettingsPage = (id: string): EditorSettingsPage | null =>
   pageById.get(id as EditorSettingsPageId) ?? null;
@@ -119,7 +181,12 @@ export const editorSettingsNavigation: readonly UiTreeNode[] = [
     id: 'editing',
     label: 'Editing',
     keywords: ['viewport', 'navigation', 'gizmo', 'scene'],
-    children: [pageNode('editing.viewport'), pageNode('editing.navigation'), pageNode('editing.gizmos'), pageNode('editing.scene')],
+    children: [
+      pageNode('editing.viewport'),
+      pageNode('editing.navigation'),
+      pageNode('editing.gizmos'),
+      pageNode('editing.scene'),
+    ],
   },
   {
     id: 'content',
@@ -145,7 +212,12 @@ export const editorSettingsNavigation: readonly UiTreeNode[] = [
     id: 'system',
     label: 'System',
     keywords: ['recovery', 'performance', 'cache', 'diagnostics'],
-    children: [pageNode('system.recovery'), pageNode('system.performance'), pageNode('system.cache'), pageNode('system.diagnostics')],
+    children: [
+      pageNode('system.recovery'),
+      pageNode('system.performance'),
+      pageNode('system.cache'),
+      pageNode('system.diagnostics'),
+    ],
   },
 ] as const;
 
