@@ -211,6 +211,25 @@ const editor_material_record* base_material_record(editor_scene_state& scene, ec
         if (record.material == component->material) return &record;
     }
 
+    // Runtime instance tracking is intentionally rebuilt during scene synchronization. During that window the
+    // component can still reference the previous instance handle, so recover its parent from the synthetic instance
+    // record. Synthetic records retain the base material path, which gives us a stable identity even without an asset
+    // binding (for example, immediately after history restore or scene reload).
+    const auto instance_record =
+        std::ranges::find(scene.material_library.materials, component->material, &editor_material_record::material);
+    if (instance_record != scene.material_library.materials.end() &&
+        instance_record->asset.name.find(instance_name_marker) != std::string::npos)
+    {
+        const auto base =
+            std::ranges::find_if(scene.material_library.materials,
+                                 [&](const editor_material_record& value)
+                                 {
+                                     return value.asset.name.find(instance_name_marker) == std::string::npos &&
+                                            value.path.lexically_normal() == instance_record->path.lexically_normal();
+                                 });
+        if (base != scene.material_library.materials.end()) return &*base;
+    }
+
     if (const auto* binding = find_asset_binding(scene, guid); binding && !binding->material.path_hint.empty())
     {
         for (const auto& record : scene.material_library.materials)
