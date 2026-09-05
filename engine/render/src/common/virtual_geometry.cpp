@@ -65,6 +65,25 @@ virtual_geometry_visibility_sample resolve_virtual_geometry_visibility(
     return result;
 }
 
+std::array<float, 3>
+perspective_correct_virtual_geometry_barycentrics(std::array<float, 3> screen_weights,
+                                                  std::array<float, 3> clip_w) noexcept
+{
+    std::array<float, 3> corrected{};
+    float sum{};
+    for (std::size_t index = 0; index < corrected.size(); ++index)
+    {
+        const auto denominator = std::isfinite(clip_w[index]) && std::abs(clip_w[index]) > 1.0e-8f ? clip_w[index]
+                                                                                                   : 1.0f;
+        corrected[index] = screen_weights[index] / denominator;
+        sum += corrected[index];
+    }
+    if (!std::isfinite(sum) || std::abs(sum) <= 1.0e-8f) return {1.0f, 0.0f, 0.0f};
+    for (auto& weight : corrected)
+        weight /= sum;
+    return corrected;
+}
+
 virtual_geometry_reference_result traverse_virtual_geometry_reference(const virtual_mesh_data& geometry,
                                                                       std::span<const std::uint8_t> resident_pages,
                                                                       const virtual_geometry_reference_view& view)

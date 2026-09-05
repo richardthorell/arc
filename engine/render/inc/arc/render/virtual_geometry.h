@@ -153,6 +153,10 @@ struct virtual_geometry_visibility_sample
 /** @brief Reference two-phase depth then identity arbitration used by the Vulkan compute path. */
 [[nodiscard]] virtual_geometry_visibility_sample resolve_virtual_geometry_visibility(
     std::span<const virtual_geometry_visibility_candidate> candidates) noexcept;
+/** @brief Apply perspective correction to screen-space triangle weights used by material resolve. */
+[[nodiscard]] std::array<float, 3>
+perspective_correct_virtual_geometry_barycentrics(std::array<float, 3> screen_weights,
+                                                  std::array<float, 3> clip_w) noexcept;
 
 /** @brief Bounded traversal counters and correctness-fallback information. */
 struct virtual_geometry_overflow_record

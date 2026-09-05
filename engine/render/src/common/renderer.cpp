@@ -95,12 +95,16 @@ gpu_material_table_record material_table_record(const material_descriptor& mater
     gpu_material_table_record record{};
     record.generation = material.handle.generation;
     record.flags = static_cast<std::uint32_t>(material.alpha_mode) |
-                   (static_cast<std::uint32_t>(material.shading_model) << 4u) | (material.double_sided ? 1u << 8u : 0u);
+                   (static_cast<std::uint32_t>(material.shading_model) << 4u) |
+                   (material.double_sided ? 1u << 8u : 0u) |
+                   (material.runtime_program || material.domain != material_domain::surface ? 1u << 9u : 0u);
     for (std::uint32_t component = 0; component < 4u; ++component)
         record.base_color[component] = material.base_color[component];
     record.emissive[0] = material.emissive_factor[0];
     record.emissive[1] = material.emissive_factor[1];
     record.emissive[2] = material.emissive_factor[2];
+    record.emissive[3] = material.emissive_luminance_nits > 0.0f ? material.emissive_luminance_nits / 100.0f
+                                                                 : material.emissive_strength;
     record.surface[0] = material.metallic;
     record.surface[1] = material.roughness;
     record.surface[2] = material.alpha_cutoff;
@@ -258,7 +262,7 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
                                          capabilities.hzb_occlusion && capabilities.descriptor_indexing &&
                                          capabilities.virtual_geometry_streaming &&
                                          capabilities.bindless_sampled_images && capabilities.bindless_samplers &&
-                                         capabilities.bindless_material_tables && capabilities.bindless_geometry_tables;
+                                         capabilities.bindless_material_tables;
     const auto virtual_geometry_path =
         virtual_geometry_common && capabilities.virtual_geometry_mesh_shader ? virtual_geometry_raster_path::mesh_shader
         : virtual_geometry_common && capabilities.virtual_geometry_compute   ? virtual_geometry_raster_path::compute

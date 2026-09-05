@@ -2,6 +2,7 @@
 
 #include <arc/diagnostics/log.h>
 #include <arc/render/lighting.h>
+#include <arc/render/material_pass.h>
 #include <arc/render/render_world.h>
 #include <arc/render/resources.h>
 #include <arc/render/virtual_shadow.h>
@@ -341,6 +342,16 @@ struct virtual_geometry_raster_push_constants
     std::uint32_t viewport_capacities[4]{};
 };
 static_assert(sizeof(virtual_geometry_raster_push_constants) == 80);
+
+inline constexpr std::uint32_t virtual_geometry_bindless_texture_capacity = 4096u;
+
+struct alignas(16) virtual_geometry_material_frame_data
+{
+    float view_projection[16]{};
+    float previous_view_projection[16]{};
+    std::uint32_t viewport_material_texture_debug[4]{};
+};
+static_assert(sizeof(virtual_geometry_material_frame_data) == 144);
 
 struct material_uniform_data
 {
@@ -4057,6 +4068,7 @@ private:
         auto retired = std::move(found->second);
         textures_.erase(found);
         defer_texture_release(std::move(retired));
+        virtual_geometry_material_descriptors_dirty_ = true;
     }
 
     void register_streamed_texture(const texture_stream_register_event& event)
@@ -4088,6 +4100,7 @@ private:
         }
         register_virtual_texture(texture);
         textures_[key] = std::move(texture);
+        virtual_geometry_material_descriptors_dirty_ = true;
     }
 
     void update_gpu_texture_table_window(const gpu_texture& texture)
@@ -4162,6 +4175,7 @@ private:
         texture = std::move(replacement);
         defer_texture_release(std::move(retired));
         update_gpu_texture_table_window(texture);
+        virtual_geometry_material_descriptors_dirty_ = true;
         return true;
     }
 
@@ -4849,6 +4863,7 @@ private:
             defer_texture_release(std::move(found->second));
         }
         textures_[key] = std::move(texture);
+        virtual_geometry_material_descriptors_dirty_ = true;
     }
 
     void upload_material(const material_upload_event& event)
@@ -4988,6 +5003,8 @@ private:
         result.visibility.material_flags[1] = source.material.generation;
         result.visibility.material_flags[2] = source.render_layer_mask;
         result.visibility.material_flags[3] = static_cast<std::uint32_t>(source.flags);
+        result.visibility.draw_metadata[3] =
+            source.object_id.valid() ? source.object_id.index + 1u : 0u;
         if (source.geometry_kind == gpu_scene_geometry_kind::mesh ||
             source.geometry_kind == gpu_scene_geometry_kind::skinned_mesh)
         {
@@ -5068,6 +5085,9 @@ private:
             }
         }
         if (!batch.updates.empty()) table.dirty = true;
+        if (!batch.updates.empty() &&
+            (batch.table == gpu_resource_table_kind::material || batch.table == gpu_resource_table_kind::texture))
+            virtual_geometry_material_descriptors_dirty_ = true;
 
         if (batch.geometry_heap_generation != 0u)
         {
@@ -5209,6 +5229,8 @@ private:
         gpu_scene_transform_mirror_.resize(new_capacity);
         gpu_visibility_descriptors_dirty_ = true;
         virtual_geometry_traversal_descriptors_dirty_ = true;
+        virtual_geometry_raster_descriptors_dirty_ = true;
+        virtual_geometry_material_descriptors_dirty_ = true;
 
         const auto upload_mirror = [&](gpu_buffer& destination, const auto& mirror) -> bool
         {
@@ -5452,6 +5474,7 @@ private:
             virtual_geometry_tables_dirty_ = false;
             virtual_geometry_traversal_descriptors_dirty_ = true;
             virtual_geometry_raster_descriptors_dirty_ = true;
+            virtual_geometry_material_descriptors_dirty_ = true;
         }
         return succeeded;
     }
@@ -5469,6 +5492,7 @@ private:
         destroy_buffer(virtual_geometry_request_buffer_);
         destroy_buffer(virtual_geometry_counter_buffer_);
         destroy_buffer(virtual_geometry_raster_bin_buffer_);
+        destroy_buffer(virtual_geometry_material_frame_buffer_);
         destroy_graph_image(virtual_geometry_encoded_depth_);
         destroy_graph_image(virtual_geometry_visibility_ids_);
         for (auto& frame : virtual_geometry_feedback_frames_)
@@ -5493,6 +5517,14 @@ private:
             vkDestroyDescriptorPool(device_, virtual_geometry_raster_descriptor_pool_, nullptr);
         if (virtual_geometry_raster_descriptor_set_layout_ != VK_NULL_HANDLE)
             vkDestroyDescriptorSetLayout(device_, virtual_geometry_raster_descriptor_set_layout_, nullptr);
+        if (virtual_geometry_material_pipeline_ != VK_NULL_HANDLE)
+            vkDestroyPipeline(device_, virtual_geometry_material_pipeline_, nullptr);
+        if (virtual_geometry_material_pipeline_layout_ != VK_NULL_HANDLE)
+            vkDestroyPipelineLayout(device_, virtual_geometry_material_pipeline_layout_, nullptr);
+        if (virtual_geometry_material_descriptor_pool_ != VK_NULL_HANDLE)
+            vkDestroyDescriptorPool(device_, virtual_geometry_material_descriptor_pool_, nullptr);
+        if (virtual_geometry_material_descriptor_set_layout_ != VK_NULL_HANDLE)
+            vkDestroyDescriptorSetLayout(device_, virtual_geometry_material_descriptor_set_layout_, nullptr);
         virtual_geometry_traversal_pipeline_ = VK_NULL_HANDLE;
         virtual_geometry_traversal_pipeline_layout_ = VK_NULL_HANDLE;
         virtual_geometry_traversal_descriptor_pool_ = VK_NULL_HANDLE;
@@ -5503,6 +5535,11 @@ private:
         virtual_geometry_raster_descriptor_pool_ = VK_NULL_HANDLE;
         virtual_geometry_raster_descriptor_set_layout_ = VK_NULL_HANDLE;
         virtual_geometry_raster_descriptor_set_ = VK_NULL_HANDLE;
+        virtual_geometry_material_pipeline_ = VK_NULL_HANDLE;
+        virtual_geometry_material_pipeline_layout_ = VK_NULL_HANDLE;
+        virtual_geometry_material_descriptor_pool_ = VK_NULL_HANDLE;
+        virtual_geometry_material_descriptor_set_layout_ = VK_NULL_HANDLE;
+        virtual_geometry_material_descriptor_set_ = VK_NULL_HANDLE;
         virtual_geometry_visible_capacity_ = 0u;
         virtual_geometry_request_capacity_ = 0u;
         virtual_geometry_raster_bin_capacity_ = 0u;
@@ -5833,7 +5870,10 @@ private:
             return false;
         if (previous_depth_view != virtual_geometry_encoded_depth_.view ||
             previous_visibility_view != virtual_geometry_visibility_ids_.view)
+        {
             virtual_geometry_raster_descriptors_dirty_ = true;
+            virtual_geometry_material_descriptors_dirty_ = true;
+        }
 
         if (virtual_geometry_raster_bin_capacity_ < virtual_geometry_visible_capacity_ ||
             virtual_geometry_raster_bin_buffer_.buffer == VK_NULL_HANDLE)
@@ -6076,6 +6116,259 @@ private:
         bind_and_dispatch(virtual_geometry_raster_pipelines_[2]);
     }
 
+    bool ensure_virtual_geometry_material_resources()
+    {
+        if (!capabilities_.virtual_geometry_compute || virtual_geometry_visibility_ids_.view == VK_NULL_HANDLE ||
+            gbuffer_albedo_.view == VK_NULL_HANDLE || gpu_scene_visibility_buffer_.buffer == VK_NULL_HANDLE)
+            return false;
+        const auto& material_table = gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::material)];
+        const auto& texture_table = gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::texture)];
+        if (material_table.storage.buffer == VK_NULL_HANDLE ||
+            material_table.element_stride != sizeof(gpu_material_table_record))
+            return false;
+        if (virtual_geometry_material_frame_buffer_.buffer == VK_NULL_HANDLE &&
+            !create_buffer(sizeof(virtual_geometry_material_frame_data), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                           VMA_MEMORY_USAGE_CPU_TO_GPU, virtual_geometry_material_frame_buffer_))
+            return false;
+
+        if (virtual_geometry_material_descriptor_set_layout_ == VK_NULL_HANDLE)
+        {
+            std::array<VkDescriptorSetLayoutBinding, 18> bindings{};
+            bindings[0] = {0u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+            bindings[1] = {1u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+            for (std::uint32_t binding = 2u; binding <= 9u; ++binding)
+                bindings[binding] = {binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT,
+                                     nullptr};
+            bindings[10] = {10u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+            for (std::uint32_t binding = 11u; binding <= 16u; ++binding)
+                bindings[binding] = {binding, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1u, VK_SHADER_STAGE_COMPUTE_BIT,
+                                     nullptr};
+            bindings[17] = {17u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                            virtual_geometry_bindless_texture_capacity, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+
+            std::array<VkDescriptorBindingFlags, 18> binding_flags{};
+            binding_flags[17] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+                                VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT |
+                                VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+            VkDescriptorSetLayoutBindingFlagsCreateInfo flags{
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO};
+            flags.bindingCount = static_cast<std::uint32_t>(binding_flags.size());
+            flags.pBindingFlags = binding_flags.data();
+            VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+            layout.pNext = &flags;
+            layout.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+            layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
+            layout.pBindings = bindings.data();
+            if (vkCreateDescriptorSetLayout(device_, &layout, nullptr,
+                                            &virtual_geometry_material_descriptor_set_layout_) != VK_SUCCESS)
+                return false;
+            virtual_geometry_material_descriptors_dirty_ = true;
+        }
+
+        if (virtual_geometry_material_descriptors_dirty_)
+        {
+            VkDescriptorPool replacement_pool{};
+            VkDescriptorSet replacement_set{};
+            const std::array pool_sizes{
+                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 8u},
+                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 8u},
+                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u},
+                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                                     virtual_geometry_bindless_texture_capacity},
+            };
+            VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+            pool.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+            pool.maxSets = 1u;
+            pool.poolSizeCount = static_cast<std::uint32_t>(pool_sizes.size());
+            pool.pPoolSizes = pool_sizes.data();
+            if (vkCreateDescriptorPool(device_, &pool, nullptr, &replacement_pool) != VK_SUCCESS) return false;
+
+            const std::uint32_t descriptor_count = virtual_geometry_bindless_texture_capacity;
+            VkDescriptorSetVariableDescriptorCountAllocateInfo variable_count{
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO};
+            variable_count.descriptorSetCount = 1u;
+            variable_count.pDescriptorCounts = &descriptor_count;
+            VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+            allocate.pNext = &variable_count;
+            allocate.descriptorPool = replacement_pool;
+            allocate.descriptorSetCount = 1u;
+            allocate.pSetLayouts = &virtual_geometry_material_descriptor_set_layout_;
+            if (vkAllocateDescriptorSets(device_, &allocate, &replacement_set) != VK_SUCCESS)
+            {
+                vkDestroyDescriptorPool(device_, replacement_pool, nullptr);
+                return false;
+            }
+
+            const auto texture_table_buffer = texture_table.storage.buffer != VK_NULL_HANDLE
+                                                  ? texture_table.storage.buffer
+                                                  : material_table.storage.buffer;
+            const std::array buffer_infos{
+                VkDescriptorBufferInfo{virtual_geometry_visible_buffer_.buffer, 0u, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{virtual_geometry_cluster_buffer_.buffer, 0u, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{gpu_scene_transform_buffer_.buffer, 0u, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{virtual_geometry_page_buffer_.buffer, 0u, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{virtual_geometry_page_heap_buffer_.buffer, 0u, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{gpu_scene_visibility_buffer_.buffer, 0u, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{material_table.storage.buffer, 0u, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{texture_table_buffer, 0u, VK_WHOLE_SIZE},
+            };
+            std::array<VkWriteDescriptorSet, 8> buffer_writes{};
+            for (std::uint32_t index = 0u; index < buffer_writes.size(); ++index)
+            {
+                buffer_writes[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                buffer_writes[index].dstSet = replacement_set;
+                buffer_writes[index].dstBinding = 2u + index;
+                buffer_writes[index].descriptorCount = 1u;
+                buffer_writes[index].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                buffer_writes[index].pBufferInfo = &buffer_infos[index];
+            }
+            vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(buffer_writes.size()), buffer_writes.data(), 0u,
+                                   nullptr);
+
+            const VkDescriptorBufferInfo frame_info{virtual_geometry_material_frame_buffer_.buffer, 0u,
+                                                     sizeof(virtual_geometry_material_frame_data)};
+            VkWriteDescriptorSet frame_write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+            frame_write.dstSet = replacement_set;
+            frame_write.dstBinding = 10u;
+            frame_write.descriptorCount = 1u;
+            frame_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            frame_write.pBufferInfo = &frame_info;
+            vkUpdateDescriptorSets(device_, 1u, &frame_write, 0u, nullptr);
+
+            const std::array image_infos{
+                VkDescriptorImageInfo{VK_NULL_HANDLE, virtual_geometry_visibility_ids_.view, VK_IMAGE_LAYOUT_GENERAL},
+                VkDescriptorImageInfo{VK_NULL_HANDLE, virtual_geometry_encoded_depth_.view, VK_IMAGE_LAYOUT_GENERAL},
+                VkDescriptorImageInfo{VK_NULL_HANDLE, gbuffer_albedo_.view, VK_IMAGE_LAYOUT_GENERAL},
+                VkDescriptorImageInfo{VK_NULL_HANDLE, gbuffer_normal_.view, VK_IMAGE_LAYOUT_GENERAL},
+                VkDescriptorImageInfo{VK_NULL_HANDLE, gbuffer_material_.view, VK_IMAGE_LAYOUT_GENERAL},
+                VkDescriptorImageInfo{VK_NULL_HANDLE, gbuffer_emissive_.view, VK_IMAGE_LAYOUT_GENERAL},
+                VkDescriptorImageInfo{VK_NULL_HANDLE, gbuffer_motion_.view, VK_IMAGE_LAYOUT_GENERAL},
+                VkDescriptorImageInfo{VK_NULL_HANDLE, gbuffer_object_id_.view, VK_IMAGE_LAYOUT_GENERAL},
+            };
+            std::array<VkWriteDescriptorSet, 8> image_writes{};
+            for (std::uint32_t index = 0u; index < image_writes.size(); ++index)
+            {
+                image_writes[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                image_writes[index].dstSet = replacement_set;
+                image_writes[index].dstBinding = index < 2u ? index : 9u + index;
+                image_writes[index].descriptorCount = 1u;
+                image_writes[index].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                image_writes[index].pImageInfo = &image_infos[index];
+            }
+            vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(image_writes.size()), image_writes.data(), 0u,
+                                   nullptr);
+
+            std::vector<VkDescriptorImageInfo> texture_infos;
+            std::vector<VkWriteDescriptorSet> texture_writes;
+            texture_infos.reserve(textures_.size());
+            texture_writes.reserve(textures_.size());
+            for (const auto& [_, texture] : textures_)
+            {
+                if (!texture.handle.valid() || texture.handle.index >= virtual_geometry_bindless_texture_capacity ||
+                    texture.view == VK_NULL_HANDLE || texture.sampler == VK_NULL_HANDLE)
+                    continue;
+                texture_infos.push_back(
+                    {texture.sampler, texture.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL});
+                VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+                write.dstSet = replacement_set;
+                write.dstBinding = 17u;
+                write.dstArrayElement = texture.handle.index;
+                write.descriptorCount = 1u;
+                write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                texture_writes.push_back(write);
+            }
+            for (std::size_t index = 0u; index < texture_writes.size(); ++index)
+                texture_writes[index].pImageInfo = &texture_infos[index];
+            if (!texture_writes.empty())
+                vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(texture_writes.size()),
+                                       texture_writes.data(), 0u, nullptr);
+
+            const auto retired_pool = virtual_geometry_material_descriptor_pool_;
+            virtual_geometry_material_descriptor_pool_ = replacement_pool;
+            virtual_geometry_material_descriptor_set_ = replacement_set;
+            if (retired_pool != VK_NULL_HANDLE)
+                deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(), [this, retired_pool]()
+                                         { vkDestroyDescriptorPool(device_, retired_pool, nullptr); });
+            virtual_geometry_material_descriptors_dirty_ = false;
+        }
+
+        if (virtual_geometry_material_pipeline_layout_ == VK_NULL_HANDLE)
+        {
+            VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+            layout.setLayoutCount = 1u;
+            layout.pSetLayouts = &virtual_geometry_material_descriptor_set_layout_;
+            if (vkCreatePipelineLayout(device_, &layout, nullptr, &virtual_geometry_material_pipeline_layout_) !=
+                VK_SUCCESS)
+                return false;
+        }
+        if (virtual_geometry_material_pipeline_ == VK_NULL_HANDLE)
+        {
+            const auto shader = create_shader_module(builtin::virtual_geometry_material_resolve_comp_spv,
+                                                     std::size(builtin::virtual_geometry_material_resolve_comp_spv));
+            if (shader == VK_NULL_HANDLE) return false;
+            VkComputePipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+            pipeline.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+            pipeline.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+            pipeline.stage.module = shader;
+            pipeline.stage.pName = "main";
+            pipeline.layout = virtual_geometry_material_pipeline_layout_;
+            const auto status = vkCreateComputePipelines(device_, vk_pipeline_cache_, 1u, &pipeline, nullptr,
+                                                         &virtual_geometry_material_pipeline_);
+            vkDestroyShaderModule(device_, shader, nullptr);
+            if (status != VK_SUCCESS) return false;
+        }
+        return true;
+    }
+
+    bool dispatch_virtual_geometry_material_resolve(VkCommandBuffer command_buffer)
+    {
+        if (!resolved_config_.features.virtual_geometry || !ensure_virtual_geometry_material_resources()) return false;
+        virtual_geometry_material_frame_data frame{};
+        std::copy_n(frame_camera_.view_projection.data(), 16u, frame.view_projection);
+        std::copy_n(frame_camera_.previous_view_projection.data(), 16u, frame.previous_view_projection);
+        frame.viewport_material_texture_debug[0] = viewport_width_;
+        frame.viewport_material_texture_debug[1] = viewport_height_;
+        const auto& material_table = gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::material)];
+        const auto& texture_table = gpu_resource_tables_[gpu_table_offset(gpu_resource_table_kind::texture)];
+        frame.viewport_material_texture_debug[2] = static_cast<std::uint32_t>(material_table.generations.size());
+        frame.viewport_material_texture_debug[3] = std::min(
+            static_cast<std::uint32_t>(texture_table.generations.size()), virtual_geometry_bindless_texture_capacity);
+        if (!update_host_visible_buffer(virtual_geometry_material_frame_buffer_, &frame, sizeof(frame))) return false;
+
+        const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0u, 1u, 0u, 1u};
+        std::array<VkImageMemoryBarrier, 2> visibility_barriers{};
+        const std::array visibility_images{virtual_geometry_visibility_ids_.image,
+                                           virtual_geometry_encoded_depth_.image};
+        for (std::size_t index = 0; index < visibility_barriers.size(); ++index)
+        {
+            visibility_barriers[index].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            visibility_barriers[index].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            visibility_barriers[index].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            visibility_barriers[index].oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+            visibility_barriers[index].newLayout = VK_IMAGE_LAYOUT_GENERAL;
+            visibility_barriers[index].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            visibility_barriers[index].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            visibility_barriers[index].image = visibility_images[index];
+            visibility_barriers[index].subresourceRange = range;
+        }
+        vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, nullptr, 0u, nullptr,
+                             static_cast<std::uint32_t>(visibility_barriers.size()), visibility_barriers.data());
+
+        transition_graph_image(command_buffer, gbuffer_albedo_, VK_IMAGE_LAYOUT_GENERAL);
+        transition_graph_image(command_buffer, gbuffer_normal_, VK_IMAGE_LAYOUT_GENERAL);
+        transition_graph_image(command_buffer, gbuffer_material_, VK_IMAGE_LAYOUT_GENERAL);
+        transition_graph_image(command_buffer, gbuffer_emissive_, VK_IMAGE_LAYOUT_GENERAL);
+        transition_graph_image(command_buffer, gbuffer_motion_, VK_IMAGE_LAYOUT_GENERAL);
+        transition_graph_image(command_buffer, gbuffer_object_id_, VK_IMAGE_LAYOUT_GENERAL);
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, virtual_geometry_material_pipeline_);
+        vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                virtual_geometry_material_pipeline_layout_, 0u, 1u,
+                                &virtual_geometry_material_descriptor_set_, 0u, nullptr);
+        vkCmdDispatch(command_buffer, (viewport_width_ + 7u) / 8u, (viewport_height_ + 7u) / 8u, 1u);
+        return true;
+    }
+
     bool ensure_virtual_geometry_traversal_resources()
     {
         if (!capabilities_.virtual_geometry_streaming || virtual_meshes_.empty() || gpu_scene_capacity_ == 0u ||
@@ -6118,6 +6411,7 @@ private:
             virtual_geometry_request_capacity_ = requested_page_capacity;
             virtual_geometry_traversal_descriptors_dirty_ = true;
             virtual_geometry_raster_descriptors_dirty_ = true;
+            virtual_geometry_material_descriptors_dirty_ = true;
             if (retired_visible.buffer != VK_NULL_HANDLE || retired_requests.buffer != VK_NULL_HANDLE ||
                 retired_counters.buffer != VK_NULL_HANDLE)
                 deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
@@ -6978,7 +7272,8 @@ private:
     {
         if (!material.data.runtime_program) return nullptr;
         const auto& program = *material.data.runtime_program;
-        if (program.contract_version != 1u || program.material_abi != 1u) return nullptr;
+        if (program.contract_version != material_pass_contract_version || program.material_abi != material_abi_version)
+            return nullptr;
         const auto found = std::ranges::find(program.passes, material_pass::gbuffer, &material_runtime_pass::pass);
         return found == program.passes.end() ? nullptr : &*found;
     }
@@ -9958,23 +10253,33 @@ private:
     {
         const VkImageUsageFlags sampled_color_usage =
             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        const VkImageUsageFlags gbuffer_usage =
+            sampled_color_usage | (capabilities_.virtual_geometry_compute ? VK_IMAGE_USAGE_STORAGE_BIT : 0u);
+        const std::array previous_views{gbuffer_albedo_.view,   gbuffer_normal_.view, gbuffer_material_.view,
+                                        gbuffer_emissive_.view, gbuffer_motion_.view, gbuffer_object_id_.view};
         const bool ok = ensure_graph_image(scene_color_, width, height, scene_color_format_, sampled_color_usage,
                                            VK_IMAGE_ASPECT_COLOR_BIT) &&
                         ensure_graph_image(gbuffer_albedo_, width, height, VK_FORMAT_R16G16B16A16_SFLOAT,
-                                           sampled_color_usage, VK_IMAGE_ASPECT_COLOR_BIT) &&
+                                           gbuffer_usage, VK_IMAGE_ASPECT_COLOR_BIT) &&
                         ensure_graph_image(gbuffer_normal_, width, height, VK_FORMAT_R16G16B16A16_SFLOAT,
-                                           sampled_color_usage, VK_IMAGE_ASPECT_COLOR_BIT) &&
+                                           gbuffer_usage, VK_IMAGE_ASPECT_COLOR_BIT) &&
                         ensure_graph_image(gbuffer_material_, width, height, VK_FORMAT_R16G16B16A16_SFLOAT,
-                                           sampled_color_usage, VK_IMAGE_ASPECT_COLOR_BIT) &&
+                                           gbuffer_usage, VK_IMAGE_ASPECT_COLOR_BIT) &&
                         ensure_graph_image(gbuffer_emissive_, width, height, VK_FORMAT_R16G16B16A16_SFLOAT,
-                                           sampled_color_usage, VK_IMAGE_ASPECT_COLOR_BIT) &&
-                        ensure_graph_image(gbuffer_motion_, width, height, VK_FORMAT_R16G16_SFLOAT, sampled_color_usage,
+                                           gbuffer_usage, VK_IMAGE_ASPECT_COLOR_BIT) &&
+                        ensure_graph_image(gbuffer_motion_, width, height, VK_FORMAT_R16G16_SFLOAT, gbuffer_usage,
                                            VK_IMAGE_ASPECT_COLOR_BIT) &&
-                        ensure_graph_image(gbuffer_object_id_, width, height, VK_FORMAT_R32_UINT, sampled_color_usage,
+                        ensure_graph_image(gbuffer_object_id_, width, height, VK_FORMAT_R32_UINT, gbuffer_usage,
                                            VK_IMAGE_ASPECT_COLOR_BIT) &&
                         ensure_graph_image(selection_mask_, width, height, VK_FORMAT_R8_UNORM, sampled_color_usage,
                                            VK_IMAGE_ASPECT_COLOR_BIT);
-        if (ok) update_gbuffer_descriptor_set();
+        if (ok)
+        {
+            const std::array current_views{gbuffer_albedo_.view,   gbuffer_normal_.view, gbuffer_material_.view,
+                                           gbuffer_emissive_.view, gbuffer_motion_.view, gbuffer_object_id_.view};
+            if (current_views != previous_views) virtual_geometry_material_descriptors_dirty_ = true;
+            update_gbuffer_descriptor_set();
+        }
         return ok;
     }
 
@@ -11945,6 +12250,10 @@ private:
             cmd_end_rendering(command_buffer);
         }
 
+        if (resolved_config_.features.virtual_geometry && !dispatch_virtual_geometry_material_resolve(command_buffer))
+            last_profile_.virtual_geometry.fallback_reason =
+                "virtual-geometry material resolve is unavailable; using conventional material draws";
+
         transition_graph_image(command_buffer, gbuffer_albedo_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         transition_graph_image(command_buffer, gbuffer_normal_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         transition_graph_image(command_buffer, gbuffer_material_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -12497,6 +12806,7 @@ private:
     gpu_buffer virtual_geometry_request_buffer_;
     gpu_buffer virtual_geometry_counter_buffer_;
     gpu_buffer virtual_geometry_raster_bin_buffer_;
+    gpu_buffer virtual_geometry_material_frame_buffer_;
     graph_image virtual_geometry_encoded_depth_;
     graph_image virtual_geometry_visibility_ids_;
     std::uint32_t virtual_geometry_visible_capacity_{};
@@ -12513,9 +12823,15 @@ private:
     VkDescriptorSet virtual_geometry_raster_descriptor_set_{};
     VkPipelineLayout virtual_geometry_raster_pipeline_layout_{};
     std::array<VkPipeline, 3> virtual_geometry_raster_pipelines_{};
+    VkDescriptorSetLayout virtual_geometry_material_descriptor_set_layout_{};
+    VkDescriptorPool virtual_geometry_material_descriptor_pool_{};
+    VkDescriptorSet virtual_geometry_material_descriptor_set_{};
+    VkPipelineLayout virtual_geometry_material_pipeline_layout_{};
+    VkPipeline virtual_geometry_material_pipeline_{};
     bool virtual_geometry_tables_dirty_{true};
     bool virtual_geometry_traversal_descriptors_dirty_{true};
     bool virtual_geometry_raster_descriptors_dirty_{true};
+    bool virtual_geometry_material_descriptors_dirty_{true};
     std::vector<gpu_buffer> shadow_uniform_buffers_;
     std::vector<debug_overlay_frame_buffer> debug_overlay_buffers_;
     std::uint32_t active_frame_index_{};
@@ -12879,8 +13195,7 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.fxaa = true;
     capabilities.virtual_geometry_compute = false;
     capabilities.virtual_geometry_mesh_shader = false;
-    capabilities.virtual_geometry_streaming = capabilities.compute_shaders && capabilities.storage_buffers &&
-                                              capabilities.hzb_occlusion && capabilities.transfer_queue;
+    capabilities.virtual_geometry_streaming = false;
     // VSM support is advertised only after allocation, feedback, caster rendering,
     // sampling, and contact-shadow pipelines are all executable. Resource plumbing
     // alone must not cause Ultra to select an incomplete path.
@@ -12910,10 +13225,15 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.descriptor_indexing = complete_descriptor_indexing;
     capabilities.bindless_sampled_images = complete_descriptor_indexing;
     capabilities.bindless_samplers = complete_descriptor_indexing;
-    // These executable facts remain false until the shared heap/material-table
-    // graphics pipelines replace ARC's classic per-resource bindings.
-    capabilities.bindless_material_tables = false;
+    capabilities.bindless_material_tables = complete_descriptor_indexing && capabilities.compute_shaders &&
+                                            capabilities.storage_buffers && capabilities.storage_images;
     capabilities.bindless_geometry_tables = false;
+    const bool complete_virtual_geometry_compute =
+        capabilities.bindless_material_tables && capabilities.hzb_occlusion && capabilities.transfer_queue &&
+        supports_storage_sampled(VK_FORMAT_R16G16B16A16_SFLOAT) &&
+        supports_storage_sampled(VK_FORMAT_R16G16_SFLOAT) && supports_storage_sampled(VK_FORMAT_R32_UINT);
+    capabilities.virtual_geometry_compute = complete_virtual_geometry_compute;
+    capabilities.virtual_geometry_streaming = complete_virtual_geometry_compute;
     capabilities.gpu_visibility_compaction = false;
     capabilities.gpu_transparent_sorting = false;
     capabilities.gpu_skinning = false;

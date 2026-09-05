@@ -131,7 +131,8 @@ uint load_triangle_index(virtual_cluster cluster, virtual_page page, uint triang
 
 vec2 screen_position(vec4 clip)
 {
-    vec2 normalized = clip.xy / max(abs(clip.w), 1.0e-6) * 0.5 + 0.5;
+    vec2 ndc = clip.xy / max(abs(clip.w), 1.0e-6);
+    vec2 normalized = vec2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
     return normalized * vec2(constants.viewport_capacities.xy);
 }
 

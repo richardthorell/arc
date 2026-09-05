@@ -1,0 +1,325 @@
+#version 450
+#extension GL_EXT_nonuniform_qualifier : require
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+struct virtual_visible_cluster
+{
+    uint instance_index;
+    uint resource_index;
+    uint cluster_index;
+    uint page_index;
+    uint material_index;
+    uint hierarchy_level;
+    uint flags;
+    float view_depth;
+};
+
+struct virtual_cluster
+{
+    vec4 sphere;
+    vec4 normal_cone;
+    vec4 bounds_min_error;
+    vec4 bounds_max;
+    uint page_index;
+    uint page_byte_offset;
+    uint vertex_count;
+    uint triangle_count;
+    uint material_section;
+    uint hierarchy_node;
+    uint flags;
+    uint reserved;
+};
+
+struct virtual_page
+{
+    uint heap_index;
+    uint heap_byte_offset;
+    uint stored_size;
+    uint decoded_size;
+    uint resource_generation;
+    uint flags;
+    uint last_used_frame;
+    uint reserved;
+};
+
+struct gpu_scene_transform
+{
+    mat4 model;
+    mat4 previous_model;
+};
+
+struct gpu_scene_instance
+{
+    vec4 bounds_min;
+    vec4 bounds_max;
+    uvec4 geometry;
+    uvec4 material_flags;
+    uvec4 draw_metadata;
+    vec4 distance_error;
+};
+
+layout(set = 0, binding = 0, r32ui) readonly uniform uimage2D visibility_ids;
+layout(set = 0, binding = 1, r32ui) readonly uniform uimage2D encoded_depth;
+layout(std430, set = 0, binding = 2) readonly buffer visible_buffer
+{
+    virtual_visible_cluster visible_clusters[];
+};
+layout(std430, set = 0, binding = 3) readonly buffer cluster_buffer
+{
+    virtual_cluster clusters[];
+};
+layout(std430, set = 0, binding = 4) readonly buffer transform_buffer
+{
+    gpu_scene_transform transforms[];
+};
+layout(std430, set = 0, binding = 5) readonly buffer page_buffer
+{
+    virtual_page pages[];
+};
+layout(std430, set = 0, binding = 6) readonly buffer page_heap_buffer
+{
+    uint page_words[];
+};
+layout(std430, set = 0, binding = 7) readonly buffer scene_buffer
+{
+    gpu_scene_instance instances[];
+};
+layout(std430, set = 0, binding = 8) readonly buffer material_buffer
+{
+    uint material_words[];
+};
+layout(std430, set = 0, binding = 9) readonly buffer texture_table_buffer
+{
+    uint texture_words[];
+};
+
+layout(std140, set = 0, binding = 10) uniform frame_buffer
+{
+    mat4 view_projection;
+    mat4 previous_view_projection;
+    uvec4 viewport_material_texture_debug;
+} frame;
+
+layout(set = 0, binding = 11, rgba16f) writeonly uniform image2D out_albedo;
+layout(set = 0, binding = 12, rgba16f) writeonly uniform image2D out_normal;
+layout(set = 0, binding = 13, rgba16f) writeonly uniform image2D out_material;
+layout(set = 0, binding = 14, rgba16f) writeonly uniform image2D out_emissive;
+layout(set = 0, binding = 15, rg16f) writeonly uniform image2D out_motion;
+layout(set = 0, binding = 16, r32ui) writeonly uniform uimage2D out_object_id;
+layout(set = 0, binding = 17) uniform sampler2D material_textures[];
+
+const uint invalid_index = 0xffffffffu;
+const uint material_word_stride = 40u;
+const uint texture_word_stride = 8u;
+
+uint load_byte(uint byte_offset)
+{
+    uint word = page_words[byte_offset >> 2u];
+    return (word >> ((byte_offset & 3u) * 8u)) & 0xffu;
+}
+
+uint load_u16(uint byte_offset)
+{
+    return load_byte(byte_offset) | (load_byte(byte_offset + 1u) << 8u);
+}
+
+int load_i16(uint byte_offset)
+{
+    return int(load_u16(byte_offset) << 16u) >> 16;
+}
+
+vec3 decode_octahedral(ivec2 encoded)
+{
+    vec2 value = clamp(vec2(encoded) / 32767.0, vec2(-1.0), vec2(1.0));
+    vec3 result = vec3(value, 1.0 - abs(value.x) - abs(value.y));
+    if (result.z < 0.0)
+        result.xy = (1.0 - abs(result.yx)) * sign(result.xy);
+    return normalize(result);
+}
+
+uint vertex_offset(virtual_cluster cluster, virtual_page page, uint vertex_index)
+{
+    return page.heap_byte_offset + cluster.page_byte_offset + 16u + vertex_index * 24u;
+}
+
+vec3 decode_position(virtual_cluster cluster, virtual_page page, uint vertex_index)
+{
+    uint offset = vertex_offset(cluster, page, vertex_index);
+    vec3 quantized = vec3(load_u16(offset), load_u16(offset + 2u), load_u16(offset + 4u));
+    return mix(cluster.bounds_min_error.xyz, cluster.bounds_max.xyz, quantized / 65535.0);
+}
+
+vec3 decode_normal(virtual_cluster cluster, virtual_page page, uint vertex_index)
+{
+    uint offset = vertex_offset(cluster, page, vertex_index) + 6u;
+    return decode_octahedral(ivec2(load_i16(offset), load_i16(offset + 2u)));
+}
+
+vec4 decode_tangent(virtual_cluster cluster, virtual_page page, uint vertex_index)
+{
+    uint offset = vertex_offset(cluster, page, vertex_index);
+    vec3 tangent = decode_octahedral(ivec2(load_i16(offset + 10u), load_i16(offset + 12u)));
+    float sign_value = load_byte(offset + 22u) < 128u ? 1.0 : -1.0;
+    return vec4(tangent, sign_value);
+}
+
+vec2 decode_texcoord(virtual_cluster cluster, virtual_page page, uint vertex_index)
+{
+    uint offset = vertex_offset(cluster, page, vertex_index) + 14u;
+    return unpackHalf2x16(load_u16(offset) | (load_u16(offset + 2u) << 16u));
+}
+
+vec4 decode_color(virtual_cluster cluster, virtual_page page, uint vertex_index)
+{
+    uint offset = vertex_offset(cluster, page, vertex_index) + 18u;
+    return vec4(load_byte(offset), load_byte(offset + 1u), load_byte(offset + 2u), load_byte(offset + 3u)) / 255.0;
+}
+
+uint load_triangle_index(virtual_cluster cluster, virtual_page page, uint triangle_index, uint corner)
+{
+    uint offset = page.heap_byte_offset + cluster.page_byte_offset + 16u + cluster.vertex_count * 24u;
+    return load_byte(offset + triangle_index * 3u + corner);
+}
+
+vec2 screen_position(vec4 clip)
+{
+    vec2 ndc = clip.xy / max(abs(clip.w), 1.0e-6);
+    return vec2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5) * vec2(frame.viewport_material_texture_debug.xy);
+}
+
+float edge_function(vec2 a, vec2 b, vec2 point)
+{
+    return (point.x - a.x) * (b.y - a.y) - (point.y - a.y) * (b.x - a.x);
+}
+
+float material_float(uint base, uint word)
+{
+    return uintBitsToFloat(material_words[base + word]);
+}
+
+bool texture_valid(uint material_base, uint slot, out uint descriptor_index)
+{
+    uint texture_index = material_words[material_base + 14u + slot];
+    uint generation = material_words[material_base + 26u + slot];
+    if (texture_index == invalid_index || texture_index >= frame.viewport_material_texture_debug.w)
+        return false;
+    uint texture_base = texture_index * texture_word_stride;
+    descriptor_index = texture_words[texture_base + 1u];
+    return texture_words[texture_base] == generation && descriptor_index != invalid_index &&
+           descriptor_index < frame.viewport_material_texture_debug.w;
+}
+
+vec4 sample_material_texture(uint material_base, uint slot, vec2 uv, vec4 fallback_value)
+{
+    uint descriptor_index = invalid_index;
+    if (!texture_valid(material_base, slot, descriptor_index))
+        return fallback_value;
+    return textureLod(material_textures[nonuniformEXT(descriptor_index)], uv, 0.0);
+}
+
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 extent = imageSize(visibility_ids);
+    if (any(greaterThanEqual(pixel, extent)))
+        return;
+
+    uint identity = imageLoad(visibility_ids, pixel).x;
+    if (identity == invalid_index)
+        return;
+    uint visible_index = identity >> 8u;
+    uint triangle_index = identity & 0xffu;
+    virtual_visible_cluster visible = visible_clusters[visible_index];
+    virtual_cluster cluster = clusters[visible.cluster_index];
+    virtual_page page = pages[cluster.page_index];
+    if ((page.flags & 1u) == 0u || triangle_index >= cluster.triangle_count)
+        return;
+
+    gpu_scene_instance instance = instances[visible.instance_index];
+    uint material_index = visible.material_index;
+    if (material_index >= frame.viewport_material_texture_debug.z)
+        return;
+    uint material_base = material_index * material_word_stride;
+    if (material_words[material_base] != instance.material_flags.y)
+        return;
+    uint material_flags = material_words[material_base + 1u];
+    uint alpha_mode = material_flags & 0xfu;
+    if (alpha_mode == 2u || (material_flags & (1u << 9u)) != 0u)
+        return;
+
+    uvec3 indices = uvec3(load_triangle_index(cluster, page, triangle_index, 0u),
+                          load_triangle_index(cluster, page, triangle_index, 1u),
+                          load_triangle_index(cluster, page, triangle_index, 2u));
+    mat4 model = transforms[visible.instance_index].model;
+    mat4 previous_model = transforms[visible.instance_index].previous_model;
+    vec3 object_positions[3] = vec3[3](decode_position(cluster, page, indices.x),
+                                      decode_position(cluster, page, indices.y),
+                                      decode_position(cluster, page, indices.z));
+    vec4 clips[3] = vec4[3](frame.view_projection * model * vec4(object_positions[0], 1.0),
+                            frame.view_projection * model * vec4(object_positions[1], 1.0),
+                            frame.view_projection * model * vec4(object_positions[2], 1.0));
+    vec2 sample_position = vec2(pixel) + vec2(0.5);
+    vec2 p0 = screen_position(clips[0]);
+    vec2 p1 = screen_position(clips[1]);
+    vec2 p2 = screen_position(clips[2]);
+    float area = edge_function(p0, p1, p2);
+    if (abs(area) < 1.0e-8)
+        return;
+    vec3 barycentric = vec3(edge_function(p1, p2, sample_position), edge_function(p2, p0, sample_position),
+                            edge_function(p0, p1, sample_position)) / area;
+    vec3 perspective = barycentric / vec3(clips[0].w, clips[1].w, clips[2].w);
+    perspective /= max(dot(perspective, vec3(1.0)), 1.0e-8);
+
+    vec3 object_normal = normalize(decode_normal(cluster, page, indices.x) * perspective.x +
+                                   decode_normal(cluster, page, indices.y) * perspective.y +
+                                   decode_normal(cluster, page, indices.z) * perspective.z);
+    vec4 object_tangent = decode_tangent(cluster, page, indices.x) * perspective.x +
+                          decode_tangent(cluster, page, indices.y) * perspective.y +
+                          decode_tangent(cluster, page, indices.z) * perspective.z;
+    vec3 normal = normalize(mat3(model) * object_normal);
+    vec3 tangent = normalize(mat3(model) * object_tangent.xyz);
+    tangent = normalize(tangent - normal * dot(normal, tangent));
+    vec3 bitangent = normalize(cross(normal, tangent) * (object_tangent.w < 0.0 ? -1.0 : 1.0));
+    vec2 uv = decode_texcoord(cluster, page, indices.x) * perspective.x +
+              decode_texcoord(cluster, page, indices.y) * perspective.y +
+              decode_texcoord(cluster, page, indices.z) * perspective.z;
+    vec4 vertex_color = decode_color(cluster, page, indices.x) * perspective.x +
+                        decode_color(cluster, page, indices.y) * perspective.y +
+                        decode_color(cluster, page, indices.z) * perspective.z;
+
+    vec4 base_factor = vec4(material_float(material_base, 2u), material_float(material_base, 3u),
+                            material_float(material_base, 4u), material_float(material_base, 5u));
+    vec4 base_color = sample_material_texture(material_base, 0u, uv, vec4(1.0)) * base_factor * vertex_color;
+    if (alpha_mode == 1u && base_color.a < material_float(material_base, 12u))
+        return;
+    vec4 metallic_roughness = sample_material_texture(material_base, 1u, uv, vec4(1.0));
+    float metallic = clamp(material_float(material_base, 10u) * metallic_roughness.b, 0.0, 1.0);
+    float roughness = clamp(material_float(material_base, 11u) * metallic_roughness.g, 0.04, 1.0);
+    float ao = sample_material_texture(material_base, 3u, uv, vec4(1.0)).r;
+    uint normal_descriptor = invalid_index;
+    if (texture_valid(material_base, 2u, normal_descriptor))
+    {
+        vec3 mapped = textureLod(material_textures[nonuniformEXT(normal_descriptor)], uv, 0.0).xyz * 2.0 - 1.0;
+        mapped.xy *= material_float(material_base, 13u);
+        normal = normalize(mat3(tangent, bitangent, normal) * mapped);
+    }
+    vec3 emissive_factor = vec3(material_float(material_base, 6u), material_float(material_base, 7u),
+                                material_float(material_base, 8u));
+    float emissive_strength = material_float(material_base, 9u);
+    vec3 emissive = sample_material_texture(material_base, 4u, uv, vec4(1.0)).rgb * emissive_factor * emissive_strength;
+
+    vec3 object_position = object_positions[0] * perspective.x + object_positions[1] * perspective.y +
+                           object_positions[2] * perspective.z;
+    vec4 current_clip = frame.view_projection * model * vec4(object_position, 1.0);
+    vec4 previous_clip = frame.previous_view_projection * previous_model * vec4(object_position, 1.0);
+    vec2 current_ndc = current_clip.xy / max(current_clip.w, 1.0e-6);
+    vec2 previous_ndc = previous_clip.xy / max(previous_clip.w, 1.0e-6);
+
+    imageStore(out_albedo, pixel, base_color);
+    imageStore(out_normal, pixel, vec4(normal * 0.5 + 0.5, ao));
+    imageStore(out_material, pixel, vec4(metallic, roughness, 1.0, 0.0));
+    imageStore(out_emissive, pixel, vec4(emissive, 1.0));
+    imageStore(out_motion, pixel, vec4((current_ndc - previous_ndc) * 0.5, 0.0, 0.0));
+    imageStore(out_object_id, pixel, uvec4(instance.draw_metadata.w, 0u, 0u, 0u));
+}

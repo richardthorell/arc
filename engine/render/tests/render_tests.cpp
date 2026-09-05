@@ -1664,10 +1664,15 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     REQUIRE_FALSE(high.features.virtual_shadow_maps);
     config.quality = render_quality_tier::ultra;
 
-    capabilities.gpu_visibility_compaction = true;
     capabilities.bindless_sampled_images = true;
     capabilities.bindless_samplers = true;
     capabilities.bindless_material_tables = true;
+    resolved = resolve_render_config(config, capabilities);
+    REQUIRE(resolved.features.gpu_binding_model == gpu_resource_binding_model::classic);
+    REQUIRE(resolved.features.virtual_geometry);
+    REQUIRE(resolved.features.virtual_geometry_path == virtual_geometry_raster_path::compute);
+
+    capabilities.gpu_visibility_compaction = true;
     capabilities.bindless_geometry_tables = true;
     capabilities.gpu_transparent_sorting = true;
     capabilities.gpu_skinning = true;
@@ -3222,6 +3227,21 @@ TEST_CASE("virtual geometry software visibility resolves depth before stable pri
     REQUIRE(encode_virtual_geometry_visibility_id(0x01ffffffu, 400u) == 0xffffffffu);
     REQUIRE(encode_virtual_geometry_depth(-1.0f) == encode_virtual_geometry_depth(0.0f));
     REQUIRE(encode_virtual_geometry_depth(2.0f) == encode_virtual_geometry_depth(1.0f));
+}
+
+TEST_CASE("virtual geometry material resolve reconstructs perspective-correct weights")
+{
+    using namespace arc::render;
+    const auto weights = perspective_correct_virtual_geometry_barycentrics({0.25f, 0.25f, 0.5f},
+                                                                            {1.0f, 2.0f, 4.0f});
+    REQUIRE(weights[0] == Catch::Approx(0.5f));
+    REQUIRE(weights[1] == Catch::Approx(0.25f));
+    REQUIRE(weights[2] == Catch::Approx(0.25f));
+    REQUIRE(weights[0] + weights[1] + weights[2] == Catch::Approx(1.0f));
+
+    const auto fallback = perspective_correct_virtual_geometry_barycentrics({0.0f, 0.0f, 0.0f},
+                                                                             {1.0f, 1.0f, 1.0f});
+    REQUIRE(fallback == std::array{1.0f, 0.0f, 0.0f});
 }
 
 TEST_CASE("GLB mesh loader reads checked-in editor startup mesh")
