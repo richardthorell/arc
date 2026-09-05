@@ -1840,6 +1840,9 @@ TEST_CASE("renderer create mesh enqueues typed upload and tracks handle lifetime
     arc::render::mesh_data mesh;
     mesh.name = "triangle";
     mesh.vertices.resize(3);
+    mesh.vertices[0].position[0] = -1.0f;
+    mesh.vertices[1].position[0] = 1.0f;
+    mesh.vertices[2].position[1] = 1.0f;
     mesh.indices = {0, 1, 2};
 
     const auto handle = renderer.create_mesh(std::move(mesh));
@@ -1890,6 +1893,65 @@ TEST_CASE("renderer updates mesh vertices and retires stale handles")
     REQUIRE(destroy.events[0].type() == arc::render::render_event_type::mesh_destroy);
     REQUIRE(destroy.events[1].type() == arc::render::render_event_type::gpu_resource_table_update);
     REQUIRE_FALSE(renderer.destroy_mesh(handle));
+}
+
+TEST_CASE("renderer owns generation-safe skin palettes and publishes table updates")
+{
+    using namespace arc::render;
+    renderer renderer;
+    skin_palette_data palette;
+    palette.name = "hero pose";
+    palette.current.resize(2, arc::math::identity<float, 4>());
+    palette.current[1](0, 3) = 2.0f;
+
+    const auto handle = renderer.create_skin_palette(std::move(palette));
+    REQUIRE(handle.valid());
+    REQUIRE(renderer.skin_palette_alive(handle));
+    REQUIRE(renderer.skin_palette_data_for(handle) != nullptr);
+    REQUIRE(renderer.skin_palette_data_for(handle)->previous.size() == 2);
+    auto created = renderer.frame_queue().commit(1);
+    REQUIRE(created.events.size() == 2);
+    REQUIRE(created.events[0].type() == render_event_type::skin_palette_upload);
+    REQUIRE(created.events[1].type() == render_event_type::gpu_resource_table_update);
+    const auto& upload = std::get<skin_palette_upload_event>(created.events[0].payload);
+    REQUIRE(upload.handle == handle);
+    REQUIRE(upload.palette->current[1](0, 3) == Catch::Approx(2.0f));
+
+    skin_palette_data update;
+    update.name = "hero pose 2";
+    update.current.resize(2, arc::math::identity<float, 4>());
+    update.current[0](1, 3) = 3.0f;
+    REQUIRE(renderer.update_skin_palette(handle, std::move(update)));
+    const auto* retained = renderer.skin_palette_data_for(handle);
+    REQUIRE(retained != nullptr);
+    REQUIRE(retained->previous[1](0, 3) == Catch::Approx(2.0f));
+    auto updated = renderer.frame_queue().commit(2);
+    REQUIRE(updated.events.size() == 2);
+    REQUIRE(updated.events[0].type() == render_event_type::skin_palette_upload);
+
+    REQUIRE(renderer.destroy_skin_palette(handle));
+    REQUIRE_FALSE(renderer.skin_palette_alive(handle));
+    auto destroyed = renderer.frame_queue().commit(3);
+    REQUIRE(destroyed.events.size() == 2);
+    REQUIRE(destroyed.events[0].type() == render_event_type::skin_palette_destroy);
+    REQUIRE_FALSE(renderer.update_skin_palette(handle, skin_palette_data{}));
+
+    skin_palette_data replacement;
+    replacement.current.resize(1, arc::math::identity<float, 4>());
+    const auto recycled = renderer.create_skin_palette(std::move(replacement));
+    REQUIRE(recycled.index == handle.index);
+    REQUIRE(recycled.generation != handle.generation);
+}
+
+TEST_CASE("renderer rejects mismatched optional mesh skin streams")
+{
+    arc::render::renderer renderer;
+    arc::render::mesh_data invalid;
+    invalid.vertices.resize(3);
+    invalid.skin_vertices.resize(2);
+    invalid.indices = {0, 1, 2};
+    REQUIRE_FALSE(renderer.create_mesh(std::move(invalid)).valid());
+    REQUIRE(renderer.frame_queue().commit(1).events.empty());
 }
 
 TEST_CASE("renderer create virtual mesh enqueues typed upload and keeps CPU cluster metadata")

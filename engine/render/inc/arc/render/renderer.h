@@ -186,6 +186,21 @@ public:
     /** @brief Retire a mesh handle and enqueue backend cleanup. */
     bool destroy_mesh(mesh_handle handle);
 
+    /** @brief Create a renderer-owned current/previous joint palette. */
+    [[nodiscard]] buffer_handle create_skin_palette(skin_palette_data palette);
+
+    /** @brief Replace joint transforms while retaining a stable palette handle. */
+    bool update_skin_palette(buffer_handle handle, skin_palette_data palette);
+
+    /** @brief Retire a skin palette and its stable GPU table entry. */
+    bool destroy_skin_palette(buffer_handle handle);
+
+    /** @brief Return whether a skin-palette handle is live. */
+    [[nodiscard]] bool skin_palette_alive(buffer_handle handle) const noexcept;
+
+    /** @brief Return retained joint transforms for tooling and CPU fallback. */
+    [[nodiscard]] const skin_palette_data* skin_palette_data_for(buffer_handle handle) const noexcept;
+
     /**
      * @brief Create a renderer-owned virtual mesh resource and enqueue its upload.
      */
@@ -393,6 +408,7 @@ private:
     texture_residency_manager texture_residency_;
     lighting_scene lighting_scene_;
     handle_pool mesh_handles_;
+    handle_pool skin_palette_handles_;
     handle_pool virtual_mesh_handles_;
     handle_pool terrain_handles_;
     handle_pool lighting_geometry_handles_;
@@ -409,6 +425,7 @@ private:
     std::unordered_map<std::uint64_t, terrain_selection_scratch> terrain_selection_scratch_;
     std::unordered_map<std::uint64_t, std::uint32_t> virtual_mesh_content_generations_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const mesh_data>> mesh_data_;
+    std::unordered_map<std::uint64_t, std::shared_ptr<const skin_palette_data>> skin_palette_data_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const streamed_texture_descriptor>> streamed_texture_data_;
     texture_streaming_io_snapshot texture_streaming_io_;
     std::unordered_map<std::uint64_t, lighting_geometry_handle> mesh_lighting_geometry_;

@@ -37,6 +37,8 @@ enum class render_event_type : std::uint8_t
 {
     mesh_upload,
     mesh_destroy,
+    skin_palette_upload,
+    skin_palette_destroy,
     virtual_mesh_upload,
     virtual_mesh_destroy,
     virtual_geometry_page_upload,
@@ -188,6 +190,20 @@ struct mesh_upload_event
 struct mesh_destroy_event
 {
     mesh_handle handle{};
+};
+
+/** @brief Upload or replace a renderer-owned skin palette. */
+struct skin_palette_upload_event
+{
+    buffer_handle handle{};
+    std::shared_ptr<const skin_palette_data> palette;
+    std::string label;
+};
+
+/** @brief Retire a renderer-owned skin palette after in-flight frames complete. */
+struct skin_palette_destroy_event
+{
+    buffer_handle handle{};
 };
 
 /**
@@ -480,7 +496,8 @@ struct render_world_event
 };
 
 using render_event_payload = std::variant<
-    mesh_upload_event, mesh_destroy_event, virtual_mesh_upload_event, virtual_mesh_destroy_event,
+    mesh_upload_event, mesh_destroy_event, skin_palette_upload_event, skin_palette_destroy_event,
+    virtual_mesh_upload_event, virtual_mesh_destroy_event,
     virtual_geometry_page_upload_event, terrain_upload_event, terrain_height_update_event, terrain_weight_update_event,
     terrain_destroy_event, lighting_geometry_upload_event, lighting_geometry_destroy_event, texture_upload_event,
     texture_stream_register_event, texture_stream_upload_event, texture_stream_evict_event, texture_destroy_event,
@@ -556,6 +573,13 @@ public:
 
     /** @brief Append a mesh retirement request. */
     void mesh_destroy(mesh_handle handle);
+
+    /** @brief Append a complete skin-palette upload. */
+    void skin_palette_upload(buffer_handle handle, std::shared_ptr<const skin_palette_data> palette,
+                             std::string label = {});
+
+    /** @brief Append a skin-palette retirement request. */
+    void skin_palette_destroy(buffer_handle handle);
 
     /**
      * @brief Append a virtual mesh upload request.

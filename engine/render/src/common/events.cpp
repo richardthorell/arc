@@ -9,6 +9,8 @@ render_event_type render_event::type() const noexcept
 {
     if (std::holds_alternative<mesh_upload_event>(payload)) return render_event_type::mesh_upload;
     if (std::holds_alternative<mesh_destroy_event>(payload)) return render_event_type::mesh_destroy;
+    if (std::holds_alternative<skin_palette_upload_event>(payload)) return render_event_type::skin_palette_upload;
+    if (std::holds_alternative<skin_palette_destroy_event>(payload)) return render_event_type::skin_palette_destroy;
     if (std::holds_alternative<virtual_mesh_upload_event>(payload)) return render_event_type::virtual_mesh_upload;
     if (std::holds_alternative<virtual_mesh_destroy_event>(payload)) return render_event_type::virtual_mesh_destroy;
     if (std::holds_alternative<virtual_geometry_page_upload_event>(payload))
@@ -90,6 +92,17 @@ void render_event_writer::mesh_destroy(mesh_handle handle)
     render_event event{};
     event.payload = mesh_destroy_event{.handle = handle};
     buffer_->push(std::move(event));
+}
+
+void render_event_writer::skin_palette_upload(buffer_handle handle, std::shared_ptr<const skin_palette_data> palette,
+                                              std::string label)
+{
+    push({.payload = skin_palette_upload_event{handle, std::move(palette), std::move(label)}});
+}
+
+void render_event_writer::skin_palette_destroy(buffer_handle handle)
+{
+    push({.payload = skin_palette_destroy_event{handle}});
 }
 
 void render_event_writer::virtual_mesh_upload(virtual_mesh_handle handle, std::shared_ptr<const virtual_mesh_data> mesh,

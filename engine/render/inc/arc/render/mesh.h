@@ -35,6 +35,35 @@ struct mesh_vertex
 };
 
 /**
+ * @brief Four-joint linear-blend skinning input associated with one mesh vertex.
+ *
+ * Meshes without skinning data leave @ref mesh_data::skin_vertices empty. Keeping
+ * the stream separate preserves the conventional vertex ABI and lets static and
+ * skinned instances share the same immutable source geometry.
+ */
+struct mesh_skin_vertex
+{
+    std::uint32_t joint_indices[4]{};
+    float joint_weights[4]{1.0f, 0.0f, 0.0f, 0.0f};
+};
+
+static_assert(sizeof(mesh_skin_vertex) == 32);
+
+/** @brief Current and previous joint transforms owned by one renderer palette. */
+struct skin_palette_data
+{
+    std::string name;
+    std::vector<math::matrix4f> current;
+    std::vector<math::matrix4f> previous;
+    std::uint64_t content_revision{};
+
+    [[nodiscard]] bool valid() const noexcept
+    {
+        return !current.empty() && (previous.empty() || previous.size() == current.size());
+    }
+};
+
+/**
  * @brief CPU-side mesh data ready for GPU upload.
  */
 struct mesh_data
@@ -42,6 +71,8 @@ struct mesh_data
     std::string name;
     mesh_usage usage{mesh_usage::static_gpu};
     std::vector<mesh_vertex> vertices;
+    /** Optional one-to-one skinning stream. */
+    std::vector<mesh_skin_vertex> skin_vertices;
     std::vector<std::uint32_t> indices;
     std::size_t material_index{std::numeric_limits<std::size_t>::max()};
 };

@@ -792,6 +792,7 @@ render_frame_queue& renderer::frame_queue() noexcept
 
 mesh_handle renderer::create_mesh(mesh_data mesh)
 {
+    if (!mesh.skin_vertices.empty() && mesh.skin_vertices.size() != mesh.vertices.size()) return {};
     const mesh_handle handle = mesh_handles_.allocate();
     auto shared_mesh = std::make_shared<mesh_data>(std::move(mesh));
     mesh_data_[renderer_resource_key(handle)] = shared_mesh;
@@ -873,6 +874,79 @@ bool renderer::destroy_mesh(mesh_handle handle)
     }
     frame_queue_.submit(std::move(buffer));
     return true;
+}
+
+buffer_handle renderer::create_skin_palette(skin_palette_data palette)
+{
+    if (!palette.valid()) return {};
+    if (palette.previous.empty()) palette.previous = palette.current;
+    const buffer_handle handle = skin_palette_handles_.allocate();
+    auto shared = std::make_shared<skin_palette_data>(std::move(palette));
+    skin_palette_data_[renderer_resource_key(handle)] = shared;
+
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.skin_palette_upload(handle, shared, shared->name);
+    const gpu_skin_palette_table_record record{.generation = handle.generation,
+                                               .joint_count = static_cast<std::uint32_t>(shared->current.size()),
+                                               .byte_size = shared->current.size() * sizeof(math::matrix4f)};
+    auto table_update = gpu_resources_.publish_skin_palette(handle, record, resource_frame_index_);
+    if (!table_update.updates.empty())
+        writer.gpu_resource_table_update(std::make_shared<gpu_table_update_batch>(std::move(table_update)));
+    frame_queue_.submit(std::move(buffer));
+    return handle;
+}
+
+bool renderer::update_skin_palette(buffer_handle handle, skin_palette_data palette)
+{
+    if (!skin_palette_handles_.alive(handle) || !palette.valid()) return false;
+    if (palette.previous.empty())
+    {
+        const auto found = skin_palette_data_.find(renderer_resource_key(handle));
+        palette.previous = found != skin_palette_data_.end() && found->second->current.size() == palette.current.size()
+                               ? found->second->current
+                               : palette.current;
+    }
+    auto shared = std::make_shared<skin_palette_data>(std::move(palette));
+    skin_palette_data_[renderer_resource_key(handle)] = shared;
+
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.skin_palette_upload(handle, shared, shared->name);
+    const gpu_skin_palette_table_record record{.generation = handle.generation,
+                                               .joint_count = static_cast<std::uint32_t>(shared->current.size()),
+                                               .byte_size = shared->current.size() * sizeof(math::matrix4f)};
+    auto table_update = gpu_resources_.publish_skin_palette(handle, record, resource_frame_index_);
+    if (!table_update.updates.empty())
+        writer.gpu_resource_table_update(std::make_shared<gpu_table_update_batch>(std::move(table_update)));
+    frame_queue_.submit(std::move(buffer));
+    return true;
+}
+
+bool renderer::destroy_skin_palette(buffer_handle handle)
+{
+    if (!skin_palette_handles_.release(handle)) return false;
+    skin_palette_data_.erase(renderer_resource_key(handle));
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.skin_palette_destroy(handle);
+    auto table_update =
+        gpu_resources_.tombstone(gpu_resource_table_kind::skin_palette, handle, resource_frame_index_);
+    if (!table_update.updates.empty())
+        writer.gpu_resource_table_update(std::make_shared<gpu_table_update_batch>(std::move(table_update)));
+    frame_queue_.submit(std::move(buffer));
+    return true;
+}
+
+bool renderer::skin_palette_alive(buffer_handle handle) const noexcept
+{
+    return skin_palette_handles_.alive(handle);
+}
+
+const skin_palette_data* renderer::skin_palette_data_for(buffer_handle handle) const noexcept
+{
+    const auto found = skin_palette_data_.find(renderer_resource_key(handle));
+    return found == skin_palette_data_.end() ? nullptr : found->second.get();
 }
 
 virtual_mesh_handle renderer::create_virtual_mesh(virtual_mesh_data mesh)
