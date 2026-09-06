@@ -1,4 +1,4 @@
-import { forwardRef, type HTMLAttributes, type ReactNode } from 'react';
+import type { HTMLAttributes, ReactNode } from 'react';
 
 import './UiPanel.css';
 
@@ -12,16 +12,13 @@ type UiPanelHeaderProps = HTMLAttributes<HTMLElement> & {
   children: ReactNode;
 };
 
-export const UiPanel = forwardRef<HTMLElement, UiPanelProps>(function UiPanel(
-  { children, className, variant = 'default', ...props },
-  ref,
-) {
+export function UiPanel({ children, className, variant = 'default', ...props }: UiPanelProps) {
   return (
-    <section ref={ref} className={['ui-panel', `ui-panel-${variant}`, className].filter(Boolean).join(' ')} {...props}>
+    <section className={['ui-panel', `ui-panel-${variant}`, className].filter(Boolean).join(' ')} {...props}>
       {children}
     </section>
   );
-});
+}
 
 export function UiPanelHeader({ actions, children, className, ...props }: UiPanelHeaderProps) {
   return (
