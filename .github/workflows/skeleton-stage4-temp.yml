@@ -1,0 +1,502 @@
+name: Skeleton Stage 4
+
+on:
+  push:
+    branches: [feat/skeleton-model-workflow]
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply stage 4 model/skeleton workflow
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"pattern not found in {path}: {old[:120]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          Path('editor/src/renderer/src/model').mkdir(parents=True, exist_ok=True)
+
+          Path('editor/src/renderer/src/model/modelSubassets.ts').write_text(r'''import type { AssetItem } from '../services/editorHostTypes';
+
+export type ModelSubasset = {
+  id: string;
+  kind: 'mesh' | 'skeleton';
+  name: string;
+  meshIndex?: number;
+};
+
+const modelBaseName = (asset: Pick<AssetItem, 'name' | 'path'>) => {
+  const raw = asset.name || asset.path.replaceAll('\\\\', '/').split('/').at(-1) || 'Model';
+  return raw.replace(/\.(fbx|glb|gltf|obj)$/i, '');
+};
+
+export function hasSkeletonMetadata(asset: AssetItem) {
+  return Boolean((asset.skeletonJoints?.length ?? 0) > 0 || (asset.skeletonBoneCount ?? 0) > 0);
+}
+
+export function buildModelSubassets(asset: AssetItem): ModelSubasset[] {
+  const result: ModelSubasset[] = [];
+  const meshCount = Math.max(0, Math.round(asset.meshCount ?? (asset.kind === 'mesh' ? 1 : 0)));
+  for (let index = 0; index < meshCount; index += 1) {
+    result.push({
+      id: `${asset.guid ?? asset.path}:mesh:${index}`,
+      kind: 'mesh',
+      name: meshCount === 1 ? 'Mesh' : `Mesh ${index + 1}`,
+      meshIndex: index,
+    });
+  }
+  if (hasSkeletonMetadata(asset)) {
+    result.push({
+      id: `${asset.guid ?? asset.path}:skeleton`,
+      kind: 'skeleton',
+      name: asset.skeletonName?.trim() || `${modelBaseName(asset)} Skeleton`,
+    });
+  }
+  return result;
+}
+
+export type SkeletonCompatibility = 'compatible' | 'partial' | 'incompatible';
+
+export function skeletonCompatibility(source: AssetItem, candidate: AssetItem): SkeletonCompatibility {
+  const sourceJoints = source.skeletonJoints ?? [];
+  const candidateJoints = candidate.skeletonJoints ?? [];
+  const sourceCount = source.skeletonBoneCount ?? sourceJoints.length;
+  const candidateCount = candidate.skeletonBoneCount ?? candidateJoints.length;
+  if (!sourceCount || !candidateCount || sourceCount !== candidateCount) return 'incompatible';
+  if (sourceJoints.length && candidateJoints.length) {
+    const sourceNames = sourceJoints.map((joint) => joint.name);
+    const candidateNames = candidateJoints.map((joint) => joint.name);
+    return sourceNames.every((name, index) => name === candidateNames[index]) ? 'compatible' : 'partial';
+  }
+  return 'partial';
+}
+
+export function skeletonHierarchyDepth(asset: AssetItem) {
+  if (asset.skeletonHierarchyDepth !== undefined) return asset.skeletonHierarchyDepth;
+  const joints = asset.skeletonJoints ?? [];
+  if (!joints.length) return 0;
+  const byIndex = new Map(joints.map((joint) => [joint.index, joint]));
+  let depth = 0;
+  for (const joint of joints) {
+    let current = joint;
+    let currentDepth = 1;
+    const seen = new Set<number>();
+    while (current.parent >= 0 && !seen.has(current.index)) {
+      seen.add(current.index);
+      const parent = byIndex.get(current.parent);
+      if (!parent) break;
+      current = parent;
+      currentDepth += 1;
+    }
+    depth = Math.max(depth, currentDepth);
+  }
+  return depth;
+}
+''')
+
+          Path('editor/src/renderer/src/model/ModelEditor.tsx').write_text(r'''import { useMemo, useState } from 'react';
+import { Bone, Box, CheckCircle2, ExternalLink, TriangleAlert, XCircle } from 'lucide-react';
+
+import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/AssetPreviewPanel';
+import { openSkeletonEditorDocument } from '../editors/editorRegistry';
+import type { EditorDocument } from '../editors/editorTypes';
+import type { AssetItem } from '../services/editorHostTypes';
+import { UiButton } from '../ui';
+import { buildModelSubassets, hasSkeletonMetadata, skeletonCompatibility } from './modelSubassets';
+
+import './modelEditor.css';
+
+type ProjectAssetsResponse = { succeeded?: boolean; payload?: { assets?: AssetItem[] } };
+
+const compatibilityIcon = (value: ReturnType<typeof skeletonCompatibility>) =>
+  value === 'compatible' ? <CheckCircle2 size={13} /> : value === 'partial' ? <TriangleAlert size={13} /> : <XCircle size={13} />;
+
+export function ModelEditor({ document }: { document: EditorDocument }) {
+  const asset = document.assetSnapshot;
+  const [activeSection, setActiveSection] = useState<'model' | 'skeleton'>('model');
+  const [candidateAssets, setCandidateAssets] = useState<AssetItem[]>([]);
+  const [assignedSkeleton, setAssignedSkeleton] = useState(asset?.guid ?? asset?.path ?? '');
+  const subassets = useMemo(() => (asset ? buildModelSubassets(asset) : []), [asset]);
+
+  if (!asset) return <div className="model-editor-empty">Model metadata is unavailable.</div>;
+  const skeleton = hasSkeletonMetadata(asset);
+  const boneCount = asset.skeletonBoneCount ?? asset.skeletonJoints?.length ?? 0;
+
+  const loadSkeletonCandidates = async () => {
+    try {
+      const response = (await window.arc.host.query('project.assets')) as ProjectAssetsResponse;
+      setCandidateAssets((response.payload?.assets ?? []).filter(hasSkeletonMetadata));
+    } catch {
+      setCandidateAssets([]);
+    }
+  };
+
+  return (
+    <div className="model-editor-shell">
+      <AssetPreviewPanel
+        title={asset.name}
+        subtitle={asset.path}
+        metadata={[
+          { label: 'Meshes', value: asset.meshCount ?? 0 },
+          { label: 'Vertices', value: asset.vertexCount?.toLocaleString() ?? '—' },
+          { label: 'Triangles', value: asset.triangleCount?.toLocaleString() ?? '—' },
+          { label: 'Skeleton', value: skeleton ? `${boneCount} bones` : 'None' },
+        ]}
+      >
+        <AssetPreviewPlaceholder
+          label="Model preview"
+          description={skeleton ? 'Skinned model with imported skeleton metadata.' : 'Static model preview.'}
+        />
+      </AssetPreviewPanel>
+
+      <aside className="model-editor-sidebar">
+        <div className="model-editor-tabs" role="tablist" aria-label="Model editor sections">
+          <button className={activeSection === 'model' ? 'active' : ''} onClick={() => setActiveSection('model')}>
+            <Box size={14} /> Model
+          </button>
+          <button
+            className={activeSection === 'skeleton' ? 'active' : ''}
+            disabled={!skeleton}
+            onClick={() => setActiveSection('skeleton')}
+          >
+            <Bone size={14} /> Skeleton
+          </button>
+        </div>
+
+        {activeSection === 'model' ? (
+          <div className="model-editor-section">
+            <h3>Sub-assets</h3>
+            <div className="model-subasset-list">
+              {subassets.map((subasset) => (
+                <button
+                  key={subasset.id}
+                  className="model-subasset-row"
+                  onDoubleClick={() => subasset.kind === 'skeleton' && openSkeletonEditorDocument(asset)}
+                >
+                  {subasset.kind === 'skeleton' ? <Bone size={14} /> : <Box size={14} />}
+                  <span>{subasset.name}</span>
+                  <small>{subasset.kind === 'skeleton' ? 'Skeleton' : 'Mesh'}</small>
+                </button>
+              ))}
+              {!subassets.length && <p>No model sub-assets were reported by the importer.</p>}
+            </div>
+          </div>
+        ) : (
+          <div className="model-editor-section">
+            <div className="model-editor-section-heading">
+              <h3>{asset.skeletonName || 'Skeleton'}</h3>
+              <UiButton type="button" variant="toolbar" onClick={() => openSkeletonEditorDocument(asset)}>
+                Open <ExternalLink size={12} />
+              </UiButton>
+            </div>
+            <dl className="model-skeleton-summary">
+              <div><dt>Bones</dt><dd>{boneCount}</dd></div>
+              <div><dt>Root</dt><dd>{asset.skeletonRootBone || asset.skeletonJoints?.find((joint) => joint.parent < 0)?.name || '—'}</dd></div>
+              <div><dt>Hierarchy depth</dt><dd>{asset.skeletonHierarchyDepth ?? '—'}</dd></div>
+              <div><dt>Bind pose</dt><dd>{asset.skeletonJoints?.length ? 'Available' : 'Metadata only'}</dd></div>
+            </dl>
+            <label className="model-skeleton-picker">
+              <span>Skeleton assignment</span>
+              <select
+                value={assignedSkeleton}
+                onFocus={() => void loadSkeletonCandidates()}
+                onChange={(event) => setAssignedSkeleton(event.target.value)}
+              >
+                <option value={asset.guid ?? asset.path}>{asset.skeletonName || `${asset.name} Skeleton`} (Imported)</option>
+                {candidateAssets
+                  .filter((candidate) => (candidate.guid ?? candidate.path) !== (asset.guid ?? asset.path))
+                  .map((candidate) => {
+                    const compatibility = skeletonCompatibility(asset, candidate);
+                    return (
+                      <option key={candidate.guid ?? candidate.path} value={candidate.guid ?? candidate.path} disabled={compatibility === 'incompatible'}>
+                        {candidate.skeletonName || candidate.name} · {compatibility}
+                      </option>
+                    );
+                  })}
+              </select>
+            </label>
+            <div className="model-compatibility-legend">
+              <span>{compatibilityIcon('compatible')} compatible</span>
+              <span>{compatibilityIcon('partial')} partially compatible</span>
+              <span>{compatibilityIcon('incompatible')} incompatible</span>
+            </div>
+            <p className="model-editor-note">Full animation retargeting is intentionally outside this milestone.</p>
+          </div>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+export function ModelEditorToolbar() {
+  return <span className="model-editor-toolbar-label">Model</span>;
+}
+''')
+
+          Path('editor/src/renderer/src/model/SkeletonAssetEditor.tsx').write_text(r'''import { useMemo } from 'react';
+import { Bone, TriangleAlert } from 'lucide-react';
+
+import type { EditorDocument } from '../editors/editorTypes';
+import { UiTreeView } from '../ui';
+import type { UiTreeNode } from '../ui';
+import { skeletonHierarchyDepth } from './modelSubassets';
+
+import './modelEditor.css';
+
+function skeletonTree(document: EditorDocument): UiTreeNode[] {
+  const joints = document.assetSnapshot?.skeletonJoints ?? [];
+  const children = new Map<number, typeof joints>();
+  for (const joint of joints) children.set(joint.parent, [...(children.get(joint.parent) ?? []), joint]);
+  const build = (joint: (typeof joints)[number]): UiTreeNode => ({
+    id: String(joint.index),
+    label: joint.name,
+    children: (children.get(joint.index) ?? []).map(build),
+  });
+  return (children.get(-1) ?? []).map(build);
+}
+
+export function SkeletonAssetEditor({ document }: { document: EditorDocument }) {
+  const asset = document.assetSnapshot;
+  const nodes = useMemo(() => skeletonTree(document), [document]);
+  if (!asset) return <div className="model-editor-empty">Skeleton metadata is unavailable.</div>;
+  const boneCount = asset.skeletonBoneCount ?? asset.skeletonJoints?.length ?? 0;
+  const root = asset.skeletonRootBone || asset.skeletonJoints?.find((joint) => joint.parent < 0)?.name || '—';
+  const warnings = asset.skeletonValidationWarnings ?? [];
+
+  return (
+    <div className="skeleton-asset-editor">
+      <header>
+        <div><Bone size={18} /><div><strong>{asset.skeletonName || `${asset.name} Skeleton`}</strong><span>Model sub-asset · {asset.name}</span></div></div>
+      </header>
+      <div className="skeleton-asset-body">
+        <section className="skeleton-tree-card">
+          <h3>Skeleton</h3>
+          {nodes.length ? <UiTreeView ariaLabel="Skeleton asset hierarchy" nodes={nodes} defaultExpandedIds={nodes.map((node) => node.id)} /> : <p>Joint hierarchy metadata was not emitted by the importer.</p>}
+        </section>
+        <aside className="skeleton-asset-details">
+          <h3>Details</h3>
+          <dl>
+            <div><dt>Bone count</dt><dd>{boneCount}</dd></div>
+            <div><dt>Hierarchy depth</dt><dd>{skeletonHierarchyDepth(asset) || '—'}</dd></div>
+            <div><dt>Root bone</dt><dd>{root}</dd></div>
+            <div><dt>Bind pose</dt><dd>{asset.skeletonJoints?.length ? 'Available' : 'Metadata only'}</dd></div>
+            <div><dt>Model reference</dt><dd>{asset.name}</dd></div>
+          </dl>
+          <h3>Validation</h3>
+          {warnings.length ? warnings.map((warning) => <div className="skeleton-warning" key={warning}><TriangleAlert size={13} />{warning}</div>) : <p>No validation warnings.</p>}
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+export function SkeletonAssetEditorToolbar() {
+  return <span className="model-editor-toolbar-label">Skeleton</span>;
+}
+''')
+
+          Path('editor/src/renderer/src/model/modelEditor.css').write_text(r'''.model-editor-shell{display:grid;grid-template-columns:minmax(0,1fr) 320px;min-height:0;height:100%;background:var(--surface-0,#11151a)}
+.model-editor-sidebar{border-left:1px solid var(--border-subtle,#2b3138);background:var(--surface-1,#171b20);min-width:0;overflow:auto}
+.model-editor-tabs{display:flex;border-bottom:1px solid var(--border-subtle,#2b3138)}
+.model-editor-tabs button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;border:0;background:transparent;color:inherit;opacity:.72}
+.model-editor-tabs button.active{opacity:1;background:rgba(255,255,255,.05);box-shadow:inset 0 -2px currentColor}.model-editor-tabs button:disabled{opacity:.3}
+.model-editor-section{padding:14px}.model-editor-section h3,.skeleton-asset-editor h3{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;opacity:.72}
+.model-editor-section-heading{display:flex;align-items:center;justify-content:space-between}.model-subasset-list{display:grid;gap:4px}
+.model-subasset-row{display:grid;grid-template-columns:18px 1fr auto;align-items:center;gap:7px;padding:7px 8px;border:1px solid transparent;border-radius:4px;background:transparent;color:inherit;text-align:left}.model-subasset-row:hover{border-color:var(--border-subtle,#343b44);background:rgba(255,255,255,.04)}.model-subasset-row small{opacity:.55}
+.model-skeleton-summary,.skeleton-asset-details dl{display:grid;gap:1px;margin:0 0 14px}.model-skeleton-summary div,.skeleton-asset-details dl div{display:grid;grid-template-columns:1fr auto;gap:12px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06)}dt{opacity:.6}dd{margin:0}
+.model-skeleton-picker{display:grid;gap:6px}.model-skeleton-picker select{width:100%}.model-compatibility-legend{display:grid;gap:5px;margin-top:12px;font-size:11px;opacity:.72}.model-compatibility-legend span{display:flex;align-items:center;gap:6px}.model-editor-note{font-size:11px;opacity:.55}.model-editor-empty{padding:24px}.model-editor-toolbar-label{font-size:12px;opacity:.7}
+.skeleton-asset-editor{height:100%;display:flex;flex-direction:column;min-height:0;background:var(--surface-0,#11151a)}.skeleton-asset-editor>header{padding:12px 16px;border-bottom:1px solid var(--border-subtle,#2b3138)}.skeleton-asset-editor>header>div{display:flex;align-items:center;gap:9px}.skeleton-asset-editor>header div div{display:grid}.skeleton-asset-editor>header span{font-size:11px;opacity:.6}
+.skeleton-asset-body{display:grid;grid-template-columns:minmax(260px,1fr) 320px;min-height:0;flex:1}.skeleton-tree-card{padding:16px;overflow:auto}.skeleton-asset-details{border-left:1px solid var(--border-subtle,#2b3138);padding:16px;overflow:auto}.skeleton-warning{display:flex;gap:7px;align-items:flex-start;padding:7px;border-radius:4px;background:rgba(220,160,50,.10);font-size:11px}
+.content-model-subassets{grid-column:1/-1;margin:-4px 6px 8px 28px;border-left:1px solid var(--border-subtle,#343b44);padding-left:8px;display:grid;gap:2px}.content-model-subasset{display:grid;grid-template-columns:16px 1fr auto;gap:7px;align-items:center;padding:5px 7px;border:0;border-radius:3px;background:transparent;color:inherit;text-align:left}.content-model-subasset:hover{background:rgba(255,255,255,.04)}.content-model-subasset small{opacity:.5}
+@media(max-width:900px){.model-editor-shell,.skeleton-asset-body{grid-template-columns:1fr}.model-editor-sidebar,.skeleton-asset-details{border-left:0;border-top:1px solid var(--border-subtle,#2b3138)}}
+''')
+
+          Path('editor/src/renderer/src/model/modelSubassets.test.ts').write_text(r'''import { describe, expect, it } from 'vitest';
+import type { AssetItem } from '../services/editorHostTypes';
+import { buildModelSubassets, skeletonCompatibility, skeletonHierarchyDepth } from './modelSubassets';
+
+const model = (patch: Partial<AssetItem> = {}): AssetItem => ({
+  id: 'hand', name: 'Hand.fbx', path: 'Content/Hand.fbx', kind: 'scene', status: 'ready', meshCount: 2,
+  skeletonBoneCount: 3,
+  skeletonJoints: [
+    { index: 0, name: 'Root', parent: -1 },
+    { index: 1, name: 'Palm', parent: 0 },
+    { index: 2, name: 'Finger', parent: 1 },
+  ],
+  ...patch,
+});
+
+describe('model sub-assets', () => {
+  it('keeps mesh and skeleton resources nested under the model', () => {
+    expect(buildModelSubassets(model()).map((item) => item.kind)).toEqual(['mesh', 'mesh', 'skeleton']);
+  });
+  it('computes skeleton compatibility conservatively', () => {
+    expect(skeletonCompatibility(model(), model({ id: 'other' }))).toBe('compatible');
+    expect(skeletonCompatibility(model(), model({ skeletonJoints: undefined, skeletonBoneCount: 3 }))).toBe('partial');
+    expect(skeletonCompatibility(model(), model({ skeletonBoneCount: 4 }))).toBe('incompatible');
+  });
+  it('derives hierarchy depth from stable joint indices', () => {
+    expect(skeletonHierarchyDepth(model())).toBe(3);
+  });
+});
+''')
+
+          replace('editor/src/renderer/src/services/editorHostTypes.ts',
+            "  itemCount?: number;\n};",
+            "  itemCount?: number;\n  skeletonName?: string;\n  skeletonBoneCount?: number;\n  skeletonHierarchyDepth?: number;\n  skeletonRootBone?: string;\n  skeletonValidationWarnings?: string[];\n  skeletonJoints?: Array<{ index: number; name: string; parent: number }>;\n};")
+
+          replace('editor/src/renderer/src/editors/editorTypes.ts',
+            "export type EditorDocumentKind = 'level' | 'shader' | 'material' | 'texture';",
+            "export type EditorDocumentKind = 'level' | 'shader' | 'material' | 'texture' | 'model' | 'skeleton';")
+          replace('editor/src/renderer/src/editors/editorTypes.ts',
+            "  assetSnapshot?: AssetItem;\n  dirty: boolean;",
+            "  assetSnapshot?: AssetItem;\n  subresource?: string;\n  dirty: boolean;")
+
+          replace('editor/src/renderer/src/editors/editorRegistry.ts',
+            "import { Circle, FileCode2, Globe2, Image } from 'lucide-react';",
+            "import { Bone, Box, Circle, FileCode2, Globe2, Image } from 'lucide-react';")
+          replace('editor/src/renderer/src/editors/editorRegistry.ts',
+            "import { TextureEditorToolbar } from '../texture/TextureEditorToolbar';",
+            "import { TextureEditorToolbar } from '../texture/TextureEditorToolbar';\nimport { ModelEditor, ModelEditorToolbar } from '../model/ModelEditor';\nimport { SkeletonAssetEditor, SkeletonAssetEditorToolbar } from '../model/SkeletonAssetEditor';\nimport { isModelAsset } from '../content/assetPresentation';")
+          replace('editor/src/renderer/src/editors/editorRegistry.ts',
+            "const textureRegistration: EditorRegistration = {",
+            r'''const modelRegistration: EditorRegistration = {
+  kind: 'model',
+  title: 'Model Editor',
+  icon: Box,
+  allowMultiple: true,
+  closeable: true,
+  canOpenAsset: (asset) => isModelAsset(asset) || asset.kind === 'mesh',
+  createDocument: (asset) => ({
+    id: `model:${asset.guid ?? asset.path}`,
+    kind: 'model',
+    title: asset.name,
+    path: asset.path,
+    assetId: asset.id,
+    assetGuid: asset.guid,
+    assetScope: asset.scope,
+    assetSnapshot: asset,
+    dirty: false,
+    readOnly: asset.scope === 'builtin' || Boolean(asset.readOnly),
+  }),
+  render: (document) => createElement(ModelEditor, { document }),
+  renderToolbar: () => createElement(ModelEditorToolbar),
+};
+
+const skeletonRegistration: EditorRegistration = {
+  kind: 'skeleton',
+  title: 'Skeleton Editor',
+  icon: Bone,
+  allowMultiple: true,
+  closeable: true,
+  render: (document) => createElement(SkeletonAssetEditor, { document }),
+  renderToolbar: () => createElement(SkeletonAssetEditorToolbar),
+};
+
+const textureRegistration: EditorRegistration = {''')
+          replace('editor/src/renderer/src/editors/editorRegistry.ts',
+            "    texture: registrations.texture ?? textureRegistration,",
+            "    texture: registrations.texture ?? textureRegistration,\n    model: registrations.model ?? modelRegistration,\n    skeleton: registrations.skeleton ?? skeletonRegistration,")
+          replace('editor/src/renderer/src/editors/editorRegistry.ts',
+            "export const saveActiveEditorDocument = async",
+            r'''export const openSkeletonEditorDocument = (asset: AssetItem, registry: EditorRegistry | null = currentRegistry) => {
+  if (!registry) return false;
+  const registration = registry.skeleton;
+  const document: EditorDocument = {
+    id: `skeleton:${asset.guid ?? asset.path}`,
+    kind: 'skeleton',
+    title: asset.skeletonName?.trim() || `${asset.name} Skeleton`,
+    path: asset.path,
+    assetId: asset.id,
+    assetGuid: asset.guid,
+    assetScope: asset.scope,
+    assetSnapshot: asset,
+    subresource: 'skeleton',
+    dirty: false,
+    readOnly: true,
+  };
+  openEditorDocumentInStore(document, registration.allowMultiple);
+  return true;
+};
+
+export const saveActiveEditorDocument = async''')
+
+          replace('editor/src/renderer/src/content/ContentAssetCard.tsx',
+            "import { Star } from 'lucide-react';",
+            "import { ChevronDown, ChevronRight, Star } from 'lucide-react';")
+          replace('editor/src/renderer/src/content/ContentAssetCard.tsx',
+            "  onSelect,\n}: {",
+            "  onSelect,\n  expandable = false,\n  expanded = false,\n  onToggleExpand,\n}: {")
+          replace('editor/src/renderer/src/content/ContentAssetCard.tsx',
+            "  onSelect: (additive: boolean) => void;\n}) {",
+            "  onSelect: (additive: boolean) => void;\n  expandable?: boolean;\n  expanded?: boolean;\n  onToggleExpand?: () => void;\n}) {")
+          replace('editor/src/renderer/src/content/ContentAssetCard.tsx',
+            "        <span className=\"content-asset-actions\" onClick={(event) => event.stopPropagation()}>\n          <button aria-label=\"Favorite\"",
+            "        <span className=\"content-asset-actions\" onClick={(event) => event.stopPropagation()}>\n          {expandable && (\n            <button aria-label={expanded ? 'Collapse model sub-assets' : 'Expand model sub-assets'} onClick={onToggleExpand}>\n              {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}\n            </button>\n          )}\n          <button aria-label=\"Favorite\"")
+
+          replace('editor/src/renderer/src/content/ContentBrowserPanel.tsx',
+            "import { openAssetEditorDocument } from '../editors/editorRegistry';",
+            "import { openAssetEditorDocument, openSkeletonEditorDocument } from '../editors/editorRegistry';\nimport { buildModelSubassets } from '../model/modelSubassets';")
+          replace('editor/src/renderer/src/content/ContentBrowserPanel.tsx',
+            "  const [creating, setCreating] = useState(false);",
+            "  const [creating, setCreating] = useState(false);\n  const [expandedModels, setExpandedModels] = useState<Set<string>>(() => new Set());")
+          old_map = '''              {filtered.map((asset) => (\n                <ContentAssetCard\n                  asset={asset}\n                  favorite={favorites.has(favoriteId(asset))}\n                  key={asset.id}\n                  selected={selection.has(asset.id)}\n                  thumbnailProvider={thumbnailProvider}\n                  onActivate={() => activateAsset(asset)}\n                  onFavorite={() => toggleFavorite(asset)}\n                  onReimport={() => asset.guid && onAssetAction('asset.reimport', asset.guid)}\n                  onSelect={(additive) => select(asset, additive)}\n                />\n              ))}'''
+          new_map = '''              {filtered.map((asset) => {\n                const modelSubassets = assetPresentationKind(asset) === 'model' ? buildModelSubassets(asset) : [];\n                const expanded = expandedModels.has(asset.id);\n                return (\n                  <Fragment key={asset.id}>\n                    <ContentAssetCard\n                      asset={asset}\n                      favorite={favorites.has(favoriteId(asset))}\n                      selected={selection.has(asset.id)}\n                      thumbnailProvider={thumbnailProvider}\n                      onActivate={() => activateAsset(asset)}\n                      onFavorite={() => toggleFavorite(asset)}\n                      onReimport={() => asset.guid && onAssetAction('asset.reimport', asset.guid)}\n                      onSelect={(additive) => select(asset, additive)}\n                      expandable={modelSubassets.length > 0}\n                      expanded={expanded}\n                      onToggleExpand={() =>\n                        setExpandedModels((current) => {\n                          const next = new Set(current);\n                          if (next.has(asset.id)) next.delete(asset.id);\n                          else next.add(asset.id);\n                          return next;\n                        })\n                      }\n                    />\n                    {expanded && modelSubassets.length > 0 && (\n                      <div className=\"content-model-subassets\" role=\"group\" aria-label={`${asset.name} sub-assets`}>\n                        {modelSubassets.map((subasset) => (\n                          <button\n                            className=\"content-model-subasset\"\n                            key={subasset.id}\n                            onDoubleClick={() => subasset.kind === 'skeleton' && openSkeletonEditorDocument(asset)}\n                          >\n                            <span aria-hidden=\"true\">{subasset.kind === 'skeleton' ? '◇' : '□'}</span>\n                            <span>{subasset.name}</span>\n                            <small>{subasset.kind === 'skeleton' ? 'Skeleton' : 'Mesh'}</small>\n                          </button>\n                        ))}\n                      </div>\n                    )}\n                  </Fragment>\n                );\n              })}'''
+          replace('editor/src/renderer/src/content/ContentBrowserPanel.tsx', old_map, new_map)
+          replace('editor/src/renderer/src/content/ContentBrowserPanel.tsx',
+            "import './contentBrowser.css';",
+            "import './contentBrowser.css';\nimport '../model/modelEditor.css';")
+
+          Path('editor/src/renderer/src/editors/modelEditorRegistration.test.ts').write_text(r'''// @vitest-environment jsdom
+import { FileText } from 'lucide-react';
+import { describe, expect, it } from 'vitest';
+import type { AssetItem } from '../services/editorHostTypes';
+import { createEditorDocumentForAsset, createEditorRegistry } from './editorRegistry';
+
+const registry = createEditorRegistry({ level: { kind: 'level', title: 'Level', icon: FileText, allowMultiple: false, render: () => null, renderToolbar: () => null } });
+const fbx: AssetItem = { id: 'hand', guid: 'hand', name: 'Hand.fbx', path: 'Content/Hand.fbx', kind: 'scene', status: 'ready', meshCount: 1, skeletonBoneCount: 27 };
+
+describe('model editor registration', () => {
+  it('opens FBX models in the model editor while keeping skeletons as sub-assets', () => {
+    const target = createEditorDocumentForAsset(fbx, registry);
+    expect(target?.document).toMatchObject({ id: 'model:hand', kind: 'model', assetSnapshot: fbx });
+    expect(target?.registration.kind).toBe('model');
+  });
+});
+''')
+      - name: Install editor dependencies
+        working-directory: editor
+        run: npm ci
+      - name: Format frontend
+        working-directory: editor
+        run: npx prettier --write src/renderer/src/model src/renderer/src/content/ContentAssetCard.tsx src/renderer/src/content/ContentBrowserPanel.tsx src/renderer/src/editors/editorRegistry.ts src/renderer/src/editors/editorTypes.ts src/renderer/src/editors/modelEditorRegistration.test.ts src/renderer/src/services/editorHostTypes.ts
+      - name: Test frontend
+        working-directory: editor
+        run: npm test -- --run
+      - name: Typecheck frontend
+        working-directory: editor
+        run: npm run typecheck
+      - name: Verify diff
+        run: git diff --check
+      - name: Commit implementation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add editor/src/renderer/src
+          git commit -m "Add model and skeleton asset editor workflow"
+          git push origin HEAD:feat/skeleton-model-workflow
