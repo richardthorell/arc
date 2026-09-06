@@ -1,0 +1,20 @@
+name: Enable Model Editor Workflow
+on:
+  push:
+    branches: [feat/skeleton-model-workflow]
+permissions:
+  contents: write
+jobs:
+  enable:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fix custom Python shell
+        run: |
+          set -euo pipefail
+          sed -i 's/^        shell: python$/        shell: python {0}/' .github/workflows/temp-finish-model-editor.yml
+          git config user.name "Richard Thorell"
+          git config user.email "richard.thorell@outlook.com"
+          git add .github/workflows/temp-finish-model-editor.yml
+          git commit -m "Fix temporary model editor workflow shell"
+          git push
