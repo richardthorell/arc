@@ -1,0 +1,87 @@
+name: Fix Content Model Terminology
+
+on:
+  push:
+    branches:
+      - fix/content-browser-model-terminology
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/content-browser-model-terminology
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.13.0
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+
+      - name: Install editor dependencies
+        run: npm ci --prefix editor
+
+      - name: Apply terminology fix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          presentation = Path('editor/src/renderer/src/content/assetPresentation.ts')
+          text = presentation.read_text()
+          old = "export const assetPresentationKind = (asset: Pick<AssetItem, 'kind' | 'path'>): AssetPresentationKind =>\n  isModelAsset(asset) ? 'model' : asset.kind;"
+          new = "export const assetPresentationKind = (asset: Pick<AssetItem, 'kind' | 'path'>): AssetPresentationKind =>\n  isModelAsset(asset) || asset.kind === 'mesh' ? 'model' : asset.kind;"
+          if old not in text:
+              raise SystemExit('assetPresentationKind pattern not found')
+          presentation.write_text(text.replace(old, new))
+
+          panel = Path('editor/src/renderer/src/content/ContentBrowserPanel.tsx')
+          text = panel.read_text()
+          old = "  { value: 'model', label: 'Model' },\n  { value: 'mesh', label: 'Mesh' },\n"
+          if old not in text:
+              raise SystemExit('asset type options pattern not found')
+          panel.write_text(text.replace(old, "  { value: 'model', label: 'Model' },\n"))
+
+          presentation_test = Path('editor/src/renderer/src/content/assetPresentation.test.ts')
+          text = presentation_test.read_text()
+          old = "  it('keeps actual mesh assets as meshes', () => {\n    const value = asset('Content/Meshes/cube.arcmesh', 'mesh');\n    expect(assetPresentationKind(value)).toBe('mesh');\n    expect(assetPresentationIcon(value)).toBe('mesh');\n    expect(assetDragType(value)).toBe('mesh');\n  });"
+          new = "  it('presents native mesh assets as models while preserving mesh drag semantics', () => {\n    const value = asset('Content/Meshes/cube.arcmesh', 'mesh');\n    expect(assetPresentationKind(value)).toBe('model');\n    expect(assetPresentationLabel(value)).toBe('Model');\n    expect(assetPresentationIcon(value)).toBe('mesh');\n    expect(assetDragType(value)).toBe('mesh');\n  });"
+          if old not in text:
+              raise SystemExit('mesh presentation test pattern not found')
+          presentation_test.write_text(text.replace(old, new))
+
+          browser_test = Path('editor/src/renderer/src/content/ContentBrowserPanel.test.tsx')
+          text = browser_test.read_text()
+          marker = "  it('persists an adjustable Content Browser tree width', () => {"
+          test = """  it('uses Model as the single user-facing geometry asset type', () => {\n    const view = renderBrowser();\n\n    fireEvent.click(view.getByRole('combobox', { name: 'Asset type' }));\n    expect(view.getByRole('option', { name: 'Model' })).toBeInTheDocument();\n    expect(view.queryByRole('option', { name: 'Mesh' })).not.toBeInTheDocument();\n\n    fireEvent.click(view.getByRole('option', { name: 'Model' }));\n    expect(view.getByText('Hero Rock')).toBeInTheDocument();\n  });\n\n"""
+          if marker not in text:
+              raise SystemExit('browser test insertion marker not found')
+          browser_test.write_text(text.replace(marker, test + marker))
+          PY
+
+      - name: Format
+        run: npm run format --prefix editor
+
+      - name: Verify
+        run: |
+          npm run format:check --prefix editor
+          npm run lint --prefix editor
+          npm run typecheck --prefix editor
+          npm test --prefix editor -- --run src/renderer/src/content/assetPresentation.test.ts src/renderer/src/content/ContentBrowserPanel.test.tsx
+
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor/src/renderer/src/content/assetPresentation.ts \
+                  editor/src/renderer/src/content/assetPresentation.test.ts \
+                  editor/src/renderer/src/content/ContentBrowserPanel.tsx \
+                  editor/src/renderer/src/content/ContentBrowserPanel.test.tsx
+          git diff --cached --check
+          git commit -m "Unify geometry assets under Model terminology"
+          git push origin HEAD:fix/content-browser-model-terminology
