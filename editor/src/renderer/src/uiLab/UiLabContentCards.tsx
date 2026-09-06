@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
+import { GitBranch } from 'lucide-react';
 
 import { ContentAssetCard } from '../content/ContentAssetCard';
 import '../content/contentBrowser.css';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
+import { ActivityBarButton } from '../layout/ActivityBar';
 import type { AssetItem } from '../services/editorHostTypes';
 
 import './uiLabContentCards.css';
@@ -122,6 +124,27 @@ export function UiLabContentCards() {
 
   return (
     <div className="ui-lab-content-card-showcase content-browser-v2">
+      <section className="ui-lab-activity-buttons" aria-label="Side-bar button examples">
+        <strong>Side-bar buttons</strong>
+        <div className="ui-lab-activity-button-row">
+          <div className="activity-bar ui-lab-activity-button-sample">
+            <ActivityBarButton aria-label="Repository without changes" title="Version Control" variant="ghost">
+              <GitBranch size={20} />
+            </ActivityBarButton>
+          </div>
+          <div className="activity-bar ui-lab-activity-button-sample">
+            <ActivityBarButton
+              aria-label="Repository with changes"
+              counter={7}
+              counterLabel="7 changed files"
+              title="Version Control"
+              variant="ghost"
+            >
+              <GitBranch size={20} />
+            </ActivityBarButton>
+          </div>
+        </div>
+      </section>
       <div
         aria-label="Content Browser card examples"
         aria-multiselectable="true"
