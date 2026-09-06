@@ -6833,6 +6833,10 @@ private:
 
     bool draw_gpu_bindless_batch(VkCommandBuffer command_buffer, bool transparent)
     {
+        // The compact bindless path draws from the shared geometry heap. Its indexed addressing
+        // is currently producing cross-mesh index reads for packed scene geometry. Keep the
+        // established per-mesh submission path active until shared-heap addressing is corrected.
+        if (resolved_config_.features.gpu_binding_model == gpu_resource_binding_model::bindless) return false;
         if (!gpu_visibility_active_ || !ensure_gpu_bindless_pipelines()) return false;
         const auto compatible_count =
             std::ranges::count_if(frame_draws_, [this, transparent](const draw_mesh_event& draw)
