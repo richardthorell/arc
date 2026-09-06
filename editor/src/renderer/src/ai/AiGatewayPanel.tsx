@@ -29,10 +29,7 @@ import {
 } from './aiChat';
 import './aiGateway.css';
 
-const replaceConversation = (
-  conversations: readonly AiConversation[],
-  next: AiConversation,
-): AiConversation[] => {
+const replaceConversation = (conversations: readonly AiConversation[], next: AiConversation): AiConversation[] => {
   const existing = conversations.findIndex((conversation) => conversation.id === next.id);
   if (existing === -1) return [next, ...conversations];
   return conversations.map((conversation, index) => (index === existing ? next : conversation));
@@ -253,9 +250,7 @@ export function AiGatewayPanel({
   const [conversations, setConversations] = useState<AiConversation[]>(() =>
     initial.length > 0 ? initial : [createAiConversation()],
   );
-  const [activeConversationId, setActiveConversationId] = useState(() =>
-    initial[0]?.id ?? conversations[0]?.id ?? '',
-  );
+  const [activeConversationId, setActiveConversationId] = useState(() => initial[0]?.id ?? conversations[0]?.id ?? '');
   const [prompt, setPrompt] = useState('');
   const [view, setView] = useState<'chat' | 'diagnostics'>('chat');
   const streamGeneration = useRef(0);
@@ -291,8 +286,7 @@ export function AiGatewayPanel({
     const assistantMessage = createAiMessage('assistant', '', 'streaming');
     const started: AiConversation = {
       ...activeConversation,
-      title:
-        activeConversation.messages.length === 0 ? conversationTitleFromPrompt(text) : activeConversation.title,
+      title: activeConversation.messages.length === 0 ? conversationTitleFromPrompt(text) : activeConversation.title,
       updatedAt: new Date().toISOString(),
       messages: [...activeConversation.messages, userMessage, assistantMessage],
     };
@@ -347,7 +341,11 @@ export function AiGatewayPanel({
         </span>
         <div className="ai-assistant-heading">
           <strong>ARC Assistant</strong>
-          <small>{view === 'chat' ? `${provider.label}${provider.configured ? '' : ' · setup required'}` : 'Gateway diagnostics'}</small>
+          <small>
+            {view === 'chat'
+              ? `${provider.label}${provider.configured ? '' : ' · setup required'}`
+              : 'Gateway diagnostics'}
+          </small>
         </div>
         <UiIconButton label="New AI chat" onClick={newChat}>
           <MessageSquarePlus size={15} />

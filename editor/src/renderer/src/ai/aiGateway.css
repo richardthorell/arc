@@ -106,9 +106,7 @@
   min-height: 0;
   overflow: auto;
   padding: 10px 12px 14px;
-  background:
-    radial-gradient(circle at 50% 0, rgb(74 120 155 / 8%), transparent 38%),
-    var(--arc-color-bg-panel);
+  background: radial-gradient(circle at 50% 0, rgb(74 120 155 / 8%), transparent 38%), var(--arc-color-bg-panel);
 }
 
 .ai-assistant-empty {

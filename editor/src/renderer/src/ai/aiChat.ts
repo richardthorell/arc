@@ -24,9 +24,7 @@ export type AiModelRequest = {
 };
 
 export type AiModelStreamEvent =
-  | { type: 'delta'; text: string }
-  | { type: 'done' }
-  | { type: 'error'; message: string };
+  { type: 'delta'; text: string } | { type: 'done' } | { type: 'error'; message: string };
 
 export interface AiModelProvider {
   readonly id: string;
