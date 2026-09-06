@@ -26,7 +26,14 @@ const status: ArcAiGatewayStatus = {
   worldEpoch: 2,
   frameRevision: 42,
   eventSequence: 3,
-  clients: [{ id: 'codex', name: 'Codex', connectedAt: '2026-01-01T00:00:00Z', lastSeenAt: '2026-01-01T00:00:01Z' }],
+  clients: [
+    {
+      id: 'codex',
+      name: 'Codex',
+      connectedAt: '2026-01-01T00:00:00Z',
+      lastSeenAt: '2026-01-01T00:00:01Z',
+    },
+  ],
   pendingEditRequests: [
     {
       id: 'request',
@@ -84,7 +91,9 @@ describe('AiGatewayPanel', () => {
     expect(screen.getByRole('region', { name: 'ARC Assistant' })).toBeInTheDocument();
     expect(screen.getByText('Test Agent')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Ask ARC'), { target: { value: 'How should I light this room?' } });
+    fireEvent.change(screen.getByLabelText('Ask ARC'), {
+      target: { value: 'How should I light this room?' },
+    });
     fireEvent.click(screen.getByLabelText('Send prompt'));
 
     const promptMessage = screen
@@ -93,7 +102,9 @@ describe('AiGatewayPanel', () => {
     expect(promptMessage).toBeVisible();
     await waitFor(() => expect(screen.getByText('Start with a key light.')).toBeVisible());
     expect((screen.getByLabelText('AI conversation') as HTMLSelectElement).value).not.toBe('');
-    expect(localStorage.getItem(aiConversationStorageKey)).toContain('How should I light this room?');
+    expect(localStorage.getItem(aiConversationStorageKey)).toContain(
+      'How should I light this room?',
+    );
   });
 
   it('creates a fresh conversation from the header', () => {
@@ -172,8 +183,17 @@ describe('AiGatewayPanel', () => {
     const approve = vi.fn();
     const deny = vi.fn();
     const open = vi.fn();
-    render(<AiGatewayApprovalPrompt status={status} onApprove={approve} onDeny={deny} onOpenGateway={open} />);
-    expect(screen.getByRole('alertdialog')).toHaveTextContent('Codex requests scene edit access');
+    render(
+      <AiGatewayApprovalPrompt
+        status={status}
+        onApprove={approve}
+        onDeny={deny}
+        onOpenGateway={open}
+      />,
+    );
+    expect(screen.getByRole('alertdialog')).toHaveTextContent(
+      'Codex requests scene edit access',
+    );
     fireEvent.click(screen.getByText('Allow'));
     fireEvent.click(screen.getByText('Deny'));
     fireEvent.click(screen.getByText('Details'));
