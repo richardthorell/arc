@@ -124,12 +124,16 @@
    document tabs and shader toolbar. The utility rail/drawer remains outside
    this surface and is unaffected. */
 .workbench-shell .workspace-dock-shell-editor-shader .workspace-dock,
-.workbench-shell .workspace-dock-shell-editor-texture .workspace-dock {
+.workbench-shell .workspace-dock-shell-editor-texture .workspace-dock,
+.workbench-shell .workspace-dock-shell-editor-model .workspace-dock,
+.workbench-shell .workspace-dock-shell-editor-skeleton .workspace-dock {
   --dv-tabs-and-actions-container-height: 0px;
 }
 
 .workbench-shell .workspace-dock-shell-editor-shader .workspace-dock .dv-tabs-and-actions-container,
-.workbench-shell .workspace-dock-shell-editor-texture .workspace-dock .dv-tabs-and-actions-container {
+.workbench-shell .workspace-dock-shell-editor-texture .workspace-dock .dv-tabs-and-actions-container,
+.workbench-shell .workspace-dock-shell-editor-model .workspace-dock .dv-tabs-and-actions-container,
+.workbench-shell .workspace-dock-shell-editor-skeleton .workspace-dock .dv-tabs-and-actions-container {
   display: none;
 }
 

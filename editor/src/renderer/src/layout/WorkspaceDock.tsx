@@ -39,8 +39,15 @@ type WorkspaceDockProps = {
 // dock and a narrower Inspector. The new key makes existing v6 snapshots pick
 // up these defaults instead of restoring the older split sizes.
 const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v7.${projectKey}.${name}`;
-const editorWorkspaceStorageKey = (projectKey: string, kind: EditorDocumentKind) =>
-  storageKey(projectKey, kind === 'texture' ? 'editor-texture-v2' : `editor-${kind}`);
+const editorWorkspaceStorageKey = (projectKey: string, kind: EditorDocumentKind) => {
+  const versionedKind =
+    kind === 'texture'
+      ? 'editor-texture-v2'
+      : kind === 'model' || kind === 'skeleton'
+        ? `editor-${kind}-v2`
+        : `editor-${kind}`;
+  return storageKey(projectKey, versionedKind);
+};
 const workbenchLayoutStorageKey = 'arc.editor.workbench.layout.v2';
 const panelTabComponent = 'arc-panel-tab';
 const defaultBottomPanelHeight = 220;
