@@ -236,8 +236,10 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                              name == "DirectionalLight" || name == "PointLight" || name == "SpotLight" ||
                              name == "AreaLight";
     const bool supports_v4 = name == "MeshRenderer";
+    const bool supports_v5 = name == "MeshRenderer";
     if (component_version != 1u && !(supports_v2 && component_version == 2u) &&
-        !(supports_v3 && component_version == 3u) && !(supports_v4 && component_version == 4u))
+        !(supports_v3 && component_version == 3u) && !(supports_v4 && component_version == 4u) &&
+        !(supports_v5 && component_version == 5u))
     {
         error = "component '" + std::string(name) + "' uses an unsupported schema version";
         return false;
@@ -322,8 +324,8 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
         return true;
     }
     if (name == "MeshRenderer" || name == "VirtualMeshRenderer")
-        return value.contains("visible") && value["visible"].is_boolean() && value.contains("baseColorTint") &&
-                       finite_color(value["baseColorTint"], 4) &&
+        return value.contains("visible") && value["visible"].is_boolean() &&
+                       (!value.contains("baseColorTint") || finite_color(value["baseColorTint"], 4)) &&
                        (!value.contains("castsShadows") || value["castsShadows"].is_boolean()) &&
                        (!value.contains("receivesShadows") || value["receivesShadows"].is_boolean()) &&
                        (!value.contains("shadowLodBias") || finite_number(value, "shadowLodBias")) &&
@@ -337,7 +339,25 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                        (!value.contains("surfaceCardDensityBias") || finite_number(value, "surfaceCardDensityBias")) &&
                        (!value.contains("distanceFieldResolutionBias") ||
                         finite_number(value, "distanceFieldResolutionBias")) &&
-                       (!value.contains("visibleInHardwareTracing") || value["visibleInHardwareTracing"].is_boolean())
+                       (!value.contains("visibleInHardwareTracing") ||
+                        value["visibleInHardwareTracing"].is_boolean()) &&
+                       (!value.contains("motionVectors") || (value["motionVectors"].is_number_unsigned() &&
+                                                             value["motionVectors"].get<std::uint32_t>() <= 2u)) &&
+                       (!value.contains("receiveDecals") || value["receiveDecals"].is_boolean()) &&
+                       (!value.contains("occlusionCulling") || value["occlusionCulling"].is_boolean()) &&
+                       (!value.contains("boundsScale") ||
+                        (finite_number(value, "boundsScale") && value["boundsScale"].get<double>() >= 0.01 &&
+                         value["boundsScale"].get<double>() <= 100.0)) &&
+                       (!value.contains("minimumDrawDistance") ||
+                        (finite_number(value, "minimumDrawDistance") &&
+                         value["minimumDrawDistance"].get<double>() >= 0.0)) &&
+                       (!value.contains("maximumDrawDistance") ||
+                        (finite_number(value, "maximumDrawDistance") &&
+                         value["maximumDrawDistance"].get<double>() >= 0.0)) &&
+                       (!value.contains("forcedLod") ||
+                        (value["forcedLod"].is_number_integer() && value["forcedLod"].get<std::int32_t>() >= -1 &&
+                         value["forcedLod"].get<std::int32_t>() <= 3)) &&
+                       (!value.contains("lodBias") || finite_number(value, "lodBias"))
                    ? true
                    : fail("has invalid renderer values");
     if (name == "ReflectionProbe")
@@ -802,11 +822,18 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
     if (const auto* component = state.scene.try_get<scene::mesh_renderer_component>(value))
         components["MeshRenderer"] = {{"version", 4},
                                       {"visible", component->visible},
-                                      {"baseColorTint", vector4(component->base_color_tint)},
                                       {"castsShadows", component->casts_shadows},
                                       {"receivesShadows", component->receives_shadows},
                                       {"shadowLodBias", component->shadow_lod_bias},
                                       {"maximumShadowDistance", component->maximum_shadow_distance},
+                                      {"motionVectors", static_cast<std::uint32_t>(component->motion_vectors)},
+                                      {"receiveDecals", component->receive_decals},
+                                      {"occlusionCulling", component->occlusion_culling},
+                                      {"boundsScale", component->bounds_scale},
+                                      {"minimumDrawDistance", component->minimum_draw_distance},
+                                      {"maximumDrawDistance", component->maximum_draw_distance},
+                                      {"forcedLod", component->forced_lod},
+                                      {"lodBias", component->lod_bias},
                                       {"representationPolicy", static_cast<std::uint32_t>(component->representation)},
                                       {"affectsIndirectLighting", component->affects_indirect_lighting},
                                       {"surfaceCardDensityBias", component->surface_card_density_bias},
@@ -1411,11 +1438,19 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                 renderer_component.mesh = loaded.default_mesh;
                 renderer_component.material = loaded.default_material;
                 renderer_component.visible = value.value("visible", true);
-                renderer_component.base_color_tint = read_vector4(value.at("baseColorTint"));
                 renderer_component.casts_shadows = value.value("castsShadows", true);
                 renderer_component.receives_shadows = value.value("receivesShadows", true);
                 renderer_component.shadow_lod_bias = value.value("shadowLodBias", 0.0f);
                 renderer_component.maximum_shadow_distance = value.value("maximumShadowDistance", 0.0f);
+                renderer_component.motion_vectors =
+                    static_cast<scene::mesh_motion_vector_mode>(std::min(value.value("motionVectors", 0u), 2u));
+                renderer_component.receive_decals = value.value("receiveDecals", true);
+                renderer_component.occlusion_culling = value.value("occlusionCulling", true);
+                renderer_component.bounds_scale = value.value("boundsScale", 1.0f);
+                renderer_component.minimum_draw_distance = value.value("minimumDrawDistance", 0.0f);
+                renderer_component.maximum_draw_distance = value.value("maximumDrawDistance", 0.0f);
+                renderer_component.forced_lod = value.value("forcedLod", -1);
+                renderer_component.lod_bias = value.value("lodBias", 0.0f);
                 renderer_component.representation = static_cast<render::geometry_representation_policy>(
                     std::min(value.value("representationPolicy", 0u), 2u));
                 renderer_component.affects_indirect_lighting = value.value("affectsIndirectLighting", true);
@@ -1432,11 +1467,19 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
             {
                 auto& mesh = loaded.scene.get<scene::mesh_renderer_component>(entity);
                 mesh.visible = serialized_mesh_renderer->value("visible", true);
-                mesh.base_color_tint = read_vector4(serialized_mesh_renderer->at("baseColorTint"));
                 mesh.casts_shadows = serialized_mesh_renderer->value("castsShadows", true);
                 mesh.receives_shadows = serialized_mesh_renderer->value("receivesShadows", true);
                 mesh.shadow_lod_bias = serialized_mesh_renderer->value("shadowLodBias", 0.0f);
                 mesh.maximum_shadow_distance = serialized_mesh_renderer->value("maximumShadowDistance", 0.0f);
+                mesh.motion_vectors = static_cast<scene::mesh_motion_vector_mode>(
+                    std::min(serialized_mesh_renderer->value("motionVectors", 0u), 2u));
+                mesh.receive_decals = serialized_mesh_renderer->value("receiveDecals", true);
+                mesh.occlusion_culling = serialized_mesh_renderer->value("occlusionCulling", true);
+                mesh.bounds_scale = serialized_mesh_renderer->value("boundsScale", 1.0f);
+                mesh.minimum_draw_distance = serialized_mesh_renderer->value("minimumDrawDistance", 0.0f);
+                mesh.maximum_draw_distance = serialized_mesh_renderer->value("maximumDrawDistance", 0.0f);
+                mesh.forced_lod = serialized_mesh_renderer->value("forcedLod", -1);
+                mesh.lod_bias = serialized_mesh_renderer->value("lodBias", 0.0f);
                 mesh.representation = static_cast<render::geometry_representation_policy>(
                     std::min(serialized_mesh_renderer->value("representationPolicy", 0u), 2u));
                 mesh.affects_indirect_lighting = serialized_mesh_renderer->value("affectsIndirectLighting", true);

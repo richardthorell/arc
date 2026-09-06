@@ -385,7 +385,7 @@ export const generatedEcsComponents = [
     "canonicalName": "arc::scene.mesh_renderer_component",
     "displayName": "Mesh Renderer",
     "description": "Reflected scene data for the Mesh Renderer component.",
-    "schemaVersion": 4,
+    "schemaVersion": 5,
     "fields": [
       {
         "id": "0000000000000001",
@@ -423,22 +423,6 @@ export const generatedEcsComponents = [
         "unit": "none",
         "constraints": {},
         "kind": "bool",
-        "flags": [
-          "serialized",
-          "editable",
-          "prefab_override"
-        ]
-      },
-      {
-        "id": "0000000000000004",
-        "name": "base_color_tint",
-        "displayName": "Base Color Tint",
-        "description": "Authored base color tint value for Mesh Renderer.",
-        "unit": "linear-rgba",
-        "constraints": {
-          "minimum": 0
-        },
-        "kind": "vector4",
         "flags": [
           "serialized",
           "editable",
@@ -573,6 +557,131 @@ export const generatedEcsComponents = [
         "unit": "none",
         "constraints": {},
         "kind": "bool",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "000000000000000e",
+        "name": "motion_vectors",
+        "displayName": "Motion Vectors",
+        "description": "Controls whether this renderer follows automatic motion-vector policy, always writes motion, or disables motion vectors.",
+        "unit": "none",
+        "constraints": {},
+        "kind": "enum",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "000000000000000f",
+        "name": "receive_decals",
+        "displayName": "Receive Decals",
+        "description": "Controls whether projected decals may affect this renderer.",
+        "unit": "none",
+        "constraints": {},
+        "kind": "bool",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000010",
+        "name": "occlusion_culling",
+        "displayName": "Occlusion Culling",
+        "description": "Allows this renderer to participate in occlusion culling.",
+        "unit": "none",
+        "constraints": {},
+        "kind": "bool",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000011",
+        "name": "bounds_scale",
+        "displayName": "Bounds Scale",
+        "description": "Scales the renderer visibility bounds around their center.",
+        "unit": "ratio",
+        "constraints": {
+          "minimum": 0.01,
+          "maximum": 100
+        },
+        "kind": "float",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000012",
+        "name": "minimum_draw_distance",
+        "displayName": "Minimum Draw Distance",
+        "description": "Minimum camera distance at which the renderer is visible; zero disables near-distance culling.",
+        "unit": "meters",
+        "constraints": {
+          "minimum": 0
+        },
+        "kind": "float",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000013",
+        "name": "maximum_draw_distance",
+        "displayName": "Maximum Draw Distance",
+        "description": "Maximum camera distance at which the renderer is visible; zero disables far-distance culling.",
+        "unit": "meters",
+        "constraints": {
+          "minimum": 0
+        },
+        "kind": "float",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000014",
+        "name": "forced_lod",
+        "displayName": "Forced LOD",
+        "description": "Forces a cooked conventional LOD index; -1 selects LOD automatically.",
+        "unit": "lod-levels",
+        "constraints": {
+          "minimum": -1,
+          "maximum": 3
+        },
+        "kind": "int",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000015",
+        "name": "lod_bias",
+        "displayName": "LOD Bias",
+        "description": "Biases automatic conventional and virtual geometry detail selection.",
+        "unit": "lod-levels",
+        "constraints": {
+          "minimum": -4,
+          "maximum": 8
+        },
+        "kind": "float",
         "flags": [
           "serialized",
           "editable",

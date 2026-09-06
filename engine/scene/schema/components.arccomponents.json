@@ -297,145 +297,212 @@
                            "description":  "Reflected scene data for the Camera component."
                        },
                        {
-                           "type":  "mesh_renderer_component",
-                           "id":  "a7c00000000000010000000000000008",
-                           "display":  "Mesh Renderer",
-                           "version":  4,
-                           "customSerialization":  true,
-                           "fields":  [
-                                          {
-                                              "name":  "mesh",
-                                              "id":  "0000000000000001",
-                                              "kind":  "asset",
-                                              "description":  "Authored mesh value for Mesh Renderer.",
-                                              "unit":  "none",
-                                              "constraints":  {
-
-                                                              }
-                                          },
-                                          {
-                                              "name":  "material",
-                                              "id":  "0000000000000002",
-                                              "kind":  "asset",
-                                              "description":  "Authored material value for Mesh Renderer.",
-                                              "unit":  "none",
-                                              "constraints":  {
-
-                                                              }
-                                          },
-                                          {
-                                              "name":  "visible",
-                                              "id":  "0000000000000003",
-                                              "kind":  "bool",
-                                              "description":  "Authored visible value for Mesh Renderer.",
-                                              "unit":  "none",
-                                              "constraints":  {
-
-                                                              }
-                                          },
-                                          {
-                                              "name":  "base_color_tint",
-                                              "id":  "0000000000000004",
-                                              "kind":  "vector4",
-                                              "description":  "Authored base color tint value for Mesh Renderer.",
-                                              "unit":  "linear-rgba",
-                                              "constraints":  {
-                                                                  "minimum":  0
-                                                              }
-                                          },
-                                          {
-                                              "name":  "casts_shadows",
-                                              "id":  "0000000000000005",
-                                              "kind":  "bool",
-                                              "display":  "Cast Shadows",
-                                              "description":  "Authored Cast Shadows value for Mesh Renderer.",
-                                              "unit":  "none",
-                                              "constraints":  {
-
-                                                              }
-                                          },
-                                          {
-                                              "name":  "receives_shadows",
-                                              "id":  "0000000000000006",
-                                              "kind":  "bool",
-                                              "display":  "Receive Shadows",
-                                              "description":  "Authored Receive Shadows value for Mesh Renderer.",
-                                              "unit":  "none",
-                                              "constraints":  {
-
-                                                              }
-                                          },
-                                          {
-                                              "name":  "shadow_lod_bias",
-                                              "id":  "0000000000000007",
-                                              "kind":  "float",
-                                              "display":  "Shadow LOD Bias",
-                                              "description":  "Authored Shadow LOD Bias value for Mesh Renderer.",
-                                              "unit":  "lod-levels",
-                                              "constraints":  {
-
-                                                              }
-                                          },
-                                          {
-                                              "name":  "maximum_shadow_distance",
-                                              "id":  "0000000000000008",
-                                              "kind":  "float",
-                                              "display":  "Maximum Shadow Distance",
-                                              "description":  "Authored Maximum Shadow Distance value for Mesh Renderer.",
-                                              "unit":  "meters",
-                                              "constraints":  {
-                                                                  "minimum":  0
-                                                              }
-                                          },
-                                          {
-                                              "name":  "representation",
-                                              "id":  "0000000000000009",
-                                              "kind":  "enum",
-                                              "display":  "Geometry Representation",
-                                              "description":  "Selects automatic, conventional LOD, or virtual geometry rendering for this mesh.",
-                                              "unit":  "none",
-                                              "constraints":  {
-
-                                                              }
-                                          },
-                                          {
-                                              "name":  "affects_indirect_lighting",
-                                              "id":  "000000000000000a",
-                                              "kind":  "bool",
-                                              "display":  "Affect Indirect Lighting",
-                                              "description":  "Controls whether the mesh contributes cards and distance fields to dynamic indirect lighting.",
-                                              "unit":  "none",
-                                              "constraints":  {}
-                                          },
-                                          {
-                                              "name":  "surface_card_density_bias",
-                                              "id":  "000000000000000b",
-                                              "kind":  "float",
-                                              "display":  "Surface Card Density Bias",
-                                              "description":  "Adjusts the density of surface-cache cards for this renderer.",
-                                              "unit":  "lod-levels",
-                                              "constraints":  { "minimum": -4, "maximum": 4 }
-                                          },
-                                          {
-                                              "name":  "distance_field_resolution_bias",
-                                              "id":  "000000000000000c",
-                                              "kind":  "float",
-                                              "display":  "Distance Field Resolution Bias",
-                                              "description":  "Adjusts mesh distance-field resolution for this renderer.",
-                                              "unit":  "lod-levels",
-                                              "constraints":  { "minimum": -4, "maximum": 4 }
-                                          },
-                                          {
-                                              "name":  "visible_in_hardware_tracing",
-                                              "id":  "000000000000000d",
-                                              "kind":  "bool",
-                                              "display":  "Visible In Hardware Tracing",
-                                              "description":  "Allows this renderer's proxy geometry to enter hardware ray-query acceleration structures.",
-                                              "unit":  "none",
-                                              "constraints":  {}
-                                          }
-                                      ],
-                           "description":  "Reflected scene data for the Mesh Renderer component."
+                           "type": "mesh_renderer_component",
+                           "id": "a7c00000000000010000000000000008",
+                           "display": "Mesh Renderer",
+                           "version": 5,
+                           "customSerialization": true,
+                           "fields": [
+                               {
+                                   "name": "mesh",
+                                   "id": "0000000000000001",
+                                   "kind": "asset",
+                                   "description": "Authored mesh value for Mesh Renderer.",
+                                   "unit": "none",
+                                   "constraints": {}
+                               },
+                               {
+                                   "name": "material",
+                                   "id": "0000000000000002",
+                                   "kind": "asset",
+                                   "description": "Authored material value for Mesh Renderer.",
+                                   "unit": "none",
+                                   "constraints": {}
+                               },
+                               {
+                                   "name": "visible",
+                                   "id": "0000000000000003",
+                                   "kind": "bool",
+                                   "description": "Authored visible value for Mesh Renderer.",
+                                   "unit": "none",
+                                   "constraints": {}
+                               },
+                               {
+                                   "name": "casts_shadows",
+                                   "id": "0000000000000005",
+                                   "kind": "bool",
+                                   "display": "Cast Shadows",
+                                   "description": "Authored Cast Shadows value for Mesh Renderer.",
+                                   "unit": "none",
+                                   "constraints": {}
+                               },
+                               {
+                                   "name": "receives_shadows",
+                                   "id": "0000000000000006",
+                                   "kind": "bool",
+                                   "display": "Receive Shadows",
+                                   "description": "Authored Receive Shadows value for Mesh Renderer.",
+                                   "unit": "none",
+                                   "constraints": {}
+                               },
+                               {
+                                   "name": "shadow_lod_bias",
+                                   "id": "0000000000000007",
+                                   "kind": "float",
+                                   "display": "Shadow LOD Bias",
+                                   "description": "Authored Shadow LOD Bias value for Mesh Renderer.",
+                                   "unit": "lod-levels",
+                                   "constraints": {}
+                               },
+                               {
+                                   "name": "maximum_shadow_distance",
+                                   "id": "0000000000000008",
+                                   "kind": "float",
+                                   "display": "Maximum Shadow Distance",
+                                   "description": "Authored Maximum Shadow Distance value for Mesh Renderer.",
+                                   "unit": "meters",
+                                   "constraints": {
+                                       "minimum": 0
+                                   }
+                               },
+                               {
+                                   "name": "representation",
+                                   "id": "0000000000000009",
+                                   "kind": "enum",
+                                   "display": "Geometry Representation",
+                                   "description": "Selects automatic, conventional LOD, or virtual geometry rendering for this mesh.",
+                                   "unit": "none",
+                                   "constraints": {}
+                               },
+                               {
+                                   "name": "affects_indirect_lighting",
+                                   "id": "000000000000000a",
+                                   "kind": "bool",
+                                   "display": "Affect Indirect Lighting",
+                                   "description": "Controls whether the mesh contributes cards and distance fields to dynamic indirect lighting.",
+                                   "unit": "none",
+                                   "constraints": {}
+                               },
+                               {
+                                   "name": "surface_card_density_bias",
+                                   "id": "000000000000000b",
+                                   "kind": "float",
+                                   "display": "Surface Card Density Bias",
+                                   "description": "Adjusts the density of surface-cache cards for this renderer.",
+                                   "unit": "lod-levels",
+                                   "constraints": {
+                                       "minimum": -4,
+                                       "maximum": 4
+                                   }
+                               },
+                               {
+                                   "name": "distance_field_resolution_bias",
+                                   "id": "000000000000000c",
+                                   "kind": "float",
+                                   "display": "Distance Field Resolution Bias",
+                                   "description": "Adjusts mesh distance-field resolution for this renderer.",
+                                   "unit": "lod-levels",
+                                   "constraints": {
+                                       "minimum": -4,
+                                       "maximum": 4
+                                   }
+                               },
+                               {
+                                   "name": "visible_in_hardware_tracing",
+                                   "id": "000000000000000d",
+                                   "kind": "bool",
+                                   "display": "Visible In Hardware Tracing",
+                                   "description": "Allows this renderer's proxy geometry to enter hardware ray-query acceleration structures.",
+                                   "unit": "none",
+                                   "constraints": {}
+                               },
+                               {
+                                   "name": "motion_vectors",
+                                   "id": "000000000000000e",
+                                   "kind": "enum",
+                                   "display": "Motion Vectors",
+                                   "description": "Controls whether this renderer follows automatic motion-vector policy, always writes motion, or disables motion vectors.",
+                                   "unit": "none",
+                                   "constraints": {}
+                               },
+                               {
+                                   "name": "receive_decals",
+                                   "id": "000000000000000f",
+                                   "kind": "bool",
+                                   "display": "Receive Decals",
+                                   "description": "Controls whether projected decals may affect this renderer.",
+                                   "unit": "none",
+                                   "constraints": {}
+                               },
+                               {
+                                   "name": "occlusion_culling",
+                                   "id": "0000000000000010",
+                                   "kind": "bool",
+                                   "display": "Occlusion Culling",
+                                   "description": "Allows this renderer to participate in occlusion culling.",
+                                   "unit": "none",
+                                   "constraints": {}
+                               },
+                               {
+                                   "name": "bounds_scale",
+                                   "id": "0000000000000011",
+                                   "kind": "float",
+                                   "display": "Bounds Scale",
+                                   "description": "Scales the renderer visibility bounds around their center.",
+                                   "unit": "ratio",
+                                   "constraints": {
+                                       "minimum": 0.01,
+                                       "maximum": 100
+                                   }
+                               },
+                               {
+                                   "name": "minimum_draw_distance",
+                                   "id": "0000000000000012",
+                                   "kind": "float",
+                                   "display": "Minimum Draw Distance",
+                                   "description": "Minimum camera distance at which the renderer is visible; zero disables near-distance culling.",
+                                   "unit": "meters",
+                                   "constraints": {
+                                       "minimum": 0
+                                   }
+                               },
+                               {
+                                   "name": "maximum_draw_distance",
+                                   "id": "0000000000000013",
+                                   "kind": "float",
+                                   "display": "Maximum Draw Distance",
+                                   "description": "Maximum camera distance at which the renderer is visible; zero disables far-distance culling.",
+                                   "unit": "meters",
+                                   "constraints": {
+                                       "minimum": 0
+                                   }
+                               },
+                               {
+                                   "name": "forced_lod",
+                                   "id": "0000000000000014",
+                                   "kind": "int",
+                                   "display": "Forced LOD",
+                                   "description": "Forces a cooked conventional LOD index; -1 selects LOD automatically.",
+                                   "unit": "lod-levels",
+                                   "constraints": {
+                                       "minimum": -1,
+                                       "maximum": 3
+                                   }
+                               },
+                               {
+                                   "name": "lod_bias",
+                                   "id": "0000000000000015",
+                                   "kind": "float",
+                                   "display": "LOD Bias",
+                                   "description": "Biases automatic conventional and virtual geometry detail selection.",
+                                   "unit": "lod-levels",
+                                   "constraints": {
+                                       "minimum": -4,
+                                       "maximum": 8
+                                   }
+                               }
+                           ],
+                           "description": "Reflected scene data for the Mesh Renderer component."
                        },
                        {
                            "type":  "virtual_mesh_renderer_component",

@@ -673,7 +673,6 @@ ecs::entity add_water_to_scene(editor_scene_state& scene, render::renderer& rend
     scene::mesh_renderer_component renderer_component;
     renderer_component.mesh = mesh_handle;
     renderer_component.material = material;
-    renderer_component.base_color_tint = math::vector4f{0.7f, 0.9f, 1.0f, 0.55f};
     scene.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
     scene.world_feature_entities.push_back(entity);
     return entity;

@@ -51,7 +51,18 @@ describe('inspector host bindings', () => {
       light: null,
       meshRenderer: {
         visible: true,
-        baseColorTint: [0.8, 0.9, 1, 1],
+        motionVectors: 2,
+        receiveDecals: false,
+        occlusionCulling: true,
+        boundsScale: 1.25,
+        minimumDrawDistance: 2,
+        maximumDrawDistance: 200,
+        forcedLod: -1,
+        lodBias: 0.5,
+        affectsIndirectLighting: true,
+        surfaceCardDensityBias: 0.25,
+        distanceFieldResolutionBias: -0.25,
+        visibleInHardwareTracing: true,
         hasMaterial: true,
         assetBackedMaterial: true,
         materialName: 'Rock',
@@ -60,7 +71,9 @@ describe('inspector host bindings', () => {
       components: [{ kind: 'meshRenderer', label: 'Mesh Renderer', editable: true }],
     });
     expect(snapshot.meshRenderer?.materialPath).toBe('materials/rock.arcmat');
-    expect(snapshot.meshRenderer?.baseColorTint).toEqual({ x: 0.8, y: 0.9, z: 1, w: 1 });
+    expect(snapshot.meshRenderer?.motionVectors).toBe('disabled');
+    expect(snapshot.meshRenderer?.boundsScale).toBe(1.25);
+    expect(snapshot.meshRenderer?.maximumDrawDistance).toBe(200);
   });
 
   it('parses prefab instance source and override state', () => {

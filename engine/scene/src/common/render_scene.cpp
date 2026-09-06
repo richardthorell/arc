@@ -66,6 +66,18 @@ geometric::box3f world_bounds_for(const ecs::world& scene, entity value, const t
                             geometric::point3f{transform.position + math::vector3f{0.5f, 0.5f, 0.5f}}};
 }
 
+geometric::box3f scaled_bounds(geometric::box3f bounds, float scale) noexcept
+{
+    const auto center = geometric::center(bounds).as_vector();
+    const auto half_extent = math::mul(math::sub(bounds.max.as_vector(), bounds.min.as_vector()), 0.5f * scale);
+    return {geometric::point3f{math::sub(center, half_extent)}, geometric::point3f{math::add(center, half_extent)}};
+}
+
+float bounds_distance(const geometric::box3f& bounds, const render::render_camera& camera) noexcept
+{
+    return math::length(math::sub(geometric::center(bounds).as_vector(), camera.position));
+}
+
 bool entity_selected(const ecs::world& scene, entity value)
 {
     const auto* selection = scene.try_get<selection_component>(value);
@@ -149,7 +161,7 @@ void append_virtual_mesh_items(ecs::world& scene, render::renderer& renderer, re
          .root_node = mesh->root_nodes.size() == 1 ? mesh->root_nodes.front() : render::invalid_virtual_geometry_index,
          .model = world,
          .previous_model = world,
-         .world_bounds = world_bounds_for(scene, value, transform),
+         .world_bounds = scaled_bounds(world_bounds_for(scene, value, transform), mesh_renderer.bounds_scale),
          .render_layer_mask = render_layer_mask(scene, value),
          .object_id = object,
          .visible = mesh_renderer.visible,
@@ -159,11 +171,15 @@ void append_virtual_mesh_items(ecs::world& scene, render::renderer& renderer, re
          .mobility = entity_mobility(scene, value),
          .shadow_lod_bias = mesh_renderer.shadow_lod_bias,
          .maximum_shadow_distance = mesh_renderer.maximum_shadow_distance,
+         .maximum_draw_distance = mesh_renderer.maximum_draw_distance,
+         .geometry_error_scale = std::exp2(mesh_renderer.lod_bias),
+         .motion_vector_mode = static_cast<std::uint8_t>(mesh_renderer.motion_vectors),
+         .receive_decals = mesh_renderer.receive_decals,
+         .occlusion_culling = mesh_renderer.occlusion_culling,
          .affects_indirect_lighting = mesh_renderer.affects_indirect_lighting,
          .surface_card_density_bias = mesh_renderer.surface_card_density_bias,
          .distance_field_resolution_bias = mesh_renderer.distance_field_resolution_bias,
          .visible_in_hardware_tracing = mesh_renderer.visible_in_hardware_tracing,
-         .base_color_tint = mesh_renderer.base_color_tint,
          .label = entity_label(scene, value)});
 }
 
@@ -200,14 +216,19 @@ void apply_lod(const ecs::world& scene, entity value, render::mesh_handle& mesh,
 
 render::mesh_handle select_cooked_lod(const render::geometry_resource_handle& geometry,
                                       const render::render_camera& camera, const geometric::box3f& world_bounds,
-                                      float error_threshold) noexcept
+                                      float error_threshold, std::int32_t forced_lod, float lod_bias) noexcept
 {
+    const auto lod_count = std::min<std::size_t>(geometry.conventional_lod_count, geometry.conventional_lods.size());
+    if (forced_lod >= 0 && static_cast<std::size_t>(forced_lod) < lod_count &&
+        geometry.conventional_lods[static_cast<std::size_t>(forced_lod)].valid())
+        return geometry.conventional_lods[static_cast<std::size_t>(forced_lod)];
     if (geometry.conventional_lod_count <= 1) return geometry.conventional;
     const auto center = geometric::center(world_bounds).as_vector();
     const auto distance = std::max(math::length(math::sub(center, camera.position)), camera.near_plane);
     const auto projection_scale = std::max(1.0f, 0.5f * static_cast<float>(std::max(1u, camera.render_height)) *
                                                      std::abs(camera.projection(1, 1)));
-    return geometry.select_conventional_lod(std::max(0.0f, error_threshold) * distance / projection_scale);
+    const float biased_threshold = std::max(0.0f, error_threshold) * std::exp2(lod_bias);
+    return geometry.select_conventional_lod(biased_threshold * distance / projection_scale);
 }
 
 render::cloud_layer_data to_render_cloud_layer(const cloud_layer_settings& layer)
@@ -478,6 +499,11 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
         {
             bool transparent{};
             if (!environment_mesh_visible(scene, value, environment_visibility, transparent)) return;
+            const auto renderer_bounds =
+                scaled_bounds(world_bounds_for(scene, value, transform), mesh_renderer.bounds_scale);
+            const float camera_distance = bounds_distance(renderer_bounds, world_packet.camera);
+            if (mesh_renderer.minimum_draw_distance > 0.0f && camera_distance < mesh_renderer.minimum_draw_distance)
+                return;
             const bool may_virtualize =
                 mesh_renderer.representation != render::geometry_representation_policy::conventional;
             if (!transparent && may_virtualize && renderer.resolved_config().features.virtual_geometry &&
@@ -486,17 +512,27 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                 append_virtual_mesh_items(scene, renderer, world_packet, result, value, transform, mesh_renderer);
                 return;
             }
-            render::mesh_handle mesh =
-                select_cooked_lod(mesh_renderer.mesh, world_packet.camera, world_bounds_for(scene, value, transform),
-                                  renderer.resolved_config().geometry_error_threshold);
+            render::mesh_handle mesh = select_cooked_lod(mesh_renderer.mesh, world_packet.camera, renderer_bounds,
+                                                         renderer.resolved_config().geometry_error_threshold,
+                                                         mesh_renderer.forced_lod, mesh_renderer.lod_bias);
             auto material = mesh_renderer.material;
             if (mesh_renderer.mesh.conventional_lod_count <= 1) apply_lod(scene, value, mesh, material);
             append_mesh_item(scene, world_packet, result, value, transform, mesh, material, mesh_renderer.visible,
-                             transparent, {}, 0, 1, mesh_renderer.base_color_tint, mesh_renderer.casts_shadows,
+                             transparent, {}, 0, 1, math::vector4f::one, mesh_renderer.casts_shadows,
                              mesh_renderer.receives_shadows, mesh_renderer.shadow_lod_bias,
                              mesh_renderer.maximum_shadow_distance, mesh_renderer.affects_indirect_lighting,
                              mesh_renderer.surface_card_density_bias, mesh_renderer.distance_field_resolution_bias,
                              mesh_renderer.visible_in_hardware_tracing);
+            if (!world_packet.items.empty())
+            {
+                auto& item = world_packet.items.back();
+                item.world_bounds = renderer_bounds;
+                item.maximum_draw_distance = mesh_renderer.maximum_draw_distance;
+                item.geometry_error_scale = std::exp2(mesh_renderer.lod_bias);
+                item.motion_vector_mode = static_cast<std::uint8_t>(mesh_renderer.motion_vectors);
+                item.receive_decals = mesh_renderer.receive_decals;
+                item.occlusion_culling = mesh_renderer.occlusion_culling;
+            }
         });
 
     std::vector<ecs::entity_guid> active_terrain_guids;

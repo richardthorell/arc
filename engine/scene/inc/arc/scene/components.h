@@ -139,6 +139,14 @@ struct camera_component
     render::camera_anti_aliasing_override anti_aliasing{render::camera_anti_aliasing_override::inherit};
 };
 
+/** @brief Per-renderer motion-vector authoring policy. */
+enum class mesh_motion_vector_mode : std::uint8_t
+{
+    automatic,
+    always,
+    disabled
+};
+
 /**
  * @brief Renderable static mesh component.
  */
@@ -153,11 +161,18 @@ struct mesh_renderer_component
     bool receives_shadows{true};
     float shadow_lod_bias{};
     float maximum_shadow_distance{};
+    mesh_motion_vector_mode motion_vectors{mesh_motion_vector_mode::automatic};
+    bool receive_decals{true};
+    bool occlusion_culling{true};
+    float bounds_scale{1.0f};
+    float minimum_draw_distance{};
+    float maximum_draw_distance{};
+    std::int32_t forced_lod{-1};
+    float lod_bias{};
     bool affects_indirect_lighting{true};
     float surface_card_density_bias{};
     float distance_field_resolution_bias{};
     bool visible_in_hardware_tracing{true};
-    math::vector4f base_color_tint = math::vector4f::one;
 };
 
 /**

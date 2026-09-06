@@ -321,7 +321,6 @@ TEST_CASE("render scene extracts visible mesh draw events from active camera")
     scene.emplace<arc::scene::selection_component>(mesh_entity, true);
     arc::scene::mesh_renderer_component mesh_renderer;
     mesh_renderer.mesh = mesh;
-    mesh_renderer.base_color_tint = arc::math::vector4f{0.2f, 0.4f, 0.6f, 1.0f};
     scene.emplace<arc::scene::mesh_renderer_component>(mesh_entity, mesh_renderer);
 
     const auto result = arc::scene::render_scene(scene, renderer, 1280, 720, arc::render::render_mode::wireframe,
@@ -342,7 +341,6 @@ TEST_CASE("render scene extracts visible mesh draw events from active camera")
     REQUIRE(item.mesh == mesh);
     REQUIRE(world_event.packet->mode == arc::render::render_mode::wireframe);
     REQUIRE(item.selected);
-    REQUIRE(item.base_color_tint[2] == Catch::Approx(0.6f));
     REQUIRE(world_event.packet->shadows_enabled);
 }
 
@@ -751,7 +749,6 @@ TEST_CASE("mesh renderer keeps conventional fallback when virtual geometry is un
     mesh_renderer.mesh = conventional_mesh;
     mesh_renderer.mesh.virtualized = virtual_mesh;
     mesh_renderer.representation = arc::render::geometry_representation_policy::auto_select;
-    mesh_renderer.base_color_tint = arc::math::vector4f{0.8f, 0.2f, 0.4f, 1.0f};
     scene.emplace<arc::scene::mesh_renderer_component>(mesh_entity, mesh_renderer);
 
     const auto result = arc::scene::render_scene(scene, renderer, 1280, 720);
@@ -778,7 +775,6 @@ TEST_CASE("mesh renderer keeps conventional fallback when virtual geometry is un
     REQUIRE(item.object_id.index == mesh_entity.index);
     REQUIRE(item.object_id.generation == mesh_entity.generation);
     REQUIRE(item.selected);
-    REQUIRE(item.base_color_tint[0] == Catch::Approx(0.8f));
 }
 
 TEST_CASE("render scene can request wireframe overlay for every draw")
