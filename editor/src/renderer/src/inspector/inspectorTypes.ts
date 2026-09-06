@@ -34,9 +34,25 @@ export type InspectorProceduralMesh = {
   heightSegments?: number;
 };
 
+export type InspectorSkeletonJoint = {
+  index: number;
+  name: string;
+  parent: number;
+  bindPosition: [number, number, number];
+  bindRotation: [number, number, number, number];
+  bindScale: [number, number, number];
+};
+
+export type InspectorSkeleton = {
+  name: string;
+  selectedJoint: number;
+  joints: InspectorSkeletonJoint[];
+};
+
 export type InspectorEntitySnapshot = Omit<BaseInspectorEntitySnapshot, 'meshRenderer'> & {
   meshRenderer: InspectorMeshRenderer | null;
   proceduralMesh?: InspectorProceduralMesh | null;
+  skeleton?: InspectorSkeleton | null;
 };
 
 const finiteNumber = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
@@ -48,6 +64,48 @@ const proceduralTypes = new Set<InspectorProceduralMesh['type']>([
   'cone',
   'capsule',
 ]);
+
+const tuple = (value: unknown, length: number): number[] | null => {
+  if (!Array.isArray(value) || value.length !== length || value.some((entry) => typeof entry !== 'number')) return null;
+  return value as number[];
+};
+
+function parseSkeleton(value: unknown): InspectorSkeleton | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  if (!Array.isArray(raw.joints)) return null;
+  const joints = raw.joints.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const joint = entry as Record<string, unknown>;
+    const bindPosition = tuple(joint.bindPosition, 3);
+    const bindRotation = tuple(joint.bindRotation, 4);
+    const bindScale = tuple(joint.bindScale, 3);
+    if (
+      typeof joint.index !== 'number' ||
+      typeof joint.parent !== 'number' ||
+      !bindPosition ||
+      !bindRotation ||
+      !bindScale
+    )
+      return [];
+    return [
+      {
+        index: joint.index,
+        name: typeof joint.name === 'string' ? joint.name : `Joint ${joint.index}`,
+        parent: joint.parent,
+        bindPosition: bindPosition as [number, number, number],
+        bindRotation: bindRotation as [number, number, number, number],
+        bindScale: bindScale as [number, number, number],
+      },
+    ];
+  });
+  if (!joints.length) return null;
+  return {
+    name: typeof raw.name === 'string' ? raw.name : 'Skeleton',
+    selectedJoint: typeof raw.selectedJoint === 'number' ? raw.selectedJoint : joints[0].index,
+    joints,
+  };
+}
 
 function parseProceduralMesh(value: unknown): InspectorProceduralMesh | null {
   if (!value || typeof value !== 'object') return null;
@@ -90,6 +148,7 @@ export function parseSelectedEntitySnapshot(value: unknown): InspectorEntitySnap
         }
       : null,
     proceduralMesh: parseProceduralMesh(raw?.proceduralMesh),
+    skeleton: parseSkeleton(raw?.skeleton),
   };
 }
 

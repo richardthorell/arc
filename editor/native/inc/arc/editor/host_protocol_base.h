@@ -1362,10 +1362,17 @@ struct host_viewport_set_render_options_command
     host_overlay_mode overlay{host_overlay_mode::selected_wireframe};
     bool shadows{true};
     bool grid{true};
+    bool skeletons{};
     bool realtime{true};
     float camera_speed{4.0f};
     host_camera_anti_aliasing anti_aliasing{host_camera_anti_aliasing::inherit};
     host_environment_visibility environment{};
+};
+
+struct host_viewport_set_skeleton_joint_command
+{
+    std::string viewport_id{"viewport-1"};
+    std::uint32_t joint_index{0xffffffffu};
 };
 
 struct host_viewport_camera_input_command
@@ -1489,12 +1496,13 @@ using host_command_payload = std::variant<
     host_viewport_attach_command, host_viewport_create_command, host_viewport_resize_command,
     host_viewport_detach_command, host_viewport_frame_released_command, host_viewport_set_visibility_command,
     host_viewport_pointer_command, host_viewport_key_command, host_viewport_set_camera_mode_command,
-    host_viewport_set_render_options_command, host_viewport_camera_input_command, host_viewport_set_pose_command,
-    host_history_undo_command, host_history_redo_command, host_history_begin_transaction_command,
-    host_history_commit_transaction_command, host_history_cancel_transaction_command, host_runtime_resume_command,
-    host_runtime_pause_command, host_runtime_stop_command, host_runtime_step_command,
-    host_runtime_set_time_scale_command, host_runtime_capture_snapshot_command, host_runtime_restore_snapshot_command,
-    host_viewport_set_tool_command, host_viewport_pick_command, host_viewport_capture_command>;
+    host_viewport_set_render_options_command, host_viewport_set_skeleton_joint_command,
+    host_viewport_camera_input_command, host_viewport_set_pose_command, host_history_undo_command,
+    host_history_redo_command, host_history_begin_transaction_command, host_history_commit_transaction_command,
+    host_history_cancel_transaction_command, host_runtime_resume_command, host_runtime_pause_command,
+    host_runtime_stop_command, host_runtime_step_command, host_runtime_set_time_scale_command,
+    host_runtime_capture_snapshot_command, host_runtime_restore_snapshot_command, host_viewport_set_tool_command,
+    host_viewport_pick_command, host_viewport_capture_command>;
 
 struct host_edit_transaction
 {
@@ -1639,8 +1647,10 @@ struct host_viewport_request
     host_overlay_mode overlay{host_overlay_mode::selected_wireframe};
     bool shadows{true};
     bool grid{true};
+    bool skeletons{};
     bool realtime{true};
     float camera_speed{4.0f};
+    std::uint32_t selected_skeleton_joint{0xffffffffu};
     host_camera_anti_aliasing anti_aliasing{host_camera_anti_aliasing::inherit};
     host_environment_visibility environment{};
 };

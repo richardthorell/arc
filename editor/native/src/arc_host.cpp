@@ -972,6 +972,27 @@ host_response arc_host::query(const host_query_envelope& query) const
                         nlohmann::json::parse(procedural_mesh_snapshot_json(*procedural), nullptr, false);
                     if (!procedural_json.is_discarded()) payload["proceduralMesh"] = std::move(procedural_json);
                 }
+                if (const auto* skeleton = find_imported_skeleton(query_scene, entity))
+                {
+                    nlohmann::json skeleton_json;
+                    skeleton_json["name"] = skeleton->name.empty() ? "Imported Skeleton" : skeleton->name;
+                    skeleton_json["selectedJoint"] = viewport_surface->options.selected_skeleton_joint;
+                    skeleton_json["joints"] = nlohmann::json::array();
+                    for (std::size_t index = 0; index < skeleton->joints.size(); ++index)
+                    {
+                        const auto& joint = skeleton->joints[index];
+                        skeleton_json["joints"].push_back(
+                            {{"index", index},
+                             {"name", joint.name.empty() ? "Joint " + std::to_string(index) : joint.name},
+                             {"parent", joint.parent},
+                             {"bindPosition", {joint.bind_position[0], joint.bind_position[1], joint.bind_position[2]}},
+                             {"bindRotation",
+                              {joint.bind_rotation[0], joint.bind_rotation[1], joint.bind_rotation[2],
+                               joint.bind_rotation[3]}},
+                             {"bindScale", {joint.bind_scale[0], joint.bind_scale[1], joint.bind_scale[2]}}});
+                    }
+                    payload["skeleton"] = std::move(skeleton_json);
+                }
             }
             response.payload_json = payload.dump();
         }

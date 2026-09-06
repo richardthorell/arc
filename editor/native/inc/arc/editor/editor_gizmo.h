@@ -44,6 +44,12 @@ float editor_gizmo_world_scale(const scene::camera_component& camera,
 void append_editor_grid_overlay(render::debug_overlay_stream& stream, const scene::camera_component& camera,
                                 const scene::transform_component& camera_transform, std::uint32_t viewport_height);
 
+/** Append an editor-only bind-pose skeleton visualization without creating bone entities. */
+void append_editor_skeleton_overlay(render::debug_overlay_stream& stream, const ecs::world& registry,
+                                    ecs::entity entity, const render::skeleton_asset& skeleton,
+                                    ecs::entity camera_entity, std::uint32_t viewport_height,
+                                    std::uint32_t selected_joint = render::skeleton_asset::invalid_joint);
+
 render::debug_overlay_stream build_editor_gizmo_overlay(const ecs::world& registry, ecs::entity selected,
                                                         ecs::entity camera_entity, const editor_gizmo_context& context);
 

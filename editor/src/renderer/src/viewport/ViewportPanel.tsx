@@ -65,6 +65,7 @@ type ViewportRenderOptions = {
   overlay: 'none' | 'selectedWireframe' | 'allWireframe';
   shadows: boolean;
   grid: boolean;
+  skeletons: boolean;
   realtime: boolean;
   cameraSpeed: number;
   antiAliasing: 'inherit' | 'disabled' | 'fxaa' | 'taa' | 'taau';
@@ -84,6 +85,7 @@ const defaultRenderOptions: ViewportRenderOptions = {
   overlay: 'selectedWireframe',
   shadows: true,
   grid: true,
+  skeletons: false,
   realtime: true,
   cameraSpeed: 4,
   antiAliasing: 'inherit',
@@ -852,6 +854,13 @@ export function ViewportPanel({
               >
                 <span className="arc-viewport-menu-check">{gridVisible ? '✓' : ''}</span>
                 Grid
+              </button>
+              <button
+                role="menuitemcheckbox"
+                aria-checked={renderOptions.skeletons}
+                onClick={() => void updateRenderOptions({ skeletons: !renderOptions.skeletons })}
+              >
+                <span className="arc-viewport-menu-check">{renderOptions.skeletons ? '✓' : ''}</span>Skeletons
               </button>
               <button
                 role="menuitemcheckbox"

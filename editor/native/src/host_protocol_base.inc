@@ -1191,6 +1191,8 @@ std::string command_type(const host_command_payload& payload)
                 return "viewport.setCameraMode";
             else if constexpr (std::is_same_v<type, host_viewport_set_render_options_command>)
                 return "viewport.setRenderOptions";
+            else if constexpr (std::is_same_v<type, host_viewport_set_skeleton_joint_command>)
+                return "viewport.setSkeletonJoint";
             else if constexpr (std::is_same_v<type, host_viewport_camera_input_command>)
                 return "viewport.cameraInput";
             else if constexpr (std::is_same_v<type, host_viewport_set_pose_command>)
@@ -1731,9 +1733,13 @@ std::string to_json(const host_command_envelope& envelope)
                        ",\"visualization\":" + quote(to_string(payload.visualization)) +
                        ",\"overlay\":" + quote(to_string(payload.overlay)) +
                        ",\"shadows\":" + bool_json(payload.shadows) + ",\"grid\":" + bool_json(payload.grid) +
+                       ",\"skeletons\":" + bool_json(payload.skeletons) +
                        ",\"realtime\":" + bool_json(payload.realtime) +
                        ",\"cameraSpeed\":" + std::to_string(payload.camera_speed) +
                        ",\"environment\":" + environment_json(payload.environment) + '}';
+            else if constexpr (std::is_same_v<type, host_viewport_set_skeleton_joint_command>)
+                return "{\"viewportId\":" + quote(payload.viewport_id) +
+                       ",\"jointIndex\":" + std::to_string(payload.joint_index) + '}';
             else if constexpr (std::is_same_v<type, host_viewport_camera_input_command>)
                 return "{\"viewportId\":" + quote(payload.viewport_id) +
                        ",\"orbitX\":" + std::to_string(payload.orbit_x) +
@@ -3043,6 +3049,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         parse_enum(payload, "overlay", overlays, std::size(overlays), command.overlay);
         bool_value(payload, "shadows", command.shadows);
         bool_value(payload, "grid", command.grid);
+        bool_value(payload, "skeletons", command.skeletons);
         bool_value(payload, "realtime", command.realtime);
         number_value(payload, "cameraSpeed", command.camera_speed);
         command.camera_speed = std::clamp(command.camera_speed, 0.25f, 16.0f);
@@ -3050,6 +3057,18 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
                    command.anti_aliasing);
         parse_environment(payload, command.environment);
         envelope.payload = command;
+    }
+    else if (type == "viewport.setSkeletonJoint")
+    {
+        host_viewport_set_skeleton_joint_command command;
+        string_value(payload, "viewportId", command.viewport_id);
+        if (!number_value(payload, "jointIndex", command.joint_index))
+        {
+            error = "viewport.setSkeletonJoint requires jointIndex";
+            return false;
+        }
+        envelope.payload = command;
+        return true;
     }
     else if (type == "viewport.cameraInput")
     {
