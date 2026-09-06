@@ -95,7 +95,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add editor/native/src/editor_state.cpp editor/native/tests/skinned_scene_import_tests.cpp
-          git rm .github/workflows/skeleton-stage2-temp.yml tools/apply_skeleton_stage2_patch.py
+          git rm .github/workflows/skeleton-stage2-temp.yml
+          git rm -f tools/apply_skeleton_stage2_patch.py
           git diff --cached --check
           git commit -m "Bind imported skeletons to skinned entities"
           git push origin HEAD:feat/apply-imported-skeletons
