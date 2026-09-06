@@ -1,0 +1,57 @@
+name: Model Editor Layout Migration
+
+on:
+  push:
+    branches: [feat/skeleton-model-workflow]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Fix model editor workspace migration
+        shell: python
+        run: |
+          from pathlib import Path
+
+          workspace = Path('editor/src/renderer/src/layout/WorkspaceDock.tsx')
+          text = workspace.read_text()
+          old = "const editorWorkspaceStorageKey = (projectKey: string, kind: EditorDocumentKind) =>\n  storageKey(projectKey, kind === 'texture' ? 'editor-texture-v2' : `editor-${kind}`);"
+          new = "const editorWorkspaceStorageKey = (projectKey: string, kind: EditorDocumentKind) => {\n  const versionedKind =\n    kind === 'texture'\n      ? 'editor-texture-v2'\n      : kind === 'model' || kind === 'skeleton'\n        ? `editor-${kind}-v2`\n        : `editor-${kind}`;\n  return storageKey(projectKey, versionedKind);\n};"
+          if old not in text:
+            raise SystemExit('storage key pattern not found')
+          workspace.write_text(text.replace(old, new, 1))
+
+          css = Path('editor/src/renderer/src/layout/WorkspaceDock.css')
+          text = css.read_text()
+          old = ".workbench-shell .workspace-dock-shell-editor-shader .workspace-dock,\n.workbench-shell .workspace-dock-shell-editor-texture .workspace-dock {\n  --dv-tabs-and-actions-container-height: 0px;\n}\n\n.workbench-shell .workspace-dock-shell-editor-shader .workspace-dock .dv-tabs-and-actions-container,\n.workbench-shell .workspace-dock-shell-editor-texture .workspace-dock .dv-tabs-and-actions-container {\n  display: none;\n}"
+          new = ".workbench-shell .workspace-dock-shell-editor-shader .workspace-dock,\n.workbench-shell .workspace-dock-shell-editor-texture .workspace-dock,\n.workbench-shell .workspace-dock-shell-editor-model .workspace-dock,\n.workbench-shell .workspace-dock-shell-editor-skeleton .workspace-dock {\n  --dv-tabs-and-actions-container-height: 0px;\n}\n\n.workbench-shell .workspace-dock-shell-editor-shader .workspace-dock .dv-tabs-and-actions-container,\n.workbench-shell .workspace-dock-shell-editor-texture .workspace-dock .dv-tabs-and-actions-container,\n.workbench-shell .workspace-dock-shell-editor-model .workspace-dock .dv-tabs-and-actions-container,\n.workbench-shell .workspace-dock-shell-editor-skeleton .workspace-dock .dv-tabs-and-actions-container {\n  display: none;\n}"
+          if old not in text:
+            raise SystemExit('asset editor tab chrome pattern not found')
+          css.write_text(text.replace(old, new, 1))
+      - name: Install dependencies
+        working-directory: editor
+        run: npm ci
+      - name: Validate
+        working-directory: editor
+        run: |
+          npx prettier --write src/renderer/src/layout/WorkspaceDock.tsx src/renderer/src/layout/WorkspaceDock.css
+          npm test -- --run src/renderer/src/editors/modelEditorRegistration.test.ts src/renderer/src/editors/editorRegistry.test.ts
+          npm run typecheck
+      - name: Commit
+        run: |
+          rm .github/workflows/model-editor-layout-migration.yml
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Reset stale model editor workspace layouts"
+          git push
