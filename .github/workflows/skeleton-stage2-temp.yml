@@ -35,6 +35,31 @@ jobs:
           path.write_text(text[:start] + replacement + text[end:])
           PY
           python3 tools/apply_skeleton_stage2_patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('editor/native/src/editor_state.cpp')
+          text = path.read_text()
+          marker = '        scene.scene.emplace<scene::hierarchy_component>(entity);\n'
+          insertion = '''        if (!skinned_bound)
+          {
+              if (has_skin_stream)
+              {
+                  arc::diagnostics::warn("editor.assets", "Imported skinned mesh '" +
+                                                             (node.name.empty() ? std::string("Imported Mesh") : node.name) +
+                                                             "' has no usable skeleton binding; using static rendering");
+              }
+              scene::mesh_renderer_component renderer_component;
+              renderer_component.mesh = meshes[node.mesh_index];
+              renderer_component.material = materials[material_index];
+              scene.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
+          }
+          scene.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
+          '''
+          if marker not in text:
+              raise SystemExit('hierarchy marker not found')
+          text = text.replace(marker, insertion + marker, 1)
+          path.write_text(text)
+          PY
 
       - name: Format changed C++
         run: |
