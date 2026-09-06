@@ -265,7 +265,10 @@ export function AiGatewayPanel({
   }, [conversations]);
 
   useEffect(() => {
-    messageEnd.current?.scrollIntoView({ block: 'end' });
+    const scrollIntoView = messageEnd.current?.scrollIntoView;
+    if (typeof scrollIntoView === 'function') {
+      scrollIntoView.call(messageEnd.current, { block: 'end' });
+    }
   }, [activeConversation?.messages]);
 
   const newChat = () => {
