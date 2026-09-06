@@ -672,4 +672,172 @@ bool editor_gizmo_drag_direction(const ecs::world& registry, ecs::entity selecte
     return found;
 }
 
+std::uint32_t hit_test_editor_skeleton_joint(const ecs::world& registry, ecs::entity entity,
+                                             const render::skeleton_asset& skeleton, ecs::entity camera_entity,
+                                             const editor_gizmo_context& context, float screen_x,
+                                             float screen_y) noexcept
+{
+    if (!skeleton.valid() || !registry.alive(entity) || context.viewport_width == 0u || context.viewport_height == 0u)
+        return render::skeleton_asset::invalid_joint;
+    const auto* entity_transform = registry.try_get<scene::transform_component>(entity);
+    const auto* camera = registry.try_get<scene::camera_component>(camera_entity);
+    const auto* camera_transform = registry.try_get<scene::transform_component>(camera_entity);
+    if (!entity_transform || !camera || !camera_transform) return render::skeleton_asset::invalid_joint;
+
+    const auto owner_world = entity_transform->dirty ? scene::local_matrix(*entity_transform) : entity_transform->world;
+    std::vector<math::matrix4f> joint_world(skeleton.joints.size(), math::identity<float, 4>());
+    std::vector<std::uint8_t> state(skeleton.joints.size());
+    std::function<bool(std::size_t)> evaluate = [&](std::size_t index)
+    {
+        if (index >= skeleton.joints.size()) return false;
+        if (state[index] == 2u) return true;
+        if (state[index] == 1u) return false;
+        state[index] = 1u;
+        const auto& joint = skeleton.joints[index];
+        scene::transform_component local;
+        local.position = joint.bind_position;
+        local.rotation = joint.bind_rotation;
+        local.scale = joint.bind_scale;
+        auto world = scene::local_matrix(local);
+        if (joint.parent >= 0)
+        {
+            const auto parent = static_cast<std::size_t>(joint.parent);
+            if (parent >= skeleton.joints.size() || !evaluate(parent)) return false;
+            world = math::matmul(joint_world[parent], world);
+        }
+        joint_world[index] = world;
+        state[index] = 2u;
+        return true;
+    };
+    for (std::size_t joint = 0; joint < skeleton.joints.size(); ++joint)
+        if (!evaluate(joint)) return render::skeleton_asset::invalid_joint;
+
+    const auto view_projection = gizmo_view_projection(*camera, *camera_transform, context);
+    const math::vector2f pointer{screen_x, screen_y};
+    constexpr float joint_radius = 12.0f;
+    constexpr float bone_radius = 8.0f;
+    float nearest_joint = joint_radius;
+    float nearest_bone = bone_radius;
+    std::uint32_t joint_hit = render::skeleton_asset::invalid_joint;
+    std::uint32_t bone_hit = render::skeleton_asset::invalid_joint;
+    std::vector<math::vector2f> projected(skeleton.joints.size());
+    std::vector<bool> visible(skeleton.joints.size());
+
+    for (std::size_t joint = 0; joint < skeleton.joints.size(); ++joint)
+    {
+        const auto position =
+            math::transform_point(owner_world, math::transform_point(joint_world[joint], math::vector3f::zero));
+        visible[joint] = project_to_screen(view_projection, position, context.viewport_width, context.viewport_height,
+                                           projected[joint]);
+        if (!visible[joint]) continue;
+        const float distance = math::length(math::sub(pointer, projected[joint]));
+        if (distance <= nearest_joint)
+        {
+            nearest_joint = distance;
+            joint_hit = static_cast<std::uint32_t>(joint);
+        }
+    }
+    if (joint_hit != render::skeleton_asset::invalid_joint) return joint_hit;
+
+    for (std::size_t joint = 0; joint < skeleton.joints.size(); ++joint)
+    {
+        const auto parent_value = skeleton.joints[joint].parent;
+        if (parent_value < 0) continue;
+        const auto parent = static_cast<std::size_t>(parent_value);
+        if (parent >= skeleton.joints.size() || !visible[joint] || !visible[parent]) continue;
+        const float distance = distance_to_segment(pointer, projected[parent], projected[joint]);
+        if (distance <= nearest_bone)
+        {
+            nearest_bone = distance;
+            bone_hit = static_cast<std::uint32_t>(joint);
+        }
+    }
+    return bone_hit;
+}
+
+void append_editor_skeleton_overlay(render::debug_overlay_stream& stream, const ecs::world& registry,
+                                    ecs::entity entity, const render::skeleton_asset& skeleton,
+                                    ecs::entity camera_entity, std::uint32_t viewport_height,
+                                    std::uint32_t selected_joint)
+{
+    if (!skeleton.valid() || !registry.alive(entity)) return;
+    const auto* entity_transform = registry.try_get<scene::transform_component>(entity);
+    const auto* camera = registry.try_get<scene::camera_component>(camera_entity);
+    const auto* camera_transform = registry.try_get<scene::transform_component>(camera_entity);
+    if (!entity_transform || !camera || !camera_transform) return;
+
+    const auto owner_world = entity_transform->dirty ? scene::local_matrix(*entity_transform) : entity_transform->world;
+    std::vector<math::matrix4f> joint_world(skeleton.joints.size(), math::identity<float, 4>());
+    std::vector<std::uint8_t> state(skeleton.joints.size());
+    std::function<bool(std::size_t)> evaluate = [&](std::size_t index)
+    {
+        if (index >= skeleton.joints.size()) return false;
+        if (state[index] == 2u) return true;
+        if (state[index] == 1u) return false;
+        state[index] = 1u;
+        const auto& joint = skeleton.joints[index];
+        scene::transform_component local;
+        local.position = joint.bind_position;
+        local.rotation = joint.bind_rotation;
+        local.scale = joint.bind_scale;
+        auto world = scene::local_matrix(local);
+        if (joint.parent >= 0)
+        {
+            const auto parent = static_cast<std::size_t>(joint.parent);
+            if (parent >= skeleton.joints.size() || !evaluate(parent)) return false;
+            world = math::matmul(joint_world[parent], world);
+        }
+        joint_world[index] = world;
+        state[index] = 2u;
+        return true;
+    };
+    for (std::size_t joint = 0; joint < skeleton.joints.size(); ++joint)
+        if (!evaluate(joint)) return;
+
+    const auto is_descendant = [&](std::size_t joint)
+    {
+        if (selected_joint >= skeleton.joints.size() || joint == selected_joint) return false;
+        auto parent = skeleton.joints[joint].parent;
+        while (parent >= 0)
+        {
+            if (static_cast<std::uint32_t>(parent) == selected_joint) return true;
+            if (static_cast<std::size_t>(parent) >= skeleton.joints.size()) return false;
+            parent = skeleton.joints[static_cast<std::size_t>(parent)].parent;
+        }
+        return false;
+    };
+
+    constexpr math::vector4f normal_color{0.45f, 0.72f, 0.86f, 0.72f};
+    constexpr math::vector4f descendant_color{0.55f, 0.82f, 0.96f, 0.95f};
+    constexpr math::vector4f selected_color{1.0f, 0.78f, 0.16f, 1.0f};
+    for (std::size_t joint = 0; joint < skeleton.joints.size(); ++joint)
+    {
+        const auto position =
+            math::transform_point(owner_world, math::transform_point(joint_world[joint], math::vector3f::zero));
+        const bool selected = joint == selected_joint;
+        const bool descendant = is_descendant(joint);
+        const auto color = selected ? selected_color : descendant ? descendant_color : normal_color;
+        if (skeleton.joints[joint].parent >= 0)
+        {
+            const auto parent = static_cast<std::size_t>(skeleton.joints[joint].parent);
+            if (parent < joint_world.size())
+            {
+                const auto parent_position = math::transform_point(
+                    owner_world, math::transform_point(joint_world[parent], math::vector3f::zero));
+                const auto bone_color = (selected || descendant) ? descendant_color : normal_color;
+                append_overlay_line(stream, parent_position, position, bone_color);
+            }
+        }
+
+        const float marker = editor_gizmo_world_scale(*camera, *camera_transform, position, viewport_height) *
+                             (selected ? 0.055f : 0.035f);
+        append_overlay_line(stream, math::add(position, math::vector3f{-marker, 0.0f, 0.0f}),
+                            math::add(position, math::vector3f{marker, 0.0f, 0.0f}), color);
+        append_overlay_line(stream, math::add(position, math::vector3f{0.0f, -marker, 0.0f}),
+                            math::add(position, math::vector3f{0.0f, marker, 0.0f}), color);
+        append_overlay_line(stream, math::add(position, math::vector3f{0.0f, 0.0f, -marker}),
+                            math::add(position, math::vector3f{0.0f, 0.0f, marker}), color);
+    }
+}
+
 } // namespace arc::editor

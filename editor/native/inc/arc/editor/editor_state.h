@@ -62,6 +62,12 @@ struct editor_scene_state
     ecs::entity selected_entity;
     std::vector<ecs::entity> primitive_entities;
     std::vector<ecs::entity> imported_scene_entities;
+    struct imported_skeleton_binding
+    {
+        ecs::entity_guid entity;
+        render::skeleton_asset skeleton;
+    };
+    std::vector<imported_skeleton_binding> imported_skeletons;
     std::vector<ecs::entity> world_feature_entities;
     struct asset_binding
     {
@@ -107,6 +113,7 @@ ecs::entity_guid entity_guid_of(const editor_scene_state& scene, ecs::entity ent
 editor_scene_state::asset_binding* find_asset_binding(editor_scene_state& scene, ecs::entity_guid guid) noexcept;
 const editor_scene_state::asset_binding* find_asset_binding(const editor_scene_state& scene,
                                                             ecs::entity_guid guid) noexcept;
+const render::skeleton_asset* find_imported_skeleton(const editor_scene_state& scene, ecs::entity entity) noexcept;
 
 enum class editor_scene_open_mode : std::uint8_t
 {

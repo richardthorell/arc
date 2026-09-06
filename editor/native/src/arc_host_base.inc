@@ -3898,10 +3898,22 @@ host_response arc_host::execute(const host_command_envelope& command)
                 state_->viewport_options.overlay = payload.overlay;
                 state_->viewport_options.shadows = payload.shadows;
                 state_->viewport_options.grid = payload.grid;
+                state_->viewport_options.skeletons = payload.skeletons;
                 state_->viewport_options.realtime = payload.realtime;
                 state_->viewport_options.camera_speed = payload.camera_speed;
                 state_->viewport_options.anti_aliasing = payload.anti_aliasing;
                 state_->viewport_options.environment = payload.environment;
+                return success();
+            }
+            else if constexpr (std::is_same_v<command_type, host_viewport_set_skeleton_joint_command>)
+            {
+                if (payload.viewport_id != state_->active_viewport_id) return fail("Viewport is not attached");
+                const auto* skeleton = find_imported_skeleton(state_->scene, state_->scene.selected_entity);
+                if (!skeleton) return fail("Selected entity has no imported skeleton");
+                if (payload.joint_index != render::skeleton_asset::invalid_joint &&
+                    payload.joint_index >= skeleton->joints.size())
+                    return fail("Skeleton joint index is out of range");
+                state_->viewport_options.selected_skeleton_joint = payload.joint_index;
                 return success();
             }
             else if constexpr (std::is_same_v<command_type, host_viewport_camera_input_command>)
@@ -5795,6 +5807,27 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
                              .highlighted_axis = state_->gizmo_highlight,
                              .viewport_width = request.width,
                              .viewport_height = request.height});
+    const auto append_skeleton = [&](ecs::entity entity, std::uint32_t selected_joint)
+    {
+        if (const auto* skeleton = find_imported_skeleton(state_->scene, entity))
+            append_editor_skeleton_overlay(debug_overlay, state_->scene.scene, entity, *skeleton,
+                                           state_->scene.camera_entity, request.height, selected_joint);
+    };
+    if (state_->viewport_options.skeletons)
+    {
+        for (const auto& binding : state_->scene.imported_skeletons)
+        {
+            const auto entity = find_entity_by_guid(state_->scene, binding.entity);
+            if (!state_->scene.scene.alive(entity)) continue;
+            append_skeleton(entity, entity == state_->scene.selected_entity
+                                        ? state_->viewport_options.selected_skeleton_joint
+                                        : render::skeleton_asset::invalid_joint);
+        }
+    }
+    else if (find_imported_skeleton(state_->scene, state_->scene.selected_entity))
+    {
+        append_skeleton(state_->scene.selected_entity, state_->viewport_options.selected_skeleton_joint);
+    }
     if (state_->viewport_options.grid)
     {
         const auto* camera = state_->scene.scene.try_get<scene::camera_component>(state_->scene.camera_entity);

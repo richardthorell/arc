@@ -218,6 +218,7 @@ void clear_imported_content(editor_scene_state& state, render::renderer* rendere
     destroy_entity_if_alive(state, state.vegetation_entity);
     destroy_entities(state, state.primitive_entities);
     destroy_entities(state, state.imported_scene_entities);
+    state.imported_skeletons.clear();
     state.selected_entity = {};
 }
 
@@ -467,6 +468,17 @@ const editor_scene_state::asset_binding* find_asset_binding(const editor_scene_s
     const auto found = std::find_if(state.asset_bindings.begin(), state.asset_bindings.end(),
                                     [guid](const auto& value) { return value.entity == guid; });
     return found == state.asset_bindings.end() ? nullptr : &*found;
+}
+
+const render::skeleton_asset* find_imported_skeleton(const editor_scene_state& scene, ecs::entity entity) noexcept
+{
+    if (!scene.scene.alive(entity)) return nullptr;
+    const auto guid = entity_guid_of(scene, entity);
+    if (!guid.valid()) return nullptr;
+    const auto found = std::find_if(scene.imported_skeletons.begin(), scene.imported_skeletons.end(),
+                                    [guid](const editor_scene_state::imported_skeleton_binding& binding)
+                                    { return binding.entity == guid; });
+    return found == scene.imported_skeletons.end() ? nullptr : &found->skeleton;
 }
 
 const char* selected_entity_name(const editor_scene_state& scene, const char* fallback)
@@ -834,6 +846,9 @@ editor_scene_open_result apply_scene_import_result_to_editor(editor_scene_state&
         }
         scene.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
         scene.scene.emplace<scene::hierarchy_component>(entity);
+        if (skinned_bound)
+            scene.imported_skeletons.push_back({.entity = scene.scene.get<scene::persistent_id_component>(entity).value,
+                                                .skeleton = imported.skeletons[node.skin_index]});
         scene.asset_bindings.push_back({.entity = scene.scene.get<scene::persistent_id_component>(entity).value,
                                         .source_kind = "imported",
                                         .source = {.expected_type = assets::asset_types::imported_scene,

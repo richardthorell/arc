@@ -11,6 +11,7 @@ import type { HostProjectComponentSchema, InspectorComponentId } from './compone
 import type { HostResponse, InspectorEntitySnapshot, Vec3 } from './inspectorTypes';
 import { cameraHostPayload, hostEntityKey, lightHostPayload, transformHostPayload } from './inspectorTypes';
 import { SchemaComponentCard } from './SchemaComponents';
+import { SkeletonInspector } from './SkeletonInspector';
 import { inspectorLocalToWorld, inspectorWorldToLocal } from './transformSpace';
 
 import './inspector.css';
@@ -529,6 +530,7 @@ export function InspectorPanel({
         </div>
       )}
       <div className="inspector-component-list">
+        {draft.skeleton && <SkeletonInspector skeleton={draft.skeleton} command={command} onStatus={onStatus} />}
         {draft.prefab && (
           <section className="prefab-override-strip">
             <div>

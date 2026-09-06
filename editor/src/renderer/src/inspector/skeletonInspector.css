@@ -1,0 +1,44 @@
+.skeleton-inspector {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.skeleton-inspector > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.skeleton-inspector > header > span,
+.skeleton-inspector-details output {
+  color: var(--arc-color-text-muted);
+}
+
+.skeleton-inspector .ui-tree-view {
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--arc-color-border-subtle);
+  border-radius: var(--arc-radius-sm);
+}
+
+.skeleton-inspector-details,
+.skeleton-inspector-details fieldset {
+  display: grid;
+  gap: 6px;
+}
+
+.skeleton-inspector-details > label,
+.skeleton-inspector-details fieldset > label {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.skeleton-inspector-details fieldset {
+  margin: 2px 0 0;
+  padding: 8px;
+  border: 1px solid var(--arc-color-border-subtle);
+  border-radius: var(--arc-radius-sm);
+}

@@ -65,6 +65,7 @@ type ViewportRenderOptions = {
   overlay: 'none' | 'selectedWireframe' | 'allWireframe';
   shadows: boolean;
   grid: boolean;
+  skeletons: boolean;
   realtime: boolean;
   cameraSpeed: number;
   antiAliasing: 'inherit' | 'disabled' | 'fxaa' | 'taa' | 'taau';
@@ -84,6 +85,7 @@ const defaultRenderOptions: ViewportRenderOptions = {
   overlay: 'selectedWireframe',
   shadows: true,
   grid: true,
+  skeletons: false,
   realtime: true,
   cameraSpeed: 4,
   antiAliasing: 'inherit',
@@ -136,6 +138,7 @@ export function ViewportPanel({
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const surfaceId = `arc-viewport-surface-${viewportId.replaceAll(/[^a-zA-Z0-9_-]/g, '-')}`;
   const dragRef = useRef<DragState | null>(null);
+  const clickRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const flyNavigationActiveRef = useRef(false);
   const movementKeysRef = useRef(new Set<string>());
   const consumedMovementKeysRef = useRef(new Set<string>());
@@ -494,6 +497,7 @@ export function ViewportPanel({
     if (!viewportActive) return;
     if (cameraSourceId !== 'editor' && event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
+    if (event.button === 0) clickRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
     if (event.button === 2) {
       flyNavigationActiveRef.current = true;
       movementLastTickRef.current = performance.now();
@@ -511,6 +515,9 @@ export function ViewportPanel({
   };
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const click = clickRef.current;
+    if (click?.pointerId === event.pointerId && Math.hypot(event.clientX - click.x, event.clientY - click.y) > 4)
+      clickRef.current = null;
     if (streamedAvailable) {
       sendPointer(event, 'move');
       return;
@@ -538,6 +545,14 @@ export function ViewportPanel({
 
   const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
     if (streamedAvailable) sendPointer(event, 'up');
+    const click = clickRef.current;
+    if (event.button === 0 && click?.pointerId === event.pointerId && viewportActive) {
+      const position = pointerCoordinates(event.clientX, event.clientY);
+      void window.arc.host.command('viewport.pick', { viewportId, ...position }).catch((error) => {
+        setViewportError(error instanceof Error ? error.message : String(error));
+      });
+    }
+    if (click?.pointerId === event.pointerId) clickRef.current = null;
     if (dragRef.current?.pointerId === event.pointerId) {
       dragRef.current = null;
     }
@@ -852,6 +867,13 @@ export function ViewportPanel({
               >
                 <span className="arc-viewport-menu-check">{gridVisible ? '✓' : ''}</span>
                 Grid
+              </button>
+              <button
+                role="menuitemcheckbox"
+                aria-checked={renderOptions.skeletons}
+                onClick={() => void updateRenderOptions({ skeletons: !renderOptions.skeletons })}
+              >
+                <span className="arc-viewport-menu-check">{renderOptions.skeletons ? '✓' : ''}</span>Skeletons
               </button>
               <button
                 role="menuitemcheckbox"

@@ -124,3 +124,25 @@ TEST_CASE("replacing an imported scene retires its skin palettes", "[editor][ske
     REQUIRE(state.imported_scene_entities.size() == 1u);
     CHECK(state.scene.has<arc::scene::mesh_renderer_component>(state.imported_scene_entities.front()));
 }
+
+TEST_CASE("imported skinned entities retain editor skeleton metadata", "[editor][skeleton][visualization]")
+{
+    arc::editor::editor_scene_state state;
+    arc::render::renderer renderer;
+    REQUIRE(arc::editor::apply_scene_import_result_to_editor(state, renderer, "assets/character.glb",
+                                                             make_skinned_scene(),
+                                                             arc::editor::editor_scene_open_mode::replace)
+                .succeeded);
+    REQUIRE(state.imported_scene_entities.size() == 1u);
+    const auto entity = state.imported_scene_entities.front();
+    const auto* skeleton = arc::editor::find_imported_skeleton(state, entity);
+    REQUIRE(skeleton != nullptr);
+    CHECK(skeleton->name == "CharacterRig");
+    REQUIRE(skeleton->joints.size() == 2u);
+    CHECK(skeleton->joints[1].parent == 0);
+
+    REQUIRE(arc::editor::apply_scene_import_result_to_editor(state, renderer, "assets/prop.glb", make_static_scene(),
+                                                             arc::editor::editor_scene_open_mode::replace)
+                .succeeded);
+    CHECK(state.imported_skeletons.empty());
+}
