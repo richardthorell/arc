@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check, GitBranch, RefreshCw, RotateCcw } from 'lucide-react';
 
 import type { SourceControlFile, SourceControlSnapshot } from '../../../common/editorWorkflowTypes';
-import { UiButton, UiIconButton } from '../ui';
+import { UiButton, UiIconButton, UiSidebarPanel } from '../ui';
 
 import '../tools/tools.css';
 
@@ -36,7 +36,7 @@ export function VersionControlPanel() {
   };
 
   return (
-    <section className="production-tool-panel vcs-panel">
+    <UiSidebarPanel className="production-tool-panel vcs-panel">
       <header className="tool-panel-toolbar">
         <GitBranch size={15} />
         <strong>{snapshot?.branch || 'Version Control'}</strong>
@@ -122,6 +122,6 @@ export function VersionControlPanel() {
         </div>
       )}
       {message && <div className="tool-message">{message}</div>}
-    </section>
+    </UiSidebarPanel>
   );
 }

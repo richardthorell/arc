@@ -1692,6 +1692,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
             requestedLayout={requestedWorkspaceLayout}
             requestedPanel={requestedWorkspacePanel}
             requestedViewportCount={viewportCount}
+            sidebarExpanded={layout.activityExpanded}
           />
         </section>
       </section>

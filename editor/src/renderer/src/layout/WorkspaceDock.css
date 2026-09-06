@@ -57,10 +57,11 @@
 }
 
 .workbench-shell .workbench-body-dockview.activity-expanded .workspace-dock-shell {
-  grid-template-columns: var(--arc-left-panel-width) minmax(0, 1fr);
+  grid-template-columns: var(--arc-utility-sidebar-width, var(--arc-left-panel-width)) minmax(0, 1fr);
 }
 
 .primary-sidebar {
+  position: relative;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -71,6 +72,38 @@
 
 .workbench-shell .workbench-body-dockview.activity-expanded .primary-sidebar {
   border-right: var(--arc-border-width) solid var(--arc-color-border-subtle);
+}
+
+.primary-sidebar-resize-handle {
+  position: absolute;
+  z-index: 8;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.primary-sidebar-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  background: transparent;
+  transition: background 100ms ease;
+}
+
+.primary-sidebar-resize-handle:hover::after,
+.primary-sidebar-resize-handle:focus-visible::after,
+.primary-sidebar-resize-handle.is-resizing::after {
+  background: var(--arc-color-accent);
+}
+
+.primary-sidebar-resize-handle:focus-visible {
+  outline: none;
 }
 
 .primary-sidebar > * {

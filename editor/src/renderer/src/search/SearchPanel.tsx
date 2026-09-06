@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Box, Database, Search } from 'lucide-react';
 
 import type { AssetItem, SceneEntity } from '../services/editorHostTypes';
+import { UiSidebarPanel } from '../ui';
 
 import '../tools/tools.css';
 
@@ -62,7 +63,7 @@ export function SearchPanel({
   });
 
   return (
-    <section className="production-tool-panel search-production-panel">
+    <UiSidebarPanel className="production-tool-panel search-production-panel">
       <label className="tool-search search-hero">
         <Search size={16} />
         <input
@@ -101,6 +102,6 @@ export function SearchPanel({
           </button>
         ))}
       </section>
-    </section>
+    </UiSidebarPanel>
   );
 }
