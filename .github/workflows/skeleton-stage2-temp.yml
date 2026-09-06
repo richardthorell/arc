@@ -18,7 +18,23 @@ jobs:
           ref: feat/apply-imported-skeletons
 
       - name: Apply implementation
-        run: python3 tools/apply_skeleton_stage2_patch.py
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tools/apply_skeleton_stage2_patch.py')
+          text = path.read_text()
+          start = text.index("old = '''        const auto& imported_mesh = imported.meshes[node.mesh_index];")
+          end = text.index("new = '''", start)
+          replacement = '''old = \'\'\'        scene::mesh_renderer_component renderer_component;
+                  renderer_component.mesh = meshes[node.mesh_index];
+                  renderer_component.material = materials[material_index];
+                  scene.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
+                  scene.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
+          \'\'\'
+          '''
+          path.write_text(text[:start] + replacement + text[end:])
+          PY
+          python3 tools/apply_skeleton_stage2_patch.py
 
       - name: Format changed C++
         run: |
