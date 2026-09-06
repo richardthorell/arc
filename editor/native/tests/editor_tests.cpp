@@ -1417,11 +1417,11 @@ TEST_CASE("mesh renderer host snapshot edits and material assignment round trip"
                                                                                         .visible = true}})
                       .succeeded);
     REQUIRE_FALSE(
-        host->execute({.request_id = 3,
-                       .payload = arc::editor::host_set_mesh_renderer_command{
-                           .entity = entity,
-                           .visible = true,
-                           .bounds_scale = std::numeric_limits<float>::infinity()}})
+        host->execute(
+                {.request_id = 3,
+                 .payload =
+                     arc::editor::host_set_mesh_renderer_command{
+                         .entity = entity, .visible = true, .bounds_scale = std::numeric_limits<float>::infinity()}})
             .succeeded);
 
     REQUIRE(host->execute({.request_id = 4,
