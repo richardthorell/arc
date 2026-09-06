@@ -102,9 +102,7 @@ describe('AiGatewayPanel', () => {
     expect(promptMessage).toBeVisible();
     await waitFor(() => expect(screen.getByText('Start with a key light.')).toBeVisible());
     expect((screen.getByLabelText('AI conversation') as HTMLSelectElement).value).not.toBe('');
-    expect(localStorage.getItem(aiConversationStorageKey)).toContain(
-      'How should I light this room?',
-    );
+    expect(localStorage.getItem(aiConversationStorageKey)).toContain('How should I light this room?');
   });
 
   it('creates a fresh conversation from the header', () => {
@@ -183,17 +181,8 @@ describe('AiGatewayPanel', () => {
     const approve = vi.fn();
     const deny = vi.fn();
     const open = vi.fn();
-    render(
-      <AiGatewayApprovalPrompt
-        status={status}
-        onApprove={approve}
-        onDeny={deny}
-        onOpenGateway={open}
-      />,
-    );
-    expect(screen.getByRole('alertdialog')).toHaveTextContent(
-      'Codex requests scene edit access',
-    );
+    render(<AiGatewayApprovalPrompt status={status} onApprove={approve} onDeny={deny} onOpenGateway={open} />);
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Codex requests scene edit access');
     fireEvent.click(screen.getByText('Allow'));
     fireEvent.click(screen.getByText('Deny'));
     fireEvent.click(screen.getByText('Details'));
