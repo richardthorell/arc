@@ -1,6 +1,4 @@
 .ui-sidebar-panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -8,59 +6,4 @@
   overflow: hidden;
   color: var(--arc-color-text);
   background: var(--arc-color-bg-panel-muted);
-}
-
-.ui-sidebar-panel-header {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--arc-space-4);
-  min-height: 38px;
-  padding: 0 var(--arc-space-6);
-  border-bottom: var(--arc-border-width) solid var(--arc-color-border-subtle);
-  background: var(--arc-color-bg-panel-raised);
-}
-
-.ui-sidebar-panel-icon,
-.ui-sidebar-panel-actions {
-  display: inline-flex;
-  align-items: center;
-}
-
-.ui-sidebar-panel-icon {
-  color: var(--arc-color-accent-hover);
-}
-
-.ui-sidebar-panel-heading {
-  display: grid;
-  min-width: 0;
-  line-height: var(--arc-line-tight);
-}
-
-.ui-sidebar-panel-heading strong,
-.ui-sidebar-panel-heading small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ui-sidebar-panel-heading strong {
-  color: var(--arc-color-text-strong);
-  font-size: var(--arc-text-sm);
-  font-weight: 600;
-}
-
-.ui-sidebar-panel-heading small {
-  color: var(--arc-color-text-muted);
-  font-size: var(--arc-text-xs);
-}
-
-.ui-sidebar-panel-actions {
-  gap: var(--arc-space-2);
-}
-
-.ui-sidebar-panel-content {
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
 }
