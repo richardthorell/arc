@@ -31,9 +31,30 @@ jobs:
           python3 tools/apply_skeleton_stage3_patch.py
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('editor/src/renderer/src/inspector/SkeletonInspector.test.tsx')
-          text = path.read_text().replace("expect(screen.getByText('Hips')).toBeVisible();", "expect(screen.getAllByText('Hips')[0]).toBeVisible();")
-          path.write_text(text)
+
+          test = Path('editor/src/renderer/src/inspector/SkeletonInspector.test.tsx')
+          text = test.read_text().replace("expect(screen.getByText('Hips')).toBeVisible();", "expect(screen.getAllByText('Hips')[0]).toBeVisible();")
+          test.write_text(text)
+
+          gizmo = Path('editor/native/src/editor_gizmo.cpp')
+          text = gizmo.read_text()
+          replacements = {
+              'math::add(position, {-marker, 0.0f, 0.0f})': 'math::add(position, math::vector3f{-marker, 0.0f, 0.0f})',
+              'math::add(position, {marker, 0.0f, 0.0f})': 'math::add(position, math::vector3f{marker, 0.0f, 0.0f})',
+              'math::add(position, {0.0f, -marker, 0.0f})': 'math::add(position, math::vector3f{0.0f, -marker, 0.0f})',
+              'math::add(position, {0.0f, marker, 0.0f})': 'math::add(position, math::vector3f{0.0f, marker, 0.0f})',
+              'math::add(position, {0.0f, 0.0f, -marker})': 'math::add(position, math::vector3f{0.0f, 0.0f, -marker})',
+              'math::add(position, {0.0f, 0.0f, marker})': 'math::add(position, math::vector3f{0.0f, 0.0f, marker})',
+          }
+          for old, new in replacements.items():
+              text = text.replace(old, new)
+          gizmo.write_text(text)
+
+          protocol = Path('editor/native/inc/arc/editor/host_protocol_base.h')
+          text = protocol.read_text()
+          text = text.replace('std::uint32_t joint_index{render::skeleton_asset::invalid_joint};', 'std::uint32_t joint_index{0xffffffffu};')
+          text = text.replace('std::uint32_t selected_skeleton_joint{render::skeleton_asset::invalid_joint};', 'std::uint32_t selected_skeleton_joint{0xffffffffu};')
+          protocol.write_text(text)
           PY
 
       - name: Format native changes
