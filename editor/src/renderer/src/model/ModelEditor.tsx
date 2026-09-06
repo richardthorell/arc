@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Bone, Box, CheckCircle2, ExternalLink, TriangleAlert, XCircle } from 'lucide-react';
 
 import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/AssetPreviewPanel';
@@ -11,6 +11,11 @@ import { buildModelSubassets, hasSkeletonMetadata, skeletonCompatibility } from 
 import './modelEditor.css';
 
 type ProjectAssetsResponse = { succeeded?: boolean; payload?: { assets?: AssetItem[] } };
+type AssetThumbnailResponse = {
+  succeeded?: boolean;
+  error?: string;
+  payload?: { dataUrl?: string };
+};
 
 const compatibilityIcon = (value: ReturnType<typeof skeletonCompatibility>) =>
   value === 'compatible' ? (
@@ -21,12 +26,53 @@ const compatibilityIcon = (value: ReturnType<typeof skeletonCompatibility>) =>
     <XCircle size={13} />
   );
 
+const extensionOf = (path: string) => {
+  const name = path.replaceAll('\\', '/').split('/').at(-1) ?? path;
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(dot + 1).toLocaleUpperCase() : 'Model';
+};
+
 export function ModelEditor({ document }: { document: EditorDocument }) {
   const asset = document.assetSnapshot;
   const [activeSection, setActiveSection] = useState<'model' | 'skeleton'>('model');
   const [candidateAssets, setCandidateAssets] = useState<AssetItem[]>([]);
   const [assignedSkeleton, setAssignedSkeleton] = useState(asset?.guid ?? asset?.path ?? '');
+  const [previewDataUrl, setPreviewDataUrl] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
   const subassets = useMemo(() => (asset ? buildModelSubassets(asset) : []), [asset]);
+
+  useEffect(() => {
+    let active = true;
+    if (!asset?.path || !window.arc?.host?.query) return;
+
+    setPreviewLoading(true);
+    setPreviewError('');
+    void window.arc.host
+      .query('asset.thumbnail', { path: asset.path, maxSize: 768 })
+      .then((raw) => {
+        if (!active) return;
+        const response = raw as AssetThumbnailResponse;
+        if (response.succeeded && response.payload?.dataUrl) {
+          setPreviewDataUrl(response.payload.dataUrl);
+          return;
+        }
+        setPreviewDataUrl('');
+        setPreviewError(response.error || 'Model preview could not be generated.');
+      })
+      .catch((reason: unknown) => {
+        if (!active) return;
+        setPreviewDataUrl('');
+        setPreviewError(reason instanceof Error ? reason.message : 'Model preview could not be generated.');
+      })
+      .finally(() => {
+        if (active) setPreviewLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [asset?.generation, asset?.path]);
 
   if (!asset) return <div className="model-editor-empty">Model metadata is unavailable.</div>;
   const skeleton = hasSkeletonMetadata(asset);
@@ -47,16 +93,26 @@ export function ModelEditor({ document }: { document: EditorDocument }) {
         title={asset.name}
         subtitle={asset.path}
         metadata={[
-          { label: 'Meshes', value: asset.meshCount ?? 0 },
+          { label: 'Meshes', value: asset.meshCount ?? '—' },
           { label: 'Vertices', value: asset.vertexCount?.toLocaleString() ?? '—' },
           { label: 'Triangles', value: asset.triangleCount?.toLocaleString() ?? '—' },
           { label: 'Skeleton', value: skeleton ? `${boneCount} bones` : 'None' },
         ]}
       >
-        <AssetPreviewPlaceholder
-          label="Model preview"
-          description={skeleton ? 'Skinned model with imported skeleton metadata.' : 'Static model preview.'}
-        />
+        {previewDataUrl ? (
+          <div className="model-preview-surface">
+            <img src={previewDataUrl} alt={`${asset.name} model preview`} />
+          </div>
+        ) : (
+          <AssetPreviewPlaceholder
+            label={previewLoading ? 'Rendering model preview…' : 'Model preview unavailable'}
+            description={
+              previewLoading
+                ? 'Loading the imported model through ARC’s model preview renderer.'
+                : previewError || 'The importer did not provide a renderable model preview.'
+            }
+          />
+        )}
       </AssetPreviewPanel>
 
       <UiPanel
@@ -80,6 +136,42 @@ export function ModelEditor({ document }: { document: EditorDocument }) {
 
         {activeSection === 'model' ? (
           <div className="model-editor-section">
+            <h3>Model</h3>
+            <dl className="model-asset-summary">
+              <div>
+                <dt>Format</dt>
+                <dd>{extensionOf(asset.path)}</dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd>{asset.status}</dd>
+              </div>
+              <div>
+                <dt>Importer</dt>
+                <dd title={asset.importerId}>{asset.importerId || 'Auto'}</dd>
+              </div>
+              <div>
+                <dt>Meshes</dt>
+                <dd>{asset.meshCount ?? '—'}</dd>
+              </div>
+              <div>
+                <dt>Vertices</dt>
+                <dd>{asset.vertexCount?.toLocaleString() ?? '—'}</dd>
+              </div>
+              <div>
+                <dt>Triangles</dt>
+                <dd>{asset.triangleCount?.toLocaleString() ?? '—'}</dd>
+              </div>
+              <div>
+                <dt>Animations</dt>
+                <dd>{asset.animationCount ?? '—'}</dd>
+              </div>
+              <div>
+                <dt>Skeleton</dt>
+                <dd>{skeleton ? `${boneCount} bones` : 'None'}</dd>
+              </div>
+            </dl>
+
             <h3>Sub-assets</h3>
             <div className="model-subasset-list">
               {subassets.map((subasset) => (
@@ -93,7 +185,9 @@ export function ModelEditor({ document }: { document: EditorDocument }) {
                   <small>{subasset.kind === 'skeleton' ? 'Skeleton' : 'Mesh'}</small>
                 </button>
               ))}
-              {!subassets.length && <p>No model sub-assets were reported by the importer.</p>}
+              {!subassets.length && (
+                <p className="model-editor-note">Detailed mesh/skeleton sub-assets have not been reported by the importer.</p>
+              )}
             </div>
           </div>
         ) : (
