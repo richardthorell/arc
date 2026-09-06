@@ -14,6 +14,8 @@ describe('UiLab', () => {
 
     expect(screen.getByText('ARC UI Lab')).toBeInTheDocument();
     expect(screen.getByText('Buttons')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Repository without changes' })).toBeInTheDocument();
+    expect(screen.getByLabelText('7 changed files')).toHaveTextContent('7');
     expect(screen.getByText('Text and form inputs')).toBeInTheDocument();
     expect(screen.getByText('Selection controls')).toBeInTheDocument();
     expect(screen.getByText('Inspector controls')).toBeInTheDocument();

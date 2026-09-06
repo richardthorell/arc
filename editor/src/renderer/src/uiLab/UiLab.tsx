@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   Check,
   ChevronRight,
+  GitBranch,
   MoreHorizontal,
   Play,
   Plus,
@@ -19,6 +20,7 @@ import { SchemaComponentCard } from '../inspector/SchemaComponents';
 import type { Vec3, Vec4 } from '../inspector/inspectorTypes';
 import { setPathValue } from '../inspector/propertySchema';
 import type { PropertyComponentSchema } from '../inspector/propertySchema';
+import { ActivityBarButton } from '../layout/ActivityBar';
 import { MenuBar } from '../layout/MenuBar';
 import { UiLabContentCards } from './UiLabContentCards';
 import { TerrainRange } from '../terrain/TerrainToolsPanel';
@@ -318,6 +320,26 @@ export function UiLab() {
               </UiIconButton>
             </div>
           </LabCard>
+          <LabCard title="Side-bar button" caption="ActivityBarButton">
+  <div className="ui-lab-row">
+    <div className="activity-bar" style={{ width: '56px', padding: 0 }}>
+      <ActivityBarButton aria-label="Repository without changes" title="Version Control" variant="ghost">
+        <GitBranch size={20} />
+      </ActivityBarButton>
+    </div>
+    <div className="activity-bar" style={{ width: '56px', padding: 0 }}>
+      <ActivityBarButton
+        aria-label="Repository with changes"
+        counter={7}
+        counterLabel="7 changed files"
+        title="Version Control"
+        variant="ghost"
+      >
+        <GitBranch size={20} />
+      </ActivityBarButton>
+    </div>
+  </div>
+</LabCard>
           <LabCard title="Select button" caption="UiSelectButton">
             <div className="ui-lab-row">
               <UiSelectButton active={selectMode} onClick={() => setSelectMode((value) => !value)}>

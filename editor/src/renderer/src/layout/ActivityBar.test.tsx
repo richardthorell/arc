@@ -4,9 +4,28 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ActivityBar } from './ActivityBar';
+import { ActivityBar, ActivityBarButton } from './ActivityBar';
 
 afterEach(cleanup);
+
+describe('ActivityBarButton', () => {
+  it('only renders the optional counter when it is greater than zero', () => {
+    const { rerender } = render(
+      <ActivityBarButton aria-label="Repository" counter={0} variant="ghost">
+        Repository
+      </ActivityBarButton>,
+    );
+    expect(screen.queryByTestId('activity-button-counter')).not.toBeInTheDocument();
+
+    rerender(
+      <ActivityBarButton aria-label="Repository" counter={7} counterLabel="7 changed files" variant="ghost">
+        Repository
+      </ActivityBarButton>,
+    );
+    expect(screen.getByTestId('activity-button-counter')).toHaveTextContent('7');
+    expect(screen.getByLabelText('7 changed files')).toBeInTheDocument();
+  });
+});
 
 describe('ActivityBar', () => {
   it('shows global utilities without hierarchy', () => {
