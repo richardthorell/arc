@@ -668,6 +668,35 @@ host_response arc_host::execute(const host_command_envelope& command)
         (void)ensure_asset_preview_scene(*state_, *viewport_surface);
     activate_viewport_surface(*state_, *viewport_surface);
 
+    if (const auto* pick = std::get_if<host_viewport_pick_command>(&command.payload);
+        pick && viewport_surface->preview_kind == asset_preview_kind::none &&
+        state_->scene.scene.alive(state_->scene.selected_entity))
+    {
+        if (const auto* skeleton = find_imported_skeleton(state_->scene, state_->scene.selected_entity))
+        {
+            editor_gizmo_context context;
+            context.viewport_width = viewport_surface->options.width;
+            context.viewport_height = viewport_surface->options.height;
+            const auto joint = hit_test_editor_skeleton_joint(state_->scene.scene, state_->scene.selected_entity,
+                                                              *skeleton, state_->scene.camera_entity, context,
+                                                              static_cast<float>(pick->x), static_cast<float>(pick->y));
+            if (joint != render::skeleton_asset::invalid_joint)
+            {
+                state_->viewport_options.selected_skeleton_joint = joint;
+                viewport_surface->options.selected_skeleton_joint = joint;
+                push_event(state_->events, state_->event_sequence, host_event_type::entity_selected,
+                           "Skeleton bone selected", state_->scene.selected_entity);
+                host_response response{.request_id = command.request_id,
+                                       .succeeded = true,
+                                       .payload_json = "{\\\"jointIndex\\\":" + std::to_string(joint) + '}'};
+                response.scene_revision = state_->scene_revision;
+                response.world_epoch = state_->world_epoch;
+                response.frame_revision = state_->viewport_frame_index;
+                return response;
+            }
+        }
+    }
+
     const auto* material_command = std::get_if<host_set_entity_material_command>(&command.payload);
     const auto mesh_reference = material_command ? mesh_assignment_path(*material_command) : std::nullopt;
     const auto primitive_type = material_command ? primitive_assignment_type(*material_command) : std::nullopt;
