@@ -1,0 +1,101 @@
+name: Fix model preview metadata
+on:
+  push:
+    branches: [feat/skeleton-model-workflow]
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch model preview framing and metadata
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('editor/native/src/arc_host.cpp')
+          s = p.read_text()
+          old = '''    surface.preview_camera = {};
+    if (!focus_selected_entity(preview->scene, preview->selected_entity, surface.preview_camera))
+        (void)surface.preview_camera.place({2.5f, 1.5f, 2.5f}, {0.0f, 0.0f, 0.0f});
+'''
+          new = '''    surface.preview_camera = {};
+    for (const auto entity : preview->imported_scene_entities)
+    {
+        if (preview->scene.try_get<scene::mesh_renderer_component>(entity))
+        {
+            preview->selected_entity = entity;
+            break;
+        }
+    }
+    if (!focus_selected_entity(preview->scene, preview->selected_entity, surface.preview_camera))
+        (void)surface.preview_camera.place({2.5f, 1.5f, 2.5f}, {0.0f, 0.0f, 0.0f});
+'''
+          if old not in s:
+              raise SystemExit('camera framing target not found')
+          s = s.replace(old, new, 1)
+          marker = '''        if (!viewport_surface->preview_error.empty()) payload["assetPreviewError"] = viewport_surface->preview_error;
+    }
+
+    const auto& telemetry_scene = viewport_surface->preview_scene ? *viewport_surface->preview_scene : state_->scene;
+'''
+          insert = '''        if (!viewport_surface->preview_error.empty()) payload["assetPreviewError"] = viewport_surface->preview_error;
+        if (viewport_surface->preview_kind == asset_preview_kind::model && viewport_surface->preview_scene)
+        {
+            const auto& model_scene = *viewport_surface->preview_scene;
+            nlohmann::json meshes = nlohmann::json::array();
+            for (const auto entity : model_scene.imported_scene_entities)
+            {
+                if (!model_scene.scene.try_get<scene::mesh_renderer_component>(entity)) continue;
+                std::string name = "Mesh";
+                if (const auto* named = model_scene.scene.try_get<scene::name_component>(entity); named && !named->value.empty())
+                    name = named->value;
+                meshes.push_back({{"name", name}});
+            }
+            payload["modelMeshes"] = std::move(meshes);
+            if (!model_scene.imported_skeletons.empty())
+            {
+                const auto& skeleton = model_scene.imported_skeletons.front().skeleton;
+                nlohmann::json joints = nlohmann::json::array();
+                std::uint32_t depth{};
+                for (std::size_t index = 0; index < skeleton.joints.size(); ++index)
+                {
+                    const auto& joint = skeleton.joints[index];
+                    joints.push_back({{"index", index}, {"name", joint.name}, {"parent", joint.parent}});
+                    std::uint32_t joint_depth = 1;
+                    auto parent = joint.parent;
+                    std::size_t guard{};
+                    while (parent >= 0 && static_cast<std::size_t>(parent) < skeleton.joints.size() &&
+                           guard++ < skeleton.joints.size())
+                    {
+                        ++joint_depth;
+                        parent = skeleton.joints[static_cast<std::size_t>(parent)].parent;
+                    }
+                    depth = std::max(depth, joint_depth);
+                }
+                nlohmann::json skeleton_json = {{"name", skeleton.name},
+                                                {"boneCount", skeleton.joints.size()},
+                                                {"hierarchyDepth", depth},
+                                                {"joints", std::move(joints)}};
+                if (skeleton.root_joint < skeleton.joints.size())
+                    skeleton_json["rootBone"] = skeleton.joints[skeleton.root_joint].name;
+                payload["modelSkeleton"] = std::move(skeleton_json);
+            }
+        }
+    }
+
+    const auto& telemetry_scene = viewport_surface->preview_scene ? *viewport_surface->preview_scene : state_->scene;
+'''
+          if marker not in s:
+              raise SystemExit('viewport state marker not found')
+          p.write_text(s.replace(marker, insert, 1))
+          PY
+          sudo apt-get update -qq
+          sudo apt-get install -y clang-format-18 >/dev/null
+          clang-format-18 -i editor/native/src/arc_host.cpp
+          git config user.name "Richard Thorell"
+          git config user.email "richard.thorell@outlook.com"
+          git add editor/native/src/arc_host.cpp
+          git commit -m "Expose imported model preview metadata"
+          git push
