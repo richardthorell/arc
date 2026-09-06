@@ -169,8 +169,8 @@
   padding: 6px 12px;
 }
 
-/* Asset cards prioritize the preview and identity. Secondary operations stay in
-   the selected-asset details pane instead of competing with every thumbnail. */
+/* Asset cards prioritize preview and identity. Secondary operations stay out of
+   the dense grid and belong in focused asset/editor workflows. */
 .content-browser-v2 .content-assets.grid {
   grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
 }
