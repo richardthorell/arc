@@ -75,7 +75,6 @@ const assetTypeOptions = [
   { value: 'all', label: 'All types' },
   { value: 'scene', label: 'Scene' },
   { value: 'model', label: 'Model' },
-  { value: 'mesh', label: 'Mesh' },
   { value: 'material', label: 'Material' },
   { value: 'texture', label: 'Texture' },
   { value: 'shader', label: 'Shader' },

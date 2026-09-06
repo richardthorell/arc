@@ -145,6 +145,17 @@ describe('ContentBrowserPanel', () => {
     expect(view.getByLabelText('List view')).toHaveClass('ui-icon-button');
   });
 
+  it('uses Model as the single user-facing geometry asset type', () => {
+    const view = renderBrowser();
+
+    fireEvent.click(view.getByRole('combobox', { name: 'Asset type' }));
+    expect(view.getByRole('option', { name: 'Model' })).toBeInTheDocument();
+    expect(view.queryByRole('option', { name: 'Mesh' })).not.toBeInTheDocument();
+
+    fireEvent.click(view.getByRole('option', { name: 'Model' }));
+    expect(view.getByText('Hero Rock')).toBeInTheDocument();
+  });
+
   it('persists an adjustable Content Browser tree width', () => {
     localStorage.setItem('arc.content.treeWidth', '244');
     const view = renderBrowser();

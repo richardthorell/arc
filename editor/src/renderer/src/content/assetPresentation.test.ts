@@ -27,9 +27,10 @@ describe('model asset presentation', () => {
     expect(assetPresentationLabel(value)).toBe('Scene');
   });
 
-  it('keeps actual mesh assets as meshes', () => {
+  it('presents native mesh assets as models while preserving mesh drag semantics', () => {
     const value = asset('Content/Meshes/cube.arcmesh', 'mesh');
-    expect(assetPresentationKind(value)).toBe('mesh');
+    expect(assetPresentationKind(value)).toBe('model');
+    expect(assetPresentationLabel(value)).toBe('Model');
     expect(assetPresentationIcon(value)).toBe('mesh');
     expect(assetDragType(value)).toBe('mesh');
   });
