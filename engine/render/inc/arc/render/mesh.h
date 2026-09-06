@@ -1,5 +1,6 @@
 #pragma once
 
+#include <arc/math/matrix.h>
 #include <arc/math/quaternion.h>
 #include <arc/math/vector.h>
 #include <arc/render/material.h>
@@ -49,6 +50,41 @@ struct mesh_skin_vertex
 };
 
 static_assert(sizeof(mesh_skin_vertex) == 32);
+
+/** @brief One joint in an imported model skeleton. */
+struct skeleton_joint
+{
+    std::string name;
+    /** Parent joint index inside the owning skeleton, or -1 for a root joint. */
+    std::int32_t parent{-1};
+    /** Local bind-pose transform relative to the parent joint. */
+    math::vector3f bind_position{};
+    math::quatf bind_rotation{};
+    math::vector3f bind_scale = math::vector3f::one;
+    /** Transform from skinned mesh space into this joint's bind-pose space. */
+    math::matrix4f inverse_bind_matrix{math::identity<float, 4>()};
+};
+
+/**
+ * @brief Backend-neutral skeleton imported as a model sub-resource.
+ *
+ * Joint order is stable for the imported skin and is the index space consumed by
+ * @ref mesh_skin_vertex. Animation can later evaluate a pose into a renderer skin
+ * palette without coupling skeleton authoring data to a graphics backend.
+ */
+struct skeleton_asset
+{
+    static constexpr std::uint32_t invalid_joint = std::numeric_limits<std::uint32_t>::max();
+
+    std::string name;
+    std::vector<skeleton_joint> joints;
+    std::uint32_t root_joint{invalid_joint};
+
+    [[nodiscard]] bool valid() const noexcept
+    {
+        return !joints.empty() && (root_joint == invalid_joint || root_joint < joints.size());
+    }
+};
 
 /** @brief Current and previous joint transforms owned by one renderer palette. */
 struct skin_palette_data
@@ -188,6 +224,10 @@ struct [[nodiscard]] mesh_load_result
     mesh_data mesh;
     std::vector<texture_data> textures;
     std::vector<material_import> materials;
+    /** Skeleton sub-resources discovered in the source model. */
+    std::vector<skeleton_asset> skeletons;
+    /** Skeleton used by @ref mesh when it contains skin vertices. */
+    std::size_t skin_index{std::numeric_limits<std::size_t>::max()};
     std::string message;
 
     /**
@@ -200,26 +240,29 @@ struct [[nodiscard]] mesh_load_result
 };
 
 /**
- * @brief Imported scene node that references CPU mesh/material records.
+ * @brief Imported scene node that references CPU mesh/material/skeleton records.
  */
 struct scene_import_node
 {
     std::string name;
     std::size_t mesh_index{std::numeric_limits<std::size_t>::max()};
     std::size_t material_index{std::numeric_limits<std::size_t>::max()};
+    std::size_t skin_index{std::numeric_limits<std::size_t>::max()};
+    std::int32_t parent_index{-1};
     math::vector3f position{};
     math::quatf rotation{};
     math::vector3f scale = math::vector3f::one;
 };
 
 /**
- * @brief Imported static scene data before renderer handles are created.
+ * @brief Imported scene data before renderer handles are created.
  */
 struct [[nodiscard]] scene_import_result
 {
     std::vector<mesh_data> meshes;
     std::vector<texture_data> textures;
     std::vector<material_import> materials;
+    std::vector<skeleton_asset> skeletons;
     std::vector<scene_import_node> nodes;
     std::vector<std::string> diagnostics;
     std::filesystem::path import_directory;
@@ -236,7 +279,7 @@ struct [[nodiscard]] scene_import_result
 };
 
 /**
- * @brief Load the first static triangle mesh from a glTF binary file.
+ * @brief Load the first triangle mesh and model skeleton data from a glTF binary file.
  */
 mesh_load_result load_gltf_mesh(const std::filesystem::path& path);
 
@@ -244,17 +287,17 @@ jobs::job_future<mesh_load_result> load_gltf_mesh_async(jobs::job_system& jobs, 
                                                         jobs::cancellation_token cancellation = {});
 
 /**
- * @brief Load a supported static scene asset by extension.
+ * @brief Load a supported scene asset by extension.
  *
- * GLB files use the existing mesh importer and are wrapped as a one-node scene.
- * FBX files require the optional ufbx dependency; without it this returns a
- * clear unsupported-format diagnostic.
+ * GLB and FBX imports preserve basic skeleton hierarchy and bind data when present.
+ * FBX files require the optional ufbx dependency; without it this returns a clear
+ * unsupported-format diagnostic.
  */
 scene_import_result load_scene_asset(const std::filesystem::path& path, const scene_import_options& options,
                                      scene_import_progress_callback progress = {});
 
 /**
- * @brief Load a supported static scene asset by extension with default options.
+ * @brief Load a supported scene asset by extension with default options.
  */
 scene_import_result load_scene_asset(const std::filesystem::path& path);
 
