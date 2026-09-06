@@ -6812,11 +6812,11 @@ private:
 
     bool draw_gpu_visibility_command(VkCommandBuffer command_buffer, gpu_scene_instance_handle handle) const
     {
-        if (!gpu_visibility_active_ || !handle.valid() || handle.index >= gpu_visibility_capacity_) return false;
-        vkCmdDrawIndexedIndirect(command_buffer, gpu_visibility_commands_.buffer,
-                                 static_cast<VkDeviceSize>(handle.index) * indexed_indirect_command_stride, 1u,
-                                 static_cast<std::uint32_t>(indexed_indirect_command_stride));
-        return true;
+        // Temporarily force the established direct indexed submission path for ordinary meshes.
+        // This bypasses both compact bindless batches and the stable GPU visibility indirect command.
+        (void)command_buffer;
+        (void)handle;
+        return false;
     }
 
     bool gpu_bindless_draw_compatible(const draw_mesh_event& draw, bool transparent) const
