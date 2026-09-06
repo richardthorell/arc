@@ -406,7 +406,8 @@ std::uint64_t make_gpu_transparent_sort_key(float normalized_depth, std::uint16_
 std::vector<gpu_draw_record> sort_gpu_transparent_records(std::span<const gpu_draw_record> records)
 {
     std::vector<gpu_draw_record> result(records.begin(), records.end());
-    std::stable_sort(result.begin(), result.end(), [](const gpu_draw_record& lhs, const gpu_draw_record& rhs)
+    std::stable_sort(result.begin(), result.end(),
+                     [](const gpu_draw_record& lhs, const gpu_draw_record& rhs)
                      {
                          if (lhs.pipeline_bin != rhs.pipeline_bin) return lhs.pipeline_bin < rhs.pipeline_bin;
                          if (lhs.sort_key != rhs.sort_key) return lhs.sort_key < rhs.sort_key;

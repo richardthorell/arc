@@ -486,7 +486,6 @@ coalesce_gpu_table_dirty_ranges(std::span<const std::uint32_t> indices);
                                                           std::uint32_t stable_instance_index) noexcept;
 
 /** @brief Stable reference ordering used to validate GPU transparent sorting within compatible bins. */
-[[nodiscard]] std::vector<gpu_draw_record>
-sort_gpu_transparent_records(std::span<const gpu_draw_record> records);
+[[nodiscard]] std::vector<gpu_draw_record> sort_gpu_transparent_records(std::span<const gpu_draw_record> records);
 
 } // namespace arc::render

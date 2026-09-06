@@ -46,8 +46,7 @@ TEST_CASE("CPU skinning is a normalized portable fallback", "[render][skinning]"
                             math::translation(math::vector3f{0.0f, 2.0f, 0.0f})};
     mesh_vertex result{};
 
-    REQUIRE(skin_mesh_vertices(std::span{&source, 1u}, std::span{&influences, 1u}, joints,
-                               std::span{&result, 1u}));
+    REQUIRE(skin_mesh_vertices(std::span{&source, 1u}, std::span{&influences, 1u}, joints, std::span{&result, 1u}));
     REQUIRE(result.position[0] == Catch::Approx(1.25f));
     REQUIRE(result.position[1] == Catch::Approx(1.5f));
     REQUIRE(result.normal[1] == Catch::Approx(1.0f));
@@ -58,8 +57,7 @@ TEST_CASE("CPU skinning is a normalized portable fallback", "[render][skinning]"
 
     influences.joint_weights[0] = -1.0f;
     influences.joint_weights[1] = 0.0f;
-    REQUIRE(skin_mesh_vertices(std::span{&source, 1u}, std::span{&influences, 1u}, joints,
-                               std::span{&result, 1u}));
+    REQUIRE(skin_mesh_vertices(std::span{&source, 1u}, std::span{&influences, 1u}, joints, std::span{&result, 1u}));
     REQUIRE(result.position[0] == source.position[0]);
     REQUIRE_FALSE(skin_mesh_vertices(std::span{&source, 1u}, {}, joints, std::span{&result, 1u}));
 }
@@ -1553,12 +1551,12 @@ TEST_CASE("GPU transparent reference sort is stable back to front within pipelin
 {
     using namespace arc::render;
     const std::array records{
-        gpu_draw_record{.instance_index = 5u, .pipeline_bin = 2u,
-                        .sort_key = make_gpu_transparent_sort_key(0.2f, 2u, 5u)},
-        gpu_draw_record{.instance_index = 8u, .pipeline_bin = 1u,
-                        .sort_key = make_gpu_transparent_sort_key(0.4f, 1u, 8u)},
-        gpu_draw_record{.instance_index = 3u, .pipeline_bin = 2u,
-                        .sort_key = make_gpu_transparent_sort_key(0.8f, 2u, 3u)},
+        gpu_draw_record{
+            .instance_index = 5u, .pipeline_bin = 2u, .sort_key = make_gpu_transparent_sort_key(0.2f, 2u, 5u)},
+        gpu_draw_record{
+            .instance_index = 8u, .pipeline_bin = 1u, .sort_key = make_gpu_transparent_sort_key(0.4f, 1u, 8u)},
+        gpu_draw_record{
+            .instance_index = 3u, .pipeline_bin = 2u, .sort_key = make_gpu_transparent_sort_key(0.8f, 2u, 3u)},
     };
     const auto sorted = sort_gpu_transparent_records(records);
     REQUIRE(sorted[0].pipeline_bin == 1u);
@@ -3352,15 +3350,13 @@ TEST_CASE("virtual geometry software visibility resolves depth before stable pri
 TEST_CASE("virtual geometry material resolve reconstructs perspective-correct weights")
 {
     using namespace arc::render;
-    const auto weights = perspective_correct_virtual_geometry_barycentrics({0.25f, 0.25f, 0.5f},
-                                                                            {1.0f, 2.0f, 4.0f});
+    const auto weights = perspective_correct_virtual_geometry_barycentrics({0.25f, 0.25f, 0.5f}, {1.0f, 2.0f, 4.0f});
     REQUIRE(weights[0] == Catch::Approx(0.5f));
     REQUIRE(weights[1] == Catch::Approx(0.25f));
     REQUIRE(weights[2] == Catch::Approx(0.25f));
     REQUIRE(weights[0] + weights[1] + weights[2] == Catch::Approx(1.0f));
 
-    const auto fallback = perspective_correct_virtual_geometry_barycentrics({0.0f, 0.0f, 0.0f},
-                                                                             {1.0f, 1.0f, 1.0f});
+    const auto fallback = perspective_correct_virtual_geometry_barycentrics({0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f});
     REQUIRE(fallback == std::array{1.0f, 0.0f, 0.0f});
 }
 
@@ -3495,8 +3491,8 @@ TEST_CASE("terrain GPU hierarchy packing preserves deterministic std430 records"
     for (std::uint32_t z = 0; z < resolution; ++z)
         for (std::uint32_t x = 0; x < resolution; ++x)
             heights[static_cast<std::size_t>(z) * resolution + x] = static_cast<float>(x + z) * 0.125f;
-    const auto hierarchy = arc::render::build_terrain_hierarchy(
-        heights, resolution, 64.0f, 64.0f, {.patch_quads = 16u});
+    const auto hierarchy =
+        arc::render::build_terrain_hierarchy(heights, resolution, 64.0f, 64.0f, {.patch_quads = 16u});
     const auto first = arc::render::make_terrain_gpu_hierarchy(hierarchy);
     const auto second = arc::render::make_terrain_gpu_hierarchy(hierarchy);
     REQUIRE(first.valid());
@@ -3521,14 +3517,13 @@ TEST_CASE("bounded terrain traversal discards partial output on overflow")
         for (std::uint32_t x = 0; x < resolution; ++x)
             heights[static_cast<std::size_t>(z) * resolution + x] =
                 std::sin(static_cast<float>(x) * 0.31f) * std::cos(static_cast<float>(z) * 0.27f);
-    const auto hierarchy = arc::render::build_terrain_hierarchy(
-        heights, resolution, 64.0f, 64.0f, {.patch_quads = 8u});
+    const auto hierarchy = arc::render::build_terrain_hierarchy(heights, resolution, 64.0f, 64.0f, {.patch_quads = 8u});
     arc::render::render_camera camera;
     camera.view_projection = arc::math::identity<float, 4>();
     camera.render_width = 1920u;
     camera.render_height = 1080u;
-    const auto unbounded = arc::render::select_terrain_patches(
-        {.index = 1u, .generation = 1u}, hierarchy, arc::math::identity<float, 4>(), camera, 0.0f);
+    const auto unbounded = arc::render::select_terrain_patches({.index = 1u, .generation = 1u}, hierarchy,
+                                                               arc::math::identity<float, 4>(), camera, 0.0f);
     REQUIRE(unbounded.patches.size() > 1u);
     const auto overflow = arc::render::select_terrain_patches_bounded(
         {.index = 1u, .generation = 1u}, hierarchy, arc::math::identity<float, 4>(), camera, 0.0f, 1u);
