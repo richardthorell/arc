@@ -81,6 +81,12 @@ export type AssetItem = {
   shaderCompileStatus?: string;
   shaderVariantCount?: number;
   itemCount?: number;
+  skeletonName?: string;
+  skeletonBoneCount?: number;
+  skeletonHierarchyDepth?: number;
+  skeletonRootBone?: string;
+  skeletonValidationWarnings?: string[];
+  skeletonJoints?: Array<{ index: number; name: string; parent: number }>;
 };
 
 export type ConsoleEvent = {

@@ -1,0 +1,212 @@
+.model-editor-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  min-height: 0;
+  height: 100%;
+  background: var(--surface-0, #11151a);
+}
+.model-editor-sidebar {
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  border-left: 1px solid var(--border-subtle, #2b3138);
+  border-radius: 0;
+  overflow: auto;
+}
+.model-editor-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-subtle, #2b3138);
+}
+.model-editor-tabs button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.72;
+}
+.model-editor-tabs button.active {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 -2px currentColor;
+}
+.model-editor-tabs button:disabled {
+  opacity: 0.3;
+}
+.model-editor-section {
+  padding: 14px;
+}
+.model-editor-section h3,
+.skeleton-asset-editor h3 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.72;
+}
+.model-editor-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.model-subasset-list {
+  display: grid;
+  gap: 4px;
+}
+.model-subasset-row {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.model-subasset-row:hover {
+  border-color: var(--border-subtle, #343b44);
+  background: rgba(255, 255, 255, 0.04);
+}
+.model-subasset-row small {
+  opacity: 0.55;
+}
+.model-skeleton-summary,
+.skeleton-asset-details dl {
+  display: grid;
+  gap: 1px;
+  margin: 0 0 14px;
+}
+.model-skeleton-summary div,
+.skeleton-asset-details dl div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+dt {
+  opacity: 0.6;
+}
+dd {
+  margin: 0;
+}
+.model-skeleton-picker {
+  display: grid;
+  gap: 6px;
+}
+.model-skeleton-picker select {
+  width: 100%;
+}
+.model-compatibility-legend {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+  font-size: 11px;
+  opacity: 0.72;
+}
+.model-compatibility-legend span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.model-editor-note {
+  font-size: 11px;
+  opacity: 0.55;
+}
+.model-editor-empty {
+  padding: 24px;
+}
+.model-editor-toolbar-label {
+  font-size: 12px;
+  opacity: 0.7;
+}
+.skeleton-asset-editor {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-0, #11151a);
+}
+.skeleton-asset-editor > header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle, #2b3138);
+}
+.skeleton-asset-editor > header > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.skeleton-asset-editor > header div div {
+  display: grid;
+}
+.skeleton-asset-editor > header span {
+  font-size: 11px;
+  opacity: 0.6;
+}
+.skeleton-asset-body {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 320px;
+  min-height: 0;
+  flex: 1;
+}
+.skeleton-tree-card {
+  padding: 16px;
+  overflow: auto;
+}
+.skeleton-asset-details {
+  border-left: 1px solid var(--border-subtle, #2b3138);
+  padding: 16px;
+  overflow: auto;
+}
+.skeleton-warning {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  padding: 7px;
+  border-radius: 4px;
+  background: rgba(220, 160, 50, 0.1);
+  font-size: 11px;
+}
+.content-model-subassets {
+  grid-column: 1/-1;
+  margin: -4px 6px 8px 28px;
+  border-left: 1px solid var(--border-subtle, #343b44);
+  padding-left: 8px;
+  display: grid;
+  gap: 2px;
+}
+.content-model-subasset {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  gap: 7px;
+  align-items: center;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.content-model-subasset:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.content-model-subasset small {
+  opacity: 0.5;
+}
+@media (max-width: 900px) {
+  .model-editor-shell,
+  .skeleton-asset-body {
+    grid-template-columns: 1fr;
+  }
+  .model-editor-sidebar,
+  .skeleton-asset-details {
+    border-left: 0;
+    border-top: 1px solid var(--border-subtle, #2b3138);
+  }
+}
