@@ -1,0 +1,58 @@
+name: Temporary GCC Fix
+
+on:
+  push:
+    branches:
+      - fix/main-formatting-20260905
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/main-formatting-20260905
+          fetch-depth: 0
+      - name: Apply GCC warning fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('engine/render-vulkan/src/vulkan_backend.cpp')
+          text = path.read_text()
+
+          old = '''                outputs[index].dstAccessMask = index == 0u ? VK_ACCESS_SHADER_READ_BIT
+                                                           : VK_ACCESS_INDIRECT_COMMAND_READ_BIT |
+                                                                 (index == 1u ? VK_ACCESS_TRANSFER_READ_BIT : 0u);'''
+          new = '''                outputs[index].dstAccessMask =
+                    index == 0u
+                        ? static_cast<VkAccessFlags>(VK_ACCESS_SHADER_READ_BIT)
+                        : static_cast<VkAccessFlags>(VK_ACCESS_INDIRECT_COMMAND_READ_BIT) |
+                              (index == 1u ? static_cast<VkAccessFlags>(VK_ACCESS_TRANSFER_READ_BIT)
+                                           : VkAccessFlags{0});'''
+          if old not in text:
+              raise SystemExit('terrain access-mask pattern not found')
+          text = text.replace(old, new, 1)
+
+          old = '''            sampled_color_usage | (capabilities_.virtual_geometry_compute ? VK_IMAGE_USAGE_STORAGE_BIT : 0u);'''
+          new = '''            sampled_color_usage |
+            (capabilities_.virtual_geometry_compute ? static_cast<VkImageUsageFlags>(VK_IMAGE_USAGE_STORAGE_BIT)
+                                                    : VkImageUsageFlags{0});'''
+          if old not in text:
+              raise SystemExit('image-usage pattern not found')
+          text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+          clang-format-18 -i engine/render-vulkan/src/vulkan_backend.cpp
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add engine/render-vulkan/src/vulkan_backend.cpp
+          git commit -m 'Fix GCC Vulkan flag type warnings'
+          git push origin HEAD:fix/main-formatting-20260905
