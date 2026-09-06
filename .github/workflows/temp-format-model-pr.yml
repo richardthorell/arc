@@ -1,0 +1,21 @@
+name: Format Model PR Native Test
+on:
+  push:
+    branches: [feat/skeleton-model-workflow]
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y clang-format-18 >/dev/null
+          clang-format-18 -i editor/native/tests/editor_tests.cpp
+          rm .github/workflows/temp-format-model-pr.yml
+          git config user.name "Richard Thorell"
+          git config user.email "richard.thorell@outlook.com"
+          git add editor/native/tests/editor_tests.cpp .github/workflows/temp-format-model-pr.yml
+          git commit -m "Fix native test formatting"
+          git push
