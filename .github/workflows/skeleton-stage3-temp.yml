@@ -19,7 +19,16 @@ jobs:
           fetch-depth: 0
 
       - name: Apply Stage 3 implementation
-        run: python3 tools/apply_skeleton_stage3_patch.py
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tools/apply_skeleton_stage3_patch.py')
+          text = path.read_text()
+          text = text.replace("needle = '''    if (type == \"viewport.cameraInput\")\\n    {\\n'''", "needle = '''    else if (type == \"viewport.cameraInput\")\\n    {\\n'''")
+          text = text.replace("addition = '''    if (type == \"viewport.setSkeletonJoint\")\\n", "addition = '''    else if (type == \"viewport.setSkeletonJoint\")\\n")
+          path.write_text(text)
+          PY
+          python3 tools/apply_skeleton_stage3_patch.py
 
       - name: Format native changes
         run: |
