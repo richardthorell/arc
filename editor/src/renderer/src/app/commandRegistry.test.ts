@@ -24,3 +24,7 @@ describe('commandRegistry', () => {
     expect(enabled?.(context({ viewportFocused: false, hasSelection: false }))).toBe(false);
   });
 });
+
+it('snap to floor uses the Unreal End binding', () => {
+  expect(commandRegistry['viewport.snapToFloor'].defaultKeybindings).toContain('End');
+});

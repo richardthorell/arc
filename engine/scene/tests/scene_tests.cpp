@@ -9,6 +9,43 @@
 #include <numeric>
 #include <vector>
 
+TEST_CASE("scene query API raycasts overlaps and sweeps transformed bounds")
+{
+    arc::ecs::world world;
+    const auto target = world.create();
+    arc::scene::transform_component transform;
+    transform.position = {0.0f, 0.5f, 0.0f};
+    world.emplace<arc::scene::transform_component>(target, transform);
+    world.emplace<arc::scene::bounds_component>(
+        target,
+        arc::geometric::box3f{arc::geometric::point3f{-0.5f, -0.5f, -0.5f}, arc::geometric::point3f{0.5f, 0.5f, 0.5f}});
+    arc::scene::update_world_transforms(world);
+
+    const auto ray_hit = arc::scene::raycast_scene(world, nullptr, {0.0f, 5.0f, 0.0f}, {0.0f, -1.0f, 0.0f});
+    REQUIRE(ray_hit);
+    REQUIRE(ray_hit.entity == target);
+    REQUIRE(ray_hit.distance == Catch::Approx(4.0f));
+    REQUIRE(ray_hit.position[1] == Catch::Approx(1.0f));
+    REQUIRE_FALSE(ray_hit.exact);
+
+    const auto overlap =
+        arc::scene::overlap_scene_bounds(world, arc::geometric::box3f{arc::geometric::point3f{-0.25f, 0.25f, -0.25f},
+                                                                      arc::geometric::point3f{0.25f, 0.75f, 0.25f}});
+    REQUIRE(overlap.size() == 1);
+    REQUIRE(overlap.front() == target);
+
+    const arc::geometric::box3f moving{arc::geometric::point3f{-0.5f, 4.5f, -0.5f},
+                                       arc::geometric::point3f{0.5f, 5.5f, 0.5f}};
+    const auto sweep = arc::scene::sweep_scene_bounds(world, moving, {0.0f, -1.0f, 0.0f}, 10.0f);
+    REQUIRE(sweep);
+    REQUIRE(sweep.entity == target);
+    REQUIRE(sweep.distance == Catch::Approx(3.5f));
+
+    const auto ignored = arc::scene::raycast_scene(world, nullptr, {0.0f, 5.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, 10.0f,
+                                                   {.ignore_entity = target});
+    REQUIRE_FALSE(ignored);
+}
+
 TEST_CASE("registry creates destroys and rejects stale entities")
 {
     arc::ecs::world scene;

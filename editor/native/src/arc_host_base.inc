@@ -182,6 +182,7 @@ template <class Command> constexpr bool is_authoring_command() noexcept
 {
     return std::is_same_v<Command, host_create_entity_command> || std::is_same_v<Command, host_delete_entity_command> ||
            std::is_same_v<Command, host_duplicate_entity_command> ||
+           std::is_same_v<Command, host_snap_to_floor_command> ||
            std::is_same_v<Command, host_reparent_entity_command> ||
            std::is_same_v<Command, host_create_prefab_command> ||
            std::is_same_v<Command, host_instantiate_prefab_command> ||
@@ -232,6 +233,8 @@ std::string history_label(const host_command_payload& command)
                 return "Delete Entity";
             else if constexpr (std::is_same_v<type, host_duplicate_entity_command>)
                 return "Duplicate Entity";
+            else if constexpr (std::is_same_v<type, host_snap_to_floor_command>)
+                return "Snap to Floor";
             else if constexpr (std::is_same_v<type, host_create_prefab_command>)
                 return "Create Prefab";
             else if constexpr (std::is_same_v<type, host_instantiate_prefab_command>)
@@ -2861,6 +2864,63 @@ host_response arc_host::execute(const host_command_envelope& command)
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
                            "Entity tag changed for " + std::to_string(targets.size()) + " entity(s)", entity);
                 return success("{\"entity\":" + to_json(payload.entity) + '}');
+            }
+            else if constexpr (std::is_same_v<command_type, host_snap_to_floor_command>)
+            {
+                const auto entity = to_scene_entity(payload.entity);
+                if (!state_->scene.scene.alive(entity))
+                    return fail("Cannot snap a missing entity to the floor", entity);
+                auto* transform = state_->scene.scene.try_get<scene::transform_component>(entity);
+                const auto* bounds = state_->scene.scene.try_get<scene::bounds_component>(entity);
+                if (!transform || !bounds)
+                    return fail("Snap to Floor requires an entity with transform and bounds", entity);
+
+                scene::update_world_transforms(state_->scene.scene);
+                const auto world_bounds = scene::query_world_bounds(bounds->local_bounds, *transform);
+                const auto ignored = scene::subtree(state_->scene.scene, entity);
+                constexpr float surface_epsilon = 0.001f;
+                constexpr float maximum_drop_distance = 100000.0f;
+                const math::vector3f origin{(world_bounds.min[0] + world_bounds.max[0]) * 0.5f,
+                                            world_bounds.min[1] - surface_epsilon,
+                                            (world_bounds.min[2] + world_bounds.max[2]) * 0.5f};
+                const auto hit = scene::raycast_scene(state_->scene.scene, state_->renderer.get(), origin,
+                                                      {0.0f, -1.0f, 0.0f}, maximum_drop_distance,
+                                                      {.ignored_entities = ignored,
+                                                       .include_inactive = false,
+                                                       .include_hidden = false,
+                                                       .bounds_fallback = true});
+                if (!hit) return fail("No queryable surface was found below the entity", entity);
+
+                const float delta_y = hit.position[1] - world_bounds.min[1];
+                if (std::abs(delta_y) <= 1.0e-6f)
+                    return success("{\"entity\":" + to_json(payload.entity) + ",\"distance\":0.0}");
+
+                auto target_world_position = scene::world_position(*transform);
+                target_world_position[1] += delta_y;
+                auto local_position = target_world_position;
+                if (const auto* hierarchy = state_->scene.scene.try_get<scene::hierarchy_component>(entity);
+                    hierarchy && state_->scene.scene.alive(hierarchy->parent))
+                {
+                    if (const auto* parent_transform =
+                            state_->scene.scene.try_get<scene::transform_component>(hierarchy->parent))
+                    {
+                        math::matrix4f inverse_parent;
+                        const auto parent_world =
+                            parent_transform->dirty ? scene::local_matrix(*parent_transform) : parent_transform->world;
+                        if (!scene::inverse_affine(parent_world, inverse_parent))
+                            return fail("Cannot snap an entity below a singular parent transform", entity);
+                        local_position = math::transform_point(inverse_parent, target_world_position);
+                    }
+                }
+
+                transform->set_position(local_position);
+                scene::mark_transform_subtree_dirty(state_->scene.scene, entity);
+                scene::update_world_transforms(state_->scene.scene);
+                push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                           "Entity snapped to floor", entity);
+                return success("{\"entity\":" + to_json(payload.entity) +
+                               ",\"distance\":" + std::to_string(std::abs(delta_y)) +
+                               ",\"exact\":" + std::string(hit.exact ? "true" : "false") + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_set_transform_command>)
             {
