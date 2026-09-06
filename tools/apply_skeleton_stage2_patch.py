@@ -70,12 +70,16 @@ new = '''void clear_imported_content(editor_scene_state& state, render::renderer
 {
     if (renderer)
     {
+        std::vector<render::buffer_handle> palettes;
         for (const auto entity : state.imported_scene_entities)
         {
             const auto* skinned = state.scene.try_get<scene::skinned_mesh_renderer_component>(entity);
-            if (skinned && skinned->skin_matrices.valid() && renderer->skin_palette_alive(skinned->skin_matrices))
-                renderer->destroy_skin_palette(skinned->skin_matrices);
+            if (!skinned || !skinned->skin_matrices.valid()) continue;
+            if (std::find(palettes.begin(), palettes.end(), skinned->skin_matrices) == palettes.end())
+                palettes.push_back(skinned->skin_matrices);
         }
+        for (const auto palette : palettes)
+            if (renderer->skin_palette_alive(palette)) renderer->destroy_skin_palette(palette);
     }
     destroy_entity_if_alive(state, state.mesh_entity);
 '''
@@ -87,13 +91,33 @@ new = '    if (mode == editor_scene_open_mode::replace) clear_imported_content(s
 if old not in text: raise SystemExit('clear call marker not found')
 text = text.replace(old, new, 1)
 
-old = '''        scene::mesh_renderer_component renderer_component;
-        renderer_component.mesh = meshes[node.mesh_index];
-        renderer_component.material = materials[material_index];
-        scene.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
-        scene.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
+old = '''    std::size_t created{};
+    ecs::entity first_entity{};
+    for (const auto& node : imported.nodes)
 '''
-new = '''        const auto& imported_mesh = imported.meshes[node.mesh_index];
+new = '''    std::vector<render::buffer_handle> skin_palettes(imported.skeletons.size());
+    std::vector<bool> skin_palette_attempted(imported.skeletons.size());
+    const auto palette_for_skin = [&](std::size_t skin_index) -> render::buffer_handle
+    {
+        if (skin_index >= imported.skeletons.size()) return {};
+        if (skin_palette_attempted[skin_index]) return skin_palettes[skin_index];
+        skin_palette_attempted[skin_index] = true;
+        const auto& skeleton = imported.skeletons[skin_index];
+        if (!skeleton.valid()) return {};
+        auto palette = bind_pose_palette(skeleton);
+        if (!palette.valid()) return {};
+        skin_palettes[skin_index] = renderer.create_skin_palette(std::move(palette));
+        return skin_palettes[skin_index];
+    };
+
+    std::size_t created{};
+    ecs::entity first_entity{};
+    for (const auto& node : imported.nodes)
+'''
+if old not in text: raise SystemExit('node loop marker not found')
+text = text.replace(old, new, 1)
+
+old = '''        const auto& imported_mesh = imported.meshes[node.mesh_index];
         const bool has_skin_stream = !imported_mesh.skin_vertices.empty() &&
                                      imported_mesh.skin_vertices.size() == imported_mesh.vertices.size();
         const bool has_skeleton = node.skin_index < imported.skeletons.size() && imported.skeletons[node.skin_index].valid();
@@ -117,20 +141,28 @@ new = '''        const auto& imported_mesh = imported.meshes[node.mesh_index];
                 }
             }
         }
-        if (!skinned_bound)
+'''
+new = '''        const auto& imported_mesh = imported.meshes[node.mesh_index];
+        const bool has_skin_stream = !imported_mesh.skin_vertices.empty() &&
+                                     imported_mesh.skin_vertices.size() == imported_mesh.vertices.size();
+        const bool has_skeleton =
+            node.skin_index < imported.skeletons.size() && imported.skeletons[node.skin_index].valid();
+        bool skinned_bound{};
+        if (has_skin_stream && has_skeleton)
         {
-            if (has_skin_stream)
+            const auto palette_handle = palette_for_skin(node.skin_index);
+            if (palette_handle.valid())
             {
-                arc::diagnostics::warn("editor.assets", "Imported skinned mesh '" +
-                                                           (node.name.empty() ? std::string("Imported Mesh") : node.name) +
-                                                           "' has no usable skeleton binding; using static rendering");
+                scene::skinned_mesh_renderer_component renderer_component;
+                renderer_component.mesh = meshes[node.mesh_index];
+                renderer_component.material = materials[material_index];
+                renderer_component.skin_matrices = palette_handle;
+                renderer_component.joint_count =
+                    static_cast<std::uint32_t>(imported.skeletons[node.skin_index].joints.size());
+                scene.scene.emplace<scene::skinned_mesh_renderer_component>(entity, renderer_component);
+                skinned_bound = true;
             }
-            scene::mesh_renderer_component renderer_component;
-            renderer_component.mesh = meshes[node.mesh_index];
-            renderer_component.material = materials[material_index];
-            scene.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
         }
-        scene.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
 '''
 if old not in text: raise SystemExit('renderer component marker not found')
 text = text.replace(old, new, 1)
@@ -144,7 +176,7 @@ test.write_text(r'''#include <arc/editor/editor_state.h>
 
 namespace
 {
-arc::render::scene_import_result make_skinned_scene(bool valid_skin = true)
+arc::render::scene_import_result make_skinned_scene(bool valid_skin = true, bool multiple_mesh_parts = false)
 {
     arc::render::scene_import_result imported;
     arc::render::mesh_data mesh;
@@ -156,7 +188,8 @@ arc::render::scene_import_result make_skinned_scene(bool valid_skin = true)
     };
     mesh.skin_vertices.resize(mesh.vertices.size());
     mesh.indices = {0, 1, 2};
-    imported.meshes.push_back(std::move(mesh));
+    imported.meshes.push_back(mesh);
+    if (multiple_mesh_parts) imported.meshes.push_back(std::move(mesh));
 
     arc::render::skeleton_asset skeleton;
     skeleton.name = "CharacterRig";
@@ -171,6 +204,7 @@ arc::render::scene_import_result make_skinned_scene(bool valid_skin = true)
     skeleton.joints[1].inverse_bind_matrix = child_inverse;
     imported.skeletons.push_back(std::move(skeleton));
     imported.nodes.push_back({.name = "Body", .mesh_index = 0, .skin_index = valid_skin ? 0u : 7u});
+    if (multiple_mesh_parts) imported.nodes.push_back({.name = "Clothes", .mesh_index = 1, .skin_index = 0u});
     imported.message = "imported";
     return imported;
 }
@@ -179,8 +213,11 @@ arc::render::scene_import_result make_static_scene()
 {
     arc::render::scene_import_result imported;
     arc::render::mesh_data mesh;
-    mesh.vertices = {{{.position = {-1.0f, 0.0f, 0.0f}}}, {{.position = {1.0f, 0.0f, 0.0f}}},
-                     {{.position = {0.0f, 1.0f, 0.0f}}}};
+    mesh.vertices = {
+        {.position = {-1.0f, 0.0f, 0.0f}},
+        {.position = {1.0f, 0.0f, 0.0f}},
+        {.position = {0.0f, 1.0f, 0.0f}},
+    };
     mesh.indices = {0, 1, 2};
     imported.meshes.push_back(std::move(mesh));
     imported.nodes.push_back({.name = "Static", .mesh_index = 0});
@@ -212,6 +249,23 @@ TEST_CASE("imported skinned nodes bind their skeleton palette", "[editor][skelet
     CHECK(palette->current[1](1, 3) == 0.0f);
 }
 
+TEST_CASE("mesh parts sharing an imported skeleton share one palette", "[editor][skeleton][import]")
+{
+    arc::editor::editor_scene_state state;
+    arc::render::renderer renderer;
+    const auto result = arc::editor::apply_scene_import_result_to_editor(
+        state, renderer, "assets/character.glb", make_skinned_scene(true, true),
+        arc::editor::editor_scene_open_mode::replace);
+
+    REQUIRE(result.succeeded);
+    REQUIRE(state.imported_scene_entities.size() == 2u);
+    const auto& first =
+        state.scene.get<arc::scene::skinned_mesh_renderer_component>(state.imported_scene_entities[0]);
+    const auto& second =
+        state.scene.get<arc::scene::skinned_mesh_renderer_component>(state.imported_scene_entities[1]);
+    CHECK(first.skin_matrices == second.skin_matrices);
+}
+
 TEST_CASE("invalid imported skin binding degrades to a static mesh", "[editor][skeleton][import]")
 {
     arc::editor::editor_scene_state state;
@@ -230,7 +284,8 @@ TEST_CASE("replacing an imported scene retires its skin palettes", "[editor][ske
     arc::editor::editor_scene_state state;
     arc::render::renderer renderer;
     REQUIRE(arc::editor::apply_scene_import_result_to_editor(
-                state, renderer, "assets/character.glb", make_skinned_scene(), arc::editor::editor_scene_open_mode::replace)
+                state, renderer, "assets/character.glb", make_skinned_scene(true, true),
+                arc::editor::editor_scene_open_mode::replace)
                 .succeeded);
     const auto old_entity = state.imported_scene_entities.front();
     const auto old_palette = state.scene.get<arc::scene::skinned_mesh_renderer_component>(old_entity).skin_matrices;
