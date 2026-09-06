@@ -90,7 +90,7 @@ describe('AiGatewayPanel', () => {
     const promptMessage = screen.getAllByText('How should I light this room?').find((element) => element.tagName === 'P');
     expect(promptMessage).toBeVisible();
     await waitFor(() => expect(screen.getByText('Start with a key light.')).toBeVisible());
-    expect(screen.getByLabelText('AI conversation')).toHaveValue(expect.any(String));
+    expect((screen.getByLabelText('AI conversation') as HTMLSelectElement).value).not.toBe('');
     expect(localStorage.getItem(aiConversationStorageKey)).toContain('How should I light this room?');
   });
 
