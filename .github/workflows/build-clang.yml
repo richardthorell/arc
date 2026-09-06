@@ -62,9 +62,22 @@ jobs:
           -DBUILD_TESTING=ON
       - name: Build
         run: cmake --build out/build/clang-vulkan --parallel
-      - name: Validate Shaders
+      - name: Regenerate Shaders For PR Repair
         if: ${{ github.event_name != 'pull_request' || inputs.run_shaders }}
-        run: cmake --build out/build/clang-vulkan --target arc-shaders-check
+        run: >
+          python3 tools/compile_builtin_shaders.py
+          --source-root assets/shaders
+          --output-dir out/build/clang-vulkan/generated/shaders
+          --header engine/render-vulkan/src/builtin_shaders.h
+          --glslc glslc
+          --spirv-val spirv-val
+          --write
+      - name: Upload Regenerated Builtin Shaders
+        if: ${{ github.event_name == 'pull_request' && inputs.run_shaders }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: regenerated-builtin-shaders
+          path: engine/render-vulkan/src/builtin_shaders.h
       - name: Test
         run: ctest --test-dir out/build/clang-vulkan --output-on-failure
       - name: Save Main Compiler Cache
