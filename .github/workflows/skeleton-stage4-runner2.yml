@@ -1,0 +1,52 @@
+name: Skeleton Stage 4 Runner 2
+
+on:
+  push:
+    branches:
+      - feat/skeleton-model-workflow
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply stage 4 patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('.github/workflows/skeleton-stage4-temp.yml').read_text()
+          block = text.split('        run: |\n', 1)[1].split('      - name: Install editor dependencies', 1)[0]
+          lines = block.splitlines()
+          normalized = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines)
+          Path('/tmp/stage4.py').write_text(normalized + '\n')
+          PY
+          python3 /tmp/stage4.py
+      - name: Install editor dependencies
+        working-directory: editor
+        run: npm ci
+      - name: Format frontend
+        working-directory: editor
+        run: npx prettier --write src/renderer/src/model src/renderer/src/content/ContentAssetCard.tsx src/renderer/src/content/ContentBrowserPanel.tsx src/renderer/src/editors/editorRegistry.ts src/renderer/src/editors/editorTypes.ts src/renderer/src/editors/modelEditorRegistration.test.ts src/renderer/src/services/editorHostTypes.ts
+      - name: Test frontend
+        working-directory: editor
+        run: npm test -- --run
+      - name: Typecheck frontend
+        working-directory: editor
+        run: npm run typecheck
+      - name: Verify diff
+        run: git diff --check
+      - name: Commit implementation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add editor/src/renderer/src
+          git commit -m "Add model and skeleton asset editor workflow"
+          git push origin HEAD:feat/skeleton-model-workflow
