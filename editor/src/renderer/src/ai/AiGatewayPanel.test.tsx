@@ -7,6 +7,11 @@ import { AiGatewayApprovalPrompt, AiGatewayPanel } from './AiGatewayPanel';
 import { aiConversationStorageKey, type AiModelProvider } from './aiChat';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
 
+Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+  configurable: true,
+  value: vi.fn(),
+});
+
 afterEach(() => {
   cleanup();
   localStorage.removeItem(aiConversationStorageKey);
