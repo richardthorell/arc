@@ -244,7 +244,6 @@ export function InspectorPanel({
           proceduralParameter ? 'Edit Procedural Mesh' : undefined,
         );
       } else {
-        const tint = next.meshRenderer.baseColorTint;
         void runMutation(
           next,
           'entity.setMeshRenderer',
@@ -256,7 +255,19 @@ export function InspectorPanel({
             receivesShadows: next.meshRenderer.receivesShadows,
             shadowLodBias: next.meshRenderer.shadowLodBias,
             maximumShadowDistance: next.meshRenderer.maximumShadowDistance,
-            baseColorTint: [tint.x, tint.y, tint.z, tint.w],
+            motionVectors:
+              next.meshRenderer.motionVectors === 'always' ? 1 : next.meshRenderer.motionVectors === 'disabled' ? 2 : 0,
+            receiveDecals: next.meshRenderer.receiveDecals,
+            occlusionCulling: next.meshRenderer.occlusionCulling,
+            boundsScale: next.meshRenderer.boundsScale,
+            minimumDrawDistance: next.meshRenderer.minimumDrawDistance,
+            maximumDrawDistance: next.meshRenderer.maximumDrawDistance,
+            forcedLod: next.meshRenderer.forcedLod,
+            lodBias: next.meshRenderer.lodBias,
+            affectsIndirectLighting: next.meshRenderer.affectsIndirectLighting,
+            surfaceCardDensityBias: next.meshRenderer.surfaceCardDensityBias,
+            distanceFieldResolutionBias: next.meshRenderer.distanceFieldResolutionBias,
+            visibleInHardwareTracing: next.meshRenderer.visibleInHardwareTracing,
           },
           settled,
           transactionKey,

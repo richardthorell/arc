@@ -95,6 +95,9 @@ struct render_item
     float maximum_shadow_distance{};
     float maximum_draw_distance{};
     float geometry_error_scale{1.0f};
+    std::uint8_t motion_vector_mode{};
+    bool receive_decals{true};
+    bool occlusion_culling{true};
     bool affects_indirect_lighting{true};
     float surface_card_density_bias{};
     float distance_field_resolution_bias{};
@@ -127,6 +130,9 @@ struct virtual_render_item
     float maximum_shadow_distance{};
     float maximum_draw_distance{};
     float geometry_error_scale{1.0f};
+    std::uint8_t motion_vector_mode{};
+    bool receive_decals{true};
+    bool occlusion_culling{true};
     bool affects_indirect_lighting{true};
     float surface_card_density_bias{};
     float distance_field_resolution_bias{};

@@ -1389,7 +1389,18 @@ std::string to_json(const host_mesh_renderer_snapshot& mesh_renderer)
            ",\"receivesShadows\":" + bool_json(mesh_renderer.receives_shadows) +
            ",\"shadowLodBias\":" + std::to_string(mesh_renderer.shadow_lod_bias) +
            ",\"maximumShadowDistance\":" + std::to_string(mesh_renderer.maximum_shadow_distance) +
-           ",\"baseColorTint\":" + vec4_json(mesh_renderer.base_color_tint) +
+           ",\"motionVectors\":" + std::to_string(mesh_renderer.motion_vectors) +
+           ",\"receiveDecals\":" + bool_json(mesh_renderer.receive_decals) +
+           ",\"occlusionCulling\":" + bool_json(mesh_renderer.occlusion_culling) +
+           ",\"boundsScale\":" + std::to_string(mesh_renderer.bounds_scale) +
+           ",\"minimumDrawDistance\":" + std::to_string(mesh_renderer.minimum_draw_distance) +
+           ",\"maximumDrawDistance\":" + std::to_string(mesh_renderer.maximum_draw_distance) +
+           ",\"forcedLod\":" + std::to_string(mesh_renderer.forced_lod) +
+           ",\"lodBias\":" + std::to_string(mesh_renderer.lod_bias) +
+           ",\"affectsIndirectLighting\":" + bool_json(mesh_renderer.affects_indirect_lighting) +
+           ",\"surfaceCardDensityBias\":" + std::to_string(mesh_renderer.surface_card_density_bias) +
+           ",\"distanceFieldResolutionBias\":" + std::to_string(mesh_renderer.distance_field_resolution_bias) +
+           ",\"visibleInHardwareTracing\":" + bool_json(mesh_renderer.visible_in_hardware_tracing) +
            ",\"hasMaterial\":" + bool_json(mesh_renderer.has_material) +
            ",\"assetBackedMaterial\":" + bool_json(mesh_renderer.asset_backed_material) +
            ",\"materialName\":" + quote(mesh_renderer.material_name) +
@@ -1591,7 +1602,18 @@ std::string to_json(const host_command_envelope& envelope)
                        ",\"receivesShadows\":" + bool_json(payload.receives_shadows) +
                        ",\"shadowLodBias\":" + std::to_string(payload.shadow_lod_bias) +
                        ",\"maximumShadowDistance\":" + std::to_string(payload.maximum_shadow_distance) +
-                       ",\"baseColorTint\":" + vec4_json(payload.base_color_tint) + '}';
+                       ",\"motionVectors\":" + std::to_string(payload.motion_vectors) +
+                       ",\"receiveDecals\":" + bool_json(payload.receive_decals) +
+                       ",\"occlusionCulling\":" + bool_json(payload.occlusion_culling) +
+                       ",\"boundsScale\":" + std::to_string(payload.bounds_scale) +
+                       ",\"minimumDrawDistance\":" + std::to_string(payload.minimum_draw_distance) +
+                       ",\"maximumDrawDistance\":" + std::to_string(payload.maximum_draw_distance) +
+                       ",\"forcedLod\":" + std::to_string(payload.forced_lod) +
+                       ",\"lodBias\":" + std::to_string(payload.lod_bias) +
+                       ",\"affectsIndirectLighting\":" + bool_json(payload.affects_indirect_lighting) +
+                       ",\"surfaceCardDensityBias\":" + std::to_string(payload.surface_card_density_bias) +
+                       ",\"distanceFieldResolutionBias\":" + std::to_string(payload.distance_field_resolution_bias) +
+                       ",\"visibleInHardwareTracing\":" + bool_json(payload.visible_in_hardware_tracing) + '}';
             else if constexpr (std::is_same_v<type, host_set_terrain_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"enabled\":" + bool_json(payload.enabled) +
                        ",\"receiveShadows\":" + bool_json(payload.receive_shadows) +
@@ -2590,9 +2612,20 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             !bool_value(payload, "receivesShadows", command.receives_shadows) ||
             !number_value(payload, "shadowLodBias", command.shadow_lod_bias) ||
             !number_value(payload, "maximumShadowDistance", command.maximum_shadow_distance) ||
-            !array4_value(payload, "baseColorTint", command.base_color_tint))
+            !number_value(payload, "motionVectors", command.motion_vectors) ||
+            !bool_value(payload, "receiveDecals", command.receive_decals) ||
+            !bool_value(payload, "occlusionCulling", command.occlusion_culling) ||
+            !number_value(payload, "boundsScale", command.bounds_scale) ||
+            !number_value(payload, "minimumDrawDistance", command.minimum_draw_distance) ||
+            !number_value(payload, "maximumDrawDistance", command.maximum_draw_distance) ||
+            !number_value(payload, "forcedLod", command.forced_lod) ||
+            !number_value(payload, "lodBias", command.lod_bias) ||
+            !bool_value(payload, "affectsIndirectLighting", command.affects_indirect_lighting) ||
+            !number_value(payload, "surfaceCardDensityBias", command.surface_card_density_bias) ||
+            !number_value(payload, "distanceFieldResolutionBias", command.distance_field_resolution_bias) ||
+            !bool_value(payload, "visibleInHardwareTracing", command.visible_in_hardware_tracing))
         {
-            error = "Mesh renderer command requires entity, visible, and baseColorTint";
+            error = "Mesh renderer command is missing required renderer settings";
             return false;
         }
         string_value(payload, "representation", representation);

@@ -70,7 +70,18 @@ export type InspectorMeshRenderer = {
   receivesShadows: boolean;
   shadowLodBias: number;
   maximumShadowDistance: number;
-  baseColorTint: Vec4;
+  motionVectors: 'automatic' | 'always' | 'disabled';
+  receiveDecals: boolean;
+  occlusionCulling: boolean;
+  boundsScale: number;
+  minimumDrawDistance: number;
+  maximumDrawDistance: number;
+  forcedLod: number;
+  lodBias: number;
+  affectsIndirectLighting: boolean;
+  surfaceCardDensityBias: number;
+  distanceFieldResolutionBias: number;
+  visibleInHardwareTracing: boolean;
   hasMaterial: boolean;
   assetBackedMaterial: boolean;
   materialName: string;
@@ -249,7 +260,18 @@ const hostSelectedEntitySchema = z.object({
       receivesShadows: z.boolean().default(true),
       shadowLodBias: finiteNumber.min(-4).max(8).default(0),
       maximumShadowDistance: finiteNumber.nonnegative().default(0),
-      baseColorTint: vec4Tuple,
+      motionVectors: z.number().int().min(0).max(2).default(0),
+      receiveDecals: z.boolean().default(true),
+      occlusionCulling: z.boolean().default(true),
+      boundsScale: finiteNumber.min(0.01).max(100).default(1),
+      minimumDrawDistance: finiteNumber.nonnegative().default(0),
+      maximumDrawDistance: finiteNumber.nonnegative().default(0),
+      forcedLod: z.number().int().min(-1).max(3).default(-1),
+      lodBias: finiteNumber.min(-4).max(8).default(0),
+      affectsIndirectLighting: z.boolean().default(true),
+      surfaceCardDensityBias: finiteNumber.min(-4).max(4).default(0),
+      distanceFieldResolutionBias: finiteNumber.min(-4).max(4).default(0),
+      visibleInHardwareTracing: z.boolean().default(true),
       hasMaterial: z.boolean(),
       assetBackedMaterial: z.boolean(),
       materialName: z.string(),
@@ -407,7 +429,12 @@ export function parseSelectedEntitySnapshot(value: unknown): InspectorEntitySnap
     meshRenderer: parsed.meshRenderer
       ? {
           ...parsed.meshRenderer,
-          baseColorTint: tupleToVec4(parsed.meshRenderer.baseColorTint),
+          motionVectors:
+            parsed.meshRenderer.motionVectors === 1
+              ? 'always'
+              : parsed.meshRenderer.motionVectors === 2
+                ? 'disabled'
+                : 'automatic',
         }
       : null,
   };

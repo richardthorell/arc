@@ -584,12 +584,6 @@ bool valid_camera(const host_camera_snapshot& camera) noexcept
            camera.clear_color.w <= 1.0f;
 }
 
-bool valid_base_color_tint(host_vec4 tint) noexcept
-{
-    const auto valid_channel = [](float value) { return std::isfinite(value) && value >= 0.0f && value <= 1.0f; };
-    return valid_channel(tint.x) && valid_channel(tint.y) && valid_channel(tint.z) && valid_channel(tint.w);
-}
-
 scene::camera_component to_scene_camera(const host_camera_snapshot& camera) noexcept
 {
     return {.projection = camera.projection == host_camera_projection::orthographic
@@ -1534,7 +1528,18 @@ host_mesh_renderer_snapshot mesh_renderer_snapshot(const editor_scene_state& sta
     snapshot.receives_shadows = mesh_renderer.receives_shadows;
     snapshot.shadow_lod_bias = mesh_renderer.shadow_lod_bias;
     snapshot.maximum_shadow_distance = mesh_renderer.maximum_shadow_distance;
-    snapshot.base_color_tint = to_host_vec4(mesh_renderer.base_color_tint);
+    snapshot.motion_vectors = static_cast<std::uint8_t>(mesh_renderer.motion_vectors);
+    snapshot.receive_decals = mesh_renderer.receive_decals;
+    snapshot.occlusion_culling = mesh_renderer.occlusion_culling;
+    snapshot.bounds_scale = mesh_renderer.bounds_scale;
+    snapshot.minimum_draw_distance = mesh_renderer.minimum_draw_distance;
+    snapshot.maximum_draw_distance = mesh_renderer.maximum_draw_distance;
+    snapshot.forced_lod = mesh_renderer.forced_lod;
+    snapshot.lod_bias = mesh_renderer.lod_bias;
+    snapshot.affects_indirect_lighting = mesh_renderer.affects_indirect_lighting;
+    snapshot.surface_card_density_bias = mesh_renderer.surface_card_density_bias;
+    snapshot.distance_field_resolution_bias = mesh_renderer.distance_field_resolution_bias;
+    snapshot.visible_in_hardware_tracing = mesh_renderer.visible_in_hardware_tracing;
     snapshot.has_material = mesh_renderer.material.valid();
     for (const auto& record : state.material_library.materials)
     {
@@ -1654,7 +1659,6 @@ editor_scene_state create_blank_scene(render::renderer& renderer, bool include_f
             floor_transform.position = {0.0f, -0.02f, 0.0f};
             floor_transform.scale = {10.0f, 1.0f, 10.0f};
             auto& floor_mesh = state.scene.get<scene::mesh_renderer_component>(floor);
-            floor_mesh.base_color_tint = {0.48f, 0.5f, 0.53f, 1.0f};
             floor_mesh.casts_shadows = false;
             floor_mesh.receives_shadows = true;
         }
@@ -3078,15 +3082,24 @@ host_response arc_host::execute(const host_command_envelope& command)
             else if constexpr (std::is_same_v<command_type, host_set_mesh_renderer_command>)
             {
                 const auto entity = to_scene_entity(payload.entity);
-                if (!valid_base_color_tint(payload.base_color_tint))
-                    return fail("Mesh renderer tint channels must be finite and between 0 and 1", entity);
                 if (payload.representation >
                     static_cast<std::uint8_t>(render::geometry_representation_policy::virtualized))
                     return fail("Mesh renderer geometry representation is invalid", entity);
                 if (!std::isfinite(payload.shadow_lod_bias) || !std::isfinite(payload.maximum_shadow_distance) ||
-                    payload.shadow_lod_bias < -4.0f || payload.shadow_lod_bias > 8.0f ||
-                    payload.maximum_shadow_distance < 0.0f)
-                    return fail("Mesh renderer shadow values are outside supported ranges", entity);
+                    !std::isfinite(payload.bounds_scale) || !std::isfinite(payload.minimum_draw_distance) ||
+                    !std::isfinite(payload.maximum_draw_distance) || !std::isfinite(payload.lod_bias) ||
+                    !std::isfinite(payload.surface_card_density_bias) ||
+                    !std::isfinite(payload.distance_field_resolution_bias) || payload.shadow_lod_bias < -4.0f ||
+                    payload.shadow_lod_bias > 8.0f || payload.maximum_shadow_distance < 0.0f ||
+                    payload.motion_vectors > 2u || payload.bounds_scale < 0.01f || payload.bounds_scale > 100.0f ||
+                    payload.minimum_draw_distance < 0.0f || payload.maximum_draw_distance < 0.0f ||
+                    (payload.maximum_draw_distance > 0.0f &&
+                     payload.maximum_draw_distance < payload.minimum_draw_distance) ||
+                    payload.forced_lod < -1 || payload.forced_lod > 3 || payload.lod_bias < -4.0f ||
+                    payload.lod_bias > 8.0f || payload.surface_card_density_bias < -4.0f ||
+                    payload.surface_card_density_bias > 4.0f || payload.distance_field_resolution_bias < -4.0f ||
+                    payload.distance_field_resolution_bias > 4.0f)
+                    return fail("Mesh renderer settings are invalid", entity);
                 const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);
                 if (targets.empty()) return fail("Cannot edit a missing or unselected mesh renderer", entity);
                 if (std::any_of(targets.begin(), targets.end(), [&](ecs::entity target)
@@ -3102,7 +3115,18 @@ host_response arc_host::execute(const host_command_envelope& command)
                     mesh_renderer.receives_shadows = payload.receives_shadows;
                     mesh_renderer.shadow_lod_bias = payload.shadow_lod_bias;
                     mesh_renderer.maximum_shadow_distance = payload.maximum_shadow_distance;
-                    mesh_renderer.base_color_tint = to_math_vec4(payload.base_color_tint);
+                    mesh_renderer.motion_vectors = static_cast<scene::mesh_motion_vector_mode>(payload.motion_vectors);
+                    mesh_renderer.receive_decals = payload.receive_decals;
+                    mesh_renderer.occlusion_culling = payload.occlusion_culling;
+                    mesh_renderer.bounds_scale = payload.bounds_scale;
+                    mesh_renderer.minimum_draw_distance = payload.minimum_draw_distance;
+                    mesh_renderer.maximum_draw_distance = payload.maximum_draw_distance;
+                    mesh_renderer.forced_lod = payload.forced_lod;
+                    mesh_renderer.lod_bias = payload.lod_bias;
+                    mesh_renderer.affects_indirect_lighting = payload.affects_indirect_lighting;
+                    mesh_renderer.surface_card_density_bias = payload.surface_card_density_bias;
+                    mesh_renderer.distance_field_resolution_bias = payload.distance_field_resolution_bias;
+                    mesh_renderer.visible_in_hardware_tracing = payload.visible_in_hardware_tracing;
                 }
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
                            "Entity mesh renderer changed for " + std::to_string(targets.size()) + " entity(s)", entity);

@@ -996,10 +996,7 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
         {.request_id = 15,
          .payload =
              arc::editor::host_set_environment_hdri_command{.entity = entity, .path = "assets/environment/studio.hdr"}},
-        {.request_id = 16,
-         .payload = arc::editor::host_set_mesh_renderer_command{.entity = entity,
-                                                                .visible = false,
-                                                                .base_color_tint = {0.8f, 0.7f, 0.6f, 1.0f}}},
+        {.request_id = 16, .payload = arc::editor::host_set_mesh_renderer_command{.entity = entity, .visible = false}},
         {.request_id = 17,
          .payload = arc::editor::host_set_entity_material_command{.entity = entity, .path = "materials/stone.arcmat"}},
         {.request_id = 18,
@@ -1409,28 +1406,22 @@ TEST_CASE("mesh renderer host snapshot edits and material assignment round trip"
     REQUIRE(host->execute({.request_id = 2,
                            .payload = arc::editor::host_set_mesh_renderer_command{.entity = entity,
                                                                                   .representation = 2u,
-                                                                                  .visible = false,
-                                                                                  .base_color_tint = {0.5f, 0.6f, 0.7f,
-                                                                                                      0.8f}}})
+                                                                                  .visible = false}})
                 .succeeded);
     REQUIRE(host->selected_entity_snapshot().mesh_renderer->representation == 2u);
     REQUIRE_FALSE(host->selected_entity_snapshot().mesh_renderer->visible);
-    REQUIRE(host->selected_entity_snapshot().mesh_renderer->base_color_tint.z == Catch::Approx(0.7f));
-    REQUIRE_FALSE(
-        host->execute(
-                {.request_id = 31,
-                 .payload = arc::editor::host_set_mesh_renderer_command{.entity = entity,
-                                                                        .representation = 3u,
-                                                                        .visible = true,
-                                                                        .base_color_tint = {1.0f, 1.0f, 1.0f, 1.0f}}})
-            .succeeded);
+    REQUIRE(host->selected_entity_snapshot().mesh_renderer->visible == false);
+    REQUIRE_FALSE(host->execute({.request_id = 31,
+                                 .payload = arc::editor::host_set_mesh_renderer_command{.entity = entity,
+                                                                                        .representation = 3u,
+                                                                                        .visible = true}})
+                      .succeeded);
     REQUIRE_FALSE(
         host->execute({.request_id = 3,
-                       .payload =
-                           arc::editor::host_set_mesh_renderer_command{
-                               .entity = entity,
-                               .visible = true,
-                               .base_color_tint = {std::numeric_limits<float>::infinity(), 1.0f, 1.0f, 1.0f}}})
+                       .payload = arc::editor::host_set_mesh_renderer_command{
+                           .entity = entity,
+                           .visible = true,
+                           .bounds_scale = std::numeric_limits<float>::infinity()}})
             .succeeded);
 
     REQUIRE(host->execute({.request_id = 4,
