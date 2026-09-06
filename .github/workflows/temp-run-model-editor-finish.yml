@@ -1,0 +1,45 @@
+name: Run Model Editor Finish
+on:
+  push:
+    branches: [feat/skeleton-model-workflow]
+permissions:
+  contents: write
+jobs:
+  finish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Merge Stage 4 overlap
+        run: |
+          set -euo pipefail
+          git fetch origin backup/skeleton-model-workflow-pre-rebase main
+          base=e4c73398a95ca94f41930f0c56091e639b0e27bc
+          for file in editor/src/renderer/src/content/ContentBrowserPanel.tsx editor/src/renderer/src/layout/WorkspaceDock.tsx editor/src/renderer/src/layout/WorkspaceDock.css; do
+            git show "HEAD:$file" >/tmp/current
+            git show "$base:$file" >/tmp/base
+            git show "origin/backup/skeleton-model-workflow-pre-rebase:$file" >/tmp/stage4
+            git merge-file -p /tmp/current /tmp/base /tmp/stage4 >"$file"
+          done
+      - name: Apply model viewport changes
+        run: python3 tools/temp_finish_model_editor.py
+      - name: Format and validate frontend
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y clang-format-18 >/dev/null
+          clang-format-18 -i editor/native/inc/arc/editor/editor_state.h editor/native/src/editor_state.cpp editor/native/src/arc_host.cpp
+          cd editor
+          npm ci
+          npx prettier --write src/renderer/src/assetPreview/AssetPreviewViewport.tsx src/renderer/src/model/ModelEditor.tsx src/renderer/src/content/ContentBrowserPanel.tsx src/renderer/src/layout/WorkspaceDock.tsx src/renderer/src/layout/WorkspaceDock.css
+          npm run typecheck
+          npm test -- --run src/renderer/src/editors/modelEditorRegistration.test.ts src/renderer/src/model/modelSubassets.test.ts
+      - name: Commit
+        run: |
+          set -euo pipefail
+          git config user.name "Richard Thorell"
+          git config user.email "richard.thorell@outlook.com"
+          git add editor
+          git commit -m "Add interactive model preview viewport"
+          git push origin HEAD:feat/skeleton-model-workflow
