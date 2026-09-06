@@ -87,7 +87,9 @@ describe('AiGatewayPanel', () => {
     fireEvent.change(screen.getByLabelText('Ask ARC'), { target: { value: 'How should I light this room?' } });
     fireEvent.click(screen.getByLabelText('Send prompt'));
 
-    const promptMessage = screen.getAllByText('How should I light this room?').find((element) => element.tagName === 'P');
+    const promptMessage = screen
+      .getAllByText('How should I light this room?')
+      .find((element) => element.tagName === 'P');
     expect(promptMessage).toBeVisible();
     await waitFor(() => expect(screen.getByText('Start with a key light.')).toBeVisible());
     expect((screen.getByLabelText('AI conversation') as HTMLSelectElement).value).not.toBe('');
