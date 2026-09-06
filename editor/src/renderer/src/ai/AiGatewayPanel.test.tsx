@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AiGatewayApprovalPrompt, AiGatewayPanel } from './AiGatewayPanel';
+import { aiConversationStorageKey, type AiModelProvider } from './aiChat';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.removeItem(aiConversationStorageKey);
+});
 
 const status: ArcAiGatewayStatus = {
   enabled: true,
@@ -44,8 +48,55 @@ const status: ArcAiGatewayStatus = {
   ],
 };
 
+const renderPanel = (provider?: AiModelProvider) =>
+  render(
+    <AiGatewayPanel
+      status={status}
+      onApprove={() => undefined}
+      onDeny={() => undefined}
+      onRevoke={() => undefined}
+      onCancelEdit={() => undefined}
+      onUndoLastEdit={() => undefined}
+      provider={provider}
+    />,
+  );
+
 describe('AiGatewayPanel', () => {
-  it('shows endpoint, client, lease, approvals, and audit state', () => {
+  it('opens as a real assistant chat and streams a provider response', async () => {
+    const provider: AiModelProvider = {
+      id: 'test',
+      label: 'Test Agent',
+      configured: true,
+      async *stream(request) {
+        expect(request.messages.at(-1)?.content).toBe('How should I light this room?');
+        yield { type: 'delta', text: 'Start with ' };
+        yield { type: 'delta', text: 'a key light.' };
+        yield { type: 'done' };
+      },
+    };
+
+    renderPanel(provider);
+    expect(screen.getByRole('region', { name: 'ARC Assistant' })).toBeInTheDocument();
+    expect(screen.getByText('Test Agent')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Ask ARC'), { target: { value: 'How should I light this room?' } });
+    fireEvent.click(screen.getByLabelText('Send prompt'));
+
+    expect(screen.getByText('How should I light this room?')).toBeVisible();
+    await waitFor(() => expect(screen.getByText('Start with a key light.')).toBeVisible());
+    expect(screen.getByLabelText('AI conversation')).toHaveValue(expect.any(String));
+    expect(localStorage.getItem(aiConversationStorageKey)).toContain('How should I light this room?');
+  });
+
+  it('creates a fresh conversation from the header', () => {
+    renderPanel();
+    const selector = screen.getByLabelText('AI conversation');
+    expect(selector.querySelectorAll('option')).toHaveLength(1);
+    fireEvent.click(screen.getByLabelText('New AI chat'));
+    expect(selector.querySelectorAll('option')).toHaveLength(2);
+  });
+
+  it('keeps gateway administration behind diagnostics', () => {
     const approve = vi.fn();
     render(
       <AiGatewayPanel
@@ -57,6 +108,10 @@ describe('AiGatewayPanel', () => {
         onUndoLastEdit={() => undefined}
       />,
     );
+
+    expect(screen.queryByText(status.endpoint)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Gateway diagnostics'));
+    expect(screen.getByLabelText('AI Gateway diagnostics')).toBeInTheDocument();
     expect(screen.getByText(status.endpoint)).toBeInTheDocument();
     expect(screen.getAllByText('Codex').length).toBeGreaterThan(0);
     expect(screen.getByText(/Viewport control/)).toBeInTheDocument();
@@ -65,7 +120,7 @@ describe('AiGatewayPanel', () => {
     expect(approve).toHaveBeenCalledWith('request');
   });
 
-  it('offers immediate revoke and transaction cancellation', () => {
+  it('offers immediate revoke and transaction cancellation in diagnostics', () => {
     const revoke = vi.fn();
     const cancel = vi.fn();
     const undo = vi.fn();
@@ -96,6 +151,7 @@ describe('AiGatewayPanel', () => {
         onUndoLastEdit={undo}
       />,
     );
+    fireEvent.click(screen.getByLabelText('Gateway diagnostics'));
     fireEvent.click(screen.getByLabelText('Revoke Codex'));
     fireEvent.click(screen.getByText('Cancel'));
     fireEvent.click(screen.getByText('Undo'));
@@ -104,7 +160,7 @@ describe('AiGatewayPanel', () => {
     expect(undo).toHaveBeenCalledOnce();
   });
 
-  it('surfaces edit approval outside the gateway panel', () => {
+  it('surfaces edit approval outside the assistant panel', () => {
     const approve = vi.fn();
     const deny = vi.fn();
     const open = vi.fn();
