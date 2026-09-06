@@ -150,9 +150,9 @@ const createLayout = (api: DockviewApi, name: WorkspaceLayoutName) => {
 };
 
 const createEditorWorkspace = (api: DockviewApi, kind: EditorDocumentKind) => {
-  if (kind === 'shader' || kind === 'material' || kind === 'texture') {
-    // Asset editors own the complete document workspace. Shader, Material, and Texture
-    // currently compose their document-specific supporting regions internally,
+  if (kind === 'shader' || kind === 'material' || kind === 'texture' || kind === 'model' || kind === 'skeleton') {
+    // Asset editors own the complete document workspace. Shader, Material, Texture,
+    // Model, and Skeleton compose their document-specific supporting regions internally,
     // so Dockview only needs the primary EditorHost surface. The global utility
     // rail/drawer lives outside this layout and remains available.
     api.clear();

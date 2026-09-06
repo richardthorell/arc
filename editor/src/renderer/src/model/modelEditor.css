@@ -6,9 +6,11 @@
   background: var(--surface-0, #11151a);
 }
 .model-editor-sidebar {
-  border-left: 1px solid var(--border-subtle, #2b3138);
-  background: var(--surface-1, #171b20);
   min-width: 0;
+  height: 100%;
+  border: 0;
+  border-left: 1px solid var(--border-subtle, #2b3138);
+  border-radius: 0;
   overflow: auto;
 }
 .model-editor-tabs {

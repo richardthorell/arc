@@ -5,7 +5,7 @@ import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/Asse
 import { openSkeletonEditorDocument } from '../editors/editorRegistry';
 import type { EditorDocument } from '../editors/editorTypes';
 import type { AssetItem } from '../services/editorHostTypes';
-import { UiButton } from '../ui';
+import { UiButton, UiPanel } from '../ui';
 import { buildModelSubassets, hasSkeletonMetadata, skeletonCompatibility } from './modelSubassets';
 
 import './modelEditor.css';
@@ -59,7 +59,12 @@ export function ModelEditor({ document }: { document: EditorDocument }) {
         />
       </AssetPreviewPanel>
 
-      <aside className="model-editor-sidebar">
+      <UiPanel
+        aria-label="Model details"
+        className="model-editor-sidebar editor-property-panel"
+        role="complementary"
+        variant="inspector"
+      >
         <div className="model-editor-tabs" role="tablist" aria-label="Model editor sections">
           <button className={activeSection === 'model' ? 'active' : ''} onClick={() => setActiveSection('model')}>
             <Box size={14} /> Model
@@ -153,7 +158,7 @@ export function ModelEditor({ document }: { document: EditorDocument }) {
             <p className="model-editor-note">Full animation retargeting is intentionally outside this milestone.</p>
           </div>
         )}
-      </aside>
+      </UiPanel>
     </div>
   );
 }
