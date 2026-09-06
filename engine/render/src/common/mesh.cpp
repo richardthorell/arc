@@ -317,8 +317,8 @@ std::optional<primitive> parse_first_primitive(std::string_view json)
     result.material_index = parse_size(object, "material").value_or(material_texture_indices::invalid);
     result.has_normal = object.find("\"NORMAL\"") != std::string::npos;
     result.has_texcoord = object.find("\"TEXCOORD_0\"") != std::string::npos;
-    result.has_skin = object.find("\"JOINTS_0\"") != std::string::npos &&
-                      object.find("\"WEIGHTS_0\"") != std::string::npos;
+    result.has_skin =
+        object.find("\"JOINTS_0\"") != std::string::npos && object.find("\"WEIGHTS_0\"") != std::string::npos;
     return result;
 }
 
@@ -1375,8 +1375,7 @@ bool skin_mesh_vertices(std::span<const mesh_vertex> source, std::span<const mes
                 const auto length_squared = value[0] * value[0] + value[1] * value[1] + value[2] * value[2];
                 if (length_squared <= 1.0e-12f) return math::vector3f{};
                 const auto inverse_length = 1.0f / std::sqrt(length_squared);
-                return math::vector3f{value[0] * inverse_length, value[1] * inverse_length,
-                                      value[2] * inverse_length};
+                return math::vector3f{value[0] * inverse_length, value[1] * inverse_length, value[2] * inverse_length};
             };
             skinned_position = math::eval(math::mul(skinned_position, inverse_weight));
             skinned_normal = normalize(math::eval(math::mul(skinned_normal, inverse_weight)));
@@ -1620,11 +1619,10 @@ mesh_load_result load_gltf_mesh(const std::filesystem::path& path)
                 return {.message = "failed to read TEXCOORD_0 data"};
             }
         }
-        if (primitive->has_skin &&
-            (!read_joint_indices(accessors[primitive->joints_accessor], views, bin, index,
-                                 mesh.skin_vertices[index].joint_indices) ||
-             !read_joint_weights(accessors[primitive->weights_accessor], views, bin, index,
-                                 mesh.skin_vertices[index].joint_weights)))
+        if (primitive->has_skin && (!read_joint_indices(accessors[primitive->joints_accessor], views, bin, index,
+                                                        mesh.skin_vertices[index].joint_indices) ||
+                                    !read_joint_weights(accessors[primitive->weights_accessor], views, bin, index,
+                                                        mesh.skin_vertices[index].joint_weights)))
             return {.message = "failed to read JOINTS_0 or WEIGHTS_0 data"};
     }
 

@@ -258,11 +258,10 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
                                     capabilities.bindless_sampled_images && capabilities.bindless_samplers &&
                                     capabilities.bindless_material_tables && capabilities.bindless_geometry_tables;
     const bool virtual_geometry_quality = result.quality == render_quality_tier::ultra;
-    const bool virtual_geometry_common = optional_features && virtual_geometry_quality && gpu_driven &&
-                                         capabilities.hzb_occlusion && capabilities.descriptor_indexing &&
-                                         capabilities.virtual_geometry_streaming &&
-                                         capabilities.bindless_sampled_images && capabilities.bindless_samplers &&
-                                         capabilities.bindless_material_tables;
+    const bool virtual_geometry_common =
+        optional_features && virtual_geometry_quality && gpu_driven && capabilities.hzb_occlusion &&
+        capabilities.descriptor_indexing && capabilities.virtual_geometry_streaming &&
+        capabilities.bindless_sampled_images && capabilities.bindless_samplers && capabilities.bindless_material_tables;
     const auto virtual_geometry_path =
         virtual_geometry_common && capabilities.virtual_geometry_mesh_shader ? virtual_geometry_raster_path::mesh_shader
         : virtual_geometry_common && capabilities.virtual_geometry_compute   ? virtual_geometry_raster_path::compute
@@ -930,8 +929,7 @@ bool renderer::destroy_skin_palette(buffer_handle handle)
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.skin_palette_destroy(handle);
-    auto table_update =
-        gpu_resources_.tombstone(gpu_resource_table_kind::skin_palette, handle, resource_frame_index_);
+    auto table_update = gpu_resources_.tombstone(gpu_resource_table_kind::skin_palette, handle, resource_frame_index_);
     if (!table_update.updates.empty())
         writer.gpu_resource_table_update(std::make_shared<gpu_table_update_batch>(std::move(table_update)));
     frame_queue_.submit(std::move(buffer));
@@ -1116,9 +1114,9 @@ bool renderer::update_terrain_heights(terrain_handle handle, terrain_height_regi
         static_cast<std::uint64_t>(update.region.width()) * update.region.height() * sizeof(float);
     render_event_buffer buffer;
     render_event_writer writer(buffer);
-    writer.terrain_height_update(handle, std::make_shared<terrain_height_region_update>(std::move(update)),
-                                 std::make_shared<terrain_gpu_hierarchy>(
-                                     make_terrain_gpu_hierarchy(replacement->hierarchy)));
+    writer.terrain_height_update(
+        handle, std::make_shared<terrain_height_region_update>(std::move(update)),
+        std::make_shared<terrain_gpu_hierarchy>(make_terrain_gpu_hierarchy(replacement->hierarchy)));
     frame_queue_.submit(std::move(buffer));
     return true;
 }

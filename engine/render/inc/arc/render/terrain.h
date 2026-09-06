@@ -171,8 +171,7 @@ struct alignas(16) gpu_terrain_node_record
     float bounds_min[4]{};
     float bounds_max[4]{};
     std::uint32_t samples[4]{};
-    std::uint32_t children[4]{invalid_terrain_node, invalid_terrain_node, invalid_terrain_node,
-                              invalid_terrain_node};
+    std::uint32_t children[4]{invalid_terrain_node, invalid_terrain_node, invalid_terrain_node, invalid_terrain_node};
     float geometric_error{};
     std::uint32_t depth{};
     std::uint32_t leaf{};
@@ -245,9 +244,8 @@ select_terrain_patches(terrain_handle terrain, const terrain_hierarchy& hierarch
  * fallback for the whole terrain instance so the rendered surface remains hole-free.
  */
 [[nodiscard]] bounded_terrain_selection
-select_terrain_patches_bounded(terrain_handle terrain, const terrain_hierarchy& hierarchy,
-                               const math::matrix4f& model, const render_camera& camera,
-                               float geometry_error_threshold, std::uint32_t capacity,
+select_terrain_patches_bounded(terrain_handle terrain, const terrain_hierarchy& hierarchy, const math::matrix4f& model,
+                               const render_camera& camera, float geometry_error_threshold, std::uint32_t capacity,
                                float terrain_error_bias = 1.0f, terrain_selection_scratch* scratch = nullptr);
 
 /**

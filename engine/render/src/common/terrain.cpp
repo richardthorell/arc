@@ -305,10 +305,10 @@ terrain_selection_result select_terrain_patches(terrain_handle terrain, const te
     return result;
 }
 
-bounded_terrain_selection select_terrain_patches_bounded(
-    terrain_handle terrain, const terrain_hierarchy& hierarchy, const math::matrix4f& model,
-    const render_camera& camera, float geometry_error_threshold, std::uint32_t capacity, float terrain_error_bias,
-    terrain_selection_scratch* scratch)
+bounded_terrain_selection select_terrain_patches_bounded(terrain_handle terrain, const terrain_hierarchy& hierarchy,
+                                                         const math::matrix4f& model, const render_camera& camera,
+                                                         float geometry_error_threshold, std::uint32_t capacity,
+                                                         float terrain_error_bias, terrain_selection_scratch* scratch)
 {
     bounded_terrain_selection result;
     result.capacity = capacity;

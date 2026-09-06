@@ -45,36 +45,33 @@ std::uint32_t encode_virtual_geometry_depth(float depth) noexcept
     return std::bit_cast<std::uint32_t>(std::clamp(depth, 0.0f, 1.0f));
 }
 
-std::uint32_t encode_virtual_geometry_visibility_id(std::uint32_t visible_cluster,
-                                                    std::uint32_t triangle) noexcept
+std::uint32_t encode_virtual_geometry_visibility_id(std::uint32_t visible_cluster, std::uint32_t triangle) noexcept
 {
     return (std::min(visible_cluster, 0x00ffffffu) << 8u) | std::min(triangle, 0xffu);
 }
 
-virtual_geometry_visibility_sample resolve_virtual_geometry_visibility(
-    std::span<const virtual_geometry_visibility_candidate> candidates) noexcept
+virtual_geometry_visibility_sample
+resolve_virtual_geometry_visibility(std::span<const virtual_geometry_visibility_candidate> candidates) noexcept
 {
     virtual_geometry_visibility_sample result;
     for (const auto& candidate : candidates)
         result.encoded_depth = std::min(result.encoded_depth, encode_virtual_geometry_depth(candidate.depth));
     for (const auto& candidate : candidates)
         if (encode_virtual_geometry_depth(candidate.depth) == result.encoded_depth)
-            result.identity =
-                std::min(result.identity,
-                         encode_virtual_geometry_visibility_id(candidate.visible_cluster, candidate.triangle));
+            result.identity = std::min(
+                result.identity, encode_virtual_geometry_visibility_id(candidate.visible_cluster, candidate.triangle));
     return result;
 }
 
-std::array<float, 3>
-perspective_correct_virtual_geometry_barycentrics(std::array<float, 3> screen_weights,
-                                                  std::array<float, 3> clip_w) noexcept
+std::array<float, 3> perspective_correct_virtual_geometry_barycentrics(std::array<float, 3> screen_weights,
+                                                                       std::array<float, 3> clip_w) noexcept
 {
     std::array<float, 3> corrected{};
     float sum{};
     for (std::size_t index = 0; index < corrected.size(); ++index)
     {
-        const auto denominator = std::isfinite(clip_w[index]) && std::abs(clip_w[index]) > 1.0e-8f ? clip_w[index]
-                                                                                                   : 1.0f;
+        const auto denominator =
+            std::isfinite(clip_w[index]) && std::abs(clip_w[index]) > 1.0e-8f ? clip_w[index] : 1.0f;
         corrected[index] = screen_weights[index] / denominator;
         sum += corrected[index];
     }

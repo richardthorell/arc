@@ -85,8 +85,7 @@ struct mesh_data
  * used when a render backend cannot execute compute skinning. Invalid joint
  * indices and non-positive weights are ignored; usable weights are normalized.
  */
-[[nodiscard]] bool skin_mesh_vertices(std::span<const mesh_vertex> source,
-                                      std::span<const mesh_skin_vertex> skin,
+[[nodiscard]] bool skin_mesh_vertices(std::span<const mesh_vertex> source, std::span<const mesh_skin_vertex> skin,
                                       std::span<const math::matrix4f> joints,
                                       std::span<mesh_vertex> destination) noexcept;
 
