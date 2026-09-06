@@ -1720,6 +1720,8 @@ private:
         std::vector<gpu_buffer> dynamic_vertices;
         gpu_buffer skin_vertices;
         gpu_buffer indices;
+        std::vector<mesh_vertex> source_vertices;
+        std::vector<mesh_skin_vertex> skin_influences;
         std::vector<mesh_vertex> pending_vertices;
         std::vector<std::uint64_t> uploaded_revisions;
         std::uint64_t vertex_revision{};
@@ -1732,6 +1734,8 @@ private:
     {
         gpu_buffer current;
         gpu_buffer previous;
+        std::vector<math::matrix4f> current_matrices;
+        std::vector<math::matrix4f> previous_matrices;
         std::uint32_t joint_count{};
         std::uint64_t content_revision{};
     };
@@ -1744,6 +1748,7 @@ private:
         std::vector<gpu_buffer> current_vertices;
         std::vector<gpu_buffer> previous_vertices;
         std::vector<VkDescriptorSet> descriptor_sets;
+        bool cpu_fallback{};
     };
 
     struct gpu_virtual_mesh
@@ -3466,12 +3471,16 @@ private:
                                              found->second.pending_vertices.size() == event.mesh->vertices.size()))
         {
             found->second.pending_vertices = event.mesh->vertices;
+            found->second.source_vertices = event.mesh->vertices;
+            found->second.skin_influences = event.mesh->skin_vertices;
             ++found->second.vertex_revision;
             return;
         }
 
         gpu_mesh mesh;
         mesh.dynamic = event.mesh->usage == mesh_usage::dynamic_per_frame;
+        mesh.source_vertices = event.mesh->vertices;
+        mesh.skin_influences = event.mesh->skin_vertices;
         const bool vertices_ready =
             mesh.dynamic
                 ? [&]
@@ -3567,6 +3576,8 @@ private:
         }
         palette.joint_count = static_cast<std::uint32_t>(event.palette->current.size());
         palette.content_revision = event.palette->content_revision;
+        palette.current_matrices = event.palette->current;
+        palette.previous_matrices.assign(previous.begin(), previous.end());
         const auto key = resource_key(event.handle);
         if (auto found = skin_palettes_.find(key); found != skin_palettes_.end())
         {
@@ -6034,12 +6045,14 @@ private:
         auto& instance = gpu_skinned_instances_[key];
         const auto frame_count = frame_resource_count();
         if (instance.mesh != mesh_handle_value || instance.palette != palette_handle ||
-            instance.vertex_count != vertex_count || instance.current_vertices.size() != frame_count)
+            instance.vertex_count != vertex_count || instance.current_vertices.size() != frame_count ||
+            instance.cpu_fallback)
         {
             destroy_gpu_skinned_instance(instance);
             instance.mesh = mesh_handle_value;
             instance.palette = palette_handle;
             instance.vertex_count = vertex_count;
+            instance.cpu_fallback = false;
             instance.current_vertices.resize(frame_count);
             instance.previous_vertices.resize(frame_count);
             instance.descriptor_sets.resize(frame_count);
@@ -6072,6 +6085,105 @@ private:
         }
         result = &instance;
         return true;
+    }
+
+    bool ensure_cpu_skinned_instance(gpu_scene_instance_handle handle, mesh_handle mesh_handle_value,
+                                     buffer_handle palette_handle, std::uint32_t vertex_count,
+                                     gpu_skinned_instance*& result)
+    {
+        const auto key = (static_cast<std::uint64_t>(handle.generation) << 32u) | handle.index;
+        auto& instance = gpu_skinned_instances_[key];
+        const auto frame_count = frame_resource_count();
+        if (instance.mesh != mesh_handle_value || instance.palette != palette_handle ||
+            instance.vertex_count != vertex_count || instance.current_vertices.size() != frame_count ||
+            !instance.cpu_fallback)
+        {
+            destroy_gpu_skinned_instance(instance);
+            instance.mesh = mesh_handle_value;
+            instance.palette = palette_handle;
+            instance.vertex_count = vertex_count;
+            instance.cpu_fallback = true;
+            instance.current_vertices.resize(frame_count);
+            instance.previous_vertices.resize(frame_count);
+            const auto byte_size = static_cast<VkDeviceSize>(vertex_count) * sizeof(mesh_vertex);
+            for (std::uint32_t frame = 0; frame < frame_count; ++frame)
+            {
+                if (!create_buffer(byte_size,
+                                   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                                   VMA_MEMORY_USAGE_CPU_TO_GPU, instance.current_vertices[frame]) ||
+                    !create_buffer(byte_size,
+                                   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                                   VMA_MEMORY_USAGE_CPU_TO_GPU, instance.previous_vertices[frame]))
+                {
+                    destroy_gpu_skinned_instance(instance);
+                    gpu_skinned_instances_.erase(key);
+                    return false;
+                }
+            }
+        }
+        result = &instance;
+        return true;
+    }
+
+    void update_cpu_skinned_vertices()
+    {
+        const auto slot = current_frame_slot();
+        std::unordered_set<std::uint64_t> updated;
+        std::vector<mesh_vertex> current;
+        std::vector<mesh_vertex> previous;
+        for (const auto& draw : frame_draws_)
+        {
+            if (!draw.gpu_scene_instance.valid() || !draw.skin_palette.valid()) continue;
+            const auto instance_key =
+                (static_cast<std::uint64_t>(draw.gpu_scene_instance.generation) << 32u) |
+                draw.gpu_scene_instance.index;
+            if (!updated.insert(instance_key).second) continue;
+            const auto mesh = meshes_.find(resource_key(draw.mesh));
+            const auto palette = skin_palettes_.find(resource_key(draw.skin_palette));
+            if (mesh == meshes_.end() || palette == skin_palettes_.end() ||
+                mesh->second.source_vertices.size() != mesh->second.skin_influences.size() ||
+                mesh->second.source_vertices.empty())
+                continue;
+
+            gpu_skinned_instance* instance{};
+            if (!ensure_cpu_skinned_instance(draw.gpu_scene_instance, draw.mesh, draw.skin_palette,
+                                              mesh->second.vertex_count, instance) ||
+                slot >= instance->current_vertices.size() || slot >= instance->previous_vertices.size())
+                continue;
+            current.resize(mesh->second.source_vertices.size());
+            previous.resize(mesh->second.source_vertices.size());
+            const auto requested_joint_count =
+                draw.skin_joint_count == 0u ? palette->second.joint_count : draw.skin_joint_count;
+            const auto joint_count =
+                std::min<std::size_t>(requested_joint_count, palette->second.current_matrices.size());
+            const auto previous_joint_count = std::min(joint_count, palette->second.previous_matrices.size());
+            if (!skin_mesh_vertices(mesh->second.source_vertices, mesh->second.skin_influences,
+                                    std::span{palette->second.current_matrices}.first(joint_count), current) ||
+                !skin_mesh_vertices(mesh->second.source_vertices, mesh->second.skin_influences,
+                                    std::span{palette->second.previous_matrices}.first(previous_joint_count),
+                                    previous))
+                continue;
+
+            const auto upload = [&](gpu_buffer& target, const std::vector<mesh_vertex>& vertices)
+            {
+                void* mapped{};
+                if (target.buffer == VK_NULL_HANDLE ||
+                    vmaMapMemory(allocator_, target.allocation, &mapped) != VK_SUCCESS)
+                    return false;
+                const auto bytes = buffer_size(vertices.size(), sizeof(mesh_vertex));
+                std::memcpy(mapped, vertices.data(), static_cast<std::size_t>(bytes));
+                vmaFlushAllocation(allocator_, target.allocation, 0u, bytes);
+                vmaUnmapMemory(allocator_, target.allocation);
+                return true;
+            };
+            if (!upload(instance->current_vertices[slot], current) ||
+                !upload(instance->previous_vertices[slot], previous))
+            {
+                arc::diagnostics::warn("render.vulkan", "CPU skinning upload failed; using bind-pose geometry");
+                destroy_gpu_skinned_instance(*instance);
+                gpu_skinned_instances_.erase(instance_key);
+            }
+        }
     }
 
     void dispatch_gpu_skinning(VkCommandBuffer command_buffer)
@@ -12529,6 +12641,8 @@ private:
     void prepare_frame_gpu_resources()
     {
         update_dynamic_mesh_vertices();
+        if (!resolved_config_.features.gpu_skinning || !ensure_gpu_skinning_pipeline())
+            update_cpu_skinned_vertices();
         if (!virtual_meshes_.empty() && !ensure_virtual_geometry_raster_resources())
             last_profile_.virtual_geometry.fallback_reason =
                 "virtual-geometry software visibility resources are unavailable; using conventional LODs";

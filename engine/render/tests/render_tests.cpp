@@ -23,6 +23,47 @@
 namespace
 {
 
+TEST_CASE("CPU skinning is a normalized portable fallback", "[render][skinning]")
+{
+    using namespace arc;
+    using namespace arc::render;
+
+    mesh_vertex source{};
+    source.position[0] = 1.0f;
+    source.normal[1] = 1.0f;
+    source.tangent[0] = 1.0f;
+    source.tangent[3] = -1.0f;
+    source.texcoord[0] = 0.25f;
+    source.color[2] = 0.5f;
+    mesh_skin_vertex influences{};
+    influences.joint_indices[0] = 0u;
+    influences.joint_indices[1] = 1u;
+    influences.joint_indices[2] = 99u;
+    influences.joint_weights[0] = 1.0f;
+    influences.joint_weights[1] = 3.0f;
+    influences.joint_weights[2] = 100.0f;
+    const std::array joints{math::translation(math::vector3f{1.0f, 0.0f, 0.0f}),
+                            math::translation(math::vector3f{0.0f, 2.0f, 0.0f})};
+    mesh_vertex result{};
+
+    REQUIRE(skin_mesh_vertices(std::span{&source, 1u}, std::span{&influences, 1u}, joints,
+                               std::span{&result, 1u}));
+    REQUIRE(result.position[0] == Catch::Approx(1.25f));
+    REQUIRE(result.position[1] == Catch::Approx(1.5f));
+    REQUIRE(result.normal[1] == Catch::Approx(1.0f));
+    REQUIRE(result.tangent[0] == Catch::Approx(1.0f));
+    REQUIRE(result.tangent[3] == -1.0f);
+    REQUIRE(result.texcoord[0] == source.texcoord[0]);
+    REQUIRE(result.color[2] == source.color[2]);
+
+    influences.joint_weights[0] = -1.0f;
+    influences.joint_weights[1] = 0.0f;
+    REQUIRE(skin_mesh_vertices(std::span{&source, 1u}, std::span{&influences, 1u}, joints,
+                               std::span{&result, 1u}));
+    REQUIRE(result.position[0] == source.position[0]);
+    REQUIRE_FALSE(skin_mesh_vertices(std::span{&source, 1u}, {}, joints, std::span{&result, 1u}));
+}
+
 class recording_backend final : public arc::render::render_backend
 {
 public:

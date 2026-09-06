@@ -1333,6 +1333,66 @@ scene_import_result load_fbx_scene_asset(const std::filesystem::path& path, cons
 
 } // namespace
 
+bool skin_mesh_vertices(std::span<const mesh_vertex> source, std::span<const mesh_skin_vertex> skin,
+                        std::span<const math::matrix4f> joints, std::span<mesh_vertex> destination) noexcept
+{
+    if (source.size() != skin.size() || source.size() != destination.size() || joints.empty()) return false;
+
+    for (std::size_t vertex_index = 0; vertex_index < source.size(); ++vertex_index)
+    {
+        const auto& input = source[vertex_index];
+        const auto& influences = skin[vertex_index];
+        auto output = input;
+        const math::vector3f position{input.position[0], input.position[1], input.position[2]};
+        const math::vector3f normal{input.normal[0], input.normal[1], input.normal[2]};
+        const math::vector3f tangent{input.tangent[0], input.tangent[1], input.tangent[2]};
+        math::vector3f skinned_position{};
+        math::vector3f skinned_normal{};
+        math::vector3f skinned_tangent{};
+        float total_weight{};
+        for (std::size_t influence = 0; influence < 4u; ++influence)
+        {
+            const auto joint = influences.joint_indices[influence];
+            const auto weight = std::max(influences.joint_weights[influence], 0.0f);
+            if (joint >= joints.size() || weight <= 0.0f) continue;
+            const auto transformed_position = math::transform_point(joints[joint], position);
+            const auto transformed_normal = math::transform_vector(joints[joint], normal);
+            const auto transformed_tangent = math::transform_vector(joints[joint], tangent);
+            for (std::size_t component = 0; component < 3u; ++component)
+            {
+                skinned_position[component] += transformed_position[component] * weight;
+                skinned_normal[component] += transformed_normal[component] * weight;
+                skinned_tangent[component] += transformed_tangent[component] * weight;
+            }
+            total_weight += weight;
+        }
+
+        if (total_weight > 1.0e-6f)
+        {
+            const auto inverse_weight = 1.0f / total_weight;
+            auto normalize = [](math::vector3f value)
+            {
+                const auto length_squared = value[0] * value[0] + value[1] * value[1] + value[2] * value[2];
+                if (length_squared <= 1.0e-12f) return math::vector3f{};
+                const auto inverse_length = 1.0f / std::sqrt(length_squared);
+                return math::vector3f{value[0] * inverse_length, value[1] * inverse_length,
+                                      value[2] * inverse_length};
+            };
+            skinned_position = math::eval(math::mul(skinned_position, inverse_weight));
+            skinned_normal = normalize(math::eval(math::mul(skinned_normal, inverse_weight)));
+            skinned_tangent = normalize(math::eval(math::mul(skinned_tangent, inverse_weight)));
+            for (std::size_t component = 0; component < 3u; ++component)
+            {
+                output.position[component] = skinned_position[component];
+                output.normal[component] = skinned_normal[component];
+                output.tangent[component] = skinned_tangent[component];
+            }
+        }
+        destination[vertex_index] = output;
+    }
+    return true;
+}
+
 mesh_load_result load_obj_mesh(const std::filesystem::path& path)
 {
     std::ifstream stream(path);
