@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Bone, Box, CheckCircle2, ExternalLink, TriangleAlert, XCircle } from 'lucide-react';
 
 import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/AssetPreviewPanel';
+import { AssetPreviewViewport } from '../assetPreview/AssetPreviewViewport';
 import { openSkeletonEditorDocument } from '../editors/editorRegistry';
 import type { EditorDocument } from '../editors/editorTypes';
 import type { AssetItem } from '../services/editorHostTypes';
@@ -53,9 +54,20 @@ export function ModelEditor({ document }: { document: EditorDocument }) {
           { label: 'Skeleton', value: skeleton ? `${boneCount} bones` : 'None' },
         ]}
       >
-        <AssetPreviewPlaceholder
-          label="Model preview"
-          description={skeleton ? 'Skinned model with imported skeleton metadata.' : 'Static model preview.'}
+        <AssetPreviewViewport
+          kind="model"
+          assetGuid={asset.guid}
+          label={`${asset.name} model preview`}
+          fallback={
+            <AssetPreviewPlaceholder
+              label="Model preview"
+              description={
+                asset.guid
+                  ? 'Waiting for the native model preview viewport.'
+                  : 'The model must be registered before a live preview can be created.'
+              }
+            />
+          }
         />
       </AssetPreviewPanel>
 

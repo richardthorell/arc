@@ -6,7 +6,7 @@ import { normalizeViewportWheel } from '../viewport/viewportWheel';
 import './AssetPreviewViewport.css';
 
 type AssetPreviewViewportProps = {
-  kind: 'material' | 'shader';
+  kind: 'material' | 'shader' | 'model';
   assetGuid?: string;
   fallback: ReactNode;
   label: string;

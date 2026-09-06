@@ -726,6 +726,11 @@ ecs::entity add_decal_to_scene(editor_scene_state& scene)
     return entity;
 }
 
+void clear_imported_scene_content(editor_scene_state& scene, render::renderer& renderer)
+{
+    clear_imported_content(scene, &renderer);
+}
+
 editor_scene_open_result open_scene_asset_in_editor(editor_scene_state& scene, render::renderer& renderer,
                                                     const std::filesystem::path& asset_root,
                                                     const std::filesystem::path& path, editor_scene_open_mode mode)

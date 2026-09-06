@@ -234,6 +234,9 @@ editor_scene_open_result apply_scene_import_result_to_editor(editor_scene_state&
                                                              render::scene_import_result imported,
                                                              editor_scene_open_mode mode);
 
+/** Release editor-only imported scene entities and skin palettes. */
+void clear_imported_scene_content(editor_scene_state& scene, render::renderer& renderer);
+
 bool start_scene_import(editor_scene_import_state& state, jobs::job_system& jobs,
                         const std::filesystem::path& asset_root, const std::filesystem::path& path,
                         editor_scene_open_mode mode);

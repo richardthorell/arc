@@ -3,7 +3,8 @@ import { ChevronDown, ChevronRight, Folder, Globe2, Grid2X2, List, Lock, Search,
 
 import type { ArcAssetSourceDescriptor } from '../../../common/assetSourceTypes';
 import type { CommandId } from '../app/workbenchTypes';
-import { openAssetEditorDocument } from '../editors/editorRegistry';
+import { openAssetEditorDocument, openSkeletonEditorDocument } from '../editors/editorRegistry';
+import { buildModelSubassets } from '../model/modelSubassets';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import type { AssetItem, ProjectSnapshot } from '../services/editorHostTypes';
 import { UiButton, UiIconButton, UiSearchInput, UiSelect, UiTreeRow } from '../ui';
@@ -18,6 +19,7 @@ import { assetPresentationKind, type AssetPresentationKind } from './assetPresen
 import { RemoteAssetBrowser } from './RemoteAssetBrowser';
 
 import './contentBrowser.css';
+import '../model/modelEditor.css';
 
 type CacheSnapshot = {
   cacheLocalBytes: number;
@@ -245,6 +247,7 @@ export function ContentBrowserPanel({
   const [shaderTemplate, setShaderTemplate] = useState<ShaderAssetTemplate>('surface');
   const [createError, setCreateError] = useState('');
   const [creating, setCreating] = useState(false);
+  const [expandedModels, setExpandedModels] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     let mounted = true;
@@ -751,19 +754,49 @@ export function ContentBrowserPanel({
                 }
               }}
             >
-              {filtered.map((asset) => (
-                <ContentAssetCard
-                  asset={asset}
-                  favorite={favorites.has(favoriteId(asset))}
-                  key={asset.id}
-                  selected={selection.has(asset.id)}
-                  thumbnailProvider={thumbnailProvider}
-                  onActivate={() => activateAsset(asset)}
-                  onFavorite={() => toggleFavorite(asset)}
-                  onReimport={() => asset.guid && onAssetAction('asset.reimport', asset.guid)}
-                  onSelect={(additive) => select(asset, additive)}
-                />
-              ))}
+              {filtered.map((asset) => {
+                const modelSubassets = assetPresentationKind(asset) === 'model' ? buildModelSubassets(asset) : [];
+                const expanded = expandedModels.has(asset.id);
+                return (
+                  <Fragment key={asset.id}>
+                    <ContentAssetCard
+                      asset={asset}
+                      favorite={favorites.has(favoriteId(asset))}
+                      selected={selection.has(asset.id)}
+                      thumbnailProvider={thumbnailProvider}
+                      onActivate={() => activateAsset(asset)}
+                      onFavorite={() => toggleFavorite(asset)}
+                      onReimport={() => asset.guid && onAssetAction('asset.reimport', asset.guid)}
+                      onSelect={(additive) => select(asset, additive)}
+                      expandable={modelSubassets.length > 0}
+                      expanded={expanded}
+                      onToggleExpand={() =>
+                        setExpandedModels((current) => {
+                          const next = new Set(current);
+                          if (next.has(asset.id)) next.delete(asset.id);
+                          else next.add(asset.id);
+                          return next;
+                        })
+                      }
+                    />
+                    {expanded && modelSubassets.length > 0 && (
+                      <div className="content-model-subassets" role="group" aria-label={`${asset.name} sub-assets`}>
+                        {modelSubassets.map((subasset) => (
+                          <button
+                            className="content-model-subasset"
+                            key={subasset.id}
+                            onDoubleClick={() => subasset.kind === 'skeleton' && openSkeletonEditorDocument(asset)}
+                          >
+                            <span aria-hidden="true">{subasset.kind === 'skeleton' ? '◇' : '□'}</span>
+                            <span>{subasset.name}</span>
+                            <small>{subasset.kind === 'skeleton' ? 'Skeleton' : 'Mesh'}</small>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </Fragment>
+                );
+              })}
               {filtered.length === 0 && (
                 <div className="content-empty">
                   {browserSource === 'favorites'
