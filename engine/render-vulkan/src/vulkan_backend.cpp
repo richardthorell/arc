@@ -4333,9 +4333,11 @@ private:
             {
                 outputs[index].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
                 outputs[index].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-                outputs[index].dstAccessMask = index == 0u ? VK_ACCESS_SHADER_READ_BIT
-                                                           : VK_ACCESS_INDIRECT_COMMAND_READ_BIT |
-                                                                 (index == 1u ? VK_ACCESS_TRANSFER_READ_BIT : 0u);
+                outputs[index].dstAccessMask =
+                    index == 0u ? static_cast<VkAccessFlags>(VK_ACCESS_SHADER_READ_BIT)
+                                : static_cast<VkAccessFlags>(VK_ACCESS_INDIRECT_COMMAND_READ_BIT) |
+                                      (index == 1u ? static_cast<VkAccessFlags>(VK_ACCESS_TRANSFER_READ_BIT)
+                                                   : VkAccessFlags{0});
                 outputs[index].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 outputs[index].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 outputs[index].buffer = output_buffers[index];
@@ -11567,7 +11569,9 @@ private:
         const VkImageUsageFlags sampled_color_usage =
             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
         const VkImageUsageFlags gbuffer_usage =
-            sampled_color_usage | (capabilities_.virtual_geometry_compute ? VK_IMAGE_USAGE_STORAGE_BIT : 0u);
+            sampled_color_usage |
+            (capabilities_.virtual_geometry_compute ? static_cast<VkImageUsageFlags>(VK_IMAGE_USAGE_STORAGE_BIT)
+                                                    : VkImageUsageFlags{0});
         const std::array previous_views{gbuffer_albedo_.view,   gbuffer_normal_.view, gbuffer_material_.view,
                                         gbuffer_emissive_.view, gbuffer_motion_.view, gbuffer_object_id_.view};
         const bool ok = ensure_graph_image(scene_color_, width, height, scene_color_format_, sampled_color_usage,
