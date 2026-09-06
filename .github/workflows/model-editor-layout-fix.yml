@@ -1,0 +1,99 @@
+name: Model Editor Layout Fix
+
+on:
+  push:
+    branches: [feat/skeleton-model-workflow]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply model editor workspace layout
+        shell: python
+        run: |
+          from pathlib import Path
+
+          workspace = Path('editor/src/renderer/src/layout/WorkspaceDock.tsx')
+          text = workspace.read_text()
+          old = "if (kind === 'shader' || kind === 'material' || kind === 'texture') {\n    // Asset editors own the complete document workspace. Shader, Material, and Texture\n"
+          new = "if (\n    kind === 'shader' ||\n    kind === 'material' ||\n    kind === 'texture' ||\n    kind === 'model' ||\n    kind === 'skeleton'\n  ) {\n    // Asset editors own the complete document workspace. Shader, Material, Texture,\n    // Model, and Skeleton compose their document-specific supporting regions internally,\n"
+          if old not in text:
+            raise SystemExit('WorkspaceDock asset editor layout pattern not found')
+          text = text.replace(old, new, 1)
+          text = text.replace(
+            "    // currently compose their document-specific supporting regions internally,\n    // so Dockview only needs the primary EditorHost surface. The global utility\n",
+            "    // so Dockview only needs the primary EditorHost surface. The global utility\n",
+            1,
+          )
+          workspace.write_text(text)
+
+          model = Path('editor/src/renderer/src/model/ModelEditor.tsx')
+          text = model.read_text()
+          text = text.replace("import { UiButton } from '../ui';", "import { UiButton, UiPanel } from '../ui';", 1)
+          old = '      <aside className="model-editor-sidebar">'
+          new = '''      <UiPanel
+        aria-label="Model details"
+        className="model-editor-sidebar editor-property-panel"
+        role="complementary"
+        variant="inspector"
+      >'''
+          if old not in text:
+            raise SystemExit('ModelEditor sidebar opening pattern not found')
+          text = text.replace(old, new, 1)
+          old = '      </aside>\n    </div>\n'
+          new = '      </UiPanel>\n    </div>\n'
+          if old not in text:
+            raise SystemExit('ModelEditor sidebar closing pattern not found')
+          text = text.replace(old, new, 1)
+          model.write_text(text)
+
+          css = Path('editor/src/renderer/src/model/modelEditor.css')
+          text = css.read_text()
+          old = '''.model-editor-sidebar {
+  border-left: 1px solid var(--border-subtle, #2b3138);
+  background: var(--surface-1, #171b20);
+  min-width: 0;
+  overflow: auto;
+}
+'''
+          new = '''.model-editor-sidebar {
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  border-left: 1px solid var(--border-subtle, #2b3138);
+  border-radius: 0;
+  overflow: auto;
+}
+'''
+          if old not in text:
+            raise SystemExit('modelEditor.css sidebar pattern not found')
+          css.write_text(text.replace(old, new, 1))
+      - name: Install editor dependencies
+        working-directory: editor
+        run: npm ci
+      - name: Format changed frontend files
+        working-directory: editor
+        run: npx prettier --write src/renderer/src/layout/WorkspaceDock.tsx src/renderer/src/model/ModelEditor.tsx src/renderer/src/model/modelEditor.css
+      - name: Validate frontend
+        working-directory: editor
+        run: |
+          npm test -- --run src/renderer/src/model/modelSubassets.test.ts src/renderer/src/editors/modelEditorRegistration.test.ts src/renderer/src/editors/editorRegistry.test.ts
+          npm run typecheck
+      - name: Commit layout fix
+        run: |
+          rm .github/workflows/model-editor-layout-fix.yml
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Use asset-editor workspace for model and skeleton editors"
+          git push
