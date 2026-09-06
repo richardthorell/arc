@@ -1,0 +1,35 @@
+name: Temporary Mesh Rendering Repair
+
+on:
+  push:
+    branches: [fix/restore-mesh-rendering]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/restore-mesh-rendering
+      - name: Disable corrupt bindless indirect batch path
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('engine/render-vulkan/src/vulkan_backend.cpp')
+          text = path.read_text()
+          old = '''    bool draw_gpu_bindless_batch(VkCommandBuffer command_buffer, bool transparent)\n    {\n        if (!gpu_visibility_active_ || !ensure_gpu_bindless_pipelines()) return false;\n'''
+          new = '''    bool draw_gpu_bindless_batch(VkCommandBuffer command_buffer, bool transparent)\n    {\n        // The compact bindless path draws from the shared geometry heap. Its indexed addressing\n        // is currently producing cross-mesh index reads for packed scene geometry. Keep the\n        // established per-mesh submission path active until shared-heap addressing is corrected.\n        if (resolved_config_.features.gpu_binding_model == gpu_resource_binding_model::bindless) return false;\n        if (!gpu_visibility_active_ || !ensure_gpu_bindless_pipelines()) return false;\n'''
+          if old not in text:
+              raise SystemExit('target draw_gpu_bindless_batch prologue not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git rm .github/workflows/temp-restore-mesh-rendering.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add engine/render-vulkan/src/vulkan_backend.cpp
+          git commit -m "Restore stable mesh rendering path"
+          git push origin HEAD:fix/restore-mesh-rendering
