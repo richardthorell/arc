@@ -160,7 +160,11 @@ void main()
         }
     }
     draw_indexed_indirect_command stable_command = command;
-    if ((instance.material_flags.w & (1u << 31u)) != 0u)
+    // Stable commands are consumed by draw_gpu_visibility_command after binding
+    // the mesh's own vertex and index buffers. Compact bindless commands above
+    // retain the shared-heap offsets copied from command.
+    bool uses_per_mesh_buffers = instance.geometry.w == 0u || instance.geometry.w == 1u;
+    if (uses_per_mesh_buffers)
     {
         stable_command.first_index = 0u;
         stable_command.vertex_offset = 0;
