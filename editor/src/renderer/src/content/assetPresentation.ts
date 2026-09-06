@@ -12,7 +12,7 @@ export const isModelAsset = (asset: Pick<AssetItem, 'kind' | 'path'>) =>
   asset.kind === 'scene' && modelExtensions.has(assetExtension(asset));
 
 export const assetPresentationKind = (asset: Pick<AssetItem, 'kind' | 'path'>): AssetPresentationKind =>
-  isModelAsset(asset) ? 'model' : asset.kind;
+  isModelAsset(asset) || asset.kind === 'mesh' ? 'model' : asset.kind;
 
 export const assetPresentationLabel = (asset: Pick<AssetItem, 'kind' | 'path'>) => {
   const kind = assetPresentationKind(asset);
