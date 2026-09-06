@@ -11,6 +11,8 @@ export type DocumentTypeIconKind =
   | 'image'
   | 'texture'
   | 'mesh'
+  | 'model'
+  | 'skeleton'
   | 'prefab'
   | 'animation'
   | 'audio'
@@ -31,6 +33,8 @@ const iconCells: Record<DocumentTypeIconKind, readonly [number, number]> = {
   image: [3, 0],
   texture: [3, 0],
   mesh: [0, 1],
+  model: [0, 1],
+  skeleton: [2, 1],
   prefab: [1, 1],
   animation: [2, 1],
   audio: [3, 1],
