@@ -105,7 +105,7 @@ describe('ContentAssetCard', () => {
     expect(assetDisplayName({ ...mesh, title: 'Starter Cabin' })).toBe('Starter Cabin');
     expect(assetFileExtension(mesh)).toBe('glb');
     expect(view.getByTitle('SM_Cabin')).toHaveClass('content-asset-name');
-    expect(view.getByText('Mesh')).toBeVisible();
+    expect(view.getByText('Model')).toBeVisible();
     expect(view.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 
