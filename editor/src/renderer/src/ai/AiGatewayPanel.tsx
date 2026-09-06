@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
-import { UiButton, UiIconButton } from '../ui';
+import { UiButton, UiIconButton, UiSidebarPanel } from '../ui';
 import {
   conversationTitleFromPrompt,
   createAiConversation,
@@ -337,7 +337,7 @@ export function AiGatewayPanel({
   };
 
   return (
-    <section className="ai-assistant-panel" aria-label="ARC Assistant">
+    <UiSidebarPanel className="ai-assistant-panel" aria-label="ARC Assistant">
       <header className="ai-assistant-header">
         <span className={status?.enabled ? 'online' : 'offline'}>
           <Sparkles size={16} />
@@ -443,7 +443,7 @@ export function AiGatewayPanel({
           </form>
         </>
       )}
-    </section>
+    </UiSidebarPanel>
   );
 }
 

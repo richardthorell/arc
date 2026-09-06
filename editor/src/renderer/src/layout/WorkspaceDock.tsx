@@ -1,5 +1,5 @@
 import { createRoot, type Root } from 'react-dom/client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import {
   createDockview,
   type DockviewApi,
@@ -33,6 +33,7 @@ type WorkspaceDockProps = {
   onRequestHandled?: () => void;
   onReady?: (api: DockviewApi) => void;
   requestedViewportCount?: 1 | 2 | 3 | 4;
+  sidebarExpanded?: boolean;
 };
 
 // v7 adopts more viewport-focused Level Design proportions: a shorter utility
@@ -45,6 +46,18 @@ const workbenchLayoutStorageKey = 'arc.editor.workbench.layout.v2';
 const panelTabComponent = 'arc-panel-tab';
 const defaultBottomPanelHeight = 220;
 const defaultInspectorPanelWidth = 360;
+const sidebarWidthStorageKey = 'arc.editor.utility-sidebar.width.v1';
+export const defaultSidebarWidth = 320;
+export const minimumSidebarWidth = 240;
+export const maximumSidebarWidth = 640;
+
+export const clampSidebarWidth = (value: number) =>
+  Math.min(maximumSidebarWidth, Math.max(minimumSidebarWidth, Math.round(value)));
+
+const initialSidebarWidth = () => {
+  const saved = Number(window.localStorage.getItem(sidebarWidthStorageKey));
+  return Number.isFinite(saved) && saved > 0 ? clampSidebarWidth(saved) : defaultSidebarWidth;
+};
 
 const initialSidebarPanel = (): SidebarPanelId => {
   try {
@@ -198,7 +211,9 @@ export function WorkspaceDock({
   onRequestHandled,
   onReady,
   requestedViewportCount,
+  sidebarExpanded = false,
 }: WorkspaceDockProps) {
+  const shell = useRef<HTMLDivElement | null>(null);
   const host = useRef<HTMLDivElement | null>(null);
   const api = useRef<DockviewApi | null>(null);
   const renderPanelRef = useRef(renderPanel);
@@ -207,7 +222,50 @@ export function WorkspaceDock({
   const activeEditorKind: EditorDocumentKind = activeDocument?.kind ?? 'level';
   const dockEditorKind = useRef<EditorDocumentKind>(activeEditorKind);
   const [activeSidebarPanel, setActiveSidebarPanel] = useState<SidebarPanelId>(initialSidebarPanel);
+  const [sidebarWidth, setSidebarWidth] = useState(initialSidebarWidth);
+  const sidebarWidthRef = useRef(sidebarWidth);
+  const [resizingSidebar, setResizingSidebar] = useState(false);
   renderPanelRef.current = renderPanel;
+
+  const updateSidebarWidth = (value: number) => {
+    const next = clampSidebarWidth(value);
+    sidebarWidthRef.current = next;
+    setSidebarWidth(next);
+  };
+
+  useEffect(() => {
+    if (!resizingSidebar) return;
+
+    const move = (event: PointerEvent) => {
+      const bounds = shell.current?.getBoundingClientRect();
+      if (bounds) updateSidebarWidth(event.clientX - bounds.left);
+    };
+    const stop = () => {
+      setResizingSidebar(false);
+      window.localStorage.setItem(sidebarWidthStorageKey, String(sidebarWidthRef.current));
+    };
+
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop, { once: true });
+    window.addEventListener('pointercancel', stop, { once: true });
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+    };
+  }, [resizingSidebar]);
+
+  const resizeSidebarWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    let next = sidebarWidthRef.current;
+    if (event.key === 'ArrowLeft') next -= 16;
+    else if (event.key === 'ArrowRight') next += 16;
+    else if (event.key === 'Home') next = minimumSidebarWidth;
+    else if (event.key === 'End') next = maximumSidebarWidth;
+    else return;
+    event.preventDefault();
+    updateSidebarWidth(next);
+    window.localStorage.setItem(sidebarWidthStorageKey, String(clampSidebarWidth(next)));
+  };
 
   useEffect(() => {
     if (!host.current) return;
@@ -330,12 +388,34 @@ export function WorkspaceDock({
   }, [requestedViewportCount, activeEditorKind]);
 
   return (
-    <div className={`workspace-dock-shell workspace-dock-shell-editor-${activeEditorKind}`}>
+    <div
+      className={`workspace-dock-shell workspace-dock-shell-editor-${activeEditorKind}`}
+      ref={shell}
+      style={{ '--arc-utility-sidebar-width': `${sidebarWidth}px` } as CSSProperties}
+    >
       <aside
         aria-label={`${panelRegistry[activeSidebarPanel].title} sidebar`}
         className={`primary-sidebar primary-sidebar-${activeSidebarPanel}`}
       >
         {renderPanel(activeSidebarPanel)}
+        {sidebarExpanded && (
+          <div
+            aria-label="Resize utility sidebar"
+            aria-orientation="vertical"
+            aria-valuemax={maximumSidebarWidth}
+            aria-valuemin={minimumSidebarWidth}
+            aria-valuenow={sidebarWidth}
+            className={`primary-sidebar-resize-handle${resizingSidebar ? ' is-resizing' : ''}`}
+            onKeyDown={resizeSidebarWithKeyboard}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.currentTarget.setPointerCapture?.(event.pointerId);
+              setResizingSidebar(true);
+            }}
+            role="separator"
+            tabIndex={0}
+          />
+        )}
       </aside>
       <div className="workspace-dock" ref={host} />
     </div>

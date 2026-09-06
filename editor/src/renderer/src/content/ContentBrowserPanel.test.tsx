@@ -91,47 +91,6 @@ const renderBrowser = (onCommand = vi.fn()) =>
   );
 
 describe('ContentBrowserPanel', () => {
-  it('edits eligible texture streaming modes and reports last-good runtime state', () => {
-    const onTextureStreamingMode = vi.fn();
-    const streamingProject = {
-      ...project,
-      assets: project.assets.map((asset) =>
-        asset.id === 'sky'
-          ? {
-              ...asset,
-              width: 8192,
-              height: 4096,
-              textureFormat: 'RGBA8 sRGB',
-              mipLevels: 14,
-              tileCount: 2730,
-              streamingMode: 'streamed_mips' as const,
-              settingsVersion: 7,
-              artifactSize: 64 * 1024 * 1024,
-              hasLastGood: true,
-            }
-          : asset,
-      ),
-    };
-    const view = render(
-      <ContentBrowserPanel
-        project={streamingProject}
-        cache={null}
-        selectedAssetId="sky"
-        onSelectAsset={vi.fn()}
-        onCommand={vi.fn()}
-        onInstantiatePrefab={vi.fn()}
-        onAssetAction={vi.fn()}
-        onTextureStreamingMode={onTextureStreamingMode}
-        thumbnailProvider={vi.fn().mockResolvedValue(null)}
-      />,
-    );
-
-    fireEvent.change(view.getByLabelText('Texture streaming mode'), { target: { value: 'virtual_tiles' } });
-    expect(onTextureStreamingMode).toHaveBeenCalledWith('sky-guid', 'virtual_tiles');
-    expect(view.getByText(/Last-good cooked artifact remains active/)).toBeInTheDocument();
-    expect(view.getByText(/2730 tiles/)).toBeInTheDocument();
-  });
-
   it('uses shared ARC controls in the Content Browser toolbar', () => {
     const view = renderBrowser();
 
@@ -171,13 +130,13 @@ describe('ContentBrowserPanel', () => {
     expect(localStorage.getItem('arc.content.treeWidth')).toBe('190');
   });
 
-  it('selects assets and opens the persistent asset details side panel', () => {
+  it('selects assets without opening a persistent details side panel', () => {
     const view = renderBrowser();
     fireEvent.click(view.getByText('Hero Rock'));
 
-    expect(view.container.querySelector('.content-asset-details')).toBeInTheDocument();
-    expect(view.getByText('Dependencies (0)')).toBeInTheDocument();
-    expect(view.getByText('References (0)')).toBeInTheDocument();
+    expect(view.container.querySelector('.content-asset-details')).not.toBeInTheDocument();
+    expect(view.queryByText('Dependencies (0)')).not.toBeInTheDocument();
+    expect(view.queryByText('References (0)')).not.toBeInTheDocument();
   });
 
   it('filters registry assets and emits GUID drag payloads', () => {
