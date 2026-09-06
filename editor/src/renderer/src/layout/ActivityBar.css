@@ -1,0 +1,22 @@
+.activity-button .activity-button-counter {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  overflow: visible;
+  border: 2px solid var(--arc-color-bg-chrome);
+  border-radius: 999px;
+  color: var(--arc-color-text-inverse);
+  background: var(--arc-color-accent);
+  font-size: var(--arc-text-xxs);
+  font-weight: 700;
+  line-height: 13px;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}

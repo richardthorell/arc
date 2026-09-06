@@ -12,6 +12,14 @@ afterEach(() => {
 });
 
 describe('UiLabContentCards', () => {
+  it('shows the side-bar button with and without a counter', () => {
+    const view = render(<UiLabContentCards />);
+
+    expect(view.getByRole('button', { name: 'Repository without changes' })).toBeInTheDocument();
+    expect(view.getByRole('button', { name: 'Repository with changes' })).toBeInTheDocument();
+    expect(view.getByLabelText('7 changed files')).toHaveTextContent('7');
+  });
+
   it('shows texture, material, and model Content Browser cards', () => {
     const view = render(<UiLabContentCards />);
 
