@@ -1,0 +1,64 @@
+.ui-tree-view {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ui-tree-view-row {
+  width: 100%;
+  min-height: 28px;
+  gap: 5px;
+  padding-right: 8px;
+  text-align: left;
+}
+
+.ui-tree-view-row[aria-disabled='true'] {
+  opacity: 0.45;
+}
+
+.ui-tree-view-row:focus-visible {
+  outline: 1px solid var(--arc-color-focus, #58aee9);
+  outline-offset: -1px;
+}
+
+.ui-tree-view-disclosure {
+  width: 14px;
+  height: 20px;
+  display: inline-grid;
+  flex: 0 0 14px;
+  place-items: center;
+  color: var(--arc-text-muted);
+  visibility: hidden;
+}
+
+.ui-tree-view-disclosure.is-visible {
+  visibility: visible;
+}
+
+.ui-tree-view-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-grid;
+  flex: 0 0 16px;
+  place-items: center;
+  color: var(--arc-text-muted);
+}
+
+.ui-tree-view-icon > svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ui-tree-view-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-tree-view-empty {
+  padding: 10px 12px;
+  color: var(--arc-text-muted);
+  font-size: 11px;
+}
