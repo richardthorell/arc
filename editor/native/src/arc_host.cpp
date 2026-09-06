@@ -546,7 +546,7 @@ bool refresh_asset_preview_model(HostState& host, viewport_surface_registry::sur
     surface.preview_camera = {};
     if (!focus_selected_entity(preview->scene, preview->selected_entity, surface.preview_camera))
         (void)surface.preview_camera.place({2.5f, 1.5f, 2.5f}, {0.0f, 0.0f, 0.0f});
-    if (auto* camera_transform = preview->scene.try_get<scene::transform_component>(preview->camera_entity))
+    if (auto* camera_transform = preview->scene.template try_get<scene::transform_component>(preview->camera_entity))
         surface.preview_camera.apply_to(*camera_transform);
     clear_selection(preview->scene, preview->selected_entity);
 
