@@ -73,7 +73,7 @@ std::filesystem::path write_skinned_triangle_glb()
     const auto inverse_bind_offset = bin.size();
     const float identity[16]{1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
                              0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
-    const float spine_inverse[16]{1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+    const float spine_inverse[16]{1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,  0.0f, 0.0f,
                                   0.0f, 0.0f, 1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f};
     for (const float value : identity)
         append_f32(bin, value);
