@@ -5,10 +5,12 @@
 #include <arc/diagnostics/diagnostics.h>
 #include <arc/geometric/box.h>
 #include <arc/render/primitives.h>
+#include <arc/scene/transforms.h>
 
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <functional>
 #include <limits>
 #include <utility>
 
@@ -195,8 +197,21 @@ void destroy_entities(editor_scene_state& state, std::vector<ecs::entity>& entit
     entities.clear();
 }
 
-void clear_imported_content(editor_scene_state& state)
+void clear_imported_content(editor_scene_state& state, render::renderer* renderer = nullptr)
 {
+    if (renderer)
+    {
+        std::vector<render::buffer_handle> palettes;
+        for (const auto entity : state.imported_scene_entities)
+        {
+            const auto* skinned = state.scene.try_get<scene::skinned_mesh_renderer_component>(entity);
+            if (!skinned || !skinned->skin_matrices.valid()) continue;
+            if (std::find(palettes.begin(), palettes.end(), skinned->skin_matrices) == palettes.end())
+                palettes.push_back(skinned->skin_matrices);
+        }
+        for (const auto palette : palettes)
+            if (renderer->skin_palette_alive(palette)) renderer->destroy_skin_palette(palette);
+    }
     destroy_entity_if_alive(state, state.mesh_entity);
     destroy_entity_if_alive(state, state.terrain_entity);
     destroy_entity_if_alive(state, state.water_entity);
@@ -204,6 +219,46 @@ void clear_imported_content(editor_scene_state& state)
     destroy_entities(state, state.primitive_entities);
     destroy_entities(state, state.imported_scene_entities);
     state.selected_entity = {};
+}
+
+render::skin_palette_data bind_pose_palette(const render::skeleton_asset& skeleton)
+{
+    render::skin_palette_data palette;
+    palette.name = skeleton.name.empty() ? "Imported Skeleton" : skeleton.name;
+    palette.current.resize(skeleton.joints.size(), math::identity<float, 4>());
+    std::vector<math::matrix4f> joint_world(skeleton.joints.size(), math::identity<float, 4>());
+    std::vector<std::uint8_t> state(skeleton.joints.size());
+
+    std::function<bool(std::size_t)> evaluate = [&](std::size_t index)
+    {
+        if (index >= skeleton.joints.size()) return false;
+        if (state[index] == 2u) return true;
+        if (state[index] == 1u) return false;
+        state[index] = 1u;
+
+        const auto& joint = skeleton.joints[index];
+        scene::transform_component local_transform;
+        local_transform.position = joint.bind_position;
+        local_transform.rotation = joint.bind_rotation;
+        local_transform.scale = joint.bind_scale;
+        auto world = scene::local_matrix(local_transform);
+        if (joint.parent >= 0)
+        {
+            const auto parent = static_cast<std::size_t>(joint.parent);
+            if (parent >= skeleton.joints.size() || !evaluate(parent)) return false;
+            world = math::matmul(joint_world[parent], world);
+        }
+        joint_world[index] = world;
+        palette.current[index] = math::matmul(world, joint.inverse_bind_matrix);
+        state[index] = 2u;
+        return true;
+    };
+
+    for (std::size_t joint = 0; joint < skeleton.joints.size(); ++joint)
+        if (!evaluate(joint)) return {};
+    palette.previous = palette.current;
+    palette.content_revision = 1;
+    return palette;
 }
 
 render::material_handle material_from_import(editor_scene_state& state, render::renderer& renderer,
@@ -683,7 +738,7 @@ editor_scene_open_result apply_scene_import_result_to_editor(editor_scene_state&
         return {.message = imported.message.empty() ? "scene asset could not be imported" : imported.message};
     }
 
-    if (mode == editor_scene_open_mode::replace) clear_imported_content(scene);
+    if (mode == editor_scene_open_mode::replace) clear_imported_content(scene, &renderer);
 
     std::vector<render::texture_handle> textures;
     textures.reserve(imported.textures.size());
@@ -706,6 +761,21 @@ editor_scene_open_result apply_scene_import_result_to_editor(editor_scene_state&
         bounds.push_back(bounds_for_mesh(mesh));
     }
 
+    std::vector<render::buffer_handle> skin_palettes(imported.skeletons.size());
+    std::vector<bool> skin_palette_attempted(imported.skeletons.size());
+    const auto palette_for_skin = [&](std::size_t skin_index) -> render::buffer_handle
+    {
+        if (skin_index >= imported.skeletons.size()) return {};
+        if (skin_palette_attempted[skin_index]) return skin_palettes[skin_index];
+        skin_palette_attempted[skin_index] = true;
+        const auto& skeleton = imported.skeletons[skin_index];
+        if (!skeleton.valid()) return {};
+        auto palette = bind_pose_palette(skeleton);
+        if (!palette.valid()) return {};
+        skin_palettes[skin_index] = renderer.create_skin_palette(std::move(palette));
+        return skin_palettes[skin_index];
+    };
+
     std::size_t created{};
     ecs::entity first_entity{};
     for (const auto& node : imported.nodes)
@@ -727,10 +797,41 @@ editor_scene_open_result apply_scene_import_result_to_editor(editor_scene_state&
         scene.scene.emplace<scene::selection_component>(entity, false);
         scene.scene.emplace<scene::bounds_component>(entity, bounds[node.mesh_index], bounds[node.mesh_index], true);
         scene.scene.emplace<scene::transform_component>(entity, transform);
-        scene::mesh_renderer_component renderer_component;
-        renderer_component.mesh = meshes[node.mesh_index];
-        renderer_component.material = materials[material_index];
-        scene.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
+        const auto& imported_mesh = imported.meshes[node.mesh_index];
+        const bool has_skin_stream =
+            !imported_mesh.skin_vertices.empty() && imported_mesh.skin_vertices.size() == imported_mesh.vertices.size();
+        const bool has_skeleton =
+            node.skin_index < imported.skeletons.size() && imported.skeletons[node.skin_index].valid();
+        bool skinned_bound{};
+        if (has_skin_stream && has_skeleton)
+        {
+            const auto palette_handle = palette_for_skin(node.skin_index);
+            if (palette_handle.valid())
+            {
+                scene::skinned_mesh_renderer_component renderer_component;
+                renderer_component.mesh = meshes[node.mesh_index];
+                renderer_component.material = materials[material_index];
+                renderer_component.skin_matrices = palette_handle;
+                renderer_component.joint_count =
+                    static_cast<std::uint32_t>(imported.skeletons[node.skin_index].joints.size());
+                scene.scene.emplace<scene::skinned_mesh_renderer_component>(entity, renderer_component);
+                skinned_bound = true;
+            }
+        }
+        if (!skinned_bound)
+        {
+            if (has_skin_stream)
+            {
+                arc::diagnostics::warn("editor.assets",
+                                       "Imported skinned mesh '" +
+                                           (node.name.empty() ? std::string("Imported Mesh") : node.name) +
+                                           "' has no usable skeleton binding; using static rendering");
+            }
+            scene::mesh_renderer_component renderer_component;
+            renderer_component.mesh = meshes[node.mesh_index];
+            renderer_component.material = materials[material_index];
+            scene.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
+        }
         scene.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
         scene.scene.emplace<scene::hierarchy_component>(entity);
         scene.asset_bindings.push_back({.entity = scene.scene.get<scene::persistent_id_component>(entity).value,
