@@ -242,6 +242,8 @@ struct terrain_height_update_event
 {
     terrain_handle handle{};
     std::shared_ptr<const terrain_height_region_update> update;
+    /** Refreshed packed hierarchy whose node indices remain stable for this edit. */
+    std::shared_ptr<const terrain_gpu_hierarchy> hierarchy;
 };
 
 /** @brief Upload a rectangular terrain weight region. */
@@ -600,7 +602,8 @@ public:
     void terrain_upload(terrain_handle handle, std::shared_ptr<const terrain_resource_descriptor> terrain,
                         std::string label = {});
     /** @brief Append a partial height update. */
-    void terrain_height_update(terrain_handle handle, std::shared_ptr<const terrain_height_region_update> update);
+    void terrain_height_update(terrain_handle handle, std::shared_ptr<const terrain_height_region_update> update,
+                               std::shared_ptr<const terrain_gpu_hierarchy> hierarchy = {});
     /** @brief Append a partial weight update. */
     void terrain_weight_update(terrain_handle handle, std::shared_ptr<const terrain_weight_region_update> update);
     /** @brief Append terrain retirement. */

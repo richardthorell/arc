@@ -3580,6 +3580,21 @@ TEST_CASE("terrain renderer resources preserve weight-only hierarchy and emit pa
     const auto packet = renderer.frame_queue().commit(2u);
     REQUIRE(packet.events.size() == 1u);
     REQUIRE(packet.events.front().type() == arc::render::render_event_type::terrain_weight_update);
+
+    arc::render::terrain_height_region_update heights;
+    heights.region = {8u, 8u, 8u, 8u};
+    heights.row_stride = 1u;
+    heights.values = {12.0f};
+    heights.content_revision = 3u;
+    REQUIRE(renderer.update_terrain_heights(terrain, std::move(heights)));
+    const auto height_packet = renderer.frame_queue().commit(3u);
+    REQUIRE(height_packet.events.size() == 1u);
+    const auto* height_event =
+        std::get_if<arc::render::terrain_height_update_event>(&height_packet.events.front().payload);
+    REQUIRE(height_event != nullptr);
+    REQUIRE(height_event->hierarchy != nullptr);
+    REQUIRE(height_event->hierarchy->nodes.size() == before.hierarchy_nodes);
+    REQUIRE(height_event->hierarchy->nodes[height_event->hierarchy->root].bounds_max[1] == Catch::Approx(12.0f));
     REQUIRE(renderer.destroy_terrain(terrain));
 }
 

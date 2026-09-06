@@ -137,9 +137,10 @@ void render_event_writer::terrain_upload(terrain_handle handle,
 }
 
 void render_event_writer::terrain_height_update(terrain_handle handle,
-                                                std::shared_ptr<const terrain_height_region_update> update)
+                                                std::shared_ptr<const terrain_height_region_update> update,
+                                                std::shared_ptr<const terrain_gpu_hierarchy> hierarchy)
 {
-    push({.payload = terrain_height_update_event{handle, std::move(update)}});
+    push({.payload = terrain_height_update_event{handle, std::move(update), std::move(hierarchy)}});
 }
 
 void render_event_writer::terrain_weight_update(terrain_handle handle,

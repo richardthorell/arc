@@ -1116,7 +1116,9 @@ bool renderer::update_terrain_heights(terrain_handle handle, terrain_height_regi
         static_cast<std::uint64_t>(update.region.width()) * update.region.height() * sizeof(float);
     render_event_buffer buffer;
     render_event_writer writer(buffer);
-    writer.terrain_height_update(handle, std::make_shared<terrain_height_region_update>(std::move(update)));
+    writer.terrain_height_update(handle, std::make_shared<terrain_height_region_update>(std::move(update)),
+                                 std::make_shared<terrain_gpu_hierarchy>(
+                                     make_terrain_gpu_hierarchy(replacement->hierarchy)));
     frame_queue_.submit(std::move(buffer));
     return true;
 }
@@ -1769,7 +1771,10 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
             1u, static_cast<std::uint32_t>(std::round(terrain_camera.output_width * resolved_config_.render_scale)));
         terrain_camera.render_height = std::max(
             1u, static_cast<std::uint32_t>(std::round(terrain_camera.output_height * resolved_config_.render_scale)));
-        if (!resolved_config_.features.gpu_terrain_traversal)
+        // Keep the deterministic CPU selection in the packet even when a backend can
+        // execute terrain traversal. Vulkan consumes it only when its per-instance
+        // compute/indirect resources cannot be prepared (or report overflow), which
+        // keeps capability changes and transient allocation failures hole-free.
         {
             for (std::uint32_t terrain_index = 0; terrain_index < prepared->terrains.size(); ++terrain_index)
             {

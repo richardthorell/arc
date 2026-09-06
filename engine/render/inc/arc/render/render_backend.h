@@ -963,9 +963,15 @@ struct render_temporal_profile
 /** @brief Per-frame terrain hierarchy, selection, residency, and upload telemetry. */
 struct render_terrain_profile
 {
+    bool gpu_traversal{};
     std::uint32_t hierarchy_nodes{};
     std::uint32_t selected_patches{};
     std::uint32_t culled_nodes{};
+    std::uint32_t gpu_selected_patches{};
+    std::uint32_t gpu_culled_nodes{};
+    std::uint32_t gpu_indirect_commands{};
+    std::uint32_t gpu_overflow_instances{};
+    std::uint32_t gpu_fallback_instances{};
     std::uint64_t rendered_triangles{};
     std::uint64_t height_bytes{};
     std::uint64_t weight_bytes{};
@@ -973,6 +979,7 @@ struct render_terrain_profile
     std::uint64_t uploaded_weight_bytes{};
     std::array<std::uint32_t, 16> patches_per_lod{};
     double selection_milliseconds{};
+    std::string fallback_reason;
 };
 
 /** @brief Per-frame common texture-streaming residency and budget telemetry. */

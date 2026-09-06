@@ -1,0 +1,266 @@
+#version 450
+
+// One workgroup owns one terrain instance. The first implementation is
+// deliberately serial within that workgroup: it makes overflow and balancing
+// deterministic while the surrounding ABI remains ready for a parallel scan.
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+const uint invalid_node = 0xffffffffu;
+
+struct TerrainNode
+{
+    vec4 bounds_min;
+    vec4 bounds_max;
+    uvec4 samples;
+    uvec4 children;
+    float geometric_error;
+    uint depth;
+    uint leaf;
+    uint reserved;
+};
+
+struct TerrainPatch
+{
+    uvec4 samples;
+    uvec4 metadata; // node, lod, stitch mask, projected-error bits
+};
+
+struct DrawIndexedIndirectCommand
+{
+    uint index_count;
+    uint instance_count;
+    uint first_index;
+    int vertex_offset;
+    uint first_instance;
+};
+
+layout(set = 0, binding = 0, std430) readonly buffer TerrainNodes { TerrainNode nodes[]; } hierarchy;
+layout(set = 0, binding = 1, std430) buffer TraversalStack { uint values[]; } traversal_stack;
+layout(set = 0, binding = 2, std430) buffer SelectedPatches { TerrainPatch patches[]; } selected;
+layout(set = 0, binding = 3, std430) buffer TraversalCounters
+{
+    uint selected_count;
+    uint culled_count;
+    uint overflow_count;
+    uint draw_count;
+} counters;
+layout(set = 0, binding = 4, std430) buffer IndirectCommands
+{
+    DrawIndexedIndirectCommand commands[];
+} indirect_draws;
+layout(set = 0, binding = 5, std140) uniform TerrainResource
+{
+    uvec4 dimensions; // resolution, patch quads, root, node count
+    vec4 extent;
+    uvec4 hierarchy_info; // leaf count/capacity, reserved...
+} terrain;
+
+layout(push_constant) uniform TerrainTraversalConstants
+{
+    mat4 model_view_projection;
+    vec4 model_row_0;
+    vec4 model_row_1;
+    vec4 model_row_2;
+    vec4 camera_and_error;
+} constants;
+
+vec3 transform_world(vec3 local_position)
+{
+    vec4 value = vec4(local_position, 1.0);
+    return vec3(dot(constants.model_row_0, value), dot(constants.model_row_1, value),
+                dot(constants.model_row_2, value));
+}
+
+bool visible_bounds(vec3 minimum_value, vec3 maximum_value)
+{
+    bool outside_left = true;
+    bool outside_right = true;
+    bool outside_bottom = true;
+    bool outside_top = true;
+    bool outside_near = true;
+    bool outside_far = true;
+    for (uint corner = 0u; corner < 8u; ++corner)
+    {
+        vec3 local_position = vec3((corner & 1u) != 0u ? maximum_value.x : minimum_value.x,
+                                  (corner & 2u) != 0u ? maximum_value.y : minimum_value.y,
+                                  (corner & 4u) != 0u ? maximum_value.z : minimum_value.z);
+        vec4 clip = constants.model_view_projection * vec4(local_position, 1.0);
+        outside_left = outside_left && clip.x < -clip.w;
+        outside_right = outside_right && clip.x > clip.w;
+        outside_bottom = outside_bottom && clip.y < -clip.w;
+        outside_top = outside_top && clip.y > clip.w;
+        outside_near = outside_near && clip.z < 0.0;
+        outside_far = outside_far && clip.z > clip.w;
+    }
+    return !(outside_left || outside_right || outside_bottom || outside_top || outside_near || outside_far);
+}
+
+float distance_to_bounds(vec3 point, vec3 minimum_value, vec3 maximum_value)
+{
+    vec3 nearest_value = clamp(point, minimum_value, maximum_value);
+    return max(length(point - nearest_value), 0.001);
+}
+
+bool adjacent(uvec4 lhs, uvec4 rhs)
+{
+    bool vertical = (lhs.z == rhs.x || rhs.z == lhs.x) && lhs.y < rhs.w && rhs.y < lhs.w;
+    bool horizontal = (lhs.w == rhs.y || rhs.w == lhs.y) && lhs.x < rhs.z && rhs.x < lhs.z;
+    return vertical || horizontal;
+}
+
+void append_patch(uint node_index, float projected_error)
+{
+    uint slot = counters.selected_count++;
+    if (slot >= terrain.hierarchy_info.x)
+    {
+        counters.overflow_count = 1u;
+        return;
+    }
+    TerrainNode node = hierarchy.nodes[node_index];
+    selected.patches[slot].samples = node.samples;
+    selected.patches[slot].metadata = uvec4(node_index, node.depth, 0u, floatBitsToUint(projected_error));
+}
+
+void main()
+{
+    counters.selected_count = 0u;
+    counters.culled_count = 0u;
+    counters.overflow_count = 0u;
+    counters.draw_count = 0u;
+
+    uint root = terrain.dimensions.z;
+    uint node_count = terrain.dimensions.w;
+    uint capacity = terrain.hierarchy_info.x;
+    if (root >= node_count || capacity == 0u)
+        return;
+
+    uint stack_count = 1u;
+    traversal_stack.values[0] = root;
+    float scale_x = length(vec3(constants.model_row_0.x, constants.model_row_1.x, constants.model_row_2.x));
+    float scale_y = length(vec3(constants.model_row_0.y, constants.model_row_1.y, constants.model_row_2.y));
+    float scale_z = length(vec3(constants.model_row_0.z, constants.model_row_1.z, constants.model_row_2.z));
+    float model_scale = max(max(scale_x, scale_y), max(scale_z, 0.0001));
+
+    while (stack_count != 0u)
+    {
+        uint node_index = traversal_stack.values[--stack_count];
+        if (node_index >= node_count)
+        {
+            counters.overflow_count = 1u;
+            continue;
+        }
+        TerrainNode node = hierarchy.nodes[node_index];
+        if (!visible_bounds(node.bounds_min.xyz, node.bounds_max.xyz))
+        {
+            ++counters.culled_count;
+            continue;
+        }
+
+        vec3 minimum_value = vec3(3.402823466e+38);
+        vec3 maximum_value = vec3(-3.402823466e+38);
+        for (uint corner = 0u; corner < 8u; ++corner)
+        {
+            vec3 local_corner = vec3((corner & 1u) != 0u ? node.bounds_max.x : node.bounds_min.x,
+                                     (corner & 2u) != 0u ? node.bounds_max.y : node.bounds_min.y,
+                                     (corner & 4u) != 0u ? node.bounds_max.z : node.bounds_min.z);
+            vec3 world_corner = transform_world(local_corner);
+            minimum_value = min(minimum_value, world_corner);
+            maximum_value = max(maximum_value, world_corner);
+        }
+        float distance_value = distance_to_bounds(constants.camera_and_error.xyz, minimum_value, maximum_value);
+        float projected_error = node.geometric_error * model_scale * constants.camera_and_error.w / distance_value;
+        if (node.leaf == 0u && projected_error > 1.0)
+        {
+            for (int child = 3; child >= 0; --child)
+            {
+                uint child_index = node.children[child];
+                if (child_index == invalid_node)
+                    continue;
+                if (stack_count >= node_count)
+                    counters.overflow_count = 1u;
+                else
+                    traversal_stack.values[stack_count++] = child_index;
+            }
+        }
+        else
+            append_patch(node_index, projected_error);
+    }
+
+    // Balance neighboring patches to a maximum one-level delta. This mirrors
+    // the CPU reference and makes edge collapse sufficient to prevent cracks.
+    bool changed = true;
+    while (changed && counters.overflow_count == 0u)
+    {
+        changed = false;
+        for (uint a = 0u; a < counters.selected_count && !changed; ++a)
+        {
+            for (uint b = a + 1u; b < counters.selected_count; ++b)
+            {
+                TerrainPatch lhs = selected.patches[a];
+                TerrainPatch rhs = selected.patches[b];
+                if (!adjacent(lhs.samples, rhs.samples))
+                    continue;
+                uint lhs_depth = lhs.metadata.y;
+                uint rhs_depth = rhs.metadata.y;
+                if (lhs_depth + 1u >= rhs_depth && rhs_depth + 1u >= lhs_depth)
+                    continue;
+                uint coarse = lhs_depth < rhs_depth ? a : b;
+                uint coarse_node = selected.patches[coarse].metadata.x;
+                TerrainNode node = hierarchy.nodes[coarse_node];
+                selected.patches[coarse] = selected.patches[counters.selected_count - 1u];
+                --counters.selected_count;
+                for (uint child = 0u; child < 4u; ++child)
+                {
+                    uint child_index = node.children[child];
+                    if (child_index != invalid_node)
+                        append_patch(child_index, 0.0);
+                }
+                changed = true;
+                break;
+            }
+        }
+    }
+
+    if (counters.overflow_count != 0u || counters.selected_count > capacity)
+    {
+        counters.selected_count = 0u;
+        counters.draw_count = 0u;
+        counters.overflow_count = 1u;
+        return;
+    }
+
+    uint patch_quads = terrain.dimensions.y;
+    uint full_index_count = patch_quads * patch_quads * 6u;
+    for (uint patch_index = 0u; patch_index < counters.selected_count; ++patch_index)
+    {
+        TerrainPatch patch_record = selected.patches[patch_index];
+        uint stitch_mask = 0u;
+        for (uint neighbor_index = 0u; neighbor_index < counters.selected_count; ++neighbor_index)
+        {
+            if (patch_index == neighbor_index)
+                continue;
+            TerrainPatch neighbor = selected.patches[neighbor_index];
+            if (neighbor.metadata.y + 1u != patch_record.metadata.y)
+                continue;
+            if (patch_record.samples.x == neighbor.samples.z && patch_record.samples.y < neighbor.samples.w &&
+                neighbor.samples.y < patch_record.samples.w)
+                stitch_mask |= 1u;
+            if (patch_record.samples.z == neighbor.samples.x && patch_record.samples.y < neighbor.samples.w &&
+                neighbor.samples.y < patch_record.samples.w)
+                stitch_mask |= 2u;
+            if (patch_record.samples.y == neighbor.samples.w && patch_record.samples.x < neighbor.samples.z &&
+                neighbor.samples.x < patch_record.samples.z)
+                stitch_mask |= 4u;
+            if (patch_record.samples.w == neighbor.samples.y && patch_record.samples.x < neighbor.samples.z &&
+                neighbor.samples.x < patch_record.samples.z)
+                stitch_mask |= 8u;
+        }
+        selected.patches[patch_index].metadata.z = stitch_mask;
+        indirect_draws.commands[patch_index].index_count = full_index_count;
+        indirect_draws.commands[patch_index].instance_count = 1u;
+        indirect_draws.commands[patch_index].first_index = 0u;
+        indirect_draws.commands[patch_index].vertex_offset = 0;
+        indirect_draws.commands[patch_index].first_instance = patch_index;
+    }
+    counters.draw_count = counters.selected_count;
+}

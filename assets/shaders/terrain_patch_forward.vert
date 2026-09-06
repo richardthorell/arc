@@ -3,6 +3,8 @@
 layout(set = 1, binding = 0, std430) readonly buffer TerrainHeights { float heights[]; } terrain_heights;
 layout(set = 1, binding = 1, std430) readonly buffer TerrainWeights { uint weights[]; } terrain_weights;
 layout(set = 1, binding = 2, std140) uniform TerrainResource { uvec4 dimensions; vec4 extent; } terrain;
+struct TerrainPatch { uvec4 samples; uvec4 metadata; };
+layout(set = 1, binding = 3, std430) readonly buffer TerrainPatches { TerrainPatch patches[]; } terrain_patches;
 
 layout(location = 0) out vec3 out_normal;
 layout(location = 1) out vec3 out_world_position;
@@ -29,8 +31,19 @@ void main()
     uint patch_quads = terrain.dimensions.y;
     uint row = patch_quads + 1u;
     uvec2 grid = uvec2(uint(gl_VertexIndex) % row, uint(gl_VertexIndex) / row);
+    vec4 patch_samples = constants.patch_samples;
+    if (patch_samples.x < 0.0)
+    {
+        TerrainPatch patch_record = terrain_patches.patches[gl_InstanceIndex];
+        uint stitch_mask = patch_record.metadata.z;
+        if ((stitch_mask & 1u) != 0u && grid.x == 0u && (grid.y & 1u) != 0u) --grid.y;
+        if ((stitch_mask & 2u) != 0u && grid.x == patch_quads && (grid.y & 1u) != 0u) --grid.y;
+        if ((stitch_mask & 4u) != 0u && grid.y == 0u && (grid.x & 1u) != 0u) --grid.x;
+        if ((stitch_mask & 8u) != 0u && grid.y == patch_quads && (grid.x & 1u) != 0u) --grid.x;
+        patch_samples = vec4(patch_record.samples);
+    }
     vec2 uv = vec2(grid) / float(patch_quads);
-    vec2 source_sample = mix(constants.patch_samples.xy, constants.patch_samples.zw, uv);
+    vec2 source_sample = mix(patch_samples.xy, patch_samples.zw, uv);
     ivec2 sample_coord = ivec2(round(source_sample));
     float height = sample_height(sample_coord);
     float half_width = terrain.extent.x * 0.5;
