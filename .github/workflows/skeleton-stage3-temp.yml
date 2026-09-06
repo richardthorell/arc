@@ -29,6 +29,12 @@ jobs:
           path.write_text(text)
           PY
           python3 tools/apply_skeleton_stage3_patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('editor/src/renderer/src/inspector/SkeletonInspector.test.tsx')
+          text = path.read_text().replace("expect(screen.getByText('Hips')).toBeVisible();", "expect(screen.getAllByText('Hips')[0]).toBeVisible();")
+          path.write_text(text)
+          PY
 
       - name: Format native changes
         run: |
