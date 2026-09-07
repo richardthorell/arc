@@ -28,8 +28,7 @@ bool validate_terrain_surface_ir(const terrain_surface_ir& surface) noexcept
 
     const auto* mesh = std::get_if<terrain_surface_mesh_ir>(&surface.geometry);
     if (!mesh || mesh->positions.empty() || mesh->indices.empty() || mesh->indices.size() % 3u != 0u) return false;
-    if (!std::all_of(mesh->positions.begin(), mesh->positions.end(),
-                     [](const math::vector3f& value)
+    if (!std::all_of(mesh->positions.begin(), mesh->positions.end(), [](const math::vector3f& value)
                      { return std::isfinite(value[0]) && std::isfinite(value[1]) && std::isfinite(value[2]); }))
         return false;
     return std::all_of(mesh->indices.begin(), mesh->indices.end(),

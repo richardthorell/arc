@@ -56,6 +56,7 @@ struct terrain_surface_ir
  *
  * This is the compatibility boundary used while authored terrain sources migrate to the unified terrain evaluator.
  */
-[[nodiscard]] std::optional<terrain_surface_ir> make_legacy_terrain_surface_ir(const terrain_component& terrain) noexcept;
+[[nodiscard]] std::optional<terrain_surface_ir>
+make_legacy_terrain_surface_ir(const terrain_component& terrain) noexcept;
 
 } // namespace arc::scene

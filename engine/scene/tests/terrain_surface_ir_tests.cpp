@@ -36,9 +36,7 @@ TEST_CASE("legacy heightfields adapt to backend independent terrain surface IR")
 
 TEST_CASE("terrain surface IR validates mesh topology independently from the renderer")
 {
-    const std::vector<arc::math::vector3f> positions{{0.0f, 0.0f, 0.0f},
-                                                     {1.0f, 0.0f, 0.0f},
-                                                     {0.0f, 0.0f, 1.0f}};
+    const std::vector<arc::math::vector3f> positions{{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}};
     const std::vector<std::uint32_t> indices{0u, 1u, 2u};
     arc::scene::terrain_surface_ir surface;
     surface.local_bounds = {0.0, 0.0, 0.0, 1.0, 0.0, 1.0};
