@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 #include <unordered_set>
+#include <utility>
 
 namespace arc::scene
 {
@@ -27,7 +28,7 @@ bool finite(const math::vector3f& value) noexcept
 
 bool finite(const math::quatf& value) noexcept
 {
-    return finite(value.x) && finite(value.y) && finite(value.z) && finite(value.w);
+    return finite(value.x()) && finite(value.y()) && finite(value.z()) && finite(value.w());
 }
 
 bool valid_source_transform(const terrain_source_transform& transform) noexcept
