@@ -110,7 +110,14 @@ void arc_append_model_preview_metadata(nlohmann::json& payload, const editor_sce
             return arc_model_preview_render_stats(scene, renderer);                                                    \
         }())
 
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsubobject-linkage"
+#endif
 #include "arc_host_impl.inc"
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 #undef collect_viewport_render_stats
 #undef focus_selected_entity
