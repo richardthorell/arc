@@ -1,0 +1,86 @@
+name: Fix PR 210 build
+on: push
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch model preview gizmos and validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('editor/native/src/arc_host_impl.inc')
+          s = p.read_text()
+          old = '''    auto preview = std::make_unique<editor_scene_state>(create_blank_scene(*host.renderer, false, nullptr));
+    preview->scene_name = "Asset Preview: model";
+    preview->primitive_material =
+'''
+          new = '''    auto preview = std::make_unique<editor_scene_state>(create_blank_scene(*host.renderer, false, nullptr));
+    preview->scene_name = "Asset Preview: model";
+    if (auto* tag = preview->scene.template try_get<scene::tag_component>(preview->game_camera_entity))
+        tag->value = "AssetPreview";
+    if (auto* tag = preview->scene.template try_get<scene::tag_component>(preview->sun_entity))
+        tag->value = "AssetPreview";
+    preview->primitive_material =
+'''
+          if old not in s:
+              raise SystemExit('model preview setup pattern not found')
+          p.write_text(s.replace(old, new, 1))
+
+          p = Path('editor/native/src/editor_gizmo.cpp')
+          s = p.read_text()
+          old = '''    const auto color_for = [&](ecs::entity entity, const math::vector4f& normal)
+    { return entity == selected ? selected_color : normal; };
+
+    registry.view<scene::transform_component, scene::camera_component>().each(
+'''
+          new = '''    const auto color_for = [&](ecs::entity entity, const math::vector4f& normal)
+    { return entity == selected ? selected_color : normal; };
+    const auto hidden_in_asset_preview = [&](ecs::entity entity)
+    {
+        const auto* tag = registry.try_get<scene::tag_component>(entity);
+        return tag && tag->value == "AssetPreview";
+    };
+
+    registry.view<scene::transform_component, scene::camera_component>().each(
+'''
+          if old not in s:
+              raise SystemExit('gizmo helper pattern not found')
+          s = s.replace(old, new, 1)
+          old = '''            if (entity == view_camera_entity || !camera.active) return;
+'''
+          new = '''            if (entity == view_camera_entity || !camera.active || hidden_in_asset_preview(entity)) return;
+'''
+          if old not in s:
+              raise SystemExit('camera gizmo pattern not found')
+          s = s.replace(old, new, 1)
+          old = '''        if (!enabled) return;
+        append_billboard_light_icon(stream, transform, view_camera, view_transform, context.viewport_height,
+'''
+          new = '''        if (!enabled || hidden_in_asset_preview(entity)) return;
+        append_billboard_light_icon(stream, transform, view_camera, view_transform, context.viewport_height,
+'''
+          if old not in s:
+              raise SystemExit('light gizmo pattern not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+
+          sudo apt-get update -qq
+          sudo apt-get install -y clang-format-18 >/dev/null
+          clang-format-18 -i editor/native/src/arc_host.cpp editor/native/src/arc_host_impl.inc editor/native/src/editor_gizmo.cpp
+          git diff --check
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor/native/src/arc_host.cpp editor/native/src/arc_host_impl.inc editor/native/src/editor_gizmo.cpp
+          git commit -m "Fix model preview build and gizmos"
+          git rm .github/workflows/temp-fix-pr210-build.yml
+          git commit -m "Remove temporary PR 210 build workflow"
+          git push
