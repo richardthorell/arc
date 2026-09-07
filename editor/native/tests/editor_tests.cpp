@@ -3266,7 +3266,7 @@ TEST_CASE("terrain host snapshots validate brush settings and group a stroke int
     REQUIRE(host->scene_state().scene.get<arc::scene::terrain_component>(terrain_entity).layer_weights == before);
 }
 
-TEST_CASE("terrain scene version 2 payload round trips quantized heights and rejects corrupt data atomically")
+TEST_CASE("terrain scene v4 bridge preserves legacy heightfields and terrain asset references")
 {
     const auto root = std::filesystem::temp_directory_path() / "arc-terrain-scene-v2-test";
     std::error_code error;
@@ -3284,6 +3284,8 @@ TEST_CASE("terrain scene version 2 payload round trips quantized heights and rej
         host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::terrain})
             .succeeded);
     auto& terrain = host->scene_state().scene.get<arc::scene::terrain_component>(host->scene_state().terrain_entity);
+    terrain.asset.expected_type = arc::assets::asset_types::terrain;
+    terrain.asset.path_hint = "linked.terrain";
     arc::scene::terrain_brush_settings brush;
     brush.tool = arc::scene::terrain_brush_tool::sculpt;
     brush.radius = 9.0f;
@@ -3297,7 +3299,7 @@ TEST_CASE("terrain scene version 2 payload round trips quantized heights and rej
     std::ifstream saved_stream(path, std::ios::binary);
     const std::string saved((std::istreambuf_iterator<char>(saved_stream)), std::istreambuf_iterator<char>());
     REQUIRE(saved.find("\"Terrain\"") != std::string::npos);
-    REQUIRE(saved.find("\"version\": 2") != std::string::npos);
+    REQUIRE(saved.find("\"version\": 4") != std::string::npos);
     REQUIRE(saved.find("\"heights\"") != std::string::npos);
     REQUIRE(saved.find("\"weights\"") != std::string::npos);
 
@@ -3306,6 +3308,8 @@ TEST_CASE("terrain scene version 2 payload round trips quantized heights and rej
     const auto& loaded =
         host->scene_state().scene.get<arc::scene::terrain_component>(host->scene_state().terrain_entity);
     REQUIRE(loaded.layer_weights == expected_weights);
+    REQUIRE(loaded.asset.expected_type == arc::assets::asset_types::terrain);
+    REQUIRE(loaded.asset.path_hint == "linked.terrain");
     const auto [minimum, maximum] = std::minmax_element(expected_heights.begin(), expected_heights.end());
     const float tolerance = (*maximum - *minimum) / 65535.0f + 0.0001f;
     for (std::size_t index = 0; index < loaded.heights.size(); index += 997u)

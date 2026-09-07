@@ -1,5 +1,6 @@
 #pragma once
 
+#include <arc/assets/assets.h>
 #include <arc/render/handles.h>
 #include <arc/render/lighting.h>
 #include <arc/render/lighting_scene.h>
@@ -569,6 +570,12 @@ struct height_fog_component
  */
 struct terrain_component
 {
+    /** Authored unified terrain definition. Empty references identify legacy inline terrain. */
+    assets::asset_reference asset;
+    /** Last loaded terrain-asset generation. Runtime-only compatibility state. */
+    std::uint64_t asset_generation{};
+    /** Authoring revision of the last loaded terrain asset. Runtime-only compatibility state. */
+    std::uint64_t asset_authoring_revision{};
     bool enabled{true};
     float size{32.0f};
     std::uint32_t subdivisions{256};

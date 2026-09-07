@@ -1001,7 +1001,7 @@ export const generatedEcsComponents = [
     "canonicalName": "arc::scene.terrain_component",
     "displayName": "Terrain",
     "description": "Reflected scene data for the Terrain component.",
-    "schemaVersion": 3,
+    "schemaVersion": 4,
     "fields": []
   },
   {

@@ -18,4 +18,6 @@
 #include <arc/scene/terrain.h>
 #include <arc/scene/terrain_asset.h>
 #include <arc/scene/terrain_asset_io.h>
+#include <arc/scene/terrain_asset_bridge.h>
+#include <arc/scene/terrain_surface_ir.h>
 #include <arc/scene/transforms.h>
