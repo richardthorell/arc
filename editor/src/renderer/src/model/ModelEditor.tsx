@@ -12,6 +12,16 @@ import { buildModelSubassets, hasSkeletonMetadata, skeletonCompatibility } from 
 import './modelEditor.css';
 
 type ProjectAssetsResponse = { succeeded?: boolean; payload?: { assets?: AssetItem[] } };
+type ModelPreviewMetadata = {
+  modelMeshes?: Array<{ name?: string; skinned?: boolean }>;
+  modelSkeleton?: {
+    name?: string;
+    boneCount?: number;
+    hierarchyDepth?: number;
+    rootBone?: string;
+    joints?: Array<{ index: number; name: string; parent: number }>;
+  };
+};
 
 const compatibilityIcon = (value: ReturnType<typeof skeletonCompatibility>) =>
   value === 'compatible' ? (
@@ -27,11 +37,36 @@ export function ModelEditor({ document }: { document: EditorDocument }) {
   const [activeSection, setActiveSection] = useState<'model' | 'skeleton'>('model');
   const [candidateAssets, setCandidateAssets] = useState<AssetItem[]>([]);
   const [assignedSkeleton, setAssignedSkeleton] = useState(asset?.guid ?? asset?.path ?? '');
-  const subassets = useMemo(() => (asset ? buildModelSubassets(asset) : []), [asset]);
+  const [previewMetadata, setPreviewMetadata] = useState<ModelPreviewMetadata>({});
+  const hydratedAsset = useMemo<AssetItem | undefined>(() => {
+    if (!asset) return undefined;
+    const skeleton = previewMetadata.modelSkeleton;
+    return {
+      ...asset,
+      meshCount: previewMetadata.modelMeshes?.length ?? asset.meshCount,
+      skeletonName: skeleton?.name ?? asset.skeletonName,
+      skeletonBoneCount: skeleton?.boneCount ?? asset.skeletonBoneCount,
+      skeletonHierarchyDepth: skeleton?.hierarchyDepth ?? asset.skeletonHierarchyDepth,
+      skeletonRootBone: skeleton?.rootBone ?? asset.skeletonRootBone,
+      skeletonJoints: skeleton?.joints ?? asset.skeletonJoints,
+    };
+  }, [asset, previewMetadata]);
+  const subassets = useMemo(() => {
+    if (!hydratedAsset) return [];
+    const built = buildModelSubassets(hydratedAsset);
+    const meshes = previewMetadata.modelMeshes;
+    if (!meshes?.length) return built;
+    return built.map((subasset) =>
+      subasset.kind === 'mesh' && subasset.meshIndex !== undefined
+        ? { ...subasset, name: meshes[subasset.meshIndex]?.name?.trim() || subasset.name }
+        : subasset,
+    );
+  }, [hydratedAsset, previewMetadata.modelMeshes]);
 
   if (!asset) return <div className="model-editor-empty">Model metadata is unavailable.</div>;
-  const skeleton = hasSkeletonMetadata(asset);
-  const boneCount = asset.skeletonBoneCount ?? asset.skeletonJoints?.length ?? 0;
+  const modelAsset = hydratedAsset ?? asset;
+  const skeleton = hasSkeletonMetadata(modelAsset);
+  const boneCount = modelAsset.skeletonBoneCount ?? modelAsset.skeletonJoints?.length ?? 0;
 
   const loadSkeletonCandidates = async () => {
     try {
@@ -48,7 +83,7 @@ export function ModelEditor({ document }: { document: EditorDocument }) {
         title={asset.name}
         subtitle={asset.path}
         metadata={[
-          { label: 'Meshes', value: asset.meshCount ?? 0 },
+          { label: 'Meshes', value: modelAsset.meshCount ?? 0 },
           { label: 'Vertices', value: asset.vertexCount?.toLocaleString() ?? '—' },
           { label: 'Triangles', value: asset.triangleCount?.toLocaleString() ?? '—' },
           { label: 'Skeleton', value: skeleton ? `${boneCount} bones` : 'None' },
@@ -58,6 +93,12 @@ export function ModelEditor({ document }: { document: EditorDocument }) {
           kind="model"
           assetGuid={asset.guid}
           label={`${asset.name} model preview`}
+          onState={(payload) =>
+            setPreviewMetadata({
+              modelMeshes: payload?.modelMeshes,
+              modelSkeleton: payload?.modelSkeleton,
+            })
+          }
           fallback={
             <AssetPreviewPlaceholder
               label="Model preview"
@@ -94,25 +135,32 @@ export function ModelEditor({ document }: { document: EditorDocument }) {
           <div className="model-editor-section">
             <h3>Sub-assets</h3>
             <div className="model-subasset-list">
-              {subassets.map((subasset) => (
-                <button
-                  key={subasset.id}
-                  className="model-subasset-row"
-                  onDoubleClick={() => subasset.kind === 'skeleton' && openSkeletonEditorDocument(asset)}
-                >
-                  {subasset.kind === 'skeleton' ? <Bone size={14} /> : <Box size={14} />}
-                  <span>{subasset.name}</span>
-                  <small>{subasset.kind === 'skeleton' ? 'Skeleton' : 'Mesh'}</small>
-                </button>
-              ))}
-              {!subassets.length && <p>No model sub-assets were reported by the importer.</p>}
+              <div className="model-subasset-root">
+                <Box size={14} />
+                <strong>{asset.name}</strong>
+                <small>Model</small>
+              </div>
+              <div className="model-subasset-children">
+                {subassets.map((subasset) => (
+                  <button
+                    key={subasset.id}
+                    className="model-subasset-row"
+                    onDoubleClick={() => subasset.kind === 'skeleton' && openSkeletonEditorDocument(modelAsset)}
+                  >
+                    {subasset.kind === 'skeleton' ? <Bone size={14} /> : <Box size={14} />}
+                    <span>{subasset.name}</span>
+                    <small>{subasset.kind === 'skeleton' ? 'Skeleton' : 'Mesh'}</small>
+                  </button>
+                ))}
+                {!subassets.length && <p>No model sub-assets were reported by the importer.</p>}
+              </div>
             </div>
           </div>
         ) : (
           <div className="model-editor-section">
             <div className="model-editor-section-heading">
-              <h3>{asset.skeletonName || 'Skeleton'}</h3>
-              <UiButton type="button" variant="toolbar" onClick={() => openSkeletonEditorDocument(asset)}>
+              <h3>{modelAsset.skeletonName || 'Skeleton'}</h3>
+              <UiButton type="button" variant="toolbar" onClick={() => openSkeletonEditorDocument(modelAsset)}>
                 Open <ExternalLink size={12} />
               </UiButton>
             </div>
@@ -124,16 +172,18 @@ export function ModelEditor({ document }: { document: EditorDocument }) {
               <div>
                 <dt>Root</dt>
                 <dd>
-                  {asset.skeletonRootBone || asset.skeletonJoints?.find((joint) => joint.parent < 0)?.name || '—'}
+                  {modelAsset.skeletonRootBone ||
+                    modelAsset.skeletonJoints?.find((joint) => joint.parent < 0)?.name ||
+                    '—'}
                 </dd>
               </div>
               <div>
                 <dt>Hierarchy depth</dt>
-                <dd>{asset.skeletonHierarchyDepth ?? '—'}</dd>
+                <dd>{modelAsset.skeletonHierarchyDepth ?? '—'}</dd>
               </div>
               <div>
                 <dt>Bind pose</dt>
-                <dd>{asset.skeletonJoints?.length ? 'Available' : 'Metadata only'}</dd>
+                <dd>{modelAsset.skeletonJoints?.length ? 'Available' : 'Metadata only'}</dd>
               </div>
             </dl>
             <label className="model-skeleton-picker">
@@ -144,12 +194,12 @@ export function ModelEditor({ document }: { document: EditorDocument }) {
                 onChange={(event) => setAssignedSkeleton(event.target.value)}
               >
                 <option value={asset.guid ?? asset.path}>
-                  {asset.skeletonName || `${asset.name} Skeleton`} (Imported)
+                  {modelAsset.skeletonName || `${asset.name} Skeleton`} (Imported)
                 </option>
                 {candidateAssets
                   .filter((candidate) => (candidate.guid ?? candidate.path) !== (asset.guid ?? asset.path))
                   .map((candidate) => {
-                    const compatibility = skeletonCompatibility(asset, candidate);
+                    const compatibility = skeletonCompatibility(modelAsset, candidate);
                     return (
                       <option
                         key={candidate.guid ?? candidate.path}
