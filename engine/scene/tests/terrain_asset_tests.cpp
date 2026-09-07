@@ -35,8 +35,8 @@ TEST_CASE("terrain asset stable IDs round trip")
 TEST_CASE("terrain domains compose without coupling derived products")
 {
     using arc::scene::terrain_domain;
-    const auto tunnel = terrain_domain::geometry | terrain_domain::topology | terrain_domain::collision |
-                        terrain_domain::navigation;
+    const auto tunnel =
+        terrain_domain::geometry | terrain_domain::topology | terrain_domain::collision | terrain_domain::navigation;
     REQUIRE(arc::scene::terrain_domain_contains(tunnel, terrain_domain::geometry));
     REQUIRE(arc::scene::terrain_domain_contains(tunnel, terrain_domain::topology));
     REQUIRE_FALSE(arc::scene::terrain_domain_contains(tunnel, terrain_domain::attributes));
@@ -48,12 +48,12 @@ TEST_CASE("terrain authoring regions use stable half open world partitions")
     const arc::scene::terrain_coordinate_system coordinates{1000.0, 25.0, -500.0, 1.0};
     const arc::scene::terrain_partition_settings partition{256.0, 8.0};
 
-    REQUIRE((arc::scene::terrain_region_at(coordinates, partition, 1000.0, -500.0) ==
-             arc::scene::terrain_region_id{0, 0}));
+    REQUIRE(
+        (arc::scene::terrain_region_at(coordinates, partition, 1000.0, -500.0) == arc::scene::terrain_region_id{0, 0}));
     REQUIRE((arc::scene::terrain_region_at(coordinates, partition, 1255.999, -244.001) ==
              arc::scene::terrain_region_id{0, 0}));
-    REQUIRE((arc::scene::terrain_region_at(coordinates, partition, 1256.0, -244.0) ==
-             arc::scene::terrain_region_id{1, 1}));
+    REQUIRE(
+        (arc::scene::terrain_region_at(coordinates, partition, 1256.0, -244.0) == arc::scene::terrain_region_id{1, 1}));
     REQUIRE((arc::scene::terrain_region_at(coordinates, partition, 999.999, -500.001) ==
              arc::scene::terrain_region_id{-1, -1}));
 

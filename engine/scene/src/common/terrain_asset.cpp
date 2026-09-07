@@ -43,18 +43,18 @@ bool attribute_value_matches(terrain_attribute_type type, const terrain_attribut
 {
     switch (type)
     {
-    case terrain_attribute_type::boolean:
-        return std::holds_alternative<bool>(value);
-    case terrain_attribute_type::signed_integer:
-        return std::holds_alternative<std::int64_t>(value);
-    case terrain_attribute_type::unsigned_integer:
-        return std::holds_alternative<std::uint64_t>(value);
-    case terrain_attribute_type::floating_point:
-        return std::holds_alternative<double>(value);
-    case terrain_attribute_type::vector4:
-        return std::holds_alternative<math::vector4f>(value);
-    case terrain_attribute_type::string:
-        return std::holds_alternative<std::string>(value);
+        case terrain_attribute_type::boolean:
+            return std::holds_alternative<bool>(value);
+        case terrain_attribute_type::signed_integer:
+            return std::holds_alternative<std::int64_t>(value);
+        case terrain_attribute_type::unsigned_integer:
+            return std::holds_alternative<std::uint64_t>(value);
+        case terrain_attribute_type::floating_point:
+            return std::holds_alternative<double>(value);
+        case terrain_attribute_type::vector4:
+            return std::holds_alternative<math::vector4f>(value);
+        case terrain_attribute_type::string:
+            return std::holds_alternative<std::string>(value);
     }
     return false;
 }
@@ -164,14 +164,15 @@ std::vector<terrain_region_id> terrain_regions_overlapping(const terrain_coordin
 
     result.reserve(static_cast<std::size_t>(width * depth));
     for (std::int64_t z = minimum.z; z <= maximum.z; ++z)
-        for (std::int64_t x = minimum.x; x <= maximum.x; ++x) result.push_back({x, z});
+        for (std::int64_t x = minimum.x; x <= maximum.x; ++x)
+            result.push_back({x, z});
     return result;
 }
 
 bool terrain_asset_validation_result::valid() const noexcept
 {
-    return std::none_of(issues.begin(), issues.end(), [](const auto& issue)
-                        { return issue.severity == terrain_asset_validation_severity::error; });
+    return std::none_of(issues.begin(), issues.end(),
+                        [](const auto& issue) { return issue.severity == terrain_asset_validation_severity::error; });
 }
 
 terrain_asset_validation_result validate_terrain_asset(const terrain_asset& asset)
@@ -193,7 +194,8 @@ terrain_asset_validation_result validate_terrain_asset(const terrain_asset& asse
         add_issue(result, terrain_asset_validation_severity::error, terrain_asset_validation_code::invalid_partition,
                   "terrain partition must use a positive region size and non-negative dependency halo");
 
-    if (!asset.source.id.valid() || asset.source.schema_version == 0u || !valid_source_transform(asset.source.transform))
+    if (!asset.source.id.valid() || asset.source.schema_version == 0u ||
+        !valid_source_transform(asset.source.transform))
         add_issue(result, terrain_asset_validation_severity::error, terrain_asset_validation_code::invalid_source,
                   "terrain source requires a stable ID, positive schema version, and finite non-zero transform",
                   asset.source.id);
@@ -230,7 +232,8 @@ terrain_asset_validation_result validate_terrain_asset(const terrain_asset& asse
     {
         if (!attribute.id.valid() || attribute.name.empty() || attribute.schema_version == 0u ||
             !attribute_value_matches(attribute.type, attribute.default_value))
-            add_issue(result, terrain_asset_validation_severity::error, terrain_asset_validation_code::invalid_attribute,
+            add_issue(result, terrain_asset_validation_severity::error,
+                      terrain_asset_validation_code::invalid_attribute,
                       "terrain attribute requires an ID, name, schema, and default value matching its declared type",
                       attribute.id);
 

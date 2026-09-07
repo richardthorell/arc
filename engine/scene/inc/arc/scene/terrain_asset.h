@@ -67,9 +67,9 @@ struct terrain_partition_settings
                                                          const terrain_partition_settings& partition,
                                                          terrain_region_id region) noexcept;
 [[nodiscard]] terrain_world_bounds expand_terrain_bounds(terrain_world_bounds bounds, double amount) noexcept;
-[[nodiscard]] std::vector<terrain_region_id>
-terrain_regions_overlapping(const terrain_coordinate_system& coordinates, const terrain_partition_settings& partition,
-                            terrain_world_bounds bounds);
+[[nodiscard]] std::vector<terrain_region_id> terrain_regions_overlapping(const terrain_coordinate_system& coordinates,
+                                                                         const terrain_partition_settings& partition,
+                                                                         terrain_world_bounds bounds);
 
 enum class terrain_source_kind : std::uint8_t
 {
@@ -182,8 +182,7 @@ enum class terrain_attribute_interpolation : std::uint8_t
     linear
 };
 
-using terrain_attribute_value =
-    std::variant<bool, std::int64_t, std::uint64_t, double, math::vector4f, std::string>;
+using terrain_attribute_value = std::variant<bool, std::int64_t, std::uint64_t, double, math::vector4f, std::string>;
 
 struct terrain_attribute_definition
 {
@@ -233,7 +232,8 @@ struct terrain_runtime_policy
     assets::asset_reference damage_profile;
 };
 
-/** @brief Unified authored terrain definition. Evaluated/cooked renderer data must never be serialized into this type. */
+/** @brief Unified authored terrain definition. Evaluated/cooked renderer data must never be serialized into this type.
+ */
 struct terrain_asset
 {
     static constexpr std::uint32_t current_schema_version = 1;
