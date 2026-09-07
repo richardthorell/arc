@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <span>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -189,6 +191,7 @@ TEST_CASE("terrain importer materializes typed assets and reports authoring depe
     REQUIRE(payload != nullptr);
     REQUIRE(payload->source.kind == arc::scene::terrain_source_kind::heightfield);
     REQUIRE(imported.dependencies.size() == 1);
+    REQUIRE(imported.dependencies.front().expected_type == arc::assets::asset_types::texture_2d);
     REQUIRE(imported.dependencies.front().path_hint == "Content/Terrain/island-height.png");
 }
 
