@@ -25,6 +25,7 @@ arc_add_module(
     NO_TESTS
 )
 
+target_link_libraries(arc-scene PRIVATE "$<BUILD_INTERFACE:arc-third-party-json>")
 target_sources(arc-scene PRIVATE "${ARC_SCENE_GENERATED_METADATA}")
 target_include_directories(arc-scene PUBLIC
     "$<BUILD_INTERFACE:${ARC_SCENE_GENERATED_ROOT}>"
