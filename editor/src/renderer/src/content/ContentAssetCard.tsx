@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Star } from 'lucide-react';
+import { ChevronDown, ChevronRight, Star } from 'lucide-react';
 
 import { DocumentTypeIcon } from '../assets/DocumentTypeIcon';
 import { loadMaterialSphereThumbnail } from '../assets/materialThumbnail';
@@ -216,6 +216,9 @@ export function ContentAssetCard({
   onFavorite,
   onReimport,
   onSelect,
+  expandable = false,
+  expanded = false,
+  onToggleExpand,
 }: {
   asset: AssetItem;
   favorite: boolean;
@@ -225,6 +228,9 @@ export function ContentAssetCard({
   onFavorite: () => void;
   onReimport: () => void;
   onSelect: (additive: boolean) => void;
+  expandable?: boolean;
+  expanded?: boolean;
+  onToggleExpand?: () => void;
 }) {
   const tooltipId = `asset-details-${asset.id.replace(/[^a-z0-9_-]/gi, '-')}`;
   const cardRef = useRef<HTMLDivElement>(null);
@@ -332,6 +338,14 @@ export function ContentAssetCard({
           <i aria-label={`Asset status: ${asset.status}`} className={`asset-state ${asset.status}`} />
         </span>
         <span className="content-asset-actions" onClick={(event) => event.stopPropagation()}>
+          {expandable && (
+            <button
+              aria-label={expanded ? 'Collapse model sub-assets' : 'Expand model sub-assets'}
+              onClick={onToggleExpand}
+            >
+              {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            </button>
+          )}
           <button aria-label="Favorite" className={favorite ? 'active' : ''} onClick={onFavorite}>
             <Star size={12} />
           </button>

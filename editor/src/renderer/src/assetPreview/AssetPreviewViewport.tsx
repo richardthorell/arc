@@ -5,11 +5,36 @@ import { normalizeViewportWheel } from '../viewport/viewportWheel';
 
 import './AssetPreviewViewport.css';
 
+type ModelPreviewMesh = {
+  name?: string;
+  skinned?: boolean;
+};
+
+type ModelPreviewSkeleton = {
+  name?: string;
+  boneCount?: number;
+  hierarchyDepth?: number;
+  rootBone?: string;
+  joints?: Array<{ index: number; name: string; parent: number }>;
+};
+
+type ViewportStatePayload = {
+  viewportId?: string;
+  submitted?: boolean;
+  frameIndex?: number;
+  assetPreviewKind?: string;
+  assetPreviewGuid?: string;
+  assetPreviewError?: string;
+  modelMeshes?: ModelPreviewMesh[];
+  modelSkeleton?: ModelPreviewSkeleton;
+};
+
 type AssetPreviewViewportProps = {
-  kind: 'material' | 'shader';
+  kind: 'material' | 'shader' | 'model';
   assetGuid?: string;
   fallback: ReactNode;
   label: string;
+  onState?: (payload: ViewportStatePayload | undefined) => void;
 };
 
 type ViewportCommandResponse = {
@@ -20,14 +45,7 @@ type ViewportCommandResponse = {
 type ViewportStateResponse = {
   succeeded?: boolean;
   error?: string;
-  payload?: {
-    viewportId?: string;
-    submitted?: boolean;
-    frameIndex?: number;
-    assetPreviewKind?: string;
-    assetPreviewGuid?: string;
-    assetPreviewError?: string;
-  };
+  payload?: ViewportStatePayload;
 };
 
 type ViewportBounds = {
@@ -71,7 +89,7 @@ export function assetPreviewViewportId(kind: AssetPreviewViewportProps['kind'], 
   return instance === undefined ? base : `${base}~${instance}`;
 }
 
-export function AssetPreviewViewport({ kind, assetGuid, fallback, label }: AssetPreviewViewportProps) {
+export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState }: AssetPreviewViewportProps) {
   const normalizedGuid = normalizedAssetGuid(assetGuid);
   const viewportInstanceRef = useRef<number | null>(null);
   if (viewportInstanceRef.current === null) viewportInstanceRef.current = nextAssetPreviewViewportInstance++;
@@ -91,8 +109,13 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label }: Asset
   const resizeInFlightRef = useRef(false);
   const pendingBoundsRef = useRef<ViewportBounds | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const onStateRef = useRef(onState);
   const [streamed, setStreamed] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    onStateRef.current = onState;
+  }, [onState]);
 
   const traceViewportState = useCallback(
     async (phase: string) => {
@@ -126,6 +149,7 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label }: Asset
           });
         }
         lastPreviewErrorRef.current = previewError;
+        onStateRef.current?.(response?.payload);
       } catch (reason) {
         console.warn('[material-flow] asset preview viewport state query failed', {
           phase,

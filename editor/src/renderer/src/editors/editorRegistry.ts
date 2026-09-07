@@ -1,5 +1,5 @@
 import { createElement } from 'react';
-import { Circle, FileCode2, Globe2, Image } from 'lucide-react';
+import { Bone, Box, Circle, FileCode2, Globe2, Image } from 'lucide-react';
 
 import type { AssetItem } from '../services/editorHostTypes';
 import { MaterialEditor } from '../material/MaterialEditor';
@@ -10,6 +10,9 @@ import { ShaderSourceEditorToolbar } from '../shader/ShaderSourceEditorToolbar';
 import { disposeShaderDocument, saveShaderDocument } from '../shader/shaderDocumentState';
 import { TextureEditor } from '../texture/TextureEditor';
 import { TextureEditorToolbar } from '../texture/TextureEditorToolbar';
+import { ModelEditor, ModelEditorToolbar } from '../model/ModelEditor';
+import { SkeletonAssetEditor, SkeletonAssetEditorToolbar } from '../model/SkeletonAssetEditor';
+import { isModelAsset } from '../content/assetPresentation';
 import { getActiveEditorDocument, openEditorDocumentInStore } from './editorDocuments';
 import type {
   EditorDocument,
@@ -194,6 +197,39 @@ const materialRegistration: EditorRegistration = {
   onClosed: (document) => disposeMaterialDocument(document.id),
 };
 
+const modelRegistration: EditorRegistration = {
+  kind: 'model',
+  title: 'Model Editor',
+  icon: Box,
+  allowMultiple: true,
+  closeable: true,
+  canOpenAsset: (asset) => isModelAsset(asset) || asset.kind === 'mesh',
+  createDocument: (asset) => ({
+    id: `model:${asset.guid ?? asset.path}`,
+    kind: 'model',
+    title: asset.name,
+    path: asset.path,
+    assetId: asset.id,
+    assetGuid: asset.guid,
+    assetScope: asset.scope,
+    assetSnapshot: asset,
+    dirty: false,
+    readOnly: asset.scope === 'builtin' || Boolean(asset.readOnly),
+  }),
+  render: (document) => createElement(ModelEditor, { document }),
+  renderToolbar: () => createElement(ModelEditorToolbar),
+};
+
+const skeletonRegistration: EditorRegistration = {
+  kind: 'skeleton',
+  title: 'Skeleton Editor',
+  icon: Bone,
+  allowMultiple: true,
+  closeable: true,
+  render: (document) => createElement(SkeletonAssetEditor, { document }),
+  renderToolbar: () => createElement(SkeletonAssetEditorToolbar),
+};
+
 const textureRegistration: EditorRegistration = {
   kind: 'texture',
   title: 'Texture Editor',
@@ -226,6 +262,8 @@ export const createEditorRegistry = (registrations: EditorRegistrySeed): EditorR
     shader: registrations.shader ?? shaderRegistration,
     material: registrations.material ?? materialRegistration,
     texture: registrations.texture ?? textureRegistration,
+    model: registrations.model ?? modelRegistration,
+    skeleton: registrations.skeleton ?? skeletonRegistration,
   } as EditorRegistry;
   currentRegistry = registry;
   return registry;
@@ -269,6 +307,26 @@ export const openAssetEditorDocument = (asset: AssetItem, registry: EditorRegist
   void resolveRegisteredEditorAsset(asset).then((registered) => {
     openResolvedAssetEditorDocument(registered ?? asset, registry);
   });
+  return true;
+};
+
+export const openSkeletonEditorDocument = (asset: AssetItem, registry: EditorRegistry | null = currentRegistry) => {
+  if (!registry) return false;
+  const registration = registry.skeleton;
+  const document: EditorDocument = {
+    id: `skeleton:${asset.guid ?? asset.path}`,
+    kind: 'skeleton',
+    title: asset.skeletonName?.trim() || `${asset.name} Skeleton`,
+    path: asset.path,
+    assetId: asset.id,
+    assetGuid: asset.guid,
+    assetScope: asset.scope,
+    assetSnapshot: asset,
+    subresource: 'skeleton',
+    dirty: false,
+    readOnly: true,
+  };
+  openEditorDocumentInStore(document, registration.allowMultiple);
   return true;
 };
 
