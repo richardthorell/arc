@@ -48,14 +48,14 @@ TEST_CASE("terrain authoring regions use stable half open world partitions")
     const arc::scene::terrain_coordinate_system coordinates{1000.0, 25.0, -500.0, 1.0};
     const arc::scene::terrain_partition_settings partition{256.0, 8.0};
 
-    REQUIRE(arc::scene::terrain_region_at(coordinates, partition, 1000.0, -500.0) ==
-            arc::scene::terrain_region_id{0, 0});
-    REQUIRE(arc::scene::terrain_region_at(coordinates, partition, 1255.999, -244.001) ==
-            arc::scene::terrain_region_id{0, 0});
-    REQUIRE(arc::scene::terrain_region_at(coordinates, partition, 1256.0, -244.0) ==
-            arc::scene::terrain_region_id{1, 1});
-    REQUIRE(arc::scene::terrain_region_at(coordinates, partition, 999.999, -500.001) ==
-            arc::scene::terrain_region_id{-1, -1});
+    REQUIRE((arc::scene::terrain_region_at(coordinates, partition, 1000.0, -500.0) ==
+             arc::scene::terrain_region_id{0, 0}));
+    REQUIRE((arc::scene::terrain_region_at(coordinates, partition, 1255.999, -244.001) ==
+             arc::scene::terrain_region_id{0, 0}));
+    REQUIRE((arc::scene::terrain_region_at(coordinates, partition, 1256.0, -244.0) ==
+             arc::scene::terrain_region_id{1, 1}));
+    REQUIRE((arc::scene::terrain_region_at(coordinates, partition, 999.999, -500.001) ==
+             arc::scene::terrain_region_id{-1, -1}));
 
     const auto bounds = arc::scene::terrain_region_bounds(coordinates, partition, {-1, 2});
     REQUIRE(bounds.min_x == Catch::Approx(744.0));
@@ -73,7 +73,7 @@ TEST_CASE("terrain overlapping regions are deterministic and do not double count
     const arc::scene::terrain_world_bounds bounds{0.0, -20.0, 0.0, 200.0, 80.0, 100.0};
 
     const auto regions = arc::scene::terrain_regions_overlapping(coordinates, partition, bounds);
-    REQUIRE(regions == std::vector<arc::scene::terrain_region_id>{{0, 0}, {1, 0}});
+    REQUIRE((regions == std::vector<arc::scene::terrain_region_id>{{0, 0}, {1, 0}}));
 
     const auto dependency = arc::scene::expand_terrain_bounds(bounds, partition.dependency_halo);
     REQUIRE(dependency.min_x == Catch::Approx(-12.0));
