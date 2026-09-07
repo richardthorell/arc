@@ -57,12 +57,38 @@
   display: grid;
   gap: 4px;
 }
+.model-subasset-root,
 .model-subasset-row {
   display: grid;
   grid-template-columns: 18px 1fr auto;
   align-items: center;
   gap: 7px;
   padding: 7px 8px;
+}
+.model-subasset-root {
+  color: inherit;
+}
+.model-subasset-root strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+.model-subasset-root small,
+.model-subasset-row small {
+  opacity: 0.55;
+}
+.model-subasset-children {
+  display: grid;
+  gap: 2px;
+  margin-left: 15px;
+  padding-left: 9px;
+  border-left: 1px solid var(--border-subtle, #343b44);
+}
+.model-subasset-children > p {
+  margin: 6px 8px;
+  font-size: 11px;
+  opacity: 0.55;
+}
+.model-subasset-row {
   border: 1px solid transparent;
   border-radius: 4px;
   background: transparent;
@@ -72,9 +98,6 @@
 .model-subasset-row:hover {
   border-color: var(--border-subtle, #343b44);
   background: rgba(255, 255, 255, 0.04);
-}
-.model-subasset-row small {
-  opacity: 0.55;
 }
 .model-skeleton-summary,
 .skeleton-asset-details dl {
