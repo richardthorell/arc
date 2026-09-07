@@ -45,15 +45,6 @@ bool arc_model_preview_focus(const ecs::world& registry, ecs::entity selected,
     return true;
 }
 
-render::debug_overlay_stream arc_model_preview_gizmo_overlay(const ecs::world& registry, ecs::entity selected,
-                                                             ecs::entity camera_entity,
-                                                             const editor_gizmo_context& context,
-                                                             std::string_view scene_name)
-{
-    if (scene_name == "Asset Preview: model") return {};
-    return build_editor_gizmo_overlay(registry, selected, camera_entity, context);
-}
-
 viewport_render_stats arc_model_preview_render_stats(const editor_scene_state& scene,
                                                      const render::renderer& renderer) noexcept
 {
@@ -109,8 +100,6 @@ void arc_append_model_preview_metadata(nlohmann::json& payload, const editor_sce
 } // namespace arc::editor
 
 #define focus_selected_entity(registry, selected, camera) arc_model_preview_focus(registry, selected, camera)
-#define build_editor_gizmo_overlay(registry, selected, camera, context)                                                \
-    arc_model_preview_gizmo_overlay(registry, selected, camera, context, state_->scene.scene_name)
 #define collect_viewport_render_stats(scene, renderer)                                                                 \
     (                                                                                                                  \
         [&]()                                                                                                          \
@@ -124,5 +113,4 @@ void arc_append_model_preview_metadata(nlohmann::json& payload, const editor_sce
 #include "arc_host_impl.inc"
 
 #undef collect_viewport_render_stats
-#undef build_editor_gizmo_overlay
 #undef focus_selected_entity
