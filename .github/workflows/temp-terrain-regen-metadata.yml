@@ -1,0 +1,31 @@
+name: Temporary Terrain Metadata Regeneration
+
+on:
+  push:
+    branches:
+      - feat/terrain-m0-compat-surface-ir
+    paths:
+      - .github/workflows/temp-terrain-regen-metadata.yml
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/terrain-m0-compat-surface-ir
+      - name: Regenerate metadata
+        run: |
+          python3 tools/ecs_codegen.py \
+            --schema engine/scene/schema/components.arccomponents.json \
+            --ts-output editor/src/renderer/src/inspector/generatedEcsMetadata.ts
+      - name: Commit generated metadata
+        run: |
+          git config user.name "arc-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add editor/src/renderer/src/inspector/generatedEcsMetadata.ts
+          git commit -m "Regenerate terrain ECS metadata"
+          git push origin HEAD:feat/terrain-m0-compat-surface-ir
