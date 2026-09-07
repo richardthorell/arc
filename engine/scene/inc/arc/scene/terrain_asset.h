@@ -1,0 +1,289 @@
+#pragma once
+
+#include <arc/assets/assets.h>
+#include <arc/core/id.h>
+#include <arc/math/math.h>
+
+#include <compare>
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <variant>
+#include <vector>
+
+namespace arc::scene
+{
+
+struct terrain_stable_id_tag;
+using terrain_stable_id = core::uuid<terrain_stable_id_tag>;
+
+[[nodiscard]] terrain_stable_id generate_terrain_stable_id() noexcept;
+[[nodiscard]] std::string to_string(terrain_stable_id value);
+[[nodiscard]] std::optional<terrain_stable_id> parse_terrain_stable_id(std::string_view text) noexcept;
+
+/** @brief Stable authoring-region coordinate. Runtime streaming cells and render pages are intentionally separate. */
+struct terrain_region_id
+{
+    std::int64_t x{};
+    std::int64_t z{};
+
+    friend constexpr auto operator<=>(const terrain_region_id&, const terrain_region_id&) noexcept = default;
+};
+
+/** @brief Double-precision world bounds used by authoring and build dependency tracking. */
+struct terrain_world_bounds
+{
+    double min_x{};
+    double min_y{};
+    double min_z{};
+    double max_x{};
+    double max_y{};
+    double max_z{};
+
+    [[nodiscard]] bool valid() const noexcept;
+};
+
+/** @brief High-precision terrain origin with float-local evaluated geometry. */
+struct terrain_coordinate_system
+{
+    double origin_x{};
+    double origin_y{};
+    double origin_z{};
+    double meters_per_unit{1.0};
+};
+
+/** @brief Stable source-control/dirty-tracking partition. This is not a virtual-geometry page size. */
+struct terrain_partition_settings
+{
+    double authoring_region_size{256.0};
+    double dependency_halo{8.0};
+};
+
+[[nodiscard]] terrain_region_id terrain_region_at(const terrain_coordinate_system& coordinates,
+                                                  const terrain_partition_settings& partition, double world_x,
+                                                  double world_z) noexcept;
+[[nodiscard]] terrain_world_bounds terrain_region_bounds(const terrain_coordinate_system& coordinates,
+                                                         const terrain_partition_settings& partition,
+                                                         terrain_region_id region) noexcept;
+[[nodiscard]] terrain_world_bounds expand_terrain_bounds(terrain_world_bounds bounds, double amount) noexcept;
+[[nodiscard]] std::vector<terrain_region_id>
+terrain_regions_overlapping(const terrain_coordinate_system& coordinates, const terrain_partition_settings& partition,
+                            terrain_world_bounds bounds);
+
+enum class terrain_source_kind : std::uint8_t
+{
+    flat,
+    heightfield,
+    mesh,
+    procedural
+};
+
+struct terrain_source_transform
+{
+    math::vector3f translation{};
+    math::quatf rotation{};
+    math::vector3f scale{math::vector3f::one};
+};
+
+/** @brief One initial source for a unified terrain asset. Source kind never determines runtime rendering. */
+struct terrain_source_descriptor
+{
+    terrain_stable_id id{};
+    terrain_source_kind kind{terrain_source_kind::flat};
+    assets::asset_reference asset;
+    std::string generator_id;
+    std::uint64_t seed{1};
+    terrain_source_transform transform;
+    std::uint32_t schema_version{1};
+};
+
+enum class terrain_domain : std::uint32_t
+{
+    none = 0,
+    geometry = 1u << 0u,
+    attributes = 1u << 1u,
+    topology = 1u << 2u,
+    collision = 1u << 3u,
+    navigation = 1u << 4u,
+    destruction = 1u << 5u
+};
+
+[[nodiscard]] constexpr terrain_domain operator|(terrain_domain lhs, terrain_domain rhs) noexcept
+{
+    return static_cast<terrain_domain>(static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs));
+}
+
+[[nodiscard]] constexpr terrain_domain operator&(terrain_domain lhs, terrain_domain rhs) noexcept
+{
+    return static_cast<terrain_domain>(static_cast<std::uint32_t>(lhs) & static_cast<std::uint32_t>(rhs));
+}
+
+constexpr terrain_domain& operator|=(terrain_domain& lhs, terrain_domain rhs) noexcept
+{
+    lhs = lhs | rhs;
+    return lhs;
+}
+
+[[nodiscard]] constexpr bool terrain_domain_contains(terrain_domain mask, terrain_domain value) noexcept
+{
+    return (mask & value) == value;
+}
+
+/** @brief Versioned non-destructive operation. Parameter payload is canonical data owned by the registered modifier. */
+struct terrain_modifier_descriptor
+{
+    terrain_stable_id id{};
+    std::string type_id;
+    std::string name;
+    std::uint32_t schema_version{1};
+    bool enabled{true};
+    terrain_domain domains{terrain_domain::geometry};
+    std::optional<terrain_world_bounds> affected_bounds;
+    std::string canonical_parameters{"{}"};
+};
+
+enum class terrain_attribute_type : std::uint8_t
+{
+    boolean,
+    signed_integer,
+    unsigned_integer,
+    floating_point,
+    vector4,
+    string
+};
+
+enum class terrain_attribute_semantic : std::uint8_t
+{
+    custom,
+    material_weight,
+    physical_material,
+    wetness,
+    snow,
+    biome,
+    foliage_density,
+    navigation_cost,
+    destruction_strength,
+    hardness,
+    acoustic_surface,
+    gameplay_tag
+};
+
+enum class terrain_attribute_storage : std::uint8_t
+{
+    sparse_tiles,
+    dense_tiles,
+    procedural
+};
+
+enum class terrain_attribute_interpolation : std::uint8_t
+{
+    nearest,
+    linear
+};
+
+using terrain_attribute_value =
+    std::variant<bool, std::int64_t, std::uint64_t, double, math::vector4f, std::string>;
+
+struct terrain_attribute_definition
+{
+    terrain_stable_id id{};
+    std::string name;
+    terrain_attribute_type type{terrain_attribute_type::floating_point};
+    terrain_attribute_semantic semantic{terrain_attribute_semantic::custom};
+    terrain_attribute_storage storage{terrain_attribute_storage::sparse_tiles};
+    terrain_attribute_interpolation interpolation{terrain_attribute_interpolation::linear};
+    terrain_attribute_value default_value{0.0};
+    std::uint32_t schema_version{1};
+};
+
+enum class terrain_geometry_quality : std::uint8_t
+{
+    scalable,
+    balanced,
+    maximum
+};
+
+/** @brief Authoring-level build intent. Renderer-internal cluster/page settings deliberately do not live here. */
+struct terrain_build_settings
+{
+    terrain_geometry_quality geometry_quality{terrain_geometry_quality::balanced};
+    float target_surface_error{0.05f};
+    bool build_render_geometry{true};
+    bool build_attributes{true};
+    bool build_collision{true};
+    bool build_navigation{true};
+    bool build_destruction{};
+};
+
+enum class terrain_runtime_mutability : std::uint8_t
+{
+    immutable,
+    deformable,
+    fractureable,
+    deformable_and_fractureable
+};
+
+/** @brief Future-facing runtime mutation policy shared by heightfield-, mesh-, and volume-authored terrain. */
+struct terrain_runtime_policy
+{
+    terrain_runtime_mutability mutability{terrain_runtime_mutability::immutable};
+    bool persistent_runtime_changes{};
+    bool replicate_runtime_changes{};
+    assets::asset_reference damage_profile;
+};
+
+/** @brief Unified authored terrain definition. Evaluated/cooked renderer data must never be serialized into this type. */
+struct terrain_asset
+{
+    static constexpr std::uint32_t current_schema_version = 1;
+
+    std::uint32_t schema_version{current_schema_version};
+    terrain_coordinate_system coordinates;
+    terrain_partition_settings partition;
+    terrain_source_descriptor source;
+    std::vector<terrain_modifier_descriptor> modifiers;
+    std::vector<terrain_attribute_definition> attributes;
+    terrain_build_settings build;
+    terrain_runtime_policy runtime;
+};
+
+enum class terrain_asset_validation_severity : std::uint8_t
+{
+    warning,
+    error
+};
+
+enum class terrain_asset_validation_code : std::uint8_t
+{
+    unsupported_schema,
+    invalid_coordinates,
+    invalid_partition,
+    invalid_source,
+    duplicate_stable_id,
+    invalid_modifier,
+    invalid_attribute,
+    duplicate_attribute_name,
+    invalid_build_settings,
+    invalid_runtime_policy
+};
+
+struct terrain_asset_validation_issue
+{
+    terrain_asset_validation_severity severity{terrain_asset_validation_severity::error};
+    terrain_asset_validation_code code{terrain_asset_validation_code::invalid_source};
+    terrain_stable_id subject{};
+    std::string message;
+};
+
+struct [[nodiscard]] terrain_asset_validation_result
+{
+    std::vector<terrain_asset_validation_issue> issues;
+
+    [[nodiscard]] bool valid() const noexcept;
+};
+
+/** @brief Validate persistent authoring invariants without evaluating or cooking terrain. */
+[[nodiscard]] terrain_asset_validation_result validate_terrain_asset(const terrain_asset& asset);
+
+} // namespace arc::scene
