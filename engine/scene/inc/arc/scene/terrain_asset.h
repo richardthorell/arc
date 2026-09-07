@@ -108,7 +108,7 @@ enum class terrain_domain : std::uint32_t
     collision = 1u << 3u,
     navigation = 1u << 4u,
     destruction = 1u << 5u,
-    all = geometry | attributes | topology | collision | navigation | destruction
+    all = 0x3fu
 };
 
 [[nodiscard]] constexpr terrain_domain operator|(terrain_domain lhs, terrain_domain rhs) noexcept
