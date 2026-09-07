@@ -240,8 +240,8 @@ struct terrain_region_dependency
     terrain_region_id region{};
     terrain_domain domains{terrain_domain::geometry};
 
-    friend constexpr auto operator<=>(const terrain_region_dependency&, const terrain_region_dependency&) noexcept =
-        default;
+    friend constexpr auto operator<=>(const terrain_region_dependency&,
+                                      const terrain_region_dependency&) noexcept = default;
 };
 
 /**
@@ -351,6 +351,6 @@ bool mark_terrain_region_compiled(terrain_asset& asset, terrain_region_id region
 
 /** @brief Capture deterministic target, halo, and explicit region dependencies for an incremental build. */
 [[nodiscard]] terrain_build_region_snapshot make_terrain_build_region_snapshot(const terrain_asset& asset,
-                                                                                terrain_region_id region);
+                                                                               terrain_region_id region);
 
 } // namespace arc::scene

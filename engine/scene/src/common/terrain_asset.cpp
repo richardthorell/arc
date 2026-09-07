@@ -118,9 +118,9 @@ void merge_dependency(std::vector<terrain_region_dependency>& dependencies, terr
 {
     dependency.domains = valid_domains(dependency.domains);
     if (dependency.domains == terrain_domain::none) return;
-    const auto found = std::find_if(dependencies.begin(), dependencies.end(),
-                                    [&](const terrain_region_dependency& value)
-                                    { return value.region == dependency.region; });
+    const auto found =
+        std::find_if(dependencies.begin(), dependencies.end(),
+                     [&](const terrain_region_dependency& value) { return value.region == dependency.region; });
     if (found == dependencies.end())
         dependencies.push_back(dependency);
     else
@@ -349,11 +349,13 @@ terrain_asset_validation_result validate_terrain_asset(const terrain_asset& asse
     for (const auto& modifier : asset.modifiers)
     {
         if (!modifier.id.valid() || modifier.type_id.empty() || modifier.schema_version == 0u ||
-            valid_domains(modifier.domains) == terrain_domain::none || modifier.domains != valid_domains(modifier.domains) ||
-            modifier.canonical_parameters.empty() || (modifier.affected_bounds && !modifier.affected_bounds->valid()))
-            add_issue(result, terrain_asset_validation_severity::error, terrain_asset_validation_code::invalid_modifier,
-                      "terrain modifier requires an ID, type, schema, valid domains, parameters, and valid optional bounds",
-                      modifier.id);
+            valid_domains(modifier.domains) == terrain_domain::none ||
+            modifier.domains != valid_domains(modifier.domains) || modifier.canonical_parameters.empty() ||
+            (modifier.affected_bounds && !modifier.affected_bounds->valid()))
+            add_issue(
+                result, terrain_asset_validation_severity::error, terrain_asset_validation_code::invalid_modifier,
+                "terrain modifier requires an ID, type, schema, valid domains, parameters, and valid optional bounds",
+                modifier.id);
 
         if (modifier.id.valid() && !ids.insert(modifier.id).second)
             add_issue(result, terrain_asset_validation_severity::error,
@@ -425,8 +427,9 @@ terrain_asset_validation_result validate_terrain_asset(const terrain_asset& asse
         if (std::find(region_ids.begin(), region_ids.end(), region.id) != region_ids.end()) valid_region = false;
         region_ids.push_back(region.id);
         if (!valid_region)
-            add_issue(result, terrain_asset_validation_severity::error, terrain_asset_validation_code::invalid_region,
-                      "terrain region records require canonical bounds, valid revisions, domains, and unique dependencies");
+            add_issue(
+                result, terrain_asset_validation_severity::error, terrain_asset_validation_code::invalid_region,
+                "terrain region records require canonical bounds, valid revisions, domains, and unique dependencies");
     }
 
     return result;

@@ -63,9 +63,9 @@ const arc::scene::terrain_region_dependency* find_dependency(const arc::scene::t
 TEST_CASE("terrain assets round trip heightfield authoring and region state")
 {
     auto asset = make_heightfield_asset();
-    const auto dirty = arc::scene::mark_terrain_dirty(
-        asset, {4096.0, 0.0, -2048.0, 4224.0, 100.0, -1920.0},
-        arc::scene::terrain_domain::geometry | arc::scene::terrain_domain::collision);
+    const auto dirty =
+        arc::scene::mark_terrain_dirty(asset, {4096.0, 0.0, -2048.0, 4224.0, 100.0, -1920.0},
+                                       arc::scene::terrain_domain::geometry | arc::scene::terrain_domain::collision);
     REQUIRE(dirty.revision == 2);
     REQUIRE(dirty.regions.size() == 1);
 
@@ -103,13 +103,13 @@ TEST_CASE("terrain dirty tracking rejects stale region builds and publishes comp
     asset.source.id = terrain_id(1);
     asset.partition = {100.0, 10.0};
 
-    const auto geometry = arc::scene::mark_terrain_dirty(
-        asset, {0.0, 0.0, 0.0, 50.0, 10.0, 50.0}, arc::scene::terrain_domain::geometry);
+    const auto geometry =
+        arc::scene::mark_terrain_dirty(asset, {0.0, 0.0, 0.0, 50.0, 10.0, 50.0}, arc::scene::terrain_domain::geometry);
     REQUIRE(geometry.revision == 2);
     REQUIRE((geometry.regions == std::vector<arc::scene::terrain_region_id>{{0, 0}}));
 
-    const auto attributes = arc::scene::mark_terrain_dirty(
-        asset, {0.0, 0.0, 0.0, 50.0, 10.0, 50.0}, arc::scene::terrain_domain::attributes);
+    const auto attributes = arc::scene::mark_terrain_dirty(asset, {0.0, 0.0, 0.0, 50.0, 10.0, 50.0},
+                                                           arc::scene::terrain_domain::attributes);
     REQUIRE(attributes.revision == 3);
 
     REQUIRE_FALSE(arc::scene::mark_terrain_region_compiled(asset, {0, 0}, arc::scene::terrain_domain::geometry,
@@ -135,8 +135,8 @@ TEST_CASE("terrain build snapshots combine halo and explicit dependencies determ
 
     auto& target = arc::scene::ensure_terrain_region(asset, {0, 0});
     target.dependencies.push_back({{5, 5}, arc::scene::terrain_domain::destruction});
-    const auto dirty = arc::scene::mark_terrain_dirty(
-        asset, {0.0, 0.0, 0.0, 100.0, 1.0, 100.0}, arc::scene::terrain_domain::geometry);
+    const auto dirty =
+        arc::scene::mark_terrain_dirty(asset, {0.0, 0.0, 0.0, 100.0, 1.0, 100.0}, arc::scene::terrain_domain::geometry);
     REQUIRE(dirty.revision == 2);
 
     const auto snapshot = arc::scene::make_terrain_build_region_snapshot(asset, {0, 0});
@@ -157,9 +157,9 @@ TEST_CASE("terrain build snapshots combine halo and explicit dependencies determ
     REQUIRE(explicit_dependency != nullptr);
     REQUIRE(explicit_dependency->domains == arc::scene::terrain_domain::destruction);
 
-    REQUIRE(std::is_sorted(snapshot.dependencies.begin(), snapshot.dependencies.end(), [](const auto& lhs, const auto& rhs)
-                           { return lhs.region.z < rhs.region.z ||
-                                    (lhs.region.z == rhs.region.z && lhs.region.x < rhs.region.x); }));
+    REQUIRE(std::is_sorted(
+        snapshot.dependencies.begin(), snapshot.dependencies.end(), [](const auto& lhs, const auto& rhs)
+        { return lhs.region.z < rhs.region.z || (lhs.region.z == rhs.region.z && lhs.region.x < rhs.region.x); }));
 }
 
 TEST_CASE("terrain importer materializes typed assets and reports authoring dependencies")
@@ -171,7 +171,8 @@ TEST_CASE("terrain importer materializes typed assets and reports authoring depe
     auto importer = arc::scene::make_terrain_asset_importer();
     REQUIRE(importer != nullptr);
     REQUIRE(importer->descriptor().id == arc::assets::importer_ids::terrain);
-    REQUIRE(importer->descriptor().output_types == std::vector<arc::assets::asset_type_id>{arc::assets::asset_types::terrain});
+    REQUIRE(importer->descriptor().output_types ==
+            std::vector<arc::assets::asset_type_id>{arc::assets::asset_types::terrain});
     REQUIRE(importer->descriptor().extensions == std::vector<std::string>{".terrain"});
 
     const auto bytes = std::as_bytes(std::span<const char>{encoded.value().data(), encoded.value().size()});
@@ -197,8 +198,8 @@ TEST_CASE("terrain codec rejects documents outside its versioned contract")
     REQUIRE_FALSE(missing_format.has_value());
     REQUIRE(missing_format.error().code == arc::scene::terrain_asset_io_error_code::invalid_document);
 
-    const auto unsupported = arc::scene::read_terrain_asset_json(
-        R"({"format":"arc.terrain","formatVersion":99,"terrain":{}})");
+    const auto unsupported =
+        arc::scene::read_terrain_asset_json(R"({"format":"arc.terrain","formatVersion":99,"terrain":{}})");
     REQUIRE_FALSE(unsupported.has_value());
     REQUIRE(unsupported.error().code == arc::scene::terrain_asset_io_error_code::unsupported_format_version);
 }

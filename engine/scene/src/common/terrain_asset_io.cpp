@@ -34,8 +34,7 @@ constexpr std::array<domain_name, 6> domain_names{{
     {terrain_domain::destruction, "destruction"},
 }};
 
-template <class Result>
-Result failure(terrain_asset_io_error_code code, std::string message)
+template <class Result> Result failure(terrain_asset_io_error_code code, std::string message)
 {
     return Result::failure({code, std::move(message)});
 }
@@ -358,13 +357,14 @@ bool parse_attribute_default(terrain_attribute_type type, const json& value, ter
 void append_dependency(std::vector<assets::asset_reference>& output, assets::asset_reference dependency)
 {
     if (!dependency.guid.valid() && dependency.path_hint.empty()) return;
-    const auto found = std::find_if(output.begin(), output.end(), [&](const assets::asset_reference& existing)
-                                    {
-                                        return dependency.guid.valid() && existing.guid.valid()
-                                                   ? dependency.guid == existing.guid
-                                                   : !dependency.path_hint.empty() &&
-                                                         dependency.path_hint == existing.path_hint;
-                                    });
+    const auto found =
+        std::find_if(output.begin(), output.end(),
+                     [&](const assets::asset_reference& existing)
+                     {
+                         return dependency.guid.valid() && existing.guid.valid()
+                                    ? dependency.guid == existing.guid
+                                    : !dependency.path_hint.empty() && dependency.path_hint == existing.path_hint;
+                     });
     if (found == output.end()) output.push_back(std::move(dependency));
 }
 
@@ -460,22 +460,22 @@ terrain_asset_json_result write_terrain_asset_json(const terrain_asset& asset, b
 
     try
     {
-        json source{{"id", to_string(asset.source.id)},
-                    {"kind", source_kind_name(asset.source.kind)},
-                    {"schemaVersion", asset.source.schema_version},
-                    {"asset", reference_json(asset.source.asset)},
-                    {"generatorId", asset.source.generator_id},
-                    {"seed", asset.source.seed},
-                    {"transform",
-                     {{"translation",
-                       {asset.source.transform.translation[0], asset.source.transform.translation[1],
-                        asset.source.transform.translation[2]}},
-                      {"rotation",
-                       {asset.source.transform.rotation.x(), asset.source.transform.rotation.y(),
-                        asset.source.transform.rotation.z(), asset.source.transform.rotation.w()}},
-                      {"scale",
-                       {asset.source.transform.scale[0], asset.source.transform.scale[1],
-                        asset.source.transform.scale[2]}}}}};
+        json source{
+            {"id", to_string(asset.source.id)},
+            {"kind", source_kind_name(asset.source.kind)},
+            {"schemaVersion", asset.source.schema_version},
+            {"asset", reference_json(asset.source.asset)},
+            {"generatorId", asset.source.generator_id},
+            {"seed", asset.source.seed},
+            {"transform",
+             {{"translation",
+               {asset.source.transform.translation[0], asset.source.transform.translation[1],
+                asset.source.transform.translation[2]}},
+              {"rotation",
+               {asset.source.transform.rotation.x(), asset.source.transform.rotation.y(),
+                asset.source.transform.rotation.z(), asset.source.transform.rotation.w()}},
+              {"scale",
+               {asset.source.transform.scale[0], asset.source.transform.scale[1], asset.source.transform.scale[2]}}}}};
 
         json modifiers = json::array();
         for (const auto& modifier : asset.modifiers)
@@ -557,7 +557,8 @@ terrain_asset_json_result write_terrain_asset_json(const terrain_asset& asset, b
     catch (const std::exception& exception)
     {
         return failure<terrain_asset_json_result>(terrain_asset_io_error_code::invalid_asset,
-                                                  std::string("Failed to serialize terrain asset: ") + exception.what());
+                                                  std::string("Failed to serialize terrain asset: ") +
+                                                      exception.what());
     }
 }
 
@@ -613,15 +614,16 @@ terrain_asset_decode_result read_terrain_asset_json(std::string_view text)
         const auto& transform = source.at("transform");
         if (!transform.contains("translation") || !transform.contains("rotation") || !transform.contains("scale") ||
             !transform["translation"].is_array() || transform["translation"].size() != 3 ||
-            !transform["rotation"].is_array() || transform["rotation"].size() != 4 ||
-            !transform["scale"].is_array() || transform["scale"].size() != 3)
+            !transform["rotation"].is_array() || transform["rotation"].size() != 4 || !transform["scale"].is_array() ||
+            transform["scale"].size() != 3)
             return failure<terrain_asset_decode_result>(terrain_asset_io_error_code::invalid_document,
                                                         "Terrain source transform is malformed");
         asset.source.transform.translation = {transform["translation"][0].get<float>(),
                                               transform["translation"][1].get<float>(),
                                               transform["translation"][2].get<float>()};
         asset.source.transform.rotation = {transform["rotation"][0].get<float>(), transform["rotation"][1].get<float>(),
-                                           transform["rotation"][2].get<float>(), transform["rotation"][3].get<float>()};
+                                           transform["rotation"][2].get<float>(),
+                                           transform["rotation"][3].get<float>()};
         asset.source.transform.scale = {transform["scale"][0].get<float>(), transform["scale"][1].get<float>(),
                                         transform["scale"][2].get<float>()};
 
@@ -708,7 +710,8 @@ terrain_asset_decode_result read_terrain_asset_json(std::string_view text)
         asset.runtime.mutability = *mutability;
         asset.runtime.persistent_runtime_changes = runtime.value("persistentChanges", false);
         asset.runtime.replicate_runtime_changes = runtime.value("replicateChanges", false);
-        if (runtime.contains("damageProfile") && !parse_reference(runtime["damageProfile"], asset.runtime.damage_profile))
+        if (runtime.contains("damageProfile") &&
+            !parse_reference(runtime["damageProfile"], asset.runtime.damage_profile))
             return failure<terrain_asset_decode_result>(terrain_asset_io_error_code::invalid_document,
                                                         "Terrain damage-profile reference is invalid");
 
@@ -740,17 +743,18 @@ terrain_asset_decode_result read_terrain_asset_json(std::string_view text)
                     {
                         const auto domains = parse_domains(dependency.value("domains", json::array()));
                         if (!domains)
-                            return failure<terrain_asset_decode_result>(terrain_asset_io_error_code::invalid_document,
-                                                                        "Terrain region dependency domains are malformed");
-                        region.dependencies.push_back({{dependency.at("x").get<std::int64_t>(),
-                                                        dependency.at("z").get<std::int64_t>()},
-                                                       *domains});
+                            return failure<terrain_asset_decode_result>(
+                                terrain_asset_io_error_code::invalid_document,
+                                "Terrain region dependency domains are malformed");
+                        region.dependencies.push_back(
+                            {{dependency.at("x").get<std::int64_t>(), dependency.at("z").get<std::int64_t>()},
+                             *domains});
                     }
                 }
                 asset.regions.push_back(std::move(region));
             }
-            std::sort(asset.regions.begin(), asset.regions.end(), [](const terrain_region_record& lhs,
-                                                                     const terrain_region_record& rhs)
+            std::sort(asset.regions.begin(), asset.regions.end(),
+                      [](const terrain_region_record& lhs, const terrain_region_record& rhs)
                       { return lhs.id.z < rhs.id.z || (lhs.id.z == rhs.id.z && lhs.id.x < rhs.id.x); });
         }
 
