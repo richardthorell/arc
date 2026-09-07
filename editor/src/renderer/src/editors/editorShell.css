@@ -75,9 +75,11 @@
   background: #3b3020;
 }
 
-.editor-document-tab-main b {
+.editor-document-tab-dirty-indicator {
+  flex: 0 0 auto;
   color: #73b8e4;
   font-size: 8px;
+  line-height: 1;
 }
 
 .editor-document-tab-close {

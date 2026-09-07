@@ -47,7 +47,15 @@ export function EditorDocumentTabs({
           const active = document.id === activeDocumentId;
           const closeable = registration.closeable ?? registration.allowMultiple;
           return (
-            <div className={`editor-document-tab${active ? ' active' : ''}`} key={document.id}>
+            <div
+              className={`editor-document-tab${active ? ' active' : ''}${document.dirty ? ' dirty' : ''}`}
+              key={document.id}
+              onMouseDown={(event) => {
+                if (event.button !== 1 || !closeable) return;
+                event.preventDefault();
+                requestClose(document);
+              }}
+            >
               <button
                 aria-selected={active}
                 className="editor-document-tab-main"
@@ -56,6 +64,7 @@ export function EditorDocumentTabs({
                 title={[
                   document.path || document.title,
                   registration.title,
+                  document.dirty && 'Unsaved changes',
                   document.readOnly && 'Read-only',
                   document.recovered && 'Recovered',
                 ]
@@ -67,7 +76,15 @@ export function EditorDocumentTabs({
                 <span className="editor-document-tab-title">{document.title}</span>
                 {document.readOnly && <small>RO</small>}
                 {document.recovered && <small>Recovered</small>}
-                {document.dirty && <b aria-label="Unsaved changes">●</b>}
+                {document.dirty && (
+                  <span
+                    aria-label="Unsaved changes"
+                    className="editor-document-tab-dirty-indicator"
+                    title="Unsaved changes"
+                  >
+                    ●
+                  </span>
+                )}
               </button>
               {closeable && (
                 <button
