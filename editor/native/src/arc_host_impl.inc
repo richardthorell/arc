@@ -717,29 +717,27 @@ void refresh_reimported_world_material(HostState& host, const host_asset_reimpor
                                                        " path=" + resolved->path.generic_string());
 }
 
-template <class HostState>
-bool ensure_terrain_asset_importer(HostState& host)
+template <class HostState> bool ensure_terrain_asset_importer(HostState& host)
 {
     if (!host.asset_registry) return false;
     const auto importers = host.asset_registry->importers();
-    if (std::any_of(importers.begin(), importers.end(), [](const auto& importer)
-                    { return importer.id == assets::importer_ids::terrain; }))
+    if (std::any_of(importers.begin(), importers.end(),
+                    [](const auto& importer) { return importer.id == assets::importer_ids::terrain; }))
         return true;
     return scene::register_terrain_asset_importer(*host.asset_registry);
 }
 
-template <class HostState>
-void refresh_scene_terrain_assets(HostState& host)
+template <class HostState> void refresh_scene_terrain_assets(HostState& host)
 {
     if (!host.asset_registry) return;
-    host.scene.scene.view<scene::terrain_component>().each(
-        [&](ecs::entity, scene::terrain_component& terrain)
-        {
-            if (!terrain.asset.guid.valid() && terrain.asset.path_hint.empty()) return;
-            const auto binding = scene::refresh_terrain_asset_binding(terrain, *host.asset_registry);
-            if (!binding.succeeded)
-                arc::diagnostics::warn("editor.terrain", "Terrain asset refresh failed: " + binding.message);
-        });
+    for (const auto entity : host.scene.scene.entities())
+    {
+        auto* terrain = host.scene.scene.template try_get<scene::terrain_component>(entity);
+        if (!terrain || (!terrain->asset.guid.valid() && terrain->asset.path_hint.empty())) continue;
+        const auto binding = scene::refresh_terrain_asset_binding(*terrain, *host.asset_registry);
+        if (!binding.succeeded)
+            arc::diagnostics::warn("editor.terrain", "Terrain asset refresh failed: " + binding.message);
+    }
 }
 } // namespace
 
