@@ -14,7 +14,8 @@ namespace arc::editor
 {
 namespace
 {
-bool arc_model_preview_focus(const ecs::world& registry, ecs::entity selected, editor_camera_controller& camera) noexcept
+bool arc_model_preview_focus(const ecs::world& registry, ecs::entity selected,
+                             editor_camera_controller& camera) noexcept
 {
     math::vector3f minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
                            std::numeric_limits<float>::max()};
@@ -45,16 +46,16 @@ bool arc_model_preview_focus(const ecs::world& registry, ecs::entity selected, e
 }
 
 render::debug_overlay_stream arc_model_preview_gizmo_overlay(const ecs::world& registry, ecs::entity selected,
-                                                              ecs::entity camera_entity,
-                                                              const editor_gizmo_context& context,
-                                                              std::string_view scene_name)
+                                                             ecs::entity camera_entity,
+                                                             const editor_gizmo_context& context,
+                                                             std::string_view scene_name)
 {
     if (scene_name == "Asset Preview: model") return {};
     return build_editor_gizmo_overlay(registry, selected, camera_entity, context);
 }
 
 viewport_render_stats arc_model_preview_render_stats(const editor_scene_state& scene,
-                                                      const render::renderer& renderer) noexcept
+                                                     const render::renderer& renderer) noexcept
 {
     return collect_viewport_render_stats(scene, renderer);
 }
@@ -69,7 +70,8 @@ void arc_append_model_preview_metadata(nlohmann::json& payload, const editor_sce
         if (!static_mesh && !skinned_mesh) continue;
 
         std::string name = "Mesh";
-        if (const auto* named = model_scene.scene.try_get<scene::name_component>(entity); named && !named->value.empty())
+        if (const auto* named = model_scene.scene.try_get<scene::name_component>(entity);
+            named && !named->value.empty())
             name = named->value;
         meshes.push_back({{"name", name}, {"skinned", skinned_mesh}});
     }
@@ -99,23 +101,25 @@ void arc_append_model_preview_metadata(nlohmann::json& payload, const editor_sce
                                     {"boneCount", skeleton.joints.size()},
                                     {"hierarchyDepth", hierarchy_depth},
                                     {"joints", std::move(joints)}};
-    if (skeleton.root_joint < skeleton.joints.size()) skeleton_json["rootBone"] = skeleton.joints[skeleton.root_joint].name;
+    if (skeleton.root_joint < skeleton.joints.size())
+        skeleton_json["rootBone"] = skeleton.joints[skeleton.root_joint].name;
     payload["modelSkeleton"] = std::move(skeleton_json);
 }
 } // namespace
 } // namespace arc::editor
 
 #define focus_selected_entity(registry, selected, camera) arc_model_preview_focus(registry, selected, camera)
-#define build_editor_gizmo_overlay(registry, selected, camera, context)                                                  \
+#define build_editor_gizmo_overlay(registry, selected, camera, context)                                                \
     arc_model_preview_gizmo_overlay(registry, selected, camera, context, state_->scene.scene_name)
-#define collect_viewport_render_stats(scene, renderer)                                                                  \
-    ([&]()                                                                                                               \
-     {                                                                                                                   \
-         if (viewport_surface && viewport_surface->preview_kind == asset_preview_kind::model &&                         \
-             viewport_surface->preview_scene)                                                                            \
-             arc_append_model_preview_metadata(payload, *viewport_surface->preview_scene);                               \
-         return arc_model_preview_render_stats(scene, renderer);                                                         \
-     }())
+#define collect_viewport_render_stats(scene, renderer)                                                                 \
+    (                                                                                                                  \
+        [&]()                                                                                                          \
+        {                                                                                                              \
+            if (viewport_surface && viewport_surface->preview_kind == asset_preview_kind::model &&                     \
+                viewport_surface->preview_scene)                                                                       \
+                arc_append_model_preview_metadata(payload, *viewport_surface->preview_scene);                          \
+            return arc_model_preview_render_stats(scene, renderer);                                                    \
+        }())
 
 #include "arc_host_impl.inc"
 
