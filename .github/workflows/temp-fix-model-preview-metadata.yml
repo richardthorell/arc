@@ -1,29 +1,41 @@
-name: Fix model preview metadata
-on:
-  push:
-    branches: [feat/skeleton-model-workflow]
+name: Apply model preview fixes
+on: push
 permissions:
   contents: write
 jobs:
-  fix:
+  patch:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Patch model preview framing and metadata
+        with:
+          fetch-depth: 0
+      - name: Apply model preview fixes
+        shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('editor/native/src/arc_host.cpp')
-          s = p.read_text()
-          old = '''    surface.preview_camera = {};
+
+          def replace(path, old, new, count=1):
+              p = Path(path)
+              s = p.read_text()
+              if old not in s:
+                  raise SystemExit(f'pattern not found in {path}: {old[:100]!r}')
+              p.write_text(s.replace(old, new, count))
+
+          # Model preview: frame static OR skinned meshes, disable scene component icons.
+          replace(
+              'editor/native/src/arc_host.cpp',
+              '''    surface.preview_camera = {};
     if (!focus_selected_entity(preview->scene, preview->selected_entity, surface.preview_camera))
         (void)surface.preview_camera.place({2.5f, 1.5f, 2.5f}, {0.0f, 0.0f, 0.0f});
-'''
-          new = '''    surface.preview_camera = {};
+''',
+              '''    preview->show_scene_component_icons = false;
+    surface.preview_camera = {};
     for (const auto entity : preview->imported_scene_entities)
     {
-        if (preview->scene.try_get<scene::mesh_renderer_component>(entity))
+        if (preview->scene.try_get<scene::mesh_renderer_component>(entity) ||
+            preview->scene.try_get<scene::skinned_mesh_renderer_component>(entity))
         {
             preview->selected_entity = entity;
             break;
@@ -31,27 +43,32 @@ jobs:
     }
     if (!focus_selected_entity(preview->scene, preview->selected_entity, surface.preview_camera))
         (void)surface.preview_camera.place({2.5f, 1.5f, 2.5f}, {0.0f, 0.0f, 0.0f});
-'''
-          if old not in s:
-              raise SystemExit('camera framing target not found')
-          s = s.replace(old, new, 1)
-          marker = '''        if (!viewport_surface->preview_error.empty()) payload["assetPreviewError"] = viewport_surface->preview_error;
+''')
+
+          # Expose the imported preview's real meshes + skeleton through viewport.state.
+          replace(
+              'editor/native/src/arc_host.cpp',
+              '''        if (!viewport_surface->preview_error.empty()) payload["assetPreviewError"] = viewport_surface->preview_error;
     }
 
     const auto& telemetry_scene = viewport_surface->preview_scene ? *viewport_surface->preview_scene : state_->scene;
-'''
-          insert = '''        if (!viewport_surface->preview_error.empty()) payload["assetPreviewError"] = viewport_surface->preview_error;
+''',
+              '''        if (!viewport_surface->preview_error.empty()) payload["assetPreviewError"] = viewport_surface->preview_error;
         if (viewport_surface->preview_kind == asset_preview_kind::model && viewport_surface->preview_scene)
         {
             const auto& model_scene = *viewport_surface->preview_scene;
             nlohmann::json meshes = nlohmann::json::array();
             for (const auto entity : model_scene.imported_scene_entities)
             {
-                if (!model_scene.scene.try_get<scene::mesh_renderer_component>(entity)) continue;
+                const bool static_mesh = model_scene.scene.try_get<scene::mesh_renderer_component>(entity) != nullptr;
+                const bool skinned_mesh =
+                    model_scene.scene.try_get<scene::skinned_mesh_renderer_component>(entity) != nullptr;
+                if (!static_mesh && !skinned_mesh) continue;
                 std::string name = "Mesh";
-                if (const auto* named = model_scene.scene.try_get<scene::name_component>(entity); named && !named->value.empty())
+                if (const auto* named = model_scene.scene.try_get<scene::name_component>(entity);
+                    named && !named->value.empty())
                     name = named->value;
-                meshes.push_back({{"name", name}});
+                meshes.push_back({{"name", name}, {"skinned", skinned_mesh}});
             }
             payload["modelMeshes"] = std::move(meshes);
             if (!model_scene.imported_skeletons.empty())
@@ -86,16 +103,193 @@ jobs:
     }
 
     const auto& telemetry_scene = viewport_surface->preview_scene ? *viewport_surface->preview_scene : state_->scene;
-'''
-          if marker not in s:
-              raise SystemExit('viewport state marker not found')
-          p.write_text(s.replace(marker, insert, 1))
+''')
+
+          # Scene-specific gizmo policy so model previews can keep lighting without displaying light/camera icons.
+          replace(
+              'editor/native/inc/arc/editor/editor_state.h',
+              '''    bool focus_imported_scene_requested{};
+    bool recovered_document{};
+''',
+              '''    bool focus_imported_scene_requested{};
+    bool show_scene_component_icons{true};
+    bool recovered_document{};
+''')
+          replace(
+              'editor/native/inc/arc/editor/editor_gizmo.h',
+              '''    gizmo_axis highlighted_axis{gizmo_axis::none};
+    std::uint32_t viewport_width{};
+''',
+              '''    gizmo_axis highlighted_axis{gizmo_axis::none};
+    bool show_scene_component_icons{true};
+    std::uint32_t viewport_width{};
+''')
+          replace(
+              'editor/native/src/editor_gizmo.cpp',
+              '''    append_scene_component_icons(stream, registry, selected, camera_entity, *camera, *camera_transform, context);
+''',
+              '''    if (context.show_scene_component_icons)
+        append_scene_component_icons(stream, registry, selected, camera_entity, *camera, *camera_transform, context);
+''')
+          replace(
+              'editor/native/src/arc_host_base.inc',
+              '''                             .highlighted_axis = state_->gizmo_highlight,
+                             .viewport_width = request.width,
+''',
+              '''                             .highlighted_axis = state_->gizmo_highlight,
+                             .show_scene_component_icons = state_->scene.show_scene_component_icons,
+                             .viewport_width = request.width,
+''')
+
+          # Let consumers receive native preview metadata from viewport.state.
+          p = Path('editor/src/renderer/src/assetPreview/AssetPreviewViewport.tsx')
+          s = p.read_text()
+          s = s.replace(
+              '''  label: string;
+};
+''',
+              '''  label: string;
+  onState?: (payload: ViewportStateResponse['payload']) => void;
+};
+''', 1)
+          s = s.replace(
+              '''export function AssetPreviewViewport({ kind, assetGuid, fallback, label }: AssetPreviewViewportProps) {
+''',
+              '''export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState }: AssetPreviewViewportProps) {
+''', 1)
+          s = s.replace(
+              '''        lastPreviewErrorRef.current = previewError;
+''',
+              '''        lastPreviewErrorRef.current = previewError;
+        onState?.(response?.payload);
+''', 1)
+          s = s.replace(
+              '''    [kind, normalizedGuid, viewportId],
+''',
+              '''    [kind, normalizedGuid, onState, viewportId],
+''', 1)
+          if 'onState?.(response?.payload);' not in s:
+              raise SystemExit('AssetPreviewViewport callback patch failed')
+          p.write_text(s)
+
+          # Populate Model Editor from real imported preview metadata rather than stale project asset metadata.
+          p = Path('editor/src/renderer/src/model/ModelEditor.tsx')
+          s = p.read_text()
+          s = s.replace(
+              '''type ProjectAssetsResponse = { succeeded?: boolean; payload?: { assets?: AssetItem[] } };
+''',
+              '''type ProjectAssetsResponse = { succeeded?: boolean; payload?: { assets?: AssetItem[] } };
+type ModelPreviewMetadata = {
+  modelMeshes?: Array<{ name?: string; skinned?: boolean }>;
+  modelSkeleton?: {
+    name?: string;
+    boneCount?: number;
+    hierarchyDepth?: number;
+    rootBone?: string;
+    joints?: Array<{ index: number; name: string; parent: number }>;
+  };
+};
+''', 1)
+          s = s.replace(
+              '''  const [assignedSkeleton, setAssignedSkeleton] = useState(asset?.guid ?? asset?.path ?? '');
+  const subassets = useMemo(() => (asset ? buildModelSubassets(asset) : []), [asset]);
+''',
+              '''  const [assignedSkeleton, setAssignedSkeleton] = useState(asset?.guid ?? asset?.path ?? '');
+  const [previewMetadata, setPreviewMetadata] = useState<ModelPreviewMetadata>({});
+  const hydratedAsset = useMemo<AssetItem | undefined>(() => {
+    if (!asset) return undefined;
+    const skeleton = previewMetadata.modelSkeleton;
+    return {
+      ...asset,
+      meshCount: previewMetadata.modelMeshes?.length ?? asset.meshCount,
+      skeletonName: skeleton?.name ?? asset.skeletonName,
+      skeletonBoneCount: skeleton?.boneCount ?? asset.skeletonBoneCount,
+      skeletonHierarchyDepth: skeleton?.hierarchyDepth ?? asset.skeletonHierarchyDepth,
+      skeletonRootBone: skeleton?.rootBone ?? asset.skeletonRootBone,
+      skeletonJoints: skeleton?.joints ?? asset.skeletonJoints,
+    };
+  }, [asset, previewMetadata]);
+  const subassets = useMemo(() => {
+    if (!hydratedAsset) return [];
+    const built = buildModelSubassets(hydratedAsset);
+    const meshes = previewMetadata.modelMeshes;
+    if (!meshes?.length) return built;
+    return built.map((subasset) =>
+      subasset.kind === 'mesh' && subasset.meshIndex !== undefined
+        ? { ...subasset, name: meshes[subasset.meshIndex]?.name?.trim() || subasset.name }
+        : subasset,
+    );
+  }, [hydratedAsset, previewMetadata.modelMeshes]);
+''', 1)
+          s = s.replace(
+              '''  const skeleton = hasSkeletonMetadata(asset);
+  const boneCount = asset.skeletonBoneCount ?? asset.skeletonJoints?.length ?? 0;
+''',
+              '''  const modelAsset = hydratedAsset ?? asset;
+  const skeleton = hasSkeletonMetadata(modelAsset);
+  const boneCount = modelAsset.skeletonBoneCount ?? modelAsset.skeletonJoints?.length ?? 0;
+''', 1)
+          s = s.replace(
+              '''          label={`${asset.name} model preview`}
+          fallback={
+''',
+              '''          label={`${asset.name} model preview`}
+          onState={(payload) =>
+            setPreviewMetadata({
+              modelMeshes: payload?.modelMeshes,
+              modelSkeleton: payload?.modelSkeleton,
+            })
+          }
+          fallback={
+''', 1)
+          s = s.replace('''            <h3>{asset.skeletonName || 'Skeleton'}</h3>
+''', '''            <h3>{modelAsset.skeletonName || 'Skeleton'}</h3>
+''', 1)
+          s = s.replace('''              <UiButton type="button" variant="toolbar" onClick={() => openSkeletonEditorDocument(asset)}>
+''', '''              <UiButton type="button" variant="toolbar" onClick={() => openSkeletonEditorDocument(modelAsset)}>
+''', 1)
+          s = s.replace('''                  {asset.skeletonRootBone || asset.skeletonJoints?.find((joint) => joint.parent < 0)?.name || '—'}
+''', '''                  {modelAsset.skeletonRootBone ||
+                    modelAsset.skeletonJoints?.find((joint) => joint.parent < 0)?.name ||
+                    '—'}
+''', 1)
+          s = s.replace('''                <dd>{asset.skeletonHierarchyDepth ?? '—'}</dd>
+''', '''                <dd>{modelAsset.skeletonHierarchyDepth ?? '—'}</dd>
+''', 1)
+          s = s.replace('''                <dd>{asset.skeletonJoints?.length ? 'Available' : 'Metadata only'}</dd>
+''', '''                <dd>{modelAsset.skeletonJoints?.length ? 'Available' : 'Metadata only'}</dd>
+''', 1)
+          s = s.replace('''                    const compatibility = skeletonCompatibility(asset, candidate);
+''', '''                    const compatibility = skeletonCompatibility(modelAsset, candidate);
+''', 1)
+          if 'previewMetadata' not in s or 'onState=' not in s:
+              raise SystemExit('ModelEditor metadata patch failed')
+          p.write_text(s)
           PY
+
           sudo apt-get update -qq
           sudo apt-get install -y clang-format-18 >/dev/null
-          clang-format-18 -i editor/native/src/arc_host.cpp
+          clang-format-18 -i \
+            editor/native/inc/arc/editor/editor_state.h \
+            editor/native/inc/arc/editor/editor_gizmo.h \
+            editor/native/src/editor_gizmo.cpp \
+            editor/native/src/arc_host.cpp \
+            editor/native/src/arc_host_base.inc
+
+          cd editor
+          npm ci --silent
+          npx prettier --write \
+            src/renderer/src/assetPreview/AssetPreviewViewport.tsx \
+            src/renderer/src/model/ModelEditor.tsx
+          npm run typecheck
+          npm test -- --run src/renderer/src/editors/modelEditorRegistration.test.ts src/renderer/src/model/modelSubassets.test.ts
+          cd ..
+
+          git diff --check
           git config user.name "Richard Thorell"
           git config user.email "richard.thorell@outlook.com"
-          git add editor/native/src/arc_host.cpp
-          git commit -m "Expose imported model preview metadata"
+          git add editor/native editor/src/renderer/src/assetPreview/AssetPreviewViewport.tsx editor/src/renderer/src/model/ModelEditor.tsx
+          git commit -m "Fix model preview metadata and gizmos"
+          git rm .github/workflows/temp-fix-model-preview-metadata.yml
+          git commit -m "Remove temporary model preview patch workflow"
           git push
