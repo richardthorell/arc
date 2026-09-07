@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arc/assets/assets.h>
+#include <arc/assets/terrain_types.h>
 #include <arc/core/id.h>
 #include <arc/math/math.h>
 
@@ -106,7 +107,8 @@ enum class terrain_domain : std::uint32_t
     topology = 1u << 2u,
     collision = 1u << 3u,
     navigation = 1u << 4u,
-    destruction = 1u << 5u
+    destruction = 1u << 5u,
+    all = geometry | attributes | topology | collision | navigation | destruction
 };
 
 [[nodiscard]] constexpr terrain_domain operator|(terrain_domain lhs, terrain_domain rhs) noexcept
@@ -232,6 +234,50 @@ struct terrain_runtime_policy
     assets::asset_reference damage_profile;
 };
 
+/** @brief One explicit cross-region authoring dependency and the domains read from it. */
+struct terrain_region_dependency
+{
+    terrain_region_id region{};
+    terrain_domain domains{terrain_domain::geometry};
+
+    friend constexpr auto operator<=>(const terrain_region_dependency&, const terrain_region_dependency&) noexcept =
+        default;
+};
+
+/**
+ * @brief Persistent authoring/build state for one stable terrain region.
+ *
+ * Runtime streaming cells, virtual-geometry pages, collision partitions, and fracture pieces intentionally use their
+ * own hierarchies instead of reusing this record.
+ */
+struct terrain_region_record
+{
+    terrain_region_id id{};
+    terrain_world_bounds authoring_bounds{};
+    std::vector<terrain_region_dependency> dependencies;
+    std::uint64_t dirty_revision{};
+    std::uint64_t compiled_revision{};
+    terrain_domain dirty_domains{terrain_domain::none};
+};
+
+/** @brief Immutable dependency snapshot consumed by one incremental terrain-region build. */
+struct terrain_build_region_snapshot
+{
+    terrain_region_id target{};
+    terrain_world_bounds authoring_bounds{};
+    terrain_world_bounds evaluation_bounds{};
+    std::vector<terrain_region_dependency> dependencies;
+    std::uint64_t authoring_revision{};
+    std::uint64_t target_dirty_revision{};
+};
+
+/** @brief Result of one authoring edit being propagated to stable terrain regions. */
+struct terrain_dirty_update
+{
+    std::uint64_t revision{};
+    std::vector<terrain_region_id> regions;
+};
+
 /** @brief Unified authored terrain definition. Evaluated/cooked renderer data must never be serialized into this type.
  */
 struct terrain_asset
@@ -239,6 +285,7 @@ struct terrain_asset
     static constexpr std::uint32_t current_schema_version = 1;
 
     std::uint32_t schema_version{current_schema_version};
+    std::uint64_t authoring_revision{1};
     terrain_coordinate_system coordinates;
     terrain_partition_settings partition;
     terrain_source_descriptor source;
@@ -246,6 +293,7 @@ struct terrain_asset
     std::vector<terrain_attribute_definition> attributes;
     terrain_build_settings build;
     terrain_runtime_policy runtime;
+    std::vector<terrain_region_record> regions;
 };
 
 enum class terrain_asset_validation_severity : std::uint8_t
@@ -265,7 +313,8 @@ enum class terrain_asset_validation_code : std::uint8_t
     invalid_attribute,
     duplicate_attribute_name,
     invalid_build_settings,
-    invalid_runtime_policy
+    invalid_runtime_policy,
+    invalid_region
 };
 
 struct terrain_asset_validation_issue
@@ -285,5 +334,23 @@ struct [[nodiscard]] terrain_asset_validation_result
 
 /** @brief Validate persistent authoring invariants without evaluating or cooking terrain. */
 [[nodiscard]] terrain_asset_validation_result validate_terrain_asset(const terrain_asset& asset);
+
+/** @brief Return the persisted region record, creating it with canonical authoring bounds when necessary. */
+terrain_region_record& ensure_terrain_region(terrain_asset& asset, terrain_region_id region);
+
+/** @brief Mark all authoring regions overlapping bounds dirty for the supplied domains using one new revision. */
+[[nodiscard]] terrain_dirty_update mark_terrain_dirty(terrain_asset& asset, terrain_world_bounds bounds,
+                                                      terrain_domain domains);
+
+/**
+ * @brief Publish completed domains for a region only when the build was produced from its current dirty revision.
+ * @return False for a missing region, stale build revision, or empty domain mask.
+ */
+bool mark_terrain_region_compiled(terrain_asset& asset, terrain_region_id region, terrain_domain domains,
+                                  std::uint64_t build_revision) noexcept;
+
+/** @brief Capture deterministic target, halo, and explicit region dependencies for an incremental build. */
+[[nodiscard]] terrain_build_region_snapshot make_terrain_build_region_snapshot(const terrain_asset& asset,
+                                                                                terrain_region_id region);
 
 } // namespace arc::scene
