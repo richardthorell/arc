@@ -114,6 +114,16 @@ When changing rendering code:
 - Prefer explicit resource lifetime and synchronization boundaries.
 - Keep render graph pass names and packet/data-flow concepts consistent unless intentionally redesigning them.
 
+## Long-Term Design References
+
+For terrain-related rendering, editor, asset, streaming, collision, navigation, foliage, water, or world-building work, read and preserve the architectural direction in:
+
+```text
+docs/terrain-roadmap.md
+```
+
+The terrain roadmap defines ARC's intended single unified terrain system: one `TerrainAsset`, one Terrain Editor, non-destructive modifiers, region-local rebuilds, adaptive/arbitrary topology, virtual-geometry runtime compilation, independent attribute streaming, and automatic lower-end fallbacks. Do not introduce a parallel heightfield-vs-mesh terrain product split unless the roadmap is deliberately revised.
+
 ## Editor Direction
 
 The editor uses an Electron/React workbench with a native C++ host rendering
