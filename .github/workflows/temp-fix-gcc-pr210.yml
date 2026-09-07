@@ -53,12 +53,9 @@ constexpr std::string_view mesh_assignment_prefix = "__arc_mesh__/";
 
 struct asset_preview_identity
 '''
-          # Remove the original anonymous-namespace enum, keeping the struct.
-          first = s.find(old_enum)
-          second = s.find(old_enum, first + 1)
-          if second == -1:
+          if old_enum not in s:
               raise SystemExit('original anonymous enum not found')
-          s = s[:second] + 'struct asset_preview_identity\n' + s[second + len(old_enum):]
+          s = s.replace(old_enum, 'struct asset_preview_identity\n', 1)
           p.write_text(s)
           PY
 
