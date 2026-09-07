@@ -1,0 +1,196 @@
+name: Temporary Terrain M0 Compatibility Patch
+
+on:
+  push:
+    branches:
+      - feat/terrain-m0-compat-surface-ir
+    paths:
+      - .github/workflows/temp-terrain-m0-compat.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/terrain-m0-compat-surface-ir
+          fetch-depth: 0
+
+      - name: Apply compatibility bridge
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8')
+
+          def replace(path, old, new, expected=1):
+              text = read(path)
+              count = text.count(old)
+              if count != expected:
+                  raise RuntimeError(f'{path}: expected {expected} occurrences, found {count}: {old[:80]!r}')
+              write(path, text.replace(old, new))
+
+          # Terrain component now owns the authored asset reference while retaining the inline
+          # heightfield as a compatibility runtime cache.
+          replace('engine/scene/inc/arc/scene/components.h',
+                  '#pragma once\n\n#include <arc/render/handles.h>',
+                  '#pragma once\n\n#include <arc/assets/assets.h>\n#include <arc/render/handles.h>')
+          replace('engine/scene/inc/arc/scene/components.h',
+                  'struct terrain_component\n{\n    bool enabled{true};',
+                  'struct terrain_component\n{\n    /** Authored unified terrain definition. Empty references identify legacy inline terrain. */\n    assets::asset_reference asset;\n    /** Last loaded terrain-asset generation. Runtime-only compatibility state. */\n    std::uint64_t asset_generation{};\n    /** Authoring revision of the last loaded terrain asset. Runtime-only compatibility state. */\n    std::uint64_t asset_authoring_revision{};\n    bool enabled{true};')
+
+          # Expose the IR and asset bridge from the scene aggregate and terrain runtime API.
+          replace('engine/scene/inc/arc/scene/scene.h',
+                  '#include <arc/scene/terrain_asset_io.h>\n#include <arc/scene/transforms.h>',
+                  '#include <arc/scene/terrain_asset_io.h>\n#include <arc/scene/terrain_asset_bridge.h>\n#include <arc/scene/terrain_surface_ir.h>\n#include <arc/scene/transforms.h>')
+          replace('engine/scene/inc/arc/scene/terrain.h',
+                  '#include <arc/scene/components.h>\n',
+                  '#include <arc/scene/components.h>\n#include <arc/scene/terrain_surface_ir.h>\n')
+          replace('engine/scene/inc/arc/scene/terrain.h',
+                  '    bool synchronize(ecs::entity_guid guid, const terrain_component& terrain, render::renderer& renderer,\n                     const terrain_dirty_region* dirty_region = nullptr);',
+                  '    bool synchronize(ecs::entity_guid guid, const terrain_surface_ir& surface,\n                     const terrain_component& terrain, render::renderer& renderer,\n                     const terrain_dirty_region* dirty_region = nullptr);\n    bool synchronize(ecs::entity_guid guid, const terrain_component& terrain, render::renderer& renderer,\n                     const terrain_dirty_region* dirty_region = nullptr);')
+
+          # Move renderer synchronization behind TerrainSurfaceIR while preserving the old overload.
+          path = 'engine/scene/src/common/terrain.cpp'
+          text = read(path)
+          start_marker = 'bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrain_component& terrain,\n'
+          end_marker = '\nbool terrain_render_proxy_cache::erase'
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          segment = text[start:end]
+          segment = segment.replace(
+              'bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrain_component& terrain,\n                                             render::renderer& renderer, const terrain_dirty_region* dirty_region)\n{\n    if (!guid.valid() || !terrain_heightfield_valid(terrain)) return false;',
+              'bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrain_surface_ir& surface,\n                                             const terrain_component& terrain, render::renderer& renderer,\n                                             const terrain_dirty_region* dirty_region)\n{\n    const auto* heightfield = std::get_if<terrain_surface_heightfield_ir>(&surface.geometry);\n    if (!guid.valid() || !heightfield || !validate_terrain_surface_ir(surface) ||\n        heightfield->sample_width != heightfield->sample_height)\n        return false;')
+          segment = segment.replace('terrain.subdivisions + 1u', 'heightfield->sample_width')
+          segment = segment.replace('descriptor.width = terrain.size;', 'descriptor.width = heightfield->width;')
+          segment = segment.replace('descriptor.depth = terrain.size;', 'descriptor.depth = heightfield->depth;')
+          segment = segment.replace('descriptor.heights = terrain.heights;',
+                                    'descriptor.heights.assign(heightfield->heights.begin(), heightfield->heights.end());')
+          segment = segment.replace('descriptor.weights = terrain.layer_weights;',
+                                    'descriptor.weights.assign(heightfield->material_weights.begin(),\n                                  heightfield->material_weights.end());')
+          segment = segment.replace('terrain.content_revision', 'surface.source_revision')
+          segment = segment.replace('terrain.heights.begin()', 'heightfield->heights.begin()')
+          segment = segment.replace('terrain.layer_weights.begin()', 'heightfield->material_weights.begin()')
+          wrapper = '''\n\nbool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrain_component& terrain,\n                                             render::renderer& renderer, const terrain_dirty_region* dirty_region)\n{\n    const auto surface = make_legacy_terrain_surface_ir(terrain);\n    return surface && synchronize(guid, *surface, terrain, renderer, dirty_region);\n}\n'''
+          text = text[:start] + segment + wrapper + text[end:]
+          write(path, text)
+
+          replace('engine/scene/src/common/render_scene.cpp',
+                  '            active_terrain_guids.push_back(guid);\n            if (!terrain_proxies->synchronize(guid, terrain, renderer)) return;',
+                  '            active_terrain_guids.push_back(guid);\n            const auto surface = make_legacy_terrain_surface_ir(terrain);\n            if (!surface || !terrain_proxies->synchronize(guid, *surface, terrain, renderer)) return;')
+
+          # Terrain scene persistence v4 stores the authored asset reference while continuing to
+          # serialize the legacy surface cache for backward-compatible visuals.
+          path = 'editor/native/src/scene_document.cpp'
+          text = read(path)
+          text = text.replace('const bool supports_v4 = name == "MeshRenderer";',
+                              'const bool supports_v4 = name == "MeshRenderer" || name == "Terrain";')
+          old = '''        if (!common_valid) return fail("has invalid terrain values");\n        if (component_version == 1u) return true;'''
+          new = '''        if (!common_valid) return fail("has invalid terrain values");\n        if (component_version >= 4u)\n        {\n            if (!value.contains("asset") || !value["asset"].is_object() || !value["asset"].contains("guid") ||\n                !value["asset"]["guid"].is_string() || !value["asset"].contains("expectedType") ||\n                !value["asset"]["expectedType"].is_string() || !value["asset"].contains("pathHint") ||\n                !value["asset"]["pathHint"].is_string())\n                return fail("has an invalid terrain asset reference");\n            const auto guid_text = value["asset"]["guid"].get<std::string>();\n            const auto type_text = value["asset"]["expectedType"].get<std::string>();\n            if ((!guid_text.empty() && !assets::parse_asset_guid(guid_text)) ||\n                (!type_text.empty() && !assets::parse_asset_type_id(type_text)))\n                return fail("has an invalid terrain asset identity");\n        }\n        if (component_version == 1u) return true;'''
+          if old not in text: raise RuntimeError('terrain validation insertion point missing')
+          text = text.replace(old, new, 1)
+
+          prefab_marker = '    const auto& prefab = ecs::component_metadata<scene::prefab_instance_component>();\n'
+          terrain_dependencies = '''    const auto& terrain_metadata = ecs::component_metadata<scene::terrain_component>();\n    for (const auto entity : state.scene.entities())\n    {\n        if (entity == state.camera_entity) continue;\n        if (included_entities && !included_entities->contains(entity)) continue;\n        const auto* terrain = state.scene.try_get<scene::terrain_component>(entity);\n        if (!terrain || (!terrain->asset.guid.valid() && terrain->asset.path_hint.empty())) continue;\n        dependencies.push_back(\n            dependency_record(refreshed(terrain->asset), entity_guid_of(state, entity), terrain_metadata.id, 0, true));\n    }\n'''
+          if prefab_marker not in text: raise RuntimeError('dependency manifest insertion point missing')
+          text = text.replace(prefab_marker, terrain_dependencies + prefab_marker, 1)
+
+          save_binding_marker = '''    for (const auto& binding : state.asset_bindings)\n    {\n        if (!is_normal_project_relative_path(binding.source.path_hint, project_root) ||\n            !is_normal_project_relative_path(binding.material.path_hint, project_root))\n        {\n            error = "scene asset references must be project-relative";\n            return false;\n        }\n    }\n'''
+          save_binding_new = save_binding_marker + '''    for (const auto entity : all_entities)\n    {\n        const auto* terrain = state.scene.try_get<scene::terrain_component>(entity);\n        if (terrain && !is_normal_project_relative_path(terrain->asset.path_hint, project_root))\n        {\n            error = "terrain asset references must be project-relative";\n            return false;\n        }\n    }\n'''
+          if save_binding_marker not in text: raise RuntimeError('scene save validation insertion point missing')
+          text = text.replace(save_binding_marker, save_binding_new, 1)
+
+          text = text.replace('''        components["Terrain"] = {{"version", 3},\n                                 {"enabled", component->enabled},''',
+                              '''        components["Terrain"] = {{"version", 4},\n                                 {"asset", serialize_asset_reference(component->asset, project_root)},\n                                 {"enabled", component->enabled},''', 1)
+
+          terrain_load_marker = '''                value.maximum_shadow_distance = source.value("maximumShadowDistance", 0.0f);\n                if (source.value("version", 1u) == 1u)\n'''
+          terrain_load_new = '''                value.maximum_shadow_distance = source.value("maximumShadowDistance", 0.0f);\n                const auto terrain_version = source.value("version", 1u);\n                if (terrain_version >= 4u)\n                {\n                    if (!source.contains("asset")) throw std::runtime_error("terrain asset reference is missing");\n                    value.asset = read_asset_reference(source["asset"], assets::asset_types::terrain, project_root,\n                                                       asset_registry);\n                    value.asset.expected_type = assets::asset_types::terrain;\n                }\n                if (terrain_version == 1u)\n'''
+          if terrain_load_marker not in text: raise RuntimeError('terrain load insertion point missing')
+          text = text.replace(terrain_load_marker, terrain_load_new, 1)
+
+          sync_marker = '''                if (!synchronize_terrain_render_resource(loaded, renderer, entity))\n                    throw std::runtime_error("terrain runtime chunks could not be rebuilt");\n'''
+          sync_new = '''                if (asset_registry && (value.asset.guid.valid() || !value.asset.path_hint.empty()))\n                {\n                    const auto importers = asset_registry->importers();\n                    const bool terrain_importer_ready =\n                        std::any_of(importers.begin(), importers.end(), [](const auto& importer)\n                                    { return importer.id == assets::importer_ids::terrain; });\n                    if (terrain_importer_ready)\n                    {\n                        const auto binding = scene::refresh_terrain_asset_binding(value, *asset_registry);\n                        if (!binding.succeeded)\n                            diagnostics.push_back("Terrain asset could not be refreshed: " + binding.message);\n                    }\n                }\n                if (!synchronize_terrain_render_resource(loaded, renderer, entity))\n                    throw std::runtime_error("terrain runtime chunks could not be rebuilt");\n'''
+          if sync_marker not in text: raise RuntimeError('terrain runtime sync insertion point missing')
+          text = text.replace(sync_marker, sync_new, 1)
+          write(path, text)
+
+          # Bump reflected terrain persistence version and generated editor metadata.
+          path = 'engine/scene/schema/components.arccomponents.json'
+          text = read(path)
+          terrain_token = '"type":  "terrain_component"'
+          start = text.index(terrain_token)
+          version = text.index('"version":  3', start)
+          text = text[:version] + text[version:].replace('"version":  3', '"version":  4', 1)
+          write(path, text)
+
+          path = 'editor/src/renderer/src/inspector/generatedEcsMetadata.ts'
+          text = read(path)
+          start = text.index('"canonicalName": "arc::scene.terrain_component"')
+          version = text.index('"schemaVersion": 3', start)
+          text = text[:version] + text[version:].replace('"schemaVersion": 3', '"schemaVersion": 4', 1)
+          write(path, text)
+
+          # Register the scene-owned typed terrain importer when the editor project opens.
+          replace('editor/native/inc/arc/editor/arc_host.h',
+                  '    host_response execute_base(host_command_payload command);\n    host_response query_base(const host_query_envelope& query) const;',
+                  '    host_response execute_base(host_command_payload command);\n    host_response open_project_base(const host_open_project_command& command, const editor_asset_state& assets,\n                                    std::uint64_t request_id = 0);\n    host_response query_base(const host_query_envelope& query) const;')
+
+          path = 'editor/native/src/arc_host_impl.inc'
+          text = read(path)
+          text = text.replace('#define execute execute_base\n#define query(...) query_base(__VA_ARGS__)',
+                              '#define execute execute_base\n#define open_project open_project_base\n#define query(...) query_base(__VA_ARGS__)', 1)
+          text = text.replace('#undef query\n#undef execute', '#undef query\n#undef open_project\n#undef execute', 1)
+
+          namespace_marker = '''}\n} // namespace\n\nhost_response arc_host::execute(host_command_payload command)\n'''
+          helpers = '''}\n\ntemplate <class HostState>\nbool ensure_terrain_asset_importer(HostState& host)\n{\n    if (!host.asset_registry) return false;\n    const auto importers = host.asset_registry->importers();\n    if (std::any_of(importers.begin(), importers.end(), [](const auto& importer)\n                    { return importer.id == assets::importer_ids::terrain; }))\n        return true;\n    return scene::register_terrain_asset_importer(*host.asset_registry);\n}\n\ntemplate <class HostState>\nvoid refresh_scene_terrain_assets(HostState& host)\n{\n    if (!host.asset_registry) return;\n    host.scene.scene.view<scene::terrain_component>().each(\n        [&](ecs::entity, scene::terrain_component& terrain)\n        {\n            if (!terrain.asset.guid.valid() && terrain.asset.path_hint.empty()) return;\n            const auto binding = scene::refresh_terrain_asset_binding(terrain, *host.asset_registry);\n            if (!binding.succeeded)\n                arc::diagnostics::warn("editor.terrain", "Terrain asset refresh failed: " + binding.message);\n        });\n}\n} // namespace\n\nhost_response arc_host::open_project(const host_open_project_command& command, const editor_asset_state& assets,\n                                     std::uint64_t request_id)\n{\n    auto response = open_project_base(command, assets, request_id);\n    if (response.succeeded && ensure_terrain_asset_importer(*state_)) refresh_scene_terrain_assets(*state_);\n    return response;\n}\n\nhost_response arc_host::execute(host_command_payload command)\n'''
+          if namespace_marker not in text: raise RuntimeError('arc_host helper insertion point missing')
+          text = text.replace(namespace_marker, helpers, 1)
+
+          response_marker = '''        if (response.succeeded)\n        {\n            if (const auto* reimport = std::get_if<host_asset_reimport_command>(&command.payload))\n                refresh_reimported_world_material(*state_, *reimport);\n        }\n'''
+          response_new = '''        if (response.succeeded)\n        {\n            if (const auto* reimport = std::get_if<host_asset_reimport_command>(&command.payload))\n            {\n                refresh_reimported_world_material(*state_, *reimport);\n                if (ensure_terrain_asset_importer(*state_)) refresh_scene_terrain_assets(*state_);\n            }\n            if (std::holds_alternative<host_open_project_command>(command.payload) ||\n                std::holds_alternative<host_open_scene_command>(command.payload) ||\n                std::holds_alternative<host_open_recovery_scene_command>(command.payload))\n            {\n                if (ensure_terrain_asset_importer(*state_)) refresh_scene_terrain_assets(*state_);\n            }\n        }\n'''
+          if response_marker not in text: raise RuntimeError('arc_host response hook insertion point missing')
+          text = text.replace(response_marker, response_new, 1)
+          write(path, text)
+
+          # Extend existing editor persistence coverage to the v4 asset-reference bridge.
+          path = 'editor/native/tests/editor_tests.cpp'
+          text = read(path)
+          text = text.replace('TEST_CASE("terrain scene version 2 payload round trips quantized heights and rejects corrupt data atomically")',
+                              'TEST_CASE("terrain scene v4 bridge preserves legacy heightfields and terrain asset references")', 1)
+          setup_marker = '''    auto& terrain = host->scene_state().scene.get<arc::scene::terrain_component>(host->scene_state().terrain_entity);\n    arc::scene::terrain_brush_settings brush;\n'''
+          setup_new = '''    auto& terrain = host->scene_state().scene.get<arc::scene::terrain_component>(host->scene_state().terrain_entity);\n    terrain.asset.expected_type = arc::assets::asset_types::terrain;\n    terrain.asset.path_hint = "linked.terrain";\n    arc::scene::terrain_brush_settings brush;\n'''
+          if setup_marker not in text: raise RuntimeError('terrain editor test setup marker missing')
+          text = text.replace(setup_marker, setup_new, 1)
+          text = text.replace('REQUIRE(saved.find("\\\"version\\\": 2") != std::string::npos);',
+                              'REQUIRE(saved.find("\\\"version\\\": 4") != std::string::npos);', 1)
+          loaded_marker = '''    REQUIRE(loaded.layer_weights == expected_weights);\n    const auto [minimum, maximum] = std::minmax_element(expected_heights.begin(), expected_heights.end());\n'''
+          loaded_new = '''    REQUIRE(loaded.layer_weights == expected_weights);\n    REQUIRE(loaded.asset.expected_type == arc::assets::asset_types::terrain);\n    REQUIRE(loaded.asset.path_hint == "linked.terrain");\n    const auto [minimum, maximum] = std::minmax_element(expected_heights.begin(), expected_heights.end());\n'''
+          if loaded_marker not in text: raise RuntimeError('terrain editor test loaded marker missing')
+          text = text.replace(loaded_marker, loaded_new, 1)
+          write(path, text)
+          PY
+
+      - name: Format changed C++
+        shell: bash
+        run: |
+          if command -v clang-format >/dev/null 2>&1; then
+            git diff --name-only -- '*.h' '*.cpp' | xargs -r clang-format -i
+          fi
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "arc-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add engine editor
+          git commit -m "Bridge terrain assets through TerrainSurfaceIR"
+          git push origin HEAD:feat/terrain-m0-compat-surface-ir
