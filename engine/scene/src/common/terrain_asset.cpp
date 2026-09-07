@@ -70,6 +70,63 @@ bool fractureable_runtime(terrain_runtime_mutability value) noexcept
            value == terrain_runtime_mutability::deformable_and_fractureable;
 }
 
+constexpr std::uint32_t domain_bits(terrain_domain value) noexcept
+{
+    return static_cast<std::uint32_t>(value);
+}
+
+constexpr terrain_domain valid_domains(terrain_domain value) noexcept
+{
+    return static_cast<terrain_domain>(domain_bits(value) & domain_bits(terrain_domain::all));
+}
+
+bool region_less(terrain_region_id lhs, terrain_region_id rhs) noexcept
+{
+    return lhs.z < rhs.z || (lhs.z == rhs.z && lhs.x < rhs.x);
+}
+
+bool close_enough(double lhs, double rhs) noexcept
+{
+    const auto scale = std::max({1.0, std::abs(lhs), std::abs(rhs)});
+    return std::abs(lhs - rhs) <= scale * 1.0e-10;
+}
+
+bool same_bounds(const terrain_world_bounds& lhs, const terrain_world_bounds& rhs) noexcept
+{
+    return close_enough(lhs.min_x, rhs.min_x) && close_enough(lhs.min_y, rhs.min_y) &&
+           close_enough(lhs.min_z, rhs.min_z) && close_enough(lhs.max_x, rhs.max_x) &&
+           close_enough(lhs.max_y, rhs.max_y) && close_enough(lhs.max_z, rhs.max_z);
+}
+
+terrain_region_record* find_region(terrain_asset& asset, terrain_region_id region) noexcept
+{
+    const auto found = std::lower_bound(asset.regions.begin(), asset.regions.end(), region,
+                                        [](const terrain_region_record& value, terrain_region_id id)
+                                        { return region_less(value.id, id); });
+    return found != asset.regions.end() && found->id == region ? &*found : nullptr;
+}
+
+const terrain_region_record* find_region(const terrain_asset& asset, terrain_region_id region) noexcept
+{
+    const auto found = std::lower_bound(asset.regions.begin(), asset.regions.end(), region,
+                                        [](const terrain_region_record& value, terrain_region_id id)
+                                        { return region_less(value.id, id); });
+    return found != asset.regions.end() && found->id == region ? &*found : nullptr;
+}
+
+void merge_dependency(std::vector<terrain_region_dependency>& dependencies, terrain_region_dependency dependency)
+{
+    dependency.domains = valid_domains(dependency.domains);
+    if (dependency.domains == terrain_domain::none) return;
+    const auto found = std::find_if(dependencies.begin(), dependencies.end(),
+                                    [&](const terrain_region_dependency& value)
+                                    { return value.region == dependency.region; });
+    if (found == dependencies.end())
+        dependencies.push_back(dependency);
+    else
+        found->domains |= dependency.domains;
+}
+
 void add_issue(terrain_asset_validation_result& result, terrain_asset_validation_severity severity,
                terrain_asset_validation_code code, std::string message, terrain_stable_id subject = {})
 {
@@ -169,6 +226,79 @@ std::vector<terrain_region_id> terrain_regions_overlapping(const terrain_coordin
     return result;
 }
 
+terrain_region_record& ensure_terrain_region(terrain_asset& asset, terrain_region_id region)
+{
+    const auto found = std::lower_bound(asset.regions.begin(), asset.regions.end(), region,
+                                        [](const terrain_region_record& value, terrain_region_id id)
+                                        { return region_less(value.id, id); });
+    if (found != asset.regions.end() && found->id == region) return *found;
+
+    terrain_region_record record;
+    record.id = region;
+    record.authoring_bounds = terrain_region_bounds(asset.coordinates, asset.partition, region);
+    return *asset.regions.insert(found, std::move(record));
+}
+
+terrain_dirty_update mark_terrain_dirty(terrain_asset& asset, terrain_world_bounds bounds, terrain_domain domains)
+{
+    terrain_dirty_update result;
+    domains = valid_domains(domains);
+    if (!bounds.valid() || domains == terrain_domain::none) return result;
+
+    result.regions = terrain_regions_overlapping(asset.coordinates, asset.partition, bounds);
+    if (result.regions.empty()) return result;
+
+    if (asset.authoring_revision != std::numeric_limits<std::uint64_t>::max()) ++asset.authoring_revision;
+    result.revision = asset.authoring_revision;
+    for (const auto region : result.regions)
+    {
+        auto& record = ensure_terrain_region(asset, region);
+        record.dirty_revision = result.revision;
+        record.dirty_domains |= domains;
+    }
+    return result;
+}
+
+bool mark_terrain_region_compiled(terrain_asset& asset, terrain_region_id region, terrain_domain domains,
+                                  std::uint64_t build_revision) noexcept
+{
+    auto* record = find_region(asset, region);
+    domains = valid_domains(domains);
+    if (!record || domains == terrain_domain::none || build_revision != record->dirty_revision) return false;
+
+    const auto completed = domain_bits(record->dirty_domains) & domain_bits(domains);
+    if (completed == 0u) return false;
+    record->dirty_domains = static_cast<terrain_domain>(domain_bits(record->dirty_domains) & ~completed);
+    if (record->dirty_domains == terrain_domain::none) record->compiled_revision = build_revision;
+    return true;
+}
+
+terrain_build_region_snapshot make_terrain_build_region_snapshot(const terrain_asset& asset, terrain_region_id region)
+{
+    terrain_build_region_snapshot snapshot;
+    snapshot.target = region;
+    snapshot.authoring_bounds = terrain_region_bounds(asset.coordinates, asset.partition, region);
+    snapshot.evaluation_bounds = expand_terrain_bounds(snapshot.authoring_bounds, asset.partition.dependency_halo);
+    snapshot.authoring_revision = asset.authoring_revision;
+    if (const auto* record = find_region(asset, region)) snapshot.target_dirty_revision = record->dirty_revision;
+
+    constexpr auto halo_domains = terrain_domain::geometry | terrain_domain::attributes | terrain_domain::topology;
+    for (const auto dependency_region :
+         terrain_regions_overlapping(asset.coordinates, asset.partition, snapshot.evaluation_bounds))
+    {
+        if (dependency_region != region) merge_dependency(snapshot.dependencies, {dependency_region, halo_domains});
+    }
+
+    if (const auto* record = find_region(asset, region))
+        for (const auto& dependency : record->dependencies)
+            if (dependency.region != region) merge_dependency(snapshot.dependencies, dependency);
+
+    std::sort(snapshot.dependencies.begin(), snapshot.dependencies.end(),
+              [](const terrain_region_dependency& lhs, const terrain_region_dependency& rhs)
+              { return region_less(lhs.region, rhs.region); });
+    return snapshot;
+}
+
 bool terrain_asset_validation_result::valid() const noexcept
 {
     return std::none_of(issues.begin(), issues.end(),
@@ -182,6 +312,10 @@ terrain_asset_validation_result validate_terrain_asset(const terrain_asset& asse
     if (asset.schema_version != terrain_asset::current_schema_version)
         add_issue(result, terrain_asset_validation_severity::error, terrain_asset_validation_code::unsupported_schema,
                   "terrain asset schema version is unsupported");
+
+    if (asset.authoring_revision == 0u)
+        add_issue(result, terrain_asset_validation_severity::error, terrain_asset_validation_code::invalid_region,
+                  "terrain authoring revision must be positive");
 
     if (!finite(asset.coordinates.origin_x) || !finite(asset.coordinates.origin_y) ||
         !finite(asset.coordinates.origin_z) || !finite(asset.coordinates.meters_per_unit) ||
@@ -215,10 +349,10 @@ terrain_asset_validation_result validate_terrain_asset(const terrain_asset& asse
     for (const auto& modifier : asset.modifiers)
     {
         if (!modifier.id.valid() || modifier.type_id.empty() || modifier.schema_version == 0u ||
-            modifier.domains == terrain_domain::none || modifier.canonical_parameters.empty() ||
-            (modifier.affected_bounds && !modifier.affected_bounds->valid()))
+            valid_domains(modifier.domains) == terrain_domain::none || modifier.domains != valid_domains(modifier.domains) ||
+            modifier.canonical_parameters.empty() || (modifier.affected_bounds && !modifier.affected_bounds->valid()))
             add_issue(result, terrain_asset_validation_severity::error, terrain_asset_validation_code::invalid_modifier,
-                      "terrain modifier requires an ID, type, schema, domains, parameters, and valid optional bounds",
+                      "terrain modifier requires an ID, type, schema, valid domains, parameters, and valid optional bounds",
                       modifier.id);
 
         if (modifier.id.valid() && !ids.insert(modifier.id).second)
@@ -263,6 +397,37 @@ terrain_asset_validation_result validate_terrain_asset(const terrain_asset& asse
         add_issue(result, terrain_asset_validation_severity::warning,
                   terrain_asset_validation_code::invalid_runtime_policy,
                   "fractureable terrain has destruction derived-data generation disabled");
+
+    std::vector<terrain_region_id> region_ids;
+    region_ids.reserve(asset.regions.size());
+    for (const auto& region : asset.regions)
+    {
+        const auto expected_bounds = terrain_region_bounds(asset.coordinates, asset.partition, region.id);
+        bool valid_region = region.authoring_bounds.valid() && same_bounds(region.authoring_bounds, expected_bounds) &&
+                            region.dirty_revision <= asset.authoring_revision &&
+                            region.compiled_revision <= region.dirty_revision &&
+                            region.dirty_domains == valid_domains(region.dirty_domains);
+        if (region.dirty_revision > 0u && region.dirty_domains == terrain_domain::none &&
+            region.compiled_revision != region.dirty_revision)
+            valid_region = false;
+
+        std::vector<terrain_region_id> dependency_ids;
+        dependency_ids.reserve(region.dependencies.size());
+        for (const auto& dependency : region.dependencies)
+        {
+            if (dependency.region == region.id || dependency.domains == terrain_domain::none ||
+                dependency.domains != valid_domains(dependency.domains) ||
+                std::find(dependency_ids.begin(), dependency_ids.end(), dependency.region) != dependency_ids.end())
+                valid_region = false;
+            dependency_ids.push_back(dependency.region);
+        }
+
+        if (std::find(region_ids.begin(), region_ids.end(), region.id) != region_ids.end()) valid_region = false;
+        region_ids.push_back(region.id);
+        if (!valid_region)
+            add_issue(result, terrain_asset_validation_severity::error, terrain_asset_validation_code::invalid_region,
+                      "terrain region records require canonical bounds, valid revisions, domains, and unique dependencies");
+    }
 
     return result;
 }
