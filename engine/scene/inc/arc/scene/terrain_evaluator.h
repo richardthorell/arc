@@ -53,7 +53,8 @@ struct terrain_evaluation_diagnostic
 };
 
 /** @brief Region-local request. Heightfield samples are resolved outside the evaluator so authoring is asset-system
- * agnostic. Registered source evaluators may capture additional asset/source providers without changing this contract. */
+ * agnostic. Registered source evaluators may capture additional asset/source providers without changing this contract.
+ */
 struct terrain_evaluation_request
 {
     terrain_region_id region{};
@@ -74,9 +75,8 @@ struct [[nodiscard]] terrain_evaluation_result
     std::vector<terrain_evaluation_diagnostic> diagnostics;
 };
 
-using terrain_source_evaluation_fn =
-    std::function<std::optional<terrain_evaluated_surface>(const terrain_asset&, const terrain_evaluation_request&,
-                                                           const terrain_build_region_snapshot&, std::string&)>;
+using terrain_source_evaluation_fn = std::function<std::optional<terrain_evaluated_surface>(
+    const terrain_asset&, const terrain_evaluation_request&, const terrain_build_region_snapshot&, std::string&)>;
 using terrain_modifier_evaluation_fn =
     std::function<bool(const terrain_modifier_descriptor&, terrain_evaluated_surface&, std::string&)>;
 
@@ -93,7 +93,7 @@ public:
     [[nodiscard]] bool register_source(terrain_source_kind kind, terrain_source_evaluation_fn evaluator);
     [[nodiscard]] bool register_modifier(std::string type_id, terrain_modifier_evaluation_fn evaluator);
     [[nodiscard]] terrain_evaluation_result evaluate(const terrain_asset& asset,
-                                                      const terrain_evaluation_request& request) const;
+                                                     const terrain_evaluation_request& request) const;
 
 private:
     std::unordered_map<terrain_source_kind, terrain_source_evaluation_fn> sources_;
