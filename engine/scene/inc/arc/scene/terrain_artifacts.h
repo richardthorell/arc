@@ -61,7 +61,8 @@ struct terrain_artifact_build_input
     std::string target_profile{"default"};
 };
 
-/** @brief Build an opaque content key without exposing virtual-geometry, collision, or backend implementation details. */
+/** @brief Build an opaque content key without exposing virtual-geometry, collision, or backend implementation details.
+ */
 [[nodiscard]] terrain_content_key make_terrain_artifact_key(const terrain_artifact_build_input& input,
                                                             terrain_artifact_kind kind,
                                                             std::uint32_t compiler_version) noexcept;

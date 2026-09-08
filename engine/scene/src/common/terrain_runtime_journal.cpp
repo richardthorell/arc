@@ -64,7 +64,8 @@ void append_bounds(journal_hash& hash, const terrain_world_bounds& bounds) noexc
 
 bool validate_terrain_runtime_journal(const terrain_runtime_journal& journal) noexcept
 {
-    if (journal.schema_version != terrain_runtime_journal::current_schema_version || journal.base_authoring_revision == 0u)
+    if (journal.schema_version != terrain_runtime_journal::current_schema_version ||
+        journal.base_authoring_revision == 0u)
         return false;
 
     for (std::size_t index = 0; index < journal.operations.size(); ++index)

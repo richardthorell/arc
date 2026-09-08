@@ -52,7 +52,8 @@ struct terrain_evaluation_diagnostic
     std::string message;
 };
 
-/** @brief Region-local request. Heightfield samples are resolved outside the evaluator so authoring is asset-system agnostic. */
+/** @brief Region-local request. Heightfield samples are resolved outside the evaluator so authoring is asset-system
+ * agnostic. */
 struct terrain_evaluation_request
 {
     terrain_region_id region{};

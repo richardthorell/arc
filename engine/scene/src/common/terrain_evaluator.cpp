@@ -160,7 +160,7 @@ bool terrain_evaluator::register_modifier(std::string type_id, terrain_modifier_
 }
 
 terrain_evaluation_result terrain_evaluator::evaluate(const terrain_asset& asset,
-                                                       const terrain_evaluation_request& request) const
+                                                      const terrain_evaluation_request& request) const
 {
     terrain_evaluation_result result;
     result.region = request.region;
@@ -200,10 +200,11 @@ terrain_evaluation_result terrain_evaluator::evaluate(const terrain_asset& asset
             break;
         case terrain_source_kind::mesh:
         case terrain_source_kind::procedural:
-            add_diagnostic(result, terrain_evaluation_diagnostic_severity::error,
-                           terrain_evaluation_diagnostic_code::unsupported_source,
-                           "Terrain source uses the unified evaluator contract but its source provider is not implemented yet",
-                           asset.source.id);
+            add_diagnostic(
+                result, terrain_evaluation_diagnostic_severity::error,
+                terrain_evaluation_diagnostic_code::unsupported_source,
+                "Terrain source uses the unified evaluator contract but its source provider is not implemented yet",
+                asset.source.id);
             return result;
     }
 
@@ -228,7 +229,8 @@ terrain_evaluation_result terrain_evaluator::evaluate(const terrain_asset& asset
         {
             add_diagnostic(result, terrain_evaluation_diagnostic_severity::error,
                            terrain_evaluation_diagnostic_code::unsupported_modifier,
-                           "No terrain evaluator is registered for modifier type `" + modifier.type_id + "`", modifier.id);
+                           "No terrain evaluator is registered for modifier type `" + modifier.type_id + "`",
+                           modifier.id);
             return result;
         }
 

@@ -68,8 +68,7 @@ TEST_CASE("TerrainAsset heightfield source data crosses the evaluator boundary w
     asset.source.asset.path_hint = "terrain/source.r16";
 
     const std::vector<float> heights{-2.0f, 0.0f, 1.0f, 4.0f};
-    const std::vector<std::array<std::uint8_t, 4>> weights(
-        4u, std::array<std::uint8_t, 4>{255u, 0u, 0u, 0u});
+    const std::vector<std::array<std::uint8_t, 4>> weights(4u, std::array<std::uint8_t, 4>{255u, 0u, 0u, 0u});
     arc::scene::terrain_evaluation_request request;
     request.heightfield_source = arc::scene::terrain_heightfield_source_view{
         .sample_width = 2u,

@@ -18,7 +18,7 @@ enum class terrain_region_edge : std::uint8_t
 
 /** @brief Return the region directly across one canonical authoring edge, or none at the coordinate limit. */
 [[nodiscard]] std::optional<terrain_region_id> terrain_region_neighbor(terrain_region_id region,
-                                                                      terrain_region_edge edge) noexcept;
+                                                                       terrain_region_edge edge) noexcept;
 
 /** @brief True only for four-connected authoring regions sharing exactly one full edge. */
 [[nodiscard]] bool terrain_regions_share_edge(terrain_region_id lhs, terrain_region_id rhs) noexcept;
@@ -30,6 +30,6 @@ enum class terrain_region_edge : std::uint8_t
  * belongs to terrain evaluation/builds and is intentionally independent from virtual-geometry cluster/page boundaries.
  */
 [[nodiscard]] std::optional<terrain_region_id> terrain_shared_seam_owner(terrain_region_id lhs,
-                                                                        terrain_region_id rhs) noexcept;
+                                                                         terrain_region_id rhs) noexcept;
 
 } // namespace arc::scene
