@@ -3,8 +3,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -115,7 +115,7 @@ TEST_CASE("terrain render geometry rejects surfaces without renderable triangles
     const std::vector<std::uint32_t> indices{0u, 1u, 2u};
 
     arc::scene::terrain_surface_ir surface;
-    surface.local_bounds = {0.0, 0.0, 0.0, 2.0, 0.0, 0.0};
+    surface.local_bounds = {0.0, -1.0, -1.0, 2.0, 1.0, 1.0};
     surface.geometry = arc::scene::terrain_surface_mesh_ir{.positions = positions, .indices = indices};
 
     REQUIRE(arc::scene::validate_terrain_surface_ir(surface));
