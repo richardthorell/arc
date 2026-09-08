@@ -26,7 +26,7 @@ void destroy_proxy_geometry(terrain_render_proxy& proxy, render::renderer& rende
 {
     if (proxy.geometry.conventional.valid() || proxy.geometry.virtualized.valid())
         (void)renderer.destroy_geometry_resource(proxy.geometry);
-    proxy.geometry = {};
+    proxy.geometry = render::geometry_resource_handle{};
 
     if (renderer.terrain_alive(proxy.handle)) (void)renderer.destroy_terrain(proxy.handle);
     proxy.handle = {};
