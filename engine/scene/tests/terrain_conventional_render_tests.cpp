@@ -50,12 +50,8 @@ TEST_CASE("terrain geometry proxy realizes generic resources and rebuilds on con
 
     terrain.heights[4] += 2.0f;
     ++terrain.content_revision;
-    const arc::scene::terrain_dirty_region dirty{.min_x = 1u,
-                                                  .min_z = 1u,
-                                                  .max_x = 1u,
-                                                  .max_z = 1u,
-                                                  .valid = true,
-                                                  .heights_changed = true};
+    const arc::scene::terrain_dirty_region dirty{
+        .min_x = 1u, .min_z = 1u, .max_x = 1u, .max_z = 1u, .valid = true, .heights_changed = true};
     REQUIRE(cache.synchronize_geometry(guid, terrain, renderer, &dirty));
     const auto* rebuilt = cache.find(guid);
     REQUIRE(rebuilt != nullptr);
@@ -97,10 +93,9 @@ TEST_CASE("render scene submits terrain as a conventional mesh item without dedi
     terrain.receive_shadows = true;
     scene.emplace<arc::scene::terrain_component>(terrain_entity, terrain);
 
-    const auto result = arc::scene::render_scene(scene, renderer, 1280u, 720u, arc::render::render_mode::shaded,
-                                                 arc::render::mesh_visualization_mode::standard,
-                                                 arc::render::editor_overlay_mode::selected_wireframe, true, {}, 0.0f,
-                                                 {}, {}, &terrain_proxies);
+    const auto result = arc::scene::render_scene(
+        scene, renderer, 1280u, 720u, arc::render::render_mode::shaded, arc::render::mesh_visualization_mode::standard,
+        arc::render::editor_overlay_mode::selected_wireframe, true, {}, 0.0f, {}, {}, &terrain_proxies);
     REQUIRE(result.camera_found);
     REQUIRE(result.terrain_count == 1u);
     REQUIRE(result.renderable_count == 1u);
