@@ -116,8 +116,7 @@ bool validate_terrain_surface_ir(const terrain_surface_ir& surface) noexcept
                        [&](std::uint32_t index) { return index < mesh->positions.size(); });
 }
 
-std::optional<terrain_triangle_geometry>
-canonicalize_terrain_surface_geometry(const terrain_surface_ir& surface)
+std::optional<terrain_triangle_geometry> canonicalize_terrain_surface_geometry(const terrain_surface_ir& surface)
 {
     if (!validate_terrain_surface_ir(surface)) return std::nullopt;
 

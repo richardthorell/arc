@@ -37,8 +37,8 @@ TEST_CASE("legacy heightfields adapt to backend independent terrain surface IR")
 TEST_CASE("heightfield terrain surfaces canonicalize to deterministic triangle geometry")
 {
     const std::vector<float> heights{0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
-    const std::vector<std::array<std::uint8_t, 4>> weights(
-        heights.size(), std::array<std::uint8_t, 4>{255u, 0u, 0u, 0u});
+    const std::vector<std::array<std::uint8_t, 4>> weights(heights.size(),
+                                                           std::array<std::uint8_t, 4>{255u, 0u, 0u, 0u});
 
     arc::scene::terrain_surface_ir surface;
     surface.source_revision = 9u;
@@ -55,8 +55,7 @@ TEST_CASE("heightfield terrain surfaces canonicalize to deterministic triangle g
     const auto geometry = arc::scene::canonicalize_terrain_surface_geometry(surface);
     REQUIRE(geometry.has_value());
     REQUIRE(geometry->positions.size() == 6u);
-    REQUIRE(geometry->indices == std::vector<std::uint32_t>{0u, 3u, 1u, 1u, 3u, 4u,
-                                                            1u, 4u, 2u, 2u, 4u, 5u});
+    REQUIRE(geometry->indices == std::vector<std::uint32_t>{0u, 3u, 1u, 1u, 3u, 4u, 1u, 4u, 2u, 2u, 4u, 5u});
 
     CHECK(geometry->positions[0][0] == Catch::Approx(-2.0f));
     CHECK(geometry->positions[0][1] == Catch::Approx(0.0f));
