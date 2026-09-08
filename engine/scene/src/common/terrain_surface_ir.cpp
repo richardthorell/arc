@@ -116,6 +116,64 @@ bool validate_terrain_surface_ir(const terrain_surface_ir& surface) noexcept
                        [&](std::uint32_t index) { return index < mesh->positions.size(); });
 }
 
+std::optional<terrain_triangle_geometry> canonicalize_terrain_surface_geometry(const terrain_surface_ir& surface)
+{
+    if (!validate_terrain_surface_ir(surface)) return std::nullopt;
+
+    terrain_triangle_geometry result;
+    if (const auto* mesh = std::get_if<terrain_surface_mesh_ir>(&surface.geometry))
+    {
+        if (mesh->positions.size() > std::numeric_limits<std::uint32_t>::max()) return std::nullopt;
+        result.positions.assign(mesh->positions.begin(), mesh->positions.end());
+        result.indices.assign(mesh->indices.begin(), mesh->indices.end());
+        return result;
+    }
+
+    const auto& heightfield = std::get<terrain_surface_heightfield_ir>(surface.geometry);
+    const auto sample_count = static_cast<std::size_t>(heightfield.sample_width) * heightfield.sample_height;
+    if (sample_count > std::numeric_limits<std::uint32_t>::max()) return std::nullopt;
+
+    const auto quad_count = static_cast<std::size_t>(heightfield.sample_width - 1u) *
+                            static_cast<std::size_t>(heightfield.sample_height - 1u);
+    if (quad_count > std::numeric_limits<std::size_t>::max() / 6u) return std::nullopt;
+
+    result.positions.reserve(sample_count);
+    result.indices.reserve(quad_count * 6u);
+
+    const float half_width = heightfield.width * 0.5f;
+    const float half_depth = heightfield.depth * 0.5f;
+    const float x_denominator = static_cast<float>(heightfield.sample_width - 1u);
+    const float z_denominator = static_cast<float>(heightfield.sample_height - 1u);
+
+    for (std::uint32_t z = 0; z < heightfield.sample_height; ++z)
+        for (std::uint32_t x = 0; x < heightfield.sample_width; ++x)
+        {
+            const auto index = static_cast<std::size_t>(z) * heightfield.sample_width + x;
+            const float local_x = -half_width + heightfield.width * static_cast<float>(x) / x_denominator;
+            const float local_z = -half_depth + heightfield.depth * static_cast<float>(z) / z_denominator;
+            result.positions.push_back({local_x, heightfield.heights[index], local_z});
+        }
+
+    for (std::uint32_t z = 0; z + 1u < heightfield.sample_height; ++z)
+        for (std::uint32_t x = 0; x + 1u < heightfield.sample_width; ++x)
+        {
+            const auto top_left = z * heightfield.sample_width + x;
+            const auto top_right = top_left + 1u;
+            const auto bottom_left = top_left + heightfield.sample_width;
+            const auto bottom_right = bottom_left + 1u;
+
+            // Counter-clockwise winding when viewed from +Y, matching the engine's conventional mesh convention.
+            result.indices.push_back(top_left);
+            result.indices.push_back(bottom_left);
+            result.indices.push_back(top_right);
+            result.indices.push_back(top_right);
+            result.indices.push_back(bottom_left);
+            result.indices.push_back(bottom_right);
+        }
+
+    return result;
+}
+
 std::optional<terrain_evaluated_surface> copy_terrain_surface_ir(const terrain_surface_ir& surface)
 {
     if (!validate_terrain_surface_ir(surface)) return std::nullopt;

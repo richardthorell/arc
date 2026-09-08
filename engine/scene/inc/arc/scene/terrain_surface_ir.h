@@ -50,6 +50,19 @@ struct terrain_surface_ir
     terrain_surface_geometry_ir geometry;
 };
 
+/**
+ * @brief Owning canonical triangle geometry derived from any valid TerrainSurfaceIR.
+ *
+ * Heightfields are deterministically tessellated into a row-major triangle list while mesh-authored surfaces preserve
+ * their existing topology. Material and other terrain attributes intentionally remain outside this geometry-only
+ * contract so downstream compilers do not depend on authored terrain source types.
+ */
+struct terrain_triangle_geometry
+{
+    std::vector<math::vector3f> positions;
+    std::vector<std::uint32_t> indices;
+};
+
 /** @brief Owning heightfield storage used by terrain evaluators before exposing an IR view. */
 struct terrain_evaluated_heightfield
 {
@@ -83,6 +96,13 @@ struct terrain_evaluated_surface
 
 /** @brief Validate topology and referenced sample/index data without depending on a renderer backend. */
 [[nodiscard]] bool validate_terrain_surface_ir(const terrain_surface_ir& surface) noexcept;
+
+/**
+ * @brief Canonicalize a valid terrain surface into renderer-independent indexed triangle geometry.
+ * @return Owning geometry, or std::nullopt when the surface is invalid or cannot be represented with 32-bit indices.
+ */
+[[nodiscard]] std::optional<terrain_triangle_geometry>
+canonicalize_terrain_surface_geometry(const terrain_surface_ir& surface);
 
 /** @brief Produce an owning copy of an existing IR view. */
 [[nodiscard]] std::optional<terrain_evaluated_surface> copy_terrain_surface_ir(const terrain_surface_ir& surface);
