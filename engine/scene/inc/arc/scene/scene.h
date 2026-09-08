@@ -16,8 +16,12 @@
 #include <arc/scene/query.h>
 #include <arc/scene/render_scene.h>
 #include <arc/scene/terrain.h>
+#include <arc/scene/terrain_artifacts.h>
 #include <arc/scene/terrain_asset.h>
-#include <arc/scene/terrain_asset_io.h>
 #include <arc/scene/terrain_asset_bridge.h>
+#include <arc/scene/terrain_asset_io.h>
+#include <arc/scene/terrain_evaluator.h>
+#include <arc/scene/terrain_region_seams.h>
+#include <arc/scene/terrain_runtime_journal.h>
 #include <arc/scene/terrain_surface_ir.h>
 #include <arc/scene/transforms.h>
