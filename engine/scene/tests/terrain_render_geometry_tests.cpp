@@ -11,9 +11,9 @@
 TEST_CASE("heightfield terrain compiles into generic virtual geometry with conventional fallback")
 {
     const std::vector<float> heights(6u, 0.0f);
-    const std::vector<std::array<std::uint8_t, 4>> weights{
-        {255u, 0u, 0u, 0u}, {0u, 255u, 0u, 0u}, {0u, 0u, 255u, 0u},
-        {0u, 0u, 0u, 255u}, {64u, 64u, 64u, 63u}, {128u, 127u, 0u, 0u}};
+    const std::vector<std::array<std::uint8_t, 4>> weights{{255u, 0u, 0u, 0u},   {0u, 255u, 0u, 0u},
+                                                           {0u, 0u, 255u, 0u},   {0u, 0u, 0u, 255u},
+                                                           {64u, 64u, 64u, 63u}, {128u, 127u, 0u, 0u}};
 
     arc::scene::terrain_surface_ir surface;
     surface.source_revision = 7u;
@@ -57,8 +57,8 @@ TEST_CASE("heightfield terrain compiles into generic virtual geometry with conve
 TEST_CASE("terrain render geometry compilation is deterministic")
 {
     const std::vector<float> heights{0.0f, 0.5f, 1.0f, -0.25f, 0.25f, 0.75f};
-    const std::vector<std::array<std::uint8_t, 4>> weights(
-        heights.size(), std::array<std::uint8_t, 4>{255u, 0u, 0u, 0u});
+    const std::vector<std::array<std::uint8_t, 4>> weights(heights.size(),
+                                                           std::array<std::uint8_t, 4>{255u, 0u, 0u, 0u});
 
     arc::scene::terrain_surface_ir surface;
     surface.source_revision = 19u;
@@ -88,10 +88,8 @@ TEST_CASE("terrain render geometry compilation is deterministic")
 
 TEST_CASE("mesh terrain uses the same generic render geometry compiler")
 {
-    const std::vector<arc::math::vector3f> positions{{-1.0f, 0.0f, -1.0f},
-                                                     {-1.0f, 0.0f, 1.0f},
-                                                     {1.0f, 0.0f, -1.0f},
-                                                     {1.0f, 0.0f, 1.0f}};
+    const std::vector<arc::math::vector3f> positions{
+        {-1.0f, 0.0f, -1.0f}, {-1.0f, 0.0f, 1.0f}, {1.0f, 0.0f, -1.0f}, {1.0f, 0.0f, 1.0f}};
     const std::vector<std::uint32_t> indices{0u, 1u, 2u, 2u, 1u, 3u};
 
     arc::scene::terrain_surface_ir surface;
@@ -109,9 +107,7 @@ TEST_CASE("mesh terrain uses the same generic render geometry compiler")
 
 TEST_CASE("terrain render geometry rejects surfaces without renderable triangles")
 {
-    const std::vector<arc::math::vector3f> positions{{0.0f, 0.0f, 0.0f},
-                                                     {1.0f, 0.0f, 0.0f},
-                                                     {2.0f, 0.0f, 0.0f}};
+    const std::vector<arc::math::vector3f> positions{{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {2.0f, 0.0f, 0.0f}};
     const std::vector<std::uint32_t> indices{0u, 1u, 2u};
 
     arc::scene::terrain_surface_ir surface;
