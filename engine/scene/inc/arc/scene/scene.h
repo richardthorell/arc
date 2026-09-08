@@ -22,6 +22,7 @@
 #include <arc/scene/terrain_asset_io.h>
 #include <arc/scene/terrain_evaluator.h>
 #include <arc/scene/terrain_region_seams.h>
+#include <arc/scene/terrain_render_geometry.h>
 #include <arc/scene/terrain_runtime_journal.h>
 #include <arc/scene/terrain_surface_ir.h>
 #include <arc/scene/transforms.h>
