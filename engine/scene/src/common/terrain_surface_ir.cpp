@@ -3,11 +3,92 @@
 #include <arc/scene/terrain.h>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 
 namespace arc::scene
 {
+namespace
+{
+
+class stable_hash64
+{
+public:
+    void append_byte(std::uint8_t value) noexcept
+    {
+        value_ ^= value;
+        value_ *= 1099511628211ull;
+    }
+
+    void append_u32(std::uint32_t value) noexcept
+    {
+        for (std::uint32_t shift = 0; shift < 32u; shift += 8u)
+            append_byte(static_cast<std::uint8_t>((value >> shift) & 0xffu));
+    }
+
+    void append_u64(std::uint64_t value) noexcept
+    {
+        for (std::uint32_t shift = 0; shift < 64u; shift += 8u)
+            append_byte(static_cast<std::uint8_t>((value >> shift) & 0xffu));
+    }
+
+    void append_float(float value) noexcept
+    {
+        append_u32(std::bit_cast<std::uint32_t>(value));
+    }
+
+    void append_double(double value) noexcept
+    {
+        append_u64(std::bit_cast<std::uint64_t>(value));
+    }
+
+    [[nodiscard]] std::uint64_t value() const noexcept
+    {
+        return value_;
+    }
+
+private:
+    std::uint64_t value_{14695981039346656037ull};
+};
+
+void append_bounds(stable_hash64& hash, const terrain_world_bounds& bounds) noexcept
+{
+    hash.append_double(bounds.min_x);
+    hash.append_double(bounds.min_y);
+    hash.append_double(bounds.min_z);
+    hash.append_double(bounds.max_x);
+    hash.append_double(bounds.max_y);
+    hash.append_double(bounds.max_z);
+}
+
+} // namespace
+
+terrain_surface_ir terrain_evaluated_surface::view() const noexcept
+{
+    terrain_surface_ir result;
+    result.schema_version = schema_version;
+    result.source_revision = source_revision;
+    result.local_bounds = local_bounds;
+    if (const auto* heightfield = std::get_if<terrain_evaluated_heightfield>(&geometry))
+    {
+        result.geometry = terrain_surface_heightfield_ir{
+            .sample_width = heightfield->sample_width,
+            .sample_height = heightfield->sample_height,
+            .width = heightfield->width,
+            .depth = heightfield->depth,
+            .heights = heightfield->heights,
+            .material_weights = heightfield->material_weights,
+        };
+    }
+    else
+    {
+        const auto& mesh = std::get<terrain_evaluated_mesh>(geometry);
+        result.geometry = terrain_surface_mesh_ir{.positions = mesh.positions, .indices = mesh.indices};
+    }
+    return result;
+}
 
 bool validate_terrain_surface_ir(const terrain_surface_ir& surface) noexcept
 {
@@ -33,6 +114,76 @@ bool validate_terrain_surface_ir(const terrain_surface_ir& surface) noexcept
         return false;
     return std::all_of(mesh->indices.begin(), mesh->indices.end(),
                        [&](std::uint32_t index) { return index < mesh->positions.size(); });
+}
+
+std::optional<terrain_evaluated_surface> copy_terrain_surface_ir(const terrain_surface_ir& surface)
+{
+    if (!validate_terrain_surface_ir(surface)) return std::nullopt;
+
+    terrain_evaluated_surface result;
+    result.schema_version = surface.schema_version;
+    result.source_revision = surface.source_revision;
+    result.local_bounds = surface.local_bounds;
+    if (const auto* heightfield = std::get_if<terrain_surface_heightfield_ir>(&surface.geometry))
+    {
+        terrain_evaluated_heightfield owned;
+        owned.sample_width = heightfield->sample_width;
+        owned.sample_height = heightfield->sample_height;
+        owned.width = heightfield->width;
+        owned.depth = heightfield->depth;
+        owned.heights.assign(heightfield->heights.begin(), heightfield->heights.end());
+        owned.material_weights.assign(heightfield->material_weights.begin(), heightfield->material_weights.end());
+        result.geometry = std::move(owned);
+    }
+    else
+    {
+        const auto& mesh = std::get<terrain_surface_mesh_ir>(surface.geometry);
+        terrain_evaluated_mesh owned;
+        owned.positions.assign(mesh.positions.begin(), mesh.positions.end());
+        owned.indices.assign(mesh.indices.begin(), mesh.indices.end());
+        result.geometry = std::move(owned);
+    }
+    return result;
+}
+
+std::uint64_t terrain_surface_fingerprint(const terrain_surface_ir& surface) noexcept
+{
+    if (!validate_terrain_surface_ir(surface)) return 0;
+
+    stable_hash64 hash;
+    hash.append_u32(surface.schema_version);
+    hash.append_u64(surface.source_revision);
+    append_bounds(hash, surface.local_bounds);
+
+    if (const auto* heightfield = std::get_if<terrain_surface_heightfield_ir>(&surface.geometry))
+    {
+        hash.append_byte(0u);
+        hash.append_u32(heightfield->sample_width);
+        hash.append_u32(heightfield->sample_height);
+        hash.append_float(heightfield->width);
+        hash.append_float(heightfield->depth);
+        for (const auto height : heightfield->heights)
+            hash.append_float(height);
+        for (const auto& weights : heightfield->material_weights)
+            for (const auto weight : weights)
+                hash.append_byte(weight);
+    }
+    else
+    {
+        hash.append_byte(1u);
+        const auto& mesh = std::get<terrain_surface_mesh_ir>(surface.geometry);
+        hash.append_u64(mesh.positions.size());
+        hash.append_u64(mesh.indices.size());
+        for (const auto& position : mesh.positions)
+        {
+            hash.append_float(position[0]);
+            hash.append_float(position[1]);
+            hash.append_float(position[2]);
+        }
+        for (const auto index : mesh.indices)
+            hash.append_u32(index);
+    }
+    return hash.value();
 }
 
 std::optional<terrain_surface_ir> make_legacy_terrain_surface_ir(const terrain_component& terrain) noexcept
