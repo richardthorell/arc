@@ -2,6 +2,7 @@
 
 #include <arc/ecs/identity.h>
 #include <arc/render/terrain.h>
+#include <arc/render/virtual_mesh.h>
 #include <arc/scene/components.h>
 #include <arc/scene/terrain_surface_ir.h>
 
@@ -151,7 +152,8 @@ struct terrain_dirty_region
 /** @brief Nonserialized renderer proxy state for one terrain entity. */
 struct terrain_render_proxy
 {
-    render::terrain_handle handle{};
+    render::geometry_resource_handle handle{};
+    terrain_world_bounds local_bounds{};
     std::uint64_t synchronized_revision{};
     render::material_handle material{};
 };
