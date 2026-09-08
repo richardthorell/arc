@@ -17,7 +17,7 @@ math::vector3f stable_tangent(const math::vector3f& normal) noexcept
 {
     const math::vector3f x_axis{1.0f, 0.0f, 0.0f};
     const math::vector3f z_axis{0.0f, 0.0f, 1.0f};
-    auto tangent = math::sub(x_axis, math::mul(normal, math::dot(normal, x_axis)));
+    math::vector3f tangent = math::sub(x_axis, math::mul(normal, math::dot(normal, x_axis)));
     if (math::length_squared(tangent) <= normal_epsilon)
         tangent = math::sub(z_axis, math::mul(normal, math::dot(normal, z_axis)));
     return math::length_squared(tangent) > normal_epsilon ? math::normalize(tangent) : x_axis;
