@@ -157,45 +157,26 @@ The asset owns the authoring model. The compiler owns the runtime representation
 
 ## Milestone 0 - Define the Unified Terrain Asset and Compiler Contract
 
-Before adding major features to the current heightfield renderer, establish the long-term data model.
+**Status: complete.** The implementation is intentionally renderer-independent and establishes the contracts used by later milestones.
 
-Introduce the concepts of:
+Implemented M0 foundations include:
 
-### `TerrainAsset`
+- one versioned `TerrainAsset` with Flat, Heightfield, Mesh, and Procedural source identities
+- ordered/versioned modifier descriptors and named attribute definitions
+- persistent `.terrain` assets and typed importer support
+- stable authoring-region IDs, high-precision origins, dirty/compiled revisions, dependency halos, and build snapshots
+- scene compatibility bridging from existing inline heightfield terrain
+- owning evaluated terrain data plus the renderer-independent `TerrainSurfaceIR` boundary
+- region-aware Flat and resolved-Heightfield evaluation, with registered modifier dispatch
+- deterministic evaluated-surface fingerprints
+- opaque content-addressed derived-artifact keys and per-region cooked manifests
+- independent artifact identities for render geometry, fallback geometry, attributes, collision, navigation, destruction, and ray queries
+- deterministic authoring seam ownership independent from virtual-geometry page/cluster boundaries
+- a versioned runtime operation journal contract for future deformation, fracture persistence, and replication
 
-Owns:
+Heightfield sample resolution deliberately remains outside the evaluator so asset streaming/import systems can supply source data without coupling the terrain authoring model to one texture/backend representation. Mesh and Procedural source identities already use the same contract; their actual surface providers are later milestones.
 
-- base source
-- ordered non-destructive modifier stack
-- named attribute channels
-- build configuration
-- stable region layout/versioning
-
-A heightmap is a source node inside the terrain asset, not a separate terrain type.
-
-### `TerrainRegion`
-
-A stable spatial unit used for incremental evaluation, source control, streaming, and derived-data generation.
-
-Each region should track at least:
-
-- stable spatial coordinate or ID
-- authoring bounds
-- dependencies
-- dirty revision
-- compiled revision
-- neighboring region relationships
-
-### `TerrainCookedData`
-
-Contains the runtime data derived from the authoring graph:
-
-- virtual geometry references
-- attribute page references
-- collision data
-- navigation data
-- root/coarse fallback geometry
-- hardware-tier fallback LODs
+M0 explicitly does **not** define virtual-geometry page size, cluster layout, GPU representation, collision topology, navigation tiling, or fracture hierarchy. Those remain independent derived systems.
 
 ### Acceptance criteria
 
@@ -203,6 +184,7 @@ Contains the runtime data derived from the authoring graph:
 - Existing terrain can migrate into this model without changing visible output.
 - Runtime code no longer needs to treat the serialized heightmap as the identity of the terrain object.
 - The compiler boundary is explicit enough that future mesh, procedural, and volume sources can plug into the same pipeline.
+- Future virtual geometry, cave/topology, and destruction systems can consume or produce `TerrainSurfaceIR`/derived artifacts without redesigning `TerrainAsset`.
 
 ---
 
@@ -527,7 +509,7 @@ The same channels can also drive:
 
 ## Milestone 7 - Splines, Roads, Rivers, and Procedural Modifiers
 
-Splines should be general terrain modifier sources rather than isolated bespoke systems.
+Splines should be generic terrain modifier inputs rather than special terrain actors.
 
 A spline may represent:
 
@@ -539,7 +521,7 @@ Cliff
 Trench
 Ridgeline
 Tunnel
-Retaining Wall
+Retaining wall
 ```
 
 Example road stack:
@@ -551,7 +533,7 @@ Road Spline
 |- road material channel
 |- shoulder material channel
 |- foliage exclusion channel
-|- optional road mesh generation
+`- optional road mesh
 ```
 
 Example river stack:
@@ -562,98 +544,99 @@ River Spline
 |- smooth banks
 |- wetness paint
 |- sediment paint
-|- water-system binding
+`- Water System binding
 ```
 
-Procedural terrain modifiers should include at least:
+Procedural modifiers should eventually include:
 
 - noise
+- thermal erosion
+- hydraulic erosion
 - terracing
 - slope filters
 - curvature filters
-- thermal erosion
-- hydraulic erosion
-- biome generators
+- biome generation
 
-These should participate in the same ordered modifier stack rather than requiring a separate terrain-only graph system.
+These should be normal terrain modifiers rather than requiring a parallel terrain-specific PCG product.
 
 ### Acceptance criteria
 
-- spline edits invalidate only affected regions
-- road and river workflows are non-destructive
-- procedural layers can be reordered with sculpt/paint layers
-- generated channels can feed materials and foliage
+- spline edits rebuild only intersecting terrain regions
+- roads can affect geometry, material channels, and foliage masks in one stack
+- rivers can carve terrain and bind to water data
+- procedural modifiers can be reordered with authored modifiers
 
 ---
 
 ## Milestone 8 - Collision, Navigation, Foliage, Water, and World-System Integration
 
-A changed terrain region should fan out into independently generated derived data:
+A terrain region rebuild should fan out into independent derived products:
 
 ```text
 Terrain region changed
-    |
-    +-- render geometry
-    +-- collision proxy
-    +-- navmesh dirty tiles
-    +-- foliage placement
-    +-- water interaction
-    +-- GI / ray-query representation
-    +-- distance/query representation
+        |
+        +-- render geometry
+        +-- collision proxy
+        +-- navigation dirty tiles
+        +-- foliage placement
+        +-- water interaction
+        +-- GI / ray-query data
+        `-- distance/query representation
 ```
 
-All expensive work should be asynchronous and region-local.
+All of these should be asynchronous where practical.
 
-### Independent error budgets
+### Collision
 
-Visual, collision, and navigation representations should not be forced to use identical detail.
+Collision needs its own error budget. It should not automatically use the full visual triangle count.
 
 For example:
 
 ```text
-Visual      -> millimeter to centimeter effective detail where needed
-Collision   -> gameplay-dependent decimeter detail
-Navigation  -> independent nav-tile representation
+Visual detail:     millimeters to centimeters where needed
+Collision detail:  centimeters to decimeters based on gameplay
+Navigation:        independent tile representation
 ```
 
-Editing a small region must not rebuild collision or navigation for the entire terrain asset.
+A local terrain edit should invalidate local collision and navigation data rather than rebuilding kilometers of world data.
 
 ### Acceptance criteria
 
-- region-local collision rebuild
-- region-local nav invalidation
-- foliage responds to changed attribute channels
-- water and terrain modifier integration is stable
-- runtime queries work across caves and arbitrary topology
+- visual and physics complexity are decoupled
+- navigation updates are spatially incremental
+- foliage responds to terrain attribute changes
+- rivers/water can respond to terrain edits
+- ray/GI data can be independently generated or invalidated
 
 ---
 
 ## Milestone 9 - Production Terrain Workflow and Diagnostics
 
-Finish the system around the artist and large-team workflow.
+Finish the system around artists and large projects.
 
-Add tooling such as:
+Useful Terrain Editor features:
 
-- layer profiler
-- build-to-this-layer
-- solo layer
-- freeze layer
-- bake/collapse layers
-- per-region build time
-- dirty-region visualization
-- LOD visualization
-- cluster visualization
-- streaming visualization
-- material-channel visualization
-- collision preview
-- navigation preview
-- residency and page-request diagnostics
+```text
+Layer profiler
+Build To This Layer
+Solo layer
+Freeze layer
+Bake / collapse layers
+Per-region build time
+Dirty-region visualization
+LOD visualization
+Cluster visualization
+Streaming visualization
+Material-channel visualization
+Collision preview
+Navigation preview
+```
 
-### Source-control-friendly authoring
+### Source-control layout
 
-One brush stroke should not rewrite one giant terrain binary.
+Terrain source data should remain regionized so a small brush stroke does not rewrite one giant binary file.
 
-Prefer a regionized source layout conceptually similar to:
+Conceptually:
 
 ```text
 Mountain.terrain
@@ -666,81 +649,82 @@ Mountain/
         road_04/...
 ```
 
-Expensive evaluated and cooked results belong in derived-data/cache systems rather than source control where possible.
+Expensive evaluated and cooked products belong in derived-data storage/cache rather than source control.
 
 ### Acceptance criteria
 
-- large terrain edits produce localized source changes
-- modifier cost is visible to artists
-- rebuild bottlenecks are diagnosable
-- terrain data is practical in multi-user source-control workflows
+- local authoring edits create local source-control changes
+- expensive derived data is cacheable and reproducible
+- artists can inspect what caused an expensive rebuild
+- build profiling identifies expensive modifiers and regions
+- CI/cook can reproduce terrain from authored inputs deterministically
 
 ---
 
-# Runtime Representation Policy
+# Runtime Scaling and Hardware Compatibility
 
-There should still be only one conceptual terrain even when hardware capabilities differ.
+ARC should expose one authored terrain regardless of hardware tier.
 
-The compiler can produce multiple runtime representations from the same `TerrainAsset`:
+Conceptually:
 
 ```text
-                    TerrainAsset
-                        |
-                     compiler
-                        |
-            +-----------+-----------+
-            |                       |
-     Virtual Geometry        Conventional LODs
-     high-end path            lower-end fallback
-            |                       |
-  Compute / Mesh Shader          indexed draws
+                       TerrainAsset
+                            |
+                         compiler
+                            |
+             +--------------+--------------+
+             |                             |
+     Virtual Geometry                Conventional LODs
+    high-end / desktop              low-end / fallback
+             |                             |
+      Compute / Mesh Shader            indexed draws
 ```
 
-The artist should not select or maintain these representations manually.
+The artist should not choose separate terrain assets for these paths.
 
-Mesh shaders must remain an optimization, not an architectural requirement. ARC's compute path should remain a first-class implementation for virtual terrain geometry.
+Mesh shaders should remain an optimization rather than a hard architectural requirement. Compute-driven virtualized geometry should remain a first-class path when practical.
 
-# Architectural Rules for Future Work
+# Architecture Rules
 
-When implementing terrain-related changes, preserve these rules unless this document is intentionally revised:
+These rules should be preserved as the terrain system evolves.
 
-1. **One terrain asset type.** Do not create parallel heightfield and mesh terrain product concepts.
-2. **One Terrain Editor.** Different capabilities appear as tools/modifiers, not separate editors.
-3. **Non-destructive authoring.** Base sources remain recoverable; modifiers are ordered and editable.
-4. **Authoring is separate from runtime.** Runtime data is compiled and may vary by hardware tier.
-5. **Virtual geometry is the primary high-end runtime destination.** Avoid building a second independent terrain virtualization stack.
-6. **Local edits cause local rebuilds.** Region granularity is fundamental to editor responsiveness and large-world scalability.
-7. **Topology can become arbitrary.** Heightfields are convenient inputs, not a permanent limitation.
-8. **Use implicit/SDF representations locally, not globally, unless future profiling proves otherwise.**
-9. **Geometry and attributes stream independently.** Painting should not normally rebuild geometry.
-10. **Derived systems have independent detail budgets.** Rendering, collision, navigation, foliage, and queries should not share unnecessary resolution.
-11. **Backend neutral first.** Vulkan is the first implementation, not the terrain architecture.
-12. **Graceful hardware fallback is automatic.** The user authors one terrain and ARC chooses the runtime path.
+## Do
 
-# Immediate Implementation Priority
+- keep one `TerrainAsset`
+- keep one Terrain Editor
+- treat heightmaps as source data
+- use non-destructive ordered modifiers
+- rebuild only spatially affected regions
+- keep authoring and cooked representations separate
+- use virtual geometry as the primary high-end runtime destination
+- generate lower-tier fallbacks automatically
+- stream geometry and attributes independently
+- keep collision and navigation representations independent from visual detail
+- use local implicit/SDF representations for topology-changing operations where useful
 
-From the current ARC state, the next terrain work should be prioritized as:
+## Do Not
 
-1. **`TerrainAsset` and compiler contract**
-   - establish source/layer/region/cooked-data separation
+- add `mesh_terrain_component` alongside `terrain_component`
+- make an entire world permanently voxel-based just to support caves
+- expose render-cluster/page sizes as artist-facing terrain concepts
+- extend runtime stitch masks as the long-term seam solution
+- make material painting rebuild geometry unnecessarily
+- require a second terrain actor for caves or tunnels
+- force mesh shaders as the only viable virtual-geometry implementation
+- couple collision complexity directly to visual triangle count
 
-2. **Heightmap -> region mesh -> `build_virtual_mesh()`**
-   - move current terrain rendering through the virtual geometry stack
+# Recommended Implementation Order
 
-3. **Unified Terrain Editor with layered sculpting and incremental region compilation**
-   - establish the final artist workflow early
+The highest-value near-term sequence is:
 
-4. **Adaptive remesh + mesh source + boolean/volume modifiers**
-   - reach the core arbitrary-topology capability
+1. `TerrainAsset` and compiler contract
+2. compile existing heightfield terrain into virtual geometry
+3. unified Terrain Editor with non-destructive sculpting and incremental region builds
+4. mesh-native adaptive topology
+5. local volume/boolean operations for caves and tunnels
+6. independent named attribute streaming
+7. splines, erosion, roads, rivers, and procedural workflows
+8. collision/navigation/foliage/world-system integration
+9. production diagnostics and large-project tooling
 
-After these four, roads, erosion, biome painting, foliage, world integration, and production tooling should extend the same architecture rather than require another terrain rewrite.
-
-# Reference Direction
-
-Useful external references for concepts, not APIs to copy directly:
-
-- Unreal Engine Mesh Terrain documentation: https://dev.epicgames.com/documentation/en-us/unreal-engine/mesh-terrain-in-unreal-engine
-- Unreal Engine PCG and Mesh Terrain documentation: https://dev.epicgames.com/documentation/en-us/unreal-engine/pcg-and-mesh-terrain-in-unreal-engine
-- Unreal Engine Mesh Terrain access/editor documentation: https://dev.epicgames.com/documentation/en-us/unreal-engine/accessing-mesh-terrain-in-unreal-engine
-
-ARC should adopt the useful ideas—arbitrary topology, non-destructive modifier stacks, local variable detail, regionized processing, and compiled runtime sections—while keeping the product model simpler: **one terrain system from creation through shipping.**
+The key architectural transition is step 2: once existing terrain renders through the normal virtual-geometry path, ARC stops investing new high-end rendering work into the dedicated heightfield patch renderer.
