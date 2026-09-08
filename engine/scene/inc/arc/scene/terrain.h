@@ -3,6 +3,7 @@
 #include <arc/ecs/identity.h>
 #include <arc/render/terrain.h>
 #include <arc/scene/components.h>
+#include <arc/scene/terrain_surface_ir.h>
 
 #include <array>
 #include <cstdint>
@@ -161,6 +162,8 @@ class terrain_render_proxy_cache
 public:
     [[nodiscard]] terrain_render_proxy* find(ecs::entity_guid guid) noexcept;
     [[nodiscard]] const terrain_render_proxy* find(ecs::entity_guid guid) const noexcept;
+    bool synchronize(ecs::entity_guid guid, const terrain_surface_ir& surface, const terrain_component& terrain,
+                     render::renderer& renderer, const terrain_dirty_region* dirty_region = nullptr);
     bool synchronize(ecs::entity_guid guid, const terrain_component& terrain, render::renderer& renderer,
                      const terrain_dirty_region* dirty_region = nullptr);
     void release_missing(std::span<const ecs::entity_guid> active, render::renderer& renderer);

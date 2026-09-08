@@ -712,53 +712,57 @@ const terrain_render_proxy* terrain_render_proxy_cache::find(ecs::entity_guid gu
     return found == proxies_.end() ? nullptr : &found->second;
 }
 
-bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrain_component& terrain,
-                                             render::renderer& renderer, const terrain_dirty_region* dirty_region)
+bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrain_surface_ir& surface,
+                                             const terrain_component& terrain, render::renderer& renderer,
+                                             const terrain_dirty_region* dirty_region)
 {
-    if (!guid.valid() || !terrain_heightfield_valid(terrain)) return false;
+    const auto* heightfield = std::get_if<terrain_surface_heightfield_ir>(&surface.geometry);
+    if (!guid.valid() || !heightfield || !validate_terrain_surface_ir(surface) ||
+        heightfield->sample_width != heightfield->sample_height)
+        return false;
     auto& proxy = proxies_[guid];
     if (!renderer.terrain_alive(proxy.handle))
     {
         render::terrain_resource_descriptor descriptor;
-        descriptor.sample_resolution = terrain.subdivisions + 1u;
-        descriptor.width = terrain.size;
-        descriptor.depth = terrain.size;
-        descriptor.heights = terrain.heights;
-        descriptor.weights = terrain.layer_weights;
+        descriptor.sample_resolution = heightfield->sample_width;
+        descriptor.width = heightfield->width;
+        descriptor.depth = heightfield->depth;
+        descriptor.heights.assign(heightfield->heights.begin(), heightfield->heights.end());
+        descriptor.weights.assign(heightfield->material_weights.begin(), heightfield->material_weights.end());
         descriptor.material = terrain.material;
         descriptor.lod = {.patch_quads = terrain.patch_quads,
                           .maximum_hierarchy_depth = terrain.maximum_hierarchy_depth,
                           .geometric_error_multiplier = terrain.geometric_error_multiplier};
-        descriptor.content_revision = terrain.content_revision;
+        descriptor.content_revision = surface.source_revision;
         descriptor.name = "terrain";
         proxy.handle = renderer.create_terrain(std::move(descriptor));
-        proxy.synchronized_revision = terrain.content_revision;
+        proxy.synchronized_revision = surface.source_revision;
         proxy.material = terrain.material;
         return proxy.handle.valid();
     }
-    if (proxy.synchronized_revision == terrain.content_revision && proxy.material == terrain.material) return true;
+    if (proxy.synchronized_revision == surface.source_revision && proxy.material == terrain.material) return true;
     if (!dirty_region || !dirty_region->valid)
     {
-        if (proxy.synchronized_revision != terrain.content_revision)
+        if (proxy.synchronized_revision != surface.source_revision)
         {
             arc::diagnostics::warn("scene.terrain",
                                    "Terrain content revision changed without a dirty region; performing a full "
                                    "resource resynchronization");
             (void)renderer.destroy_terrain(proxy.handle);
             render::terrain_resource_descriptor descriptor;
-            descriptor.sample_resolution = terrain.subdivisions + 1u;
-            descriptor.width = terrain.size;
-            descriptor.depth = terrain.size;
-            descriptor.heights = terrain.heights;
-            descriptor.weights = terrain.layer_weights;
+            descriptor.sample_resolution = heightfield->sample_width;
+            descriptor.width = heightfield->width;
+            descriptor.depth = heightfield->depth;
+            descriptor.heights.assign(heightfield->heights.begin(), heightfield->heights.end());
+            descriptor.weights.assign(heightfield->material_weights.begin(), heightfield->material_weights.end());
             descriptor.material = terrain.material;
             descriptor.lod = {.patch_quads = terrain.patch_quads,
                               .maximum_hierarchy_depth = terrain.maximum_hierarchy_depth,
                               .geometric_error_multiplier = terrain.geometric_error_multiplier};
-            descriptor.content_revision = terrain.content_revision;
+            descriptor.content_revision = surface.source_revision;
             descriptor.name = "terrain";
             proxy.handle = renderer.create_terrain(std::move(descriptor));
-            proxy.synchronized_revision = terrain.content_revision;
+            proxy.synchronized_revision = surface.source_revision;
             proxy.material = terrain.material;
             return proxy.handle.valid();
         }
@@ -766,10 +770,10 @@ bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrai
                                                      {.patch_quads = terrain.patch_quads,
                                                       .maximum_hierarchy_depth = terrain.maximum_hierarchy_depth,
                                                       .geometric_error_multiplier = terrain.geometric_error_multiplier},
-                                                     terrain.content_revision);
+                                                     surface.source_revision);
         if (updated)
         {
-            proxy.synchronized_revision = terrain.content_revision;
+            proxy.synchronized_revision = surface.source_revision;
             proxy.material = terrain.material;
         }
         return updated;
@@ -783,13 +787,13 @@ bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrai
     if (dirty_region->heights_changed)
     {
         render::terrain_height_region_update request{
-            .region = region, .row_stride = width, .content_revision = terrain.content_revision};
+            .region = region, .row_stride = width, .content_revision = surface.source_revision};
         request.values.reserve(static_cast<std::size_t>(width) * height);
         for (std::uint32_t z = region.min_z; z <= region.max_z; ++z)
         {
             const auto begin =
-                terrain.heights.begin() +
-                static_cast<std::ptrdiff_t>(static_cast<std::size_t>(z) * (terrain.subdivisions + 1u) + region.min_x);
+                heightfield->heights.begin() +
+                static_cast<std::ptrdiff_t>(static_cast<std::size_t>(z) * (heightfield->sample_width) + region.min_x);
             request.values.insert(request.values.end(), begin, begin + width);
         }
         updated = renderer.update_terrain_heights(proxy.handle, std::move(request));
@@ -797,23 +801,30 @@ bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrai
     if (updated && dirty_region->weights_changed)
     {
         render::terrain_weight_region_update request{
-            .region = region, .row_stride = width, .content_revision = terrain.content_revision};
+            .region = region, .row_stride = width, .content_revision = surface.source_revision};
         request.values.reserve(static_cast<std::size_t>(width) * height);
         for (std::uint32_t z = region.min_z; z <= region.max_z; ++z)
         {
             const auto begin =
-                terrain.layer_weights.begin() +
-                static_cast<std::ptrdiff_t>(static_cast<std::size_t>(z) * (terrain.subdivisions + 1u) + region.min_x);
+                heightfield->material_weights.begin() +
+                static_cast<std::ptrdiff_t>(static_cast<std::size_t>(z) * (heightfield->sample_width) + region.min_x);
             request.values.insert(request.values.end(), begin, begin + width);
         }
         updated = renderer.update_terrain_weights(proxy.handle, std::move(request));
     }
     if (updated)
     {
-        proxy.synchronized_revision = terrain.content_revision;
+        proxy.synchronized_revision = surface.source_revision;
         proxy.material = terrain.material;
     }
     return updated;
+}
+
+bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrain_component& terrain,
+                                             render::renderer& renderer, const terrain_dirty_region* dirty_region)
+{
+    const auto surface = make_legacy_terrain_surface_ir(terrain);
+    return surface && synchronize(guid, *surface, terrain, renderer, dirty_region);
 }
 
 bool terrain_render_proxy_cache::erase(ecs::entity_guid guid, render::renderer& renderer)

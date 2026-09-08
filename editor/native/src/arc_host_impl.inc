@@ -260,6 +260,7 @@ void capture_viewport_surface(const HostState& host, viewport_surface_registry::
 // mesh assignment and viewport telemetry paths. Base entry points are renamed
 // so public wrappers can extend the protocol without duplicating host logic.
 #define execute execute_base
+#define open_project open_project_base
 #define query(...) query_base(__VA_ARGS__)
 #define request_viewport request_viewport_base
 #define has_material                                                                                                   \
@@ -293,6 +294,7 @@ void capture_viewport_surface(const HostState& host, viewport_surface_registry::
 #undef has_material
 #undef request_viewport
 #undef query
+#undef open_project
 #undef execute
 
 namespace arc::editor
@@ -714,7 +716,38 @@ void refresh_reimported_world_material(HostState& host, const host_asset_reimpor
         arc::diagnostics::info("editor.materials", "[material-flow] refreshed assigned material guid=" + command.guid +
                                                        " path=" + resolved->path.generic_string());
 }
+
+template <class HostState> bool ensure_terrain_asset_importer(HostState& host)
+{
+    if (!host.asset_registry) return false;
+    const auto importers = host.asset_registry->importers();
+    if (std::any_of(importers.begin(), importers.end(),
+                    [](const auto& importer) { return importer.id == assets::importer_ids::terrain; }))
+        return true;
+    return scene::register_terrain_asset_importer(*host.asset_registry);
+}
+
+template <class HostState> void refresh_scene_terrain_assets(HostState& host)
+{
+    if (!host.asset_registry) return;
+    for (const auto entity : host.scene.scene.entities())
+    {
+        auto* terrain = host.scene.scene.template try_get<scene::terrain_component>(entity);
+        if (!terrain || (!terrain->asset.guid.valid() && terrain->asset.path_hint.empty())) continue;
+        const auto binding = scene::refresh_terrain_asset_binding(*terrain, *host.asset_registry);
+        if (!binding.succeeded)
+            arc::diagnostics::warn("editor.terrain", "Terrain asset refresh failed: " + binding.message);
+    }
+}
 } // namespace
+
+host_response arc_host::open_project(const host_open_project_command& command, const editor_asset_state& assets,
+                                     std::uint64_t request_id)
+{
+    auto response = open_project_base(command, assets, request_id);
+    if (response.succeeded && ensure_terrain_asset_importer(*state_)) refresh_scene_terrain_assets(*state_);
+    return response;
+}
 
 host_response arc_host::execute(host_command_payload command)
 {
@@ -793,7 +826,16 @@ host_response arc_host::execute(const host_command_envelope& command)
         if (response.succeeded)
         {
             if (const auto* reimport = std::get_if<host_asset_reimport_command>(&command.payload))
+            {
                 refresh_reimported_world_material(*state_, *reimport);
+                if (ensure_terrain_asset_importer(*state_)) refresh_scene_terrain_assets(*state_);
+            }
+            if (std::holds_alternative<host_open_project_command>(command.payload) ||
+                std::holds_alternative<host_open_scene_command>(command.payload) ||
+                std::holds_alternative<host_open_recovery_scene_command>(command.payload))
+            {
+                if (ensure_terrain_asset_importer(*state_)) refresh_scene_terrain_assets(*state_);
+            }
         }
         capture_viewport_surface(*state_, *viewport_surface);
         if (response.succeeded && std::holds_alternative<host_viewport_pick_command>(command.payload))

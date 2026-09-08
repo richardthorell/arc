@@ -545,7 +545,8 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                                   (static_cast<std::uint64_t>(value.generation) << 32u) | value.index};
             if (const auto* persistent = scene.try_get<ecs::persistent_id_component>(value)) guid = persistent->value;
             active_terrain_guids.push_back(guid);
-            if (!terrain_proxies->synchronize(guid, terrain, renderer)) return;
+            const auto surface = make_legacy_terrain_surface_ir(terrain);
+            if (!surface || !terrain_proxies->synchronize(guid, *surface, terrain, renderer)) return;
             const auto* proxy = terrain_proxies->find(guid);
             const auto* resource = proxy ? renderer.terrain_data_for(proxy->handle) : nullptr;
             if (!proxy || !resource) return;

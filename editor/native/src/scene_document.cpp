@@ -87,6 +87,16 @@ json build_dependency_manifest(const editor_scene_state& state, assets::asset_ma
         if (binding.material.guid.valid() || !binding.material.path_hint.empty())
             dependencies.push_back(dependency_record(refreshed(binding.material), binding.entity, mesh.id, 2, false));
     }
+    const auto& terrain_metadata = ecs::component_metadata<scene::terrain_component>();
+    for (const auto entity : state.scene.entities())
+    {
+        if (entity == state.camera_entity) continue;
+        if (included_entities && !included_entities->contains(entity)) continue;
+        const auto* terrain = state.scene.try_get<scene::terrain_component>(entity);
+        if (!terrain || (!terrain->asset.guid.valid() && terrain->asset.path_hint.empty())) continue;
+        dependencies.push_back(
+            dependency_record(refreshed(terrain->asset), entity_guid_of(state, entity), terrain_metadata.id, 0, true));
+    }
     const auto& prefab = ecs::component_metadata<scene::prefab_instance_component>();
     for (const auto entity : state.scene.entities())
     {
@@ -235,7 +245,7 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
     const bool supports_v3 = name == "Terrain" || name == "Camera" || name == "MeshRenderer" ||
                              name == "DirectionalLight" || name == "PointLight" || name == "SpotLight" ||
                              name == "AreaLight";
-    const bool supports_v4 = name == "MeshRenderer";
+    const bool supports_v4 = name == "MeshRenderer" || name == "Terrain";
     const bool supports_v5 = name == "MeshRenderer";
     if (component_version != 1u && !(supports_v2 && component_version == 2u) &&
         !(supports_v3 && component_version == 3u) && !(supports_v4 && component_version == 4u) &&
@@ -410,6 +420,19 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                                   value.contains("baseColor") && finite_color(value["baseColor"], 3) &&
                                   value.contains("receiveShadows") && value["receiveShadows"].is_boolean();
         if (!common_valid) return fail("has invalid terrain values");
+        if (component_version >= 4u)
+        {
+            if (!value.contains("asset") || !value["asset"].is_object() || !value["asset"].contains("guid") ||
+                !value["asset"]["guid"].is_string() || !value["asset"].contains("expectedType") ||
+                !value["asset"]["expectedType"].is_string() || !value["asset"].contains("pathHint") ||
+                !value["asset"]["pathHint"].is_string())
+                return fail("has an invalid terrain asset reference");
+            const auto guid_text = value["asset"]["guid"].get<std::string>();
+            const auto type_text = value["asset"]["expectedType"].get<std::string>();
+            if ((!guid_text.empty() && !assets::parse_asset_guid(guid_text)) ||
+                (!type_text.empty() && !assets::parse_asset_type_id(type_text)))
+                return fail("has an invalid terrain asset identity");
+        }
         if (component_version == 1u) return true;
         if (value["subdivisions"].get<std::uint32_t>() != 256u || !value.contains("chunkQuads") ||
             !value["chunkQuads"].is_number_unsigned() || value["chunkQuads"].get<std::uint32_t>() != 128u ||
@@ -661,6 +684,15 @@ bool validate_scene_for_save(const editor_scene_state& state, const std::filesys
             !is_normal_project_relative_path(binding.material.path_hint, project_root))
         {
             error = "scene asset references must be project-relative";
+            return false;
+        }
+    }
+    for (const auto entity : all_entities)
+    {
+        const auto* terrain = state.scene.try_get<scene::terrain_component>(entity);
+        if (terrain && !is_normal_project_relative_path(terrain->asset.path_hint, project_root))
+        {
+            error = "terrain asset references must be project-relative";
             return false;
         }
     }
@@ -941,7 +973,8 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
             std::copy(component->layer_weights[sample].begin(), component->layer_weights[sample].end(),
                       weight_bytes.begin() + static_cast<std::ptrdiff_t>(sample * 4u));
         }
-        components["Terrain"] = {{"version", 3},
+        components["Terrain"] = {{"version", 4},
+                                 {"asset", serialize_asset_reference(component->asset, project_root)},
                                  {"enabled", component->enabled},
                                  {"size", component->size},
                                  {"subdivisions", component->subdivisions},
@@ -1632,7 +1665,15 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                 value.cast_shadows = source.value("castShadows", true);
                 value.shadow_lod_bias = source.value("shadowLodBias", 0.0f);
                 value.maximum_shadow_distance = source.value("maximumShadowDistance", 0.0f);
-                if (source.value("version", 1u) == 1u)
+                const auto terrain_version = source.value("version", 1u);
+                if (terrain_version >= 4u)
+                {
+                    if (!source.contains("asset")) throw std::runtime_error("terrain asset reference is missing");
+                    value.asset = read_asset_reference(source["asset"], assets::asset_types::terrain, project_root,
+                                                       asset_registry);
+                    value.asset.expected_type = assets::asset_types::terrain;
+                }
+                if (terrain_version == 1u)
                 {
                     scene::generate_terrain_heightfield(value);
                 }
@@ -1656,6 +1697,19 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                                     value.layer_weights[sample].begin());
                     }
                     value.content_revision = source.value("revision", std::uint64_t{1});
+                }
+                if (asset_registry && (value.asset.guid.valid() || !value.asset.path_hint.empty()))
+                {
+                    const auto importers = asset_registry->importers();
+                    const bool terrain_importer_ready =
+                        std::any_of(importers.begin(), importers.end(),
+                                    [](const auto& importer) { return importer.id == assets::importer_ids::terrain; });
+                    if (terrain_importer_ready)
+                    {
+                        const auto binding = scene::refresh_terrain_asset_binding(value, *asset_registry);
+                        if (!binding.succeeded)
+                            diagnostics.push_back("Terrain asset could not be refreshed: " + binding.message);
+                    }
                 }
                 if (!synchronize_terrain_render_resource(loaded, renderer, entity))
                     throw std::runtime_error("terrain runtime chunks could not be rebuilt");
