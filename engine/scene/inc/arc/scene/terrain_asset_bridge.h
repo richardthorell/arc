@@ -10,7 +10,7 @@ namespace arc::scene
 {
 
 /** @brief Result of resolving one scene terrain component against its authored terrain asset. */
-struct terrain_asset_binding_result
+struct [[nodiscard]] terrain_asset_binding_result
 {
     bool succeeded{};
     bool bound{};
