@@ -156,6 +156,8 @@ struct terrain_render_proxy
     render::terrain_handle handle{};
     /** Generic geometry realized from TerrainSurfaceIR and used by the M1 renderer path. */
     render::geometry_resource_handle geometry{};
+    /** Per-surface RGBA8 terrain material weights, kept separate from generic mesh vertices. */
+    render::texture_handle surface_attribute_texture{};
     terrain_world_bounds local_bounds{};
     std::uint64_t synchronized_revision{};
     render::material_handle material{};
