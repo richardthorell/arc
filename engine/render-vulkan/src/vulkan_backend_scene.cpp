@@ -61,6 +61,8 @@ render_submit_result vulkan_render_backend::submit(const render_frame_packet& pa
         }
         else if (const auto* virtual_page = std::get_if<virtual_geometry_page_upload_event>(&event.payload))
             upload_virtual_geometry_page(*virtual_page);
+        else if (const auto* virtual_eviction = std::get_if<virtual_geometry_page_evict_event>(&event.payload))
+            evict_virtual_geometry_page(*virtual_eviction);
         else if (const auto* terrain = std::get_if<terrain_upload_event>(&event.payload))
         {
             upload_terrain(*terrain);

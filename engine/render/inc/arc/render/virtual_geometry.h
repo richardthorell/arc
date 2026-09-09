@@ -165,6 +165,8 @@ struct virtual_geometry_overflow_record
     std::uint32_t page_request_overflow{};
     std::uint32_t raster_bin_overflow{};
     std::uint32_t fallback_instance_count{};
+    std::uint32_t parent_fallback_count{};
+    std::uint32_t traversal_overflow{};
 };
 
 /** @brief Sparse renderer update for virtual-geometry GPU metadata or page residency. */
@@ -189,6 +191,14 @@ struct virtual_geometry_page_upload
     std::uint32_t page_index{};
     std::shared_ptr<const std::vector<std::byte>> decoded_bytes;
     std::uint32_t compressed_cpu_bytes{};
+};
+
+/** @brief Generation-safe retirement of one non-root resident virtual-geometry page. */
+struct virtual_geometry_page_eviction
+{
+    virtual_mesh_handle resource{};
+    std::uint32_t resource_generation{};
+    std::uint32_t page_index{};
 };
 
 /** @brief Generation-safe backend acknowledgement for one virtual-geometry page publication. */
@@ -360,6 +370,8 @@ public:
     /** @brief Validate and ingest asynchronous feedback produced by GPU hierarchy traversal. */
     void request_gpu(std::span<const virtual_geometry_gpu_page_request> requests);
     [[nodiscard]] std::vector<virtual_geometry_page_load> take_load_requests();
+    /** @brief Take non-root pages retired by budget enforcement since the previous call. */
+    [[nodiscard]] std::vector<virtual_geometry_page_eviction> take_evictions();
     void mark_loading(virtual_mesh_handle resource, std::uint32_t generation, std::uint32_t page_index);
     void publish(virtual_mesh_handle resource, std::uint32_t generation, std::uint32_t page_index,
                  std::uint32_t gpu_bytes, std::uint32_t compressed_cpu_bytes);

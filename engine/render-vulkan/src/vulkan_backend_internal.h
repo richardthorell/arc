@@ -1049,6 +1049,8 @@ private:
 
     void upload_virtual_geometry_page(const virtual_geometry_page_upload_event& event);
 
+    void evict_virtual_geometry_page(const virtual_geometry_page_evict_event& event);
+
     void retire_virtual_mesh(virtual_mesh_handle handle);
 
     void defer_texture_release(gpu_texture texture);

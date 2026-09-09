@@ -779,7 +779,9 @@ void vulkan_render_backend::collect_virtual_geometry_feedback(std::uint32_t fram
     completed_virtual_geometry_feedback_ = {.frame_index = frame.submitted_frame,
                                             .overflow = {.visible_cluster_overflow = counters.visible_overflow,
                                                          .page_request_overflow = counters.request_overflow,
-                                                         .fallback_instance_count = counters.fallback_instances}};
+                                                         .fallback_instance_count = counters.fallback_instances,
+                                                         .parent_fallback_count = counters.parent_fallbacks,
+                                                         .traversal_overflow = counters.traversal_overflow}};
     if (request_count != 0u)
     {
         void* requests_mapped{};
@@ -800,6 +802,8 @@ void vulkan_render_backend::collect_virtual_geometry_feedback(std::uint32_t fram
     profile.projected_size_rejected = counters.projected_size_rejected;
     profile.requested_pages = request_count;
     profile.parent_fallbacks = counters.parent_fallbacks;
+    profile.page_request_overflow = counters.request_overflow;
+    profile.traversal_overflow = counters.traversal_overflow;
     profile.overflowed_clusters = counters.visible_overflow + counters.traversal_overflow;
     profile.fallback_instances = counters.fallback_instances;
     frame.submitted_frame = 0u;

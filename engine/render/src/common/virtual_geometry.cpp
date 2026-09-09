@@ -128,40 +128,43 @@ virtual_geometry_reference_result traverse_virtual_geometry_reference(const virt
         }
         const auto projected_error = node.error * view.projection_scale / nearest_distance;
 
-        bool children_resident = node.child_count > 0;
-        for (std::uint32_t child_offset = 0; child_offset < node.child_count; ++child_offset)
+        const bool wants_refinement = node.child_count > 0 && projected_error > view.geometric_error_threshold;
+        bool children_resident = wants_refinement;
+        if (wants_refinement)
         {
-            const auto hierarchy_offset = node.first_child + child_offset;
-            if (hierarchy_offset >= geometry.hierarchy_children.size())
+            for (std::uint32_t child_offset = 0; child_offset < node.child_count; ++child_offset)
             {
-                children_resident = false;
-                break;
-            }
-            const auto child_index = geometry.hierarchy_children[hierarchy_offset];
-            if (child_index >= geometry.lod_nodes.size() ||
-                !page_resident(resident_pages, geometry.lod_nodes[child_index].page_index))
-            {
-                children_resident = false;
-                if (child_index < geometry.lod_nodes.size())
+                const auto hierarchy_offset = node.first_child + child_offset;
+                if (hierarchy_offset >= geometry.hierarchy_children.size())
                 {
-                    const auto page = geometry.lod_nodes[child_index].page_index;
-                    if (page < requested.size() && requested[page] == 0)
+                    children_resident = false;
+                    break;
+                }
+                const auto child_index = geometry.hierarchy_children[hierarchy_offset];
+                if (child_index >= geometry.lod_nodes.size() ||
+                    !page_resident(resident_pages, geometry.lod_nodes[child_index].page_index))
+                {
+                    children_resident = false;
+                    if (child_index < geometry.lod_nodes.size())
                     {
-                        requested[page] = 1;
-                        result.requested_pages.push_back(page);
+                        const auto page = geometry.lod_nodes[child_index].page_index;
+                        if (page < requested.size() && requested[page] == 0)
+                        {
+                            requested[page] = 1;
+                            result.requested_pages.push_back(page);
+                        }
                     }
                 }
             }
         }
 
-        if (node.child_count > 0 && projected_error > view.geometric_error_threshold && children_resident)
+        if (wants_refinement && children_resident)
         {
             for (std::uint32_t child_offset = node.child_count; child_offset > 0; --child_offset)
                 stack.push_back(geometry.hierarchy_children[node.first_child + child_offset - 1]);
             continue;
         }
-        if (node.child_count > 0 && projected_error > view.geometric_error_threshold && !children_resident)
-            ++result.parent_fallbacks;
+        if (wants_refinement && !children_resident) ++result.parent_fallbacks;
 
         for (std::uint32_t cluster_offset = 0; cluster_offset < node.cluster_count; ++cluster_offset)
         {
@@ -311,6 +314,7 @@ struct virtual_geometry_residency_manager::implementation
     std::uint32_t deduplicated_requests{};
     std::uint32_t parent_fallbacks{};
     std::uint32_t stale_requests{};
+    std::vector<virtual_geometry_page_eviction> pending_evictions;
 
     page_entry* find(virtual_mesh_handle handle, std::uint32_t generation, std::uint32_t page_index) noexcept
     {
@@ -335,18 +339,28 @@ struct virtual_geometry_residency_manager::implementation
     {
         while (gpu_bytes > config.gpu_budget_bytes || cpu_bytes > config.compressed_cpu_budget_bytes)
         {
+            resource_entry* victim_resource{};
             page_entry* victim{};
+            std::uint32_t victim_page{};
             for (auto& [_, resource] : resources)
-                for (auto& page : resource.pages)
+                for (std::uint32_t page_index = 0; page_index < resource.pages.size(); ++page_index)
                 {
+                    auto& page = resource.pages[page_index];
                     if (page.state != virtual_geometry_page_state::resident || page.descriptor.root ||
                         frame_index - std::min(frame_index, page.last_used_frame) <= config.protected_frame_count)
                         continue;
                     if (!victim || page.last_used_frame < victim->last_used_frame ||
                         (page.last_used_frame == victim->last_used_frame && page.priority < victim->priority))
+                    {
+                        victim_resource = &resource;
                         victim = &page;
+                        victim_page = page_index;
+                    }
                 }
-            if (!victim) break;
+            if (!victim || !victim_resource) break;
+            pending_evictions.push_back({.resource = victim_resource->handle,
+                                         .resource_generation = victim_resource->generation,
+                                         .page_index = victim_page});
             gpu_bytes -= std::min<std::uint64_t>(gpu_bytes, victim->gpu_bytes);
             cpu_bytes -= std::min<std::uint64_t>(cpu_bytes, victim->cpu_bytes);
             victim->gpu_bytes = 0;
@@ -494,6 +508,13 @@ std::vector<virtual_geometry_page_load> virtual_geometry_residency_manager::take
                      });
     if (result.size() > implementation_->config.maximum_requests_per_frame)
         result.resize(implementation_->config.maximum_requests_per_frame);
+    return result;
+}
+
+std::vector<virtual_geometry_page_eviction> virtual_geometry_residency_manager::take_evictions()
+{
+    auto result = std::move(implementation_->pending_evictions);
+    implementation_->pending_evictions.clear();
     return result;
 }
 
