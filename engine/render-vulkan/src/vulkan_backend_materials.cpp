@@ -367,6 +367,42 @@ VkDescriptorSet vulkan_render_backend::material_descriptor_set_for(const draw_me
     return slot < white_descriptor_sets_.size() ? white_descriptor_sets_[slot] : VK_NULL_HANDLE;
 }
 
+VkDescriptorSet vulkan_render_backend::material_attribute_descriptor_set_for(texture_handle handle)
+{
+    if (!handle.valid() || material_attribute_descriptor_set_layout_ == VK_NULL_HANDLE ||
+        material_attribute_descriptor_pool_ == VK_NULL_HANDLE)
+        return VK_NULL_HANDLE;
+
+    const auto texture = textures_.find(resource_key(handle));
+    if (texture == textures_.end() || texture->second.view == VK_NULL_HANDLE ||
+        texture->second.sampler == VK_NULL_HANDLE)
+        return VK_NULL_HANDLE;
+
+    const auto key = resource_key(handle);
+    auto descriptor = material_attribute_descriptor_sets_.find(key);
+    if (descriptor == material_attribute_descriptor_sets_.end())
+    {
+        VkDescriptorSet set{};
+        VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+        allocate.descriptorPool = material_attribute_descriptor_pool_;
+        allocate.descriptorSetCount = 1u;
+        allocate.pSetLayouts = &material_attribute_descriptor_set_layout_;
+        if (vkAllocateDescriptorSets(device_, &allocate, &set) != VK_SUCCESS) return VK_NULL_HANDLE;
+        descriptor = material_attribute_descriptor_sets_.emplace(key, set).first;
+    }
+
+    const VkDescriptorImageInfo image{texture->second.sampler, texture->second.view,
+                                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+    VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+    write.dstSet = descriptor->second;
+    write.dstBinding = 0u;
+    write.descriptorCount = 1u;
+    write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    write.pImageInfo = &image;
+    vkUpdateDescriptorSets(device_, 1u, &write, 0u, nullptr);
+    return descriptor->second;
+}
+
 bool vulkan_render_backend::draw_runtime_material_gbuffer(VkCommandBuffer command_buffer, const draw_mesh_event& draw)
 {
     const auto found = materials_.find(resource_key(draw.material));
@@ -483,6 +519,11 @@ void vulkan_render_backend::destroy_mesh_pipeline() noexcept
         vkDestroyPipeline(device_, gbuffer_pipeline_, nullptr);
         gbuffer_pipeline_ = VK_NULL_HANDLE;
     }
+    if (terrain_surface_gbuffer_pipeline_ != VK_NULL_HANDLE)
+    {
+        vkDestroyPipeline(device_, terrain_surface_gbuffer_pipeline_, nullptr);
+        terrain_surface_gbuffer_pipeline_ = VK_NULL_HANDLE;
+    }
     if (terrain_gbuffer_pipeline_ != VK_NULL_HANDLE)
     {
         vkDestroyPipeline(device_, terrain_gbuffer_pipeline_, nullptr);
@@ -529,6 +570,11 @@ void vulkan_render_backend::destroy_mesh_pipeline() noexcept
         vkDestroyPipeline(device_, mesh_transparent_pipeline_, nullptr);
         mesh_transparent_pipeline_ = VK_NULL_HANDLE;
     }
+    if (terrain_surface_pipeline_ != VK_NULL_HANDLE)
+    {
+        vkDestroyPipeline(device_, terrain_surface_pipeline_, nullptr);
+        terrain_surface_pipeline_ = VK_NULL_HANDLE;
+    }
     if (terrain_pipeline_ != VK_NULL_HANDLE)
     {
         vkDestroyPipeline(device_, terrain_pipeline_, nullptr);
@@ -544,10 +590,26 @@ void vulkan_render_backend::destroy_mesh_pipeline() noexcept
         vkDestroyPipelineLayout(device_, mesh_pipeline_layout_, nullptr);
         mesh_pipeline_layout_ = VK_NULL_HANDLE;
     }
+    if (terrain_surface_pipeline_layout_ != VK_NULL_HANDLE)
+    {
+        vkDestroyPipelineLayout(device_, terrain_surface_pipeline_layout_, nullptr);
+        terrain_surface_pipeline_layout_ = VK_NULL_HANDLE;
+    }
     if (terrain_pipeline_layout_ != VK_NULL_HANDLE)
     {
         vkDestroyPipelineLayout(device_, terrain_pipeline_layout_, nullptr);
         terrain_pipeline_layout_ = VK_NULL_HANDLE;
+    }
+    if (material_attribute_descriptor_pool_ != VK_NULL_HANDLE)
+    {
+        vkDestroyDescriptorPool(device_, material_attribute_descriptor_pool_, nullptr);
+        material_attribute_descriptor_pool_ = VK_NULL_HANDLE;
+        material_attribute_descriptor_sets_.clear();
+    }
+    if (material_attribute_descriptor_set_layout_ != VK_NULL_HANDLE)
+    {
+        vkDestroyDescriptorSetLayout(device_, material_attribute_descriptor_set_layout_, nullptr);
+        material_attribute_descriptor_set_layout_ = VK_NULL_HANDLE;
     }
     if (sky_pipeline_ != VK_NULL_HANDLE)
     {
@@ -1657,6 +1719,30 @@ bool vulkan_render_backend::ensure_mesh_pipeline()
     }
     if (!ensure_white_texture() || !ensure_terrain_descriptors()) return false;
 
+    if (material_attribute_descriptor_set_layout_ == VK_NULL_HANDLE)
+    {
+        const VkDescriptorSetLayoutBinding binding{0u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1u,
+                                                   VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+        VkDescriptorSetLayoutCreateInfo descriptor_layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+        descriptor_layout.bindingCount = 1u;
+        descriptor_layout.pBindings = &binding;
+        if (vkCreateDescriptorSetLayout(device_, &descriptor_layout, nullptr,
+                                        &material_attribute_descriptor_set_layout_) != VK_SUCCESS)
+            return false;
+    }
+    if (material_attribute_descriptor_pool_ == VK_NULL_HANDLE)
+    {
+        const VkDescriptorPoolSize pool_size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                                             material_attribute_descriptor_set_capacity};
+        VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        pool.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        pool.maxSets = material_attribute_descriptor_set_capacity;
+        pool.poolSizeCount = 1u;
+        pool.pPoolSizes = &pool_size;
+        if (vkCreateDescriptorPool(device_, &pool, nullptr, &material_attribute_descriptor_pool_) != VK_SUCCESS)
+            return false;
+    }
+
     VkShaderModule vert =
         create_shader_module(builtin::default_phong_vert_spv, std::size(builtin::default_phong_vert_spv));
     VkShaderModule frag =
@@ -1675,6 +1761,12 @@ bool vulkan_render_backend::ensure_mesh_pipeline()
     layout.pushConstantRangeCount = 1;
     layout.pPushConstantRanges = &push;
     if (vkCreatePipelineLayout(device_, &layout, nullptr, &mesh_pipeline_layout_) != VK_SUCCESS) return false;
+    const std::array terrain_surface_set_layouts{white_descriptor_set_layout_,
+                                                 material_attribute_descriptor_set_layout_};
+    layout.setLayoutCount = static_cast<std::uint32_t>(terrain_surface_set_layouts.size());
+    layout.pSetLayouts = terrain_surface_set_layouts.data();
+    if (vkCreatePipelineLayout(device_, &layout, nullptr, &terrain_surface_pipeline_layout_) != VK_SUCCESS)
+        return false;
     const std::array terrain_set_layouts{white_descriptor_set_layout_, terrain_descriptor_set_layout_};
     layout.setLayoutCount = static_cast<std::uint32_t>(terrain_set_layouts.size());
     layout.pSetLayouts = terrain_set_layouts.data();
@@ -1808,6 +1900,32 @@ bool vulkan_render_backend::ensure_mesh_pipeline()
         arc::diagnostics::warn("render.vulkan",
                                "Vulkan device does not support fillModeNonSolid; wireframe rendering is disabled");
         wireframe_warning_reported_ = true;
+    }
+
+    if (result == VK_SUCCESS)
+    {
+        VkShaderModule terrain_surface_frag =
+            create_shader_module(builtin::terrain_forward_frag_spv, std::size(builtin::terrain_forward_frag_spv));
+        if (terrain_surface_frag != VK_NULL_HANDLE)
+        {
+            stages[0].module = vert;
+            stages[1].module = terrain_surface_frag;
+            pipeline.pVertexInputState = &vertex_input;
+            pipeline.layout = terrain_surface_pipeline_layout_;
+            raster.polygonMode = VK_POLYGON_MODE_FILL;
+            depth.depthWriteEnable = VK_TRUE;
+            color_attachment = {};
+            color_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                              VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+            if (vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr,
+                                          &terrain_surface_pipeline_) != VK_SUCCESS)
+            {
+                terrain_surface_pipeline_ = VK_NULL_HANDLE;
+                arc::diagnostics::warn("render.vulkan",
+                                       "Vulkan terrain surface pipeline creation failed; using mesh fallback");
+            }
+            vkDestroyShaderModule(device_, terrain_surface_frag, nullptr);
+        }
     }
 
     if (result == VK_SUCCESS)
@@ -2363,6 +2481,20 @@ bool vulkan_render_backend::ensure_gbuffer_pipeline()
 
     const VkResult result =
         vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &gbuffer_pipeline_);
+    if (result == VK_SUCCESS && terrain_frag != VK_NULL_HANDLE)
+    {
+        stages[0].module = vert;
+        stages[1].module = terrain_frag;
+        pipeline.pVertexInputState = &vertex_input;
+        pipeline.layout = terrain_surface_pipeline_layout_;
+        if (vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr,
+                                      &terrain_surface_gbuffer_pipeline_) != VK_SUCCESS)
+        {
+            terrain_surface_gbuffer_pipeline_ = VK_NULL_HANDLE;
+            arc::diagnostics::warn("render.vulkan",
+                                   "Vulkan terrain surface G-buffer pipeline creation failed; using mesh fallback");
+        }
+    }
     if (result == VK_SUCCESS && terrain_vert != VK_NULL_HANDLE && terrain_frag != VK_NULL_HANDLE)
     {
         VkPipelineVertexInputStateCreateInfo terrain_vertex_input{

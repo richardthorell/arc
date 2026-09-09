@@ -36,17 +36,34 @@ TEST_CASE("terrain geometry proxy realizes generic resources and rebuilds on con
     REQUIRE(renderer.mesh_alive(first->geometry.conventional));
     REQUIRE(first->geometry.virtualized.valid());
     REQUIRE(renderer.virtual_mesh_alive(first->geometry.virtualized));
+    REQUIRE(first->surface_attribute_texture.valid());
+    REQUIRE(renderer.texture_alive(first->surface_attribute_texture));
     REQUIRE_FALSE(renderer.terrain_alive(first->handle));
     CHECK(first->synchronized_revision == terrain.content_revision);
 
     const auto original_geometry = first->geometry;
+    const auto original_attributes = first->surface_attribute_texture;
     terrain.material = {.index = 17u, .generation = 3u};
     REQUIRE(cache.synchronize_geometry(guid, terrain, renderer));
     const auto* material_only = cache.find(guid);
     REQUIRE(material_only != nullptr);
     CHECK(material_only->geometry.conventional == original_geometry.conventional);
     CHECK(material_only->geometry.virtualized == original_geometry.virtualized);
+    CHECK(material_only->surface_attribute_texture == original_attributes);
     CHECK(material_only->material == terrain.material);
+
+    terrain.layer_weights[4] = {0u, 255u, 0u, 0u};
+    ++terrain.content_revision;
+    const arc::scene::terrain_dirty_region paint_dirty{
+        .min_x = 1u, .min_z = 1u, .max_x = 1u, .max_z = 1u, .valid = true, .weights_changed = true};
+    REQUIRE(cache.synchronize_geometry(guid, terrain, renderer, &paint_dirty));
+    const auto* repainted = cache.find(guid);
+    REQUIRE(repainted != nullptr);
+    CHECK(repainted->geometry.conventional == original_geometry.conventional);
+    CHECK(repainted->geometry.virtualized == original_geometry.virtualized);
+    CHECK(repainted->surface_attribute_texture == original_attributes);
+    REQUIRE(renderer.texture_alive(repainted->surface_attribute_texture));
+    CHECK(repainted->synchronized_revision == terrain.content_revision);
 
     terrain.heights[4] += 2.0f;
     ++terrain.content_revision;
@@ -104,6 +121,8 @@ TEST_CASE("render scene submits terrain as a conventional mesh item without dedi
     const auto* proxy = terrain_proxies.find(guid);
     REQUIRE(proxy != nullptr);
     REQUIRE(proxy->geometry.valid());
+    REQUIRE(proxy->surface_attribute_texture.valid());
+    REQUIRE(renderer.texture_alive(proxy->surface_attribute_texture));
     REQUIRE_FALSE(renderer.terrain_alive(proxy->handle));
 
     const auto frame = renderer.frame_queue().commit(1u);
@@ -118,6 +137,8 @@ TEST_CASE("render scene submits terrain as a conventional mesh item without dedi
     const auto& item = world.items.front();
     REQUIRE(renderer.mesh_alive(item.mesh));
     CHECK(item.material == terrain.material);
+    CHECK(item.material_attribute_texture == proxy->surface_attribute_texture);
+    REQUIRE(renderer.texture_alive(item.material_attribute_texture));
     CHECK(item.selected);
     CHECK_FALSE(item.casts_shadows);
     CHECK(item.receives_shadows);
