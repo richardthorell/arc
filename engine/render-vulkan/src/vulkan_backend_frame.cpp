@@ -1299,11 +1299,25 @@ bool vulkan_render_backend::render_deferred_scene(VkCommandBuffer command_buffer
             if (draw.draw.mode == render_mode::wireframe ||
                 material_alpha_mode_for(draw.draw) == material_alpha_mode::blend)
                 continue;
+            const bool terrain_surface = material_is_terrain(draw.draw) && draw.draw.material_attribute_texture.valid();
             if (!material_is_terrain(draw.draw) && draw_runtime_material_gbuffer(command_buffer, draw)) continue;
-            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              material_is_terrain(draw.draw) && terrain_gbuffer_pipeline_ != VK_NULL_HANDLE
-                                  ? terrain_gbuffer_pipeline_
-                                  : gbuffer_pipeline_);
+            if (terrain_surface && terrain_surface_gbuffer_pipeline_ != VK_NULL_HANDLE)
+            {
+                const auto attributes = material_attribute_descriptor_set_for(draw.draw.material_attribute_texture);
+                if (attributes != VK_NULL_HANDLE)
+                {
+                    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                      terrain_surface_gbuffer_pipeline_);
+                    const std::array descriptor_sets{material_descriptor_set_for(draw.draw), attributes};
+                    vkCmdBindDescriptorSets(
+                        command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, terrain_surface_pipeline_layout_, 0,
+                        static_cast<std::uint32_t>(descriptor_sets.size()), descriptor_sets.data(), 0, nullptr);
+                    draw_indexed_virtual_cluster(command_buffer, draw, terrain_surface_pipeline_layout_,
+                                                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true, true);
+                    continue;
+                }
+            }
+            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, gbuffer_pipeline_);
             VkDescriptorSet material_descriptor_set = material_descriptor_set_for(draw.draw);
             vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_layout_, 0, 1,
                                     &material_descriptor_set, 0, nullptr);
@@ -1601,10 +1615,24 @@ void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool
                     constants.fog_color_density[3] = 0.0f;
                     constants.material_params[3] = static_cast<float>(material_alpha_mode::opaque);
                 }
+                VkPipelineLayout pipeline_layout = mesh_pipeline_layout_;
                 VkDescriptorSet material_descriptor_set = material_descriptor_set_for(draw.draw);
-                vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_layout_, 0, 1,
-                                        &material_descriptor_set, 0, nullptr);
-                vkCmdPushConstants(command_buffer, mesh_pipeline_layout_,
+                if (pipeline == terrain_surface_pipeline_)
+                {
+                    const auto attributes = material_attribute_descriptor_set_for(draw.draw.material_attribute_texture);
+                    if (attributes == VK_NULL_HANDLE) return;
+                    const std::array descriptor_sets{material_descriptor_set, attributes};
+                    pipeline_layout = terrain_surface_pipeline_layout_;
+                    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0,
+                                            static_cast<std::uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
+                                            0, nullptr);
+                }
+                else
+                {
+                    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1,
+                                            &material_descriptor_set, 0, nullptr);
+                }
+                vkCmdPushConstants(command_buffer, pipeline_layout,
                                    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants),
                                    &constants);
                 const VkDeviceSize offset = 0;
@@ -1653,8 +1681,10 @@ void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool
 
                 if (deferred_rendered && !material_requires_forward(draw.draw)) continue;
 
-                draw_virtual_with_pipeline(draw, material_is_terrain(draw.draw) && terrain_pipeline_ != VK_NULL_HANDLE
-                                                     ? terrain_pipeline_
+                draw_virtual_with_pipeline(draw, material_is_terrain(draw.draw) &&
+                                                         draw.draw.material_attribute_texture.valid() &&
+                                                         terrain_surface_pipeline_ != VK_NULL_HANDLE
+                                                     ? terrain_surface_pipeline_
                                                      : mesh_pipeline_);
             }
 

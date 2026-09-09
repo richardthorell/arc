@@ -558,6 +558,38 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                                                                    static_cast<float>(proxy->local_bounds.max_y),
                                                                    static_cast<float>(proxy->local_bounds.max_z)}};
             const auto renderer_bounds = transform_bounds(local_bounds, world);
+            if (renderer.resolved_config().features.virtual_geometry &&
+                renderer.virtual_mesh_alive(proxy->geometry.virtualized))
+            {
+                const auto* virtual_mesh = renderer.virtual_mesh_data_for(proxy->geometry.virtualized);
+                if (!virtual_mesh) return;
+                ++result.renderable_count;
+                const bool selected = entity_selected(scene, value);
+                if (selected) ++result.selected_count;
+                world_packet.virtual_items.push_back(
+                    {.mesh = proxy->geometry.virtualized,
+                     .material = proxy->material,
+                     .material_attribute_texture = proxy->surface_attribute_texture,
+                     .root_node = virtual_mesh->root_nodes.size() == 1 ? virtual_mesh->root_nodes.front()
+                                                                       : render::invalid_virtual_geometry_index,
+                     .model = world,
+                     .previous_model = world,
+                     .world_bounds = renderer_bounds,
+                     .render_layer_mask = render_layer_mask(scene, value),
+                     .object_id = render::make_render_object_id(value.index, value.generation),
+                     .visible = true,
+                     .selected = selected,
+                     .casts_shadows = terrain.cast_shadows,
+                     .receives_shadows = terrain.receive_shadows,
+                     .mobility = entity_mobility(scene, value),
+                     .shadow_lod_bias = terrain.shadow_lod_bias,
+                     .maximum_shadow_distance = terrain.maximum_shadow_distance,
+                     .geometry_error_scale = 1.0f,
+                     .label = entity_label(scene, value)});
+                ++result.terrain_count;
+                return;
+            }
+
             const auto mesh = select_cooked_lod(proxy->geometry, world_packet.camera, renderer_bounds,
                                                 renderer.resolved_config().geometry_error_threshold, -1, 0.0f);
             if (!renderer.mesh_alive(mesh)) return;
