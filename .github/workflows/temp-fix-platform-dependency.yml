@@ -21,9 +21,19 @@ jobs:
           node-version: 22.12.x
           cache: npm
           cache-dependency-path: editor/package-lock.json
-      - name: Pin react-icons exactly
+      - name: Pin lockfile dependency exactly
+        run: python3 - <<'PY'
+          from pathlib import Path
+          path = Path('editor/package-lock.json')
+          text = path.read_text()
+          old = '"react-icons": "^5.5.0"'
+          if old not in text:
+              raise SystemExit('react-icons caret entry not found in package-lock.json')
+          path.write_text(text.replace(old, '"react-icons": "5.5.0"', 1))
+          PY
+      - name: Install Electron dependencies
         working-directory: editor
-        run: npm install react-icons@5.5.0 --save-exact
+        run: npm ci
       - name: Dependency policy
         run: python3 tools/check_dependencies.py
       - name: Typecheck editor
