@@ -546,27 +546,29 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
             if (const auto* persistent = scene.try_get<ecs::persistent_id_component>(value)) guid = persistent->value;
             active_terrain_guids.push_back(guid);
             const auto surface = make_legacy_terrain_surface_ir(terrain);
-            if (!surface || !terrain_proxies->synchronize(guid, *surface, terrain, renderer)) return;
+            if (!surface || !terrain_proxies->synchronize_geometry(guid, *surface, terrain, renderer)) return;
             const auto* proxy = terrain_proxies->find(guid);
-            const auto* resource = proxy ? renderer.terrain_data_for(proxy->handle) : nullptr;
-            if (!proxy || !resource) return;
+            if (!proxy || !renderer.mesh_alive(proxy->geometry.conventional)) return;
+
             const auto world = transform.dirty ? local_matrix(transform) : transform.world;
-            world_packet.terrains.push_back({.terrain = proxy->handle,
-                                             .object_id = render::make_render_object_id(value.index, value.generation),
-                                             .material = terrain.material,
-                                             .model = world,
-                                             .previous_model = world,
-                                             .world_bounds = transform_bounds(resource->local_bounds, world),
-                                             .render_layer_mask = render_layer_mask(scene, value),
-                                             .selected = entity_selected(scene, value),
-                                             .receive_shadows = terrain.receive_shadows,
-                                             .cast_shadows = terrain.cast_shadows,
-                                             .shadow_lod_bias = terrain.shadow_lod_bias,
-                                             .maximum_shadow_distance = terrain.maximum_shadow_distance,
-                                             .label = entity_label(scene, value)});
+            const geometric::box3f local_bounds{geometric::point3f{static_cast<float>(proxy->local_bounds.min_x),
+                                                                   static_cast<float>(proxy->local_bounds.min_y),
+                                                                   static_cast<float>(proxy->local_bounds.min_z)},
+                                                geometric::point3f{static_cast<float>(proxy->local_bounds.max_x),
+                                                                   static_cast<float>(proxy->local_bounds.max_y),
+                                                                   static_cast<float>(proxy->local_bounds.max_z)}};
+            const auto renderer_bounds = transform_bounds(local_bounds, world);
+            const auto mesh = select_cooked_lod(proxy->geometry, world_packet.camera, renderer_bounds,
+                                                renderer.resolved_config().geometry_error_threshold, -1, 0.0f);
+            if (!renderer.mesh_alive(mesh)) return;
+
+            append_mesh_item(scene, world_packet, result, value, transform, mesh, proxy->material, true, false, {}, 0,
+                             1, math::vector4f::one, terrain.cast_shadows, terrain.receive_shadows,
+                             terrain.shadow_lod_bias, terrain.maximum_shadow_distance);
+            if (!world_packet.items.empty()) world_packet.items.back().world_bounds = renderer_bounds;
             ++result.terrain_count;
         });
-    if (terrain_proxies) terrain_proxies->release_missing(active_terrain_guids, renderer);
+    if (terrain_proxies) terrain_proxies->release_missing_geometry(active_terrain_guids, renderer);
 
     scene.view<transform_component, water_component>().each(
         [&](entity value, const transform_component& transform, const water_component& water)
