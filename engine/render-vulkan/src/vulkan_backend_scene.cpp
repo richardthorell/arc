@@ -236,6 +236,7 @@ void vulkan_render_backend::append_render_world(const render_world_event& event)
         return draw_mesh_event{.gpu_scene_instance = item.gpu_scene_instance,
                                .mesh = item.mesh,
                                .material = item.material,
+                               .material_attribute_texture = item.material_attribute_texture,
                                .model = item.model,
                                .previous_model = item.previous_model,
                                .view_projection = packet.camera.view_projection,

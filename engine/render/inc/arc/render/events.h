@@ -352,6 +352,8 @@ struct draw_mesh_event
     gpu_scene_instance_handle gpu_scene_instance{};
     mesh_handle mesh{};
     material_handle material{};
+    /** Optional per-draw material attributes kept separate from generic mesh vertices. */
+    texture_handle material_attribute_texture{};
     math::matrix4f model{math::identity<float, 4>()};
     math::matrix4f previous_model{math::identity<float, 4>()};
     math::matrix4f view_projection{math::identity<float, 4>()};

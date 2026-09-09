@@ -250,6 +250,7 @@ struct virtual_geometry_raster_push_constants
 static_assert(sizeof(virtual_geometry_raster_push_constants) == 80);
 
 inline constexpr std::uint32_t virtual_geometry_bindless_texture_capacity = 4096u;
+inline constexpr std::uint32_t material_attribute_descriptor_set_capacity = 4096u;
 
 struct alignas(16) virtual_geometry_material_frame_data
 {
@@ -1219,6 +1220,8 @@ private:
 
     VkDescriptorSet material_descriptor_set_for(const draw_mesh_event& draw) const noexcept;
 
+    VkDescriptorSet material_attribute_descriptor_set_for(texture_handle handle);
+
     bool draw_runtime_material_gbuffer(VkCommandBuffer command_buffer, const draw_mesh_event& draw);
 
     bool draw_runtime_material_gbuffer(VkCommandBuffer command_buffer, const virtual_cluster_draw& draw);
@@ -1638,14 +1641,20 @@ private:
     VkImageView white_view_{};
     VkSampler white_sampler_{};
     VkPipelineLayout mesh_pipeline_layout_{};
+    VkDescriptorSetLayout material_attribute_descriptor_set_layout_{};
+    VkDescriptorPool material_attribute_descriptor_pool_{};
+    std::unordered_map<std::uint64_t, VkDescriptorSet> material_attribute_descriptor_sets_;
+    VkPipelineLayout terrain_surface_pipeline_layout_{};
     VkDescriptorSetLayout terrain_descriptor_set_layout_{};
     VkDescriptorPool terrain_descriptor_pool_{};
     VkPipelineLayout terrain_pipeline_layout_{};
     VkPipeline mesh_pipeline_{};
     VkPipeline mesh_transparent_pipeline_{};
     VkPipeline mesh_wire_pipeline_{};
+    VkPipeline terrain_surface_pipeline_{};
     VkPipeline terrain_pipeline_{};
     VkPipeline gbuffer_pipeline_{};
+    VkPipeline terrain_surface_gbuffer_pipeline_{};
     VkPipeline terrain_gbuffer_pipeline_{};
     VkDescriptorSetLayout gbuffer_descriptor_set_layout_{};
     VkDescriptorPool gbuffer_descriptor_pool_{};

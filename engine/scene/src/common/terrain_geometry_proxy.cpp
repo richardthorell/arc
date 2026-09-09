@@ -1,10 +1,12 @@
 #include <arc/scene/terrain.h>
 
 #include <arc/render/renderer.h>
+#include <arc/scene/terrain_render_attributes.h>
 #include <arc/scene/terrain_render_geometry.h>
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <utility>
 
 namespace arc::scene
@@ -23,14 +25,64 @@ bool geometry_alive(const terrain_render_proxy& proxy, const render::renderer& r
     return proxy.geometry.valid() && renderer.mesh_alive(proxy.geometry.conventional);
 }
 
+bool attributes_alive(const terrain_render_proxy& proxy, const render::renderer& renderer)
+{
+    return proxy.surface_attribute_texture.valid() && renderer.texture_alive(proxy.surface_attribute_texture);
+}
+
+render::texture_data make_attribute_texture_data(const terrain_render_attributes& attributes)
+{
+    render::texture_data data;
+    data.name = "terrain-material-weights";
+    data.width = attributes.width;
+    data.height = attributes.height;
+    data.format = render::texture_format::rgba8_unorm;
+    data.color_space = render::texture_color_space::linear;
+    data.mip_levels = 1u;
+    data.pixels.resize(attributes.material_weights.size() * sizeof(attributes.material_weights.front()));
+    if (!data.pixels.empty()) std::memcpy(data.pixels.data(), attributes.material_weights.data(), data.pixels.size());
+    return data;
+}
+
+render::texture_handle create_attribute_texture(const terrain_render_attributes& attributes, render::renderer& renderer)
+{
+    auto texture = renderer.create_texture(make_attribute_texture_data(attributes));
+    if (!texture.valid() || !renderer.texture_alive(texture))
+    {
+        if (texture.valid()) renderer.destroy_texture(texture);
+        return {};
+    }
+    return texture;
+}
+
 void destroy_proxy_geometry(terrain_render_proxy& proxy, render::renderer& renderer)
 {
     if (proxy.geometry.conventional.valid() || proxy.geometry.virtualized.valid())
         (void)renderer.destroy_geometry_resource(proxy.geometry);
     proxy.geometry = render::geometry_resource_handle{};
 
+    if (renderer.texture_alive(proxy.surface_attribute_texture))
+        renderer.destroy_texture(proxy.surface_attribute_texture);
+    proxy.surface_attribute_texture = {};
+
     if (renderer.terrain_alive(proxy.handle)) (void)renderer.destroy_terrain(proxy.handle);
     proxy.handle = {};
+}
+
+bool update_attribute_texture(terrain_render_proxy& proxy, const terrain_render_attributes& attributes,
+                              render::renderer& renderer)
+{
+    if (attributes_alive(proxy, renderer) &&
+        renderer.update_texture(proxy.surface_attribute_texture, make_attribute_texture_data(attributes)))
+        return true;
+
+    auto replacement = create_attribute_texture(attributes, renderer);
+    if (!replacement.valid()) return false;
+
+    if (renderer.texture_alive(proxy.surface_attribute_texture))
+        renderer.destroy_texture(proxy.surface_attribute_texture);
+    proxy.surface_attribute_texture = replacement;
+    return true;
 }
 
 } // namespace
@@ -39,19 +91,36 @@ bool terrain_render_proxy_cache::synchronize_geometry(ecs::entity_guid guid, con
                                                       const terrain_component& terrain, render::renderer& renderer,
                                                       const terrain_dirty_region* dirty_region)
 {
-    (void)dirty_region;
     if (!guid.valid() || !validate_terrain_surface_ir(surface)) return false;
 
     auto& proxy = proxies_[guid];
-    if (geometry_alive(proxy, renderer) && proxy.synchronized_revision == surface.source_revision)
+    const bool has_geometry = geometry_alive(proxy, renderer);
+    const bool has_attributes = attributes_alive(proxy, renderer);
+    const bool same_revision = proxy.synchronized_revision == surface.source_revision;
+
+    if (has_geometry && has_attributes && same_revision)
     {
         proxy.local_bounds = surface.local_bounds;
         proxy.material = terrain.material;
         return true;
     }
 
+    const bool weights_only = dirty_region != nullptr && dirty_region->valid && dirty_region->weights_changed &&
+                              !dirty_region->heights_changed && has_geometry;
+    if (weights_only || (has_geometry && same_revision && !has_attributes))
+    {
+        auto attributes = build_terrain_render_attributes(surface);
+        if (!attributes || !update_attribute_texture(proxy, *attributes, renderer)) return false;
+
+        proxy.local_bounds = surface.local_bounds;
+        proxy.synchronized_revision = surface.source_revision;
+        proxy.material = terrain.material;
+        return true;
+    }
+
     auto artifact = build_terrain_render_geometry(surface);
-    if (!artifact) return false;
+    auto attributes = build_terrain_render_attributes(surface);
+    if (!artifact || !attributes) return false;
 
     auto replacement =
         renderer.create_geometry_resource(std::move(*artifact), terrain_geometry_generation(surface.source_revision));
@@ -61,8 +130,16 @@ bool terrain_render_proxy_cache::synchronize_geometry(ecs::entity_guid guid, con
         return false;
     }
 
+    auto replacement_attributes = create_attribute_texture(*attributes, renderer);
+    if (!replacement_attributes.valid())
+    {
+        (void)renderer.destroy_geometry_resource(replacement);
+        return false;
+    }
+
     destroy_proxy_geometry(proxy, renderer);
     proxy.geometry = replacement;
+    proxy.surface_attribute_texture = replacement_attributes;
     proxy.local_bounds = surface.local_bounds;
     proxy.synchronized_revision = surface.source_revision;
     proxy.material = terrain.material;

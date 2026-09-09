@@ -565,7 +565,12 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
             append_mesh_item(scene, world_packet, result, value, transform, mesh, proxy->material, true, false, {}, 0,
                              1, math::vector4f::one, terrain.cast_shadows, terrain.receive_shadows,
                              terrain.shadow_lod_bias, terrain.maximum_shadow_distance);
-            if (!world_packet.items.empty()) world_packet.items.back().world_bounds = renderer_bounds;
+            if (!world_packet.items.empty())
+            {
+                auto& item = world_packet.items.back();
+                item.world_bounds = renderer_bounds;
+                item.material_attribute_texture = proxy->surface_attribute_texture;
+            }
             ++result.terrain_count;
         });
     if (terrain_proxies) terrain_proxies->release_missing_geometry(active_terrain_guids, renderer);
