@@ -1,0 +1,100 @@
+.ui-dropdown {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.ui-dropdown-trigger.ui-button {
+  min-width: 118px;
+  height: var(--arc-button-height);
+  justify-content: space-between;
+  border-radius: var(--arc-radius-1);
+}
+
+.ui-dropdown-value,
+.ui-dropdown-option-content {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--arc-space-3);
+}
+
+.ui-dropdown-value > span:last-child,
+.ui-dropdown-option-content > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-dropdown-icon {
+  width: 14px;
+  height: 14px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 14px;
+}
+
+.ui-dropdown-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.platform-brand-icon {
+  width: 14px;
+  height: 14px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 14px;
+  color: currentColor;
+  background: transparent;
+}
+
+.platform-brand-icon > svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+  color: currentColor;
+  fill: currentColor;
+  background: transparent;
+}
+
+.ui-dropdown-chevron {
+  flex: 0 0 auto;
+  color: var(--arc-color-text-dim);
+}
+
+.ui-dropdown-trigger[aria-expanded='true'] .ui-dropdown-chevron,
+.ui-dropdown-trigger:hover:not(:disabled) .ui-dropdown-chevron {
+  color: currentColor;
+}
+
+.ui-dropdown-menu {
+  position: absolute;
+  z-index: 1200;
+  top: calc(100% + var(--arc-space-2));
+  right: 0;
+  min-width: max(100%, 180px);
+  padding: var(--arc-space-2);
+  border: var(--arc-border-width) solid var(--arc-color-border);
+  border-radius: var(--arc-radius-2);
+  background: var(--arc-color-bg-panel-raised);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.34);
+}
+
+.ui-dropdown-option.ui-button {
+  width: 100%;
+  height: var(--arc-button-height);
+  justify-content: space-between;
+  padding-inline: var(--arc-space-3);
+  border-radius: var(--arc-radius-1);
+  text-align: left;
+}
+
+.ui-dropdown-check {
+  width: 14px;
+  height: 14px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 14px;
+}

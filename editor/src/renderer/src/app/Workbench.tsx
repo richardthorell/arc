@@ -1359,6 +1359,26 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
 
   const [viewportCount, setViewportCount] = useState<1 | 2 | 3 | 4>(1);
   const [activeViewportId, setActiveViewportId] = useState('viewport-1');
+  const [targetPlatform, setTargetPlatform] = useState<
+    'windows' | 'linux' | 'macos' | 'android' | 'ios' | 'xbox' | 'playstation' | 'switch'
+  >(() => {
+    const saved = window.localStorage.getItem('arc.editor.target-platform.v1');
+    if (
+      saved === 'windows' ||
+      saved === 'linux' ||
+      saved === 'macos' ||
+      saved === 'android' ||
+      saved === 'ios' ||
+      saved === 'xbox' ||
+      saved === 'playstation' ||
+      saved === 'switch'
+    )
+      return saved;
+    const hostPlatform = navigator.platform.toLowerCase();
+    if (hostPlatform.includes('mac')) return 'macos';
+    if (hostPlatform.includes('linux')) return 'linux';
+    return 'windows';
+  });
 
   const editorRegistry = createEditorRegistry({
     level: {
@@ -1396,17 +1416,20 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           rotationSnap={rotationSnap}
           scaleSnap={scaleSnap}
           onCommand={runCommand}
-          onBuild={() => {
+          targetPlatform={targetPlatform}
+          onTargetPlatformChange={(platform) => {
+            setTargetPlatform(platform);
+            window.localStorage.setItem('arc.editor.target-platform.v1', platform);
+          }}
+          onBuildAction={(action) => {
             setLayout((current) => ({ ...current, bottomVisible: true, activeBottomPanel: 'buildOutput' }));
             void window.arc.build
-              .execute({ action: 'build' })
+              .execute({ action })
               .then(setBuildSnapshot)
               .catch((reason: unknown) => {
                 setLastCommand(reason instanceof Error ? reason.message : String(reason));
               });
           }}
-          onLayout={(name) => setRequestedWorkspaceLayout(name)}
-          onPanel={(panel) => setRequestedWorkspacePanel(panel)}
           runtimeState={runtimeState.state}
           timeScale={runtimeState.timeScale}
           onCycleTimeScale={() => {
