@@ -1,21 +1,53 @@
 import {
   Globe,
   Grid3X3,
+  Hammer,
   Mountain,
   MousePointer2,
   Move,
   Pause,
   Play,
+  RefreshCw,
   Rotate3D,
   Scaling,
+  Settings2,
   Square,
   StepForward,
+  Trash2,
 } from 'lucide-react';
 
 import type { CommandId } from '../app/workbenchTypes';
-import type { WorkbenchPanelId } from '../app/workbenchTypes';
-import { panelRegistry } from '../app/panelRegistry';
-import { UiButton, UiIconButton, UiSelectButton } from '../ui';
+import {
+  UiDropdown,
+  UiIconButton,
+  UiSelectButton,
+  UiSplitButton,
+  type UiDropdownOption,
+  type UiSplitButtonOption,
+} from '../ui';
+import { PlatformBrandIcon } from './PlatformBrandIcon';
+
+export type EditorTargetPlatform =
+  'windows' | 'linux' | 'macos' | 'ios' | 'android' | 'xbox' | 'playstation' | 'switch';
+export type ToolbarBuildAction = 'build' | 'rebuild' | 'configure' | 'clean';
+
+const platformOptions: ReadonlyArray<UiDropdownOption<EditorTargetPlatform>> = [
+  { value: 'windows', label: 'Windows', icon: <PlatformBrandIcon platform="windows" /> },
+  { value: 'linux', label: 'Linux', icon: <PlatformBrandIcon platform="linux" /> },
+  { value: 'macos', label: 'macOS', icon: <PlatformBrandIcon platform="macos" /> },
+  { value: 'ios', label: 'iOS', icon: <PlatformBrandIcon platform="ios" /> },
+  { value: 'android', label: 'Android', icon: <PlatformBrandIcon platform="android" /> },
+  { value: 'xbox', label: 'Xbox', icon: <PlatformBrandIcon platform="xbox" /> },
+  { value: 'playstation', label: 'PlayStation', icon: <PlatformBrandIcon platform="playstation" /> },
+  { value: 'switch', label: 'Nintendo Switch', icon: <PlatformBrandIcon platform="switch" /> },
+];
+
+const buildOptions: ReadonlyArray<UiSplitButtonOption<ToolbarBuildAction>> = [
+  { value: 'build', label: 'Build', icon: <Hammer size={14} /> },
+  { value: 'rebuild', label: 'Rebuild', icon: <RefreshCw size={14} /> },
+  { value: 'configure', label: 'Configure', icon: <Settings2 size={14} /> },
+  { value: 'clean', label: 'Clean', icon: <Trash2 size={14} /> },
+];
 
 export type MainToolbarProps = {
   onCommand: (command: CommandId) => void;
@@ -34,9 +66,9 @@ export type MainToolbarProps = {
   runtimeState?: 'stopped' | 'running' | 'paused' | 'faulted';
   timeScale?: number;
   onCycleTimeScale?: () => void;
-  onBuild?: () => void;
-  onLayout?: (layout: 'Level Design' | 'Materials' | 'Profiling') => void;
-  onPanel?: (panel: WorkbenchPanelId) => void;
+  targetPlatform?: EditorTargetPlatform;
+  onTargetPlatformChange?: (platform: EditorTargetPlatform) => void;
+  onBuildAction?: (action: ToolbarBuildAction) => void;
 };
 
 export function MainToolbar({
@@ -56,9 +88,9 @@ export function MainToolbar({
   runtimeState = 'stopped',
   timeScale = 1,
   onCycleTimeScale,
-  onBuild,
-  onLayout,
-  onPanel,
+  targetPlatform = 'windows',
+  onTargetPlatformChange,
+  onBuildAction,
 }: MainToolbarProps) {
   return (
     <section className="main-toolbar" aria-label="Editor toolbar">
@@ -191,29 +223,24 @@ export function MainToolbar({
       </div>
 
       <div className="toolbar-right">
-        <details className="toolbar-menu">
-          <summary className="toolbar-select toolbar-select-wide">Layouts</summary>
-          <div className="toolbar-popup">
-            {(['Level Design', 'Materials', 'Profiling'] as const).map((layout) => (
-              <button key={layout} onClick={() => onLayout?.(layout)} type="button">
-                {layout}
-              </button>
-            ))}
-          </div>
-        </details>
-        <details className="toolbar-menu">
-          <summary className="toolbar-select">Windows</summary>
-          <div className="toolbar-popup toolbar-popup-columns">
-            {(Object.keys(panelRegistry) as WorkbenchPanelId[]).map((panel) => (
-              <button key={panel} onClick={() => onPanel?.(panel)} type="button">
-                {panelRegistry[panel].title}
-              </button>
-            ))}
-          </div>
-        </details>
-        <UiButton className="toolbar-button build" onClick={onBuild} variant="primary">
-          Build
-        </UiButton>
+        <UiDropdown
+          ariaLabel="Target platform"
+          className="toolbar-platform-dropdown"
+          onValueChange={(platform) => onTargetPlatformChange?.(platform)}
+          options={platformOptions}
+          value={targetPlatform}
+        />
+        <UiSplitButton
+          ariaLabel="Build"
+          className="toolbar-build-split"
+          icon={<Hammer size={14} />}
+          label="Build"
+          menuAriaLabel="Build actions"
+          onClick={() => onBuildAction?.('build')}
+          onOptionSelect={(action) => onBuildAction?.(action)}
+          options={buildOptions}
+          variant="primary"
+        />
       </div>
     </section>
   );

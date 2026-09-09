@@ -32,4 +32,42 @@ describe('MainToolbar runtime controls', () => {
     expect(onCommand).toHaveBeenNthCalledWith(2, 'scene.step');
     expect(onCycleTimeScale).toHaveBeenCalledOnce();
   });
+
+  it('uses platform and split-build controls instead of layout and windows buttons', () => {
+    const onTargetPlatformChange = vi.fn();
+    const onBuildAction = vi.fn();
+    render(
+      <MainToolbar
+        onCommand={vi.fn()}
+        onBuildAction={onBuildAction}
+        onTargetPlatformChange={onTargetPlatformChange}
+        targetPlatform="linux"
+      />,
+    );
+
+    expect(screen.queryByText('Layouts')).not.toBeInTheDocument();
+    expect(screen.queryByText('Windows', { selector: 'summary' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Target platform' })).toHaveTextContent('Linux');
+    expect(
+      screen.getByRole('button', { name: 'Target platform' }).querySelector('[data-platform-icon="linux"]'),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Target platform' }));
+    for (const platform of ['Windows', 'Linux', 'macOS', 'iOS', 'Android', 'Xbox', 'PlayStation', 'Nintendo Switch']) {
+      expect(screen.getByRole('option', { name: new RegExp(platform) })).toBeInTheDocument();
+    }
+    for (const platform of ['windows', 'linux', 'macos', 'ios', 'android', 'xbox', 'playstation', 'switch']) {
+      expect(document.querySelector(`[data-platform-icon="${platform}"]`)).toBeInTheDocument();
+    }
+
+    fireEvent.click(screen.getByRole('option', { name: /Xbox/ }));
+    expect(onTargetPlatformChange).toHaveBeenCalledWith('xbox');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Build' }));
+    expect(onBuildAction).toHaveBeenCalledWith('build');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Build actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Rebuild/ }));
+    expect(onBuildAction).toHaveBeenCalledWith('rebuild');
+  });
 });
