@@ -1,0 +1,42 @@
+name: Validate Platform Dependency Fix
+
+on:
+  push:
+    branches: [feature/platform-build-toolbar]
+    paths: [.github/workflows/temp-fix-platform-dependency.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feature/platform-build-toolbar
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.x
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Pin react-icons exactly
+        working-directory: editor
+        run: npm install react-icons@5.5.0 --save-exact
+      - name: Dependency policy
+        run: python3 tools/check_dependencies.py
+      - name: Typecheck editor
+        working-directory: editor
+        run: npm run typecheck
+      - name: Run focused tests
+        working-directory: editor
+        run: npm test -- src/renderer/src/layout/MainToolbar.test.tsx src/renderer/src/ui/UiDropdown.test.tsx src/renderer/src/ui/UiSplitButton.test.tsx
+      - name: Commit dependency fix
+        run: |
+          rm .github/workflows/temp-fix-platform-dependency.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add editor/package.json editor/package-lock.json .github/workflows/temp-fix-platform-dependency.yml
+          git commit -m 'Pin react-icons dependency version'
+          git push origin HEAD:feature/platform-build-toolbar
