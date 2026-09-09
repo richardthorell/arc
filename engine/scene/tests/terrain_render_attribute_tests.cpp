@@ -45,9 +45,7 @@ TEST_CASE("heightfield terrain compiles layer weights as a separate render attri
 
 TEST_CASE("mesh terrain uses deterministic layer-zero fallback attributes")
 {
-    const std::vector<arc::math::vector3f> positions{{-1.0f, 0.0f, -1.0f},
-                                                      {1.0f, 0.0f, -1.0f},
-                                                      {0.0f, 0.0f, 1.0f}};
+    const std::vector<arc::math::vector3f> positions{{-1.0f, 0.0f, -1.0f}, {1.0f, 0.0f, -1.0f}, {0.0f, 0.0f, 1.0f}};
     const std::vector<std::uint32_t> indices{0u, 1u, 2u};
 
     arc::scene::terrain_surface_ir surface;
