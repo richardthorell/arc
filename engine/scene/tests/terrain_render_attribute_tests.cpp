@@ -36,10 +36,8 @@ TEST_CASE("heightfield terrain compiles layer weights as a separate render attri
     REQUIRE_FALSE(geometry->conventional_lods.empty());
     for (const auto& vertex : geometry->conventional_lods.front().vertices)
     {
-        CHECK(vertex.color[0] == 1.0f);
-        CHECK(vertex.color[1] == 1.0f);
-        CHECK(vertex.color[2] == 1.0f);
-        CHECK(vertex.color[3] == 1.0f);
+        for (const float channel : vertex.color)
+            CHECK(channel == 1.0f);
     }
 }
 
