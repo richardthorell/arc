@@ -748,6 +748,25 @@ void vulkan_render_backend::destroy_gpu_visibility_resources()
     gpu_visibility_active_ = false;
 }
 
+void vulkan_render_backend::evict_virtual_geometry_page(const virtual_geometry_page_evict_event& event)
+{
+    const auto found = virtual_meshes_.find(resource_key(event.eviction.resource));
+    if (found == virtual_meshes_.end() || found->second.resource_generation != event.eviction.resource_generation ||
+        event.eviction.page_index >= found->second.page_records.size() ||
+        event.eviction.page_index >= found->second.resident_page_bytes.size())
+        return;
+    auto& page = found->second.page_records[event.eviction.page_index];
+    if ((static_cast<std::uint32_t>(page.flags) & static_cast<std::uint32_t>(virtual_geometry_gpu_page_flag::root)) !=
+        0u)
+        return;
+    constexpr auto resident_mask = static_cast<std::uint32_t>(virtual_geometry_gpu_page_flag::resident) |
+                                   static_cast<std::uint32_t>(virtual_geometry_gpu_page_flag::loading) |
+                                   static_cast<std::uint32_t>(virtual_geometry_gpu_page_flag::failed);
+    page.flags = static_cast<virtual_geometry_gpu_page_flag>(static_cast<std::uint32_t>(page.flags) & ~resident_mask);
+    found->second.resident_page_bytes[event.eviction.page_index].reset();
+    virtual_geometry_tables_dirty_ = true;
+}
+
 bool vulkan_render_backend::rebuild_virtual_geometry_tables()
 {
     std::vector<std::pair<std::uint64_t, gpu_virtual_mesh*>> ordered;

@@ -1523,7 +1523,7 @@ const virtual_geometry_residency_manager& renderer::virtual_geometry_residency()
 void renderer::submit_virtual_geometry_feedback(const virtual_geometry_feedback_readback& feedback)
 {
     virtual_geometry_residency_.request_gpu(feedback.page_requests);
-    for (std::uint32_t index = 0; index < feedback.overflow.fallback_instance_count; ++index)
+    for (std::uint32_t index = 0; index < feedback.overflow.parent_fallback_count; ++index)
         virtual_geometry_residency_.note_parent_fallback();
 }
 
@@ -1605,13 +1605,20 @@ render_backend_frame_profile renderer::last_frame_profile() const
     const auto residency = virtual_geometry_residency_.snapshot();
     result.virtual_geometry.enabled = resolved_config_.features.virtual_geometry;
     result.virtual_geometry.raster_path = resolved_config_.features.virtual_geometry_path;
+    result.virtual_geometry.resource_count = residency.resource_count;
+    result.virtual_geometry.page_count = residency.page_count;
+    result.virtual_geometry.resident_pages = residency.resident_pages;
+    result.virtual_geometry.protected_pages = residency.protected_pages;
     result.virtual_geometry.requested_pages = residency.requested_pages;
     result.virtual_geometry.failed_pages = residency.failed_pages;
     result.virtual_geometry.evicted_pages = residency.evictions;
+    result.virtual_geometry.deduplicated_page_requests = residency.deduplicated_requests;
     result.virtual_geometry.stale_page_requests = residency.stale_requests;
     result.virtual_geometry.parent_fallbacks = residency.parent_fallbacks;
     result.virtual_geometry.resident_bytes = residency.gpu_resident_bytes;
     result.virtual_geometry.residency_budget_bytes = residency.gpu_budget_bytes;
+    result.virtual_geometry.compressed_cpu_resident_bytes = residency.compressed_cpu_resident_bytes;
+    result.virtual_geometry.compressed_cpu_budget_bytes = residency.compressed_cpu_budget_bytes;
     if (!result.virtual_geometry.enabled && result.virtual_geometry.fallback_reason.empty())
         result.virtual_geometry.fallback_reason =
             "virtual geometry is unavailable for the resolved renderer configuration; using conventional LODs";
@@ -1721,12 +1728,15 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
             virtual_geometry_residency_.fail(result.resource, result.resource_generation, result.page_index);
     }
     auto evictions = texture_residency_.take_evictions();
-    if (!evictions.empty())
+    auto virtual_evictions = virtual_geometry_residency_.take_evictions();
+    if (!evictions.empty() || !virtual_evictions.empty())
     {
         render_event_buffer buffer;
         render_event_writer writer(buffer);
         for (auto& eviction : evictions)
             writer.texture_stream_evict(eviction);
+        for (auto& eviction : virtual_evictions)
+            writer.virtual_geometry_page_evict(eviction);
         frame_queue_.submit(std::move(buffer));
     }
     auto packet = frame_queue_.commit(frame_index);
