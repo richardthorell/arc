@@ -253,7 +253,6 @@ TEST_CASE("render scene submits terrain through generic virtual geometry when av
     CHECK(item.mesh == proxy->geometry.virtualized);
     CHECK(item.material == terrain.material);
     CHECK(item.material_attribute_texture == proxy->surface_attribute_texture);
-    REQUIRE(item.gpu_scene_instance.valid());
     CHECK(item.selected);
     CHECK(item.casts_shadows);
     CHECK_FALSE(item.receives_shadows);

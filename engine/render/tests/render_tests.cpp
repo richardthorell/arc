@@ -1364,8 +1364,10 @@ TEST_CASE("GPU Scene preserves virtual material attribute references")
     CHECK(instance->geometry_kind == gpu_scene_geometry_kind::virtual_mesh);
     CHECK(instance->material_attribute_texture == texture_handle{.index = 9, .generation = 5});
 
+    // Let the one-frame recently-changed flag settle before checking a pure material update.
+    (void)scene.synchronize(packet, 2);
     packet.virtual_items.front().material_attribute_texture = {.index = 9, .generation = 6};
-    const auto updated = scene.synchronize(packet, 2);
+    const auto updated = scene.synchronize(packet, 3);
     REQUIRE(updated.updates.size() == 1u);
     CHECK(updated.updates.front().dirty == gpu_scene_dirty::material);
     CHECK(updated.updates.front().instance.material_attribute_texture == texture_handle{.index = 9, .generation = 6});
