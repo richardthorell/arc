@@ -33,17 +33,12 @@ bool attributes_alive(const terrain_render_proxy& proxy, const render::renderer&
 render::texture_data make_attribute_texture_data(const terrain_render_attributes& attributes)
 {
     render::texture_data data;
+    data.name = "terrain-material-weights";
     data.width = attributes.width;
     data.height = attributes.height;
-    data.channels = 4u;
     data.format = render::texture_format::rgba8_unorm;
-    data.srgb = false;
-    data.generate_mips = true;
-    data.wrap_u = render::texture_wrap::clamp_to_edge;
-    data.wrap_v = render::texture_wrap::clamp_to_edge;
-    data.min_filter = render::texture_filter::linear;
-    data.mag_filter = render::texture_filter::linear;
-    data.mip_filter = render::texture_mip_filter::linear;
+    data.color_space = render::texture_color_space::linear;
+    data.mip_levels = 1u;
     data.pixels.resize(attributes.material_weights.size() * sizeof(attributes.material_weights.front()));
     if (!data.pixels.empty())
         std::memcpy(data.pixels.data(), attributes.material_weights.data(), data.pixels.size());
