@@ -92,12 +92,18 @@ gpu_texture_table_record texture_table_record(texture_handle handle, const textu
 gpu_material_table_record material_table_record(const material_descriptor& material,
                                                 const gpu_resource_tables& tables) noexcept
 {
+    constexpr std::uint32_t unsupported_material_flag = 1u << 9u;
+    constexpr std::uint32_t terrain_material_flag = 1u << 10u;
+
     gpu_material_table_record record{};
     record.generation = material.handle.generation;
+    const bool supported_domain =
+        material.domain == material_domain::surface || material.domain == material_domain::terrain;
     record.flags = static_cast<std::uint32_t>(material.alpha_mode) |
                    (static_cast<std::uint32_t>(material.shading_model) << 4u) |
                    (material.double_sided ? 1u << 8u : 0u) |
-                   (material.runtime_program || material.domain != material_domain::surface ? 1u << 9u : 0u);
+                   (material.runtime_program || !supported_domain ? unsupported_material_flag : 0u) |
+                   (material.domain == material_domain::terrain ? terrain_material_flag : 0u);
     for (std::uint32_t component = 0; component < 4u; ++component)
         record.base_color[component] = material.base_color[component];
     record.emissive[0] = material.emissive_factor[0];
@@ -105,22 +111,38 @@ gpu_material_table_record material_table_record(const material_descriptor& mater
     record.emissive[2] = material.emissive_factor[2];
     record.emissive[3] = material.emissive_luminance_nits > 0.0f ? material.emissive_luminance_nits / 100.0f
                                                                  : material.emissive_strength;
-    record.surface[0] = material.metallic;
-    record.surface[1] = material.roughness;
-    record.surface[2] = material.alpha_cutoff;
-    record.surface[3] = material.normal_scale;
-    const std::array textures{material.base_color_texture,
-                              material.metallic_roughness_texture,
-                              material.normal_texture,
-                              material.occlusion_texture,
-                              material.emissive_texture,
-                              material.clear_coat_texture,
-                              material.clear_coat_roughness_texture,
-                              material.clear_coat_normal_texture,
-                              material.anisotropy_texture,
-                              material.subsurface_texture,
-                              material.thickness_texture,
-                              material.transmission_texture};
+
+    std::array<texture_handle, gpu_material_table_record::texture_slot_count> textures{};
+    if (material.domain == material_domain::terrain)
+    {
+        for (std::size_t layer = 0; layer < material.terrain_layers.size(); ++layer)
+        {
+            record.surface[layer] = material.terrain_layers[layer].world_scale;
+            textures[layer] = material.terrain_layers[layer].base_color_texture;
+            textures[4u + layer] = material.terrain_layers[layer].normal_texture;
+            textures[8u + layer] = material.terrain_layers[layer].packed_surface_texture;
+        }
+    }
+    else
+    {
+        record.surface[0] = material.metallic;
+        record.surface[1] = material.roughness;
+        record.surface[2] = material.alpha_cutoff;
+        record.surface[3] = material.normal_scale;
+        textures = {material.base_color_texture,
+                    material.metallic_roughness_texture,
+                    material.normal_texture,
+                    material.occlusion_texture,
+                    material.emissive_texture,
+                    material.clear_coat_texture,
+                    material.clear_coat_roughness_texture,
+                    material.clear_coat_normal_texture,
+                    material.anisotropy_texture,
+                    material.subsurface_texture,
+                    material.thickness_texture,
+                    material.transmission_texture};
+    }
+
     record.texture_indices.fill(resource_handle::invalid_index);
     for (std::size_t index = 0; index < textures.size(); ++index)
         if (const auto reference = tables.find(gpu_resource_table_kind::texture, textures[index]))

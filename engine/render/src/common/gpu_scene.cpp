@@ -54,7 +54,9 @@ gpu_scene_dirty changed_fields(const gpu_scene_instance& previous, const gpu_sce
         previous.skin_joint_count != current.skin_joint_count ||
         previous.submesh_or_cluster != current.submesh_or_cluster || previous.geometry_kind != current.geometry_kind)
         dirty = dirty | gpu_scene_dirty::geometry;
-    if (previous.material != current.material) dirty = dirty | gpu_scene_dirty::material;
+    if (previous.material != current.material ||
+        previous.material_attribute_texture != current.material_attribute_texture)
+        dirty = dirty | gpu_scene_dirty::material;
     if (previous.flags != current.flags || previous.render_layer_mask != current.render_layer_mask ||
         previous.object_id != current.object_id)
         dirty = dirty | gpu_scene_dirty::flags;
@@ -209,6 +211,7 @@ gpu_scene_update_batch gpu_scene::synchronize(render_world_packet& packet, std::
                      .world_bounds = item.world_bounds,
                      .mesh = item.mesh,
                      .material = item.material,
+                     .material_attribute_texture = item.material_attribute_texture,
                      .skin_palette = item.skin_matrices,
                      .skin_joint_count = item.skin_joint_count,
                      .object_id = item.object_id,
@@ -252,6 +255,7 @@ gpu_scene_update_batch gpu_scene::synchronize(render_world_packet& packet, std::
                 .world_bounds = item.world_bounds,
                 .virtual_mesh = item.mesh,
                 .material = item.material,
+                .material_attribute_texture = item.material_attribute_texture,
                 .object_id = item.object_id,
                 .submesh_or_cluster = item.root_node,
                 .render_layer_mask = item.render_layer_mask,

@@ -102,6 +102,8 @@ struct gpu_scene_instance
     terrain_handle terrain{};
     /** Material referenced by the instance. */
     material_handle material{};
+    /** Optional per-instance material attribute texture. */
+    texture_handle material_attribute_texture{};
     /** Optional joint-matrix buffer used by skinned geometry. */
     buffer_handle skin_palette{};
     /** Number of matrices addressable through @ref skin_palette. */

@@ -1342,6 +1342,35 @@ TEST_CASE("GPU Scene keeps stable slots and emits precise incremental updates")
     REQUIRE(recycled_handle.generation != handle.generation);
 }
 
+TEST_CASE("GPU Scene preserves virtual material attribute references")
+{
+    using namespace arc::render;
+    render_world_packet packet;
+    packet.gpu_scene_world_id = 23;
+    packet.world_epoch = 1;
+    packet.virtual_items.push_back({.mesh = {.index = 4, .generation = 2},
+                                    .material = {.index = 6, .generation = 3},
+                                    .material_attribute_texture = {.index = 9, .generation = 5},
+                                    .root_node = 7u,
+                                    .object_id = {.index = 14, .generation = 1}});
+
+    gpu_scene scene;
+    const auto initial = scene.synchronize(packet, 1);
+    REQUIRE(initial.active_instance_count == 1u);
+    REQUIRE(packet.virtual_items.front().gpu_scene_instance.valid());
+    const auto handle = packet.virtual_items.front().gpu_scene_instance;
+    const auto* instance = scene.find(handle);
+    REQUIRE(instance != nullptr);
+    CHECK(instance->geometry_kind == gpu_scene_geometry_kind::virtual_mesh);
+    CHECK(instance->material_attribute_texture == texture_handle{.index = 9, .generation = 5});
+
+    packet.virtual_items.front().material_attribute_texture = {.index = 9, .generation = 6};
+    const auto updated = scene.synchronize(packet, 2);
+    REQUIRE(updated.updates.size() == 1u);
+    CHECK(updated.updates.front().dirty == gpu_scene_dirty::material);
+    CHECK(updated.updates.front().instance.material_attribute_texture == texture_handle{.index = 9, .generation = 6});
+}
+
 TEST_CASE("GPU Scene represents skinned meshes and terrain without CPU patch expansion")
 {
     using namespace arc::render;

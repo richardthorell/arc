@@ -116,7 +116,8 @@ struct alignas(16) gpu_scene_visibility_record
     std::uint32_t geometry[4]{};
     std::uint32_t material_flags[4]{};
     std::uint32_t draw_metadata[4]{};
-    float distance_error[4]{};
+    float distance_error[2]{};
+    std::uint32_t material_attribute[2]{resource_handle::invalid_index, 0u};
 };
 static_assert(sizeof(gpu_scene_visibility_record) == 96);
 

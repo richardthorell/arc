@@ -84,6 +84,8 @@ packed_gpu_scene_instance vulkan_render_backend::pack_gpu_scene_instance(const g
     }
     result.visibility.distance_error[0] = source.maximum_draw_distance;
     result.visibility.distance_error[1] = source.geometry_error_scale;
+    result.visibility.material_attribute[0] = source.material_attribute_texture.index;
+    result.visibility.material_attribute[1] = source.material_attribute_texture.generation;
     return result;
 }
 
