@@ -1,7 +1,21 @@
+set(arc_render_vulkan_backend_sources
+    src/vulkan_backend.cpp
+    src/vulkan_backend_core.cpp
+    src/vulkan_backend_frame.cpp
+    src/vulkan_backend_gpu_scene.cpp
+    src/vulkan_backend_materials.cpp
+    src/vulkan_backend_scene.cpp
+    src/vulkan_backend_shadows.cpp
+    src/vulkan_backend_terrain.cpp
+    src/vulkan_backend_textures.cpp
+    src/vulkan_backend_virtual_geometry.cpp
+)
+
 add_library(arc-render-vulkan SHARED
     inc/arc/render/vulkan/vulkan_backend.h
     src/vma_impl.cpp
-    src/vulkan_backend.cpp
+    ${arc_render_vulkan_backend_sources}
+    src/vulkan_backend_internal.h
     src/vulkan_pick_utils.h
     src/vulkan_sky_constants.cpp
     src/vulkan_sky_constants.h
@@ -22,7 +36,8 @@ endif()
 # builds first-party code with -Wpedantic -Werror, so suppress only that vendor
 # header diagnostic in the translation unit that consumes VMA's public API.
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set_source_files_properties(src/vulkan_backend.cpp PROPERTIES COMPILE_OPTIONS "-Wno-nullability-extension")
+    set_source_files_properties(${arc_render_vulkan_backend_sources}
+        PROPERTIES COMPILE_OPTIONS "-Wno-nullability-extension")
 endif()
 
 target_compile_features(arc-render-vulkan
