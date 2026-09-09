@@ -17,6 +17,7 @@ layout(set = 0, binding = 0) uniform sampler2D grass_texture;
 layout(set = 0, binding = 1) uniform sampler2D dirt_texture;
 layout(set = 0, binding = 2) uniform sampler2D rock_texture;
 layout(set = 0, binding = 3) uniform sampler2D sand_texture;
+layout(set = 1, binding = 0) uniform sampler2D material_attribute_texture;
 layout(push_constant) uniform mesh_constants {
     mat4 model_view_projection; mat4 model; vec4 base_color; vec4 light_direction_intensity;
     vec4 light_color; vec4 camera_position; vec4 visualization; vec4 fog_color_density;
@@ -32,7 +33,8 @@ vec3 sample_layer(sampler2D source, vec2 uv, float scale, vec3 fallback, bool re
 }
 void main()
 {
-    vec4 weights = max(in_weights, vec4(0.0)); weights /= max(dot(weights, vec4(1.0)), 0.0001);
+    vec4 weights = max(texture(material_attribute_texture, in_texcoord), vec4(0.0));
+    weights /= max(dot(weights, vec4(1.0)), 0.0001);
     vec3 color = sample_layer(grass_texture, in_world_position.xz, constants.material_params.x, vec3(0.19,0.30,0.10), has_layer(1.0), 0u) * weights.x;
     color += sample_layer(dirt_texture, in_world_position.xz, constants.material_params.y, vec3(0.27,0.19,0.11), has_layer(2.0), 1u) * weights.y;
     color += sample_layer(rock_texture, in_world_position.xz, constants.material_params.z, vec3(0.23,0.24,0.22), has_layer(4.0), 2u) * weights.z;

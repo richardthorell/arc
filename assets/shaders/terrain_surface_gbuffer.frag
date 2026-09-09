@@ -30,6 +30,7 @@ layout(set = 0, binding = 11) uniform sampler2D grass_surface_texture;
 layout(set = 0, binding = 12) uniform sampler2D dirt_surface_texture;
 layout(set = 0, binding = 13) uniform sampler2D rock_surface_texture;
 layout(set = 0, binding = 14) uniform sampler2D sand_surface_texture;
+layout(set = 1, binding = 0) uniform sampler2D material_attribute_texture;
 
 layout(push_constant) uniform mesh_constants {
     mat4 model_view_projection; mat4 model; vec4 base_color; vec4 light_direction_intensity;
@@ -93,7 +94,8 @@ vec3 layer_normal(int layer, vec3 geometric_normal)
 }
 void main()
 {
-    vec4 weights = max(in_weights, vec4(0.0)); weights /= max(dot(weights, vec4(1.0)), 0.0001);
+    vec4 weights = max(texture(material_attribute_texture, in_texcoord), vec4(0.0));
+    weights /= max(dot(weights, vec4(1.0)), 0.0001);
     vec3 surfaces[4] = vec3[4](surface_sample(0), surface_sample(1), surface_sample(2), surface_sample(3));
     vec4 height_weights = weights + vec4(surfaces[0].b, surfaces[1].b, surfaces[2].b, surfaces[3].b) * 0.16;
     float strongest = max(max(height_weights.x, height_weights.y), max(height_weights.z, height_weights.w));
