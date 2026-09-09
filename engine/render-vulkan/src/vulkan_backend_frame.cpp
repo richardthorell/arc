@@ -1273,17 +1273,15 @@ bool vulkan_render_backend::render_deferred_scene(VkCommandBuffer command_buffer
             if (!material_is_terrain(draw) && draw_runtime_material_gbuffer(command_buffer, draw)) continue;
             if (terrain_surface && terrain_surface_gbuffer_pipeline_ != VK_NULL_HANDLE)
             {
-                const auto attributes =
-                    material_attribute_descriptor_set_for(draw.material_attribute_texture);
+                const auto attributes = material_attribute_descriptor_set_for(draw.material_attribute_texture);
                 if (attributes != VK_NULL_HANDLE)
                 {
                     vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                       terrain_surface_gbuffer_pipeline_);
                     const std::array descriptor_sets{material_descriptor_set_for(draw), attributes};
-                    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                            terrain_surface_pipeline_layout_, 0,
-                                            static_cast<std::uint32_t>(descriptor_sets.size()),
-                                            descriptor_sets.data(), 0, nullptr);
+                    vkCmdBindDescriptorSets(
+                        command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, terrain_surface_pipeline_layout_, 0,
+                        static_cast<std::uint32_t>(descriptor_sets.size()), descriptor_sets.data(), 0, nullptr);
                     draw_indexed_mesh(command_buffer, draw, terrain_surface_pipeline_layout_,
                                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true, true);
                     continue;
@@ -1559,14 +1557,13 @@ void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool
                 VkDescriptorSet material_descriptor_set = material_descriptor_set_for(draw);
                 if (pipeline == terrain_surface_pipeline_)
                 {
-                    const auto attributes =
-                        material_attribute_descriptor_set_for(draw.material_attribute_texture);
+                    const auto attributes = material_attribute_descriptor_set_for(draw.material_attribute_texture);
                     if (attributes == VK_NULL_HANDLE) return;
                     const std::array descriptor_sets{material_descriptor_set, attributes};
                     pipeline_layout = terrain_surface_pipeline_layout_;
                     vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0,
-                                            static_cast<std::uint32_t>(descriptor_sets.size()),
-                                            descriptor_sets.data(), 0, nullptr);
+                                            static_cast<std::uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
+                                            0, nullptr);
                 }
                 else
                 {
@@ -1635,11 +1632,10 @@ void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool
                     continue;
                 }
 
-                draw_with_pipeline(
-                    draw, material_is_terrain(draw) && draw.material_attribute_texture.valid() &&
-                                  terrain_surface_pipeline_ != VK_NULL_HANDLE
-                              ? terrain_surface_pipeline_
-                              : mesh_pipeline_);
+                draw_with_pipeline(draw, material_is_terrain(draw) && draw.material_attribute_texture.valid() &&
+                                                 terrain_surface_pipeline_ != VK_NULL_HANDLE
+                                             ? terrain_surface_pipeline_
+                                             : mesh_pipeline_);
             }
 
             for (const auto& draw : frame_virtual_draws_)

@@ -40,8 +40,7 @@ render::texture_data make_attribute_texture_data(const terrain_render_attributes
     data.color_space = render::texture_color_space::linear;
     data.mip_levels = 1u;
     data.pixels.resize(attributes.material_weights.size() * sizeof(attributes.material_weights.front()));
-    if (!data.pixels.empty())
-        std::memcpy(data.pixels.data(), attributes.material_weights.data(), data.pixels.size());
+    if (!data.pixels.empty()) std::memcpy(data.pixels.data(), attributes.material_weights.data(), data.pixels.size());
     return data;
 }
 

@@ -2375,15 +2375,14 @@ bool vulkan_render_backend::ensure_gbuffer_pipeline()
                                                        std::size(builtin::terrain_patch_gbuffer_vert_spv));
     VkShaderModule terrain_frag =
         create_shader_module(builtin::terrain_gbuffer_frag_spv, std::size(builtin::terrain_gbuffer_frag_spv));
-    VkShaderModule terrain_surface_frag = create_shader_module(
-        builtin::terrain_surface_gbuffer_frag_spv, std::size(builtin::terrain_surface_gbuffer_frag_spv));
+    VkShaderModule terrain_surface_frag = create_shader_module(builtin::terrain_surface_gbuffer_frag_spv,
+                                                               std::size(builtin::terrain_surface_gbuffer_frag_spv));
     if (vert == VK_NULL_HANDLE || frag == VK_NULL_HANDLE)
     {
         if (vert != VK_NULL_HANDLE) vkDestroyShaderModule(device_, vert, nullptr);
         if (frag != VK_NULL_HANDLE) vkDestroyShaderModule(device_, frag, nullptr);
         if (terrain_frag != VK_NULL_HANDLE) vkDestroyShaderModule(device_, terrain_frag, nullptr);
-        if (terrain_surface_frag != VK_NULL_HANDLE)
-            vkDestroyShaderModule(device_, terrain_surface_frag, nullptr);
+        if (terrain_surface_frag != VK_NULL_HANDLE) vkDestroyShaderModule(device_, terrain_surface_frag, nullptr);
         return false;
     }
 
@@ -2519,8 +2518,7 @@ bool vulkan_render_backend::ensure_gbuffer_pipeline()
     vkDestroyShaderModule(device_, frag, nullptr);
     if (terrain_vert != VK_NULL_HANDLE) vkDestroyShaderModule(device_, terrain_vert, nullptr);
     if (terrain_frag != VK_NULL_HANDLE) vkDestroyShaderModule(device_, terrain_frag, nullptr);
-    if (terrain_surface_frag != VK_NULL_HANDLE)
-        vkDestroyShaderModule(device_, terrain_surface_frag, nullptr);
+    if (terrain_surface_frag != VK_NULL_HANDLE) vkDestroyShaderModule(device_, terrain_surface_frag, nullptr);
     if (result != VK_SUCCESS)
         arc::diagnostics::warn("render.vulkan",
                                "Vulkan G-buffer pipeline creation failed; falling back to forward rendering");
