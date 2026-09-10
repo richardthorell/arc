@@ -14,7 +14,7 @@ namespace arc::render
 
 class renderer;
 
-/** @brief Hard scheduling limits for asynchronous virtual-geometry IO and decode work. */
+/** @brief Hard request-count and byte scheduling limits for asynchronous virtual-geometry IO and decode work. */
 struct virtual_geometry_streaming_config
 {
     std::uint32_t maximum_in_flight_requests{2048};
