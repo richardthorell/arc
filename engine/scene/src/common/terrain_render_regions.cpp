@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <span>
 
 namespace arc::scene
 {
@@ -97,7 +98,8 @@ std::vector<math::vector3f> source_normals(const terrain_surface_ir& surface)
     return normals;
 }
 
-std::uint64_t geometry_fingerprint(terrain_region_id id, const terrain_evaluated_surface& surface) noexcept
+std::uint64_t geometry_fingerprint(terrain_region_id id, const terrain_evaluated_surface& surface,
+                                   std::span<const math::vector3f> vertex_normals = {}) noexcept
 {
     stable_hash64 hash;
     append_region_identity(hash, id, surface.local_bounds);
@@ -125,6 +127,13 @@ std::uint64_t geometry_fingerprint(terrain_region_id id, const terrain_evaluated
         }
         for (const auto index : mesh.indices)
             hash.u32(index);
+    }
+    hash.u64(vertex_normals.size());
+    for (const auto& normal : vertex_normals)
+    {
+        hash.f32(normal[0]);
+        hash.f32(normal[1]);
+        hash.f32(normal[2]);
     }
     return hash.value();
 }
@@ -235,7 +244,7 @@ std::vector<terrain_render_region> build_terrain_render_regions(const terrain_su
             region.surface.local_bounds.min_y = minimum_height;
             region.surface.local_bounds.max_y = maximum_height;
             region.surface.geometry = std::move(heightfield);
-            region.geometry_fingerprint = geometry_fingerprint(region.id, region.surface);
+            region.geometry_fingerprint = geometry_fingerprint(region.id, region.surface, region.vertex_normals);
             region.attribute_fingerprint = attribute_fingerprint(region.id, region.surface);
             result.push_back(std::move(region));
         }
