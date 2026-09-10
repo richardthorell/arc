@@ -11,7 +11,6 @@
 #include <arc/render/render_graph.h>
 #include <arc/render/virtual_mesh.h>
 #include <arc/render/virtual_geometry.h>
-#include <arc/render/terrain.h>
 #include <arc/render/texture_streaming.h>
 
 #include <memory>
@@ -212,24 +211,6 @@ public:
     /** @brief Retire a virtual-geometry resource and all of its streamed pages. */
     bool destroy_virtual_mesh(virtual_mesh_handle handle);
 
-    /** @brief Create a renderer-owned heightfield terrain resource. */
-    [[nodiscard]] terrain_handle create_terrain(terrain_resource_descriptor terrain);
-    /** @brief Replace terrain material and LOD configuration without changing its handle. */
-    bool update_terrain(terrain_handle handle, material_handle material, terrain_lod_settings settings,
-                        std::uint64_t content_revision);
-    /** @brief Update a rectangular row-major height region and its hierarchy. */
-    bool update_terrain_heights(terrain_handle handle, terrain_height_region_update update);
-    /** @brief Update a rectangular row-major weight region. */
-    bool update_terrain_weights(terrain_handle handle, terrain_weight_region_update update);
-    /** @brief Retire a terrain resource. */
-    bool destroy_terrain(terrain_handle handle);
-    /** @brief Return whether a terrain handle is live. */
-    [[nodiscard]] bool terrain_alive(terrain_handle handle) const noexcept;
-    /** @brief Return retained terrain data used for view selection and tooling. */
-    [[nodiscard]] const terrain_resource_descriptor* terrain_data_for(terrain_handle handle) const noexcept;
-    /** @brief Return terrain resource diagnostics. */
-    [[nodiscard]] terrain_resource_snapshot terrain_snapshot(terrain_handle handle) const noexcept;
-
     /** @brief Realize conventional LODs and virtual pages from one cooked geometry artifact. */
     [[nodiscard]] geometry_resource_handle create_geometry_resource(virtual_mesh_data geometry,
                                                                     std::uint32_t asset_generation = 1);
@@ -410,7 +391,6 @@ private:
     handle_pool mesh_handles_;
     handle_pool skin_palette_handles_;
     handle_pool virtual_mesh_handles_;
-    handle_pool terrain_handles_;
     handle_pool lighting_geometry_handles_;
     handle_pool texture_handles_;
     handle_pool material_handles_;
@@ -420,9 +400,6 @@ private:
     std::uint64_t resource_frame_index_{};
     frame_budget_controller frame_budget_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const virtual_mesh_data>> virtual_mesh_data_;
-    std::unordered_map<std::uint64_t, std::shared_ptr<terrain_resource_descriptor>> terrain_data_;
-    std::unordered_map<std::uint64_t, terrain_resource_snapshot> terrain_snapshots_;
-    std::unordered_map<std::uint64_t, terrain_selection_scratch> terrain_selection_scratch_;
     std::unordered_map<std::uint64_t, std::uint32_t> virtual_mesh_content_generations_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const mesh_data>> mesh_data_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const skin_palette_data>> skin_palette_data_;

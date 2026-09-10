@@ -634,9 +634,8 @@ bool synchronize_terrain_render_resource(editor_scene_state& scene, render::rend
     }
     if (!scene.terrain_render_proxies.synchronize(guid, *terrain, renderer, dirty_region)) return false;
     const auto* proxy = scene.terrain_render_proxies.find(guid);
-    const auto* resource = proxy ? renderer.terrain_data_for(proxy->handle) : nullptr;
-    if (!resource) return false;
-    const auto local_bounds = resource->local_bounds;
+    if (!proxy) return false;
+    const auto local_bounds = proxy->local_bounds;
     if (auto* bounds = scene.scene.try_get<scene::bounds_component>(entity))
     {
         bounds->local_bounds = local_bounds;

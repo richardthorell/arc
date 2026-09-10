@@ -3418,11 +3418,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     return fail("Terrain transform cannot be inverted", entity);
                 const auto local_origin = math::transform_point(inverse_terrain, ray.origin);
                 const auto local_direction = math::normalize(math::transform_vector(inverse_terrain, ray.direction));
-                const auto* proxy = state_->scene.terrain_render_proxies.find(entity_guid_of(state_->scene, entity));
-                const auto* resource = proxy ? state_->renderer->terrain_data_for(proxy->handle) : nullptr;
-                const auto hit =
-                    resource ? scene::raycast_terrain(*terrain, resource->hierarchy, local_origin, local_direction)
-                             : scene::raycast_terrain(*terrain, local_origin, local_direction);
+                const auto hit = scene::raycast_terrain(*terrain, local_origin, local_direction);
                 if (!hit.hit)
                 {
                     state_->terrain_brush_local_position.reset();
@@ -3511,11 +3507,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     return fail("Terrain transform cannot be inverted", entity);
                 const auto local_origin = math::transform_point(inverse_terrain, ray.origin);
                 const auto local_direction = math::normalize(math::transform_vector(inverse_terrain, ray.direction));
-                const auto* proxy = state_->scene.terrain_render_proxies.find(entity_guid_of(state_->scene, entity));
-                const auto* resource = proxy ? state_->renderer->terrain_data_for(proxy->handle) : nullptr;
-                const auto hit =
-                    resource ? scene::raycast_terrain(*terrain, resource->hierarchy, local_origin, local_direction)
-                             : scene::raycast_terrain(*terrain, local_origin, local_direction);
+                const auto hit = scene::raycast_terrain(*terrain, local_origin, local_direction);
                 if (hit.hit)
                     state_->terrain_brush_local_position = hit.position;
                 else
@@ -5292,17 +5284,15 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
         }
         if (const auto* proxy = state_->scene.terrain_render_proxies.find(entity_guid_of(state_->scene, selected)))
         {
-            const auto resource = state_->renderer->terrain_snapshot(proxy->handle);
-            terrain_snapshot.hierarchy_nodes = resource.hierarchy_nodes;
-            terrain_snapshot.source_patches = resource.hierarchy_leaves;
-            terrain_snapshot.gpu_memory_bytes = resource.height_bytes + resource.weight_bytes;
-            terrain_snapshot.uploaded_bytes = resource.uploaded_height_bytes + resource.uploaded_weight_bytes;
-            if (const auto* data = state_->renderer->terrain_data_for(proxy->handle))
-                terrain_snapshot.hierarchy_depth = data->hierarchy.maximum_depth;
+            if (const auto* geometry = state_->renderer->virtual_mesh_data_for(proxy->geometry.virtualized))
+            {
+                terrain_snapshot.hierarchy_nodes = static_cast<std::uint32_t>(geometry->lod_nodes.size());
+                terrain_snapshot.source_patches = static_cast<std::uint32_t>(geometry->clusters.size());
+                terrain_snapshot.hierarchy_depth =
+                    geometry->stats.hierarchy_level_count > 0u ? geometry->stats.hierarchy_level_count - 1u : 0u;
+                terrain_snapshot.gpu_memory_bytes = geometry->stats.uncompressed_page_bytes;
+            }
         }
-        const auto& profile = state_->renderer->last_frame_profile().terrain;
-        terrain_snapshot.visible_patches = profile.selected_patches;
-        terrain_snapshot.rendered_triangles = profile.rendered_triangles;
         terrain_snapshot.brush_tool =
             state_->terrain_brush.tool == scene::terrain_brush_tool::smooth    ? host_terrain_brush_tool::smooth
             : state_->terrain_brush.tool == scene::terrain_brush_tool::flatten ? host_terrain_brush_tool::flatten

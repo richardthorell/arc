@@ -445,7 +445,6 @@ bool vulkan_render_backend::render_native_viewport_frame(std::uint32_t width, st
     vkWaitForFences(device_, 1, &frame->fence, VK_TRUE, UINT64_MAX);
     collect_texture_mip_feedback(swapchain_.frame_index);
     collect_gpu_visibility_feedback(swapchain_.frame_index);
-    collect_gpu_terrain_feedback(swapchain_.frame_index);
     collect_virtual_geometry_feedback(swapchain_.frame_index);
     collect_timestamp_results();
     collect_object_pick_result();
@@ -877,7 +876,6 @@ surface_frame_result vulkan_render_backend::render_shared_viewport_frame(shared_
             {.code = surface_frame_error_code::backend_failure, .message = "viewport render target is unavailable"});
     collect_texture_mip_feedback(slot_index);
     collect_gpu_visibility_feedback(slot_index);
-    collect_gpu_terrain_feedback(slot_index);
     collect_virtual_geometry_feedback(slot_index);
     collect_timestamp_results();
     collect_object_pick_result();
@@ -1668,15 +1666,6 @@ void vulkan_render_backend::destroy_meshes() noexcept
         destroy_buffer(mesh.indices);
     }
     virtual_meshes_.clear();
-    for (auto& [_, instance] : gpu_terrain_instances_)
-        destroy_gpu_terrain_instance(instance);
-    gpu_terrain_instances_.clear();
-    for (auto& [_, terrain] : terrains_)
-        destroy_terrain_buffers(terrain);
-    terrains_.clear();
-    for (auto& [_, topology] : terrain_topologies_)
-        destroy_buffer(topology.indices);
-    terrain_topologies_.clear();
     for (auto& [_, texture] : textures_)
         destroy_texture(texture);
     textures_.clear();
@@ -1688,36 +1677,6 @@ void vulkan_render_backend::destroy_meshes() noexcept
     }
     materials_.clear();
     environments_.clear();
-    if (terrain_descriptor_pool_ != VK_NULL_HANDLE)
-    {
-        vkDestroyDescriptorPool(device_, terrain_descriptor_pool_, nullptr);
-        terrain_descriptor_pool_ = VK_NULL_HANDLE;
-    }
-    if (terrain_descriptor_set_layout_ != VK_NULL_HANDLE)
-    {
-        vkDestroyDescriptorSetLayout(device_, terrain_descriptor_set_layout_, nullptr);
-        terrain_descriptor_set_layout_ = VK_NULL_HANDLE;
-    }
-    if (gpu_terrain_traversal_pipeline_ != VK_NULL_HANDLE)
-    {
-        vkDestroyPipeline(device_, gpu_terrain_traversal_pipeline_, nullptr);
-        gpu_terrain_traversal_pipeline_ = VK_NULL_HANDLE;
-    }
-    if (gpu_terrain_traversal_pipeline_layout_ != VK_NULL_HANDLE)
-    {
-        vkDestroyPipelineLayout(device_, gpu_terrain_traversal_pipeline_layout_, nullptr);
-        gpu_terrain_traversal_pipeline_layout_ = VK_NULL_HANDLE;
-    }
-    if (gpu_terrain_descriptor_pool_ != VK_NULL_HANDLE)
-    {
-        vkDestroyDescriptorPool(device_, gpu_terrain_descriptor_pool_, nullptr);
-        gpu_terrain_descriptor_pool_ = VK_NULL_HANDLE;
-    }
-    if (gpu_terrain_descriptor_set_layout_ != VK_NULL_HANDLE)
-    {
-        vkDestroyDescriptorSetLayout(device_, gpu_terrain_descriptor_set_layout_, nullptr);
-        gpu_terrain_descriptor_set_layout_ = VK_NULL_HANDLE;
-    }
 }
 
 std::optional<VkFormat> vulkan_render_backend::vulkan_texture_format(texture_format format) const noexcept

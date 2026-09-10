@@ -10,19 +10,10 @@ render_submit_result vulkan_render_backend::submit(const render_frame_packet& pa
     apply_gpu_visibility_statistics(completed_gpu_visibility_statistics_);
     last_profile_.temporal = {};
     temporal_output_view_ = VK_NULL_HANDLE;
-    last_profile_.terrain = {};
-    last_profile_.terrain.gpu_traversal = resolved_config_.features.gpu_terrain_traversal;
-    last_profile_.terrain.gpu_selected_patches = completed_gpu_terrain_statistics_.selected_count;
-    last_profile_.terrain.gpu_culled_nodes = completed_gpu_terrain_statistics_.culled_count;
-    last_profile_.terrain.gpu_indirect_commands = completed_gpu_terrain_statistics_.draw_count;
-    last_profile_.terrain.gpu_overflow_instances = completed_gpu_terrain_statistics_.overflow_count;
     upload_frame_ = packet.frame_index;
     upload_batch_failed_ = false;
     frame_draws_.clear();
     frame_virtual_draws_.clear();
-    frame_terrain_draws_.clear();
-    frame_gpu_terrain_draws_.clear();
-    gpu_terrain_active_instances_.clear();
     frame_shadow_draws_.clear();
     frame_virtual_shadow_draws_.clear();
     frame_directional_lights_.clear();
@@ -63,23 +54,6 @@ render_submit_result vulkan_render_backend::submit(const render_frame_packet& pa
             upload_virtual_geometry_page(*virtual_page);
         else if (const auto* virtual_eviction = std::get_if<virtual_geometry_page_evict_event>(&event.payload))
             evict_virtual_geometry_page(*virtual_eviction);
-        else if (const auto* terrain = std::get_if<terrain_upload_event>(&event.payload))
-        {
-            upload_terrain(*terrain);
-            ++shadow_resource_revision_;
-        }
-        else if (const auto* height_update = std::get_if<terrain_height_update_event>(&event.payload))
-        {
-            update_terrain_heights(*height_update);
-            ++shadow_resource_revision_;
-        }
-        else if (const auto* weight_update = std::get_if<terrain_weight_update_event>(&event.payload))
-            update_terrain_weights(*weight_update);
-        else if (const auto* terrain_destroy = std::get_if<terrain_destroy_event>(&event.payload))
-        {
-            retire_terrain(terrain_destroy->handle);
-            ++shadow_resource_revision_;
-        }
         else if (const auto* texture = std::get_if<texture_upload_event>(&event.payload))
             upload_texture(*texture);
         else if (const auto* streamed_registration = std::get_if<texture_stream_register_event>(&event.payload))
@@ -354,21 +328,6 @@ void vulkan_render_backend::append_render_world(const render_world_event& event)
         frame_virtual_shadow_draws_.push_back(make_virtual_draw(item, item.selected));
     }
 
-    for (const auto& patch : packet.visible_terrain_patches)
-    {
-        if (patch.terrain_index >= packet.terrains.size()) continue;
-        const auto& terrain = packet.terrains[patch.terrain_index];
-        if (!terrain.terrain.valid()) continue;
-        frame_terrain_draws_.push_back({terrain, patch, packet.camera.view_projection,
-                                        packet.camera.previous_view_projection, packet.mode, packet.visualization});
-    }
-    if (resolved_config_.features.gpu_terrain_traversal)
-        for (const auto& terrain : packet.terrains)
-            if (terrain.terrain.valid() && terrain.gpu_scene_instance.valid())
-                frame_gpu_terrain_draws_.push_back({terrain, packet.camera.view_projection,
-                                                    packet.camera.previous_view_projection, packet.mode,
-                                                    packet.visualization});
-
     if (!frame_camera_valid_ ||
         math::length_squared(math::sub(packet.camera.position, frame_camera_.position)) > 100.0f)
         exposure_needs_reset_ = true;
@@ -386,12 +345,6 @@ void vulkan_render_backend::append_render_world(const render_world_event& event)
                                       packet.debug_overlay.lines.end());
     frame_debug_overlay_triangles_.insert(frame_debug_overlay_triangles_.end(), packet.debug_overlay.triangles.begin(),
                                           packet.debug_overlay.triangles.end());
-    last_profile_.terrain.hierarchy_nodes += packet.terrain_statistics.hierarchy_nodes;
-    last_profile_.terrain.selected_patches += packet.terrain_statistics.selected_patches;
-    last_profile_.terrain.culled_nodes += packet.terrain_statistics.culled_nodes;
-    last_profile_.terrain.rendered_triangles += packet.terrain_statistics.rendered_triangles;
-    for (std::size_t lod = 0; lod < last_profile_.terrain.patches_per_lod.size(); ++lod)
-        last_profile_.terrain.patches_per_lod[lod] += packet.terrain_statistics.patches_per_lod[lod];
     if (resolved_config_.features.gpu_driven_rendering)
     {
         auto& profile = last_profile_.gpu_scene;
@@ -404,8 +357,7 @@ void vulkan_render_backend::append_render_world(const render_world_event& event)
             static_cast<std::uint32_t>(packet.culled_item_count + packet.culled_virtual_cluster_count);
         profile.indirect_commands = static_cast<std::uint32_t>(packet.items.size() + packet.virtual_items.size());
         if (resolved_config_.features.gpu_binding_model == gpu_resource_binding_model::classic)
-            profile.cpu_submissions += static_cast<std::uint32_t>(packet.items.size() + packet.virtual_items.size() +
-                                                                  packet.visible_terrain_patches.size());
+            profile.cpu_submissions += static_cast<std::uint32_t>(packet.items.size() + packet.virtual_items.size());
     }
 }
 

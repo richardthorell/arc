@@ -179,30 +179,6 @@ struct alignas(16) gpu_visibility_counter_data
 };
 static_assert(sizeof(gpu_visibility_counter_data) == 32);
 
-struct alignas(16) gpu_terrain_patch_record
-{
-    std::uint32_t samples[4]{};
-    std::uint32_t metadata[4]{};
-};
-static_assert(sizeof(gpu_terrain_patch_record) == 32);
-
-struct gpu_terrain_counter_data
-{
-    std::uint32_t selected_count{};
-    std::uint32_t culled_count{};
-    std::uint32_t overflow_count{};
-    std::uint32_t draw_count{};
-};
-static_assert(sizeof(gpu_terrain_counter_data) == 16);
-
-struct alignas(16) gpu_terrain_traversal_push_constants
-{
-    float model_view_projection[16]{};
-    float model_rows[12]{};
-    float camera_and_error[4]{};
-};
-static_assert(sizeof(gpu_terrain_traversal_push_constants) == 128);
-
 struct alignas(16) virtual_geometry_traversal_counter_data
 {
     std::uint32_t visible_count{};
@@ -658,82 +634,6 @@ private:
         std::uint32_t index_count{};
     };
 
-    struct alignas(16) terrain_resource_uniform
-    {
-        std::uint32_t sample_resolution{};
-        std::uint32_t patch_quads{};
-        std::uint32_t hierarchy_root{invalid_terrain_node};
-        std::uint32_t hierarchy_node_count{};
-        float width{};
-        float depth{};
-        float padding[2]{};
-        std::uint32_t hierarchy_leaf_count{};
-        std::uint32_t hierarchy_reserved[3]{};
-    };
-    static_assert(sizeof(terrain_resource_uniform) == 48);
-
-    struct gpu_terrain
-    {
-        gpu_buffer heights;
-        gpu_buffer weights;
-        gpu_buffer parameters;
-        gpu_buffer hierarchy;
-        gpu_buffer fallback_patch;
-        VkDescriptorSet descriptor_set{};
-        std::uint32_t sample_resolution{};
-        std::uint32_t patch_quads{32};
-        std::uint32_t hierarchy_node_count{};
-        std::uint32_t hierarchy_leaf_count{};
-        float geometric_error_multiplier{1.0f};
-    };
-
-    struct gpu_terrain_traversal_frame
-    {
-        gpu_buffer stack;
-        gpu_buffer patches;
-        gpu_buffer counters;
-        gpu_buffer indirect;
-        gpu_buffer readback;
-        VkDescriptorSet traversal_descriptor{};
-        VkDescriptorSet draw_descriptor{};
-        bool dispatched{};
-        bool readback_pending{};
-    };
-
-    struct gpu_terrain_instance
-    {
-        terrain_handle terrain{};
-        std::uint32_t node_capacity{};
-        std::uint32_t patch_capacity{};
-        std::vector<gpu_terrain_traversal_frame> frames;
-        bool overflowed{};
-    };
-
-    struct terrain_topology
-    {
-        gpu_buffer indices;
-        std::uint32_t index_count{};
-    };
-
-    struct terrain_patch_draw
-    {
-        terrain_render_data terrain;
-        terrain_patch_render_data patch;
-        math::matrix4f view_projection{math::identity<float, 4>()};
-        math::matrix4f previous_view_projection{math::identity<float, 4>()};
-        render_mode mode{render_mode::shaded};
-        mesh_visualization_mode visualization{mesh_visualization_mode::standard};
-    };
-
-    struct gpu_terrain_draw
-    {
-        terrain_render_data terrain;
-        math::matrix4f view_projection{math::identity<float, 4>()};
-        math::matrix4f previous_view_projection{math::identity<float, 4>()};
-        render_mode mode{render_mode::shaded};
-        mesh_visualization_mode visualization{mesh_visualization_mode::standard};
-    };
-
     struct virtual_cluster_draw
     {
         draw_mesh_event draw;
@@ -1001,44 +901,6 @@ private:
     void set_viewport_output_visible(std::string_view viewport_id, bool visible) override;
 
     void destroy_viewport_output(std::string_view viewport_id) override;
-
-    bool ensure_terrain_descriptors();
-
-    bool allocate_terrain_draw_descriptor(const gpu_terrain& terrain, VkBuffer patches, VkDescriptorSet& descriptor);
-
-    bool allocate_terrain_descriptor(gpu_terrain& terrain);
-
-    void destroy_terrain_buffers(gpu_terrain& terrain) noexcept;
-
-    void upload_terrain(const terrain_upload_event& event);
-
-    bool ensure_terrain_topologies(std::uint32_t patch_quads);
-
-    template <typename T>
-    bool update_terrain_rows(VkBuffer destination, std::uint32_t destination_resolution,
-                             const terrain_sample_region& region, std::uint32_t row_stride,
-                             const std::vector<T>& values);
-
-    void update_terrain_heights(const terrain_height_update_event& event);
-
-    void update_terrain_weights(const terrain_weight_update_event& event);
-
-    void retire_terrain(terrain_handle handle);
-
-    void destroy_gpu_terrain_frame(gpu_terrain_traversal_frame& frame) noexcept;
-
-    void destroy_gpu_terrain_instance(gpu_terrain_instance& instance) noexcept;
-
-    bool ensure_gpu_terrain_pipeline();
-
-    bool allocate_gpu_terrain_frame(const gpu_terrain& terrain, gpu_terrain_traversal_frame& frame);
-
-    gpu_terrain_instance* ensure_gpu_terrain_instance(const gpu_terrain_draw& draw);
-
-    void collect_gpu_terrain_feedback(std::uint32_t frame_index);
-
-    void dispatch_gpu_terrain_traversal(VkCommandBuffer command_buffer);
-
     VkBuffer mesh_vertex_buffer(const gpu_mesh& mesh, gpu_scene_instance_handle instance = {}) const noexcept;
 
     void update_dynamic_mesh_vertices();
@@ -1212,14 +1074,6 @@ private:
     bool material_requires_forward(const draw_mesh_event& draw) const noexcept;
 
     mesh_push_constants build_mesh_constants(const draw_mesh_event& draw) const;
-
-    draw_mesh_event terrain_mesh_draw(const terrain_patch_draw& draw) const;
-
-    void draw_terrain_patch(VkCommandBuffer command_buffer, const terrain_patch_draw& draw, VkPipeline pipeline,
-                            bool write_motion);
-
-    bool draw_gpu_terrain(VkCommandBuffer command_buffer, const gpu_terrain_draw& draw, VkPipeline pipeline,
-                          bool write_motion);
 
     VkDescriptorSet material_descriptor_set_for(const draw_mesh_event& draw) const noexcept;
 
@@ -1482,10 +1336,6 @@ private:
     std::vector<std::string> pending_debug_markers_;
     std::unordered_map<std::uint64_t, gpu_mesh> meshes_;
     std::unordered_map<std::uint64_t, gpu_virtual_mesh> virtual_meshes_;
-    std::unordered_map<std::uint64_t, gpu_terrain> terrains_;
-    std::unordered_map<std::uint64_t, gpu_terrain_instance> gpu_terrain_instances_;
-    gpu_terrain_counter_data completed_gpu_terrain_statistics_{};
-    std::unordered_map<std::uint32_t, terrain_topology> terrain_topologies_;
     std::unordered_map<std::uint64_t, gpu_texture> textures_;
     texture_feedback_readback completed_texture_feedback_;
     std::vector<texture_stream_upload_result> frame_texture_upload_results_;
@@ -1517,9 +1367,6 @@ private:
     std::unordered_set<std::uint64_t> texture_semantic_diagnostics_;
     std::vector<draw_mesh_event> frame_draws_;
     std::vector<virtual_cluster_draw> frame_virtual_draws_;
-    std::vector<terrain_patch_draw> frame_terrain_draws_;
-    std::vector<gpu_terrain_draw> frame_gpu_terrain_draws_;
-    std::unordered_set<std::uint64_t> gpu_terrain_active_instances_;
     std::vector<draw_mesh_event> frame_shadow_draws_;
     std::vector<virtual_cluster_draw> frame_virtual_shadow_draws_;
     std::vector<directional_light_event> frame_directional_lights_;
@@ -1558,10 +1405,6 @@ private:
     VkDescriptorPool gpu_skinning_descriptor_pool_{};
     VkPipelineLayout gpu_skinning_pipeline_layout_{};
     VkPipeline gpu_skinning_pipeline_{};
-    VkDescriptorSetLayout gpu_terrain_descriptor_set_layout_{};
-    VkDescriptorPool gpu_terrain_descriptor_pool_{};
-    VkPipelineLayout gpu_terrain_traversal_pipeline_layout_{};
-    VkPipeline gpu_terrain_traversal_pipeline_{};
     VkDescriptorSetLayout gpu_bindless_descriptor_set_layout_{};
     VkDescriptorPool gpu_bindless_descriptor_pool_{};
     VkDescriptorSet gpu_bindless_descriptor_set_{};
@@ -1648,17 +1491,12 @@ private:
     VkDescriptorPool material_attribute_descriptor_pool_{};
     std::unordered_map<std::uint64_t, VkDescriptorSet> material_attribute_descriptor_sets_;
     VkPipelineLayout terrain_surface_pipeline_layout_{};
-    VkDescriptorSetLayout terrain_descriptor_set_layout_{};
-    VkDescriptorPool terrain_descriptor_pool_{};
-    VkPipelineLayout terrain_pipeline_layout_{};
     VkPipeline mesh_pipeline_{};
     VkPipeline mesh_transparent_pipeline_{};
     VkPipeline mesh_wire_pipeline_{};
     VkPipeline terrain_surface_pipeline_{};
-    VkPipeline terrain_pipeline_{};
     VkPipeline gbuffer_pipeline_{};
     VkPipeline terrain_surface_gbuffer_pipeline_{};
-    VkPipeline terrain_gbuffer_pipeline_{};
     VkDescriptorSetLayout gbuffer_descriptor_set_layout_{};
     VkDescriptorPool gbuffer_descriptor_pool_{};
     VkDescriptorSet gbuffer_descriptor_set_{};
@@ -1680,7 +1518,6 @@ private:
     VkPipeline sky_pipeline_{};
     VkPipelineLayout shadow_pipeline_layout_{};
     VkPipeline shadow_pipeline_{};
-    VkPipeline terrain_shadow_pipeline_{};
     VkPipelineLayout debug_overlay_pipeline_layout_{};
     VkPipeline debug_overlay_line_pipeline_{};
     VkPipeline debug_overlay_triangle_pipeline_{};

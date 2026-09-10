@@ -249,112 +249,6 @@ mesh_push_constants vulkan_render_backend::build_mesh_constants(const draw_mesh_
     return constants;
 }
 
-draw_mesh_event vulkan_render_backend::terrain_mesh_draw(const terrain_patch_draw& draw) const
-{
-    return {.material = draw.terrain.material,
-            .model = draw.terrain.model,
-            .previous_model = draw.terrain.previous_model,
-            .view_projection = draw.view_projection,
-            .previous_view_projection = draw.previous_view_projection,
-            .world_bounds = draw.terrain.world_bounds,
-            .mode = draw.mode,
-            .visualization = draw.visualization,
-            .object_id = draw.terrain.object_id,
-            .selected = draw.terrain.selected,
-            .casts_shadows = draw.terrain.cast_shadows,
-            .receives_shadows = draw.terrain.receive_shadows,
-            .shadow_lod_bias = draw.terrain.shadow_lod_bias,
-            .maximum_shadow_distance = draw.terrain.maximum_shadow_distance,
-            .label = draw.terrain.label};
-}
-
-void vulkan_render_backend::draw_terrain_patch(VkCommandBuffer command_buffer, const terrain_patch_draw& draw,
-                                               VkPipeline pipeline, bool write_motion)
-{
-    if (pipeline == VK_NULL_HANDLE || terrain_pipeline_layout_ == VK_NULL_HANDLE) return;
-    const auto terrain = terrains_.find(resource_key(draw.terrain.terrain));
-    if (terrain == terrains_.end()) return;
-    const auto topology_key = (terrain->second.patch_quads << 8u) | draw.patch.stitch_mask;
-    const auto topology = terrain_topologies_.find(topology_key);
-    if (topology == terrain_topologies_.end()) return;
-    auto mesh_draw = terrain_mesh_draw(draw);
-    auto constants = build_mesh_constants(mesh_draw);
-    constants.base_color[0] = static_cast<float>(draw.patch.sample_min_x);
-    constants.base_color[1] = static_cast<float>(draw.patch.sample_min_z);
-    constants.base_color[2] = static_cast<float>(draw.patch.sample_max_x);
-    constants.base_color[3] = static_cast<float>(draw.patch.sample_max_z);
-    if (write_motion)
-    {
-        const auto previous_mvp = math::matmul(draw.previous_view_projection, draw.terrain.previous_model);
-        const auto* values = previous_mvp.data();
-        std::copy(values, values + 4, constants.light_direction_intensity);
-        std::copy(values + 4, values + 7, constants.light_color);
-        constants.camera_position[0] = values[7];
-        std::copy(values + 8, values + 11, constants.camera_position + 1);
-        constants.fog_color_density[0] = values[11];
-        std::copy(values + 12, values + 15, constants.fog_color_density + 1);
-        constants.fog_params[0] = values[15];
-    }
-    const std::array descriptor_sets{material_descriptor_set_for(mesh_draw), terrain->second.descriptor_set};
-    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, terrain_pipeline_layout_, 0u,
-                            static_cast<std::uint32_t>(descriptor_sets.size()), descriptor_sets.data(), 0u, nullptr);
-    vkCmdPushConstants(command_buffer, terrain_pipeline_layout_,
-                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0u, sizeof(constants), &constants);
-    vkCmdBindIndexBuffer(command_buffer, topology->second.indices.buffer, 0u, VK_INDEX_TYPE_UINT32);
-    vkCmdDrawIndexed(command_buffer, topology->second.index_count, 1u, 0u, 0, 0u);
-}
-
-bool vulkan_render_backend::draw_gpu_terrain(VkCommandBuffer command_buffer, const gpu_terrain_draw& draw,
-                                             VkPipeline pipeline, bool write_motion)
-{
-    if (pipeline == VK_NULL_HANDLE || terrain_pipeline_layout_ == VK_NULL_HANDLE ||
-        !gpu_terrain_active_instances_.contains(gpu_scene_key(draw.terrain.gpu_scene_instance)))
-        return false;
-    const auto terrain = terrains_.find(resource_key(draw.terrain.terrain));
-    const auto instance = gpu_terrain_instances_.find(gpu_scene_key(draw.terrain.gpu_scene_instance));
-    const auto slot = current_frame_slot();
-    if (terrain == terrains_.end() || instance == gpu_terrain_instances_.end() ||
-        slot >= instance->second.frames.size())
-        return false;
-    const auto& frame = instance->second.frames[slot];
-    if (!frame.dispatched) return false;
-    const auto topology = terrain_topologies_.find(terrain->second.patch_quads << 8u);
-    if (topology == terrain_topologies_.end()) return false;
-
-    terrain_patch_draw compatibility_draw{
-        draw.terrain, {}, draw.view_projection, draw.previous_view_projection, draw.mode, draw.visualization};
-    auto mesh_draw = terrain_mesh_draw(compatibility_draw);
-    auto constants = build_mesh_constants(mesh_draw);
-    constants.base_color[0] = -1.0f;
-    constants.base_color[1] = -1.0f;
-    constants.base_color[2] = -1.0f;
-    constants.base_color[3] = -1.0f;
-    if (write_motion)
-    {
-        const auto previous_mvp = math::matmul(draw.previous_view_projection, draw.terrain.previous_model);
-        const auto* values = previous_mvp.data();
-        std::copy(values, values + 4, constants.light_direction_intensity);
-        std::copy(values + 4, values + 7, constants.light_color);
-        constants.camera_position[0] = values[7];
-        std::copy(values + 8, values + 11, constants.camera_position + 1);
-        constants.fog_color_density[0] = values[11];
-        std::copy(values + 12, values + 15, constants.fog_color_density + 1);
-        constants.fog_params[0] = values[15];
-    }
-    const std::array descriptor_sets{material_descriptor_set_for(mesh_draw), frame.draw_descriptor};
-    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, terrain_pipeline_layout_, 0u,
-                            static_cast<std::uint32_t>(descriptor_sets.size()), descriptor_sets.data(), 0u, nullptr);
-    vkCmdPushConstants(command_buffer, terrain_pipeline_layout_,
-                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0u, sizeof(constants), &constants);
-    vkCmdBindIndexBuffer(command_buffer, topology->second.indices.buffer, 0u, VK_INDEX_TYPE_UINT32);
-    vkCmdDrawIndexedIndirectCount(command_buffer, frame.indirect.buffer, 0u, frame.counters.buffer,
-                                  offsetof(gpu_terrain_counter_data, draw_count), instance->second.patch_capacity,
-                                  static_cast<std::uint32_t>(sizeof(VkDrawIndexedIndirectCommand)));
-    return true;
-}
-
 VkDescriptorSet vulkan_render_backend::material_descriptor_set_for(const draw_mesh_event& draw) const noexcept
 {
     if (const auto material = materials_.find(resource_key(draw.material)); material != materials_.end())
@@ -524,11 +418,6 @@ void vulkan_render_backend::destroy_mesh_pipeline() noexcept
         vkDestroyPipeline(device_, terrain_surface_gbuffer_pipeline_, nullptr);
         terrain_surface_gbuffer_pipeline_ = VK_NULL_HANDLE;
     }
-    if (terrain_gbuffer_pipeline_ != VK_NULL_HANDLE)
-    {
-        vkDestroyPipeline(device_, terrain_gbuffer_pipeline_, nullptr);
-        terrain_gbuffer_pipeline_ = VK_NULL_HANDLE;
-    }
     if (gbuffer_descriptor_pool_ != VK_NULL_HANDLE)
     {
         vkDestroyDescriptorPool(device_, gbuffer_descriptor_pool_, nullptr);
@@ -550,11 +439,6 @@ void vulkan_render_backend::destroy_mesh_pipeline() noexcept
         vkDestroyPipeline(device_, shadow_pipeline_, nullptr);
         shadow_pipeline_ = VK_NULL_HANDLE;
     }
-    if (terrain_shadow_pipeline_ != VK_NULL_HANDLE)
-    {
-        vkDestroyPipeline(device_, terrain_shadow_pipeline_, nullptr);
-        terrain_shadow_pipeline_ = VK_NULL_HANDLE;
-    }
     if (shadow_pipeline_layout_ != VK_NULL_HANDLE)
     {
         vkDestroyPipelineLayout(device_, shadow_pipeline_layout_, nullptr);
@@ -575,11 +459,6 @@ void vulkan_render_backend::destroy_mesh_pipeline() noexcept
         vkDestroyPipeline(device_, terrain_surface_pipeline_, nullptr);
         terrain_surface_pipeline_ = VK_NULL_HANDLE;
     }
-    if (terrain_pipeline_ != VK_NULL_HANDLE)
-    {
-        vkDestroyPipeline(device_, terrain_pipeline_, nullptr);
-        terrain_pipeline_ = VK_NULL_HANDLE;
-    }
     if (mesh_pipeline_ != VK_NULL_HANDLE)
     {
         vkDestroyPipeline(device_, mesh_pipeline_, nullptr);
@@ -594,11 +473,6 @@ void vulkan_render_backend::destroy_mesh_pipeline() noexcept
     {
         vkDestroyPipelineLayout(device_, terrain_surface_pipeline_layout_, nullptr);
         terrain_surface_pipeline_layout_ = VK_NULL_HANDLE;
-    }
-    if (terrain_pipeline_layout_ != VK_NULL_HANDLE)
-    {
-        vkDestroyPipelineLayout(device_, terrain_pipeline_layout_, nullptr);
-        terrain_pipeline_layout_ = VK_NULL_HANDLE;
     }
     if (material_attribute_descriptor_pool_ != VK_NULL_HANDLE)
     {
@@ -1717,7 +1591,7 @@ bool vulkan_render_backend::ensure_mesh_pipeline()
         }
         return false;
     }
-    if (!ensure_white_texture() || !ensure_terrain_descriptors()) return false;
+    if (!ensure_white_texture()) return false;
 
     if (material_attribute_descriptor_set_layout_ == VK_NULL_HANDLE)
     {
@@ -1767,11 +1641,6 @@ bool vulkan_render_backend::ensure_mesh_pipeline()
     layout.pSetLayouts = terrain_surface_set_layouts.data();
     if (vkCreatePipelineLayout(device_, &layout, nullptr, &terrain_surface_pipeline_layout_) != VK_SUCCESS)
         return false;
-    const std::array terrain_set_layouts{white_descriptor_set_layout_, terrain_descriptor_set_layout_};
-    layout.setLayoutCount = static_cast<std::uint32_t>(terrain_set_layouts.size());
-    layout.pSetLayouts = terrain_set_layouts.data();
-    if (vkCreatePipelineLayout(device_, &layout, nullptr, &terrain_pipeline_layout_) != VK_SUCCESS) return false;
-
     VkPipelineShaderStageCreateInfo stages[2]{};
     stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -1928,41 +1797,6 @@ bool vulkan_render_backend::ensure_mesh_pipeline()
         }
     }
 
-    if (result == VK_SUCCESS)
-    {
-        VkShaderModule terrain_vert = create_shader_module(builtin::terrain_patch_forward_vert_spv,
-                                                           std::size(builtin::terrain_patch_forward_vert_spv));
-        VkShaderModule terrain_frag =
-            create_shader_module(builtin::terrain_forward_frag_spv, std::size(builtin::terrain_forward_frag_spv));
-        if (terrain_vert != VK_NULL_HANDLE && terrain_frag != VK_NULL_HANDLE)
-        {
-            stages[0].module = terrain_vert;
-            stages[1].module = terrain_frag;
-            VkPipelineVertexInputStateCreateInfo terrain_vertex_input{
-                VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
-            pipeline.pVertexInputState = &terrain_vertex_input;
-            pipeline.layout = terrain_pipeline_layout_;
-            raster.polygonMode = VK_POLYGON_MODE_FILL;
-            depth.depthWriteEnable = VK_TRUE;
-            color_attachment = {};
-            color_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                                              VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-            if (vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &terrain_pipeline_) !=
-                VK_SUCCESS)
-            {
-                terrain_pipeline_ = VK_NULL_HANDLE;
-                arc::diagnostics::warn("render.vulkan",
-                                       "Vulkan terrain forward pipeline creation failed; using the surface fallback");
-            }
-            vkDestroyShaderModule(device_, terrain_frag, nullptr);
-        }
-        else
-        {
-            arc::diagnostics::warn("render.vulkan",
-                                   "Vulkan terrain shader module creation failed; using the surface fallback");
-        }
-        if (terrain_vert != VK_NULL_HANDLE) vkDestroyShaderModule(device_, terrain_vert, nullptr);
-    }
     vkDestroyShaderModule(device_, vert, nullptr);
     vkDestroyShaderModule(device_, frag, nullptr);
     return result == VK_SUCCESS;
@@ -2371,17 +2205,12 @@ bool vulkan_render_backend::ensure_gbuffer_pipeline()
 
     VkShaderModule vert = create_shader_module(builtin::gbuffer_vert_spv, std::size(builtin::gbuffer_vert_spv));
     VkShaderModule frag = create_shader_module(builtin::gbuffer_frag_spv, std::size(builtin::gbuffer_frag_spv));
-    VkShaderModule terrain_vert = create_shader_module(builtin::terrain_patch_gbuffer_vert_spv,
-                                                       std::size(builtin::terrain_patch_gbuffer_vert_spv));
-    VkShaderModule terrain_frag =
-        create_shader_module(builtin::terrain_gbuffer_frag_spv, std::size(builtin::terrain_gbuffer_frag_spv));
     VkShaderModule terrain_surface_frag = create_shader_module(builtin::terrain_surface_gbuffer_frag_spv,
                                                                std::size(builtin::terrain_surface_gbuffer_frag_spv));
     if (vert == VK_NULL_HANDLE || frag == VK_NULL_HANDLE)
     {
         if (vert != VK_NULL_HANDLE) vkDestroyShaderModule(device_, vert, nullptr);
         if (frag != VK_NULL_HANDLE) vkDestroyShaderModule(device_, frag, nullptr);
-        if (terrain_frag != VK_NULL_HANDLE) vkDestroyShaderModule(device_, terrain_frag, nullptr);
         if (terrain_surface_frag != VK_NULL_HANDLE) vkDestroyShaderModule(device_, terrain_surface_frag, nullptr);
         return false;
     }
@@ -2498,26 +2327,8 @@ bool vulkan_render_backend::ensure_gbuffer_pipeline()
                                    "Vulkan terrain surface G-buffer pipeline creation failed; using mesh fallback");
         }
     }
-    if (result == VK_SUCCESS && terrain_vert != VK_NULL_HANDLE && terrain_frag != VK_NULL_HANDLE)
-    {
-        VkPipelineVertexInputStateCreateInfo terrain_vertex_input{
-            VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
-        stages[0].module = terrain_vert;
-        stages[1].module = terrain_frag;
-        pipeline.pVertexInputState = &terrain_vertex_input;
-        pipeline.layout = terrain_pipeline_layout_;
-        if (vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &terrain_gbuffer_pipeline_) !=
-            VK_SUCCESS)
-        {
-            terrain_gbuffer_pipeline_ = VK_NULL_HANDLE;
-            arc::diagnostics::warn("render.vulkan",
-                                   "Vulkan terrain G-buffer pipeline creation failed; using the surface fallback");
-        }
-    }
     vkDestroyShaderModule(device_, vert, nullptr);
     vkDestroyShaderModule(device_, frag, nullptr);
-    if (terrain_vert != VK_NULL_HANDLE) vkDestroyShaderModule(device_, terrain_vert, nullptr);
-    if (terrain_frag != VK_NULL_HANDLE) vkDestroyShaderModule(device_, terrain_frag, nullptr);
     if (terrain_surface_frag != VK_NULL_HANDLE) vkDestroyShaderModule(device_, terrain_surface_frag, nullptr);
     if (result != VK_SUCCESS)
         arc::diagnostics::warn("render.vulkan",

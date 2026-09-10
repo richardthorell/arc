@@ -534,24 +534,6 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                         .usage = render_resource_usage::storage_buffer,
                                         .write = true}}});
         }
-        if (config.features.gpu_terrain_traversal)
-        {
-            graph.add_pass({.name = "GPU terrain hierarchy traversal",
-                            .queue = compute_queue,
-                            .kind = render_pass_kind::compute,
-                            .builtin = builtin_render_pass::gpu_terrain_traversal,
-                            .reads = {{.handle = gpu_scene_instances,
-                                       .kind = render_resource_kind::buffer,
-                                       .usage = render_resource_usage::storage_buffer}},
-                            .writes = {{.handle = gpu_draw_records,
-                                        .kind = render_resource_kind::buffer,
-                                        .usage = render_resource_usage::storage_buffer,
-                                        .write = true},
-                                       {.handle = visibility_overflow,
-                                        .kind = render_resource_kind::buffer,
-                                        .usage = render_resource_usage::storage_buffer,
-                                        .write = true}}});
-        }
         graph.add_pass({.name = "GPU draw-bin count",
                         .queue = compute_queue,
                         .kind = render_pass_kind::compute,

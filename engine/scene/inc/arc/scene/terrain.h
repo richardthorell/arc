@@ -152,8 +152,6 @@ struct terrain_dirty_region
 /** @brief Nonserialized renderer proxy state for one terrain entity. */
 struct terrain_render_proxy
 {
-    /** Legacy dedicated terrain resource retained only until the old renderer path is removed. */
-    render::terrain_handle handle{};
     /** Generic geometry realized from TerrainSurfaceIR and used by the M1 renderer path. */
     render::geometry_resource_handle geometry{};
     /** Per-surface RGBA8 terrain material weights, kept separate from generic mesh vertices. */
@@ -170,7 +168,7 @@ public:
     [[nodiscard]] terrain_render_proxy* find(ecs::entity_guid guid) noexcept;
     [[nodiscard]] const terrain_render_proxy* find(ecs::entity_guid guid) const noexcept;
 
-    /** @brief Legacy dedicated terrain synchronization retained during M1 migration. */
+    /** @brief Realize TerrainSurfaceIR through the generic geometry compiler and renderer resource path. */
     bool synchronize(ecs::entity_guid guid, const terrain_surface_ir& surface, const terrain_component& terrain,
                      render::renderer& renderer, const terrain_dirty_region* dirty_region = nullptr);
     bool synchronize(ecs::entity_guid guid, const terrain_component& terrain, render::renderer& renderer,
@@ -178,16 +176,6 @@ public:
     void release_missing(std::span<const ecs::entity_guid> active, render::renderer& renderer);
     bool erase(ecs::entity_guid guid, render::renderer& renderer);
     void clear(render::renderer& renderer);
-
-    /** @brief Realize TerrainSurfaceIR through the generic geometry compiler and renderer resource path. */
-    bool synchronize_geometry(ecs::entity_guid guid, const terrain_surface_ir& surface,
-                              const terrain_component& terrain, render::renderer& renderer,
-                              const terrain_dirty_region* dirty_region = nullptr);
-    bool synchronize_geometry(ecs::entity_guid guid, const terrain_component& terrain, render::renderer& renderer,
-                              const terrain_dirty_region* dirty_region = nullptr);
-    void release_missing_geometry(std::span<const ecs::entity_guid> active, render::renderer& renderer);
-    bool erase_geometry(ecs::entity_guid guid, render::renderer& renderer);
-    void clear_geometry(render::renderer& renderer);
 
 private:
     std::unordered_map<ecs::entity_guid, terrain_render_proxy, ecs::entity_guid_hash> proxies_;
