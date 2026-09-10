@@ -33,7 +33,7 @@ describe('MainToolbar runtime controls', () => {
     expect(onCycleTimeScale).toHaveBeenCalledOnce();
   });
 
-  it('uses dropdowns for coordinate space and snap increments', () => {
+  it('uses labeled dropdowns for transform origin, coordinate space, and snap increments', () => {
     const onCoordinateSpaceChange = vi.fn();
     const onRotationSnapChange = vi.fn();
     const onTranslationSnapChange = vi.fn();
@@ -52,20 +52,28 @@ describe('MainToolbar runtime controls', () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: 'Transform origin' }));
+    fireEvent.click(screen.getByRole('option', { name: /Center/ }));
+    expect(screen.getByRole('button', { name: 'Transform origin' })).toHaveTextContent('Center');
+
     fireEvent.click(screen.getByRole('button', { name: 'Coordinate space' }));
     fireEvent.click(screen.getByRole('option', { name: 'Local' }));
     expect(onCoordinateSpaceChange).toHaveBeenCalledWith('local');
 
+    expect(screen.getByRole('button', { name: 'Rotation snap' })).toHaveTextContent('Rotate 15°');
+    expect(screen.getByRole('button', { name: 'Translation snap' })).toHaveTextContent('Move 0.25');
+    expect(screen.getByRole('button', { name: 'Scale snap' })).toHaveTextContent('Scale 25%');
+
     fireEvent.click(screen.getByRole('button', { name: 'Rotation snap' }));
-    fireEvent.click(screen.getByRole('option', { name: '45°' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Rotate 45°' }));
     expect(onRotationSnapChange).toHaveBeenCalledWith(45);
 
     fireEvent.click(screen.getByRole('button', { name: 'Translation snap' }));
-    fireEvent.click(screen.getByRole('option', { name: '1' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Move 1' }));
     expect(onTranslationSnapChange).toHaveBeenCalledWith(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'Scale snap' }));
-    fireEvent.click(screen.getByRole('option', { name: '50%' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Scale 50%' }));
     expect(onScaleSnapChange).toHaveBeenCalledWith(0.5);
   });
 
