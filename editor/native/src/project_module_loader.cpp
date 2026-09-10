@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cctype>
 #include <iomanip>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <system_error>
@@ -28,6 +29,30 @@ void module_log(void*, const char* category, const char* message)
 {
     diagnostics::info(category ? category : "project.module", message ? message : "");
 }
+
+struct project_play_session_guard
+{
+    project_play_lifecycle_registration lifecycle;
+    project::game_play_context_v1 context;
+    bool active{};
+
+    ~project_play_session_guard()
+    {
+        if (!active || !lifecycle.end_play) return;
+        try
+        {
+            lifecycle.end_play(lifecycle.user_data, &context);
+        }
+        catch (const std::exception& error)
+        {
+            diagnostics::error("editor.play", "Project EndPlay '" + lifecycle.stable_id + "' threw: " + error.what());
+        }
+        catch (...)
+        {
+            diagnostics::error("editor.play", "Project EndPlay '" + lifecycle.stable_id + "' threw an unknown exception");
+        }
+    }
+};
 
 struct project_component_bridge_context
 {
@@ -418,6 +443,40 @@ std::vector<project_system_registration> copy_system_registrations(const project
     return result;
 }
 
+std::optional<project_play_lifecycle_registration>
+copy_play_lifecycle_registration(const project::game_module_descriptor_v1& descriptor, std::string& error)
+{
+    std::optional<project_play_lifecycle_registration> result;
+    for (std::size_t index = 0; index < descriptor.registration_count; ++index)
+    {
+        const auto& registration = descriptor.registrations[index];
+        if (registration.kind != project::game_registration_kind_v1::play_lifecycle) continue;
+        if (result)
+        {
+            error = "project module contains multiple play lifecycle registrations";
+            return std::nullopt;
+        }
+        if (!registration.descriptor)
+        {
+            error = "project play lifecycle registration is missing its descriptor";
+            return std::nullopt;
+        }
+        const auto& lifecycle = *static_cast<const project::game_play_lifecycle_descriptor_v1*>(registration.descriptor);
+        if (lifecycle.structure_size < sizeof(project::game_play_lifecycle_descriptor_v1) || !lifecycle.begin_play ||
+            !lifecycle.end_play)
+        {
+            error = "project module contains an invalid play lifecycle descriptor";
+            return std::nullopt;
+        }
+        result = project_play_lifecycle_registration{.stable_id = registration.stable_id,
+                                                     .name = registration.name,
+                                                     .user_data = lifecycle.user_data,
+                                                     .begin_play = lifecycle.begin_play,
+                                                     .end_play = lifecycle.end_play};
+    }
+    return result;
+}
+
 module_reload_classification classify(const std::vector<project_component_schema>& previous,
                                       const std::vector<project_component_schema>& next)
 {
@@ -555,6 +614,12 @@ module_reload_result project_module_loader::load_generation(const std::filesyste
         close_candidate();
         return {.message = std::move(schema_error)};
     }
+    auto next_play_lifecycle = copy_play_lifecycle_registration(*descriptor, schema_error);
+    if (!schema_error.empty())
+    {
+        close_candidate();
+        return {.message = std::move(schema_error)};
+    }
     const auto reload_classification = classify(components_, next_components);
     if (reload_classification == module_reload_classification::native_host_restart_required && loaded())
     {
@@ -589,6 +654,7 @@ module_reload_result project_module_loader::load_generation(const std::filesyste
             components_.clear();
             registrations_.clear();
             systems_.clear();
+            play_lifecycle_.reset();
             std::error_code remove_error;
             std::filesystem::remove(loaded_path_, remove_error);
             loaded_path_.clear();
@@ -620,6 +686,7 @@ module_reload_result project_module_loader::load_generation(const std::filesyste
     components_ = std::move(next_components);
     registrations_ = std::move(next_registrations);
     systems_ = std::move(next_systems);
+    play_lifecycle_ = std::move(next_play_lifecycle);
     return {.succeeded = true,
             .classification = reload_classification,
             .generation = generation_,
@@ -708,6 +775,47 @@ project_system_install_result project_module_loader::install_systems(framework::
         }
         ++result.installed;
     }
+
+    if (play_lifecycle_)
+    {
+        auto guard = std::make_shared<project_play_session_guard>();
+        guard->lifecycle = *play_lifecycle_;
+        guard->context.world_id = world.id().value;
+        try
+        {
+            if (!guard->lifecycle.begin_play(guard->lifecycle.user_data, &guard->context))
+            {
+                result.succeeded = false;
+                result.error = "Project BeginPlay '" + guard->lifecycle.stable_id + "' rejected Play startup";
+                return result;
+            }
+        }
+        catch (const std::exception& error)
+        {
+            result.succeeded = false;
+            result.error = "Project BeginPlay '" + guard->lifecycle.stable_id + "' threw: " + error.what();
+            return result;
+        }
+        catch (...)
+        {
+            result.succeeded = false;
+            result.error = "Project BeginPlay '" + guard->lifecycle.stable_id + "' threw an unknown exception";
+            return result;
+        }
+        guard->active = true;
+
+        ecs::system_descriptor lifecycle_anchor{
+            .name = "__arc.play_lifecycle." + guard->lifecycle.stable_id,
+            .phase = ecs::system_phase::presentation_extraction,
+            .priority = jobs::job_priority::background,
+            .execute = [guard](ecs::system_context&) {}};
+        if (!world.systems().add(std::move(lifecycle_anchor)))
+        {
+            result.succeeded = false;
+            result.error = "Could not bind project play lifecycle '" + guard->lifecycle.stable_id + "' to the Play World";
+            return result;
+        }
+    }
     return result;
 }
 
@@ -729,6 +837,7 @@ void project_module_loader::unload() noexcept
     components_.clear();
     registrations_.clear();
     systems_.clear();
+    play_lifecycle_.reset();
     if (!loaded_path_.empty())
     {
         std::error_code remove_error;
