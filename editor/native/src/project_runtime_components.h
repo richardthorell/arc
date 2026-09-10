@@ -23,16 +23,16 @@ struct project_runtime_component_set
     std::vector<project_runtime_component_value> values;
 };
 
-[[nodiscard]] inline project_runtime_component_value*
-find_project_runtime_component(project_runtime_component_set& set, std::string_view identity) noexcept
+inline project_runtime_component_value* find_project_runtime_component(project_runtime_component_set& set,
+                                                                       std::string_view identity) noexcept
 {
     for (auto& value : set.values)
         if (value.stable_id == identity || value.canonical_name == identity) return &value;
     return nullptr;
 }
 
-[[nodiscard]] inline const project_runtime_component_value*
-find_project_runtime_component(const project_runtime_component_set& set, std::string_view identity) noexcept
+inline const project_runtime_component_value* find_project_runtime_component(const project_runtime_component_set& set,
+                                                                             std::string_view identity) noexcept
 {
     for (const auto& value : set.values)
         if (value.stable_id == identity || value.canonical_name == identity) return &value;
