@@ -59,6 +59,20 @@ enum class game_system_priority_v1 : std::uint8_t
     background
 };
 
+/** @brief Access mode declared by a project ECS system for one reflected project component. */
+enum class game_system_component_access_mode_v1 : std::uint8_t
+{
+    read,
+    write
+};
+
+/** @brief Stable project-component access used by ARC's dependency-aware scheduler. */
+struct game_system_component_access_v1
+{
+    const char* component_id{};
+    game_system_component_access_mode_v1 mode{game_system_component_access_mode_v1::read};
+};
+
 /** @brief ABI-safe transient entity handle used by project runtime callbacks. */
 struct game_entity_v1
 {
@@ -85,6 +99,13 @@ using game_read_project_component_json_v1 = const char* (*)(void* user_data, gam
 using game_patch_project_component_json_v1 = bool (*)(void* user_data, game_entity_v1 entity, const char* component_id,
                                                       const char* patch_json);
 
+/** @brief Visitor invoked for each entity carrying a requested project component. */
+using game_visit_project_component_v1 = bool (*)(void* visitor_user_data, game_entity_v1 entity, const char* json);
+
+/** @brief Iterate entities carrying a declared project component in the active runtime world. */
+using game_for_each_project_component_v1 = bool (*)(void* user_data, const char* component_id, void* visitor_user_data,
+                                                    game_visit_project_component_v1 visitor);
+
 /**
  * @brief Per-invocation context passed to project ECS systems.
  *
@@ -108,6 +129,7 @@ struct game_system_context_v1
     game_has_project_component_v1 has_project_component{};
     game_read_project_component_json_v1 read_project_component_json{};
     game_patch_project_component_json_v1 patch_project_component_json{};
+    game_for_each_project_component_v1 for_each_project_component{};
 };
 
 /** @brief Executable callback for a project ECS system. Return false to fault the runtime world. */
@@ -119,7 +141,10 @@ struct game_system_descriptor_v1
     std::size_t structure_size{sizeof(game_system_descriptor_v1)};
     game_system_phase_v1 phase{game_system_phase_v1::gameplay_commands};
     game_system_priority_v1 priority{game_system_priority_v1::normal};
-    const char* const* before{}; ///< Stable project-system IDs that must execute after this system.
+    const game_system_component_access_v1* component_accesses{}; ///< Declared reflected project-component access.
+    std::size_t component_access_count{};                        ///< Number of entries in @ref component_accesses.
+    bool unrestricted_native_world_access{true}; ///< Preserve legacy native_context access and serialize this system.
+    const char* const* before{};                 ///< Stable project-system IDs that must execute after this system.
     std::size_t before_count{};
     const char* const* after{}; ///< Stable project-system IDs that must execute before this system.
     std::size_t after_count{};

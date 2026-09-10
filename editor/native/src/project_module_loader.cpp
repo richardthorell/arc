@@ -29,13 +29,44 @@ void module_log(void*, const char* category, const char* message)
     diagnostics::info(category ? category : "project.module", message ? message : "");
 }
 
-project_runtime_component_value* runtime_project_component(void* user_data, project::game_entity_v1 entity,
-                                                           const char* component_id) noexcept
+struct project_component_bridge_context
 {
-    if (!user_data || !component_id || !*component_id || !entity.valid()) return nullptr;
-    auto& context = *static_cast<ecs::system_context*>(user_data);
+    ecs::system_context* native_context{};
+    const std::vector<project_system_component_access>* declared_accesses{};
+    bool violation{};
+    std::string violation_message;
+};
+
+bool allows_project_component_access(const project_component_bridge_context& bridge, std::string_view component_id,
+                                     project::game_system_component_access_mode_v1 requested) noexcept
+{
+    if (!bridge.declared_accesses) return false;
+    const auto found = std::find_if(bridge.declared_accesses->begin(), bridge.declared_accesses->end(),
+                                    [&](const project_system_component_access& access)
+                                    { return access.component_id == component_id; });
+    if (found == bridge.declared_accesses->end()) return false;
+    return requested == project::game_system_component_access_mode_v1::read ||
+           found->mode == project::game_system_component_access_mode_v1::write;
+}
+
+bool require_project_component_access(project_component_bridge_context& bridge, std::string_view component_id,
+                                      project::game_system_component_access_mode_v1 requested) noexcept
+{
+    if (allows_project_component_access(bridge, component_id, requested)) return true;
+    bridge.violation = true;
+    bridge.violation_message =
+        std::string(requested == project::game_system_component_access_mode_v1::write ? "write" : "read") +
+        " access to undeclared project component '" + std::string(component_id) + "'";
+    return false;
+}
+
+project_runtime_component_value* runtime_project_component(project_component_bridge_context& bridge,
+                                                           project::game_entity_v1 entity,
+                                                           std::string_view component_id) noexcept
+{
+    if (!bridge.native_context || component_id.empty() || !entity.valid()) return nullptr;
     const ecs::entity native_entity{entity.index, entity.generation};
-    auto& world = context.owner();
+    auto& world = bridge.native_context->owner();
     if (!world.alive(native_entity)) return nullptr;
     auto* components = world.try_get<project_runtime_component_set>(native_entity);
     return components ? find_project_runtime_component(*components, component_id) : nullptr;
@@ -43,21 +74,33 @@ project_runtime_component_value* runtime_project_component(void* user_data, proj
 
 bool has_runtime_project_component(void* user_data, project::game_entity_v1 entity, const char* component_id) noexcept
 {
-    return runtime_project_component(user_data, entity, component_id) != nullptr;
+    if (!user_data || !component_id || !*component_id) return false;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!require_project_component_access(bridge, component_id, project::game_system_component_access_mode_v1::read))
+        return false;
+    return runtime_project_component(bridge, entity, component_id) != nullptr;
 }
 
 const char* read_runtime_project_component_json(void* user_data, project::game_entity_v1 entity,
                                                 const char* component_id) noexcept
 {
-    const auto* component = runtime_project_component(user_data, entity, component_id);
+    if (!user_data || !component_id || !*component_id) return nullptr;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!require_project_component_access(bridge, component_id, project::game_system_component_access_mode_v1::read))
+        return nullptr;
+    const auto* component = runtime_project_component(bridge, entity, component_id);
     return component ? component->json.c_str() : nullptr;
 }
 
 bool patch_runtime_project_component_json(void* user_data, project::game_entity_v1 entity, const char* component_id,
                                           const char* patch_json) noexcept
 {
-    auto* component = runtime_project_component(user_data, entity, component_id);
-    if (!component || !patch_json) return false;
+    if (!user_data || !component_id || !*component_id || !patch_json) return false;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!require_project_component_access(bridge, component_id, project::game_system_component_access_mode_v1::write))
+        return false;
+    auto* component = runtime_project_component(bridge, entity, component_id);
+    if (!component) return false;
     auto patch = nlohmann::json::parse(patch_json, nullptr, false);
     if (!patch.is_object()) return false;
     auto current = nlohmann::json::parse(component->json, nullptr, false);
@@ -66,6 +109,24 @@ bool patch_runtime_project_component_json(void* user_data, project::game_entity_
     current["typeId"] = component->stable_id;
     current["version"] = component->schema_version;
     component->json = current.dump();
+    return true;
+}
+
+bool for_each_runtime_project_component(void* user_data, const char* component_id, void* visitor_user_data,
+                                        project::game_visit_project_component_v1 visitor) noexcept
+{
+    if (!user_data || !component_id || !*component_id || !visitor) return false;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!require_project_component_access(bridge, component_id, project::game_system_component_access_mode_v1::read))
+        return false;
+    if (!bridge.native_context) return false;
+    auto& world = bridge.native_context->owner();
+    for (const auto entity : world.entities())
+    {
+        const project::game_entity_v1 runtime_entity{entity.index, entity.generation};
+        const auto* component = runtime_project_component(bridge, runtime_entity, component_id);
+        if (component && !visitor(visitor_user_data, runtime_entity, component->json.c_str())) return false;
+    }
     return true;
 }
 
@@ -191,6 +252,12 @@ bool valid_system_priority(project::game_system_priority_v1 priority) noexcept
     return false;
 }
 
+bool valid_component_access_mode(project::game_system_component_access_mode_v1 mode) noexcept
+{
+    return mode == project::game_system_component_access_mode_v1::read ||
+           mode == project::game_system_component_access_mode_v1::write;
+}
+
 ecs::system_phase to_system_phase(project::game_system_phase_v1 phase) noexcept
 {
     switch (phase)
@@ -251,7 +318,8 @@ std::vector<project_system_registration> copy_system_registrations(const project
         const auto& system = *static_cast<const project::game_system_descriptor_v1*>(registration.descriptor);
         if (system.structure_size < sizeof(project::game_system_descriptor_v1) || !system.execute ||
             !valid_system_phase(system.phase) || !valid_system_priority(system.priority) ||
-            (system.before_count && !system.before) || (system.after_count && !system.after))
+            (system.component_access_count && !system.component_accesses) || (system.before_count && !system.before) ||
+            (system.after_count && !system.after))
         {
             error = "project module contains an invalid ECS system descriptor";
             return {};
@@ -261,8 +329,38 @@ std::vector<project_system_registration> copy_system_registrations(const project
                                            .name = registration.name,
                                            .phase = system.phase,
                                            .priority = system.priority,
+                                           .unrestricted_native_world_access = system.unrestricted_native_world_access,
                                            .user_data = system.user_data,
                                            .execute = system.execute};
+        copied.component_accesses.reserve(system.component_access_count);
+        for (std::size_t access_index = 0; access_index < system.component_access_count; ++access_index)
+        {
+            const auto& access = system.component_accesses[access_index];
+            if (!access.component_id || !stable_component_id(access.component_id) ||
+                !valid_component_access_mode(access.mode))
+            {
+                error = "project ECS system contains an invalid project component access declaration";
+                return {};
+            }
+            const bool known_component =
+                std::any_of(descriptor.components, descriptor.components + descriptor.component_count,
+                            [&](const project::game_component_descriptor_v1& component)
+                            { return std::string_view(component.stable_id) == access.component_id; });
+            if (!known_component)
+            {
+                error = "project ECS system references unknown project component access '" +
+                        std::string(access.component_id) + "'";
+                return {};
+            }
+            if (std::any_of(copied.component_accesses.begin(), copied.component_accesses.end(),
+                            [&](const project_system_component_access& existing)
+                            { return existing.component_id == access.component_id; }))
+            {
+                error = "project ECS system contains duplicate project component access declarations";
+                return {};
+            }
+            copied.component_accesses.push_back({access.component_id, access.mode});
+        }
         copied.before.reserve(system.before_count);
         copied.after.reserve(system.after_count);
         for (std::size_t dependency = 0; dependency < system.before_count; ++dependency)
@@ -501,37 +599,60 @@ project_system_install_result project_module_loader::install_systems(framework::
     project_system_install_result result{.succeeded = true};
     for (const auto& source : systems_)
     {
-        ecs::system_descriptor descriptor{.name = source.stable_id,
-                                          .phase = to_system_phase(source.phase),
-                                          .priority = to_job_priority(source.priority),
-                                          // The v1 project-system ABI intentionally starts conservative. A native
-                                          // module can access the complete ECS world through native_context, so
-                                          // serialize it against other world-mutating systems until explicit
-                                          // component access declarations are added to the module ABI.
-                                          .exclusive_world_access = true,
-                                          .before = source.before,
-                                          .after = source.after,
-                                          .execute = [execute = source.execute, user_data = source.user_data,
-                                                      stable_id = source.stable_id](ecs::system_context& native_context)
-                                          {
-                                              project::game_system_context_v1 context{
-                                                  .native_context = &native_context,
-                                                  .tick_id = native_context.tick_id().value,
-                                                  .world_id = native_context.world_id(),
-                                                  .delta_seconds = native_context.delta_seconds(),
-                                                  .fixed_delta_seconds = native_context.fixed_delta_seconds(),
-                                                  .frame_delta_seconds = native_context.frame_delta_seconds(),
-                                                  .interpolation_alpha = native_context.interpolation_alpha(),
-                                                  .presentation = native_context.presentation(),
-                                                  .project_component_user_data = &native_context,
-                                                  .has_project_component = has_runtime_project_component,
-                                                  .read_project_component_json = read_runtime_project_component_json,
-                                                  .patch_project_component_json = patch_runtime_project_component_json,
-                                              };
-                                              if (!execute(user_data, &context))
-                                                  throw std::runtime_error("project ECS system '" + stable_id +
-                                                                           "' reported execution failure");
-                                          }};
+        std::vector<ecs::component_access> scheduler_accesses;
+        scheduler_accesses.reserve(source.component_accesses.size());
+        for (const auto& access : source.component_accesses)
+        {
+            const auto component = ecs::parse_component_type_id(access.component_id);
+            if (!component)
+            {
+                result.succeeded = false;
+                result.error = "Could not map project component access '" + access.component_id + "'";
+                return result;
+            }
+            scheduler_accesses.push_back(
+                {*component, access.mode == project::game_system_component_access_mode_v1::write
+                                 ? ecs::component_access_mode::write
+                                 : ecs::component_access_mode::read});
+        }
+
+        ecs::system_descriptor descriptor{
+            .name = source.stable_id,
+            .phase = to_system_phase(source.phase),
+            .priority = to_job_priority(source.priority),
+            .components = std::move(scheduler_accesses),
+            .exclusive_world_access = source.unrestricted_native_world_access,
+            .before = source.before,
+            .after = source.after,
+            .execute = [execute = source.execute, user_data = source.user_data, stable_id = source.stable_id,
+                        declared_accesses = source.component_accesses,
+                        unrestricted_native_world_access =
+                            source.unrestricted_native_world_access](ecs::system_context& native_context)
+            {
+                project_component_bridge_context bridge{.native_context = &native_context,
+                                                        .declared_accesses = &declared_accesses};
+                project::game_system_context_v1 context{
+                    .native_context = unrestricted_native_world_access ? &native_context : nullptr,
+                    .tick_id = native_context.tick_id().value,
+                    .world_id = native_context.world_id(),
+                    .delta_seconds = native_context.delta_seconds(),
+                    .fixed_delta_seconds = native_context.fixed_delta_seconds(),
+                    .frame_delta_seconds = native_context.frame_delta_seconds(),
+                    .interpolation_alpha = native_context.interpolation_alpha(),
+                    .presentation = native_context.presentation(),
+                    .project_component_user_data = &bridge,
+                    .has_project_component = has_runtime_project_component,
+                    .read_project_component_json = read_runtime_project_component_json,
+                    .patch_project_component_json = patch_runtime_project_component_json,
+                    .for_each_project_component = for_each_runtime_project_component,
+                };
+                const bool succeeded = execute(user_data, &context);
+                if (bridge.violation)
+                    throw std::runtime_error("project ECS system '" + stable_id + "' violated declared " +
+                                             bridge.violation_message);
+                if (!succeeded)
+                    throw std::runtime_error("project ECS system '" + stable_id + "' reported execution failure");
+            }};
         if (!world.systems().add(std::move(descriptor)))
         {
             result.succeeded = false;
