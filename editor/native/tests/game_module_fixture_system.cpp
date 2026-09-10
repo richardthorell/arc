@@ -62,9 +62,14 @@ bool prepare_reload()
 }
 void stop() {}
 
+constexpr arc::project::game_system_component_access_v1 visibility_accesses[]{
+    {runtime_component_id.data(), arc::project::game_system_component_access_mode_v1::write},
+};
 constexpr arc::project::game_system_descriptor_v1 visibility_system{
     .phase = arc::project::game_system_phase_v1::gameplay_commands,
     .priority = arc::project::game_system_priority_v1::normal,
+    .component_accesses = visibility_accesses,
+    .component_access_count = std::size(visibility_accesses),
     .execute = execute_visibility_system,
 };
 constexpr arc::project::game_registration_descriptor_v1 registrations[]{
