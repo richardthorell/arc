@@ -42,7 +42,9 @@ jobs:
           git reset
 
       - name: Configure focused native build
-        run: cmake --preset editor-no-vulkan -G Ninja -DARC_BUILD_SAMPLES=OFF
+        run: >-
+          cmake --preset editor-no-vulkan -G Ninja -DARC_BUILD_SAMPLES=OFF
+          -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
 
       - name: Build focused native tests
         run: cmake --build --preset editor-no-vulkan --target arc_framework_tests arc_editor_host_tests -j 2
