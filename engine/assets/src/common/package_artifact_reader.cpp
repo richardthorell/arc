@@ -51,7 +51,7 @@ asset_status package_artifact_reader::mount(const std::filesystem::path& manifes
 
     root_ = manifest_path.parent_path();
     manifest_ = std::move(staged);
-    bytes_read_ = 0u;
+    bytes_read_.store(0u, std::memory_order_relaxed);
     return asset_status::success();
 }
 
@@ -64,6 +64,16 @@ const cook_manifest_artifact* package_artifact_reader::find(const cooked_artifac
                                                artifact.name == address.name;
                                     });
     return found == manifest_.artifacts.end() ? nullptr : &*found;
+}
+
+std::optional<cooked_artifact_location>
+package_artifact_reader::locate(const cooked_artifact_address& address) const noexcept
+{
+    const auto* artifact = find(address);
+    if (!artifact) return std::nullopt;
+    return cooked_artifact_location{.path = root_ / artifact->chunk,
+                                    .offset = artifact->offset,
+                                    .size = artifact->stored_size};
 }
 
 core::result<std::vector<std::byte>, asset_error>
@@ -86,26 +96,27 @@ core::result<std::vector<std::byte>, asset_error>
 package_artifact_reader::read_range(const cooked_artifact_address& address, std::uint64_t relative_offset,
                                     std::uint64_t size) const
 {
-    const auto* artifact = find(address);
-    if (!artifact)
+    const auto location = locate(address);
+    if (!location)
         return read_failure(asset_error_code::not_found, address.asset, {},
                             "Named cooked artifact is not present in the mounted package");
-    if (relative_offset > artifact->stored_size || size > artifact->stored_size - relative_offset ||
+    if (relative_offset > location->size || size > location->size - relative_offset ||
         size > std::numeric_limits<std::size_t>::max())
-        return read_failure(asset_error_code::invalid_metadata, address.asset, root_ / artifact->chunk,
+        return read_failure(asset_error_code::invalid_metadata, address.asset, location->path,
                             "Requested cooked artifact range is out of bounds");
 
-    const auto path = root_ / artifact->chunk;
-    std::ifstream stream(path, std::ios::binary);
+    std::ifstream stream(location->path, std::ios::binary);
     if (!stream)
-        return read_failure(asset_error_code::io_failed, address.asset, path, "Could not open cooked package chunk");
-    stream.seekg(static_cast<std::streamoff>(artifact->offset + relative_offset));
+        return read_failure(asset_error_code::io_failed, address.asset, location->path,
+                            "Could not open cooked package chunk");
+    stream.seekg(static_cast<std::streamoff>(location->offset + relative_offset));
     std::vector<std::byte> bytes(static_cast<std::size_t>(size));
     if (!bytes.empty()) stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     if (!stream)
-        return read_failure(asset_error_code::io_failed, address.asset, path, "Could not read cooked artifact range");
+        return read_failure(asset_error_code::io_failed, address.asset, location->path,
+                            "Could not read cooked artifact range");
 
-    bytes_read_ += size;
+    bytes_read_.fetch_add(size, std::memory_order_relaxed);
     return core::result<std::vector<std::byte>, asset_error>::success(std::move(bytes));
 }
 
@@ -116,12 +127,12 @@ const cook_manifest& package_artifact_reader::manifest() const noexcept
 
 std::uint64_t package_artifact_reader::bytes_read() const noexcept
 {
-    return bytes_read_;
+    return bytes_read_.load(std::memory_order_relaxed);
 }
 
 void package_artifact_reader::reset_statistics() noexcept
 {
-    bytes_read_ = 0u;
+    bytes_read_.store(0u, std::memory_order_relaxed);
 }
 
 } // namespace arc::assets
