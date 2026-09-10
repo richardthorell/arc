@@ -244,7 +244,10 @@ struct virtual_geometry_residency_config
     std::uint64_t gpu_budget_bytes{512ull * 1024ull * 1024ull};
     std::uint64_t compressed_cpu_budget_bytes{256ull * 1024ull * 1024ull};
     std::uint32_t maximum_requests_per_frame{4096};
+    /** Frames that recently used detail is preferred over older detail when budget pressure requires eviction. */
     std::uint32_t protected_frame_count{30};
+    /** Predictive/non-visible requests are suppressed for this long after an eviction to avoid reload thrashing. */
+    std::uint32_t reload_cooldown_frames{8};
 };
 
 /** @brief One GPU-generated or CPU-reference request for a missing geometry page. */
@@ -279,15 +282,24 @@ struct virtual_geometry_residency_snapshot
     std::uint64_t gpu_resident_bytes{};
     std::uint64_t compressed_cpu_budget_bytes{};
     std::uint64_t compressed_cpu_resident_bytes{};
+    /** Non-evictable root working set, useful when a configured budget is below its correctness floor. */
+    std::uint64_t root_gpu_resident_bytes{};
+    std::uint64_t root_compressed_cpu_resident_bytes{};
+    std::uint64_t gpu_budget_overflow_bytes{};
+    std::uint64_t compressed_cpu_budget_overflow_bytes{};
     std::uint32_t resource_count{};
     std::uint32_t page_count{};
     std::uint32_t resident_pages{};
     std::uint32_t requested_pages{};
     std::uint32_t failed_pages{};
     std::uint32_t evictions{};
+    /** Evictions that had to break the soft recent-use protection in order to keep the hard byte budgets. */
+    std::uint32_t forced_budget_evictions{};
     std::uint32_t deduplicated_requests{};
     std::uint32_t parent_fallbacks{};
     std::uint32_t stale_requests{};
+    /** Predictive requests held off by the post-eviction cooldown during this frame. */
+    std::uint32_t cooldown_suppressed_requests{};
     std::uint32_t protected_pages{};
 };
 
@@ -350,7 +362,8 @@ make_virtual_geometry_gpu_table_update(virtual_mesh_handle resource, const virtu
  * @brief Render-thread authority for virtual-geometry page requests and eviction.
  *
  * Asset and IO adapters consume load requests and return completed page sizes.
- * The manager never performs filesystem or backend operations itself.
+ * The manager never performs filesystem or backend operations itself. Root pages are a non-evictable correctness
+ * floor; detail pages are kept inside the configured GPU/CPU budgets even when recent-use protection must be broken.
  */
 class virtual_geometry_residency_manager
 {

@@ -14,11 +14,28 @@ namespace arc::render
 
 class renderer;
 
+/** @brief Hard request-count and byte scheduling limits for asynchronous virtual-geometry IO and decode work. */
+struct virtual_geometry_streaming_config
+{
+    std::uint32_t maximum_in_flight_requests{2048};
+    /** Reserved compressed + decoded bytes across reads and worker decodes. */
+    std::uint64_t maximum_in_flight_bytes{128ull * 1024ull * 1024ull};
+};
+
 /** @brief Non-blocking virtual-geometry IO/decode diagnostics. */
 struct virtual_geometry_streaming_io_snapshot
 {
     std::uint32_t in_flight_reads{};
     std::uint32_t in_flight_decodes{};
+    std::uint32_t queued_pages{};
+    std::uint32_t maximum_in_flight_requests{};
+    std::uint64_t maximum_in_flight_bytes{};
+    std::uint64_t in_flight_bytes{};
+    std::uint64_t peak_in_flight_bytes{};
+    /** Pages waiting because request-count or byte working-set limits are saturated. */
+    std::uint32_t deferred_pages{};
+    /** Number of forward-progress exceptions for a single page larger than the configured byte budget. */
+    std::uint32_t oversized_pages{};
     std::uint64_t read_bytes{};
     std::uint64_t decoded_bytes{};
     std::uint32_t completed_pages{};
@@ -71,19 +88,25 @@ private:
  *
  * update() only polls ready futures. It never waits for file IO or decompression and therefore remains safe to call
  * from the render loop. Generation changes turn outstanding work into stale completions instead of publishing old
- * terrain/geometry data into a replacement resource.
+ * terrain/geometry data into a replacement resource. Request count and reserved compressed+decoded bytes are both
+ * bounded so fast traversal cannot grow the streaming working set with world size.
  */
 class virtual_geometry_streaming_controller
 {
 public:
     virtual_geometry_streaming_controller(renderer& renderer, virtual_geometry_page_source& source,
-                                          jobs::job_system& jobs, std::uint32_t maximum_in_flight = 2048);
+                                          jobs::job_system& jobs, virtual_geometry_streaming_config config = {});
+    /** @brief Compatibility overload retaining the original count-only construction API. */
+    virtual_geometry_streaming_controller(renderer& renderer, virtual_geometry_page_source& source,
+                                          jobs::job_system& jobs, std::uint32_t maximum_in_flight);
     ~virtual_geometry_streaming_controller();
     virtual_geometry_streaming_controller(virtual_geometry_streaming_controller&&) noexcept;
     virtual_geometry_streaming_controller& operator=(virtual_geometry_streaming_controller&&) noexcept;
     virtual_geometry_streaming_controller(const virtual_geometry_streaming_controller&) = delete;
     virtual_geometry_streaming_controller& operator=(const virtual_geometry_streaming_controller&) = delete;
 
+    /** @brief Change future scheduling limits without blocking or cancelling work already in flight. */
+    void configure(virtual_geometry_streaming_config config) noexcept;
     void update(const jobs::cancellation_token& cancellation = {});
     [[nodiscard]] virtual_geometry_streaming_io_snapshot snapshot() const noexcept;
 
