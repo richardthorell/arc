@@ -27,52 +27,34 @@ jobs:
           path = Path('editor/src/renderer/src/app/Workbench.tsx')
           text = path.read_text()
 
-          old_constants = """const translationSnapOptions = [0.05, 0.1, 0.25, 0.5, 1] as const;
-          const rotationSnapOptions = [5, 10, 15, 30, 45, 90] as const;
-          const scaleSnapOptions = [0.05, 0.1, 0.25, 0.5] as const;
-          const timeScaleOptions = [0.25, 0.5, 1, 2, 4] as const;
-          const nextSnapOption = (options: readonly number[], current: number) =>
-            options[(options.indexOf(current) + 1) % options.length];"""
-          new_constants = """const timeScaleOptions = [0.25, 0.5, 1, 2, 4] as const;
-          const nextSnapOption = (options: readonly number[], current: number) =>
-            options[(options.indexOf(current) + 1) % options.length];"""
-          if old_constants not in text:
+          text, count = re.subn(
+              r"const translationSnapOptions = \[0\.05, 0\.1, 0\.25, 0\.5, 1\] as const;\n"
+              r"const rotationSnapOptions = \[5, 10, 15, 30, 45, 90\] as const;\n"
+              r"const scaleSnapOptions = \[0\.05, 0\.1, 0\.25, 0\.5\] as const;\n",
+              "",
+              text,
+              count=1,
+          )
+          if count != 1:
               raise SystemExit('snap option constants block not found')
-          text = text.replace(old_constants, new_constants, 1)
 
-          old_space = """          onToggleCoordinateSpace={() =>
-            void updateViewportToolOptions(coordinateSpace === 'world' ? 'local' : 'world', snapping)
-          }"""
-          new_space = """          onCoordinateSpaceChange={(space) => void updateViewportToolOptions(space, snapping)}"""
-          if old_space not in text:
+          text, count = re.subn(
+              r"\s*onToggleCoordinateSpace=\{\(\) =>\s*void updateViewportToolOptions\(coordinateSpace === 'world' \? 'local' : 'world', snapping\)\s*\}",
+              "\n          onCoordinateSpaceChange={(space) => void updateViewportToolOptions(space, snapping)}",
+              text,
+              count=1,
+          )
+          if count != 1:
               raise SystemExit('coordinate-space callback not found')
-          text = text.replace(old_space, new_space, 1)
 
-          old_snaps = """          onCycleTranslationSnap={() =>
-            void updateViewportToolOptions(
-              coordinateSpace,
-              snapping,
-              nextSnapOption(translationSnapOptions, translationSnap),
-            )
-          }
-          onCycleRotationSnap={() =>
-            void updateViewportToolOptions(
-              coordinateSpace,
-              snapping,
-              translationSnap,
-              nextSnapOption(rotationSnapOptions, rotationSnap),
-            )
-          }
-          onCycleScaleSnap={() =>
-            void updateViewportToolOptions(
-              coordinateSpace,
-              snapping,
-              translationSnap,
-              rotationSnap,
-              nextSnapOption(scaleSnapOptions, scaleSnap),
-            )
-          }"""
-          new_snaps = """          onTranslationSnapChange={(value) =>
+          start = text.find('          onCycleTranslationSnap={() =>')
+          end_marker = '          }\n        />'
+          if start < 0:
+              raise SystemExit('snap cycle callback block start not found')
+          end = text.find(end_marker, start)
+          if end < 0:
+              raise SystemExit('snap cycle callback block end not found')
+          replacement = """          onTranslationSnapChange={(value) =>
             void updateViewportToolOptions(coordinateSpace, snapping, value, rotationSnap, scaleSnap)
           }
           onRotationSnapChange={(value) =>
@@ -80,10 +62,9 @@ jobs:
           }
           onScaleSnapChange={(value) =>
             void updateViewportToolOptions(coordinateSpace, snapping, translationSnap, rotationSnap, value)
-          }"""
-          if old_snaps not in text:
-              raise SystemExit('snap cycle callback block not found')
-          text = text.replace(old_snaps, new_snaps, 1)
+          }
+"""
+          text = text[:start] + replacement + text[end + len('          }\n'):]
 
           path.write_text(text)
 
