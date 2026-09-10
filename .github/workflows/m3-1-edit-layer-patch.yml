@@ -1,0 +1,71 @@
+name: Apply M3.1 terrain edit-layer patch
+
+on:
+  push:
+    branches:
+      - m3/asset-owned-terrain-edit-layers
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: "github.event.head_commit.message != 'feat: wire sparse edit layers into terrain assets'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: m3/asset-owned-terrain-edit-layers
+          fetch-depth: 0
+      - name: Patch terrain asset contract and serialization
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{path}: expected one match, found {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          path = 'engine/scene/inc/arc/scene/terrain_asset.h'
+          replace_once(path, '#include <compare>\n', '#include <array>\n#include <compare>\n')
+          replace_once(
+              path,
+              '''/** @brief Versioned non-destructive operation. Parameter payload is canonical data owned by the registered modifier. */\nstruct terrain_modifier_descriptor\n{\n    terrain_stable_id id{};\n    std::string type_id;\n    std::string name;\n    std::uint32_t schema_version{1};\n    bool enabled{true};\n    terrain_domain domains{terrain_domain::geometry};\n    std::optional<terrain_world_bounds> affected_bounds;\n    std::string canonical_parameters{"{}"};\n};\n''',
+              '''namespace terrain_builtin_modifier_types\n{\ninline constexpr std::string_view sculpt_layer = "arc.terrain.sculpt_layer.v1";\ninline constexpr std::string_view paint_layer = "arc.terrain.paint_layer.v1";\n} // namespace terrain_builtin_modifier_types\n\n/** Sparse accumulated height delta owned by one sculpt modifier. Coordinates are local to an authoring region. */\nstruct terrain_sculpt_sample_delta\n{\n    std::uint32_t x{};\n    std::uint32_t z{};\n    float delta{};\n\n    friend constexpr bool operator==(const terrain_sculpt_sample_delta&, const terrain_sculpt_sample_delta&) noexcept =\n        default;\n};\n\n/** Sparse accumulated material-weight delta owned by one paint modifier. */\nstruct terrain_paint_sample_delta\n{\n    std::uint32_t x{};\n    std::uint32_t z{};\n    std::array<std::int16_t, 4> delta{};\n\n    friend constexpr bool operator==(const terrain_paint_sample_delta&, const terrain_paint_sample_delta&) noexcept =\n        default;\n};\n\nstruct terrain_sculpt_region_payload\n{\n    std::vector<terrain_sculpt_sample_delta> samples;\n};\n\nstruct terrain_paint_region_payload\n{\n    std::vector<terrain_paint_sample_delta> samples;\n};\n\nusing terrain_modifier_region_payload_data = std::variant<terrain_sculpt_region_payload, terrain_paint_region_payload>;\n\n/** Persistent sparse edit payload for one modifier and stable authoring region. */\nstruct terrain_modifier_region_payload\n{\n    terrain_region_id region{};\n    std::uint32_t schema_version{1};\n    terrain_modifier_region_payload_data data;\n};\n\n/** @brief Versioned non-destructive operation. Parameters and sparse region payloads are authoring data only. */\nstruct terrain_modifier_descriptor\n{\n    terrain_stable_id id{};\n    std::string type_id;\n    std::string name;\n    std::uint32_t schema_version{1};\n    bool enabled{true};\n    terrain_domain domains{terrain_domain::geometry};\n    std::optional<terrain_world_bounds> affected_bounds;\n    std::string canonical_parameters{"{}"};\n    std::vector<terrain_modifier_region_payload> region_payloads;\n};\n''')
+          replace_once(path, '    invalid_modifier,\n    invalid_attribute,\n',
+                       '    invalid_modifier,\n    invalid_modifier_payload,\n    invalid_attribute,\n')
+          replace_once(
+              path,
+              '''/** @brief Validate persistent authoring invariants without evaluating or cooking terrain. */\n[[nodiscard]] terrain_asset_validation_result validate_terrain_asset(const terrain_asset& asset);\n''',
+              '''/** @brief Validate persistent authoring invariants without evaluating or cooking terrain. */\n[[nodiscard]] terrain_asset_validation_result validate_terrain_asset(const terrain_asset& asset);\n\n/** Built-in non-destructive layer construction helpers. Empty layers do not invalidate compiled regions. */\nterrain_modifier_descriptor& add_terrain_sculpt_layer(terrain_asset& asset, std::string name = "Sculpt Layer");\nterrain_modifier_descriptor& add_terrain_paint_layer(terrain_asset& asset, std::string name = "Paint Layer");\n\n[[nodiscard]] terrain_modifier_descriptor* find_terrain_modifier(terrain_asset& asset, terrain_stable_id id) noexcept;\n[[nodiscard]] const terrain_modifier_descriptor* find_terrain_modifier(const terrain_asset& asset,\n                                                                       terrain_stable_id id) noexcept;\n[[nodiscard]] terrain_modifier_region_payload*\nfind_terrain_modifier_payload(terrain_modifier_descriptor& modifier, terrain_region_id region) noexcept;\n[[nodiscard]] const terrain_modifier_region_payload*\nfind_terrain_modifier_payload(const terrain_modifier_descriptor& modifier, terrain_region_id region) noexcept;\n\n/** Replace one region's sparse sculpt payload and dirty only geometry for that authoring region. */\n[[nodiscard]] terrain_dirty_update set_terrain_sculpt_region_samples(\n    terrain_asset& asset, terrain_stable_id modifier, terrain_region_id region,\n    std::vector<terrain_sculpt_sample_delta> samples);\n\n/** Replace one region's sparse paint payload and dirty only attributes for that authoring region. */\n[[nodiscard]] terrain_dirty_update set_terrain_paint_region_samples(\n    terrain_asset& asset, terrain_stable_id modifier, terrain_region_id region,\n    std::vector<terrain_paint_sample_delta> samples);\n\n/** Validate built-in sparse payload ownership, schemas, values, and per-region uniqueness. */\n[[nodiscard]] bool validate_terrain_modifier_payloads(const terrain_modifier_descriptor& modifier) noexcept;\n''')
+
+          path = 'engine/scene/src/common/terrain_asset.cpp'
+          replace_once(
+              path,
+              '''                modifier.id);\n\n        if (modifier.id.valid() && !ids.insert(modifier.id).second)\n''',
+              '''                modifier.id);\n\n        if (!validate_terrain_modifier_payloads(modifier))\n            add_issue(result, terrain_asset_validation_severity::error,\n                      terrain_asset_validation_code::invalid_modifier_payload,\n                      "terrain modifier sparse region payloads are malformed or incompatible with the modifier type",\n                      modifier.id);\n\n        if (modifier.id.valid() && !ids.insert(modifier.id).second)\n''')
+
+          path = 'engine/scene/src/common/terrain_asset_io.cpp'
+          replace_once(
+              path,
+              '''            if (modifier.affected_bounds) record["affectedBounds"] = bounds_json(*modifier.affected_bounds);\n            modifiers.push_back(std::move(record));\n''',
+              '''            if (modifier.affected_bounds) record["affectedBounds"] = bounds_json(*modifier.affected_bounds);\n\n            json region_payloads = json::array();\n            for (const auto& payload : modifier.region_payloads)\n            {\n                json samples = json::array();\n                std::string_view kind;\n                if (const auto* sculpt = std::get_if<terrain_sculpt_region_payload>(&payload.data))\n                {\n                    kind = "sculpt-height-delta";\n                    for (const auto& sample : sculpt->samples)\n                        samples.push_back({sample.x, sample.z, sample.delta});\n                }\n                else if (const auto* paint = std::get_if<terrain_paint_region_payload>(&payload.data))\n                {\n                    kind = "paint-weight-delta";\n                    for (const auto& sample : paint->samples)\n                        samples.push_back({sample.x, sample.z, sample.delta[0], sample.delta[1], sample.delta[2],\n                                           sample.delta[3]});\n                }\n                region_payloads.push_back({{"region", {{"x", payload.region.x}, {"z", payload.region.z}}},\n                                           {"schemaVersion", payload.schema_version},\n                                           {"kind", kind},\n                                           {"samples", std::move(samples)}});\n            }\n            if (!region_payloads.empty()) record["regionPayloads"] = std::move(region_payloads);\n            modifiers.push_back(std::move(record));\n''')
+          replace_once(
+              path,
+              '''                    modifier.affected_bounds = parsed;\n                }\n                asset.modifiers.push_back(std::move(modifier));\n''',
+              '''                    modifier.affected_bounds = parsed;\n                }\n                if (const auto payloads = record.find("regionPayloads"); payloads != record.end())\n                {\n                    if (!payloads->is_array())\n                        return failure<terrain_asset_decode_result>(terrain_asset_io_error_code::invalid_document,\n                                                                    "Terrain modifier region payloads must be an array");\n                    for (const auto& payload_record : *payloads)\n                    {\n                        if (!payload_record.is_object() || !payload_record.contains("region") ||\n                            !payload_record["region"].is_object() || !payload_record.contains("samples") ||\n                            !payload_record["samples"].is_array())\n                            return failure<terrain_asset_decode_result>(terrain_asset_io_error_code::invalid_document,\n                                                                        "Terrain modifier region payload is malformed");\n                        terrain_modifier_region_payload payload;\n                        payload.region.x = payload_record["region"].value("x", 0ll);\n                        payload.region.z = payload_record["region"].value("z", 0ll);\n                        payload.schema_version = payload_record.value("schemaVersion", 0u);\n                        const auto kind = payload_record.value("kind", std::string{});\n                        if (kind == "sculpt-height-delta")\n                        {\n                            terrain_sculpt_region_payload sculpt;\n                            for (const auto& sample : payload_record["samples"])\n                            {\n                                if (!sample.is_array() || sample.size() != 3u)\n                                    return failure<terrain_asset_decode_result>(\n                                        terrain_asset_io_error_code::invalid_document,\n                                        "Terrain sculpt sparse sample is malformed");\n                                sculpt.samples.push_back(\n                                    {sample[0].get<std::uint32_t>(), sample[1].get<std::uint32_t>(),\n                                     sample[2].get<float>()});\n                            }\n                            payload.data = std::move(sculpt);\n                        }\n                        else if (kind == "paint-weight-delta")\n                        {\n                            terrain_paint_region_payload paint;\n                            for (const auto& sample : payload_record["samples"])\n                            {\n                                if (!sample.is_array() || sample.size() != 6u)\n                                    return failure<terrain_asset_decode_result>(\n                                        terrain_asset_io_error_code::invalid_document,\n                                        "Terrain paint sparse sample is malformed");\n                                paint.samples.push_back(\n                                    {sample[0].get<std::uint32_t>(), sample[1].get<std::uint32_t>(),\n                                     {sample[2].get<std::int16_t>(), sample[3].get<std::int16_t>(),\n                                      sample[4].get<std::int16_t>(), sample[5].get<std::int16_t>()}});\n                            }\n                            payload.data = std::move(paint);\n                        }\n                        else\n                        {\n                            return failure<terrain_asset_decode_result>(terrain_asset_io_error_code::invalid_document,\n                                                                        "Terrain modifier payload kind is unsupported");\n                        }\n                        modifier.region_payloads.push_back(std::move(payload));\n                    }\n                }\n                asset.modifiers.push_back(std::move(modifier));\n''')
+          PY
+          git diff --check
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add engine/scene/inc/arc/scene/terrain_asset.h engine/scene/src/common/terrain_asset.cpp engine/scene/src/common/terrain_asset_io.cpp
+          git commit -m "feat: wire sparse edit layers into terrain assets"
+          git push origin HEAD:m3/asset-owned-terrain-edit-layers
