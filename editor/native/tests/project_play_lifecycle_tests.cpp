@@ -1,4 +1,5 @@
 #include <arc/editor/arc_host.h>
+#include <arc/editor/editor_state.h>
 #include "../src/project_module_loader.h"
 
 #include <catch2/catch_test_macros.hpp>
