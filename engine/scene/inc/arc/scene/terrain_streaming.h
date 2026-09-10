@@ -12,7 +12,7 @@ namespace arc::scene
 {
 
 /** @brief Result of synchronizing M2.2 terrain region artifacts with generic virtual-geometry streaming. */
-struct terrain_streaming_bind_result
+struct [[nodiscard]] terrain_streaming_bind_result
 {
     bool succeeded{};
     std::uint32_t bound_regions{};
