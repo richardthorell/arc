@@ -74,7 +74,7 @@ terrain_streaming_bind_result terrain_virtual_geometry_streaming_binding::synchr
         const assets::cooked_artifact_address address{
             manifest.terrain, assets::artifact_schemas::virtual_geometry, artifact->storage_key};
         const auto location = package.locate(address);
-        if (!location || location->size < artifact->payload_size)
+        if (!location || location->size != artifact->payload_size)
         {
             ++result.skipped_regions;
             continue;
@@ -87,7 +87,7 @@ terrain_streaming_bind_result terrain_virtual_geometry_streaming_binding::synchr
                           .pages = page_ranges(*artifact)});
     }
 
-    if (staged.empty() && !manifest.regions.empty()) return result;
+    if (result.skipped_regions != 0u) return result;
 
     clear(source);
     resources_.reserve(staged.size());
@@ -98,7 +98,7 @@ terrain_streaming_bind_result terrain_virtual_geometry_streaming_binding::synchr
         resources_.push_back(binding.resource);
         ++result.bound_regions;
     }
-    result.succeeded = result.bound_regions != 0u || manifest.regions.empty();
+    result.succeeded = result.bound_regions == manifest.regions.size();
     return result;
 }
 
