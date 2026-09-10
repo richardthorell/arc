@@ -1,4 +1,5 @@
 #include "project_module_loader.h"
+#include "project_runtime_components.h"
 
 #include <arc/diagnostics/diagnostics.h>
 #include <arc/framework/runtime_world.h>
@@ -9,6 +10,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <system_error>
+
+#include <nlohmann/json.hpp>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -24,6 +27,46 @@ namespace
 void module_log(void*, const char* category, const char* message)
 {
     diagnostics::info(category ? category : "project.module", message ? message : "");
+}
+
+project_runtime_component_value* runtime_project_component(void* user_data, project::game_entity_v1 entity,
+                                                           const char* component_id) noexcept
+{
+    if (!user_data || !component_id || !*component_id || !entity.valid()) return nullptr;
+    auto& context = *static_cast<ecs::system_context*>(user_data);
+    const ecs::entity native_entity{entity.index, entity.generation};
+    auto& world = context.owner();
+    if (!world.alive(native_entity)) return nullptr;
+    auto* components = world.try_get<project_runtime_component_set>(native_entity);
+    return components ? find_project_runtime_component(*components, component_id) : nullptr;
+}
+
+bool has_runtime_project_component(void* user_data, project::game_entity_v1 entity, const char* component_id) noexcept
+{
+    return runtime_project_component(user_data, entity, component_id) != nullptr;
+}
+
+const char* read_runtime_project_component_json(void* user_data, project::game_entity_v1 entity,
+                                                const char* component_id) noexcept
+{
+    const auto* component = runtime_project_component(user_data, entity, component_id);
+    return component ? component->json.c_str() : nullptr;
+}
+
+bool patch_runtime_project_component_json(void* user_data, project::game_entity_v1 entity, const char* component_id,
+                                          const char* patch_json) noexcept
+{
+    auto* component = runtime_project_component(user_data, entity, component_id);
+    if (!component || !patch_json) return false;
+    auto patch = nlohmann::json::parse(patch_json, nullptr, false);
+    if (!patch.is_object()) return false;
+    auto current = nlohmann::json::parse(component->json, nullptr, false);
+    if (!current.is_object()) current = nlohmann::json::object();
+    current.update(patch);
+    current["typeId"] = component->stable_id;
+    current["version"] = component->schema_version;
+    component->json = current.dump();
+    return true;
 }
 
 bool stable_component_id(std::string_view value)
@@ -480,6 +523,10 @@ project_system_install_result project_module_loader::install_systems(framework::
                                                   .frame_delta_seconds = native_context.frame_delta_seconds(),
                                                   .interpolation_alpha = native_context.interpolation_alpha(),
                                                   .presentation = native_context.presentation(),
+                                                  .project_component_user_data = &native_context,
+                                                  .has_project_component = has_runtime_project_component,
+                                                  .read_project_component_json = read_runtime_project_component_json,
+                                                  .patch_project_component_json = patch_runtime_project_component_json,
                                               };
                                               if (!execute(user_data, &context))
                                                   throw std::runtime_error("project ECS system '" + stable_id +

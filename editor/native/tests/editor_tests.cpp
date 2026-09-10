@@ -3520,6 +3520,12 @@ TEST_CASE("play sessions execute project ECS systems without mutating the author
     mesh.mesh = authoring.default_mesh;
     mesh.material = authoring.default_material;
     authoring.scene.emplace<arc::scene::mesh_renderer_component>(probe, mesh);
+    arc::editor::ensure_scene_authoring_metadata(authoring);
+    const auto probe_guid = arc::editor::entity_guid_of(authoring, probe);
+    REQUIRE(probe_guid.valid());
+    const std::string authored_project_component =
+        R"({"runtime_probe":{"typeId":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","version":1,"_arcFieldIds":{"value":"2222222222222222"},"value":1.0}})";
+    authoring.unknown_component_records.emplace_back(probe_guid, authored_project_component);
     arc::scene::update_world_transforms(authoring.scene);
 
     auto frame = host->request_viewport({.viewport_id = "viewport-1", .frame_index = 1, .width = 640, .height = 360});
@@ -3548,6 +3554,12 @@ TEST_CASE("play sessions execute project ECS systems without mutating the author
     REQUIRE(frame.submitted);
     CHECK(authoring.last_render.renderable_count == authoring_renderables);
     CHECK(authoring.scene.get<arc::scene::mesh_renderer_component>(probe).visible);
+
+    const auto authored_record =
+        std::find_if(authoring.unknown_component_records.begin(), authoring.unknown_component_records.end(),
+                     [&](const auto& record) { return record.first == probe_guid; });
+    REQUIRE(authored_record != authoring.unknown_component_records.end());
+    CHECK(authored_record->second == authored_project_component);
 
     // Closing a project must destroy the Play World before unloading module code.
     REQUIRE(host->execute(arc::editor::host_runtime_resume_command{}).succeeded);

@@ -59,6 +59,32 @@ enum class game_system_priority_v1 : std::uint8_t
     background
 };
 
+/** @brief ABI-safe transient entity handle used by project runtime callbacks. */
+struct game_entity_v1
+{
+    std::uint32_t index{0xffffffffu};
+    std::uint32_t generation{};
+
+    [[nodiscard]] constexpr bool valid() const noexcept
+    {
+        return index != 0xffffffffu;
+    }
+};
+
+/** @brief Query whether an entity owns an authored project component in the active runtime world. */
+using game_has_project_component_v1 = bool (*)(void* user_data, game_entity_v1 entity, const char* component_id);
+
+/**
+ * @brief Read canonical JSON for one runtime project component.
+ * @return Borrowed UTF-8 JSON valid until that component is patched or the system callback returns.
+ */
+using game_read_project_component_json_v1 = const char* (*)(void* user_data, game_entity_v1 entity,
+                                                            const char* component_id);
+
+/** @brief Merge a JSON object into one runtime project component. */
+using game_patch_project_component_json_v1 = bool (*)(void* user_data, game_entity_v1 entity, const char* component_id,
+                                                      const char* patch_json);
+
 /**
  * @brief Per-invocation context passed to project ECS systems.
  *
@@ -78,6 +104,10 @@ struct game_system_context_v1
     float frame_delta_seconds{};
     float interpolation_alpha{};
     bool presentation{};
+    void* project_component_user_data{}; ///< Host-owned bridge valid only for this system invocation.
+    game_has_project_component_v1 has_project_component{};
+    game_read_project_component_json_v1 read_project_component_json{};
+    game_patch_project_component_json_v1 patch_project_component_json{};
 };
 
 /** @brief Executable callback for a project ECS system. Return false to fault the runtime world. */
