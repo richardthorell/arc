@@ -5284,13 +5284,18 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
         }
         if (const auto* proxy = state_->scene.terrain_render_proxies.find(entity_guid_of(state_->scene, selected)))
         {
-            if (const auto* geometry = state_->renderer->virtual_mesh_data_for(proxy->geometry.virtualized))
+            for (const auto& region : proxy->regions)
             {
-                terrain_snapshot.hierarchy_nodes = static_cast<std::uint32_t>(geometry->lod_nodes.size());
-                terrain_snapshot.source_patches = static_cast<std::uint32_t>(geometry->clusters.size());
-                terrain_snapshot.hierarchy_depth =
-                    geometry->stats.hierarchy_level_count > 0u ? geometry->stats.hierarchy_level_count - 1u : 0u;
-                terrain_snapshot.gpu_memory_bytes = geometry->stats.uncompressed_page_bytes;
+                if (const auto* geometry = state_->renderer->virtual_mesh_data_for(region.geometry.virtualized))
+                {
+                    terrain_snapshot.hierarchy_nodes += static_cast<std::uint32_t>(geometry->lod_nodes.size());
+                    terrain_snapshot.source_patches += static_cast<std::uint32_t>(geometry->clusters.size());
+                    terrain_snapshot.hierarchy_depth =
+                        std::max(terrain_snapshot.hierarchy_depth,
+                                 geometry->stats.hierarchy_level_count > 0u ? geometry->stats.hierarchy_level_count - 1u
+                                                                          : 0u);
+                    terrain_snapshot.gpu_memory_bytes += geometry->stats.uncompressed_page_bytes;
+                }
             }
         }
         terrain_snapshot.brush_tool =

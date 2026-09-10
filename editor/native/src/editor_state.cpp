@@ -634,8 +634,13 @@ bool synchronize_terrain_render_resource(editor_scene_state& scene, render::rend
     }
     if (!scene.terrain_render_proxies.synchronize(guid, *terrain, renderer, dirty_region)) return false;
     const auto* proxy = scene.terrain_render_proxies.find(guid);
-    if (!proxy) return false;
-    const auto local_bounds = proxy->local_bounds;
+    if (!proxy || proxy->regions.empty()) return false;
+    auto local_bounds = proxy->regions.front().local_bounds;
+    for (std::size_t index = 1; index < proxy->regions.size(); ++index)
+    {
+        local_bounds = geometric::expand(local_bounds, proxy->regions[index].local_bounds.min);
+        local_bounds = geometric::expand(local_bounds, proxy->regions[index].local_bounds.max);
+    }
     if (auto* bounds = scene.scene.try_get<scene::bounds_component>(entity))
     {
         bounds->local_bounds = local_bounds;
