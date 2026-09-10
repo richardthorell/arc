@@ -1,0 +1,13 @@
+.toolbar-platform-dropdown {
+  width: 136px;
+  flex: 0 0 136px;
+}
+
+.toolbar-platform-dropdown .ui-dropdown-trigger {
+  width: 100%;
+  height: var(--arc-icon-button-size);
+}
+
+.toolbar-build-split > .ui-button {
+  height: var(--arc-icon-button-size);
+}
