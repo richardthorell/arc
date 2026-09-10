@@ -300,6 +300,10 @@ struct virtual_geometry_residency_snapshot
     std::uint32_t stale_requests{};
     /** Predictive requests held off by the post-eviction cooldown during this frame. */
     std::uint32_t cooldown_suppressed_requests{};
+    /** Requests observed beyond the per-frame issue limit, kept queued for later frames. */
+    std::uint32_t request_budget_overflow{};
+    /** Requests targeting a page again while it is still inside the post-eviction cooldown window. */
+    std::uint32_t reload_pressure_requests{};
     std::uint32_t protected_pages{};
 };
 

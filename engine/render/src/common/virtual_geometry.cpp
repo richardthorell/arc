@@ -318,6 +318,8 @@ struct virtual_geometry_residency_manager::implementation
     std::uint32_t parent_fallbacks{};
     std::uint32_t stale_requests{};
     std::uint32_t cooldown_suppressed_requests{};
+    std::uint32_t request_budget_overflow{};
+    std::uint32_t reload_pressure_requests{};
     std::vector<virtual_geometry_page_eviction> pending_evictions;
 
     page_entry* find(virtual_mesh_handle handle, std::uint32_t generation, std::uint32_t page_index) noexcept
@@ -445,6 +447,8 @@ void virtual_geometry_residency_manager::begin_frame(std::uint64_t frame_index)
     implementation_->parent_fallbacks = 0;
     implementation_->stale_requests = 0;
     implementation_->cooldown_suppressed_requests = 0;
+    implementation_->request_budget_overflow = 0;
+    implementation_->reload_pressure_requests = 0;
 }
 
 void virtual_geometry_residency_manager::request(std::span<const virtual_geometry_page_request> requests)
@@ -470,8 +474,10 @@ void virtual_geometry_residency_manager::request(std::span<const virtual_geometr
         const auto since_eviction =
             implementation_->frame_index - std::min(implementation_->frame_index, page->last_evicted_frame);
         const bool correctness_demand = request.visible_child || request.shadow_view;
-        if (page->was_evicted && !correctness_demand &&
-            since_eviction <= implementation_->config.reload_cooldown_frames)
+        const bool inside_reload_window =
+            page->was_evicted && since_eviction <= implementation_->config.reload_cooldown_frames;
+        if (inside_reload_window) ++implementation_->reload_pressure_requests;
+        if (inside_reload_window && !correctness_demand)
         {
             ++implementation_->cooldown_suppressed_requests;
             continue;
@@ -528,7 +534,12 @@ std::vector<virtual_geometry_page_load> virtual_geometry_residency_manager::take
                          return lhs.page_index < rhs.page_index;
                      });
     if (result.size() > implementation_->config.maximum_requests_per_frame)
+    {
+        implementation_->request_budget_overflow = std::max(
+            implementation_->request_budget_overflow,
+            static_cast<std::uint32_t>(result.size() - implementation_->config.maximum_requests_per_frame));
         result.resize(implementation_->config.maximum_requests_per_frame);
+    }
     return result;
 }
 
@@ -605,7 +616,9 @@ virtual_geometry_residency_snapshot virtual_geometry_residency_manager::snapshot
         .deduplicated_requests = implementation_->deduplicated_requests,
         .parent_fallbacks = implementation_->parent_fallbacks,
         .stale_requests = implementation_->stale_requests,
-        .cooldown_suppressed_requests = implementation_->cooldown_suppressed_requests};
+        .cooldown_suppressed_requests = implementation_->cooldown_suppressed_requests,
+        .request_budget_overflow = implementation_->request_budget_overflow,
+        .reload_pressure_requests = implementation_->reload_pressure_requests};
     for (const auto& [_, resource] : implementation_->resources)
         for (const auto& page : resource.pages)
         {
