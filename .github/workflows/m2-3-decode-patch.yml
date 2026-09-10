@@ -1,4 +1,4 @@
-name: Apply M2.3 external page decode patch
+name: Apply M2.3 decode patch
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   apply:
-    if: "github.event.head_commit.message != 'feat: decode externally streamed virtual geometry pages'"
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -20,98 +20,8 @@ jobs:
       - name: Patch page decoder
         shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('engine/render/src/common/virtual_mesh_builder.cpp')
-          s = p.read_text()
-          old = '''bool decode_virtual_geometry_page(const virtual_mesh_data& mesh, std::uint32_t page_index,
-                                  std::vector<std::byte>& output)
-{
-    if (page_index >= mesh.pages.size()) return false;
-    const auto& page = mesh.pages[page_index];
-    if (static_cast<std::uint64_t>(page.compressed_offset) + page.compressed_size > mesh.page_payload.size())
-        return false;
-    auto cursor = page.compressed_offset;
-    const auto end = cursor + page.compressed_size;
-    output.clear();
-    for (std::uint32_t cluster = 0; cluster < page.cluster_count; ++cluster)
-    {
-        if (cursor + sizeof(encoded_cluster_header) > end) return false;
-        encoded_cluster_header header{};
-        std::memcpy(&header, mesh.page_payload.data() + cursor, sizeof(header));
-        cursor += sizeof(header);
-        if (cursor + header.encoded_vertex_bytes + header.triangle_bytes > end) return false;
-        std::vector<packed_virtual_vertex> vertices(header.vertex_count);
-        if (meshopt_decodeVertexBuffer(vertices.data(), vertices.size(), sizeof(packed_virtual_vertex),
-                                       reinterpret_cast<const unsigned char*>(mesh.page_payload.data() + cursor),
-                                       header.encoded_vertex_bytes) != 0)
-            return false;
-        cursor += header.encoded_vertex_bytes;
-        append_value(output, header);
-        const auto vertex_bytes = std::as_bytes(std::span(vertices));
-        output.insert(output.end(), vertex_bytes.begin(), vertex_bytes.end());
-        output.insert(output.end(), mesh.page_payload.begin() + cursor,
-                      mesh.page_payload.begin() + cursor + header.triangle_bytes);
-        cursor += header.triangle_bytes;
-    }
-    return cursor == end;
-}
-'''
-          new = '''bool decode_virtual_geometry_page(const virtual_geometry_page& page,
-                                  std::span<const std::byte> compressed_bytes,
-                                  std::vector<std::byte>& output)
-{
-    if (compressed_bytes.size() != page.compressed_size) return false;
-    std::uint64_t hash = 1469598103934665603ull;
-    for (const auto byte : compressed_bytes)
-    {
-        hash ^= std::to_integer<std::uint8_t>(byte);
-        hash *= 1099511628211ull;
-    }
-    if (hash != page.content_hash) return false;
-
-    std::size_t cursor{};
-    output.clear();
-    for (std::uint32_t cluster = 0; cluster < page.cluster_count; ++cluster)
-    {
-        if (cursor + sizeof(encoded_cluster_header) > compressed_bytes.size()) return false;
-        encoded_cluster_header header{};
-        std::memcpy(&header, compressed_bytes.data() + cursor, sizeof(header));
-        cursor += sizeof(header);
-        if (header.encoded_vertex_bytes > compressed_bytes.size() - cursor) return false;
-        const auto triangle_offset = cursor + header.encoded_vertex_bytes;
-        if (header.triangle_bytes > compressed_bytes.size() - triangle_offset) return false;
-        std::vector<packed_virtual_vertex> vertices(header.vertex_count);
-        if (meshopt_decodeVertexBuffer(vertices.data(), vertices.size(), sizeof(packed_virtual_vertex),
-                                       reinterpret_cast<const unsigned char*>(compressed_bytes.data() + cursor),
-                                       header.encoded_vertex_bytes) != 0)
-            return false;
-        cursor = triangle_offset;
-        append_value(output, header);
-        const auto vertex_bytes = std::as_bytes(std::span(vertices));
-        output.insert(output.end(), vertex_bytes.begin(), vertex_bytes.end());
-        output.insert(output.end(), compressed_bytes.begin() + static_cast<std::ptrdiff_t>(cursor),
-                      compressed_bytes.begin() + static_cast<std::ptrdiff_t>(cursor + header.triangle_bytes));
-        cursor += header.triangle_bytes;
-    }
-    return cursor == compressed_bytes.size() && output.size() == page.uncompressed_size;
-}
-
-bool decode_virtual_geometry_page(const virtual_mesh_data& mesh, std::uint32_t page_index,
-                                  std::vector<std::byte>& output)
-{
-    if (page_index >= mesh.pages.size()) return false;
-    const auto& page = mesh.pages[page_index];
-    if (static_cast<std::uint64_t>(page.compressed_offset) + page.compressed_size > mesh.page_payload.size())
-        return false;
-    return decode_virtual_geometry_page(
-        page, std::span<const std::byte>(mesh.page_payload).subspan(page.compressed_offset, page.compressed_size), output);
-}
-'''
-          if s.count(old) != 1:
-              raise RuntimeError('expected decoder body exactly once')
-          p.write_text(s.replace(old, new, 1))
-          PY
+          echo 'H4sIAKKIomoC/+1YS4/bNhC+61cwPhhSVtWu92Gs1ysfAuRe9JBL0Qq0NLKJSqJAUpu4C//38qWHJfmBZoMEQXyxRXKG38x8w49yymiOSiy2GVkjkpeUCfS7fHTKUH25Eyg2pIBrBkUC7Jqz+DqmeU6L6xfCRIWzKAe+jdYVyeR8EJflxHN4WAYMcBIJ+CJcz6FZEk4mkzWlGUogpglEtfUGaA6C7aISb8CNacEFOvCcYIGnSP30ERfJ01NFCnF3GwmkLCIiYX3xHXT2o21fIBaUPevf652A1RTRSpSV8JxX7YOkyG39olWodw7UEA84+Rdcz0MMRMUKlOKMw1KbGdy4EnSqYaGu3Z+tw7+WzS5cYEHiKMZcPDdxze8jsdIAApnlkgHnkEQ0TTkID12h/oxChFbtXjKLu4zipIba5GUIWYFFccU4ZRLt+Jb94JAkgVxsrcbhGBuT1SDOADPXM2OptHEPSxhnFRegANwsm4dn69c8RjGtCrFEV1d2wAT12oSmktkgUgho6kKhSJZEtY+tJKO0lKmSEYwVUH3GjZD5et23C3UMOeRxuXOnZtofqYFirquqZtD5NTgLxmsd1vDD3pLleJBmNqjxvgCTfRYpPvN2VjCCi00Gdvxk5N3eKHH8j3Jqe9A4XyH1TWLgFlpgN9XF6eFUmaCliEynf9ILP1RpCsytvdjc+I1bS9gmR6MovEv63NJdMgyY5KUwHWY4XBWcbApIULzF7P3KPVuzy3c8URMPvZP89pxDgGN1aHlwwl27HJelLGr0grMKXNNxPhpQp9O+B0wJTdkxN8+mM3mJi6ZKXYrahiYFl5N2MwkvqYtYuw3WIPViMKpXXuhuWBXrs22lI1U5b3msP7wTRThcaRbunU4V61M0VD22dPaO1DqngM//R/MO5oyYXKxuqniW6a3Coc75rAN4W7Hse7eNrCg/pg5jJ9CB+qEt5lvJzdn9fPGweJzd3C3u7ufzh/nNXZVlHSHp0FptjJ4GgfaFQnv+29Je0EgdERtgrfo+KvFVph02aKP3Es/NYvEwm81vH29nswbJvsmDXtcGLV0XIlKD/YjbkFU+lAZq9tT68sMK55FCfxsxHWz21lp6SkKPxop+q2Xh2PndcrI5NMxNqntruuhs74AcKPlxeL1df+n9od6fo9X3kfuwX7afXuEHdWhlevBaVAqWkDRVR/OZIn2V16MXgze6GRzr2WktqvVAaDWkKgYvVnvH+fUK/QO9QtuRk+VozPVN7sQ9bfgy4gW8Wut2HY/GH79h+XU96puoTBUP9MHt0izx3oWzJ8Qw4YD+kGMkh4+MUeZOTBwMrWmyQznhORbxduI5ZfCZEQHmzxweMCgzHIPy5ctLrj+TOfoPwW1saEYSAAA=' | base64 -d | gzip -d > /tmp/m2_patch.py
+          python3 /tmp/m2_patch.py
           git diff --check
       - name: Commit patch
         shell: bash
