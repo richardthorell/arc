@@ -1,0 +1,107 @@
+name: Apply toolbar dropdown wiring
+
+on:
+  push:
+    branches:
+      - fix/toolbar-platform-build-sizing
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/toolbar-platform-build-sizing
+          fetch-depth: 0
+
+      - name: Wire dropdown selections to viewport settings
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          path = Path('editor/src/renderer/src/app/Workbench.tsx')
+          text = path.read_text()
+
+          old_constants = """const translationSnapOptions = [0.05, 0.1, 0.25, 0.5, 1] as const;
+          const rotationSnapOptions = [5, 10, 15, 30, 45, 90] as const;
+          const scaleSnapOptions = [0.05, 0.1, 0.25, 0.5] as const;
+          const timeScaleOptions = [0.25, 0.5, 1, 2, 4] as const;
+          const nextSnapOption = (options: readonly number[], current: number) =>
+            options[(options.indexOf(current) + 1) % options.length];"""
+          new_constants = """const timeScaleOptions = [0.25, 0.5, 1, 2, 4] as const;
+          const nextSnapOption = (options: readonly number[], current: number) =>
+            options[(options.indexOf(current) + 1) % options.length];"""
+          if old_constants not in text:
+              raise SystemExit('snap option constants block not found')
+          text = text.replace(old_constants, new_constants, 1)
+
+          old_space = """          onToggleCoordinateSpace={() =>
+            void updateViewportToolOptions(coordinateSpace === 'world' ? 'local' : 'world', snapping)
+          }"""
+          new_space = """          onCoordinateSpaceChange={(space) => void updateViewportToolOptions(space, snapping)}"""
+          if old_space not in text:
+              raise SystemExit('coordinate-space callback not found')
+          text = text.replace(old_space, new_space, 1)
+
+          old_snaps = """          onCycleTranslationSnap={() =>
+            void updateViewportToolOptions(
+              coordinateSpace,
+              snapping,
+              nextSnapOption(translationSnapOptions, translationSnap),
+            )
+          }
+          onCycleRotationSnap={() =>
+            void updateViewportToolOptions(
+              coordinateSpace,
+              snapping,
+              translationSnap,
+              nextSnapOption(rotationSnapOptions, rotationSnap),
+            )
+          }
+          onCycleScaleSnap={() =>
+            void updateViewportToolOptions(
+              coordinateSpace,
+              snapping,
+              translationSnap,
+              rotationSnap,
+              nextSnapOption(scaleSnapOptions, scaleSnap),
+            )
+          }"""
+          new_snaps = """          onTranslationSnapChange={(value) =>
+            void updateViewportToolOptions(coordinateSpace, snapping, value, rotationSnap, scaleSnap)
+          }
+          onRotationSnapChange={(value) =>
+            void updateViewportToolOptions(coordinateSpace, snapping, translationSnap, value, scaleSnap)
+          }
+          onScaleSnapChange={(value) =>
+            void updateViewportToolOptions(coordinateSpace, snapping, translationSnap, rotationSnap, value)
+          }"""
+          if old_snaps not in text:
+              raise SystemExit('snap cycle callback block not found')
+          text = text.replace(old_snaps, new_snaps, 1)
+
+          path.write_text(text)
+
+      - name: Install editor dependencies
+        working-directory: editor
+        run: npm ci
+
+      - name: Validate editor toolbar
+        working-directory: editor
+        run: |
+          npm run typecheck
+          npx vitest run src/renderer/src/layout/MainToolbar.test.tsx src/renderer/src/ui/UiDropdown.test.tsx
+
+      - name: Commit dropdown wiring and remove helper workflow
+        run: |
+          rm .github/workflows/temp-apply-toolbar-dropdowns.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor/src/renderer/src/app/Workbench.tsx .github/workflows/temp-apply-toolbar-dropdowns.yml
+          git commit -m "Wire scene toolbar dropdown selections"
+          git push origin HEAD:fix/toolbar-platform-build-sizing
