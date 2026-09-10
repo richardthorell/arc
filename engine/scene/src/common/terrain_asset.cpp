@@ -357,6 +357,12 @@ terrain_asset_validation_result validate_terrain_asset(const terrain_asset& asse
                 "terrain modifier requires an ID, type, schema, valid domains, parameters, and valid optional bounds",
                 modifier.id);
 
+        if (!validate_terrain_modifier_payloads(modifier))
+            add_issue(result, terrain_asset_validation_severity::error,
+                      terrain_asset_validation_code::invalid_modifier_payload,
+                      "terrain modifier sparse region payloads are malformed or incompatible with the modifier type",
+                      modifier.id);
+
         if (modifier.id.valid() && !ids.insert(modifier.id).second)
             add_issue(result, terrain_asset_validation_severity::error,
                       terrain_asset_validation_code::duplicate_stable_id,
