@@ -7,7 +7,6 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -21,46 +20,12 @@ namespace
 arc::render::virtual_mesh_data make_budget_geometry()
 {
     arc::render::virtual_mesh_data geometry;
-    geometry.pages = {{.uncompressed_size = 8u, .compressed_size = 4u, .root = true},
-                      {.uncompressed_size = 8u, .compressed_size = 4u},
-                      {.uncompressed_size = 8u, .compressed_size = 4u}};
+    geometry.pages = {{.uncompressed_size = 8u, .compressed_offset = 0u, .compressed_size = 4u, .root = true},
+                      {.uncompressed_size = 8u, .compressed_offset = 4u, .compressed_size = 4u},
+                      {.uncompressed_size = 8u, .compressed_offset = 8u, .compressed_size = 4u},
+                      {.uncompressed_size = 8u, .compressed_offset = 12u, .compressed_size = 4u}};
+    geometry.page_payload.resize(16u);
     return geometry;
-}
-
-arc::render::mesh_data make_streaming_grid(std::uint32_t side)
-{
-    arc::render::mesh_data mesh;
-    mesh.name = "M2.5 streaming budget grid";
-    mesh.vertices.resize(static_cast<std::size_t>(side) * side);
-    for (std::uint32_t z = 0; z < side; ++z)
-        for (std::uint32_t x = 0; x < side; ++x)
-        {
-            auto& vertex = mesh.vertices[static_cast<std::size_t>(z) * side + x];
-            vertex.position[0] = static_cast<float>(x);
-            vertex.position[1] = static_cast<float>((x * 5u + z * 7u) % 17u) * 0.1f;
-            vertex.position[2] = static_cast<float>(z);
-            vertex.normal[1] = 1.0f;
-            vertex.tangent[0] = 1.0f;
-            vertex.tangent[3] = 1.0f;
-        }
-    for (std::uint32_t z = 0; z + 1u < side; ++z)
-        for (std::uint32_t x = 0; x + 1u < side; ++x)
-        {
-            const auto i0 = z * side + x;
-            const auto i1 = i0 + 1u;
-            const auto i2 = i0 + side;
-            const auto i3 = i2 + 1u;
-            mesh.indices.insert(mesh.indices.end(), {i0, i2, i1, i1, i2, i3});
-        }
-    return mesh;
-}
-
-std::vector<std::uint32_t> detail_pages(const arc::render::virtual_mesh_data& geometry)
-{
-    std::vector<std::uint32_t> result;
-    for (std::uint32_t index = 0; index < geometry.pages.size(); ++index)
-        if (!geometry.pages[index].root) result.push_back(index);
-    return result;
 }
 
 class delayed_multi_page_source final : public arc::render::virtual_geometry_page_source
@@ -196,10 +161,7 @@ TEST_CASE("M2.5 async streaming caps compressed plus decoded in flight bytes")
     using namespace arc;
     using namespace arc::render;
 
-    const auto geometry = build_virtual_mesh(make_streaming_grid(65u), {.build_conventional_lods = false});
-    const auto pages = detail_pages(geometry);
-    REQUIRE(pages.size() >= 3u);
-
+    const auto geometry = make_budget_geometry();
     jobs::job_system jobs({.worker_count = 1u, .io_worker_count = 1u, .enable_render_thread = false});
     renderer target;
     const auto resource = target.create_virtual_mesh(geometry);
@@ -208,7 +170,7 @@ TEST_CASE("M2.5 async streaming caps compressed plus decoded in flight bytes")
     REQUIRE(generation != 0u);
 
     delayed_multi_page_source source(jobs, geometry);
-    const auto first_page = pages.front();
+    constexpr std::uint32_t first_page = 1u;
     const auto byte_budget = static_cast<std::uint64_t>(geometry.pages[first_page].compressed_size) +
                              geometry.pages[first_page].uncompressed_size;
     virtual_geometry_streaming_controller controller(
@@ -216,11 +178,11 @@ TEST_CASE("M2.5 async streaming caps compressed plus decoded in flight bytes")
 
     target.virtual_geometry_residency().begin_frame(1u);
     std::vector<virtual_geometry_page_request> requests;
-    for (std::size_t index = 0; index < 3u; ++index)
+    for (std::uint32_t page_index = 1u; page_index <= 3u; ++page_index)
         requests.push_back({.resource = resource,
                             .resource_generation = generation,
-                            .page_index = pages[index],
-                            .projected_error = 100.0f - static_cast<float>(index),
+                            .page_index = page_index,
+                            .projected_error = 101.0f - static_cast<float>(page_index),
                             .screen_coverage = 1.0f,
                             .visible_child = true});
     target.virtual_geometry_residency().request(requests);
