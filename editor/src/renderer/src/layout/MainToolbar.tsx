@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Box,
+  Check,
+  ChevronDown,
   CircleDot,
   Crosshair,
   Globe,
@@ -22,6 +24,7 @@ import {
 
 import type { CommandId } from '../app/workbenchTypes';
 import {
+  UiButton,
   UiDropdown,
   UiIconButton,
   UiSelectButton,
@@ -62,16 +65,16 @@ const coordinateSpaceOptions: ReadonlyArray<UiDropdownOption<ToolbarCoordinateSp
 
 const translationSnapOptions: ReadonlyArray<UiDropdownOption<string>> = [
   0.01, 0.05, 0.1, 0.25, 0.5, 1, 5, 10,
-].map((value) => ({ value: String(value), label: `Move ${value}` }));
+].map((value) => ({ value: String(value), label: String(value) }));
 
 const rotationSnapOptions: ReadonlyArray<UiDropdownOption<string>> = [1, 5, 10, 15, 30, 45, 90].map((value) => ({
   value: String(value),
-  label: `Rotate ${value}°`,
+  label: `${value}°`,
 }));
 
 const scaleSnapOptions: ReadonlyArray<UiDropdownOption<string>> = [0.01, 0.05, 0.1, 0.25, 0.5, 1].map((value) => ({
   value: String(value),
-  label: `Scale ${Math.round(value * 100)}%`,
+  label: `${Math.round(value * 100)}%`,
 }));
 
 const buildOptions: ReadonlyArray<UiSplitButtonOption<ToolbarBuildAction>> = [
@@ -80,6 +83,103 @@ const buildOptions: ReadonlyArray<UiSplitButtonOption<ToolbarBuildAction>> = [
   { value: 'configure', label: 'Configure', icon: <Settings2 size={14} /> },
   { value: 'clean', label: 'Clean', icon: <Trash2 size={14} /> },
 ];
+
+type ToolbarSnapMenuProps = {
+  snapping: boolean;
+  translationSnap: number;
+  rotationSnap: number;
+  scaleSnap: number;
+  onToggleSnapping?: () => void;
+  onTranslationSnapChange?: (value: number) => void;
+  onRotationSnapChange?: (value: number) => void;
+  onScaleSnapChange?: (value: number) => void;
+};
+
+function ToolbarSnapMenu({
+  snapping,
+  translationSnap,
+  rotationSnap,
+  scaleSnap,
+  onToggleSnapping,
+  onTranslationSnapChange,
+  onRotationSnapChange,
+  onScaleSnapChange,
+}: ToolbarSnapMenuProps) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [open]);
+
+  return (
+    <span className="toolbar-snap-menu" ref={rootRef}>
+      <UiButton
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label="Snap settings"
+        className={`toolbar-snap-trigger${snapping ? ' is-active' : ''}`}
+        onClick={() => setOpen((current) => !current)}
+        type="button"
+        variant="toolbar"
+      >
+        <Grid3X3 size={14} />
+        <span>Snap</span>
+        <ChevronDown aria-hidden="true" size={12} />
+      </UiButton>
+      {open && (
+        <div className="toolbar-snap-popup" role="menu" aria-label="Snap settings menu">
+          <UiButton
+            aria-pressed={snapping}
+            className="toolbar-snap-enable"
+            onClick={onToggleSnapping}
+            type="button"
+            variant="ghost"
+          >
+            <span>Enable snapping</span>
+            <span className="toolbar-snap-check" aria-hidden="true">{snapping ? <Check size={13} /> : null}</span>
+          </UiButton>
+          <div className="toolbar-snap-popup-separator" />
+          <div className="toolbar-snap-row">
+            <span>Move</span>
+            <UiDropdown
+              ariaLabel="Translation snap"
+              className="toolbar-snap-value-dropdown"
+              onValueChange={(value) => onTranslationSnapChange?.(Number(value))}
+              options={translationSnapOptions}
+              value={String(translationSnap)}
+            />
+          </div>
+          <div className="toolbar-snap-row">
+            <span>Rotate</span>
+            <UiDropdown
+              ariaLabel="Rotation snap"
+              className="toolbar-snap-value-dropdown"
+              onValueChange={(value) => onRotationSnapChange?.(Number(value))}
+              options={rotationSnapOptions}
+              value={String(rotationSnap)}
+            />
+          </div>
+          <div className="toolbar-snap-row">
+            <span>Scale</span>
+            <UiDropdown
+              ariaLabel="Scale snap"
+              className="toolbar-snap-value-dropdown"
+              onValueChange={(value) => onScaleSnapChange?.(Number(value))}
+              options={scaleSnapOptions}
+              value={String(scaleSnap)}
+            />
+          </div>
+        </div>
+      )}
+    </span>
+  );
+}
 
 export type MainToolbarProps = {
   onCommand: (command: CommandId) => void;
@@ -229,34 +329,15 @@ export function MainToolbar({
         <span className="toolbar-separator" />
 
         <div className="ui-toolbar-group toolbar-group" aria-label="Snapping controls">
-          <UiIconButton
-            active={snapping}
-            className="toolbar-button"
-            label="Toggle transform snapping"
-            onClick={onToggleSnapping}
-          >
-            <Grid3X3 size={14} />
-          </UiIconButton>
-          <UiDropdown
-            ariaLabel="Rotation snap"
-            className="toolbar-snap-dropdown toolbar-snap-rotation"
-            onValueChange={(value) => onRotationSnapChange?.(Number(value))}
-            options={rotationSnapOptions}
-            value={String(rotationSnap)}
-          />
-          <UiDropdown
-            ariaLabel="Translation snap"
-            className="toolbar-snap-dropdown toolbar-snap-translation"
-            onValueChange={(value) => onTranslationSnapChange?.(Number(value))}
-            options={translationSnapOptions}
-            value={String(translationSnap)}
-          />
-          <UiDropdown
-            ariaLabel="Scale snap"
-            className="toolbar-snap-dropdown toolbar-snap-scale"
-            onValueChange={(value) => onScaleSnapChange?.(Number(value))}
-            options={scaleSnapOptions}
-            value={String(scaleSnap)}
+          <ToolbarSnapMenu
+            snapping={snapping}
+            translationSnap={translationSnap}
+            rotationSnap={rotationSnap}
+            scaleSnap={scaleSnap}
+            onToggleSnapping={onToggleSnapping}
+            onTranslationSnapChange={onTranslationSnapChange}
+            onRotationSnapChange={onRotationSnapChange}
+            onScaleSnapChange={onScaleSnapChange}
           />
         </div>
       </div>
