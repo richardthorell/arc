@@ -6,6 +6,7 @@
 #include <arc/render/virtual_mesh.h>
 #include <arc/scene/components.h>
 #include <arc/scene/terrain_surface_ir.h>
+#include <arc/scene/terrain_render_regions.h>
 
 #include <array>
 #include <cstdint>
@@ -151,13 +152,21 @@ struct terrain_dirty_region
 };
 
 /** @brief Nonserialized renderer proxy state for one terrain entity. */
-struct terrain_render_proxy
+struct terrain_render_region_proxy
 {
-    /** Generic geometry realized from TerrainSurfaceIR and used by the M1 renderer path. */
+    terrain_region_id id{};
     render::geometry_resource_handle geometry{};
-    /** Per-surface RGBA8 terrain material weights, kept separate from generic mesh vertices. */
     render::texture_handle surface_attribute_texture{};
     geometric::box3f local_bounds{};
+    std::uint64_t geometry_fingerprint{};
+    std::uint64_t attribute_fingerprint{};
+};
+
+/** @brief Nonserialized renderer proxy state for one terrain entity. */
+struct terrain_render_proxy
+{
+    /** Stable independently replaceable world-space render regions. */
+    std::vector<terrain_render_region_proxy> regions;
     std::uint64_t synchronized_revision{};
     render::material_handle material{};
 };

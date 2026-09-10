@@ -548,56 +548,65 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
             const auto surface = make_legacy_terrain_surface_ir(terrain);
             if (!surface || !terrain_proxies->synchronize(guid, *surface, terrain, renderer)) return;
             const auto* proxy = terrain_proxies->find(guid);
-            if (!proxy || !renderer.mesh_alive(proxy->geometry.conventional)) return;
+            if (!proxy || proxy->regions.empty()) return;
 
             const auto world = transform.dirty ? local_matrix(transform) : transform.world;
-            const auto renderer_bounds = transform_bounds(proxy->local_bounds, world);
-            if (renderer.resolved_config().features.virtual_geometry &&
-                renderer.virtual_mesh_alive(proxy->geometry.virtualized))
+            const bool selected = entity_selected(scene, value);
+            bool submitted_terrain = false;
+            for (const auto& region : proxy->regions)
             {
-                const auto* virtual_mesh = renderer.virtual_mesh_data_for(proxy->geometry.virtualized);
-                if (!virtual_mesh) return;
-                ++result.renderable_count;
-                const bool selected = entity_selected(scene, value);
-                if (selected) ++result.selected_count;
-                world_packet.virtual_items.push_back(
-                    {.mesh = proxy->geometry.virtualized,
-                     .material = proxy->material,
-                     .material_attribute_texture = proxy->surface_attribute_texture,
-                     .root_node = virtual_mesh->root_nodes.size() == 1 ? virtual_mesh->root_nodes.front()
-                                                                       : render::invalid_virtual_geometry_index,
-                     .model = world,
-                     .previous_model = world,
-                     .world_bounds = renderer_bounds,
-                     .render_layer_mask = render_layer_mask(scene, value),
-                     .object_id = render::make_render_object_id(value.index, value.generation),
-                     .visible = true,
-                     .selected = selected,
-                     .casts_shadows = terrain.cast_shadows,
-                     .receives_shadows = terrain.receive_shadows,
-                     .mobility = entity_mobility(scene, value),
-                     .shadow_lod_bias = terrain.shadow_lod_bias,
-                     .maximum_shadow_distance = terrain.maximum_shadow_distance,
-                     .geometry_error_scale = 1.0f,
-                     .label = entity_label(scene, value)});
-                ++result.terrain_count;
-                return;
-            }
+                if (!renderer.mesh_alive(region.geometry.conventional)) continue;
+                const auto renderer_bounds = transform_bounds(region.local_bounds, world);
+                const auto instance_id = terrain_render_region_instance_id(region.id);
+                if (renderer.resolved_config().features.virtual_geometry &&
+                    renderer.virtual_mesh_alive(region.geometry.virtualized))
+                {
+                    const auto* virtual_mesh = renderer.virtual_mesh_data_for(region.geometry.virtualized);
+                    if (!virtual_mesh) continue;
+                    ++result.renderable_count;
+                    if (selected) ++result.selected_count;
+                    world_packet.virtual_items.push_back(
+                        {.mesh = region.geometry.virtualized,
+                         .material = proxy->material,
+                         .material_attribute_texture = region.surface_attribute_texture,
+                         .root_node = virtual_mesh->root_nodes.size() == 1 ? virtual_mesh->root_nodes.front()
+                                                                           : render::invalid_virtual_geometry_index,
+                         .model = world,
+                         .previous_model = world,
+                         .world_bounds = renderer_bounds,
+                         .render_layer_mask = render_layer_mask(scene, value),
+                         .instance_id = instance_id,
+                         .object_id = render::make_render_object_id(value.index, value.generation),
+                         .visible = true,
+                         .selected = selected,
+                         .casts_shadows = terrain.cast_shadows,
+                         .receives_shadows = terrain.receive_shadows,
+                         .mobility = entity_mobility(scene, value),
+                         .shadow_lod_bias = terrain.shadow_lod_bias,
+                         .maximum_shadow_distance = terrain.maximum_shadow_distance,
+                         .geometry_error_scale = 1.0f,
+                         .label = entity_label(scene, value)});
+                    submitted_terrain = true;
+                    continue;
+                }
 
-            const auto mesh = select_cooked_lod(proxy->geometry, world_packet.camera, renderer_bounds,
-                                                renderer.resolved_config().geometry_error_threshold, -1, 0.0f);
-            if (!renderer.mesh_alive(mesh)) return;
+                const auto mesh = select_cooked_lod(region.geometry, world_packet.camera, renderer_bounds,
+                                                    renderer.resolved_config().geometry_error_threshold, -1, 0.0f);
+                if (!renderer.mesh_alive(mesh)) continue;
 
-            append_mesh_item(scene, world_packet, result, value, transform, mesh, proxy->material, true, false, {}, 0,
-                             1, math::vector4f::one, terrain.cast_shadows, terrain.receive_shadows,
-                             terrain.shadow_lod_bias, terrain.maximum_shadow_distance);
-            if (!world_packet.items.empty())
-            {
-                auto& item = world_packet.items.back();
-                item.world_bounds = renderer_bounds;
-                item.material_attribute_texture = proxy->surface_attribute_texture;
+                append_mesh_item(scene, world_packet, result, value, transform, mesh, proxy->material, true, false, {},
+                                 0, 1, math::vector4f::one, terrain.cast_shadows, terrain.receive_shadows,
+                                 terrain.shadow_lod_bias, terrain.maximum_shadow_distance);
+                if (!world_packet.items.empty())
+                {
+                    auto& item = world_packet.items.back();
+                    item.world_bounds = renderer_bounds;
+                    item.material_attribute_texture = region.surface_attribute_texture;
+                    item.instance_id = instance_id;
+                }
+                submitted_terrain = true;
             }
-            ++result.terrain_count;
+            if (submitted_terrain) ++result.terrain_count;
         });
     if (terrain_proxies) terrain_proxies->release_missing(active_terrain_guids, renderer);
 

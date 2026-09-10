@@ -140,8 +140,10 @@ std::optional<terrain_triangle_geometry> canonicalize_terrain_surface_geometry(c
     result.positions.reserve(sample_count);
     result.indices.reserve(quad_count * 6u);
 
-    const float half_width = heightfield.width * 0.5f;
-    const float half_depth = heightfield.depth * 0.5f;
+    const float minimum_x = static_cast<float>(surface.local_bounds.min_x);
+    const float minimum_z = static_cast<float>(surface.local_bounds.min_z);
+    const float extent_x = static_cast<float>(surface.local_bounds.max_x - surface.local_bounds.min_x);
+    const float extent_z = static_cast<float>(surface.local_bounds.max_z - surface.local_bounds.min_z);
     const float x_denominator = static_cast<float>(heightfield.sample_width - 1u);
     const float z_denominator = static_cast<float>(heightfield.sample_height - 1u);
 
@@ -149,8 +151,8 @@ std::optional<terrain_triangle_geometry> canonicalize_terrain_surface_geometry(c
         for (std::uint32_t x = 0; x < heightfield.sample_width; ++x)
         {
             const auto index = static_cast<std::size_t>(z) * heightfield.sample_width + x;
-            const float local_x = -half_width + heightfield.width * static_cast<float>(x) / x_denominator;
-            const float local_z = -half_depth + heightfield.depth * static_cast<float>(z) / z_denominator;
+            const float local_x = minimum_x + extent_x * static_cast<float>(x) / x_denominator;
+            const float local_z = minimum_z + extent_z * static_cast<float>(z) / z_denominator;
             result.positions.push_back({local_x, heightfield.heights[index], local_z});
         }
 

@@ -3,6 +3,7 @@
 #include <arc/render/renderer.h>
 #include <arc/scene/terrain_render_attributes.h>
 #include <arc/scene/terrain_render_geometry.h>
+#include <arc/scene/terrain_render_regions.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -14,9 +15,9 @@ namespace arc::scene
 namespace
 {
 
-std::uint32_t terrain_geometry_generation(std::uint64_t revision) noexcept
+std::uint32_t terrain_geometry_generation(std::uint64_t fingerprint) noexcept
 {
-    const auto folded = static_cast<std::uint32_t>(revision) ^ static_cast<std::uint32_t>(revision >> 32u);
+    const auto folded = static_cast<std::uint32_t>(fingerprint) ^ static_cast<std::uint32_t>(fingerprint >> 32u);
     return folded == 0u ? 1u : folded;
 }
 
@@ -28,12 +29,12 @@ geometric::box3f terrain_local_bounds(const terrain_world_bounds& bounds) noexce
                                                static_cast<float>(bounds.max_z)}};
 }
 
-bool geometry_alive(const terrain_render_proxy& proxy, const render::renderer& renderer)
+bool geometry_alive(const terrain_render_region_proxy& proxy, const render::renderer& renderer)
 {
     return proxy.geometry.valid() && renderer.mesh_alive(proxy.geometry.conventional);
 }
 
-bool attributes_alive(const terrain_render_proxy& proxy, const render::renderer& renderer)
+bool attributes_alive(const terrain_render_region_proxy& proxy, const render::renderer& renderer)
 {
     return proxy.surface_attribute_texture.valid() && renderer.texture_alive(proxy.surface_attribute_texture);
 }
@@ -63,31 +64,81 @@ render::texture_handle create_attribute_texture(const terrain_render_attributes&
     return texture;
 }
 
-void destroy_proxy_geometry(terrain_render_proxy& proxy, render::renderer& renderer)
+void destroy_region(terrain_render_region_proxy& proxy, render::renderer& renderer)
 {
     if (proxy.geometry.conventional.valid() || proxy.geometry.virtualized.valid())
         (void)renderer.destroy_geometry_resource(proxy.geometry);
     proxy.geometry = render::geometry_resource_handle{};
-
     if (renderer.texture_alive(proxy.surface_attribute_texture))
         renderer.destroy_texture(proxy.surface_attribute_texture);
     proxy.surface_attribute_texture = {};
 }
 
-bool update_attribute_texture(terrain_render_proxy& proxy, const terrain_render_attributes& attributes,
+void destroy_proxy(terrain_render_proxy& proxy, render::renderer& renderer)
+{
+    for (auto& region : proxy.regions)
+        destroy_region(region, renderer);
+    proxy.regions.clear();
+}
+
+const terrain_render_region_proxy* find_region(const terrain_render_proxy& proxy, terrain_region_id id) noexcept
+{
+    const auto found = std::find_if(proxy.regions.begin(), proxy.regions.end(),
+                                    [id](const terrain_render_region_proxy& value) { return value.id == id; });
+    return found == proxy.regions.end() ? nullptr : &*found;
+}
+
+bool proxy_resources_alive(const terrain_render_proxy& proxy, const render::renderer& renderer)
+{
+    return !proxy.regions.empty() &&
+           std::all_of(proxy.regions.begin(), proxy.regions.end(), [&](const terrain_render_region_proxy& region)
+                       { return geometry_alive(region, renderer) && attributes_alive(region, renderer); });
+}
+
+bool geometry_reused(const std::vector<terrain_render_region_proxy>& regions, render::geometry_resource_handle geometry)
+{
+    return std::any_of(regions.begin(), regions.end(),
+                       [&](const terrain_render_region_proxy& candidate) { return candidate.geometry == geometry; });
+}
+
+bool texture_reused(const std::vector<terrain_render_region_proxy>& regions, render::texture_handle texture)
+{
+    return std::any_of(regions.begin(), regions.end(), [&](const terrain_render_region_proxy& candidate)
+                       { return candidate.surface_attribute_texture == texture; });
+}
+
+void destroy_unreused_old_resources(terrain_render_proxy& previous,
+                                    const std::vector<terrain_render_region_proxy>& replacement,
+                                    render::renderer& renderer)
+{
+    for (auto& region : previous.regions)
+    {
+        if (!geometry_reused(replacement, region.geometry) &&
+            (region.geometry.conventional.valid() || region.geometry.virtualized.valid()))
+            (void)renderer.destroy_geometry_resource(region.geometry);
+        if (!texture_reused(replacement, region.surface_attribute_texture) &&
+            renderer.texture_alive(region.surface_attribute_texture))
+            renderer.destroy_texture(region.surface_attribute_texture);
+        region.geometry = render::geometry_resource_handle{};
+        region.surface_attribute_texture = {};
+    }
+}
+
+void cleanup_staged_resources(const terrain_render_proxy& previous, std::vector<terrain_render_region_proxy>& staged,
                               render::renderer& renderer)
 {
-    if (attributes_alive(proxy, renderer) &&
-        renderer.update_texture(proxy.surface_attribute_texture, make_attribute_texture_data(attributes)))
-        return true;
-
-    auto replacement = create_attribute_texture(attributes, renderer);
-    if (!replacement.valid()) return false;
-
-    if (renderer.texture_alive(proxy.surface_attribute_texture))
-        renderer.destroy_texture(proxy.surface_attribute_texture);
-    proxy.surface_attribute_texture = replacement;
-    return true;
+    for (auto& region : staged)
+    {
+        const bool geometry_owned_by_previous = geometry_reused(previous.regions, region.geometry);
+        const bool attributes_owned_by_previous = texture_reused(previous.regions, region.surface_attribute_texture);
+        if (!geometry_owned_by_previous &&
+            (region.geometry.conventional.valid() || region.geometry.virtualized.valid()))
+            (void)renderer.destroy_geometry_resource(region.geometry);
+        if (!attributes_owned_by_previous && renderer.texture_alive(region.surface_attribute_texture))
+            renderer.destroy_texture(region.surface_attribute_texture);
+        region.geometry = render::geometry_resource_handle{};
+        region.surface_attribute_texture = {};
+    }
 }
 
 } // namespace
@@ -96,56 +147,93 @@ bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrai
                                              const terrain_component& terrain, render::renderer& renderer,
                                              const terrain_dirty_region* dirty_region)
 {
+    (void)dirty_region;
     if (!guid.valid() || !validate_terrain_surface_ir(surface)) return false;
 
     auto& proxy = proxies_[guid];
-    const bool has_geometry = geometry_alive(proxy, renderer);
-    const bool has_attributes = attributes_alive(proxy, renderer);
-    const bool same_revision = proxy.synchronized_revision == surface.source_revision;
-
-    if (has_geometry && has_attributes && same_revision)
+    if (proxy.synchronized_revision == surface.source_revision && proxy_resources_alive(proxy, renderer))
     {
-        proxy.local_bounds = terrain_local_bounds(surface.local_bounds);
         proxy.material = terrain.material;
         return true;
     }
 
-    const bool weights_only = dirty_region != nullptr && dirty_region->valid && dirty_region->weights_changed &&
-                              !dirty_region->heights_changed && has_geometry;
-    if (weights_only || (has_geometry && same_revision && !has_attributes))
-    {
-        auto attributes = build_terrain_render_attributes(surface);
-        if (!attributes || !update_attribute_texture(proxy, *attributes, renderer)) return false;
+    auto source_regions = build_terrain_render_regions(surface);
+    if (source_regions.empty()) return false;
 
-        proxy.local_bounds = terrain_local_bounds(surface.local_bounds);
-        proxy.synchronized_revision = surface.source_revision;
-        proxy.material = terrain.material;
-        return true;
+    std::vector<terrain_render_region_proxy> staged;
+    staged.reserve(source_regions.size());
+    for (auto& source_region : source_regions)
+    {
+        const auto* previous = find_region(proxy, source_region.id);
+        terrain_render_region_proxy next;
+        next.id = source_region.id;
+        next.local_bounds = terrain_local_bounds(source_region.surface.local_bounds);
+        next.geometry_fingerprint = source_region.geometry_fingerprint;
+        next.attribute_fingerprint = source_region.attribute_fingerprint;
+
+        if (previous && previous->geometry_fingerprint == source_region.geometry_fingerprint &&
+            geometry_alive(*previous, renderer))
+        {
+            next.geometry = previous->geometry;
+        }
+        else
+        {
+            const auto view = source_region.surface.view();
+            auto artifact = source_region.vertex_normals.empty()
+                                ? build_terrain_render_geometry(view)
+                                : build_terrain_render_region_geometry(view, source_region.vertex_normals);
+            if (!artifact)
+            {
+                cleanup_staged_resources(proxy, staged, renderer);
+                return false;
+            }
+            next.geometry = renderer.create_geometry_resource(
+                std::move(*artifact), terrain_geometry_generation(source_region.geometry_fingerprint));
+            if (!next.geometry.valid() || !renderer.mesh_alive(next.geometry.conventional))
+            {
+                if (next.geometry.conventional.valid() || next.geometry.virtualized.valid())
+                    (void)renderer.destroy_geometry_resource(next.geometry);
+                cleanup_staged_resources(proxy, staged, renderer);
+                return false;
+            }
+        }
+
+        const auto view = source_region.surface.view();
+        auto attributes = build_terrain_render_attributes(view);
+        if (!attributes)
+        {
+            if (!previous || next.geometry != previous->geometry)
+                (void)renderer.destroy_geometry_resource(next.geometry);
+            cleanup_staged_resources(proxy, staged, renderer);
+            return false;
+        }
+
+        if (previous && previous->attribute_fingerprint == source_region.attribute_fingerprint &&
+            attributes_alive(*previous, renderer))
+        {
+            next.surface_attribute_texture = previous->surface_attribute_texture;
+        }
+        else if (previous && attributes_alive(*previous, renderer) &&
+                 renderer.update_texture(previous->surface_attribute_texture, make_attribute_texture_data(*attributes)))
+        {
+            next.surface_attribute_texture = previous->surface_attribute_texture;
+        }
+        else
+        {
+            next.surface_attribute_texture = create_attribute_texture(*attributes, renderer);
+            if (!next.surface_attribute_texture.valid())
+            {
+                if (!previous || next.geometry != previous->geometry)
+                    (void)renderer.destroy_geometry_resource(next.geometry);
+                cleanup_staged_resources(proxy, staged, renderer);
+                return false;
+            }
+        }
+        staged.push_back(next);
     }
 
-    auto artifact = build_terrain_render_geometry(surface);
-    auto attributes = build_terrain_render_attributes(surface);
-    if (!artifact || !attributes) return false;
-
-    auto replacement =
-        renderer.create_geometry_resource(std::move(*artifact), terrain_geometry_generation(surface.source_revision));
-    if (!replacement.valid() || !renderer.mesh_alive(replacement.conventional))
-    {
-        (void)renderer.destroy_geometry_resource(replacement);
-        return false;
-    }
-
-    auto replacement_attributes = create_attribute_texture(*attributes, renderer);
-    if (!replacement_attributes.valid())
-    {
-        (void)renderer.destroy_geometry_resource(replacement);
-        return false;
-    }
-
-    destroy_proxy_geometry(proxy, renderer);
-    proxy.geometry = replacement;
-    proxy.surface_attribute_texture = replacement_attributes;
-    proxy.local_bounds = terrain_local_bounds(surface.local_bounds);
+    destroy_unreused_old_resources(proxy, staged, renderer);
+    proxy.regions = std::move(staged);
     proxy.synchronized_revision = surface.source_revision;
     proxy.material = terrain.material;
     return true;
@@ -162,7 +250,7 @@ bool terrain_render_proxy_cache::erase(ecs::entity_guid guid, render::renderer& 
 {
     const auto found = proxies_.find(guid);
     if (found == proxies_.end()) return false;
-    destroy_proxy_geometry(found->second, renderer);
+    destroy_proxy(found->second, renderer);
     proxies_.erase(found);
     return true;
 }
@@ -176,7 +264,7 @@ void terrain_render_proxy_cache::release_missing(std::span<const ecs::entity_gui
             ++found;
             continue;
         }
-        destroy_proxy_geometry(found->second, renderer);
+        destroy_proxy(found->second, renderer);
         found = proxies_.erase(found);
     }
 }
@@ -186,7 +274,7 @@ void terrain_render_proxy_cache::clear(render::renderer& renderer)
     for (auto& [guid, proxy] : proxies_)
     {
         (void)guid;
-        destroy_proxy_geometry(proxy, renderer);
+        destroy_proxy(proxy, renderer);
     }
     proxies_.clear();
 }

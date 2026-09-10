@@ -86,23 +86,23 @@ TEST_CASE("terrain geometry proxy realizes generic resources and rebuilds on con
     REQUIRE(cache.synchronize(guid, terrain, renderer));
     const auto* first = cache.find(guid);
     REQUIRE(first != nullptr);
-    REQUIRE(first->geometry.valid());
-    REQUIRE(renderer.mesh_alive(first->geometry.conventional));
-    REQUIRE(first->geometry.virtualized.valid());
-    REQUIRE(renderer.virtual_mesh_alive(first->geometry.virtualized));
-    REQUIRE(first->surface_attribute_texture.valid());
-    REQUIRE(renderer.texture_alive(first->surface_attribute_texture));
+    REQUIRE(first->regions.front().geometry.valid());
+    REQUIRE(renderer.mesh_alive(first->regions.front().geometry.conventional));
+    REQUIRE(first->regions.front().geometry.virtualized.valid());
+    REQUIRE(renderer.virtual_mesh_alive(first->regions.front().geometry.virtualized));
+    REQUIRE(first->regions.front().surface_attribute_texture.valid());
+    REQUIRE(renderer.texture_alive(first->regions.front().surface_attribute_texture));
     CHECK(first->synchronized_revision == terrain.content_revision);
 
-    const auto original_geometry = first->geometry;
-    const auto original_attributes = first->surface_attribute_texture;
+    const auto original_geometry = first->regions.front().geometry;
+    const auto original_attributes = first->regions.front().surface_attribute_texture;
     terrain.material = {.index = 17u, .generation = 3u};
     REQUIRE(cache.synchronize(guid, terrain, renderer));
     const auto* material_only = cache.find(guid);
     REQUIRE(material_only != nullptr);
-    CHECK(material_only->geometry.conventional == original_geometry.conventional);
-    CHECK(material_only->geometry.virtualized == original_geometry.virtualized);
-    CHECK(material_only->surface_attribute_texture == original_attributes);
+    CHECK(material_only->regions.front().geometry.conventional == original_geometry.conventional);
+    CHECK(material_only->regions.front().geometry.virtualized == original_geometry.virtualized);
+    CHECK(material_only->regions.front().surface_attribute_texture == original_attributes);
     CHECK(material_only->material == terrain.material);
 
     terrain.layer_weights[4] = {0u, 255u, 0u, 0u};
@@ -112,10 +112,10 @@ TEST_CASE("terrain geometry proxy realizes generic resources and rebuilds on con
     REQUIRE(cache.synchronize(guid, terrain, renderer, &paint_dirty));
     const auto* repainted = cache.find(guid);
     REQUIRE(repainted != nullptr);
-    CHECK(repainted->geometry.conventional == original_geometry.conventional);
-    CHECK(repainted->geometry.virtualized == original_geometry.virtualized);
-    CHECK(repainted->surface_attribute_texture == original_attributes);
-    REQUIRE(renderer.texture_alive(repainted->surface_attribute_texture));
+    CHECK(repainted->regions.front().geometry.conventional == original_geometry.conventional);
+    CHECK(repainted->regions.front().geometry.virtualized == original_geometry.virtualized);
+    CHECK(repainted->regions.front().surface_attribute_texture == original_attributes);
+    REQUIRE(renderer.texture_alive(repainted->regions.front().surface_attribute_texture));
     CHECK(repainted->synchronized_revision == terrain.content_revision);
 
     terrain.heights[4] += 2.0f;
@@ -125,14 +125,14 @@ TEST_CASE("terrain geometry proxy realizes generic resources and rebuilds on con
     REQUIRE(cache.synchronize(guid, terrain, renderer, &dirty));
     const auto* rebuilt = cache.find(guid);
     REQUIRE(rebuilt != nullptr);
-    REQUIRE(rebuilt->geometry.valid());
-    CHECK(rebuilt->geometry.conventional != original_geometry.conventional);
-    CHECK(rebuilt->geometry.virtualized != original_geometry.virtualized);
+    REQUIRE(rebuilt->regions.front().geometry.valid());
+    CHECK(rebuilt->regions.front().geometry.conventional != original_geometry.conventional);
+    CHECK(rebuilt->regions.front().geometry.virtualized != original_geometry.virtualized);
     REQUIRE_FALSE(renderer.mesh_alive(original_geometry.conventional));
     REQUIRE_FALSE(renderer.virtual_mesh_alive(original_geometry.virtualized));
     CHECK(rebuilt->synchronized_revision == terrain.content_revision);
 
-    const auto rebuilt_geometry = rebuilt->geometry;
+    const auto rebuilt_geometry = rebuilt->regions.front().geometry;
     REQUIRE(cache.erase(guid, renderer));
     REQUIRE(cache.find(guid) == nullptr);
     REQUIRE_FALSE(renderer.mesh_alive(rebuilt_geometry.conventional));
@@ -173,9 +173,9 @@ TEST_CASE("render scene submits terrain as a conventional mesh item without dedi
 
     const auto* proxy = terrain_proxies.find(guid);
     REQUIRE(proxy != nullptr);
-    REQUIRE(proxy->geometry.valid());
-    REQUIRE(proxy->surface_attribute_texture.valid());
-    REQUIRE(renderer.texture_alive(proxy->surface_attribute_texture));
+    REQUIRE(proxy->regions.front().geometry.valid());
+    REQUIRE(proxy->regions.front().surface_attribute_texture.valid());
+    REQUIRE(renderer.texture_alive(proxy->regions.front().surface_attribute_texture));
 
     const auto frame = renderer.frame_queue().commit(1u);
     const auto world_event = std::find_if(frame.events.begin(), frame.events.end(), [](const auto& event)
@@ -188,14 +188,15 @@ TEST_CASE("render scene submits terrain as a conventional mesh item without dedi
     const auto& item = world.items.front();
     REQUIRE(renderer.mesh_alive(item.mesh));
     CHECK(item.material == terrain.material);
-    CHECK(item.material_attribute_texture == proxy->surface_attribute_texture);
+    CHECK(item.material_attribute_texture == proxy->regions.front().surface_attribute_texture);
     REQUIRE(renderer.texture_alive(item.material_attribute_texture));
     CHECK(item.selected);
     CHECK_FALSE(item.casts_shadows);
     CHECK(item.receives_shadows);
 
-    const auto lod_end = proxy->geometry.conventional_lods.begin() + proxy->geometry.conventional_lod_count;
-    CHECK(std::find(proxy->geometry.conventional_lods.begin(), lod_end, item.mesh) != lod_end);
+    const auto lod_end = proxy->regions.front().geometry.conventional_lods.begin() +
+                         proxy->regions.front().geometry.conventional_lod_count;
+    CHECK(std::find(proxy->regions.front().geometry.conventional_lods.begin(), lod_end, item.mesh) != lod_end);
 }
 
 TEST_CASE("render scene submits terrain through generic virtual geometry when available")
@@ -234,8 +235,8 @@ TEST_CASE("render scene submits terrain through generic virtual geometry when av
 
     const auto* proxy = terrain_proxies.find(guid);
     REQUIRE(proxy != nullptr);
-    REQUIRE(renderer.virtual_mesh_alive(proxy->geometry.virtualized));
-    REQUIRE(renderer.texture_alive(proxy->surface_attribute_texture));
+    REQUIRE(renderer.virtual_mesh_alive(proxy->regions.front().geometry.virtualized));
+    REQUIRE(renderer.texture_alive(proxy->regions.front().surface_attribute_texture));
 
     const auto frame = renderer.frame_queue().commit(2u);
     const auto world_event = std::find_if(frame.events.begin(), frame.events.end(), [](const auto& event)
@@ -246,9 +247,9 @@ TEST_CASE("render scene submits terrain through generic virtual geometry when av
     REQUIRE(world.virtual_items.size() == 1u);
 
     const auto& item = world.virtual_items.front();
-    CHECK(item.mesh == proxy->geometry.virtualized);
+    CHECK(item.mesh == proxy->regions.front().geometry.virtualized);
     CHECK(item.material == terrain.material);
-    CHECK(item.material_attribute_texture == proxy->surface_attribute_texture);
+    CHECK(item.material_attribute_texture == proxy->regions.front().surface_attribute_texture);
     CHECK(item.selected);
     CHECK(item.casts_shadows);
     CHECK_FALSE(item.receives_shadows);

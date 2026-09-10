@@ -81,6 +81,8 @@ struct render_item
     geometric::box3f world_bounds{};
     std::uint32_t render_layer_mask{1u};
     std::uint64_t sort_key{};
+    /** Stable per-object render-instance discriminator. Zero identifies the primary instance. */
+    std::uint64_t instance_id{};
     render_object_id object_id{};
     buffer_handle skin_matrices{};
     std::uint32_t skin_joint_count{};
@@ -123,6 +125,8 @@ struct virtual_render_item
     geometric::box3f world_bounds{};
     std::uint32_t render_layer_mask{1u};
     std::uint64_t sort_key{};
+    /** Stable per-object render-instance discriminator. Zero identifies the primary instance. */
+    std::uint64_t instance_id{};
     render_object_id object_id{};
     bool visible{true};
     bool selected{};

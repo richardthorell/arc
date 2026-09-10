@@ -4,6 +4,7 @@
 #include <arc/scene/terrain_surface_ir.h>
 
 #include <optional>
+#include <span>
 
 namespace arc::scene
 {
@@ -21,5 +22,10 @@ namespace arc::scene
 [[nodiscard]] std::optional<render::virtual_mesh_data>
 build_terrain_render_geometry(const terrain_surface_ir& surface,
                               const render::virtual_mesh_build_options& options = {});
+
+/** Compile one render region using normals evaluated from its complete source surface. */
+[[nodiscard]] std::optional<render::virtual_mesh_data>
+build_terrain_render_region_geometry(const terrain_surface_ir& surface, std::span<const math::vector3f> vertex_normals,
+                                     const render::virtual_mesh_build_options& options = {});
 
 } // namespace arc::scene

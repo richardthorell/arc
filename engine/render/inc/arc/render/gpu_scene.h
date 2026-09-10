@@ -197,6 +197,7 @@ private:
         render_object_id object_id{};
         gpu_scene_geometry_kind geometry_kind{gpu_scene_geometry_kind::mesh};
         std::uint32_t submesh_or_cluster{};
+        std::uint64_t instance_id{};
 
         friend bool operator==(const instance_key&, const instance_key&) noexcept = default;
     };
