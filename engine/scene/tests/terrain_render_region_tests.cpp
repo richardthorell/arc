@@ -12,8 +12,8 @@ namespace
 
 arc::scene::terrain_surface_ir make_region_test_surface(std::uint64_t revision = 1u)
 {
-    constexpr std::uint32_t sample_width = 5u;
-    constexpr std::uint32_t sample_height = 5u;
+    constexpr std::uint32_t sample_width = 9u;
+    constexpr std::uint32_t sample_height = 9u;
     static std::vector<float> heights(sample_width * sample_height);
     static std::vector<std::array<std::uint8_t, 4>> weights(sample_width * sample_height,
                                                             std::array<std::uint8_t, 4>{255u, 0u, 0u, 0u});
@@ -23,7 +23,7 @@ arc::scene::terrain_surface_ir make_region_test_surface(std::uint64_t revision =
 
     arc::scene::terrain_surface_ir surface;
     surface.source_revision = revision;
-    surface.local_bounds = {-256.0, 0.0, -256.0, 256.0, 2.0, 256.0};
+    surface.local_bounds = {-256.0, 0.0, -256.0, 256.0, 4.0, 256.0};
     surface.geometry = arc::scene::terrain_surface_heightfield_ir{
         .sample_width = sample_width,
         .sample_height = sample_height,
@@ -37,15 +37,17 @@ arc::scene::terrain_surface_ir make_region_test_surface(std::uint64_t revision =
 
 arc::scene::terrain_component make_region_test_terrain()
 {
+    constexpr std::uint32_t sample_width = 9u;
+    constexpr std::uint32_t sample_height = 9u;
     arc::scene::terrain_component terrain;
     terrain.size = 512.0f;
-    terrain.subdivisions = 4u;
+    terrain.subdivisions = 8u;
     terrain.content_revision = 1u;
-    terrain.heights.resize(25u);
-    terrain.layer_weights.assign(25u, std::array<std::uint8_t, 4>{255u, 0u, 0u, 0u});
-    for (std::uint32_t z = 0; z < 5u; ++z)
-        for (std::uint32_t x = 0; x < 5u; ++x)
-            terrain.heights[static_cast<std::size_t>(z) * 5u + x] = static_cast<float>(x + z) * 0.25f;
+    terrain.heights.resize(sample_width * sample_height);
+    terrain.layer_weights.assign(sample_width * sample_height, std::array<std::uint8_t, 4>{255u, 0u, 0u, 0u});
+    for (std::uint32_t z = 0; z < sample_height; ++z)
+        for (std::uint32_t x = 0; x < sample_width; ++x)
+            terrain.heights[static_cast<std::size_t>(z) * sample_width + x] = static_cast<float>(x + z) * 0.25f;
     return terrain;
 }
 
@@ -70,17 +72,17 @@ TEST_CASE("heightfield render partition is sample aligned and seam compatible")
 
     const auto left_width = std::get<arc::scene::terrain_surface_heightfield_ir>(left.geometry).sample_width;
     const auto right_width = std::get<arc::scene::terrain_surface_heightfield_ir>(right.geometry).sample_width;
-    REQUIRE(left_width == 3u);
-    REQUIRE(right_width == 3u);
-    for (std::uint32_t z = 0; z < 3u; ++z)
+    REQUIRE(left_width == 5u);
+    REQUIRE(right_width == 5u);
+    for (std::uint32_t z = 0; z < 5u; ++z)
     {
-        const auto& left_edge = left_geometry->positions[static_cast<std::size_t>(z) * left_width + 2u];
+        const auto& left_edge = left_geometry->positions[static_cast<std::size_t>(z) * left_width + 4u];
         const auto& right_edge = right_geometry->positions[static_cast<std::size_t>(z) * right_width];
         CHECK(left_edge[0] == Catch::Approx(right_edge[0]));
         CHECK(left_edge[1] == Catch::Approx(right_edge[1]));
         CHECK(left_edge[2] == Catch::Approx(right_edge[2]));
 
-        const auto& left_normal = regions[0].vertex_normals[static_cast<std::size_t>(z) * left_width + 2u];
+        const auto& left_normal = regions[0].vertex_normals[static_cast<std::size_t>(z) * left_width + 4u];
         const auto& right_normal = regions[1].vertex_normals[static_cast<std::size_t>(z) * right_width];
         CHECK(left_normal[0] == Catch::Approx(right_normal[0]));
         CHECK(left_normal[1] == Catch::Approx(right_normal[1]));
@@ -104,7 +106,8 @@ TEST_CASE("terrain proxy replaces only the region whose geometry changed")
     const auto region2 = initial->regions[2].geometry;
     const auto region3 = initial->regions[3].geometry;
 
-    terrain.heights[6u] += 3.0f;
+    constexpr std::size_t interior_sample = 10u; // (1,1), outside neighboring regions' normal dependency halo.
+    terrain.heights[interior_sample] += 3.0f;
     ++terrain.content_revision;
     const arc::scene::terrain_dirty_region dirty{
         .min_x = 1u, .min_z = 1u, .max_x = 1u, .max_z = 1u, .valid = true, .heights_changed = true};
@@ -137,7 +140,8 @@ TEST_CASE("terrain paint changes attributes without replacing region geometry")
     const auto geometry0 = initial->regions[0].geometry;
     const auto attribute_fingerprint = initial->regions[0].attribute_fingerprint;
 
-    terrain.layer_weights[6u] = {0u, 255u, 0u, 0u};
+    constexpr std::size_t interior_sample = 10u;
+    terrain.layer_weights[interior_sample] = {0u, 255u, 0u, 0u};
     ++terrain.content_revision;
     const arc::scene::terrain_dirty_region dirty{
         .min_x = 1u, .min_z = 1u, .max_x = 1u, .max_z = 1u, .valid = true, .weights_changed = true};
