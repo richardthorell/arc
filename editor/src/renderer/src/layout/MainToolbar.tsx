@@ -27,6 +27,8 @@ import {
 } from '../ui';
 import { PlatformBrandIcon } from './PlatformBrandIcon';
 
+import './MainToolbar.css';
+
 export type EditorTargetPlatform =
   'windows' | 'linux' | 'macos' | 'ios' | 'android' | 'xbox' | 'playstation' | 'switch';
 export type ToolbarBuildAction = 'build' | 'rebuild' | 'configure' | 'clean';
