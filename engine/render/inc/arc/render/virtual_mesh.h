@@ -219,7 +219,12 @@ struct virtual_mesh_data
  */
 virtual_mesh_data build_virtual_mesh(const mesh_data& source, const virtual_mesh_build_options& options = {});
 
-/** @brief Decode one independently compressed page into caller-owned storage. */
+/** @brief Decode one independently compressed page from an external range into caller-owned storage. */
+[[nodiscard]] bool decode_virtual_geometry_page(const virtual_geometry_page& page,
+                                                std::span<const std::byte> compressed_bytes,
+                                                std::vector<std::byte>& output);
+
+/** @brief Decode one independently compressed page from the mesh's retained page payload. */
 [[nodiscard]] bool decode_virtual_geometry_page(const virtual_mesh_data& mesh, std::uint32_t page_index,
                                                 std::vector<std::byte>& output);
 
