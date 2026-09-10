@@ -126,6 +126,7 @@ struct virtual_geometry_streaming_controller::implementation
     struct pending_read
     {
         virtual_geometry_page_load load;
+        std::uint64_t reserved_bytes{};
         jobs::job_future<io::file_result<io::file_buffer>> future;
     };
 
@@ -139,21 +140,43 @@ struct virtual_geometry_streaming_controller::implementation
     struct pending_decode
     {
         virtual_geometry_page_load load;
+        std::uint64_t reserved_bytes{};
         jobs::job_future<decode_result> future;
     };
 
     renderer* target{};
     virtual_geometry_page_source* source{};
     jobs::job_system* jobs{};
-    std::uint32_t maximum_in_flight{2048};
+    virtual_geometry_streaming_config config{};
     std::vector<virtual_geometry_page_load> queued;
     std::vector<pending_read> reads;
     std::vector<pending_decode> decodes;
+    std::uint64_t in_flight_bytes{};
     virtual_geometry_streaming_io_snapshot statistics;
 
     [[nodiscard]] bool current(const virtual_geometry_page_load& load) const noexcept
     {
         return target->virtual_mesh_content_generation(load.resource) == load.resource_generation;
+    }
+
+    [[nodiscard]] std::uint64_t reservation(const virtual_geometry_page_load& load) const noexcept
+    {
+        const auto* geometry = target->virtual_mesh_data_for(load.resource);
+        if (!geometry || load.page_index >= geometry->pages.size()) return load.byte_size;
+        const auto decoded = static_cast<std::uint64_t>(geometry->pages[load.page_index].uncompressed_size);
+        if (decoded > std::numeric_limits<std::uint64_t>::max() - load.byte_size)
+            return std::numeric_limits<std::uint64_t>::max();
+        return decoded + load.byte_size;
+    }
+
+    [[nodiscard]] std::size_t in_flight_count() const noexcept
+    {
+        return reads.size() + decodes.size();
+    }
+
+    void release(std::uint64_t bytes) noexcept
+    {
+        in_flight_bytes -= std::min(in_flight_bytes, bytes);
     }
 
     void fail_or_discard(const virtual_geometry_page_load& load)
@@ -171,13 +194,23 @@ struct virtual_geometry_streaming_controller::implementation
 virtual_geometry_streaming_controller::virtual_geometry_streaming_controller(renderer& renderer,
                                                                              virtual_geometry_page_source& source,
                                                                              jobs::job_system& jobs,
-                                                                             std::uint32_t maximum_in_flight)
+                                                                             virtual_geometry_streaming_config config)
     : implementation_(std::make_unique<implementation>())
 {
     implementation_->target = &renderer;
     implementation_->source = &source;
     implementation_->jobs = &jobs;
-    implementation_->maximum_in_flight = std::max(1u, maximum_in_flight);
+    configure(config);
+}
+
+virtual_geometry_streaming_controller::virtual_geometry_streaming_controller(renderer& renderer,
+                                                                             virtual_geometry_page_source& source,
+                                                                             jobs::job_system& jobs,
+                                                                             std::uint32_t maximum_in_flight)
+    : virtual_geometry_streaming_controller(
+          renderer, source, jobs,
+          virtual_geometry_streaming_config{.maximum_in_flight_requests = maximum_in_flight})
+{
 }
 
 virtual_geometry_streaming_controller::~virtual_geometry_streaming_controller() = default;
@@ -185,6 +218,15 @@ virtual_geometry_streaming_controller::virtual_geometry_streaming_controller(
     virtual_geometry_streaming_controller&&) noexcept = default;
 virtual_geometry_streaming_controller&
 virtual_geometry_streaming_controller::operator=(virtual_geometry_streaming_controller&&) noexcept = default;
+
+void virtual_geometry_streaming_controller::configure(virtual_geometry_streaming_config config) noexcept
+{
+    config.maximum_in_flight_requests = std::max(1u, config.maximum_in_flight_requests);
+    config.maximum_in_flight_bytes = std::max<std::uint64_t>(1u, config.maximum_in_flight_bytes);
+    implementation_->config = config;
+    implementation_->statistics.maximum_in_flight_requests = config.maximum_in_flight_requests;
+    implementation_->statistics.maximum_in_flight_bytes = config.maximum_in_flight_bytes;
+}
 
 void virtual_geometry_streaming_controller::update(const jobs::cancellation_token& cancellation)
 {
@@ -223,6 +265,7 @@ void virtual_geometry_streaming_controller::update(const jobs::cancellation_toke
             else
                 state.fail_or_discard(pending.load);
         }
+        state.release(pending.reserved_bytes);
         state.decodes[index] = std::move(state.decodes.back());
         state.decodes.pop_back();
     }
@@ -236,6 +279,7 @@ void virtual_geometry_streaming_controller::update(const jobs::cancellation_toke
             continue;
         }
         auto result = pending.future.get();
+        bool transferred_reservation{};
         if (!state.current(pending.load))
         {
             ++state.statistics.stale_completions;
@@ -271,33 +315,75 @@ void virtual_geometry_streaming_controller::update(const jobs::cancellation_toke
                                                       decode_virtual_geometry_page(page, compressed, decoded.bytes);
                                                   return decoded;
                                               });
-                state.decodes.push_back({.load = pending.load, .future = std::move(future)});
+                state.decodes.push_back(
+                    {.load = pending.load, .reserved_bytes = pending.reserved_bytes, .future = std::move(future)});
+                transferred_reservation = true;
             }
         }
+        if (!transferred_reservation) state.release(pending.reserved_bytes);
         state.reads[index] = std::move(state.reads.back());
         state.reads.pop_back();
     }
 
-    const auto in_flight = state.reads.size() + state.decodes.size();
-    if (!cancellation.stop_requested() && state.queued.empty() && in_flight < state.maximum_in_flight)
+    for (std::size_t index = 0; index < state.queued.size();)
+    {
+        if (state.current(state.queued[index]))
+        {
+            ++index;
+            continue;
+        }
+        ++state.statistics.stale_completions;
+        state.queued.erase(state.queued.begin() + static_cast<std::ptrdiff_t>(index));
+    }
+
+    if (!cancellation.stop_requested() && state.queued.empty() &&
+        state.in_flight_count() < state.config.maximum_in_flight_requests)
         state.queued = state.target->take_virtual_geometry_page_loads();
 
     while (!cancellation.stop_requested() && !state.queued.empty() &&
-           state.reads.size() + state.decodes.size() < state.maximum_in_flight)
+           state.in_flight_count() < state.config.maximum_in_flight_requests)
     {
-        auto load = state.queued.front();
-        state.queued.erase(state.queued.begin());
+        std::size_t selected = state.queued.size();
+        std::uint64_t selected_reservation{};
+        for (std::size_t index = 0; index < state.queued.size(); ++index)
+        {
+            const auto reservation = state.reservation(state.queued[index]);
+            if (reservation <= state.config.maximum_in_flight_bytes -
+                                   std::min(state.config.maximum_in_flight_bytes, state.in_flight_bytes))
+            {
+                selected = index;
+                selected_reservation = reservation;
+                break;
+            }
+        }
+
+        if (selected == state.queued.size())
+        {
+            if (state.in_flight_count() != 0u) break;
+            selected = 0u;
+            selected_reservation = state.reservation(state.queued.front());
+            ++state.statistics.oversized_pages;
+        }
+
+        auto load = state.queued[selected];
+        state.queued.erase(state.queued.begin() + static_cast<std::ptrdiff_t>(selected));
         if (!state.current(load))
         {
             ++state.statistics.stale_completions;
             continue;
         }
         auto future = state.source->read_page(load, cancellation);
-        state.reads.push_back({.load = load, .future = std::move(future)});
+        state.in_flight_bytes += selected_reservation;
+        state.statistics.peak_in_flight_bytes = std::max(state.statistics.peak_in_flight_bytes, state.in_flight_bytes);
+        state.reads.push_back(
+            {.load = load, .reserved_bytes = selected_reservation, .future = std::move(future)});
     }
 
     state.statistics.in_flight_reads = static_cast<std::uint32_t>(state.reads.size());
     state.statistics.in_flight_decodes = static_cast<std::uint32_t>(state.decodes.size());
+    state.statistics.queued_pages = static_cast<std::uint32_t>(state.queued.size());
+    state.statistics.in_flight_bytes = state.in_flight_bytes;
+    state.statistics.deferred_pages = static_cast<std::uint32_t>(state.queued.size());
 }
 
 virtual_geometry_streaming_io_snapshot virtual_geometry_streaming_controller::snapshot() const noexcept
