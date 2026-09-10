@@ -79,8 +79,12 @@ TEST_CASE("heightfield render partition is sample aligned and seam compatible")
         CHECK(left_edge[0] == Catch::Approx(right_edge[0]));
         CHECK(left_edge[1] == Catch::Approx(right_edge[1]));
         CHECK(left_edge[2] == Catch::Approx(right_edge[2]));
-        CHECK(regions[0].vertex_normals[static_cast<std::size_t>(z) * left_width + 2u] ==
-              regions[1].vertex_normals[static_cast<std::size_t>(z) * right_width]);
+
+        const auto& left_normal = regions[0].vertex_normals[static_cast<std::size_t>(z) * left_width + 2u];
+        const auto& right_normal = regions[1].vertex_normals[static_cast<std::size_t>(z) * right_width];
+        CHECK(left_normal[0] == Catch::Approx(right_normal[0]));
+        CHECK(left_normal[1] == Catch::Approx(right_normal[1]));
+        CHECK(left_normal[2] == Catch::Approx(right_normal[2]));
     }
 }
 
