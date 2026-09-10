@@ -63,9 +63,9 @@ const coordinateSpaceOptions: ReadonlyArray<UiDropdownOption<ToolbarCoordinateSp
   { value: 'local', label: 'Local', icon: <Box size={12} /> },
 ];
 
-const translationSnapOptions: ReadonlyArray<UiDropdownOption<string>> = [
-  0.01, 0.05, 0.1, 0.25, 0.5, 1, 5, 10,
-].map((value) => ({ value: String(value), label: String(value) }));
+const translationSnapOptions: ReadonlyArray<UiDropdownOption<string>> = [0.01, 0.05, 0.1, 0.25, 0.5, 1, 5, 10].map(
+  (value) => ({ value: String(value), label: String(value) }),
+);
 
 const rotationSnapOptions: ReadonlyArray<UiDropdownOption<string>> = [1, 5, 10, 15, 30, 45, 90].map((value) => ({
   value: String(value),
@@ -142,7 +142,9 @@ function ToolbarSnapMenu({
             variant="ghost"
           >
             <span>Enable snapping</span>
-            <span className="toolbar-snap-check" aria-hidden="true">{snapping ? <Check size={13} /> : null}</span>
+            <span className="toolbar-snap-check" aria-hidden="true">
+              {snapping ? <Check size={13} /> : null}
+            </span>
           </UiButton>
           <div className="toolbar-snap-popup-separator" />
           <div className="toolbar-snap-row">
