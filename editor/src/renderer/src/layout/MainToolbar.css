@@ -61,12 +61,12 @@
 }
 
 .toolbar-snap-trigger.ui-button {
-  width: 82px;
-  min-width: 82px;
+  width: 78px;
+  min-width: 78px;
   height: var(--arc-control-height);
   min-height: var(--arc-control-height);
   max-height: var(--arc-control-height);
-  gap: 6px;
+  gap: 5px;
   justify-content: center;
 }
 
