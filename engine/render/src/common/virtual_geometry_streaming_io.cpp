@@ -139,7 +139,7 @@ struct virtual_geometry_streaming_controller::implementation
     };
 
     renderer* target{};
-    virtual_geometry_artifact_source* source{};
+    virtual_geometry_page_source* source{};
     jobs::job_system* jobs{};
     std::uint32_t maximum_in_flight{2048};
     std::vector<virtual_geometry_page_load> queued;
@@ -165,7 +165,7 @@ struct virtual_geometry_streaming_controller::implementation
 };
 
 virtual_geometry_streaming_controller::virtual_geometry_streaming_controller(renderer& renderer,
-                                                                             virtual_geometry_artifact_source& source,
+                                                                             virtual_geometry_page_source& source,
                                                                              jobs::job_system& jobs,
                                                                              std::uint32_t maximum_in_flight)
     : implementation_(std::make_unique<implementation>())
