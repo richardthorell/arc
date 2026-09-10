@@ -79,8 +79,8 @@ struct geometry_resource_handle
         return conventional;
     }
 
-    friend constexpr bool operator==(const geometry_resource_handle&, const geometry_resource_handle&) noexcept =
-        default;
+    friend constexpr bool operator==(const geometry_resource_handle&,
+                                     const geometry_resource_handle&) noexcept = default;
 
     /** @brief Select the coarsest valid cooked LOD whose object-space error remains acceptable. */
     [[nodiscard]] constexpr mesh_handle select_conventional_lod(float maximum_object_space_error) const noexcept
