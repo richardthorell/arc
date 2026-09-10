@@ -1,5 +1,6 @@
 #include <arc/assets/cook.h>
 #include <arc/assets/package_artifact_reader.h>
+#include <arc/assets/terrain_types.h>
 
 #include <catch2/catch_test_macros.hpp>
 
