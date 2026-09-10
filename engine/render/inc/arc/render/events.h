@@ -43,10 +43,6 @@ enum class render_event_type : std::uint8_t
     virtual_mesh_destroy,
     virtual_geometry_page_upload,
     virtual_geometry_page_evict,
-    terrain_upload,
-    terrain_height_update,
-    terrain_weight_update,
-    terrain_destroy,
     lighting_geometry_upload,
     lighting_geometry_destroy,
     texture_upload,
@@ -234,36 +230,6 @@ struct virtual_geometry_page_upload_event
 struct virtual_geometry_page_evict_event
 {
     virtual_geometry_page_eviction eviction;
-};
-
-/** @brief Upload or fully replace a renderer-owned terrain resource. */
-struct terrain_upload_event
-{
-    terrain_handle handle{};
-    std::shared_ptr<const terrain_resource_descriptor> terrain;
-    std::string label;
-};
-
-/** @brief Upload a rectangular terrain height region. */
-struct terrain_height_update_event
-{
-    terrain_handle handle{};
-    std::shared_ptr<const terrain_height_region_update> update;
-    /** Refreshed packed hierarchy whose node indices remain stable for this edit. */
-    std::shared_ptr<const terrain_gpu_hierarchy> hierarchy;
-};
-
-/** @brief Upload a rectangular terrain weight region. */
-struct terrain_weight_update_event
-{
-    terrain_handle handle{};
-    std::shared_ptr<const terrain_weight_region_update> update;
-};
-
-/** @brief Retire a renderer-owned terrain resource. */
-struct terrain_destroy_event
-{
-    terrain_handle handle{};
 };
 
 /** @brief Publish cooked cards and distance-field pages for one conventional mesh. */
@@ -509,15 +475,15 @@ struct render_world_event
     std::string label;
 };
 
-using render_event_payload = std::variant<
-    mesh_upload_event, mesh_destroy_event, skin_palette_upload_event, skin_palette_destroy_event,
-    virtual_mesh_upload_event, virtual_mesh_destroy_event, virtual_geometry_page_upload_event,
-    virtual_geometry_page_evict_event, terrain_upload_event, terrain_height_update_event, terrain_weight_update_event,
-    terrain_destroy_event, lighting_geometry_upload_event, lighting_geometry_destroy_event, texture_upload_event,
-    texture_stream_register_event, texture_stream_upload_event, texture_stream_evict_event, texture_destroy_event,
-    material_upload_event, environment_upload_event, environment_destroy_event, viewport_resize_event, draw_mesh_event,
-    directional_light_event, point_light_event, spot_light_event, area_light_event, gpu_resource_table_update_event,
-    gpu_scene_update_event, lighting_scene_update_event, render_world_event, debug_marker_event>;
+using render_event_payload =
+    std::variant<mesh_upload_event, mesh_destroy_event, skin_palette_upload_event, skin_palette_destroy_event,
+                 virtual_mesh_upload_event, virtual_mesh_destroy_event, virtual_geometry_page_upload_event,
+                 virtual_geometry_page_evict_event, lighting_geometry_upload_event, lighting_geometry_destroy_event,
+                 texture_upload_event, texture_stream_register_event, texture_stream_upload_event,
+                 texture_stream_evict_event, texture_destroy_event, material_upload_event, environment_upload_event,
+                 environment_destroy_event, viewport_resize_event, draw_mesh_event, directional_light_event,
+                 point_light_event, spot_light_event, area_light_event, gpu_resource_table_update_event,
+                 gpu_scene_update_event, lighting_scene_update_event, render_world_event, debug_marker_event>;
 
 /**
  * @brief Thread-producible typed render event.
@@ -609,17 +575,6 @@ public:
 
     /** @brief Append one generation-safe virtual-page retirement. */
     void virtual_geometry_page_evict(virtual_geometry_page_eviction eviction);
-
-    /** @brief Append a complete terrain upload. */
-    void terrain_upload(terrain_handle handle, std::shared_ptr<const terrain_resource_descriptor> terrain,
-                        std::string label = {});
-    /** @brief Append a partial height update. */
-    void terrain_height_update(terrain_handle handle, std::shared_ptr<const terrain_height_region_update> update,
-                               std::shared_ptr<const terrain_gpu_hierarchy> hierarchy = {});
-    /** @brief Append a partial weight update. */
-    void terrain_weight_update(terrain_handle handle, std::shared_ptr<const terrain_weight_region_update> update);
-    /** @brief Append terrain retirement. */
-    void terrain_destroy(terrain_handle handle);
 
     /**
      * @brief Append a texture upload request.

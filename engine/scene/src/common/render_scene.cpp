@@ -546,18 +546,12 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
             if (const auto* persistent = scene.try_get<ecs::persistent_id_component>(value)) guid = persistent->value;
             active_terrain_guids.push_back(guid);
             const auto surface = make_legacy_terrain_surface_ir(terrain);
-            if (!surface || !terrain_proxies->synchronize_geometry(guid, *surface, terrain, renderer)) return;
+            if (!surface || !terrain_proxies->synchronize(guid, *surface, terrain, renderer)) return;
             const auto* proxy = terrain_proxies->find(guid);
             if (!proxy || !renderer.mesh_alive(proxy->geometry.conventional)) return;
 
             const auto world = transform.dirty ? local_matrix(transform) : transform.world;
-            const geometric::box3f local_bounds{geometric::point3f{static_cast<float>(proxy->local_bounds.min_x),
-                                                                   static_cast<float>(proxy->local_bounds.min_y),
-                                                                   static_cast<float>(proxy->local_bounds.min_z)},
-                                                geometric::point3f{static_cast<float>(proxy->local_bounds.max_x),
-                                                                   static_cast<float>(proxy->local_bounds.max_y),
-                                                                   static_cast<float>(proxy->local_bounds.max_z)}};
-            const auto renderer_bounds = transform_bounds(local_bounds, world);
+            const auto renderer_bounds = transform_bounds(proxy->local_bounds, world);
             if (renderer.resolved_config().features.virtual_geometry &&
                 renderer.virtual_mesh_alive(proxy->geometry.virtualized))
             {
@@ -605,7 +599,7 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
             }
             ++result.terrain_count;
         });
-    if (terrain_proxies) terrain_proxies->release_missing_geometry(active_terrain_guids, renderer);
+    if (terrain_proxies) terrain_proxies->release_missing(active_terrain_guids, renderer);
 
     scene.view<transform_component, water_component>().each(
         [&](entity value, const transform_component& transform, const water_component& water)

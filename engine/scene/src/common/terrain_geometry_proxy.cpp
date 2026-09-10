@@ -20,6 +20,14 @@ std::uint32_t terrain_geometry_generation(std::uint64_t revision) noexcept
     return folded == 0u ? 1u : folded;
 }
 
+geometric::box3f terrain_local_bounds(const terrain_world_bounds& bounds) noexcept
+{
+    return geometric::box3f{geometric::point3f{static_cast<float>(bounds.min_x), static_cast<float>(bounds.min_y),
+                                               static_cast<float>(bounds.min_z)},
+                            geometric::point3f{static_cast<float>(bounds.max_x), static_cast<float>(bounds.max_y),
+                                               static_cast<float>(bounds.max_z)}};
+}
+
 bool geometry_alive(const terrain_render_proxy& proxy, const render::renderer& renderer)
 {
     return proxy.geometry.valid() && renderer.mesh_alive(proxy.geometry.conventional);
@@ -64,9 +72,6 @@ void destroy_proxy_geometry(terrain_render_proxy& proxy, render::renderer& rende
     if (renderer.texture_alive(proxy.surface_attribute_texture))
         renderer.destroy_texture(proxy.surface_attribute_texture);
     proxy.surface_attribute_texture = {};
-
-    if (renderer.terrain_alive(proxy.handle)) (void)renderer.destroy_terrain(proxy.handle);
-    proxy.handle = {};
 }
 
 bool update_attribute_texture(terrain_render_proxy& proxy, const terrain_render_attributes& attributes,
@@ -87,9 +92,9 @@ bool update_attribute_texture(terrain_render_proxy& proxy, const terrain_render_
 
 } // namespace
 
-bool terrain_render_proxy_cache::synchronize_geometry(ecs::entity_guid guid, const terrain_surface_ir& surface,
-                                                      const terrain_component& terrain, render::renderer& renderer,
-                                                      const terrain_dirty_region* dirty_region)
+bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrain_surface_ir& surface,
+                                             const terrain_component& terrain, render::renderer& renderer,
+                                             const terrain_dirty_region* dirty_region)
 {
     if (!guid.valid() || !validate_terrain_surface_ir(surface)) return false;
 
@@ -100,7 +105,7 @@ bool terrain_render_proxy_cache::synchronize_geometry(ecs::entity_guid guid, con
 
     if (has_geometry && has_attributes && same_revision)
     {
-        proxy.local_bounds = surface.local_bounds;
+        proxy.local_bounds = terrain_local_bounds(surface.local_bounds);
         proxy.material = terrain.material;
         return true;
     }
@@ -112,7 +117,7 @@ bool terrain_render_proxy_cache::synchronize_geometry(ecs::entity_guid guid, con
         auto attributes = build_terrain_render_attributes(surface);
         if (!attributes || !update_attribute_texture(proxy, *attributes, renderer)) return false;
 
-        proxy.local_bounds = surface.local_bounds;
+        proxy.local_bounds = terrain_local_bounds(surface.local_bounds);
         proxy.synchronized_revision = surface.source_revision;
         proxy.material = terrain.material;
         return true;
@@ -140,21 +145,20 @@ bool terrain_render_proxy_cache::synchronize_geometry(ecs::entity_guid guid, con
     destroy_proxy_geometry(proxy, renderer);
     proxy.geometry = replacement;
     proxy.surface_attribute_texture = replacement_attributes;
-    proxy.local_bounds = surface.local_bounds;
+    proxy.local_bounds = terrain_local_bounds(surface.local_bounds);
     proxy.synchronized_revision = surface.source_revision;
     proxy.material = terrain.material;
     return true;
 }
 
-bool terrain_render_proxy_cache::synchronize_geometry(ecs::entity_guid guid, const terrain_component& terrain,
-                                                      render::renderer& renderer,
-                                                      const terrain_dirty_region* dirty_region)
+bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrain_component& terrain,
+                                             render::renderer& renderer, const terrain_dirty_region* dirty_region)
 {
     const auto surface = make_legacy_terrain_surface_ir(terrain);
-    return surface && synchronize_geometry(guid, *surface, terrain, renderer, dirty_region);
+    return surface && synchronize(guid, *surface, terrain, renderer, dirty_region);
 }
 
-bool terrain_render_proxy_cache::erase_geometry(ecs::entity_guid guid, render::renderer& renderer)
+bool terrain_render_proxy_cache::erase(ecs::entity_guid guid, render::renderer& renderer)
 {
     const auto found = proxies_.find(guid);
     if (found == proxies_.end()) return false;
@@ -163,8 +167,7 @@ bool terrain_render_proxy_cache::erase_geometry(ecs::entity_guid guid, render::r
     return true;
 }
 
-void terrain_render_proxy_cache::release_missing_geometry(std::span<const ecs::entity_guid> active,
-                                                          render::renderer& renderer)
+void terrain_render_proxy_cache::release_missing(std::span<const ecs::entity_guid> active, render::renderer& renderer)
 {
     for (auto found = proxies_.begin(); found != proxies_.end();)
     {
@@ -178,7 +181,7 @@ void terrain_render_proxy_cache::release_missing_geometry(std::span<const ecs::e
     }
 }
 
-void terrain_render_proxy_cache::clear_geometry(render::renderer& renderer)
+void terrain_render_proxy_cache::clear(render::renderer& renderer)
 {
     for (auto& [guid, proxy] : proxies_)
     {

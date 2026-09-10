@@ -21,9 +21,6 @@ packed_gpu_scene_instance vulkan_render_backend::pack_gpu_scene_instance(const g
         case gpu_scene_geometry_kind::skinned_mesh:
             geometry = source.mesh;
             break;
-        case gpu_scene_geometry_kind::terrain:
-            geometry = source.terrain;
-            break;
         case gpu_scene_geometry_kind::virtual_mesh:
             geometry = source.virtual_mesh;
             break;
@@ -344,8 +341,7 @@ void vulkan_render_backend::apply_gpu_scene_update(const gpu_scene_update_event&
     profile.binding_model = resolved_config_.features.gpu_binding_model;
     profile.capacity = batch.capacity;
     profile.active_instances = batch.active_instance_count;
-    profile.geometry_table_entries =
-        static_cast<std::uint32_t>(meshes_.size() + virtual_meshes_.size() + terrains_.size());
+    profile.geometry_table_entries = static_cast<std::uint32_t>(meshes_.size() + virtual_meshes_.size());
     profile.material_table_entries = static_cast<std::uint32_t>(materials_.size());
     profile.texture_table_entries = static_cast<std::uint32_t>(textures_.size());
     profile.uploaded_ranges += static_cast<std::uint32_t>(batch.dirty_ranges.size());

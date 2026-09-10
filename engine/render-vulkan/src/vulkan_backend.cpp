@@ -288,10 +288,6 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.gpu_skinning = capabilities.gpu_visibility_compaction &&
                                 properties.limits.maxPerStageDescriptorStorageBuffers >= 7u &&
                                 properties.limits.maxComputeWorkGroupInvocations >= 64u;
-    capabilities.gpu_terrain_traversal =
-        capabilities.gpu_visibility_compaction && capabilities.gpu_scene_indirect_count &&
-        properties.limits.maxPerStageDescriptorStorageBuffers >= 5u &&
-        properties.limits.maxPushConstantsSize >= sizeof(backend_detail::gpu_terrain_traversal_push_constants);
     capabilities.descriptor_buffer = descriptor_buffer.descriptorBuffer == VK_TRUE;
     capabilities.mesh_shaders = mesh_shader.meshShader == VK_TRUE;
     // Capability facts describe executable ARC paths. Ray-query acceleration structures and

@@ -739,9 +739,6 @@ void vulkan_render_backend::execute_compiled_graph(VkCommandBuffer command_buffe
             case builtin_render_pass::gpu_skinning:
                 dispatch_gpu_skinning(command_buffer);
                 break;
-            case builtin_render_pass::gpu_terrain_traversal:
-                dispatch_gpu_terrain_traversal(command_buffer);
-                break;
             case builtin_render_pass::depth_prepass:
                 if (!scene_executed)
                 {
@@ -1024,8 +1021,6 @@ bool vulkan_render_backend::ensure_shadow_pipeline()
         create_shader_module(builtin::shadow_depth_vert_spv, std::size(builtin::shadow_depth_vert_spv));
     VkShaderModule frag =
         create_shader_module(builtin::shadow_depth_frag_spv, std::size(builtin::shadow_depth_frag_spv));
-    VkShaderModule terrain_vert =
-        create_shader_module(builtin::terrain_patch_shadow_vert_spv, std::size(builtin::terrain_patch_shadow_vert_spv));
     if (vert == VK_NULL_HANDLE || frag == VK_NULL_HANDLE)
     {
         if (vert != VK_NULL_HANDLE) vkDestroyShaderModule(device_, vert, nullptr);
@@ -1132,30 +1127,8 @@ bool vulkan_render_backend::ensure_shadow_pipeline()
 
     const VkResult result =
         vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &shadow_pipeline_);
-    if (result == VK_SUCCESS && terrain_vert != VK_NULL_HANDLE)
-    {
-        VkPipelineShaderStageCreateInfo terrain_stage{};
-        terrain_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        terrain_stage.stage = VK_SHADER_STAGE_VERTEX_BIT;
-        terrain_stage.module = terrain_vert;
-        terrain_stage.pName = "main";
-        VkPipelineVertexInputStateCreateInfo terrain_vertex_input{
-            VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
-        pipeline.stageCount = 1u;
-        pipeline.pStages = &terrain_stage;
-        pipeline.pVertexInputState = &terrain_vertex_input;
-        pipeline.layout = terrain_pipeline_layout_;
-        if (vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &terrain_shadow_pipeline_) !=
-            VK_SUCCESS)
-        {
-            terrain_shadow_pipeline_ = VK_NULL_HANDLE;
-            arc::diagnostics::warn("render.vulkan",
-                                   "Vulkan terrain shadow pipeline creation failed; terrain shadows are disabled");
-        }
-    }
     vkDestroyShaderModule(device_, vert, nullptr);
     vkDestroyShaderModule(device_, frag, nullptr);
-    if (terrain_vert != VK_NULL_HANDLE) vkDestroyShaderModule(device_, terrain_vert, nullptr);
     if (result != VK_SUCCESS)
     {
         arc::diagnostics::warn("render.vulkan",
@@ -1351,30 +1324,6 @@ void vulkan_render_backend::render_shadow_maps(VkCommandBuffer command_buffer)
                     vkCmdBindIndexBuffer(command_buffer, found->second.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
                     vkCmdDrawIndexed(command_buffer, cluster.index_count, 1, cluster.first_index, 0, 0);
                 }
-                if (layer_offset == directional_shadow_cascade_count && terrain_shadow_pipeline_ != VK_NULL_HANDLE)
-                {
-                    for (const auto& draw : frame_gpu_terrain_draws_)
-                    {
-                        terrain_patch_draw compatibility_draw{draw.terrain,   {},
-                                                              cascade_matrix, draw.previous_view_projection,
-                                                              draw.mode,      draw.visualization};
-                        const auto terrain_draw = terrain_mesh_draw(compatibility_draw);
-                        if (!draw.terrain.cast_shadows || !intersects_cascade(terrain_draw, cascade_matrix)) continue;
-                        auto shadow_draw = draw;
-                        shadow_draw.view_projection = cascade_matrix;
-                        draw_gpu_terrain(command_buffer, shadow_draw, terrain_shadow_pipeline_, false);
-                    }
-                    for (const auto& draw : frame_terrain_draws_)
-                    {
-                        if (gpu_terrain_active_instances_.contains(gpu_scene_key(draw.terrain.gpu_scene_instance)))
-                            continue;
-                        const auto terrain_draw = terrain_mesh_draw(draw);
-                        if (!draw.terrain.cast_shadows || !intersects_cascade(terrain_draw, cascade_matrix)) continue;
-                        auto shadow_draw = draw;
-                        shadow_draw.view_projection = cascade_matrix;
-                        draw_terrain_patch(command_buffer, shadow_draw, terrain_shadow_pipeline_, false);
-                    }
-                }
             }
             cmd_end_rendering(command_buffer);
         }
@@ -1510,30 +1459,6 @@ void vulkan_render_backend::render_local_shadow_maps(VkCommandBuffer command_buf
                 vkCmdBindVertexBuffers(command_buffer, 0, 1, &found->second.vertices.buffer, &offset);
                 vkCmdBindIndexBuffer(command_buffer, found->second.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
                 vkCmdDrawIndexed(command_buffer, cluster.index_count, 1, cluster.first_index, 0, 0);
-            }
-            if (terrain_shadow_pipeline_ != VK_NULL_HANDLE)
-            {
-                for (const auto& draw : frame_gpu_terrain_draws_)
-                {
-                    terrain_patch_draw compatibility_draw{
-                        draw.terrain,      {}, packed.light_view_projection, draw.previous_view_projection, draw.mode,
-                        draw.visualization};
-                    const auto terrain_draw = terrain_mesh_draw(compatibility_draw);
-                    if (!draw.terrain.cast_shadows || !in_light_range(terrain_draw)) continue;
-                    auto shadow_draw = draw;
-                    shadow_draw.view_projection = packed.light_view_projection;
-                    draw_gpu_terrain(command_buffer, shadow_draw, terrain_shadow_pipeline_, false);
-                }
-                for (const auto& draw : frame_terrain_draws_)
-                {
-                    if (gpu_terrain_active_instances_.contains(gpu_scene_key(draw.terrain.gpu_scene_instance)))
-                        continue;
-                    const auto terrain_draw = terrain_mesh_draw(draw);
-                    if (!draw.terrain.cast_shadows || !in_light_range(terrain_draw)) continue;
-                    auto shadow_draw = draw;
-                    shadow_draw.view_projection = packed.light_view_projection;
-                    draw_terrain_patch(command_buffer, shadow_draw, terrain_shadow_pipeline_, false);
-                }
             }
             cmd_end_rendering(command_buffer);
         }

@@ -6,7 +6,7 @@ set(arc_render_vulkan_backend_sources
     src/vulkan_backend_materials.cpp
     src/vulkan_backend_scene.cpp
     src/vulkan_backend_shadows.cpp
-    src/vulkan_backend_terrain.cpp
+    src/vulkan_backend_geometry.cpp
     src/vulkan_backend_textures.cpp
     src/vulkan_backend_virtual_geometry.cpp
 )

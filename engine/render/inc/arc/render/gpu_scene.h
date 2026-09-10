@@ -24,8 +24,6 @@ enum class gpu_scene_geometry_kind : std::uint8_t
     mesh,
     /** Indexed mesh deformed through a skin palette. */
     skinned_mesh,
-    /** Heightfield terrain traversed as shared patches. */
-    terrain,
     /** One virtual mesh instance whose hierarchy is traversed by the GPU. */
     virtual_mesh
 };
@@ -98,8 +96,6 @@ struct gpu_scene_instance
     mesh_handle mesh{};
     /** Virtual mesh reference when @ref geometry_kind is `virtual_mesh`. */
     virtual_mesh_handle virtual_mesh{};
-    /** Terrain reference when @ref geometry_kind is `terrain`. */
-    terrain_handle terrain{};
     /** Material referenced by the instance. */
     material_handle material{};
     /** Optional per-instance material attribute texture. */

@@ -1150,7 +1150,7 @@ void vulkan_render_backend::draw_indexed_virtual_cluster(VkCommandBuffer command
 
 bool vulkan_render_backend::render_deferred_scene(VkCommandBuffer command_buffer)
 {
-    if ((frame_draws_.empty() && frame_virtual_draws_.empty() && frame_terrain_draws_.empty()) ||
+    if ((frame_draws_.empty() && frame_virtual_draws_.empty()) ||
         !ensure_deferred_targets(viewport_width_, viewport_height_) || !ensure_shadow_pipeline() ||
         !ensure_gbuffer_pipeline() || !ensure_gbuffer_descriptor_set() || !ensure_deferred_pipeline())
         return false;
@@ -1174,7 +1174,6 @@ bool vulkan_render_backend::render_deferred_scene(VkCommandBuffer command_buffer
             break;
         }
     }
-    has_opaque_draws = has_opaque_draws || !frame_terrain_draws_.empty();
     if (!has_opaque_draws) return false;
 
     transition_depth(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
@@ -1214,11 +1213,6 @@ bool vulkan_render_backend::render_deferred_scene(VkCommandBuffer command_buffer
                                     &descriptor_set, 0, nullptr);
             draw_indexed_virtual_cluster(command_buffer, draw, shadow_pipeline_layout_,
                                          VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true);
-        }
-        if (terrain_shadow_pipeline_ != VK_NULL_HANDLE)
-        {
-            for (const auto& draw : frame_terrain_draws_)
-                draw_terrain_patch(command_buffer, draw, terrain_shadow_pipeline_, false);
         }
         cmd_end_rendering(command_buffer);
     }
@@ -1324,11 +1318,6 @@ bool vulkan_render_backend::render_deferred_scene(VkCommandBuffer command_buffer
             draw_indexed_virtual_cluster(command_buffer, draw, mesh_pipeline_layout_,
                                          VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true, true);
         }
-        for (const auto& draw : frame_gpu_terrain_draws_)
-            draw_gpu_terrain(command_buffer, draw, terrain_gbuffer_pipeline_, true);
-        for (const auto& draw : frame_terrain_draws_)
-            if (!gpu_terrain_active_instances_.contains(gpu_scene_key(draw.terrain.gpu_scene_instance)))
-                draw_terrain_patch(command_buffer, draw, terrain_gbuffer_pipeline_, true);
 
         cmd_end_rendering(command_buffer);
     }
@@ -1686,15 +1675,6 @@ void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool
                                                          terrain_surface_pipeline_ != VK_NULL_HANDLE
                                                      ? terrain_surface_pipeline_
                                                      : mesh_pipeline_);
-            }
-
-            if (!deferred_rendered)
-            {
-                for (const auto& draw : frame_gpu_terrain_draws_)
-                    draw_gpu_terrain(command_buffer, draw, terrain_pipeline_, false);
-                for (const auto& draw : frame_terrain_draws_)
-                    if (!gpu_terrain_active_instances_.contains(gpu_scene_key(draw.terrain.gpu_scene_instance)))
-                        draw_terrain_patch(command_buffer, draw, terrain_pipeline_, false);
             }
 
             const bool bindless_transparent_drawn = draw_gpu_bindless_batch(command_buffer, true);

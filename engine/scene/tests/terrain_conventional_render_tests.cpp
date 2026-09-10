@@ -83,7 +83,7 @@ TEST_CASE("terrain geometry proxy realizes generic resources and rebuilds on con
     auto terrain = make_test_terrain();
     const auto guid = arc::ecs::generate_entity_guid();
 
-    REQUIRE(cache.synchronize_geometry(guid, terrain, renderer));
+    REQUIRE(cache.synchronize(guid, terrain, renderer));
     const auto* first = cache.find(guid);
     REQUIRE(first != nullptr);
     REQUIRE(first->geometry.valid());
@@ -92,13 +92,12 @@ TEST_CASE("terrain geometry proxy realizes generic resources and rebuilds on con
     REQUIRE(renderer.virtual_mesh_alive(first->geometry.virtualized));
     REQUIRE(first->surface_attribute_texture.valid());
     REQUIRE(renderer.texture_alive(first->surface_attribute_texture));
-    REQUIRE_FALSE(renderer.terrain_alive(first->handle));
     CHECK(first->synchronized_revision == terrain.content_revision);
 
     const auto original_geometry = first->geometry;
     const auto original_attributes = first->surface_attribute_texture;
     terrain.material = {.index = 17u, .generation = 3u};
-    REQUIRE(cache.synchronize_geometry(guid, terrain, renderer));
+    REQUIRE(cache.synchronize(guid, terrain, renderer));
     const auto* material_only = cache.find(guid);
     REQUIRE(material_only != nullptr);
     CHECK(material_only->geometry.conventional == original_geometry.conventional);
@@ -110,7 +109,7 @@ TEST_CASE("terrain geometry proxy realizes generic resources and rebuilds on con
     ++terrain.content_revision;
     const arc::scene::terrain_dirty_region paint_dirty{
         .min_x = 1u, .min_z = 1u, .max_x = 1u, .max_z = 1u, .valid = true, .weights_changed = true};
-    REQUIRE(cache.synchronize_geometry(guid, terrain, renderer, &paint_dirty));
+    REQUIRE(cache.synchronize(guid, terrain, renderer, &paint_dirty));
     const auto* repainted = cache.find(guid);
     REQUIRE(repainted != nullptr);
     CHECK(repainted->geometry.conventional == original_geometry.conventional);
@@ -123,7 +122,7 @@ TEST_CASE("terrain geometry proxy realizes generic resources and rebuilds on con
     ++terrain.content_revision;
     const arc::scene::terrain_dirty_region dirty{
         .min_x = 1u, .min_z = 1u, .max_x = 1u, .max_z = 1u, .valid = true, .heights_changed = true};
-    REQUIRE(cache.synchronize_geometry(guid, terrain, renderer, &dirty));
+    REQUIRE(cache.synchronize(guid, terrain, renderer, &dirty));
     const auto* rebuilt = cache.find(guid);
     REQUIRE(rebuilt != nullptr);
     REQUIRE(rebuilt->geometry.valid());
@@ -134,7 +133,7 @@ TEST_CASE("terrain geometry proxy realizes generic resources and rebuilds on con
     CHECK(rebuilt->synchronized_revision == terrain.content_revision);
 
     const auto rebuilt_geometry = rebuilt->geometry;
-    REQUIRE(cache.erase_geometry(guid, renderer));
+    REQUIRE(cache.erase(guid, renderer));
     REQUIRE(cache.find(guid) == nullptr);
     REQUIRE_FALSE(renderer.mesh_alive(rebuilt_geometry.conventional));
     REQUIRE_FALSE(renderer.virtual_mesh_alive(rebuilt_geometry.virtualized));
@@ -177,14 +176,12 @@ TEST_CASE("render scene submits terrain as a conventional mesh item without dedi
     REQUIRE(proxy->geometry.valid());
     REQUIRE(proxy->surface_attribute_texture.valid());
     REQUIRE(renderer.texture_alive(proxy->surface_attribute_texture));
-    REQUIRE_FALSE(renderer.terrain_alive(proxy->handle));
 
     const auto frame = renderer.frame_queue().commit(1u);
     const auto world_event = std::find_if(frame.events.begin(), frame.events.end(), [](const auto& event)
                                           { return event.type() == arc::render::render_event_type::render_world; });
     REQUIRE(world_event != frame.events.end());
     const auto& world = *std::get<arc::render::render_world_event>(world_event->payload).packet;
-    REQUIRE(world.terrains.empty());
     REQUIRE(world.items.size() == 1u);
     REQUIRE(world.virtual_items.empty());
 
@@ -245,7 +242,6 @@ TEST_CASE("render scene submits terrain through generic virtual geometry when av
                                           { return event.type() == arc::render::render_event_type::render_world; });
     REQUIRE(world_event != frame.events.end());
     const auto& world = *std::get<arc::render::render_world_event>(world_event->payload).packet;
-    REQUIRE(world.terrains.empty());
     REQUIRE(world.items.empty());
     REQUIRE(world.virtual_items.size() == 1u);
 

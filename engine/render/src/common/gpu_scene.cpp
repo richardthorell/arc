@@ -50,8 +50,7 @@ gpu_scene_dirty changed_fields(const gpu_scene_instance& previous, const gpu_sce
         previous.geometry_error_scale != current.geometry_error_scale)
         dirty = dirty | gpu_scene_dirty::bounds;
     if (previous.mesh != current.mesh || previous.virtual_mesh != current.virtual_mesh ||
-        previous.terrain != current.terrain || previous.skin_palette != current.skin_palette ||
-        previous.skin_joint_count != current.skin_joint_count ||
+        previous.skin_palette != current.skin_palette || previous.skin_joint_count != current.skin_joint_count ||
         previous.submesh_or_cluster != current.submesh_or_cluster || previous.geometry_kind != current.geometry_kind)
         dirty = dirty | gpu_scene_dirty::geometry;
     if (previous.material != current.material ||
@@ -225,24 +224,6 @@ gpu_scene_update_batch gpu_scene::synchronize(render_world_packet& packet, std::
         item.gpu_scene_instance = {.index = lookup_.at(key), .generation = slots_[lookup_.at(key)].generation};
     }
 
-    for (auto& item : packet.terrains)
-    {
-        const instance_key key{.world_id = packet.gpu_scene_world_id,
-                               .object_id = item.object_id,
-                               .geometry_kind = gpu_scene_geometry_kind::terrain,
-                               .submesh_or_cluster = 0u};
-        upsert(key, {.model = item.model,
-                     .previous_model = item.previous_model,
-                     .world_bounds = item.world_bounds,
-                     .terrain = item.terrain,
-                     .material = item.material,
-                     .object_id = item.object_id,
-                     .render_layer_mask = item.render_layer_mask,
-                     .flags = instance_flags(true, item.selected, false, item.cast_shadows, item.receive_shadows),
-                     .geometry_error_scale = 1.0f,
-                     .geometry_kind = gpu_scene_geometry_kind::terrain});
-        item.gpu_scene_instance = {.index = lookup_.at(key), .generation = slots_[lookup_.at(key)].generation};
-    }
     for (auto& item : packet.virtual_items)
     {
         const instance_key key{.world_id = packet.gpu_scene_world_id,

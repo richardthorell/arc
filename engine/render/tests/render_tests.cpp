@@ -1373,34 +1373,6 @@ TEST_CASE("GPU Scene preserves virtual material attribute references")
     CHECK(updated.updates.front().instance.material_attribute_texture == texture_handle{.index = 9, .generation = 6});
 }
 
-TEST_CASE("GPU Scene represents skinned meshes and terrain without CPU patch expansion")
-{
-    using namespace arc::render;
-    render_world_packet packet;
-    packet.gpu_scene_world_id = 9;
-    packet.world_epoch = 1;
-    packet.items.push_back({.mesh = {.index = 2, .generation = 3},
-                            .object_id = {.index = 10, .generation = 1},
-                            .skin_matrices = {.index = 5, .generation = 1},
-                            .skin_joint_count = 72});
-    packet.terrains.push_back({.terrain = {.index = 8, .generation = 2}, .object_id = {.index = 11, .generation = 1}});
-
-    gpu_scene scene;
-    const auto update = scene.synchronize(packet, 1);
-    REQUIRE(update.active_instance_count == 2);
-    REQUIRE(packet.items[0].gpu_scene_instance.valid());
-    REQUIRE(packet.terrains[0].gpu_scene_instance.valid());
-    const auto* skinned = scene.find(packet.items[0].gpu_scene_instance);
-    const auto* terrain = scene.find(packet.terrains[0].gpu_scene_instance);
-    REQUIRE(skinned != nullptr);
-    REQUIRE(skinned->geometry_kind == gpu_scene_geometry_kind::skinned_mesh);
-    REQUIRE(skinned->skin_palette == buffer_handle{.index = 5, .generation = 1});
-    REQUIRE(skinned->skin_joint_count == 72);
-    REQUIRE(terrain != nullptr);
-    REQUIRE(terrain->geometry_kind == gpu_scene_geometry_kind::terrain);
-    REQUIRE(terrain->terrain == terrain_handle{.index = 8, .generation = 2});
-}
-
 TEST_CASE("GPU-driven preparation skips allocating CPU visibility unless validation requests it")
 {
     arc::render::render_world_packet packet;
@@ -1763,13 +1735,11 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     capabilities.bindless_geometry_tables = true;
     capabilities.gpu_transparent_sorting = true;
     capabilities.gpu_skinning = true;
-    capabilities.gpu_terrain_traversal = true;
     resolved = resolve_render_config(config, capabilities);
     REQUIRE(resolved.features.gpu_binding_model == gpu_resource_binding_model::bindless);
     REQUIRE(resolved.features.gpu_visibility_compaction);
     REQUIRE(resolved.features.gpu_transparent_sorting);
     REQUIRE(resolved.features.gpu_skinning);
-    REQUIRE(resolved.features.gpu_terrain_traversal);
     REQUIRE(resolved.features.virtual_geometry);
     REQUIRE(resolved.features.virtual_geometry_path == virtual_geometry_raster_path::compute);
     REQUIRE(resolved.features.virtual_shadow_virtual_geometry);
@@ -3617,52 +3587,6 @@ TEST_CASE("terrain selection responds to projected error and balances neighborin
             if (vertical || horizontal)
                 REQUIRE(std::abs(static_cast<int>(left.lod) - static_cast<int>(right.lod)) <= 1);
         }
-}
-
-TEST_CASE("terrain renderer resources preserve weight-only hierarchy and emit partial events")
-{
-    arc::render::renderer renderer;
-    arc::render::terrain_resource_descriptor descriptor;
-    descriptor.sample_resolution = 33u;
-    descriptor.width = 32.0f;
-    descriptor.depth = 32.0f;
-    descriptor.heights.resize(33u * 33u);
-    descriptor.weights.resize(33u * 33u, {255u, 0u, 0u, 0u});
-    descriptor.lod.patch_quads = 16u;
-    const auto terrain = renderer.create_terrain(std::move(descriptor));
-    REQUIRE(terrain.valid());
-    const auto before = renderer.terrain_snapshot(terrain);
-    (void)renderer.frame_queue().commit(1u);
-
-    arc::render::terrain_weight_region_update weights;
-    weights.region = {4u, 5u, 7u, 8u};
-    weights.row_stride = weights.region.width();
-    weights.values.resize(static_cast<std::size_t>(weights.row_stride) * weights.region.height(), {0u, 255u, 0u, 0u});
-    weights.content_revision = 2u;
-    REQUIRE(renderer.update_terrain_weights(terrain, std::move(weights)));
-    const auto after = renderer.terrain_snapshot(terrain);
-    REQUIRE(after.hierarchy_nodes == before.hierarchy_nodes);
-    REQUIRE(after.uploaded_height_bytes == before.uploaded_height_bytes);
-    REQUIRE(after.uploaded_weight_bytes == before.uploaded_weight_bytes + 4u * 4u * 4u);
-    const auto packet = renderer.frame_queue().commit(2u);
-    REQUIRE(packet.events.size() == 1u);
-    REQUIRE(packet.events.front().type() == arc::render::render_event_type::terrain_weight_update);
-
-    arc::render::terrain_height_region_update heights;
-    heights.region = {8u, 8u, 8u, 8u};
-    heights.row_stride = 1u;
-    heights.values = {12.0f};
-    heights.content_revision = 3u;
-    REQUIRE(renderer.update_terrain_heights(terrain, std::move(heights)));
-    const auto height_packet = renderer.frame_queue().commit(3u);
-    REQUIRE(height_packet.events.size() == 1u);
-    const auto* height_event =
-        std::get_if<arc::render::terrain_height_update_event>(&height_packet.events.front().payload);
-    REQUIRE(height_event != nullptr);
-    REQUIRE(height_event->hierarchy != nullptr);
-    REQUIRE(height_event->hierarchy->nodes.size() == before.hierarchy_nodes);
-    REQUIRE(height_event->hierarchy->nodes[height_event->hierarchy->root].bounds_max[1] == Catch::Approx(12.0f));
-    REQUIRE(renderer.destroy_terrain(terrain));
 }
 
 TEST_CASE("lighting scene emits precise incremental updates and rejects stale world generations")

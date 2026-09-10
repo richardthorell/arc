@@ -735,8 +735,6 @@ std::vector<gpu_texture_mip_demand> vulkan_render_backend::build_texture_mip_dem
         append_material(draw.material, projected_texture_extent(draw.world_bounds));
     for (const auto& draw : frame_virtual_draws_)
         append_material(draw.draw.material, projected_texture_extent(draw.draw.world_bounds));
-    for (const auto& draw : frame_terrain_draws_)
-        append_material(draw.terrain.material, projected_texture_extent(draw.terrain.world_bounds));
     return demands;
 }
 

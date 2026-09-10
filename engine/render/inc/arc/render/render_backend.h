@@ -287,8 +287,6 @@ struct render_capabilities
     bool gpu_transparent_sorting{};
     /** @brief Backend can skin visible geometry into frame-local GPU storage. */
     bool gpu_skinning{};
-    /** @brief Backend can traverse terrain hierarchy data for each view. */
-    bool gpu_terrain_traversal{};
     /** @brief Backend exposes a stable non-uniformly indexed sampled-image table. */
     bool bindless_sampled_images{};
     /** @brief Backend exposes stable sampler slots independently from sampled images. */
@@ -370,8 +368,6 @@ struct render_feature_set
     bool gpu_transparent_sorting{};
     /** Visible-only compute skinning is executable. */
     bool gpu_skinning{};
-    /** Terrain hierarchy traversal is executable on the GPU. */
-    bool gpu_terrain_traversal{};
     bool hzb_occlusion{};
     bool fxaa{};
     bool temporal_antialiasing{};
