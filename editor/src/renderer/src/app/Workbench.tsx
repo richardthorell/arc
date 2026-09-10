@@ -337,9 +337,6 @@ export const classifyHostEventRefresh = (event: HostEventLike, selectedEntityId:
   return 'none';
 };
 
-const translationSnapOptions = [0.05, 0.1, 0.25, 0.5, 1] as const;
-const rotationSnapOptions = [5, 10, 15, 30, 45, 90] as const;
-const scaleSnapOptions = [0.05, 0.1, 0.25, 0.5] as const;
 const timeScaleOptions = [0.25, 0.5, 1, 2, 4] as const;
 const nextSnapOption = (options: readonly number[], current: number) =>
   options[(options.indexOf(current) + 1) % options.length];
@@ -1444,33 +1441,16 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
               else setLastCommand(result.error || 'Could not change runtime time scale');
             });
           }}
-          onToggleCoordinateSpace={() =>
-            void updateViewportToolOptions(coordinateSpace === 'world' ? 'local' : 'world', snapping)
-          }
+          onCoordinateSpaceChange={(space) => void updateViewportToolOptions(space, snapping)}
           onToggleSnapping={() => void updateViewportToolOptions(coordinateSpace, !snapping)}
-          onCycleTranslationSnap={() =>
-            void updateViewportToolOptions(
-              coordinateSpace,
-              snapping,
-              nextSnapOption(translationSnapOptions, translationSnap),
-            )
+          onTranslationSnapChange={(value) =>
+            void updateViewportToolOptions(coordinateSpace, snapping, value, rotationSnap, scaleSnap)
           }
-          onCycleRotationSnap={() =>
-            void updateViewportToolOptions(
-              coordinateSpace,
-              snapping,
-              translationSnap,
-              nextSnapOption(rotationSnapOptions, rotationSnap),
-            )
+          onRotationSnapChange={(value) =>
+            void updateViewportToolOptions(coordinateSpace, snapping, translationSnap, value, scaleSnap)
           }
-          onCycleScaleSnap={() =>
-            void updateViewportToolOptions(
-              coordinateSpace,
-              snapping,
-              translationSnap,
-              rotationSnap,
-              nextSnapOption(scaleSnapOptions, scaleSnap),
-            )
+          onScaleSnapChange={(value) =>
+            void updateViewportToolOptions(coordinateSpace, snapping, translationSnap, rotationSnap, value)
           }
         />
       ),
