@@ -293,9 +293,11 @@ struct virtual_geometry_residency_manager::implementation
         virtual_geometry_page descriptor{};
         virtual_geometry_page_state state{virtual_geometry_page_state::nonresident};
         std::uint64_t last_used_frame{};
+        std::uint64_t last_evicted_frame{};
         std::uint32_t gpu_bytes{};
         std::uint32_t cpu_bytes{};
         float priority{};
+        bool was_evicted{};
     };
 
     struct resource_entry
@@ -311,9 +313,11 @@ struct virtual_geometry_residency_manager::implementation
     std::uint64_t gpu_bytes{};
     std::uint64_t cpu_bytes{};
     std::uint32_t evictions{};
+    std::uint32_t forced_budget_evictions{};
     std::uint32_t deduplicated_requests{};
     std::uint32_t parent_fallbacks{};
     std::uint32_t stale_requests{};
+    std::uint32_t cooldown_suppressed_requests{};
     std::vector<virtual_geometry_page_eviction> pending_evictions;
 
     page_entry* find(virtual_mesh_handle handle, std::uint32_t generation, std::uint32_t page_index) noexcept
@@ -342,20 +346,24 @@ struct virtual_geometry_residency_manager::implementation
             resource_entry* victim_resource{};
             page_entry* victim{};
             std::uint32_t victim_page{};
+            bool victim_protected{};
             for (auto& [_, resource] : resources)
                 for (std::uint32_t page_index = 0; page_index < resource.pages.size(); ++page_index)
                 {
                     auto& page = resource.pages[page_index];
-                    if (page.state != virtual_geometry_page_state::resident || page.descriptor.root ||
-                        frame_index - std::min(frame_index, page.last_used_frame) <= config.protected_frame_count)
-                        continue;
-                    if (!victim || page.last_used_frame < victim->last_used_frame ||
-                        (page.last_used_frame == victim->last_used_frame && page.priority < victim->priority))
-                    {
-                        victim_resource = &resource;
-                        victim = &page;
-                        victim_page = page_index;
-                    }
+                    if (page.state != virtual_geometry_page_state::resident || page.descriptor.root) continue;
+                    const auto age = frame_index - std::min(frame_index, page.last_used_frame);
+                    const bool protected_page = age <= config.protected_frame_count;
+                    const bool better = !victim || (victim_protected && !protected_page) ||
+                                        (victim_protected == protected_page &&
+                                         (page.last_used_frame < victim->last_used_frame ||
+                                          (page.last_used_frame == victim->last_used_frame &&
+                                           page.priority < victim->priority)));
+                    if (!better) continue;
+                    victim_resource = &resource;
+                    victim = &page;
+                    victim_page = page_index;
+                    victim_protected = protected_page;
                 }
             if (!victim || !victim_resource) break;
             pending_evictions.push_back({.resource = victim_resource->handle,
@@ -367,7 +375,10 @@ struct virtual_geometry_residency_manager::implementation
             victim->cpu_bytes = 0;
             victim->priority = 0.0f;
             victim->state = virtual_geometry_page_state::nonresident;
+            victim->last_evicted_frame = frame_index;
+            victim->was_evicted = true;
             ++evictions;
+            if (victim_protected) ++forced_budget_evictions;
         }
     }
 };
@@ -433,6 +444,7 @@ void virtual_geometry_residency_manager::begin_frame(std::uint64_t frame_index)
     implementation_->deduplicated_requests = 0;
     implementation_->parent_fallbacks = 0;
     implementation_->stale_requests = 0;
+    implementation_->cooldown_suppressed_requests = 0;
 }
 
 void virtual_geometry_residency_manager::request(std::span<const virtual_geometry_page_request> requests)
@@ -453,6 +465,15 @@ void virtual_geometry_residency_manager::request(std::span<const virtual_geometr
         {
             page->priority = std::max(page->priority, priority);
             ++implementation_->deduplicated_requests;
+            continue;
+        }
+        const auto since_eviction =
+            implementation_->frame_index - std::min(implementation_->frame_index, page->last_evicted_frame);
+        const bool correctness_demand = request.visible_child || request.shadow_view;
+        if (page->was_evicted && !correctness_demand &&
+            since_eviction <= implementation_->config.reload_cooldown_frames)
+        {
+            ++implementation_->cooldown_suppressed_requests;
             continue;
         }
         page->state = virtual_geometry_page_state::requested;
@@ -580,14 +601,24 @@ virtual_geometry_residency_snapshot virtual_geometry_residency_manager::snapshot
         .compressed_cpu_resident_bytes = implementation_->cpu_bytes,
         .resource_count = static_cast<std::uint32_t>(implementation_->resources.size()),
         .evictions = implementation_->evictions,
+        .forced_budget_evictions = implementation_->forced_budget_evictions,
         .deduplicated_requests = implementation_->deduplicated_requests,
         .parent_fallbacks = implementation_->parent_fallbacks,
-        .stale_requests = implementation_->stale_requests};
+        .stale_requests = implementation_->stale_requests,
+        .cooldown_suppressed_requests = implementation_->cooldown_suppressed_requests};
     for (const auto& [_, resource] : implementation_->resources)
         for (const auto& page : resource.pages)
         {
             ++result.page_count;
-            if (page.state == virtual_geometry_page_state::resident) ++result.resident_pages;
+            if (page.state == virtual_geometry_page_state::resident)
+            {
+                ++result.resident_pages;
+                if (page.descriptor.root)
+                {
+                    result.root_gpu_resident_bytes += page.gpu_bytes;
+                    result.root_compressed_cpu_resident_bytes += page.cpu_bytes;
+                }
+            }
             if (page.state == virtual_geometry_page_state::resident &&
                 (page.descriptor.root ||
                  implementation_->frame_index - std::min(implementation_->frame_index, page.last_used_frame) <=
@@ -598,6 +629,12 @@ virtual_geometry_residency_snapshot virtual_geometry_residency_manager::snapshot
                 ++result.requested_pages;
             if (page.state == virtual_geometry_page_state::failed) ++result.failed_pages;
         }
+    result.gpu_budget_overflow_bytes =
+        result.gpu_resident_bytes > result.gpu_budget_bytes ? result.gpu_resident_bytes - result.gpu_budget_bytes : 0u;
+    result.compressed_cpu_budget_overflow_bytes = result.compressed_cpu_resident_bytes > result.compressed_cpu_budget_bytes
+                                                      ? result.compressed_cpu_resident_bytes -
+                                                            result.compressed_cpu_budget_bytes
+                                                      : 0u;
     return result;
 }
 
