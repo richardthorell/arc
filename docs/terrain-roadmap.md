@@ -244,7 +244,7 @@ At this milestone, new high-end terrain rendering work should stop targeting the
 
 ## Milestone 2 - Terrain-Specific Virtual Geometry Streaming
 
-**Status: in progress.** M2.1 establishes stable independently replaceable render-artifact regions; later M2 stages make their cooked payloads lazy, asynchronous, predictive, and budgeted.
+**Status: complete.** M2.1-M2.5 establish stable regionized terrain, lazy cooked payloads, asynchronous page IO/decode, predictive spatial prefetch, and bounded residency. M2.6 closes the milestone with a deterministic 16 km x 16 km stress-world acceptance suite and explicit request/reload-pressure diagnostics.
 
 Generic virtual geometry residency already provides the base mechanism. Terrain needs additional spatial policy.
 
