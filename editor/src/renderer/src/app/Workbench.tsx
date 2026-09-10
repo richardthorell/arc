@@ -337,10 +337,6 @@ export const classifyHostEventRefresh = (event: HostEventLike, selectedEntityId:
   return 'none';
 };
 
-const timeScaleOptions = [0.25, 0.5, 1, 2, 4] as const;
-const nextSnapOption = (options: readonly number[], current: number) =>
-  options[(options.indexOf(current) + 1) % options.length];
-
 const parseHostEntityId = (id: string): HostEntityId | null => {
   const [index, generation] = id.split(':').map((part) => Number.parseInt(part, 10));
   if (!Number.isInteger(index) || !Number.isInteger(generation)) {
@@ -1429,13 +1425,12 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           }}
           runtimeState={runtimeState.state}
           timeScale={runtimeState.timeScale}
-          onCycleTimeScale={() => {
-            const next = nextSnapOption(timeScaleOptions, runtimeState.timeScale);
+          onTimeScaleChange={(value) => {
             if (!startupState?.engineHostConnected) {
               setLastCommand('Native editor host is unavailable');
               return;
             }
-            void window.arc.host.command('runtime.setTimeScale', { value: next }).then((response) => {
+            void window.arc.host.command('runtime.setTimeScale', { value }).then((response) => {
               const result = response as HostResponse<HostRuntimeSnapshot>;
               if (result.succeeded) acceptRuntimeSnapshot(result.payload);
               else setLastCommand(result.error || 'Could not change runtime time scale');

@@ -27,7 +27,6 @@ import {
   UiButton,
   UiDropdown,
   UiIconButton,
-  UiSelectButton,
   UiSplitButton,
   type UiDropdownOption,
   type UiSplitButtonOption,
@@ -76,6 +75,60 @@ const scaleSnapOptions: ReadonlyArray<UiDropdownOption<string>> = [0.01, 0.05, 0
   value: String(value),
   label: `${Math.round(value * 100)}%`,
 }));
+
+const timeScaleOptions: ReadonlyArray<UiDropdownOption<string>> = [0.25, 0.5, 1, 2, 4].map((value) => ({
+  value: String(value),
+  label: `${value}×`,
+}));
+
+type ToolbarPlaybackOptionsProps = {
+  timeScale: number;
+  onTimeScaleChange?: (value: number) => void;
+};
+
+function ToolbarPlaybackOptions({ timeScale, onTimeScaleChange }: ToolbarPlaybackOptionsProps) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [open]);
+
+  return (
+    <span className="toolbar-playback-options" ref={rootRef}>
+      <UiButton
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label="Playback options"
+        className="toolbar-playback-options-trigger"
+        onClick={() => setOpen((current) => !current)}
+        type="button"
+        variant="toolbar"
+      >
+        <ChevronDown aria-hidden="true" size={12} />
+      </UiButton>
+      {open && (
+        <div className="toolbar-playback-options-popup" role="menu" aria-label="Playback options menu">
+          <div className="toolbar-playback-options-row">
+            <span>Time scale</span>
+            <UiDropdown
+              ariaLabel="Simulation time scale"
+              className="toolbar-playback-time-scale"
+              onValueChange={(value) => onTimeScaleChange?.(Number(value))}
+              options={timeScaleOptions}
+              value={String(timeScale)}
+            />
+          </div>
+        </div>
+      )}
+    </span>
+  );
+}
 
 const buildOptions: ReadonlyArray<UiSplitButtonOption<ToolbarBuildAction>> = [
   { value: 'build', label: 'Build', icon: <Hammer size={14} /> },
@@ -199,7 +252,7 @@ export type MainToolbarProps = {
   onScaleSnapChange?: (value: number) => void;
   runtimeState?: 'stopped' | 'running' | 'paused' | 'faulted';
   timeScale?: number;
-  onCycleTimeScale?: () => void;
+  onTimeScaleChange?: (value: number) => void;
   targetPlatform?: EditorTargetPlatform;
   onTargetPlatformChange?: (platform: EditorTargetPlatform) => void;
   onBuildAction?: (action: ToolbarBuildAction) => void;
@@ -221,7 +274,7 @@ export function MainToolbar({
   terrainEnabled = false,
   runtimeState = 'stopped',
   timeScale = 1,
-  onCycleTimeScale,
+  onTimeScaleChange,
   targetPlatform = 'windows',
   onTargetPlatformChange,
   onBuildAction,
@@ -243,29 +296,29 @@ export function MainToolbar({
           <UiIconButton
             active={runtimeState === 'paused'}
             className="toolbar-button"
+            disabled={runtimeState !== 'running'}
             label="Pause"
             onClick={() => onCommand('scene.pause')}
           >
             <Pause size={14} />
           </UiIconButton>
           <UiIconButton
-            active={runtimeState === 'stopped'}
             className="toolbar-button"
+            disabled={runtimeState === 'stopped'}
             label="Stop"
             onClick={() => onCommand('scene.stop')}
           >
             <Square size={13} />
           </UiIconButton>
-          <UiIconButton className="toolbar-button" label="Step" onClick={() => onCommand('scene.step')}>
+          <UiIconButton
+            className="toolbar-button"
+            disabled={runtimeState !== 'paused'}
+            label="Step"
+            onClick={() => onCommand('scene.step')}
+          >
             <StepForward size={14} />
           </UiIconButton>
-          <UiSelectButton
-            className="toolbar-select toolbar-select-narrow"
-            onClick={onCycleTimeScale}
-            title="Cycle preview simulation time scale"
-          >
-            {timeScale}×
-          </UiSelectButton>
+          <ToolbarPlaybackOptions timeScale={timeScale} onTimeScaleChange={onTimeScaleChange} />
         </div>
       </div>
 
