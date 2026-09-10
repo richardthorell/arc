@@ -62,6 +62,7 @@ TEST_CASE("play sessions pair BeginPlay and EndPlay across stop and restart")
                 .succeeded);
 
     REQUIRE(host->execute(arc::editor::host_runtime_resume_command{}).succeeded);
+    CHECK(host->runtime_snapshot().world_count == 2);
     REQUIRE(host->execute(arc::editor::host_runtime_pause_command{}).succeeded);
     REQUIRE(host->execute(arc::editor::host_runtime_step_command{.ticks = 1}).succeeded);
     CHECK(host->runtime_snapshot().state == arc::editor::host_runtime_state::paused);
@@ -74,20 +75,24 @@ TEST_CASE("play sessions pair BeginPlay and EndPlay across stop and restart")
 
     REQUIRE(host->execute(arc::editor::host_runtime_stop_command{}).succeeded);
     CHECK(host->runtime_snapshot().state == arc::editor::host_runtime_state::stopped);
+    CHECK(host->runtime_snapshot().world_count == 1);
 
     // The fixture rejects BeginPlay while its prior session is still active, so this
     // second Play proves Stop delivered the matching EndPlay before creating a new session.
     REQUIRE(host->execute(arc::editor::host_runtime_resume_command{}).succeeded);
+    CHECK(host->runtime_snapshot().world_count == 2);
     REQUIRE(host->execute(arc::editor::host_runtime_pause_command{}).succeeded);
     REQUIRE(host->execute(arc::editor::host_runtime_step_command{.ticks = 1}).succeeded);
     CHECK(host->runtime_snapshot().state == arc::editor::host_runtime_state::paused);
     REQUIRE(host->execute(arc::editor::host_runtime_stop_command{}).succeeded);
+    CHECK(host->runtime_snapshot().world_count == 1);
 
     // Project close uses the same Play World destruction path and must run EndPlay
     // before unloading the project module generation.
     REQUIRE(host->execute(arc::editor::host_runtime_resume_command{}).succeeded);
     REQUIRE(host->execute(arc::editor::host_close_project_command{}).succeeded);
     CHECK(host->runtime_snapshot().state == arc::editor::host_runtime_state::stopped);
+    CHECK(host->runtime_snapshot().world_count == 1);
 
     std::error_code cleanup_error;
     std::filesystem::remove_all(root, cleanup_error);
