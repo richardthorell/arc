@@ -29,12 +29,16 @@ jobs:
             engine/framework/tests/framework_tests.cpp \
             editor/native/src/arc_host_base.inc \
             editor/native/tests/editor_tests.cpp
+          set +e
           git clang-format-18 origin/main -- \
             engine/framework/inc/arc/framework/runtime_world.h \
             engine/framework/src/common/runtime_world.cpp \
             engine/framework/tests/framework_tests.cpp \
             editor/native/src/arc_host_base.inc \
             editor/native/tests/editor_tests.cpp
+          format_status=$?
+          set -e
+          if [ "$format_status" -gt 1 ]; then exit "$format_status"; fi
           git reset
 
       - name: Configure focused native build
