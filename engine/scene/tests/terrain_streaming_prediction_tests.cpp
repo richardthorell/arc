@@ -122,8 +122,11 @@ TEST_CASE("M2.4 prefetch stays bounded independently of terrain page count")
     scene::terrain_render_proxy proxy;
     proxy.regions.push_back(make_region(renderer, {0, 0}, 64.0f));
     proxy.regions.push_back(make_region(renderer, {0, 1}, 160.0f));
-    REQUIRE(proxy.regions[0].geometry.virtualized.valid());
-    REQUIRE(proxy.regions[1].geometry.virtualized.valid());
+    proxy.regions.push_back(make_region(renderer, {0, 2}, 256.0f));
+    proxy.regions.push_back(make_region(renderer, {0, 3}, 352.0f));
+    proxy.regions.push_back(make_region(renderer, {0, 4}, 448.0f));
+    for (const auto& region : proxy.regions)
+        REQUIRE(region.geometry.virtualized.valid());
 
     renderer.virtual_geometry_residency().begin_frame(1u);
     scene::terrain_streaming_predictor predictor({.prediction_horizon_seconds = 1.0f,
