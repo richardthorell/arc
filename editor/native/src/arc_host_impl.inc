@@ -757,10 +757,15 @@ template <class HostState> void refresh_scene_water_assets(HostState& host)
     for (const auto entity : host.scene.scene.entities())
     {
         auto* water = host.scene.scene.template try_get<scene::water_component>(entity);
-        if (!water || (!water->preset.guid.valid() && water->preset.path_hint.empty())) continue;
-        const auto binding = scene::refresh_water_preset_binding(*water, *host.asset_registry);
-        if (!binding.succeeded)
-            arc::diagnostics::warn("editor.water", "Water preset refresh failed: " + binding.message);
+        if (!water) continue;
+        if (water->preset.guid.valid() || !water->preset.path_hint.empty())
+        {
+            const auto binding = scene::refresh_water_preset_binding(*water, *host.asset_registry);
+            if (!binding.succeeded)
+                arc::diagnostics::warn("editor.water", "Water preset refresh failed: " + binding.message);
+        }
+        if (!synchronize_water_render_material(host.scene, *host.renderer, entity))
+            arc::diagnostics::warn("editor.water", "Water material refresh failed");
     }
 }
 } // namespace

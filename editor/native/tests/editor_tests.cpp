@@ -927,6 +927,61 @@ TEST_CASE("editor primitives bind the authored built-in default phong material")
     std::filesystem::remove_all(root, cleanup_error);
 }
 
+TEST_CASE("editor Ocean creation uses the Water clipmap and optical transmission material")
+{
+    arc::editor::editor_scene_state scene;
+    arc::render::renderer renderer;
+    const auto ocean = arc::editor::add_water_to_scene(scene, renderer);
+    REQUIRE(scene.scene.alive(ocean));
+    REQUIRE(scene.scene.has<arc::scene::water_component>(ocean));
+    REQUIRE(scene.scene.has<arc::scene::mesh_renderer_component>(ocean));
+    const auto& mesh_renderer = scene.scene.get<arc::scene::mesh_renderer_component>(ocean);
+    const auto* mesh = renderer.mesh_data_for(mesh_renderer.mesh.conventional);
+    REQUIRE(mesh != nullptr);
+    CHECK(mesh->name == "Water Ocean Clipmap");
+    CHECK(mesh->vertices.size() > 4u);
+    CHECK_FALSE(mesh_renderer.casts_shadows);
+
+    const auto packet = renderer.frame_queue().commit(1);
+    const auto upload_event = std::ranges::find_if(
+        packet.events,
+        [&](const auto& event)
+        {
+            if (event.type() != arc::render::render_event_type::material_upload) return false;
+            return std::get<arc::render::material_upload_event>(event.payload).handle == mesh_renderer.material;
+        });
+    REQUIRE(upload_event != packet.events.end());
+    const auto& material = *std::get<arc::render::material_upload_event>(upload_event->payload).material;
+    CHECK(material.shading_model == arc::render::material_shading_model::transmission);
+    CHECK(material.render_path == arc::render::material_render_path::clustered_forward);
+    CHECK(material.alpha_mode == arc::render::material_alpha_mode::blend);
+    CHECK(material.index_of_refraction == Catch::Approx(1.333f));
+    CHECK(material.transmission_factor > 0.0f);
+    CHECK(material.attenuation_distance > 0.0f);
+
+    auto& water = scene.scene.get<arc::scene::water_component>(ocean);
+    water.settings.appearance.absorption = {0.4f, 0.2f, 0.1f};
+    water.settings.appearance.refraction_strength = 0.2f;
+    REQUIRE(arc::editor::synchronize_water_render_material(scene, renderer, ocean));
+    const auto update_packet = renderer.frame_queue().commit(2);
+    const auto update_event = std::ranges::find_if(
+        update_packet.events,
+        [&](const auto& event)
+        {
+            if (event.type() != arc::render::render_event_type::material_upload) return false;
+            return std::get<arc::render::material_upload_event>(event.payload).handle == mesh_renderer.material;
+        });
+    REQUIRE(update_event != update_packet.events.end());
+    const auto& updated = *std::get<arc::render::material_upload_event>(update_event->payload).material;
+    CHECK(updated.transmission_factor == Catch::Approx(0.7f));
+    CHECK(updated.attenuation_color[0] < updated.attenuation_color[2]);
+
+    const auto first_material = mesh_renderer.material;
+    const auto second_ocean = arc::editor::add_water_to_scene(scene, renderer);
+    REQUIRE(scene.scene.alive(second_ocean));
+    CHECK(scene.scene.get<arc::scene::mesh_renderer_component>(second_ocean).material != first_material);
+}
+
 TEST_CASE("arc host protocol serializes command and query envelopes")
 {
     const arc::editor::host_entity_id entity{.index = 7, .generation = 3};

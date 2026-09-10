@@ -706,6 +706,61 @@ TEST_CASE("render scene culling uses transformed dirty local bounds")
     REQUIRE(world_event.packet->visible_items.size() == 1);
 }
 
+TEST_CASE("render scene snaps selected Ocean geometry to the camera-relative Water contract")
+{
+    arc::ecs::world scene;
+    arc::render::renderer renderer;
+    const arc::render::mesh_handle mesh{.index = 7, .generation = 1};
+    const arc::render::material_handle material{.index = 9, .generation = 1};
+
+    const auto camera_entity = scene.create();
+    arc::scene::transform_component camera_transform;
+    camera_transform.position = {123.4f, 12.0f, -456.7f};
+    scene.emplace<arc::scene::transform_component>(camera_entity, camera_transform);
+    scene.emplace<arc::scene::camera_component>(camera_entity);
+
+    const auto ocean = scene.create();
+    arc::scene::transform_component ocean_transform;
+    ocean_transform.position = {10.0f, 2.0f, 20.0f};
+    scene.emplace<arc::scene::transform_component>(ocean, ocean_transform);
+    scene.emplace<arc::scene::selection_component>(ocean, true);
+    scene.emplace<arc::scene::bounds_component>(
+        ocean,
+        arc::geometric::box3f{arc::geometric::point3f{-20000.0f, -0.01f, -20000.0f},
+                              arc::geometric::point3f{20000.0f, 0.01f, 20000.0f}},
+        arc::geometric::box3f{}, true);
+    arc::scene::water_component water;
+    water.water_level = 3.0f;
+    scene.emplace<arc::scene::water_component>(ocean, water);
+    scene.emplace<arc::scene::mesh_renderer_component>(
+        ocean, arc::scene::mesh_renderer_component{.mesh = arc::render::geometry_resource_handle{mesh},
+                                                    .material = material,
+                                                    .casts_shadows = false});
+
+    const auto result = arc::scene::render_scene(scene, renderer, 1280, 720);
+    REQUIRE(result.water_count == 1);
+    REQUIRE(result.renderable_count == 1);
+    const auto frame = renderer.frame_queue().commit(1);
+    REQUIRE(frame.events.size() == 1);
+    const auto& packet = *std::get<arc::render::render_world_event>(frame.events[0].payload).packet;
+    REQUIRE(packet.waters.size() == 1);
+    REQUIRE(packet.items.size() == 1);
+
+    const auto& instance = packet.waters.front();
+    CHECK(instance.material == material);
+    CHECK(instance.water_level == Catch::Approx(5.0f));
+    CHECK(instance.follow_camera);
+    CHECK(std::abs(instance.surface_origin[0] - camera_transform.position[0]) < instance.finest_grid_cell_size);
+    CHECK(std::abs(instance.surface_origin[2] - camera_transform.position[2]) < instance.finest_grid_cell_size);
+    CHECK(instance.surface_origin[1] == Catch::Approx(5.0f));
+    const auto rendered_origin = arc::math::transform_point(packet.items.front().model, arc::math::vector3f{});
+    CHECK(rendered_origin[0] == Catch::Approx(instance.surface_origin[0]));
+    CHECK(rendered_origin[1] == Catch::Approx(instance.surface_origin[1]));
+    CHECK(rendered_origin[2] == Catch::Approx(instance.surface_origin[2]));
+    CHECK(packet.items.front().maximum_draw_distance == Catch::Approx(water.visible_distance));
+    CHECK(packet.debug_overlay.lines.size() >= 26u);
+}
+
 TEST_CASE("mesh renderer keeps conventional fallback when virtual geometry is unavailable")
 {
     arc::ecs::world scene;

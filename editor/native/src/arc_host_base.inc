@@ -2608,13 +2608,18 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const std::string label = create_entity_kind_label(payload.kind);
                 if (!created.valid()) return fail("Failed to create entity: " + label);
 
-                if (payload.kind == host_create_entity_kind::water && state_->asset_registry)
+                if (payload.kind == host_create_entity_kind::water)
                 {
                     auto& component = state_->scene.scene.get<scene::water_component>(created);
-                    const auto binding = scene::refresh_water_preset_binding(component, *state_->asset_registry);
-                    if (!binding.succeeded)
-                        arc::diagnostics::warn("editor.water", "Default Water preset was unavailable: " +
-                                                                   binding.message);
+                    if (state_->asset_registry)
+                    {
+                        const auto binding = scene::refresh_water_preset_binding(component, *state_->asset_registry);
+                        if (!binding.succeeded)
+                            arc::diagnostics::warn("editor.water", "Default Water preset was unavailable: " +
+                                                                       binding.message);
+                    }
+                    if (!synchronize_water_render_material(state_->scene, *state_->renderer, created))
+                        arc::diagnostics::warn("editor.water", "Default Water material could not be updated");
                 }
 
                 if (payload.parent.valid())
@@ -3223,6 +3228,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                         const auto binding = scene::refresh_water_preset_binding(component, *state_->asset_registry);
                         if (!binding.succeeded) return fail(binding.message, entity);
                     }
+                    if (!synchronize_water_render_material(state_->scene, *state_->renderer, target))
+                        return fail("Water optical material could not be updated", entity);
                 }
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
                            "Water settings changed for " + std::to_string(targets.size()) + " entity(s)", entity);

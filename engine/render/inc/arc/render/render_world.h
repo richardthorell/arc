@@ -331,10 +331,15 @@ struct water_render_instance
     render_object_id object_id{};
     water::water_body_type type{water::water_body_type::ocean};
     material_handle material{};
+    /** Authored entity position before camera-relative placement. */
     math::vector3f position{};
+    /** Snapped world-space origin used to place the generated Ocean grid for this view. */
+    math::vector3f surface_origin{};
     water::water_runtime_settings settings;
     float water_level{};
     float visible_distance{20000.0f};
+    float finest_grid_cell_size{};
+    std::uint32_t grid_ring_count{8u};
     std::int32_t priority{};
     bool follow_camera{true};
     bool shoreline_enabled{true};

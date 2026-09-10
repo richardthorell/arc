@@ -1881,6 +1881,8 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                     value.settings.quality =
                         static_cast<water::water_quality>(source.at("quality").get<std::uint8_t>());
                 }
+                if (!synchronize_water_render_material(loaded, renderer, entity))
+                    throw std::runtime_error("water optical material could not be restored");
             }
             if (components.contains("Vegetation"))
             {

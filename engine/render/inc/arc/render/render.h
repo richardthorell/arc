@@ -36,3 +36,4 @@
 #include <arc/render/virtual_geometry.h>
 #include <arc/render/virtual_geometry_artifact.h>
 #include <arc/render/virtual_shadow.h>
+#include <arc/render/water_material.h>
