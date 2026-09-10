@@ -2396,7 +2396,8 @@ TEST_CASE("built-in Water presets are discovered and drive Ocean defaults")
     const auto project_assets = host->project_assets_snapshot();
     CHECK(std::count_if(project_assets.assets.begin(), project_assets.assets.end(), [](const auto& asset)
                         {
-                            return asset.type_id == arc::assets::to_string(arc::assets::asset_types::water_preset) &&
+                            return asset.kind == "water" &&
+                                   asset.type_id == arc::assets::to_string(arc::assets::asset_types::water_preset) &&
                                    asset.importer_id ==
                                        arc::assets::to_string(arc::assets::importer_ids::water_preset);
                         }) >= 5);

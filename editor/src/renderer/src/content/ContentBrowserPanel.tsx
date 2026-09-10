@@ -81,6 +81,7 @@ const assetTypeOptions = [
   { value: 'texture', label: 'Texture' },
   { value: 'shader', label: 'Shader' },
   { value: 'prefab', label: 'Prefab' },
+  { value: 'water', label: 'Water' },
 ];
 const assetStateOptions = [
   { value: 'all', label: 'All states' },

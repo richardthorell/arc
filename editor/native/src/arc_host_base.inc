@@ -5579,6 +5579,7 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
             if (type == arc::assets::asset_types::shader) return "shader";
             if (type == arc::assets::asset_types::texture_2d) return "texture";
             if (type == arc::assets::asset_types::environment) return "environment";
+            if (type == arc::assets::asset_types::water_preset) return "water";
             if (type == arc::assets::asset_types::imported_scene) return "scene";
             if (type == arc::assets::asset_types::static_mesh) return "mesh";
             return "unknown";

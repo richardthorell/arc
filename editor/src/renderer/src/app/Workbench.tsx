@@ -223,6 +223,7 @@ const assetKindFromHost = (kind: HostAssetSnapshot['kind']): AssetItem['kind'] =
     kind === 'shader' ||
     kind === 'mesh' ||
     kind === 'prefab' ||
+    kind === 'water' ||
     kind === 'folder'
   ) {
     return kind;

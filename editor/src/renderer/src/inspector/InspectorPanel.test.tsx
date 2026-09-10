@@ -345,10 +345,33 @@ describe('data-driven InspectorPanel', () => {
 
   it('renders Water controls and sends a typed Water update', async () => {
     const command = vi.fn().mockResolvedValue({ succeeded: true });
-    render(<InspectorPanel snapshot={waterSnapshot()} command={command} refresh={async () => undefined} />);
+    const assets = [
+      {
+        id: 'storm',
+        name: 'Storm',
+        path: 'builtin/water/presets/storm.arcwater',
+        kind: 'water',
+        status: 'ready' as const,
+      },
+      { id: 'sand', name: 'Sand', path: 'materials/sand.arcmat', kind: 'material', status: 'ready' as const },
+    ];
+    render(
+      <InspectorPanel snapshot={waterSnapshot()} command={command} refresh={async () => undefined} assets={assets} />,
+    );
 
     expect(screen.getByLabelText('Collapse Water')).toBeInTheDocument();
     expect(screen.getByLabelText('Water Level')).toHaveValue('0.00');
+    await userEvent.click(screen.getByLabelText('Choose Water Preset asset'));
+    expect(screen.queryByLabelText('Select Sand')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText('Select Storm'));
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith(
+        'water.update',
+        expect.objectContaining({
+          water: expect.objectContaining({ presetPath: 'builtin/water/presets/storm.arcwater' }),
+        }),
+      ),
+    );
     await userEvent.click(screen.getByLabelText('Quality'));
     await userEvent.click(screen.getByRole('option', { name: 'Ultra' }));
     await waitFor(() =>

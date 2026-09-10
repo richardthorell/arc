@@ -34,4 +34,12 @@ describe('model asset presentation', () => {
     expect(assetPresentationIcon(value)).toBe('mesh');
     expect(assetDragType(value)).toBe('mesh');
   });
+
+  it('presents native Water presets as dedicated authoring assets', () => {
+    const value = asset('builtin/water/presets/open_ocean.arcwater', 'water');
+    expect(assetPresentationKind(value)).toBe('water');
+    expect(assetPresentationLabel(value)).toBe('Water Preset');
+    expect(assetPresentationIcon(value)).toBe('settings');
+    expect(assetDragType(value)).toBe('water');
+  });
 });
