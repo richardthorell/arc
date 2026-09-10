@@ -32,6 +32,23 @@ jobs:
           path.write_text(text)
           PY
 
+      - name: Fix generated regression comparison
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('editor/native/tests/editor_tests.cpp')
+          text = path.read_text()
+          old = '    CHECK(camera_during_play.position == camera_before.position);\n'
+          new = (
+              '    CHECK(camera_during_play.position[0] == camera_before.position[0]);\n'
+              '    CHECK(camera_during_play.position[1] == camera_before.position[1]);\n'
+              '    CHECK(camera_during_play.position[2] == camera_before.position[2]);\n'
+          )
+          if old not in text:
+              raise SystemExit('play-session camera comparison not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
       - name: Format changed C++
         run: |
           git add \
@@ -58,7 +75,7 @@ jobs:
           -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
 
       - name: Build focused native tests
-        run: cmake --build --preset editor-no-vulkan --target arc_framework_tests arc_editor_host_tests -j 2
+        run: cmake --build --preset editor-no-vulkan --target arc_framework_tests arc_editor_host_tests -j 4
 
       - name: Run focused native tests
         run: |
