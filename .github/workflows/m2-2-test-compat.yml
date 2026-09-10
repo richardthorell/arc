@@ -1,0 +1,46 @@
+name: Apply M2.2 manifest test update
+
+on:
+  push:
+    branches:
+      - m2/terrain-lazy-cooked-regions
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: "github.event.head_commit.message != 'test: update terrain manifest contract coverage'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: m2/terrain-lazy-cooked-regions
+          fetch-depth: 0
+      - name: Update M0 manifest fixture for contract v2
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('engine/scene/tests/terrain_m0_completion_tests.cpp')
+          s = p.read_text()
+          old = '.artifacts = {{arc::scene::terrain_artifact_kind::render_geometry, key, 1u, "terrain/render/region-0"}},'
+          new = '.artifacts = {{arc::scene::terrain_artifact_kind::render_geometry, key, 1u, "terrain/render/region-0", 1u, 1u}},'
+          if old not in s:
+              raise RuntimeError('primary manifest fixture not found')
+          s = s.replace(old, new, 1)
+          old = '{arc::scene::terrain_artifact_kind::render_geometry, key, 1u, "duplicate"});'
+          new = '{arc::scene::terrain_artifact_kind::render_geometry, key, 1u, "duplicate", 1u, 1u});'
+          if old not in s:
+              raise RuntimeError('duplicate manifest fixture not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          git diff --check
+      - name: Commit update
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add engine/scene/tests/terrain_m0_completion_tests.cpp
+          git commit -m "test: update terrain manifest contract coverage"
+          git push origin HEAD:m2/terrain-lazy-cooked-regions
