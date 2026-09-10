@@ -1,0 +1,192 @@
+name: Apply M2.2 core storage patch
+
+on:
+  push:
+    branches:
+      - m2/terrain-lazy-cooked-regions
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: "github.event.head_commit.message != 'feat: add range-addressable virtual geometry packing'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: m2/terrain-lazy-cooked-regions
+          fetch-depth: 0
+
+      - name: Patch generic cooked storage primitives
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              n = s.count(old)
+              if n != 1:
+                  raise RuntimeError(f"{path}: expected one match, found {n}")
+              p.write_text(s.replace(old, new, 1))
+
+          replace_once(
+              "engine/assets/inc/arc/assets/cook.h",
+              "inline constexpr artifact_schema_id material_instance{0xa7ca55e700000004ull, 0x000000000000000bull};\n",
+              "inline constexpr artifact_schema_id material_instance{0xa7ca55e700000004ull, 0x000000000000000bull};\ninline constexpr artifact_schema_id terrain_manifest{0xa7ca55e700000004ull, 0x000000000000000cull};\n",
+          )
+
+          replace_once(
+              "engine/render/inc/arc/render/virtual_geometry_artifact.h",
+              "struct virtual_geometry_artifact_index\n{\n    std::uint32_t schema_version{};\n    std::uint64_t conventional_artifact_hash{};\n    std::uint64_t artifact_size{};\n    std::vector<virtual_geometry_artifact_mesh_index> meshes;\n};\n",
+              "struct virtual_geometry_artifact_index\n{\n    std::uint32_t schema_version{};\n    std::uint64_t conventional_artifact_hash{};\n    std::uint64_t artifact_size{};\n    std::vector<virtual_geometry_artifact_mesh_index> meshes;\n};\n\n/** Physical page ordering policy. Logical page indices and hierarchy references remain unchanged. */\nenum class virtual_geometry_artifact_page_order : std::uint8_t\n{\n    logical,\n    spatial_morton\n};\n\nstruct virtual_geometry_artifact_encode_options\n{\n    virtual_geometry_artifact_page_order page_order{virtual_geometry_artifact_page_order::logical};\n};\n",
+          )
+
+          replace_once(
+              "engine/render/inc/arc/render/virtual_geometry_artifact.h",
+              "encode_virtual_geometry_artifact(std::span<const virtual_geometry_artifact_source> meshes,\n                                 std::uint64_t conventional_artifact_hash = 0);\n",
+              "encode_virtual_geometry_artifact(\n    std::span<const virtual_geometry_artifact_source> meshes, std::uint64_t conventional_artifact_hash = 0,\n    const virtual_geometry_artifact_encode_options& options = {});\n",
+          )
+
+          replace_once(
+              "engine/render/inc/arc/render/virtual_geometry_artifact.h",
+              "[[nodiscard]] virtual_geometry_artifact_bytes_result\nread_virtual_geometry_artifact_page(std::span<const std::byte> bytes, const virtual_geometry_artifact_index& index,\n                                    std::uint32_t mesh_index, std::uint32_t page_index);\n",
+              "[[nodiscard]] virtual_geometry_artifact_bytes_result\nread_virtual_geometry_artifact_page(std::span<const std::byte> bytes, const virtual_geometry_artifact_index& index,\n                                    std::uint32_t mesh_index, std::uint32_t page_index);\n\n/** Verify independently range-read page bytes without requiring the complete artifact in memory. */\n[[nodiscard]] bool verify_virtual_geometry_artifact_page(\n    std::span<const std::byte> page_bytes, const virtual_geometry_artifact_page_range& page) noexcept;\n",
+          )
+
+          replace_once(
+              "engine/render/src/common/virtual_geometry_artifact.cpp",
+              "#include <limits>\n#include <type_traits>\n",
+              "#include <limits>\n#include <numeric>\n#include <type_traits>\n",
+          )
+
+          insert_before = "virtual_geometry_artifact_error failure(virtual_geometry_artifact_error_code code, std::string message)\n"
+          helper = r'''std::uint32_t morton_expand_10(std::uint32_t value) noexcept
+{
+    value &= 0x3ffu;
+    value = (value | (value << 16u)) & 0x030000ffu;
+    value = (value | (value << 8u)) & 0x0300f00fu;
+    value = (value | (value << 4u)) & 0x030c30c3u;
+    value = (value | (value << 2u)) & 0x09249249u;
+    return value;
+}
+
+std::vector<std::uint32_t> physical_page_order(const virtual_mesh_data& geometry,
+                                               virtual_geometry_artifact_page_order policy)
+{
+    std::vector<std::uint32_t> order(geometry.pages.size());
+    std::iota(order.begin(), order.end(), 0u);
+    if (policy != virtual_geometry_artifact_page_order::spatial_morton || order.size() < 2u) return order;
+
+    struct page_center
+    {
+        float x{};
+        float y{};
+        float z{};
+    };
+    std::vector<page_center> centers(geometry.pages.size());
+    page_center minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
+                        std::numeric_limits<float>::max()};
+    page_center maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(),
+                        std::numeric_limits<float>::lowest()};
+    for (std::size_t page_index = 0; page_index < geometry.pages.size(); ++page_index)
+    {
+        const auto& page = geometry.pages[page_index];
+        page_center center{};
+        std::uint32_t count{};
+        const auto end = std::min<std::uint64_t>(static_cast<std::uint64_t>(page.first_cluster) + page.cluster_count,
+                                                 geometry.clusters.size());
+        for (std::uint64_t cluster_index = page.first_cluster; cluster_index < end; ++cluster_index)
+        {
+            const auto& sphere = geometry.clusters[static_cast<std::size_t>(cluster_index)].sphere_center;
+            center.x += sphere[0];
+            center.y += sphere[1];
+            center.z += sphere[2];
+            ++count;
+        }
+        if (count != 0u)
+        {
+            const auto reciprocal = 1.0f / static_cast<float>(count);
+            center.x *= reciprocal;
+            center.y *= reciprocal;
+            center.z *= reciprocal;
+        }
+        centers[page_index] = center;
+        minimum.x = std::min(minimum.x, center.x);
+        minimum.y = std::min(minimum.y, center.y);
+        minimum.z = std::min(minimum.z, center.z);
+        maximum.x = std::max(maximum.x, center.x);
+        maximum.y = std::max(maximum.y, center.y);
+        maximum.z = std::max(maximum.z, center.z);
+    }
+
+    const auto quantize = [](float value, float minimum_value, float maximum_value)
+    {
+        const auto extent = maximum_value - minimum_value;
+        if (!(extent > 0.0f)) return 0u;
+        const auto normalized = std::clamp((value - minimum_value) / extent, 0.0f, 1.0f);
+        return static_cast<std::uint32_t>(normalized * 1023.0f + 0.5f);
+    };
+    const auto key = [&](std::uint32_t page_index)
+    {
+        const auto& center = centers[page_index];
+        const auto x = quantize(center.x, minimum.x, maximum.x);
+        const auto y = quantize(center.y, minimum.y, maximum.y);
+        const auto z = quantize(center.z, minimum.z, maximum.z);
+        return morton_expand_10(x) | (morton_expand_10(y) << 1u) | (morton_expand_10(z) << 2u);
+    };
+    std::stable_sort(order.begin(), order.end(), [&](std::uint32_t lhs, std::uint32_t rhs)
+                     {
+                         const auto lhs_root = geometry.pages[lhs].root;
+                         const auto rhs_root = geometry.pages[rhs].root;
+                         if (lhs_root != rhs_root) return lhs_root;
+                         const auto lhs_key = key(lhs);
+                         const auto rhs_key = key(rhs);
+                         return lhs_key != rhs_key ? lhs_key < rhs_key : lhs < rhs;
+                     });
+    return order;
+}
+
+'''
+          p = Path("engine/render/src/common/virtual_geometry_artifact.cpp")
+          s = p.read_text()
+          if insert_before not in s:
+              raise RuntimeError("virtual geometry helper insertion point missing")
+          p.write_text(s.replace(insert_before, helper + insert_before, 1))
+
+          replace_once(
+              "engine/render/src/common/virtual_geometry_artifact.cpp",
+              "encode_virtual_geometry_artifact(std::span<const virtual_geometry_artifact_source> meshes,\n                                 std::uint64_t conventional_artifact_hash)\n",
+              "encode_virtual_geometry_artifact(std::span<const virtual_geometry_artifact_source> meshes,\n                                 std::uint64_t conventional_artifact_hash,\n                                 const virtual_geometry_artifact_encode_options& options)\n",
+          )
+
+          replace_once(
+              "engine/render/src/common/virtual_geometry_artifact.cpp",
+              """    for (auto& mesh : encoded)\n    {\n        mesh.page_offsets.reserve(mesh.geometry->pages.size());\n        for (const auto& page : mesh.geometry->pages)\n        {\n            output.align(virtual_geometry_artifact_page_alignment);\n            mesh.page_offsets.push_back(output.size());\n            const auto end = static_cast<std::uint64_t>(page.compressed_offset) + page.compressed_size;\n            if (end > mesh.geometry->page_payload.size())\n                return virtual_geometry_artifact_bytes_result::failure(\n                    failure(virtual_geometry_artifact_error_code::out_of_bounds, \"page payload range is invalid\"));\n            output.raw(std::span(mesh.geometry->page_payload).subspan(page.compressed_offset, page.compressed_size));\n        }\n    }\n""",
+              """    for (auto& mesh : encoded)\n    {\n        mesh.page_offsets.resize(mesh.geometry->pages.size());\n        for (const auto page_index : physical_page_order(*mesh.geometry, options.page_order))\n        {\n            const auto& page = mesh.geometry->pages[page_index];\n            output.align(virtual_geometry_artifact_page_alignment);\n            mesh.page_offsets[page_index] = output.size();\n            const auto end = static_cast<std::uint64_t>(page.compressed_offset) + page.compressed_size;\n            if (end > mesh.geometry->page_payload.size())\n                return virtual_geometry_artifact_bytes_result::failure(\n                    failure(virtual_geometry_artifact_error_code::out_of_bounds, \"page payload range is invalid\"));\n            output.raw(std::span(mesh.geometry->page_payload).subspan(page.compressed_offset, page.compressed_size));\n        }\n    }\n""",
+          )
+
+          replace_once(
+              "engine/render/src/common/virtual_geometry_artifact.cpp",
+              """    const auto payload = bytes.subspan(static_cast<std::size_t>(page.offset), page.stored_size);\n    if (hash_bytes(payload) != page.content_hash)\n        return virtual_geometry_artifact_bytes_result::failure(failure(\n            virtual_geometry_artifact_error_code::integrity_failure, \"virtual-geometry page content hash mismatch\"));\n    return virtual_geometry_artifact_bytes_result::success(std::vector<std::byte>(payload.begin(), payload.end()));\n}\n\n} // namespace arc::render\n""",
+              """    const auto payload = bytes.subspan(static_cast<std::size_t>(page.offset), page.stored_size);\n    if (!verify_virtual_geometry_artifact_page(payload, page))\n        return virtual_geometry_artifact_bytes_result::failure(failure(\n            virtual_geometry_artifact_error_code::integrity_failure, \"virtual-geometry page content hash mismatch\"));\n    return virtual_geometry_artifact_bytes_result::success(std::vector<std::byte>(payload.begin(), payload.end()));\n}\n\nbool verify_virtual_geometry_artifact_page(std::span<const std::byte> page_bytes,\n                                           const virtual_geometry_artifact_page_range& page) noexcept\n{\n    return page_bytes.size() == page.stored_size && hash_bytes(page_bytes) == page.content_hash;\n}\n\n} // namespace arc::render\n""",
+          )
+
+          p = Path("engine/assets/src/common/package_artifact_reader.cpp")
+          s = p.read_text()
+          if "#include <utility>" not in s:
+              p.write_text(s.replace("#include <limits>\n", "#include <limits>\n#include <utility>\n", 1))
+          PY
+
+          git diff --check
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add engine/assets engine/render
+          git commit -m "feat: add range-addressable virtual geometry packing"
+          git push origin HEAD:m2/terrain-lazy-cooked-regions
