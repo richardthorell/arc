@@ -3461,3 +3461,101 @@ TEST_CASE("editor play session renders an isolated scene copy and restores the a
     REQUIRE(frame.submitted);
     CHECK(host->scene_state().last_render.renderable_count == initial_renderables + 1);
 }
+
+TEST_CASE("project module loader retains executable ECS system registrations")
+{
+    arc::editor::project_module_loader loader;
+    const auto loaded =
+        loader.load(ARC_TEST_GAME_MODULE_SYSTEM, "0.1.0", "12345678-1234-4234-8234-123456789abc", "fixture.editor");
+    REQUIRE(loaded.succeeded);
+    REQUIRE(loader.system_registrations().size() == 1);
+    const auto& system = loader.system_registrations().front();
+    CHECK(system.stable_id == "fixture.runtime.visibility");
+    CHECK(system.phase == arc::project::game_system_phase_v1::gameplay_commands);
+    CHECK(system.execute != nullptr);
+}
+
+TEST_CASE("project module loader rejects invalid ECS system scheduling metadata")
+{
+    arc::editor::project_module_loader loader;
+    const auto loaded = loader.load(ARC_TEST_GAME_MODULE_INVALID_SYSTEM, "0.1.0",
+                                    "12345678-1234-4234-8234-123456789abc", "fixture.editor");
+    CHECK_FALSE(loaded.succeeded);
+    CHECK(loaded.message.find("invalid ECS system descriptor") != std::string::npos);
+}
+
+TEST_CASE("play sessions execute project ECS systems without mutating the authoring world")
+{
+    const auto root =
+        std::filesystem::temp_directory_path() /
+        ("arc-play-system-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(root / "Content");
+    std::filesystem::create_directories(root / "Build");
+    const auto module_path = root / "Build" / std::filesystem::path(ARC_TEST_GAME_MODULE_SYSTEM).filename();
+    std::filesystem::copy_file(ARC_TEST_GAME_MODULE_SYSTEM, module_path,
+                               std::filesystem::copy_options::overwrite_existing);
+
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    assets.root = root / "Content";
+    REQUIRE(host->open_project({.name = "Executable Play Systems",
+                                .root = root,
+                                .project_guid = "12345678-1234-4234-8234-123456789abc",
+                                .engine_version = "0.1.0",
+                                .editor_module_id = "fixture.editor",
+                                .editor_module_path = module_path},
+                               assets)
+                .succeeded);
+    host->renderer_service().set_backend(std::make_unique<pick_test_backend>());
+    host->poll_events();
+
+    auto& authoring = host->scene_state();
+    const auto probe = authoring.scene.create();
+    authoring.scene.emplace<arc::scene::name_component>(probe, "Runtime System Probe");
+    authoring.scene.emplace<arc::scene::transform_component>(probe);
+    authoring.scene.emplace<arc::scene::active_component>(probe, true);
+    arc::scene::mesh_renderer_component mesh;
+    mesh.mesh = authoring.default_mesh;
+    mesh.material = authoring.default_material;
+    authoring.scene.emplace<arc::scene::mesh_renderer_component>(probe, mesh);
+    arc::scene::update_world_transforms(authoring.scene);
+
+    auto frame = host->request_viewport({.viewport_id = "viewport-1", .frame_index = 1, .width = 640, .height = 360});
+    REQUIRE(frame.submitted);
+    const auto authoring_renderables = authoring.last_render.renderable_count;
+    REQUIRE(authoring_renderables > 0);
+    REQUIRE(authoring.scene.get<arc::scene::mesh_renderer_component>(probe).visible);
+    REQUIRE(authoring.scene.get<arc::scene::active_component>(probe).active);
+
+    REQUIRE(host->execute(arc::editor::host_runtime_resume_command{}).succeeded);
+    REQUIRE(host->runtime_snapshot().world_count == 2);
+    REQUIRE(host->execute(arc::editor::host_runtime_pause_command{}).succeeded);
+    const auto tick_before = host->runtime_snapshot().tick_id;
+    REQUIRE(host->execute(arc::editor::host_runtime_step_command{.ticks = 1}).succeeded);
+    CHECK(host->runtime_snapshot().tick_id == tick_before + 1);
+
+    frame = host->request_viewport({.viewport_id = "viewport-1", .frame_index = 2, .width = 640, .height = 360});
+    REQUIRE(frame.submitted);
+    CHECK(authoring.last_render.renderable_count + 1 == authoring_renderables);
+    CHECK(authoring.scene.get<arc::scene::mesh_renderer_component>(probe).visible);
+    CHECK(authoring.scene.get<arc::scene::active_component>(probe).active);
+
+    REQUIRE(host->execute(arc::editor::host_runtime_stop_command{}).succeeded);
+    CHECK(host->runtime_snapshot().world_count == 1);
+    frame = host->request_viewport({.viewport_id = "viewport-1", .frame_index = 3, .width = 640, .height = 360});
+    REQUIRE(frame.submitted);
+    CHECK(authoring.last_render.renderable_count == authoring_renderables);
+    CHECK(authoring.scene.get<arc::scene::mesh_renderer_component>(probe).visible);
+
+    // Closing a project must destroy the Play World before unloading module code.
+    REQUIRE(host->execute(arc::editor::host_runtime_resume_command{}).succeeded);
+    REQUIRE(host->runtime_snapshot().world_count == 2);
+    REQUIRE(host->execute(arc::editor::host_close_project_command{}).succeeded);
+    CHECK(host->runtime_snapshot().world_count == 1);
+    CHECK(host->runtime_snapshot().state == arc::editor::host_runtime_state::stopped);
+
+    std::error_code cleanup_error;
+    std::filesystem::remove_all(root, cleanup_error);
+}

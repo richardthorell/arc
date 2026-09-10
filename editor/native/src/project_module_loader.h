@@ -8,6 +8,11 @@
 #include <string_view>
 #include <vector>
 
+namespace arc::framework
+{
+class runtime_world;
+}
+
 namespace arc::editor
 {
 
@@ -45,6 +50,25 @@ struct project_registration_schema
     project::game_registration_kind_v1 kind{};
     std::string stable_id;
     std::string name;
+};
+
+struct project_system_registration
+{
+    std::string stable_id;
+    std::string name;
+    project::game_system_phase_v1 phase{project::game_system_phase_v1::gameplay_commands};
+    project::game_system_priority_v1 priority{project::game_system_priority_v1::normal};
+    std::vector<std::string> before;
+    std::vector<std::string> after;
+    void* user_data{};
+    project::game_system_execute_v1 execute{};
+};
+
+struct project_system_install_result
+{
+    bool succeeded{};
+    std::size_t installed{};
+    std::string error;
 };
 
 enum class module_reload_classification : std::uint8_t
@@ -92,6 +116,11 @@ public:
     {
         return registrations_;
     }
+    [[nodiscard]] const std::vector<project_system_registration>& system_registrations() const noexcept
+    {
+        return systems_;
+    }
+    [[nodiscard]] project_system_install_result install_systems(framework::runtime_world& world) const;
 
 private:
     [[nodiscard]] module_reload_result load_generation(const std::filesystem::path& path,
@@ -106,6 +135,7 @@ private:
     std::filesystem::path loaded_path_;
     std::vector<project_component_schema> components_;
     std::vector<project_registration_schema> registrations_;
+    std::vector<project_system_registration> systems_;
 };
 
 } // namespace arc::editor

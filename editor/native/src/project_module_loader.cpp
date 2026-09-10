@@ -1,11 +1,13 @@
 #include "project_module_loader.h"
 
 #include <arc/diagnostics/diagnostics.h>
+#include <arc/framework/runtime_world.h>
 
 #include <algorithm>
 #include <cctype>
 #include <iomanip>
 #include <sstream>
+#include <stdexcept>
 #include <system_error>
 
 #if defined(_WIN32)
@@ -110,6 +112,135 @@ std::vector<project_registration_schema> copy_registrations(const project::game_
             return {};
         }
         result.push_back({source.kind, source.stable_id, source.name});
+    }
+    return result;
+}
+
+bool valid_system_phase(project::game_system_phase_v1 phase) noexcept
+{
+    switch (phase)
+    {
+        case project::game_system_phase_v1::input:
+        case project::game_system_phase_v1::network_receive:
+        case project::game_system_phase_v1::gameplay_commands:
+        case project::game_system_phase_v1::movement:
+        case project::game_system_phase_v1::physics:
+        case project::game_system_phase_v1::abilities:
+        case project::game_system_phase_v1::ai:
+        case project::game_system_phase_v1::replication:
+        case project::game_system_phase_v1::presentation_extraction:
+            return true;
+    }
+    return false;
+}
+
+bool valid_system_priority(project::game_system_priority_v1 priority) noexcept
+{
+    switch (priority)
+    {
+        case project::game_system_priority_v1::critical:
+        case project::game_system_priority_v1::high:
+        case project::game_system_priority_v1::normal:
+        case project::game_system_priority_v1::low:
+        case project::game_system_priority_v1::background:
+            return true;
+    }
+    return false;
+}
+
+ecs::system_phase to_system_phase(project::game_system_phase_v1 phase) noexcept
+{
+    switch (phase)
+    {
+        case project::game_system_phase_v1::input:
+            return ecs::system_phase::input;
+        case project::game_system_phase_v1::network_receive:
+            return ecs::system_phase::network_receive;
+        case project::game_system_phase_v1::gameplay_commands:
+            return ecs::system_phase::gameplay_commands;
+        case project::game_system_phase_v1::movement:
+            return ecs::system_phase::movement;
+        case project::game_system_phase_v1::physics:
+            return ecs::system_phase::physics;
+        case project::game_system_phase_v1::abilities:
+            return ecs::system_phase::abilities;
+        case project::game_system_phase_v1::ai:
+            return ecs::system_phase::ai;
+        case project::game_system_phase_v1::replication:
+            return ecs::system_phase::replication;
+        case project::game_system_phase_v1::presentation_extraction:
+            return ecs::system_phase::presentation_extraction;
+    }
+    return ecs::system_phase::gameplay_commands;
+}
+
+jobs::job_priority to_job_priority(project::game_system_priority_v1 priority) noexcept
+{
+    switch (priority)
+    {
+        case project::game_system_priority_v1::critical:
+            return jobs::job_priority::critical;
+        case project::game_system_priority_v1::high:
+            return jobs::job_priority::high;
+        case project::game_system_priority_v1::normal:
+            return jobs::job_priority::normal;
+        case project::game_system_priority_v1::low:
+            return jobs::job_priority::low;
+        case project::game_system_priority_v1::background:
+            return jobs::job_priority::background;
+    }
+    return jobs::job_priority::normal;
+}
+
+std::vector<project_system_registration> copy_system_registrations(const project::game_module_descriptor_v1& descriptor,
+                                                                   std::string& error)
+{
+    std::vector<project_system_registration> result;
+    for (std::size_t index = 0; index < descriptor.registration_count; ++index)
+    {
+        const auto& registration = descriptor.registrations[index];
+        if (registration.kind != project::game_registration_kind_v1::ecs_system) continue;
+        if (!registration.descriptor)
+        {
+            error = "project ECS system registration is missing its executable descriptor";
+            return {};
+        }
+        const auto& system = *static_cast<const project::game_system_descriptor_v1*>(registration.descriptor);
+        if (system.structure_size < sizeof(project::game_system_descriptor_v1) || !system.execute ||
+            !valid_system_phase(system.phase) || !valid_system_priority(system.priority) ||
+            (system.before_count && !system.before) || (system.after_count && !system.after))
+        {
+            error = "project module contains an invalid ECS system descriptor";
+            return {};
+        }
+
+        project_system_registration copied{.stable_id = registration.stable_id,
+                                           .name = registration.name,
+                                           .phase = system.phase,
+                                           .priority = system.priority,
+                                           .user_data = system.user_data,
+                                           .execute = system.execute};
+        copied.before.reserve(system.before_count);
+        copied.after.reserve(system.after_count);
+        for (std::size_t dependency = 0; dependency < system.before_count; ++dependency)
+        {
+            if (!system.before[dependency] || !*system.before[dependency])
+            {
+                error = "project ECS system contains an invalid before dependency";
+                return {};
+            }
+            copied.before.emplace_back(system.before[dependency]);
+        }
+        for (std::size_t dependency = 0; dependency < system.after_count; ++dependency)
+        {
+            if (!system.after[dependency] || !*system.after[dependency])
+            {
+                error = "project ECS system contains an invalid after dependency";
+                return {};
+            }
+            copied.after.emplace_back(system.after[dependency]);
+        }
+        result.push_back(std::move(copied));
     }
     return result;
 }
@@ -245,6 +376,12 @@ module_reload_result project_module_loader::load_generation(const std::filesyste
         close_candidate();
         return {.message = std::move(schema_error)};
     }
+    auto next_systems = copy_system_registrations(*descriptor, schema_error);
+    if (!schema_error.empty())
+    {
+        close_candidate();
+        return {.message = std::move(schema_error)};
+    }
     const auto reload_classification = classify(components_, next_components);
     if (reload_classification == module_reload_classification::native_host_restart_required && loaded())
     {
@@ -278,6 +415,7 @@ module_reload_result project_module_loader::load_generation(const std::filesyste
             stop_ = nullptr;
             components_.clear();
             registrations_.clear();
+            systems_.clear();
             std::error_code remove_error;
             std::filesystem::remove(loaded_path_, remove_error);
             loaded_path_.clear();
@@ -308,10 +446,54 @@ module_reload_result project_module_loader::load_generation(const std::filesyste
     loaded_path_ = std::move(staged_path);
     components_ = std::move(next_components);
     registrations_ = std::move(next_registrations);
+    systems_ = std::move(next_systems);
     return {.succeeded = true,
             .classification = reload_classification,
             .generation = generation_,
             .message = classification_message(reload_classification)};
+}
+
+project_system_install_result project_module_loader::install_systems(framework::runtime_world& world) const
+{
+    project_system_install_result result{.succeeded = true};
+    for (const auto& source : systems_)
+    {
+        ecs::system_descriptor descriptor{.name = source.stable_id,
+                                          .phase = to_system_phase(source.phase),
+                                          .priority = to_job_priority(source.priority),
+                                          // The v1 project-system ABI intentionally starts conservative. A native
+                                          // module can access the complete ECS world through native_context, so
+                                          // serialize it against other world-mutating systems until explicit
+                                          // component access declarations are added to the module ABI.
+                                          .exclusive_world_access = true,
+                                          .before = source.before,
+                                          .after = source.after,
+                                          .execute = [execute = source.execute, user_data = source.user_data,
+                                                      stable_id = source.stable_id](ecs::system_context& native_context)
+                                          {
+                                              project::game_system_context_v1 context{
+                                                  .native_context = &native_context,
+                                                  .tick_id = native_context.tick_id().value,
+                                                  .world_id = native_context.world_id(),
+                                                  .delta_seconds = native_context.delta_seconds(),
+                                                  .fixed_delta_seconds = native_context.fixed_delta_seconds(),
+                                                  .frame_delta_seconds = native_context.frame_delta_seconds(),
+                                                  .interpolation_alpha = native_context.interpolation_alpha(),
+                                                  .presentation = native_context.presentation(),
+                                              };
+                                              if (!execute(user_data, &context))
+                                                  throw std::runtime_error("project ECS system '" + stable_id +
+                                                                           "' reported execution failure");
+                                          }};
+        if (!world.systems().add(std::move(descriptor)))
+        {
+            result.succeeded = false;
+            result.error = "Could not install project ECS system '" + source.stable_id + "'";
+            return result;
+        }
+        ++result.installed;
+    }
+    return result;
 }
 
 void project_module_loader::unload() noexcept
@@ -331,6 +513,7 @@ void project_module_loader::unload() noexcept
     handle_ = nullptr;
     components_.clear();
     registrations_.clear();
+    systems_.clear();
     if (!loaded_path_.empty())
     {
         std::error_code remove_error;

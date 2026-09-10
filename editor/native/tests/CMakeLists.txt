@@ -26,13 +26,17 @@ add_library(arc_test_game_module_v1 MODULE game_module_fixture_v1.cpp)
 add_library(arc_test_game_module_v2 MODULE game_module_fixture_v2.cpp)
 add_library(arc_test_game_module_v3 MODULE game_module_fixture_v3.cpp)
 add_library(arc_test_game_module_v4 MODULE game_module_fixture_v4.cpp)
+add_library(arc_test_game_module_system MODULE game_module_fixture_system.cpp)
+add_library(arc_test_game_module_invalid_system MODULE game_module_fixture_invalid_system.cpp)
 add_library(arc_test_game_module_rejected MODULE game_module_fixture_rejected.cpp)
 foreach(module_target IN ITEMS arc_test_game_module_v1 arc_test_game_module_v2 arc_test_game_module_v3
-                               arc_test_game_module_v4 arc_test_game_module_rejected)
+                               arc_test_game_module_v4 arc_test_game_module_system arc_test_game_module_invalid_system
+                               arc_test_game_module_rejected)
   arc_configure_first_party_target(${module_target})
   target_link_libraries(${module_target} PRIVATE arc-project)
   set_target_properties(${module_target} PROPERTIES PREFIX "")
 endforeach()
+target_link_libraries(arc_test_game_module_system PRIVATE arc-scene)
 
 add_executable(arc_editor_host_tests ${TEST_SOURCES})
 arc_configure_first_party_target(arc_editor_host_tests)
@@ -51,9 +55,12 @@ target_compile_definitions(arc_editor_host_tests PRIVATE
   "ARC_TEST_GAME_MODULE_V2=\"$<TARGET_FILE:arc_test_game_module_v2>\""
   "ARC_TEST_GAME_MODULE_V3=\"$<TARGET_FILE:arc_test_game_module_v3>\""
   "ARC_TEST_GAME_MODULE_V4=\"$<TARGET_FILE:arc_test_game_module_v4>\""
+  "ARC_TEST_GAME_MODULE_SYSTEM=\"$<TARGET_FILE:arc_test_game_module_system>\""
+  "ARC_TEST_GAME_MODULE_INVALID_SYSTEM=\"$<TARGET_FILE:arc_test_game_module_invalid_system>\""
   "ARC_TEST_GAME_MODULE_REJECTED=\"$<TARGET_FILE:arc_test_game_module_rejected>\"")
 add_dependencies(arc_editor_host_tests arc_test_game_module_v1 arc_test_game_module_v2 arc_test_game_module_v3
-                 arc_test_game_module_v4 arc_test_game_module_rejected)
+                 arc_test_game_module_v4 arc_test_game_module_system arc_test_game_module_invalid_system
+                 arc_test_game_module_rejected)
 if(TARGET arc_host_process)
   add_dependencies(arc_editor_host_tests arc_host_process)
   target_compile_definitions(arc_editor_host_tests PRIVATE "ARC_HOST_PROCESS_PATH=\"$<TARGET_FILE:arc_host_process>\"")

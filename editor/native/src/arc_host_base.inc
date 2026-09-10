@@ -1717,6 +1717,8 @@ struct arc_host::state
 
     framework::runtime_world* preview_runtime_world() noexcept
     {
+        if (play_runtime_world_id.valid())
+            if (auto* world = simulation.worlds().find(play_runtime_world_id)) return world;
         const auto worlds = simulation.worlds().ordered_worlds();
         return worlds.empty() ? nullptr : simulation.worlds().find(worlds.front());
     }
@@ -1771,12 +1773,53 @@ struct arc_host::state
         }
         scene::update_world_transforms(*play_world);
 
-        auto* runtime_world = preview_runtime_world();
-        if (!runtime_world || !runtime_world->attach_entities(*play_world))
+        framework::runtime_world* runtime_world{};
+        try
         {
+            auto& created = simulation.worlds().create({.name = "Editor Play World",
+                                                        .role = framework::runtime_world_role::editor_preview,
+                                                        .seed = 0x4152435f504c4159ull,
+                                                        .presentation_enabled = false});
+            play_runtime_world_id = created.id();
+            runtime_world = &created;
+        }
+        catch (const std::exception& error)
+        {
+            diagnostics::error("editor.play", std::string("Could not create play runtime world: ") + error.what());
             play_world.reset();
             play_camera_entity = {};
             play_source_scene_revision = 0;
+            return false;
+        }
+
+        const auto abandon_runtime_world = [&]
+        {
+            if (play_runtime_world_id.valid()) (void)simulation.worlds().destroy(play_runtime_world_id);
+            play_runtime_world_id = {};
+            play_world.reset();
+            play_camera_entity = {};
+            play_source_scene_revision = 0;
+        };
+        if (!runtime_world->attach_entities(*play_world))
+        {
+            abandon_runtime_world();
+            return false;
+        }
+        const auto installed = project_module.install_systems(*runtime_world);
+        if (!installed.succeeded)
+        {
+            diagnostics::error("editor.play", installed.error);
+            abandon_runtime_world();
+            return false;
+        }
+        try
+        {
+            runtime_world->start();
+        }
+        catch (const std::exception& error)
+        {
+            diagnostics::error("editor.play", std::string("Could not start play runtime world: ") + error.what());
+            abandon_runtime_world();
             return false;
         }
 
@@ -1788,16 +1831,15 @@ struct arc_host::state
 
     bool end_play_session() noexcept
     {
-        if (!play_world)
+        if (!play_world && !play_runtime_world_id.valid())
         {
             preview_stopped = true;
             return true;
         }
 
         simulation.pause();
-        auto* runtime_world = preview_runtime_world();
-        if (!runtime_world || !runtime_world->detach_entities()) return false;
-
+        if (play_runtime_world_id.valid() && !simulation.worlds().destroy(play_runtime_world_id)) return false;
+        play_runtime_world_id = {};
         play_world.reset();
         play_camera_entity = {};
         play_source_scene_revision = 0;
@@ -1828,6 +1870,7 @@ struct arc_host::state
     std::uint64_t last_runtime_tick_event{};
     bool preview_stopped{true};
     std::optional<ecs::world> play_world;
+    framework::runtime_world_id play_runtime_world_id{};
     ecs::entity play_camera_entity{};
     std::uint64_t play_source_scene_revision{};
     editor_project_state project;
@@ -2119,6 +2162,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             else if constexpr (std::is_same_v<command_type, host_close_project_command>)
             {
                 if (!state_->project_open) return success("{\"message\":\"No project is open\"}");
+                if (!state_->end_play_session()) return fail("Could not end the active play session");
 
                 const std::string message = "Closed project '" + state_->project.name + "'";
                 if (state_->asset_registry)
@@ -2146,13 +2190,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (state_->project_read_only) return fail("Project module reload is disabled in read-only mode");
                 const auto module_path = resolve_project_document(state_->project.root, payload.path, true);
                 if (!module_path) return fail("Project module must be a file contained by the project root");
-                const bool was_running = !state_->simulation.paused();
-                if (was_running) state_->simulation.pause();
+                if (!state_->preview_stopped && !state_->end_play_session())
+                    return fail("Could not stop the active play session before project module reload");
                 const auto result = state_->project_module.reload(*module_path, payload.engine_version,
                                                                   payload.project_guid, payload.module_id);
-                if (was_running && result.succeeded &&
-                    result.classification == module_reload_classification::safe_hot_reload)
-                    state_->simulation.resume();
                 const char* classification =
                     result.classification == module_reload_classification::safe_hot_reload ? "safeHotReload"
                     : result.classification == module_reload_classification::play_session_restart_required
@@ -5435,10 +5476,9 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
                 {
                     terrain_snapshot.hierarchy_nodes += static_cast<std::uint32_t>(geometry->lod_nodes.size());
                     terrain_snapshot.source_patches += static_cast<std::uint32_t>(geometry->clusters.size());
-                    terrain_snapshot.hierarchy_depth =
-                        std::max(terrain_snapshot.hierarchy_depth,
-                                 geometry->stats.hierarchy_level_count > 0u ? geometry->stats.hierarchy_level_count - 1u
-                                                                          : 0u);
+                    terrain_snapshot.hierarchy_depth = std::max(
+                        terrain_snapshot.hierarchy_depth,
+                        geometry->stats.hierarchy_level_count > 0u ? geometry->stats.hierarchy_level_count - 1u : 0u);
                     terrain_snapshot.gpu_memory_bytes += geometry->stats.uncompressed_page_bytes;
                 }
             }
