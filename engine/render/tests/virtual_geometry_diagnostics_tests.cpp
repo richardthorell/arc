@@ -22,17 +22,16 @@ TEST_CASE("M2.6 exposes request overflow and post eviction reload pressure")
     residency.register_resource(resource, geometry, 9u);
 
     residency.begin_frame(1u);
-    const std::array<virtual_geometry_page_request, 2> initial{
-        virtual_geometry_page_request{.resource = resource,
-                                      .resource_generation = 9u,
-                                      .page_index = 1u,
-                                      .projected_error = 10.0f,
-                                      .screen_coverage = 1.0f},
-        virtual_geometry_page_request{.resource = resource,
-                                      .resource_generation = 9u,
-                                      .page_index = 2u,
-                                      .projected_error = 5.0f,
-                                      .screen_coverage = 1.0f}};
+    const std::array<virtual_geometry_page_request, 2> initial{virtual_geometry_page_request{.resource = resource,
+                                                                                             .resource_generation = 9u,
+                                                                                             .page_index = 1u,
+                                                                                             .projected_error = 10.0f,
+                                                                                             .screen_coverage = 1.0f},
+                                                               virtual_geometry_page_request{.resource = resource,
+                                                                                             .resource_generation = 9u,
+                                                                                             .page_index = 2u,
+                                                                                             .projected_error = 5.0f,
+                                                                                             .screen_coverage = 1.0f}};
     residency.request(initial);
     auto loads = residency.take_load_requests();
     REQUIRE(loads.size() == 1u);
@@ -51,10 +50,10 @@ TEST_CASE("M2.6 exposes request overflow and post eviction reload pressure")
 
     residency.begin_frame(3u);
     const virtual_geometry_page_request retry{.resource = resource,
-                                               .resource_generation = 9u,
-                                               .page_index = 1u,
-                                               .projected_error = 10.0f,
-                                               .screen_coverage = 0.5f};
+                                              .resource_generation = 9u,
+                                              .page_index = 1u,
+                                              .projected_error = 10.0f,
+                                              .screen_coverage = 0.5f};
     residency.request(std::span(&retry, 1u));
     const auto snapshot = residency.snapshot();
     CHECK(snapshot.reload_pressure_requests == 1u);

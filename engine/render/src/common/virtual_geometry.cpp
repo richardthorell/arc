@@ -535,9 +535,9 @@ std::vector<virtual_geometry_page_load> virtual_geometry_residency_manager::take
                      });
     if (result.size() > implementation_->config.maximum_requests_per_frame)
     {
-        implementation_->request_budget_overflow = std::max(
-            implementation_->request_budget_overflow,
-            static_cast<std::uint32_t>(result.size() - implementation_->config.maximum_requests_per_frame));
+        implementation_->request_budget_overflow =
+            std::max(implementation_->request_budget_overflow,
+                     static_cast<std::uint32_t>(result.size() - implementation_->config.maximum_requests_per_frame));
         result.resize(implementation_->config.maximum_requests_per_frame);
     }
     return result;
