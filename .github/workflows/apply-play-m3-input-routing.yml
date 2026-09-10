@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -24,9 +24,9 @@ jobs:
           sudo apt-get install -y clang-18 ninja-build
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22.13.0
+          node-version: 22.12.0
           cache: npm
           cache-dependency-path: editor/package-lock.json
 
@@ -43,6 +43,12 @@ jobs:
           if '#include <iterator>' not in text:
               text = text.replace('#include <cstddef>\n', '#include <cstddef>\n#include <iterator>\n')
           fixture.write_text(text)
+
+          input_test = Path('editor/native/tests/project_system_input_tests.cpp')
+          text = input_test.read_text()
+          if '#include <arc/editor/editor_state.h>' not in text:
+              text = text.replace('#include <arc/editor/arc_host.h>\n', '#include <arc/editor/arc_host.h>\n#include <arc/editor/editor_state.h>\n')
+          input_test.write_text(text)
 
           host = Path('editor/native/src/arc_host_base.inc')
           text = host.read_text().replace(
