@@ -1,10 +1,12 @@
 #pragma once
 
 #include <arc/assets/assets.h>
+#include <arc/core/result.h>
 #include <arc/scene/terrain_asset.h>
 
 #include <compare>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -67,6 +69,20 @@ struct terrain_artifact_build_input
                                                             terrain_artifact_kind kind,
                                                             std::uint32_t compiler_version) noexcept;
 
+/** @brief Independently readable byte range inside a terrain derived artifact. */
+struct terrain_artifact_page_reference
+{
+    std::uint32_t index{};
+    std::uint64_t offset{};
+    std::uint32_t stored_size{};
+    std::uint32_t decoded_size{};
+    std::uint64_t content_hash{};
+    bool root{};
+
+    friend constexpr auto operator<=>(const terrain_artifact_page_reference&,
+                                      const terrain_artifact_page_reference&) noexcept = default;
+};
+
 /** @brief Opaque reference to one independently stored/cached terrain derived artifact. */
 struct terrain_artifact_reference
 {
@@ -74,6 +90,11 @@ struct terrain_artifact_reference
     terrain_content_key key{};
     std::uint32_t compiler_version{};
     std::string storage_key;
+    std::uint32_t generation{};
+    std::uint64_t payload_size{};
+    std::uint64_t metadata_offset{};
+    std::uint64_t metadata_size{};
+    std::vector<terrain_artifact_page_reference> pages;
 };
 
 /** @brief Cooked manifest for one authoring region. Runtime streaming/page hierarchy is intentionally separate. */
@@ -89,7 +110,7 @@ struct terrain_region_manifest
 /** @brief Top-level runtime manifest linking a TerrainAsset revision to independent derived products. */
 struct terrain_cooked_manifest
 {
-    static constexpr std::uint32_t current_contract_version = 1;
+    static constexpr std::uint32_t current_contract_version = 2;
 
     std::uint32_t contract_version{current_contract_version};
     assets::asset_guid terrain{};
@@ -97,7 +118,27 @@ struct terrain_cooked_manifest
     std::vector<terrain_region_manifest> regions;
 };
 
-/** @brief Validate manifest-level identity/revision invariants without loading any artifact payload. */
+struct terrain_cooked_manifest_error
+{
+    std::string message;
+};
+
+using terrain_cooked_manifest_bytes_result =
+    core::result<std::vector<std::byte>, terrain_cooked_manifest_error>;
+using terrain_cooked_manifest_result = core::result<terrain_cooked_manifest, terrain_cooked_manifest_error>;
+
+/** @brief Validate manifest-level identity/revision/range invariants without loading any artifact payload. */
 [[nodiscard]] bool validate_terrain_cooked_manifest(const terrain_cooked_manifest& manifest) noexcept;
+
+/** @brief Serialize only terrain region/artifact metadata; detailed derived payloads remain external. */
+[[nodiscard]] terrain_cooked_manifest_bytes_result encode_terrain_cooked_manifest(const terrain_cooked_manifest& manifest);
+
+/** @brief Decode and validate a lightweight terrain cooked manifest. */
+[[nodiscard]] terrain_cooked_manifest_result decode_terrain_cooked_manifest(std::span<const std::byte> bytes);
+
+/** @brief Find a specific derived product without touching its external payload. */
+[[nodiscard]] const terrain_artifact_reference* find_terrain_artifact(const terrain_cooked_manifest& manifest,
+                                                                     terrain_region_id region,
+                                                                     terrain_artifact_kind kind) noexcept;
 
 } // namespace arc::scene
