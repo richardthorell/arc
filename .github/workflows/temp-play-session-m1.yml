@@ -21,6 +21,17 @@ jobs:
       - name: Apply play session foundation
         run: python3 .github/scripts/apply_play_session_m1.py
 
+      - name: Fix generated JSON literals
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('editor/native/src/arc_host_base.inc')
+          text = path.read_text()
+          text = text.replace('return success("{"playSession":true}");', 'return success(R"({"playSession":true})");')
+          text = text.replace('return success("{"pending":false,"playSession":true}");', 'return success(R"({"pending":false,"playSession":true})");')
+          path.write_text(text)
+          PY
+
       - name: Format changed C++
         run: |
           git add \
