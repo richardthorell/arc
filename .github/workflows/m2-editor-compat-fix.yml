@@ -1,0 +1,60 @@
+name: Apply M2.1 editor compatibility fix
+
+on:
+  push:
+    branches:
+      - m2/terrain-regionized-render-artifacts
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: "github.event.head_commit.message != 'fix: update editor terrain region proxy usage'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: m2/terrain-regionized-render-artifacts
+          fetch-depth: 0
+
+      - name: Patch editor terrain proxy usage
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              source = Path(path).read_text()
+              count = source.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{path}: expected exactly one match, found {count}")
+              Path(path).write_text(source.replace(old, new, 1))
+
+          replace_once(
+              "editor/native/src/editor_state.cpp",
+              """    const auto* proxy = scene.terrain_render_proxies.find(guid);\n    if (!proxy) return false;\n    const auto local_bounds = proxy->local_bounds;\n""",
+              """    const auto* proxy = scene.terrain_render_proxies.find(guid);\n    if (!proxy || proxy->regions.empty()) return false;\n    auto local_bounds = proxy->regions.front().local_bounds;\n    for (std::size_t index = 1; index < proxy->regions.size(); ++index)\n    {\n        local_bounds = geometric::expand(local_bounds, proxy->regions[index].local_bounds.min);\n        local_bounds = geometric::expand(local_bounds, proxy->regions[index].local_bounds.max);\n    }\n""",
+          )
+
+          replace_once(
+              "editor/native/src/arc_host_base.inc",
+              """        if (const auto* proxy = state_->scene.terrain_render_proxies.find(entity_guid_of(state_->scene, selected)))\n        {\n            if (const auto* geometry = state_->renderer->virtual_mesh_data_for(proxy->geometry.virtualized))\n            {\n                terrain_snapshot.hierarchy_nodes = static_cast<std::uint32_t>(geometry->lod_nodes.size());\n                terrain_snapshot.source_patches = static_cast<std::uint32_t>(geometry->clusters.size());\n                terrain_snapshot.hierarchy_depth =\n                    geometry->stats.hierarchy_level_count > 0u ? geometry->stats.hierarchy_level_count - 1u : 0u;\n                terrain_snapshot.gpu_memory_bytes = geometry->stats.uncompressed_page_bytes;\n            }\n        }\n""",
+              """        if (const auto* proxy = state_->scene.terrain_render_proxies.find(entity_guid_of(state_->scene, selected)))\n        {\n            for (const auto& region : proxy->regions)\n            {\n                if (const auto* geometry = state_->renderer->virtual_mesh_data_for(region.geometry.virtualized))\n                {\n                    terrain_snapshot.hierarchy_nodes += static_cast<std::uint32_t>(geometry->lod_nodes.size());\n                    terrain_snapshot.source_patches += static_cast<std::uint32_t>(geometry->clusters.size());\n                    terrain_snapshot.hierarchy_depth =\n                        std::max(terrain_snapshot.hierarchy_depth,\n                                 geometry->stats.hierarchy_level_count > 0u ? geometry->stats.hierarchy_level_count - 1u\n                                                                          : 0u);\n                    terrain_snapshot.gpu_memory_bytes += geometry->stats.uncompressed_page_bytes;\n                }\n            }\n        }\n""",
+          )
+          PY
+
+          if grep -R -nE 'proxy->(geometry|local_bounds)' editor/native/src; then
+            echo "Found stale single-region terrain proxy usage" >&2
+            exit 1
+          fi
+
+      - name: Commit fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor/native/src/editor_state.cpp editor/native/src/arc_host_base.inc
+          git diff --cached --check
+          git commit -m "fix: update editor terrain region proxy usage"
+          git push origin HEAD:m2/terrain-regionized-render-artifacts
