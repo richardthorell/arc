@@ -671,6 +671,45 @@ virtual_mesh_data build_virtual_mesh(const mesh_data& source, const virtual_mesh
     return result;
 }
 
+bool decode_virtual_geometry_page(const virtual_geometry_page& page, std::span<const std::byte> compressed_bytes,
+                                  std::vector<std::byte>& output)
+{
+    if (compressed_bytes.size() != page.compressed_size) return false;
+    std::uint64_t hash = 1469598103934665603ull;
+    for (const auto byte : compressed_bytes)
+    {
+        hash ^= std::to_integer<std::uint8_t>(byte);
+        hash *= 1099511628211ull;
+    }
+    if (hash != page.content_hash) return false;
+
+    std::size_t cursor{};
+    output.clear();
+    for (std::uint32_t cluster = 0; cluster < page.cluster_count; ++cluster)
+    {
+        if (cursor + sizeof(encoded_cluster_header) > compressed_bytes.size()) return false;
+        encoded_cluster_header header{};
+        std::memcpy(&header, compressed_bytes.data() + cursor, sizeof(header));
+        cursor += sizeof(header);
+        if (header.encoded_vertex_bytes > compressed_bytes.size() - cursor) return false;
+        const auto triangle_offset = cursor + header.encoded_vertex_bytes;
+        if (header.triangle_bytes > compressed_bytes.size() - triangle_offset) return false;
+        std::vector<packed_virtual_vertex> vertices(header.vertex_count);
+        if (meshopt_decodeVertexBuffer(vertices.data(), vertices.size(), sizeof(packed_virtual_vertex),
+                                       reinterpret_cast<const unsigned char*>(compressed_bytes.data() + cursor),
+                                       header.encoded_vertex_bytes) != 0)
+            return false;
+        cursor = triangle_offset;
+        append_value(output, header);
+        const auto vertex_bytes = std::as_bytes(std::span(vertices));
+        output.insert(output.end(), vertex_bytes.begin(), vertex_bytes.end());
+        output.insert(output.end(), compressed_bytes.begin() + static_cast<std::ptrdiff_t>(cursor),
+                      compressed_bytes.begin() + static_cast<std::ptrdiff_t>(cursor + header.triangle_bytes));
+        cursor += header.triangle_bytes;
+    }
+    return cursor == compressed_bytes.size() && output.size() == page.uncompressed_size;
+}
+
 bool decode_virtual_geometry_page(const virtual_mesh_data& mesh, std::uint32_t page_index,
                                   std::vector<std::byte>& output)
 {
@@ -678,30 +717,9 @@ bool decode_virtual_geometry_page(const virtual_mesh_data& mesh, std::uint32_t p
     const auto& page = mesh.pages[page_index];
     if (static_cast<std::uint64_t>(page.compressed_offset) + page.compressed_size > mesh.page_payload.size())
         return false;
-    auto cursor = page.compressed_offset;
-    const auto end = cursor + page.compressed_size;
-    output.clear();
-    for (std::uint32_t cluster = 0; cluster < page.cluster_count; ++cluster)
-    {
-        if (cursor + sizeof(encoded_cluster_header) > end) return false;
-        encoded_cluster_header header{};
-        std::memcpy(&header, mesh.page_payload.data() + cursor, sizeof(header));
-        cursor += sizeof(header);
-        if (cursor + header.encoded_vertex_bytes + header.triangle_bytes > end) return false;
-        std::vector<packed_virtual_vertex> vertices(header.vertex_count);
-        if (meshopt_decodeVertexBuffer(vertices.data(), vertices.size(), sizeof(packed_virtual_vertex),
-                                       reinterpret_cast<const unsigned char*>(mesh.page_payload.data() + cursor),
-                                       header.encoded_vertex_bytes) != 0)
-            return false;
-        cursor += header.encoded_vertex_bytes;
-        append_value(output, header);
-        const auto vertex_bytes = std::as_bytes(std::span(vertices));
-        output.insert(output.end(), vertex_bytes.begin(), vertex_bytes.end());
-        output.insert(output.end(), mesh.page_payload.begin() + cursor,
-                      mesh.page_payload.begin() + cursor + header.triangle_bytes);
-        cursor += header.triangle_bytes;
-    }
-    return cursor == end;
+    return decode_virtual_geometry_page(
+        page, std::span<const std::byte>(mesh.page_payload).subspan(page.compressed_offset, page.compressed_size),
+        output);
 }
 
 } // namespace arc::render
