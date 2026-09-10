@@ -31,18 +31,38 @@
   line-height: 1;
 }
 
+.toolbar-origin-dropdown {
+  width: 92px;
+  flex: 0 0 92px;
+  height: var(--arc-control-height);
+}
+
 .toolbar-coordinate-dropdown {
-  width: 116px;
-  flex: 0 0 116px;
+  width: 108px;
+  flex: 0 0 108px;
   height: var(--arc-control-height);
 }
 
 .toolbar-snap-dropdown {
-  width: 102px;
-  flex: 0 0 102px;
   height: var(--arc-control-height);
 }
 
+.toolbar-snap-rotation {
+  width: 96px;
+  flex: 0 0 96px;
+}
+
+.toolbar-snap-translation {
+  width: 96px;
+  flex: 0 0 96px;
+}
+
+.toolbar-snap-scale {
+  width: 94px;
+  flex: 0 0 94px;
+}
+
+.toolbar-origin-dropdown .ui-dropdown-trigger.ui-button,
 .toolbar-coordinate-dropdown .ui-dropdown-trigger.ui-button,
 .toolbar-snap-dropdown .ui-dropdown-trigger.ui-button,
 .toolbar-platform-dropdown .ui-dropdown-trigger.ui-button {
