@@ -144,6 +144,14 @@ void resolve_editor_asset_bindings(editor_scene_state& state, assets::asset_mana
         resolve(binding.source);
         resolve(binding.material);
     }
+    for (const auto entity : state.scene.entities())
+    {
+        if (auto* water = state.scene.try_get<scene::water_component>(entity))
+        {
+            resolve(water->preset);
+            resolve(water->material);
+        }
+    }
 }
 
 void register_editor_asset_fallbacks(const editor_scene_state& state, assets::asset_manager& registry)
@@ -1844,6 +1852,8 @@ host_response arc_host::open_project(const host_open_project_command& command, c
                                               .read_only_source_roots = command.builtin_content_roots,
                                               .cache_root = cache_root},
             state_->simulation.jobs(), *state_->asset_files, state_->simulation.memory());
+        scene::register_terrain_asset_importer(*state_->asset_registry);
+        ::arc::water::register_water_asset_importer(*state_->asset_registry);
         framework::runtime_service_context context(state_->simulation.services());
         state_->asset_registry->on_start(context);
     }
@@ -2598,6 +2608,15 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const std::string label = create_entity_kind_label(payload.kind);
                 if (!created.valid()) return fail("Failed to create entity: " + label);
 
+                if (payload.kind == host_create_entity_kind::water && state_->asset_registry)
+                {
+                    auto& component = state_->scene.scene.get<scene::water_component>(created);
+                    const auto binding = scene::refresh_water_preset_binding(component, *state_->asset_registry);
+                    if (!binding.succeeded)
+                        arc::diagnostics::warn("editor.water", "Default Water preset was unavailable: " +
+                                                                   binding.message);
+                }
+
                 if (payload.parent.valid())
                 {
                     if (!scene::reparent(state_->scene.scene, created, requested_parent, {},
@@ -3198,6 +3217,12 @@ host_response arc_host::execute(const host_command_envelope& command)
                     component.queries_enabled = value.queries_enabled;
                     component.buoyancy_enabled = value.buoyancy_enabled;
                     component.priority = value.priority;
+                    if (state_->asset_registry &&
+                        (component.preset.guid.valid() || !component.preset.path_hint.empty()))
+                    {
+                        const auto binding = scene::refresh_water_preset_binding(component, *state_->asset_registry);
+                        if (!binding.succeeded) return fail(binding.message, entity);
+                    }
                 }
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
                            "Water settings changed for " + std::to_string(targets.size()) + " entity(s)", entity);

@@ -2316,6 +2316,58 @@ TEST_CASE("Water Inspector snapshots and validated edits round trip through the 
     CHECK(host->selected_entity_snapshot().water->water_level == Catch::Approx(4.25f));
 }
 
+TEST_CASE("built-in Water presets are discovered and drive Ocean defaults")
+{
+    const auto root =
+        std::filesystem::temp_directory_path() /
+        ("arc-water-presets-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::error_code error;
+    std::filesystem::create_directories(root / "Content", error);
+    REQUIRE_FALSE(error);
+
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    assets.root = root / "Content";
+    const auto builtin_root = std::filesystem::path{ARC_SOURCE_ROOT} / "assets";
+    REQUIRE(host
+                ->open_project({.name = "Water Presets Test",
+                                .root = root,
+                                .content_roots = {assets.root},
+                                .builtin_content_roots = {builtin_root}},
+                               assets)
+                .succeeded);
+    const auto project_assets = host->project_assets_snapshot();
+    CHECK(std::count_if(project_assets.assets.begin(), project_assets.assets.end(), [](const auto& asset)
+                        {
+                            return asset.type_id == arc::assets::to_string(arc::assets::asset_types::water_preset) &&
+                                   asset.importer_id ==
+                                       arc::assets::to_string(arc::assets::importer_ids::water_preset);
+                        }) >= 5);
+
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::water})
+                .succeeded);
+    const auto ocean = host->selected_entity_snapshot();
+    REQUIRE(ocean.water.has_value());
+    CHECK_FALSE(ocean.water->preset_guid.empty());
+    CHECK(ocean.water->preset_path == "builtin/water/presets/open_ocean.arcwater");
+    CHECK(ocean.water->wind_speed == Catch::Approx(12.0f));
+
+    auto storm = *ocean.water;
+    storm.preset_guid.clear();
+    storm.preset_path = "builtin/water/presets/storm.arcwater";
+    REQUIRE(host->execute(arc::editor::host_set_water_command{.entity = ocean.entity, .water = storm}).succeeded);
+    const auto configured = host->selected_entity_snapshot();
+    REQUIRE(configured.water.has_value());
+    CHECK(configured.water->preset_path == "builtin/water/presets/storm.arcwater");
+    CHECK(configured.water->wind_speed == Catch::Approx(28.0f));
+    CHECK(configured.water->wave_amplitude == Catch::Approx(5.0f));
+    CHECK(configured.water->quality == 3u);
+
+    std::filesystem::remove_all(root, error);
+}
+
 TEST_CASE("selected camera snapshots and entity-specific edits round trip atomically")
 {
     auto renderer = std::make_unique<arc::render::renderer>();

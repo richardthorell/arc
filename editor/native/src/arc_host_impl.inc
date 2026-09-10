@@ -728,6 +728,16 @@ template <class HostState> bool ensure_terrain_asset_importer(HostState& host)
     return scene::register_terrain_asset_importer(*host.asset_registry);
 }
 
+template <class HostState> bool ensure_water_asset_importer(HostState& host)
+{
+    if (!host.asset_registry) return false;
+    const auto importers = host.asset_registry->importers();
+    if (std::any_of(importers.begin(), importers.end(),
+                    [](const auto& importer) { return importer.id == assets::importer_ids::water_preset; }))
+        return true;
+    return ::arc::water::register_water_asset_importer(*host.asset_registry);
+}
+
 template <class HostState> void refresh_scene_terrain_assets(HostState& host)
 {
     if (!host.asset_registry) return;
@@ -740,6 +750,19 @@ template <class HostState> void refresh_scene_terrain_assets(HostState& host)
             arc::diagnostics::warn("editor.terrain", "Terrain asset refresh failed: " + binding.message);
     }
 }
+
+template <class HostState> void refresh_scene_water_assets(HostState& host)
+{
+    if (!host.asset_registry) return;
+    for (const auto entity : host.scene.scene.entities())
+    {
+        auto* water = host.scene.scene.template try_get<scene::water_component>(entity);
+        if (!water || (!water->preset.guid.valid() && water->preset.path_hint.empty())) continue;
+        const auto binding = scene::refresh_water_preset_binding(*water, *host.asset_registry);
+        if (!binding.succeeded)
+            arc::diagnostics::warn("editor.water", "Water preset refresh failed: " + binding.message);
+    }
+}
 } // namespace
 
 host_response arc_host::open_project(const host_open_project_command& command, const editor_asset_state& assets,
@@ -747,6 +770,7 @@ host_response arc_host::open_project(const host_open_project_command& command, c
 {
     auto response = open_project_base(command, assets, request_id);
     if (response.succeeded && ensure_terrain_asset_importer(*state_)) refresh_scene_terrain_assets(*state_);
+    if (response.succeeded && ensure_water_asset_importer(*state_)) refresh_scene_water_assets(*state_);
     return response;
 }
 
@@ -830,12 +854,14 @@ host_response arc_host::execute(const host_command_envelope& command)
             {
                 refresh_reimported_world_material(*state_, *reimport);
                 if (ensure_terrain_asset_importer(*state_)) refresh_scene_terrain_assets(*state_);
+                if (ensure_water_asset_importer(*state_)) refresh_scene_water_assets(*state_);
             }
             if (std::holds_alternative<host_open_project_command>(command.payload) ||
                 std::holds_alternative<host_open_scene_command>(command.payload) ||
                 std::holds_alternative<host_open_recovery_scene_command>(command.payload))
             {
                 if (ensure_terrain_asset_importer(*state_)) refresh_scene_terrain_assets(*state_);
+                if (ensure_water_asset_importer(*state_)) refresh_scene_water_assets(*state_);
             }
         }
         capture_viewport_surface(*state_, *viewport_surface);

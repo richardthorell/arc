@@ -661,6 +661,8 @@ ecs::entity add_water_to_scene(editor_scene_state& scene, render::renderer& rend
     scene::transform_component transform;
     transform.position = defaults::default_water_position;
     scene::water_component water;
+    water.preset.path_hint = "builtin/water/presets/open_ocean.arcwater";
+    water.material.path_hint = "builtin/materials/water_preview.arcmat";
     water.settings.appearance.scattering = math::vector3f{0.02f, 0.075f, 0.10f};
     water.settings.appearance.absorption = math::vector3f{0.18f, 0.065f, 0.025f};
     water.settings.appearance.roughness = 0.12f;

@@ -1,4 +1,5 @@
 #include <arc/assets/assets.h>
+#include <arc/assets/water_types.h>
 #include <arc/assets/terrain_types.h>
 
 #include <nlohmann/json.hpp>
@@ -208,6 +209,7 @@ classify_asset_path(const std::filesystem::path& path) noexcept
     if (extension == ".arcmat") return std::pair{asset_types::material, importer_ids::material};
     if (extension == ".arcmatinst") return std::pair{asset_types::material_instance, importer_ids::material_instance};
     if (extension == ".terrain") return std::pair{asset_types::terrain, importer_ids::terrain};
+    if (extension == ".arcwater") return std::pair{asset_types::water_preset, importer_ids::water_preset};
     const bool shader_include =
         extension == ".inc" || std::any_of(path.begin(), path.end(), [](const auto& component)
                                            { return component == std::filesystem::path("include"); });
