@@ -21,7 +21,7 @@ jobs:
       - name: Apply play session foundation
         run: python3 .github/scripts/apply_play_session_m1.py
 
-      - name: Fix generated JSON literals
+      - name: Fix generated host compatibility
         run: |
           python3 <<'PY'
           from pathlib import Path
@@ -29,6 +29,7 @@ jobs:
           text = path.read_text()
           text = text.replace('return success("{"playSession":true}");', 'return success(R"({"playSession":true})");')
           text = text.replace('return success("{"pending":false,"playSession":true}");', 'return success(R"({"pending":false,"playSession":true})");')
+          text = text.replace('"Authoring checkpoint restored"', '"Preview runtime snapshot restored"')
           path.write_text(text)
           PY
 
