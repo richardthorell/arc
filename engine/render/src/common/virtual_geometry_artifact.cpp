@@ -277,13 +277,14 @@ std::vector<std::uint32_t> physical_page_order(const virtual_mesh_data& geometry
         const auto z = quantize(center.z, minimum.z, maximum.z);
         return morton_expand_10(x) | (morton_expand_10(y) << 1u) | (morton_expand_10(z) << 2u);
     };
-    std::stable_sort(order.begin(), order.end(), [&](std::uint32_t lhs, std::uint32_t rhs)
-    {
-        if (geometry.pages[lhs].root != geometry.pages[rhs].root) return geometry.pages[lhs].root;
-        const auto lhs_key = key(lhs);
-        const auto rhs_key = key(rhs);
-        return lhs_key != rhs_key ? lhs_key < rhs_key : lhs < rhs;
-    });
+    std::stable_sort(order.begin(), order.end(),
+                     [&](std::uint32_t lhs, std::uint32_t rhs)
+                     {
+                         if (geometry.pages[lhs].root != geometry.pages[rhs].root) return geometry.pages[lhs].root;
+                         const auto lhs_key = key(lhs);
+                         const auto rhs_key = key(rhs);
+                         return lhs_key != rhs_key ? lhs_key < rhs_key : lhs < rhs;
+                     });
     return order;
 }
 

@@ -93,9 +93,9 @@ using virtual_geometry_artifact_index_result =
  * @return Deterministic little-endian artifact bytes or a structured validation failure.
  */
 [[nodiscard]] virtual_geometry_artifact_bytes_result
-encode_virtual_geometry_artifact(
-    std::span<const virtual_geometry_artifact_source> meshes, std::uint64_t conventional_artifact_hash = 0,
-    const virtual_geometry_artifact_encode_options& options = {});
+encode_virtual_geometry_artifact(std::span<const virtual_geometry_artifact_source> meshes,
+                                 std::uint64_t conventional_artifact_hash = 0,
+                                 const virtual_geometry_artifact_encode_options& options = {});
 
 /**
  * @brief Validate the header, metadata table, and independently readable page ranges of a `.arcvg` artifact.
@@ -118,7 +118,7 @@ read_virtual_geometry_artifact_page(std::span<const std::byte> bytes, const virt
                                     std::uint32_t mesh_index, std::uint32_t page_index);
 
 /** Verify independently range-read page bytes without requiring the complete artifact in memory. */
-[[nodiscard]] bool verify_virtual_geometry_artifact_page(
-    std::span<const std::byte> page_bytes, const virtual_geometry_artifact_page_range& page) noexcept;
+[[nodiscard]] bool verify_virtual_geometry_artifact_page(std::span<const std::byte> page_bytes,
+                                                         const virtual_geometry_artifact_page_range& page) noexcept;
 
 } // namespace arc::render

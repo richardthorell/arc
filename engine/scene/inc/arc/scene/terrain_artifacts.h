@@ -123,22 +123,22 @@ struct terrain_cooked_manifest_error
     std::string message;
 };
 
-using terrain_cooked_manifest_bytes_result =
-    core::result<std::vector<std::byte>, terrain_cooked_manifest_error>;
+using terrain_cooked_manifest_bytes_result = core::result<std::vector<std::byte>, terrain_cooked_manifest_error>;
 using terrain_cooked_manifest_result = core::result<terrain_cooked_manifest, terrain_cooked_manifest_error>;
 
 /** @brief Validate manifest-level identity/revision/range invariants without loading any artifact payload. */
 [[nodiscard]] bool validate_terrain_cooked_manifest(const terrain_cooked_manifest& manifest) noexcept;
 
 /** @brief Serialize only terrain region/artifact metadata; detailed derived payloads remain external. */
-[[nodiscard]] terrain_cooked_manifest_bytes_result encode_terrain_cooked_manifest(const terrain_cooked_manifest& manifest);
+[[nodiscard]] terrain_cooked_manifest_bytes_result
+encode_terrain_cooked_manifest(const terrain_cooked_manifest& manifest);
 
 /** @brief Decode and validate a lightweight terrain cooked manifest. */
 [[nodiscard]] terrain_cooked_manifest_result decode_terrain_cooked_manifest(std::span<const std::byte> bytes);
 
 /** @brief Find a specific derived product without touching its external payload. */
 [[nodiscard]] const terrain_artifact_reference* find_terrain_artifact(const terrain_cooked_manifest& manifest,
-                                                                     terrain_region_id region,
-                                                                     terrain_artifact_kind kind) noexcept;
+                                                                      terrain_region_id region,
+                                                                      terrain_artifact_kind kind) noexcept;
 
 } // namespace arc::scene

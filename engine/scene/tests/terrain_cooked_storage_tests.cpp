@@ -60,8 +60,8 @@ TEST_CASE("M2.2 cooks terrain into independently addressable region artifacts")
         REQUIRE_FALSE(render->pages.empty());
         REQUIRE(std::ranges::any_of(render->pages, [](const auto& page) { return page.root; }));
 
-        const auto artifact = std::ranges::find_if(storage.artifacts,
-                                                   [&](const auto& value) { return value.name == render->storage_key; });
+        const auto artifact = std::ranges::find_if(storage.artifacts, [&](const auto& value)
+                                                   { return value.name == render->storage_key; });
         REQUIRE(artifact != storage.artifacts.end());
         REQUIRE(artifact->schema == assets::artifact_schemas::virtual_geometry);
         REQUIRE(artifact->bytes.size() == render->payload_size);
@@ -91,8 +91,8 @@ TEST_CASE("terrain cooked manifest is lightweight and round trips without detail
     REQUIRE(cooked);
 
     const auto& artifacts = cooked.value().artifacts;
-    const auto manifest_artifact =
-        std::ranges::find_if(artifacts, [](const auto& value) { return value.schema == assets::artifact_schemas::terrain_manifest; });
+    const auto manifest_artifact = std::ranges::find_if(
+        artifacts, [](const auto& value) { return value.schema == assets::artifact_schemas::terrain_manifest; });
     REQUIRE(manifest_artifact != artifacts.end());
 
     std::uint64_t detailed_bytes{};
@@ -107,8 +107,8 @@ TEST_CASE("terrain cooked manifest is lightweight and round trips without detail
     REQUIRE(decoded.value().regions.size() == 4u);
     for (const auto& region : decoded.value().regions)
     {
-        const auto* render = scene::find_terrain_artifact(decoded.value(), region.region,
-                                                          scene::terrain_artifact_kind::render_geometry);
+        const auto* render =
+            scene::find_terrain_artifact(decoded.value(), region.region, scene::terrain_artifact_kind::render_geometry);
         REQUIRE(render != nullptr);
         REQUIRE(render->payload_size > 0u);
         REQUIRE_FALSE(render->pages.empty());

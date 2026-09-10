@@ -12,7 +12,8 @@
 TEST_CASE("named package artifacts mount metadata-first and support range reads")
 {
     using namespace arc::assets;
-    const auto root = std::filesystem::temp_directory_path() / ("arc-package-reader-" + to_string(generate_asset_guid()));
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-package-reader-" + to_string(generate_asset_guid()));
     struct cleanup
     {
         std::filesystem::path root;

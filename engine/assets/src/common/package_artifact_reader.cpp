@@ -11,8 +11,7 @@ namespace
 {
 
 core::result<std::vector<std::byte>, asset_error> read_failure(asset_error_code code, asset_guid guid,
-                                                               const std::filesystem::path& path,
-                                                               std::string message)
+                                                               const std::filesystem::path& path, std::string message)
 {
     return core::result<std::vector<std::byte>, asset_error>::failure(
         {.code = code, .guid = guid, .path = path, .message = std::move(message)});
@@ -59,8 +58,8 @@ asset_status package_artifact_reader::mount(const std::filesystem::path& manifes
 const cook_manifest_artifact* package_artifact_reader::find(const cooked_artifact_address& address) const noexcept
 {
     if (!address.valid()) return nullptr;
-    const auto found = std::find_if(manifest_.artifacts.begin(), manifest_.artifacts.end(), [&](const auto& artifact)
-                                    {
+    const auto found = std::find_if(manifest_.artifacts.begin(), manifest_.artifacts.end(),
+                                    [&](const auto& artifact) {
                                         return artifact.asset == address.asset && artifact.schema == address.schema &&
                                                artifact.name == address.name;
                                     });
@@ -102,8 +101,7 @@ package_artifact_reader::read_range(const cooked_artifact_address& address, std:
         return read_failure(asset_error_code::io_failed, address.asset, path, "Could not open cooked package chunk");
     stream.seekg(static_cast<std::streamoff>(artifact->offset + relative_offset));
     std::vector<std::byte> bytes(static_cast<std::size_t>(size));
-    if (!bytes.empty())
-        stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    if (!bytes.empty()) stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     if (!stream)
         return read_failure(asset_error_code::io_failed, address.asset, path, "Could not read cooked artifact range");
 

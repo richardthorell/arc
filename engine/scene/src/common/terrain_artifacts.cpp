@@ -340,14 +340,16 @@ terrain_cooked_manifest_bytes_result encode_terrain_cooked_manifest(const terrai
 
 terrain_cooked_manifest_result decode_terrain_cooked_manifest(std::span<const std::byte> bytes)
 {
-    if (bytes.size() < manifest_magic.size() || !std::equal(manifest_magic.begin(), manifest_magic.end(), bytes.begin()))
+    if (bytes.size() < manifest_magic.size() ||
+        !std::equal(manifest_magic.begin(), manifest_magic.end(), bytes.begin()))
         return terrain_cooked_manifest_result::failure(manifest_failure("invalid terrain cooked manifest magic"));
 
     byte_reader reader(bytes.subspan(manifest_magic.size()));
     terrain_cooked_manifest manifest;
     std::uint32_t region_count{};
     if (!reader.value(manifest.contract_version) || !reader.value(manifest.terrain.high) ||
-        !reader.value(manifest.terrain.low) || !reader.value(manifest.authoring_revision) || !reader.value(region_count))
+        !reader.value(manifest.terrain.low) || !reader.value(manifest.authoring_revision) ||
+        !reader.value(region_count))
         return terrain_cooked_manifest_result::failure(manifest_failure("truncated terrain cooked manifest header"));
     if (manifest.contract_version != terrain_cooked_manifest::current_contract_version)
         return terrain_cooked_manifest_result::failure(manifest_failure("unsupported terrain cooked manifest version"));

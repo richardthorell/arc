@@ -94,13 +94,19 @@ std::vector<std::byte> encode_fallback_geometry(const render::virtual_mesh_data&
         writer.value(static_cast<std::uint32_t>(lod.indices.size()));
         for (const auto& vertex : lod.vertices)
         {
-            for (const auto value : vertex.position) writer.value(value);
-            for (const auto value : vertex.normal) writer.value(value);
-            for (const auto value : vertex.tangent) writer.value(value);
-            for (const auto value : vertex.texcoord) writer.value(value);
-            for (const auto value : vertex.color) writer.value(value);
+            for (const auto value : vertex.position)
+                writer.value(value);
+            for (const auto value : vertex.normal)
+                writer.value(value);
+            for (const auto value : vertex.tangent)
+                writer.value(value);
+            for (const auto value : vertex.texcoord)
+                writer.value(value);
+            for (const auto value : vertex.color)
+                writer.value(value);
         }
-        for (const auto index : lod.indices) writer.value(index);
+        for (const auto index : lod.indices)
+            writer.value(index);
     }
     return std::move(writer).take();
 }
@@ -126,13 +132,13 @@ terrain_cooked_storage_result storage_failure(std::string message)
 
 } // namespace
 
-terrain_cooked_storage_result build_terrain_cooked_storage(assets::asset_guid terrain, const terrain_surface_ir& surface,
+terrain_cooked_storage_result build_terrain_cooked_storage(assets::asset_guid terrain,
+                                                           const terrain_surface_ir& surface,
                                                            std::uint64_t authoring_revision,
-                                                           std::string_view target_profile,
-                                                           double target_region_size)
+                                                           std::string_view target_profile, double target_region_size)
 {
-    if (!terrain.valid() || authoring_revision == 0u || target_profile.empty() || !validate_terrain_surface_ir(surface) ||
-        surface.source_revision == 0u)
+    if (!terrain.valid() || authoring_revision == 0u || target_profile.empty() ||
+        !validate_terrain_surface_ir(surface) || surface.source_revision == 0u)
         return storage_failure("invalid terrain cooked-storage build input");
 
     auto regions = build_terrain_render_regions(surface, target_region_size);
@@ -147,8 +153,9 @@ terrain_cooked_storage_result build_terrain_cooked_storage(assets::asset_guid te
     for (auto& region : regions)
     {
         const auto view = region.surface.view();
-        auto geometry = region.vertex_normals.empty() ? build_terrain_render_geometry(view)
-                                                      : build_terrain_render_region_geometry(view, region.vertex_normals);
+        auto geometry = region.vertex_normals.empty()
+                            ? build_terrain_render_geometry(view)
+                            : build_terrain_render_region_geometry(view, region.vertex_normals);
         if (!geometry || geometry->pages.empty() || geometry->conventional_lods.empty())
             return storage_failure("terrain region failed to produce virtual geometry and conventional fallback");
 
@@ -180,8 +187,8 @@ terrain_cooked_storage_result build_terrain_cooked_storage(assets::asset_guid te
 
         terrain_artifact_reference render_reference;
         render_reference.kind = terrain_artifact_kind::render_geometry;
-        render_reference.key = make_terrain_artifact_key(
-            key_input, terrain_artifact_kind::render_geometry, render::virtual_geometry_artifact_schema_version);
+        render_reference.key = make_terrain_artifact_key(key_input, terrain_artifact_kind::render_geometry,
+                                                         render::virtual_geometry_artifact_schema_version);
         render_reference.compiler_version = render::virtual_geometry_artifact_schema_version;
         render_reference.storage_key = region_storage_key(region.id, "virtual-geometry");
         render_reference.generation = generation;
@@ -199,25 +206,23 @@ terrain_cooked_storage_result build_terrain_cooked_storage(assets::asset_guid te
                                               .content_hash = page.content_hash,
                                               .root = page.root});
         }
-        result.artifacts.push_back(make_cooked_artifact(render_reference.storage_key, ".arcvg",
-                                                        assets::artifact_schemas::virtual_geometry,
-                                                        render::virtual_geometry_artifact_schema_version,
-                                                        std::move(virtual_bytes)));
+        result.artifacts.push_back(
+            make_cooked_artifact(render_reference.storage_key, ".arcvg", assets::artifact_schemas::virtual_geometry,
+                                 render::virtual_geometry_artifact_schema_version, std::move(virtual_bytes)));
         manifest_region.artifacts.push_back(std::move(render_reference));
 
         auto fallback_bytes = encode_fallback_geometry(*geometry);
         terrain_artifact_reference fallback_reference;
         fallback_reference.kind = terrain_artifact_kind::fallback_geometry;
-        fallback_reference.key = make_terrain_artifact_key(
-            key_input, terrain_artifact_kind::fallback_geometry, fallback_geometry_schema_version);
+        fallback_reference.key = make_terrain_artifact_key(key_input, terrain_artifact_kind::fallback_geometry,
+                                                           fallback_geometry_schema_version);
         fallback_reference.compiler_version = fallback_geometry_schema_version;
         fallback_reference.storage_key = region_storage_key(region.id, "fallback-geometry");
         fallback_reference.generation = generation;
         fallback_reference.payload_size = fallback_bytes.size();
         result.artifacts.push_back(make_cooked_artifact(fallback_reference.storage_key, ".arctfb",
                                                         assets::artifact_schemas::mesh,
-                                                        fallback_geometry_schema_version,
-                                                        std::move(fallback_bytes)));
+                                                        fallback_geometry_schema_version, std::move(fallback_bytes)));
         manifest_region.artifacts.push_back(std::move(fallback_reference));
         result.manifest.regions.push_back(std::move(manifest_region));
     }
@@ -226,10 +231,9 @@ terrain_cooked_storage_result build_terrain_cooked_storage(assets::asset_guid te
         return storage_failure("generated terrain cooked manifest failed validation");
     auto manifest_bytes = encode_terrain_cooked_manifest(result.manifest);
     if (!manifest_bytes) return storage_failure(manifest_bytes.error().message);
-    result.artifacts.push_back(make_cooked_artifact("terrain/manifest", ".arctcm",
-                                                    assets::artifact_schemas::terrain_manifest,
-                                                    terrain_cooked_manifest::current_contract_version,
-                                                    std::move(manifest_bytes).value()));
+    result.artifacts.push_back(
+        make_cooked_artifact("terrain/manifest", ".arctcm", assets::artifact_schemas::terrain_manifest,
+                             terrain_cooked_manifest::current_contract_version, std::move(manifest_bytes).value()));
     return terrain_cooked_storage_result::success(std::move(result));
 }
 
