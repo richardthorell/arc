@@ -73,6 +73,41 @@ struct game_system_component_access_v1
     game_system_component_access_mode_v1 mode{game_system_component_access_mode_v1::read};
 };
 
+/** @brief Platform-neutral input categories sampled for one simulation tick. */
+enum class game_input_kind_v1 : std::uint8_t
+{
+    key,
+    mouse_button,
+    mouse_position,
+    mouse_wheel,
+    focus
+};
+
+/** @brief State transition carried by one sampled gameplay input command. */
+enum class game_input_action_v1 : std::uint8_t
+{
+    pressed,
+    released,
+    changed
+};
+
+inline constexpr std::uint32_t game_input_modifier_alt_v1 = 1u << 0u;
+inline constexpr std::uint32_t game_input_modifier_shift_v1 = 1u << 1u;
+inline constexpr std::uint32_t game_input_modifier_control_v1 = 1u << 2u;
+
+/** @brief ABI-safe input command visible to project ECS systems for the current simulation tick. */
+struct game_input_command_v1
+{
+    game_input_kind_v1 kind{game_input_kind_v1::key};
+    game_input_action_v1 action{game_input_action_v1::changed};
+    std::int32_t code{};
+    std::uint32_t modifiers{};
+    std::int32_t x{};
+    std::int32_t y{};
+    float value{};
+    bool repeat{};
+};
+
 /** @brief ABI-safe transient entity handle used by project runtime callbacks. */
 struct game_entity_v1
 {
@@ -125,7 +160,10 @@ struct game_system_context_v1
     float frame_delta_seconds{};
     float interpolation_alpha{};
     bool presentation{};
-    void* project_component_user_data{}; ///< Host-owned bridge valid only for this system invocation.
+    std::uint64_t input_revision{};                ///< Revision of the sampled input batch for this tick.
+    const game_input_command_v1* input_commands{}; ///< Borrowed commands valid only for this invocation.
+    std::size_t input_command_count{};             ///< Number of entries in @ref input_commands.
+    void* project_component_user_data{};           ///< Host-owned bridge valid only for this system invocation.
     game_has_project_component_v1 has_project_component{};
     game_read_project_component_json_v1 read_project_component_json{};
     game_patch_project_component_json_v1 patch_project_component_json{};

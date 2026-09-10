@@ -258,6 +258,38 @@ bool valid_component_access_mode(project::game_system_component_access_mode_v1 m
            mode == project::game_system_component_access_mode_v1::write;
 }
 
+project::game_input_kind_v1 to_game_input_kind(ecs::simulation_input_kind kind) noexcept
+{
+    switch (kind)
+    {
+        case ecs::simulation_input_kind::key:
+            return project::game_input_kind_v1::key;
+        case ecs::simulation_input_kind::mouse_button:
+            return project::game_input_kind_v1::mouse_button;
+        case ecs::simulation_input_kind::mouse_position:
+            return project::game_input_kind_v1::mouse_position;
+        case ecs::simulation_input_kind::mouse_wheel:
+            return project::game_input_kind_v1::mouse_wheel;
+        case ecs::simulation_input_kind::focus:
+            return project::game_input_kind_v1::focus;
+    }
+    return project::game_input_kind_v1::key;
+}
+
+project::game_input_action_v1 to_game_input_action(ecs::simulation_input_action action) noexcept
+{
+    switch (action)
+    {
+        case ecs::simulation_input_action::pressed:
+            return project::game_input_action_v1::pressed;
+        case ecs::simulation_input_action::released:
+            return project::game_input_action_v1::released;
+        case ecs::simulation_input_action::changed:
+            return project::game_input_action_v1::changed;
+    }
+    return project::game_input_action_v1::changed;
+}
+
 ecs::system_phase to_system_phase(project::game_system_phase_v1 phase) noexcept
 {
     switch (phase)
@@ -631,6 +663,18 @@ project_system_install_result project_module_loader::install_systems(framework::
             {
                 project_component_bridge_context bridge{.native_context = &native_context,
                                                         .declared_accesses = &declared_accesses};
+                const auto& native_input = native_context.input();
+                std::vector<project::game_input_command_v1> input_commands;
+                input_commands.reserve(native_input.commands.size());
+                for (const auto& command : native_input.commands)
+                    input_commands.push_back({.kind = to_game_input_kind(command.kind),
+                                              .action = to_game_input_action(command.action),
+                                              .code = command.code,
+                                              .modifiers = command.modifiers,
+                                              .x = command.x,
+                                              .y = command.y,
+                                              .value = command.value,
+                                              .repeat = command.repeat});
                 project::game_system_context_v1 context{
                     .native_context = unrestricted_native_world_access ? &native_context : nullptr,
                     .tick_id = native_context.tick_id().value,
@@ -640,6 +684,9 @@ project_system_install_result project_module_loader::install_systems(framework::
                     .frame_delta_seconds = native_context.frame_delta_seconds(),
                     .interpolation_alpha = native_context.interpolation_alpha(),
                     .presentation = native_context.presentation(),
+                    .input_revision = native_input.revision,
+                    .input_commands = input_commands.data(),
+                    .input_command_count = input_commands.size(),
                     .project_component_user_data = &bridge,
                     .has_project_component = has_runtime_project_component,
                     .read_project_component_json = read_runtime_project_component_json,

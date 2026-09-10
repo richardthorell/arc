@@ -1385,6 +1385,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
             viewportId={context.instanceId}
             project={project}
             startupState={startupState}
+            playSessionActive={runtimeState.state !== 'stopped'}
             onCommand={runCommand}
             onReconnect={reconnectHost}
             gridVisible={viewportGridVisible}
