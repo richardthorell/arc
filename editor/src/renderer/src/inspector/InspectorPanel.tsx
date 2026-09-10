@@ -192,7 +192,9 @@ export function InspectorPanel({
             ? 'Edit Light'
             : component === 'meshRenderer'
               ? 'Edit Mesh Renderer'
-              : 'Edit Terrain';
+              : component === 'water'
+                ? 'Edit Water'
+                : 'Edit Terrain';
     if (component === 'transform' && next.transform) {
       void runMutation(
         next,
@@ -307,6 +309,22 @@ export function InspectorPanel({
           transactionLabel,
         );
       }
+    } else if (component === 'water' && next.water) {
+      const water = {
+        ...next.water,
+        presetGuid: path === 'water.presetPath' ? '' : next.water.presetGuid,
+        materialGuid: path === 'water.materialPath' ? '' : next.water.materialGuid,
+        absorption: [next.water.absorption.x, next.water.absorption.y, next.water.absorption.z],
+        scattering: [next.water.scattering.x, next.water.scattering.y, next.water.scattering.z],
+      };
+      void runMutation(
+        next,
+        'water.update',
+        { ...entityPayload(next), water },
+        settled,
+        transactionKey,
+        transactionLabel,
+      );
     } else {
       const match = /^projectComponents\.(\d+)\.values\.(.+)$/.exec(path);
       if (!match) return;
@@ -357,6 +375,7 @@ export function InspectorPanel({
       spotLight: 'light',
       areaLight: 'light',
       terrain: 'terrain',
+      water: 'water',
       prefab: 'prefab',
     };
     const key = componentKey[component];

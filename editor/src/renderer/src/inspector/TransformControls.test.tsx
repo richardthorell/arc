@@ -25,6 +25,7 @@ const context: InspectorEntitySnapshot = {
   light: null,
   meshRenderer: null,
   terrain: null,
+  water: null,
   prefab: null,
   components: [],
   projectComponents: [],

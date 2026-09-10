@@ -121,6 +121,41 @@ export type InspectorTerrain = {
   layers: Array<{ name: string; baseColorPath: string }>;
 };
 
+export type InspectorWater = {
+  bodyType: 'ocean' | 'lake' | 'river';
+  presetGuid: string;
+  presetPath: string;
+  materialGuid: string;
+  materialPath: string;
+  waterLevel: number;
+  enabled: boolean;
+  followCamera: boolean;
+  visibleDistance: number;
+  windSpeed: number;
+  windDirectionX: number;
+  windDirectionY: number;
+  fetchLength: number;
+  waveAmplitude: number;
+  choppiness: number;
+  foamEnabled: boolean;
+  foamThreshold: number;
+  foamDecay: number;
+  absorption: Vec3;
+  scattering: Vec3;
+  roughness: number;
+  refractionStrength: number;
+  shorelineEnabled: boolean;
+  shorelineFoamWidth: number;
+  shallowWaveDampingDistance: number;
+  runupDistance: number;
+  underwaterEnabled: boolean;
+  causticsEnabled: boolean;
+  queriesEnabled: boolean;
+  buoyancyEnabled: boolean;
+  quality: 'low' | 'medium' | 'high' | 'ultra';
+  priority: number;
+};
+
 export type InspectorPrefab = {
   prefabGuid: string;
   prefabPath: string;
@@ -157,6 +192,7 @@ export type InspectorEntitySnapshot = {
   light: InspectorLight | null;
   meshRenderer: InspectorMeshRenderer | null;
   terrain: InspectorTerrain | null;
+  water: InspectorWater | null;
   prefab: InspectorPrefab | null;
   components: HostComponentSnapshot[];
   projectComponents: InspectorProjectComponent[];
@@ -313,6 +349,43 @@ const hostSelectedEntitySchema = z.object({
     })
     .nullable()
     .default(null),
+  water: z
+    .object({
+      bodyType: z.enum(['ocean', 'lake', 'river']),
+      presetGuid: z.string(),
+      presetPath: z.string(),
+      materialGuid: z.string(),
+      materialPath: z.string(),
+      waterLevel: finiteNumber,
+      enabled: z.boolean(),
+      followCamera: z.boolean(),
+      visibleDistance: finiteNumber.positive(),
+      windSpeed: finiteNumber.nonnegative(),
+      windDirectionX: finiteNumber,
+      windDirectionY: finiteNumber,
+      fetchLength: finiteNumber.positive(),
+      waveAmplitude: finiteNumber.nonnegative(),
+      choppiness: finiteNumber.nonnegative(),
+      foamEnabled: z.boolean(),
+      foamThreshold: finiteNumber.min(0).max(1),
+      foamDecay: finiteNumber.nonnegative(),
+      absorption: vec3Tuple,
+      scattering: vec3Tuple,
+      roughness: finiteNumber.min(0).max(1),
+      refractionStrength: finiteNumber.min(0).max(1),
+      shorelineEnabled: z.boolean(),
+      shorelineFoamWidth: finiteNumber.nonnegative(),
+      shallowWaveDampingDistance: finiteNumber.nonnegative(),
+      runupDistance: finiteNumber.nonnegative(),
+      underwaterEnabled: z.boolean(),
+      causticsEnabled: z.boolean(),
+      queriesEnabled: z.boolean(),
+      buoyancyEnabled: z.boolean(),
+      quality: z.enum(['low', 'medium', 'high', 'ultra']),
+      priority: z.number().int(),
+    })
+    .nullable()
+    .default(null),
   prefab: z
     .object({
       prefabGuid: z.string(),
@@ -437,10 +510,17 @@ export function parseSelectedEntitySnapshot(value: unknown): InspectorEntitySnap
                 : 'automatic',
         }
       : null,
+    water: parsed.water
+      ? {
+          ...parsed.water,
+          absorption: tupleToVec3(parsed.water.absorption),
+          scattering: tupleToVec3(parsed.water.scattering),
+        }
+      : null,
   };
 }
 
-const aggregateComponentKeys = ['transform', 'camera', 'light', 'meshRenderer', 'terrain', 'prefab'] as const;
+const aggregateComponentKeys = ['transform', 'camera', 'light', 'meshRenderer', 'terrain', 'water', 'prefab'] as const;
 
 const flattenSnapshotValues = (value: unknown, prefix: string, output: Map<string, string>): void => {
   if (value === null || typeof value !== 'object') {

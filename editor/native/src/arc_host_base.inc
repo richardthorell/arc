@@ -195,7 +195,8 @@ template <class Command> constexpr bool is_authoring_command() noexcept
            std::is_same_v<Command, host_set_render_layer_command> ||
            std::is_same_v<Command, host_set_mobility_command> || std::is_same_v<Command, host_set_camera_command> ||
            std::is_same_v<Command, host_set_light_command> || std::is_same_v<Command, host_set_mesh_renderer_command> ||
-           std::is_same_v<Command, host_set_terrain_command> || std::is_same_v<Command, host_terrain_stroke_command> ||
+           std::is_same_v<Command, host_set_terrain_command> || std::is_same_v<Command, host_set_water_command> ||
+           std::is_same_v<Command, host_terrain_stroke_command> ||
            std::is_same_v<Command, host_set_terrain_layer_command> ||
            std::is_same_v<Command, host_create_terrain_command> ||
            std::is_same_v<Command, host_generate_terrain_command> ||
@@ -261,6 +262,8 @@ std::string history_label(const host_command_payload& command)
                 return "Assign Material";
             else if constexpr (std::is_same_v<type, host_set_terrain_command>)
                 return "Edit Terrain";
+            else if constexpr (std::is_same_v<type, host_set_water_command>)
+                return "Edit Water";
             else if constexpr (std::is_same_v<type, host_set_terrain_layer_command>)
                 return "Assign Terrain Layer";
             else if constexpr (std::is_same_v<type, host_terrain_stroke_command>)
@@ -857,7 +860,7 @@ const char* create_entity_kind_label(host_create_entity_kind kind) noexcept
         case host_create_entity_kind::terrain:
             return "Terrain";
         case host_create_entity_kind::water:
-            return "Water Plane";
+            return "Ocean";
         case host_create_entity_kind::grass_patch:
             return "Grass Patch";
         case host_create_entity_kind::decal:
@@ -3132,6 +3135,74 @@ host_response arc_host::execute(const host_command_envelope& command)
                            "Entity mesh renderer changed for " + std::to_string(targets.size()) + " entity(s)", entity);
                 return success("{\"entity\":" + to_json(payload.entity) + '}');
             }
+            else if constexpr (std::is_same_v<command_type, host_set_water_command>)
+            {
+                const auto entity = to_scene_entity(payload.entity);
+                const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);
+                if (targets.empty()) return fail("Cannot edit a missing or unselected Water component", entity);
+                if (std::any_of(targets.begin(), targets.end(), [&](ecs::entity target)
+                                { return !state_->scene.scene.has<scene::water_component>(target); }))
+                    return fail("Every selected entity must have an editable Water component", entity);
+
+                const auto& value = payload.water;
+                ::arc::water::water_preset preset;
+                preset.body_type = static_cast<::arc::water::water_body_type>(value.body_type);
+                preset.settings.simulation.wind_speed = value.wind_speed;
+                preset.settings.simulation.wind_direction = {value.wind_direction_x, value.wind_direction_y};
+                preset.settings.simulation.fetch_length = value.fetch_length;
+                preset.settings.simulation.wave_amplitude = value.wave_amplitude;
+                preset.settings.simulation.choppiness = value.choppiness;
+                preset.settings.foam.enabled = value.foam_enabled;
+                preset.settings.foam.threshold = value.foam_threshold;
+                preset.settings.foam.decay = value.foam_decay;
+                preset.settings.appearance.absorption = {value.absorption.x, value.absorption.y, value.absorption.z};
+                preset.settings.appearance.scattering = {value.scattering.x, value.scattering.y, value.scattering.z};
+                preset.settings.appearance.roughness = value.roughness;
+                preset.settings.appearance.refraction_strength = value.refraction_strength;
+                preset.settings.quality = static_cast<::arc::water::water_quality>(value.quality);
+                const auto validation = ::arc::water::validate_water_preset(preset);
+                if (!validation.valid()) return fail(validation.issues.front().message, entity);
+                if (!std::isfinite(value.water_level) || !std::isfinite(value.visible_distance) ||
+                    !std::isfinite(value.shoreline_foam_width) ||
+                    !std::isfinite(value.shallow_wave_damping_distance) || !std::isfinite(value.runup_distance) ||
+                    value.visible_distance <= 0.0f || value.shoreline_foam_width < 0.0f ||
+                    value.shallow_wave_damping_distance < 0.0f || value.runup_distance < 0.0f)
+                    return fail("Water body or shoreline values are outside supported ranges", entity);
+                const auto preset_guid = value.preset_guid.empty()
+                                             ? std::optional<assets::asset_guid>{assets::asset_guid{}}
+                                             : assets::parse_asset_guid(value.preset_guid);
+                const auto material_guid = value.material_guid.empty()
+                                               ? std::optional<assets::asset_guid>{assets::asset_guid{}}
+                                               : assets::parse_asset_guid(value.material_guid);
+                if (!preset_guid || !material_guid) return fail("Water asset reference has an invalid GUID", entity);
+
+                for (const auto target : targets)
+                {
+                    auto& component = state_->scene.scene.get<scene::water_component>(target);
+                    component.type = preset.body_type;
+                    component.preset.guid = *preset_guid;
+                    component.preset.path_hint = value.preset_path;
+                    component.material.guid = *material_guid;
+                    component.material.path_hint = value.material_path;
+                    component.water_level = value.water_level;
+                    component.enabled = value.enabled;
+                    component.follow_camera = value.follow_camera;
+                    component.visible_distance = value.visible_distance;
+                    component.settings = preset.settings;
+                    component.shoreline_enabled = value.shoreline_enabled;
+                    component.shoreline_foam_width = value.shoreline_foam_width;
+                    component.shallow_wave_damping_distance = value.shallow_wave_damping_distance;
+                    component.runup_distance = value.runup_distance;
+                    component.underwater_enabled = value.underwater_enabled;
+                    component.caustics_enabled = value.caustics_enabled;
+                    component.queries_enabled = value.queries_enabled;
+                    component.buoyancy_enabled = value.buoyancy_enabled;
+                    component.priority = value.priority;
+                }
+                push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                           "Water settings changed for " + std::to_string(targets.size()) + " entity(s)", entity);
+                return success("{\"entity\":" + to_json(payload.entity) + '}');
+            }
             else if constexpr (std::is_same_v<command_type, host_set_terrain_command>)
             {
                 const auto entity = to_scene_entity(payload.entity);
@@ -5309,9 +5380,50 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
         add_component_snapshot<scene::terrain_component>(state_->scene.scene, selected, snapshot.components,
                                                          host_component_kind::terrain, "Terrain");
     }
-    if (state_->scene.scene.has<scene::water_component>(selected))
+    if (const auto* water = state_->scene.scene.try_get<scene::water_component>(selected))
+    {
+        host_water_snapshot water_snapshot;
+        water_snapshot.body_type = static_cast<std::uint8_t>(water->type);
+        water_snapshot.preset_guid = water->preset.guid.valid() ? assets::to_string(water->preset.guid) : std::string{};
+        water_snapshot.preset_path = water->preset.path_hint;
+        water_snapshot.material_guid =
+            water->material.guid.valid() ? assets::to_string(water->material.guid) : std::string{};
+        water_snapshot.material_path = water->material.path_hint;
+        water_snapshot.water_level = water->water_level;
+        water_snapshot.enabled = water->enabled;
+        water_snapshot.follow_camera = water->follow_camera;
+        water_snapshot.visible_distance = water->visible_distance;
+        water_snapshot.wind_speed = water->settings.simulation.wind_speed;
+        water_snapshot.wind_direction_x = water->settings.simulation.wind_direction[0];
+        water_snapshot.wind_direction_y = water->settings.simulation.wind_direction[1];
+        water_snapshot.fetch_length = water->settings.simulation.fetch_length;
+        water_snapshot.wave_amplitude = water->settings.simulation.wave_amplitude;
+        water_snapshot.choppiness = water->settings.simulation.choppiness;
+        water_snapshot.foam_enabled = water->settings.foam.enabled;
+        water_snapshot.foam_threshold = water->settings.foam.threshold;
+        water_snapshot.foam_decay = water->settings.foam.decay;
+        water_snapshot.absorption = {water->settings.appearance.absorption[0],
+                                     water->settings.appearance.absorption[1],
+                                     water->settings.appearance.absorption[2]};
+        water_snapshot.scattering = {water->settings.appearance.scattering[0],
+                                     water->settings.appearance.scattering[1],
+                                     water->settings.appearance.scattering[2]};
+        water_snapshot.roughness = water->settings.appearance.roughness;
+        water_snapshot.refraction_strength = water->settings.appearance.refraction_strength;
+        water_snapshot.shoreline_enabled = water->shoreline_enabled;
+        water_snapshot.shoreline_foam_width = water->shoreline_foam_width;
+        water_snapshot.shallow_wave_damping_distance = water->shallow_wave_damping_distance;
+        water_snapshot.runup_distance = water->runup_distance;
+        water_snapshot.underwater_enabled = water->underwater_enabled;
+        water_snapshot.caustics_enabled = water->caustics_enabled;
+        water_snapshot.queries_enabled = water->queries_enabled;
+        water_snapshot.buoyancy_enabled = water->buoyancy_enabled;
+        water_snapshot.quality = static_cast<std::uint8_t>(water->settings.quality);
+        water_snapshot.priority = water->priority;
+        snapshot.water = std::move(water_snapshot);
         add_component_snapshot<scene::water_component>(state_->scene.scene, selected, snapshot.components,
                                                        host_component_kind::water, "Water");
+    }
     if (state_->scene.scene.has<scene::vegetation_component>(selected))
         add_component_snapshot<scene::vegetation_component>(state_->scene.scene, selected, snapshot.components,
                                                             host_component_kind::vegetation, "Vegetation");

@@ -657,7 +657,7 @@ ecs::entity add_water_to_scene(editor_scene_state& scene, render::renderer& rend
     const auto material = ensure_water_material(scene, renderer);
     const auto entity = scene.scene.create();
     scene.water_entity = entity;
-    add_selectable_common(scene, entity, "Water Plane", "Environment");
+    add_selectable_common(scene, entity, "Ocean", "Environment");
     scene::transform_component transform;
     transform.position = defaults::default_water_position;
     scene::water_component water;

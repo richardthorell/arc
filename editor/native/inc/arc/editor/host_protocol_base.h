@@ -507,6 +507,44 @@ struct host_terrain_snapshot
     std::array<std::string, 4> layer_base_color_paths{};
 };
 
+struct host_water_snapshot
+{
+    std::uint8_t body_type{};
+    std::string preset_guid;
+    std::string preset_path;
+    std::string material_guid;
+    std::string material_path;
+    float water_level{};
+    bool enabled{true};
+    bool follow_camera{true};
+    float visible_distance{20000.0f};
+    float wind_speed{12.0f};
+    float wind_direction_x{1.0f};
+    float wind_direction_y{};
+    float fetch_length{50000.0f};
+    float wave_amplitude{1.0f};
+    float choppiness{1.0f};
+    bool foam_enabled{true};
+    float foam_threshold{0.55f};
+    float foam_decay{0.4f};
+    host_vec3 absorption{0.18f, 0.065f, 0.025f};
+    host_vec3 scattering{0.02f, 0.075f, 0.10f};
+    float roughness{0.08f};
+    float refraction_strength{0.04f};
+    bool shoreline_enabled{true};
+    float shoreline_foam_width{2.0f};
+    float shallow_wave_damping_distance{20.0f};
+    float runup_distance{1.5f};
+    bool underwater_enabled{true};
+    bool caustics_enabled{true};
+    bool queries_enabled{true};
+    bool buoyancy_enabled{true};
+    std::uint8_t quality{2u};
+    std::int32_t priority{};
+
+    friend constexpr bool operator==(const host_water_snapshot&, const host_water_snapshot&) noexcept = default;
+};
+
 enum class host_terrain_operation_state : std::uint8_t
 {
     queued,
@@ -611,6 +649,7 @@ struct host_selected_entity_snapshot
     std::optional<host_light_snapshot> light;
     std::optional<host_mesh_renderer_snapshot> mesh_renderer;
     std::optional<host_terrain_snapshot> terrain;
+    std::optional<host_water_snapshot> water;
     std::optional<host_prefab_snapshot> prefab;
     std::vector<host_component_snapshot> components;
     std::vector<host_project_component_snapshot> project_components;
@@ -1143,6 +1182,13 @@ struct host_set_terrain_command
     float maximum_shadow_distance{};
 };
 
+struct host_set_water_command
+{
+    host_entity_id entity{};
+    host_water_snapshot water;
+    bool apply_to_selection{};
+};
+
 struct host_set_terrain_brush_command
 {
     host_entity_id entity{};
@@ -1509,6 +1555,7 @@ using host_command_payload = std::variant<
     host_rename_entity_command, host_select_entity_command, host_clear_selection_command, host_set_active_command,
     host_set_tag_command, host_set_transform_command, host_set_render_layer_command, host_set_mobility_command,
     host_set_camera_command, host_set_light_command, host_set_mesh_renderer_command, host_set_terrain_command,
+    host_set_water_command,
     host_set_terrain_brush_command, host_set_terrain_layer_command, host_create_terrain_command,
     host_generate_terrain_command, host_import_terrain_heightmap_command, host_export_terrain_heightmap_command,
     host_resample_terrain_command, host_cancel_terrain_operation_command, host_terrain_stroke_command,
@@ -1716,6 +1763,7 @@ std::string to_json(const host_entity_id& entity);
 std::string to_json(const host_transform& transform);
 std::string to_json(const host_camera_snapshot& camera);
 std::string to_json(const host_mesh_renderer_snapshot& mesh_renderer);
+std::string to_json(const host_water_snapshot& water);
 std::string to_json(const host_world_environment_snapshot& environment);
 std::string to_json(const host_profiler_snapshot& snapshot);
 std::string to_json(const host_runtime_snapshot& snapshot);

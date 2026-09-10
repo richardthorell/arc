@@ -23,6 +23,7 @@
 #include <arc/render/render.h>
 #include <arc/render_tools/render_tools.h>
 #include <arc/scene/scene.h>
+#include <arc/water/water.h>
 
 #include <algorithm>
 #include <array>
