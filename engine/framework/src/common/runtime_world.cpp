@@ -148,6 +148,17 @@ bool runtime_world::attach_entities(ecs::world& entities) noexcept
     return true;
 }
 
+bool runtime_world::detach_entities() noexcept
+{
+    if (state_ == runtime_world_state::starting || state_ == runtime_world_state::running ||
+        state_ == runtime_world_state::stopping)
+        return false;
+    if (entities_ == &owned_entities_) return true;
+    entities_ = &owned_entities_;
+    ++epoch_;
+    return true;
+}
+
 void runtime_world::fault(std::string message)
 {
     fault_message_ = std::move(message);

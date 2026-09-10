@@ -158,6 +158,7 @@ public:
     void resume() noexcept;
     void clear_fault() noexcept;
     bool attach_entities(ecs::world& entities) noexcept;
+    bool detach_entities() noexcept;
 
     runtime_world_run_result run_fixed(jobs::job_system& jobs, const simulation_tick& tick,
                                        runtime_service_provider* services, const simulation_input_snapshot* input,

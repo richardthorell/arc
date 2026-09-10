@@ -719,3 +719,18 @@ TEST_CASE("headless runtime reports a world fault as process failure")
     REQUIRE(result.completed_ticks == 1);
     REQUIRE(result.error.find("intentional headless fault") != std::string::npos);
 }
+
+TEST_CASE("runtime worlds can detach an externally attached entity world")
+{
+    recording_application app;
+    arc::framework::runtime host(app);
+    auto& world = host.worlds().create({.name = "Detached world", .install_placeholder_systems = false});
+    arc::ecs::world external;
+    const auto external_entity = external.create();
+    external.emplace<counter_component>(external_entity, counter_component{42});
+
+    REQUIRE(world.attach_entities(external));
+    REQUIRE(world.entities().alive(external_entity));
+    REQUIRE(world.detach_entities());
+    REQUIRE_FALSE(world.entities().alive(external_entity));
+}
