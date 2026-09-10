@@ -190,6 +190,8 @@ M0 explicitly does **not** define virtual-geometry page size, cluster layout, GP
 
 ## Milestone 1 - Compile Existing Heightfield Terrain into Virtual Geometry
 
+**Status: complete.** Terrain now submits through ARC's generic conventional/virtual geometry path, with the dedicated terrain renderer removed after residency/fallback hardening.
+
 This is the decisive runtime transition.
 
 Current conceptual path:
@@ -241,6 +243,8 @@ At this milestone, new high-end terrain rendering work should stop targeting the
 ---
 
 ## Milestone 2 - Terrain-Specific Virtual Geometry Streaming
+
+**Status: in progress.** M2.1 establishes stable independently replaceable render-artifact regions; later M2 stages make their cooked payloads lazy, asynchronous, predictive, and budgeted.
 
 Generic virtual geometry residency already provides the base mechanism. Terrain needs additional spatial policy.
 

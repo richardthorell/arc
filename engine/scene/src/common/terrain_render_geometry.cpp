@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <span>
 #include <vector>
 
 namespace arc::scene
@@ -23,13 +24,13 @@ math::vector3f stable_tangent(const math::vector3f& normal) noexcept
     return math::length_squared(tangent) > normal_epsilon ? math::normalize(tangent) : x_axis;
 }
 
-} // namespace
-
-std::optional<render::virtual_mesh_data>
-build_terrain_render_geometry(const terrain_surface_ir& surface, const render::virtual_mesh_build_options& options)
+std::optional<render::virtual_mesh_data> build_geometry(const terrain_surface_ir& surface,
+                                                        std::span<const math::vector3f> supplied_normals,
+                                                        const render::virtual_mesh_build_options& options)
 {
     const auto canonical = canonicalize_terrain_surface_geometry(surface);
     if (!canonical) return std::nullopt;
+    if (!supplied_normals.empty() && supplied_normals.size() != canonical->positions.size()) return std::nullopt;
 
     render::mesh_data source;
     source.name = "terrain";
@@ -37,19 +38,23 @@ build_terrain_render_geometry(const terrain_surface_ir& surface, const render::v
     source.vertices.resize(canonical->positions.size());
     source.indices = canonical->indices;
 
-    std::vector<math::vector3f> accumulated_normals(canonical->positions.size());
-    for (std::size_t index = 0; index + 2u < canonical->indices.size(); index += 3u)
+    std::vector<math::vector3f> accumulated_normals;
+    if (supplied_normals.empty())
     {
-        const auto i0 = canonical->indices[index + 0u];
-        const auto i1 = canonical->indices[index + 1u];
-        const auto i2 = canonical->indices[index + 2u];
-        const auto edge0 = math::sub(canonical->positions[i1], canonical->positions[i0]);
-        const auto edge1 = math::sub(canonical->positions[i2], canonical->positions[i0]);
-        const auto face = math::cross(edge0, edge1);
-        if (math::length_squared(face) <= normal_epsilon) continue;
-        accumulated_normals[i0] = math::add(accumulated_normals[i0], face);
-        accumulated_normals[i1] = math::add(accumulated_normals[i1], face);
-        accumulated_normals[i2] = math::add(accumulated_normals[i2], face);
+        accumulated_normals.resize(canonical->positions.size());
+        for (std::size_t index = 0; index + 2u < canonical->indices.size(); index += 3u)
+        {
+            const auto i0 = canonical->indices[index + 0u];
+            const auto i1 = canonical->indices[index + 1u];
+            const auto i2 = canonical->indices[index + 2u];
+            const auto edge0 = math::sub(canonical->positions[i1], canonical->positions[i0]);
+            const auto edge1 = math::sub(canonical->positions[i2], canonical->positions[i0]);
+            const auto face = math::cross(edge0, edge1);
+            if (math::length_squared(face) <= normal_epsilon) continue;
+            accumulated_normals[i0] = math::add(accumulated_normals[i0], face);
+            accumulated_normals[i1] = math::add(accumulated_normals[i1], face);
+            accumulated_normals[i2] = math::add(accumulated_normals[i2], face);
+        }
     }
 
     const float extent_x = static_cast<float>(surface.local_bounds.max_x - surface.local_bounds.min_x);
@@ -57,9 +62,9 @@ build_terrain_render_geometry(const terrain_surface_ir& surface, const render::v
     for (std::size_t index = 0; index < canonical->positions.size(); ++index)
     {
         const auto& position = canonical->positions[index];
-        const auto normal = math::length_squared(accumulated_normals[index]) > normal_epsilon
-                                ? math::normalize(accumulated_normals[index])
-                                : math::vector3f{0.0f, 1.0f, 0.0f};
+        const auto normal_source = supplied_normals.empty() ? accumulated_normals[index] : supplied_normals[index];
+        const auto normal = math::length_squared(normal_source) > normal_epsilon ? math::normalize(normal_source)
+                                                                                 : math::vector3f{0.0f, 1.0f, 0.0f};
         const auto tangent = stable_tangent(normal);
         auto& vertex = source.vertices[index];
         vertex.position[0] = position[0];
@@ -84,6 +89,21 @@ build_terrain_render_geometry(const terrain_surface_ir& surface, const render::v
     if (result.clusters.empty() || result.root_nodes.empty() || result.pages.empty()) return std::nullopt;
     if (options.build_conventional_lods && result.conventional_lods.empty()) return std::nullopt;
     return result;
+}
+
+} // namespace
+
+std::optional<render::virtual_mesh_data>
+build_terrain_render_geometry(const terrain_surface_ir& surface, const render::virtual_mesh_build_options& options)
+{
+    return build_geometry(surface, {}, options);
+}
+
+std::optional<render::virtual_mesh_data>
+build_terrain_render_region_geometry(const terrain_surface_ir& surface, std::span<const math::vector3f> vertex_normals,
+                                     const render::virtual_mesh_build_options& options)
+{
+    return build_geometry(surface, vertex_normals, options);
 }
 
 } // namespace arc::scene

@@ -84,6 +84,7 @@ std::size_t gpu_scene::instance_key_hash::operator()(const instance_key& value) 
     hash_combine(seed, value.object_id.generation);
     hash_combine(seed, static_cast<std::uint8_t>(value.geometry_kind));
     hash_combine(seed, value.submesh_or_cluster);
+    hash_combine(seed, value.instance_id);
     return seed;
 }
 
@@ -204,7 +205,8 @@ gpu_scene_update_batch gpu_scene::synchronize(render_world_packet& packet, std::
         const instance_key key{.world_id = packet.gpu_scene_world_id,
                                .object_id = item.object_id,
                                .geometry_kind = geometry_kind,
-                               .submesh_or_cluster = item.submesh};
+                               .submesh_or_cluster = item.submesh,
+                               .instance_id = item.instance_id};
         upsert(key, {.model = item.model,
                      .previous_model = item.previous_model,
                      .world_bounds = item.world_bounds,
@@ -229,7 +231,8 @@ gpu_scene_update_batch gpu_scene::synchronize(render_world_packet& packet, std::
         const instance_key key{.world_id = packet.gpu_scene_world_id,
                                .object_id = item.object_id,
                                .geometry_kind = gpu_scene_geometry_kind::virtual_mesh,
-                               .submesh_or_cluster = item.root_node};
+                               .submesh_or_cluster = item.root_node,
+                               .instance_id = item.instance_id};
         upsert(key,
                {.model = item.model,
                 .previous_model = item.previous_model,
