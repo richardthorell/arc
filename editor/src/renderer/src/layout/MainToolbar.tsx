@@ -1,4 +1,8 @@
+import { useState } from 'react';
 import {
+  Box,
+  CircleDot,
+  Crosshair,
   Globe,
   Grid3X3,
   Hammer,
@@ -33,6 +37,7 @@ export type EditorTargetPlatform =
   'windows' | 'linux' | 'macos' | 'ios' | 'android' | 'xbox' | 'playstation' | 'switch';
 export type ToolbarBuildAction = 'build' | 'rebuild' | 'configure' | 'clean';
 export type ToolbarCoordinateSpace = 'world' | 'local';
+export type ToolbarTransformOrigin = 'pivot' | 'center';
 
 const platformOptions: ReadonlyArray<UiDropdownOption<EditorTargetPlatform>> = [
   { value: 'windows', label: 'Windows', icon: <PlatformBrandIcon platform="windows" /> },
@@ -45,23 +50,28 @@ const platformOptions: ReadonlyArray<UiDropdownOption<EditorTargetPlatform>> = [
   { value: 'switch', label: 'Nintendo Switch', icon: <PlatformBrandIcon platform="switch" /> },
 ];
 
+const transformOriginOptions: ReadonlyArray<UiDropdownOption<ToolbarTransformOrigin>> = [
+  { value: 'pivot', label: 'Pivot', icon: <Crosshair size={12} /> },
+  { value: 'center', label: 'Center', icon: <CircleDot size={12} /> },
+];
+
 const coordinateSpaceOptions: ReadonlyArray<UiDropdownOption<ToolbarCoordinateSpace>> = [
   { value: 'world', label: 'World', icon: <Globe size={12} /> },
-  { value: 'local', label: 'Local', icon: <Globe size={12} /> },
+  { value: 'local', label: 'Local', icon: <Box size={12} /> },
 ];
 
 const translationSnapOptions: ReadonlyArray<UiDropdownOption<string>> = [
   0.01, 0.05, 0.1, 0.25, 0.5, 1, 5, 10,
-].map((value) => ({ value: String(value), label: String(value) }));
+].map((value) => ({ value: String(value), label: `Move ${value}` }));
 
 const rotationSnapOptions: ReadonlyArray<UiDropdownOption<string>> = [1, 5, 10, 15, 30, 45, 90].map((value) => ({
   value: String(value),
-  label: `${value}°`,
+  label: `Rotate ${value}°`,
 }));
 
 const scaleSnapOptions: ReadonlyArray<UiDropdownOption<string>> = [0.01, 0.05, 0.1, 0.25, 0.5, 1].map((value) => ({
   value: String(value),
-  label: `${Math.round(value * 100)}%`,
+  label: `Scale ${Math.round(value * 100)}%`,
 }));
 
 const buildOptions: ReadonlyArray<UiSplitButtonOption<ToolbarBuildAction>> = [
@@ -114,6 +124,8 @@ export function MainToolbar({
   onTargetPlatformChange,
   onBuildAction,
 }: MainToolbarProps) {
+  const [transformOrigin, setTransformOrigin] = useState<ToolbarTransformOrigin>('pivot');
+
   return (
     <section className="main-toolbar" aria-label="Editor toolbar">
       <div className="toolbar-left">
@@ -157,7 +169,13 @@ export function MainToolbar({
 
       <div className="toolbar-center">
         <div className="ui-toolbar-group toolbar-group" aria-label="Transform mode">
-          <UiSelectButton className="toolbar-select toolbar-select-compact">Pivot</UiSelectButton>
+          <UiDropdown
+            ariaLabel="Transform origin"
+            className="toolbar-origin-dropdown"
+            onValueChange={setTransformOrigin}
+            options={transformOriginOptions}
+            value={transformOrigin}
+          />
           <UiIconButton
             active={activeTool === 'select'}
             className="toolbar-button"
@@ -221,21 +239,21 @@ export function MainToolbar({
           </UiIconButton>
           <UiDropdown
             ariaLabel="Rotation snap"
-            className="toolbar-snap-dropdown"
+            className="toolbar-snap-dropdown toolbar-snap-rotation"
             onValueChange={(value) => onRotationSnapChange?.(Number(value))}
             options={rotationSnapOptions}
             value={String(rotationSnap)}
           />
           <UiDropdown
             ariaLabel="Translation snap"
-            className="toolbar-snap-dropdown"
+            className="toolbar-snap-dropdown toolbar-snap-translation"
             onValueChange={(value) => onTranslationSnapChange?.(Number(value))}
             options={translationSnapOptions}
             value={String(translationSnap)}
           />
           <UiDropdown
             ariaLabel="Scale snap"
-            className="toolbar-snap-dropdown"
+            className="toolbar-snap-dropdown toolbar-snap-scale"
             onValueChange={(value) => onScaleSnapChange?.(Number(value))}
             options={scaleSnapOptions}
             value={String(scaleSnap)}
