@@ -1,13 +1,30 @@
+.main-toolbar .ui-select-button,
+.main-toolbar .ui-dropdown-trigger.ui-button,
+.main-toolbar .ui-split-button > .ui-button {
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-sm);
+  font-weight: 500;
+}
+
 .toolbar-platform-dropdown {
   width: 150px;
   flex: 0 0 150px;
+  height: var(--arc-control-height);
 }
 
-.toolbar-platform-dropdown .ui-dropdown-trigger {
+.toolbar-platform-dropdown .ui-dropdown-trigger.ui-button {
   width: 100%;
-  height: var(--arc-icon-button-size);
+  height: var(--arc-control-height);
+  min-height: var(--arc-control-height);
+  max-height: var(--arc-control-height);
 }
 
-.toolbar-build-split > .ui-button {
-  height: var(--arc-icon-button-size);
+.toolbar-build-split.ui-split-button {
+  height: var(--arc-control-height);
+}
+
+.toolbar-build-split.ui-split-button > .ui-button {
+  height: var(--arc-control-height);
+  min-height: var(--arc-control-height);
+  max-height: var(--arc-control-height);
 }
