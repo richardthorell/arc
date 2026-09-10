@@ -9,28 +9,42 @@ import { MainToolbar } from './MainToolbar';
 afterEach(cleanup);
 
 describe('MainToolbar runtime controls', () => {
-  it('renders host-authoritative playback state', () => {
-    render(<MainToolbar onCommand={vi.fn()} runtimeState="running" timeScale={2} />);
+  it('renders host-authoritative playback state and enables only valid controls', () => {
+    const { rerender } = render(<MainToolbar onCommand={vi.fn()} runtimeState="stopped" timeScale={2} />);
 
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Step' })).toBeDisabled();
+
+    rerender(<MainToolbar onCommand={vi.fn()} runtimeState="running" timeScale={2} />);
     expect(screen.getByRole('button', { name: 'Play' })).toHaveClass('is-active');
-    expect(screen.getByRole('button', { name: 'Pause' })).not.toHaveClass('is-active');
-    expect(screen.getByText('2×')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Step' })).toBeDisabled();
+
+    rerender(<MainToolbar onCommand={vi.fn()} runtimeState="paused" timeScale={2} />);
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Step' })).toBeEnabled();
   });
 
-  it('dispatches playback commands and time-scale changes', () => {
+  it('dispatches playback commands and changes time scale from playback options', () => {
     const onCommand = vi.fn();
-    const onCycleTimeScale = vi.fn();
+    const onTimeScaleChange = vi.fn();
     render(
-      <MainToolbar onCommand={onCommand} runtimeState="paused" timeScale={0.5} onCycleTimeScale={onCycleTimeScale} />,
+      <MainToolbar onCommand={onCommand} runtimeState="paused" timeScale={0.5} onTimeScaleChange={onTimeScaleChange} />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Play' }));
     fireEvent.click(screen.getByRole('button', { name: 'Step' }));
-    fireEvent.click(screen.getByText('0.5×'));
-
     expect(onCommand).toHaveBeenNthCalledWith(1, 'scene.play');
     expect(onCommand).toHaveBeenNthCalledWith(2, 'scene.step');
-    expect(onCycleTimeScale).toHaveBeenCalledOnce();
+
+    expect(screen.queryByText('0.5×')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Playback options' }));
+    expect(screen.getByRole('menu', { name: 'Playback options menu' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Simulation time scale' }));
+    fireEvent.click(screen.getByRole('option', { name: '2×' }));
+    expect(onTimeScaleChange).toHaveBeenCalledWith(2);
   });
 
   it('uses compact transform dropdowns and a grouped snap settings menu', () => {

@@ -1,7 +1,8 @@
 .main-toolbar .ui-select-button,
 .main-toolbar .ui-dropdown-trigger.ui-button,
 .main-toolbar .ui-split-button > .ui-button,
-.main-toolbar .toolbar-snap-trigger.ui-button {
+.main-toolbar .toolbar-snap-trigger.ui-button,
+.main-toolbar .toolbar-playback-options-trigger.ui-button {
   font-family: var(--arc-font-ui);
   font-size: var(--arc-text-sm);
   font-weight: 500;
@@ -144,4 +145,55 @@
   height: var(--arc-control-height);
   min-height: var(--arc-control-height);
   max-height: var(--arc-control-height);
+}
+
+.toolbar-playback-options {
+  position: relative;
+  display: inline-flex;
+  height: var(--arc-control-height);
+}
+
+.toolbar-playback-options-trigger.ui-button {
+  width: 28px;
+  min-width: 28px;
+  height: var(--arc-control-height);
+  min-height: var(--arc-control-height);
+  max-height: var(--arc-control-height);
+  padding-inline: 0;
+  justify-content: center;
+}
+
+.toolbar-playback-options-popup {
+  position: absolute;
+  z-index: 1300;
+  top: calc(100% + var(--arc-space-2));
+  left: 0;
+  width: 190px;
+  padding: var(--arc-space-3);
+  border: var(--arc-border-width) solid var(--arc-color-border);
+  border-radius: var(--arc-radius-2);
+  background: var(--arc-color-bg-panel-raised);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.34);
+}
+
+.toolbar-playback-options-row {
+  display: grid;
+  grid-template-columns: 66px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--arc-space-3);
+  min-height: 32px;
+  color: var(--arc-color-text-muted);
+  font-size: var(--arc-text-sm);
+}
+
+.toolbar-playback-time-scale {
+  width: 100%;
+}
+
+.toolbar-playback-time-scale .ui-dropdown-trigger.ui-button {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  min-height: 26px;
+  max-height: 26px;
 }
