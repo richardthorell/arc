@@ -55,8 +55,7 @@ public:
 
     void register_package_range(virtual_mesh_handle resource, std::uint32_t resource_generation,
                                 std::filesystem::path package, std::uint64_t artifact_base_offset,
-                                std::uint64_t artifact_size,
-                                std::vector<virtual_geometry_artifact_page_range> pages);
+                                std::uint64_t artifact_size, std::vector<virtual_geometry_artifact_page_range> pages);
     void unregister(virtual_mesh_handle resource);
 
     [[nodiscard]] jobs::job_future<io::file_result<io::file_buffer>>

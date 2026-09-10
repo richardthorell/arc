@@ -71,9 +71,8 @@ package_artifact_reader::locate(const cooked_artifact_address& address) const no
 {
     const auto* artifact = find(address);
     if (!artifact) return std::nullopt;
-    return cooked_artifact_location{.path = root_ / artifact->chunk,
-                                    .offset = artifact->offset,
-                                    .size = artifact->stored_size};
+    return cooked_artifact_location{
+        .path = root_ / artifact->chunk, .offset = artifact->offset, .size = artifact->stored_size};
 }
 
 core::result<std::vector<std::byte>, asset_error>

@@ -671,8 +671,7 @@ virtual_mesh_data build_virtual_mesh(const mesh_data& source, const virtual_mesh
     return result;
 }
 
-bool decode_virtual_geometry_page(const virtual_geometry_page& page,
-                                  std::span<const std::byte> compressed_bytes,
+bool decode_virtual_geometry_page(const virtual_geometry_page& page, std::span<const std::byte> compressed_bytes,
                                   std::vector<std::byte>& output)
 {
     if (compressed_bytes.size() != page.compressed_size) return false;
@@ -719,7 +718,8 @@ bool decode_virtual_geometry_page(const virtual_mesh_data& mesh, std::uint32_t p
     if (static_cast<std::uint64_t>(page.compressed_offset) + page.compressed_size > mesh.page_payload.size())
         return false;
     return decode_virtual_geometry_page(
-        page, std::span<const std::byte>(mesh.page_payload).subspan(page.compressed_offset, page.compressed_size), output);
+        page, std::span<const std::byte>(mesh.page_payload).subspan(page.compressed_offset, page.compressed_size),
+        output);
 }
 
 } // namespace arc::render

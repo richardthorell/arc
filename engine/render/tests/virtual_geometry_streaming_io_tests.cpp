@@ -49,18 +49,17 @@ arc::render::mesh_data make_streaming_grid(std::uint32_t side)
 
 std::uint32_t detail_page_index(const arc::render::virtual_mesh_data& geometry)
 {
-    const auto found = std::find_if(geometry.pages.begin(), geometry.pages.end(),
-                                    [](const auto& page) { return !page.root; });
-    return found == geometry.pages.end()
-               ? arc::render::invalid_virtual_geometry_index
-               : static_cast<std::uint32_t>(std::distance(geometry.pages.begin(), found));
+    const auto found =
+        std::find_if(geometry.pages.begin(), geometry.pages.end(), [](const auto& page) { return !page.root; });
+    return found == geometry.pages.end() ? arc::render::invalid_virtual_geometry_index
+                                         : static_cast<std::uint32_t>(std::distance(geometry.pages.begin(), found));
 }
 
 std::vector<std::byte> page_bytes(const arc::render::virtual_mesh_data& geometry, std::uint32_t page_index)
 {
     const auto& page = geometry.pages[page_index];
-    const auto source = std::span<const std::byte>(geometry.page_payload)
-                            .subspan(page.compressed_offset, page.compressed_size);
+    const auto source =
+        std::span<const std::byte>(geometry.page_payload).subspan(page.compressed_offset, page.compressed_size);
     return {source.begin(), source.end()};
 }
 
@@ -75,15 +74,14 @@ public:
     arc::jobs::job_future<arc::io::file_result<arc::io::file_buffer>>
     read_page(const arc::render::virtual_geometry_page_load&, arc::jobs::cancellation_token) override
     {
-        return jobs_.submit_future(
-            {.name = "test.delayed_virtual_geometry_read",
-             .priority = arc::jobs::job_priority::normal,
-             .affinity = arc::jobs::job_affinity::io_thread},
-            [payload = payload_]
-            {
-                std::this_thread::sleep_for(std::chrono::milliseconds(20));
-                return arc::io::file_result<arc::io::file_buffer>::success(payload);
-            });
+        return jobs_.submit_future({.name = "test.delayed_virtual_geometry_read",
+                                    .priority = arc::jobs::job_priority::normal,
+                                    .affinity = arc::jobs::job_affinity::io_thread},
+                                   [payload = payload_]
+                                   {
+                                       std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                                       return arc::io::file_result<arc::io::file_buffer>::success(payload);
+                                   });
     }
 
 private:
@@ -136,7 +134,8 @@ TEST_CASE("virtual geometry page IO and decode complete asynchronously from an e
     for (std::size_t page_index = 0; page_index < geometry.pages.size(); ++page_index)
     {
         const auto& page = geometry.pages[page_index];
-        while (artifact.size() % 64u != 0u) artifact.push_back(std::byte{});
+        while (artifact.size() % 64u != 0u)
+            artifact.push_back(std::byte{});
         const auto offset = artifact.size();
         const auto encoded = page_bytes(geometry, static_cast<std::uint32_t>(page_index));
         artifact.insert(artifact.end(), encoded.begin(), encoded.end());

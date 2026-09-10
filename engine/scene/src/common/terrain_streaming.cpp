@@ -12,13 +12,12 @@ namespace
 
 const terrain_render_region_proxy* find_proxy_region(const terrain_render_proxy& proxy, terrain_region_id id) noexcept
 {
-    const auto found = std::find_if(proxy.regions.begin(), proxy.regions.end(),
-                                    [id](const auto& region) { return region.id == id; });
+    const auto found =
+        std::find_if(proxy.regions.begin(), proxy.regions.end(), [id](const auto& region) { return region.id == id; });
     return found == proxy.regions.end() ? nullptr : &*found;
 }
 
-std::vector<render::virtual_geometry_artifact_page_range>
-page_ranges(const terrain_artifact_reference& artifact)
+std::vector<render::virtual_geometry_artifact_page_range> page_ranges(const terrain_artifact_reference& artifact)
 {
     std::vector<render::virtual_geometry_artifact_page_range> result;
     result.reserve(artifact.pages.size());
@@ -55,8 +54,8 @@ terrain_streaming_bind_result terrain_virtual_geometry_streaming_binding::synchr
     for (const auto& manifest_region : manifest.regions)
     {
         const auto* region = find_proxy_region(proxy, manifest_region.region);
-        const auto* artifact = find_terrain_artifact(manifest, manifest_region.region,
-                                                     terrain_artifact_kind::render_geometry);
+        const auto* artifact =
+            find_terrain_artifact(manifest, manifest_region.region, terrain_artifact_kind::render_geometry);
         if (!region || !artifact || !region->geometry.virtualized.valid() ||
             artifact->generation != region->geometry.asset_generation || artifact->pages.empty())
         {
@@ -71,8 +70,8 @@ terrain_streaming_bind_result terrain_virtual_geometry_streaming_binding::synchr
             continue;
         }
 
-        const assets::cooked_artifact_address address{
-            manifest.terrain, assets::artifact_schemas::virtual_geometry, artifact->storage_key};
+        const assets::cooked_artifact_address address{manifest.terrain, assets::artifact_schemas::virtual_geometry,
+                                                      artifact->storage_key};
         const auto location = package.locate(address);
         if (!location || location->size != artifact->payload_size)
         {

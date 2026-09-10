@@ -64,20 +64,23 @@ void filesystem_virtual_geometry_artifact_source::register_package_range(
         unregister(resource);
         return;
     }
-    const bool valid_ranges = std::all_of(pages.begin(), pages.end(), [artifact_size](const auto& page) {
-        return page.stored_size != 0u && page.decoded_size != 0u && page.offset <= artifact_size &&
-               page.stored_size <= artifact_size - page.offset;
-    });
+    const bool valid_ranges = std::all_of(pages.begin(), pages.end(),
+                                          [artifact_size](const auto& page)
+                                          {
+                                              return page.stored_size != 0u && page.decoded_size != 0u &&
+                                                     page.offset <= artifact_size &&
+                                                     page.stored_size <= artifact_size - page.offset;
+                                          });
     if (!valid_ranges)
     {
         unregister(resource);
         return;
     }
     implementation_->sources[streaming_resource_key(resource)] = {.path = std::move(package),
-                                                                   .base = artifact_base_offset,
-                                                                   .size = artifact_size,
-                                                                   .resource_generation = resource_generation,
-                                                                   .pages = std::move(pages)};
+                                                                  .base = artifact_base_offset,
+                                                                  .size = artifact_size,
+                                                                  .resource_generation = resource_generation,
+                                                                  .pages = std::move(pages)};
 }
 
 void filesystem_virtual_geometry_artifact_source::unregister(virtual_mesh_handle resource)
@@ -103,7 +106,8 @@ filesystem_virtual_geometry_artifact_source::read_page(const virtual_geometry_pa
 
     const auto& source = found->second;
     const auto& page = source.pages[load.page_index];
-    if (page.stored_size != load.byte_size || page.offset > source.size || page.stored_size > source.size - page.offset ||
+    if (page.stored_size != load.byte_size || page.offset > source.size ||
+        page.stored_size > source.size - page.offset ||
         source.base > std::numeric_limits<std::uint64_t>::max() - page.offset)
     {
         return implementation_->files->scheduler().submit_future(
@@ -179,8 +183,8 @@ virtual_geometry_streaming_controller::virtual_geometry_streaming_controller(ren
 virtual_geometry_streaming_controller::~virtual_geometry_streaming_controller() = default;
 virtual_geometry_streaming_controller::virtual_geometry_streaming_controller(
     virtual_geometry_streaming_controller&&) noexcept = default;
-virtual_geometry_streaming_controller& virtual_geometry_streaming_controller::operator=(
-    virtual_geometry_streaming_controller&&) noexcept = default;
+virtual_geometry_streaming_controller&
+virtual_geometry_streaming_controller::operator=(virtual_geometry_streaming_controller&&) noexcept = default;
 
 void virtual_geometry_streaming_controller::update(const jobs::cancellation_token& cancellation)
 {
@@ -255,17 +259,18 @@ void virtual_geometry_streaming_controller::update(const jobs::cancellation_toke
                 state.statistics.read_bytes += compressed.size();
                 const auto page = geometry->pages[pending.load.page_index];
                 const auto compressed_bytes = static_cast<std::uint32_t>(compressed.size());
-                auto future = state.jobs->submit_future(
-                    {.name = "render.virtual_geometry_page.decode",
-                     .priority = jobs::job_priority::high,
-                     .affinity = jobs::job_affinity::any_worker},
-                    [page, compressed = std::move(compressed), compressed_bytes]() mutable
-                    {
-                        implementation::decode_result decoded;
-                        decoded.compressed_bytes = compressed_bytes;
-                        decoded.succeeded = decode_virtual_geometry_page(page, compressed, decoded.bytes);
-                        return decoded;
-                    });
+                auto future =
+                    state.jobs->submit_future({.name = "render.virtual_geometry_page.decode",
+                                               .priority = jobs::job_priority::high,
+                                               .affinity = jobs::job_affinity::any_worker},
+                                              [page, compressed = std::move(compressed), compressed_bytes]() mutable
+                                              {
+                                                  implementation::decode_result decoded;
+                                                  decoded.compressed_bytes = compressed_bytes;
+                                                  decoded.succeeded =
+                                                      decode_virtual_geometry_page(page, compressed, decoded.bytes);
+                                                  return decoded;
+                                              });
                 state.decodes.push_back({.load = pending.load, .future = std::move(future)});
             }
         }

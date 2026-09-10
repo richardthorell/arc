@@ -123,21 +123,21 @@ TEST_CASE("M2.3 binds cooked terrain regions to exact asynchronous package page 
     REQUIRE(first_artifact != nullptr);
     REQUIRE_FALSE(first_artifact->pages.empty());
     const auto resource = proxy.regions.front().geometry.virtualized;
-    const render::virtual_geometry_page_load load{
-        .resource = resource,
-        .resource_generation = renderer.virtual_mesh_content_generation(resource),
-        .page_index = 0u,
-        .byte_size = first_artifact->pages.front().stored_size};
+    const render::virtual_geometry_page_load load{.resource = resource,
+                                                  .resource_generation =
+                                                      renderer.virtual_mesh_content_generation(resource),
+                                                  .page_index = 0u,
+                                                  .byte_size = first_artifact->pages.front().stored_size};
     auto future = source.read_page(load);
     const auto page = future.get();
     REQUIRE(page);
     REQUIRE(page.value().size() == first_artifact->pages.front().stored_size);
-    REQUIRE(render::verify_virtual_geometry_artifact_page(
-        page.value(), {.offset = first_artifact->pages.front().offset,
-                       .stored_size = first_artifact->pages.front().stored_size,
-                       .decoded_size = first_artifact->pages.front().decoded_size,
-                       .content_hash = first_artifact->pages.front().content_hash,
-                       .root = first_artifact->pages.front().root}));
+    REQUIRE(render::verify_virtual_geometry_artifact_page(page.value(),
+                                                          {.offset = first_artifact->pages.front().offset,
+                                                           .stored_size = first_artifact->pages.front().stored_size,
+                                                           .decoded_size = first_artifact->pages.front().decoded_size,
+                                                           .content_hash = first_artifact->pages.front().content_hash,
+                                                           .root = first_artifact->pages.front().root}));
 
     binding.clear(source);
 }
