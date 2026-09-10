@@ -428,3 +428,62 @@ describe('ViewportPanel', () => {
     expect(cameraInput).not.toHaveBeenCalledWith(expect.objectContaining({ lookX: expect.any(Number) }));
   });
 });
+
+describe('ViewportPanel Play input', () => {
+  it('captures gameplay keys on click and releases capture with Escape', async () => {
+    const pointer = vi.fn().mockResolvedValue({ succeeded: true });
+    const key = vi.fn().mockResolvedValue({ succeeded: true });
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        host: {
+          query: vi.fn().mockResolvedValue({
+            succeeded: true,
+            payload: {
+              width: 640,
+              height: 480,
+              fps: 60,
+              frameTimeMs: 16,
+              drawCalls: 1,
+              frameIndex: 1,
+              submitted: true,
+            },
+          }),
+          command: vi.fn().mockResolvedValue({ succeeded: true }),
+        },
+        viewport: {
+          create: vi.fn().mockResolvedValue({ succeeded: true }),
+          attach: vi.fn(),
+          resize: vi.fn().mockResolvedValue({ succeeded: true }),
+          detach: vi.fn().mockResolvedValue({ succeeded: true }),
+          cameraInput: vi.fn().mockResolvedValue({ succeeded: true }),
+          pointer,
+          key,
+          registerSurface: vi.fn(),
+          unregisterSurface: vi.fn(),
+          setVisibility: vi.fn(),
+        },
+      },
+    });
+
+    const view = render(
+      <ViewportPanel
+        project={null}
+        startupState={{ appVersion: '0.1.0', engineHostConnected: true, viewportMode: 'streamed' }}
+        playSessionActive
+        onCommand={vi.fn()}
+        onReconnect={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    const surface = view.getByLabelText('ARC 3D viewport').parentElement!;
+    fireEvent.pointerDown(surface, { pointerId: 1, button: 0, clientX: 20, clientY: 20 });
+    fireEvent.keyDown(surface, { key: 'w', code: 'KeyW' });
+    await waitFor(() => expect(key).toHaveBeenCalledWith(expect.objectContaining({ key: 'w', down: true })));
+
+    fireEvent.keyDown(surface, { key: 'Escape', code: 'Escape' });
+    await waitFor(() => expect(pointer).toHaveBeenCalledWith(expect.objectContaining({ phase: 'cancel' })));
+    key.mockClear();
+    fireEvent.keyDown(surface, { key: 'w', code: 'KeyW' });
+    expect(key).not.toHaveBeenCalled();
+  });
+});

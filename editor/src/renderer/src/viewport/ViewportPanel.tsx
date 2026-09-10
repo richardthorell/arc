@@ -18,6 +18,7 @@ type ViewportPanelProps = {
   viewportId?: string;
   project: ProjectSnapshot | null;
   startupState: StartupState | null;
+  playSessionActive?: boolean;
   onCommand: (command: CommandId) => void;
   onReconnect: () => Promise<void>;
   gridVisible?: boolean;
@@ -126,6 +127,7 @@ export function ViewportPanel({
   viewportId = 'viewport-1',
   project,
   startupState,
+  playSessionActive = false,
   onCommand,
   onReconnect,
   gridVisible: controlledGridVisible,
@@ -150,6 +152,7 @@ export function ViewportPanel({
   const resizeInFlightRef = useRef(false);
   const sharedFailureRef = useRef('');
   const [viewportError, setViewportError] = useState('');
+  const [playInputCaptured, setPlayInputCaptured] = useState(false);
   const [sharedFailure, setSharedFailure] = useState('');
   const [viewportStats, setViewportStats] = useState<ViewportStats>(() => fallbackStats(project));
   const [localGridVisible, setLocalGridVisible] = useState(true);
@@ -181,6 +184,10 @@ export function ViewportPanel({
       height: Math.round(rect.height),
     };
   }, [viewportId]);
+
+  useEffect(() => {
+    if (!playSessionActive) setPlayInputCaptured(false);
+  }, [playSessionActive]);
 
   useEffect(() => {
     const nextTransport = startupState?.viewportMode ?? 'unavailable';
@@ -495,8 +502,16 @@ export function ViewportPanel({
     event.currentTarget.focus();
     onFocusChange?.(true);
     if (!viewportActive) return;
+    if (playSessionActive) {
+      event.preventDefault();
+      event.stopPropagation();
+      setPlayInputCaptured(true);
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      if (streamedAvailable) sendPointer(event, 'down');
+      return;
+    }
     if (cameraSourceId !== 'editor' && event.button !== 0) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
     if (event.button === 0) clickRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
     if (event.button === 2) {
       flyNavigationActiveRef.current = true;
@@ -515,6 +530,10 @@ export function ViewportPanel({
   };
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (playSessionActive) {
+      if (playInputCaptured && streamedAvailable) sendPointer(event, 'move');
+      return;
+    }
     const click = clickRef.current;
     if (click?.pointerId === event.pointerId && Math.hypot(event.clientX - click.x, event.clientY - click.y) > 4)
       clickRef.current = null;
@@ -544,6 +563,10 @@ export function ViewportPanel({
   };
 
   const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    if (playSessionActive) {
+      if (playInputCaptured && streamedAvailable) sendPointer(event, 'up');
+      return;
+    }
     if (streamedAvailable) sendPointer(event, 'up');
     const click = clickRef.current;
     if (event.button === 0 && click?.pointerId === event.pointerId && viewportActive) {
@@ -564,6 +587,27 @@ export function ViewportPanel({
   };
 
   const onViewportKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (playSessionActive) {
+      if (!playInputCaptured) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === 'Escape') {
+        setPlayInputCaptured(false);
+        if (streamedAvailable) void window.arc.viewport.pointer({ viewportId, phase: 'cancel', x: 0, y: 0, button: 0 });
+        return;
+      }
+      if (streamedAvailable)
+        void window.arc.viewport.key({
+          viewportId,
+          key: event.key,
+          down: true,
+          repeat: event.repeat,
+          alt: event.altKey,
+          shift: event.shiftKey,
+          control: event.ctrlKey,
+        });
+      return;
+    }
     if (cameraSourceId === 'editor' && flyNavigationActiveRef.current && viewportFlyMovementCodes.has(event.code)) {
       event.preventDefault();
       movementKeysRef.current.add(event.code);
@@ -583,6 +627,22 @@ export function ViewportPanel({
   };
 
   const onViewportKeyUp = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (playSessionActive) {
+      if (!playInputCaptured) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (streamedAvailable)
+        void window.arc.viewport.key({
+          viewportId,
+          key: event.key,
+          down: false,
+          repeat: false,
+          alt: event.altKey,
+          shift: event.shiftKey,
+          control: event.ctrlKey,
+        });
+      return;
+    }
     movementKeysRef.current.delete(event.code);
     if (consumedMovementKeysRef.current.delete(event.code)) {
       event.preventDefault();
@@ -593,10 +653,21 @@ export function ViewportPanel({
   };
 
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (!viewportActive || cameraSourceId !== 'editor') return;
-    event.preventDefault();
+    if (!viewportActive) return;
     const zoom = normalizeViewportWheel(event.deltaY, event.deltaMode);
     if (zoom === 0) return;
+    if (playSessionActive) {
+      if (!playInputCaptured || !streamedAvailable) return;
+      event.preventDefault();
+      const rect = bodyRef.current?.getBoundingClientRect();
+      const position = rect
+        ? pointerCoordinates(rect.left + rect.width * 0.5, rect.top + rect.height * 0.5)
+        : { x: 0, y: 0 };
+      void window.arc.viewport.pointer({ viewportId, phase: 'wheel', ...position, wheel: zoom });
+      return;
+    }
+    if (cameraSourceId !== 'editor') return;
+    event.preventDefault();
 
     // Wheel zoom does not need pointer coordinates. Route every transport
     // through the same signed camera-input command instead of the streamed
@@ -997,6 +1068,9 @@ export function ViewportPanel({
             movementKeysRef.current.clear();
             consumedMovementKeysRef.current.clear();
             movementLastTickRef.current = null;
+            if (playSessionActive && playInputCaptured && streamedAvailable)
+              void window.arc.viewport.pointer({ viewportId, phase: 'cancel', x: 0, y: 0, button: 0 });
+            setPlayInputCaptured(false);
             onFocusChange?.(false);
           }
         }}

@@ -353,6 +353,10 @@ public:
 private:
     void process_pointer(const arc::editor::host_viewport_pointer_command& pointer)
     {
+        {
+            std::lock_guard lock(host_mutex_);
+            if (host_->runtime_snapshot().state != arc::editor::host_runtime_state::stopped) return;
+        }
         activate_interaction_surface(pointer.viewport_id);
         input_alt_ = pointer.alt;
         input_shift_ = pointer.shift;
@@ -376,6 +380,10 @@ private:
 
     void process_key(const arc::editor::host_viewport_key_command& key)
     {
+        {
+            std::lock_guard lock(host_mutex_);
+            if (host_->runtime_snapshot().state != arc::editor::host_runtime_state::stopped) return;
+        }
         activate_interaction_surface(key.viewport_id);
         input_alt_ = key.alt;
         input_shift_ = key.shift;

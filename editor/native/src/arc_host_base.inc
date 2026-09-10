@@ -52,6 +52,54 @@ namespace
 
 constexpr std::string_view base64_alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+std::uint32_t viewport_input_modifiers(bool alt, bool shift, bool control) noexcept
+{
+    return (alt ? project::game_input_modifier_alt_v1 : 0u) | (shift ? project::game_input_modifier_shift_v1 : 0u) |
+           (control ? project::game_input_modifier_control_v1 : 0u);
+}
+
+framework::mouse_button viewport_mouse_button(std::int32_t button) noexcept
+{
+    switch (button)
+    {
+        case 0:
+            return framework::mouse_button::left;
+        case 1:
+            return framework::mouse_button::middle;
+        case 2:
+            return framework::mouse_button::right;
+        case 3:
+            return framework::mouse_button::x1;
+        case 4:
+            return framework::mouse_button::x2;
+        default:
+            return framework::mouse_button::unknown;
+    }
+}
+
+std::int32_t viewport_key_code(std::string_view key) noexcept
+{
+    if (key.size() == 1) return static_cast<std::int32_t>(std::toupper(static_cast<unsigned char>(key.front())));
+    if (key == "Escape" || key == "Esc") return 27;
+    if (key == "Enter") return 13;
+    if (key == "Tab") return 9;
+    if (key == "Backspace") return 8;
+    if (key == "Space" || key == "Spacebar") return 32;
+    if (key == "Delete") return 127;
+    if (key == "ArrowLeft") return 0x1001;
+    if (key == "ArrowRight") return 0x1002;
+    if (key == "ArrowUp") return 0x1003;
+    if (key == "ArrowDown") return 0x1004;
+    if (key == "Home") return 0x1005;
+    if (key == "End") return 0x1006;
+    if (key == "PageUp") return 0x1007;
+    if (key == "PageDown") return 0x1008;
+    if (key == "Shift") return 0x1010;
+    if (key == "Control") return 0x1011;
+    if (key == "Alt") return 0x1012;
+    return 0;
+}
+
 template <class Component>
 void copy_component(const ecs::world& source, ecs::world& target, ecs::entity from, ecs::entity to)
 {
@@ -4114,11 +4162,54 @@ host_response arc_host::execute(const host_command_envelope& command)
                 return success();
             }
             else if constexpr (std::is_same_v<command_type, host_viewport_frame_released_command> ||
-                               std::is_same_v<command_type, host_viewport_set_visibility_command> ||
-                               std::is_same_v<command_type, host_viewport_pointer_command> ||
-                               std::is_same_v<command_type, host_viewport_key_command>)
+                               std::is_same_v<command_type, host_viewport_set_visibility_command>)
             {
                 return success();
+            }
+            else if constexpr (std::is_same_v<command_type, host_viewport_pointer_command>)
+            {
+                if (payload.viewport_id != state_->active_viewport_id) return fail("Viewport is not attached");
+                if (state_->preview_stopped) return success();
+                const auto modifiers = viewport_input_modifiers(payload.alt, payload.shift, payload.control);
+                framework::event input{.modifiers = modifiers, .x = payload.x, .y = payload.y};
+                switch (payload.phase)
+                {
+                    case host_viewport_pointer_phase::down:
+                        state_->simulation.dispatch(framework::event{.type = framework::event_type::focus_gained});
+                        input.type = framework::event_type::mouse_button_down;
+                        input.button = viewport_mouse_button(payload.button);
+                        break;
+                    case host_viewport_pointer_phase::move:
+                        input.type = framework::event_type::mouse_moved;
+                        break;
+                    case host_viewport_pointer_phase::up:
+                        input.type = framework::event_type::mouse_button_up;
+                        input.button = viewport_mouse_button(payload.button);
+                        break;
+                    case host_viewport_pointer_phase::wheel:
+                        input.type = framework::event_type::mouse_wheel;
+                        input.wheel_delta = payload.wheel;
+                        break;
+                    case host_viewport_pointer_phase::leave:
+                    case host_viewport_pointer_phase::cancel:
+                        input.type = framework::event_type::focus_lost;
+                        input.x = 0;
+                        input.y = 0;
+                        break;
+                }
+                state_->simulation.dispatch(input);
+                return success(R"({"playSession":true,"input":true})");
+            }
+            else if constexpr (std::is_same_v<command_type, host_viewport_key_command>)
+            {
+                if (payload.viewport_id != state_->active_viewport_id) return fail("Viewport is not attached");
+                if (state_->preview_stopped) return success();
+                state_->simulation.dispatch(
+                    {.type = payload.down ? framework::event_type::key_down : framework::event_type::key_up,
+                     .key_code = viewport_key_code(payload.key),
+                     .modifiers = viewport_input_modifiers(payload.alt, payload.shift, payload.control),
+                     .repeat = payload.repeat});
+                return success(R"({"playSession":true,"input":true})");
             }
             else if constexpr (std::is_same_v<command_type, host_viewport_set_camera_mode_command>)
             {

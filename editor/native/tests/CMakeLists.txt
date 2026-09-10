@@ -31,11 +31,12 @@ add_library(arc_test_game_module_invalid_system MODULE game_module_fixture_inval
 add_library(arc_test_game_module_access MODULE game_module_fixture_access.cpp)
 add_library(arc_test_game_module_invalid_access MODULE game_module_fixture_invalid_access.cpp)
 add_library(arc_test_game_module_access_violation MODULE game_module_fixture_access_violation.cpp)
+add_library(arc_test_game_module_input MODULE game_module_fixture_input.cpp)
 add_library(arc_test_game_module_rejected MODULE game_module_fixture_rejected.cpp)
 foreach(module_target IN ITEMS arc_test_game_module_v1 arc_test_game_module_v2 arc_test_game_module_v3
                                arc_test_game_module_v4 arc_test_game_module_system arc_test_game_module_invalid_system
                                arc_test_game_module_access arc_test_game_module_invalid_access
-                               arc_test_game_module_access_violation arc_test_game_module_rejected)
+                               arc_test_game_module_access_violation arc_test_game_module_input arc_test_game_module_rejected)
   arc_configure_first_party_target(${module_target})
   target_link_libraries(${module_target} PRIVATE arc-project)
   set_target_properties(${module_target} PROPERTIES PREFIX "")
@@ -64,11 +65,12 @@ target_compile_definitions(arc_editor_host_tests PRIVATE
   "ARC_TEST_GAME_MODULE_ACCESS=\"$<TARGET_FILE:arc_test_game_module_access>\""
   "ARC_TEST_GAME_MODULE_INVALID_ACCESS=\"$<TARGET_FILE:arc_test_game_module_invalid_access>\""
   "ARC_TEST_GAME_MODULE_ACCESS_VIOLATION=\"$<TARGET_FILE:arc_test_game_module_access_violation>\""
+  "ARC_TEST_GAME_MODULE_INPUT=\"$<TARGET_FILE:arc_test_game_module_input>\""
   "ARC_TEST_GAME_MODULE_REJECTED=\"$<TARGET_FILE:arc_test_game_module_rejected>\"")
 add_dependencies(arc_editor_host_tests arc_test_game_module_v1 arc_test_game_module_v2 arc_test_game_module_v3
                  arc_test_game_module_v4 arc_test_game_module_system arc_test_game_module_invalid_system
                  arc_test_game_module_access arc_test_game_module_invalid_access
-                 arc_test_game_module_access_violation arc_test_game_module_rejected)
+                 arc_test_game_module_access_violation arc_test_game_module_input arc_test_game_module_rejected)
 if(TARGET arc_host_process)
   add_dependencies(arc_editor_host_tests arc_host_process)
   target_compile_definitions(arc_editor_host_tests PRIVATE "ARC_HOST_PROCESS_PATH=\"$<TARGET_FILE:arc_host_process>\"")
