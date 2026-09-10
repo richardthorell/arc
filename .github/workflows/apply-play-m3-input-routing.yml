@@ -26,12 +26,36 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22.12.0
+          node-version: 22.13.0
           cache: npm
           cache-dependency-path: editor/package-lock.json
 
       - name: Apply M3.3 Changes
         run: python3 .github/scripts/apply_play_m3_input_routing.py
+
+      - name: Fix Validation Issues
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          fixture = Path('editor/native/tests/game_module_fixture_input.cpp')
+          text = fixture.read_text()
+          if '#include <iterator>' not in text:
+              text = text.replace('#include <cstddef>\n', '#include <cstddef>\n#include <iterator>\n')
+          fixture.write_text(text)
+
+          host = Path('editor/native/src/arc_host_base.inc')
+          text = host.read_text().replace(
+              'framework::event input{.x = payload.x, .y = payload.y, .modifiers = modifiers};',
+              'framework::event input{.modifiers = modifiers, .x = payload.x, .y = payload.y};')
+          host.write_text(text)
+
+          viewport = Path('editor/src/renderer/src/viewport/ViewportPanel.tsx')
+          text = viewport.read_text().replace(
+              'event.currentTarget.setPointerCapture(event.pointerId);',
+              'event.currentTarget.setPointerCapture?.(event.pointerId);')
+          viewport.write_text(text)
+          PY
 
       - name: Format Changed Sources
         run: |
