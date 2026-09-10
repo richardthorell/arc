@@ -96,7 +96,7 @@ public:
         if constexpr (std::is_floating_point_v<stored_type>)
         {
             using bits_type = std::conditional_t<sizeof(stored_type) == 4, std::uint32_t, std::uint64_t>;
-            value(std::bit_cast<bits_type>(static_cast<stored_type>(input))));
+            value(std::bit_cast<bits_type>(static_cast<stored_type>(input)));
         }
         else
         {
