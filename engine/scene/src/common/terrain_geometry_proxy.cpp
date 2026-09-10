@@ -20,6 +20,15 @@ std::uint32_t terrain_geometry_generation(std::uint64_t revision) noexcept
     return folded == 0u ? 1u : folded;
 }
 
+geometric::box3f terrain_local_bounds(const terrain_world_bounds& bounds) noexcept
+{
+    return geometric::box3f{
+        geometric::point3f{static_cast<float>(bounds.min_x), static_cast<float>(bounds.min_y),
+                           static_cast<float>(bounds.min_z)},
+        geometric::point3f{static_cast<float>(bounds.max_x), static_cast<float>(bounds.max_y),
+                           static_cast<float>(bounds.max_z)}};
+}
+
 bool geometry_alive(const terrain_render_proxy& proxy, const render::renderer& renderer)
 {
     return proxy.geometry.valid() && renderer.mesh_alive(proxy.geometry.conventional);
@@ -97,7 +106,7 @@ bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrai
 
     if (has_geometry && has_attributes && same_revision)
     {
-        proxy.local_bounds = surface.local_bounds;
+        proxy.local_bounds = terrain_local_bounds(surface.local_bounds);
         proxy.material = terrain.material;
         return true;
     }
@@ -109,7 +118,7 @@ bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrai
         auto attributes = build_terrain_render_attributes(surface);
         if (!attributes || !update_attribute_texture(proxy, *attributes, renderer)) return false;
 
-        proxy.local_bounds = surface.local_bounds;
+        proxy.local_bounds = terrain_local_bounds(surface.local_bounds);
         proxy.synchronized_revision = surface.source_revision;
         proxy.material = terrain.material;
         return true;
@@ -137,7 +146,7 @@ bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrai
     destroy_proxy_geometry(proxy, renderer);
     proxy.geometry = replacement;
     proxy.surface_attribute_texture = replacement_attributes;
-    proxy.local_bounds = surface.local_bounds;
+    proxy.local_bounds = terrain_local_bounds(surface.local_bounds);
     proxy.synchronized_revision = surface.source_revision;
     proxy.material = terrain.material;
     return true;

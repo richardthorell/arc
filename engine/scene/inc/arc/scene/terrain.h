@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arc/ecs/identity.h>
+#include <arc/geometric/box.h>
 #include <arc/render/terrain.h>
 #include <arc/render/virtual_mesh.h>
 #include <arc/scene/components.h>
@@ -156,7 +157,7 @@ struct terrain_render_proxy
     render::geometry_resource_handle geometry{};
     /** Per-surface RGBA8 terrain material weights, kept separate from generic mesh vertices. */
     render::texture_handle surface_attribute_texture{};
-    terrain_world_bounds local_bounds{};
+    geometric::box3f local_bounds{};
     std::uint64_t synchronized_revision{};
     render::material_handle material{};
 };
