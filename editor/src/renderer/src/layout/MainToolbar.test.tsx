@@ -33,6 +33,59 @@ describe('MainToolbar runtime controls', () => {
     expect(onCycleTimeScale).toHaveBeenCalledOnce();
   });
 
+  it('uses compact transform dropdowns and a grouped snap settings menu', () => {
+    const onCoordinateSpaceChange = vi.fn();
+    const onToggleSnapping = vi.fn();
+    const onRotationSnapChange = vi.fn();
+    const onTranslationSnapChange = vi.fn();
+    const onScaleSnapChange = vi.fn();
+    render(
+      <MainToolbar
+        coordinateSpace="world"
+        onCommand={vi.fn()}
+        onCoordinateSpaceChange={onCoordinateSpaceChange}
+        onToggleSnapping={onToggleSnapping}
+        onRotationSnapChange={onRotationSnapChange}
+        onTranslationSnapChange={onTranslationSnapChange}
+        onScaleSnapChange={onScaleSnapChange}
+        rotationSnap={15}
+        translationSnap={0.25}
+        scaleSnap={0.25}
+        snapping
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Transform origin' }));
+    fireEvent.click(screen.getByRole('option', { name: /Center/ }));
+    expect(screen.getByRole('button', { name: 'Transform origin' })).toHaveTextContent('Center');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Coordinate space' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Local' }));
+    expect(onCoordinateSpaceChange).toHaveBeenCalledWith('local');
+
+    expect(screen.queryByRole('button', { name: 'Rotation snap' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Translation snap' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Scale snap' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Snap settings' }));
+    expect(screen.getByRole('menu', { name: 'Snap settings menu' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enable snapping' }));
+    expect(onToggleSnapping).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rotation snap' }));
+    fireEvent.click(screen.getByRole('option', { name: '45°' }));
+    expect(onRotationSnapChange).toHaveBeenCalledWith(45);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Translation snap' }));
+    fireEvent.click(screen.getByRole('option', { name: '1' }));
+    expect(onTranslationSnapChange).toHaveBeenCalledWith(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scale snap' }));
+    fireEvent.click(screen.getByRole('option', { name: '50%' }));
+    expect(onScaleSnapChange).toHaveBeenCalledWith(0.5);
+  });
+
   it('uses platform and split-build controls instead of layout and windows buttons', () => {
     const onTargetPlatformChange = vi.fn();
     const onBuildAction = vi.fn();
