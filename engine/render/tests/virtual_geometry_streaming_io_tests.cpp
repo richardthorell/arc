@@ -64,7 +64,7 @@ std::vector<std::byte> page_bytes(const arc::render::virtual_mesh_data& geometry
     return {source.begin(), source.end()};
 }
 
-class delayed_page_source final : public arc::render::virtual_geometry_artifact_source
+class delayed_page_source final : public arc::render::virtual_geometry_page_source
 {
 public:
     delayed_page_source(arc::jobs::job_system& jobs, std::vector<std::byte> payload)
