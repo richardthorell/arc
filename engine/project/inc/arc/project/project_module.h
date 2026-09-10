@@ -208,7 +208,7 @@ using game_end_play_v1 = void (*)(void* user_data, const game_play_context_v1* c
 struct game_play_lifecycle_descriptor_v1
 {
     std::size_t structure_size{sizeof(game_play_lifecycle_descriptor_v1)};
-    void* user_data{};              ///< Module-owned state valid for the loaded generation.
+    void* user_data{};               ///< Module-owned state valid for the loaded generation.
     game_begin_play_v1 begin_play{}; ///< Required per-session startup callback.
     game_end_play_v1 end_play{};     ///< Required matching per-session teardown callback.
 };

@@ -49,7 +49,8 @@ struct project_play_session_guard
         }
         catch (...)
         {
-            diagnostics::error("editor.play", "Project EndPlay '" + lifecycle.stable_id + "' threw an unknown exception");
+            diagnostics::error("editor.play",
+                               "Project EndPlay '" + lifecycle.stable_id + "' threw an unknown exception");
         }
     }
 };
@@ -461,7 +462,8 @@ copy_play_lifecycle_registration(const project::game_module_descriptor_v1& descr
             error = "project play lifecycle registration is missing its descriptor";
             return std::nullopt;
         }
-        const auto& lifecycle = *static_cast<const project::game_play_lifecycle_descriptor_v1*>(registration.descriptor);
+        const auto& lifecycle =
+            *static_cast<const project::game_play_lifecycle_descriptor_v1*>(registration.descriptor);
         if (lifecycle.structure_size < sizeof(project::game_play_lifecycle_descriptor_v1) || !lifecycle.begin_play ||
             !lifecycle.end_play)
         {
@@ -804,15 +806,15 @@ project_system_install_result project_module_loader::install_systems(framework::
         }
         guard->active = true;
 
-        ecs::system_descriptor lifecycle_anchor{
-            .name = "__arc.play_lifecycle." + guard->lifecycle.stable_id,
-            .phase = ecs::system_phase::presentation_extraction,
-            .priority = jobs::job_priority::background,
-            .execute = [guard](ecs::system_context&) {}};
+        ecs::system_descriptor lifecycle_anchor{.name = "__arc.play_lifecycle." + guard->lifecycle.stable_id,
+                                                .phase = ecs::system_phase::presentation_extraction,
+                                                .priority = jobs::job_priority::background,
+                                                .execute = [guard](ecs::system_context&) {}};
         if (!world.systems().add(std::move(lifecycle_anchor)))
         {
             result.succeeded = false;
-            result.error = "Could not bind project play lifecycle '" + guard->lifecycle.stable_id + "' to the Play World";
+            result.error =
+                "Could not bind project play lifecycle '" + guard->lifecycle.stable_id + "' to the Play World";
             return result;
         }
     }

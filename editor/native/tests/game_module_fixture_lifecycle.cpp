@@ -75,8 +75,8 @@ constexpr arc::project::game_play_lifecycle_descriptor_v1 play_lifecycle{
 };
 
 constexpr arc::project::game_registration_descriptor_v1 registrations[]{
-    {arc::project::game_registration_kind_v1::ecs_system, "fixture.runtime.lifecycle-probe",
-     "Fixture Lifecycle Probe", &lifecycle_probe_system},
+    {arc::project::game_registration_kind_v1::ecs_system, "fixture.runtime.lifecycle-probe", "Fixture Lifecycle Probe",
+     &lifecycle_probe_system},
     {arc::project::game_registration_kind_v1::play_lifecycle, "fixture.runtime.play-lifecycle",
      "Fixture Play Lifecycle", &play_lifecycle},
 };

@@ -25,8 +25,7 @@ std::filesystem::path stage_module(const std::filesystem::path& root, const char
 TEST_CASE("project module loader retains one play lifecycle registration")
 {
     arc::editor::project_module_loader loader;
-    const auto loaded =
-        loader.load(ARC_TEST_GAME_MODULE_LIFECYCLE, "0.1.0", project_guid, "fixture.editor");
+    const auto loaded = loader.load(ARC_TEST_GAME_MODULE_LIFECYCLE, "0.1.0", project_guid, "fixture.editor");
     REQUIRE(loaded.succeeded);
     REQUIRE(loader.play_lifecycle().has_value());
     CHECK(loader.play_lifecycle()->stable_id == "fixture.runtime.play-lifecycle");
@@ -37,8 +36,7 @@ TEST_CASE("project module loader retains one play lifecycle registration")
 TEST_CASE("project module loader rejects incomplete play lifecycle registrations")
 {
     arc::editor::project_module_loader loader;
-    const auto loaded =
-        loader.load(ARC_TEST_GAME_MODULE_INVALID_LIFECYCLE, "0.1.0", project_guid, "fixture.editor");
+    const auto loaded = loader.load(ARC_TEST_GAME_MODULE_INVALID_LIFECYCLE, "0.1.0", project_guid, "fixture.editor");
     CHECK_FALSE(loaded.succeeded);
     CHECK(loaded.message.find("invalid play lifecycle descriptor") != std::string::npos);
 }
