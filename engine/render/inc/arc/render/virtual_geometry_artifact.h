@@ -70,6 +70,18 @@ struct virtual_geometry_artifact_index
     std::vector<virtual_geometry_artifact_mesh_index> meshes;
 };
 
+/** Physical page ordering policy. Logical page indices and hierarchy references remain unchanged. */
+enum class virtual_geometry_artifact_page_order : std::uint8_t
+{
+    logical,
+    spatial_morton
+};
+
+struct virtual_geometry_artifact_encode_options
+{
+    virtual_geometry_artifact_page_order page_order{virtual_geometry_artifact_page_order::logical};
+};
+
 using virtual_geometry_artifact_bytes_result = core::result<std::vector<std::byte>, virtual_geometry_artifact_error>;
 using virtual_geometry_artifact_index_result =
     core::result<virtual_geometry_artifact_index, virtual_geometry_artifact_error>;
@@ -82,7 +94,8 @@ using virtual_geometry_artifact_index_result =
  */
 [[nodiscard]] virtual_geometry_artifact_bytes_result
 encode_virtual_geometry_artifact(std::span<const virtual_geometry_artifact_source> meshes,
-                                 std::uint64_t conventional_artifact_hash = 0);
+                                 std::uint64_t conventional_artifact_hash = 0,
+                                 const virtual_geometry_artifact_encode_options& options = {});
 
 /**
  * @brief Validate the header, metadata table, and independently readable page ranges of a `.arcvg` artifact.
@@ -103,5 +116,9 @@ inspect_virtual_geometry_artifact(std::span<const std::byte> bytes);
 [[nodiscard]] virtual_geometry_artifact_bytes_result
 read_virtual_geometry_artifact_page(std::span<const std::byte> bytes, const virtual_geometry_artifact_index& index,
                                     std::uint32_t mesh_index, std::uint32_t page_index);
+
+/** Verify independently range-read page bytes without requiring the complete artifact in memory. */
+[[nodiscard]] bool verify_virtual_geometry_artifact_page(std::span<const std::byte> page_bytes,
+                                                         const virtual_geometry_artifact_page_range& page) noexcept;
 
 } // namespace arc::render

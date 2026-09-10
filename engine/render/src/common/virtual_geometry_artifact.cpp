@@ -5,6 +5,7 @@
 #include <bit>
 #include <cstring>
 #include <limits>
+#include <numeric>
 #include <type_traits>
 
 namespace arc::render
@@ -203,6 +204,90 @@ void write_node(byte_writer& writer, const virtual_mesh_lod_node& node)
     writer.value(node.flags);
 }
 
+std::uint32_t morton_expand_10(std::uint32_t value) noexcept
+{
+    value &= 0x3ffu;
+    value = (value | (value << 16u)) & 0x030000ffu;
+    value = (value | (value << 8u)) & 0x0300f00fu;
+    value = (value | (value << 4u)) & 0x030c30c3u;
+    value = (value | (value << 2u)) & 0x09249249u;
+    return value;
+}
+
+std::vector<std::uint32_t> physical_page_order(const virtual_mesh_data& geometry,
+                                               virtual_geometry_artifact_page_order policy)
+{
+    std::vector<std::uint32_t> order(geometry.pages.size());
+    std::iota(order.begin(), order.end(), 0u);
+    if (policy != virtual_geometry_artifact_page_order::spatial_morton || order.size() < 2u) return order;
+
+    struct page_center
+    {
+        float x{};
+        float y{};
+        float z{};
+    };
+    std::vector<page_center> centers(geometry.pages.size());
+    page_center minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
+                        std::numeric_limits<float>::max()};
+    page_center maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(),
+                        std::numeric_limits<float>::lowest()};
+    for (std::size_t page_index = 0; page_index < geometry.pages.size(); ++page_index)
+    {
+        const auto& page = geometry.pages[page_index];
+        page_center center{};
+        std::uint32_t count{};
+        const auto end = std::min<std::uint64_t>(static_cast<std::uint64_t>(page.first_cluster) + page.cluster_count,
+                                                 geometry.clusters.size());
+        for (std::uint64_t cluster_index = page.first_cluster; cluster_index < end; ++cluster_index)
+        {
+            const auto& sphere = geometry.clusters[static_cast<std::size_t>(cluster_index)].sphere_center;
+            center.x += sphere[0];
+            center.y += sphere[1];
+            center.z += sphere[2];
+            ++count;
+        }
+        if (count != 0u)
+        {
+            const auto reciprocal = 1.0f / static_cast<float>(count);
+            center.x *= reciprocal;
+            center.y *= reciprocal;
+            center.z *= reciprocal;
+        }
+        centers[page_index] = center;
+        minimum.x = std::min(minimum.x, center.x);
+        minimum.y = std::min(minimum.y, center.y);
+        minimum.z = std::min(minimum.z, center.z);
+        maximum.x = std::max(maximum.x, center.x);
+        maximum.y = std::max(maximum.y, center.y);
+        maximum.z = std::max(maximum.z, center.z);
+    }
+    const auto quantize = [](float value, float minimum_value, float maximum_value)
+    {
+        const auto extent = maximum_value - minimum_value;
+        if (!(extent > 0.0f)) return 0u;
+        const auto normalized = std::clamp((value - minimum_value) / extent, 0.0f, 1.0f);
+        return static_cast<std::uint32_t>(normalized * 1023.0f + 0.5f);
+    };
+    const auto key = [&](std::uint32_t page_index)
+    {
+        const auto& center = centers[page_index];
+        const auto x = quantize(center.x, minimum.x, maximum.x);
+        const auto y = quantize(center.y, minimum.y, maximum.y);
+        const auto z = quantize(center.z, minimum.z, maximum.z);
+        return morton_expand_10(x) | (morton_expand_10(y) << 1u) | (morton_expand_10(z) << 2u);
+    };
+    std::stable_sort(order.begin(), order.end(),
+                     [&](std::uint32_t lhs, std::uint32_t rhs)
+                     {
+                         if (geometry.pages[lhs].root != geometry.pages[rhs].root) return geometry.pages[lhs].root;
+                         const auto lhs_key = key(lhs);
+                         const auto rhs_key = key(rhs);
+                         return lhs_key != rhs_key ? lhs_key < rhs_key : lhs < rhs;
+                     });
+    return order;
+}
+
 virtual_geometry_artifact_error failure(virtual_geometry_artifact_error_code code, std::string message)
 {
     return {.code = code, .message = std::move(message)};
@@ -212,7 +297,8 @@ virtual_geometry_artifact_error failure(virtual_geometry_artifact_error_code cod
 
 virtual_geometry_artifact_bytes_result
 encode_virtual_geometry_artifact(std::span<const virtual_geometry_artifact_source> meshes,
-                                 std::uint64_t conventional_artifact_hash)
+                                 std::uint64_t conventional_artifact_hash,
+                                 const virtual_geometry_artifact_encode_options& options)
 {
     if (meshes.size() > std::numeric_limits<std::uint32_t>::max())
         return virtual_geometry_artifact_bytes_result::failure(
@@ -277,11 +363,12 @@ encode_virtual_geometry_artifact(std::span<const virtual_geometry_artifact_sourc
     }
     for (auto& mesh : encoded)
     {
-        mesh.page_offsets.reserve(mesh.geometry->pages.size());
-        for (const auto& page : mesh.geometry->pages)
+        mesh.page_offsets.resize(mesh.geometry->pages.size());
+        for (const auto page_index : physical_page_order(*mesh.geometry, options.page_order))
         {
+            const auto& page = mesh.geometry->pages[page_index];
             output.align(virtual_geometry_artifact_page_alignment);
-            mesh.page_offsets.push_back(output.size());
+            mesh.page_offsets[page_index] = output.size();
             const auto end = static_cast<std::uint64_t>(page.compressed_offset) + page.compressed_size;
             if (end > mesh.geometry->page_payload.size())
                 return virtual_geometry_artifact_bytes_result::failure(
@@ -395,10 +482,16 @@ virtual_geometry_artifact_bytes_result read_virtual_geometry_artifact_page(std::
         return virtual_geometry_artifact_bytes_result::failure(failure(
             virtual_geometry_artifact_error_code::out_of_bounds, "virtual-geometry page bytes are unavailable"));
     const auto payload = bytes.subspan(static_cast<std::size_t>(page.offset), page.stored_size);
-    if (hash_bytes(payload) != page.content_hash)
+    if (!verify_virtual_geometry_artifact_page(payload, page))
         return virtual_geometry_artifact_bytes_result::failure(failure(
             virtual_geometry_artifact_error_code::integrity_failure, "virtual-geometry page content hash mismatch"));
     return virtual_geometry_artifact_bytes_result::success(std::vector<std::byte>(payload.begin(), payload.end()));
+}
+
+bool verify_virtual_geometry_artifact_page(std::span<const std::byte> page_bytes,
+                                           const virtual_geometry_artifact_page_range& page) noexcept
+{
+    return page_bytes.size() == page.stored_size && hash_bytes(page_bytes) == page.content_hash;
 }
 
 } // namespace arc::render

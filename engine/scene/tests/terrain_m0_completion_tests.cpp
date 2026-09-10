@@ -166,12 +166,12 @@ TEST_CASE("terrain cooked manifests keep derived systems independent")
         .bounds = {0.0, -1.0, 0.0, 256.0, 12.0, 256.0},
         .source_revision = 4u,
         .compiled_revision = 4u,
-        .artifacts = {{arc::scene::terrain_artifact_kind::render_geometry, key, 1u, "terrain/render/region-0"}},
+        .artifacts = {{arc::scene::terrain_artifact_kind::render_geometry, key, 1u, "terrain/render/region-0", 1u, 1u}},
     });
     REQUIRE(arc::scene::validate_terrain_cooked_manifest(manifest));
 
     manifest.regions.front().artifacts.push_back(
-        {arc::scene::terrain_artifact_kind::render_geometry, key, 1u, "duplicate"});
+        {arc::scene::terrain_artifact_kind::render_geometry, key, 1u, "duplicate", 1u, 1u});
     REQUIRE_FALSE(arc::scene::validate_terrain_cooked_manifest(manifest));
 }
 
