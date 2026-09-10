@@ -551,13 +551,7 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
             if (!proxy || !renderer.mesh_alive(proxy->geometry.conventional)) return;
 
             const auto world = transform.dirty ? local_matrix(transform) : transform.world;
-            const geometric::box3f local_bounds{geometric::point3f{static_cast<float>(proxy->local_bounds.min_x),
-                                                                   static_cast<float>(proxy->local_bounds.min_y),
-                                                                   static_cast<float>(proxy->local_bounds.min_z)},
-                                                geometric::point3f{static_cast<float>(proxy->local_bounds.max_x),
-                                                                   static_cast<float>(proxy->local_bounds.max_y),
-                                                                   static_cast<float>(proxy->local_bounds.max_z)}};
-            const auto renderer_bounds = transform_bounds(local_bounds, world);
+            const auto renderer_bounds = transform_bounds(proxy->local_bounds, world);
             if (renderer.resolved_config().features.virtual_geometry &&
                 renderer.virtual_mesh_alive(proxy->geometry.virtualized))
             {

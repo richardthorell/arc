@@ -22,11 +22,10 @@ std::uint32_t terrain_geometry_generation(std::uint64_t revision) noexcept
 
 geometric::box3f terrain_local_bounds(const terrain_world_bounds& bounds) noexcept
 {
-    return geometric::box3f{
-        geometric::point3f{static_cast<float>(bounds.min_x), static_cast<float>(bounds.min_y),
-                           static_cast<float>(bounds.min_z)},
-        geometric::point3f{static_cast<float>(bounds.max_x), static_cast<float>(bounds.max_y),
-                           static_cast<float>(bounds.max_z)}};
+    return geometric::box3f{geometric::point3f{static_cast<float>(bounds.min_x), static_cast<float>(bounds.min_y),
+                                               static_cast<float>(bounds.min_z)},
+                            geometric::point3f{static_cast<float>(bounds.max_x), static_cast<float>(bounds.max_y),
+                                               static_cast<float>(bounds.max_z)}};
 }
 
 bool geometry_alive(const terrain_render_proxy& proxy, const render::renderer& renderer)
