@@ -12,6 +12,7 @@
 #include <arc/editor/scene_document.h>
 #include <arc/editor/terrain_heightmap_io.h>
 #include "project_module_loader.h"
+#include "project_runtime_components.h"
 #include <arc/editor/world_environment_host.h>
 #include <arc/assets/assets.h>
 #include <arc/assets/cook.h>
@@ -1280,6 +1281,41 @@ std::string_view reflected_kind_name(project::game_field_kind_v1 kind)
     return "unknown";
 }
 
+nlohmann::json default_project_component(const project_component_schema& schema);
+std::optional<std::string> project_component_record_key(const nlohmann::json& records,
+                                                        const project_component_schema& schema);
+
+void materialize_project_runtime_components(const editor_scene_state& authoring, ecs::world& runtime,
+                                            const std::vector<project_component_schema>& schemas)
+{
+    for (const auto& [guid, record_text] : authoring.unknown_component_records)
+    {
+        const auto entity = find_entity_by_guid(authoring, guid);
+        if (!runtime.alive(entity)) continue;
+        const auto records = nlohmann::json::parse(record_text, nullptr, false);
+        if (!records.is_object()) continue;
+
+        project_runtime_component_set runtime_components;
+        for (const auto& schema : schemas)
+        {
+            const auto record_key = project_component_record_key(records, schema);
+            if (!record_key) continue;
+            const auto& authored = records.at(*record_key);
+            if (!authored.is_object()) continue;
+            auto value = default_project_component(schema);
+            value.update(authored);
+            value["typeId"] = schema.stable_id;
+            value["version"] = schema.schema_version;
+            runtime_components.values.push_back({.stable_id = schema.stable_id,
+                                                 .canonical_name = schema.canonical_name,
+                                                 .schema_version = schema.schema_version,
+                                                 .json = value.dump()});
+        }
+        if (!runtime_components.values.empty())
+            runtime.emplace<project_runtime_component_set>(entity, std::move(runtime_components));
+    }
+}
+
 bool has_flag(project::game_field_flags_v1 value, project::game_field_flags_v1 flag)
 {
     return (static_cast<std::uint32_t>(value) & static_cast<std::uint32_t>(flag)) != 0;
@@ -1749,6 +1785,8 @@ struct arc_host::state
         {
             if (auto* selection = play_world->try_get<scene::selection_component>(entity)) selection->selected = false;
         }
+
+        materialize_project_runtime_components(scene, *play_world, project_module.component_schemas());
 
         // Prefer the first active authored game camera. If a scene has no game
         // camera yet, clone the current editor camera into a transient play-only camera.
