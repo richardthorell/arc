@@ -19,7 +19,8 @@ TEST_CASE("Water registry keeps handles stable and rejects stale generations")
 TEST_CASE("Water registry resolves priority, bounded ownership, and Ocean fallback deterministically")
 {
     arc::water::water_registry registry;
-    const auto ocean = registry.add({.type = arc::water::water_body_type::ocean, .water_level = 1.0f, .label = "Ocean"});
+    const auto ocean =
+        registry.add({.type = arc::water::water_body_type::ocean, .water_level = 1.0f, .label = "Ocean"});
     const auto lake = registry.add({.type = arc::water::water_body_type::lake,
                                     .bounds = {-20.0f, -20.0f, 20.0f, 20.0f, true},
                                     .water_level = 3.0f,

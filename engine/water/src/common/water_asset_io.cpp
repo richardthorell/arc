@@ -103,8 +103,8 @@ public:
 
         auto preset = std::make_shared<water_preset>(std::move(decoded.value()));
         assets::asset_import_result result;
-        result.payload = assets::asset_payload::make<water_preset>(
-            assets::asset_types::water_preset, std::move(preset), sizeof(water_preset) + context.source_bytes.size());
+        result.payload = assets::asset_payload::make<water_preset>(assets::asset_types::water_preset, std::move(preset),
+                                                                   sizeof(water_preset) + context.source_bytes.size());
         return result;
     }
 
@@ -156,23 +156,23 @@ water_asset_decode_result read_water_asset_json(std::string_view text)
             !document.contains("formatVersion") || !document["formatVersion"].is_number_unsigned() ||
             !document.contains("preset") || !document["preset"].is_object())
             return failure<water_asset_decode_result>(water_asset_io_error_code::invalid_document,
-                                                       "Invalid Water preset document");
+                                                      "Invalid Water preset document");
         if (document["formatVersion"].get<std::uint32_t>() != water_document_format_version)
             return failure<water_asset_decode_result>(water_asset_io_error_code::unsupported_format_version,
-                                                       "Unsupported Water preset format version");
+                                                      "Unsupported Water preset format version");
 
         const auto& value = document["preset"];
         water_preset preset;
         preset.schema_version = value.at("schemaVersion").get<std::uint32_t>();
         if (preset.schema_version != water_preset::current_schema_version)
             return failure<water_asset_decode_result>(water_asset_io_error_code::unsupported_schema_version,
-                                                       "Unsupported Water preset schema version");
+                                                      "Unsupported Water preset schema version");
         preset.name = value.at("name").get<std::string>();
         const auto body_type = parse_body_type(value.at("bodyType").get<std::string>());
         const auto quality = parse_quality(value.at("quality").get<std::string>());
         if (!body_type || !quality)
             return failure<water_asset_decode_result>(water_asset_io_error_code::invalid_document,
-                                                       "Water preset enum value is invalid");
+                                                      "Water preset enum value is invalid");
         preset.body_type = *body_type;
         preset.settings.quality = *quality;
 
@@ -180,7 +180,7 @@ water_asset_decode_result read_water_asset_json(std::string_view text)
         const auto direction = simulation.at("windDirection").get<std::vector<float>>();
         if (direction.size() != 2)
             return failure<water_asset_decode_result>(water_asset_io_error_code::invalid_document,
-                                                       "Water wind direction must have two components");
+                                                      "Water wind direction must have two components");
         preset.settings.simulation.wind_speed = simulation.at("windSpeed").get<float>();
         preset.settings.simulation.wind_direction = {direction[0], direction[1]};
         preset.settings.simulation.fetch_length = simulation.at("fetchLength").get<float>();
@@ -198,7 +198,7 @@ water_asset_decode_result read_water_asset_json(std::string_view text)
         const auto scattering = appearance.at("scattering").get<std::vector<float>>();
         if (absorption.size() != 3 || scattering.size() != 3)
             return failure<water_asset_decode_result>(water_asset_io_error_code::invalid_document,
-                                                       "Water optical vectors must have three components");
+                                                      "Water optical vectors must have three components");
         preset.settings.appearance.absorption = {absorption[0], absorption[1], absorption[2]};
         preset.settings.appearance.scattering = {scattering[0], scattering[1], scattering[2]};
         preset.settings.appearance.roughness = appearance.at("roughness").get<float>();
@@ -206,13 +206,13 @@ water_asset_decode_result read_water_asset_json(std::string_view text)
 
         if (!validate_water_preset(preset).valid())
             return failure<water_asset_decode_result>(water_asset_io_error_code::invalid_asset,
-                                                       "Water preset values are invalid");
+                                                      "Water preset values are invalid");
         return water_asset_decode_result::success(std::move(preset));
     }
     catch (const json::exception& error)
     {
         return failure<water_asset_decode_result>(water_asset_io_error_code::invalid_document,
-                                                   std::string{"Invalid Water preset JSON: "} + error.what());
+                                                  std::string{"Invalid Water preset JSON: "} + error.what());
     }
 }
 

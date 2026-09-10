@@ -29,8 +29,8 @@ TEST_CASE("Water presets round trip through the versioned asset format")
 
 TEST_CASE("Water preset codec rejects unsupported versions")
 {
-    const auto format = arc::water::read_water_asset_json(
-        R"({"format":"arc.water-preset","formatVersion":99,"preset":{}})");
+    const auto format =
+        arc::water::read_water_asset_json(R"({"format":"arc.water-preset","formatVersion":99,"preset":{}})");
     REQUIRE_FALSE(format.has_value());
     CHECK(format.error().code == arc::water::water_asset_io_error_code::unsupported_format_version);
 

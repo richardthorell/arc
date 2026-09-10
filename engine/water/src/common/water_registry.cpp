@@ -14,8 +14,8 @@ bool water_body_bounds::valid() const noexcept
 
 bool water_body_bounds::contains(float world_x, float world_z) const noexcept
 {
-    return !bounded || (valid() && world_x >= minimum_x && world_x <= maximum_x && world_z >= minimum_z &&
-                        world_z <= maximum_z);
+    return !bounded ||
+           (valid() && world_x >= minimum_x && world_x <= maximum_x && world_z >= minimum_z && world_z <= maximum_z);
 }
 
 float water_body_bounds::area() const noexcept
@@ -26,7 +26,8 @@ float water_body_bounds::area() const noexcept
 
 water_body_handle water_registry::add(water_body_descriptor descriptor)
 {
-    const auto available = std::find_if(slots_.begin(), slots_.end(), [](const slot& value) { return !value.occupied; });
+    const auto available =
+        std::find_if(slots_.begin(), slots_.end(), [](const slot& value) { return !value.occupied; });
     if (available != slots_.end())
     {
         available->descriptor = std::move(descriptor);

@@ -733,9 +733,8 @@ TEST_CASE("render scene snaps selected Ocean geometry to the camera-relative Wat
     water.water_level = 3.0f;
     scene.emplace<arc::scene::water_component>(ocean, water);
     scene.emplace<arc::scene::mesh_renderer_component>(
-        ocean, arc::scene::mesh_renderer_component{.mesh = arc::render::geometry_resource_handle{mesh},
-                                                    .material = material,
-                                                    .casts_shadows = false});
+        ocean, arc::scene::mesh_renderer_component{
+                   .mesh = arc::render::geometry_resource_handle{mesh}, .material = material, .casts_shadows = false});
 
     const auto result = arc::scene::render_scene(scene, renderer, 1280, 720);
     REQUIRE(result.water_count == 1);

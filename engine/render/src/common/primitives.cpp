@@ -152,8 +152,7 @@ math::vector3f water_ocean_grid_origin(const math::vector3f& camera_position, fl
                                        float cell_size) noexcept
 {
     const float snap = std::max(0.001f, cell_size);
-    return {std::floor(camera_position[0] / snap) * snap, water_level,
-            std::floor(camera_position[2] / snap) * snap};
+    return {std::floor(camera_position[0] / snap) * snap, water_level, std::floor(camera_position[2] / snap) * snap};
 }
 
 mesh_data make_water_ocean_grid(const water_ocean_grid_descriptor& descriptor)

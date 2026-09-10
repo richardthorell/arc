@@ -23,6 +23,6 @@ struct [[nodiscard]] water_preset_binding_result
  * appearance, and quality settings.
  */
 [[nodiscard]] water_preset_binding_result refresh_water_preset_binding(water_component& component,
-                                                                        assets::asset_manager& manager);
+                                                                       assets::asset_manager& manager);
 
 } // namespace arc::scene

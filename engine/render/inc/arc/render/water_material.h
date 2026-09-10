@@ -15,6 +15,6 @@ namespace arc::render
  * lighting, reflected IBL, and Beer-Lambert attenuation without embedding Water policy in a backend.
  */
 [[nodiscard]] material_descriptor make_water_material(const water::water_appearance_settings& appearance,
-                                                       std::string name = "Water");
+                                                      std::string name = "Water");
 
 } // namespace arc::render

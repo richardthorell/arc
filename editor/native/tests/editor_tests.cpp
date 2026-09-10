@@ -2301,8 +2301,7 @@ TEST_CASE("Water component version 2 survives scene save and reload")
 
     REQUIRE(host->execute(arc::editor::host_open_scene_command{.path = path}).succeeded);
     REQUIRE(host->scene_state().scene.alive(host->scene_state().water_entity));
-    const auto& loaded =
-        host->scene_state().scene.get<arc::scene::water_component>(host->scene_state().water_entity);
+    const auto& loaded = host->scene_state().scene.get<arc::scene::water_component>(host->scene_state().water_entity);
     CHECK(loaded.type == arc::water::water_body_type::ocean);
     CHECK(loaded.preset.path_hint == "assets/water/Open Ocean.arcwater");
     CHECK(loaded.water_level == Catch::Approx(2.75f));
@@ -2352,9 +2351,8 @@ TEST_CASE("Water Inspector snapshots and validated edits round trip through the 
     CHECK(configured.water->priority == 7);
     CHECK(arc::editor::to_json(configured).find("\"water\":{") != std::string::npos);
 
-    arc::editor::host_command_envelope source{.request_id = 91,
-                                               .command_type = arc::editor::command_type(command),
-                                               .payload = command};
+    arc::editor::host_command_envelope source{
+        .request_id = 91, .command_type = arc::editor::command_type(command), .payload = command};
     arc::editor::host_command_envelope parsed;
     std::string protocol_error;
     REQUIRE(arc::editor::from_json(arc::editor::to_json(source), parsed, protocol_error));
@@ -2366,8 +2364,8 @@ TEST_CASE("Water Inspector snapshots and validated edits round trip through the 
     auto invalid = updated;
     invalid.wind_direction_x = 0.0f;
     invalid.wind_direction_y = 0.0f;
-    REQUIRE_FALSE(host->execute(arc::editor::host_set_water_command{.entity = created.entity, .water = invalid})
-                      .succeeded);
+    REQUIRE_FALSE(
+        host->execute(arc::editor::host_set_water_command{.entity = created.entity, .water = invalid}).succeeded);
     CHECK(host->selected_entity_snapshot().water->water_level == Catch::Approx(4.25f));
 }
 
@@ -2386,20 +2384,19 @@ TEST_CASE("built-in Water presets are discovered and drive Ocean defaults")
     arc::editor::editor_asset_state assets;
     assets.root = root / "Content";
     const auto builtin_root = std::filesystem::path{ARC_SOURCE_ROOT} / "assets";
-    REQUIRE(host
-                ->open_project({.name = "Water Presets Test",
+    REQUIRE(host->open_project({.name = "Water Presets Test",
                                 .root = root,
                                 .content_roots = {assets.root},
                                 .builtin_content_roots = {builtin_root}},
                                assets)
                 .succeeded);
     const auto project_assets = host->project_assets_snapshot();
-    CHECK(std::count_if(project_assets.assets.begin(), project_assets.assets.end(), [](const auto& asset)
+    CHECK(std::count_if(project_assets.assets.begin(), project_assets.assets.end(),
+                        [](const auto& asset)
                         {
                             return asset.kind == "water" &&
                                    asset.type_id == arc::assets::to_string(arc::assets::asset_types::water_preset) &&
-                                   asset.importer_id ==
-                                       arc::assets::to_string(arc::assets::importer_ids::water_preset);
+                                   asset.importer_id == arc::assets::to_string(arc::assets::importer_ids::water_preset);
                         }) >= 5);
 
     REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::water})

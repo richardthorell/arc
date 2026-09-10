@@ -3005,8 +3005,8 @@ TEST_CASE("Water Ocean grid uses progressive rings and a quantized camera-relati
 
     const float cell_size = arc::render::water_ocean_grid_cell_size(descriptor);
     const auto first = arc::render::water_ocean_grid_origin({101.2f, 80.0f, -47.7f}, 3.5f, cell_size);
-    const auto stable = arc::render::water_ocean_grid_origin({101.2f + cell_size * 0.25f, 2.0f, -47.7f}, 3.5f,
-                                                             cell_size);
+    const auto stable =
+        arc::render::water_ocean_grid_origin({101.2f + cell_size * 0.25f, 2.0f, -47.7f}, 3.5f, cell_size);
     CHECK(first[0] == Catch::Approx(stable[0]));
     CHECK(first[2] == Catch::Approx(stable[2]));
     CHECK(first[1] == Catch::Approx(3.5f));

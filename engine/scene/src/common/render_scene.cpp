@@ -104,7 +104,7 @@ render::water_ocean_grid_descriptor water_grid_descriptor_for(const water_compon
     grid.inner_grid_cells = water.settings.quality == ::arc::water::water_quality::low      ? 16u
                             : water.settings.quality == ::arc::water::water_quality::medium ? 24u
                             : water.settings.quality == ::arc::water::water_quality::ultra  ? 48u
-                                                                                             : 32u;
+                                                                                            : 32u;
     return grid;
 }
 
@@ -519,8 +519,9 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                 if (water->type == ::arc::water::water_body_type::ocean && water->follow_camera)
                 {
                     const auto grid = water_grid_descriptor_for(*water);
-                    const auto origin = render::water_ocean_grid_origin(
-                        world_packet.camera.position, render_transform.position[1], render::water_ocean_grid_cell_size(grid));
+                    const auto origin =
+                        render::water_ocean_grid_origin(world_packet.camera.position, render_transform.position[1],
+                                                        render::water_ocean_grid_cell_size(grid));
                     render_transform.position[0] = origin[0];
                     render_transform.position[2] = origin[2];
                 }
@@ -530,8 +531,9 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                 scaled_bounds(world_bounds_for(scene, value, render_transform), mesh_renderer.bounds_scale);
             if (water)
                 if (const auto* bounds = scene.try_get<bounds_component>(value))
-                    renderer_bounds = scaled_bounds(transform_bounds(bounds->local_bounds, local_matrix(render_transform)),
-                                                    mesh_renderer.bounds_scale);
+                    renderer_bounds =
+                        scaled_bounds(transform_bounds(bounds->local_bounds, local_matrix(render_transform)),
+                                      mesh_renderer.bounds_scale);
             const float camera_distance = bounds_distance(renderer_bounds, world_packet.camera);
             if (mesh_renderer.minimum_draw_distance > 0.0f && camera_distance < mesh_renderer.minimum_draw_distance)
                 return;
@@ -548,9 +550,9 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                                                          mesh_renderer.forced_lod, mesh_renderer.lod_bias);
             auto material = mesh_renderer.material;
             if (mesh_renderer.mesh.conventional_lod_count <= 1) apply_lod(scene, value, mesh, material);
-            append_mesh_item(scene, world_packet, result, value, render_transform, mesh, material, mesh_renderer.visible,
-                             transparent, {}, 0, 1, math::vector4f::one, mesh_renderer.casts_shadows,
-                             mesh_renderer.receives_shadows, mesh_renderer.shadow_lod_bias,
+            append_mesh_item(scene, world_packet, result, value, render_transform, mesh, material,
+                             mesh_renderer.visible, transparent, {}, 0, 1, math::vector4f::one,
+                             mesh_renderer.casts_shadows, mesh_renderer.receives_shadows, mesh_renderer.shadow_lod_bias,
                              mesh_renderer.maximum_shadow_distance, mesh_renderer.affects_indirect_lighting,
                              mesh_renderer.surface_card_density_bias, mesh_renderer.distance_field_resolution_bias,
                              mesh_renderer.visible_in_hardware_tracing);
@@ -644,21 +646,22 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
             if (water.type == ::arc::water::water_body_type::ocean && water.follow_camera)
                 surface_origin = render::water_ocean_grid_origin(world_packet.camera.position, level, grid_cell_size);
             const auto* mesh_renderer = scene.try_get<mesh_renderer_component>(value);
-            world_packet.waters.push_back({.object_id = render::make_render_object_id(value.index, value.generation),
-                                           .type = water.type,
-                                           .material = mesh_renderer ? mesh_renderer->material : render::material_handle{},
-                                           .position = transform.position,
-                                           .surface_origin = surface_origin,
-                                           .settings = water.settings,
-                                           .water_level = level,
-                                           .visible_distance = water.visible_distance,
-                                           .finest_grid_cell_size = grid_cell_size,
-                                           .grid_ring_count = grid.ring_count,
-                                           .priority = water.priority,
-                                           .follow_camera = water.follow_camera,
-                                           .shoreline_enabled = water.shoreline_enabled,
-                                           .underwater_enabled = water.underwater_enabled,
-                                           .label = entity_label(scene, value)});
+            world_packet.waters.push_back(
+                {.object_id = render::make_render_object_id(value.index, value.generation),
+                 .type = water.type,
+                 .material = mesh_renderer ? mesh_renderer->material : render::material_handle{},
+                 .position = transform.position,
+                 .surface_origin = surface_origin,
+                 .settings = water.settings,
+                 .water_level = level,
+                 .visible_distance = water.visible_distance,
+                 .finest_grid_cell_size = grid_cell_size,
+                 .grid_ring_count = grid.ring_count,
+                 .priority = water.priority,
+                 .follow_camera = water.follow_camera,
+                 .shoreline_enabled = water.shoreline_enabled,
+                 .underwater_enabled = water.underwater_enabled,
+                 .label = entity_label(scene, value)});
             if (entity_selected(scene, value))
             {
                 const float marker_radius = std::max(4.0f, grid_cell_size * 4.0f);
@@ -684,11 +687,10 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                         {surface_origin[0] - half_extent, y, surface_origin[2] + half_extent}};
                     const float intensity = 0.35f + static_cast<float>(ring) * 0.08f;
                     for (std::uint32_t edge = 0; edge < 4u; ++edge)
-                        world_packet.debug_overlay.lines.push_back(
-                            {.start = corners[edge],
-                             .end = corners[(edge + 1u) % 4u],
-                             .color = {0.08f, intensity, 0.92f, 0.75f},
-                             .depth = render::debug_overlay_depth_mode::tested});
+                        world_packet.debug_overlay.lines.push_back({.start = corners[edge],
+                                                                    .end = corners[(edge + 1u) % 4u],
+                                                                    .color = {0.08f, intensity, 0.92f, 0.75f},
+                                                                    .depth = render::debug_overlay_depth_mode::tested});
                     half_extent *= 2.0f;
                 }
             }
