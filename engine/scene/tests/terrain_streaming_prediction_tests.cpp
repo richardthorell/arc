@@ -40,7 +40,7 @@ arc::render::virtual_mesh_data make_streaming_region(float z_offset)
 }
 
 arc::scene::terrain_render_region_proxy make_region(arc::render::renderer& renderer, arc::scene::terrain_region_id id,
-                                                     float z_offset)
+                                                    float z_offset)
 {
     arc::scene::terrain_render_region_proxy region;
     region.id = id;

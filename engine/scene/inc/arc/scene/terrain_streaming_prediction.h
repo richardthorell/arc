@@ -63,9 +63,9 @@ public:
     void configure(terrain_streaming_prediction_config config) noexcept;
     void reset() noexcept;
 
-    [[nodiscard]] terrain_streaming_prediction_result
-    update(const terrain_render_proxy& proxy, render::renderer& renderer,
-           const terrain_streaming_prediction_view& view);
+    [[nodiscard]] terrain_streaming_prediction_result update(const terrain_render_proxy& proxy,
+                                                             render::renderer& renderer,
+                                                             const terrain_streaming_prediction_view& view);
 
 private:
     struct active_page

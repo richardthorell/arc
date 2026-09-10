@@ -56,8 +56,8 @@ bool page_spatial_bounds(const render::virtual_mesh_data& geometry, std::uint32_
     const auto& page = geometry.pages[page_index];
     if (page.cluster_count == 0u || page.first_cluster >= geometry.clusters.size()) return false;
 
-    const auto end = std::min<std::uint64_t>(
-        static_cast<std::uint64_t>(page.first_cluster) + page.cluster_count, geometry.clusters.size());
+    const auto end = std::min<std::uint64_t>(static_cast<std::uint64_t>(page.first_cluster) + page.cluster_count,
+                                             geometry.clusters.size());
     math::vector3f minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
                            std::numeric_limits<float>::max()};
     math::vector3f maximum{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(),
@@ -114,8 +114,9 @@ void terrain_streaming_predictor::reset() noexcept
     active_pages_.clear();
 }
 
-terrain_streaming_prediction_result terrain_streaming_predictor::update(
-    const terrain_render_proxy& proxy, render::renderer& renderer, const terrain_streaming_prediction_view& view)
+terrain_streaming_prediction_result terrain_streaming_predictor::update(const terrain_render_proxy& proxy,
+                                                                        render::renderer& renderer,
+                                                                        const terrain_streaming_prediction_view& view)
 {
     terrain_streaming_prediction_result result;
     if (view.camera_cut) active_pages_.clear();
@@ -125,9 +126,8 @@ terrain_streaming_prediction_result terrain_streaming_predictor::update(
     result.predicted_camera_position = add_scaled(view.camera_position, view.camera_velocity, horizon);
     if (config_.maximum_prefetch_pages == 0u || config_.prefetch_distance <= 0.0f) return result;
 
-    const auto fallback_forward =
-        speed > spatial_epsilon ? normalized_or(view.camera_velocity, {0.0f, 0.0f, -1.0f})
-                                : math::vector3f{0.0f, 0.0f, -1.0f};
+    const auto fallback_forward = speed > spatial_epsilon ? normalized_or(view.camera_velocity, {0.0f, 0.0f, -1.0f})
+                                                          : math::vector3f{0.0f, 0.0f, -1.0f};
     const auto forward = normalized_or(view.camera_forward, fallback_forward);
     const auto travel_distance = speed * horizon;
 
@@ -177,9 +177,8 @@ terrain_streaming_prediction_result terrain_streaming_predictor::update(
             const auto page_direction = normalized_or(to_page, forward);
             const auto heading = std::max(0.0f, dot(forward, page_direction));
             const auto approach_distance = std::max(0.0f, current_distance - predicted_distance);
-            const auto approach = travel_distance > spatial_epsilon
-                                      ? std::clamp(approach_distance / travel_distance, 0.0f, 1.0f)
-                                      : 0.0f;
+            const auto approach =
+                travel_distance > spatial_epsilon ? std::clamp(approach_distance / travel_distance, 0.0f, 1.0f) : 0.0f;
             const auto proximity = selection_distance > spatial_epsilon
                                        ? std::clamp(1.0f - nearest_distance / selection_distance, 0.0f, 1.0f)
                                        : 1.0f;
@@ -198,7 +197,8 @@ terrain_streaming_prediction_result terrain_streaming_predictor::update(
     }
 
     result.candidate_pages = static_cast<std::uint32_t>(candidates.size());
-    std::stable_sort(candidates.begin(), candidates.end(), [](const auto& lhs, const auto& rhs)
+    std::stable_sort(candidates.begin(), candidates.end(),
+                     [](const auto& lhs, const auto& rhs)
                      {
                          if (lhs.rank != rhs.rank) return lhs.rank > rhs.rank;
                          if (lhs.distance != rhs.distance) return lhs.distance < rhs.distance;
@@ -215,16 +215,15 @@ terrain_streaming_prediction_result terrain_streaming_predictor::update(
     for (const auto& candidate : candidates)
     {
         const auto importance = config_.streaming_importance;
-        requests.push_back({.resource = candidate.key.resource,
-                            .resource_generation = candidate.key.resource_generation,
-                            .page_index = candidate.key.page_index,
-                            .projected_error = std::max(candidate.geometric_error, 0.25f) *
-                                               (1.0f + candidate.approach) * importance,
-                            .screen_coverage = std::clamp(candidate.proximity + candidate.heading * 0.25f, 0.0f, 1.0f) *
-                                               importance,
-                            .distance = candidate.distance,
-                            .visible_child = false,
-                            .shadow_view = false});
+        requests.push_back(
+            {.resource = candidate.key.resource,
+             .resource_generation = candidate.key.resource_generation,
+             .page_index = candidate.key.page_index,
+             .projected_error = std::max(candidate.geometric_error, 0.25f) * (1.0f + candidate.approach) * importance,
+             .screen_coverage = std::clamp(candidate.proximity + candidate.heading * 0.25f, 0.0f, 1.0f) * importance,
+             .distance = candidate.distance,
+             .visible_child = false,
+             .shadow_view = false});
         next_active.push_back(candidate.key);
         if (candidate.hysteresis) ++result.hysteresis_pages;
     }
