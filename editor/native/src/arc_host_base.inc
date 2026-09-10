@@ -1713,12 +1713,107 @@ struct arc_host::state
         reset_editor_camera(scene, camera_controller);
         simulation.start();
         simulation.pause();
+    }
+
+    framework::runtime_world* preview_runtime_world() noexcept
+    {
         const auto worlds = simulation.worlds().ordered_worlds();
-        if (!worlds.empty())
+        return worlds.empty() ? nullptr : simulation.worlds().find(worlds.front());
+    }
+
+    bool begin_play_session()
+    {
+        if (play_world)
         {
-            if (framework::runtime_world* world = simulation.worlds().find(worlds.front()))
-                world->attach_entities(scene.scene);
+            simulation.resume();
+            preview_stopped = false;
+            return true;
         }
+
+        simulation.pause();
+        play_world.emplace(scene.scene);
+        play_source_scene_revision = scene_revision;
+
+        std::optional<scene::camera_component> editor_camera;
+        std::optional<scene::transform_component> editor_camera_transform;
+        if (const auto* camera = std::as_const(scene.scene).try_get<scene::camera_component>(scene.camera_entity))
+            editor_camera = *camera;
+        if (const auto* transform = std::as_const(scene.scene).try_get<scene::transform_component>(scene.camera_entity))
+            editor_camera_transform = *transform;
+
+        // The viewport camera is editor-only. Never let game systems see or mutate it.
+        if (play_world->alive(scene.camera_entity)) play_world->destroy(scene.camera_entity);
+        for (const auto entity : play_world->entities())
+        {
+            if (auto* selection = play_world->try_get<scene::selection_component>(entity)) selection->selected = false;
+        }
+
+        // Prefer the first active authored game camera. If a scene has no game
+        // camera yet, clone the current editor camera into a transient play-only camera.
+        play_camera_entity = {};
+        for (const auto entity : play_world->entities())
+        {
+            const auto* camera = std::as_const(*play_world).try_get<scene::camera_component>(entity);
+            const auto* active = std::as_const(*play_world).try_get<scene::active_component>(entity);
+            if (camera && camera->active && (!active || active->active))
+            {
+                play_camera_entity = entity;
+                break;
+            }
+        }
+        if (!play_camera_entity.valid() && editor_camera && editor_camera_transform)
+        {
+            play_camera_entity = play_world->create();
+            play_world->emplace<scene::name_component>(play_camera_entity, "Play Preview Camera");
+            play_world->emplace<scene::camera_component>(play_camera_entity, *editor_camera);
+            play_world->emplace<scene::transform_component>(play_camera_entity, *editor_camera_transform);
+            play_world->emplace<scene::active_component>(play_camera_entity, true);
+        }
+        scene::update_world_transforms(*play_world);
+
+        auto* runtime_world = preview_runtime_world();
+        if (!runtime_world || !runtime_world->attach_entities(*play_world))
+        {
+            play_world.reset();
+            play_camera_entity = {};
+            play_source_scene_revision = 0;
+            return false;
+        }
+
+        pending_pick.reset();
+        preview_stopped = false;
+        simulation.resume();
+        return true;
+    }
+
+    bool end_play_session() noexcept
+    {
+        if (!play_world)
+        {
+            preview_stopped = true;
+            return true;
+        }
+
+        simulation.pause();
+        auto* runtime_world = preview_runtime_world();
+        if (!runtime_world || !runtime_world->detach_entities()) return false;
+
+        play_world.reset();
+        play_camera_entity = {};
+        play_source_scene_revision = 0;
+        pending_pick.reset();
+        preview_stopped = true;
+        return true;
+    }
+
+    ecs::world& viewport_scene() noexcept
+    {
+        return play_world ? *play_world : scene.scene;
+    }
+
+    ecs::entity viewport_camera_entity() const noexcept
+    {
+        return play_world ? play_camera_entity : scene.camera_entity;
     }
 
     std::unique_ptr<render::renderer> renderer;
@@ -1732,6 +1827,9 @@ struct arc_host::state
     std::uint64_t runtime_revision{1};
     std::uint64_t last_runtime_tick_event{};
     bool preview_stopped{true};
+    std::optional<ecs::world> play_world;
+    ecs::entity play_camera_entity{};
+    std::uint64_t play_source_scene_revision{};
     editor_project_state project;
     editor_asset_state assets;
     editor_scene_state scene;
@@ -1781,6 +1879,7 @@ arc_host::~arc_host()
 {
     if (state_)
     {
+        (void)state_->end_play_session();
         state_->project_module.unload();
         arc::diagnostics::info("editor.host", "Arc Host shutdown");
         push_event(state_->events, state_->event_sequence, host_event_type::host_shutdown, "Arc Host shutdown");
@@ -1799,6 +1898,8 @@ arc_host::~arc_host()
 host_response arc_host::open_project(const host_open_project_command& command, const editor_asset_state& assets,
                                      std::uint64_t request_id)
 {
+    if (!state_->end_play_session())
+        return {.request_id = request_id, .succeeded = false, .error = "Could not end the active play session"};
     state_->project_module.unload();
     if (!command.read_only && !command.editor_module_path.empty())
     {
@@ -1895,6 +1996,16 @@ host_response arc_host::execute(const host_command_envelope& command)
         [](const auto& payload) { return is_authoring_command<std::decay_t<decltype(payload)>>(); }, command.payload);
     const bool project_mutation = std::visit(
         [](const auto& payload) { return is_project_mutation<std::decay_t<decltype(payload)>>(); }, command.payload);
+    const bool replaces_authoring_world = std::holds_alternative<host_open_scene_command>(command.payload) ||
+                                          std::holds_alternative<host_new_scene_command>(command.payload) ||
+                                          std::holds_alternative<host_close_project_command>(command.payload);
+    if (!state_->preview_stopped && replaces_authoring_world && !state_->end_play_session())
+        return {.request_id = command.request_id,
+                .succeeded = false,
+                .error = "Could not end the active play session",
+                .scene_revision = state_->scene_revision,
+                .world_epoch = state_->world_epoch,
+                .frame_revision = state_->viewport_frame_index};
     if (state_->project_read_only && project_mutation)
         return {.request_id = command.request_id,
                 .succeeded = false,
@@ -2356,38 +2467,50 @@ host_response arc_host::execute(const host_command_envelope& command)
             }
             else if constexpr (std::is_same_v<command_type, host_runtime_resume_command>)
             {
-                state_->simulation.resume();
-                state_->preview_stopped = false;
+                const bool starting = state_->preview_stopped;
+                if (starting)
+                {
+                    if (!state_->begin_play_session()) return fail("Could not create the play session world");
+                }
+                else
+                {
+                    state_->simulation.resume();
+                }
                 ++state_->runtime_revision;
                 const auto snapshot = runtime_snapshot();
                 push_event(state_->events, state_->event_sequence, host_event_type::runtime_state_changed,
-                           "Preview runtime resumed", {}, to_json(snapshot));
+                           starting ? "Play session started" : "Play session resumed", {}, to_json(snapshot));
                 return success(to_json(snapshot));
             }
-            else if constexpr (std::is_same_v<command_type, host_runtime_pause_command> ||
-                               std::is_same_v<command_type, host_runtime_stop_command>)
+            else if constexpr (std::is_same_v<command_type, host_runtime_pause_command>)
             {
+                if (state_->preview_stopped) return fail("No play session is active");
                 state_->simulation.pause();
-                state_->preview_stopped = std::is_same_v<command_type, host_runtime_stop_command>;
                 ++state_->runtime_revision;
                 const auto snapshot = runtime_snapshot();
                 push_event(state_->events, state_->event_sequence, host_event_type::runtime_state_changed,
-                           std::is_same_v<command_type, host_runtime_stop_command> ? "Preview runtime stopped"
-                                                                                   : "Preview runtime paused",
-                           {}, to_json(snapshot));
+                           "Play session paused", {}, to_json(snapshot));
+                return success(to_json(snapshot));
+            }
+            else if constexpr (std::is_same_v<command_type, host_runtime_stop_command>)
+            {
+                if (!state_->end_play_session()) return fail("Could not stop the play session");
+                ++state_->runtime_revision;
+                const auto snapshot = runtime_snapshot();
+                push_event(state_->events, state_->event_sequence, host_event_type::runtime_state_changed,
+                           "Play session stopped", {}, to_json(snapshot));
                 return success(to_json(snapshot));
             }
             else if constexpr (std::is_same_v<command_type, host_runtime_step_command>)
             {
-                if (!state_->simulation.paused()) state_->simulation.pause();
-                state_->preview_stopped = false;
-                if (!state_->simulation.step(payload.ticks))
-                    return fail("Preview runtime could not queue a fixed-step");
+                if (state_->preview_stopped) return fail("No play session is active");
+                if (!state_->simulation.paused()) return fail("Pause the play session before stepping");
+                if (!state_->simulation.step(payload.ticks)) return fail("Play session could not queue a fixed-step");
                 const framework::frame_time stepped = state_->simulation.advance(0.0);
                 ++state_->runtime_revision;
                 const auto snapshot = runtime_snapshot();
                 push_event(state_->events, state_->event_sequence, host_event_type::runtime_tick_completed,
-                           "Preview runtime stepped " + std::to_string(stepped.completed_ticks) + " tick(s)", {},
+                           "Play session stepped " + std::to_string(stepped.completed_ticks) + " tick(s)", {},
                            to_json(snapshot));
                 return success(to_json(snapshot));
             }
@@ -2403,31 +2526,50 @@ host_response arc_host::execute(const host_command_envelope& command)
             }
             else if constexpr (std::is_same_v<command_type, host_runtime_capture_snapshot_command>)
             {
-                const auto worlds = state_->simulation.worlds().ordered_worlds();
-                if (worlds.empty()) return fail("Preview runtime has no world to snapshot");
+                auto* runtime_world = state_->preview_runtime_world();
+                if (!runtime_world) return fail("Preview runtime has no world to snapshot");
+                const bool authoring_checkpoint = state_->preview_stopped;
+                if (authoring_checkpoint && !runtime_world->attach_entities(state_->scene.scene))
+                    return fail("Authoring world could not be attached for checkpoint capture");
                 const framework::world_snapshot_result captured =
-                    state_->simulation.capture_snapshot(worlds.front(), payload.label);
+                    state_->simulation.capture_snapshot(runtime_world->id(), payload.label);
+                if (authoring_checkpoint) (void)runtime_world->detach_entities();
                 if (!captured.succeeded) return fail(captured.error);
                 return success("{\"snapshotId\":" + std::to_string(captured.metadata.id.value) +
                                ",\"tickId\":" + std::to_string(captured.metadata.tick.value) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_runtime_restore_snapshot_command>)
             {
+                auto* runtime_world = state_->preview_runtime_world();
+                if (!runtime_world) return fail("Preview runtime has no world to restore");
+                const bool authoring_checkpoint = state_->preview_stopped;
+                if (authoring_checkpoint && !runtime_world->attach_entities(state_->scene.scene))
+                    return fail("Authoring world could not be attached for checkpoint restore");
                 const framework::world_snapshot_result restored =
                     state_->simulation.restore_snapshot({payload.snapshot_id});
+                if (authoring_checkpoint) (void)runtime_world->detach_entities();
                 if (!restored.succeeded) return fail(restored.error);
-                if (state_->scene.selected_entity.valid() && !state_->scene.scene.alive(state_->scene.selected_entity))
-                    clear_selection(state_->scene.scene, state_->scene.selected_entity);
-                synchronize_all_terrain_resources(state_->scene, *state_->renderer);
-                if (auto* camera_transform =
-                        state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
-                    state_->camera_controller.synchronize_from(*camera_transform);
+                if (authoring_checkpoint)
+                {
+                    if (state_->scene.selected_entity.valid() &&
+                        !state_->scene.scene.alive(state_->scene.selected_entity))
+                        clear_selection(state_->scene.scene, state_->scene.selected_entity);
+                    synchronize_all_terrain_resources(state_->scene, *state_->renderer);
+                    if (auto* camera_transform =
+                            state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
+                        state_->camera_controller.synchronize_from(*camera_transform);
+                    push_event(state_->events, state_->event_sequence, host_event_type::scene_changed,
+                               "Preview runtime snapshot restored", state_->scene.selected_entity);
+                }
+                else if (state_->play_world)
+                {
+                    scene::update_world_transforms(*state_->play_world);
+                }
                 ++state_->runtime_revision;
                 const auto snapshot = runtime_snapshot();
-                push_event(state_->events, state_->event_sequence, host_event_type::scene_changed,
-                           "Preview runtime snapshot restored", state_->scene.selected_entity);
                 push_event(state_->events, state_->event_sequence, host_event_type::runtime_state_changed,
-                           "Preview runtime snapshot restored", {}, to_json(snapshot));
+                           authoring_checkpoint ? "Preview runtime snapshot restored" : "Play checkpoint restored", {},
+                           to_json(snapshot));
                 return success(to_json(snapshot));
             }
             else if constexpr (std::is_same_v<command_type, host_open_scene_command>)
@@ -3935,6 +4077,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             else if constexpr (std::is_same_v<command_type, host_viewport_camera_input_command>)
             {
                 if (payload.viewport_id != state_->active_viewport_id) return fail("Viewport is not attached");
+                if (!state_->preview_stopped) return success(R"({"playSession":true})");
                 if (payload.focus_selected)
                     focus_selected_entity(state_->scene.scene, state_->scene.selected_entity,
                                           state_->camera_controller);
@@ -3961,6 +4104,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             }
             else if constexpr (std::is_same_v<command_type, host_viewport_set_pose_command>)
             {
+                if (!state_->preview_stopped) return success(R"({"playSession":true})");
                 const math::vector3f position{payload.position.x, payload.position.y, payload.position.z};
                 const math::vector3f target{payload.target.x, payload.target.y, payload.target.z};
                 if (!state_->camera_controller.place(position, target))
@@ -4056,6 +4200,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             else if constexpr (std::is_same_v<command_type, host_viewport_pick_command>)
             {
                 if (payload.viewport_id != state_->active_viewport_id) return fail("Viewport is not attached");
+                if (!state_->preview_stopped) return success(R"({"pending":false,"playSession":true})");
                 const std::uint64_t pick_request_id = state_->next_pick_request_id++;
                 scene::update_world_transforms(state_->scene.scene);
                 editor_viewport viewport;
@@ -5762,7 +5907,7 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         return {.message = message};
     }
 
-    if (state_->pending_pick)
+    if (state_->preview_stopped && state_->pending_pick)
     {
         const auto gpu = state_->renderer->last_object_pick();
         const bool gpu_ready = gpu.available && gpu.request_id == state_->pending_pick->request_id &&
@@ -5803,7 +5948,7 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         }
     }
 
-    if (state_->scene.focus_imported_scene_requested)
+    if (state_->preview_stopped && state_->scene.focus_imported_scene_requested)
     {
         focus_selected_entity(state_->scene.scene, state_->scene.selected_entity, state_->camera_controller);
         if (auto* camera_transform =
@@ -5812,22 +5957,25 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         state_->scene.focus_imported_scene_requested = false;
     }
 
-    auto debug_overlay = build_editor_gizmo_overlay(
-        state_->scene.scene, state_->scene.selected_entity, state_->scene.camera_entity,
-        editor_gizmo_context{.tool = to_editor_tool(state_->viewport_tool.tool),
-                             .coordinate_space = state_->viewport_tool.coordinate_space == host_coordinate_space::local
-                                                     ? gizmo_coordinate_space::local
-                                                     : gizmo_coordinate_space::world,
-                             .highlighted_axis = state_->gizmo_highlight,
-                             .viewport_width = request.width,
-                             .viewport_height = request.height});
+    auto debug_overlay = state_->preview_stopped
+                             ? build_editor_gizmo_overlay(
+                                   state_->scene.scene, state_->scene.selected_entity, state_->scene.camera_entity,
+                                   editor_gizmo_context{.tool = to_editor_tool(state_->viewport_tool.tool),
+                                                        .coordinate_space = state_->viewport_tool.coordinate_space ==
+                                                                                    host_coordinate_space::local
+                                                                                ? gizmo_coordinate_space::local
+                                                                                : gizmo_coordinate_space::world,
+                                                        .highlighted_axis = state_->gizmo_highlight,
+                                                        .viewport_width = request.width,
+                                                        .viewport_height = request.height})
+                             : render::debug_overlay_stream{};
     const auto append_skeleton = [&](ecs::entity entity, std::uint32_t selected_joint)
     {
         if (const auto* skeleton = find_imported_skeleton(state_->scene, entity))
             append_editor_skeleton_overlay(debug_overlay, state_->scene.scene, entity, *skeleton,
                                            state_->scene.camera_entity, request.height, selected_joint);
     };
-    if (state_->viewport_options.skeletons)
+    if (state_->preview_stopped && state_->viewport_options.skeletons)
     {
         for (const auto& binding : state_->scene.imported_skeletons)
         {
@@ -5838,11 +5986,11 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
                                         : render::skeleton_asset::invalid_joint);
         }
     }
-    else if (find_imported_skeleton(state_->scene, state_->scene.selected_entity))
+    else if (state_->preview_stopped && find_imported_skeleton(state_->scene, state_->scene.selected_entity))
     {
         append_skeleton(state_->scene.selected_entity, state_->viewport_options.selected_skeleton_joint);
     }
-    if (state_->viewport_options.grid)
+    if (state_->preview_stopped && state_->viewport_options.grid)
     {
         const auto* camera = state_->scene.scene.try_get<scene::camera_component>(state_->scene.camera_entity);
         const auto* camera_transform =
@@ -5850,8 +5998,8 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         if (camera && camera_transform)
             append_editor_grid_overlay(debug_overlay, *camera, *camera_transform, request.height);
     }
-    if (state_->viewport_tool.tool == host_viewport_tool::terrain && state_->terrain_brush_local_position &&
-        state_->scene.scene.alive(state_->scene.terrain_entity))
+    if (state_->preview_stopped && state_->viewport_tool.tool == host_viewport_tool::terrain &&
+        state_->terrain_brush_local_position && state_->scene.scene.alive(state_->scene.terrain_entity))
     {
         const auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(state_->scene.terrain_entity);
         const auto* transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.terrain_entity);
@@ -5878,18 +6026,20 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
             }
         }
     }
+    ecs::world& viewport_scene = state_->viewport_scene();
+    const ecs::entity viewport_camera = state_->viewport_camera_entity();
     state_->scene.last_render = scene::render_scene(
-        state_->scene.scene, *state_->renderer, request.width, request.height,
+        viewport_scene, *state_->renderer, request.width, request.height,
         to_render_mode(state_->viewport_options.render_mode), to_visualization(state_->viewport_options.visualization),
         to_overlay(state_->viewport_options.overlay), state_->viewport_options.shadows,
         to_scene_visibility(state_->viewport_options.environment), delta_seconds, std::move(debug_overlay),
-        state_->scene.camera_entity, &state_->scene.terrain_render_proxies);
+        viewport_camera, &state_->scene.terrain_render_proxies);
 
     auto view_config = state_->renderer->resolved_config();
     auto requested_anti_aliasing = to_render_anti_aliasing(state_->viewport_options.anti_aliasing);
     if (state_->viewport_options.anti_aliasing == host_camera_anti_aliasing::inherit)
     {
-        if (const auto* camera = state_->scene.scene.try_get<scene::camera_component>(state_->scene.camera_entity);
+        if (const auto* camera = viewport_scene.try_get<scene::camera_component>(viewport_camera);
             camera && camera->anti_aliasing != render::camera_anti_aliasing_override::inherit)
             requested_anti_aliasing = static_cast<render::anti_aliasing_method>(camera->anti_aliasing);
         else

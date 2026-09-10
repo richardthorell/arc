@@ -3404,3 +3404,60 @@ TEST_CASE("prefab authoring creates, instantiates, persists, reverts, and unpack
 
     std::filesystem::remove_all(root, error);
 }
+
+TEST_CASE("editor play session renders an isolated scene copy and restores the authoring viewport")
+{
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    REQUIRE(host->open_project({.name = "Play Session Isolation", .root = {}}, {}).succeeded);
+    host->renderer_service().set_backend(std::make_unique<pick_test_backend>());
+    host->poll_events();
+
+    const auto selected_before = host->selected_entity_snapshot();
+    REQUIRE(selected_before.entity.valid());
+    const auto editor_camera = host->scene_state().camera_entity;
+    const auto camera_before =
+        std::as_const(host->scene_state().scene).get<arc::scene::transform_component>(editor_camera);
+
+    auto frame = host->request_viewport({.viewport_id = "viewport-1", .frame_index = 1, .width = 640, .height = 360});
+    REQUIRE(frame.submitted);
+    const auto initial_renderables = host->scene_state().last_render.renderable_count;
+
+    REQUIRE(host->execute(arc::editor::host_runtime_resume_command{}).succeeded);
+    REQUIRE(host->runtime_snapshot().state == arc::editor::host_runtime_state::running);
+
+    auto& authoring = host->scene_state();
+    const auto authoring_only = authoring.scene.create();
+    authoring.scene.emplace<arc::scene::name_component>(authoring_only, "Authoring Only During Play");
+    authoring.scene.emplace<arc::scene::transform_component>(authoring_only);
+    arc::scene::mesh_renderer_component mesh;
+    mesh.mesh = authoring.default_mesh;
+    mesh.material = authoring.default_material;
+    authoring.scene.emplace<arc::scene::mesh_renderer_component>(authoring_only, mesh);
+    arc::scene::update_world_transforms(authoring.scene);
+
+    REQUIRE(host->execute(arc::editor::host_viewport_camera_input_command{.forward = 1.0f}).succeeded);
+    const auto camera_during_play =
+        std::as_const(host->scene_state().scene).get<arc::scene::transform_component>(editor_camera);
+    CHECK(camera_during_play.position[0] == camera_before.position[0]);
+    CHECK(camera_during_play.position[1] == camera_before.position[1]);
+    CHECK(camera_during_play.position[2] == camera_before.position[2]);
+
+    frame = host->request_viewport({.viewport_id = "viewport-1", .frame_index = 2, .width = 640, .height = 360});
+    REQUIRE(frame.submitted);
+    CHECK(host->scene_state().last_render.renderable_count == initial_renderables);
+
+    REQUIRE(host->execute(arc::editor::host_runtime_pause_command{}).succeeded);
+    const auto tick_before_step = host->runtime_snapshot().tick_id;
+    REQUIRE(host->execute(arc::editor::host_runtime_step_command{.ticks = 1}).succeeded);
+    CHECK(host->runtime_snapshot().tick_id == tick_before_step + 1);
+
+    REQUIRE(host->execute(arc::editor::host_runtime_stop_command{}).succeeded);
+    REQUIRE(host->runtime_snapshot().state == arc::editor::host_runtime_state::stopped);
+    CHECK(host->selected_entity_snapshot().guid == selected_before.guid);
+
+    frame = host->request_viewport({.viewport_id = "viewport-1", .frame_index = 3, .width = 640, .height = 360});
+    REQUIRE(frame.submitted);
+    CHECK(host->scene_state().last_render.renderable_count == initial_renderables + 1);
+}
