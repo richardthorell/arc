@@ -3,7 +3,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
+#include <cstdint>
 #include <variant>
 #include <vector>
 
@@ -48,8 +50,8 @@ TEST_CASE("M3.1 sculpt and paint layers own sparse per-region edit payloads")
     CHECK(sculpt_samples[0] == terrain_sculpt_sample_delta{4u, 2u, -0.5f});
     CHECK(sculpt_samples[1] == terrain_sculpt_sample_delta{7u, 3u, 1.25f});
 
-    const auto* sculpt_region = std::ranges::find_if(asset.regions, [](const auto& value)
-                                                      { return value.id == terrain_region_id{2, -1}; });
+    const auto sculpt_region = std::ranges::find_if(asset.regions, [](const auto& value)
+                                                     { return value.id == terrain_region_id{2, -1}; });
     REQUIRE(sculpt_region != asset.regions.end());
     CHECK(terrain_domain_contains(sculpt_region->dirty_domains, terrain_domain::geometry));
     CHECK_FALSE(terrain_domain_contains(sculpt_region->dirty_domains, terrain_domain::attributes));
