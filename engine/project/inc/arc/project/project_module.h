@@ -35,6 +35,68 @@ enum class game_registration_kind_v1 : std::uint8_t
     editor_extension
 };
 
+/** @brief Fixed/presentation phase used by an executable project ECS system. */
+enum class game_system_phase_v1 : std::uint8_t
+{
+    input,
+    network_receive,
+    gameplay_commands,
+    movement,
+    physics,
+    abilities,
+    ai,
+    replication,
+    presentation_extraction
+};
+
+/** @brief Scheduling priority requested by an executable project ECS system. */
+enum class game_system_priority_v1 : std::uint8_t
+{
+    critical,
+    high,
+    normal,
+    low,
+    background
+};
+
+/**
+ * @brief Per-invocation context passed to project ECS systems.
+ *
+ * @ref native_context is an opaque pointer to ARC's native ecs::system_context for
+ * modules compiled against the exact engine version accepted by the host. The
+ * stable ABI keeps the pointer opaque so the C-facing descriptor does not expose
+ * C++ scheduler types.
+ */
+struct game_system_context_v1
+{
+    std::size_t structure_size{sizeof(game_system_context_v1)};
+    void* native_context{};
+    std::uint64_t tick_id{};
+    std::uint64_t world_id{};
+    float delta_seconds{};
+    float fixed_delta_seconds{};
+    float frame_delta_seconds{};
+    float interpolation_alpha{};
+    bool presentation{};
+};
+
+/** @brief Executable callback for a project ECS system. Return false to fault the runtime world. */
+using game_system_execute_v1 = bool (*)(void* user_data, game_system_context_v1* context);
+
+/** @brief Kind-specific descriptor referenced by an ecs_system registration. */
+struct game_system_descriptor_v1
+{
+    std::size_t structure_size{sizeof(game_system_descriptor_v1)};
+    game_system_phase_v1 phase{game_system_phase_v1::gameplay_commands};
+    game_system_priority_v1 priority{game_system_priority_v1::normal};
+    const char* const* before{}; ///< Stable project-system IDs that must execute after this system.
+    std::size_t before_count{};
+    const char* const* after{}; ///< Stable project-system IDs that must execute before this system.
+    std::size_t after_count{};
+    void* user_data{};                ///< Module-owned state valid for the loaded generation.
+    game_system_execute_v1 execute{}; ///< Called by ARC's ECS scheduler.
+};
+
 /** @brief Reflected field representation understood by the native editor host. */
 enum class game_field_kind_v1 : std::uint8_t
 {

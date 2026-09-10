@@ -175,6 +175,7 @@ struct system_descriptor
     jobs::job_priority priority{jobs::job_priority::normal};
     jobs::job_affinity affinity{jobs::job_affinity::any_worker};
     std::vector<component_access> components;
+    bool exclusive_world_access{};
     std::vector<std::string> before;
     std::vector<std::string> after;
     std::function<void(system_context&)> execute;
@@ -438,6 +439,7 @@ private:
 
     static bool conflicts(const system_descriptor& lhs, const system_descriptor& rhs)
     {
+        if (lhs.exclusive_world_access || rhs.exclusive_world_access) return true;
         for (const component_access& left : lhs.components)
             for (const component_access& right : rhs.components)
                 if (left.component == right.component &&
