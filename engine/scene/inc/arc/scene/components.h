@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arc/assets/assets.h>
+#include <arc/assets/water_types.h>
 #include <arc/render/handles.h>
 #include <arc/render/lighting.h>
 #include <arc/render/lighting_scene.h>
@@ -13,6 +14,7 @@
 #include <arc/ecs/prefab.h>
 #include <arc/geometric/box.h>
 #include <arc/math/math.h>
+#include <arc/water/water_types.h>
 
 #include <array>
 #include <string>
@@ -595,18 +597,26 @@ struct terrain_component
     std::uint64_t content_revision{};
 };
 
-/**
- * @brief Flat water body settings for the first outdoor scene pass.
- */
+/** @brief Persistent first-class Water authoring intent. Runtime/GPU state lives in the Water systems. */
 struct water_component
 {
+    water::water_body_type type{water::water_body_type::ocean};
+    assets::asset_reference preset{.expected_type = assets::asset_types::water_preset};
+    assets::asset_reference material{.expected_type = assets::asset_types::material};
+    water::water_runtime_settings settings;
+    float water_level{};
     bool enabled{true};
-    float size{8.0f};
-    math::vector3f color{0.16f, 0.35f, 0.48f};
-    float roughness{0.18f};
-    float wave_scale{0.08f};
-    float wave_speed{0.45f};
-    float transparency{0.45f};
+    bool follow_camera{true};
+    float visible_distance{20000.0f};
+    bool shoreline_enabled{true};
+    float shoreline_foam_width{2.0f};
+    float shallow_wave_damping_distance{20.0f};
+    float runup_distance{1.5f};
+    bool underwater_enabled{true};
+    bool caustics_enabled{true};
+    bool queries_enabled{true};
+    bool buoyancy_enabled{true};
+    std::int32_t priority{};
 };
 
 /**

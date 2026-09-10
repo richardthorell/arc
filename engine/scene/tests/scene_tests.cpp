@@ -1185,6 +1185,21 @@ TEST_CASE("terrain persistence migrations cover every schema version")
     REQUIRE(terrain.schema_version == target_version);
 }
 
+TEST_CASE("Water persistence migrations cover every schema version")
+{
+    arc::persistence::schema_migration_registry migrations;
+    REQUIRE(arc::scene::register_persistence_migrations(migrations));
+
+    arc::persistence::archive_component_record water;
+    water.type = arc::ecs::component_metadata<arc::scene::water_component>().id;
+    water.schema_version = 1;
+
+    const auto target_version = arc::ecs::component_metadata<arc::scene::water_component>().schema_version;
+    REQUIRE(target_version == 2);
+    REQUIRE(migrations.migrate(water, target_version));
+    REQUIRE(water.schema_version == target_version);
+}
+
 TEST_CASE("world environment owns validated indirect lighting settings")
 {
     arc::ecs::world world;

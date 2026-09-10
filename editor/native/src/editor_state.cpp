@@ -661,11 +661,10 @@ ecs::entity add_water_to_scene(editor_scene_state& scene, render::renderer& rend
     scene::transform_component transform;
     transform.position = defaults::default_water_position;
     scene::water_component water;
-    water.size = defaults::default_water_size;
-    water.color = math::vector3f{0.08f, 0.30f, 0.42f};
-    water.roughness = 0.12f;
-    water.wave_scale = 0.14f;
-    water.transparency = 0.34f;
+    water.settings.appearance.scattering = math::vector3f{0.02f, 0.075f, 0.10f};
+    water.settings.appearance.absorption = math::vector3f{0.18f, 0.065f, 0.025f};
+    water.settings.appearance.roughness = 0.12f;
+    water.settings.appearance.refraction_strength = 0.34f;
     scene.scene.emplace<scene::water_component>(entity, water);
     scene.scene.emplace<scene::bounds_component>(entity, local_bounds, local_bounds, true);
     scene.scene.emplace<scene::transform_component>(entity, transform);

@@ -606,13 +606,15 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
         {
             if (!environment_visibility.water || !entity_is_active(scene, value) || !water.enabled) return;
             world_packet.waters.push_back({.object_id = render::make_render_object_id(value.index, value.generation),
+                                           .type = water.type,
                                            .position = transform.position,
-                                           .size = water.size,
-                                           .color = water.color,
-                                           .roughness = water.roughness,
-                                           .wave_scale = water.wave_scale,
-                                           .wave_speed = water.wave_speed,
-                                           .transparency = water.transparency,
+                                           .settings = water.settings,
+                                           .water_level = transform.position[1] + water.water_level,
+                                           .visible_distance = water.visible_distance,
+                                           .priority = water.priority,
+                                           .follow_camera = water.follow_camera,
+                                           .shoreline_enabled = water.shoreline_enabled,
+                                           .underwater_enabled = water.underwater_enabled,
                                            .label = entity_label(scene, value)});
             ++result.water_count;
         });

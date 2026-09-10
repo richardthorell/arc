@@ -2205,6 +2205,63 @@ TEST_CASE("ARC scene documents save atomically, round trip hierarchy, and reject
     std::filesystem::remove_all(root, error);
 }
 
+TEST_CASE("Water component version 2 survives scene save and reload")
+{
+    const auto root =
+        std::filesystem::temp_directory_path() /
+        ("arc-water-scene-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::error_code error;
+    std::filesystem::create_directories(root / "assets", error);
+    REQUIRE_FALSE(error);
+
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    assets.root = root / "assets";
+    REQUIRE(host->open_project({.name = "Water Persistence Test", .root = root}, assets).succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::water})
+                .succeeded);
+
+    auto& authored = host->scene_state().scene.get<arc::scene::water_component>(host->scene_state().water_entity);
+    authored.preset.path_hint = "assets/water/Open Ocean.arcwater";
+    authored.water_level = 2.75f;
+    authored.visible_distance = 32000.0f;
+    authored.settings.simulation.wind_speed = 17.0f;
+    authored.settings.simulation.wind_direction = {0.82f, 0.57f};
+    authored.settings.simulation.seed = 1337;
+    authored.settings.appearance.absorption = {0.20f, 0.07f, 0.03f};
+    authored.settings.appearance.refraction_strength = 0.08f;
+    authored.settings.quality = arc::water::water_quality::ultra;
+
+    const auto path = root / "scenes" / "water.arcscene";
+    REQUIRE(host->execute(arc::editor::host_save_scene_as_command{.path = path}).succeeded);
+    {
+        std::ifstream input(path, std::ios::binary);
+        const std::string document((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+        CHECK(document.find("\"Water\"") != std::string::npos);
+        CHECK(document.find("\"version\": 2") != std::string::npos);
+        CHECK(document.find("Open Ocean.arcwater") != std::string::npos);
+    }
+
+    REQUIRE(host->execute(arc::editor::host_open_scene_command{.path = path}).succeeded);
+    REQUIRE(host->scene_state().scene.alive(host->scene_state().water_entity));
+    const auto& loaded =
+        host->scene_state().scene.get<arc::scene::water_component>(host->scene_state().water_entity);
+    CHECK(loaded.type == arc::water::water_body_type::ocean);
+    CHECK(loaded.preset.path_hint == "assets/water/Open Ocean.arcwater");
+    CHECK(loaded.water_level == Catch::Approx(2.75f));
+    CHECK(loaded.visible_distance == Catch::Approx(32000.0f));
+    CHECK(loaded.settings.simulation.wind_speed == Catch::Approx(17.0f));
+    CHECK(loaded.settings.simulation.wind_direction[1] == Catch::Approx(0.57f));
+    CHECK(loaded.settings.simulation.seed == 1337);
+    CHECK(loaded.settings.appearance.absorption[0] == Catch::Approx(0.20f));
+    CHECK(loaded.settings.appearance.refraction_strength == Catch::Approx(0.08f));
+    CHECK(loaded.settings.quality == arc::water::water_quality::ultra);
+
+    std::filesystem::remove_all(root, error);
+}
+
 TEST_CASE("selected camera snapshots and entity-specific edits round trip atomically")
 {
     auto renderer = std::make_unique<arc::render::renderer>();
