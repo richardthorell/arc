@@ -68,7 +68,7 @@ void destroy_region(terrain_render_region_proxy& proxy, render::renderer& render
 {
     if (proxy.geometry.conventional.valid() || proxy.geometry.virtualized.valid())
         (void)renderer.destroy_geometry_resource(proxy.geometry);
-    proxy.geometry = {};
+    proxy.geometry = render::geometry_resource_handle{};
     if (renderer.texture_alive(proxy.surface_attribute_texture))
         renderer.destroy_texture(proxy.surface_attribute_texture);
     proxy.surface_attribute_texture = {};
@@ -119,7 +119,7 @@ void destroy_unreused_old_resources(terrain_render_proxy& previous,
         if (!texture_reused(replacement, region.surface_attribute_texture) &&
             renderer.texture_alive(region.surface_attribute_texture))
             renderer.destroy_texture(region.surface_attribute_texture);
-        region.geometry = {};
+        region.geometry = render::geometry_resource_handle{};
         region.surface_attribute_texture = {};
     }
 }
@@ -136,7 +136,7 @@ void cleanup_staged_resources(const terrain_render_proxy& previous, std::vector<
             (void)renderer.destroy_geometry_resource(region.geometry);
         if (!attributes_owned_by_previous && renderer.texture_alive(region.surface_attribute_texture))
             renderer.destroy_texture(region.surface_attribute_texture);
-        region.geometry = {};
+        region.geometry = render::geometry_resource_handle{};
         region.surface_attribute_texture = {};
     }
 }
