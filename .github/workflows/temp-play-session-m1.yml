@@ -23,12 +23,19 @@ jobs:
 
       - name: Format changed C++
         run: |
+          git add \
+            engine/framework/inc/arc/framework/runtime_world.h \
+            engine/framework/src/common/runtime_world.cpp \
+            engine/framework/tests/framework_tests.cpp \
+            editor/native/src/arc_host_base.inc \
+            editor/native/tests/editor_tests.cpp
           git clang-format-18 origin/main -- \
             engine/framework/inc/arc/framework/runtime_world.h \
             engine/framework/src/common/runtime_world.cpp \
             engine/framework/tests/framework_tests.cpp \
             editor/native/src/arc_host_base.inc \
             editor/native/tests/editor_tests.cpp
+          git reset
 
       - name: Configure focused native build
         run: cmake --preset editor-no-vulkan -G Ninja -DARC_BUILD_SAMPLES=OFF
