@@ -208,8 +208,7 @@ virtual_geometry_streaming_controller::virtual_geometry_streaming_controller(ren
                                                                              jobs::job_system& jobs,
                                                                              std::uint32_t maximum_in_flight)
     : virtual_geometry_streaming_controller(
-          renderer, source, jobs,
-          virtual_geometry_streaming_config{.maximum_in_flight_requests = maximum_in_flight})
+          renderer, source, jobs, virtual_geometry_streaming_config{.maximum_in_flight_requests = maximum_in_flight})
 {
 }
 
@@ -375,8 +374,7 @@ void virtual_geometry_streaming_controller::update(const jobs::cancellation_toke
         auto future = state.source->read_page(load, cancellation);
         state.in_flight_bytes += selected_reservation;
         state.statistics.peak_in_flight_bytes = std::max(state.statistics.peak_in_flight_bytes, state.in_flight_bytes);
-        state.reads.push_back(
-            {.load = load, .reserved_bytes = selected_reservation, .future = std::move(future)});
+        state.reads.push_back({.load = load, .reserved_bytes = selected_reservation, .future = std::move(future)});
     }
 
     state.statistics.in_flight_reads = static_cast<std::uint32_t>(state.reads.size());

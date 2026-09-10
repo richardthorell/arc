@@ -72,8 +72,8 @@ public:
         for (std::size_t index = 0; index < geometry.pages.size(); ++index)
         {
             const auto& page = geometry.pages[index];
-            const auto bytes = std::span<const std::byte>(geometry.page_payload)
-                                   .subspan(page.compressed_offset, page.compressed_size);
+            const auto bytes =
+                std::span<const std::byte>(geometry.page_payload).subspan(page.compressed_offset, page.compressed_size);
             payloads_[index] = {bytes.begin(), bytes.end()};
         }
     }
@@ -212,8 +212,7 @@ TEST_CASE("M2.5 async streaming caps compressed plus decoded in flight bytes")
     const auto byte_budget = static_cast<std::uint64_t>(geometry.pages[first_page].compressed_size) +
                              geometry.pages[first_page].uncompressed_size;
     virtual_geometry_streaming_controller controller(
-        target, source, jobs,
-        {.maximum_in_flight_requests = 8u, .maximum_in_flight_bytes = byte_budget});
+        target, source, jobs, {.maximum_in_flight_requests = 8u, .maximum_in_flight_bytes = byte_budget});
 
     target.virtual_geometry_residency().begin_frame(1u);
     std::vector<virtual_geometry_page_request> requests;

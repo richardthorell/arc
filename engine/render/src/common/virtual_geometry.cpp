@@ -354,11 +354,11 @@ struct virtual_geometry_residency_manager::implementation
                     if (page.state != virtual_geometry_page_state::resident || page.descriptor.root) continue;
                     const auto age = frame_index - std::min(frame_index, page.last_used_frame);
                     const bool protected_page = age <= config.protected_frame_count;
-                    const bool better = !victim || (victim_protected && !protected_page) ||
-                                        (victim_protected == protected_page &&
-                                         (page.last_used_frame < victim->last_used_frame ||
-                                          (page.last_used_frame == victim->last_used_frame &&
-                                           page.priority < victim->priority)));
+                    const bool better =
+                        !victim || (victim_protected && !protected_page) ||
+                        (victim_protected == protected_page &&
+                         (page.last_used_frame < victim->last_used_frame ||
+                          (page.last_used_frame == victim->last_used_frame && page.priority < victim->priority)));
                     if (!better) continue;
                     victim_resource = &resource;
                     victim = &page;
@@ -631,10 +631,10 @@ virtual_geometry_residency_snapshot virtual_geometry_residency_manager::snapshot
         }
     result.gpu_budget_overflow_bytes =
         result.gpu_resident_bytes > result.gpu_budget_bytes ? result.gpu_resident_bytes - result.gpu_budget_bytes : 0u;
-    result.compressed_cpu_budget_overflow_bytes = result.compressed_cpu_resident_bytes > result.compressed_cpu_budget_bytes
-                                                      ? result.compressed_cpu_resident_bytes -
-                                                            result.compressed_cpu_budget_bytes
-                                                      : 0u;
+    result.compressed_cpu_budget_overflow_bytes =
+        result.compressed_cpu_resident_bytes > result.compressed_cpu_budget_bytes
+            ? result.compressed_cpu_resident_bytes - result.compressed_cpu_budget_bytes
+            : 0u;
     return result;
 }
 
