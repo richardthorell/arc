@@ -27,10 +27,10 @@ struct virtual_geometry_streaming_io_snapshot
 };
 
 /** @brief Opaque asynchronous source for one requested virtual-geometry page. */
-class virtual_geometry_artifact_source
+class virtual_geometry_page_source
 {
 public:
-    virtual ~virtual_geometry_artifact_source() = default;
+    virtual ~virtual_geometry_page_source() = default;
 
     [[nodiscard]] virtual jobs::job_future<io::file_result<io::file_buffer>>
     read_page(const virtual_geometry_page_load& load, jobs::cancellation_token cancellation = {}) = 0;
@@ -43,7 +43,7 @@ public:
  * validated M2.2 page table. Renderer load offsets are never treated as file offsets; logical page IDs are resolved
  * through the cooked artifact table so physical Morton ordering remains transparent to residency.
  */
-class filesystem_virtual_geometry_artifact_source final : public virtual_geometry_artifact_source
+class filesystem_virtual_geometry_artifact_source final : public virtual_geometry_page_source
 {
 public:
     explicit filesystem_virtual_geometry_artifact_source(io::async_file_service& files);
@@ -77,7 +77,7 @@ private:
 class virtual_geometry_streaming_controller
 {
 public:
-    virtual_geometry_streaming_controller(renderer& renderer, virtual_geometry_artifact_source& source,
+    virtual_geometry_streaming_controller(renderer& renderer, virtual_geometry_page_source& source,
                                           jobs::job_system& jobs, std::uint32_t maximum_in_flight = 2048);
     ~virtual_geometry_streaming_controller();
     virtual_geometry_streaming_controller(virtual_geometry_streaming_controller&&) noexcept;
