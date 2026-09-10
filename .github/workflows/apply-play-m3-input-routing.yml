@@ -1,0 +1,94 @@
+name: Apply Play M3.3 Input Routing
+
+on:
+  push:
+    branches:
+      - feature/play-session-m3-input-routing
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[m3-input-applied]') && !contains(github.event.head_commit.message, '[m3-input-cleanup]') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 ninja-build
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+
+      - name: Apply M3.3 Changes
+        run: python3 .github/scripts/apply_play_m3_input_routing.py
+
+      - name: Format Changed Sources
+        run: |
+          clang-format-18 -i \
+            engine/project/inc/arc/project/project_module.h \
+            editor/native/src/project_module_loader.cpp \
+            editor/native/src/arc_host_base.inc \
+            editor/native/src/arc_host_process_main.cpp \
+            editor/native/tests/game_module_fixture_input.cpp \
+            editor/native/tests/project_system_input_tests.cpp
+          cd editor
+          npm ci
+          npx prettier --write \
+            src/renderer/src/app/Workbench.tsx \
+            src/renderer/src/viewport/ViewportPanel.tsx \
+            src/renderer/src/viewport/ViewportPanel.test.tsx
+
+      - name: Configure Focused Build
+        run: |
+          cmake --preset editor-no-vulkan -G Ninja \
+            -DARC_BUILD_SAMPLES=OFF \
+            -DCMAKE_C_COMPILER=clang-18 \
+            -DCMAKE_CXX_COMPILER=clang++-18
+
+      - name: Build Focused Targets
+        run: cmake --build --preset editor-no-vulkan --target arc_framework_tests arc_editor_host_tests -j 4
+
+      - name: Run Focused Native Tests
+        run: |
+          ctest --test-dir out/build/editor-no-vulkan --output-on-failure -R "Play viewport input|input commands are sampled"
+
+      - name: Run Frontend Validation
+        working-directory: editor
+        run: |
+          npm run typecheck
+          npm test -- src/renderer/src/viewport/ViewportPanel.test.tsx
+
+      - name: Commit Implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            engine/project/inc/arc/project/project_module.h \
+            editor/native/src/project_module_loader.cpp \
+            editor/native/src/arc_host_base.inc \
+            editor/native/src/arc_host_process_main.cpp \
+            editor/native/tests/CMakeLists.txt \
+            editor/native/tests/game_module_fixture_input.cpp \
+            editor/native/tests/project_system_input_tests.cpp \
+            editor/src/renderer/src/app/Workbench.tsx \
+            editor/src/renderer/src/viewport/ViewportPanel.tsx \
+            editor/src/renderer/src/viewport/ViewportPanel.test.tsx
+          git commit -m "feat: route Play viewport input to project ECS systems [m3-input-applied]"
+          git push origin HEAD:feature/play-session-m3-input-routing
+
+      - name: Remove Temporary Helpers
+        run: |
+          git rm .github/scripts/apply_play_m3_input_routing.py .github/workflows/apply-play-m3-input-routing.yml
+          git commit -m "chore: remove M3.3 apply helpers [m3-input-cleanup]"
+          git push origin HEAD:feature/play-session-m3-input-routing
