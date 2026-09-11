@@ -1,6 +1,6 @@
 # Shared Graph Editor Foundation
 
-This document defines the first extraction step for ARC's reusable node graph editor.
+This document defines ARC's reusable node graph editor boundary.
 
 ## Goal
 
@@ -26,4 +26,10 @@ The shared layer must not encode Material-specific node types, shader semantics,
 
 Each graph domain supplies its own node catalog, port rules, validation, inspector model, and presentation metadata through a `GraphDomain` contract. Shared components should not branch on concrete graph types.
 
-The initial implementation intentionally focuses on reusable primitives and types. Migrating the existing Material Graph onto the new layer is the next milestone so that the abstraction can be validated against a real graph before Flow is introduced.
+## Adoption status
+
+G1 established the shared graph contracts, geometry, measurement helpers, and rendering primitives. G2 migrates the production Material Graph canvas onto those primitives and routes Material node definitions, connection validation, and protected-node rules through `materialGraphDomain`.
+
+Material-specific value editors, palette taxonomy, document history, persistence, and compilation remain in the Material domain. That separation is intentional: the shared layer owns graph mechanics while each domain owns graph meaning.
+
+With Material now exercising the shared layer end to end, Flow can build on the same graph foundation without introducing Material-specific branches into the reusable graph code.
