@@ -15,6 +15,7 @@ namespace arc::flow
 inline constexpr std::uint32_t flow_ir_version = 1;
 inline constexpr std::uint32_t flow_bytecode_version = 1;
 inline constexpr std::uint32_t invalid_instruction = std::numeric_limits<std::uint32_t>::max();
+inline constexpr std::uint32_t default_instruction_budget = 4096;
 
 enum class diagnostic_severity : std::uint8_t
 {
@@ -172,5 +173,72 @@ struct [[nodiscard]] compile_result
 // Compiles a version-1 .arcflow asset into typed IR and runtime-ready bytecode.
 // The editable graph remains source data and is never interpreted directly.
 compile_result compile_asset(std::string_view source);
+
+enum class execution_status : std::uint8_t
+{
+    completed,
+    inactive,
+    already_active,
+    invalid_program,
+    instruction_budget_exceeded,
+    type_mismatch,
+};
+
+struct vm_limits
+{
+    std::uint32_t instruction_budget{default_instruction_budget};
+};
+
+struct [[nodiscard]] execution_result
+{
+    execution_status status{execution_status::completed};
+    std::uint32_t instructions_executed{0};
+    std::uint32_t entry_points_executed{0};
+    std::uint32_t stopped_instruction{invalid_instruction};
+    std::string node_id;
+
+    [[nodiscard]] bool succeeded() const noexcept
+    {
+        return status == execution_status::completed;
+    }
+};
+
+// Per-entity Flow runtime state. The bytecode program is immutable and must outlive the VM instance.
+class vm_instance
+{
+public:
+    explicit vm_instance(const bytecode_program& program, vm_limits limits = {});
+    vm_instance(const vm_instance&) = delete;
+    vm_instance& operator=(const vm_instance&) = delete;
+    vm_instance(vm_instance&& other) noexcept;
+    vm_instance& operator=(vm_instance&& other) noexcept;
+    ~vm_instance() = default;
+
+    [[nodiscard]] bool valid() const noexcept;
+    [[nodiscard]] bool active() const noexcept;
+    [[nodiscard]] vm_limits limits() const noexcept;
+
+    // Restores graph variable defaults and bytecode value slots and leaves the instance inactive.
+    void reset();
+
+    [[nodiscard]] const flow_value* variable_value(std::string_view id) const noexcept;
+    [[nodiscard]] bool set_variable_value(std::string_view id, const flow_value& value);
+    [[nodiscard]] const flow_value* value_slot(std::uint32_t slot) const noexcept;
+
+    [[nodiscard]] execution_result begin_play();
+    [[nodiscard]] execution_result end_play();
+    [[nodiscard]] execution_result tick(double delta_seconds);
+    [[nodiscard]] execution_result fixed_tick(double delta_seconds);
+    [[nodiscard]] execution_result input_action_triggered(std::string_view action, double value);
+    [[nodiscard]] execution_result input_action_completed(std::string_view action, double value);
+
+private:
+    const bytecode_program* program_{nullptr};
+    std::vector<flow_value> variable_values_;
+    std::vector<flow_value> value_slots_;
+    vm_limits limits_{};
+    bool valid_{false};
+    bool active_{false};
+};
 
 } // namespace arc::flow
