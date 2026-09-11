@@ -1,0 +1,35 @@
+name: Finalize M3.3 terrain sculpt payload strokes
+
+on:
+  push:
+    branches:
+      - m3/terrain-sculpt-payload-strokes
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: "github.event.head_commit.message != 'fix: finalize M3.3 sculpt stroke transactions'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: m3/terrain-sculpt-payload-strokes
+          fetch-depth: 0
+      - name: Install formatter
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+      - name: Apply fixes
+        run: python3 tools/m3_3_finalize.py
+      - name: Format native changes
+        run: |
+          clang-format-18 -i editor/native/src/arc_host_base.inc engine/scene/src/common/terrain_edit_layers.cpp
+      - name: Commit fixes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add editor/native/src/arc_host_base.inc engine/scene/src/common/terrain_edit_layers.cpp
+          git commit -m 'fix: finalize M3.3 sculpt stroke transactions'
+          git push origin HEAD:m3/terrain-sculpt-payload-strokes
