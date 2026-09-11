@@ -1,0 +1,45 @@
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+struct frequency_sample
+{
+    vec4 displacement_xy;
+    vec4 displacement_z_slope_x;
+    vec4 slope_z_velocity_x;
+    vec4 velocity_yz;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer input_field_buffer
+{
+    frequency_sample values[];
+} input_field;
+
+layout(std430, set = 0, binding = 1) writeonly buffer output_field_buffer
+{
+    frequency_sample values[];
+} output_field;
+
+layout(push_constant) uniform fft_constants
+{
+    uint resolution;
+    uint stage;
+    uint direction;
+    uint reserved;
+} constants;
+
+uint reverse_index(uint value)
+{
+    uint bits = findMSB(constants.resolution);
+    return bitfieldReverse(value) >> (32u - bits);
+}
+
+void main()
+{
+    uvec2 coordinate = gl_GlobalInvocationID.xy;
+    if (coordinate.x >= constants.resolution || coordinate.y >= constants.resolution)
+        return;
+    uint destination = coordinate.y * constants.resolution + coordinate.x;
+    uint source = reverse_index(coordinate.y) * constants.resolution + reverse_index(coordinate.x);
+    output_field.values[destination] = input_field.values[source];
+}

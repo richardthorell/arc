@@ -736,12 +736,15 @@ TEST_CASE("render scene snaps selected Ocean geometry to the camera-relative Wat
         ocean, arc::scene::mesh_renderer_component{
                    .mesh = arc::render::geometry_resource_handle{mesh}, .material = material, .casts_shadows = false});
 
-    const auto result = arc::scene::render_scene(scene, renderer, 1280, 720);
+    const auto result = arc::scene::render_scene(
+        scene, renderer, 1280, 720, arc::render::render_mode::shaded, arc::render::mesh_visualization_mode::standard,
+        arc::render::editor_overlay_mode::selected_wireframe, true, {}, 0.0f, {}, {}, nullptr, 42.25);
     REQUIRE(result.water_count == 1);
     REQUIRE(result.renderable_count == 1);
     const auto frame = renderer.frame_queue().commit(1);
     REQUIRE(frame.events.size() == 1);
     const auto& packet = *std::get<arc::render::render_world_event>(frame.events[0].payload).packet;
+    CHECK(packet.simulation_time_seconds == Catch::Approx(42.25));
     REQUIRE(packet.waters.size() == 1);
     REQUIRE(packet.items.size() == 1);
 

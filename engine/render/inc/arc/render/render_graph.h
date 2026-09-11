@@ -92,6 +92,8 @@ enum class builtin_render_pass : std::uint8_t
     gpu_hzb_occlusion_cull,
     gpu_lod_selection,
     gpu_skinning,
+    water_spectrum_update,
+    water_inverse_fft,
     gpu_visibility_compact,
     gpu_draw_bin_count,
     gpu_draw_bin_prefix_sum,

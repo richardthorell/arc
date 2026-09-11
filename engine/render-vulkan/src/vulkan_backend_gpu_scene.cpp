@@ -1293,6 +1293,7 @@ bool vulkan_render_backend::gpu_bindless_draw_compatible(const draw_mesh_event& 
     if (resolved_config_.features.gpu_binding_model != gpu_resource_binding_model::bindless ||
         draw.mode == render_mode::wireframe || !draw.mesh.valid() || !draw.material.valid())
         return false;
+    if (water_simulation_for(draw.object_id)) return false;
     const auto material = materials_.find(resource_key(draw.material));
     if (material == materials_.end() || material->second.data.domain != material_domain::surface ||
         material->second.data.runtime_program)

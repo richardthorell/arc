@@ -1558,7 +1558,17 @@ void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool
                 }
                 VkPipelineLayout pipeline_layout = mesh_pipeline_layout_;
                 VkDescriptorSet material_descriptor_set = material_descriptor_set_for(draw);
-                if (pipeline == terrain_surface_pipeline_)
+                if (pipeline == water_surface_pipeline_)
+                {
+                    const auto* simulation = water_simulation_for(draw.object_id);
+                    if (!simulation || simulation->surface_descriptor == VK_NULL_HANDLE) return;
+                    const std::array descriptor_sets{material_descriptor_set, simulation->surface_descriptor};
+                    pipeline_layout = water_surface_pipeline_layout_;
+                    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0,
+                                            static_cast<std::uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
+                                            0, nullptr);
+                }
+                else if (pipeline == terrain_surface_pipeline_)
                 {
                     const auto attributes = material_attribute_descriptor_set_for(draw.material_attribute_texture);
                     if (attributes == VK_NULL_HANDLE) return;
@@ -1695,8 +1705,11 @@ void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool
                       });
             for (const auto* draw : transparent_draws)
             {
-                draw_with_pipeline(*draw, mesh_transparent_pipeline_ != VK_NULL_HANDLE ? mesh_transparent_pipeline_
-                                                                                       : mesh_pipeline_);
+                if (water_surface_pipeline_ != VK_NULL_HANDLE && water_simulation_for(draw->object_id))
+                    draw_with_pipeline(*draw, water_surface_pipeline_);
+                else
+                    draw_with_pipeline(*draw, mesh_transparent_pipeline_ != VK_NULL_HANDLE ? mesh_transparent_pipeline_
+                                                                                           : mesh_pipeline_);
             }
 
             // Selection is an editor overlay, not part of the material path.

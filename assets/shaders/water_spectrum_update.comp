@@ -1,0 +1,94 @@
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+struct frequency_sample
+{
+    vec4 displacement_xy;
+    vec4 displacement_z_slope_x;
+    vec4 slope_z_velocity_x;
+    vec4 velocity_yz;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer initial_spectrum_buffer
+{
+    vec2 values[];
+} initial_spectrum;
+
+layout(std430, set = 0, binding = 1) writeonly buffer frequency_field_buffer
+{
+    frequency_sample values[];
+} frequency_field;
+
+layout(push_constant) uniform spectrum_constants
+{
+    uint resolution;
+    float physical_length;
+    float choppiness;
+    float time_seconds;
+} constants;
+
+vec2 complex_multiply(vec2 lhs, vec2 rhs)
+{
+    return vec2(lhs.x * rhs.x - lhs.y * rhs.y, lhs.x * rhs.y + lhs.y * rhs.x);
+}
+
+vec2 multiply_by_i(vec2 value)
+{
+    return vec2(-value.y, value.x);
+}
+
+void main()
+{
+    uvec2 coordinate = gl_GlobalInvocationID.xy;
+    if (coordinate.x >= constants.resolution || coordinate.y >= constants.resolution)
+        return;
+
+    uint index = coordinate.y * constants.resolution + coordinate.x;
+    uint mirror_x = (constants.resolution - coordinate.x) % constants.resolution;
+    uint mirror_y = (constants.resolution - coordinate.y) % constants.resolution;
+    uint mirror = mirror_y * constants.resolution + mirror_x;
+    int signed_x = coordinate.x <= constants.resolution / 2u
+        ? int(coordinate.x)
+        : int(coordinate.x) - int(constants.resolution);
+    int signed_y = coordinate.y <= constants.resolution / 2u
+        ? int(coordinate.y)
+        : int(coordinate.y) - int(constants.resolution);
+    vec2 wave_vector = vec2(signed_x, signed_y) * (6.283185307179586 / constants.physical_length);
+    float wave_number = length(wave_vector);
+
+    frequency_sample output_value;
+    output_value.displacement_xy = vec4(0.0);
+    output_value.displacement_z_slope_x = vec4(0.0);
+    output_value.slope_z_velocity_x = vec4(0.0);
+    output_value.velocity_yz = vec4(0.0);
+    if (wave_number <= 1.0e-6)
+    {
+        frequency_field.values[index] = output_value;
+        return;
+    }
+
+    float omega = sqrt(9.81 * wave_number);
+    float phase = omega * constants.time_seconds;
+    vec2 phase_forward = vec2(cos(phase), sin(phase));
+    vec2 phase_backward = vec2(phase_forward.x, -phase_forward.y);
+    vec2 forward = complex_multiply(initial_spectrum.values[index], phase_forward);
+    vec2 mirrored = initial_spectrum.values[mirror];
+    mirrored.y = -mirrored.y;
+    vec2 backward = complex_multiply(mirrored, phase_backward);
+    vec2 height = forward + backward;
+    vec2 height_velocity = multiply_by_i((forward - backward) * omega);
+    vec2 direction = wave_vector / wave_number;
+    vec2 displacement_x = multiply_by_i(height * (-direction.x * constants.choppiness));
+    vec2 displacement_z = multiply_by_i(height * (-direction.y * constants.choppiness));
+    vec2 slope_x = multiply_by_i(height * wave_vector.x);
+    vec2 slope_z = multiply_by_i(height * wave_vector.y);
+    vec2 velocity_x = multiply_by_i(height_velocity * (-direction.x * constants.choppiness));
+    vec2 velocity_z = multiply_by_i(height_velocity * (-direction.y * constants.choppiness));
+
+    output_value.displacement_xy = vec4(displacement_x, height);
+    output_value.displacement_z_slope_x = vec4(displacement_z, slope_x);
+    output_value.slope_z_velocity_x = vec4(slope_z, velocity_x);
+    output_value.velocity_yz = vec4(height_velocity, velocity_z);
+    frequency_field.values[index] = output_value;
+}

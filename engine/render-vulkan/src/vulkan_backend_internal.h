@@ -8,6 +8,7 @@
 #include <arc/render/render_world.h>
 #include <arc/render/resources.h>
 #include <arc/render/virtual_shadow.h>
+#include <arc/water/ocean_simulation.h>
 
 #include "vulkan_swapchain.h"
 
@@ -473,6 +474,32 @@ private:
     {
         VkBuffer buffer{};
         VmaAllocation allocation{};
+    };
+
+    struct gpu_ocean_cascade
+    {
+        gpu_buffer initial_spectrum;
+        gpu_buffer frequency_a;
+        gpu_buffer frequency_b;
+        gpu_buffer surface;
+        VkDescriptorSet spectrum_descriptor{};
+        VkDescriptorSet bit_reverse_descriptor{};
+        VkDescriptorSet fft_ab_descriptor{};
+        VkDescriptorSet fft_ba_descriptor{};
+        VkDescriptorSet finalize_descriptor{};
+    };
+
+    struct gpu_ocean_simulation
+    {
+        water_render_instance instance;
+        water::ocean_simulation_profile profile;
+        std::array<gpu_ocean_cascade, water::maximum_ocean_cascades> cascades;
+        gpu_buffer surface_metadata;
+        VkDescriptorSet surface_descriptor{};
+        std::uint64_t settings_signature{};
+        std::uint64_t last_seen_frame{};
+        std::uint64_t last_update_frame{std::numeric_limits<std::uint64_t>::max()};
+        bool ready{};
     };
 
     struct gpu_resource_table_buffer
@@ -1011,6 +1038,22 @@ private:
 
     void dispatch_gpu_skinning(VkCommandBuffer command_buffer);
 
+    bool ensure_water_compute_resources();
+
+    bool ensure_water_surface_pipeline();
+
+    bool synchronize_water_simulations(std::uint64_t frame_index);
+
+    void destroy_ocean_simulation(gpu_ocean_simulation& simulation) noexcept;
+
+    void dispatch_water_spectrum_update(VkCommandBuffer command_buffer);
+
+    void dispatch_water_inverse_fft(VkCommandBuffer command_buffer);
+
+    const gpu_ocean_simulation* water_simulation_for(render_object_id object) const noexcept;
+
+    void destroy_water_resources() noexcept;
+
     void destroy_gpu_visibility_resources();
 
     bool rebuild_virtual_geometry_tables();
@@ -1369,6 +1412,7 @@ private:
     std::vector<virtual_cluster_draw> frame_virtual_draws_;
     std::vector<draw_mesh_event> frame_shadow_draws_;
     std::vector<virtual_cluster_draw> frame_virtual_shadow_draws_;
+    std::vector<water_render_instance> frame_waters_;
     std::vector<directional_light_event> frame_directional_lights_;
     std::vector<point_light_event> frame_point_lights_;
     std::vector<spot_light_event> frame_spot_lights_;
@@ -1380,6 +1424,7 @@ private:
     world_environment_data frame_environment_;
     render_camera frame_camera_;
     bool frame_camera_valid_{};
+    double frame_simulation_time_seconds_{};
     bool frame_shadows_enabled_{true};
     bool frame_fxaa_enabled_{};
     gpu_buffer light_buffer_;
@@ -1493,6 +1538,8 @@ private:
     VkPipelineLayout terrain_surface_pipeline_layout_{};
     VkPipeline mesh_pipeline_{};
     VkPipeline mesh_transparent_pipeline_{};
+    VkPipelineLayout water_surface_pipeline_layout_{};
+    VkPipeline water_surface_pipeline_{};
     VkPipeline mesh_wire_pipeline_{};
     VkPipeline terrain_surface_pipeline_{};
     VkPipeline gbuffer_pipeline_{};
@@ -1524,6 +1571,16 @@ private:
     VkPipeline debug_overlay_output_line_pipeline_{};
     VkPipeline debug_overlay_output_triangle_pipeline_{};
     bool wireframe_warning_reported_{};
+
+    std::unordered_map<std::uint64_t, gpu_ocean_simulation> ocean_simulations_;
+    VkDescriptorSetLayout water_compute_descriptor_set_layout_{};
+    VkDescriptorSetLayout water_surface_descriptor_set_layout_{};
+    VkDescriptorPool water_descriptor_pool_{};
+    VkPipelineLayout water_compute_pipeline_layout_{};
+    VkPipeline water_spectrum_pipeline_{};
+    VkPipeline water_fft_bit_reverse_pipeline_{};
+    VkPipeline water_fft_stage_pipeline_{};
+    VkPipeline water_surface_finalize_pipeline_{};
     viewport_output_type configured_viewport_output_{viewport_output_type::native_window};
 
 #if ARC_VULKAN_SHARED_VIEWPORT

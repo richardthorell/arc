@@ -5318,6 +5318,18 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"overflowRecords\":" + std::to_string(profile.gpu_scene.overflow_records) +
                     ",\"cpuSubmissions\":" + std::to_string(profile.gpu_scene.cpu_submissions) +
                     ",\"fallback\":" + to_json_string(profile.gpu_scene.fallback_reason) +
+                    "},\"water\":{\"enabled\":" + std::string(profile.water.enabled ? "true" : "false") +
+                    ",\"gpuSimulation\":" + std::string(profile.water.gpu_simulation ? "true" : "false") +
+                    ",\"deterministicInitialSpectrum\":" +
+                    std::string(profile.water.deterministic_initial_spectrum ? "true" : "false") +
+                    ",\"activeBodies\":" + std::to_string(profile.water.active_body_count) +
+                    ",\"activeCascades\":" + std::to_string(profile.water.active_cascade_count) +
+                    ",\"maximumResolution\":" + std::to_string(profile.water.maximum_resolution) +
+                    ",\"updateIntervalFrames\":" + std::to_string(profile.water.update_interval_frames) +
+                    ",\"computeDispatches\":" + std::to_string(profile.water.compute_dispatch_count) +
+                    ",\"spectrumMilliseconds\":" + std::to_string(profile.water.spectrum_update_milliseconds) +
+                    ",\"inverseFftMilliseconds\":" + std::to_string(profile.water.inverse_fft_milliseconds) +
+                    ",\"fallback\":" + to_json_string(profile.water.fallback_reason) +
                     "},\"textureStreaming\":{\"gpuBudgetBytes\":" +
                     std::to_string(profile.texture_streaming.gpu_budget_bytes) +
                     ",\"gpuResidentBytes\":" + std::to_string(profile.texture_streaming.gpu_resident_bytes) +
@@ -6683,7 +6695,7 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         to_render_mode(state_->viewport_options.render_mode), to_visualization(state_->viewport_options.visualization),
         to_overlay(state_->viewport_options.overlay), state_->viewport_options.shadows,
         to_scene_visibility(state_->viewport_options.environment), delta_seconds, std::move(debug_overlay),
-        viewport_camera, &state_->scene.terrain_render_proxies);
+        viewport_camera, &state_->scene.terrain_render_proxies, runtime_frame.total_seconds);
 
     auto view_config = state_->renderer->resolved_config();
     auto requested_anti_aliasing = to_render_anti_aliasing(state_->viewport_options.anti_aliasing);

@@ -1,0 +1,59 @@
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+struct frequency_sample
+{
+    vec4 displacement_xy;
+    vec4 displacement_z_slope_x;
+    vec4 slope_z_velocity_x;
+    vec4 velocity_yz;
+};
+
+struct surface_sample
+{
+    vec4 displacement;
+    vec4 normal;
+    vec4 velocity;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer frequency_field_buffer
+{
+    frequency_sample values[];
+} frequency_field;
+
+layout(std430, set = 0, binding = 1) writeonly buffer surface_field_buffer
+{
+    surface_sample values[];
+} surface_field;
+
+layout(push_constant) uniform fft_constants
+{
+    uint resolution;
+    uint stage;
+    uint direction;
+    uint reserved;
+} constants;
+
+void main()
+{
+    uvec2 coordinate = gl_GlobalInvocationID.xy;
+    if (coordinate.x >= constants.resolution || coordinate.y >= constants.resolution)
+        return;
+    uint index = coordinate.y * constants.resolution + coordinate.x;
+    float scale = 1.0 / float(constants.resolution * constants.resolution);
+    frequency_sample frequency = frequency_field.values[index];
+    float slope_x = frequency.displacement_z_slope_x.z * scale;
+    float slope_z = frequency.slope_z_velocity_x.x * scale;
+    surface_sample surface;
+    surface.displacement = vec4(frequency.displacement_xy.x * scale,
+                                frequency.displacement_xy.z * scale,
+                                frequency.displacement_z_slope_x.x * scale,
+                                0.0);
+    surface.normal = vec4(normalize(vec3(-slope_x, 1.0, -slope_z)), 0.0);
+    surface.velocity = vec4(frequency.slope_z_velocity_x.z * scale,
+                            frequency.velocity_yz.x * scale,
+                            frequency.velocity_yz.z * scale,
+                            0.0);
+    surface_field.values[index] = surface;
+}

@@ -129,6 +129,19 @@ export type EditorDiagnosticsSnapshot = {
     cpuSubmissions: number;
     fallback: string;
   };
+  water?: {
+    enabled: boolean;
+    gpuSimulation: boolean;
+    deterministicInitialSpectrum: boolean;
+    activeBodies: number;
+    activeCascades: number;
+    maximumResolution: number;
+    updateIntervalFrames: number;
+    computeDispatches: number;
+    spectrumMilliseconds: number;
+    inverseFftMilliseconds: number;
+    fallback: string;
+  };
   textureStreaming?: {
     gpuBudgetBytes: number;
     gpuResidentBytes: number;
