@@ -1,3 +1,4 @@
+import { createFlowAsset } from '../flow/flowGraphTypes';
 import { createDefaultMaterialGraph, type MaterialAssetJson } from '../material/materialGraphTypes';
 import type { AssetItem, ProjectSnapshot } from '../services/editorHostTypes';
 
@@ -5,6 +6,7 @@ export type ShaderAssetTemplate = 'surface' | 'unlit' | 'compute' | 'post-proces
 
 export type AssetCreationRequest =
   | { kind: 'material'; name: string; folder: string }
+  | { kind: 'flow'; name: string; folder: string }
   | { kind: 'shader'; name: string; folder: string; template: ShaderAssetTemplate };
 
 export type AssetCreationDefinition = {
@@ -26,7 +28,7 @@ export const projectAssetRootPath = (project: Pick<ProjectSnapshot, 'root' | 'as
 };
 
 const cleanAssetName = (name: string) => {
-  const value = name.trim().replace(/\.(arcmat|frag|vert|comp)$/i, '');
+  const value = name.trim().replace(/\.(arcmat|arcflow|slang|frag|vert|comp)$/i, '');
   if (!value) throw new Error('Enter a name for the asset');
   if (value === '.' || value === '..' || /[<>:"/\\|?*]/.test(value)) {
     throw new Error('Asset names cannot contain path or reserved file-system characters');
@@ -68,15 +70,17 @@ export const buildAssetCreation = (
 ): AssetCreationDefinition => {
   const name = cleanAssetName(request.name);
   const folder = request.folder || projectAssetRootPath(project);
-  const extension = request.kind === 'material' ? 'arcmat' : 'slang';
+  const extension = request.kind === 'material' ? 'arcmat' : request.kind === 'flow' ? 'arcflow' : 'slang';
   const path = joinPath(folder, `${name}.${extension}`);
   const contents =
     request.kind === 'material'
       ? `${JSON.stringify(defaultMaterialAsset(name), null, 2)}\n`
-      : shaderTemplateSource(request.template);
+      : request.kind === 'flow'
+        ? `${JSON.stringify(createFlowAsset(name), null, 2)}\n`
+        : shaderTemplateSource(request.template);
 
-  if (request.kind === 'material' || request.kind === 'shader') {
-    console.info('[material-flow] asset creation path', {
+  if (request.kind === 'material' || request.kind === 'flow' || request.kind === 'shader') {
+    console.info('[asset-creation] asset creation path', {
       kind: request.kind,
       projectRoot: project.root,
       assetRoot: project.assetRoot,
