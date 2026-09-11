@@ -34,9 +34,10 @@ bool begin_play(void*, const arc::project::game_play_context_v1* context)
         !context->world || context->world->structure_size < sizeof(arc::project::game_world_api_v1) || session_active)
         return false;
     const auto& world = *context->world;
-    if (!world.user_data || !world.create_entity || !world.destroy_entity || !world.entity_alive || !world.query_entities ||
-        !world.has_core_component || !world.read_name || !world.set_name || !world.read_transform ||
-        !world.set_transform || !world.read_tag || !world.set_tag || !world.read_active || !world.set_active)
+    if (!world.user_data || !world.create_entity || !world.destroy_entity || !world.entity_alive ||
+        !world.query_entities || !world.has_core_component || !world.read_name || !world.set_name ||
+        !world.read_transform || !world.set_transform || !world.read_tag || !world.set_tag || !world.read_active ||
+        !world.set_active)
         return false;
 
     const auto created = world.create_entity(world.user_data);
@@ -48,7 +49,8 @@ bool begin_play(void*, const arc::project::game_play_context_v1* context)
     constexpr std::string_view tag = "runtime";
     if (!world.set_name(world.user_data, created, session_name.data(), session_name.size()) ||
         !world.set_transform(world.user_data, created, &transform) ||
-        !world.set_tag(world.user_data, created, tag.data(), tag.size()) || !world.set_active(world.user_data, created, true))
+        !world.set_tag(world.user_data, created, tag.data(), tag.size()) ||
+        !world.set_active(world.user_data, created, true))
         return false;
 
     arc::project::game_transform_v1 read_transform;
@@ -64,9 +66,10 @@ bool begin_play(void*, const arc::project::game_play_context_v1* context)
         return false;
 
     arc::project::game_world_query_v1 query{
-        .required_core_components = arc::project::game_core_component_bit_v1(arc::project::game_core_component_v1::name) |
-                                    arc::project::game_core_component_bit_v1(arc::project::game_core_component_v1::transform) |
-                                    arc::project::game_core_component_bit_v1(arc::project::game_core_component_v1::active)};
+        .required_core_components =
+            arc::project::game_core_component_bit_v1(arc::project::game_core_component_v1::name) |
+            arc::project::game_core_component_bit_v1(arc::project::game_core_component_v1::transform) |
+            arc::project::game_core_component_bit_v1(arc::project::game_core_component_v1::active)};
     session_search search{.world = &world};
     if (!world.query_entities(world.user_data, &query, &search, find_session_entity) || !search.found) return false;
 

@@ -68,7 +68,8 @@ struct game_core_component_access_v1
 
 using game_core_component_mask_v1 = std::uint32_t;
 
-[[nodiscard]] constexpr game_core_component_mask_v1 game_core_component_bit_v1(game_core_component_v1 component) noexcept
+[[nodiscard]] constexpr game_core_component_mask_v1
+game_core_component_bit_v1(game_core_component_v1 component) noexcept
 {
     return game_core_component_mask_v1{1u} << static_cast<std::uint8_t>(component);
 }

@@ -181,7 +181,7 @@ struct game_system_descriptor_v1
     void* user_data{};                ///< Module-owned state valid for the loaded generation.
     game_system_execute_v1 execute{}; ///< Called by ARC's ECS scheduler.
     const game_core_component_access_v1* core_component_accesses{}; ///< Stable engine-component access declarations.
-    std::size_t core_component_access_count{};                      ///< Number of entries in @ref core_component_accesses.
+    std::size_t core_component_access_count{}; ///< Number of entries in @ref core_component_accesses.
 };
 
 /** @brief Per-session context passed to project BeginPlay/EndPlay callbacks. */

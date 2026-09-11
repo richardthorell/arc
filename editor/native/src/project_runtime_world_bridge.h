@@ -72,7 +72,8 @@ inline bool allows_core_component_access(const runtime_world_bridge_context& bri
            found->mode == project::game_core_component_access_mode_v1::write;
 }
 
-inline bool require_core_component_access(runtime_world_bridge_context& bridge, project::game_core_component_v1 component,
+inline bool require_core_component_access(runtime_world_bridge_context& bridge,
+                                          project::game_core_component_v1 component,
                                           project::game_core_component_access_mode_v1 requested) noexcept
 {
     if (allows_core_component_access(bridge, component, requested)) return true;
@@ -170,10 +171,9 @@ inline bool query_runtime_entities(void* user_data, const project::game_world_qu
                                 project::game_core_component_bit_v1(project::game_core_component_v1::active);
     if (((query->required_core_components | query->excluded_core_components) & ~known_mask) != 0) return false;
 
-    constexpr project::game_core_component_v1 components[]{project::game_core_component_v1::name,
-                                                           project::game_core_component_v1::transform,
-                                                           project::game_core_component_v1::tag,
-                                                           project::game_core_component_v1::active};
+    constexpr project::game_core_component_v1 components[]{
+        project::game_core_component_v1::name, project::game_core_component_v1::transform,
+        project::game_core_component_v1::tag, project::game_core_component_v1::active};
     for (const auto component : components)
     {
         const auto bit = project::game_core_component_bit_v1(component);
@@ -289,7 +289,8 @@ inline project::game_string_view_v1 read_runtime_name(void* user_data, project::
         return {};
     const auto& world = std::as_const(*bridge.world);
     const auto* value = world.try_get<scene::name_component>(native_entity(entity));
-    return value ? project::game_string_view_v1{value->value.data(), value->value.size()} : project::game_string_view_v1{};
+    return value ? project::game_string_view_v1{value->value.data(), value->value.size()}
+                 : project::game_string_view_v1{};
 }
 
 inline bool set_runtime_name(void* user_data, project::game_entity_target_v1 entity, const char* value,
@@ -348,7 +349,8 @@ inline project::game_string_view_v1 read_runtime_tag(void* user_data, project::g
         return {};
     const auto& world = std::as_const(*bridge.world);
     const auto* value = world.try_get<scene::tag_component>(native_entity(entity));
-    return value ? project::game_string_view_v1{value->value.data(), value->value.size()} : project::game_string_view_v1{};
+    return value ? project::game_string_view_v1{value->value.data(), value->value.size()}
+                 : project::game_string_view_v1{};
 }
 
 inline bool set_runtime_tag(void* user_data, project::game_entity_target_v1 entity, const char* value,

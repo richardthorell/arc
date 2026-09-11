@@ -377,7 +377,8 @@ std::vector<project_system_registration> copy_system_registrations(const project
             return {};
         }
         const auto& system = *static_cast<const project::game_system_descriptor_v1*>(registration.descriptor);
-        constexpr std::size_t base_descriptor_size = offsetof(project::game_system_descriptor_v1, core_component_accesses);
+        constexpr std::size_t base_descriptor_size =
+            offsetof(project::game_system_descriptor_v1, core_component_accesses);
         const bool has_core_accesses = system.structure_size >= sizeof(project::game_system_descriptor_v1);
         if (system.structure_size < base_descriptor_size || !system.execute || !valid_system_phase(system.phase) ||
             !valid_system_priority(system.priority) || (system.component_access_count && !system.component_accesses) ||

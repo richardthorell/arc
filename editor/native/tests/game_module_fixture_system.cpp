@@ -43,15 +43,17 @@ bool execute_visibility_system(void*, arc::project::game_system_context_v1* cont
         return false;
 
     arc::project::game_world_query_v1 query{
-        .required_core_components = arc::project::game_core_component_bit_v1(arc::project::game_core_component_v1::name) |
-                                    arc::project::game_core_component_bit_v1(arc::project::game_core_component_v1::active)};
+        .required_core_components =
+            arc::project::game_core_component_bit_v1(arc::project::game_core_component_v1::name) |
+            arc::project::game_core_component_bit_v1(arc::project::game_core_component_v1::active)};
     probe_search search{.world = &world};
     if (!world.query_entities(world.user_data, &query, &search, find_probe) || !search.entity.valid()) return false;
 
     if (!context->project_component_user_data || !context->has_project_component ||
         !context->read_project_component_json || !context->patch_project_component_json)
         return false;
-    if (!context->has_project_component(context->project_component_user_data, search.entity, runtime_component_id.data()))
+    if (!context->has_project_component(context->project_component_user_data, search.entity,
+                                        runtime_component_id.data()))
         return false;
     const char* before = context->read_project_component_json(context->project_component_user_data, search.entity,
                                                               runtime_component_id.data());
