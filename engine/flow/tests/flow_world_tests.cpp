@@ -261,7 +261,8 @@ void run_flow_world_tests()
 
         vm_instance instance{program};
         const vm_world_context context{.api = &api, .self = {.index = 9, .generation = 1}};
-        assert(instance.begin_play(context).succeeded());
+        const execution_result result = instance.begin_play(context);
+        assert(result.succeeded());
         assert(std::get<bool>(*instance.value_slot(1)));
         assert(std::get<bool>(*instance.value_slot(2)));
         assert(std::get<std::string>(*instance.value_slot(3)) == "ReadName");
@@ -291,17 +292,17 @@ void run_flow_world_tests()
         };
 
         vm_instance instance{program};
-        assert(instance.begin_play({.api = &api}).succeeded());
+        const execution_result result = instance.begin_play({.api = &api});
+        assert(result.succeeded());
         assert(world.create_calls == 1);
         assert(world.destroy_calls == 1);
         assert(world.last_name_target.is_deferred);
         assert(world.last_name_target.deferred.buffer == 77);
         assert(world.last_name_target.deferred.ordinal == 5);
         assert(world.last_destroy_target.is_deferred);
-        const flow_entity& created = std::get<flow_entity>(*instance.value_slot(0));
-        assert(created.deferred);
-        assert(created.deferred_buffer == 77);
-        assert(created.deferred_ordinal == 5);
+        assert(std::get<flow_entity>(*instance.value_slot(0)).deferred);
+        assert(std::get<flow_entity>(*instance.value_slot(0)).deferred_buffer == 77);
+        assert(std::get<flow_entity>(*instance.value_slot(0)).deferred_ordinal == 5);
     }
 
     {
