@@ -1199,6 +1199,16 @@ struct host_set_terrain_brush_command
     std::uint32_t active_layer{};
 };
 
+struct host_terrain_modifier_stack_command
+{
+    host_entity_id entity{};
+    std::string operation{"inspect"};
+    std::string modifier;
+    std::string name;
+    bool enabled{true};
+    std::int32_t index{-1};
+};
+
 struct host_set_terrain_layer_command
 {
     host_entity_id entity{};
@@ -1555,22 +1565,22 @@ using host_command_payload = std::variant<
     host_rename_entity_command, host_select_entity_command, host_clear_selection_command, host_set_active_command,
     host_set_tag_command, host_set_transform_command, host_set_render_layer_command, host_set_mobility_command,
     host_set_camera_command, host_set_light_command, host_set_mesh_renderer_command, host_set_terrain_command,
-    host_set_water_command, host_set_terrain_brush_command, host_set_terrain_layer_command, host_create_terrain_command,
-    host_generate_terrain_command, host_import_terrain_heightmap_command, host_export_terrain_heightmap_command,
-    host_resample_terrain_command, host_cancel_terrain_operation_command, host_terrain_stroke_command,
-    host_terrain_hover_command, host_set_entity_material_command, host_component_operation_command,
-    host_patch_project_component_command, host_set_world_environment_command,
-    host_apply_world_environment_preset_command, host_set_environment_hdri_command, host_set_camera_projection_command,
-    host_viewport_attach_command, host_viewport_create_command, host_viewport_resize_command,
-    host_viewport_detach_command, host_viewport_frame_released_command, host_viewport_set_visibility_command,
-    host_viewport_pointer_command, host_viewport_key_command, host_viewport_set_camera_mode_command,
-    host_viewport_set_render_options_command, host_viewport_set_skeleton_joint_command,
-    host_viewport_camera_input_command, host_viewport_set_pose_command, host_history_undo_command,
-    host_history_redo_command, host_history_begin_transaction_command, host_history_commit_transaction_command,
-    host_history_cancel_transaction_command, host_runtime_resume_command, host_runtime_pause_command,
-    host_runtime_stop_command, host_runtime_step_command, host_runtime_set_time_scale_command,
-    host_runtime_capture_snapshot_command, host_runtime_restore_snapshot_command, host_viewport_set_tool_command,
-    host_viewport_pick_command, host_viewport_capture_command>;
+    host_set_water_command, host_set_terrain_brush_command, host_terrain_modifier_stack_command,
+    host_set_terrain_layer_command, host_create_terrain_command, host_generate_terrain_command,
+    host_import_terrain_heightmap_command, host_export_terrain_heightmap_command, host_resample_terrain_command,
+    host_cancel_terrain_operation_command, host_terrain_stroke_command, host_terrain_hover_command,
+    host_set_entity_material_command, host_component_operation_command, host_patch_project_component_command,
+    host_set_world_environment_command, host_apply_world_environment_preset_command, host_set_environment_hdri_command,
+    host_set_camera_projection_command, host_viewport_attach_command, host_viewport_create_command,
+    host_viewport_resize_command, host_viewport_detach_command, host_viewport_frame_released_command,
+    host_viewport_set_visibility_command, host_viewport_pointer_command, host_viewport_key_command,
+    host_viewport_set_camera_mode_command, host_viewport_set_render_options_command,
+    host_viewport_set_skeleton_joint_command, host_viewport_camera_input_command, host_viewport_set_pose_command,
+    host_history_undo_command, host_history_redo_command, host_history_begin_transaction_command,
+    host_history_commit_transaction_command, host_history_cancel_transaction_command, host_runtime_resume_command,
+    host_runtime_pause_command, host_runtime_stop_command, host_runtime_step_command,
+    host_runtime_set_time_scale_command, host_runtime_capture_snapshot_command, host_runtime_restore_snapshot_command,
+    host_viewport_set_tool_command, host_viewport_pick_command, host_viewport_capture_command>;
 
 struct host_edit_transaction
 {

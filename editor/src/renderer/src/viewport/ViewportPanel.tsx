@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DragEvent, KeyboardEvent, PointerEvent, WheelEvent } from 'react';
+import type { DragEvent, KeyboardEvent, PointerEvent, ReactNode, WheelEvent } from 'react';
 import { Box, Camera, Eye, EyeOff, Focus, Maximize2, RefreshCw } from 'lucide-react';
 
 import type { CommandId } from '../app/workbenchTypes';
@@ -27,6 +27,7 @@ type ViewportPanelProps = {
   onMaximizeToggle?: () => void;
   onViewportLayoutChange?: (count: 1 | 2 | 3 | 4) => void;
   active?: boolean;
+  overlay?: ReactNode;
 };
 
 type DragState = {
@@ -136,6 +137,7 @@ export function ViewportPanel({
   onMaximizeToggle,
   onViewportLayoutChange,
   active = true,
+  overlay,
 }: ViewportPanelProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const surfaceId = `arc-viewport-surface-${viewportId.replaceAll(/[^a-zA-Z0-9_-]/g, '-')}`;
@@ -1091,6 +1093,8 @@ export function ViewportPanel({
         {streamedAvailable && (
           <canvas id={surfaceId} className="arc-viewport-shared-surface" aria-label="ARC 3D viewport" />
         )}
+
+        {overlay && <div className="arc-viewport-tool-overlay">{overlay}</div>}
 
         {!viewportActive && !viewportAvailable && (
           <div className="arc-viewport-unavailable" role="alert">
