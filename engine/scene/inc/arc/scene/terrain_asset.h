@@ -9,6 +9,7 @@
 #include <compare>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -68,6 +69,21 @@ struct terrain_partition_settings
 [[nodiscard]] terrain_world_bounds terrain_region_bounds(const terrain_coordinate_system& coordinates,
                                                          const terrain_partition_settings& partition,
                                                          terrain_region_id region) noexcept;
+inline constexpr std::uint32_t terrain_modifier_sample_coordinate_max = 65535u;
+
+/** @brief Resolution-independent sample address inside one stable authoring region. */
+struct terrain_modifier_sample_location
+{
+    terrain_region_id region{};
+    std::uint32_t x{};
+    std::uint32_t z{};
+};
+
+/** @brief Quantize a world-space XZ position into a stable region-local modifier address. */
+[[nodiscard]] terrain_modifier_sample_location terrain_modifier_sample_at(const terrain_coordinate_system& coordinates,
+                                                                          const terrain_partition_settings& partition,
+                                                                          double world_x, double world_z) noexcept;
+
 [[nodiscard]] terrain_world_bounds expand_terrain_bounds(terrain_world_bounds bounds, double amount) noexcept;
 [[nodiscard]] std::vector<terrain_region_id> terrain_regions_overlapping(const terrain_coordinate_system& coordinates,
                                                                          const terrain_partition_settings& partition,
@@ -151,6 +167,13 @@ struct terrain_sculpt_sample_delta
 };
 
 /** Sparse accumulated material-weight delta owned by one paint modifier. */
+/** @brief One additive sparse sculpt edit routed to a stable authoring region. */
+struct terrain_sculpt_sample_edit
+{
+    terrain_region_id region{};
+    terrain_sculpt_sample_delta sample{};
+};
+
 struct terrain_paint_sample_delta
 {
     std::uint32_t x{};
@@ -402,6 +425,13 @@ find_terrain_modifier_payload(const terrain_modifier_descriptor& modifier, terra
 [[nodiscard]] terrain_dirty_update set_terrain_sculpt_region_samples(terrain_asset& asset, terrain_stable_id modifier,
                                                                      terrain_region_id region,
                                                                      std::vector<terrain_sculpt_sample_delta> samples);
+
+/**
+ * Add sparse deltas into one sculpt modifier using stable region-local coordinates.
+ * Duplicate sample edits are folded, zero results are removed, and every changed region shares one authoring revision.
+ */
+[[nodiscard]] terrain_dirty_update accumulate_terrain_sculpt_samples(terrain_asset& asset, terrain_stable_id modifier,
+                                                                     std::span<const terrain_sculpt_sample_edit> edits);
 
 /** Replace one region's sparse paint payload and dirty only attributes for that authoring region. */
 [[nodiscard]] terrain_dirty_update set_terrain_paint_region_samples(terrain_asset& asset, terrain_stable_id modifier,

@@ -54,8 +54,8 @@ void update_vertical_bounds(terrain_evaluated_surface& surface) noexcept
     surface.local_bounds.max_y = maximum;
 }
 
-bool apply_height_offset(const terrain_modifier_descriptor& modifier, terrain_evaluated_surface& surface,
-                         std::string& error)
+bool apply_height_offset(const terrain_modifier_descriptor& modifier, const terrain_build_region_snapshot&,
+                         terrain_evaluated_surface& surface, std::string& error)
 {
     const auto parameters = nlohmann::json::parse(modifier.canonical_parameters, nullptr, false);
     if (parameters.is_discarded() || !parameters.is_object() || !parameters.contains("offset") ||
@@ -82,6 +82,45 @@ bool apply_height_offset(const terrain_modifier_descriptor& modifier, terrain_ev
         auto& mesh = std::get<terrain_evaluated_mesh>(surface.geometry);
         for (auto& position : mesh.positions)
             position[1] += offset;
+    }
+    update_vertical_bounds(surface);
+    return true;
+}
+
+bool apply_sculpt_layer(const terrain_modifier_descriptor& modifier, const terrain_build_region_snapshot& snapshot,
+                        terrain_evaluated_surface& surface, std::string& error)
+{
+    const auto* payload = find_terrain_modifier_payload(modifier, snapshot.target);
+    if (!payload) return true;
+    if (!std::holds_alternative<terrain_sculpt_region_payload>(payload->data))
+    {
+        error = "Sculpt Layer contains an incompatible sparse region payload";
+        return false;
+    }
+
+    auto* heightfield = std::get_if<terrain_evaluated_heightfield>(&surface.geometry);
+    if (!heightfield || heightfield->sample_width < 2u || heightfield->sample_height < 2u)
+    {
+        error = "Sculpt Layer currently requires heightfield-backed TerrainSurfaceIR";
+        return false;
+    }
+
+    const auto& samples = std::get<terrain_sculpt_region_payload>(payload->data).samples;
+    const auto coordinate = static_cast<std::uint64_t>(terrain_modifier_sample_coordinate_max);
+    for (const auto& sample : samples)
+    {
+        const auto x = static_cast<std::uint32_t>(
+            (static_cast<std::uint64_t>(sample.x) * (heightfield->sample_width - 1u) + coordinate / 2u) / coordinate);
+        const auto z = static_cast<std::uint32_t>(
+            (static_cast<std::uint64_t>(sample.z) * (heightfield->sample_height - 1u) + coordinate / 2u) / coordinate);
+        const auto index = static_cast<std::size_t>(z) * heightfield->sample_width + x;
+        const auto next = heightfield->heights[index] + sample.delta;
+        if (!std::isfinite(next))
+        {
+            error = "Sculpt Layer produced a non-finite height";
+            return false;
+        }
+        heightfield->heights[index] = next;
     }
     update_vertical_bounds(surface);
     return true;
@@ -235,7 +274,7 @@ terrain_evaluation_result terrain_evaluator::evaluate(const terrain_asset& asset
         }
 
         std::string error;
-        if (!found->second(modifier, *surface, error))
+        if (!found->second(modifier, result.build_snapshot, *surface, error))
         {
             add_diagnostic(result, terrain_evaluation_diagnostic_severity::error,
                            terrain_evaluation_diagnostic_code::modifier_failed,
@@ -265,6 +304,7 @@ terrain_evaluator make_default_terrain_evaluator()
 {
     terrain_evaluator result;
     (void)result.register_modifier("arc.height-offset", apply_height_offset);
+    (void)result.register_modifier(std::string(terrain_builtin_modifier_types::sculpt_layer), apply_sculpt_layer);
     return result;
 }
 

@@ -183,6 +183,115 @@ terrain_dirty_update set_terrain_sculpt_region_samples(terrain_asset& asset, ter
                               modifier->domains);
 }
 
+terrain_dirty_update accumulate_terrain_sculpt_samples(terrain_asset& asset, terrain_stable_id modifier_id,
+                                                       std::span<const terrain_sculpt_sample_edit> edits)
+{
+    auto* modifier = find_terrain_modifier(asset, modifier_id);
+    if (!modifier || modifier->type_id != terrain_builtin_modifier_types::sculpt_layer || edits.empty()) return {};
+
+    std::vector<terrain_sculpt_sample_edit> pending;
+    pending.reserve(edits.size());
+    for (const auto& edit : edits)
+    {
+        if (!std::isfinite(edit.sample.delta) || edit.sample.delta == 0.0f ||
+            edit.sample.x > terrain_modifier_sample_coordinate_max ||
+            edit.sample.z > terrain_modifier_sample_coordinate_max)
+            return {};
+        pending.push_back(edit);
+    }
+
+    const auto edit_less = [](const terrain_sculpt_sample_edit& lhs, const terrain_sculpt_sample_edit& rhs)
+    {
+        if (lhs.region.z != rhs.region.z) return lhs.region.z < rhs.region.z;
+        if (lhs.region.x != rhs.region.x) return lhs.region.x < rhs.region.x;
+        return sample_less(lhs.sample, rhs.sample);
+    };
+    std::sort(pending.begin(), pending.end(), edit_less);
+
+    std::vector<terrain_sculpt_sample_edit> compact;
+    compact.reserve(pending.size());
+    for (const auto& edit : pending)
+    {
+        if (!compact.empty() && compact.back().region == edit.region && compact.back().sample.x == edit.sample.x &&
+            compact.back().sample.z == edit.sample.z)
+        {
+            const auto combined = compact.back().sample.delta + edit.sample.delta;
+            if (!std::isfinite(combined)) return {};
+            compact.back().sample.delta = combined;
+        }
+        else
+        {
+            compact.push_back(edit);
+        }
+    }
+    compact.erase(
+        std::remove_if(compact.begin(), compact.end(), [](const auto& edit) { return edit.sample.delta == 0.0f; }),
+        compact.end());
+    if (compact.empty()) return {};
+
+    std::vector<terrain_region_id> changed_regions;
+    for (std::size_t begin = 0; begin < compact.size();)
+    {
+        const auto region = compact[begin].region;
+        auto end = begin + 1u;
+        while (end < compact.size() && compact[end].region == region)
+            ++end;
+
+        std::vector<terrain_sculpt_sample_delta> samples;
+        if (const auto* existing = find_terrain_modifier_payload(*modifier, region);
+            existing && std::holds_alternative<terrain_sculpt_region_payload>(existing->data))
+            samples = std::get<terrain_sculpt_region_payload>(existing->data).samples;
+        sort_samples(samples);
+
+        bool changed{};
+        for (auto edit = begin; edit < end; ++edit)
+        {
+            const auto found = std::lower_bound(samples.begin(), samples.end(), compact[edit].sample,
+                                                [](const auto& lhs, const auto& rhs) { return sample_less(lhs, rhs); });
+            if (found != samples.end() && found->x == compact[edit].sample.x && found->z == compact[edit].sample.z)
+            {
+                const auto combined = found->delta + compact[edit].sample.delta;
+                if (!std::isfinite(combined)) return {};
+                if (combined == found->delta) continue;
+                if (combined == 0.0f)
+                    samples.erase(found);
+                else
+                    found->delta = combined;
+                changed = true;
+            }
+            else
+            {
+                samples.insert(found, compact[edit].sample);
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            auto& payload = ensure_payload<terrain_sculpt_region_payload>(*modifier, region);
+            payload.data = terrain_sculpt_region_payload{std::move(samples)};
+            erase_empty_payload(*modifier, region);
+            changed_regions.push_back(region);
+        }
+        begin = end;
+    }
+
+    if (changed_regions.empty()) return {};
+    recompute_affected_bounds(asset, *modifier);
+    if (asset.authoring_revision != std::numeric_limits<std::uint64_t>::max()) ++asset.authoring_revision;
+
+    terrain_dirty_update result;
+    result.revision = asset.authoring_revision;
+    result.regions = std::move(changed_regions);
+    for (const auto region : result.regions)
+    {
+        auto& record = ensure_terrain_region(asset, region);
+        record.dirty_revision = result.revision;
+        record.dirty_domains |= terrain_domain::geometry;
+    }
+    return result;
+}
+
 terrain_dirty_update set_terrain_paint_region_samples(terrain_asset& asset, terrain_stable_id modifier_id,
                                                       terrain_region_id region,
                                                       std::vector<terrain_paint_sample_delta> samples)
@@ -224,7 +333,10 @@ bool validate_terrain_modifier_payloads(const terrain_modifier_descriptor& modif
             const auto& samples = std::get<terrain_sculpt_region_payload>(payload.data).samples;
             if (samples.empty()) return false;
             for (const auto& sample : samples)
-                if (!std::isfinite(sample.delta) || sample.delta == 0.0f) return false;
+                if (!std::isfinite(sample.delta) || sample.delta == 0.0f ||
+                    sample.x > terrain_modifier_sample_coordinate_max ||
+                    sample.z > terrain_modifier_sample_coordinate_max)
+                    return false;
             auto sorted = samples;
             sort_samples(sorted);
             if (has_duplicate_samples(sorted)) return false;
@@ -234,7 +346,13 @@ bool validate_terrain_modifier_payloads(const terrain_modifier_descriptor& modif
             if (!std::holds_alternative<terrain_paint_region_payload>(payload.data)) return false;
             const auto& samples = std::get<terrain_paint_region_payload>(payload.data).samples;
             if (samples.empty()) return false;
-            if (std::any_of(samples.begin(), samples.end(), zero_paint_delta)) return false;
+            if (std::any_of(samples.begin(), samples.end(),
+                            [](const auto& sample)
+                            {
+                                return zero_paint_delta(sample) || sample.x > terrain_modifier_sample_coordinate_max ||
+                                       sample.z > terrain_modifier_sample_coordinate_max;
+                            }))
+                return false;
             auto sorted = samples;
             sort_samples(sorted);
             if (has_duplicate_samples(sorted)) return false;
