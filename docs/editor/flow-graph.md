@@ -37,7 +37,7 @@ The native editor host discovers `.arcflow` files for Content Browser persistenc
 
 ## F2 compiler contract
 
-F2 adds the engine-side `arc-flow` module and treats `.arcflow` as compiler input rather than runtime data. `arc::flow::compile_asset` parses the authored JSON, performs semantic validation, lowers the graph to typed IR, and then lowers the IR to runtime-ready bytecode structures.
+F2 adds the engine-side `arc-flow` module and treats `.arcflow` as compiler input rather than runtime data. `arc::flow::compile_asset` parses the authored JSON, performs semantic validation, lowers the graph to typed IR, and then lowers the IR to runtime-ready bytecode structures. Installed SDK packages export the module as `arc::Flow`.
 
 Compiler diagnostics carry stable codes plus node, pin, and connection IDs where applicable. The initial validation pass rejects malformed schemas, duplicate IDs, unknown pins, incompatible value connections, multiple sources for one input, implicit execution fan-out, and execution cycles. Unreachable executable nodes are reported as warnings. Input Action nodes also require a non-empty action name.
 
