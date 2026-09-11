@@ -1,3 +1,4 @@
+#include <arc/input/gamepad.h>
 #include <arc/input/input.h>
 
 #include <algorithm>
@@ -10,6 +11,20 @@ arc::input::input_binding key_binding(arc::input::key value)
 {
     return {.device = arc::input::input_device_type::keyboard,
             .control = arc::input::make_key_control(value),
+            .processors = {}};
+}
+
+arc::input::input_binding gamepad_button_binding(arc::input::gamepad_button value)
+{
+    return {.device = arc::input::input_device_type::gamepad,
+            .control = arc::input::make_gamepad_button_control(value),
+            .processors = {}};
+}
+
+arc::input::input_binding gamepad_axis_binding(arc::input::gamepad_axis value)
+{
+    return {.device = arc::input::input_device_type::gamepad,
+            .control = arc::input::make_gamepad_axis_control(value),
             .processors = {}};
 }
 
@@ -73,9 +88,28 @@ int main()
 
     player_one.add_context("gameplay", 0);
     player_one.bind_action("gameplay", "jump", key_binding(key::enter));
+    player_one.bind_action("gameplay", "accept", gamepad_button_binding(gamepad_button::south));
+    player_one.bind_axis2d("gameplay", "move", gamepad_axis_binding(gamepad_axis::left_x), {1.0f, 0.0f});
+    player_one.bind_axis2d("gameplay", "move", gamepad_axis_binding(gamepad_axis::left_y), {0.0f, 1.0f});
 
     input.begin_frame();
     assert(input.device_events().empty());
+    assert(input.submit_button(controller, make_gamepad_button_control(gamepad_button::south), true));
+    assert(input.submit_axis(controller, make_gamepad_axis_control(gamepad_axis::left_x), 0.75f));
+    assert(input.submit_axis(controller, make_gamepad_axis_control(gamepad_axis::left_y), -0.25f));
+    assert(player_one.pressed("accept"));
+    assert(player_one.down("accept"));
+    const arc::math::vector2f gamepad_move = player_one.axis2d("move");
+    assert(gamepad_move[0] == 0.75f);
+    assert(gamepad_move[1] == -0.25f);
+
+    input.begin_frame();
+    assert(!player_one.pressed("accept"));
+    assert(player_one.down("accept"));
+    assert(input.submit_button(controller, make_gamepad_button_control(gamepad_button::south), false));
+    assert(player_one.released("accept"));
+
+    input.begin_frame();
     assert(input.submit_button(keyboard, make_key_control(key::space), true));
     assert(player_zero.pressed("jump"));
     assert(player_zero.down("jump"));
