@@ -1,15 +1,4 @@
-import {
-  ArrowDown,
-  ArrowUp,
-  Eye,
-  EyeOff,
-  Layers3,
-  Mountain,
-  Paintbrush,
-  Plus,
-  RefreshCw,
-  Trash2,
-} from 'lucide-react';
+import { ArrowDown, ArrowUp, Eye, EyeOff, Layers3, Mountain, Paintbrush, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { HostEntityId, HostResponse } from '../inspector/inspectorTypes';
@@ -122,7 +111,12 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
             <small>{stack.assetBacked ? stack.assetPath || 'Terrain Asset' : 'Legacy inline terrain'}</small>
           </span>
         </div>
-        <button aria-label="Refresh terrain stack" disabled={loading} onClick={() => void execute('inspect')} type="button">
+        <button
+          aria-label="Refresh terrain stack"
+          disabled={loading}
+          onClick={() => void execute('inspect')}
+          type="button"
+        >
           <RefreshCw className={loading ? 'spin' : ''} size={14} />
         </button>
       </header>
@@ -131,7 +125,10 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
         <div className="terrain-stack-empty">
           <Mountain size={24} />
           <strong>No TerrainAsset assigned</strong>
-          <p>Modifier layers are available for asset-backed terrain. Legacy inline terrain remains editable with the existing brush path.</p>
+          <p>
+            Modifier layers are available for asset-backed terrain. Legacy inline terrain remains editable with the
+            existing brush path.
+          </p>
         </div>
       ) : (
         <>
@@ -171,8 +168,14 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
                   <span className="terrain-stack-row-copy">
                     <strong>{modifier.name}</strong>
                     <small>
-                      {modifier.type === 'paint' ? 'Paint Layer' : modifier.type === 'sculpt' ? 'Sculpt Layer' : modifier.typeId}
-                      {modifier.regionPayloads > 0 ? ` · ${modifier.regionPayloads} region${modifier.regionPayloads === 1 ? '' : 's'}` : ''}
+                      {modifier.type === 'paint'
+                        ? 'Paint Layer'
+                        : modifier.type === 'sculpt'
+                          ? 'Sculpt Layer'
+                          : modifier.typeId}
+                      {modifier.regionPayloads > 0
+                        ? ` · ${modifier.regionPayloads} region${modifier.regionPayloads === 1 ? '' : 's'}`
+                        : ''}
                     </small>
                   </span>
                   <span className="terrain-stack-row-actions">
@@ -230,7 +233,13 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
               </label>
               <div className="terrain-stack-property">
                 <span>Type</span>
-                <strong>{selected.type === 'paint' ? 'Paint Layer' : selected.type === 'sculpt' ? 'Sculpt Layer' : selected.typeId}</strong>
+                <strong>
+                  {selected.type === 'paint'
+                    ? 'Paint Layer'
+                    : selected.type === 'sculpt'
+                      ? 'Sculpt Layer'
+                      : selected.typeId}
+                </strong>
               </div>
               <div className="terrain-stack-property">
                 <span>Stable ID</span>

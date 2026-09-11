@@ -1349,7 +1349,6 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     return 'windows';
   });
 
-
   const renderTerrainViewportOverlay = () => {
     if (activeTool !== 'terrain' || !selectedSnapshot?.terrain || !project) return undefined;
     const selectedKey = hostEntityKey(selectedSnapshot.entity);
@@ -1368,7 +1367,9 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         command={async (type, payload) => {
           if (!startupState?.engineHostConnected)
             return { succeeded: false, error: 'Native editor host is unavailable' };
-          return window.arc.host.command(type, payload as Record<string, unknown>) as Promise<HostResponse<TerrainToolState>>;
+          return window.arc.host.command(type, payload as Record<string, unknown>) as Promise<
+            HostResponse<TerrainToolState>
+          >;
         }}
       />
     );
