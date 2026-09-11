@@ -1,5 +1,7 @@
 #pragma once
 
+#include <arc/project/runtime_world_api.h>
+
 #include <cstddef>
 #include <cstdint>
 
@@ -109,18 +111,6 @@ struct game_input_command_v1
     bool repeat{};
 };
 
-/** @brief ABI-safe transient entity handle used by project runtime callbacks. */
-struct game_entity_v1
-{
-    std::uint32_t index{0xffffffffu};
-    std::uint32_t generation{};
-
-    [[nodiscard]] constexpr bool valid() const noexcept
-    {
-        return index != 0xffffffffu;
-    }
-};
-
 /** @brief Query whether an entity owns an authored project component in the active runtime world. */
 using game_has_project_component_v1 = bool (*)(void* user_data, game_entity_v1 entity, const char* component_id);
 
@@ -169,6 +159,7 @@ struct game_system_context_v1
     game_read_project_component_json_v1 read_project_component_json{};
     game_patch_project_component_json_v1 patch_project_component_json{};
     game_for_each_project_component_v1 for_each_project_component{};
+    const game_world_api_v1* world{}; ///< Stable runtime-world bridge valid only for this invocation.
 };
 
 /** @brief Executable callback for a project ECS system. Return false to fault the runtime world. */
@@ -189,13 +180,16 @@ struct game_system_descriptor_v1
     std::size_t after_count{};
     void* user_data{};                ///< Module-owned state valid for the loaded generation.
     game_system_execute_v1 execute{}; ///< Called by ARC's ECS scheduler.
+    const game_core_component_access_v1* core_component_accesses{}; ///< Stable engine-component access declarations.
+    std::size_t core_component_access_count{};                      ///< Number of entries in @ref core_component_accesses.
 };
 
 /** @brief Per-session context passed to project BeginPlay/EndPlay callbacks. */
 struct game_play_context_v1
 {
     std::size_t structure_size{sizeof(game_play_context_v1)};
-    std::uint64_t world_id{}; ///< Runtime world that owns this Play session.
+    std::uint64_t world_id{};         ///< Runtime world that owns this Play session.
+    const game_world_api_v1* world{}; ///< Stable runtime-world bridge for this lifecycle callback.
 };
 
 /** @brief Called exactly once after a Play World is assembled and before its first simulation tick. */
