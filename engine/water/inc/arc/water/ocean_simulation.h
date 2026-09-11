@@ -65,6 +65,19 @@ struct ocean_frequency_fields
     std::vector<std::complex<float>> velocity_x;
     std::vector<std::complex<float>> velocity_y;
     std::vector<std::complex<float>> velocity_z;
+    std::vector<std::complex<float>> displacement_x_dx;
+    std::vector<std::complex<float>> displacement_x_dz;
+    std::vector<std::complex<float>> displacement_z_dx;
+    std::vector<std::complex<float>> displacement_z_dz;
+};
+
+/** @brief Horizontal derivatives of the choppy displacement field. */
+struct ocean_displacement_derivatives
+{
+    float displacement_x_dx{};
+    float displacement_x_dz{};
+    float displacement_z_dx{};
+    float displacement_z_dz{};
 };
 
 struct ocean_surface_point
@@ -72,6 +85,8 @@ struct ocean_surface_point
     math::vector3f displacement{};
     math::vector3f normal{0.0f, 1.0f, 0.0f};
     math::vector3f velocity{};
+    ocean_displacement_derivatives derivatives;
+    float jacobian{1.0f};
 };
 
 /** @brief Resolve stable cascade counts and FFT resolutions for an authored
@@ -117,5 +132,15 @@ bool inverse_fft_2d(std::span<std::complex<float>> values, std::uint32_t resolut
                                                                         const ocean_cascade_descriptor& cascade,
                                                                         float time_seconds,
                                                                         std::uint32_t cascade_index = 0u);
+
+/** @brief Horizontal deformation determinant used to identify wave folding. */
+[[nodiscard]] float ocean_displacement_jacobian(const ocean_displacement_derivatives& derivatives) noexcept;
+
+/** @brief Convert Jacobian compression into normalized crest-foam generation. */
+[[nodiscard]] float ocean_crest_foam(float jacobian, const water_foam_settings& settings) noexcept;
+
+/** @brief Advance a persistent foam value using an exponential per-second decay. */
+[[nodiscard]] float advance_ocean_foam(float previous_foam, float generated_foam, float decay_rate,
+                                       float delta_seconds) noexcept;
 
 } // namespace arc::water

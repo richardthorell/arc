@@ -170,6 +170,24 @@ TEST_CASE("CPU reference Ocean produces deterministic displacement normals and "
     CHECK(changed);
 }
 
+TEST_CASE("Ocean displacement derivatives produce physical Jacobian crest foam with persistence")
+{
+    const arc::water::ocean_displacement_derivatives relaxed{};
+    const arc::water::ocean_displacement_derivatives compressed{.displacement_x_dx = -0.8f, .displacement_z_dz = -0.6f};
+    const arc::water::water_foam_settings foam{.enabled = true, .threshold = 0.55f, .decay = 0.4f};
+
+    CHECK(arc::water::ocean_displacement_jacobian(relaxed) == Catch::Approx(1.0f));
+    const float compressed_jacobian = arc::water::ocean_displacement_jacobian(compressed);
+    CHECK(compressed_jacobian == Catch::Approx(0.08f));
+    CHECK(arc::water::ocean_crest_foam(1.0f, foam) == 0.0f);
+    CHECK(arc::water::ocean_crest_foam(compressed_jacobian, foam) > 0.8f);
+
+    const float retained = arc::water::advance_ocean_foam(0.8f, 0.2f, foam.decay, 1.0f);
+    CHECK(retained > 0.2f);
+    CHECK(retained < 0.8f);
+    CHECK(arc::water::advance_ocean_foam(retained, 0.0f, foam.decay, 2.0f) < retained);
+}
+
 TEST_CASE("Three Ocean cascades retain distinct spatial energy bands")
 {
     const auto profile = arc::water::ocean_profile(arc::water::water_quality::high);

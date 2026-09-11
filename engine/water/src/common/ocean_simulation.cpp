@@ -250,6 +250,10 @@ ocean_frequency_fields evolve_ocean_spectrum(std::span<const std::complex<float>
     result.velocity_x.resize(count);
     result.velocity_y.resize(count);
     result.velocity_z.resize(count);
+    result.displacement_x_dx.resize(count);
+    result.displacement_x_dz.resize(count);
+    result.displacement_z_dx.resize(count);
+    result.displacement_z_dz.resize(count);
 
     const std::complex<float> imaginary{0.0f, 1.0f};
     for (std::uint32_t y = 0u; y < cascade.resolution; ++y)
@@ -284,6 +288,10 @@ ocean_frequency_fields evolve_ocean_spectrum(std::span<const std::complex<float>
             result.velocity_x[index] = imaginary * (-normalized_x * parameters.choppiness) * height_velocity;
             result.velocity_y[index] = height_velocity;
             result.velocity_z[index] = imaginary * (-normalized_z * parameters.choppiness) * height_velocity;
+            result.displacement_x_dx[index] = imaginary * k[0] * horizontal_x;
+            result.displacement_x_dz[index] = imaginary * k[1] * horizontal_x;
+            result.displacement_z_dx[index] = imaginary * k[0] * horizontal_z;
+            result.displacement_z_dz[index] = imaginary * k[1] * horizontal_z;
         }
     return result;
 }
@@ -317,9 +325,10 @@ std::vector<ocean_surface_point> evaluate_ocean_reference(const ocean_spectrum_p
     auto fields = evolve_ocean_spectrum(initial, parameters, cascade, time_seconds);
     if (fields.resolution == 0u) return {};
 
-    std::array<std::vector<std::complex<float>>*, 8u> frequency_fields{
-        &fields.displacement_x, &fields.displacement_y, &fields.displacement_z, &fields.slope_x,
-        &fields.slope_z,        &fields.velocity_x,     &fields.velocity_y,     &fields.velocity_z};
+    std::array<std::vector<std::complex<float>>*, 12u> frequency_fields{
+        &fields.displacement_x,    &fields.displacement_y,    &fields.displacement_z,    &fields.slope_x,
+        &fields.slope_z,           &fields.velocity_x,        &fields.velocity_y,        &fields.velocity_z,
+        &fields.displacement_x_dx, &fields.displacement_x_dz, &fields.displacement_z_dx, &fields.displacement_z_dz};
     for (auto* field : frequency_fields)
         if (!inverse_fft_2d(*field, fields.resolution)) return {};
 
@@ -329,13 +338,43 @@ std::vector<ocean_surface_point> evaluate_ocean_reference(const ocean_spectrum_p
         const float slope_x = fields.slope_x[index].real();
         const float slope_z = fields.slope_z[index].real();
         const float inverse_length = 1.0f / std::sqrt(slope_x * slope_x + 1.0f + slope_z * slope_z);
+        const ocean_displacement_derivatives derivatives{.displacement_x_dx = fields.displacement_x_dx[index].real(),
+                                                         .displacement_x_dz = fields.displacement_x_dz[index].real(),
+                                                         .displacement_z_dx = fields.displacement_z_dx[index].real(),
+                                                         .displacement_z_dz = fields.displacement_z_dz[index].real()};
         result[index] = {.displacement = {fields.displacement_x[index].real(), fields.displacement_y[index].real(),
                                           fields.displacement_z[index].real()},
                          .normal = {-slope_x * inverse_length, inverse_length, -slope_z * inverse_length},
                          .velocity = {fields.velocity_x[index].real(), fields.velocity_y[index].real(),
-                                      fields.velocity_z[index].real()}};
+                                      fields.velocity_z[index].real()},
+                         .derivatives = derivatives,
+                         .jacobian = ocean_displacement_jacobian(derivatives)};
     }
     return result;
+}
+
+float ocean_displacement_jacobian(const ocean_displacement_derivatives& derivatives) noexcept
+{
+    const float determinant = (1.0f + derivatives.displacement_x_dx) * (1.0f + derivatives.displacement_z_dz) -
+                              derivatives.displacement_x_dz * derivatives.displacement_z_dx;
+    return std::isfinite(determinant) ? determinant : 1.0f;
+}
+
+float ocean_crest_foam(float jacobian, const water_foam_settings& settings) noexcept
+{
+    if (!settings.enabled || !std::isfinite(jacobian) || !std::isfinite(settings.threshold)) return 0.0f;
+    const float threshold = std::clamp(settings.threshold, 0.0f, 1.0f);
+    const float response_width = std::max(threshold, 0.05f);
+    return std::clamp((threshold - jacobian) / response_width, 0.0f, 1.0f);
+}
+
+float advance_ocean_foam(float previous_foam, float generated_foam, float decay_rate, float delta_seconds) noexcept
+{
+    const float previous = std::clamp(std::isfinite(previous_foam) ? previous_foam : 0.0f, 0.0f, 1.0f);
+    const float generated = std::clamp(std::isfinite(generated_foam) ? generated_foam : 0.0f, 0.0f, 1.0f);
+    const float decay = std::max(std::isfinite(decay_rate) ? decay_rate : 0.0f, 0.0f);
+    const float elapsed = std::max(std::isfinite(delta_seconds) ? delta_seconds : 0.0f, 0.0f);
+    return std::max(previous * std::exp(-decay * elapsed), generated);
 }
 
 } // namespace arc::water
