@@ -74,7 +74,11 @@ int main()
     const input_device_id controller = input.connect_device({
         .id = {.value = 300},
         .type = input_device_type::gamepad,
+        .subtype = input_device_subtype::standard_gamepad,
         .connectivity = input_connectivity_type::wireless,
+        .backend = input_backend_type::hid,
+        .hardware_id = {.vendor_id = 0x1234, .product_id = 0xabcd, .version = 0x0002},
+        .backend_id = "hid:test-controller-300",
         .name = "Future Controller",
         .capabilities = {.buttons = true, .axes = true, .rumble = true, .gyroscope = true, .accelerometer = true},
     });
@@ -83,6 +87,13 @@ int main()
     assert(input.device(keyboard)->connectivity() == input_connectivity_type::builtin);
     assert(input.device(mouse)->connectivity() == input_connectivity_type::usb);
     assert(input.device(controller)->capabilities().gyroscope);
+    assert(input.device(controller)->subtype() == input_device_subtype::standard_gamepad);
+    assert(input.device(controller)->backend() == input_backend_type::hid);
+    const input_device_hardware_id controller_hardware = input.device(controller)->hardware_id();
+    assert(controller_hardware.vendor_id == 0x1234);
+    assert(controller_hardware.product_id == 0xabcd);
+    assert(controller_hardware.version == 0x0002);
+    assert(input.device(controller)->backend_id() == "hid:test-controller-300");
     assert(input.device_events().size() == 3);
 
     const auto player_zero_devices = input.devices_for_player(0);
@@ -213,16 +224,25 @@ int main()
     assert(input.disconnect_device(controller));
     assert(output.calls == calls_before_disconnect + 1);
     assert(output.last_state == input_rumble_state{});
+    assert(input.device(controller)->backend() == input_backend_type::hid);
+    assert(input.device(controller)->backend_id() == "hid:test-controller-300");
     assert(contains_device(input.devices_for_player(1), controller));
 
     input.begin_frame();
     input.connect_device({
         .id = controller,
         .type = input_device_type::gamepad,
+        .subtype = input_device_subtype::standard_gamepad,
         .connectivity = input_connectivity_type::wireless,
+        .backend = input_backend_type::game_input,
+        .hardware_id = {.vendor_id = 0x1234, .product_id = 0xabcd, .version = 0x0003},
+        .backend_id = "gameinput:test-controller-300",
         .name = "Future Controller",
         .capabilities = {.buttons = true, .axes = true, .rumble = true, .gyroscope = true, .accelerometer = true},
     });
+    assert(input.device(controller)->backend() == input_backend_type::game_input);
+    assert(input.device(controller)->hardware_id().version == 0x0003);
+    assert(input.device(controller)->backend_id() == "gameinput:test-controller-300");
     assert(player_one.set_rumble({.low_frequency = 0.2f, .high_frequency = 0.6f}));
     assert(output.last_state.low_frequency == 0.2f);
     assert(output.last_state.high_frequency == 0.6f);

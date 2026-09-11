@@ -44,6 +44,57 @@ enum class input_connectivity_type : std::uint8_t
 };
 
 /**
+ * @brief Backend that owns discovery/state for a physical input device.
+ *
+ * This is diagnostic/provenance metadata only. Gameplay should bind against ARC
+ * device/control types instead of selecting behavior from the backend.
+ */
+enum class input_backend_type : std::uint8_t
+{
+    unknown,
+    native,
+    raw_input,
+    xinput,
+    game_input,
+    hid,
+    platform_sdk
+};
+
+/**
+ * @brief Optional specialization of a physical input device family.
+ *
+ * Device type remains the broad gameplay-facing category. Subtype preserves
+ * richer controller classification without leaking platform constants.
+ */
+enum class input_device_subtype : std::uint8_t
+{
+    unknown,
+    standard_gamepad,
+    wheel,
+    flight_stick,
+    arcade_stick,
+    dance_pad,
+    guitar,
+    drum_kit,
+    arcade_pad
+};
+
+/**
+ * @brief Optional USB/HID-style hardware identifiers reported by a backend.
+ *
+ * Zero values mean the backend cannot provide that field. These identifiers are
+ * descriptive metadata and are not used as ARC runtime device IDs.
+ */
+struct input_device_hardware_id
+{
+    std::uint16_t vendor_id{};
+    std::uint16_t product_id{};
+    std::uint16_t version{};
+
+    friend bool operator==(const input_device_hardware_id&, const input_device_hardware_id&) = default;
+};
+
+/**
  * @brief Stable runtime identifier for a physical input device.
  */
 struct input_device_id
@@ -256,7 +307,11 @@ struct input_device_descriptor
 {
     input_device_id id{};
     input_device_type type{input_device_type::unknown};
+    input_device_subtype subtype{input_device_subtype::unknown};
     input_connectivity_type connectivity{input_connectivity_type::unknown};
+    input_backend_type backend{input_backend_type::unknown};
+    input_device_hardware_id hardware_id{};
+    std::string backend_id;
     std::string name;
     input_device_capabilities capabilities{};
 };
@@ -273,6 +328,26 @@ public:
     [[nodiscard]] std::string_view name() const noexcept;
     [[nodiscard]] const input_device_capabilities& capabilities() const noexcept;
     [[nodiscard]] bool connected() const noexcept;
+
+    [[nodiscard]] input_device_subtype subtype() const noexcept
+    {
+        return descriptor_.subtype;
+    }
+
+    [[nodiscard]] input_backend_type backend() const noexcept
+    {
+        return descriptor_.backend;
+    }
+
+    [[nodiscard]] const input_device_hardware_id& hardware_id() const noexcept
+    {
+        return descriptor_.hardware_id;
+    }
+
+    [[nodiscard]] std::string_view backend_id() const noexcept
+    {
+        return descriptor_.backend_id;
+    }
 
 private:
     friend class input_system;

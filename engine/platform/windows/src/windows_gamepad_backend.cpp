@@ -18,6 +18,7 @@ constexpr ULONGLONG disconnected_probe_interval_ms = 500;
 struct xinput_device_classification
 {
     input::input_device_type type{input::input_device_type::gamepad};
+    input::input_device_subtype subtype{input::input_device_subtype::standard_gamepad};
     const char* name{"XInput Gamepad"};
 };
 
@@ -71,23 +72,27 @@ xinput_device_classification classify_device(BYTE subtype) noexcept
     switch (subtype)
     {
         case XINPUT_DEVSUBTYPE_WHEEL:
-            return {.type = input::input_device_type::wheel, .name = "XInput Wheel"};
+            return {.type = input::input_device_type::wheel,
+                    .subtype = input::input_device_subtype::wheel,
+                    .name = "XInput Wheel"};
         case XINPUT_DEVSUBTYPE_FLIGHT_STICK:
-            return {.type = input::input_device_type::flight_stick, .name = "XInput Flight Stick"};
+            return {.type = input::input_device_type::flight_stick,
+                    .subtype = input::input_device_subtype::flight_stick,
+                    .name = "XInput Flight Stick"};
         case XINPUT_DEVSUBTYPE_ARCADE_STICK:
-            return {.name = "XInput Arcade Stick"};
+            return {.subtype = input::input_device_subtype::arcade_stick, .name = "XInput Arcade Stick"};
         case XINPUT_DEVSUBTYPE_DANCE_PAD:
-            return {.name = "XInput Dance Pad"};
+            return {.subtype = input::input_device_subtype::dance_pad, .name = "XInput Dance Pad"};
         case XINPUT_DEVSUBTYPE_GUITAR:
-            return {.name = "XInput Guitar"};
+            return {.subtype = input::input_device_subtype::guitar, .name = "XInput Guitar"};
         case XINPUT_DEVSUBTYPE_GUITAR_ALTERNATE:
-            return {.name = "XInput Guitar Alternate"};
+            return {.subtype = input::input_device_subtype::guitar, .name = "XInput Guitar Alternate"};
         case XINPUT_DEVSUBTYPE_DRUM_KIT:
-            return {.name = "XInput Drum Kit"};
+            return {.subtype = input::input_device_subtype::drum_kit, .name = "XInput Drum Kit"};
         case XINPUT_DEVSUBTYPE_GUITAR_BASS:
-            return {.name = "XInput Bass Guitar"};
+            return {.subtype = input::input_device_subtype::guitar, .name = "XInput Bass Guitar"};
         case XINPUT_DEVSUBTYPE_ARCADE_PAD:
-            return {.name = "XInput Arcade Pad"};
+            return {.subtype = input::input_device_subtype::arcade_pad, .name = "XInput Arcade Pad"};
         case XINPUT_DEVSUBTYPE_GAMEPAD:
         default:
             return {};
@@ -214,7 +219,10 @@ void windows_gamepad_backend::connect(DWORD user_index)
     input_->connect_device(
         {.id = device,
          .type = classification.type,
+         .subtype = classification.subtype,
          .connectivity = wireless ? input::input_connectivity_type::wireless : input::input_connectivity_type::unknown,
+         .backend = input::input_backend_type::xinput,
+         .backend_id = "xinput:" + std::to_string(user_index),
          .name = std::string(classification.name) + " " + std::to_string(user_index + 1),
          .capabilities = {.buttons = true,
                           .axes = true,
