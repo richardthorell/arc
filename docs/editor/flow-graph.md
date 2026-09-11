@@ -85,6 +85,8 @@ F4 bytecode supports:
 
 Flow entity values preserve both immediate M3.5 entity handles and deferred entity targets. A deferred entity returned by `create_entity` can therefore be passed directly into structural writes such as Set Name, Set Transform, Set Tag, Set Active, Remove Component, or Destroy Entity before the scheduler phase boundary. Operations that require committed world state, such as reads and alive/component checks, require an immediate entity.
 
+World instructions consume the same per-dispatch instruction budget as control-flow instructions, so gameplay operations cannot bypass the VM's runaway-execution guard.
+
 World failures are explicit VM outcomes. Dispatch reports `world_unavailable` when no usable world callback is supplied and `world_operation_failed` when the M3.5 operation itself cannot be completed. Source-node mapping is preserved so runtime diagnostics can later jump back to the authoring node.
 
 F4 establishes the runtime instruction set only. The F2 compiler continues to emit the existing authored node set in this milestone; F5 adds the editor/compiler gameplay nodes that lower to these world opcodes. This keeps the VM/M3.5 boundary testable before expanding the visual language.
