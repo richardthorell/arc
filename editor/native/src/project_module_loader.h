@@ -66,6 +66,7 @@ struct project_system_registration
     project::game_system_phase_v1 phase{project::game_system_phase_v1::gameplay_commands};
     project::game_system_priority_v1 priority{project::game_system_priority_v1::normal};
     std::vector<project_system_component_access> component_accesses;
+    std::vector<project::game_core_component_access_v1> core_component_accesses;
     bool unrestricted_native_world_access{true};
     std::vector<std::string> before;
     std::vector<std::string> after;
