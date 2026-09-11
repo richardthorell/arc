@@ -205,14 +205,18 @@ std::vector<terrain_region_id> terrain_regions_overlapping(const terrain_coordin
     if (!bounds.valid() || !finite(partition.authoring_region_size) || partition.authoring_region_size <= 0.0)
         return result;
 
-    const double max_x = bounds.max_x > bounds.min_x
-                             ? std::nextafter(bounds.max_x, -std::numeric_limits<double>::infinity())
-                             : bounds.max_x;
-    const double max_z = bounds.max_z > bounds.min_z
-                             ? std::nextafter(bounds.max_z, -std::numeric_limits<double>::infinity())
-                             : bounds.max_z;
     const auto minimum = terrain_region_at(coordinates, partition, bounds.min_x, bounds.min_z);
-    const auto maximum = terrain_region_at(coordinates, partition, max_x, max_z);
+    auto maximum = terrain_region_at(coordinates, partition, bounds.max_x, bounds.max_z);
+    if (bounds.max_x > bounds.min_x)
+    {
+        const auto boundary = coordinates.origin_x + static_cast<double>(maximum.x) * partition.authoring_region_size;
+        if (bounds.max_x == boundary && maximum.x != std::numeric_limits<std::int64_t>::min()) --maximum.x;
+    }
+    if (bounds.max_z > bounds.min_z)
+    {
+        const auto boundary = coordinates.origin_z + static_cast<double>(maximum.z) * partition.authoring_region_size;
+        if (bounds.max_z == boundary && maximum.z != std::numeric_limits<std::int64_t>::min()) --maximum.z;
+    }
 
     if (maximum.x < minimum.x || maximum.z < minimum.z) return result;
     const auto width = static_cast<std::uint64_t>(maximum.x - minimum.x) + 1u;
@@ -356,6 +360,12 @@ terrain_asset_validation_result validate_terrain_asset(const terrain_asset& asse
                 result, terrain_asset_validation_severity::error, terrain_asset_validation_code::invalid_modifier,
                 "terrain modifier requires an ID, type, schema, valid domains, parameters, and valid optional bounds",
                 modifier.id);
+
+        if (!validate_terrain_modifier_payloads(modifier))
+            add_issue(result, terrain_asset_validation_severity::error,
+                      terrain_asset_validation_code::invalid_modifier_payload,
+                      "terrain modifier sparse region payloads are malformed or incompatible with the modifier type",
+                      modifier.id);
 
         if (modifier.id.valid() && !ids.insert(modifier.id).second)
             add_issue(result, terrain_asset_validation_severity::error,

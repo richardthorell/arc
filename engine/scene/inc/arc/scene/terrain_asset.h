@@ -5,6 +5,7 @@
 #include <arc/core/id.h>
 #include <arc/math/math.h>
 
+#include <array>
 #include <compare>
 #include <cstdint>
 #include <optional>
@@ -132,7 +133,55 @@ constexpr terrain_domain& operator|=(terrain_domain& lhs, terrain_domain rhs) no
     return (mask & value) == value;
 }
 
-/** @brief Versioned non-destructive operation. Parameter payload is canonical data owned by the registered modifier. */
+namespace terrain_builtin_modifier_types
+{
+inline constexpr std::string_view sculpt_layer = "arc.terrain.sculpt_layer.v1";
+inline constexpr std::string_view paint_layer = "arc.terrain.paint_layer.v1";
+} // namespace terrain_builtin_modifier_types
+
+/** Sparse accumulated height delta owned by one sculpt modifier. Coordinates are local to an authoring region. */
+struct terrain_sculpt_sample_delta
+{
+    std::uint32_t x{};
+    std::uint32_t z{};
+    float delta{};
+
+    friend constexpr bool operator==(const terrain_sculpt_sample_delta&,
+                                     const terrain_sculpt_sample_delta&) noexcept = default;
+};
+
+/** Sparse accumulated material-weight delta owned by one paint modifier. */
+struct terrain_paint_sample_delta
+{
+    std::uint32_t x{};
+    std::uint32_t z{};
+    std::array<std::int16_t, 4> delta{};
+
+    friend constexpr bool operator==(const terrain_paint_sample_delta&,
+                                     const terrain_paint_sample_delta&) noexcept = default;
+};
+
+struct terrain_sculpt_region_payload
+{
+    std::vector<terrain_sculpt_sample_delta> samples;
+};
+
+struct terrain_paint_region_payload
+{
+    std::vector<terrain_paint_sample_delta> samples;
+};
+
+using terrain_modifier_region_payload_data = std::variant<terrain_sculpt_region_payload, terrain_paint_region_payload>;
+
+/** Persistent sparse edit payload for one modifier and stable authoring region. */
+struct terrain_modifier_region_payload
+{
+    terrain_region_id region{};
+    std::uint32_t schema_version{1};
+    terrain_modifier_region_payload_data data;
+};
+
+/** @brief Versioned non-destructive operation. Parameters and sparse region payloads are authoring data only. */
 struct terrain_modifier_descriptor
 {
     terrain_stable_id id{};
@@ -143,6 +192,7 @@ struct terrain_modifier_descriptor
     terrain_domain domains{terrain_domain::geometry};
     std::optional<terrain_world_bounds> affected_bounds;
     std::string canonical_parameters{"{}"};
+    std::vector<terrain_modifier_region_payload> region_payloads;
 };
 
 enum class terrain_attribute_type : std::uint8_t
@@ -310,6 +360,7 @@ enum class terrain_asset_validation_code : std::uint8_t
     invalid_source,
     duplicate_stable_id,
     invalid_modifier,
+    invalid_modifier_payload,
     invalid_attribute,
     duplicate_attribute_name,
     invalid_build_settings,
@@ -334,6 +385,31 @@ struct [[nodiscard]] terrain_asset_validation_result
 
 /** @brief Validate persistent authoring invariants without evaluating or cooking terrain. */
 [[nodiscard]] terrain_asset_validation_result validate_terrain_asset(const terrain_asset& asset);
+
+/** Built-in non-destructive layer construction helpers. Empty layers do not invalidate compiled regions. */
+terrain_modifier_descriptor& add_terrain_sculpt_layer(terrain_asset& asset, std::string name = "Sculpt Layer");
+terrain_modifier_descriptor& add_terrain_paint_layer(terrain_asset& asset, std::string name = "Paint Layer");
+
+[[nodiscard]] terrain_modifier_descriptor* find_terrain_modifier(terrain_asset& asset, terrain_stable_id id) noexcept;
+[[nodiscard]] const terrain_modifier_descriptor* find_terrain_modifier(const terrain_asset& asset,
+                                                                       terrain_stable_id id) noexcept;
+[[nodiscard]] terrain_modifier_region_payload* find_terrain_modifier_payload(terrain_modifier_descriptor& modifier,
+                                                                             terrain_region_id region) noexcept;
+[[nodiscard]] const terrain_modifier_region_payload*
+find_terrain_modifier_payload(const terrain_modifier_descriptor& modifier, terrain_region_id region) noexcept;
+
+/** Replace one region's sparse sculpt payload and dirty only geometry for that authoring region. */
+[[nodiscard]] terrain_dirty_update set_terrain_sculpt_region_samples(terrain_asset& asset, terrain_stable_id modifier,
+                                                                     terrain_region_id region,
+                                                                     std::vector<terrain_sculpt_sample_delta> samples);
+
+/** Replace one region's sparse paint payload and dirty only attributes for that authoring region. */
+[[nodiscard]] terrain_dirty_update set_terrain_paint_region_samples(terrain_asset& asset, terrain_stable_id modifier,
+                                                                    terrain_region_id region,
+                                                                    std::vector<terrain_paint_sample_delta> samples);
+
+/** Validate built-in sparse payload ownership, schemas, values, and per-region uniqueness. */
+[[nodiscard]] bool validate_terrain_modifier_payloads(const terrain_modifier_descriptor& modifier) noexcept;
 
 /** @brief Return the persisted region record, creating it with canonical authoring bounds when necessary. */
 terrain_region_record& ensure_terrain_region(terrain_asset& asset, terrain_region_id region);
