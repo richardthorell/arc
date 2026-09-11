@@ -86,6 +86,30 @@ describe('EditorDocumentTabs', () => {
     expect(onClose).toHaveBeenCalledWith('shader:test');
   });
 
+  it('renders Flow documents with the script atlas icon', () => {
+    render(
+      <EditorDocumentTabs
+        documents={[
+          {
+            id: 'flow:player',
+            kind: 'flow',
+            title: 'Player.arcflow',
+            path: 'Assets/Flow/Player.arcflow',
+            assetGuid: 'flow-player',
+            dirty: false,
+            readOnly: false,
+          },
+        ]}
+        activeDocumentId="flow:player"
+        registry={registry}
+        onActivate={() => undefined}
+      />,
+    );
+
+    const tab = screen.getByRole('tab', { name: /Player\.arcflow/ });
+    expect(tab.querySelector('[data-document-type-icon="script"]')).toHaveClass('editor-document-tab-icon');
+  });
+
   it('closes a clean closeable document on middle click', () => {
     const onClose = vi.fn();
     render(
