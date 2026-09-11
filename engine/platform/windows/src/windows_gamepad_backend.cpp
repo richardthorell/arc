@@ -13,6 +13,13 @@ namespace
 {
 
 constexpr std::uint64_t xinput_device_namespace = 0x58494e5000000000ull;
+constexpr ULONGLONG disconnected_probe_interval_ms = 500;
+
+struct xinput_device_classification
+{
+    input::input_device_type type{input::input_device_type::gamepad};
+    const char* name{"XInput Gamepad"};
+};
 
 float normalize_stick(SHORT value, SHORT deadzone) noexcept
 {
@@ -59,6 +66,34 @@ WORD motor_speed(float value) noexcept
     return static_cast<WORD>(std::clamp(value, 0.0f, 1.0f) * maximum);
 }
 
+xinput_device_classification classify_device(BYTE subtype) noexcept
+{
+    switch (subtype)
+    {
+        case XINPUT_DEVSUBTYPE_WHEEL:
+            return {.type = input::input_device_type::wheel, .name = "XInput Wheel"};
+        case XINPUT_DEVSUBTYPE_FLIGHT_STICK:
+            return {.type = input::input_device_type::flight_stick, .name = "XInput Flight Stick"};
+        case XINPUT_DEVSUBTYPE_ARCADE_STICK:
+            return {.name = "XInput Arcade Stick"};
+        case XINPUT_DEVSUBTYPE_DANCE_PAD:
+            return {.name = "XInput Dance Pad"};
+        case XINPUT_DEVSUBTYPE_GUITAR:
+            return {.name = "XInput Guitar"};
+        case XINPUT_DEVSUBTYPE_GUITAR_ALTERNATE:
+            return {.name = "XInput Guitar Alternate"};
+        case XINPUT_DEVSUBTYPE_DRUM_KIT:
+            return {.name = "XInput Drum Kit"};
+        case XINPUT_DEVSUBTYPE_GUITAR_BASS:
+            return {.name = "XInput Bass Guitar"};
+        case XINPUT_DEVSUBTYPE_ARCADE_PAD:
+            return {.name = "XInput Arcade Pad"};
+        case XINPUT_DEVSUBTYPE_GAMEPAD:
+        default:
+            return {};
+    }
+}
+
 } // namespace
 
 windows_gamepad_backend::windows_gamepad_backend(input::input_system& input) noexcept : input_(&input)
@@ -66,6 +101,7 @@ windows_gamepad_backend::windows_gamepad_backend(input::input_system& input) noe
     module_ = load_xinput();
     get_state_ = load_procedure<get_state_fn>(module_, "XInputGetState");
     set_state_ = load_procedure<set_state_fn>(module_, "XInputSetState");
+    get_capabilities_ = load_procedure<get_capabilities_fn>(module_, "XInputGetCapabilities");
 }
 
 windows_gamepad_backend::~windows_gamepad_backend()
@@ -89,25 +125,38 @@ void windows_gamepad_backend::poll()
 {
     if (!get_state_) return;
 
+    const ULONGLONG now = GetTickCount64();
     for (DWORD user_index = 0; user_index < XUSER_MAX_COUNT; ++user_index)
     {
-        XINPUT_STATE state{};
-        const DWORD result = get_state_(user_index, &state);
         input::input_device_id device = devices_[user_index];
         const input::input_device* record = device ? input_->device(device) : nullptr;
+        const bool connected = record && record->connected();
 
+        if (!connected && next_probe_ticks_[user_index] != 0 && now < next_probe_ticks_[user_index]) continue;
+
+        XINPUT_STATE state{};
+        const DWORD result = get_state_(user_index, &state);
         if (result == ERROR_SUCCESS)
         {
-            if (!record || !record->connected())
+            const bool newly_connected = !connected;
+            if (newly_connected)
             {
                 connect(user_index);
                 device = devices_[user_index];
             }
-            submit_state(user_index, state.Gamepad);
+
+            next_probe_ticks_[user_index] = 0;
+            if (newly_connected || !packet_valid_[user_index] || packet_numbers_[user_index] != state.dwPacketNumber)
+                submit_state(user_index, state.Gamepad);
+
+            packet_numbers_[user_index] = state.dwPacketNumber;
+            packet_valid_[user_index] = true;
         }
-        else if (result == ERROR_DEVICE_NOT_CONNECTED && record && record->connected())
+        else if (result == ERROR_DEVICE_NOT_CONNECTED)
         {
-            disconnect(user_index);
+            if (connected) disconnect(user_index);
+            packet_valid_[user_index] = false;
+            next_probe_ticks_[user_index] = now + disconnected_probe_interval_ms;
         }
     }
 }
@@ -151,23 +200,36 @@ DWORD windows_gamepad_backend::user_index(input::input_device_id device) const n
 
 void windows_gamepad_backend::connect(DWORD user_index)
 {
+    XINPUT_CAPABILITIES native_capabilities{};
+    const bool has_capabilities =
+        get_capabilities_ && get_capabilities_(user_index, XINPUT_FLAG_GAMEPAD, &native_capabilities) == ERROR_SUCCESS;
+    const xinput_device_classification classification =
+        classify_device(has_capabilities ? native_capabilities.SubType : XINPUT_DEVSUBTYPE_GAMEPAD);
+
+    const bool wireless = has_capabilities && (native_capabilities.Flags & XINPUT_CAPS_WIRELESS) != 0;
+    const bool force_feedback = !has_capabilities || (native_capabilities.Flags & XINPUT_CAPS_FFB_SUPPORTED) != 0;
+
     const input::input_device_id device = stable_device_id(user_index);
     devices_[user_index] = device;
     input_->connect_device(
         {.id = device,
-         .type = input::input_device_type::gamepad,
-         .connectivity = input::input_connectivity_type::unknown,
-         .name = "XInput Gamepad " + std::to_string(user_index + 1),
-         .capabilities = {
-             .buttons = true, .axes = true, .rumble = set_state_ != nullptr, .button_count = 14, .axis_count = 6}});
+         .type = classification.type,
+         .connectivity = wireless ? input::input_connectivity_type::wireless : input::input_connectivity_type::unknown,
+         .name = std::string(classification.name) + " " + std::to_string(user_index + 1),
+         .capabilities = {.buttons = true,
+                          .axes = true,
+                          .rumble = set_state_ != nullptr && force_feedback,
+                          .button_count = 14,
+                          .axis_count = 6}});
 
-    if (set_state_) input_->register_output_sink(device, *this);
+    if (set_state_ && force_feedback) input_->register_output_sink(device, *this);
 }
 
 void windows_gamepad_backend::disconnect(DWORD user_index)
 {
     const input::input_device_id device = devices_[user_index];
     if (device) input_->disconnect_device(device);
+    packet_valid_[user_index] = false;
 }
 
 void windows_gamepad_backend::submit_state(DWORD user_index, const XINPUT_GAMEPAD& state)
