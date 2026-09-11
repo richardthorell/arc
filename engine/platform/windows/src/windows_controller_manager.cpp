@@ -1,6 +1,7 @@
 #include "windows_controller_manager.h"
 
 #include "windows_controller_provider.h"
+#include "windows_game_input_backend.h"
 #include "windows_gamepad_backend.h"
 
 #include <algorithm>
@@ -15,6 +16,7 @@ namespace
 std::vector<std::unique_ptr<windows_controller_provider>> default_providers(input::input_system& input)
 {
     std::vector<std::unique_ptr<windows_controller_provider>> providers;
+    providers.push_back(std::make_unique<windows_game_input_backend>(input));
     providers.push_back(std::make_unique<windows_gamepad_backend>(input));
     return providers;
 }
