@@ -9,9 +9,8 @@ namespace
 
 bool has_code(const arc::flow::compile_result& result, std::string_view code)
 {
-    return std::any_of(result.diagnostics.begin(), result.diagnostics.end(), [&](const arc::flow::diagnostic& item) {
-        return item.code == code;
-    });
+    return std::any_of(result.diagnostics.begin(), result.diagnostics.end(),
+                       [&](const arc::flow::diagnostic& item) { return item.code == code; });
 }
 
 } // namespace

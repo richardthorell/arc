@@ -74,12 +74,8 @@ struct source_graph
     std::vector<source_connection> connections;
 };
 
-void add_diagnostic(std::vector<diagnostic>& diagnostics,
-                    diagnostic_severity severity,
-                    std::string code,
-                    std::string message,
-                    std::string node_id = {},
-                    std::string pin_id = {},
+void add_diagnostic(std::vector<diagnostic>& diagnostics, diagnostic_severity severity, std::string code,
+                    std::string message, std::string node_id = {}, std::string pin_id = {},
                     std::string connection_id = {})
 {
     diagnostics.push_back({.severity = severity,
@@ -92,50 +88,33 @@ void add_diagnostic(std::vector<diagnostic>& diagnostics,
 
 bool has_errors(const std::vector<diagnostic>& diagnostics)
 {
-    return std::any_of(diagnostics.begin(), diagnostics.end(), [](const diagnostic& item) {
-        return item.severity == diagnostic_severity::error;
-    });
+    return std::any_of(diagnostics.begin(), diagnostics.end(),
+                       [](const diagnostic& item) { return item.severity == diagnostic_severity::error; });
 }
 
 std::optional<node_kind> parse_node_kind(std::string_view value)
 {
-    if (value == "beginPlay")
-        return node_kind::begin_play;
-    if (value == "endPlay")
-        return node_kind::end_play;
-    if (value == "tick")
-        return node_kind::tick;
-    if (value == "fixedTick")
-        return node_kind::fixed_tick;
-    if (value == "inputAction")
-        return node_kind::input_action;
-    if (value == "branch")
-        return node_kind::branch;
+    if (value == "beginPlay") return node_kind::begin_play;
+    if (value == "endPlay") return node_kind::end_play;
+    if (value == "tick") return node_kind::tick;
+    if (value == "fixedTick") return node_kind::fixed_tick;
+    if (value == "inputAction") return node_kind::input_action;
+    if (value == "branch") return node_kind::branch;
     return std::nullopt;
 }
 
 std::optional<value_type> parse_value_type(std::string_view value)
 {
-    if (value == "bool")
-        return value_type::boolean;
-    if (value == "int")
-        return value_type::integer;
-    if (value == "float")
-        return value_type::float32;
-    if (value == "vec2")
-        return value_type::vector2;
-    if (value == "vec3")
-        return value_type::vector3;
-    if (value == "vec4")
-        return value_type::vector4;
-    if (value == "string")
-        return value_type::string;
-    if (value == "name")
-        return value_type::name;
-    if (value == "entity")
-        return value_type::entity;
-    if (value == "component")
-        return value_type::component;
+    if (value == "bool") return value_type::boolean;
+    if (value == "int") return value_type::integer;
+    if (value == "float") return value_type::float32;
+    if (value == "vec2") return value_type::vector2;
+    if (value == "vec3") return value_type::vector3;
+    if (value == "vec4") return value_type::vector4;
+    if (value == "string") return value_type::string;
+    if (value == "name") return value_type::name;
+    if (value == "entity") return value_type::entity;
+    if (value == "component") return value_type::component;
     return std::nullopt;
 }
 
@@ -143,39 +122,36 @@ flow_value default_value(value_type type)
 {
     switch (type)
     {
-    case value_type::boolean:
-        return false;
-    case value_type::integer:
-        return std::int64_t{0};
-    case value_type::float32:
-        return 0.0;
-    case value_type::vector2:
-        return std::array<double, 2>{0.0, 0.0};
-    case value_type::vector3:
-        return std::array<double, 3>{0.0, 0.0, 0.0};
-    case value_type::vector4:
-        return std::array<double, 4>{0.0, 0.0, 0.0, 0.0};
-    case value_type::string:
-    case value_type::name:
-        return std::string{};
-    case value_type::entity:
-    case value_type::component:
-        return std::monostate{};
+        case value_type::boolean:
+            return false;
+        case value_type::integer:
+            return std::int64_t{0};
+        case value_type::float32:
+            return 0.0;
+        case value_type::vector2:
+            return std::array<double, 2>{0.0, 0.0};
+        case value_type::vector3:
+            return std::array<double, 3>{0.0, 0.0, 0.0};
+        case value_type::vector4:
+            return std::array<double, 4>{0.0, 0.0, 0.0, 0.0};
+        case value_type::string:
+        case value_type::name:
+            return std::string{};
+        case value_type::entity:
+        case value_type::component:
+            return std::monostate{};
     }
     return std::monostate{};
 }
 
-template <std::size_t N>
-std::optional<flow_value> parse_vector_value(const json& value)
+template <std::size_t N> std::optional<flow_value> parse_vector_value(const json& value)
 {
-    if (!value.is_array() || value.size() != N)
-        return std::nullopt;
+    if (!value.is_array() || value.size() != N) return std::nullopt;
 
     std::array<double, N> result{};
     for (std::size_t index = 0; index < N; ++index)
     {
-        if (!value[index].is_number())
-            return std::nullopt;
+        if (!value[index].is_number()) return std::nullopt;
         result[index] = value[index].get<double>();
     }
     return flow_value{result};
@@ -185,34 +161,29 @@ std::optional<flow_value> parse_default_value(value_type type, const json& value
 {
     switch (type)
     {
-    case value_type::boolean:
-        if (value.is_boolean())
-            return flow_value{value.get<bool>()};
-        break;
-    case value_type::integer:
-        if (value.is_number_integer())
-            return flow_value{value.get<std::int64_t>()};
-        break;
-    case value_type::float32:
-        if (value.is_number())
-            return flow_value{value.get<double>()};
-        break;
-    case value_type::vector2:
-        return parse_vector_value<2>(value);
-    case value_type::vector3:
-        return parse_vector_value<3>(value);
-    case value_type::vector4:
-        return parse_vector_value<4>(value);
-    case value_type::string:
-    case value_type::name:
-        if (value.is_string())
-            return flow_value{value.get<std::string>()};
-        break;
-    case value_type::entity:
-    case value_type::component:
-        if (value.is_null())
-            return flow_value{std::monostate{}};
-        break;
+        case value_type::boolean:
+            if (value.is_boolean()) return flow_value{value.get<bool>()};
+            break;
+        case value_type::integer:
+            if (value.is_number_integer()) return flow_value{value.get<std::int64_t>()};
+            break;
+        case value_type::float32:
+            if (value.is_number()) return flow_value{value.get<double>()};
+            break;
+        case value_type::vector2:
+            return parse_vector_value<2>(value);
+        case value_type::vector3:
+            return parse_vector_value<3>(value);
+        case value_type::vector4:
+            return parse_vector_value<4>(value);
+        case value_type::string:
+        case value_type::name:
+            if (value.is_string()) return flow_value{value.get<std::string>()};
+            break;
+        case value_type::entity:
+        case value_type::component:
+            if (value.is_null()) return flow_value{std::monostate{}};
+            break;
     }
     return std::nullopt;
 }
@@ -221,40 +192,31 @@ std::optional<pin_info> output_pin(node_kind kind, std::string_view pin)
 {
     switch (kind)
     {
-    case node_kind::begin_play:
-    case node_kind::end_play:
-        if (pin == "exec")
-            return pin_info{.kind = pin_kind::execution};
-        break;
-    case node_kind::tick:
-    case node_kind::fixed_tick:
-        if (pin == "exec")
-            return pin_info{.kind = pin_kind::execution};
-        if (pin == "deltaSeconds")
-            return pin_info{.kind = pin_kind::value, .type = value_type::float32};
-        break;
-    case node_kind::input_action:
-        if (pin == "triggered" || pin == "completed")
-            return pin_info{.kind = pin_kind::execution};
-        if (pin == "value")
-            return pin_info{.kind = pin_kind::value, .type = value_type::float32};
-        break;
-    case node_kind::branch:
-        if (pin == "true" || pin == "false")
-            return pin_info{.kind = pin_kind::execution};
-        break;
+        case node_kind::begin_play:
+        case node_kind::end_play:
+            if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+            break;
+        case node_kind::tick:
+        case node_kind::fixed_tick:
+            if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+            if (pin == "deltaSeconds") return pin_info{.kind = pin_kind::value, .type = value_type::float32};
+            break;
+        case node_kind::input_action:
+            if (pin == "triggered" || pin == "completed") return pin_info{.kind = pin_kind::execution};
+            if (pin == "value") return pin_info{.kind = pin_kind::value, .type = value_type::float32};
+            break;
+        case node_kind::branch:
+            if (pin == "true" || pin == "false") return pin_info{.kind = pin_kind::execution};
+            break;
     }
     return std::nullopt;
 }
 
 std::optional<pin_info> input_pin(node_kind kind, std::string_view pin)
 {
-    if (kind != node_kind::branch)
-        return std::nullopt;
-    if (pin == "exec")
-        return pin_info{.kind = pin_kind::execution};
-    if (pin == "condition")
-        return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
+    if (kind != node_kind::branch) return std::nullopt;
+    if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+    if (pin == "condition") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
     return std::nullopt;
 }
 
@@ -277,18 +239,14 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
     }
     catch (const std::exception& exception)
     {
-        add_diagnostic(diagnostics,
-                       diagnostic_severity::error,
-                       "FLOW_PARSE_ERROR",
+        add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_PARSE_ERROR",
                        std::string{"Unable to parse Flow asset JSON: "} + exception.what());
         return std::nullopt;
     }
 
     if (!root.is_object() || root.value("version", 0) != 1 || root.value("assetType", std::string{}) != "flow")
     {
-        add_diagnostic(diagnostics,
-                       diagnostic_severity::error,
-                       "FLOW_ASSET_SCHEMA",
+        add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_ASSET_SCHEMA",
                        "Flow compiler expects a version-1 asset with assetType 'flow'.");
         return std::nullopt;
     }
@@ -296,9 +254,7 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
     const auto graph_iterator = root.find("graph");
     if (graph_iterator == root.end() || !graph_iterator->is_object())
     {
-        add_diagnostic(diagnostics,
-                       diagnostic_severity::error,
-                       "FLOW_GRAPH_MISSING",
+        add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_GRAPH_MISSING",
                        "Flow asset does not contain a graph object.");
         return std::nullopt;
     }
@@ -306,9 +262,7 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
     const json& graph_json = *graph_iterator;
     if (graph_json.value("version", 0) != 1)
     {
-        add_diagnostic(diagnostics,
-                       diagnostic_severity::error,
-                       "FLOW_GRAPH_VERSION",
+        add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_GRAPH_VERSION",
                        "Unsupported Flow graph version. Expected version 1.");
         return std::nullopt;
     }
@@ -318,9 +272,7 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
     const auto variables_iterator = graph_json.find("variables");
     if (variables_iterator == graph_json.end() || !variables_iterator->is_array())
     {
-        add_diagnostic(diagnostics,
-                       diagnostic_severity::error,
-                       "FLOW_VARIABLES_SCHEMA",
+        add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_VARIABLES_SCHEMA",
                        "Flow graph variables must be an array.");
         return std::nullopt;
     }
@@ -329,9 +281,7 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
     {
         if (!variable_json.is_object())
         {
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_VARIABLE_SCHEMA",
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_VARIABLE_SCHEMA",
                            "Flow variable entries must be objects.");
             continue;
         }
@@ -342,8 +292,7 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
         const auto type = parse_value_type(type_name);
         if (!type)
         {
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
+            add_diagnostic(diagnostics, diagnostic_severity::error,
                            type_name == "any" ? "FLOW_UNRESOLVED_ANY" : "FLOW_VARIABLE_TYPE",
                            type_name == "any" ? "Flow variables cannot use the unresolved 'any' type."
                                               : "Flow variable has an unsupported type.",
@@ -355,22 +304,16 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
         if (id.empty() || name.empty() || default_iterator == variable_json.end() ||
             !variable_json.contains("exposed") || !variable_json["exposed"].is_boolean())
         {
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_VARIABLE_SCHEMA",
-                           "Flow variable requires id, name, defaultValue, and exposed fields.",
-                           id);
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_VARIABLE_SCHEMA",
+                           "Flow variable requires id, name, defaultValue, and exposed fields.", id);
             continue;
         }
 
         const auto parsed_default = parse_default_value(*type, *default_iterator);
         if (!parsed_default)
         {
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_VARIABLE_DEFAULT",
-                           "Flow variable defaultValue does not match its declared type.",
-                           id);
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_VARIABLE_DEFAULT",
+                           "Flow variable defaultValue does not match its declared type.", id);
             continue;
         }
 
@@ -384,9 +327,7 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
     const auto nodes_iterator = graph_json.find("nodes");
     if (nodes_iterator == graph_json.end() || !nodes_iterator->is_array())
     {
-        add_diagnostic(diagnostics,
-                       diagnostic_severity::error,
-                       "FLOW_NODES_SCHEMA",
+        add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_NODES_SCHEMA",
                        "Flow graph nodes must be an array.");
         return std::nullopt;
     }
@@ -395,9 +336,7 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
     {
         if (!node_json.is_object())
         {
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_NODE_SCHEMA",
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_NODE_SCHEMA",
                            "Flow node entries must be objects.");
             continue;
         }
@@ -407,22 +346,16 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
         const auto kind = parse_node_kind(type_name);
         if (id.empty() || !kind)
         {
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_NODE_TYPE",
-                           "Flow node has an empty id or unsupported node type.",
-                           id);
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_NODE_TYPE",
+                           "Flow node has an empty id or unsupported node type.", id);
             continue;
         }
 
         const auto values_iterator = node_json.find("values");
         if (values_iterator == node_json.end() || !values_iterator->is_object())
         {
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_NODE_VALUES",
-                           "Flow node values must be an object.",
-                           id);
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_NODE_VALUES",
+                           "Flow node values must be an object.", id);
             continue;
         }
 
@@ -432,9 +365,7 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
     const auto connections_iterator = graph_json.find("connections");
     if (connections_iterator == graph_json.end() || !connections_iterator->is_array())
     {
-        add_diagnostic(diagnostics,
-                       diagnostic_severity::error,
-                       "FLOW_CONNECTIONS_SCHEMA",
+        add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_CONNECTIONS_SCHEMA",
                        "Flow graph connections must be an array.");
         return std::nullopt;
     }
@@ -443,9 +374,7 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
     {
         if (!connection_json.is_object())
         {
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_CONNECTION_SCHEMA",
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_CONNECTION_SCHEMA",
                            "Flow connection entries must be objects.");
             continue;
         }
@@ -458,13 +387,8 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
             from_iterator == connection_json.end() || to_iterator == connection_json.end() ||
             !from_iterator->is_object() || !to_iterator->is_object())
         {
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_CONNECTION_SCHEMA",
-                           "Flow connection requires id, kind, from, and to fields.",
-                           {},
-                           {},
-                           id);
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_CONNECTION_SCHEMA",
+                           "Flow connection requires id, kind, from, and to fields.", {}, {}, id);
             continue;
         }
 
@@ -478,13 +402,8 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
         if (connection.from.node_id.empty() || connection.from.pin.empty() || connection.to.node_id.empty() ||
             connection.to.pin.empty())
         {
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_CONNECTION_ENDPOINT",
-                           "Flow connection endpoints require nodeId and pin.",
-                           {},
-                           {},
-                           id);
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_CONNECTION_ENDPOINT",
+                           "Flow connection endpoints require nodeId and pin.", {}, {}, id);
             continue;
         }
         graph.connections.push_back(std::move(connection));
@@ -509,30 +428,21 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
     for (const variable& item : graph.variables)
     {
         if (!variable_ids.insert(item.id).second)
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_DUPLICATE_VARIABLE_ID",
-                           "Flow variable ids must be unique.",
-                           item.id);
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_DUPLICATE_VARIABLE_ID",
+                           "Flow variable ids must be unique.", item.id);
     }
 
     for (const source_node& node : graph.nodes)
     {
         if (!state.nodes.emplace(node.id, &node).second)
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_DUPLICATE_NODE_ID",
-                           "Flow node ids must be unique.",
-                           node.id);
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_DUPLICATE_NODE_ID",
+                           "Flow node ids must be unique.", node.id);
         if (node.kind == node_kind::input_action)
         {
             const auto action = node.values.find("action");
             if (action == node.values.end() || !action->is_string() || action->get<std::string>().empty())
-                add_diagnostic(diagnostics,
-                               diagnostic_severity::error,
-                               "FLOW_INPUT_ACTION_NAME",
-                               "Input Action nodes require a non-empty action name.",
-                               node.id);
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_INPUT_ACTION_NAME",
+                               "Input Action nodes require a non-empty action name.", node.id);
         }
     }
 
@@ -540,35 +450,21 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
     for (const source_connection& connection : graph.connections)
     {
         if (!connection_ids.insert(connection.id).second)
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_DUPLICATE_CONNECTION_ID",
-                           "Flow connection ids must be unique.",
-                           {},
-                           {},
-                           connection.id);
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_DUPLICATE_CONNECTION_ID",
+                           "Flow connection ids must be unique.", {}, {}, connection.id);
 
         const auto from_node_iterator = state.nodes.find(connection.from.node_id);
         const auto to_node_iterator = state.nodes.find(connection.to.node_id);
         if (from_node_iterator == state.nodes.end() || to_node_iterator == state.nodes.end())
         {
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_CONNECTION_NODE",
-                           "Flow connection references a node that does not exist.",
-                           {},
-                           {},
-                           connection.id);
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_CONNECTION_NODE",
+                           "Flow connection references a node that does not exist.", {}, {}, connection.id);
             continue;
         }
         if (connection.from.node_id == connection.to.node_id)
         {
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_SELF_CONNECTION",
-                           "Flow nodes cannot connect to themselves.",
-                           connection.from.node_id,
-                           connection.from.pin,
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_SELF_CONNECTION",
+                           "Flow nodes cannot connect to themselves.", connection.from.node_id, connection.from.pin,
                            connection.id);
             continue;
         }
@@ -577,13 +473,10 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
         const auto to_pin = input_pin(to_node_iterator->second->kind, connection.to.pin);
         if (!from_pin || !to_pin)
         {
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_PIN_NOT_FOUND",
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_PIN_NOT_FOUND",
                            "Flow connection references an unknown output or input pin.",
                            !from_pin ? connection.from.node_id : connection.to.node_id,
-                           !from_pin ? connection.from.pin : connection.to.pin,
-                           connection.id);
+                           !from_pin ? connection.from.pin : connection.to.pin, connection.id);
             continue;
         }
 
@@ -591,48 +484,33 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
             connection.kind == connection_kind::execution ? pin_kind::execution : pin_kind::value;
         if (from_pin->kind != expected_kind || to_pin->kind != expected_kind)
         {
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_CONNECTION_KIND",
-                           "Flow connection kind does not match its endpoint pins.",
-                           connection.to.node_id,
-                           connection.to.pin,
-                           connection.id);
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_CONNECTION_KIND",
+                           "Flow connection kind does not match its endpoint pins.", connection.to.node_id,
+                           connection.to.pin, connection.id);
             continue;
         }
         if (expected_kind == pin_kind::value && from_pin->type != to_pin->type)
         {
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_VALUE_TYPE_MISMATCH",
-                           "Flow value connection types are incompatible.",
-                           connection.to.node_id,
-                           connection.to.pin,
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_VALUE_TYPE_MISMATCH",
+                           "Flow value connection types are incompatible.", connection.to.node_id, connection.to.pin,
                            connection.id);
             continue;
         }
 
         const std::string incoming_key = pin_key(connection.to.node_id, connection.to.pin);
         if (!state.incoming.emplace(incoming_key, &connection).second)
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::error,
-                           "FLOW_MULTIPLE_INPUTS",
-                           "A Flow input pin can have only one incoming connection.",
-                           connection.to.node_id,
-                           connection.to.pin,
-                           connection.id);
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_MULTIPLE_INPUTS",
+                           "A Flow input pin can have only one incoming connection.", connection.to.node_id,
+                           connection.to.pin, connection.id);
 
         if (connection.kind == connection_kind::execution)
         {
             const std::string outgoing_key = pin_key(connection.from.node_id, connection.from.pin);
             if (!state.execution_outgoing.emplace(outgoing_key, &connection).second)
-                add_diagnostic(diagnostics,
-                               diagnostic_severity::error,
-                               "FLOW_EXECUTION_FANOUT",
-                               "Execution outputs must have a single target; use an explicit Sequence node for fan-out.",
-                               connection.from.node_id,
-                               connection.from.pin,
-                               connection.id);
+                add_diagnostic(
+                    diagnostics, diagnostic_severity::error, "FLOW_EXECUTION_FANOUT",
+                    "Execution outputs must have a single target; use an explicit Sequence node for fan-out.",
+                    connection.from.node_id, connection.from.pin, connection.id);
             state.execution_adjacency[connection.from.node_id].push_back(connection.to.node_id);
         }
     }
@@ -643,15 +521,14 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
         visited,
     };
     std::unordered_map<std::string, visit_state> visits;
-    std::function<bool(const std::string&)> visit = [&](const std::string& node_id) {
+    std::function<bool(const std::string&)> visit = [&](const std::string& node_id)
+    {
         const auto existing = visits.find(node_id);
         if (existing != visits.end())
         {
             if (existing->second == visit_state::visiting)
             {
-                add_diagnostic(diagnostics,
-                               diagnostic_severity::error,
-                               "FLOW_EXECUTION_CYCLE",
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_EXECUTION_CYCLE",
                                "Execution cycles are not allowed unless represented by an explicit loop node.",
                                node_id);
                 return false;
@@ -663,16 +540,14 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
         const auto adjacency = state.execution_adjacency.find(node_id);
         if (adjacency != state.execution_adjacency.end())
             for (const std::string& target : adjacency->second)
-                if (!visit(target))
-                    return false;
+                if (!visit(target)) return false;
         visits[node_id] = visit_state::visited;
         return true;
     };
 
     for (const source_node& node : graph.nodes)
     {
-        if (visits.find(node.id) == visits.end() && !visit(node.id))
-            break;
+        if (visits.find(node.id) == visits.end() && !visit(node.id)) break;
     }
 
     std::unordered_set<std::string> reachable;
@@ -690,20 +565,15 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
         const std::string current = pending.front();
         pending.pop();
         const auto adjacency = state.execution_adjacency.find(current);
-        if (adjacency == state.execution_adjacency.end())
-            continue;
+        if (adjacency == state.execution_adjacency.end()) continue;
         for (const std::string& target : adjacency->second)
-            if (reachable.insert(target).second)
-                pending.push(target);
+            if (reachable.insert(target).second) pending.push(target);
     }
     for (const source_node& node : graph.nodes)
     {
         if (node.kind == node_kind::branch && reachable.find(node.id) == reachable.end())
-            add_diagnostic(diagnostics,
-                           diagnostic_severity::warning,
-                           "FLOW_UNREACHABLE_NODE",
-                           "Flow node is not reachable from an event entry point.",
-                           node.id);
+            add_diagnostic(diagnostics, diagnostic_severity::warning, "FLOW_UNREACHABLE_NODE",
+                           "Flow node is not reachable from an event entry point.", node.id);
     }
 
     return state;
@@ -715,9 +585,8 @@ std::vector<const source_node*> sorted_nodes(const source_graph& graph)
     result.reserve(graph.nodes.size());
     for (const source_node& node : graph.nodes)
         result.push_back(&node);
-    std::sort(result.begin(), result.end(), [](const source_node* left, const source_node* right) {
-        return left->id < right->id;
-    });
+    std::sort(result.begin(), result.end(),
+              [](const source_node* left, const source_node* right) { return left->id < right->id; });
     return result;
 }
 
@@ -725,17 +594,16 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
 {
     ir_program program;
     program.variables = graph.variables;
-    std::sort(program.variables.begin(), program.variables.end(), [](const variable& left, const variable& right) {
-        return left.id < right.id;
-    });
+    std::sort(program.variables.begin(), program.variables.end(),
+              [](const variable& left, const variable& right) { return left.id < right.id; });
 
     const auto nodes = sorted_nodes(graph);
     std::unordered_map<std::string, std::uint32_t> value_slots;
-    auto allocate_slot = [&](const source_node& node, std::string_view pin, value_type type, flow_value initial) {
+    auto allocate_slot = [&](const source_node& node, std::string_view pin, value_type type, flow_value initial)
+    {
         const std::string key = pin_key(node.id, pin);
         const auto existing = value_slots.find(key);
-        if (existing != value_slots.end())
-            return existing->second;
+        if (existing != value_slots.end()) return existing->second;
         const auto index = static_cast<std::uint32_t>(program.value_slots.size());
         program.value_slots.push_back({.index = index,
                                        .type = type,
@@ -757,25 +625,23 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
     std::unordered_map<std::string, std::uint32_t> branch_instructions;
     for (const source_node* node : nodes)
     {
-        if (node->kind != node_kind::branch)
-            continue;
+        if (node->kind != node_kind::branch) continue;
         const auto index = static_cast<std::uint32_t>(program.instructions.size());
         branch_instructions.emplace(node->id, index);
         program.instructions.push_back({.opcode = ir_opcode::branch, .node_id = node->id});
     }
 
-    const auto execution_target = [&](const source_node& node, std::string_view pin) {
+    const auto execution_target = [&](const source_node& node, std::string_view pin)
+    {
         const auto connection = validation.execution_outgoing.find(pin_key(node.id, pin));
-        if (connection == validation.execution_outgoing.end())
-            return invalid_instruction;
+        if (connection == validation.execution_outgoing.end()) return invalid_instruction;
         const auto target = branch_instructions.find(connection->second->to.node_id);
         return target == branch_instructions.end() ? invalid_instruction : target->second;
     };
 
     for (const source_node* node : nodes)
     {
-        if (node->kind != node_kind::branch)
-            continue;
+        if (node->kind != node_kind::branch) continue;
         ir_instruction& instruction = program.instructions[branch_instructions.at(node->id)];
         const auto condition_connection = validation.incoming.find(pin_key(node->id, "condition"));
         if (condition_connection == validation.incoming.end())
@@ -791,65 +657,62 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
         instruction.false_instruction = execution_target(*node, "false");
     }
 
-    const auto add_binding = [&](ir_entry_point& entry,
-                                 const source_node& node,
-                                 std::string_view pin,
-                                 entry_value_kind source) {
-        entry.value_bindings.push_back({.source = source, .slot = value_slots.at(pin_key(node.id, pin))});
-    };
+    const auto add_binding =
+        [&](ir_entry_point& entry, const source_node& node, std::string_view pin, entry_value_kind source)
+    { entry.value_bindings.push_back({.source = source, .slot = value_slots.at(pin_key(node.id, pin))}); };
 
     for (const source_node* node : nodes)
     {
         switch (node->kind)
         {
-        case node_kind::begin_play:
-            program.entry_points.push_back({.kind = entry_point_kind::begin_play,
-                                            .node_id = node->id,
-                                            .instruction = execution_target(*node, "exec")});
-            break;
-        case node_kind::end_play:
-            program.entry_points.push_back({.kind = entry_point_kind::end_play,
-                                            .node_id = node->id,
-                                            .instruction = execution_target(*node, "exec")});
-            break;
-        case node_kind::tick:
-        {
-            ir_entry_point entry{.kind = entry_point_kind::tick,
-                                 .node_id = node->id,
-                                 .instruction = execution_target(*node, "exec")};
-            add_binding(entry, *node, "deltaSeconds", entry_value_kind::delta_seconds);
-            program.entry_points.push_back(std::move(entry));
-            break;
-        }
-        case node_kind::fixed_tick:
-        {
-            ir_entry_point entry{.kind = entry_point_kind::fixed_tick,
-                                 .node_id = node->id,
-                                 .instruction = execution_target(*node, "exec")};
-            add_binding(entry, *node, "deltaSeconds", entry_value_kind::delta_seconds);
-            program.entry_points.push_back(std::move(entry));
-            break;
-        }
-        case node_kind::input_action:
-        {
-            const std::string action = node->values.at("action").get<std::string>();
-            ir_entry_point triggered{.kind = entry_point_kind::input_action_triggered,
+            case node_kind::begin_play:
+                program.entry_points.push_back({.kind = entry_point_kind::begin_play,
+                                                .node_id = node->id,
+                                                .instruction = execution_target(*node, "exec")});
+                break;
+            case node_kind::end_play:
+                program.entry_points.push_back({.kind = entry_point_kind::end_play,
+                                                .node_id = node->id,
+                                                .instruction = execution_target(*node, "exec")});
+                break;
+            case node_kind::tick:
+            {
+                ir_entry_point entry{.kind = entry_point_kind::tick,
                                      .node_id = node->id,
-                                     .action = action,
-                                     .instruction = execution_target(*node, "triggered")};
-            add_binding(triggered, *node, "value", entry_value_kind::input_action_value);
-            program.entry_points.push_back(std::move(triggered));
+                                     .instruction = execution_target(*node, "exec")};
+                add_binding(entry, *node, "deltaSeconds", entry_value_kind::delta_seconds);
+                program.entry_points.push_back(std::move(entry));
+                break;
+            }
+            case node_kind::fixed_tick:
+            {
+                ir_entry_point entry{.kind = entry_point_kind::fixed_tick,
+                                     .node_id = node->id,
+                                     .instruction = execution_target(*node, "exec")};
+                add_binding(entry, *node, "deltaSeconds", entry_value_kind::delta_seconds);
+                program.entry_points.push_back(std::move(entry));
+                break;
+            }
+            case node_kind::input_action:
+            {
+                const std::string action = node->values.at("action").get<std::string>();
+                ir_entry_point triggered{.kind = entry_point_kind::input_action_triggered,
+                                         .node_id = node->id,
+                                         .action = action,
+                                         .instruction = execution_target(*node, "triggered")};
+                add_binding(triggered, *node, "value", entry_value_kind::input_action_value);
+                program.entry_points.push_back(std::move(triggered));
 
-            ir_entry_point completed{.kind = entry_point_kind::input_action_completed,
-                                     .node_id = node->id,
-                                     .action = action,
-                                     .instruction = execution_target(*node, "completed")};
-            add_binding(completed, *node, "value", entry_value_kind::input_action_value);
-            program.entry_points.push_back(std::move(completed));
-            break;
-        }
-        case node_kind::branch:
-            break;
+                ir_entry_point completed{.kind = entry_point_kind::input_action_completed,
+                                         .node_id = node->id,
+                                         .action = action,
+                                         .instruction = execution_target(*node, "completed")};
+                add_binding(completed, *node, "value", entry_value_kind::input_action_value);
+                program.entry_points.push_back(std::move(completed));
+                break;
+            }
+            case node_kind::branch:
+                break;
         }
     }
 
@@ -890,12 +753,10 @@ compile_result compile_asset(std::string_view source)
 {
     compile_result result;
     const auto graph = parse_source(source, result.diagnostics);
-    if (!graph)
-        return result;
+    if (!graph) return result;
 
     const validation_state validation = validate_graph(*graph, result.diagnostics);
-    if (has_errors(result.diagnostics))
-        return result;
+    if (has_errors(result.diagnostics)) return result;
 
     result.ir = build_ir(*graph, validation);
     result.bytecode = lower_bytecode(*result.ir);

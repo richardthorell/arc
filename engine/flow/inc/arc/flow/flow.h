@@ -37,14 +37,8 @@ enum class value_type : std::uint8_t
     component,
 };
 
-using flow_value = std::variant<std::monostate,
-                                bool,
-                                std::int64_t,
-                                double,
-                                std::array<double, 2>,
-                                std::array<double, 3>,
-                                std::array<double, 4>,
-                                std::string>;
+using flow_value = std::variant<std::monostate, bool, std::int64_t, double, std::array<double, 2>,
+                                std::array<double, 3>, std::array<double, 4>, std::string>;
 
 struct diagnostic
 {
