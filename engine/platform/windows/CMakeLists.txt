@@ -3,6 +3,7 @@ if(NOT WIN32)
 endif()
 
 add_library(arc-platform-windows STATIC
+    src/windows_controller_manager.cpp
     src/windows_entry.cpp
     src/windows_gamepad_backend.cpp
     src/windows_input_backend.cpp
@@ -77,4 +78,13 @@ if(BUILD_TESTING AND ARC_BUILD_ENGINE_TESTS)
         NAME arc_windows_smoke_app
         SOURCES tests/windows_smoke_app.cpp
     )
+
+    add_executable(arc_windows_controller_manager_tests
+        tests/windows_controller_manager_tests.cpp
+    )
+    arc_configure_first_party_target(arc_windows_controller_manager_tests)
+    target_compile_features(arc_windows_controller_manager_tests PRIVATE cxx_std_20)
+    target_include_directories(arc_windows_controller_manager_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_link_libraries(arc_windows_controller_manager_tests PRIVATE arc-platform-windows)
+    add_test(NAME arc_windows_controller_manager_tests COMMAND arc_windows_controller_manager_tests)
 endif()
