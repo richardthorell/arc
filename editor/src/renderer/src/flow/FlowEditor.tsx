@@ -44,13 +44,7 @@ const defaultValueForType = (type: FlowValueType): unknown => {
   }
 };
 
-export function FlowEditor({
-  document,
-  context: _context,
-}: {
-  document: EditorDocument;
-  context?: EditorSurfaceContext;
-}) {
+export function FlowEditor({ document }: { document: EditorDocument; context?: EditorSurfaceContext }) {
   const state = useFlowDocumentState(document);
 
   useEffect(() => () => disposeFlowDocument(document.id), [document.id]);
