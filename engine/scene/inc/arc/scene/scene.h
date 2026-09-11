@@ -27,3 +27,4 @@
 #include <arc/scene/terrain_runtime_journal.h>
 #include <arc/scene/terrain_surface_ir.h>
 #include <arc/scene/transforms.h>
+#include <arc/scene/water_asset_bridge.h>

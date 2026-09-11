@@ -1,5 +1,6 @@
 #include <arc/assets/assets.h>
 #include <arc/assets/cook.h>
+#include <arc/assets/water_types.h>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -119,6 +120,15 @@ TEST_CASE("asset identifiers and SHA-256 hashes are stable")
     REQUIRE(to_string(hash) == "ba7816bf8f01cfea414140de5dae2223"
                                "b00361a396177a9cb410ff61f20015ad");
     REQUIRE(parse_asset_hash(to_string(hash)) == hash);
+}
+
+TEST_CASE("Water preset paths classify as versioned Water assets")
+{
+    using namespace arc::assets;
+    const auto classification = classify_asset_path("Content/Water/Open Ocean.arcwater");
+    REQUIRE(classification.has_value());
+    CHECK(classification->first == asset_types::water_preset);
+    CHECK(classification->second == importer_ids::water_preset);
 }
 
 TEST_CASE("asset metadata round trips stable subasset identities")

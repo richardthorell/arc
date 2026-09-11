@@ -42,6 +42,7 @@ const cameraSnapshot = (): InspectorEntitySnapshot => ({
   light: null,
   meshRenderer: null,
   terrain: null,
+  water: null,
   prefab: null,
   projectComponents: [],
   components: [
@@ -119,6 +120,51 @@ const terrainSnapshot = (): InspectorEntitySnapshot => ({
   components: [
     { kind: 'transform', label: 'Transform', editable: true },
     { kind: 'terrain', label: 'Terrain', editable: true },
+  ],
+});
+
+const waterSnapshot = (): InspectorEntitySnapshot => ({
+  ...cameraSnapshot(),
+  name: 'Ocean',
+  tag: 'Environment',
+  camera: null,
+  water: {
+    bodyType: 'ocean',
+    presetGuid: '',
+    presetPath: 'water/Open Ocean.arcwater',
+    materialGuid: '',
+    materialPath: '',
+    waterLevel: 0,
+    enabled: true,
+    followCamera: true,
+    visibleDistance: 20000,
+    windSpeed: 12,
+    windDirectionX: 1,
+    windDirectionY: 0,
+    fetchLength: 50000,
+    waveAmplitude: 1,
+    choppiness: 1,
+    foamEnabled: true,
+    foamThreshold: 0.55,
+    foamDecay: 0.4,
+    absorption: { x: 0.18, y: 0.065, z: 0.025 },
+    scattering: { x: 0.02, y: 0.075, z: 0.1 },
+    roughness: 0.08,
+    refractionStrength: 0.04,
+    shorelineEnabled: true,
+    shorelineFoamWidth: 2,
+    shallowWaveDampingDistance: 20,
+    runupDistance: 1.5,
+    underwaterEnabled: true,
+    causticsEnabled: true,
+    queriesEnabled: true,
+    buoyancyEnabled: true,
+    quality: 'high',
+    priority: 0,
+  },
+  components: [
+    { kind: 'transform', label: 'Transform', editable: true },
+    { kind: 'water', label: 'Water', editable: true },
   ],
 });
 
@@ -293,6 +339,51 @@ describe('data-driven InspectorPanel', () => {
       expect(command).toHaveBeenCalledWith(
         'terrain.assignLayer',
         expect.objectContaining({ layer: 3, path: 'textures/sand.jpg' }),
+      ),
+    );
+  });
+
+  it('renders Water controls and sends a typed Water update', async () => {
+    const command = vi.fn().mockResolvedValue({ succeeded: true });
+    const assets = [
+      {
+        id: 'storm',
+        name: 'Storm',
+        path: 'builtin/water/presets/storm.arcwater',
+        kind: 'water',
+        status: 'ready' as const,
+      },
+      { id: 'sand', name: 'Sand', path: 'materials/sand.arcmat', kind: 'material', status: 'ready' as const },
+    ];
+    render(
+      <InspectorPanel snapshot={waterSnapshot()} command={command} refresh={async () => undefined} assets={assets} />,
+    );
+
+    expect(screen.getByLabelText('Collapse Water')).toBeInTheDocument();
+    expect(screen.getByLabelText('Water Level')).toHaveValue('0.00');
+    await userEvent.click(screen.getByLabelText('Choose Water Preset asset'));
+    expect(screen.queryByLabelText('Select Sand')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText('Select Storm'));
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith(
+        'water.update',
+        expect.objectContaining({
+          water: expect.objectContaining({ presetPath: 'builtin/water/presets/storm.arcwater' }),
+        }),
+      ),
+    );
+    await userEvent.click(screen.getByLabelText('Quality'));
+    await userEvent.click(screen.getByRole('option', { name: 'Ultra' }));
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith(
+        'water.update',
+        expect.objectContaining({
+          water: expect.objectContaining({
+            quality: 'ultra',
+            absorption: [0.18, 0.065, 0.025],
+            scattering: [0.02, 0.075, 0.1],
+          }),
+        }),
       ),
     );
   });

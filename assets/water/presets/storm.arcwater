@@ -1,0 +1,29 @@
+{
+  "format": "arc.water-preset",
+  "formatVersion": 1,
+  "preset": {
+    "schemaVersion": 1,
+    "name": "Storm",
+    "bodyType": "ocean",
+    "simulation": {
+      "windSpeed": 28.0,
+      "windDirection": [0.42, 0.91],
+      "fetchLength": 140000.0,
+      "waveAmplitude": 5.0,
+      "choppiness": 1.8,
+      "seed": 5505
+    },
+    "foam": {
+      "enabled": true,
+      "threshold": 0.3,
+      "decay": 0.22
+    },
+    "appearance": {
+      "absorption": [0.32, 0.13, 0.06],
+      "scattering": [0.016, 0.042, 0.052],
+      "roughness": 0.2,
+      "refractionStrength": 0.025
+    },
+    "quality": "ultra"
+  }
+}

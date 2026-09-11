@@ -492,6 +492,31 @@ terrain_asset_json_result write_terrain_asset_json(const terrain_asset& asset, b
                         {"domains", domains_json(modifier.domains)},
                         {"parameters", std::move(parameters)}};
             if (modifier.affected_bounds) record["affectedBounds"] = bounds_json(*modifier.affected_bounds);
+
+            json region_payloads = json::array();
+            for (const auto& payload : modifier.region_payloads)
+            {
+                json samples = json::array();
+                std::string_view kind;
+                if (const auto* sculpt = std::get_if<terrain_sculpt_region_payload>(&payload.data))
+                {
+                    kind = "sculpt-height-delta";
+                    for (const auto& sample : sculpt->samples)
+                        samples.push_back({sample.x, sample.z, sample.delta});
+                }
+                else if (const auto* paint = std::get_if<terrain_paint_region_payload>(&payload.data))
+                {
+                    kind = "paint-weight-delta";
+                    for (const auto& sample : paint->samples)
+                        samples.push_back(
+                            {sample.x, sample.z, sample.delta[0], sample.delta[1], sample.delta[2], sample.delta[3]});
+                }
+                region_payloads.push_back({{"region", {{"x", payload.region.x}, {"z", payload.region.z}}},
+                                           {"schemaVersion", payload.schema_version},
+                                           {"kind", kind},
+                                           {"samples", std::move(samples)}});
+            }
+            if (!region_payloads.empty()) record["regionPayloads"] = std::move(region_payloads);
             modifiers.push_back(std::move(record));
         }
 
@@ -654,6 +679,63 @@ terrain_asset_decode_result read_terrain_asset_json(std::string_view text)
                         return failure<terrain_asset_decode_result>(terrain_asset_io_error_code::invalid_document,
                                                                     "Terrain modifier bounds are malformed");
                     modifier.affected_bounds = parsed;
+                }
+                if (const auto payloads = record.find("regionPayloads"); payloads != record.end())
+                {
+                    if (!payloads->is_array())
+                        return failure<terrain_asset_decode_result>(
+                            terrain_asset_io_error_code::invalid_document,
+                            "Terrain modifier region payloads must be an array");
+                    for (const auto& payload_record : *payloads)
+                    {
+                        if (!payload_record.is_object() || !payload_record.contains("region") ||
+                            !payload_record["region"].is_object() || !payload_record.contains("samples") ||
+                            !payload_record["samples"].is_array())
+                            return failure<terrain_asset_decode_result>(terrain_asset_io_error_code::invalid_document,
+                                                                        "Terrain modifier region payload is malformed");
+                        terrain_modifier_region_payload payload;
+                        payload.region.x = payload_record["region"].value("x", 0ll);
+                        payload.region.z = payload_record["region"].value("z", 0ll);
+                        payload.schema_version = payload_record.value("schemaVersion", 0u);
+                        const auto kind = payload_record.value("kind", std::string{});
+                        if (kind == "sculpt-height-delta")
+                        {
+                            terrain_sculpt_region_payload sculpt;
+                            for (const auto& sample : payload_record["samples"])
+                            {
+                                if (!sample.is_array() || sample.size() != 3u)
+                                    return failure<terrain_asset_decode_result>(
+                                        terrain_asset_io_error_code::invalid_document,
+                                        "Terrain sculpt sparse sample is malformed");
+                                sculpt.samples.push_back({sample[0].get<std::uint32_t>(),
+                                                          sample[1].get<std::uint32_t>(), sample[2].get<float>()});
+                            }
+                            payload.data = std::move(sculpt);
+                        }
+                        else if (kind == "paint-weight-delta")
+                        {
+                            terrain_paint_region_payload paint;
+                            for (const auto& sample : payload_record["samples"])
+                            {
+                                if (!sample.is_array() || sample.size() != 6u)
+                                    return failure<terrain_asset_decode_result>(
+                                        terrain_asset_io_error_code::invalid_document,
+                                        "Terrain paint sparse sample is malformed");
+                                paint.samples.push_back(
+                                    {sample[0].get<std::uint32_t>(),
+                                     sample[1].get<std::uint32_t>(),
+                                     {sample[2].get<std::int16_t>(), sample[3].get<std::int16_t>(),
+                                      sample[4].get<std::int16_t>(), sample[5].get<std::int16_t>()}});
+                            }
+                            payload.data = std::move(paint);
+                        }
+                        else
+                        {
+                            return failure<terrain_asset_decode_result>(terrain_asset_io_error_code::invalid_document,
+                                                                        "Terrain modifier payload kind is unsupported");
+                        }
+                        modifier.region_payloads.push_back(std::move(payload));
+                    }
                 }
                 asset.modifiers.push_back(std::move(modifier));
             }

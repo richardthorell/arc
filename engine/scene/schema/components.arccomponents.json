@@ -685,6 +685,7 @@
                            "type":  "water_component",
                            "id":  "a7c0000000000001000000000000001a",
                            "display":  "Water",
+                           "version":  2,
                            "customSerialization":  true,
                            "description":  "Reflected scene data for the Water component."
                        },

@@ -2971,6 +2971,71 @@ TEST_CASE("primitive mesh builders create renderable geometry")
     REQUIRE(terrain.vertices.back().texcoord[0] - terrain.vertices.front().texcoord[0] > 1.0f);
 }
 
+TEST_CASE("Water Ocean grid uses progressive rings and a quantized camera-relative origin")
+{
+    const arc::render::water_ocean_grid_descriptor descriptor{
+        .visible_distance = 2048.0f, .inner_grid_cells = 16u, .ring_count = 6u};
+    const auto grid = arc::render::make_water_ocean_grid(descriptor);
+    REQUIRE(grid.name == "Water Ocean Clipmap");
+    REQUIRE_FALSE(grid.vertices.empty());
+    REQUIRE(grid.indices.size() % 6u == 0u);
+    REQUIRE(grid.vertices.size() < 100000u);
+
+    float minimum_x = std::numeric_limits<float>::max();
+    float maximum_x = std::numeric_limits<float>::lowest();
+    float minimum_z = std::numeric_limits<float>::max();
+    float maximum_z = std::numeric_limits<float>::lowest();
+    bool flat = true;
+    bool upward_facing = true;
+    for (const auto& vertex : grid.vertices)
+    {
+        minimum_x = std::min(minimum_x, vertex.position[0]);
+        maximum_x = std::max(maximum_x, vertex.position[0]);
+        minimum_z = std::min(minimum_z, vertex.position[2]);
+        maximum_z = std::max(maximum_z, vertex.position[2]);
+        flat = flat && vertex.position[1] == 0.0f;
+        upward_facing = upward_facing && vertex.normal[1] == 1.0f;
+    }
+    CHECK(flat);
+    CHECK(upward_facing);
+    CHECK(minimum_x == Catch::Approx(-descriptor.visible_distance));
+    CHECK(maximum_x == Catch::Approx(descriptor.visible_distance));
+    CHECK(minimum_z == Catch::Approx(-descriptor.visible_distance));
+    CHECK(maximum_z == Catch::Approx(descriptor.visible_distance));
+
+    const float cell_size = arc::render::water_ocean_grid_cell_size(descriptor);
+    const auto first = arc::render::water_ocean_grid_origin({101.2f, 80.0f, -47.7f}, 3.5f, cell_size);
+    const auto stable =
+        arc::render::water_ocean_grid_origin({101.2f + cell_size * 0.25f, 2.0f, -47.7f}, 3.5f, cell_size);
+    CHECK(first[0] == Catch::Approx(stable[0]));
+    CHECK(first[2] == Catch::Approx(stable[2]));
+    CHECK(first[1] == Catch::Approx(3.5f));
+}
+
+TEST_CASE("Water optical material maps absorption scattering and refraction into the transmission path")
+{
+    arc::water::water_appearance_settings appearance;
+    appearance.absorption = {0.10f, 0.20f, 0.40f};
+    appearance.scattering = {0.01f, 0.04f, 0.08f};
+    appearance.roughness = 0.16f;
+    appearance.refraction_strength = 0.12f;
+
+    const auto material = arc::render::make_water_material(appearance, "Test Water");
+    CHECK(material.name == "Test Water");
+    CHECK(material.shading_model == arc::render::material_shading_model::transmission);
+    CHECK(material.render_path == arc::render::material_render_path::clustered_forward);
+    CHECK_FALSE(material.deferred_compatible);
+    CHECK(material.alpha_mode == arc::render::material_alpha_mode::blend);
+    CHECK(material.index_of_refraction == Catch::Approx(1.333f));
+    CHECK(material.roughness == Catch::Approx(appearance.roughness));
+    CHECK(material.transmission_factor == Catch::Approx(0.54f));
+    CHECK(material.base_color[0] < material.base_color[1]);
+    CHECK(material.base_color[1] < material.base_color[2]);
+    CHECK(material.attenuation_color[0] > material.attenuation_color[1]);
+    CHECK(material.attenuation_color[1] > material.attenuation_color[2]);
+    CHECK(material.attenuation_distance == Catch::Approx(2.5f));
+}
+
 TEST_CASE("virtual mesh builder handles empty input")
 {
     const arc::render::mesh_data source;

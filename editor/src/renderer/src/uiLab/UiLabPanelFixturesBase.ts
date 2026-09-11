@@ -216,6 +216,7 @@ export const panelInspectorFixture: InspectorEntitySnapshot = {
     materialPath: 'Assets/Materials/M_Wood_Logs.arcmat',
   },
   terrain: null,
+  water: null,
   prefab: {
     prefabGuid: 'asset-prefab-cabin',
     prefabPath: 'Assets/Prefabs/PF_Cabin.arcprefab',

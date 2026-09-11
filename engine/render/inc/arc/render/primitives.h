@@ -7,10 +7,33 @@
 namespace arc::render
 {
 
+/** @brief Topology controls for the flat camera-relative W0 Ocean surface. */
+struct water_ocean_grid_descriptor
+{
+    float visible_distance{20000.0f};
+    std::uint32_t inner_grid_cells{32u};
+    std::uint32_t ring_count{8u};
+};
+
 /**
  * @brief Create a flat XZ plane centered at the origin.
  */
 mesh_data make_plane_mesh(float size = 1.0f);
+
+/**
+ * @brief Create a flat square center patch surrounded by progressively coarser rings.
+ *
+ * The mesh is authored around the origin and is intended to be translated to a snapped camera-relative origin each
+ * frame. Its outer half-extent equals `visible_distance`.
+ */
+mesh_data make_water_ocean_grid(const water_ocean_grid_descriptor& descriptor = {});
+
+/** @brief Finest cell size used to quantize movement of a camera-relative Ocean grid. */
+[[nodiscard]] float water_ocean_grid_cell_size(const water_ocean_grid_descriptor& descriptor = {}) noexcept;
+
+/** @brief Snap an Ocean grid to the camera on XZ while preserving the authored water level on Y. */
+[[nodiscard]] math::vector3f water_ocean_grid_origin(const math::vector3f& camera_position, float water_level,
+                                                     float cell_size) noexcept;
 
 /**
  * @brief Create a cube centered at the origin.

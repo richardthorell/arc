@@ -96,6 +96,27 @@ void append_face(mesh_data& mesh, const mesh_vertex& a, const mesh_vertex& b, co
     mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
 }
 
+void append_water_grid_patch(mesh_data& mesh, float minimum_x, float minimum_z, float maximum_x, float maximum_z,
+                             float cell_size)
+{
+    const auto columns = static_cast<std::uint32_t>(std::round((maximum_x - minimum_x) / cell_size));
+    const auto rows = static_cast<std::uint32_t>(std::round((maximum_z - minimum_z) / cell_size));
+    for (std::uint32_t row = 0; row < rows; ++row)
+    {
+        const float z0 = minimum_z + static_cast<float>(row) * cell_size;
+        const float z1 = row + 1u == rows ? maximum_z : z0 + cell_size;
+        for (std::uint32_t column = 0; column < columns; ++column)
+        {
+            const float x0 = minimum_x + static_cast<float>(column) * cell_size;
+            const float x1 = column + 1u == columns ? maximum_x : x0 + cell_size;
+            append_face(mesh, vertex(x0, 0.0f, z0, 0.0f, 1.0f, 0.0f, x0 * 0.025f, z0 * 0.025f),
+                        vertex(x1, 0.0f, z0, 0.0f, 1.0f, 0.0f, x1 * 0.025f, z0 * 0.025f),
+                        vertex(x1, 0.0f, z1, 0.0f, 1.0f, 0.0f, x1 * 0.025f, z1 * 0.025f),
+                        vertex(x0, 0.0f, z1, 0.0f, 1.0f, 0.0f, x0 * 0.025f, z1 * 0.025f));
+        }
+    }
+}
+
 } // namespace
 
 float sample_terrain_height(float x, float z, float size, float height_scale) noexcept
@@ -115,6 +136,47 @@ mesh_data make_plane_mesh(float size)
                      vertex(half, 0.0f, half, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f),
                      vertex(-half, 0.0f, half, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f)};
     mesh.indices = {0, 1, 2, 0, 2, 3};
+    return mesh;
+}
+
+float water_ocean_grid_cell_size(const water_ocean_grid_descriptor& descriptor) noexcept
+{
+    const float visible_distance = std::max(1.0f, descriptor.visible_distance);
+    const auto inner_cells = std::clamp(descriptor.inner_grid_cells, 4u, 256u);
+    const auto ring_count = std::min(descriptor.ring_count, 16u);
+    const float inner_half_extent = std::ldexp(visible_distance, -static_cast<int>(ring_count));
+    return (inner_half_extent * 2.0f) / static_cast<float>(inner_cells);
+}
+
+math::vector3f water_ocean_grid_origin(const math::vector3f& camera_position, float water_level,
+                                       float cell_size) noexcept
+{
+    const float snap = std::max(0.001f, cell_size);
+    return {std::floor(camera_position[0] / snap) * snap, water_level, std::floor(camera_position[2] / snap) * snap};
+}
+
+mesh_data make_water_ocean_grid(const water_ocean_grid_descriptor& descriptor)
+{
+    const float visible_distance = std::max(1.0f, descriptor.visible_distance);
+    const auto inner_cells = std::clamp(descriptor.inner_grid_cells, 4u, 256u);
+    const auto ring_count = std::min(descriptor.ring_count, 16u);
+    float half_extent = std::ldexp(visible_distance, -static_cast<int>(ring_count));
+    float cell_size = (half_extent * 2.0f) / static_cast<float>(inner_cells);
+
+    mesh_data mesh;
+    mesh.name = "Water Ocean Clipmap";
+    append_water_grid_patch(mesh, -half_extent, -half_extent, half_extent, half_extent, cell_size);
+    for (std::uint32_t ring = 0; ring < ring_count; ++ring)
+    {
+        const float inner = half_extent;
+        const float outer = inner * 2.0f;
+        cell_size *= 2.0f;
+        append_water_grid_patch(mesh, -outer, -outer, outer, -inner, cell_size);
+        append_water_grid_patch(mesh, -outer, inner, outer, outer, cell_size);
+        append_water_grid_patch(mesh, -outer, -inner, -inner, inner, cell_size);
+        append_water_grid_patch(mesh, inner, -inner, outer, inner, cell_size);
+        half_extent = outer;
+    }
     return mesh;
 }
 

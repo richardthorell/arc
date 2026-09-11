@@ -145,17 +145,12 @@ render::texture_handle load_first_texture(editor_scene_state& scene, render::ren
     return {};
 }
 
-render::material_handle ensure_water_material(editor_scene_state& scene, render::renderer& renderer)
+render::material_handle create_water_material(editor_scene_state& scene, render::renderer& renderer)
 {
-    if (scene.water_material.valid()) return scene.water_material;
-
-    render::material_descriptor material;
-    material.name = "Default Water Material";
-    material.base_color = math::vector4f{0.16f, 0.35f, 0.48f, 0.55f};
-    material.roughness = 0.18f;
-    material.alpha_mode = render::material_alpha_mode::blend;
-    scene.water_material = renderer.create_material(material);
-    return scene.water_material;
+    const auto material =
+        renderer.create_material(render::make_water_material(water::water_appearance_settings{}, "Default Water"));
+    if (!scene.water_material.valid()) scene.water_material = material;
+    return material;
 }
 
 render::material_handle ensure_vegetation_material(editor_scene_state& scene, render::renderer& renderer)
@@ -652,31 +647,38 @@ bool synchronize_terrain_render_resource(editor_scene_state& scene, render::rend
     return true;
 }
 
+bool synchronize_water_render_material(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity)
+{
+    const auto* water = scene.scene.try_get<scene::water_component>(entity);
+    const auto* mesh_renderer = scene.scene.try_get<scene::mesh_renderer_component>(entity);
+    if (!water || !mesh_renderer || !mesh_renderer->material.valid()) return false;
+    return renderer.update_material(mesh_renderer->material,
+                                    render::make_water_material(water->settings.appearance, "Water"));
+}
+
 ecs::entity add_water_to_scene(editor_scene_state& scene, render::renderer& renderer)
 {
-    auto mesh = render::make_plane_mesh(defaults::default_water_size);
+    auto mesh = render::make_water_ocean_grid();
     const auto local_bounds = bounds_for_mesh(mesh);
     const auto mesh_handle = renderer.create_mesh(mesh);
     if (!mesh_handle.valid()) return {};
 
-    const auto material = ensure_water_material(scene, renderer);
+    const auto material = create_water_material(scene, renderer);
     const auto entity = scene.scene.create();
     scene.water_entity = entity;
-    add_selectable_common(scene, entity, "Water Plane", "Environment");
+    add_selectable_common(scene, entity, "Ocean", "Environment");
     scene::transform_component transform;
     transform.position = defaults::default_water_position;
     scene::water_component water;
-    water.size = defaults::default_water_size;
-    water.color = math::vector3f{0.08f, 0.30f, 0.42f};
-    water.roughness = 0.12f;
-    water.wave_scale = 0.14f;
-    water.transparency = 0.34f;
+    water.preset.path_hint = "builtin/water/presets/open_ocean.arcwater";
+    water.material.path_hint = "builtin/materials/water_preview.arcmat";
     scene.scene.emplace<scene::water_component>(entity, water);
     scene.scene.emplace<scene::bounds_component>(entity, local_bounds, local_bounds, true);
     scene.scene.emplace<scene::transform_component>(entity, transform);
     scene::mesh_renderer_component renderer_component;
     renderer_component.mesh = mesh_handle;
     renderer_component.material = material;
+    renderer_component.casts_shadows = false;
     scene.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
     scene.world_feature_entities.push_back(entity);
     return entity;

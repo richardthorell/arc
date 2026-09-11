@@ -927,6 +927,61 @@ TEST_CASE("editor primitives bind the authored built-in default phong material")
     std::filesystem::remove_all(root, cleanup_error);
 }
 
+TEST_CASE("editor Ocean creation uses the Water clipmap and optical transmission material")
+{
+    arc::editor::editor_scene_state scene;
+    arc::render::renderer renderer;
+    const auto ocean = arc::editor::add_water_to_scene(scene, renderer);
+    REQUIRE(scene.scene.alive(ocean));
+    REQUIRE(scene.scene.has<arc::scene::water_component>(ocean));
+    REQUIRE(scene.scene.has<arc::scene::mesh_renderer_component>(ocean));
+    const auto& mesh_renderer = scene.scene.get<arc::scene::mesh_renderer_component>(ocean);
+    const auto* mesh = renderer.mesh_data_for(mesh_renderer.mesh.conventional);
+    REQUIRE(mesh != nullptr);
+    CHECK(mesh->name == "Water Ocean Clipmap");
+    CHECK(mesh->vertices.size() > 4u);
+    CHECK_FALSE(mesh_renderer.casts_shadows);
+
+    const auto packet = renderer.frame_queue().commit(1);
+    const auto upload_event = std::ranges::find_if(
+        packet.events,
+        [&](const auto& event)
+        {
+            if (event.type() != arc::render::render_event_type::material_upload) return false;
+            return std::get<arc::render::material_upload_event>(event.payload).handle == mesh_renderer.material;
+        });
+    REQUIRE(upload_event != packet.events.end());
+    const auto& material = *std::get<arc::render::material_upload_event>(upload_event->payload).material;
+    CHECK(material.shading_model == arc::render::material_shading_model::transmission);
+    CHECK(material.render_path == arc::render::material_render_path::clustered_forward);
+    CHECK(material.alpha_mode == arc::render::material_alpha_mode::blend);
+    CHECK(material.index_of_refraction == Catch::Approx(1.333f));
+    CHECK(material.transmission_factor > 0.0f);
+    CHECK(material.attenuation_distance > 0.0f);
+
+    auto& water = scene.scene.get<arc::scene::water_component>(ocean);
+    water.settings.appearance.absorption = {0.4f, 0.2f, 0.1f};
+    water.settings.appearance.refraction_strength = 0.2f;
+    REQUIRE(arc::editor::synchronize_water_render_material(scene, renderer, ocean));
+    const auto update_packet = renderer.frame_queue().commit(2);
+    const auto update_event = std::ranges::find_if(
+        update_packet.events,
+        [&](const auto& event)
+        {
+            if (event.type() != arc::render::render_event_type::material_upload) return false;
+            return std::get<arc::render::material_upload_event>(event.payload).handle == mesh_renderer.material;
+        });
+    REQUIRE(update_event != update_packet.events.end());
+    const auto& updated = *std::get<arc::render::material_upload_event>(update_event->payload).material;
+    CHECK(updated.transmission_factor == Catch::Approx(0.7f));
+    CHECK(updated.attenuation_color[0] < updated.attenuation_color[2]);
+
+    const auto first_material = mesh_renderer.material;
+    const auto second_ocean = arc::editor::add_water_to_scene(scene, renderer);
+    REQUIRE(scene.scene.alive(second_ocean));
+    CHECK(scene.scene.get<arc::scene::mesh_renderer_component>(second_ocean).material != first_material);
+}
+
 TEST_CASE("arc host protocol serializes command and query envelopes")
 {
     const arc::editor::host_entity_id entity{.index = 7, .generation = 3};
@@ -2201,6 +2256,167 @@ TEST_CASE("ARC scene documents save atomically, round trip hierarchy, and reject
     }
     REQUIRE_FALSE(host->execute(arc::editor::host_open_scene_command{.path = cyclic_path}).succeeded);
     REQUIRE(arc::editor::to_json(host->scene_snapshot()) == before_invalid_load);
+
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("Water component version 2 survives scene save and reload")
+{
+    const auto root =
+        std::filesystem::temp_directory_path() /
+        ("arc-water-scene-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::error_code error;
+    std::filesystem::create_directories(root / "assets", error);
+    REQUIRE_FALSE(error);
+
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    assets.root = root / "assets";
+    REQUIRE(host->open_project({.name = "Water Persistence Test", .root = root}, assets).succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::water})
+                .succeeded);
+
+    auto& authored = host->scene_state().scene.get<arc::scene::water_component>(host->scene_state().water_entity);
+    authored.preset.path_hint = "assets/water/Open Ocean.arcwater";
+    authored.water_level = 2.75f;
+    authored.visible_distance = 32000.0f;
+    authored.settings.simulation.wind_speed = 17.0f;
+    authored.settings.simulation.wind_direction = {0.82f, 0.57f};
+    authored.settings.simulation.seed = 1337;
+    authored.settings.appearance.absorption = {0.20f, 0.07f, 0.03f};
+    authored.settings.appearance.refraction_strength = 0.08f;
+    authored.settings.quality = arc::water::water_quality::ultra;
+
+    const auto path = root / "scenes" / "water.arcscene";
+    REQUIRE(host->execute(arc::editor::host_save_scene_as_command{.path = path}).succeeded);
+    {
+        std::ifstream input(path, std::ios::binary);
+        const std::string document((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+        CHECK(document.find("\"Water\"") != std::string::npos);
+        CHECK(document.find("\"version\": 2") != std::string::npos);
+        CHECK(document.find("Open Ocean.arcwater") != std::string::npos);
+    }
+
+    REQUIRE(host->execute(arc::editor::host_open_scene_command{.path = path}).succeeded);
+    REQUIRE(host->scene_state().scene.alive(host->scene_state().water_entity));
+    const auto& loaded = host->scene_state().scene.get<arc::scene::water_component>(host->scene_state().water_entity);
+    CHECK(loaded.type == arc::water::water_body_type::ocean);
+    CHECK(loaded.preset.path_hint == "assets/water/Open Ocean.arcwater");
+    CHECK(loaded.water_level == Catch::Approx(2.75f));
+    CHECK(loaded.visible_distance == Catch::Approx(32000.0f));
+    CHECK(loaded.settings.simulation.wind_speed == Catch::Approx(17.0f));
+    CHECK(loaded.settings.simulation.wind_direction[1] == Catch::Approx(0.57f));
+    CHECK(loaded.settings.simulation.seed == 1337);
+    CHECK(loaded.settings.appearance.absorption[0] == Catch::Approx(0.20f));
+    CHECK(loaded.settings.appearance.refraction_strength == Catch::Approx(0.08f));
+    CHECK(loaded.settings.quality == arc::water::water_quality::ultra);
+
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("Water Inspector snapshots and validated edits round trip through the host protocol")
+{
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    REQUIRE(host->open_project({.name = "Water Inspector Test", .root = {}}, assets).succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::water})
+                .succeeded);
+
+    const auto created = host->selected_entity_snapshot();
+    REQUIRE(created.name == "Ocean");
+    REQUIRE(created.water.has_value());
+    REQUIRE(created.water->body_type == 0u);
+    auto updated = *created.water;
+    updated.water_level = 4.25f;
+    updated.wind_speed = 18.0f;
+    updated.wind_direction_x = 0.6f;
+    updated.wind_direction_y = 0.8f;
+    updated.wave_amplitude = 2.0f;
+    updated.absorption = {0.3f, 0.08f, 0.025f};
+    updated.quality = 3u;
+    updated.priority = 7;
+
+    const auto command = arc::editor::host_set_water_command{.entity = created.entity, .water = updated};
+    REQUIRE(host->execute(command).succeeded);
+    const auto configured = host->selected_entity_snapshot();
+    REQUIRE(configured.water.has_value());
+    CHECK(configured.water->water_level == Catch::Approx(4.25f));
+    CHECK(configured.water->wind_speed == Catch::Approx(18.0f));
+    CHECK(configured.water->absorption.x == Catch::Approx(0.3f));
+    CHECK(configured.water->quality == 3u);
+    CHECK(configured.water->priority == 7);
+    CHECK(arc::editor::to_json(configured).find("\"water\":{") != std::string::npos);
+
+    arc::editor::host_command_envelope source{
+        .request_id = 91, .command_type = arc::editor::command_type(command), .payload = command};
+    arc::editor::host_command_envelope parsed;
+    std::string protocol_error;
+    REQUIRE(arc::editor::from_json(arc::editor::to_json(source), parsed, protocol_error));
+    REQUIRE(arc::editor::command_type(parsed.payload) == "water.update");
+    const auto& parsed_command = std::get<arc::editor::host_set_water_command>(parsed.payload);
+    CHECK(parsed_command.entity == command.entity);
+    CHECK(parsed_command.water == command.water);
+
+    auto invalid = updated;
+    invalid.wind_direction_x = 0.0f;
+    invalid.wind_direction_y = 0.0f;
+    REQUIRE_FALSE(
+        host->execute(arc::editor::host_set_water_command{.entity = created.entity, .water = invalid}).succeeded);
+    CHECK(host->selected_entity_snapshot().water->water_level == Catch::Approx(4.25f));
+}
+
+TEST_CASE("built-in Water presets are discovered and drive Ocean defaults")
+{
+    const auto root =
+        std::filesystem::temp_directory_path() /
+        ("arc-water-presets-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::error_code error;
+    std::filesystem::create_directories(root / "Content", error);
+    REQUIRE_FALSE(error);
+
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    assets.root = root / "Content";
+    const auto builtin_root = std::filesystem::path{ARC_SOURCE_ROOT} / "assets";
+    REQUIRE(host->open_project({.name = "Water Presets Test",
+                                .root = root,
+                                .content_roots = {assets.root},
+                                .builtin_content_roots = {builtin_root}},
+                               assets)
+                .succeeded);
+    const auto project_assets = host->project_assets_snapshot();
+    CHECK(std::count_if(project_assets.assets.begin(), project_assets.assets.end(),
+                        [](const auto& asset)
+                        {
+                            return asset.kind == "water" &&
+                                   asset.type_id == arc::assets::to_string(arc::assets::asset_types::water_preset) &&
+                                   asset.importer_id == arc::assets::to_string(arc::assets::importer_ids::water_preset);
+                        }) >= 5);
+
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::water})
+                .succeeded);
+    const auto ocean = host->selected_entity_snapshot();
+    REQUIRE(ocean.water.has_value());
+    CHECK_FALSE(ocean.water->preset_guid.empty());
+    CHECK(ocean.water->preset_path == "builtin/water/presets/open_ocean.arcwater");
+    CHECK(ocean.water->wind_speed == Catch::Approx(12.0f));
+
+    auto storm = *ocean.water;
+    storm.preset_guid.clear();
+    storm.preset_path = "builtin/water/presets/storm.arcwater";
+    REQUIRE(host->execute(arc::editor::host_set_water_command{.entity = ocean.entity, .water = storm}).succeeded);
+    const auto configured = host->selected_entity_snapshot();
+    REQUIRE(configured.water.has_value());
+    CHECK(configured.water->preset_path == "builtin/water/presets/storm.arcwater");
+    CHECK(configured.water->wind_speed == Catch::Approx(28.0f));
+    CHECK(configured.water->wave_amplitude == Catch::Approx(5.0f));
+    CHECK(configured.water->quality == 3u);
 
     std::filesystem::remove_all(root, error);
 }

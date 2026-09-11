@@ -97,6 +97,20 @@ json build_dependency_manifest(const editor_scene_state& state, assets::asset_ma
         dependencies.push_back(
             dependency_record(refreshed(terrain->asset), entity_guid_of(state, entity), terrain_metadata.id, 0, true));
     }
+    const auto& water_metadata = ecs::component_metadata<scene::water_component>();
+    for (const auto entity : state.scene.entities())
+    {
+        if (entity == state.camera_entity) continue;
+        if (included_entities && !included_entities->contains(entity)) continue;
+        const auto* water = state.scene.try_get<scene::water_component>(entity);
+        if (!water) continue;
+        if (water->preset.guid.valid() || !water->preset.path_hint.empty())
+            dependencies.push_back(dependency_record(refreshed(water->preset), entity_guid_of(state, entity),
+                                                     water_metadata.id, 1, false));
+        if (water->material.guid.valid() || !water->material.path_hint.empty())
+            dependencies.push_back(dependency_record(refreshed(water->material), entity_guid_of(state, entity),
+                                                     water_metadata.id, 2, false));
+    }
     const auto& prefab = ecs::component_metadata<scene::prefab_instance_component>();
     for (const auto entity : state.scene.entities())
     {
@@ -174,6 +188,10 @@ json vector3(const math::vector3f& value)
 {
     return json::array({value[0], value[1], value[2]});
 }
+json vector2(const math::vector2f& value)
+{
+    return json::array({value[0], value[1]});
+}
 json vector4(const math::vector4f& value)
 {
     return json::array({value[0], value[1], value[2], value[3]});
@@ -205,6 +223,8 @@ bool finite_color(const json& value, std::size_t size)
                                                         return number >= 0.0 && number <= 1.0;
                                                     });
 }
+
+bool validate_asset_reference_json(const json& value, const std::filesystem::path& project_root);
 
 bool validate_component_json(std::string_view name, const json& value, std::string& error)
 {
@@ -238,7 +258,7 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                                                             "WorldRegion"};
     if (!known.contains(name)) return true;
     const auto component_version = value["version"].get<std::uint32_t>();
-    const bool supports_v2 = name == "Terrain" || name == "Camera" || name == "MeshRenderer" ||
+    const bool supports_v2 = name == "Terrain" || name == "Water" || name == "Camera" || name == "MeshRenderer" ||
                              name == "VirtualMeshRenderer" || name == "Vegetation" || name == "DirectionalLight" ||
                              name == "PointLight" || name == "SpotLight" || name == "AreaLight" ||
                              name == "PrefabInstance";
@@ -456,15 +476,74 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
         return true;
     }
     if (name == "Water")
-        return finite_number(value, "size") && value["size"].get<double>() > 0.0 && value.contains("color") &&
-                       finite_color(value["color"], 3) && finite_number(value, "roughness") &&
-                       value["roughness"].get<double>() >= 0.0 && value["roughness"].get<double>() <= 1.0 &&
-                       finite_number(value, "waveScale") && value["waveScale"].get<double>() >= 0.0 &&
-                       finite_number(value, "waveSpeed") && value["waveSpeed"].get<double>() >= 0.0 &&
-                       finite_number(value, "transparency") && value["transparency"].get<double>() >= 0.0 &&
-                       value["transparency"].get<double>() <= 1.0
-                   ? true
-                   : fail("has invalid water values");
+    {
+        if (component_version == 1u)
+            return finite_number(value, "size") && value["size"].get<double>() > 0.0 && value.contains("color") &&
+                           finite_color(value["color"], 3) && finite_number(value, "roughness") &&
+                           value["roughness"].get<double>() >= 0.0 && value["roughness"].get<double>() <= 1.0 &&
+                           finite_number(value, "waveScale") && value["waveScale"].get<double>() >= 0.0 &&
+                           finite_number(value, "waveSpeed") && value["waveSpeed"].get<double>() >= 0.0 &&
+                           finite_number(value, "transparency") && value["transparency"].get<double>() >= 0.0 &&
+                           value["transparency"].get<double>() <= 1.0
+                       ? true
+                       : fail("has invalid legacy water values");
+
+        const auto non_negative_vector = [](const json& candidate, std::size_t size)
+        {
+            return finite_array(candidate, size) &&
+                   std::all_of(candidate.begin(), candidate.end(),
+                               [](const json& channel) { return channel.get<double>() >= 0.0; });
+        };
+        if (!value.contains("type") || !value["type"].is_number_integer() || value["type"].get<int>() < 0 ||
+            value["type"].get<int>() > 2 || !value.contains("preset") ||
+            !validate_asset_reference_json(value["preset"], {}) || !value.contains("material") ||
+            !validate_asset_reference_json(value["material"], {}) || !finite_number(value, "waterLevel") ||
+            !value.contains("enabled") || !value["enabled"].is_boolean() || !value.contains("followCamera") ||
+            !value["followCamera"].is_boolean() || !finite_number(value, "visibleDistance") ||
+            value["visibleDistance"].get<double>() <= 0.0 || !value.contains("priority") ||
+            !value["priority"].is_number_integer())
+            return fail("has invalid Water body values");
+        if (!value.contains("simulation") || !value["simulation"].is_object())
+            return fail("has invalid Water simulation settings");
+        const auto& simulation = value["simulation"];
+        if (!finite_number(simulation, "windSpeed") || simulation["windSpeed"].get<double>() < 0.0 ||
+            !simulation.contains("windDirection") || !finite_array(simulation["windDirection"], 2) ||
+            (simulation["windDirection"][0].get<double>() == 0.0 &&
+             simulation["windDirection"][1].get<double>() == 0.0) ||
+            !finite_number(simulation, "fetchLength") || simulation["fetchLength"].get<double>() <= 0.0 ||
+            !finite_number(simulation, "waveAmplitude") || simulation["waveAmplitude"].get<double>() < 0.0 ||
+            !finite_number(simulation, "choppiness") || simulation["choppiness"].get<double>() < 0.0 ||
+            !simulation.contains("seed") || !simulation["seed"].is_number_unsigned())
+            return fail("has invalid Water simulation settings");
+        if (!value.contains("foam") || !value["foam"].is_object()) return fail("has invalid Water foam settings");
+        const auto& foam = value["foam"];
+        if (!foam.contains("enabled") || !foam["enabled"].is_boolean() || !finite_number(foam, "threshold") ||
+            foam["threshold"].get<double>() < 0.0 || foam["threshold"].get<double>() > 1.0 ||
+            !finite_number(foam, "decay") || foam["decay"].get<double>() < 0.0)
+            return fail("has invalid Water foam settings");
+        if (!value.contains("appearance") || !value["appearance"].is_object())
+            return fail("has invalid Water appearance settings");
+        const auto& appearance = value["appearance"];
+        if (!appearance.contains("absorption") || !non_negative_vector(appearance["absorption"], 3) ||
+            !appearance.contains("scattering") || !non_negative_vector(appearance["scattering"], 3) ||
+            !finite_number(appearance, "roughness") || appearance["roughness"].get<double>() < 0.0 ||
+            appearance["roughness"].get<double>() > 1.0 || !finite_number(appearance, "refractionStrength") ||
+            appearance["refractionStrength"].get<double>() < 0.0 ||
+            appearance["refractionStrength"].get<double>() > 1.0)
+            return fail("has invalid Water appearance settings");
+        if (!value.contains("quality") || !value["quality"].is_number_integer() || value["quality"].get<int>() < 0 ||
+            value["quality"].get<int>() > 3 || !value.contains("shorelineEnabled") ||
+            !value["shorelineEnabled"].is_boolean() || !finite_number(value, "shorelineFoamWidth") ||
+            value["shorelineFoamWidth"].get<double>() < 0.0 || !finite_number(value, "shallowWaveDampingDistance") ||
+            value["shallowWaveDampingDistance"].get<double>() < 0.0 || !finite_number(value, "runupDistance") ||
+            value["runupDistance"].get<double>() < 0.0 || !value.contains("underwaterEnabled") ||
+            !value["underwaterEnabled"].is_boolean() || !value.contains("causticsEnabled") ||
+            !value["causticsEnabled"].is_boolean() || !value.contains("queriesEnabled") ||
+            !value["queriesEnabled"].is_boolean() || !value.contains("buoyancyEnabled") ||
+            !value["buoyancyEnabled"].is_boolean())
+            return fail("has invalid Water feature settings");
+        return true;
+    }
     if (name == "Vegetation")
         return finite_number(value, "density") && value["density"].get<double>() >= 0.0 &&
                        finite_number(value, "patchSize") && value["patchSize"].get<double>() > 0.0 &&
@@ -540,6 +619,11 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
 math::vector3f read_vector3(const json& value)
 {
     return {value[0].get<float>(), value[1].get<float>(), value[2].get<float>()};
+}
+
+math::vector2f read_vector2(const json& value)
+{
+    return {value[0].get<float>(), value[1].get<float>()};
 }
 
 math::vector4f read_vector4(const json& value)
@@ -995,14 +1079,40 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                                  {"revision", component->content_revision}};
     }
     if (const auto* component = state.scene.try_get<scene::water_component>(value))
-        components["Water"] = {{"version", 1},
+        components["Water"] = {{"version", 2},
+                               {"type", static_cast<std::uint8_t>(component->type)},
+                               {"preset", serialize_asset_reference(component->preset, project_root)},
+                               {"material", serialize_asset_reference(component->material, project_root)},
+                               {"waterLevel", component->water_level},
                                {"enabled", component->enabled},
-                               {"size", component->size},
-                               {"color", vector3(component->color)},
-                               {"roughness", component->roughness},
-                               {"waveScale", component->wave_scale},
-                               {"waveSpeed", component->wave_speed},
-                               {"transparency", component->transparency}};
+                               {"followCamera", component->follow_camera},
+                               {"visibleDistance", component->visible_distance},
+                               {"priority", component->priority},
+                               {"simulation",
+                                {{"windSpeed", component->settings.simulation.wind_speed},
+                                 {"windDirection", vector2(component->settings.simulation.wind_direction)},
+                                 {"fetchLength", component->settings.simulation.fetch_length},
+                                 {"waveAmplitude", component->settings.simulation.wave_amplitude},
+                                 {"choppiness", component->settings.simulation.choppiness},
+                                 {"seed", component->settings.simulation.seed}}},
+                               {"foam",
+                                {{"enabled", component->settings.foam.enabled},
+                                 {"threshold", component->settings.foam.threshold},
+                                 {"decay", component->settings.foam.decay}}},
+                               {"appearance",
+                                {{"absorption", vector3(component->settings.appearance.absorption)},
+                                 {"scattering", vector3(component->settings.appearance.scattering)},
+                                 {"roughness", component->settings.appearance.roughness},
+                                 {"refractionStrength", component->settings.appearance.refraction_strength}}},
+                               {"shorelineEnabled", component->shoreline_enabled},
+                               {"shorelineFoamWidth", component->shoreline_foam_width},
+                               {"shallowWaveDampingDistance", component->shallow_wave_damping_distance},
+                               {"runupDistance", component->runup_distance},
+                               {"underwaterEnabled", component->underwater_enabled},
+                               {"causticsEnabled", component->caustics_enabled},
+                               {"queriesEnabled", component->queries_enabled},
+                               {"buoyancyEnabled", component->buoyancy_enabled},
+                               {"quality", static_cast<std::uint8_t>(component->settings.quality)}};
     if (const auto* component = state.scene.try_get<scene::vegetation_component>(value))
         components["Vegetation"] = {{"version", 2},
                                     {"enabled", component->enabled},
@@ -1718,13 +1828,60 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
             {
                 auto& value = loaded.scene.get<scene::water_component>(entity);
                 const auto& source = components["Water"];
-                value.enabled = source.value("enabled", true);
-                value.size = source.value("size", value.size);
-                value.color = read_vector3(source.at("color"));
-                value.roughness = source.value("roughness", value.roughness);
-                value.wave_scale = source.value("waveScale", value.wave_scale);
-                value.wave_speed = source.value("waveSpeed", value.wave_speed);
-                value.transparency = source.value("transparency", value.transparency);
+                if (source.value("version", 1u) == 1u)
+                {
+                    value.enabled = source.value("enabled", true);
+                    value.settings.appearance.scattering = read_vector3(source.at("color"));
+                    value.settings.appearance.roughness =
+                        source.value("roughness", value.settings.appearance.roughness);
+                    value.settings.appearance.refraction_strength =
+                        source.value("transparency", value.settings.appearance.refraction_strength);
+                }
+                else
+                {
+                    value.type = static_cast<water::water_body_type>(source.at("type").get<std::uint8_t>());
+                    value.preset = read_asset_reference(source.at("preset"), assets::asset_types::water_preset,
+                                                        project_root, asset_registry);
+                    value.material = read_asset_reference(source.at("material"), assets::asset_types::material,
+                                                          project_root, asset_registry);
+                    value.water_level = source.at("waterLevel").get<float>();
+                    value.enabled = source.at("enabled").get<bool>();
+                    value.follow_camera = source.at("followCamera").get<bool>();
+                    value.visible_distance = source.at("visibleDistance").get<float>();
+                    value.priority = source.at("priority").get<std::int32_t>();
+
+                    const auto& simulation = source.at("simulation");
+                    value.settings.simulation.wind_speed = simulation.at("windSpeed").get<float>();
+                    value.settings.simulation.wind_direction = read_vector2(simulation.at("windDirection"));
+                    value.settings.simulation.fetch_length = simulation.at("fetchLength").get<float>();
+                    value.settings.simulation.wave_amplitude = simulation.at("waveAmplitude").get<float>();
+                    value.settings.simulation.choppiness = simulation.at("choppiness").get<float>();
+                    value.settings.simulation.seed = simulation.at("seed").get<std::uint64_t>();
+
+                    const auto& foam = source.at("foam");
+                    value.settings.foam.enabled = foam.at("enabled").get<bool>();
+                    value.settings.foam.threshold = foam.at("threshold").get<float>();
+                    value.settings.foam.decay = foam.at("decay").get<float>();
+
+                    const auto& appearance = source.at("appearance");
+                    value.settings.appearance.absorption = read_vector3(appearance.at("absorption"));
+                    value.settings.appearance.scattering = read_vector3(appearance.at("scattering"));
+                    value.settings.appearance.roughness = appearance.at("roughness").get<float>();
+                    value.settings.appearance.refraction_strength = appearance.at("refractionStrength").get<float>();
+
+                    value.shoreline_enabled = source.at("shorelineEnabled").get<bool>();
+                    value.shoreline_foam_width = source.at("shorelineFoamWidth").get<float>();
+                    value.shallow_wave_damping_distance = source.at("shallowWaveDampingDistance").get<float>();
+                    value.runup_distance = source.at("runupDistance").get<float>();
+                    value.underwater_enabled = source.at("underwaterEnabled").get<bool>();
+                    value.caustics_enabled = source.at("causticsEnabled").get<bool>();
+                    value.queries_enabled = source.at("queriesEnabled").get<bool>();
+                    value.buoyancy_enabled = source.at("buoyancyEnabled").get<bool>();
+                    value.settings.quality =
+                        static_cast<water::water_quality>(source.at("quality").get<std::uint8_t>());
+                }
+                if (!synchronize_water_render_material(loaded, renderer, entity))
+                    throw std::runtime_error("water optical material could not be restored");
             }
             if (components.contains("Vegetation"))
             {
