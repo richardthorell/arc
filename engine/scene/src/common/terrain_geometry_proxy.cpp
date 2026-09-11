@@ -4,6 +4,7 @@
 #include <arc/scene/terrain_render_attributes.h>
 #include <arc/scene/terrain_render_geometry.h>
 #include <arc/scene/terrain_render_regions.h>
+#include <arc/scene/terrain_region_build.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -242,12 +243,75 @@ bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrai
 bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrain_component& terrain,
                                              render::renderer& renderer, const terrain_dirty_region* dirty_region)
 {
+    if (auto* proxy = find(guid); proxy && proxy->asset_owned)
+    {
+        if (!dirty_region)
+        {
+            proxy->material = terrain.material;
+            return true;
+        }
+        retained_[guid] = std::move(*proxy);
+        *proxy = {};
+    }
     const auto surface = make_legacy_terrain_surface_ir(terrain);
     return surface && synchronize(guid, *surface, terrain, renderer, dirty_region);
 }
 
+bool terrain_render_proxy_cache::publish(ecs::entity_guid guid, terrain_region_build_batch& batch,
+                                         const terrain_component& terrain, render::renderer& renderer)
+{
+    if (!guid.valid() || !batch.succeeded || batch.stale || batch.regions.empty()) return false;
+    auto& visible = proxies_[guid];
+    const auto retained = retained_.find(guid);
+    terrain_render_proxy empty;
+    auto& previous = retained != retained_.end() ? retained->second : visible.asset_owned ? visible : empty;
+    auto staged = previous.regions;
+    for (auto& build : batch.regions)
+    {
+        if (!build.geometry || !build.attributes)
+        {
+            cleanup_staged_resources(previous, staged, renderer);
+            return false;
+        }
+        terrain_render_region_proxy next;
+        next.id = build.evaluation.region;
+        next.local_bounds = terrain_local_bounds(build.evaluation.surface.local_bounds);
+        next.geometry_fingerprint = build.evaluation.content_fingerprint;
+        next.attribute_fingerprint = build.evaluation.content_fingerprint;
+        // Uploads are immutable. Never update a texture referenced by the visible generation in place.
+        next.geometry = renderer.create_geometry_resource(*build.geometry,
+            terrain_geometry_generation(build.evaluation.build_snapshot.target_dirty_revision));
+        next.surface_attribute_texture = create_attribute_texture(*build.attributes, renderer);
+        if (!geometry_alive(next, renderer) || !attributes_alive(next, renderer))
+        {
+            destroy_region(next, renderer);
+            cleanup_staged_resources(previous, staged, renderer);
+            return false;
+        }
+        const auto old = std::find_if(staged.begin(), staged.end(),
+            [&](const auto& region) { return region.id == next.id; });
+        if (old == staged.end()) staged.push_back(next);
+        else *old = next;
+    }
+    const auto generation = previous.generation + 1u;
+    destroy_unreused_old_resources(previous, staged, renderer);
+    if (&previous != &visible) destroy_proxy(visible, renderer);
+    visible.regions = std::move(staged);
+    visible.synchronized_revision = terrain.content_revision;
+    visible.material = terrain.material;
+    visible.asset_owned = true;
+    visible.generation = generation;
+    if (retained != retained_.end()) retained_.erase(retained);
+    return true;
+}
+
 bool terrain_render_proxy_cache::erase(ecs::entity_guid guid, render::renderer& renderer)
 {
+    if (const auto retained = retained_.find(guid); retained != retained_.end())
+    {
+        destroy_proxy(retained->second, renderer);
+        retained_.erase(retained);
+    }
     const auto found = proxies_.find(guid);
     if (found == proxies_.end()) return false;
     destroy_proxy(found->second, renderer);
@@ -257,6 +321,15 @@ bool terrain_render_proxy_cache::erase(ecs::entity_guid guid, render::renderer& 
 
 void terrain_render_proxy_cache::release_missing(std::span<const ecs::entity_guid> active, render::renderer& renderer)
 {
+    for (auto found = retained_.begin(); found != retained_.end();)
+    {
+        if (std::find(active.begin(), active.end(), found->first) != active.end()) ++found;
+        else
+        {
+            destroy_proxy(found->second, renderer);
+            found = retained_.erase(found);
+        }
+    }
     for (auto found = proxies_.begin(); found != proxies_.end();)
     {
         if (std::find(active.begin(), active.end(), found->first) != active.end())
@@ -271,6 +344,12 @@ void terrain_render_proxy_cache::release_missing(std::span<const ecs::entity_gui
 
 void terrain_render_proxy_cache::clear(render::renderer& renderer)
 {
+    for (auto& [guid, proxy] : retained_)
+    {
+        (void)guid;
+        destroy_proxy(proxy, renderer);
+    }
+    retained_.clear();
     for (auto& [guid, proxy] : proxies_)
     {
         (void)guid;

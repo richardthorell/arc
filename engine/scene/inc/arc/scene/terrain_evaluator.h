@@ -59,6 +59,8 @@ struct terrain_evaluation_request
 {
     terrain_region_id region{};
     std::optional<terrain_heightfield_source_view> heightfield_source;
+    /** Optional clipped source window in region-local coordinates, including normal/dependency halo samples. */
+    std::optional<terrain_world_bounds> source_bounds;
 };
 
 /** @brief Owning result of one deterministic terrain-region evaluation. */
@@ -73,6 +75,7 @@ struct [[nodiscard]] terrain_evaluation_result
     terrain_evaluated_surface surface;
     std::uint64_t content_fingerprint{};
     std::vector<terrain_evaluation_diagnostic> diagnostics;
+    std::vector<math::vector3f> vertex_normals;
 };
 
 using terrain_source_evaluation_fn = std::function<std::optional<terrain_evaluated_surface>(

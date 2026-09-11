@@ -19,6 +19,7 @@ add_library(arc-editor-host STATIC
     src/procedural_mesh.cpp
     src/project_module_loader.cpp
     src/scene_document.cpp
+    src/terrain_rebuild.cpp
     src/terrain_heightmap_io.cpp
     src/viewport_render_stats.cpp
     src/world_environment_host.cpp

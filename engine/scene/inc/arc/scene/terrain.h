@@ -176,7 +176,11 @@ struct terrain_render_proxy
     std::vector<terrain_render_region_proxy> regions;
     std::uint64_t synchronized_revision{};
     render::material_handle material{};
+    bool asset_owned{};
+    std::uint64_t generation{};
 };
+
+struct terrain_region_build_batch;
 
 /** @brief Per-world terrain resource cache keyed by persistent entity identity. */
 class terrain_render_proxy_cache
@@ -190,12 +194,16 @@ public:
                      render::renderer& renderer, const terrain_dirty_region* dirty_region = nullptr);
     bool synchronize(ecs::entity_guid guid, const terrain_component& terrain, render::renderer& renderer,
                      const terrain_dirty_region* dirty_region = nullptr);
+    /** Stage every resource before replacing the visible generation. Failure leaves the preview intact. */
+    bool publish(ecs::entity_guid guid, terrain_region_build_batch& batch, const terrain_component& terrain,
+                 render::renderer& renderer);
     void release_missing(std::span<const ecs::entity_guid> active, render::renderer& renderer);
     bool erase(ecs::entity_guid guid, render::renderer& renderer);
     void clear(render::renderer& renderer);
 
 private:
     std::unordered_map<ecs::entity_guid, terrain_render_proxy, ecs::entity_guid_hash> proxies_;
+    std::unordered_map<ecs::entity_guid, terrain_render_proxy, ecs::entity_guid_hash> retained_;
 };
 
 struct terrain_raycast_hit
