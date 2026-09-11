@@ -31,6 +31,7 @@ const snapshot: TerrainModifierStackSnapshot = {
   readOnly: false,
   assetPath: 'Content/Terrain/Valley.terrain',
   authoringRevision: 4,
+  activeModifier: sculpt.id,
   modifiers: [sculpt, paint],
 };
 
@@ -73,6 +74,22 @@ describe('TerrainStackPanel', () => {
       expect(command).toHaveBeenCalledWith('terrain.modifierStack', {
         entity,
         operation: 'add_sculpt',
+      }),
+    );
+  });
+
+  it('uses modifier stable ids when selecting the sculpt target', async () => {
+    const command = vi.fn().mockResolvedValue({ succeeded: true, payload: { ...snapshot, activeModifier: paint.id } });
+    render(<TerrainStackPanel command={command} entity={entity} />);
+
+    await screen.findByText('Ground');
+    await userEvent.click(screen.getByRole('option', { name: /Ground/ }));
+
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith('terrain.modifierStack', {
+        entity,
+        operation: 'select',
+        modifier: paint.id,
       }),
     );
   });

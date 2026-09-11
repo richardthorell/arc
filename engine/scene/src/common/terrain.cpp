@@ -509,7 +509,8 @@ math::vector3f sample_terrain_normal(const terrain_component& terrain, float loc
 }
 
 terrain_dirty_region apply_terrain_brush(terrain_component& terrain, const math::vector3f& local_center,
-                                         const terrain_brush_settings& settings, float delta_seconds)
+                                         const terrain_brush_settings& settings, float delta_seconds,
+                                         std::vector<terrain_sculpt_brush_delta>* sculpt_deltas)
 {
     terrain_dirty_region dirty{};
     if (!terrain_heightfield_valid(terrain) || settings.radius <= 0.0f || settings.strength <= 0.0f) return dirty;
@@ -555,6 +556,7 @@ terrain_dirty_region apply_terrain_brush(terrain_component& terrain, const math:
             const float falloff = std::lerp(t, smooth_falloff, saturate(settings.falloff));
             const float amount = settings.strength * falloff * std::max(delta_seconds, 0.0f);
             const auto index = sample_index(terrain, x, z);
+            const auto previous_height = terrain.heights[index];
             if (settings.tool == terrain_brush_tool::sculpt)
                 terrain.heights[index] += (settings.invert ? -1.0f : 1.0f) * amount * 12.0f;
             else if (settings.tool == terrain_brush_tool::flatten)
@@ -592,6 +594,11 @@ terrain_dirty_region apply_terrain_brush(terrain_component& terrain, const math:
                         weights[layer] =
                             other_total > 0.0001f ? weights[layer] / other_total * remaining : remaining / 3.0f;
                 terrain.layer_weights[index] = normalized_weights(weights);
+            }
+            if (sculpt_deltas && settings.tool != terrain_brush_tool::paint)
+            {
+                const auto delta = terrain.heights[index] - previous_height;
+                if (delta != 0.0f && std::isfinite(delta)) sculpt_deltas->push_back({x, z, delta});
             }
             changed = true;
         }

@@ -78,7 +78,8 @@ struct [[nodiscard]] terrain_evaluation_result
 using terrain_source_evaluation_fn = std::function<std::optional<terrain_evaluated_surface>(
     const terrain_asset&, const terrain_evaluation_request&, const terrain_build_region_snapshot&, std::string&)>;
 using terrain_modifier_evaluation_fn =
-    std::function<bool(const terrain_modifier_descriptor&, terrain_evaluated_surface&, std::string&)>;
+    std::function<bool(const terrain_modifier_descriptor&, const terrain_build_region_snapshot&,
+                       terrain_evaluated_surface&, std::string&)>;
 
 /**
  * @brief Renderer-independent evaluator for unified TerrainAsset sources and ordered non-destructive modifiers.
@@ -100,7 +101,7 @@ private:
     std::unordered_map<std::string, terrain_modifier_evaluation_fn> modifiers_;
 };
 
-/** @brief Construct the built-in evaluator with Flat, resolved Heightfield, and `arc.height-offset` implementations. */
+/** @brief Construct the built-in evaluator with Flat, resolved Heightfield, Sculpt Layer, and height-offset support. */
 [[nodiscard]] terrain_evaluator make_default_terrain_evaluator();
 
 } // namespace arc::scene

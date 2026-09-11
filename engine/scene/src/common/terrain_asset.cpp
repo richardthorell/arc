@@ -185,6 +185,27 @@ terrain_world_bounds terrain_region_bounds(const terrain_coordinate_system& coor
             min_z + partition.authoring_region_size};
 }
 
+terrain_modifier_sample_location terrain_modifier_sample_at(const terrain_coordinate_system& coordinates,
+                                                            const terrain_partition_settings& partition, double world_x,
+                                                            double world_z) noexcept
+{
+    if (!finite(partition.authoring_region_size) || partition.authoring_region_size <= 0.0 || !finite(world_x) ||
+        !finite(world_z) || !finite(coordinates.origin_x) || !finite(coordinates.origin_z))
+        return {};
+
+    const auto region = terrain_region_at(coordinates, partition, world_x, world_z);
+    const auto bounds = terrain_region_bounds(coordinates, partition, region);
+    const auto quantize = [](double value, double minimum, double maximum)
+    {
+        const auto span = maximum - minimum;
+        if (!finite(span) || span <= 0.0) return 0u;
+        const auto normalized = std::clamp((value - minimum) / span, 0.0, 1.0);
+        return static_cast<std::uint32_t>(
+            std::llround(normalized * static_cast<double>(terrain_modifier_sample_coordinate_max)));
+    };
+    return {region, quantize(world_x, bounds.min_x, bounds.max_x), quantize(world_z, bounds.min_z, bounds.max_z)};
+}
+
 terrain_world_bounds expand_terrain_bounds(terrain_world_bounds bounds, double amount) noexcept
 {
     if (!bounds.valid() || !finite(amount) || amount < 0.0) return bounds;

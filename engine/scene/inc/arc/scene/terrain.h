@@ -140,6 +140,13 @@ struct terrain_brush_settings
     float flatten_height{};
 };
 
+struct terrain_sculpt_brush_delta
+{
+    std::uint32_t x{};
+    std::uint32_t z{};
+    float delta{};
+};
+
 struct terrain_dirty_region
 {
     std::uint32_t min_x{};
@@ -218,7 +225,8 @@ void generate_terrain_heightfield(terrain_component& terrain);
 [[nodiscard]] math::vector3f sample_terrain_normal(const terrain_component& terrain, float local_x,
                                                    float local_z) noexcept;
 terrain_dirty_region apply_terrain_brush(terrain_component& terrain, const math::vector3f& local_center,
-                                         const terrain_brush_settings& settings, float delta_seconds = 1.0f / 60.0f);
+                                         const terrain_brush_settings& settings, float delta_seconds = 1.0f / 60.0f,
+                                         std::vector<terrain_sculpt_brush_delta>* sculpt_deltas = nullptr);
 [[nodiscard]] terrain_raycast_hit raycast_terrain(const terrain_component& terrain, const math::vector3f& local_origin,
                                                   const math::vector3f& local_direction) noexcept;
 [[nodiscard]] terrain_raycast_hit raycast_terrain(const terrain_component& terrain,

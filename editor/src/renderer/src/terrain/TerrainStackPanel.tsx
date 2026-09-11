@@ -20,6 +20,7 @@ export type TerrainModifierStackSnapshot = {
   readOnly: boolean;
   assetPath: string;
   authoringRevision: number;
+  activeModifier: string;
   modifiers: TerrainModifierSnapshot[];
 };
 
@@ -61,7 +62,8 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
     if (!stack) return;
     const current = stack.modifiers.find((modifier) => modifier.id === selectedId);
     if (current) return;
-    setSelectedId(stack.modifiers.at(-1)?.id ?? '');
+    const active = stack.modifiers.find((modifier) => modifier.id === stack.activeModifier);
+    setSelectedId(active?.id ?? stack.modifiers.at(-1)?.id ?? '');
   }, [selectedId, stack]);
 
   const selected = useMemo(
@@ -72,6 +74,13 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
   useEffect(() => {
     setRenameValue(selected?.name ?? '');
   }, [selected]);
+
+  const selectModifier = async (modifier: TerrainModifierSnapshot) => {
+    setSelectedId(modifier.id);
+    const next = await execute('select', { modifier: modifier.id });
+    if (!next) return;
+    setSelectedId(modifier.id);
+  };
 
   const mutate = async (operation: string, extra: Record<string, unknown> = {}) => {
     const next = await execute(operation, extra);
@@ -149,7 +158,7 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
                   aria-selected={modifier.id === selectedId}
                   className={`terrain-stack-row${modifier.id === selectedId ? ' selected' : ''}`}
                   key={modifier.id}
-                  onClick={() => setSelectedId(modifier.id)}
+                  onClick={() => void selectModifier(modifier)}
                   role="option"
                   tabIndex={0}
                 >
