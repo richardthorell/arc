@@ -137,6 +137,14 @@ ocean_simulation_profile ocean_profile(water_quality quality) noexcept
                         {64u, 128.0f, 4.0f, 64.0f},
                         {64u, 32.0f, 0.5f, 16.0f},
                         {64u, 8.0f, 0.125f, 4.0f}}};
+    result.cascades[0].full_detail_distance = 4096.0f;
+    result.cascades[0].fade_out_distance = 8192.0f;
+    result.cascades[1].full_detail_distance = 512.0f;
+    result.cascades[1].fade_out_distance = 1024.0f;
+    result.cascades[2].full_detail_distance = 128.0f;
+    result.cascades[2].fade_out_distance = 256.0f;
+    result.cascades[3].full_detail_distance = 32.0f;
+    result.cascades[3].fade_out_distance = 64.0f;
     switch (quality)
     {
         case water_quality::low:
@@ -163,6 +171,18 @@ ocean_simulation_profile ocean_profile(water_quality quality) noexcept
             break;
     }
     return result;
+}
+
+float ocean_cascade_distance_weight(const ocean_cascade_descriptor& cascade, float distance) noexcept
+{
+    if (!std::isfinite(distance)) return 0.0f;
+    const float start = std::max(0.0f, cascade.full_detail_distance);
+    const float end = std::max(start, cascade.fade_out_distance);
+    if (distance <= start || end <= start) return 1.0f;
+    if (distance >= end) return 0.0f;
+    const float value = std::clamp((distance - start) / (end - start), 0.0f, 1.0f);
+    const float smooth = value * value * (3.0f - 2.0f * value);
+    return 1.0f - smooth;
 }
 
 ocean_spectrum_parameters make_ocean_spectrum_parameters(const water_simulation_settings& settings) noexcept

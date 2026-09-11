@@ -21,6 +21,8 @@ struct ocean_cascade_descriptor
     float physical_length{512.0f};
     float minimum_wavelength{32.0f};
     float maximum_wavelength{512.0f};
+    float full_detail_distance{4096.0f};
+    float fade_out_distance{8192.0f};
 
     friend constexpr bool operator==(const ocean_cascade_descriptor&,
                                      const ocean_cascade_descriptor&) noexcept = default;
@@ -93,6 +95,9 @@ struct ocean_surface_point
 /** @brief Resolve stable cascade counts and FFT resolutions for an authored
  * quality level. */
 [[nodiscard]] ocean_simulation_profile ocean_profile(water_quality quality) noexcept;
+
+/** @brief Smooth per-cascade contribution used to suppress fine spectra with distance. */
+[[nodiscard]] float ocean_cascade_distance_weight(const ocean_cascade_descriptor& cascade, float distance) noexcept;
 
 /** @brief Convert the W0 authoring contract into normalized physical spectrum
  * parameters. */

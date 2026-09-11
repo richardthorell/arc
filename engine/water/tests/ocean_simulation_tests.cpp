@@ -40,6 +40,21 @@ TEST_CASE("Ocean quality profiles scale cascade and FFT budgets without "
     CHECK(high.cascades[0].resolution < ultra.cascades[0].resolution);
     CHECK(high.cascades[0].physical_length > high.cascades[1].physical_length);
     CHECK(high.cascades[1].physical_length > high.cascades[2].physical_length);
+    CHECK(high.cascades[0].fade_out_distance > high.cascades[1].fade_out_distance);
+    CHECK(high.cascades[1].fade_out_distance > high.cascades[2].fade_out_distance);
+}
+
+TEST_CASE("Ocean cascade distance reduction smoothly removes fine spectra")
+{
+    const auto profile = arc::water::ocean_profile(arc::water::water_quality::high);
+    const auto& fine = profile.cascades[2];
+    CHECK(arc::water::ocean_cascade_distance_weight(fine, 0.0f) == 1.0f);
+    CHECK(arc::water::ocean_cascade_distance_weight(fine, fine.full_detail_distance) == 1.0f);
+    const float transition =
+        arc::water::ocean_cascade_distance_weight(fine, (fine.full_detail_distance + fine.fade_out_distance) * 0.5f);
+    CHECK(transition > 0.0f);
+    CHECK(transition < 1.0f);
+    CHECK(arc::water::ocean_cascade_distance_weight(fine, fine.fade_out_distance) == 0.0f);
 }
 
 TEST_CASE("Ocean spectrum parameter conversion normalizes authoring input")

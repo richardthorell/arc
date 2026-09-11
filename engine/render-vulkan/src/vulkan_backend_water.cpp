@@ -25,10 +25,12 @@ struct alignas(16) gpu_water_surface_metadata
 {
     std::uint32_t resolutions[4]{};
     float physical_lengths[4]{};
+    float full_detail_distances[4]{};
+    float fade_out_distances[4]{};
     std::uint32_t cascade_count{};
     std::uint32_t reserved[3]{};
 };
-static_assert(sizeof(gpu_water_surface_metadata) == 48u);
+static_assert(sizeof(gpu_water_surface_metadata) == 80u);
 
 struct water_spectrum_push_constants
 {
@@ -481,6 +483,8 @@ bool vulkan_render_backend::synchronize_water_simulations(std::uint64_t frame_in
             {
                 metadata.resolutions[index] = simulation.profile.cascades[index].resolution;
                 metadata.physical_lengths[index] = simulation.profile.cascades[index].physical_length;
+                metadata.full_detail_distances[index] = simulation.profile.cascades[index].full_detail_distance;
+                metadata.fade_out_distances[index] = simulation.profile.cascades[index].fade_out_distance;
             }
             initialized = initialized &&
                           upload_buffer(&metadata, sizeof(metadata), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
@@ -527,6 +531,7 @@ bool vulkan_render_backend::synchronize_water_simulations(std::uint64_t frame_in
             std::max(profile.update_interval_frames, simulation.profile.update_interval_frames);
         profile.foam_update_interval_frames =
             std::max(profile.foam_update_interval_frames, simulation.profile.foam_update_interval_frames);
+        profile.foam_history = profile.foam_history || simulation.instance.settings.foam.enabled;
         profile.simulation_memory_bytes += sizeof(gpu_water_surface_metadata);
         for (std::uint32_t index = 0u; index < simulation.profile.cascade_count; ++index)
         {

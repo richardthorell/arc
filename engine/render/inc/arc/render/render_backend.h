@@ -993,6 +993,7 @@ struct render_water_profile
     bool enabled{};
     bool gpu_simulation{};
     bool deterministic_initial_spectrum{};
+    bool foam_history{};
     std::uint32_t active_body_count{};
     std::uint32_t active_cascade_count{};
     std::uint32_t maximum_resolution{};

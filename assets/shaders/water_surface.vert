@@ -38,6 +38,8 @@ layout(std140, set = 1, binding = 0) uniform water_metadata_buffer
 {
     uvec4 resolutions;
     vec4 physical_lengths;
+    vec4 full_detail_distances;
+    vec4 fade_out_distances;
     uvec4 configuration;
 } water_metadata;
 layout(std430, set = 1, binding = 1) readonly buffer water_surface_buffer_0 { surface_sample values[]; } water_surface_0;
@@ -82,13 +84,21 @@ void main()
     vec3 displacement = vec3(0.0);
     vec2 combined_slope = vec2(0.0);
     float foam = 0.0;
+    float view_distance = length(constants.camera_position.xyz - world_position.xyz);
     for (uint cascade = 0u; cascade < water_metadata.configuration.x; ++cascade)
     {
+        float fade_width = max(water_metadata.fade_out_distances[cascade] -
+                                   water_metadata.full_detail_distances[cascade],
+                               1.0e-4);
+        float cascade_weight = 1.0 - smoothstep(
+            0.0, 1.0, (view_distance - water_metadata.full_detail_distances[cascade]) / fade_width);
+        if (cascade_weight <= 0.0)
+            continue;
         surface_sample surface = sample_surface(cascade, world_position.xz);
-        displacement += surface.displacement.xyz;
+        displacement += surface.displacement.xyz * cascade_weight;
         float inverse_y = 1.0 / max(surface.normal.y, 1.0e-4);
-        combined_slope += -surface.normal.xz * inverse_y;
-        foam = max(foam, surface.displacement.w);
+        combined_slope += -surface.normal.xz * inverse_y * cascade_weight;
+        foam = max(foam, surface.displacement.w * cascade_weight);
     }
     world_position.xyz += displacement;
     out_normal = normalize(vec3(-combined_slope.x, 1.0, -combined_slope.y));
