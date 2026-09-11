@@ -90,7 +90,9 @@ export function FlowEditor({ document }: { document: EditorDocument; context?: E
               <dd>{state.graph.variables.length}</dd>
             </div>
           </dl>
-          <p>Flow graphs are authoring data. Compilation and runtime execution are introduced in the next milestones.</p>
+          <p>
+            Flow graphs are authoring data. Compilation and runtime execution are introduced in the next milestones.
+          </p>
         </section>
 
         <section className="flow-variable-panel">

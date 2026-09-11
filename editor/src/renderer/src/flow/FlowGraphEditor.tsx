@@ -69,7 +69,9 @@ const fallbackPinPosition = (node: FlowGraphNode, pin: string, output: boolean):
 
 const nodeHeight = (node: FlowGraphNode) => {
   const definition = flowGraphDomain.getNodeDefinition(node);
-  return headerHeight + nodePaddingTop + Math.max(definition.inputs.length, definition.outputs.length, 1) * pinRowHeight + 48;
+  return (
+    headerHeight + nodePaddingTop + Math.max(definition.inputs.length, definition.outputs.length, 1) * pinRowHeight + 48
+  );
 };
 
 export function FlowGraphEditor({ document, graph }: { document: EditorDocument; graph: FlowGraph }) {
@@ -330,11 +332,15 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
 
   const availableNodes = useMemo(() => {
     const query = nodeSearch.trim().toLocaleLowerCase();
-    return flowGraphDomain.getNodeDefinitions().filter(
-      (definition) =>
-        !query ||
-        `${definition.title} ${definition.category} ${definition.subcategory ?? ''}`.toLocaleLowerCase().includes(query),
-    );
+    return flowGraphDomain
+      .getNodeDefinitions()
+      .filter(
+        (definition) =>
+          !query ||
+          `${definition.title} ${definition.category} ${definition.subcategory ?? ''}`
+            .toLocaleLowerCase()
+            .includes(query),
+      );
   }, [nodeSearch]);
 
   const pinPosition = (node: FlowGraphNode, pin: string, output: boolean) =>
@@ -441,7 +447,9 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
           return (
             <UiNodeCard
               badge={definition.category === 'Events' || definition.category === 'Input' ? 'E' : undefined}
-              badgeTitle={definition.category === 'Events' || definition.category === 'Input' ? 'Event entry point' : undefined}
+              badgeTitle={
+                definition.category === 'Events' || definition.category === 'Input' ? 'Event entry point' : undefined
+              }
               className={`flow-graph-node flow-graph-node-${node.type}`}
               data-node-id={node.id}
               heading={definition.title}

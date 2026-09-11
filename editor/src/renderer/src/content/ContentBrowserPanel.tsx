@@ -840,7 +840,9 @@ export function ContentBrowserPanel({
             }}
           >
             <header>
-              <strong id="content-create-title">Create {createKind === 'material' ? 'Material' : createKind === 'flow' ? 'Flow Graph' : 'Shader'}</strong>
+              <strong id="content-create-title">
+                Create {createKind === 'material' ? 'Material' : createKind === 'flow' ? 'Flow Graph' : 'Shader'}
+              </strong>
               <small>{createFolder || contentRoot}</small>
             </header>
             <label>
@@ -876,7 +878,9 @@ export function ContentBrowserPanel({
                 Cancel
               </button>
               <button type="submit" disabled={creating || !createName.trim()}>
-                {creating ? 'Creating…' : `Create ${createKind === 'material' ? 'Material' : createKind === 'flow' ? 'Flow Graph' : 'Shader'}`}
+                {creating
+                  ? 'Creating…'
+                  : `Create ${createKind === 'material' ? 'Material' : createKind === 'flow' ? 'Flow Graph' : 'Shader'}`}
               </button>
             </footer>
           </form>

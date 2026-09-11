@@ -64,7 +64,11 @@ describe('FlowGraphEditor', () => {
 
     expect(screen.getByRole('button', { name: 'Add Node' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
-    fireEvent.wheel(screen.getByRole('application', { name: 'Flow graph' }), { clientX: 200, clientY: 120, deltaY: -1 });
+    fireEvent.wheel(screen.getByRole('application', { name: 'Flow graph' }), {
+      clientX: 200,
+      clientY: 120,
+      deltaY: -1,
+    });
     expect(flowState.replaceFlowGraph).not.toHaveBeenCalled();
   });
 });

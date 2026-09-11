@@ -111,8 +111,7 @@ export const resolveRegisteredEditorAsset = async (
   do {
     try {
       const response = (await window.arc.host.query('project.assets')) as
-        | HostResponse<HostProjectAssetsPayload>
-        | undefined;
+        HostResponse<HostProjectAssetsPayload> | undefined;
       const payload = response?.succeeded ? response.payload : undefined;
       const registered = payload?.assets?.find((candidate) => {
         if (!candidate.guid) return false;
