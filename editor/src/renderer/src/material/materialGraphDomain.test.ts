@@ -7,7 +7,9 @@ describe('materialGraphDomain', () => {
   it('adapts material definitions to the shared graph domain contract', () => {
     const node = createMaterialNode('multiply', [10, 20]);
     expect(materialGraphDomain.getNodeDefinition(node).title).toBe('Multiply');
-    expect(materialGraphDomain.getNodeDefinitions().some((definition) => definition.type === 'textureSample')).toBe(true);
+    expect(materialGraphDomain.getNodeDefinitions().some((definition) => definition.type === 'textureSample')).toBe(
+      true,
+    );
   });
 
   it('keeps material-specific protection and connection rules behind the domain boundary', () => {

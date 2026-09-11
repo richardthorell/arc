@@ -26,8 +26,7 @@ export const materialGraphDomain: GraphDomain<
   ) => {
     if (from.direction !== 'output' || to.direction !== 'input')
       return { allowed: false, reason: 'Connections must run from an output pin to an input pin.' };
-    if (from.node.id === to.node.id)
-      return { allowed: false, reason: 'Material nodes cannot connect to themselves.' };
+    if (from.node.id === to.node.id) return { allowed: false, reason: 'Material nodes cannot connect to themselves.' };
     return { allowed: true };
   },
   canDeleteNode: (node) => node.type !== 'output',

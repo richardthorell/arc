@@ -30,7 +30,10 @@ export const clientToGraphPoint = (
   viewport: GraphViewport,
   clientX: number,
   clientY: number,
-): GraphPoint => [(clientX - rect.left - viewport.x) / viewport.zoom, (clientY - rect.top - viewport.y) / viewport.zoom];
+): GraphPoint => [
+  (clientX - rect.left - viewport.x) / viewport.zoom,
+  (clientY - rect.top - viewport.y) / viewport.zoom,
+];
 
 export const graphConnectionPath = (from: GraphPoint, to: GraphPoint) => {
   const distance = Math.max(55, Math.abs(to[0] - from[0]) * 0.45);
