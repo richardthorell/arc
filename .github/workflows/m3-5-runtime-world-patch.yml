@@ -1,0 +1,1312 @@
+name: Apply M3.5 runtime world API patch
+
+on:
+  push:
+    branches:
+      - feature/play-session-m35-runtime-world-api
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: "github.event.head_commit.message != 'feat: expose runtime world operations to project modules'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feature/play-session-m35-runtime-world-api
+          fetch-depth: 0
+      - name: Apply M3.5 runtime world API
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              count = s.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{path}: expected one match, found {count}: {old[:100]!r}')
+              p.write_text(s.replace(old, new, 1))
+
+          Path('engine/project/inc/arc/project/runtime_world_api.h').write_text(r'''#pragma once
+
+#include <cstddef>
+#include <cstdint>
+
+namespace arc::project
+{
+
+/** @brief ABI-safe transient entity handle used by project runtime callbacks. */
+struct game_entity_v1
+{
+    std::uint32_t index{0xffffffffu};
+    std::uint32_t generation{};
+
+    [[nodiscard]] constexpr bool valid() const noexcept
+    {
+        return index != 0xffffffffu;
+    }
+};
+
+/** @brief Entity handle returned for structural creation deferred to a scheduler phase boundary. */
+struct game_deferred_entity_v1
+{
+    std::uint64_t buffer{};
+    std::uint32_t ordinal{};
+
+    [[nodiscard]] constexpr bool valid() const noexcept
+    {
+        return buffer != 0;
+    }
+};
+
+/** @brief Target accepted by runtime structural operations; it may be immediate or deferred. */
+struct game_entity_target_v1
+{
+    game_entity_v1 entity{};
+    game_deferred_entity_v1 deferred{};
+    bool is_deferred{};
+
+    [[nodiscard]] constexpr bool valid() const noexcept
+    {
+        return is_deferred ? deferred.valid() : entity.valid();
+    }
+};
+
+/** @brief Engine-owned components exposed through the stable project runtime API. */
+enum class game_core_component_v1 : std::uint8_t
+{
+    name,
+    transform,
+    tag,
+    active
+};
+
+/** @brief Scheduler access mode for a stable engine-owned component. */
+enum class game_core_component_access_mode_v1 : std::uint8_t
+{
+    read,
+    write
+};
+
+/** @brief Declared project-system access to one engine-owned component. */
+struct game_core_component_access_v1
+{
+    game_core_component_v1 component{game_core_component_v1::transform};
+    game_core_component_access_mode_v1 mode{game_core_component_access_mode_v1::read};
+};
+
+using game_core_component_mask_v1 = std::uint32_t;
+
+[[nodiscard]] constexpr game_core_component_mask_v1 game_core_component_bit_v1(game_core_component_v1 component) noexcept
+{
+    return game_core_component_mask_v1{1u} << static_cast<std::uint8_t>(component);
+}
+
+/** @brief ABI-safe three-component vector. */
+struct game_vector3_v1
+{
+    float x{};
+    float y{};
+    float z{};
+};
+
+/** @brief ABI-safe quaternion stored in `(x, y, z, w)` order. */
+struct game_quaternion_v1
+{
+    float x{};
+    float y{};
+    float z{};
+    float w{1.0f};
+};
+
+/** @brief ABI-safe local transform. Cached world data remains engine-owned. */
+struct game_transform_v1
+{
+    game_vector3_v1 position{};
+    game_quaternion_v1 rotation{};
+    game_vector3_v1 scale{1.0f, 1.0f, 1.0f};
+};
+
+/** @brief Borrowed UTF-8 string view valid until the component is modified or the callback returns. */
+struct game_string_view_v1
+{
+    const char* data{};
+    std::size_t size{};
+
+    [[nodiscard]] constexpr bool valid() const noexcept
+    {
+        return data != nullptr;
+    }
+};
+
+/** @brief Stable entity query over the exposed engine-owned component set. */
+struct game_world_query_v1
+{
+    std::size_t structure_size{sizeof(game_world_query_v1)};
+    game_core_component_mask_v1 required_core_components{};
+    game_core_component_mask_v1 excluded_core_components{};
+};
+
+/** @brief Entity query visitor. Return false to stop visiting further matches. */
+using game_visit_entity_v1 = bool (*)(void* user_data, game_entity_v1 entity);
+
+/**
+ * @brief Stable runtime-world API supplied to project callbacks.
+ *
+ * The table and its user_data are borrowed for the duration of the owning callback. Structural changes requested
+ * from an ECS system are recorded in that system's command buffer and become visible at the scheduler phase boundary;
+ * BeginPlay and EndPlay operate directly because they execute outside scheduled system work.
+ */
+struct game_world_api_v1
+{
+    std::size_t structure_size{sizeof(game_world_api_v1)};
+    void* user_data{};
+
+    game_entity_target_v1 (*create_entity)(void* user_data){};
+    bool (*destroy_entity)(void* user_data, game_entity_target_v1 entity){};
+    bool (*entity_alive)(void* user_data, game_entity_v1 entity){};
+    std::size_t (*entity_count)(void* user_data){};
+    bool (*query_entities)(void* user_data, const game_world_query_v1* query, void* visitor_user_data,
+                           game_visit_entity_v1 visitor){};
+
+    bool (*has_core_component)(void* user_data, game_entity_v1 entity, game_core_component_v1 component){};
+    bool (*remove_core_component)(void* user_data, game_entity_target_v1 entity, game_core_component_v1 component){};
+
+    game_string_view_v1 (*read_name)(void* user_data, game_entity_v1 entity){};
+    bool (*set_name)(void* user_data, game_entity_target_v1 entity, const char* value, std::size_t value_size){};
+    bool (*read_transform)(void* user_data, game_entity_v1 entity, game_transform_v1* value){};
+    bool (*set_transform)(void* user_data, game_entity_target_v1 entity, const game_transform_v1* value){};
+    game_string_view_v1 (*read_tag)(void* user_data, game_entity_v1 entity){};
+    bool (*set_tag)(void* user_data, game_entity_target_v1 entity, const char* value, std::size_t value_size){};
+    bool (*read_active)(void* user_data, game_entity_v1 entity, bool* value){};
+    bool (*set_active)(void* user_data, game_entity_target_v1 entity, bool value){};
+};
+
+} // namespace arc::project
+''')
+
+          replace_once(
+              'engine/project/inc/arc/project/project_module.h',
+              '#pragma once\n\n#include <cstddef>\n#include <cstdint>\n',
+              '#pragma once\n\n#include <arc/project/runtime_world_api.h>\n\n#include <cstddef>\n#include <cstdint>\n')
+
+          replace_once(
+              'engine/project/inc/arc/project/project_module.h',
+              '''/** @brief ABI-safe transient entity handle used by project runtime callbacks. */
+struct game_entity_v1
+{
+    std::uint32_t index{0xffffffffu};
+    std::uint32_t generation{};
+
+    [[nodiscard]] constexpr bool valid() const noexcept
+    {
+        return index != 0xffffffffu;
+    }
+};
+
+''',
+              '')
+
+          replace_once(
+              'engine/project/inc/arc/project/project_module.h',
+              '''    std::uint64_t tick_id{};
+    std::uint64_t world_id{};
+    float delta_seconds{};
+''',
+              '''    std::uint64_t tick_id{};
+    std::uint64_t world_id{};
+    const game_world_api_v1* world{}; ///< Stable runtime-world bridge valid only for this invocation.
+    float delta_seconds{};
+''')
+
+          replace_once(
+              'engine/project/inc/arc/project/project_module.h',
+              '''    const game_system_component_access_v1* component_accesses{}; ///< Declared reflected project-component access.
+    std::size_t component_access_count{};                        ///< Number of entries in @ref component_accesses.
+    bool unrestricted_native_world_access{true}; ///< Preserve legacy native_context access and serialize this system.
+''',
+              '''    const game_system_component_access_v1* component_accesses{}; ///< Declared reflected project-component access.
+    std::size_t component_access_count{};                        ///< Number of entries in @ref component_accesses.
+    const game_core_component_access_v1* core_component_accesses{}; ///< Declared stable engine-component access.
+    std::size_t core_component_access_count{};                      ///< Number of core-component declarations.
+    bool unrestricted_native_world_access{true}; ///< Preserve legacy native_context access and serialize this system.
+''')
+
+          replace_once(
+              'engine/project/inc/arc/project/project_module.h',
+              '''struct game_play_context_v1
+{
+    std::size_t structure_size{sizeof(game_play_context_v1)};
+    std::uint64_t world_id{}; ///< Runtime world that owns this Play session.
+};
+''',
+              '''struct game_play_context_v1
+{
+    std::size_t structure_size{sizeof(game_play_context_v1)};
+    std::uint64_t world_id{};            ///< Runtime world that owns this Play session.
+    const game_world_api_v1* world{};    ///< Stable runtime-world bridge for this lifecycle callback.
+};
+''')
+
+          replace_once(
+              'editor/native/src/project_module_loader.h',
+              '''    std::vector<project_system_component_access> component_accesses;
+    bool unrestricted_native_world_access{true};
+''',
+              '''    std::vector<project_system_component_access> component_accesses;
+    std::vector<project::game_core_component_access_v1> core_component_accesses;
+    bool unrestricted_native_world_access{true};
+''')
+
+          p = Path('editor/native/src/project_module_loader.cpp')
+          s = p.read_text()
+          s = s.replace('#include <arc/framework/runtime_world.h>\n',
+                        '#include <arc/framework/runtime_world.h>\n#include <arc/scene/components.h>\n', 1)
+
+          start = s.index('struct project_play_session_guard')
+          end = s.index('bool stable_component_id', start)
+          bridge = r'''struct project_component_bridge_context
+{
+    ecs::world* world{};
+    ecs::entity_command_buffer* commands{};
+    const std::vector<project_system_component_access>* declared_accesses{};
+    const std::vector<project::game_core_component_access_v1>* declared_core_accesses{};
+    bool unrestricted_core_access{};
+    bool violation{};
+    std::string violation_message;
+};
+
+const char* core_component_name(project::game_core_component_v1 component) noexcept
+{
+    switch (component)
+    {
+        case project::game_core_component_v1::name:
+            return "name";
+        case project::game_core_component_v1::transform:
+            return "transform";
+        case project::game_core_component_v1::tag:
+            return "tag";
+        case project::game_core_component_v1::active:
+            return "active";
+    }
+    return "unknown";
+}
+
+bool allows_project_component_access(const project_component_bridge_context& bridge, std::string_view component_id,
+                                     project::game_system_component_access_mode_v1 requested) noexcept
+{
+    if (!bridge.declared_accesses) return false;
+    const auto found = std::find_if(bridge.declared_accesses->begin(), bridge.declared_accesses->end(),
+                                    [&](const project_system_component_access& access)
+                                    { return access.component_id == component_id; });
+    if (found == bridge.declared_accesses->end()) return false;
+    return requested == project::game_system_component_access_mode_v1::read ||
+           found->mode == project::game_system_component_access_mode_v1::write;
+}
+
+bool require_project_component_access(project_component_bridge_context& bridge, std::string_view component_id,
+                                      project::game_system_component_access_mode_v1 requested) noexcept
+{
+    if (allows_project_component_access(bridge, component_id, requested)) return true;
+    bridge.violation = true;
+    bridge.violation_message =
+        std::string(requested == project::game_system_component_access_mode_v1::write ? "write" : "read") +
+        " access to undeclared project component '" + std::string(component_id) + "'";
+    return false;
+}
+
+bool allows_core_component_access(const project_component_bridge_context& bridge,
+                                  project::game_core_component_v1 component,
+                                  project::game_core_component_access_mode_v1 requested) noexcept
+{
+    if (bridge.unrestricted_core_access) return true;
+    if (!bridge.declared_core_accesses) return false;
+    const auto found = std::find_if(bridge.declared_core_accesses->begin(), bridge.declared_core_accesses->end(),
+                                    [&](const project::game_core_component_access_v1& access)
+                                    { return access.component == component; });
+    if (found == bridge.declared_core_accesses->end()) return false;
+    return requested == project::game_core_component_access_mode_v1::read ||
+           found->mode == project::game_core_component_access_mode_v1::write;
+}
+
+bool require_core_component_access(project_component_bridge_context& bridge, project::game_core_component_v1 component,
+                                   project::game_core_component_access_mode_v1 requested) noexcept
+{
+    if (allows_core_component_access(bridge, component, requested)) return true;
+    bridge.violation = true;
+    bridge.violation_message =
+        std::string(requested == project::game_core_component_access_mode_v1::write ? "write" : "read") +
+        " access to undeclared core component '" + core_component_name(component) + "'";
+    return false;
+}
+
+[[nodiscard]] ecs::entity native_entity(project::game_entity_v1 entity) noexcept
+{
+    return {entity.index, entity.generation};
+}
+
+[[nodiscard]] project::game_entity_v1 game_entity(ecs::entity entity) noexcept
+{
+    return {entity.index, entity.generation};
+}
+
+project_runtime_component_value* runtime_project_component(project_component_bridge_context& bridge,
+                                                           project::game_entity_v1 entity,
+                                                           std::string_view component_id) noexcept
+{
+    if (!bridge.world || component_id.empty() || !entity.valid()) return nullptr;
+    const ecs::entity value = native_entity(entity);
+    if (!bridge.world->alive(value)) return nullptr;
+    auto* components = bridge.world->try_get<project_runtime_component_set>(value);
+    return components ? find_project_runtime_component(*components, component_id) : nullptr;
+}
+
+bool has_runtime_project_component(void* user_data, project::game_entity_v1 entity, const char* component_id) noexcept
+{
+    if (!user_data || !component_id || !*component_id) return false;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!require_project_component_access(bridge, component_id, project::game_system_component_access_mode_v1::read))
+        return false;
+    return runtime_project_component(bridge, entity, component_id) != nullptr;
+}
+
+const char* read_runtime_project_component_json(void* user_data, project::game_entity_v1 entity,
+                                                const char* component_id) noexcept
+{
+    if (!user_data || !component_id || !*component_id) return nullptr;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!require_project_component_access(bridge, component_id, project::game_system_component_access_mode_v1::read))
+        return nullptr;
+    const auto* component = runtime_project_component(bridge, entity, component_id);
+    return component ? component->json.c_str() : nullptr;
+}
+
+bool patch_runtime_project_component_json(void* user_data, project::game_entity_v1 entity, const char* component_id,
+                                          const char* patch_json) noexcept
+{
+    if (!user_data || !component_id || !*component_id || !patch_json) return false;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!require_project_component_access(bridge, component_id, project::game_system_component_access_mode_v1::write))
+        return false;
+    auto* component = runtime_project_component(bridge, entity, component_id);
+    if (!component) return false;
+    auto patch = nlohmann::json::parse(patch_json, nullptr, false);
+    if (!patch.is_object()) return false;
+    auto current = nlohmann::json::parse(component->json, nullptr, false);
+    if (!current.is_object()) current = nlohmann::json::object();
+    current.update(patch);
+    current["typeId"] = component->stable_id;
+    current["version"] = component->schema_version;
+    component->json = current.dump();
+    return true;
+}
+
+bool for_each_runtime_project_component(void* user_data, const char* component_id, void* visitor_user_data,
+                                        project::game_visit_project_component_v1 visitor) noexcept
+{
+    if (!user_data || !component_id || !*component_id || !visitor) return false;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!require_project_component_access(bridge, component_id, project::game_system_component_access_mode_v1::read))
+        return false;
+    if (!bridge.world) return false;
+    for (const auto entity : bridge.world->entities())
+    {
+        const auto runtime_entity = game_entity(entity);
+        const auto* component = runtime_project_component(bridge, runtime_entity, component_id);
+        if (component && !visitor(visitor_user_data, runtime_entity, component->json.c_str())) return false;
+    }
+    return true;
+}
+
+bool has_core_component_unchecked(const ecs::world& world, ecs::entity entity,
+                                  project::game_core_component_v1 component) noexcept
+{
+    switch (component)
+    {
+        case project::game_core_component_v1::name:
+            return world.has<scene::name_component>(entity);
+        case project::game_core_component_v1::transform:
+            return world.has<scene::transform_component>(entity);
+        case project::game_core_component_v1::tag:
+            return world.has<scene::tag_component>(entity);
+        case project::game_core_component_v1::active:
+            return world.has<scene::active_component>(entity);
+    }
+    return false;
+}
+
+project::game_entity_target_v1 create_runtime_entity(void* user_data) noexcept
+{
+    if (!user_data) return {};
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!bridge.world) return {};
+    if (bridge.commands)
+    {
+        const auto entity = bridge.commands->create();
+        return {.deferred = {entity.buffer, entity.ordinal}, .is_deferred = true};
+    }
+    return {.entity = game_entity(bridge.world->create())};
+}
+
+bool destroy_runtime_entity(void* user_data, project::game_entity_target_v1 target) noexcept
+{
+    if (!user_data || !target.valid()) return false;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!bridge.world) return false;
+    if (bridge.commands)
+    {
+        if (target.is_deferred)
+            bridge.commands->destroy(ecs::deferred_entity{target.deferred.buffer, target.deferred.ordinal});
+        else
+        {
+            const auto entity = native_entity(target.entity);
+            if (!bridge.world->alive(entity)) return false;
+            bridge.commands->destroy(entity);
+        }
+        return true;
+    }
+    return !target.is_deferred && bridge.world->destroy(native_entity(target.entity));
+}
+
+bool runtime_entity_alive(void* user_data, project::game_entity_v1 entity) noexcept
+{
+    if (!user_data || !entity.valid()) return false;
+    const auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    return bridge.world && bridge.world->alive(native_entity(entity));
+}
+
+std::size_t runtime_entity_count(void* user_data) noexcept
+{
+    if (!user_data) return 0;
+    const auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    return bridge.world ? bridge.world->live_count() : 0;
+}
+
+bool query_runtime_entities(void* user_data, const project::game_world_query_v1* query, void* visitor_user_data,
+                            project::game_visit_entity_v1 visitor) noexcept
+{
+    if (!user_data || !query || query->structure_size < sizeof(project::game_world_query_v1) || !visitor) return false;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!bridge.world) return false;
+    constexpr auto known_mask = project::game_core_component_bit_v1(project::game_core_component_v1::name) |
+                                project::game_core_component_bit_v1(project::game_core_component_v1::transform) |
+                                project::game_core_component_bit_v1(project::game_core_component_v1::tag) |
+                                project::game_core_component_bit_v1(project::game_core_component_v1::active);
+    if (((query->required_core_components | query->excluded_core_components) & ~known_mask) != 0) return false;
+
+    constexpr project::game_core_component_v1 components[]{project::game_core_component_v1::name,
+                                                           project::game_core_component_v1::transform,
+                                                           project::game_core_component_v1::tag,
+                                                           project::game_core_component_v1::active};
+    for (const auto component : components)
+    {
+        const auto bit = project::game_core_component_bit_v1(component);
+        if (((query->required_core_components | query->excluded_core_components) & bit) != 0 &&
+            !require_core_component_access(bridge, component, project::game_core_component_access_mode_v1::read))
+            return false;
+    }
+
+    for (const auto entity : bridge.world->entities())
+    {
+        bool matches = true;
+        for (const auto component : components)
+        {
+            const auto bit = project::game_core_component_bit_v1(component);
+            const bool present = has_core_component_unchecked(*bridge.world, entity, component);
+            if ((query->required_core_components & bit) != 0 && !present) matches = false;
+            if ((query->excluded_core_components & bit) != 0 && present) matches = false;
+        }
+        if (matches && !visitor(visitor_user_data, game_entity(entity))) break;
+    }
+    return true;
+}
+
+bool has_runtime_core_component(void* user_data, project::game_entity_v1 entity,
+                                project::game_core_component_v1 component) noexcept
+{
+    if (!user_data || !entity.valid()) return false;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!bridge.world ||
+        !require_core_component_access(bridge, component, project::game_core_component_access_mode_v1::read))
+        return false;
+    const auto value = native_entity(entity);
+    return bridge.world->alive(value) && has_core_component_unchecked(*bridge.world, value, component);
+}
+
+template <class Component>
+bool set_runtime_core_component(project_component_bridge_context& bridge, project::game_entity_target_v1 target,
+                                Component component) noexcept
+{
+    if (!bridge.world || !target.valid()) return false;
+    if (bridge.commands)
+    {
+        if (target.is_deferred)
+        {
+            bridge.commands->add<Component>(ecs::deferred_entity{target.deferred.buffer, target.deferred.ordinal},
+                                            std::move(component));
+            return true;
+        }
+        const auto entity = native_entity(target.entity);
+        if (!bridge.world->alive(entity)) return false;
+        if (auto* existing = bridge.world->try_get<Component>(entity))
+        {
+            *existing = std::move(component);
+            return true;
+        }
+        bridge.commands->add<Component>(entity, std::move(component));
+        return true;
+    }
+    if (target.is_deferred) return false;
+    const auto entity = native_entity(target.entity);
+    if (!bridge.world->alive(entity)) return false;
+    bridge.world->emplace<Component>(entity, std::move(component));
+    return true;
+}
+
+template <class Component>
+bool remove_runtime_core_component_value(project_component_bridge_context& bridge,
+                                         project::game_entity_target_v1 target) noexcept
+{
+    if (!bridge.world || !target.valid()) return false;
+    if (bridge.commands)
+    {
+        if (target.is_deferred)
+            bridge.commands->remove<Component>(ecs::deferred_entity{target.deferred.buffer, target.deferred.ordinal});
+        else
+        {
+            const auto entity = native_entity(target.entity);
+            if (!bridge.world->alive(entity) || !bridge.world->has<Component>(entity)) return false;
+            bridge.commands->remove<Component>(entity);
+        }
+        return true;
+    }
+    return !target.is_deferred && bridge.world->remove<Component>(native_entity(target.entity));
+}
+
+bool remove_runtime_core_component(void* user_data, project::game_entity_target_v1 target,
+                                   project::game_core_component_v1 component) noexcept
+{
+    if (!user_data) return false;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!require_core_component_access(bridge, component, project::game_core_component_access_mode_v1::write))
+        return false;
+    switch (component)
+    {
+        case project::game_core_component_v1::name:
+            return remove_runtime_core_component_value<scene::name_component>(bridge, target);
+        case project::game_core_component_v1::transform:
+            return remove_runtime_core_component_value<scene::transform_component>(bridge, target);
+        case project::game_core_component_v1::tag:
+            return remove_runtime_core_component_value<scene::tag_component>(bridge, target);
+        case project::game_core_component_v1::active:
+            return remove_runtime_core_component_value<scene::active_component>(bridge, target);
+    }
+    return false;
+}
+
+project::game_string_view_v1 read_runtime_name(void* user_data, project::game_entity_v1 entity) noexcept
+{
+    if (!user_data || !entity.valid()) return {};
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!bridge.world || !require_core_component_access(bridge, project::game_core_component_v1::name,
+                                                        project::game_core_component_access_mode_v1::read))
+        return {};
+    const auto& world = std::as_const(*bridge.world);
+    const auto* value = world.try_get<scene::name_component>(native_entity(entity));
+    return value ? project::game_string_view_v1{value->value.data(), value->value.size()} : project::game_string_view_v1{};
+}
+
+bool set_runtime_name(void* user_data, project::game_entity_target_v1 entity, const char* value,
+                      std::size_t value_size) noexcept
+{
+    if (!user_data || (!value && value_size != 0)) return false;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!require_core_component_access(bridge, project::game_core_component_v1::name,
+                                       project::game_core_component_access_mode_v1::write))
+        return false;
+    std::string text;
+    if (value_size != 0) text.assign(value, value_size);
+    return set_runtime_core_component(bridge, entity, scene::name_component{std::move(text)});
+}
+
+bool read_runtime_transform(void* user_data, project::game_entity_v1 entity, project::game_transform_v1* value) noexcept
+{
+    if (!user_data || !entity.valid() || !value) return false;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!bridge.world || !require_core_component_access(bridge, project::game_core_component_v1::transform,
+                                                        project::game_core_component_access_mode_v1::read))
+        return false;
+    const auto& world = std::as_const(*bridge.world);
+    const auto* transform = world.try_get<scene::transform_component>(native_entity(entity));
+    if (!transform) return false;
+    *value = {.position = {transform->position[0], transform->position[1], transform->position[2]},
+              .rotation = {transform->rotation.x(), transform->rotation.y(), transform->rotation.z(),
+                           transform->rotation.w()},
+              .scale = {transform->scale[0], transform->scale[1], transform->scale[2]}};
+    return true;
+}
+
+bool set_runtime_transform(void* user_data, project::game_entity_target_v1 entity,
+                           const project::game_transform_v1* value) noexcept
+{
+    if (!user_data || !value) return false;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!require_core_component_access(bridge, project::game_core_component_v1::transform,
+                                       project::game_core_component_access_mode_v1::write))
+        return false;
+    scene::transform_component transform;
+    transform.position = {value->position.x, value->position.y, value->position.z};
+    transform.rotation = {value->rotation.x, value->rotation.y, value->rotation.z, value->rotation.w};
+    transform.scale = {value->scale.x, value->scale.y, value->scale.z};
+    transform.dirty = true;
+    return set_runtime_core_component(bridge, entity, std::move(transform));
+}
+
+project::game_string_view_v1 read_runtime_tag(void* user_data, project::game_entity_v1 entity) noexcept
+{
+    if (!user_data || !entity.valid()) return {};
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!bridge.world || !require_core_component_access(bridge, project::game_core_component_v1::tag,
+                                                        project::game_core_component_access_mode_v1::read))
+        return {};
+    const auto& world = std::as_const(*bridge.world);
+    const auto* value = world.try_get<scene::tag_component>(native_entity(entity));
+    return value ? project::game_string_view_v1{value->value.data(), value->value.size()} : project::game_string_view_v1{};
+}
+
+bool set_runtime_tag(void* user_data, project::game_entity_target_v1 entity, const char* value,
+                     std::size_t value_size) noexcept
+{
+    if (!user_data || (!value && value_size != 0)) return false;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!require_core_component_access(bridge, project::game_core_component_v1::tag,
+                                       project::game_core_component_access_mode_v1::write))
+        return false;
+    std::string text;
+    if (value_size != 0) text.assign(value, value_size);
+    return set_runtime_core_component(bridge, entity, scene::tag_component{std::move(text)});
+}
+
+bool read_runtime_active(void* user_data, project::game_entity_v1 entity, bool* value) noexcept
+{
+    if (!user_data || !entity.valid() || !value) return false;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!bridge.world || !require_core_component_access(bridge, project::game_core_component_v1::active,
+                                                        project::game_core_component_access_mode_v1::read))
+        return false;
+    const auto& world = std::as_const(*bridge.world);
+    const auto* active = world.try_get<scene::active_component>(native_entity(entity));
+    if (!active) return false;
+    *value = active->active;
+    return true;
+}
+
+bool set_runtime_active(void* user_data, project::game_entity_target_v1 entity, bool value) noexcept
+{
+    if (!user_data) return false;
+    auto& bridge = *static_cast<project_component_bridge_context*>(user_data);
+    if (!require_core_component_access(bridge, project::game_core_component_v1::active,
+                                       project::game_core_component_access_mode_v1::write))
+        return false;
+    return set_runtime_core_component(bridge, entity, scene::active_component{value});
+}
+
+project::game_world_api_v1 make_runtime_world_api(project_component_bridge_context& bridge) noexcept
+{
+    return {.user_data = &bridge,
+            .create_entity = create_runtime_entity,
+            .destroy_entity = destroy_runtime_entity,
+            .entity_alive = runtime_entity_alive,
+            .entity_count = runtime_entity_count,
+            .query_entities = query_runtime_entities,
+            .has_core_component = has_runtime_core_component,
+            .remove_core_component = remove_runtime_core_component,
+            .read_name = read_runtime_name,
+            .set_name = set_runtime_name,
+            .read_transform = read_runtime_transform,
+            .set_transform = set_runtime_transform,
+            .read_tag = read_runtime_tag,
+            .set_tag = set_runtime_tag,
+            .read_active = read_runtime_active,
+            .set_active = set_runtime_active};
+}
+
+struct project_play_session_guard
+{
+    project_play_lifecycle_registration lifecycle;
+    project_component_bridge_context bridge;
+    project::game_world_api_v1 world_api;
+    project::game_play_context_v1 context;
+    bool active{};
+
+    ~project_play_session_guard()
+    {
+        if (!active || !lifecycle.end_play) return;
+        try
+        {
+            lifecycle.end_play(lifecycle.user_data, &context);
+        }
+        catch (const std::exception& error)
+        {
+            diagnostics::error("editor.play", "Project EndPlay '" + lifecycle.stable_id + "' threw: " + error.what());
+        }
+        catch (...)
+        {
+            diagnostics::error("editor.play",
+                               "Project EndPlay '" + lifecycle.stable_id + "' threw an unknown exception");
+        }
+    }
+};
+
+'''
+          s = s[:start] + bridge + s[end:]
+          p.write_text(s)
+
+          replace_once(
+              'editor/native/src/project_module_loader.cpp',
+              '''bool valid_component_access_mode(project::game_system_component_access_mode_v1 mode) noexcept
+{
+    return mode == project::game_system_component_access_mode_v1::read ||
+           mode == project::game_system_component_access_mode_v1::write;
+}
+''',
+              '''bool valid_component_access_mode(project::game_system_component_access_mode_v1 mode) noexcept
+{
+    return mode == project::game_system_component_access_mode_v1::read ||
+           mode == project::game_system_component_access_mode_v1::write;
+}
+
+bool valid_core_component(project::game_core_component_v1 component) noexcept
+{
+    switch (component)
+    {
+        case project::game_core_component_v1::name:
+        case project::game_core_component_v1::transform:
+        case project::game_core_component_v1::tag:
+        case project::game_core_component_v1::active:
+            return true;
+    }
+    return false;
+}
+
+bool valid_core_component_access_mode(project::game_core_component_access_mode_v1 mode) noexcept
+{
+    return mode == project::game_core_component_access_mode_v1::read ||
+           mode == project::game_core_component_access_mode_v1::write;
+}
+''')
+
+          replace_once(
+              'editor/native/src/project_module_loader.cpp',
+              '''jobs::job_priority to_job_priority(project::game_system_priority_v1 priority) noexcept
+{
+    switch (priority)
+    {
+        case project::game_system_priority_v1::critical:
+            return jobs::job_priority::critical;
+        case project::game_system_priority_v1::high:
+            return jobs::job_priority::high;
+        case project::game_system_priority_v1::normal:
+            return jobs::job_priority::normal;
+        case project::game_system_priority_v1::low:
+            return jobs::job_priority::low;
+        case project::game_system_priority_v1::background:
+            return jobs::job_priority::background;
+    }
+    return jobs::job_priority::normal;
+}
+''',
+              '''jobs::job_priority to_job_priority(project::game_system_priority_v1 priority) noexcept
+{
+    switch (priority)
+    {
+        case project::game_system_priority_v1::critical:
+            return jobs::job_priority::critical;
+        case project::game_system_priority_v1::high:
+            return jobs::job_priority::high;
+        case project::game_system_priority_v1::normal:
+            return jobs::job_priority::normal;
+        case project::game_system_priority_v1::low:
+            return jobs::job_priority::low;
+        case project::game_system_priority_v1::background:
+            return jobs::job_priority::background;
+    }
+    return jobs::job_priority::normal;
+}
+
+ecs::component_access scheduler_core_access(const project::game_core_component_access_v1& access) noexcept
+{
+    ecs::component_type_id component{};
+    switch (access.component)
+    {
+        case project::game_core_component_v1::name:
+            component = ecs::component_type<scene::name_component>();
+            break;
+        case project::game_core_component_v1::transform:
+            component = ecs::component_type<scene::transform_component>();
+            break;
+        case project::game_core_component_v1::tag:
+            component = ecs::component_type<scene::tag_component>();
+            break;
+        case project::game_core_component_v1::active:
+            component = ecs::component_type<scene::active_component>();
+            break;
+    }
+    return {component, access.mode == project::game_core_component_access_mode_v1::write
+                           ? ecs::component_access_mode::write
+                           : ecs::component_access_mode::read};
+}
+''')
+
+          replace_once(
+              'editor/native/src/project_module_loader.cpp',
+              '''            (system.component_access_count && !system.component_accesses) || (system.before_count && !system.before) ||
+            (system.after_count && !system.after))
+''',
+              '''            (system.component_access_count && !system.component_accesses) ||
+            (system.core_component_access_count && !system.core_component_accesses) ||
+            (system.before_count && !system.before) || (system.after_count && !system.after))
+''')
+
+          replace_once(
+              'editor/native/src/project_module_loader.cpp',
+              '''            copied.component_accesses.push_back({access.component_id, access.mode});
+        }
+        copied.before.reserve(system.before_count);
+''',
+              '''            copied.component_accesses.push_back({access.component_id, access.mode});
+        }
+        copied.core_component_accesses.reserve(system.core_component_access_count);
+        for (std::size_t access_index = 0; access_index < system.core_component_access_count; ++access_index)
+        {
+            const auto access = system.core_component_accesses[access_index];
+            if (!valid_core_component(access.component) || !valid_core_component_access_mode(access.mode))
+            {
+                error = "project ECS system contains an invalid core component access declaration";
+                return {};
+            }
+            if (std::any_of(copied.core_component_accesses.begin(), copied.core_component_accesses.end(),
+                            [&](const project::game_core_component_access_v1& existing)
+                            { return existing.component == access.component; }))
+            {
+                error = "project ECS system contains duplicate core component access declarations";
+                return {};
+            }
+            copied.core_component_accesses.push_back(access);
+        }
+        copied.before.reserve(system.before_count);
+''')
+
+          replace_once(
+              'editor/native/src/project_module_loader.cpp',
+              '''        std::vector<ecs::component_access> scheduler_accesses;
+        scheduler_accesses.reserve(source.component_accesses.size());
+''',
+              '''        std::vector<ecs::component_access> scheduler_accesses;
+        scheduler_accesses.reserve(source.component_accesses.size() + source.core_component_accesses.size());
+''')
+
+          replace_once(
+              'editor/native/src/project_module_loader.cpp',
+              '''            scheduler_accesses.push_back(
+                {*component, access.mode == project::game_system_component_access_mode_v1::write
+                                 ? ecs::component_access_mode::write
+                                 : ecs::component_access_mode::read});
+        }
+
+        ecs::system_descriptor descriptor{
+''',
+              '''            scheduler_accesses.push_back(
+                {*component, access.mode == project::game_system_component_access_mode_v1::write
+                                 ? ecs::component_access_mode::write
+                                 : ecs::component_access_mode::read});
+        }
+        for (const auto& access : source.core_component_accesses)
+            scheduler_accesses.push_back(scheduler_core_access(access));
+
+        ecs::system_descriptor descriptor{
+''')
+
+          replace_once(
+              'editor/native/src/project_module_loader.cpp',
+              '''                        declared_accesses = source.component_accesses,
+                        unrestricted_native_world_access =
+                            source.unrestricted_native_world_access](ecs::system_context& native_context)
+            {
+                project_component_bridge_context bridge{.native_context = &native_context,
+                                                        .declared_accesses = &declared_accesses};
+''',
+              '''                        declared_accesses = source.component_accesses,
+                        core_accesses = source.core_component_accesses,
+                        unrestricted_native_world_access =
+                            source.unrestricted_native_world_access](ecs::system_context& native_context)
+            {
+                project_component_bridge_context bridge{.world = &native_context.owner(),
+                                                        .commands = &native_context.commands(),
+                                                        .declared_accesses = &declared_accesses,
+                                                        .declared_core_accesses = &core_accesses,
+                                                        .unrestricted_core_access = unrestricted_native_world_access};
+                auto world_api = make_runtime_world_api(bridge);
+''')
+
+          replace_once(
+              'editor/native/src/project_module_loader.cpp',
+              '''                    .tick_id = native_context.tick_id().value,
+                    .world_id = native_context.world_id(),
+                    .delta_seconds = native_context.delta_seconds(),
+''',
+              '''                    .tick_id = native_context.tick_id().value,
+                    .world_id = native_context.world_id(),
+                    .world = &world_api,
+                    .delta_seconds = native_context.delta_seconds(),
+''')
+
+          replace_once(
+              'editor/native/src/project_module_loader.cpp',
+              '''        auto guard = std::make_shared<project_play_session_guard>();
+        guard->lifecycle = *play_lifecycle_;
+        guard->context.world_id = world.id().value;
+''',
+              '''        auto guard = std::make_shared<project_play_session_guard>();
+        guard->lifecycle = *play_lifecycle_;
+        guard->bridge.world = &world.entities();
+        guard->bridge.unrestricted_core_access = true;
+        guard->world_api = make_runtime_world_api(guard->bridge);
+        guard->context.world_id = world.id().value;
+        guard->context.world = &guard->world_api;
+''')
+
+          Path('editor/native/tests/game_module_fixture_system.cpp').write_text(r'''#include <arc/project/project_module.h>
+
+#include <iterator>
+#include <string_view>
+
+namespace
+{
+constexpr std::string_view runtime_component_id = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+constexpr std::string_view probe_name = "Runtime System Probe";
+
+constexpr arc::project::game_field_descriptor_v1 runtime_fields[]{
+    {0x2222222222222222ull, "value", "Value", "Runtime", "Runtime component probe value",
+     arc::project::game_field_kind_v1::floating_point,
+     arc::project::game_field_flags_v1::editable | arc::project::game_field_flags_v1::serialized, "1.0"},
+};
+constexpr arc::project::game_component_descriptor_v1 runtime_components[]{
+    {runtime_component_id.data(), "runtime_probe", "Runtime Probe", "Runtime", "Runtime project component probe", 1,
+     runtime_fields, std::size(runtime_fields)},
+};
+
+struct probe_search
+{
+    const arc::project::game_world_api_v1* world{};
+    arc::project::game_entity_v1 entity{};
+};
+
+bool find_probe(void* user_data, arc::project::game_entity_v1 entity)
+{
+    auto& search = *static_cast<probe_search*>(user_data);
+    const auto name = search.world->read_name(search.world->user_data, entity);
+    if (name.valid() && std::string_view(name.data, name.size) == probe_name) search.entity = entity;
+    return true;
+}
+
+bool execute_visibility_system(void*, arc::project::game_system_context_v1* context)
+{
+    if (!context || !context->world || context->world->structure_size < sizeof(arc::project::game_world_api_v1))
+        return false;
+    const auto& world = *context->world;
+    if (!world.user_data || !world.query_entities || !world.read_name || !world.read_transform || !world.read_active ||
+        !world.set_active || !world.create_entity || !world.destroy_entity || !world.set_name || !world.set_transform ||
+        !world.set_tag || world.entity_count(world.user_data) == 0)
+        return false;
+
+    arc::project::game_world_query_v1 query{
+        .required_core_components = arc::project::game_core_component_bit_v1(arc::project::game_core_component_v1::name) |
+                                    arc::project::game_core_component_bit_v1(arc::project::game_core_component_v1::active)};
+    probe_search search{.world = &world};
+    if (!world.query_entities(world.user_data, &query, &search, find_probe) || !search.entity.valid()) return false;
+
+    if (!context->project_component_user_data || !context->has_project_component ||
+        !context->read_project_component_json || !context->patch_project_component_json)
+        return false;
+    if (!context->has_project_component(context->project_component_user_data, search.entity, runtime_component_id.data()))
+        return false;
+    const char* before = context->read_project_component_json(context->project_component_user_data, search.entity,
+                                                              runtime_component_id.data());
+    if (!before || std::string_view(before).find("\"value\":1.0") == std::string_view::npos) return false;
+    if (!context->patch_project_component_json(context->project_component_user_data, search.entity,
+                                               runtime_component_id.data(), "{\"value\":2.0}"))
+        return false;
+    const char* after = context->read_project_component_json(context->project_component_user_data, search.entity,
+                                                             runtime_component_id.data());
+    if (!after || std::string_view(after).find("\"value\":2.0") == std::string_view::npos) return false;
+
+    arc::project::game_transform_v1 transform;
+    bool active{};
+    if (!world.read_transform(world.user_data, search.entity, &transform) ||
+        !world.read_active(world.user_data, search.entity, &active) || !active)
+        return false;
+    if (!world.set_active(world.user_data, arc::project::game_entity_target_v1{.entity = search.entity}, false))
+        return false;
+
+    const auto scratch = world.create_entity(world.user_data);
+    if (!scratch.valid()) return false;
+    constexpr std::string_view scratch_name = "Runtime Scratch";
+    constexpr std::string_view scratch_tag = "m3.5";
+    arc::project::game_transform_v1 scratch_transform;
+    scratch_transform.position = {1.0f, 2.0f, 3.0f};
+    if (!world.set_name(world.user_data, scratch, scratch_name.data(), scratch_name.size()) ||
+        !world.set_transform(world.user_data, scratch, &scratch_transform) ||
+        !world.set_tag(world.user_data, scratch, scratch_tag.data(), scratch_tag.size()) ||
+        !world.set_active(world.user_data, scratch, true) || !world.destroy_entity(world.user_data, scratch))
+        return false;
+
+    return true;
+}
+
+bool start(const arc::project::game_module_host_v1*)
+{
+    return true;
+}
+bool prepare_reload()
+{
+    return true;
+}
+void stop() {}
+
+constexpr arc::project::game_system_component_access_v1 visibility_accesses[]{
+    {runtime_component_id.data(), arc::project::game_system_component_access_mode_v1::write},
+};
+constexpr arc::project::game_core_component_access_v1 core_accesses[]{
+    {arc::project::game_core_component_v1::name, arc::project::game_core_component_access_mode_v1::write},
+    {arc::project::game_core_component_v1::transform, arc::project::game_core_component_access_mode_v1::write},
+    {arc::project::game_core_component_v1::tag, arc::project::game_core_component_access_mode_v1::write},
+    {arc::project::game_core_component_v1::active, arc::project::game_core_component_access_mode_v1::write},
+};
+constexpr arc::project::game_system_descriptor_v1 visibility_system{
+    .phase = arc::project::game_system_phase_v1::gameplay_commands,
+    .priority = arc::project::game_system_priority_v1::normal,
+    .component_accesses = visibility_accesses,
+    .component_access_count = std::size(visibility_accesses),
+    .core_component_accesses = core_accesses,
+    .core_component_access_count = std::size(core_accesses),
+    .unrestricted_native_world_access = false,
+    .execute = execute_visibility_system,
+};
+constexpr arc::project::game_registration_descriptor_v1 registrations[]{
+    {arc::project::game_registration_kind_v1::ecs_system, "fixture.runtime.visibility", "Fixture Runtime Visibility",
+     &visibility_system},
+};
+constexpr arc::project::game_module_descriptor_v1 descriptor{
+    .engine_version = "0.1.0",
+    .project_guid = "12345678-1234-4234-8234-123456789abc",
+    .module_id = "fixture.editor",
+    .kind = arc::project::game_module_kind_v1::editor,
+    .generation = 6,
+    .components = runtime_components,
+    .component_count = std::size(runtime_components),
+    .registrations = registrations,
+    .registration_count = std::size(registrations),
+    .start = start,
+    .prepare_reload = prepare_reload,
+    .stop = stop,
+};
+} // namespace
+
+extern "C" ARC_PROJECT_MODULE_EXPORT const arc::project::game_module_descriptor_v1* arc_query_game_module_v1()
+{
+    return &descriptor;
+}
+''')
+
+          Path('editor/native/tests/game_module_fixture_lifecycle.cpp').write_text(r'''#include <arc/project/project_module.h>
+
+#include <cstdint>
+#include <iterator>
+#include <string_view>
+
+namespace
+{
+bool session_active{};
+bool lifecycle_valid{true};
+std::uint64_t active_world_id{};
+std::uint32_t begin_count{};
+std::uint32_t end_count{};
+arc::project::game_entity_v1 session_entity{};
+constexpr std::string_view session_name = "M3.5 Lifecycle Entity";
+
+struct session_search
+{
+    const arc::project::game_world_api_v1* world{};
+    bool found{};
+};
+
+bool find_session_entity(void* user_data, arc::project::game_entity_v1 entity)
+{
+    auto& search = *static_cast<session_search*>(user_data);
+    const auto name = search.world->read_name(search.world->user_data, entity);
+    if (name.valid() && std::string_view(name.data, name.size) == session_name) search.found = true;
+    return true;
+}
+
+bool begin_play(void*, const arc::project::game_play_context_v1* context)
+{
+    if (!context || context->structure_size < sizeof(arc::project::game_play_context_v1) || context->world_id == 0 ||
+        !context->world || context->world->structure_size < sizeof(arc::project::game_world_api_v1) || session_active)
+        return false;
+    const auto& world = *context->world;
+    if (!world.user_data || !world.create_entity || !world.destroy_entity || !world.entity_alive || !world.query_entities ||
+        !world.has_core_component || !world.read_name || !world.set_name || !world.read_transform ||
+        !world.set_transform || !world.read_tag || !world.set_tag || !world.read_active || !world.set_active)
+        return false;
+
+    const auto created = world.create_entity(world.user_data);
+    if (!created.valid() || created.is_deferred || !created.entity.valid()) return false;
+    session_entity = created.entity;
+
+    arc::project::game_transform_v1 transform;
+    transform.position = {4.0f, 5.0f, 6.0f};
+    constexpr std::string_view tag = "runtime";
+    if (!world.set_name(world.user_data, created, session_name.data(), session_name.size()) ||
+        !world.set_transform(world.user_data, created, &transform) ||
+        !world.set_tag(world.user_data, created, tag.data(), tag.size()) || !world.set_active(world.user_data, created, true))
+        return false;
+
+    arc::project::game_transform_v1 read_transform;
+    bool active{};
+    const auto read_name = world.read_name(world.user_data, session_entity);
+    const auto read_tag = world.read_tag(world.user_data, session_entity);
+    if (!read_name.valid() || std::string_view(read_name.data, read_name.size) != session_name || !read_tag.valid() ||
+        std::string_view(read_tag.data, read_tag.size) != tag ||
+        !world.has_core_component(world.user_data, session_entity, arc::project::game_core_component_v1::transform) ||
+        !world.read_transform(world.user_data, session_entity, &read_transform) || read_transform.position.x != 4.0f ||
+        read_transform.position.y != 5.0f || read_transform.position.z != 6.0f ||
+        !world.read_active(world.user_data, session_entity, &active) || !active)
+        return false;
+
+    arc::project::game_world_query_v1 query{
+        .required_core_components = arc::project::game_core_component_bit_v1(arc::project::game_core_component_v1::name) |
+                                    arc::project::game_core_component_bit_v1(arc::project::game_core_component_v1::transform) |
+                                    arc::project::game_core_component_bit_v1(arc::project::game_core_component_v1::active)};
+    session_search search{.world = &world};
+    if (!world.query_entities(world.user_data, &query, &search, find_session_entity) || !search.found) return false;
+
+    const auto scratch = world.create_entity(world.user_data);
+    if (!scratch.valid() || scratch.is_deferred || !world.destroy_entity(world.user_data, scratch) ||
+        world.entity_alive(world.user_data, scratch.entity))
+        return false;
+
+    session_active = true;
+    active_world_id = context->world_id;
+    ++begin_count;
+    lifecycle_valid = lifecycle_valid && begin_count == end_count + 1;
+    return lifecycle_valid;
+}
+
+void end_play(void*, const arc::project::game_play_context_v1* context)
+{
+    if (!context || !context->world || !session_active || context->world_id != active_world_id)
+    {
+        lifecycle_valid = false;
+        return;
+    }
+    const auto& world = *context->world;
+    if (!world.entity_alive(world.user_data, session_entity) ||
+        !world.destroy_entity(world.user_data, arc::project::game_entity_target_v1{.entity = session_entity}) ||
+        world.entity_alive(world.user_data, session_entity))
+        lifecycle_valid = false;
+    session_entity = {};
+    session_active = false;
+    active_world_id = 0;
+    ++end_count;
+    lifecycle_valid = lifecycle_valid && begin_count == end_count;
+}
+
+bool execute(void*, arc::project::game_system_context_v1* context)
+{
+    return context && context->world && lifecycle_valid && session_active && context->world_id == active_world_id &&
+           context->world->entity_alive(context->world->user_data, session_entity) && begin_count == end_count + 1;
+}
+
+bool start(const arc::project::game_module_host_v1*)
+{
+    session_active = false;
+    lifecycle_valid = true;
+    active_world_id = 0;
+    begin_count = 0;
+    end_count = 0;
+    session_entity = {};
+    return true;
+}
+
+bool prepare_reload()
+{
+    return !session_active;
+}
+
+void stop()
+{
+    lifecycle_valid = lifecycle_valid && !session_active && begin_count == end_count;
+}
+
+constexpr arc::project::game_system_descriptor_v1 lifecycle_probe_system{
+    .phase = arc::project::game_system_phase_v1::gameplay_commands,
+    .priority = arc::project::game_system_priority_v1::normal,
+    .unrestricted_native_world_access = false,
+    .execute = execute,
+};
+
+constexpr arc::project::game_play_lifecycle_descriptor_v1 play_lifecycle{
+    .begin_play = begin_play,
+    .end_play = end_play,
+};
+
+constexpr arc::project::game_registration_descriptor_v1 registrations[]{
+    {arc::project::game_registration_kind_v1::ecs_system, "fixture.runtime.lifecycle-probe", "Fixture Lifecycle Probe",
+     &lifecycle_probe_system},
+    {arc::project::game_registration_kind_v1::play_lifecycle, "fixture.runtime.play-lifecycle",
+     "Fixture Play Lifecycle", &play_lifecycle},
+};
+
+constexpr arc::project::game_module_descriptor_v1 descriptor{
+    .engine_version = "0.1.0",
+    .project_guid = "12345678-1234-4234-8234-123456789abc",
+    .module_id = "fixture.editor",
+    .kind = arc::project::game_module_kind_v1::editor,
+    .generation = 12,
+    .registrations = registrations,
+    .registration_count = std::size(registrations),
+    .start = start,
+    .prepare_reload = prepare_reload,
+    .stop = stop,
+};
+} // namespace
+
+extern "C" ARC_PROJECT_MODULE_EXPORT const arc::project::game_module_descriptor_v1* arc_query_game_module_v1()
+{
+    return &descriptor;
+}
+''')
+
+          # Keep the patch deterministic and fail before committing malformed whitespace.
+          import subprocess
+          subprocess.run(['git', 'diff', '--check'], check=True)
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/m3-5-runtime-world-patch.yml
+          git add engine/project/inc/arc/project/runtime_world_api.h \
+                  engine/project/inc/arc/project/project_module.h \
+                  editor/native/src/project_module_loader.h \
+                  editor/native/src/project_module_loader.cpp \
+                  editor/native/tests/game_module_fixture_system.cpp \
+                  editor/native/tests/game_module_fixture_lifecycle.cpp
+          git commit -m "feat: expose runtime world operations to project modules"
+          git push origin HEAD:feature/play-session-m35-runtime-world-api
