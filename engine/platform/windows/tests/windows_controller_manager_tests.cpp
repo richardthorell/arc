@@ -1,7 +1,6 @@
 #include "windows_controller_manager.h"
 #include "windows_controller_provider.h"
 
-#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -50,6 +49,11 @@ private:
     int poll_count_{};
 };
 
+bool check(bool condition) noexcept
+{
+    return condition;
+}
+
 } // namespace
 
 int main()
@@ -68,25 +72,25 @@ int main()
     providers.push_back(std::move(preferred));
 
     windows_controller_manager manager(std::move(providers));
-    assert(manager.available());
-    assert(manager.active_backend() == input_backend_type::game_input);
+    if (!check(manager.available())) return 1;
+    if (!check(manager.active_backend() == input_backend_type::game_input)) return 2;
     manager.poll();
-    assert(preferred_ptr->poll_count() == 1);
-    assert(fallback_ptr->poll_count() == 0);
+    if (!check(preferred_ptr->poll_count() == 1)) return 3;
+    if (!check(fallback_ptr->poll_count() == 0)) return 4;
 
     std::vector<std::unique_ptr<windows_controller_provider>> fallback_providers;
     fallback_providers.push_back(std::make_unique<fake_provider>(input_backend_type::game_input, 200, false));
     fallback_providers.push_back(std::make_unique<fake_provider>(input_backend_type::xinput, 100, true));
     windows_controller_manager fallback_manager(std::move(fallback_providers));
-    assert(fallback_manager.available());
-    assert(fallback_manager.active_backend() == input_backend_type::xinput);
+    if (!check(fallback_manager.available())) return 5;
+    if (!check(fallback_manager.active_backend() == input_backend_type::xinput)) return 6;
 
     std::vector<std::unique_ptr<windows_controller_provider>> unavailable_providers;
     unavailable_providers.push_back(std::make_unique<fake_provider>(input_backend_type::game_input, 200, false));
     unavailable_providers.push_back(std::make_unique<fake_provider>(input_backend_type::xinput, 100, false));
     windows_controller_manager unavailable_manager(std::move(unavailable_providers));
-    assert(!unavailable_manager.available());
-    assert(unavailable_manager.active_backend() == input_backend_type::unknown);
+    if (!check(!unavailable_manager.available())) return 7;
+    if (!check(unavailable_manager.active_backend() == input_backend_type::unknown)) return 8;
 
     return 0;
 }
