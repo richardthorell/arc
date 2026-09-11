@@ -1,0 +1,29 @@
+{
+  "format": "arc.water-preset",
+  "formatVersion": 1,
+  "preset": {
+    "schemaVersion": 1,
+    "name": "Open Ocean",
+    "bodyType": "ocean",
+    "simulation": {
+      "windSpeed": 12.0,
+      "windDirection": [1.0, 0.0],
+      "fetchLength": 50000.0,
+      "waveAmplitude": 1.0,
+      "choppiness": 1.0,
+      "seed": 3303
+    },
+    "foam": {
+      "enabled": true,
+      "threshold": 0.55,
+      "decay": 0.4
+    },
+    "appearance": {
+      "absorption": [0.18, 0.065, 0.025],
+      "scattering": [0.02, 0.075, 0.1],
+      "roughness": 0.08,
+      "refractionStrength": 0.04
+    },
+    "quality": "high"
+  }
+}

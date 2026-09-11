@@ -156,6 +156,9 @@ export const assetSpecificHoverDetails = (asset: AssetItem): AssetHoverDetail[] 
       pushCount(rows, 'Lights', asset.lightCount, true);
       pushReferences(rows, asset);
       break;
+    case 'water':
+      pushReferences(rows, asset);
+      break;
     case 'folder':
       pushCount(rows, 'Items', asset.itemCount, true);
       break;

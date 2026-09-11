@@ -98,7 +98,7 @@ jobs:
           if (( ${#editor_files[@]} > 0 )); then
             echo 'Running Prettier 3.9.6 on changed editor files:'
             printf ' - %s\n' "${editor_files[@]}"
-            prettier --write --ignore-unknown -- "${editor_files[@]}"
+            prettier --write --ignore-unknown --ignore-path editor/.prettierignore -- "${editor_files[@]}"
           else
             echo 'No changed editor files require Prettier.'
           fi

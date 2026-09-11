@@ -1,0 +1,29 @@
+{
+  "format": "arc.water-preset",
+  "formatVersion": 1,
+  "preset": {
+    "schemaVersion": 1,
+    "name": "Tropical Ocean",
+    "bodyType": "ocean",
+    "simulation": {
+      "windSpeed": 7.5,
+      "windDirection": [0.92, 0.39],
+      "fetchLength": 30000.0,
+      "waveAmplitude": 0.75,
+      "choppiness": 0.8,
+      "seed": 2202
+    },
+    "foam": {
+      "enabled": true,
+      "threshold": 0.68,
+      "decay": 0.5
+    },
+    "appearance": {
+      "absorption": [0.1, 0.035, 0.018],
+      "scattering": [0.015, 0.13, 0.16],
+      "roughness": 0.07,
+      "refractionStrength": 0.08
+    },
+    "quality": "high"
+  }
+}

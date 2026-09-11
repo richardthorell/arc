@@ -22,6 +22,7 @@ import {
   Search,
   Settings,
   Trash2,
+  Waves,
   X,
 } from 'lucide-react';
 
@@ -114,7 +115,7 @@ type HostSceneSnapshot = {
   entities: HostSceneEntity[];
 };
 
-type BasicEntityKind = 'empty' | 'plane' | 'cube' | 'sphere' | 'cylinder' | 'cone' | 'capsule' | 'terrain';
+type BasicEntityKind = 'empty' | 'plane' | 'cube' | 'sphere' | 'cylinder' | 'cone' | 'capsule' | 'terrain' | 'water';
 
 type SceneDocumentState = Omit<HostSceneSnapshot, 'entities'>;
 
@@ -222,6 +223,7 @@ const assetKindFromHost = (kind: HostAssetSnapshot['kind']): AssetItem['kind'] =
     kind === 'shader' ||
     kind === 'mesh' ||
     kind === 'prefab' ||
+    kind === 'water' ||
     kind === 'folder'
   ) {
     return kind;
@@ -1729,7 +1731,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   );
 }
 
-function PrimitivePreview({ kind }: { kind: Exclude<BasicEntityKind, 'empty' | 'terrain'> }) {
+function PrimitivePreview({ kind }: { kind: Exclude<BasicEntityKind, 'empty' | 'terrain' | 'water'> }) {
   const fillId = `primitive-fill-${kind}`;
   const common = { fill: `url(#${fillId})`, stroke: '#8fc8ff', strokeWidth: 1.35 };
   return (
@@ -1919,6 +1921,18 @@ export function ExplorerPanel({
               }}
             >
               <Mountain size={16} /> Terrain...
+            </button>
+            <div className="primitive-palette-heading">Water</div>
+            <button
+              className="primitive-palette-empty"
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onCreateEntity('water');
+                setCreateMenuOpen(false);
+              }}
+            >
+              <Waves size={16} /> Ocean
             </button>
           </section>
         )}

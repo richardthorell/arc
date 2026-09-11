@@ -1,0 +1,12 @@
+{
+  "format": "arc.asset-meta",
+  "formatVersion": 1,
+  "guid": "c8611ee0-3e34-4e49-9da0-3db21f9ac004",
+  "importer": "a7ca55e7-0000-0002-0000-000000000011",
+  "settings": {},
+  "settingsVersion": 1,
+  "subassets": [],
+  "type": "a7ca55e7-0000-0001-0000-000000000010",
+  "title": "North Atlantic",
+  "description": "Built-in ARC Water preset for cold, energetic ocean conditions."
+}

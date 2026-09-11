@@ -4,6 +4,7 @@
 
 #include <arc/diagnostics/log.h>
 #include <arc/render/lighting.h>
+#include <arc/render/primitives.h>
 #include <arc/render/render_world.h>
 #include <arc/scene/transforms.h>
 
@@ -94,6 +95,17 @@ render::render_mobility entity_mobility(const ecs::world& scene, entity value) n
 {
     if (const auto* mobility = scene.try_get<mobility_component>(value)) return mobility->value;
     return render::render_mobility::movable;
+}
+
+render::water_ocean_grid_descriptor water_grid_descriptor_for(const water_component& water) noexcept
+{
+    render::water_ocean_grid_descriptor grid;
+    grid.visible_distance = water.visible_distance;
+    grid.inner_grid_cells = water.settings.quality == ::arc::water::water_quality::low      ? 16u
+                            : water.settings.quality == ::arc::water::water_quality::medium ? 24u
+                            : water.settings.quality == ::arc::water::water_quality::ultra  ? 48u
+                                                                                            : 32u;
+    return grid;
 }
 
 void append_mesh_item(ecs::world& scene, render::render_world_packet& packet, render_scene_result& result, entity value,
@@ -499,8 +511,29 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
         {
             bool transparent{};
             if (!environment_mesh_visible(scene, value, environment_visibility, transparent)) return;
-            const auto renderer_bounds =
-                scaled_bounds(world_bounds_for(scene, value, transform), mesh_renderer.bounds_scale);
+            transform_component render_transform = transform;
+            const auto* water = scene.try_get<water_component>(value);
+            if (water)
+            {
+                render_transform.position[1] += water->water_level;
+                if (water->type == ::arc::water::water_body_type::ocean && water->follow_camera)
+                {
+                    const auto grid = water_grid_descriptor_for(*water);
+                    const auto origin =
+                        render::water_ocean_grid_origin(world_packet.camera.position, render_transform.position[1],
+                                                        render::water_ocean_grid_cell_size(grid));
+                    render_transform.position[0] = origin[0];
+                    render_transform.position[2] = origin[2];
+                }
+                render_transform.dirty = true;
+            }
+            auto renderer_bounds =
+                scaled_bounds(world_bounds_for(scene, value, render_transform), mesh_renderer.bounds_scale);
+            if (water)
+                if (const auto* bounds = scene.try_get<bounds_component>(value))
+                    renderer_bounds =
+                        scaled_bounds(transform_bounds(bounds->local_bounds, local_matrix(render_transform)),
+                                      mesh_renderer.bounds_scale);
             const float camera_distance = bounds_distance(renderer_bounds, world_packet.camera);
             if (mesh_renderer.minimum_draw_distance > 0.0f && camera_distance < mesh_renderer.minimum_draw_distance)
                 return;
@@ -517,9 +550,9 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                                                          mesh_renderer.forced_lod, mesh_renderer.lod_bias);
             auto material = mesh_renderer.material;
             if (mesh_renderer.mesh.conventional_lod_count <= 1) apply_lod(scene, value, mesh, material);
-            append_mesh_item(scene, world_packet, result, value, transform, mesh, material, mesh_renderer.visible,
-                             transparent, {}, 0, 1, math::vector4f::one, mesh_renderer.casts_shadows,
-                             mesh_renderer.receives_shadows, mesh_renderer.shadow_lod_bias,
+            append_mesh_item(scene, world_packet, result, value, render_transform, mesh, material,
+                             mesh_renderer.visible, transparent, {}, 0, 1, math::vector4f::one,
+                             mesh_renderer.casts_shadows, mesh_renderer.receives_shadows, mesh_renderer.shadow_lod_bias,
                              mesh_renderer.maximum_shadow_distance, mesh_renderer.affects_indirect_lighting,
                              mesh_renderer.surface_card_density_bias, mesh_renderer.distance_field_resolution_bias,
                              mesh_renderer.visible_in_hardware_tracing);
@@ -528,6 +561,7 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                 auto& item = world_packet.items.back();
                 item.world_bounds = renderer_bounds;
                 item.maximum_draw_distance = mesh_renderer.maximum_draw_distance;
+                if (water) item.maximum_draw_distance = water->visible_distance;
                 item.geometry_error_scale = std::exp2(mesh_renderer.lod_bias);
                 item.motion_vector_mode = static_cast<std::uint8_t>(mesh_renderer.motion_vectors);
                 item.receive_decals = mesh_renderer.receive_decals;
@@ -614,15 +648,61 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
         [&](entity value, const transform_component& transform, const water_component& water)
         {
             if (!environment_visibility.water || !entity_is_active(scene, value) || !water.enabled) return;
-            world_packet.waters.push_back({.object_id = render::make_render_object_id(value.index, value.generation),
-                                           .position = transform.position,
-                                           .size = water.size,
-                                           .color = water.color,
-                                           .roughness = water.roughness,
-                                           .wave_scale = water.wave_scale,
-                                           .wave_speed = water.wave_speed,
-                                           .transparency = water.transparency,
-                                           .label = entity_label(scene, value)});
+            const auto grid = water_grid_descriptor_for(water);
+            const float level = transform.position[1] + water.water_level;
+            const float grid_cell_size = render::water_ocean_grid_cell_size(grid);
+            auto surface_origin = math::vector3f{transform.position[0], level, transform.position[2]};
+            if (water.type == ::arc::water::water_body_type::ocean && water.follow_camera)
+                surface_origin = render::water_ocean_grid_origin(world_packet.camera.position, level, grid_cell_size);
+            const auto* mesh_renderer = scene.try_get<mesh_renderer_component>(value);
+            world_packet.waters.push_back(
+                {.object_id = render::make_render_object_id(value.index, value.generation),
+                 .type = water.type,
+                 .material = mesh_renderer ? mesh_renderer->material : render::material_handle{},
+                 .position = transform.position,
+                 .surface_origin = surface_origin,
+                 .settings = water.settings,
+                 .water_level = level,
+                 .visible_distance = water.visible_distance,
+                 .finest_grid_cell_size = grid_cell_size,
+                 .grid_ring_count = grid.ring_count,
+                 .priority = water.priority,
+                 .follow_camera = water.follow_camera,
+                 .shoreline_enabled = water.shoreline_enabled,
+                 .underwater_enabled = water.underwater_enabled,
+                 .label = entity_label(scene, value)});
+            if (entity_selected(scene, value))
+            {
+                const float marker_radius = std::max(4.0f, grid_cell_size * 4.0f);
+                const math::vector4f level_color{0.10f, 0.78f, 1.0f, 1.0f};
+                world_packet.debug_overlay.lines.push_back(
+                    {.start = surface_origin - math::vector3f{marker_radius, 0.0f, 0.0f},
+                     .end = surface_origin + math::vector3f{marker_radius, 0.0f, 0.0f},
+                     .color = level_color,
+                     .depth = render::debug_overlay_depth_mode::always});
+                world_packet.debug_overlay.lines.push_back(
+                    {.start = surface_origin - math::vector3f{0.0f, 0.0f, marker_radius},
+                     .end = surface_origin + math::vector3f{0.0f, 0.0f, marker_radius},
+                     .color = level_color,
+                     .depth = render::debug_overlay_depth_mode::always});
+                float half_extent = std::ldexp(water.visible_distance, -static_cast<int>(grid.ring_count));
+                for (std::uint32_t ring = 0; ring < std::min(grid.ring_count + 1u, 6u); ++ring)
+                {
+                    const float y = level + 0.03f;
+                    const math::vector3f corners[]{
+                        {surface_origin[0] - half_extent, y, surface_origin[2] - half_extent},
+                        {surface_origin[0] + half_extent, y, surface_origin[2] - half_extent},
+                        {surface_origin[0] + half_extent, y, surface_origin[2] + half_extent},
+                        {surface_origin[0] - half_extent, y, surface_origin[2] + half_extent}};
+                    const float intensity = 0.35f + static_cast<float>(ring) * 0.08f;
+                    for (std::uint32_t edge = 0; edge < 4u; ++edge)
+                        world_packet.debug_overlay.lines.push_back({.start = corners[edge],
+                                                                    .end = corners[(edge + 1u) % 4u],
+                                                                    .color = {0.08f, intensity, 0.92f, 0.75f},
+                                                                    .depth = render::debug_overlay_depth_mode::tested});
+                    half_extent *= 2.0f;
+                }
+            }
             ++result.water_count;
         });
 

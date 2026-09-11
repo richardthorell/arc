@@ -17,6 +17,7 @@ export const assetPresentationKind = (asset: Pick<AssetItem, 'kind' | 'path'>): 
 export const assetPresentationLabel = (asset: Pick<AssetItem, 'kind' | 'path'>) => {
   const kind = assetPresentationKind(asset);
   if (kind === 'model') return 'Model';
+  if (kind === 'water') return 'Water Preset';
   return kind.charAt(0).toLocaleUpperCase() + kind.slice(1);
 };
 
@@ -24,7 +25,7 @@ export const assetPresentationIcon = (asset: Pick<AssetItem, 'kind' | 'path'>): 
   const kind = assetPresentationKind(asset);
   if (kind === 'model') return 'mesh';
   if (kind === 'environment') return 'image';
-  if (kind === 'unknown') return 'settings';
+  if (kind === 'water' || kind === 'unknown') return 'settings';
   return kind;
 };
 

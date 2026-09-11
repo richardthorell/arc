@@ -219,6 +219,8 @@ render::material_handle create_default_terrain_material(editor_scene_state& scen
 bool synchronize_terrain_render_resource(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity,
                                          const scene::terrain_dirty_region* dirty_region = nullptr);
 
+bool synchronize_water_render_material(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity);
+
 ecs::entity add_water_to_scene(editor_scene_state& scene, render::renderer& renderer);
 
 ecs::entity add_grass_patch_to_scene(editor_scene_state& scene, render::renderer& renderer);
