@@ -4,6 +4,7 @@ endif()
 
 add_library(arc-platform-windows STATIC
     src/windows_entry.cpp
+    src/windows_gamepad_backend.cpp
     src/windows_input_backend.cpp
 )
 arc_configure_first_party_target(arc-platform-windows)
