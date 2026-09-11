@@ -32,7 +32,8 @@ enum class game_registration_kind_v1 : std::uint8_t
     importer,
     cook_processor,
     console_command,
-    editor_extension
+    editor_extension,
+    play_lifecycle
 };
 
 /** @brief Fixed/presentation phase used by an executable project ECS system. */
@@ -188,6 +189,28 @@ struct game_system_descriptor_v1
     std::size_t after_count{};
     void* user_data{};                ///< Module-owned state valid for the loaded generation.
     game_system_execute_v1 execute{}; ///< Called by ARC's ECS scheduler.
+};
+
+/** @brief Per-session context passed to project BeginPlay/EndPlay callbacks. */
+struct game_play_context_v1
+{
+    std::size_t structure_size{sizeof(game_play_context_v1)};
+    std::uint64_t world_id{}; ///< Runtime world that owns this Play session.
+};
+
+/** @brief Called exactly once after a Play World is assembled and before its first simulation tick. */
+using game_begin_play_v1 = bool (*)(void* user_data, const game_play_context_v1* context);
+
+/** @brief Called exactly once for a successfully begun Play session before its module generation can unload. */
+using game_end_play_v1 = void (*)(void* user_data, const game_play_context_v1* context);
+
+/** @brief Kind-specific descriptor referenced by a play_lifecycle registration. */
+struct game_play_lifecycle_descriptor_v1
+{
+    std::size_t structure_size{sizeof(game_play_lifecycle_descriptor_v1)};
+    void* user_data{};               ///< Module-owned state valid for the loaded generation.
+    game_begin_play_v1 begin_play{}; ///< Required per-session startup callback.
+    game_end_play_v1 end_play{};     ///< Required matching per-session teardown callback.
 };
 
 /** @brief Reflected field representation understood by the native editor host. */

@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -72,6 +73,15 @@ struct project_system_registration
     project::game_system_execute_v1 execute{};
 };
 
+struct project_play_lifecycle_registration
+{
+    std::string stable_id;
+    std::string name;
+    void* user_data{};
+    project::game_begin_play_v1 begin_play{};
+    project::game_end_play_v1 end_play{};
+};
+
 struct project_system_install_result
 {
     bool succeeded{};
@@ -128,6 +138,10 @@ public:
     {
         return systems_;
     }
+    [[nodiscard]] const std::optional<project_play_lifecycle_registration>& play_lifecycle() const noexcept
+    {
+        return play_lifecycle_;
+    }
     [[nodiscard]] project_system_install_result install_systems(framework::runtime_world& world) const;
 
 private:
@@ -144,6 +158,7 @@ private:
     std::vector<project_component_schema> components_;
     std::vector<project_registration_schema> registrations_;
     std::vector<project_system_registration> systems_;
+    std::optional<project_play_lifecycle_registration> play_lifecycle_;
 };
 
 } // namespace arc::editor
