@@ -987,6 +987,22 @@ struct render_terrain_profile
     std::string fallback_reason;
 };
 
+/** @brief Per-frame spectral Water simulation workload and fallback telemetry. */
+struct render_water_profile
+{
+    bool enabled{};
+    bool gpu_simulation{};
+    bool deterministic_initial_spectrum{};
+    std::uint32_t active_body_count{};
+    std::uint32_t active_cascade_count{};
+    std::uint32_t maximum_resolution{};
+    std::uint32_t update_interval_frames{1u};
+    std::uint32_t compute_dispatch_count{};
+    double spectrum_update_milliseconds{};
+    double inverse_fft_milliseconds{};
+    std::string fallback_reason;
+};
+
 /** @brief Per-frame common texture-streaming residency and budget telemetry. */
 struct render_texture_streaming_profile
 {
@@ -1038,6 +1054,7 @@ struct render_backend_frame_profile
     render_gpu_scene_profile gpu_scene;
     render_virtual_geometry_profile virtual_geometry;
     render_terrain_profile terrain;
+    render_water_profile water;
     render_texture_streaming_profile texture_streaming;
     render_indirect_lighting_profile indirect_lighting;
     render_temporal_profile temporal;

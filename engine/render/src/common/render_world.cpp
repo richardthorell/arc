@@ -355,6 +355,40 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
     render_graph_resource_handle virtual_encoded_depth{};
     const auto compute_queue = config.features.async_compute ? render_queue_type::compute : render_queue_type::graphics;
 
+    // Water simulations own their per-body buffers in the backend. These small
+    // logical resources make the spectrum -> spatial-field -> raster dependency
+    // explicit without coupling the graph to a backend's allocation strategy.
+    const auto water_frequency_fields = graph.add_resource({.name = "water_frequency_fields",
+                                                            .kind = render_resource_kind::buffer,
+                                                            .byte_size = 16u,
+                                                            .element_stride = 16u});
+    const auto water_surface_fields = graph.add_resource({.name = "water_surface_fields",
+                                                          .kind = render_resource_kind::buffer,
+                                                          .byte_size = 16u,
+                                                          .element_stride = 16u});
+    graph.add_pass({.name = "Water spectrum update",
+                    .queue = compute_queue,
+                    .kind = render_pass_kind::compute,
+                    .builtin = builtin_render_pass::water_spectrum_update,
+                    .writes = {{.handle = water_frequency_fields,
+                                .kind = render_resource_kind::buffer,
+                                .usage = render_resource_usage::storage_buffer,
+                                .stages = render_pipeline_stage::compute_shader,
+                                .write = true}}});
+    graph.add_pass({.name = "Water inverse FFT",
+                    .queue = compute_queue,
+                    .kind = render_pass_kind::compute,
+                    .builtin = builtin_render_pass::water_inverse_fft,
+                    .reads = {{.handle = water_frequency_fields,
+                               .kind = render_resource_kind::buffer,
+                               .usage = render_resource_usage::storage_buffer,
+                               .stages = render_pipeline_stage::compute_shader}},
+                    .writes = {{.handle = water_surface_fields,
+                                .kind = render_resource_kind::buffer,
+                                .usage = render_resource_usage::storage_buffer,
+                                .stages = render_pipeline_stage::compute_shader,
+                                .write = true}}});
+
     if (config.features.gpu_driven_rendering)
     {
         gpu_scene_instances = graph.add_resource(
@@ -1158,6 +1192,10 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                 .write = true,
                                 .load_op = render_load_op::clear}}});
     std::vector<render_resource_access> depth_reads;
+    depth_reads.push_back({.handle = water_surface_fields,
+                           .kind = render_resource_kind::buffer,
+                           .usage = render_resource_usage::storage_buffer,
+                           .stages = render_pipeline_stage::vertex_shader});
     if (gpu_indirect_commands.valid())
     {
         depth_reads.push_back({.handle = gpu_indirect_commands,
@@ -1860,7 +1898,11 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                                            .usage = render_resource_usage::sampled},
                                                           {.handle = local_shadow_atlas,
                                                            .kind = render_resource_kind::depth_texture,
-                                                           .usage = render_resource_usage::sampled}};
+                                                           .usage = render_resource_usage::sampled},
+                                                          {.handle = water_surface_fields,
+                                                           .kind = render_resource_kind::buffer,
+                                                           .usage = render_resource_usage::storage_buffer,
+                                                           .stages = render_pipeline_stage::vertex_shader}};
     if (cloud_shadow.valid())
         transparent_reads.push_back({.handle = cloud_shadow,
                                      .kind = render_resource_kind::color_texture,

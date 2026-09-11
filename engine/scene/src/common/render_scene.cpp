@@ -391,7 +391,8 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                                  render::mesh_visualization_mode visualization, render::editor_overlay_mode overlay,
                                  bool shadows_enabled, scene_render_visibility environment_visibility,
                                  float delta_seconds, render::debug_overlay_stream debug_overlay,
-                                 entity preferred_camera, terrain_render_proxy_cache* terrain_proxies)
+                                 entity preferred_camera, terrain_render_proxy_cache* terrain_proxies,
+                                 double simulation_time_seconds)
 {
     render_scene_result result{};
     prepare_render_scene_queries(scene);
@@ -446,6 +447,7 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
 
     render::render_world_packet world_packet;
     world_packet.gpu_scene_world_id = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(&scene));
+    world_packet.simulation_time_seconds = simulation_time_seconds;
     const auto camera_key =
         (static_cast<std::uint64_t>(camera_entity.generation) << 32u) | static_cast<std::uint64_t>(camera_entity.index);
     world_packet.render_view_id = world_packet.gpu_scene_world_id ^

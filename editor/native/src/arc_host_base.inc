@@ -6509,7 +6509,7 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         to_render_mode(state_->viewport_options.render_mode), to_visualization(state_->viewport_options.visualization),
         to_overlay(state_->viewport_options.overlay), state_->viewport_options.shadows,
         to_scene_visibility(state_->viewport_options.environment), delta_seconds, std::move(debug_overlay),
-        viewport_camera, &state_->scene.terrain_render_proxies);
+        viewport_camera, &state_->scene.terrain_render_proxies, runtime_frame.total_seconds);
 
     auto view_config = state_->renderer->resolved_config();
     auto requested_anti_aliasing = to_render_anti_aliasing(state_->viewport_options.anti_aliasing);

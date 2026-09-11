@@ -468,6 +468,8 @@ struct render_world_packet
     std::uint64_t render_view_id{1};
     /** Epoch incremented when the source world is atomically replaced. */
     std::uint64_t world_epoch{1};
+    /** Authoritative scene clock sampled once for every extracted render frame. */
+    double simulation_time_seconds{};
     render_camera camera;
     render_mode mode{render_mode::shaded};
     mesh_visualization_mode visualization{mesh_visualization_mode::standard};
