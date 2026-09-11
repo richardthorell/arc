@@ -114,7 +114,14 @@ void arc_append_model_preview_metadata(nlohmann::json& payload, const editor_sce
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsubobject-linkage"
 #endif
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4456)
+#endif
 #include "arc_host_impl.inc"
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
