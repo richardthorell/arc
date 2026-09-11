@@ -1,0 +1,77 @@
+name: Apply M3.1 region-boundary fix
+
+on:
+  push:
+    branches:
+      - m3/asset-owned-terrain-edit-layers
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: "github.event.head_commit.message != 'fix: preserve half-open terrain region bounds'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: m3/asset-owned-terrain-edit-layers
+          fetch-depth: 0
+      - name: Install formatter
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+      - name: Fix exact upper region boundaries
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('engine/scene/src/common/terrain_asset.cpp')
+          text = path.read_text()
+          old = '''    const double max_x = bounds.max_x > bounds.min_x
+                             ? std::nextafter(bounds.max_x, -std::numeric_limits<double>::infinity())
+                             : bounds.max_x;
+    const double max_z = bounds.max_z > bounds.min_z
+                             ? std::nextafter(bounds.max_z, -std::numeric_limits<double>::infinity())
+                             : bounds.max_z;
+    const auto minimum = terrain_region_at(coordinates, partition, bounds.min_x, bounds.min_z);
+    const auto maximum = terrain_region_at(coordinates, partition, max_x, max_z);
+'''
+          new = '''    const auto minimum = terrain_region_at(coordinates, partition, bounds.min_x, bounds.min_z);
+    auto maximum = terrain_region_at(coordinates, partition, bounds.max_x, bounds.max_z);
+    if (bounds.max_x > bounds.min_x)
+    {
+        const auto boundary =
+            coordinates.origin_x + static_cast<double>(maximum.x) * partition.authoring_region_size;
+        if (bounds.max_x == boundary && maximum.x != std::numeric_limits<std::int64_t>::min()) --maximum.x;
+    }
+    if (bounds.max_z > bounds.min_z)
+    {
+        const auto boundary =
+            coordinates.origin_z + static_cast<double>(maximum.z) * partition.authoring_region_size;
+        if (bounds.max_z == boundary && maximum.z != std::numeric_limits<std::int64_t>::min()) --maximum.z;
+    }
+'''
+          if old not in text:
+              raise SystemExit('terrain_regions_overlapping block did not match expected source')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Format M3.1 native changes
+        run: |
+          clang-format-18 -i \
+            engine/scene/inc/arc/scene/terrain_asset.h \
+            engine/scene/src/common/terrain_asset.cpp \
+            engine/scene/src/common/terrain_asset_io.cpp \
+            engine/scene/src/common/terrain_edit_layers.cpp \
+            engine/scene/tests/terrain_edit_layers_tests.cpp
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add engine/scene/inc/arc/scene/terrain_asset.h \
+                  engine/scene/src/common/terrain_asset.cpp \
+                  engine/scene/src/common/terrain_asset_io.cpp \
+                  engine/scene/src/common/terrain_edit_layers.cpp \
+                  engine/scene/tests/terrain_edit_layers_tests.cpp
+          git commit -m "fix: preserve half-open terrain region bounds"
+          git push origin HEAD:m3/asset-owned-terrain-edit-layers
