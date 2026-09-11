@@ -2999,8 +2999,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                         state_->viewport_tool.tool = host_viewport_tool::select;
                 }
                 for (const auto guid : removed_guids)
+                {
                     state_->terrain_rebuilds.erase(guid);
                     state_->scene.terrain_render_proxies.erase(guid, *state_->renderer);
+                }
                 scene::destroy_subtree(state_->scene.scene, entity);
                 for (const auto nested : removed)
                     forget_entity(state_->scene, nested);
@@ -4776,6 +4778,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             else if constexpr (std::is_same_v<command_type, host_history_undo_command>)
             {
                 if (!state_->history.undo(state_->scene)) return fail("Nothing to undo");
+                state_->terrain_rebuilds.clear();
                 if (auto* camera_transform =
                         state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
                     state_->camera_controller.synchronize_from(*camera_transform);
@@ -4792,6 +4795,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             else if constexpr (std::is_same_v<command_type, host_history_redo_command>)
             {
                 if (!state_->history.redo(state_->scene)) return fail("Nothing to redo");
+                state_->terrain_rebuilds.clear();
                 if (auto* camera_transform =
                         state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
                     state_->camera_controller.synchronize_from(*camera_transform);

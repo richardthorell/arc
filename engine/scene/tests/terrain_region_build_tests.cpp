@@ -1,3 +1,4 @@
+#include <arc/render/renderer.h>
 #include <arc/scene/terrain.h>
 #include <arc/scene/terrain_region_build.h>
 #include <catch2/catch_test_macros.hpp>
