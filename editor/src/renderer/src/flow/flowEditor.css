@@ -1,0 +1,412 @@
+.flow-editor {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(520px, 1fr) minmax(280px, 340px);
+  overflow: hidden;
+  color: var(--arc-color-text);
+  background: #10181d;
+}
+
+.flow-editor-loading {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--arc-color-text-dim);
+  background: #10181d;
+}
+
+.flow-graph-canvas {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  outline: none;
+  background-color: #0d151a;
+  background-image:
+    radial-gradient(circle, rgba(122, 163, 184, 0.16) 1px, transparent 1px),
+    linear-gradient(rgba(75, 111, 130, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(75, 111, 130, 0.055) 1px, transparent 1px);
+  background-position: 0 0;
+  background-size:
+    20px 20px,
+    100px 100px,
+    100px 100px;
+}
+
+.flow-graph-canvas:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(72, 173, 218, 0.35);
+}
+
+.flow-graph-canvas-actions {
+  position: absolute;
+  z-index: 8;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px;
+  border: 1px solid rgba(109, 142, 159, 0.28);
+  border-radius: 5px;
+  background: rgba(19, 31, 38, 0.92);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(8px);
+}
+
+.flow-graph-canvas-actions .ui-button {
+  min-height: 27px;
+  height: 27px;
+  padding: 0 8px;
+}
+
+.flow-graph-canvas-actions > span {
+  min-width: 38px;
+  padding: 0 5px;
+  color: var(--arc-color-text-dim);
+  font-size: 11px;
+  text-align: right;
+}
+
+.flow-graph-transform {
+  position: absolute;
+  inset: 0 auto auto 0;
+}
+
+.flow-graph-wires {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.flow-graph-wires path {
+  fill: none;
+  stroke: rgba(118, 194, 220, 0.78);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.flow-graph-wires path.pending {
+  stroke: rgba(148, 222, 239, 0.95);
+  stroke-dasharray: 6 4;
+}
+
+.flow-graph-node {
+  position: absolute;
+  min-height: 88px;
+}
+
+.flow-graph-node .ui-node-card-badge {
+  color: #92d9ef;
+  border-color: rgba(90, 185, 214, 0.48);
+}
+
+.flow-node-pins {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  padding: 9px 0 5px;
+}
+
+.flow-node-inputs,
+.flow-node-outputs {
+  display: flex;
+  flex-direction: column;
+}
+
+.flow-pin {
+  position: relative;
+  height: 25px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  color: #8ca1ad;
+  border: 0;
+  background: transparent;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.flow-pin span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flow-pin.input {
+  justify-content: flex-start;
+  padding-left: 8px;
+  text-align: left;
+}
+
+.flow-pin.output {
+  justify-content: flex-end;
+  padding-right: 8px;
+  text-align: right;
+}
+
+.flow-pin [data-graph-pin-socket] {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border: 1.5px solid #66808d;
+  border-radius: 50%;
+  background: #111c22;
+  transition:
+    background 90ms ease,
+    border-color 90ms ease,
+    transform 90ms ease;
+}
+
+.flow-pin.input [data-graph-pin-socket] {
+  margin-left: -13px;
+}
+
+.flow-pin.output [data-graph-pin-socket] {
+  margin-right: -13px;
+}
+
+.flow-pin.execution [data-graph-pin-socket] {
+  border-radius: 2px;
+  border-color: #bac8ce;
+  transform: rotate(45deg) scale(0.82);
+}
+
+.flow-pin.value-bool [data-graph-pin-socket] {
+  border-color: #d36b72;
+}
+
+.flow-pin.value-float [data-graph-pin-socket],
+.flow-pin.value-int [data-graph-pin-socket] {
+  border-color: #72c7a2;
+}
+
+.flow-pin:hover:not(:disabled) [data-graph-pin-socket],
+.flow-pin.connected [data-graph-pin-socket] {
+  border-color: #75cedd;
+  background: #409aaa;
+}
+
+.flow-pin.execution:hover:not(:disabled) [data-graph-pin-socket],
+.flow-pin.execution.connected [data-graph-pin-socket] {
+  border-color: #eef5f7;
+  background: #b7c8ce;
+  transform: rotate(45deg) scale(0.9);
+}
+
+.flow-node-inline-value {
+  margin: 4px 8px 8px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  color: #758c98;
+  font-size: 10px;
+}
+
+.flow-node-inline-value input,
+.flow-variable input,
+.flow-variable select {
+  min-width: 0;
+  height: 25px;
+  padding: 0 6px;
+  color: #cbd8de;
+  border: 1px solid #314650;
+  border-radius: 3px;
+  outline: none;
+  background: #101a20;
+  font: inherit;
+}
+
+.flow-node-inline-value input:focus,
+.flow-variable input:focus,
+.flow-variable select:focus {
+  border-color: #4d97ad;
+}
+
+.flow-graph-box-selection {
+  position: absolute;
+  z-index: 7;
+  pointer-events: none;
+  border: 1px solid rgba(77, 174, 210, 0.72);
+  background: rgba(62, 151, 184, 0.14);
+}
+
+.flow-node-menu {
+  z-index: 20;
+}
+
+.flow-node-menu-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px;
+  border-bottom: 1px solid rgba(104, 132, 145, 0.17);
+}
+
+.flow-node-menu-search .ui-text-input {
+  flex: 1;
+}
+
+.flow-node-menu-items {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.flow-node-menu-items small {
+  color: var(--arc-color-text-dim);
+  font-size: 9px;
+}
+
+.flow-editor-inspector {
+  min-width: 0;
+  overflow-y: auto;
+  border-left: 1px solid rgba(103, 133, 149, 0.22);
+  background: #111b21;
+}
+
+.flow-editor-inspector > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 55px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(103, 133, 149, 0.18);
+}
+
+.flow-editor-inspector > header > div,
+.flow-variable-panel-heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.flow-editor-inspector header span,
+.flow-variable-panel-heading span {
+  color: var(--arc-color-text-dim);
+  font-size: 10px;
+}
+
+.flow-schema-badge {
+  padding: 2px 6px;
+  border: 1px solid rgba(89, 178, 205, 0.32);
+  border-radius: 10px;
+  color: #8ad4e7 !important;
+  background: rgba(58, 134, 158, 0.1);
+}
+
+.flow-editor-summary,
+.flow-variable-panel {
+  padding: 12px;
+  border-bottom: 1px solid rgba(103, 133, 149, 0.16);
+}
+
+.flow-editor-summary dl {
+  margin: 0 0 10px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.flow-editor-summary dl div {
+  padding: 7px;
+  border: 1px solid rgba(102, 132, 146, 0.2);
+  border-radius: 4px;
+  background: rgba(8, 15, 19, 0.22);
+}
+
+.flow-editor-summary dt {
+  color: var(--arc-color-text-dim);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.flow-editor-summary dd {
+  margin: 2px 0 0;
+  font-size: 15px;
+}
+
+.flow-editor-summary p,
+.flow-variable-empty {
+  margin: 0;
+  color: var(--arc-color-text-dim);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.flow-variable-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.flow-variable-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.flow-variable {
+  padding: 7px;
+  border: 1px solid rgba(103, 133, 149, 0.2);
+  border-radius: 4px;
+  background: rgba(9, 16, 20, 0.28);
+}
+
+.flow-variable-name-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+}
+
+.flow-variable-name-row .ui-button {
+  width: 26px;
+  min-width: 26px;
+  padding: 0;
+}
+
+.flow-variable-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.flow-variable-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--arc-color-text-dim);
+  font-size: 9px;
+}
+
+.flow-variable-exposed {
+  flex-direction: row !important;
+  align-items: center;
+  min-height: 25px;
+}
+
+.flow-editor-message {
+  padding: 9px 12px;
+  color: var(--arc-color-text-dim);
+  font-size: 10px;
+}
+
+.flow-document-runtime-state,
+.flow-document-readonly {
+  color: var(--arc-color-text-dim);
+  font-size: 10px;
+}

@@ -2,10 +2,20 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
-import { DocumentTypeIcon } from '../assets/DocumentTypeIcon';
+import { DocumentTypeIcon, type DocumentTypeIconKind } from '../assets/DocumentTypeIcon';
 import { UiButton } from '../ui';
 import { closeEditorDocumentInStore } from './editorDocuments';
-import type { EditorDocument, EditorRegistry } from './editorTypes';
+import type { EditorDocument, EditorDocumentKind, EditorRegistry } from './editorTypes';
+
+const documentIconKinds: Record<EditorDocumentKind, DocumentTypeIconKind> = {
+  level: 'level',
+  shader: 'shader',
+  material: 'material',
+  flow: 'script',
+  texture: 'texture',
+  model: 'model',
+  skeleton: 'skeleton',
+};
 
 export function EditorDocumentTabs({
   documents,
@@ -72,7 +82,11 @@ export function EditorDocumentTabs({
                   .join('\n')}
                 type="button"
               >
-                <DocumentTypeIcon className="editor-document-tab-icon" kind={document.kind} size={15} />
+                <DocumentTypeIcon
+                  className="editor-document-tab-icon"
+                  kind={documentIconKinds[document.kind]}
+                  size={15}
+                />
                 <span className="editor-document-tab-title">{document.title}</span>
                 {document.readOnly && <small>RO</small>}
                 {document.recovered && <small>Recovered</small>}
