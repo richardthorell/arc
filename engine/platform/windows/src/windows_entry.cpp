@@ -5,7 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 
-#include "windows_gamepad_backend.h"
+#include "windows_controller_manager.h"
 #include "windows_input_backend.h"
 
 #include <arc/framework/framework.h>
@@ -199,7 +199,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
 
     arc::framework::runtime runtime(*app);
     arc::platform::windows::windows_input_backend input_backend(runtime.input());
-    arc::platform::windows::windows_gamepad_backend gamepad_backend(runtime.input());
+    arc::platform::windows::windows_controller_manager controller_manager(runtime.input());
     window_state state{.runtime = &runtime, .input = &input_backend};
     const arc::framework::application_config& config = runtime.config();
     const std::wstring class_name = L"ArcWindowsHost";
@@ -244,7 +244,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
     while (runtime.running())
     {
         runtime.input().begin_frame();
-        gamepad_backend.poll();
+        controller_manager.poll();
         while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE))
         {
             if (message.message == WM_QUIT)
