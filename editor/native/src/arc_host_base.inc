@@ -6216,8 +6216,9 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
                            [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
             const bool texture_asset = render::is_supported_texture_asset(iterator->path());
             const bool material_asset_path = is_material_asset_path(iterator->path());
+            const bool flow_asset_path = extension == ".arcflow";
             const bool prefab_asset_path = extension == ".arcprefab";
-            if (!texture_asset && !material_asset_path && !prefab_asset_path) continue;
+            if (!texture_asset && !material_asset_path && !flow_asset_path && !prefab_asset_path) continue;
             const auto relative_path =
                 std::filesystem::relative(iterator->path(), state_->assets.root, error).generic_string();
             if (std::any_of(snapshot.assets.begin(), snapshot.assets.end(),
@@ -6226,6 +6227,7 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
             snapshot.assets.push_back({.path = relative_path,
                                        .kind = prefab_asset_path     ? "prefab"
                                                : material_asset_path ? "material"
+                                               : flow_asset_path     ? "flow"
                                                : extension == ".hdr" ? "environment"
                                                                      : "texture",
                                        .imported = true,

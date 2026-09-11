@@ -44,7 +44,7 @@ type Props = {
   thumbnailProvider: AssetThumbnailProvider;
 };
 
-type CreateKind = 'material' | 'shader';
+type CreateKind = 'material' | 'flow' | 'shader';
 type CreateContextMenu = { x: number; y: number; folder: string };
 type LocalBrowserSource = 'project' | 'builtin';
 type FolderTreeNode = {
@@ -78,6 +78,7 @@ const assetTypeOptions = [
   { value: 'scene', label: 'Scene' },
   { value: 'model', label: 'Model' },
   { value: 'material', label: 'Material' },
+  { value: 'flow', label: 'Flow Graph' },
   { value: 'texture', label: 'Texture' },
   { value: 'shader', label: 'Shader' },
   { value: 'prefab', label: 'Prefab' },
@@ -392,7 +393,7 @@ export function ContentBrowserPanel({
     setCreateContextMenu(null);
     setCreateKind(nextKind);
     setCreateFolder(targetFolder);
-    setCreateName(nextKind === 'material' ? 'New Material' : 'New Shader');
+    setCreateName(nextKind === 'material' ? 'New Material' : nextKind === 'flow' ? 'New Flow' : 'New Shader');
     setShaderTemplate('surface');
     setCreateError('');
   };
@@ -416,7 +417,9 @@ export function ContentBrowserPanel({
       const request: AssetCreationRequest =
         createKind === 'material'
           ? { kind: 'material', name: createName, folder: createFolder }
-          : { kind: 'shader', name: createName, folder: createFolder, template: shaderTemplate };
+          : createKind === 'flow'
+            ? { kind: 'flow', name: createName, folder: createFolder }
+            : { kind: 'shader', name: createName, folder: createFolder, template: shaderTemplate };
       const definition = buildAssetCreation(project, request);
       if (project.assets.some((asset) => normalizedPath(asset.path) === normalizedPath(definition.asset.path))) {
         throw new Error(`An asset already exists at ${definition.asset.path}`);
@@ -446,6 +449,15 @@ export function ContentBrowserPanel({
         <span>
           <strong>Material</strong>
           <small>PBR material graph</small>
+        </span>
+      </button>
+      <button role="menuitem" onClick={() => beginCreate('flow', targetFolder)}>
+        <span className="content-create-type-icon shader" aria-hidden="true">
+          {'⇢'}
+        </span>
+        <span>
+          <strong>Flow Graph</strong>
+          <small>Gameplay logic graph</small>
         </span>
       </button>
       <button role="menuitem" onClick={() => beginCreate('shader', targetFolder)}>
@@ -828,7 +840,7 @@ export function ContentBrowserPanel({
             }}
           >
             <header>
-              <strong id="content-create-title">Create {createKind === 'material' ? 'Material' : 'Shader'}</strong>
+              <strong id="content-create-title">Create {createKind === 'material' ? 'Material' : createKind === 'flow' ? 'Flow Graph' : 'Shader'}</strong>
               <small>{createFolder || contentRoot}</small>
             </header>
             <label>
@@ -864,7 +876,7 @@ export function ContentBrowserPanel({
                 Cancel
               </button>
               <button type="submit" disabled={creating || !createName.trim()}>
-                {creating ? 'Creating…' : `Create ${createKind === 'material' ? 'Material' : 'Shader'}`}
+                {creating ? 'Creating…' : `Create ${createKind === 'material' ? 'Material' : createKind === 'flow' ? 'Flow Graph' : 'Shader'}`}
               </button>
             </footer>
           </form>
