@@ -35,6 +35,7 @@ add_subdirectory(assets)
 add_subdirectory(water)
 add_subdirectory(ecs)
 add_subdirectory(persistence)
+add_subdirectory(flow)
 add_subdirectory(project)
 add_subdirectory(render)
 
@@ -55,6 +56,7 @@ target_link_libraries(arc
         arc-assets
         arc-water
         arc-persistence
+        arc-flow
         arc-project
         arc-input
 )
