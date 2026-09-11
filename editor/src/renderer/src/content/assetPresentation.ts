@@ -11,12 +11,16 @@ export const assetExtension = (asset: Pick<AssetItem, 'path'>) =>
 export const isModelAsset = (asset: Pick<AssetItem, 'kind' | 'path'>) =>
   asset.kind === 'scene' && modelExtensions.has(assetExtension(asset));
 
-export const assetPresentationKind = (asset: Pick<AssetItem, 'kind' | 'path'>): AssetPresentationKind =>
-  isModelAsset(asset) || asset.kind === 'mesh' ? 'model' : asset.kind;
+export const assetPresentationKind = (asset: Pick<AssetItem, 'kind' | 'path'>): AssetPresentationKind => {
+  if (assetExtension(asset) === 'arcflow') return 'flow';
+  if (isModelAsset(asset) || asset.kind === 'mesh') return 'model';
+  return asset.kind;
+};
 
 export const assetPresentationLabel = (asset: Pick<AssetItem, 'kind' | 'path'>) => {
   const kind = assetPresentationKind(asset);
   if (kind === 'model') return 'Model';
+  if (kind === 'flow') return 'Flow Graph';
   if (kind === 'water') return 'Water Preset';
   return kind.charAt(0).toLocaleUpperCase() + kind.slice(1);
 };
@@ -24,6 +28,7 @@ export const assetPresentationLabel = (asset: Pick<AssetItem, 'kind' | 'path'>) 
 export const assetPresentationIcon = (asset: Pick<AssetItem, 'kind' | 'path'>): DocumentTypeIconKind => {
   const kind = assetPresentationKind(asset);
   if (kind === 'model') return 'mesh';
+  if (kind === 'flow') return 'script';
   if (kind === 'environment') return 'image';
   if (kind === 'water' || kind === 'unknown') return 'settings';
   return kind;
