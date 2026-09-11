@@ -436,7 +436,9 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
     const fromPin = fromNode
       ? materialGraphDomain.getNodeDefinition(fromNode).outputs.find((pin) => pin.id === pendingConnection.pin)
       : undefined;
-    const toPin = toNode ? materialGraphDomain.getNodeDefinition(toNode).inputs.find((pin) => pin.id === target.pin) : undefined;
+    const toPin = toNode
+      ? materialGraphDomain.getNodeDefinition(toNode).inputs.find((pin) => pin.id === target.pin)
+      : undefined;
     const allowed =
       fromNode &&
       toNode &&
@@ -731,7 +733,9 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
         })}
       </GraphViewportLayer>
 
-      {box && <GraphSelectionBox className="material-graph-box-selection" rect={graphSelectionScreenRect(box, viewport)} />}
+      {box && (
+        <GraphSelectionBox className="material-graph-box-selection" rect={graphSelectionScreenRect(box, viewport)} />
+      )}
 
       {addMenu && (
         <UiContextMenu
