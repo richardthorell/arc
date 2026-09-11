@@ -4004,15 +4004,15 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto local_origin = math::transform_point(inverse_terrain, ray.origin);
                 const auto local_direction = math::normalize(math::transform_vector(inverse_terrain, ray.direction));
                 const auto hit = scene::raycast_terrain(*terrain, local_origin, local_direction);
-                if (!hit.hit)
+                const bool asset_backed_sculpt = state_->terrain_brush.tool != scene::terrain_brush_tool::paint &&
+                                                 (terrain->asset.guid.valid() || !terrain->asset.path_hint.empty());
+                if (!hit.hit && payload.phase != host_edit_phase::commit)
                 {
                     state_->terrain_brush_local_position.reset();
                     state_->terrain_stroke_previous_position.reset();
                     return success("{\"hit\":false}");
                 }
-                state_->terrain_brush_local_position = hit.position;
-                const bool asset_backed_sculpt = state_->terrain_brush.tool != scene::terrain_brush_tool::paint &&
-                                                 (terrain->asset.guid.valid() || !terrain->asset.path_hint.empty());
+                if (hit.hit) state_->terrain_brush_local_position = hit.position;
                 if (payload.phase == host_edit_phase::begin)
                 {
                     state_->terrain_sculpt_stroke.reset();
@@ -4097,10 +4097,14 @@ host_response arc_host::execute(const host_command_envelope& command)
                         {
                             const auto encoded = scene::write_terrain_asset_json(session.asset, true);
                             if (!encoded) return fail("Terrain asset could not be serialized", entity);
-                            std::ofstream output(session.source_path, std::ios::binary | std::ios::trunc);
-                            if (!output) return fail("Terrain asset source could not be opened for writing", entity);
-                            output.write(encoded.value().data(), static_cast<std::streamsize>(encoded.value().size()));
-                            if (!output) return fail("Terrain asset source could not be written", entity);
+                            {
+                                std::ofstream output(session.source_path, std::ios::binary | std::ios::trunc);
+                                if (!output)
+                                    return fail("Terrain asset source could not be opened for writing", entity);
+                                output.write(encoded.value().data(),
+                                             static_cast<std::streamsize>(encoded.value().size()));
+                                if (!output) return fail("Terrain asset source could not be written", entity);
+                            }
                             terrain->asset_authoring_revision = session.asset.authoring_revision;
                             if (state_->asset_registry)
                             {
@@ -4115,7 +4119,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                     push_event(state_->events, state_->event_sequence, host_event_type::terrain_stroke_committed,
                                "Terrain stroke committed", entity,
                                "{\"revision\":" + std::to_string(terrain->content_revision) + '}');
-                    return success("{\"hit\":true,\"revision\":" + std::to_string(terrain->content_revision) + '}');
+                    return success("{\"hit\":" + std::string(hit.hit ? "true" : "false") +
+                                   ",\"revision\":" + std::to_string(terrain->content_revision) + '}');
                 }
                 state_->terrain_brush.invert = payload.invert;
                 scene::terrain_dirty_region dirty{};
@@ -4159,7 +4164,11 @@ host_response arc_host::execute(const host_command_envelope& command)
                     session.edits.reserve(session.edits.size() + sculpt_deltas.size());
                     for (const auto& delta : sculpt_deltas)
                     {
-                        const math::vector3f local{-half + static_cast<float>(delta.x) * spacing, 0.0f,
+                        const auto sample_index =
+                            static_cast<std::size_t>(delta.z) * (terrain->subdivisions + 1u) + delta.x;
+                        const auto sample_height =
+                            sample_index < terrain->heights.size() ? terrain->heights[sample_index] : 0.0f;
+                        const math::vector3f local{-half + static_cast<float>(delta.x) * spacing, sample_height,
                                                    -half + static_cast<float>(delta.z) * spacing};
                         const auto world = math::transform_point(terrain_world, local);
                         const auto address = scene::terrain_modifier_sample_at(

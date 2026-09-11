@@ -164,8 +164,13 @@ terrain_dirty_update set_terrain_sculpt_region_samples(terrain_asset& asset, ter
     auto* modifier = find_terrain_modifier(asset, modifier_id);
     if (!modifier || modifier->type_id != terrain_builtin_modifier_types::sculpt_layer) return {};
 
-    samples.erase(std::remove_if(samples.begin(), samples.end(), [](const auto& sample)
-                                 { return !std::isfinite(sample.delta) || sample.delta == 0.0f; }),
+    samples.erase(std::remove_if(samples.begin(), samples.end(),
+                                 [](const auto& sample)
+                                 {
+                                     return !std::isfinite(sample.delta) || sample.delta == 0.0f ||
+                                            sample.x > terrain_modifier_sample_coordinate_max ||
+                                            sample.z > terrain_modifier_sample_coordinate_max;
+                                 }),
                   samples.end());
     sort_samples(samples);
     if (has_duplicate_samples(samples)) return {};
