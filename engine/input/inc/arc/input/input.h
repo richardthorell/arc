@@ -299,6 +299,35 @@ struct input_device_event
 };
 
 /**
+ * @brief Normalized dual-motor rumble strengths.
+ *
+ * Values are clamped to [0, 1] before they reach a platform backend. The low
+ * frequency channel maps to the heavy motor and the high frequency channel maps
+ * to the light motor on traditional gamepads.
+ */
+struct input_rumble_state
+{
+    float low_frequency{};
+    float high_frequency{};
+
+    friend bool operator==(const input_rumble_state&, const input_rumble_state&) = default;
+};
+
+/**
+ * @brief Platform output sink associated with one or more physical devices.
+ *
+ * Platform backends implement this interface and register themselves with the
+ * input system. Gameplay never depends on the concrete platform implementation.
+ */
+class input_output_sink
+{
+public:
+    virtual ~input_output_sink() = default;
+
+    virtual bool set_rumble(input_device_id device, input_rumble_state state) = 0;
+};
+
+/**
  * @brief Small processing operations applied to one binding value.
  */
 enum class input_processor_type : std::uint8_t
@@ -361,6 +390,17 @@ public:
     [[nodiscard]] float axis(std::string_view name) const;
     [[nodiscard]] math::vector2f axis2d(std::string_view name) const;
 
+    /**
+     * @brief Apply rumble to every assigned connected device that supports it.
+     * @return True if at least one backend accepted the output.
+     */
+    [[nodiscard]] bool set_rumble(input_rumble_state state) const;
+
+    /**
+     * @brief Stop rumble on every assigned connected device that supports it.
+     */
+    [[nodiscard]] bool stop_rumble() const;
+
 private:
     friend class input_system;
 
@@ -398,7 +438,7 @@ private:
 };
 
 /**
- * @brief Platform-neutral physical input registry, player assignment, and state sampler.
+ * @brief Platform-neutral physical input registry, player assignment, state sampler, and device output router.
  *
  * Platform backends call the submit/connect methods. Gameplay normally queries
  * through input_player mappings instead of reading physical devices directly.
@@ -442,11 +482,37 @@ public:
     [[nodiscard]] std::vector<input_device_id> devices_for_player(player_id player) const;
     [[nodiscard]] std::vector<player_id> players_for_device(input_device_id device) const;
 
+    /**
+     * @brief Associate a platform output sink with a connected or retained device record.
+     */
+    bool register_output_sink(input_device_id device, input_output_sink& sink) noexcept;
+
+    /**
+     * @brief Remove a platform output sink if it is still owned by the supplied backend.
+     */
+    bool unregister_output_sink(input_device_id device, input_output_sink& sink) noexcept;
+
+    /**
+     * @brief Apply normalized rumble to one physical device.
+     */
+    bool set_rumble(input_device_id device, input_rumble_state state);
+
+    /**
+     * @brief Stop rumble on one physical device.
+     */
+    bool stop_rumble(input_device_id device);
+
+    /**
+     * @brief Stop rumble on all connected rumble-capable devices.
+     */
+    void stop_all_rumble();
+
 private:
     friend class input_player;
 
     [[nodiscard]] float binding_value(player_id player, const input_binding& binding, bool previous) const;
     [[nodiscard]] static float apply_processors(float value, const input_binding& binding) noexcept;
+    [[nodiscard]] static float normalize_output(float value) noexcept;
     [[nodiscard]] static std::uint32_t control_key(input_control control) noexcept;
     [[nodiscard]] static bool transient_control(std::uint32_t key) noexcept;
 
@@ -454,6 +520,7 @@ private:
     std::unordered_map<player_id, std::unique_ptr<input_player>> players_;
     std::unordered_map<player_id, std::vector<input_device_id>> player_devices_;
     std::unordered_map<std::uint64_t, std::vector<player_id>> device_players_;
+    std::unordered_map<std::uint64_t, input_output_sink*> output_sinks_;
     std::vector<input_device_event> device_events_;
     std::uint64_t next_device_id_{1};
 };

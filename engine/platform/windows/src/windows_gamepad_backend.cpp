@@ -40,21 +40,43 @@ void submit_button(input::input_system& system, input::input_device_id device, W
     system.submit_button(device, input::make_gamepad_button_control(button), (buttons & mask) != 0);
 }
 
+template <class Procedure> Procedure load_procedure(HMODULE module, const char* name) noexcept
+{
+    Procedure result{};
+    if (!module) return result;
+
+    const FARPROC source = GetProcAddress(module, name);
+    if (!source) return result;
+
+    static_assert(sizeof(result) == sizeof(source));
+    std::memcpy(&result, &source, sizeof(result));
+    return result;
+}
+
+WORD motor_speed(float value) noexcept
+{
+    constexpr float maximum = 65535.0f;
+    return static_cast<WORD>(std::clamp(value, 0.0f, 1.0f) * maximum);
+}
+
 } // namespace
 
 windows_gamepad_backend::windows_gamepad_backend(input::input_system& input) noexcept : input_(&input)
 {
     module_ = load_xinput();
-    if (module_)
-    {
-        const FARPROC procedure = GetProcAddress(module_, "XInputGetState");
-        static_assert(sizeof(get_state_) == sizeof(procedure));
-        std::memcpy(&get_state_, &procedure, sizeof(get_state_));
-    }
+    get_state_ = load_procedure<get_state_fn>(module_, "XInputGetState");
+    set_state_ = load_procedure<set_state_fn>(module_, "XInputSetState");
 }
 
 windows_gamepad_backend::~windows_gamepad_backend()
 {
+    for (input::input_device_id device : devices_)
+    {
+        if (!device) continue;
+        if (set_state_) set_rumble(device, {});
+        input_->unregister_output_sink(device, *this);
+    }
+
     if (module_) FreeLibrary(module_);
 }
 
@@ -90,6 +112,19 @@ void windows_gamepad_backend::poll()
     }
 }
 
+bool windows_gamepad_backend::set_rumble(input::input_device_id device, input::input_rumble_state state)
+{
+    if (!set_state_) return false;
+
+    const DWORD index = user_index(device);
+    if (index >= XUSER_MAX_COUNT) return false;
+
+    XINPUT_VIBRATION vibration{};
+    vibration.wLeftMotorSpeed = motor_speed(state.low_frequency);
+    vibration.wRightMotorSpeed = motor_speed(state.high_frequency);
+    return set_state_(index, &vibration) == ERROR_SUCCESS;
+}
+
 HMODULE windows_gamepad_backend::load_xinput() noexcept
 {
     constexpr const wchar_t* libraries[]{L"xinput1_4.dll", L"xinput1_3.dll", L"xinput9_1_0.dll"};
@@ -105,6 +140,15 @@ input::input_device_id windows_gamepad_backend::stable_device_id(DWORD user_inde
     return {.value = xinput_device_namespace | (static_cast<std::uint64_t>(user_index) + 1ull)};
 }
 
+DWORD windows_gamepad_backend::user_index(input::input_device_id device) const noexcept
+{
+    for (DWORD index = 0; index < XUSER_MAX_COUNT; ++index)
+    {
+        if (devices_[index] == device) return index;
+    }
+    return XUSER_MAX_COUNT;
+}
+
 void windows_gamepad_backend::connect(DWORD user_index)
 {
     const input::input_device_id device = stable_device_id(user_index);
@@ -114,7 +158,10 @@ void windows_gamepad_backend::connect(DWORD user_index)
          .type = input::input_device_type::gamepad,
          .connectivity = input::input_connectivity_type::unknown,
          .name = "XInput Gamepad " + std::to_string(user_index + 1),
-         .capabilities = {.buttons = true, .axes = true, .rumble = true, .button_count = 14, .axis_count = 6}});
+         .capabilities = {
+             .buttons = true, .axes = true, .rumble = set_state_ != nullptr, .button_count = 14, .axis_count = 6}});
+
+    if (set_state_) input_->register_output_sink(device, *this);
 }
 
 void windows_gamepad_backend::disconnect(DWORD user_index)
