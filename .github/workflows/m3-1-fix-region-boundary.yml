@@ -25,36 +25,32 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('engine/scene/src/common/terrain_asset.cpp')
           text = path.read_text()
-          old = '''    const double max_x = bounds.max_x > bounds.min_x
-                             ? std::nextafter(bounds.max_x, -std::numeric_limits<double>::infinity())
-                             : bounds.max_x;
-    const double max_z = bounds.max_z > bounds.min_z
-                             ? std::nextafter(bounds.max_z, -std::numeric_limits<double>::infinity())
-                             : bounds.max_z;
-    const auto minimum = terrain_region_at(coordinates, partition, bounds.min_x, bounds.min_z);
-    const auto maximum = terrain_region_at(coordinates, partition, max_x, max_z);
-'''
-          new = '''    const auto minimum = terrain_region_at(coordinates, partition, bounds.min_x, bounds.min_z);
-    auto maximum = terrain_region_at(coordinates, partition, bounds.max_x, bounds.max_z);
-    if (bounds.max_x > bounds.min_x)
-    {
-        const auto boundary =
-            coordinates.origin_x + static_cast<double>(maximum.x) * partition.authoring_region_size;
-        if (bounds.max_x == boundary && maximum.x != std::numeric_limits<std::int64_t>::min()) --maximum.x;
-    }
-    if (bounds.max_z > bounds.min_z)
-    {
-        const auto boundary =
-            coordinates.origin_z + static_cast<double>(maximum.z) * partition.authoring_region_size;
-        if (bounds.max_z == boundary && maximum.z != std::numeric_limits<std::int64_t>::min()) --maximum.z;
-    }
-'''
-          if old not in text:
+          pattern = re.compile(r"    const double max_x = bounds\.max_x > bounds\.min_x.*?    const auto maximum = terrain_region_at\(coordinates, partition, max_x, max_z\);\n", re.DOTALL)
+          replacement = '\n'.join([
+              '    const auto minimum = terrain_region_at(coordinates, partition, bounds.min_x, bounds.min_z);',
+              '    auto maximum = terrain_region_at(coordinates, partition, bounds.max_x, bounds.max_z);',
+              '    if (bounds.max_x > bounds.min_x)',
+              '    {',
+              '        const auto boundary =',
+              '            coordinates.origin_x + static_cast<double>(maximum.x) * partition.authoring_region_size;',
+              '        if (bounds.max_x == boundary && maximum.x != std::numeric_limits<std::int64_t>::min()) --maximum.x;',
+              '    }',
+              '    if (bounds.max_z > bounds.min_z)',
+              '    {',
+              '        const auto boundary =',
+              '            coordinates.origin_z + static_cast<double>(maximum.z) * partition.authoring_region_size;',
+              '        if (bounds.max_z == boundary && maximum.z != std::numeric_limits<std::int64_t>::min()) --maximum.z;',
+              '    }',
+              '',
+          ])
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
               raise SystemExit('terrain_regions_overlapping block did not match expected source')
-          path.write_text(text.replace(old, new, 1))
+          path.write_text(text)
           PY
       - name: Format M3.1 native changes
         run: |
