@@ -31,7 +31,8 @@ template <class Sample> bool has_duplicate_samples(const std::vector<Sample>& sa
 
 template <class Sample> void sort_samples(std::vector<Sample>& samples)
 {
-    std::sort(samples.begin(), samples.end(), [](const Sample& lhs, const Sample& rhs) { return sample_less(lhs, rhs); });
+    std::sort(samples.begin(), samples.end(),
+              [](const Sample& lhs, const Sample& rhs) { return sample_less(lhs, rhs); });
 }
 
 bool zero_paint_delta(const terrain_paint_sample_delta& sample) noexcept
@@ -50,7 +51,8 @@ void recompute_affected_bounds(terrain_asset& asset, terrain_modifier_descriptor
     auto bounds = terrain_region_bounds(asset.coordinates, asset.partition, modifier.region_payloads.front().region);
     for (std::size_t index = 1u; index < modifier.region_payloads.size(); ++index)
     {
-        const auto region = terrain_region_bounds(asset.coordinates, asset.partition, modifier.region_payloads[index].region);
+        const auto region =
+            terrain_region_bounds(asset.coordinates, asset.partition, modifier.region_payloads[index].region);
         bounds.min_x = std::min(bounds.min_x, region.min_x);
         bounds.min_y = std::min(bounds.min_y, region.min_y);
         bounds.min_z = std::min(bounds.min_z, region.min_z);
@@ -75,8 +77,8 @@ terrain_modifier_descriptor& add_builtin_layer(terrain_asset& asset, std::string
     return asset.modifiers.back();
 }
 
-template <class Payload> terrain_modifier_region_payload* find_payload(terrain_modifier_descriptor& modifier,
-                                                                        terrain_region_id region) noexcept
+template <class Payload>
+terrain_modifier_region_payload* find_payload(terrain_modifier_descriptor& modifier, terrain_region_id region) noexcept
 {
     const auto found = std::find_if(modifier.region_payloads.begin(), modifier.region_payloads.end(),
                                     [region](const auto& value) { return value.region == region; });
@@ -113,15 +115,15 @@ void erase_empty_payload(terrain_modifier_descriptor& modifier, terrain_region_i
 
 terrain_modifier_descriptor* find_terrain_modifier(terrain_asset& asset, terrain_stable_id id) noexcept
 {
-    const auto found =
-        std::find_if(asset.modifiers.begin(), asset.modifiers.end(), [id](const auto& value) { return value.id == id; });
+    const auto found = std::find_if(asset.modifiers.begin(), asset.modifiers.end(),
+                                    [id](const auto& value) { return value.id == id; });
     return found == asset.modifiers.end() ? nullptr : &*found;
 }
 
 const terrain_modifier_descriptor* find_terrain_modifier(const terrain_asset& asset, terrain_stable_id id) noexcept
 {
-    const auto found =
-        std::find_if(asset.modifiers.begin(), asset.modifiers.end(), [id](const auto& value) { return value.id == id; });
+    const auto found = std::find_if(asset.modifiers.begin(), asset.modifiers.end(),
+                                    [id](const auto& value) { return value.id == id; });
     return found == asset.modifiers.end() ? nullptr : &*found;
 }
 
@@ -177,7 +179,8 @@ terrain_dirty_update set_terrain_sculpt_region_samples(terrain_asset& asset, ter
     std::get<terrain_sculpt_region_payload>(payload.data).samples = std::move(samples);
     erase_empty_payload(*modifier, region);
     recompute_affected_bounds(asset, *modifier);
-    return mark_terrain_dirty(asset, terrain_region_bounds(asset.coordinates, asset.partition, region), modifier->domains);
+    return mark_terrain_dirty(asset, terrain_region_bounds(asset.coordinates, asset.partition, region),
+                              modifier->domains);
 }
 
 terrain_dirty_update set_terrain_paint_region_samples(terrain_asset& asset, terrain_stable_id modifier_id,
@@ -200,7 +203,8 @@ terrain_dirty_update set_terrain_paint_region_samples(terrain_asset& asset, terr
     std::get<terrain_paint_region_payload>(payload.data).samples = std::move(samples);
     erase_empty_payload(*modifier, region);
     recompute_affected_bounds(asset, *modifier);
-    return mark_terrain_dirty(asset, terrain_region_bounds(asset.coordinates, asset.partition, region), modifier->domains);
+    return mark_terrain_dirty(asset, terrain_region_bounds(asset.coordinates, asset.partition, region),
+                              modifier->domains);
 }
 
 bool validate_terrain_modifier_payloads(const terrain_modifier_descriptor& modifier) noexcept

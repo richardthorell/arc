@@ -508,8 +508,8 @@ terrain_asset_json_result write_terrain_asset_json(const terrain_asset& asset, b
                 {
                     kind = "paint-weight-delta";
                     for (const auto& sample : paint->samples)
-                        samples.push_back({sample.x, sample.z, sample.delta[0], sample.delta[1], sample.delta[2],
-                                           sample.delta[3]});
+                        samples.push_back(
+                            {sample.x, sample.z, sample.delta[0], sample.delta[1], sample.delta[2], sample.delta[3]});
                 }
                 region_payloads.push_back({{"region", {{"x", payload.region.x}, {"z", payload.region.z}}},
                                            {"schemaVersion", payload.schema_version},
@@ -683,8 +683,9 @@ terrain_asset_decode_result read_terrain_asset_json(std::string_view text)
                 if (const auto payloads = record.find("regionPayloads"); payloads != record.end())
                 {
                     if (!payloads->is_array())
-                        return failure<terrain_asset_decode_result>(terrain_asset_io_error_code::invalid_document,
-                                                                    "Terrain modifier region payloads must be an array");
+                        return failure<terrain_asset_decode_result>(
+                            terrain_asset_io_error_code::invalid_document,
+                            "Terrain modifier region payloads must be an array");
                     for (const auto& payload_record : *payloads)
                     {
                         if (!payload_record.is_object() || !payload_record.contains("region") ||
@@ -706,9 +707,8 @@ terrain_asset_decode_result read_terrain_asset_json(std::string_view text)
                                     return failure<terrain_asset_decode_result>(
                                         terrain_asset_io_error_code::invalid_document,
                                         "Terrain sculpt sparse sample is malformed");
-                                sculpt.samples.push_back(
-                                    {sample[0].get<std::uint32_t>(), sample[1].get<std::uint32_t>(),
-                                     sample[2].get<float>()});
+                                sculpt.samples.push_back({sample[0].get<std::uint32_t>(),
+                                                          sample[1].get<std::uint32_t>(), sample[2].get<float>()});
                             }
                             payload.data = std::move(sculpt);
                         }
@@ -722,7 +722,8 @@ terrain_asset_decode_result read_terrain_asset_json(std::string_view text)
                                         terrain_asset_io_error_code::invalid_document,
                                         "Terrain paint sparse sample is malformed");
                                 paint.samples.push_back(
-                                    {sample[0].get<std::uint32_t>(), sample[1].get<std::uint32_t>(),
+                                    {sample[0].get<std::uint32_t>(),
+                                     sample[1].get<std::uint32_t>(),
                                      {sample[2].get<std::int16_t>(), sample[3].get<std::int16_t>(),
                                       sample[4].get<std::int16_t>(), sample[5].get<std::int16_t>()}});
                             }

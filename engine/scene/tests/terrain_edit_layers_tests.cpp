@@ -32,8 +32,8 @@ TEST_CASE("M3.1 sculpt and paint layers own sparse per-region edit payloads")
     const auto sculpt_id = add_terrain_sculpt_layer(asset, "Large Forms").id;
     const auto paint_id = add_terrain_paint_layer(asset, "Ground Paint").id;
 
-    const auto sculpt_dirty = set_terrain_sculpt_region_samples(
-        asset, sculpt_id, {2, -1}, {{7u, 3u, 1.25f}, {4u, 2u, -0.5f}, {9u, 3u, 0.0f}});
+    const auto sculpt_dirty = set_terrain_sculpt_region_samples(asset, sculpt_id, {2, -1},
+                                                                {{7u, 3u, 1.25f}, {4u, 2u, -0.5f}, {9u, 3u, 0.0f}});
     REQUIRE(sculpt_dirty.revision != 0u);
     REQUIRE((sculpt_dirty.regions == std::vector<terrain_region_id>{{2, -1}}));
 
@@ -50,15 +50,15 @@ TEST_CASE("M3.1 sculpt and paint layers own sparse per-region edit payloads")
     CHECK(sculpt_samples[0] == terrain_sculpt_sample_delta{4u, 2u, -0.5f});
     CHECK(sculpt_samples[1] == terrain_sculpt_sample_delta{7u, 3u, 1.25f});
 
-    const auto sculpt_region = std::ranges::find_if(asset.regions, [](const auto& value)
-                                                     { return value.id == terrain_region_id{2, -1}; });
+    const auto sculpt_region =
+        std::ranges::find_if(asset.regions, [](const auto& value) { return value.id == terrain_region_id{2, -1}; });
     REQUIRE(sculpt_region != asset.regions.end());
     CHECK(terrain_domain_contains(sculpt_region->dirty_domains, terrain_domain::geometry));
     CHECK_FALSE(terrain_domain_contains(sculpt_region->dirty_domains, terrain_domain::attributes));
 
     const auto paint_dirty = set_terrain_paint_region_samples(
-        asset, paint_id, {-3, 4}, {{3u, 8u, std::array<std::int16_t, 4>{32, -32, 0, 0}},
-                                  {1u, 1u, std::array<std::int16_t, 4>{0, 0, 0, 0}}});
+        asset, paint_id, {-3, 4},
+        {{3u, 8u, std::array<std::int16_t, 4>{32, -32, 0, 0}}, {1u, 1u, std::array<std::int16_t, 4>{0, 0, 0, 0}}});
     REQUIRE(paint_dirty.revision != 0u);
     REQUIRE((paint_dirty.regions == std::vector<terrain_region_id>{{-3, 4}}));
 
@@ -86,8 +86,8 @@ TEST_CASE("M3.1 sparse edit payloads survive terrain asset save and reload")
     const auto sculpt_id = add_terrain_sculpt_layer(asset, "Trail").id;
     const auto paint_id = add_terrain_paint_layer(asset, "Mud").id;
     REQUIRE(set_terrain_sculpt_region_samples(asset, sculpt_id, {0, 0}, {{8u, 9u, 2.5f}}).revision != 0u);
-    REQUIRE(set_terrain_paint_region_samples(
-                asset, paint_id, {1, 0}, {{12u, 2u, std::array<std::int16_t, 4>{-16, 16, 0, 0}}})
+    REQUIRE(set_terrain_paint_region_samples(asset, paint_id, {1, 0},
+                                             {{12u, 2u, std::array<std::int16_t, 4>{-16, 16, 0, 0}}})
                 .revision != 0u);
 
     const auto encoded = write_terrain_asset_json(asset, false);

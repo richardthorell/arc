@@ -146,8 +146,8 @@ struct terrain_sculpt_sample_delta
     std::uint32_t z{};
     float delta{};
 
-    friend constexpr bool operator==(const terrain_sculpt_sample_delta&, const terrain_sculpt_sample_delta&) noexcept =
-        default;
+    friend constexpr bool operator==(const terrain_sculpt_sample_delta&,
+                                     const terrain_sculpt_sample_delta&) noexcept = default;
 };
 
 /** Sparse accumulated material-weight delta owned by one paint modifier. */
@@ -157,8 +157,8 @@ struct terrain_paint_sample_delta
     std::uint32_t z{};
     std::array<std::int16_t, 4> delta{};
 
-    friend constexpr bool operator==(const terrain_paint_sample_delta&, const terrain_paint_sample_delta&) noexcept =
-        default;
+    friend constexpr bool operator==(const terrain_paint_sample_delta&,
+                                     const terrain_paint_sample_delta&) noexcept = default;
 };
 
 struct terrain_sculpt_region_payload
@@ -393,20 +393,20 @@ terrain_modifier_descriptor& add_terrain_paint_layer(terrain_asset& asset, std::
 [[nodiscard]] terrain_modifier_descriptor* find_terrain_modifier(terrain_asset& asset, terrain_stable_id id) noexcept;
 [[nodiscard]] const terrain_modifier_descriptor* find_terrain_modifier(const terrain_asset& asset,
                                                                        terrain_stable_id id) noexcept;
-[[nodiscard]] terrain_modifier_region_payload*
-find_terrain_modifier_payload(terrain_modifier_descriptor& modifier, terrain_region_id region) noexcept;
+[[nodiscard]] terrain_modifier_region_payload* find_terrain_modifier_payload(terrain_modifier_descriptor& modifier,
+                                                                             terrain_region_id region) noexcept;
 [[nodiscard]] const terrain_modifier_region_payload*
 find_terrain_modifier_payload(const terrain_modifier_descriptor& modifier, terrain_region_id region) noexcept;
 
 /** Replace one region's sparse sculpt payload and dirty only geometry for that authoring region. */
-[[nodiscard]] terrain_dirty_update set_terrain_sculpt_region_samples(
-    terrain_asset& asset, terrain_stable_id modifier, terrain_region_id region,
-    std::vector<terrain_sculpt_sample_delta> samples);
+[[nodiscard]] terrain_dirty_update set_terrain_sculpt_region_samples(terrain_asset& asset, terrain_stable_id modifier,
+                                                                     terrain_region_id region,
+                                                                     std::vector<terrain_sculpt_sample_delta> samples);
 
 /** Replace one region's sparse paint payload and dirty only attributes for that authoring region. */
-[[nodiscard]] terrain_dirty_update set_terrain_paint_region_samples(
-    terrain_asset& asset, terrain_stable_id modifier, terrain_region_id region,
-    std::vector<terrain_paint_sample_delta> samples);
+[[nodiscard]] terrain_dirty_update set_terrain_paint_region_samples(terrain_asset& asset, terrain_stable_id modifier,
+                                                                    terrain_region_id region,
+                                                                    std::vector<terrain_paint_sample_delta> samples);
 
 /** Validate built-in sparse payload ownership, schemas, values, and per-region uniqueness. */
 [[nodiscard]] bool validate_terrain_modifier_payloads(const terrain_modifier_descriptor& modifier) noexcept;
