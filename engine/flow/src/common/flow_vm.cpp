@@ -451,8 +451,8 @@ execution_result execute_chain(const bytecode_program& program, std::vector<flow
                     stop_execution(result, execution_status::world_operation_failed, program, instruction);
                     return result;
                 }
-                value_slots[current.operand1] = std::array<double, 3>{transform.position.x, transform.position.y,
-                                                                      transform.position.z};
+                value_slots[current.operand1] =
+                    std::array<double, 3>{transform.position.x, transform.position.y, transform.position.z};
                 value_slots[current.operand2] = std::array<double, 4>{transform.rotation.x, transform.rotation.y,
                                                                       transform.rotation.z, transform.rotation.w};
                 value_slots[current.operand3] =
@@ -683,8 +683,8 @@ execution_result vm_instance::end_play(vm_world_context world)
     if (!valid_ || !program_) return status_result(execution_status::invalid_program);
     if (!active_) return status_result(execution_status::inactive);
 
-    execution_result result = execute_event(*program_, value_slots_, entry_point_kind::end_play, {}, 0.0,
-                                            limits_.instruction_budget, world);
+    execution_result result =
+        execute_event(*program_, value_slots_, entry_point_kind::end_play, {}, 0.0, limits_.instruction_budget, world);
     active_ = false;
     return result;
 }
@@ -693,8 +693,8 @@ execution_result vm_instance::tick(double delta_seconds, vm_world_context world)
 {
     if (!valid_ || !program_) return status_result(execution_status::invalid_program);
     if (!active_) return status_result(execution_status::inactive);
-    return execute_event(*program_, value_slots_, entry_point_kind::tick, {}, delta_seconds,
-                         limits_.instruction_budget, world);
+    return execute_event(*program_, value_slots_, entry_point_kind::tick, {}, delta_seconds, limits_.instruction_budget,
+                         world);
 }
 
 execution_result vm_instance::fixed_tick(double delta_seconds, vm_world_context world)

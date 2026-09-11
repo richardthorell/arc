@@ -209,8 +209,7 @@ void run_flow_world_tests()
         assert(!world.active);
         assert(world.transform.position.x == 1.0f && world.transform.position.y == 2.0f &&
                world.transform.position.z == 3.0f);
-        assert(world.transform.scale.x == 2.0f && world.transform.scale.y == 2.0f &&
-               world.transform.scale.z == 2.0f);
+        assert(world.transform.scale.x == 2.0f && world.transform.scale.y == 2.0f && world.transform.scale.z == 2.0f);
         assert(world.last_name_target.entity.index == 7);
         assert(!world.last_name_target.is_deferred);
     }
@@ -267,8 +266,7 @@ void run_flow_world_tests()
         assert(std::get<bool>(*instance.value_slot(2)));
         assert(std::get<std::string>(*instance.value_slot(3)) == "ReadName");
         assert((std::get<std::array<double, 3>>(*instance.value_slot(4)) == std::array<double, 3>{4.0, 5.0, 6.0}));
-        assert((std::get<std::array<double, 4>>(*instance.value_slot(5)) ==
-                std::array<double, 4>{0.0, 0.0, 0.5, 0.5}));
+        assert((std::get<std::array<double, 4>>(*instance.value_slot(5)) == std::array<double, 4>{0.0, 0.0, 0.5, 0.5}));
         assert((std::get<std::array<double, 3>>(*instance.value_slot(6)) == std::array<double, 3>{3.0, 3.0, 3.0}));
         assert(std::get<std::string>(*instance.value_slot(7)) == "ReadTag");
         assert(!std::get<bool>(*instance.value_slot(8)));
