@@ -127,6 +127,7 @@ using game_visit_entity_v1 = bool (*)(void* user_data, game_entity_v1 entity);
  *
  * The table and its user data are borrowed for the duration of the owning callback. Structural changes requested
  * from an ECS system are recorded in that system's command buffer and become visible at the scheduler phase boundary.
+ * Queries observe committed world state, so deferred structural changes are query-visible only after that boundary.
  * BeginPlay and EndPlay operate directly because they execute outside scheduled system work.
  */
 struct game_world_api_v1
