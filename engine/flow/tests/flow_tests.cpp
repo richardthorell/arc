@@ -259,11 +259,8 @@ int main()
 
     {
         bytecode_program program;
-        program.variables.push_back({.id = "speed",
-                                     .name = "Speed",
-                                     .type = value_type::float32,
-                                     .default_value = 4.5,
-                                     .exposed = true});
+        program.variables.push_back(
+            {.id = "speed", .name = "Speed", .type = value_type::float32, .default_value = 4.5, .exposed = true});
 
         vm_instance instance{program};
         assert(instance.valid());
@@ -285,10 +282,8 @@ int main()
         bytecode_program program;
         program.value_slots.push_back({.type = value_type::boolean, .initial_value = true});
         program.entry_points.push_back({.kind = entry_point_kind::begin_play, .instruction = 0});
-        program.instructions.push_back({.opcode = bytecode_opcode::branch,
-                                        .operand0 = 0,
-                                        .operand1 = 0,
-                                        .operand2 = invalid_instruction});
+        program.instructions.push_back(
+            {.opcode = bytecode_opcode::branch, .operand0 = 0, .operand1 = 0, .operand2 = invalid_instruction});
         program.instruction_nodes.push_back("loop");
 
         vm_instance instance{program, {.instruction_budget = 3}};

@@ -61,7 +61,8 @@ bool validate_program(const bytecode_program& program)
     std::unordered_set<std::string> variable_ids;
     for (const variable& item : program.variables)
     {
-        if (item.id.empty() || !variable_ids.insert(item.id).second || !value_matches_type(item.type, item.default_value))
+        if (item.id.empty() || !variable_ids.insert(item.id).second ||
+            !value_matches_type(item.type, item.default_value))
             return false;
     }
 
@@ -270,10 +271,12 @@ void vm_instance::reset()
     if (!program_) return;
 
     variable_values_.reserve(program_->variables.size());
-    for (const variable& item : program_->variables) variable_values_.push_back(item.default_value);
+    for (const variable& item : program_->variables)
+        variable_values_.push_back(item.default_value);
 
     value_slots_.reserve(program_->value_slots.size());
-    for (const bytecode_value_slot& slot : program_->value_slots) value_slots_.push_back(slot.initial_value);
+    for (const bytecode_value_slot& slot : program_->value_slots)
+        value_slots_.push_back(slot.initial_value);
 }
 
 const flow_value* vm_instance::variable_value(std::string_view id) const noexcept
@@ -310,8 +313,8 @@ execution_result vm_instance::begin_play()
     if (active_) return status_result(execution_status::already_active);
 
     active_ = true;
-    execution_result result = execute_event(*program_, value_slots_, entry_point_kind::begin_play, {}, 0.0,
-                                            limits_.instruction_budget);
+    execution_result result =
+        execute_event(*program_, value_slots_, entry_point_kind::begin_play, {}, 0.0, limits_.instruction_budget);
     if (!result.succeeded()) active_ = false;
     return result;
 }
@@ -321,8 +324,8 @@ execution_result vm_instance::end_play()
     if (!valid_ || !program_) return status_result(execution_status::invalid_program);
     if (!active_) return status_result(execution_status::inactive);
 
-    execution_result result = execute_event(*program_, value_slots_, entry_point_kind::end_play, {}, 0.0,
-                                            limits_.instruction_budget);
+    execution_result result =
+        execute_event(*program_, value_slots_, entry_point_kind::end_play, {}, 0.0, limits_.instruction_budget);
     active_ = false;
     return result;
 }
