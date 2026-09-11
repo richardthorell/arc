@@ -150,13 +150,18 @@ const diagnostics = {
     enabled: true,
     gpuSimulation: true,
     deterministicInitialSpectrum: true,
+    foamHistory: true,
     activeBodies: 1,
     activeCascades: 3,
     maximumResolution: 256,
     updateIntervalFrames: 1,
+    foamUpdateIntervalFrames: 1,
     computeDispatches: 57,
+    foamDispatches: 3,
+    simulationMemoryBytes: 19_398_656,
     spectrumMilliseconds: 0.18,
     inverseFftMilliseconds: 0.72,
+    foamMilliseconds: 0.21,
     fallback: '',
   },
 };
@@ -185,6 +190,8 @@ describe('RenderGraphPanel', () => {
     expect(screen.getByLabelText('Texture streaming diagnostics')).toHaveTextContent('Hit 87.5%');
     expect(screen.getByLabelText('GPU Scene resource tables')).toHaveTextContent('4 geometry');
     expect(screen.getByLabelText('Water simulation diagnostics')).toHaveTextContent('3 cascades');
+    expect(screen.getByLabelText('Water simulation diagnostics')).toHaveTextContent('18.5 MiB');
+    expect(screen.getByLabelText('Water simulation diagnostics')).toHaveTextContent('Foam 0.21 ms');
 
     await userEvent.type(screen.getByLabelText('Filter render graph'), 'scene_depth');
     expect(screen.getByRole('img', { name: 'Executed graph for frame 42' })).toBeInTheDocument();

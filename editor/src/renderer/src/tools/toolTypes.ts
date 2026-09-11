@@ -133,13 +133,18 @@ export type EditorDiagnosticsSnapshot = {
     enabled: boolean;
     gpuSimulation: boolean;
     deterministicInitialSpectrum: boolean;
+    foamHistory: boolean;
     activeBodies: number;
     activeCascades: number;
     maximumResolution: number;
     updateIntervalFrames: number;
+    foamUpdateIntervalFrames: number;
     computeDispatches: number;
+    foamDispatches: number;
+    simulationMemoryBytes: number;
     spectrumMilliseconds: number;
     inverseFftMilliseconds: number;
+    foamMilliseconds: number;
     fallback: string;
   };
   textureStreaming?: {

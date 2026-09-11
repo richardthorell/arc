@@ -34,9 +34,27 @@ TEST_CASE("Ocean quality profiles scale cascade and FFT budgets without "
     CHECK(high.cascade_count == 3u);
     CHECK(ultra.cascade_count == 4u);
     CHECK(low.update_interval_frames == 2u);
+    CHECK(low.foam_update_interval_frames == 4u);
+    CHECK(medium.foam_update_interval_frames == 2u);
+    CHECK(high.foam_update_interval_frames == 1u);
     CHECK(high.cascades[0].resolution < ultra.cascades[0].resolution);
     CHECK(high.cascades[0].physical_length > high.cascades[1].physical_length);
     CHECK(high.cascades[1].physical_length > high.cascades[2].physical_length);
+    CHECK(high.cascades[0].fade_out_distance > high.cascades[1].fade_out_distance);
+    CHECK(high.cascades[1].fade_out_distance > high.cascades[2].fade_out_distance);
+}
+
+TEST_CASE("Ocean cascade distance reduction smoothly removes fine spectra")
+{
+    const auto profile = arc::water::ocean_profile(arc::water::water_quality::high);
+    const auto& fine = profile.cascades[2];
+    CHECK(arc::water::ocean_cascade_distance_weight(fine, 0.0f) == 1.0f);
+    CHECK(arc::water::ocean_cascade_distance_weight(fine, fine.full_detail_distance) == 1.0f);
+    const float transition =
+        arc::water::ocean_cascade_distance_weight(fine, (fine.full_detail_distance + fine.fade_out_distance) * 0.5f);
+    CHECK(transition > 0.0f);
+    CHECK(transition < 1.0f);
+    CHECK(arc::water::ocean_cascade_distance_weight(fine, fine.fade_out_distance) == 0.0f);
 }
 
 TEST_CASE("Ocean spectrum parameter conversion normalizes authoring input")
@@ -168,6 +186,24 @@ TEST_CASE("CPU reference Ocean produces deterministic displacement normals and "
         for (std::size_t axis = 0u; axis < 3u; ++axis)
             changed = changed || first[index].displacement[axis] != later[index].displacement[axis];
     CHECK(changed);
+}
+
+TEST_CASE("Ocean displacement derivatives produce physical Jacobian crest foam with persistence")
+{
+    const arc::water::ocean_displacement_derivatives relaxed{};
+    const arc::water::ocean_displacement_derivatives compressed{.displacement_x_dx = -0.8f, .displacement_z_dz = -0.6f};
+    const arc::water::water_foam_settings foam{.enabled = true, .threshold = 0.55f, .decay = 0.4f};
+
+    CHECK(arc::water::ocean_displacement_jacobian(relaxed) == Catch::Approx(1.0f));
+    const float compressed_jacobian = arc::water::ocean_displacement_jacobian(compressed);
+    CHECK(compressed_jacobian == Catch::Approx(0.08f));
+    CHECK(arc::water::ocean_crest_foam(1.0f, foam) == 0.0f);
+    CHECK(arc::water::ocean_crest_foam(compressed_jacobian, foam) > 0.8f);
+
+    const float retained = arc::water::advance_ocean_foam(0.8f, 0.2f, foam.decay, 1.0f);
+    CHECK(retained > 0.2f);
+    CHECK(retained < 0.8f);
+    CHECK(arc::water::advance_ocean_foam(retained, 0.0f, foam.decay, 2.0f) < retained);
 }
 
 TEST_CASE("Three Ocean cascades retain distinct spatial energy bands")

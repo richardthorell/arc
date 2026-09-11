@@ -180,14 +180,22 @@ export function RenderGraphPanel({
         <div className="tool-summary-strip" aria-label="Water simulation diagnostics">
           <span>
             Water {snapshot.water.activeBodies} bodies · {snapshot.water.activeCascades} cascades ·{' '}
-            {snapshot.water.maximumResolution}² max
+            {snapshot.water.maximumResolution}² max · {bytes(snapshot.water.simulationMemoryBytes)}
           </span>
-          <span>{snapshot.water.computeDispatches} compute dispatches</span>
+          <span>
+            {snapshot.water.computeDispatches} compute · {snapshot.water.foamDispatches} foam dispatches
+          </span>
           <span>
             Spectrum {snapshot.water.spectrumMilliseconds.toFixed(2)} ms · IFFT{' '}
-            {snapshot.water.inverseFftMilliseconds.toFixed(2)} ms
+            {snapshot.water.inverseFftMilliseconds.toFixed(2)} ms · Foam {snapshot.water.foamMilliseconds.toFixed(2)} ms
           </span>
-          <span>{snapshot.water.gpuSimulation ? 'GPU spectral simulation' : 'Flat fallback'}</span>
+          <span>
+            {snapshot.water.gpuSimulation
+              ? snapshot.water.foamHistory
+                ? `GPU spectral + foam history (${snapshot.water.foamUpdateIntervalFrames}f)`
+                : 'GPU spectral simulation'
+              : 'Flat fallback'}
+          </span>
         </div>
       )}
       {pinned && snapshot && (

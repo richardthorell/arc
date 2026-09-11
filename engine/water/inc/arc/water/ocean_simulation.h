@@ -21,6 +21,8 @@ struct ocean_cascade_descriptor
     float physical_length{512.0f};
     float minimum_wavelength{32.0f};
     float maximum_wavelength{512.0f};
+    float full_detail_distance{4096.0f};
+    float fade_out_distance{8192.0f};
 
     friend constexpr bool operator==(const ocean_cascade_descriptor&,
                                      const ocean_cascade_descriptor&) noexcept = default;
@@ -33,6 +35,7 @@ struct ocean_simulation_profile
     std::array<ocean_cascade_descriptor, maximum_ocean_cascades> cascades{};
     std::uint32_t cascade_count{3u};
     std::uint32_t update_interval_frames{1u};
+    std::uint32_t foam_update_interval_frames{1u};
 
     friend constexpr bool operator==(const ocean_simulation_profile&,
                                      const ocean_simulation_profile&) noexcept = default;
@@ -65,6 +68,19 @@ struct ocean_frequency_fields
     std::vector<std::complex<float>> velocity_x;
     std::vector<std::complex<float>> velocity_y;
     std::vector<std::complex<float>> velocity_z;
+    std::vector<std::complex<float>> displacement_x_dx;
+    std::vector<std::complex<float>> displacement_x_dz;
+    std::vector<std::complex<float>> displacement_z_dx;
+    std::vector<std::complex<float>> displacement_z_dz;
+};
+
+/** @brief Horizontal derivatives of the choppy displacement field. */
+struct ocean_displacement_derivatives
+{
+    float displacement_x_dx{};
+    float displacement_x_dz{};
+    float displacement_z_dx{};
+    float displacement_z_dz{};
 };
 
 struct ocean_surface_point
@@ -72,11 +88,16 @@ struct ocean_surface_point
     math::vector3f displacement{};
     math::vector3f normal{0.0f, 1.0f, 0.0f};
     math::vector3f velocity{};
+    ocean_displacement_derivatives derivatives;
+    float jacobian{1.0f};
 };
 
 /** @brief Resolve stable cascade counts and FFT resolutions for an authored
  * quality level. */
 [[nodiscard]] ocean_simulation_profile ocean_profile(water_quality quality) noexcept;
+
+/** @brief Smooth per-cascade contribution used to suppress fine spectra with distance. */
+[[nodiscard]] float ocean_cascade_distance_weight(const ocean_cascade_descriptor& cascade, float distance) noexcept;
 
 /** @brief Convert the W0 authoring contract into normalized physical spectrum
  * parameters. */
@@ -117,5 +138,15 @@ bool inverse_fft_2d(std::span<std::complex<float>> values, std::uint32_t resolut
                                                                         const ocean_cascade_descriptor& cascade,
                                                                         float time_seconds,
                                                                         std::uint32_t cascade_index = 0u);
+
+/** @brief Horizontal deformation determinant used to identify wave folding. */
+[[nodiscard]] float ocean_displacement_jacobian(const ocean_displacement_derivatives& derivatives) noexcept;
+
+/** @brief Convert Jacobian compression into normalized crest-foam generation. */
+[[nodiscard]] float ocean_crest_foam(float jacobian, const water_foam_settings& settings) noexcept;
+
+/** @brief Advance a persistent foam value using an exponential per-second decay. */
+[[nodiscard]] float advance_ocean_foam(float previous_foam, float generated_foam, float decay_rate,
+                                       float delta_seconds) noexcept;
 
 } // namespace arc::water
