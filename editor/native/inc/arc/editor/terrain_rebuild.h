@@ -35,6 +35,7 @@ private:
     float size_{};
     double spacing_{};
     std::uint64_t failed_revision_{};
+    bool replace_all_regions_{true};
     std::string error_;
 };
 

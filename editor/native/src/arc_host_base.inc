@@ -1974,6 +1974,11 @@ struct arc_host::state
         if (!terrain || !scene::terrain_heightfield_valid(*terrain)) return;
         const auto guid = entity_guid_of(scene, entity);
         auto found = terrain_rebuilds.find(guid);
+        if (invalidate_all && found != terrain_rebuilds.end())
+        {
+            terrain_rebuilds.erase(found);
+            found = terrain_rebuilds.end();
+        }
         if (found == terrain_rebuilds.end())
         {
             auto reference = std::filesystem::path(asset.source.asset.path_hint);
@@ -2000,8 +2005,13 @@ struct arc_host::state
             }
             // An active brush owns the compatibility preview until its authoring transaction commits.
             if (!terrain_sculpt_stroke || terrain_sculpt_stroke->entity != it->first)
+            {
+                const auto previous_error = it->second.error();
                 if (it->second.pump(simulation.jobs(), scene.terrain_render_proxies, it->first, *terrain, *renderer))
                     (void)synchronize_terrain_render_resource(scene, *renderer, entity);
+                if (!it->second.error().empty() && it->second.error() != previous_error)
+                    diagnostics::warn("editor.terrain", it->second.error());
+            }
             ++it;
         }
     }
@@ -2331,7 +2341,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 }
                 state_->project_module.unload();
                 state_->terrain_rebuilds.clear();
-    state_->scene.terrain_render_proxies.clear(*state_->renderer);
+                state_->scene.terrain_render_proxies.clear(*state_->renderer);
                 state_->scene = create_blank_scene(*state_->renderer);
                 reset_editor_camera(state_->scene, state_->camera_controller);
                 state_->project = {};
@@ -2858,7 +2868,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             else if constexpr (std::is_same_v<command_type, host_new_scene_command>)
             {
                 state_->terrain_rebuilds.clear();
-    state_->scene.terrain_render_proxies.clear(*state_->renderer);
+                state_->scene.terrain_render_proxies.clear(*state_->renderer);
                 state_->scene = create_blank_scene(*state_->renderer);
                 state_->scene.scene_name = payload.name.empty() ? "Untitled" : payload.name;
                 state_->scene.active_scene_path.clear();
@@ -4222,10 +4232,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                             sample_index < terrain->heights.size() ? terrain->heights[sample_index] : 0.0f;
                         const math::vector3f local{-half + static_cast<float>(delta.x) * spacing, sample_height,
                                                    -half + static_cast<float>(delta.z) * spacing};
-                        const auto world = math::transform_point(terrain_world, local);
                         const auto address = scene::terrain_modifier_sample_at(
-                            session.asset.coordinates, session.asset.partition, static_cast<double>(world[0]),
-                            static_cast<double>(world[2]));
+                            session.asset.coordinates, session.asset.partition,
+                            session.asset.coordinates.origin_x + static_cast<double>(local[0]),
+                            session.asset.coordinates.origin_z + static_cast<double>(local[2]));
                         session.edits.push_back({address.region, {address.x, address.z, delta.delta}});
                     }
                 }
@@ -4955,7 +4965,7 @@ host_response arc_host::execute(const host_command_envelope& command)
         else if (before)
         {
             state_->terrain_rebuilds.clear();
-    state_->scene.terrain_render_proxies.clear(*state_->renderer);
+            state_->scene.terrain_render_proxies.clear(*state_->renderer);
             state_->scene = std::move(*before);
             synchronize_all_terrain_resources(state_->scene, *state_->renderer);
         }
@@ -5377,13 +5387,19 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"gpuSimulation\":" + std::string(profile.water.gpu_simulation ? "true" : "false") +
                     ",\"deterministicInitialSpectrum\":" +
                     std::string(profile.water.deterministic_initial_spectrum ? "true" : "false") +
+                    ",\"foamHistory\":" + std::string(profile.water.foam_history ? "true" : "false") +
                     ",\"activeBodies\":" + std::to_string(profile.water.active_body_count) +
                     ",\"activeCascades\":" + std::to_string(profile.water.active_cascade_count) +
                     ",\"maximumResolution\":" + std::to_string(profile.water.maximum_resolution) +
                     ",\"updateIntervalFrames\":" + std::to_string(profile.water.update_interval_frames) +
+                    ",\"foamUpdateIntervalFrames\":" +
+                    std::to_string(profile.water.foam_update_interval_frames) +
                     ",\"computeDispatches\":" + std::to_string(profile.water.compute_dispatch_count) +
+                    ",\"foamDispatches\":" + std::to_string(profile.water.foam_dispatch_count) +
+                    ",\"simulationMemoryBytes\":" + std::to_string(profile.water.simulation_memory_bytes) +
                     ",\"spectrumMilliseconds\":" + std::to_string(profile.water.spectrum_update_milliseconds) +
                     ",\"inverseFftMilliseconds\":" + std::to_string(profile.water.inverse_fft_milliseconds) +
+                    ",\"foamMilliseconds\":" + std::to_string(profile.water.foam_update_milliseconds) +
                     ",\"fallback\":" + to_json_string(profile.water.fallback_reason) +
                     "},\"textureStreaming\":{\"gpuBudgetBytes\":" +
                     std::to_string(profile.texture_streaming.gpu_budget_bytes) +
@@ -6457,8 +6473,9 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
                            [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
             const bool texture_asset = render::is_supported_texture_asset(iterator->path());
             const bool material_asset_path = is_material_asset_path(iterator->path());
+            const bool flow_asset_path = extension == ".arcflow";
             const bool prefab_asset_path = extension == ".arcprefab";
-            if (!texture_asset && !material_asset_path && !prefab_asset_path) continue;
+            if (!texture_asset && !material_asset_path && !flow_asset_path && !prefab_asset_path) continue;
             const auto relative_path =
                 std::filesystem::relative(iterator->path(), state_->assets.root, error).generic_string();
             if (std::any_of(snapshot.assets.begin(), snapshot.assets.end(),
@@ -6467,6 +6484,7 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
             snapshot.assets.push_back({.path = relative_path,
                                        .kind = prefab_asset_path     ? "prefab"
                                                : material_asset_path ? "material"
+                                               : flow_asset_path     ? "flow"
                                                : extension == ".hdr" ? "environment"
                                                                      : "texture",
                                        .imported = true,

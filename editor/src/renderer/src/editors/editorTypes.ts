@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import type { AssetItem } from '../services/editorHostTypes';
 import type { WorkbenchIcon } from '../app/workbenchTypes';
 
-export type EditorDocumentKind = 'level' | 'shader' | 'material' | 'texture' | 'model' | 'skeleton';
+export type EditorDocumentKind = 'level' | 'shader' | 'material' | 'flow' | 'texture' | 'model' | 'skeleton';
 
 export type EditorDocument = {
   id: string;

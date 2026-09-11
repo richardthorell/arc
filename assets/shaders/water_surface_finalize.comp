@@ -8,6 +8,8 @@ struct frequency_sample
     vec4 displacement_z_slope_x;
     vec4 slope_z_velocity_x;
     vec4 velocity_yz;
+    vec4 displacement_x_derivatives;
+    vec4 displacement_z_derivatives;
 };
 
 struct surface_sample
@@ -22,17 +24,17 @@ layout(std430, set = 0, binding = 0) readonly buffer frequency_field_buffer
     frequency_sample values[];
 } frequency_field;
 
-layout(std430, set = 0, binding = 1) writeonly buffer surface_field_buffer
+layout(std430, set = 0, binding = 1) buffer surface_field_buffer
 {
     surface_sample values[];
 } surface_field;
 
-layout(push_constant) uniform fft_constants
+layout(push_constant) uniform foam_constants
 {
     uint resolution;
-    uint stage;
-    uint direction;
-    uint reserved;
+    float foam_threshold;
+    float foam_retention;
+    uint configuration;
 } constants;
 
 void main()
@@ -45,15 +47,30 @@ void main()
     frequency_sample frequency = frequency_field.values[index];
     float slope_x = frequency.displacement_z_slope_x.z * scale;
     float slope_z = frequency.slope_z_velocity_x.x * scale;
+    float displacement_x_dx = frequency.displacement_x_derivatives.x * scale;
+    float displacement_x_dz = frequency.displacement_x_derivatives.z * scale;
+    float displacement_z_dx = frequency.displacement_z_derivatives.x * scale;
+    float displacement_z_dz = frequency.displacement_z_derivatives.z * scale;
+    float jacobian = (1.0 + displacement_x_dx) * (1.0 + displacement_z_dz) -
+        displacement_x_dz * displacement_z_dx;
+    float response_width = max(constants.foam_threshold, 0.05);
+    float generated_foam = clamp((constants.foam_threshold - jacobian) / response_width, 0.0, 1.0);
+    bool foam_enabled = (constants.configuration & 1u) != 0u;
+    bool history_valid = (constants.configuration & 2u) != 0u;
+    bool generate_foam = (constants.configuration & 4u) != 0u;
+    float previous_foam = history_valid ? surface_field.values[index].displacement.w : 0.0;
+    float foam = foam_enabled
+        ? max(previous_foam * constants.foam_retention, generate_foam ? generated_foam : 0.0)
+        : 0.0;
     surface_sample surface;
     surface.displacement = vec4(frequency.displacement_xy.x * scale,
                                 frequency.displacement_xy.z * scale,
                                 frequency.displacement_z_slope_x.x * scale,
-                                0.0);
-    surface.normal = vec4(normalize(vec3(-slope_x, 1.0, -slope_z)), 0.0);
+                                foam);
+    surface.normal = vec4(normalize(vec3(-slope_x, 1.0, -slope_z)), jacobian);
     surface.velocity = vec4(frequency.slope_z_velocity_x.z * scale,
                             frequency.velocity_yz.x * scale,
                             frequency.velocity_yz.z * scale,
-                            0.0);
+                            generated_foam);
     surface_field.values[index] = surface;
 }

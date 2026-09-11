@@ -21,6 +21,7 @@ scene::terrain_evaluation_result evaluate_region(const scene::terrain_asset& ass
     result.build_snapshot = scene::make_terrain_build_region_snapshot(asset, id);
     const auto fail = [&](std::string message)
     {
+        result.succeeded = false;
         result.diagnostics.push_back({scene::terrain_evaluation_diagnostic_severity::error,
                                       scene::terrain_evaluation_diagnostic_code::missing_source_data,
                                       {},
@@ -38,13 +39,13 @@ scene::terrain_evaluation_result evaluate_region(const scene::terrain_asset& ass
     const auto bounds = result.build_snapshot.authoring_bounds;
     const double spacing = static_cast<double>(size) / quads;
     const double half = static_cast<double>(size) * 0.5;
-    const auto index = [&](double value)
+    const auto index = [&](double value, double origin)
     {
         return static_cast<std::uint32_t>(
-            std::clamp(std::round((value + half) / spacing), 0.0, static_cast<double>(quads)));
+            std::clamp(std::round((value - origin + half) / spacing), 0.0, static_cast<double>(quads)));
     };
-    const auto x0 = index(bounds.min_x), x1 = index(bounds.max_x);
-    const auto z0 = index(bounds.min_z), z1 = index(bounds.max_z);
+    const auto x0 = index(bounds.min_x, asset.coordinates.origin_x), x1 = index(bounds.max_x, asset.coordinates.origin_x);
+    const auto z0 = index(bounds.min_z, asset.coordinates.origin_z), z1 = index(bounds.max_z, asset.coordinates.origin_z);
     if (x0 >= x1 || z0 >= z1) return fail("Terrain region is outside the source grid");
     // One quad of evaluated halo supplies identical triangle normals at shared region vertices.
     const auto hx0 = x0 > 0u ? x0 - 1u : 0u, hx1 = std::min(x1 + 1u, quads);
@@ -81,8 +82,8 @@ scene::terrain_evaluation_result evaluate_region(const scene::terrain_asset& ass
                                                                         weights,
                                                                         asset.authoring_revision};
     request.source_bounds =
-        scene::terrain_world_bounds{-half + hx0 * spacing - origin_x, 0.0, -half + hz0 * spacing - origin_z,
-                                    -half + hx1 * spacing - origin_x, 0.0, -half + hz1 * spacing - origin_z};
+        scene::terrain_world_bounds{asset.coordinates.origin_x - half + hx0 * spacing - origin_x, 0.0, asset.coordinates.origin_z - half + hz0 * spacing - origin_z,
+                                    asset.coordinates.origin_x - half + hx1 * spacing - origin_x, 0.0, asset.coordinates.origin_z - half + hz1 * spacing - origin_z};
     result = scene::make_default_terrain_evaluator().evaluate(asset, request);
     if (!result.succeeded) return result;
     auto padded = scene::build_terrain_render_regions(result.surface.view(), std::numeric_limits<double>::max());
@@ -98,7 +99,7 @@ scene::terrain_evaluation_result evaluate_region(const scene::terrain_asset& ass
         for (std::uint32_t x = x0; x <= x1; ++x)
         {
             const auto sample = static_cast<std::size_t>(z - hz0) * width + x - hx0;
-            const auto height = source.heights[sample] + static_cast<float>(asset.coordinates.origin_y);
+            const auto height = source.heights[sample];
             cropped.heights.push_back(height);
             cropped.material_weights.push_back(source.material_weights[sample]);
             result.vertex_normals.push_back(padded.front().vertex_normals[sample]);
@@ -126,10 +127,13 @@ terrain_rebuild_session::terrain_rebuild_session(scene::terrain_asset asset, con
 
 void terrain_rebuild_session::update(scene::terrain_asset asset, bool invalidate_all)
 {
+    replace_all_regions_ = replace_all_regions_ || invalidate_all;
     const double half = static_cast<double>(size_) * 0.5;
     // Exclude the maximum boundary: it is a shared vertex, not an additional strip of quads.
     const scene::terrain_world_bounds extent{
-        -half, 0.0, -half, std::nextafter(half, -half), 0.0, std::nextafter(half, -half)};
+        asset.coordinates.origin_x - half, asset.coordinates.origin_y, asset.coordinates.origin_z - half,
+        std::nextafter(asset.coordinates.origin_x + half, asset.coordinates.origin_x - half), asset.coordinates.origin_y,
+        std::nextafter(asset.coordinates.origin_z + half, asset.coordinates.origin_z - half)};
     const auto regions = scene::terrain_regions_overlapping(asset.coordinates, asset.partition, extent);
     std::vector<scene::terrain_region_id> dirty;
     for (const auto id : regions)
@@ -142,7 +146,7 @@ void terrain_rebuild_session::update(scene::terrain_asset asset, bool invalidate
             next.compiled_revision = previous->compiled_revision;
             next.dirty_domains = previous->dirty_domains;
         }
-        if (invalidate_all || (next.dirty_domains & scene::terrain_domain::geometry) != scene::terrain_domain::none)
+        if (invalidate_all || (next.dirty_domains & (scene::terrain_domain::geometry | scene::terrain_domain::topology)) != scene::terrain_domain::none)
             dirty.push_back(id);
     }
     // Seam positions and normals read adjacent samples. Rebuild only overlapping dependency halos.
@@ -171,12 +175,42 @@ void terrain_rebuild_session::update(scene::terrain_asset asset, bool invalidate
     error_.clear();
 }
 
+namespace
+{
+// Painting still uses the compatibility attribute cache in M3.4. Geometry publication must
+// preserve its latest weights, including paint applied while a geometry job was in flight.
+bool publish_regions(scene::terrain_render_proxy_cache& proxies, scene::terrain_region_build_batch& batch,
+                     ecs::entity_guid guid, const scene::terrain_component& terrain, render::renderer& renderer)
+{
+    if (!scene::terrain_heightfield_valid(terrain)) return false;
+    const double spacing = static_cast<double>(terrain.size) / terrain.subdivisions;
+    for (auto& region : batch.regions)
+    {
+        if (!region.attributes) return false;
+        const auto& bounds = region.evaluation.surface.local_bounds;
+        const auto x0 = std::llround((bounds.min_x + terrain.size * 0.5) / spacing);
+        const auto z0 = std::llround((bounds.min_z + terrain.size * 0.5) / spacing);
+        auto& attributes = *region.attributes;
+        if (x0 < 0 || z0 < 0 || x0 + attributes.width > terrain.subdivisions + 1u ||
+            z0 + attributes.height > terrain.subdivisions + 1u) return false;
+        if (terrain.layer_weights.empty()) continue;
+        for (std::uint32_t z = 0; z < attributes.height; ++z)
+            for (std::uint32_t x = 0; x < attributes.width; ++x)
+                attributes.material_weights[static_cast<std::size_t>(z) * attributes.width + x] =
+                    terrain.layer_weights[(static_cast<std::size_t>(z0) + z) * (terrain.subdivisions + 1u) +
+                                          static_cast<std::size_t>(x0) + x];
+    }
+    return proxies.publish(guid, batch, terrain, renderer);
+}
+} // namespace
+
 bool terrain_rebuild_session::pump(jobs::job_system& jobs, scene::terrain_render_proxy_cache& proxies,
                                    ecs::entity_guid guid, scene::terrain_component& terrain, render::renderer& renderer)
 {
     if (!ready_) ready_ = queue_.take_ready(asset_);
     if (ready_)
     {
+        ready_->replace_all_regions = replace_all_regions_;
         if (ready_->stale)
             ready_.reset();
         else if (!ready_->succeeded)
@@ -187,7 +221,7 @@ bool terrain_rebuild_session::pump(jobs::job_system& jobs, scene::terrain_render
             failed_revision_ = asset_.authoring_revision;
             ready_.reset();
         }
-        else if (proxies.publish(guid, *ready_, terrain, renderer))
+        else if (publish_regions(proxies, *ready_, guid, terrain, renderer))
         {
             // Keep the picking/sculpt cache in agreement with the asset-owned result, without serializing products.
             for (const auto& region : ready_->regions)
@@ -206,6 +240,7 @@ bool terrain_rebuild_session::pump(jobs::job_system& jobs, scene::terrain_render
                     asset_, region.evaluation.region, scene::terrain_domain::geometry | scene::terrain_domain::topology,
                     region.evaluation.build_snapshot.target_dirty_revision);
             }
+            replace_all_regions_ = false;
             terrain.asset_authoring_revision = asset_.authoring_revision;
             ready_.reset();
             error_.clear();

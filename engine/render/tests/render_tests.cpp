@@ -783,6 +783,7 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
     const std::size_t sky_index = pass_index("sky composite");
     const std::size_t water_spectrum_index = pass_index("Water spectrum update");
     const std::size_t water_ifft_index = pass_index("Water inverse FFT");
+    const std::size_t water_foam_index = pass_index("Water foam update");
     const std::size_t depth_index = pass_index("depth prepass");
     const std::size_t gbuffer_index = pass_index("gbuffer pass");
     const std::size_t deferred_index = pass_index("deferred lighting");
@@ -793,7 +794,8 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
     REQUIRE(static_shadow_index < gbuffer_index);
     REQUIRE(dynamic_shadow_index < gbuffer_index);
     REQUIRE(water_spectrum_index < water_ifft_index);
-    REQUIRE(water_ifft_index < depth_index);
+    REQUIRE(water_ifft_index < water_foam_index);
+    REQUIRE(water_foam_index < depth_index);
     REQUIRE(depth_index < gbuffer_index);
     REQUIRE(gbuffer_index < deferred_index);
     REQUIRE(sky_index < deferred_index);
@@ -810,6 +812,8 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
         { return resource.name == "gbuffer_albedo" && resource.format == arc::render::render_format::rgba8_srgb; }));
     REQUIRE(std::any_of(compiled.resources.begin(), compiled.resources.end(),
                         [](const auto& resource) { return resource.name == "water_surface_fields"; }));
+    REQUIRE(std::any_of(compiled.resources.begin(), compiled.resources.end(), [](const auto& resource)
+                        { return resource.name == "water_foam_history" && resource.history_length == 2u; }));
     REQUIRE(compiled.lifetimes.size() == compiled.resources.size());
     REQUIRE_FALSE(compiled.transitions.empty());
 }

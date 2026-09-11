@@ -39,7 +39,17 @@ export type AssetItem = {
   scope?: 'builtin' | 'project' | 'user' | 'organization';
   readOnly?: boolean;
   kind:
-    'scene' | 'mesh' | 'material' | 'texture' | 'environment' | 'shader' | 'prefab' | 'water' | 'folder' | 'unknown';
+    | 'scene'
+    | 'mesh'
+    | 'material'
+    | 'flow'
+    | 'texture'
+    | 'environment'
+    | 'shader'
+    | 'prefab'
+    | 'water'
+    | 'folder'
+    | 'unknown';
   status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'stale' | 'importing' | 'failed' | 'missing';
   guid?: string;
   typeId?: string;

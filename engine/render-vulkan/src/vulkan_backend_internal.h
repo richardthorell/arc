@@ -499,6 +499,9 @@ private:
         std::uint64_t settings_signature{};
         std::uint64_t last_seen_frame{};
         std::uint64_t last_update_frame{std::numeric_limits<std::uint64_t>::max()};
+        std::uint64_t last_foam_update_frame{std::numeric_limits<std::uint64_t>::max()};
+        double last_surface_time_seconds{};
+        bool foam_initialized{};
         bool ready{};
     };
 
@@ -1049,6 +1052,8 @@ private:
     void dispatch_water_spectrum_update(VkCommandBuffer command_buffer);
 
     void dispatch_water_inverse_fft(VkCommandBuffer command_buffer);
+
+    void dispatch_water_foam_update(VkCommandBuffer command_buffer);
 
     const gpu_ocean_simulation* water_simulation_for(render_object_id object) const noexcept;
 

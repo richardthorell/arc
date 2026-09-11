@@ -265,7 +265,7 @@ bool terrain_render_proxy_cache::publish(ecs::entity_guid guid, terrain_region_b
     const auto retained = retained_.find(guid);
     terrain_render_proxy empty;
     auto& previous = retained != retained_.end() ? retained->second : visible.asset_owned ? visible : empty;
-    auto staged = previous.regions;
+    auto staged = batch.replace_all_regions ? std::vector<terrain_render_region_proxy>{} : previous.regions;
     for (auto& build : batch.regions)
     {
         if (!build.geometry || !build.attributes)

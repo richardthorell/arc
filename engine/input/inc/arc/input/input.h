@@ -44,6 +44,57 @@ enum class input_connectivity_type : std::uint8_t
 };
 
 /**
+ * @brief Backend that owns discovery/state for a physical input device.
+ *
+ * This is diagnostic/provenance metadata only. Gameplay should bind against ARC
+ * device/control types instead of selecting behavior from the backend.
+ */
+enum class input_backend_type : std::uint8_t
+{
+    unknown,
+    native,
+    raw_input,
+    xinput,
+    game_input,
+    hid,
+    platform_sdk
+};
+
+/**
+ * @brief Optional specialization of a physical input device family.
+ *
+ * Device type remains the broad gameplay-facing category. Subtype preserves
+ * richer controller classification without leaking platform constants.
+ */
+enum class input_device_subtype : std::uint8_t
+{
+    unknown,
+    standard_gamepad,
+    wheel,
+    flight_stick,
+    arcade_stick,
+    dance_pad,
+    guitar,
+    drum_kit,
+    arcade_pad
+};
+
+/**
+ * @brief Optional USB/HID-style hardware identifiers reported by a backend.
+ *
+ * Zero values mean the backend cannot provide that field. These identifiers are
+ * descriptive metadata and are not used as ARC runtime device IDs.
+ */
+struct input_device_hardware_id
+{
+    std::uint16_t vendor_id{};
+    std::uint16_t product_id{};
+    std::uint16_t version{};
+
+    friend bool operator==(const input_device_hardware_id&, const input_device_hardware_id&) = default;
+};
+
+/**
  * @brief Stable runtime identifier for a physical input device.
  */
 struct input_device_id
@@ -256,7 +307,11 @@ struct input_device_descriptor
 {
     input_device_id id{};
     input_device_type type{input_device_type::unknown};
+    input_device_subtype subtype{input_device_subtype::unknown};
     input_connectivity_type connectivity{input_connectivity_type::unknown};
+    input_backend_type backend{input_backend_type::unknown};
+    input_device_hardware_id hardware_id{};
+    std::string backend_id;
     std::string name;
     input_device_capabilities capabilities{};
 };
@@ -273,6 +328,26 @@ public:
     [[nodiscard]] std::string_view name() const noexcept;
     [[nodiscard]] const input_device_capabilities& capabilities() const noexcept;
     [[nodiscard]] bool connected() const noexcept;
+
+    [[nodiscard]] input_device_subtype subtype() const noexcept
+    {
+        return descriptor_.subtype;
+    }
+
+    [[nodiscard]] input_backend_type backend() const noexcept
+    {
+        return descriptor_.backend;
+    }
+
+    [[nodiscard]] const input_device_hardware_id& hardware_id() const noexcept
+    {
+        return descriptor_.hardware_id;
+    }
+
+    [[nodiscard]] std::string_view backend_id() const noexcept
+    {
+        return descriptor_.backend_id;
+    }
 
 private:
     friend class input_system;
@@ -296,6 +371,35 @@ struct input_device_event
 {
     input_device_event_type type{input_device_event_type::connected};
     input_device_id device{};
+};
+
+/**
+ * @brief Normalized dual-motor rumble strengths.
+ *
+ * Values are clamped to [0, 1] before they reach a platform backend. The low
+ * frequency channel maps to the heavy motor and the high frequency channel maps
+ * to the light motor on traditional gamepads.
+ */
+struct input_rumble_state
+{
+    float low_frequency{};
+    float high_frequency{};
+
+    friend bool operator==(const input_rumble_state&, const input_rumble_state&) = default;
+};
+
+/**
+ * @brief Platform output sink associated with one or more physical devices.
+ *
+ * Platform backends implement this interface and register themselves with the
+ * input system. Gameplay never depends on the concrete platform implementation.
+ */
+class input_output_sink
+{
+public:
+    virtual ~input_output_sink() = default;
+
+    virtual bool set_rumble(input_device_id device, input_rumble_state state) = 0;
 };
 
 /**
@@ -361,6 +465,17 @@ public:
     [[nodiscard]] float axis(std::string_view name) const;
     [[nodiscard]] math::vector2f axis2d(std::string_view name) const;
 
+    /**
+     * @brief Apply rumble to every assigned connected device that supports it.
+     * @return True if at least one backend accepted the output.
+     */
+    [[nodiscard]] bool set_rumble(input_rumble_state state) const;
+
+    /**
+     * @brief Stop rumble on every assigned connected device that supports it.
+     */
+    [[nodiscard]] bool stop_rumble() const;
+
 private:
     friend class input_system;
 
@@ -398,7 +513,7 @@ private:
 };
 
 /**
- * @brief Platform-neutral physical input registry, player assignment, and state sampler.
+ * @brief Platform-neutral physical input registry, player assignment, state sampler, and device output router.
  *
  * Platform backends call the submit/connect methods. Gameplay normally queries
  * through input_player mappings instead of reading physical devices directly.
@@ -442,11 +557,37 @@ public:
     [[nodiscard]] std::vector<input_device_id> devices_for_player(player_id player) const;
     [[nodiscard]] std::vector<player_id> players_for_device(input_device_id device) const;
 
+    /**
+     * @brief Associate a platform output sink with a connected or retained device record.
+     */
+    bool register_output_sink(input_device_id device, input_output_sink& sink) noexcept;
+
+    /**
+     * @brief Remove a platform output sink if it is still owned by the supplied backend.
+     */
+    bool unregister_output_sink(input_device_id device, input_output_sink& sink) noexcept;
+
+    /**
+     * @brief Apply normalized rumble to one physical device.
+     */
+    bool set_rumble(input_device_id device, input_rumble_state state);
+
+    /**
+     * @brief Stop rumble on one physical device.
+     */
+    bool stop_rumble(input_device_id device);
+
+    /**
+     * @brief Stop rumble on all connected rumble-capable devices.
+     */
+    void stop_all_rumble();
+
 private:
     friend class input_player;
 
     [[nodiscard]] float binding_value(player_id player, const input_binding& binding, bool previous) const;
     [[nodiscard]] static float apply_processors(float value, const input_binding& binding) noexcept;
+    [[nodiscard]] static float normalize_output(float value) noexcept;
     [[nodiscard]] static std::uint32_t control_key(input_control control) noexcept;
     [[nodiscard]] static bool transient_control(std::uint32_t key) noexcept;
 
@@ -454,6 +595,7 @@ private:
     std::unordered_map<player_id, std::unique_ptr<input_player>> players_;
     std::unordered_map<player_id, std::vector<input_device_id>> player_devices_;
     std::unordered_map<std::uint64_t, std::vector<player_id>> device_players_;
+    std::unordered_map<std::uint64_t, input_output_sink*> output_sinks_;
     std::vector<input_device_event> device_events_;
     std::uint64_t next_device_id_{1};
 };

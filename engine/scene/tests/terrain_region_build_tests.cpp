@@ -123,6 +123,10 @@ TEST_CASE("M3.4 publication retains unaffected handles and rolls back incomplete
     CHECK(cache.find(guid)->regions[0].geometry != first);
     CHECK(cache.find(guid)->regions[1].geometry == unaffected);
     CHECK_FALSE(renderer.mesh_alive(first.conventional));
-    cache.clear(renderer);
+    auto replacement = compile(asset);
+    replacement.replace_all_regions = true;
+    REQUIRE(cache.publish(guid, replacement, terrain, renderer));
+    CHECK(cache.find(guid)->regions.size() == 1u);
     CHECK_FALSE(renderer.mesh_alive(unaffected.conventional));
+    cache.clear(renderer);
 }

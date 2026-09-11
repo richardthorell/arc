@@ -875,6 +875,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 std::holds_alternative<host_open_scene_command>(command.payload) ||
                 std::holds_alternative<host_open_recovery_scene_command>(command.payload))
             {
+                state_->terrain_rebuilds.clear();
                 if (ensure_terrain_asset_importer(*state_)) refresh_scene_terrain_assets(*state_);
                 if (ensure_water_asset_importer(*state_)) refresh_scene_water_assets(*state_);
             }

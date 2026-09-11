@@ -23,6 +23,7 @@ struct terrain_region_build_batch
     std::uint64_t authoring_revision{};
     bool stale{};
     bool succeeded{};
+    bool replace_all_regions{};
     std::vector<terrain_region_build> regions;
 };
 

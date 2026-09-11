@@ -25,6 +25,9 @@ TEST_CASE("M3.4 sculpt preview transitions to asset-owned regions and preserves 
     terrain.layer_weights.assign(289u, {255u, 0u, 0u, 0u});
     scene::terrain_asset asset;
     asset.source.id = scene::generate_terrain_stable_id();
+    asset.coordinates.origin_x = 1000000.0;
+    asset.coordinates.origin_y = 200.0;
+    asset.coordinates.origin_z = -1000000.0;
     const auto layer = scene::add_terrain_sculpt_layer(asset).id;
     render::renderer renderer;
     scene::terrain_render_proxy_cache cache;
@@ -35,7 +38,7 @@ TEST_CASE("M3.4 sculpt preview transitions to asset-owned regions and preserves 
     REQUIRE(cache.find(guid)->regions.size() == 16u);
     const auto distant = cache.find(guid)->regions.back().geometry;
     const auto generation = cache.find(guid)->generation;
-    const auto address = scene::terrain_modifier_sample_at(asset.coordinates, asset.partition, -448.0, -448.0);
+    const auto address = scene::terrain_modifier_sample_at(asset.coordinates, asset.partition, asset.coordinates.origin_x - 448.0, asset.coordinates.origin_z - 448.0);
     REQUIRE(
         scene::accumulate_terrain_sculpt_samples(
             asset, layer, std::array{scene::terrain_sculpt_sample_edit{address.region, {address.x, address.z, 3.0f}}})

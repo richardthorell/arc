@@ -1,18 +1,21 @@
 import { createElement } from 'react';
-import { Bone, Box, Circle, FileCode2, Globe2, Image } from 'lucide-react';
+import { Bone, Box, Circle, FileCode2, Globe2, Image, Workflow } from 'lucide-react';
 
-import type { AssetItem } from '../services/editorHostTypes';
+import { isModelAsset } from '../content/assetPresentation';
+import { FlowEditor } from '../flow/FlowEditor';
+import { FlowEditorToolbar } from '../flow/FlowEditorToolbar';
+import { disposeFlowDocument, saveFlowDocument } from '../flow/flowDocumentState';
 import { MaterialEditor } from '../material/MaterialEditor';
 import { MaterialEditorToolbar } from '../material/MaterialEditorToolbar';
 import { disposeMaterialDocument, saveMaterialDocument } from '../material/materialDocumentState';
+import { ModelEditor, ModelEditorToolbar } from '../model/ModelEditor';
+import { SkeletonAssetEditor, SkeletonAssetEditorToolbar } from '../model/SkeletonAssetEditor';
+import type { AssetItem } from '../services/editorHostTypes';
 import { ShaderSourceEditor } from '../shader/ShaderSourceEditor';
 import { ShaderSourceEditorToolbar } from '../shader/ShaderSourceEditorToolbar';
 import { disposeShaderDocument, saveShaderDocument } from '../shader/shaderDocumentState';
 import { TextureEditor } from '../texture/TextureEditor';
 import { TextureEditorToolbar } from '../texture/TextureEditorToolbar';
-import { ModelEditor, ModelEditorToolbar } from '../model/ModelEditor';
-import { SkeletonAssetEditor, SkeletonAssetEditorToolbar } from '../model/SkeletonAssetEditor';
-import { isModelAsset } from '../content/assetPresentation';
 import { getActiveEditorDocument, openEditorDocumentInStore } from './editorDocuments';
 import type {
   EditorDocument,
@@ -197,6 +200,30 @@ const materialRegistration: EditorRegistration = {
   onClosed: (document) => disposeMaterialDocument(document.id),
 };
 
+const flowRegistration: EditorRegistration = {
+  kind: 'flow',
+  title: 'Flow Graph Editor',
+  icon: Workflow,
+  allowMultiple: true,
+  closeable: true,
+  canOpenAsset: (asset) => asset.kind === 'flow' || asset.path.toLocaleLowerCase().endsWith('.arcflow'),
+  createDocument: (asset) => ({
+    id: `flow:${asset.guid ?? asset.path}`,
+    kind: 'flow',
+    title: asset.name,
+    path: asset.path,
+    assetId: asset.id,
+    assetGuid: asset.guid,
+    assetScope: asset.scope,
+    dirty: false,
+    readOnly: asset.scope === 'builtin' || Boolean(asset.readOnly),
+  }),
+  render: (document) => createElement(FlowEditor, { document }),
+  renderToolbar: (document) => createElement(FlowEditorToolbar, { document }),
+  save: saveFlowDocument,
+  onClosed: (document) => disposeFlowDocument(document.id),
+};
+
 const modelRegistration: EditorRegistration = {
   kind: 'model',
   title: 'Model Editor',
@@ -261,6 +288,7 @@ export const createEditorRegistry = (registrations: EditorRegistrySeed): EditorR
     level: { ...registrations.level, icon: Globe2 },
     shader: registrations.shader ?? shaderRegistration,
     material: registrations.material ?? materialRegistration,
+    flow: registrations.flow ?? flowRegistration,
     texture: registrations.texture ?? textureRegistration,
     model: registrations.model ?? modelRegistration,
     skeleton: registrations.skeleton ?? skeletonRegistration,

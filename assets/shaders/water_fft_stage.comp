@@ -8,6 +8,8 @@ struct frequency_sample
     vec4 displacement_z_slope_x;
     vec4 slope_z_velocity_x;
     vec4 velocity_yz;
+    vec4 displacement_x_derivatives;
+    vec4 displacement_z_derivatives;
 };
 
 layout(std430, set = 0, binding = 0) readonly buffer input_field_buffer
@@ -72,5 +74,9 @@ void main()
     output_value.displacement_z_slope_x = transform_pair(even_value.displacement_z_slope_x, odd_value.displacement_z_slope_x, phase, sign_value);
     output_value.slope_z_velocity_x = transform_pair(even_value.slope_z_velocity_x, odd_value.slope_z_velocity_x, phase, sign_value);
     output_value.velocity_yz = transform_pair(even_value.velocity_yz, odd_value.velocity_yz, phase, sign_value);
+    output_value.displacement_x_derivatives = transform_pair(
+        even_value.displacement_x_derivatives, odd_value.displacement_x_derivatives, phase, sign_value);
+    output_value.displacement_z_derivatives = transform_pair(
+        even_value.displacement_z_derivatives, odd_value.displacement_z_derivatives, phase, sign_value);
     output_field.values[output_index] = output_value;
 }
