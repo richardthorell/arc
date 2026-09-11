@@ -104,27 +104,33 @@ bool apply_sculpt_layer(const terrain_modifier_descriptor& modifier, const terra
     for (const auto& payload : modifier.region_payloads)
     {
         const auto* sculpt = std::get_if<terrain_sculpt_region_payload>(&payload.data);
-        if (!sculpt) { error = "Sculpt Layer contains an incompatible sparse region payload"; return false; }
-        for (const auto& sample : sculpt->samples)
+        if (!sculpt)
         {
-        const auto local_x = (static_cast<double>(payload.region.x) - static_cast<double>(snapshot.target.x) - 0.5 +
-                              static_cast<double>(sample.x) / terrain_modifier_sample_coordinate_max) * region_width;
-        const auto local_z = (static_cast<double>(payload.region.z) - static_cast<double>(snapshot.target.z) - 0.5 +
-                              static_cast<double>(sample.z) / terrain_modifier_sample_coordinate_max) * region_depth;
-        const auto column = std::round((local_x - surface.local_bounds.min_x) / spacing_x);
-        const auto row = std::round((local_z - surface.local_bounds.min_z) / spacing_z);
-        if (column < 0.0 || row < 0.0 || column >= heightfield->sample_width || row >= heightfield->sample_height)
-            continue;
-        const auto x = static_cast<std::uint32_t>(column);
-        const auto z = static_cast<std::uint32_t>(row);
-        const auto index = static_cast<std::size_t>(z) * heightfield->sample_width + x;
-        const auto next = heightfield->heights[index] + sample.delta;
-        if (!std::isfinite(next))
-        {
-            error = "Sculpt Layer produced a non-finite height";
+            error = "Sculpt Layer contains an incompatible sparse region payload";
             return false;
         }
-        heightfield->heights[index] = next;
+        for (const auto& sample : sculpt->samples)
+        {
+            const auto local_x = (static_cast<double>(payload.region.x) - static_cast<double>(snapshot.target.x) - 0.5 +
+                                  static_cast<double>(sample.x) / terrain_modifier_sample_coordinate_max) *
+                                 region_width;
+            const auto local_z = (static_cast<double>(payload.region.z) - static_cast<double>(snapshot.target.z) - 0.5 +
+                                  static_cast<double>(sample.z) / terrain_modifier_sample_coordinate_max) *
+                                 region_depth;
+            const auto column = std::round((local_x - surface.local_bounds.min_x) / spacing_x);
+            const auto row = std::round((local_z - surface.local_bounds.min_z) / spacing_z);
+            if (column < 0.0 || row < 0.0 || column >= heightfield->sample_width || row >= heightfield->sample_height)
+                continue;
+            const auto x = static_cast<std::uint32_t>(column);
+            const auto z = static_cast<std::uint32_t>(row);
+            const auto index = static_cast<std::size_t>(z) * heightfield->sample_width + x;
+            const auto next = heightfield->heights[index] + sample.delta;
+            if (!std::isfinite(next))
+            {
+                error = "Sculpt Layer produced a non-finite height";
+                return false;
+            }
+            heightfield->heights[index] = next;
         }
     }
     update_vertical_bounds(surface);
@@ -274,7 +280,8 @@ terrain_evaluation_result terrain_evaluator::evaluate(const terrain_asset& asset
         if (!modifier.enabled) continue;
         const auto geometry_domains = terrain_domain::geometry | terrain_domain::topology;
         if ((modifier.domains & geometry_domains) == terrain_domain::none) continue;
-        if (modifier.affected_bounds && !overlaps_xz(*modifier.affected_bounds, result.build_snapshot.evaluation_bounds))
+        if (modifier.affected_bounds &&
+            !overlaps_xz(*modifier.affected_bounds, result.build_snapshot.evaluation_bounds))
             continue;
 
         const auto found = modifiers_.find(modifier.type_id);

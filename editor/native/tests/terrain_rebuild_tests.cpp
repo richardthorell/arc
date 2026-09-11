@@ -12,7 +12,7 @@ bool rebuild(arc::editor::terrain_rebuild_session& session, arc::scene::terrain_
     jobs.shutdown();
     return session.pump(jobs, cache, guid, terrain, renderer);
 }
-}
+} // namespace
 
 TEST_CASE("M3.4 sculpt preview transitions to asset-owned regions and preserves distant generations")
 {
@@ -35,12 +35,14 @@ TEST_CASE("M3.4 sculpt preview transitions to asset-owned regions and preserves 
     const auto distant = cache.find(guid)->regions.back().geometry;
     const auto generation = cache.find(guid)->generation;
     const auto address = scene::terrain_modifier_sample_at(asset.coordinates, asset.partition, -448.0, -448.0);
-    REQUIRE(scene::accumulate_terrain_sculpt_samples(asset, layer,
-        std::array{scene::terrain_sculpt_sample_edit{address.region, {address.x, address.z, 3.0f}}}).revision != 0u);
+    REQUIRE(
+        scene::accumulate_terrain_sculpt_samples(
+            asset, layer, std::array{scene::terrain_sculpt_sample_edit{address.region, {address.x, address.z, 3.0f}}})
+            .revision != 0u);
     terrain.heights[18u] = 3.0f;
     ++terrain.content_revision;
-    const scene::terrain_dirty_region dirty{.min_x = 1u, .min_z = 1u, .max_x = 1u, .max_z = 1u,
-        .valid = true, .heights_changed = true};
+    const scene::terrain_dirty_region dirty{
+        .min_x = 1u, .min_z = 1u, .max_x = 1u, .max_z = 1u, .valid = true, .heights_changed = true};
     REQUIRE(cache.synchronize(guid, terrain, renderer, &dirty));
     CHECK_FALSE(cache.find(guid)->asset_owned);
     CHECK(renderer.mesh_alive(distant.conventional));
@@ -72,8 +74,10 @@ TEST_CASE("M3.4 obsolete builds cannot overwrite newer sculpt edits")
     CHECK_FALSE(session.pump(first_jobs, cache, guid, terrain, renderer));
     first_jobs.shutdown();
     const auto address = scene::terrain_modifier_sample_at(asset.coordinates, asset.partition, 0.0, 0.0);
-    REQUIRE(scene::accumulate_terrain_sculpt_samples(asset, layer,
-        std::array{scene::terrain_sculpt_sample_edit{address.region, {address.x, address.z, 7.0f}}}).revision != 0u);
+    REQUIRE(
+        scene::accumulate_terrain_sculpt_samples(
+            asset, layer, std::array{scene::terrain_sculpt_sample_edit{address.region, {address.x, address.z, 7.0f}}})
+            .revision != 0u);
     session.update(asset);
     REQUIRE(rebuild(session, cache, guid, terrain, renderer));
     CHECK(terrain.heights[12u] == Catch::Approx(7.0f));

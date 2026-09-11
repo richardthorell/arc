@@ -279,8 +279,8 @@ bool terrain_render_proxy_cache::publish(ecs::entity_guid guid, terrain_region_b
         next.geometry_fingerprint = build.evaluation.content_fingerprint;
         next.attribute_fingerprint = build.evaluation.content_fingerprint;
         // Uploads are immutable. Never update a texture referenced by the visible generation in place.
-        next.geometry = renderer.create_geometry_resource(*build.geometry,
-            terrain_geometry_generation(build.evaluation.build_snapshot.target_dirty_revision));
+        next.geometry = renderer.create_geometry_resource(
+            *build.geometry, terrain_geometry_generation(build.evaluation.build_snapshot.target_dirty_revision));
         next.surface_attribute_texture = create_attribute_texture(*build.attributes, renderer);
         if (!geometry_alive(next, renderer) || !attributes_alive(next, renderer))
         {
@@ -288,10 +288,12 @@ bool terrain_render_proxy_cache::publish(ecs::entity_guid guid, terrain_region_b
             cleanup_staged_resources(previous, staged, renderer);
             return false;
         }
-        const auto old = std::find_if(staged.begin(), staged.end(),
-            [&](const auto& region) { return region.id == next.id; });
-        if (old == staged.end()) staged.push_back(next);
-        else *old = next;
+        const auto old =
+            std::find_if(staged.begin(), staged.end(), [&](const auto& region) { return region.id == next.id; });
+        if (old == staged.end())
+            staged.push_back(next);
+        else
+            *old = next;
     }
     const auto generation = previous.generation + 1u;
     destroy_unreused_old_resources(previous, staged, renderer);
@@ -323,7 +325,8 @@ void terrain_render_proxy_cache::release_missing(std::span<const ecs::entity_gui
 {
     for (auto found = retained_.begin(); found != retained_.end();)
     {
-        if (std::find(active.begin(), active.end(), found->first) != active.end()) ++found;
+        if (std::find(active.begin(), active.end(), found->first) != active.end())
+            ++found;
         else
         {
             destroy_proxy(found->second, renderer);

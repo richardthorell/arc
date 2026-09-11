@@ -18,8 +18,14 @@ public:
     /** Poll without waiting, stage GPU resources, then acknowledge the published dirty domains. */
     bool pump(jobs::job_system& jobs, scene::terrain_render_proxy_cache& proxies, ecs::entity_guid guid,
               scene::terrain_component& terrain, render::renderer& renderer);
-    [[nodiscard]] const std::string& error() const noexcept { return error_; }
-    [[nodiscard]] const scene::terrain_asset& asset() const noexcept { return asset_; }
+    [[nodiscard]] const std::string& error() const noexcept
+    {
+        return error_;
+    }
+    [[nodiscard]] const scene::terrain_asset& asset() const noexcept
+    {
+        return asset_;
+    }
 
 private:
     scene::terrain_asset asset_;

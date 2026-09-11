@@ -27,8 +27,7 @@ struct terrain_region_build_batch
 };
 
 /** Providers run on workers and must own their captured source data and return terrain-local surfaces. */
-using terrain_region_evaluation_fn =
-    std::function<terrain_evaluation_result(const terrain_asset&, terrain_region_id)>;
+using terrain_region_evaluation_fn = std::function<terrain_evaluation_result(const terrain_asset&, terrain_region_id)>;
 
 /**
  * Single-owner queue: schedule and take_ready run on the publication thread. Workers own immutable

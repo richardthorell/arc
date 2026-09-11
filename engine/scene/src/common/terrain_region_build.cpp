@@ -16,7 +16,8 @@ bool terrain_region_build_queue::schedule(jobs::job_system& jobs, const terrain_
         // Painting has its own compiler; never acknowledge attribute-only dirtiness here.
         if ((region.dirty_domains & (terrain_domain::geometry | terrain_domain::topology)) == terrain_domain::none)
             continue;
-        jobs_.push_back(jobs.submit_future({.name = "terrain.region.build"},
+        jobs_.push_back(jobs.submit_future(
+            {.name = "terrain.region.build"},
             [snapshot = snapshot_, evaluate, id = region.id]
             {
                 terrain_region_build result;
@@ -24,8 +25,9 @@ bool terrain_region_build_queue::schedule(jobs::job_system& jobs, const terrain_
                 if (result.evaluation.succeeded)
                 {
                     result.geometry = result.evaluation.vertex_normals.empty()
-                        ? build_terrain_render_geometry(result.evaluation.surface.view())
-                        : build_terrain_render_region_geometry(result.evaluation.surface.view(), result.evaluation.vertex_normals);
+                                          ? build_terrain_render_geometry(result.evaluation.surface.view())
+                                          : build_terrain_render_region_geometry(result.evaluation.surface.view(),
+                                                                                 result.evaluation.vertex_normals);
                     result.attributes = build_terrain_render_attributes(result.evaluation.surface.view());
                 }
                 return result;
@@ -58,8 +60,7 @@ std::optional<terrain_region_build_batch> terrain_region_build_queue::take_ready
         }
         auto region = job.get();
         const auto fresh = make_terrain_build_region_snapshot(current, region.evaluation.region);
-        if (fresh.target_dirty_revision != region.evaluation.build_snapshot.target_dirty_revision)
-            result.stale = true;
+        if (fresh.target_dirty_revision != region.evaluation.build_snapshot.target_dirty_revision) result.stale = true;
         result.succeeded = result.succeeded && !result.stale && region.evaluation.succeeded &&
                            region.geometry.has_value() && region.attributes.has_value();
         result.regions.push_back(std::move(region));

@@ -33,7 +33,7 @@ arc::scene::terrain_region_build_batch compile(const arc::scene::terrain_asset& 
     REQUIRE(result.has_value());
     return std::move(*result);
 }
-}
+} // namespace
 
 TEST_CASE("M3.4 workers build only dirty geometry regions from immutable snapshots")
 {
@@ -41,8 +41,12 @@ TEST_CASE("M3.4 workers build only dirty geometry regions from immutable snapsho
     arc::jobs::job_system jobs({.worker_count = 1u, .io_worker_count = 1u, .enable_render_thread = false});
     arc::scene::terrain_region_build_queue queue;
     std::atomic<unsigned> calls{};
-    REQUIRE(queue.schedule(jobs, asset, [&](const auto& snapshot, auto id)
-        { ++calls; return evaluate(snapshot, id); }));
+    REQUIRE(queue.schedule(jobs, asset,
+                           [&](const auto& snapshot, auto id)
+                           {
+                               ++calls;
+                               return evaluate(snapshot, id);
+                           }));
     CHECK_FALSE(queue.schedule(jobs, asset, evaluate));
     jobs.shutdown();
     auto result = queue.take_ready(asset);
@@ -78,7 +82,7 @@ TEST_CASE("M3.4 worker failure and abandoned queues cannot publish partial batch
     arc::jobs::job_system jobs({.worker_count = 1u, .io_worker_count = 1u, .enable_render_thread = false});
     arc::scene::terrain_region_build_queue queue;
     REQUIRE(queue.schedule(jobs, asset, [](const auto&, auto) -> arc::scene::terrain_evaluation_result
-        { throw std::runtime_error("source unavailable"); }));
+                           { throw std::runtime_error("source unavailable"); }));
     {
         arc::scene::terrain_region_build_queue abandoned;
         REQUIRE(abandoned.schedule(jobs, asset, evaluate));
