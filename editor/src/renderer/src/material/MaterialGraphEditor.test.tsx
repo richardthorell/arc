@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { EditorDocument } from '../editors/editorTypes';
 import { MaterialGraphEditor } from './MaterialGraphEditor';
-import { createDefaultMaterialGraph } from './materialGraphTypes';
+import { createDefaultMaterialGraph, createMaterialNode } from './materialGraphTypes';
 
 const materialState = vi.hoisted(() => ({
   redoMaterialGraph: vi.fn(),
@@ -27,7 +27,15 @@ beforeEach(() => {
   materialState.undoMaterialGraph.mockClear();
 });
 
-describe('MaterialGraphEditor menus', () => {
+describe('MaterialGraphEditor', () => {
+  it('renders canvas mechanics through the shared graph primitives', () => {
+    const { container } = render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
+
+    expect(container.querySelector('[data-graph-viewport]')).toHaveClass('material-graph-transform');
+    expect(container.querySelector('[data-graph-wires]')).toHaveClass('material-graph-wires');
+    expect(container.querySelectorAll('[data-graph-pin-key]').length).toBeGreaterThan(0);
+  });
+
   it('keeps Add Node menu scrolling from zooming the graph', () => {
     render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
 
@@ -123,5 +131,32 @@ describe('MaterialGraphEditor menus', () => {
       'material-graph-node-colorRgba',
     );
     expect(screen.getByRole('button', { name: 'Open Color color picker' })).toBeEnabled();
+  });
+
+  it('uses the material graph domain to protect the output node from deletion', () => {
+    render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
+    const output = screen.getByText('Material Output').closest('article');
+    expect(output).not.toBeNull();
+
+    fireEvent.pointerDown(output!, { button: 0 });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(materialState.replaceMaterialGraph).toHaveBeenCalledTimes(1);
+    const nextGraph = materialState.replaceMaterialGraph.mock.calls[0][1];
+    expect(nextGraph.nodes.some((node: { type: string }) => node.type === 'output')).toBe(true);
+  });
+
+  it('uses the material graph domain to reject a self connection', () => {
+    const graph = createDefaultMaterialGraph();
+    graph.nodes.push(createMaterialNode('normalMap', [320, 520]));
+    render(<MaterialGraphEditor document={document} graph={graph} />);
+
+    const normalMap = screen.getByText('Normal Map').closest('article');
+    expect(normalMap).not.toBeNull();
+    fireEvent.pointerDown(within(normalMap!).getByRole('button', { name: 'Normal' }), { button: 0 });
+    materialState.replaceMaterialGraph.mockClear();
+    fireEvent.pointerDown(within(normalMap!).getByRole('button', { name: 'Texture RGB' }), { button: 0 });
+
+    expect(materialState.replaceMaterialGraph).not.toHaveBeenCalled();
   });
 });
