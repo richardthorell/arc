@@ -31,6 +31,7 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <limits>
 #include <memory>
@@ -253,6 +254,7 @@ template <class Command> constexpr bool is_authoring_command() noexcept
            std::is_same_v<Command, host_set_mobility_command> || std::is_same_v<Command, host_set_camera_command> ||
            std::is_same_v<Command, host_set_light_command> || std::is_same_v<Command, host_set_mesh_renderer_command> ||
            std::is_same_v<Command, host_set_terrain_command> || std::is_same_v<Command, host_set_water_command> ||
+           std::is_same_v<Command, host_terrain_modifier_stack_command> ||
            std::is_same_v<Command, host_terrain_stroke_command> ||
            std::is_same_v<Command, host_set_terrain_layer_command> ||
            std::is_same_v<Command, host_create_terrain_command> ||
@@ -2884,8 +2886,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                     {
                         const auto binding = scene::refresh_water_preset_binding(component, *state_->asset_registry);
                         if (!binding.succeeded)
-                            arc::diagnostics::warn("editor.water", "Default Water preset was unavailable: " +
-                                                                       binding.message);
+                            arc::diagnostics::warn("editor.water",
+                                                   "Default Water preset was unavailable: " + binding.message);
                     }
                     if (!synchronize_water_render_material(state_->scene, *state_->renderer, created))
                         arc::diagnostics::warn("editor.water", "Default Water material could not be updated");
@@ -3456,10 +3458,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto validation = ::arc::water::validate_water_preset(preset);
                 if (!validation.valid()) return fail(validation.issues.front().message, entity);
                 if (!std::isfinite(value.water_level) || !std::isfinite(value.visible_distance) ||
-                    !std::isfinite(value.shoreline_foam_width) ||
-                    !std::isfinite(value.shallow_wave_damping_distance) || !std::isfinite(value.runup_distance) ||
-                    value.visible_distance <= 0.0f || value.shoreline_foam_width < 0.0f ||
-                    value.shallow_wave_damping_distance < 0.0f || value.runup_distance < 0.0f)
+                    !std::isfinite(value.shoreline_foam_width) || !std::isfinite(value.shallow_wave_damping_distance) ||
+                    !std::isfinite(value.runup_distance) || value.visible_distance <= 0.0f ||
+                    value.shoreline_foam_width < 0.0f || value.shallow_wave_damping_distance < 0.0f ||
+                    value.runup_distance < 0.0f)
                     return fail("Water body or shoreline values are outside supported ranges", entity);
                 const auto preset_guid = value.preset_guid.empty()
                                              ? std::optional<assets::asset_guid>{assets::asset_guid{}}
@@ -3732,6 +3734,163 @@ host_response arc_host::execute(const host_command_envelope& command)
                 push_event(state_->events, state_->event_sequence, host_event_type::terrain_operation_changed,
                            state_->terrain_operation.message);
                 return success("{\"operationId\":" + std::to_string(payload.operation_id) + '}');
+            }
+            else if constexpr (std::is_same_v<command_type, host_terrain_modifier_stack_command>)
+            {
+                const auto entity = to_scene_entity(payload.entity);
+                auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(entity);
+                if (!terrain) return fail("Terrain modifier stack requires a terrain entity", entity);
+
+                const auto stack_json = [&](const scene::terrain_asset* asset, bool asset_backed, bool read_only,
+                                            std::string_view asset_path)
+                {
+                    nlohmann::json json;
+                    json["entity"] = {{"index", payload.entity.index}, {"generation", payload.entity.generation}};
+                    json["assetBacked"] = asset_backed;
+                    json["readOnly"] = read_only;
+                    json["assetPath"] = asset_path;
+                    json["authoringRevision"] = asset ? asset->authoring_revision : 0u;
+                    json["modifiers"] = nlohmann::json::array();
+                    if (asset)
+                    {
+                        for (const auto& modifier : asset->modifiers)
+                        {
+                            std::string type = "unknown";
+                            if (modifier.type_id == scene::terrain_builtin_modifier_types::sculpt_layer)
+                                type = "sculpt";
+                            else if (modifier.type_id == scene::terrain_builtin_modifier_types::paint_layer)
+                                type = "paint";
+                            json["modifiers"].push_back({{"id", scene::to_string(modifier.id)},
+                                                         {"name", modifier.name},
+                                                         {"type", type},
+                                                         {"typeId", modifier.type_id},
+                                                         {"enabled", modifier.enabled},
+                                                         {"regionPayloads", modifier.region_payloads.size()}});
+                        }
+                    }
+                    return json.dump();
+                };
+
+                if (!terrain->asset.guid.valid() && terrain->asset.path_hint.empty())
+                    return success(stack_json(nullptr, false, false, std::string_view{}));
+                if (!state_->asset_registry) return fail("Terrain asset registry is unavailable", entity);
+
+                auto reference = terrain->asset;
+                reference.expected_type = assets::asset_types::terrain;
+                if (!reference.guid.valid() && !reference.path_hint.empty())
+                    reference = state_->asset_registry->resolve(reference.path_hint, assets::asset_types::terrain);
+                if (!reference.guid.valid()) return fail("Terrain asset reference could not be resolved", entity);
+
+                auto pending = state_->asset_registry->load<scene::terrain_asset>(
+                    {.reference = reference,
+                     .priority = assets::asset_streaming_priority::high,
+                     .residency = assets::asset_residency::cpu,
+                     .allow_fallback = false});
+                auto loaded = pending.get();
+                if (!loaded || !loaded.asset.get())
+                    return fail(loaded.error.message.empty() ? "Terrain asset could not be loaded"
+                                                             : loaded.error.message,
+                                entity);
+
+                auto authored = *loaded.asset.get();
+                const auto asset_snapshot = state_->asset_registry->find(loaded.asset.resolved_guid());
+                const bool read_only = asset_snapshot && asset_snapshot->read_only;
+                const auto source_reference = !terrain->asset.path_hint.empty()
+                                                  ? std::filesystem::path(terrain->asset.path_hint)
+                                              : asset_snapshot ? asset_snapshot->source_path
+                                                               : std::filesystem::path{};
+                if (payload.operation == "inspect")
+                    return success(stack_json(&authored, true, read_only, source_reference.generic_string()));
+                if (read_only) return fail("Terrain asset is read only", entity);
+
+                const auto bump_revision = [&]
+                {
+                    if (authored.authoring_revision != std::numeric_limits<std::uint64_t>::max())
+                        ++authored.authoring_revision;
+                };
+                const auto parsed_id = scene::parse_terrain_stable_id(payload.modifier);
+                const auto find_modifier = [&]() -> scene::terrain_modifier_descriptor*
+                { return parsed_id ? scene::find_terrain_modifier(authored, *parsed_id) : nullptr; };
+
+                if (payload.operation == "add_sculpt")
+                    scene::add_terrain_sculpt_layer(authored);
+                else if (payload.operation == "add_paint")
+                    scene::add_terrain_paint_layer(authored);
+                else if (payload.operation == "rename")
+                {
+                    auto* modifier = find_modifier();
+                    if (!modifier || payload.name.empty())
+                        return fail("Terrain modifier rename requires a valid layer and name", entity);
+                    if (modifier->name != payload.name)
+                    {
+                        modifier->name = payload.name;
+                        bump_revision();
+                    }
+                }
+                else if (payload.operation == "set_enabled")
+                {
+                    auto* modifier = find_modifier();
+                    if (!modifier) return fail("Terrain modifier was not found", entity);
+                    if (modifier->enabled != payload.enabled)
+                    {
+                        modifier->enabled = payload.enabled;
+                        bump_revision();
+                    }
+                }
+                else if (payload.operation == "move")
+                {
+                    if (!parsed_id || authored.modifiers.empty()) return fail("Terrain modifier was not found", entity);
+                    const auto found = std::find_if(authored.modifiers.begin(), authored.modifiers.end(),
+                                                    [&](const auto& value) { return value.id == *parsed_id; });
+                    if (found == authored.modifiers.end()) return fail("Terrain modifier was not found", entity);
+                    const auto target = static_cast<std::size_t>(std::clamp<std::int32_t>(
+                        payload.index, 0, static_cast<std::int32_t>(authored.modifiers.size() - 1u)));
+                    const auto current = static_cast<std::size_t>(std::distance(authored.modifiers.begin(), found));
+                    if (current != target)
+                    {
+                        auto moved = std::move(*found);
+                        authored.modifiers.erase(authored.modifiers.begin() + static_cast<std::ptrdiff_t>(current));
+                        authored.modifiers.insert(authored.modifiers.begin() + static_cast<std::ptrdiff_t>(target),
+                                                  std::move(moved));
+                        bump_revision();
+                    }
+                }
+                else if (payload.operation == "erase")
+                {
+                    if (!parsed_id) return fail("Terrain modifier was not found", entity);
+                    const auto found = std::find_if(authored.modifiers.begin(), authored.modifiers.end(),
+                                                    [&](const auto& value) { return value.id == *parsed_id; });
+                    if (found == authored.modifiers.end()) return fail("Terrain modifier was not found", entity);
+                    authored.modifiers.erase(found);
+                    bump_revision();
+                }
+                else
+                {
+                    return fail("Unknown terrain modifier stack operation", entity);
+                }
+
+                const auto encoded = scene::write_terrain_asset_json(authored, true);
+                if (!encoded) return fail("Terrain asset could not be serialized", entity);
+                const auto resolved = resolve_editor_asset(state_->assets, state_->asset_registry.get(),
+                                                           state_->project.root, source_reference);
+                if (!resolved || resolved->read_only) return fail("Terrain asset source is not writable", entity);
+                {
+                    std::ofstream output(resolved->path, std::ios::binary | std::ios::trunc);
+                    if (!output) return fail("Terrain asset source could not be opened for writing", entity);
+                    output.write(encoded.value().data(), static_cast<std::streamsize>(encoded.value().size()));
+                    if (!output) return fail("Terrain asset source could not be written", entity);
+                }
+
+                terrain->asset.guid = loaded.asset.requested_guid();
+                terrain->asset.expected_type = assets::asset_types::terrain;
+                terrain->asset.path_hint = assets::normalize_asset_path(source_reference);
+                terrain->asset_authoring_revision = authored.authoring_revision;
+                state_->asset_registry->mark_stale(terrain->asset.guid, "Terrain modifier stack changed");
+                [[maybe_unused]] const auto reimport =
+                    state_->asset_registry->reimport(terrain->asset.guid, assets::asset_streaming_priority::high);
+                push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                           "Terrain modifier stack changed", entity);
+                return success(stack_json(&authored, true, false, source_reference.generic_string()));
             }
             else if constexpr (std::is_same_v<command_type, host_set_terrain_layer_command>)
             {
@@ -5753,11 +5912,9 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
         water_snapshot.foam_enabled = water->settings.foam.enabled;
         water_snapshot.foam_threshold = water->settings.foam.threshold;
         water_snapshot.foam_decay = water->settings.foam.decay;
-        water_snapshot.absorption = {water->settings.appearance.absorption[0],
-                                     water->settings.appearance.absorption[1],
+        water_snapshot.absorption = {water->settings.appearance.absorption[0], water->settings.appearance.absorption[1],
                                      water->settings.appearance.absorption[2]};
-        water_snapshot.scattering = {water->settings.appearance.scattering[0],
-                                     water->settings.appearance.scattering[1],
+        water_snapshot.scattering = {water->settings.appearance.scattering[0], water->settings.appearance.scattering[1],
                                      water->settings.appearance.scattering[2]};
         water_snapshot.roughness = water->settings.appearance.roughness;
         water_snapshot.refraction_strength = water->settings.appearance.refraction_strength;

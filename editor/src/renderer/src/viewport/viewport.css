@@ -430,3 +430,13 @@
   right: 18px;
   bottom: 18px;
 }
+
+
+.arc-viewport-tool-overlay {
+  position: absolute;
+  z-index: 9;
+  top: 58px;
+  left: 14px;
+  max-width: calc(100% - 28px);
+  pointer-events: none;
+}

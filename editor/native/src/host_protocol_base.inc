@@ -462,13 +462,9 @@ bool water_value(std::string_view json, std::string_view key, host_water_snapsho
     static constexpr std::pair<std::string_view, std::uint8_t> body_types[]{
         {"ocean", std::uint8_t{0}}, {"lake", std::uint8_t{1}}, {"river", std::uint8_t{2}}};
     static constexpr std::pair<std::string_view, std::uint8_t> quality_levels[]{
-        {"low", std::uint8_t{0}},
-        {"medium", std::uint8_t{1}},
-        {"high", std::uint8_t{2}},
-        {"ultra", std::uint8_t{3}}};
+        {"low", std::uint8_t{0}}, {"medium", std::uint8_t{1}}, {"high", std::uint8_t{2}}, {"ultra", std::uint8_t{3}}};
     return parse_enum(object, "bodyType", body_types, std::size(body_types), out.body_type) &&
-           string_value(object, "presetGuid", out.preset_guid) &&
-           string_value(object, "presetPath", out.preset_path) &&
+           string_value(object, "presetGuid", out.preset_guid) && string_value(object, "presetPath", out.preset_path) &&
            string_value(object, "materialGuid", out.material_guid) &&
            string_value(object, "materialPath", out.material_path) &&
            number_value(object, "waterLevel", out.water_level) && bool_value(object, "enabled", out.enabled) &&
@@ -479,11 +475,9 @@ bool water_value(std::string_view json, std::string_view key, host_water_snapsho
            number_value(object, "windDirectionY", out.wind_direction_y) &&
            number_value(object, "fetchLength", out.fetch_length) &&
            number_value(object, "waveAmplitude", out.wave_amplitude) &&
-           number_value(object, "choppiness", out.choppiness) &&
-           bool_value(object, "foamEnabled", out.foam_enabled) &&
+           number_value(object, "choppiness", out.choppiness) && bool_value(object, "foamEnabled", out.foam_enabled) &&
            number_value(object, "foamThreshold", out.foam_threshold) &&
-           number_value(object, "foamDecay", out.foam_decay) &&
-           array3_value(object, "absorption", out.absorption) &&
+           number_value(object, "foamDecay", out.foam_decay) && array3_value(object, "absorption", out.absorption) &&
            array3_value(object, "scattering", out.scattering) && number_value(object, "roughness", out.roughness) &&
            number_value(object, "refractionStrength", out.refraction_strength) &&
            bool_value(object, "shorelineEnabled", out.shoreline_enabled) &&
@@ -1173,6 +1167,8 @@ std::string command_type(const host_command_payload& payload)
                 return "water.update";
             else if constexpr (std::is_same_v<type, host_set_terrain_brush_command>)
                 return "terrain.setBrush";
+            else if constexpr (std::is_same_v<type, host_terrain_modifier_stack_command>)
+                return "terrain.modifierStack";
             else if constexpr (std::is_same_v<type, host_set_terrain_layer_command>)
                 return "terrain.assignLayer";
             else if constexpr (std::is_same_v<type, host_create_terrain_command>)
@@ -1498,20 +1494,16 @@ std::string to_json(const host_water_snapshot& water)
                                                 : "high";
     std::ostringstream stream;
     stream << "{\"bodyType\":" << quote(body_type) << ",\"presetGuid\":" << quote(water.preset_guid)
-           << ",\"presetPath\":" << quote(water.preset_path)
-           << ",\"materialGuid\":" << quote(water.material_guid)
+           << ",\"presetPath\":" << quote(water.preset_path) << ",\"materialGuid\":" << quote(water.material_guid)
            << ",\"materialPath\":" << quote(water.material_path) << ",\"waterLevel\":" << water.water_level
-           << ",\"enabled\":" << bool_json(water.enabled)
-           << ",\"followCamera\":" << bool_json(water.follow_camera)
+           << ",\"enabled\":" << bool_json(water.enabled) << ",\"followCamera\":" << bool_json(water.follow_camera)
            << ",\"visibleDistance\":" << water.visible_distance << ",\"windSpeed\":" << water.wind_speed
-           << ",\"windDirectionX\":" << water.wind_direction_x
-           << ",\"windDirectionY\":" << water.wind_direction_y << ",\"fetchLength\":" << water.fetch_length
-           << ",\"waveAmplitude\":" << water.wave_amplitude << ",\"choppiness\":" << water.choppiness
-           << ",\"foamEnabled\":" << bool_json(water.foam_enabled)
+           << ",\"windDirectionX\":" << water.wind_direction_x << ",\"windDirectionY\":" << water.wind_direction_y
+           << ",\"fetchLength\":" << water.fetch_length << ",\"waveAmplitude\":" << water.wave_amplitude
+           << ",\"choppiness\":" << water.choppiness << ",\"foamEnabled\":" << bool_json(water.foam_enabled)
            << ",\"foamThreshold\":" << water.foam_threshold << ",\"foamDecay\":" << water.foam_decay
-           << ",\"absorption\":" << vec3_json(water.absorption)
-           << ",\"scattering\":" << vec3_json(water.scattering) << ",\"roughness\":" << water.roughness
-           << ",\"refractionStrength\":" << water.refraction_strength
+           << ",\"absorption\":" << vec3_json(water.absorption) << ",\"scattering\":" << vec3_json(water.scattering)
+           << ",\"roughness\":" << water.roughness << ",\"refractionStrength\":" << water.refraction_strength
            << ",\"shorelineEnabled\":" << bool_json(water.shoreline_enabled)
            << ",\"shorelineFoamWidth\":" << water.shoreline_foam_width
            << ",\"shallowWaveDampingDistance\":" << water.shallow_wave_damping_distance
@@ -2775,6 +2767,21 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         }
         parse_enum(payload, "tool", tools, std::size(tools), command.tool);
         envelope.payload = command;
+    }
+    else if (type == "terrain.modifierStack")
+    {
+        host_terrain_modifier_stack_command command;
+        if (!entity_field_value(payload, "entity", command.entity) ||
+            !string_value(payload, "operation", command.operation))
+        {
+            error = "Terrain modifier stack requires entity and operation";
+            return false;
+        }
+        string_value(payload, "modifier", command.modifier);
+        string_value(payload, "name", command.name);
+        bool_value(payload, "enabled", command.enabled);
+        number_value(payload, "index", command.index);
+        envelope.payload = std::move(command);
     }
     else if (type == "terrain.create")
     {

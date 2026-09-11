@@ -60,8 +60,10 @@ import {
 } from '../inspector/inspectorTypes';
 import { ProfilerPanel } from '../profiler/ProfilerPanel';
 import type { ProfilerSnapshot } from '../profiler/ProfilerPanel';
-import { TerrainToolsPanel } from '../terrain/TerrainToolsPanel';
-import type { TerrainToolState } from '../terrain/TerrainToolsPanel';
+import { TerrainViewportOverlay } from '../terrain/TerrainViewportOverlay';
+import type { TerrainToolState } from '../terrain/TerrainViewportOverlay';
+import { TerrainStackPanel } from '../terrain/TerrainStackPanel';
+import type { TerrainModifierStackSnapshot } from '../terrain/TerrainStackPanel';
 import { CreateTerrainDialog } from '../terrain/CreateTerrainDialog';
 import { ConsolePanel } from '../console/ConsolePanel';
 import { BuildOutputPanel } from '../buildOutput/BuildOutputPanel';
@@ -1273,34 +1275,6 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       return <div className="side-loading">Loading workbench data...</div>;
     }
 
-    if ((!requestedPanel || requestedPanel === 'hierarchy') && activeTool === 'terrain' && selectedSnapshot?.terrain) {
-      const selectedKey = hostEntityKey(selectedSnapshot.entity);
-      const visibleTerrainState =
-        terrainToolState && hostEntityKey(terrainToolState.entity) === selectedKey
-          ? terrainToolState
-          : terrainToolStateFromSnapshot(selectedSnapshot)!;
-      return (
-        <TerrainToolsPanel
-          terrain={selectedSnapshot.terrain}
-          state={visibleTerrainState}
-          assets={project.assets}
-          thumbnailProvider={loadAssetThumbnail}
-          onStateChange={setTerrainToolState}
-          onStatus={setLastCommand}
-          command={async (type, payload) => {
-            if (!startupState?.engineHostConnected)
-              return {
-                succeeded: false,
-                error: 'Native editor host is unavailable',
-              };
-            return window.arc.host.command(type, payload as Record<string, unknown>) as Promise<
-              HostResponse<TerrainToolState>
-            >;
-          }}
-        />
-      );
-    }
-
     if (requestedPanel === 'hierarchy' || (!requestedPanel && layout.activeActivity === 'scene')) {
       return (
         <ExplorerPanel
@@ -1375,6 +1349,31 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     return 'windows';
   });
 
+
+  const renderTerrainViewportOverlay = () => {
+    if (activeTool !== 'terrain' || !selectedSnapshot?.terrain || !project) return undefined;
+    const selectedKey = hostEntityKey(selectedSnapshot.entity);
+    const visibleTerrainState =
+      terrainToolState && hostEntityKey(terrainToolState.entity) === selectedKey
+        ? terrainToolState
+        : terrainToolStateFromSnapshot(selectedSnapshot)!;
+    return (
+      <TerrainViewportOverlay
+        terrain={selectedSnapshot.terrain}
+        state={visibleTerrainState}
+        assets={project.assets}
+        thumbnailProvider={loadAssetThumbnail}
+        onStateChange={setTerrainToolState}
+        onStatus={setLastCommand}
+        command={async (type, payload) => {
+          if (!startupState?.engineHostConnected)
+            return { succeeded: false, error: 'Native editor host is unavailable' };
+          return window.arc.host.command(type, payload as Record<string, unknown>) as Promise<HostResponse<TerrainToolState>>;
+        }}
+      />
+    );
+  };
+
   const editorRegistry = createEditorRegistry({
     level: {
       kind: 'level',
@@ -1393,6 +1392,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
             gridVisible={viewportGridVisible}
             onGridVisibilityChange={setViewportGridVisible}
             active={!createTerrainOpen && !settingsOpen && (context.instanceId ?? 'viewport-1') === activeViewportId}
+            overlay={renderTerrainViewportOverlay()}
             onFocusChange={(focused) => {
               setViewportFocused(focused);
               if (focused) setActiveViewportId(context.instanceId ?? 'viewport-1');
@@ -1474,6 +1474,21 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
 
   const renderRightPanel = (panel: WorkbenchPanelId) => {
     if (panel === 'inspector') {
+      if (activeTool === 'terrain' && selectedSnapshot?.terrain) {
+        return (
+          <TerrainStackPanel
+            entity={selectedSnapshot.entity}
+            onStatus={setLastCommand}
+            command={async (type, payload) => {
+              if (!startupState?.engineHostConnected)
+                return { succeeded: false, error: 'Native editor host is unavailable' };
+              return window.arc.host.command(type, payload as Record<string, unknown>) as Promise<
+                HostResponse<TerrainModifierStackSnapshot>
+              >;
+            }}
+          />
+        );
+      }
       return (
         <DataDrivenInspector
           command={async (type, payload, edit) => {
