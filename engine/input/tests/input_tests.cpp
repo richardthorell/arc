@@ -28,6 +28,13 @@ arc::input::input_binding gamepad_axis_binding(arc::input::gamepad_axis value)
             .processors = {}};
 }
 
+arc::input::input_binding sensor_axis_binding(arc::input::sensor_axis value)
+{
+    return {.device = arc::input::input_device_type::gamepad,
+            .control = arc::input::make_sensor_axis_control(value),
+            .processors = {}};
+}
+
 bool contains_device(const std::vector<arc::input::input_device_id>& devices, arc::input::input_device_id id)
 {
     return std::find(devices.begin(), devices.end(), id) != devices.end();
@@ -87,6 +94,7 @@ int main()
     assert(input.device(keyboard)->connectivity() == input_connectivity_type::builtin);
     assert(input.device(mouse)->connectivity() == input_connectivity_type::usb);
     assert(input.device(controller)->capabilities().gyroscope);
+    assert(input.device(controller)->capabilities().accelerometer);
     assert(input.device(controller)->subtype() == input_device_subtype::standard_gamepad);
     assert(input.device(controller)->backend() == input_backend_type::hid);
     const input_device_hardware_id controller_hardware = input.device(controller)->hardware_id();
@@ -130,21 +138,41 @@ int main()
     player_one.bind_action("gameplay", "accept", gamepad_button_binding(gamepad_button::south));
     player_one.bind_axis2d("gameplay", "move", gamepad_axis_binding(gamepad_axis::left_x), {1.0f, 0.0f});
     player_one.bind_axis2d("gameplay", "move", gamepad_axis_binding(gamepad_axis::left_y), {0.0f, 1.0f});
+    player_one.bind_axis("gameplay", "gyro_x", sensor_axis_binding(sensor_axis::gyroscope_x));
+    player_one.bind_axis("gameplay", "gyro_y", sensor_axis_binding(sensor_axis::gyroscope_y));
+    player_one.bind_axis("gameplay", "gyro_z", sensor_axis_binding(sensor_axis::gyroscope_z));
+    player_one.bind_axis("gameplay", "accel_x", sensor_axis_binding(sensor_axis::accelerometer_x));
+    player_one.bind_axis("gameplay", "accel_y", sensor_axis_binding(sensor_axis::accelerometer_y));
+    player_one.bind_axis("gameplay", "accel_z", sensor_axis_binding(sensor_axis::accelerometer_z));
 
     input.begin_frame();
     assert(input.device_events().empty());
     assert(input.submit_button(controller, make_gamepad_button_control(gamepad_button::south), true));
     assert(input.submit_axis(controller, make_gamepad_axis_control(gamepad_axis::left_x), 0.75f));
     assert(input.submit_axis(controller, make_gamepad_axis_control(gamepad_axis::left_y), -0.25f));
+    assert(input.submit_axis(controller, make_sensor_axis_control(sensor_axis::gyroscope_x), 1.25f));
+    assert(input.submit_axis(controller, make_sensor_axis_control(sensor_axis::gyroscope_y), -2.5f));
+    assert(input.submit_axis(controller, make_sensor_axis_control(sensor_axis::gyroscope_z), 3.75f));
+    assert(input.submit_axis(controller, make_sensor_axis_control(sensor_axis::accelerometer_x), 9.80665f));
+    assert(input.submit_axis(controller, make_sensor_axis_control(sensor_axis::accelerometer_y), -4.0f));
+    assert(input.submit_axis(controller, make_sensor_axis_control(sensor_axis::accelerometer_z), 0.5f));
     assert(player_one.pressed("accept"));
     assert(player_one.down("accept"));
     const arc::math::vector2f gamepad_move = player_one.axis2d("move");
     assert(gamepad_move[0] == 0.75f);
     assert(gamepad_move[1] == -0.25f);
+    assert(player_one.axis("gyro_x") == 1.25f);
+    assert(player_one.axis("gyro_y") == -2.5f);
+    assert(player_one.axis("gyro_z") == 3.75f);
+    assert(player_one.axis("accel_x") == 9.80665f);
+    assert(player_one.axis("accel_y") == -4.0f);
+    assert(player_one.axis("accel_z") == 0.5f);
 
     input.begin_frame();
     assert(!player_one.pressed("accept"));
     assert(player_one.down("accept"));
+    assert(player_one.axis("gyro_x") == 1.25f);
+    assert(player_one.axis("accel_x") == 9.80665f);
     assert(input.submit_button(controller, make_gamepad_button_control(gamepad_button::south), false));
     assert(player_one.released("accept"));
 
