@@ -54,7 +54,19 @@ Bytecode removes editor-only graph topology while retaining the typed slots, ent
 
 Execution outputs intentionally allow only one target in F2. Future fan-out is represented by an explicit Sequence node so execution order stays deterministic rather than depending on connection storage order.
 
-The F2 compiler does **not** execute bytecode and does not access ECS or the project world. F3 owns VM execution and feeds runtime event values into the compiled entry-point bindings.
+The F2 compiler does **not** execute bytecode and does not access ECS or the project world.
+
+## F3 runtime contract
+
+F3 adds `arc::flow::vm_instance`, the per-instance bytecode runtime. A VM references one immutable `bytecode_program`; the owning compiled Flow asset must outlive all VM instances that reference it. Runtime state is separate for every instance and contains graph-variable values, typed value slots, lifecycle state, and execution limits.
+
+The VM dispatches Begin Play, End Play, Tick, Fixed Tick, and Input Action events. Tick and input event values are written through the entry-point bindings emitted by F2. Input Action dispatch matches the authored action name exactly. Tick, Fixed Tick, and input events execute only while the instance is active between Begin Play and End Play.
+
+Each event dispatch has one aggregate instruction budget, defaulting to 4096 bytecode instructions. Exceeding the budget stops execution and reports the stopped instruction plus the source node when a source map is available. This guard remains mandatory even though F2 currently rejects authored execution cycles, because future loop/latent constructs and externally loaded bytecode must not be able to stall the runtime or editor.
+
+VM construction validates bytecode versioning, variable/value defaults, entry-point targets and bindings, and instruction operands before execution. `reset()` restores graph-variable defaults and bytecode slot defaults and leaves the VM inactive. Exposed variable overrides can therefore be applied per instance before Begin Play without modifying the shared Flow asset.
+
+F3 intentionally remains independent of ECS and the project world. F4 adds gameplay/world instructions and routes them through the stable M3.5 world API rather than exposing `ecs::world` to Flow.
 
 ## Runtime boundary
 
@@ -73,10 +85,13 @@ Typed Flow IR / bytecode       (F2, arc-flow)
 Flow VM                        (F3)
    |
    v
+Gameplay/world instructions    (F4)
+   |
+   v
 Stable project world API       (M3.5)
    |
    v
 ECS / runtime world
 ```
 
-F2 owns semantic validation, typed IR, diagnostics tied to node/pin/connection IDs, and bytecode generation. F3 owns execution, per-instance VM state, lifecycle events, instruction budgets, and integration through the stable M3.5 world API rather than direct `ecs::world` access.
+F2 owns semantic validation, typed IR, diagnostics tied to node/pin/connection IDs, and bytecode generation. F3 owns deterministic bytecode execution, per-instance state, lifecycle/input events, runtime bytecode validation, and instruction budgets. F4 owns gameplay/world operations and their integration through the stable M3.5 world API.
