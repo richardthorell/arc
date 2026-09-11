@@ -1,0 +1,76 @@
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+struct frequency_sample
+{
+    vec4 displacement_xy;
+    vec4 displacement_z_slope_x;
+    vec4 slope_z_velocity_x;
+    vec4 velocity_yz;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer input_field_buffer
+{
+    frequency_sample values[];
+} input_field;
+
+layout(std430, set = 0, binding = 1) writeonly buffer output_field_buffer
+{
+    frequency_sample values[];
+} output_field;
+
+layout(push_constant) uniform fft_constants
+{
+    uint resolution;
+    uint stage;
+    uint direction;
+    uint reserved;
+} constants;
+
+vec2 complex_multiply(vec2 lhs, vec2 rhs)
+{
+    return vec2(lhs.x * rhs.x - lhs.y * rhs.y, lhs.x * rhs.y + lhs.y * rhs.x);
+}
+
+vec4 transform_pair(vec4 even_value, vec4 odd_value, vec2 phase, float sign_value)
+{
+    vec2 first = even_value.xy + sign_value * complex_multiply(odd_value.xy, phase);
+    vec2 second = even_value.zw + sign_value * complex_multiply(odd_value.zw, phase);
+    return vec4(first, second);
+}
+
+void main()
+{
+    uvec2 coordinate = gl_GlobalInvocationID.xy;
+    if (coordinate.x >= constants.resolution || coordinate.y >= constants.resolution)
+        return;
+
+    uint width = 1u << (constants.stage + 1u);
+    uint half_width = width >> 1u;
+    uint axis_coordinate = constants.direction == 0u ? coordinate.x : coordinate.y;
+    uint block = (axis_coordinate / width) * width;
+    uint lane = axis_coordinate % half_width;
+    uint even_axis = block + lane;
+    uint odd_axis = even_axis + half_width;
+    uvec2 even_coordinate = constants.direction == 0u
+        ? uvec2(even_axis, coordinate.y)
+        : uvec2(coordinate.x, even_axis);
+    uvec2 odd_coordinate = constants.direction == 0u
+        ? uvec2(odd_axis, coordinate.y)
+        : uvec2(coordinate.x, odd_axis);
+    uint even_index = even_coordinate.y * constants.resolution + even_coordinate.x;
+    uint odd_index = odd_coordinate.y * constants.resolution + odd_coordinate.x;
+    uint output_index = coordinate.y * constants.resolution + coordinate.x;
+    float angle = 6.283185307179586 * float(lane) / float(width);
+    vec2 phase = vec2(cos(angle), sin(angle));
+    float sign_value = (axis_coordinate % width) < half_width ? 1.0 : -1.0;
+    frequency_sample even_value = input_field.values[even_index];
+    frequency_sample odd_value = input_field.values[odd_index];
+    frequency_sample output_value;
+    output_value.displacement_xy = transform_pair(even_value.displacement_xy, odd_value.displacement_xy, phase, sign_value);
+    output_value.displacement_z_slope_x = transform_pair(even_value.displacement_z_slope_x, odd_value.displacement_z_slope_x, phase, sign_value);
+    output_value.slope_z_velocity_x = transform_pair(even_value.slope_z_velocity_x, odd_value.slope_z_velocity_x, phase, sign_value);
+    output_value.velocity_yz = transform_pair(even_value.velocity_yz, odd_value.velocity_yz, phase, sign_value);
+    output_field.values[output_index] = output_value;
+}

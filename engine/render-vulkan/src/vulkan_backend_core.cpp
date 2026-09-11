@@ -165,6 +165,7 @@ vulkan_render_backend::~vulkan_render_backend()
     if (device_ != VK_NULL_HANDLE) vkDeviceWaitIdle(device_);
     destroy_temporal_resources();
     destroy_hzb_resources();
+    destroy_water_resources();
     destroy_mesh_pipeline();
     destroy_virtual_shadow_resources(virtual_shadow_resources_);
     destroy_shadow_resources();
@@ -1163,6 +1164,15 @@ void vulkan_render_backend::collect_timestamp_results()
         last_profile_.pass_timings.push_back(
             {.name = scope.name,
              .milliseconds = static_cast<double>(ticks) * static_cast<double>(timestamp_period_) / 1'000'000.0});
+    }
+    last_profile_.water.spectrum_update_milliseconds = 0.0;
+    last_profile_.water.inverse_fft_milliseconds = 0.0;
+    for (const auto& timing : last_profile_.pass_timings)
+    {
+        if (timing.name == "Water spectrum update")
+            last_profile_.water.spectrum_update_milliseconds = timing.milliseconds;
+        else if (timing.name == "Water inverse FFT")
+            last_profile_.water.inverse_fft_milliseconds = timing.milliseconds;
     }
 }
 

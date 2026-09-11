@@ -16,6 +16,7 @@ render_submit_result vulkan_render_backend::submit(const render_frame_packet& pa
     frame_virtual_draws_.clear();
     frame_shadow_draws_.clear();
     frame_virtual_shadow_draws_.clear();
+    frame_waters_.clear();
     frame_directional_lights_.clear();
     frame_point_lights_.clear();
     frame_spot_lights_.clear();
@@ -98,6 +99,7 @@ render_submit_result vulkan_render_backend::submit(const render_frame_packet& pa
         else if (const auto* marker = std::get_if<debug_marker_event>(&event.payload))
             pending_debug_markers_.push_back(marker->label);
     }
+    synchronize_water_simulations(packet.frame_index);
     if (virtual_geometry_tables_dirty_ && !rebuild_virtual_geometry_tables()) upload_batch_failed_ = true;
     if (!flush_gpu_resource_tables()) upload_batch_failed_ = true;
     if (!flush_upload_batch()) upload_batch_failed_ = true;
@@ -334,6 +336,8 @@ void vulkan_render_backend::append_render_world(const render_world_event& event)
     frame_camera_ = packet.camera;
     frame_camera_valid_ = true;
     frame_environment_ = packet.environment;
+    frame_simulation_time_seconds_ = packet.simulation_time_seconds;
+    frame_waters_.insert(frame_waters_.end(), packet.waters.begin(), packet.waters.end());
     frame_shadows_enabled_ = packet.shadows_enabled;
     last_profile_.virtual_geometry.enabled = resolved_config_.features.virtual_geometry;
     last_profile_.virtual_geometry.raster_path = resolved_config_.features.virtual_geometry_path;

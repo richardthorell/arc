@@ -176,6 +176,20 @@ export function RenderGraphPanel({
           )}
         </div>
       )}
+      {snapshot?.water?.enabled && (
+        <div className="tool-summary-strip" aria-label="Water simulation diagnostics">
+          <span>
+            Water {snapshot.water.activeBodies} bodies · {snapshot.water.activeCascades} cascades ·{' '}
+            {snapshot.water.maximumResolution}² max
+          </span>
+          <span>{snapshot.water.computeDispatches} compute dispatches</span>
+          <span>
+            Spectrum {snapshot.water.spectrumMilliseconds.toFixed(2)} ms · IFFT{' '}
+            {snapshot.water.inverseFftMilliseconds.toFixed(2)} ms
+          </span>
+          <span>{snapshot.water.gpuSimulation ? 'GPU spectral simulation' : 'Flat fallback'}</span>
+        </div>
+      )}
       {pinned && snapshot && (
         <div className="tool-comparison">
           <GitCompareArrows size={14} />
@@ -284,6 +298,7 @@ export function RenderGraphPanel({
         </div>
       ))}
       {snapshot?.textureStreaming?.fallback && <div className="tool-warning">{snapshot.textureStreaming.fallback}</div>}
+      {snapshot?.water?.fallback && <div className="tool-warning">{snapshot.water.fallback}</div>}
       {error && <div className="tool-error">{error}</div>}
     </section>
   );

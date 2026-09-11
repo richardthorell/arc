@@ -5144,6 +5144,18 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"overflowRecords\":" + std::to_string(profile.gpu_scene.overflow_records) +
                     ",\"cpuSubmissions\":" + std::to_string(profile.gpu_scene.cpu_submissions) +
                     ",\"fallback\":" + to_json_string(profile.gpu_scene.fallback_reason) +
+                    "},\"water\":{\"enabled\":" + std::string(profile.water.enabled ? "true" : "false") +
+                    ",\"gpuSimulation\":" + std::string(profile.water.gpu_simulation ? "true" : "false") +
+                    ",\"deterministicInitialSpectrum\":" +
+                    std::string(profile.water.deterministic_initial_spectrum ? "true" : "false") +
+                    ",\"activeBodies\":" + std::to_string(profile.water.active_body_count) +
+                    ",\"activeCascades\":" + std::to_string(profile.water.active_cascade_count) +
+                    ",\"maximumResolution\":" + std::to_string(profile.water.maximum_resolution) +
+                    ",\"updateIntervalFrames\":" + std::to_string(profile.water.update_interval_frames) +
+                    ",\"computeDispatches\":" + std::to_string(profile.water.compute_dispatch_count) +
+                    ",\"spectrumMilliseconds\":" + std::to_string(profile.water.spectrum_update_milliseconds) +
+                    ",\"inverseFftMilliseconds\":" + std::to_string(profile.water.inverse_fft_milliseconds) +
+                    ",\"fallback\":" + to_json_string(profile.water.fallback_reason) +
                     "},\"textureStreaming\":{\"gpuBudgetBytes\":" +
                     std::to_string(profile.texture_streaming.gpu_budget_bytes) +
                     ",\"gpuResidentBytes\":" + std::to_string(profile.texture_streaming.gpu_resident_bytes) +

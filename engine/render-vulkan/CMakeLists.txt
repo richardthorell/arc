@@ -9,6 +9,7 @@ set(arc_render_vulkan_backend_sources
     src/vulkan_backend_geometry.cpp
     src/vulkan_backend_textures.cpp
     src/vulkan_backend_virtual_geometry.cpp
+    src/vulkan_backend_water.cpp
 )
 
 add_library(arc-render-vulkan SHARED
