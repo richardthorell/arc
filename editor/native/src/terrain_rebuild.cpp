@@ -133,6 +133,8 @@ terrain_rebuild_session::terrain_rebuild_session(scene::terrain_asset asset, con
 void terrain_rebuild_session::update(scene::terrain_asset asset, bool invalidate_all)
 {
     replace_all_regions_ = replace_all_regions_ || invalidate_all;
+    // Until a complete first generation exists, a newer edit must retain all initial work.
+    invalidate_all = replace_all_regions_;
     const double half = static_cast<double>(size_) * 0.5;
     // Exclude the maximum boundary: it is a shared vertex, not an additional strip of quads.
     const scene::terrain_world_bounds extent{
