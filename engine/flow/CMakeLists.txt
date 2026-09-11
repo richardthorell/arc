@@ -9,3 +9,14 @@ target_link_libraries(arc-flow
         "$<BUILD_INTERFACE:arc-project>"
         "$<BUILD_INTERFACE:arc-third-party-json>"
 )
+
+if(BUILD_TESTING)
+    add_executable(arc-flow-world-tests
+        test_support/world_tests_main.cpp
+        tests/flow_world_tests.cpp
+    )
+    arc_configure_first_party_target(arc-flow-world-tests)
+    target_compile_features(arc-flow-world-tests PRIVATE cxx_std_20)
+    target_link_libraries(arc-flow-world-tests PRIVATE arc-flow arc-project)
+    add_test(NAME arc-flow-world-tests COMMAND arc-flow-world-tests)
+endif()
