@@ -49,8 +49,8 @@ std::optional<terrain_region_build_batch> terrain_region_build_queue::take_ready
     terrain_region_build_batch result;
     result.authoring_revision = snapshot_->authoring_revision;
     // Stack/source changes and dependency edits also invalidate results, not just the target revision.
-    result.stale = current.authoring_revision != snapshot_->authoring_revision ||
-                   current.source.id != snapshot_->source.id;
+    result.stale =
+        current.authoring_revision != snapshot_->authoring_revision || current.source.id != snapshot_->source.id;
     result.succeeded = !result.stale;
     for (auto& job : jobs_)
     {

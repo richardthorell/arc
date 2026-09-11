@@ -44,8 +44,10 @@ scene::terrain_evaluation_result evaluate_region(const scene::terrain_asset& ass
         return static_cast<std::uint32_t>(
             std::clamp(std::round((value - origin + half) / spacing), 0.0, static_cast<double>(quads)));
     };
-    const auto x0 = index(bounds.min_x, asset.coordinates.origin_x), x1 = index(bounds.max_x, asset.coordinates.origin_x);
-    const auto z0 = index(bounds.min_z, asset.coordinates.origin_z), z1 = index(bounds.max_z, asset.coordinates.origin_z);
+    const auto x0 = index(bounds.min_x, asset.coordinates.origin_x),
+               x1 = index(bounds.max_x, asset.coordinates.origin_x);
+    const auto z0 = index(bounds.min_z, asset.coordinates.origin_z),
+               z1 = index(bounds.max_z, asset.coordinates.origin_z);
     if (x0 >= x1 || z0 >= z1) return fail("Terrain region is outside the source grid");
     // One quad of evaluated halo supplies identical triangle normals at shared region vertices.
     const auto hx0 = x0 > 0u ? x0 - 1u : 0u, hx1 = std::min(x1 + 1u, quads);
@@ -81,9 +83,12 @@ scene::terrain_evaluation_result evaluate_region(const scene::terrain_asset& ass
                                                                         heights,
                                                                         weights,
                                                                         asset.authoring_revision};
-    request.source_bounds =
-        scene::terrain_world_bounds{asset.coordinates.origin_x - half + hx0 * spacing - origin_x, 0.0, asset.coordinates.origin_z - half + hz0 * spacing - origin_z,
-                                    asset.coordinates.origin_x - half + hx1 * spacing - origin_x, 0.0, asset.coordinates.origin_z - half + hz1 * spacing - origin_z};
+    request.source_bounds = scene::terrain_world_bounds{asset.coordinates.origin_x - half + hx0 * spacing - origin_x,
+                                                        0.0,
+                                                        asset.coordinates.origin_z - half + hz0 * spacing - origin_z,
+                                                        asset.coordinates.origin_x - half + hx1 * spacing - origin_x,
+                                                        0.0,
+                                                        asset.coordinates.origin_z - half + hz1 * spacing - origin_z};
     result = scene::make_default_terrain_evaluator().evaluate(asset, request);
     if (!result.succeeded) return result;
     auto padded = scene::build_terrain_render_regions(result.surface.view(), std::numeric_limits<double>::max());
@@ -131,8 +136,11 @@ void terrain_rebuild_session::update(scene::terrain_asset asset, bool invalidate
     const double half = static_cast<double>(size_) * 0.5;
     // Exclude the maximum boundary: it is a shared vertex, not an additional strip of quads.
     const scene::terrain_world_bounds extent{
-        asset.coordinates.origin_x - half, asset.coordinates.origin_y, asset.coordinates.origin_z - half,
-        std::nextafter(asset.coordinates.origin_x + half, asset.coordinates.origin_x - half), asset.coordinates.origin_y,
+        asset.coordinates.origin_x - half,
+        asset.coordinates.origin_y,
+        asset.coordinates.origin_z - half,
+        std::nextafter(asset.coordinates.origin_x + half, asset.coordinates.origin_x - half),
+        asset.coordinates.origin_y,
         std::nextafter(asset.coordinates.origin_z + half, asset.coordinates.origin_z - half)};
     const auto regions = scene::terrain_regions_overlapping(asset.coordinates, asset.partition, extent);
     std::vector<scene::terrain_region_id> dirty;
@@ -146,7 +154,8 @@ void terrain_rebuild_session::update(scene::terrain_asset asset, bool invalidate
             next.compiled_revision = previous->compiled_revision;
             next.dirty_domains = previous->dirty_domains;
         }
-        if (invalidate_all || (next.dirty_domains & (scene::terrain_domain::geometry | scene::terrain_domain::topology)) != scene::terrain_domain::none)
+        if (invalidate_all || (next.dirty_domains & (scene::terrain_domain::geometry |
+                                                     scene::terrain_domain::topology)) != scene::terrain_domain::none)
             dirty.push_back(id);
     }
     // Seam positions and normals read adjacent samples. Rebuild only overlapping dependency halos.
@@ -192,7 +201,8 @@ bool publish_regions(scene::terrain_render_proxy_cache& proxies, scene::terrain_
         const auto z0 = std::llround((bounds.min_z + terrain.size * 0.5) / spacing);
         auto& attributes = *region.attributes;
         if (x0 < 0 || z0 < 0 || x0 + attributes.width > terrain.subdivisions + 1u ||
-            z0 + attributes.height > terrain.subdivisions + 1u) return false;
+            z0 + attributes.height > terrain.subdivisions + 1u)
+            return false;
         if (terrain.layer_weights.empty()) continue;
         for (std::uint32_t z = 0; z < attributes.height; ++z)
             for (std::uint32_t x = 0; x < attributes.width; ++x)
