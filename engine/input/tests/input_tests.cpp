@@ -33,6 +33,23 @@ bool contains_device(const std::vector<arc::input::input_device_id>& devices, ar
     return std::find(devices.begin(), devices.end(), id) != devices.end();
 }
 
+class test_output_sink final : public arc::input::input_output_sink
+{
+public:
+    bool set_rumble(arc::input::input_device_id device, arc::input::input_rumble_state state) override
+    {
+        last_device = device;
+        last_state = state;
+        ++calls;
+        return accept;
+    }
+
+    arc::input::input_device_id last_device{};
+    arc::input::input_rumble_state last_state{};
+    int calls{};
+    bool accept{true};
+};
+
 } // namespace
 
 int main()
@@ -78,6 +95,17 @@ int main()
     assert(input.assign_device(1, keyboard));
     assert(input.assign_device(1, controller));
     assert(input.players_for_device(keyboard).size() == 2);
+
+    test_output_sink output;
+    assert(input.register_output_sink(controller, output));
+    assert(!input.set_rumble(keyboard, {.low_frequency = 1.0f, .high_frequency = 1.0f}));
+    assert(!player_zero.set_rumble({.low_frequency = 1.0f, .high_frequency = 1.0f}));
+    assert(player_one.set_rumble({.low_frequency = -0.25f, .high_frequency = 1.5f}));
+    assert(output.last_device == controller);
+    assert(output.last_state.low_frequency == 0.0f);
+    assert(output.last_state.high_frequency == 1.0f);
+    assert(player_one.stop_rumble());
+    assert(output.last_state == input_rumble_state{});
 
     player_zero.add_context("gameplay", 0);
     player_zero.bind_action("gameplay", "jump", key_binding(key::space));
@@ -178,6 +206,28 @@ int main()
     assert(contains_device(input.devices_for_player(1), keyboard));
     assert(input.device_events().size() == 1);
     assert(input.device_events().front().type == input_device_event_type::connected);
+
+    assert(input.set_rumble(controller, {.low_frequency = 0.4f, .high_frequency = 0.8f}));
+    const int calls_before_disconnect = output.calls;
+    input.begin_frame();
+    assert(input.disconnect_device(controller));
+    assert(output.calls == calls_before_disconnect + 1);
+    assert(output.last_state == input_rumble_state{});
+    assert(contains_device(input.devices_for_player(1), controller));
+
+    input.begin_frame();
+    input.connect_device({
+        .id = controller,
+        .type = input_device_type::gamepad,
+        .connectivity = input_connectivity_type::wireless,
+        .name = "Future Controller",
+        .capabilities = {.buttons = true, .axes = true, .rumble = true, .gyroscope = true, .accelerometer = true},
+    });
+    assert(player_one.set_rumble({.low_frequency = 0.2f, .high_frequency = 0.6f}));
+    assert(output.last_state.low_frequency == 0.2f);
+    assert(output.last_state.high_frequency == 0.6f);
+    assert(input.unregister_output_sink(controller, output));
+    assert(!input.set_rumble(controller, {.low_frequency = 1.0f, .high_frequency = 1.0f}));
 
     return 0;
 }

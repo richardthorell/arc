@@ -220,6 +220,19 @@ math::vector2f input_player::axis2d(std::string_view name) const
     return value;
 }
 
+bool input_player::set_rumble(input_rumble_state state) const
+{
+    bool applied = false;
+    for (input_device_id device : system_->devices_for_player(id_))
+        applied = system_->set_rumble(device, state) || applied;
+    return applied;
+}
+
+bool input_player::stop_rumble() const
+{
+    return set_rumble({});
+}
+
 input_system::input_system()
 {
     player(0);
@@ -282,6 +295,7 @@ bool input_system::disconnect_device(input_device_id id)
     const auto found = devices_.find(id.value);
     if (found == devices_.end() || !found->second.connected_) return false;
 
+    stop_rumble(id);
     found->second.connected_ = false;
     for (auto& [_, value] : found->second.current_values_)
         value = 0.0f;
@@ -422,6 +436,49 @@ std::vector<player_id> input_system::players_for_device(input_device_id device_v
     return found == device_players_.end() ? std::vector<player_id>{} : found->second;
 }
 
+bool input_system::register_output_sink(input_device_id device_value, input_output_sink& sink) noexcept
+{
+    if (!devices_.contains(device_value.value)) return false;
+    output_sinks_[device_value.value] = &sink;
+    return true;
+}
+
+bool input_system::unregister_output_sink(input_device_id device_value, input_output_sink& sink) noexcept
+{
+    const auto found = output_sinks_.find(device_value.value);
+    if (found == output_sinks_.end() || found->second != &sink) return false;
+    output_sinks_.erase(found);
+    return true;
+}
+
+bool input_system::set_rumble(input_device_id device_value, input_rumble_state state)
+{
+    const auto device_found = devices_.find(device_value.value);
+    if (device_found == devices_.end() || !device_found->second.connected_ ||
+        !device_found->second.descriptor_.capabilities.rumble)
+        return false;
+
+    const auto sink_found = output_sinks_.find(device_value.value);
+    if (sink_found == output_sinks_.end() || !sink_found->second) return false;
+
+    state.low_frequency = normalize_output(state.low_frequency);
+    state.high_frequency = normalize_output(state.high_frequency);
+    return sink_found->second->set_rumble(device_value, state);
+}
+
+bool input_system::stop_rumble(input_device_id device_value)
+{
+    return set_rumble(device_value, {});
+}
+
+void input_system::stop_all_rumble()
+{
+    for (const auto& [_, device] : devices_)
+    {
+        if (device.connected_ && device.descriptor_.capabilities.rumble) stop_rumble(device.descriptor_.id);
+    }
+}
+
 float input_system::binding_value(player_id player_value, const input_binding& binding, bool previous) const
 {
     const auto assigned = player_devices_.find(player_value);
@@ -466,6 +523,12 @@ float input_system::apply_processors(float value, const input_binding& binding) 
         }
     }
     return value;
+}
+
+float input_system::normalize_output(float value) noexcept
+{
+    if (!std::isfinite(value)) return 0.0f;
+    return std::clamp(value, 0.0f, 1.0f);
 }
 
 std::uint32_t input_system::control_key(input_control control) noexcept
