@@ -1,6 +1,6 @@
 #pragma once
 
-#include <arc/ecs/command_buffer.h>
+#include <arc/ecs/system.h>
 #include <arc/project/runtime_world_api.h>
 #include <arc/scene/components.h>
 
