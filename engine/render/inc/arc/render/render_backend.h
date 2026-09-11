@@ -997,9 +997,13 @@ struct render_water_profile
     std::uint32_t active_cascade_count{};
     std::uint32_t maximum_resolution{};
     std::uint32_t update_interval_frames{1u};
+    std::uint32_t foam_update_interval_frames{1u};
     std::uint32_t compute_dispatch_count{};
+    std::uint32_t foam_dispatch_count{};
+    std::uint64_t simulation_memory_bytes{};
     double spectrum_update_milliseconds{};
     double inverse_fft_milliseconds{};
+    double foam_update_milliseconds{};
     std::string fallback_reason;
 };
 

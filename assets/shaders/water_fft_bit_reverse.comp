@@ -8,6 +8,8 @@ struct frequency_sample
     vec4 displacement_z_slope_x;
     vec4 slope_z_velocity_x;
     vec4 velocity_yz;
+    vec4 displacement_x_derivatives;
+    vec4 displacement_z_derivatives;
 };
 
 layout(std430, set = 0, binding = 0) readonly buffer input_field_buffer

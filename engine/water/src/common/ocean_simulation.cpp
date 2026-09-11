@@ -142,9 +142,11 @@ ocean_simulation_profile ocean_profile(water_quality quality) noexcept
         case water_quality::low:
             result.cascade_count = 1u;
             result.update_interval_frames = 2u;
+            result.foam_update_interval_frames = 4u;
             break;
         case water_quality::medium:
             result.cascade_count = 2u;
+            result.foam_update_interval_frames = 2u;
             for (auto& cascade : result.cascades)
                 cascade.resolution = 128u;
             break;

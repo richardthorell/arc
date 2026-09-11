@@ -34,6 +34,9 @@ TEST_CASE("Ocean quality profiles scale cascade and FFT budgets without "
     CHECK(high.cascade_count == 3u);
     CHECK(ultra.cascade_count == 4u);
     CHECK(low.update_interval_frames == 2u);
+    CHECK(low.foam_update_interval_frames == 4u);
+    CHECK(medium.foam_update_interval_frames == 2u);
+    CHECK(high.foam_update_interval_frames == 1u);
     CHECK(high.cascades[0].resolution < ultra.cascades[0].resolution);
     CHECK(high.cascades[0].physical_length > high.cascades[1].physical_length);
     CHECK(high.cascades[1].physical_length > high.cascades[2].physical_length);

@@ -745,6 +745,9 @@ void vulkan_render_backend::execute_compiled_graph(VkCommandBuffer command_buffe
             case builtin_render_pass::water_inverse_fft:
                 dispatch_water_inverse_fft(command_buffer);
                 break;
+            case builtin_render_pass::water_foam_update:
+                dispatch_water_foam_update(command_buffer);
+                break;
             case builtin_render_pass::depth_prepass:
                 if (!scene_executed)
                 {

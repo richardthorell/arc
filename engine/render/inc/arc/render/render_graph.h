@@ -94,6 +94,7 @@ enum class builtin_render_pass : std::uint8_t
     gpu_skinning,
     water_spectrum_update,
     water_inverse_fft,
+    water_foam_update,
     gpu_visibility_compact,
     gpu_draw_bin_count,
     gpu_draw_bin_prefix_sum,

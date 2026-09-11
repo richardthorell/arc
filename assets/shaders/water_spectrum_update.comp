@@ -8,6 +8,8 @@ struct frequency_sample
     vec4 displacement_z_slope_x;
     vec4 slope_z_velocity_x;
     vec4 velocity_yz;
+    vec4 displacement_x_derivatives;
+    vec4 displacement_z_derivatives;
 };
 
 layout(std430, set = 0, binding = 0) readonly buffer initial_spectrum_buffer
@@ -62,6 +64,8 @@ void main()
     output_value.displacement_z_slope_x = vec4(0.0);
     output_value.slope_z_velocity_x = vec4(0.0);
     output_value.velocity_yz = vec4(0.0);
+    output_value.displacement_x_derivatives = vec4(0.0);
+    output_value.displacement_z_derivatives = vec4(0.0);
     if (wave_number <= 1.0e-6)
     {
         frequency_field.values[index] = output_value;
@@ -85,10 +89,16 @@ void main()
     vec2 slope_z = multiply_by_i(height * wave_vector.y);
     vec2 velocity_x = multiply_by_i(height_velocity * (-direction.x * constants.choppiness));
     vec2 velocity_z = multiply_by_i(height_velocity * (-direction.y * constants.choppiness));
+    vec2 displacement_x_dx = multiply_by_i(displacement_x * wave_vector.x);
+    vec2 displacement_x_dz = multiply_by_i(displacement_x * wave_vector.y);
+    vec2 displacement_z_dx = multiply_by_i(displacement_z * wave_vector.x);
+    vec2 displacement_z_dz = multiply_by_i(displacement_z * wave_vector.y);
 
     output_value.displacement_xy = vec4(displacement_x, height);
     output_value.displacement_z_slope_x = vec4(displacement_z, slope_x);
     output_value.slope_z_velocity_x = vec4(slope_z, velocity_x);
     output_value.velocity_yz = vec4(height_velocity, velocity_z);
+    output_value.displacement_x_derivatives = vec4(displacement_x_dx, displacement_x_dz);
+    output_value.displacement_z_derivatives = vec4(displacement_z_dx, displacement_z_dz);
     frequency_field.values[index] = output_value;
 }

@@ -33,6 +33,7 @@ struct ocean_simulation_profile
     std::array<ocean_cascade_descriptor, maximum_ocean_cascades> cascades{};
     std::uint32_t cascade_count{3u};
     std::uint32_t update_interval_frames{1u};
+    std::uint32_t foam_update_interval_frames{1u};
 
     friend constexpr bool operator==(const ocean_simulation_profile&,
                                      const ocean_simulation_profile&) noexcept = default;
