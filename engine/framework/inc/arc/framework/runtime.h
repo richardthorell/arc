@@ -1,10 +1,11 @@
 #pragma once
 
 #include <arc/framework/application.h>
-#include <arc/jobs/jobs.h>
 #include <arc/framework/module.h>
 #include <arc/framework/runtime_world.h>
 #include <arc/framework/service.h>
+#include <arc/input/input.h>
+#include <arc/jobs/jobs.h>
 
 #include <chrono>
 #include <vector>
@@ -78,6 +79,22 @@ public:
     [[nodiscard]] const application_config& config() const noexcept;
 
     /**
+     * @brief Return the runtime-owned physical input and player mapping system.
+     */
+    [[nodiscard]] input::input_system& input() noexcept
+    {
+        return input_;
+    }
+
+    /**
+     * @brief Return the runtime-owned physical input and player mapping system.
+     */
+    [[nodiscard]] const input::input_system& input() const noexcept
+    {
+        return input_;
+    }
+
+    /**
      * @brief Return the shared runtime job system.
      */
     [[nodiscard]] jobs::job_system& jobs() noexcept;
@@ -118,6 +135,7 @@ private:
 
     application* app_{};
     application_config config_{};
+    input::input_system input_{};
     memory::memory_system memory_{};
     memory::system_memory_resource frame_memory_resource_{memory_, memory::memory_domain::frame,
                                                           memory::make_memory_tag("runtime.frame")};

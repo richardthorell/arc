@@ -5,6 +5,8 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 
+#include "windows_input_backend.h"
+
 #include <arc/framework/framework.h>
 
 #include <windows.h>
@@ -16,6 +18,12 @@
 
 namespace
 {
+
+struct window_state
+{
+    arc::framework::runtime* runtime{};
+    arc::platform::windows::windows_input_backend* input{};
+};
 
 std::wstring widen(const std::string& value)
 {
@@ -53,9 +61,9 @@ arc::framework::mouse_button translate_mouse_button(UINT message, WPARAM wparam)
     }
 }
 
-arc::framework::runtime* runtime_from_window(HWND window)
+window_state* state_from_window(HWND window)
 {
-    return reinterpret_cast<arc::framework::runtime*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+    return reinterpret_cast<window_state*>(GetWindowLongPtrW(window, GWLP_USERDATA));
 }
 
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
@@ -66,7 +74,9 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
     }
 
-    arc::framework::runtime* runtime = runtime_from_window(window);
+    window_state* state = state_from_window(window);
+    if (state && state->input) state->input->process_message(message, wparam, lparam);
+    arc::framework::runtime* runtime = state ? state->runtime : nullptr;
 
     switch (message)
     {
@@ -187,6 +197,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
     if (!app) return -1;
 
     arc::framework::runtime runtime(*app);
+    arc::platform::windows::windows_input_backend input_backend(runtime.input());
+    window_state state{.runtime = &runtime, .input = &input_backend};
     const arc::framework::application_config& config = runtime.config();
     const std::wstring class_name = L"ArcWindowsHost";
     const std::wstring title = widen(config.title);
@@ -208,9 +220,14 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
     AdjustWindowRect(&rect, style, FALSE);
 
     HWND window = CreateWindowExW(0, class_name.c_str(), title.c_str(), style, CW_USEDEFAULT, CW_USEDEFAULT,
-                                  rect.right - rect.left, rect.bottom - rect.top, nullptr, nullptr, instance, &runtime);
+                                  rect.right - rect.left, rect.bottom - rect.top, nullptr, nullptr, instance, &state);
 
     if (!window) return -3;
+    if (!input_backend.attach(window))
+    {
+        DestroyWindow(window);
+        return -4;
+    }
 
     runtime.start();
 
@@ -224,6 +241,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
     MSG message{};
     while (runtime.running())
     {
+        runtime.input().begin_frame();
         while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE))
         {
             if (message.message == WM_QUIT)
