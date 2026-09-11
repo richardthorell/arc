@@ -84,7 +84,7 @@ type ViewportRenderOptions = {
 const defaultRenderOptions: ViewportRenderOptions = {
   renderMode: 'shaded',
   visualization: 'standard',
-  overlay: 'selectedWireframe',
+  overlay: 'none',
   shadows: true,
   grid: true,
   skeletons: false,
