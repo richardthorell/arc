@@ -161,7 +161,7 @@ struct bytecode_program
     std::vector<std::string> instruction_nodes;
 };
 
-struct compile_result
+struct [[nodiscard]] compile_result
 {
     bool succeeded{false};
     std::vector<diagnostic> diagnostics;
