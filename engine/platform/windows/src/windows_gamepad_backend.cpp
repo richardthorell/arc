@@ -14,6 +14,7 @@ namespace
 
 constexpr std::uint64_t xinput_device_namespace = 0x58494e5000000000ull;
 constexpr ULONGLONG disconnected_probe_interval_ms = 500;
+constexpr ULONGLONG battery_poll_interval_ms = 5000;
 
 struct xinput_device_classification
 {
@@ -40,6 +41,48 @@ float normalize_trigger(BYTE value) noexcept
     const float normalized = static_cast<float>(value - XINPUT_GAMEPAD_TRIGGER_THRESHOLD) /
                              static_cast<float>(255 - XINPUT_GAMEPAD_TRIGGER_THRESHOLD);
     return std::clamp(normalized, 0.0f, 1.0f);
+}
+
+input::input_battery_state normalized_battery_state(const XINPUT_BATTERY_INFORMATION& battery) noexcept
+{
+    input::input_battery_state state{};
+    switch (battery.BatteryType)
+    {
+        case BATTERY_TYPE_DISCONNECTED:
+        case BATTERY_TYPE_WIRED:
+            state.status = input::input_battery_status::not_present;
+            return state;
+        case BATTERY_TYPE_ALKALINE:
+        case BATTERY_TYPE_NIMH:
+            state.status = input::input_battery_status::discharging;
+            break;
+        case BATTERY_TYPE_UNKNOWN:
+        default:
+            state.status = input::input_battery_status::unknown;
+            break;
+    }
+
+    state.level_available = true;
+    switch (battery.BatteryLevel)
+    {
+        case BATTERY_LEVEL_EMPTY:
+            state.level = 0.0f;
+            break;
+        case BATTERY_LEVEL_LOW:
+            state.level = 1.0f / 3.0f;
+            break;
+        case BATTERY_LEVEL_MEDIUM:
+            state.level = 2.0f / 3.0f;
+            break;
+        case BATTERY_LEVEL_FULL:
+            state.level = 1.0f;
+            break;
+        default:
+            state.level = 0.0f;
+            state.level_available = false;
+            break;
+    }
+    return state;
 }
 
 void submit_button(input::input_system& system, input::input_device_id device, WORD buttons, WORD mask,
@@ -107,6 +150,7 @@ windows_gamepad_backend::windows_gamepad_backend(input::input_system& input) noe
     get_state_ = load_procedure<get_state_fn>(module_, "XInputGetState");
     set_state_ = load_procedure<set_state_fn>(module_, "XInputSetState");
     get_capabilities_ = load_procedure<get_capabilities_fn>(module_, "XInputGetCapabilities");
+    get_battery_information_ = load_procedure<get_battery_information_fn>(module_, "XInputGetBatteryInformation");
 }
 
 windows_gamepad_backend::~windows_gamepad_backend()
@@ -156,6 +200,12 @@ void windows_gamepad_backend::poll()
 
             packet_numbers_[user_index] = state.dwPacketNumber;
             packet_valid_[user_index] = true;
+
+            if (get_battery_information_ && now >= next_battery_ticks_[user_index])
+            {
+                submit_battery_state(user_index);
+                next_battery_ticks_[user_index] = now + battery_poll_interval_ms;
+            }
         }
         else if (result == ERROR_DEVICE_NOT_CONNECTED)
         {
@@ -214,6 +264,14 @@ void windows_gamepad_backend::connect(DWORD user_index)
     const bool wireless = has_capabilities && (native_capabilities.Flags & XINPUT_CAPS_WIRELESS) != 0;
     const bool force_feedback = !has_capabilities || (native_capabilities.Flags & XINPUT_CAPS_FFB_SUPPORTED) != 0;
 
+    XINPUT_BATTERY_INFORMATION native_battery{};
+    const bool has_battery_state =
+        get_battery_information_ &&
+        get_battery_information_(user_index, BATTERY_DEVTYPE_GAMEPAD, &native_battery) == ERROR_SUCCESS;
+    const input::input_battery_state battery =
+        has_battery_state ? normalized_battery_state(native_battery) : input::input_battery_state{};
+    const bool supports_battery = has_battery_state && battery.status != input::input_battery_status::not_present;
+
     const input::input_device_id device = stable_device_id(user_index);
     devices_[user_index] = device;
     input_->connect_device(
@@ -227,9 +285,12 @@ void windows_gamepad_backend::connect(DWORD user_index)
          .capabilities = {.buttons = true,
                           .axes = true,
                           .rumble = set_state_ != nullptr && force_feedback,
+                          .battery = supports_battery,
                           .button_count = 14,
                           .axis_count = 6}});
 
+    if (has_battery_state) input_->submit_battery_state(device, battery);
+    next_battery_ticks_[user_index] = GetTickCount64() + battery_poll_interval_ms;
     if (set_state_ && force_feedback) input_->register_output_sink(device, *this);
 }
 
@@ -238,6 +299,7 @@ void windows_gamepad_backend::disconnect(DWORD user_index)
     const input::input_device_id device = devices_[user_index];
     if (device) input_->disconnect_device(device);
     packet_valid_[user_index] = false;
+    next_battery_ticks_[user_index] = 0;
 }
 
 void windows_gamepad_backend::submit_state(DWORD user_index, const XINPUT_GAMEPAD& state)
@@ -273,6 +335,18 @@ void windows_gamepad_backend::submit_state(DWORD user_index, const XINPUT_GAMEPA
                         normalize_trigger(state.bLeftTrigger));
     input_->submit_axis(device, input::make_gamepad_axis_control(input::gamepad_axis::right_trigger),
                         normalize_trigger(state.bRightTrigger));
+}
+
+void windows_gamepad_backend::submit_battery_state(DWORD user_index)
+{
+    if (!get_battery_information_) return;
+
+    const input::input_device_id device = devices_[user_index];
+    if (!device) return;
+
+    XINPUT_BATTERY_INFORMATION native_battery{};
+    if (get_battery_information_(user_index, BATTERY_DEVTYPE_GAMEPAD, &native_battery) != ERROR_SUCCESS) return;
+    input_->submit_battery_state(device, normalized_battery_state(native_battery));
 }
 
 } // namespace arc::platform::windows
