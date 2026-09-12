@@ -17,7 +17,7 @@ struct game_world_api_v1;
 namespace arc::flow
 {
 
-inline constexpr std::uint32_t flow_ir_version = 1;
+inline constexpr std::uint32_t flow_ir_version = 2;
 inline constexpr std::uint32_t flow_bytecode_version = 2;
 inline constexpr std::uint32_t invalid_instruction = std::numeric_limits<std::uint32_t>::max();
 inline constexpr std::uint32_t invalid_entity_index = std::numeric_limits<std::uint32_t>::max();
@@ -124,8 +124,25 @@ struct ir_entry_point
 enum class ir_opcode : std::uint8_t
 {
     branch,
+    self_entity,
+    world_entity_alive,
+    world_get_name,
+    world_set_name,
+    world_get_transform,
+    world_set_transform,
+    world_get_tag,
+    world_set_tag,
+    world_get_active,
+    world_set_active,
 };
 
+/**
+ * @brief Typed Flow IR instruction.
+ *
+ * Branch keeps descriptive fields for its condition and targets. Gameplay/world instructions use operand0..operand4
+ * with the same typed slot/target interpretation as their bytecode equivalents. IR remains source-mapped through
+ * @ref node_id and is never executed directly.
+ */
 struct ir_instruction
 {
     ir_opcode opcode{ir_opcode::branch};
@@ -133,6 +150,11 @@ struct ir_instruction
     std::uint32_t condition_slot{0};
     std::uint32_t true_instruction{invalid_instruction};
     std::uint32_t false_instruction{invalid_instruction};
+    std::uint32_t operand0{0};
+    std::uint32_t operand1{invalid_instruction};
+    std::uint32_t operand2{invalid_instruction};
+    std::uint32_t operand3{invalid_instruction};
+    std::uint32_t operand4{invalid_instruction};
 };
 
 struct ir_program
