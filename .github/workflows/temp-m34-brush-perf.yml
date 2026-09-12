@@ -42,7 +42,7 @@ jobs:
             editor/native/src/arc_host_base.inc \
             editor/native/src/arc_host_impl.inc \
             editor/native/tests/terrain_rebuild_tests.cpp
-          git diff --check
+          git diff --check -- . ':(exclude).github/temp_m34_patch.py'
       - name: Configure targeted native build
         run: >
           cmake -S . -B out/build/m34-perf -G Ninja
