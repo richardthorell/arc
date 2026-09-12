@@ -91,7 +91,8 @@ export function FlowEditor({ document }: { document: EditorDocument; context?: E
             </div>
           </dl>
           <p>
-            Flow graphs are authoring data. Compilation and runtime execution are introduced in the next milestones.
+            Flow graphs compile to typed runtime bytecode; gameplay world operations execute through ARC's stable world
+            API.
           </p>
         </section>
 

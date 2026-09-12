@@ -54,4 +54,55 @@ describe('Flow graph domain', () => {
       ).allowed,
     ).toBe(true);
   });
+
+  it('connects Self Entity and typed literals to gameplay nodes', () => {
+    const self = createFlowNode('selfEntity', [0, 0]);
+    const name = createFlowNode('stringLiteral', [0, 120], { value: 'Player' });
+    const setName = createFlowNode('setName', [320, 0]);
+
+    const selfPin = flowNodeDefinitions.selfEntity.outputs.find((pin) => pin.id === 'entity')!;
+    const entityInput = flowNodeDefinitions.setName.inputs.find((pin) => pin.id === 'entity')!;
+    const namePin = flowNodeDefinitions.stringLiteral.outputs.find((pin) => pin.id === 'value')!;
+    const nameInput = flowNodeDefinitions.setName.inputs.find((pin) => pin.id === 'name')!;
+
+    expect(
+      flowGraphDomain.canConnect(
+        { node: self, pin: selfPin, direction: 'output' },
+        { node: setName, pin: entityInput, direction: 'input' },
+      ).allowed,
+    ).toBe(true);
+    expect(
+      flowGraphDomain.canConnect(
+        { node: name, pin: namePin, direction: 'output' },
+        { node: setName, pin: nameInput, direction: 'input' },
+      ).allowed,
+    ).toBe(true);
+  });
+
+  it('keeps transform inputs strongly typed', () => {
+    const vector3 = createFlowNode('vector3Literal', [0, 0]);
+    const vector4 = createFlowNode('vector4Literal', [0, 120]);
+    const setTransform = createFlowNode('setTransform', [320, 0]);
+    const position = flowNodeDefinitions.setTransform.inputs.find((pin) => pin.id === 'position')!;
+    const rotation = flowNodeDefinitions.setTransform.inputs.find((pin) => pin.id === 'rotation')!;
+
+    expect(
+      flowGraphDomain.canConnect(
+        { node: vector3, pin: flowNodeDefinitions.vector3Literal.outputs[0], direction: 'output' },
+        { node: setTransform, pin: position, direction: 'input' },
+      ).allowed,
+    ).toBe(true);
+    expect(
+      flowGraphDomain.canConnect(
+        { node: vector3, pin: flowNodeDefinitions.vector3Literal.outputs[0], direction: 'output' },
+        { node: setTransform, pin: rotation, direction: 'input' },
+      ).allowed,
+    ).toBe(false);
+    expect(
+      flowGraphDomain.canConnect(
+        { node: vector4, pin: flowNodeDefinitions.vector4Literal.outputs[0], direction: 'output' },
+        { node: setTransform, pin: rotation, direction: 'input' },
+      ).allowed,
+    ).toBe(true);
+  });
 });

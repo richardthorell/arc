@@ -5,6 +5,7 @@ import {
   createFlowAsset,
   createFlowNode,
   flowGraphFromAsset,
+  flowNodeDefinitions,
   isFlowAssetJson,
   isFlowGraph,
 } from './flowGraphTypes';
@@ -31,6 +32,25 @@ describe('Flow graph authoring schema', () => {
 
     expect(asset.graph.nodes[0].position[0]).not.toBe(999);
     expect(isFlowGraph(JSON.parse(JSON.stringify(graph)))).toBe(true);
+  });
+
+  it('creates typed gameplay literal defaults', () => {
+    expect(createFlowNode('boolLiteral', [0, 0]).values.value).toBe(false);
+    expect(createFlowNode('stringLiteral', [0, 0]).values.value).toBe('');
+    expect(createFlowNode('vector3Literal', [0, 0]).values.value).toEqual([0, 0, 0]);
+    expect(createFlowNode('vector4Literal', [0, 0]).values.value).toEqual([0, 0, 0, 1]);
+  });
+
+  it('publishes the F5.1 gameplay node categories', () => {
+    expect(flowNodeDefinitions.selfEntity.category).toBe('Entity');
+    expect(flowNodeDefinitions.setName.category).toBe('Components');
+    expect(flowNodeDefinitions.setTransform.inputs.map((pin) => pin.id)).toEqual([
+      'exec',
+      'entity',
+      'position',
+      'rotation',
+      'scale',
+    ]);
   });
 
   it('rejects connections that reference missing nodes', () => {
