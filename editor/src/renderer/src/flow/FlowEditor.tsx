@@ -90,7 +90,10 @@ export function FlowEditor({ document }: { document: EditorDocument; context?: E
               <dd>{state.graph.variables.length}</dd>
             </div>
           </dl>
-          <p>Flow graphs compile to typed runtime bytecode; gameplay world operations execute through ARC's stable world API.</p>
+          <p>
+            Flow graphs compile to typed runtime bytecode; gameplay world operations execute through ARC's stable world
+            API.
+          </p>
         </section>
 
         <section className="flow-variable-panel">

@@ -96,9 +96,9 @@ void run_flow_gameplay_compile_tests()
         assert(result.bytecode->instructions.size() == 3);
         assert(result.bytecode->instructions[0].opcode == bytecode_opcode::world_get_active ||
                result.bytecode->instructions[1].opcode == bytecode_opcode::world_get_active);
-        [[maybe_unused]] const auto branch =
-            std::find_if(result.bytecode->instructions.begin(), result.bytecode->instructions.end(),
-                         [](const bytecode_instruction& instruction) { return instruction.opcode == bytecode_opcode::branch; });
+        [[maybe_unused]] const auto branch = std::find_if(
+            result.bytecode->instructions.begin(), result.bytecode->instructions.end(),
+            [](const bytecode_instruction& instruction) { return instruction.opcode == bytecode_opcode::branch; });
         assert(branch != result.bytecode->instructions.end());
         assert(branch->operand0 == active_slot);
     }
