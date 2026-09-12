@@ -38,10 +38,16 @@ constexpr std::uint64_t fnv_offset_basis = 14695981039346656037ull;
 constexpr std::uint64_t fnv_prime = 1099511628211ull;
 constexpr std::uint64_t game_input_namespace = 0x4749000000000000ull;
 constexpr std::uint64_t device_payload_mask = 0x0000ffffffffffffull;
+constexpr float standard_gravity_meters_per_second_squared = 9.80665f;
 
 float normalized_axis(float value, float minimum, float maximum) noexcept
 {
     return std::clamp(value, minimum, maximum);
+}
+
+float acceleration_meters_per_second_squared(float acceleration_g) noexcept
+{
+    return acceleration_g * standard_gravity_meters_per_second_squared;
 }
 
 input::input_connectivity_type connectivity_from_path(const char* path)
@@ -158,18 +164,8 @@ struct windows_game_input_backend::implementation
         for (auto& [native, record] : devices_)
         {
             (void)native;
-            IGameInputReading* reading = nullptr;
-            if (FAILED(game_input_->GetCurrentReading(GameInputKindGamepad, record.device, &reading)) || !reading)
-                continue;
-
-            const std::uint64_t timestamp = reading->GetTimestamp();
-            if (timestamp != record.last_timestamp)
-            {
-                GameInputGamepadState state{};
-                if (reading->GetGamepadState(&state)) submit_state(record.id, state);
-                record.last_timestamp = timestamp;
-            }
-            reading->Release();
+            poll_gamepad(record);
+            poll_sensors(record);
         }
 #endif
     }
@@ -216,7 +212,10 @@ private:
     {
         IGameInputDevice* device{};
         input::input_device_id id{};
-        std::uint64_t last_timestamp{};
+        std::uint64_t last_gamepad_timestamp{};
+        std::uint64_t last_sensor_timestamp{};
+        bool gyroscope{};
+        bool accelerometer{};
     };
 
     static void CALLBACK device_callback(GameInputCallbackToken, void* context, IGameInputDevice* device, std::uint64_t,
@@ -256,25 +255,34 @@ private:
         const GameInputDeviceInfo* info = nullptr;
         if (FAILED(device->GetDeviceInfo(&info)) || !info) return;
 
+        const GameInputSensorsKind supported_sensors =
+            info->sensorsInfo ? info->sensorsInfo->supportedSensors : GameInputSensorsNone;
+        const bool gyroscope = (supported_sensors & GameInputSensorsGyrometer) != GameInputSensorsNone;
+        const bool accelerometer = (supported_sensors & GameInputSensorsAccelerometer) != GameInputSensorsNone;
         const input::input_device_id id = stable_device_id(info->deviceId);
         const bool supports_rumble = info->supportedRumbleMotors != GameInputRumbleNone;
         std::string name = info->displayName && *info->displayName ? info->displayName : "GameInput Gamepad";
-        input_->connect_device(
-            {.id = id,
-             .type = input::input_device_type::gamepad,
-             .subtype = input::input_device_subtype::standard_gamepad,
-             .connectivity = connectivity_from_path(info->pnpPath),
-             .backend = input::input_backend_type::game_input,
-             .hardware_id = {.vendor_id = info->vendorId,
-                             .product_id = info->productId,
-                             .version = info->revisionNumber},
-             .backend_id = backend_id(id),
-             .name = std::move(name),
-             .capabilities = {
-                 .buttons = true, .axes = true, .rumble = supports_rumble, .button_count = 14, .axis_count = 6}});
+        input_->connect_device({.id = id,
+                                .type = input::input_device_type::gamepad,
+                                .subtype = input::input_device_subtype::standard_gamepad,
+                                .connectivity = connectivity_from_path(info->pnpPath),
+                                .backend = input::input_backend_type::game_input,
+                                .hardware_id = {.vendor_id = info->vendorId,
+                                                .product_id = info->productId,
+                                                .version = info->revisionNumber},
+                                .backend_id = backend_id(id),
+                                .name = std::move(name),
+                                .capabilities = {.buttons = true,
+                                                 .axes = true,
+                                                 .rumble = supports_rumble,
+                                                 .gyroscope = gyroscope,
+                                                 .accelerometer = accelerometer,
+                                                 .button_count = 14,
+                                                 .axis_count = 6}});
 
         device->AddRef();
-        devices_.emplace(device, device_record{.device = device, .id = id});
+        devices_.emplace(
+            device, device_record{.device = device, .id = id, .gyroscope = gyroscope, .accelerometer = accelerometer});
         if (supports_rumble && owner_) input_->register_output_sink(id, *owner_);
     }
 
@@ -289,7 +297,39 @@ private:
         devices_.erase(found);
     }
 
-    void submit_state(input::input_device_id device, const GameInputGamepadState& state)
+    void poll_gamepad(device_record& record)
+    {
+        IGameInputReading* reading = nullptr;
+        if (FAILED(game_input_->GetCurrentReading(GameInputKindGamepad, record.device, &reading)) || !reading) return;
+
+        const std::uint64_t timestamp = reading->GetTimestamp();
+        if (timestamp != record.last_gamepad_timestamp)
+        {
+            GameInputGamepadState state{};
+            if (reading->GetGamepadState(&state)) submit_gamepad_state(record.id, state);
+            record.last_gamepad_timestamp = timestamp;
+        }
+        reading->Release();
+    }
+
+    void poll_sensors(device_record& record)
+    {
+        if (!record.gyroscope && !record.accelerometer) return;
+
+        IGameInputReading* reading = nullptr;
+        if (FAILED(game_input_->GetCurrentReading(GameInputKindSensors, record.device, &reading)) || !reading) return;
+
+        const std::uint64_t timestamp = reading->GetTimestamp();
+        if (timestamp != record.last_sensor_timestamp)
+        {
+            GameInputSensorsState state{};
+            if (reading->GetSensorsState(&state)) submit_sensor_state(record, state);
+            record.last_sensor_timestamp = timestamp;
+        }
+        reading->Release();
+    }
+
+    void submit_gamepad_state(input::input_device_id device, const GameInputGamepadState& state)
     {
         submit_button(*input_, device, state.buttons, GameInputGamepadA, input::gamepad_button::south);
         submit_button(*input_, device, state.buttons, GameInputGamepadB, input::gamepad_button::east);
@@ -322,6 +362,29 @@ private:
                             normalized_axis(state.leftTrigger, 0.0f, 1.0f));
         input_->submit_axis(device, input::make_gamepad_axis_control(input::gamepad_axis::right_trigger),
                             normalized_axis(state.rightTrigger, 0.0f, 1.0f));
+    }
+
+    void submit_sensor_state(const device_record& record, const GameInputSensorsState& state)
+    {
+        if (record.gyroscope)
+        {
+            input_->submit_axis(record.id, input::make_sensor_axis_control(input::sensor_axis::gyroscope_x),
+                                state.angularVelocityInRadPerSecX);
+            input_->submit_axis(record.id, input::make_sensor_axis_control(input::sensor_axis::gyroscope_y),
+                                state.angularVelocityInRadPerSecY);
+            input_->submit_axis(record.id, input::make_sensor_axis_control(input::sensor_axis::gyroscope_z),
+                                state.angularVelocityInRadPerSecZ);
+        }
+
+        if (record.accelerometer)
+        {
+            input_->submit_axis(record.id, input::make_sensor_axis_control(input::sensor_axis::accelerometer_x),
+                                acceleration_meters_per_second_squared(state.accelerationInGX));
+            input_->submit_axis(record.id, input::make_sensor_axis_control(input::sensor_axis::accelerometer_y),
+                                acceleration_meters_per_second_squared(state.accelerationInGY));
+            input_->submit_axis(record.id, input::make_sensor_axis_control(input::sensor_axis::accelerometer_z),
+                                acceleration_meters_per_second_squared(state.accelerationInGZ));
+        }
     }
 
     input::input_system* input_{};
