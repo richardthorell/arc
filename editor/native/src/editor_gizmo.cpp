@@ -82,8 +82,7 @@ void append_axis_shaft(render::debug_overlay_stream& stream, const math::vector3
         const float first_angle = math::tau<float> * static_cast<float>(segment) / static_cast<float>(radial_segments);
         const float second_angle =
             math::tau<float> * static_cast<float>(segment + 1) / static_cast<float>(radial_segments);
-        const auto radial = [&](float angle)
-        {
+        const auto radial = [&](float angle) {
             return math::mul(math::add(math::mul(basis[0], std::cos(angle)), math::mul(basis[1], std::sin(angle))),
                              radius);
         };
@@ -108,8 +107,7 @@ void append_arrow_head(render::debug_overlay_stream& stream, const math::vector3
         const float first_angle = math::tau<float> * static_cast<float>(segment) / static_cast<float>(radial_segments);
         const float second_angle =
             math::tau<float> * static_cast<float>(segment + 1) / static_cast<float>(radial_segments);
-        const auto radial = [&](float angle)
-        {
+        const auto radial = [&](float angle) {
             return math::mul(math::add(math::mul(basis[0], std::cos(angle)), math::mul(basis[1], std::sin(angle))),
                              radius);
         };
