@@ -1232,6 +1232,8 @@ private:
 
     bool ensure_mesh_pipeline();
 
+    void render_selection_mask(VkCommandBuffer command_buffer);
+
     bool ensure_debug_overlay_pipeline();
 
     bool ensure_gpu_bindless_pipelines();
@@ -1546,6 +1548,7 @@ private:
     VkPipelineLayout water_surface_pipeline_layout_{};
     VkPipeline water_surface_pipeline_{};
     VkPipeline mesh_wire_pipeline_{};
+    VkPipeline selection_mask_pipeline_{};
     VkPipeline terrain_surface_pipeline_{};
     VkPipeline gbuffer_pipeline_{};
     VkPipeline terrain_surface_gbuffer_pipeline_{};

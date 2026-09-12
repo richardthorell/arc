@@ -285,6 +285,63 @@ describe('ViewportPanel', () => {
     );
   });
 
+  it('uses clean selection visuals by default and exposes technical overlays as opt-in', async () => {
+    const command = vi.fn().mockResolvedValue({ succeeded: true });
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        host: {
+          command,
+          query: vi.fn().mockResolvedValue({
+            succeeded: true,
+            payload: { width: 640, height: 480, fps: 60, frameTimeMs: 16.6, drawCalls: 1, frameIndex: 1 },
+          }),
+        },
+        viewport: {
+          attach: vi.fn().mockResolvedValue({ succeeded: true }),
+          resize: vi.fn().mockResolvedValue({ succeeded: true }),
+          detach: vi.fn().mockResolvedValue({ succeeded: true }),
+          cameraInput: vi.fn().mockResolvedValue({ succeeded: true }),
+        },
+      },
+    });
+
+    const view = render(
+      <ViewportPanel
+        project={null}
+        startupState={{ appVersion: '0.1.0', engineHostConnected: true, viewportMode: 'native' }}
+        onCommand={vi.fn()}
+        onReconnect={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    fireEvent.click(view.getByText('Show'));
+    expect(await view.findByRole('menuitemcheckbox', { name: /Selection Outline/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(view.getByRole('menuitemcheckbox', { name: /Hover Outline/ })).toHaveAttribute('aria-checked', 'true');
+    const bounds = view.getByRole('menuitemcheckbox', { name: /Selection Bounds/ });
+    const wireframe = view.getByRole('menuitemcheckbox', { name: /Selection Wireframe/ });
+    expect(bounds).toHaveAttribute('aria-checked', 'false');
+    expect(wireframe).toHaveAttribute('aria-checked', 'false');
+
+    fireEvent.click(bounds);
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith(
+        'viewport.setRenderOptions',
+        expect.objectContaining({ selectionBounds: true, overlay: 'none' }),
+      ),
+    );
+    fireEvent.click(wireframe);
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith(
+        'viewport.setRenderOptions',
+        expect.objectContaining({ selectionBounds: true, overlay: 'selectedWireframe' }),
+      ),
+    );
+  });
+
   it('selects texture residency debug visualization modes', async () => {
     const command = vi.fn().mockResolvedValue({ succeeded: true });
     Object.defineProperty(window, 'arc', {

@@ -82,7 +82,8 @@ void append_axis_shaft(render::debug_overlay_stream& stream, const math::vector3
         const float first_angle = math::tau<float> * static_cast<float>(segment) / static_cast<float>(radial_segments);
         const float second_angle =
             math::tau<float> * static_cast<float>(segment + 1) / static_cast<float>(radial_segments);
-        const auto radial = [&](float angle) {
+        const auto radial = [&](float angle)
+        {
             return math::mul(math::add(math::mul(basis[0], std::cos(angle)), math::mul(basis[1], std::sin(angle))),
                              radius);
         };
@@ -107,7 +108,8 @@ void append_arrow_head(render::debug_overlay_stream& stream, const math::vector3
         const float first_angle = math::tau<float> * static_cast<float>(segment) / static_cast<float>(radial_segments);
         const float second_angle =
             math::tau<float> * static_cast<float>(segment + 1) / static_cast<float>(radial_segments);
-        const auto radial = [&](float angle) {
+        const auto radial = [&](float angle)
+        {
             return math::mul(math::add(math::mul(basis[0], std::cos(angle)), math::mul(basis[1], std::sin(angle))),
                              radius);
         };
@@ -321,14 +323,14 @@ void append_scene_component_icons(render::debug_overlay_stream& stream, const ec
     registry.view<scene::transform_component, scene::camera_component>().each(
         [&](ecs::entity entity, const scene::transform_component& transform, const scene::camera_component& camera)
         {
-            if (entity == view_camera_entity || !camera.active) return;
+            if (entity != selected || entity == view_camera_entity || !camera.active) return;
             append_billboard_camera_icon(stream, transform, view_camera, view_transform, context.viewport_height,
                                          color_for(entity, camera_color));
         });
 
     const auto append_light = [&](ecs::entity entity, const scene::transform_component& transform, bool enabled)
     {
-        if (!enabled) return;
+        if (entity != selected || !enabled) return;
         append_billboard_light_icon(stream, transform, view_camera, view_transform, context.viewport_height,
                                     color_for(entity, light_color));
     };
@@ -479,19 +481,21 @@ render::debug_overlay_stream build_editor_gizmo_overlay(const ecs::world& regist
     const auto* camera = registry.try_get<scene::camera_component>(camera_entity);
     const auto* camera_transform = registry.try_get<scene::transform_component>(camera_entity);
     if (!camera || !camera_transform) return stream;
-    append_scene_component_icons(stream, registry, selected, camera_entity, *camera, *camera_transform, context);
+    if (context.show_component_gizmos)
+        append_scene_component_icons(stream, registry, selected, camera_entity, *camera, *camera_transform, context);
     const auto* transform = registry.try_get<scene::transform_component>(selected);
     if (!transform) return stream;
-    if (const auto* selected_camera = registry.try_get<scene::camera_component>(selected))
-    {
-        const float aspect = static_cast<float>(std::max(1u, context.viewport_width)) /
-                             static_cast<float>(std::max(1u, context.viewport_height));
-        append_camera_frustum(stream, *selected_camera, *transform, aspect);
-    }
+    if (context.show_component_gizmos)
+        if (const auto* selected_camera = registry.try_get<scene::camera_component>(selected))
+        {
+            const float aspect = static_cast<float>(std::max(1u, context.viewport_width)) /
+                                 static_cast<float>(std::max(1u, context.viewport_height));
+            append_camera_frustum(stream, *selected_camera, *transform, aspect);
+        }
     // A terrain's scene-wide AABB projects as enormous lines through the
     // viewport and looks like geometry clipping. Terrain selection is already
     // represented by the surface/ObjectID and its dedicated brush overlay.
-    if (!registry.has<scene::terrain_component>(selected))
+    if (context.show_selection_bounds && !registry.has<scene::terrain_component>(selected))
         if (const auto* bounds = registry.try_get<scene::bounds_component>(selected))
             append_bounds(stream, transformed_bounds(bounds->local_bounds, *transform));
     if (context.tool == editor_tool::select) return stream;

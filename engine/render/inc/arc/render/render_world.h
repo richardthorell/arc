@@ -91,6 +91,7 @@ struct render_item
     std::uint32_t instance_count{1};
     bool visible{true};
     bool selected{};
+    editor_selection_state selection_state{editor_selection_state::none};
     bool transparent{};
     bool casts_shadows{true};
     bool receives_shadows{true};
@@ -131,6 +132,7 @@ struct virtual_render_item
     render_object_id object_id{};
     bool visible{true};
     bool selected{};
+    editor_selection_state selection_state{editor_selection_state::none};
     bool casts_shadows{true};
     bool receives_shadows{true};
     render_mobility mobility{render_mobility::movable};
@@ -473,7 +475,7 @@ struct render_world_packet
     render_camera camera;
     render_mode mode{render_mode::shaded};
     mesh_visualization_mode visualization{mesh_visualization_mode::standard};
-    editor_overlay_mode overlay{editor_overlay_mode::selected_wireframe};
+    editor_overlay_mode overlay{editor_overlay_mode::none};
     bool shadows_enabled{true};
     std::vector<directional_light_event> directional_lights;
     std::vector<point_light_event> point_lights;

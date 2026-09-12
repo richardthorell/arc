@@ -877,6 +877,7 @@ private:
             {
                 std::lock_guard lock(host_mutex_);
                 terrain_mode = host_->viewport_tool_state().tool == arc::editor::host_viewport_tool::terrain;
+                if (terrain_mode) host_->clear_viewport_hover();
             }
             if (!terrain_mode) update_gizmo_hover(x, y);
             return;
@@ -974,6 +975,10 @@ private:
         selection_candidate_ = false;
         camera_drag_started_ = false;
         pointer_inside_ = false;
+        {
+            std::lock_guard lock(host_mutex_);
+            host_->clear_viewport_hover();
+        }
         clear_terrain_hover();
     }
 
@@ -1114,6 +1119,7 @@ private:
                                                              context, static_cast<float>(x), static_cast<float>(y));
         active_axis_ = axis;
         host_->set_viewport_gizmo_highlight(axis);
+        host_->set_viewport_hover(x, y);
     }
 
     void begin_manipulation(int x, int y)

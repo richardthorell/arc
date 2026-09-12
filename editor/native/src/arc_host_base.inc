@@ -1985,6 +1985,7 @@ struct arc_host::state
     editor_project_state project;
     editor_asset_state assets;
     editor_scene_state scene;
+    ecs::entity hovered_entity{};
     editor_camera_controller camera_controller;
     host_viewport_request viewport_options;
     std::string active_viewport_id{"viewport-1"};
@@ -2225,7 +2226,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 push_event(state_->events, state_->event_sequence, host_event_type::command_failed, message, entity);
                 return host_response{.request_id = request_id, .succeeded = false, .error = std::move(message)};
             };
-            const auto success = [request_id](std::string payload_json = "{}") {
+            const auto success = [request_id](std::string payload_json = "{}")
+            {
                 return host_response{
                     .request_id = request_id, .succeeded = true, .payload_json = std::move(payload_json)};
             };
@@ -2250,7 +2252,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                     {
                         const auto editor_module =
                             std::find_if(descriptor.value().modules.begin(), descriptor.value().modules.end(),
-                                         [&](const auto& module) {
+                                         [&](const auto& module)
+                                         {
                                              return module.enabled && module.kind == project::module_kind::editor &&
                                                     module.id == payload.editor_module_id;
                                          });
@@ -4660,6 +4663,11 @@ host_response arc_host::execute(const host_command_envelope& command)
                 state_->viewport_options.render_mode = payload.render_mode;
                 state_->viewport_options.visualization = payload.visualization;
                 state_->viewport_options.overlay = payload.overlay;
+                state_->viewport_options.selection_outline = payload.selection_outline;
+                state_->viewport_options.hover_outline = payload.hover_outline;
+                state_->viewport_options.selection_bounds = payload.selection_bounds;
+                state_->viewport_options.component_gizmos = payload.component_gizmos;
+                state_->viewport_options.selection_hierarchy = payload.selection_hierarchy;
                 state_->viewport_options.shadows = payload.shadows;
                 state_->viewport_options.grid = payload.grid;
                 state_->viewport_options.skeletons = payload.skeletons;
@@ -5327,8 +5335,7 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"activeCascades\":" + std::to_string(profile.water.active_cascade_count) +
                     ",\"maximumResolution\":" + std::to_string(profile.water.maximum_resolution) +
                     ",\"updateIntervalFrames\":" + std::to_string(profile.water.update_interval_frames) +
-                    ",\"foamUpdateIntervalFrames\":" +
-                    std::to_string(profile.water.foam_update_interval_frames) +
+                    ",\"foamUpdateIntervalFrames\":" + std::to_string(profile.water.foam_update_interval_frames) +
                     ",\"computeDispatches\":" + std::to_string(profile.water.compute_dispatch_count) +
                     ",\"foamDispatches\":" + std::to_string(profile.water.foam_dispatch_count) +
                     ",\"simulationMemoryBytes\":" + std::to_string(profile.water.simulation_memory_bytes) +
@@ -5710,8 +5717,18 @@ host_response arc_host::query(const host_query_envelope& query) const
                         to_json_string(to_string(state_->viewport_options.render_mode)) +
                         ",\"visualization\":" + to_json_string(to_string(state_->viewport_options.visualization)) +
                         ",\"overlay\":" + to_json_string(to_string(state_->viewport_options.overlay)) +
+                        ",\"selectionOutline\":" +
+                        std::string(state_->viewport_options.selection_outline ? "true" : "false") +
+                        ",\"hoverOutline\":" + std::string(state_->viewport_options.hover_outline ? "true" : "false") +
+                        ",\"selectionBounds\":" +
+                        std::string(state_->viewport_options.selection_bounds ? "true" : "false") +
+                        ",\"componentGizmos\":" +
+                        std::string(state_->viewport_options.component_gizmos ? "true" : "false") +
+                        ",\"selectionHierarchy\":" +
+                        std::string(state_->viewport_options.selection_hierarchy ? "true" : "false") +
                         ",\"shadows\":" + std::string(state_->viewport_options.shadows ? "true" : "false") +
                         ",\"grid\":" + std::string(state_->viewport_options.grid ? "true" : "false") +
+                        ",\"skeletons\":" + std::string(state_->viewport_options.skeletons ? "true" : "false") +
                         ",\"realtime\":" + std::string(state_->viewport_options.realtime ? "true" : "false") +
                         ",\"cameraSpeed\":" + std::to_string(state_->viewport_options.camera_speed) +
                         ",\"antiAliasing\":" +
@@ -6627,18 +6644,21 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         state_->scene.focus_imported_scene_requested = false;
     }
 
-    auto debug_overlay = state_->preview_stopped
-                             ? build_editor_gizmo_overlay(
-                                   state_->scene.scene, state_->scene.selected_entity, state_->scene.camera_entity,
-                                   editor_gizmo_context{.tool = to_editor_tool(state_->viewport_tool.tool),
-                                                        .coordinate_space = state_->viewport_tool.coordinate_space ==
-                                                                                    host_coordinate_space::local
-                                                                                ? gizmo_coordinate_space::local
-                                                                                : gizmo_coordinate_space::world,
-                                                        .highlighted_axis = state_->gizmo_highlight,
-                                                        .viewport_width = request.width,
-                                                        .viewport_height = request.height})
-                             : render::debug_overlay_stream{};
+    auto debug_overlay =
+        state_->preview_stopped
+            ? build_editor_gizmo_overlay(
+                  state_->scene.scene, state_->scene.selected_entity, state_->scene.camera_entity,
+                  editor_gizmo_context{.tool = to_editor_tool(state_->viewport_tool.tool),
+                                       .coordinate_space =
+                                           state_->viewport_tool.coordinate_space == host_coordinate_space::local
+                                               ? gizmo_coordinate_space::local
+                                               : gizmo_coordinate_space::world,
+                                       .highlighted_axis = state_->gizmo_highlight,
+                                       .show_selection_bounds = state_->viewport_options.selection_bounds,
+                                       .show_component_gizmos = state_->viewport_options.component_gizmos,
+                                       .viewport_width = request.width,
+                                       .viewport_height = request.height})
+            : render::debug_overlay_stream{};
     const auto append_skeleton = [&](ecs::entity entity, std::uint32_t selected_joint)
     {
         if (const auto* skeleton = find_imported_skeleton(state_->scene, entity))
@@ -6703,7 +6723,13 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         to_render_mode(state_->viewport_options.render_mode), to_visualization(state_->viewport_options.visualization),
         to_overlay(state_->viewport_options.overlay), state_->viewport_options.shadows,
         to_scene_visibility(state_->viewport_options.environment), delta_seconds, std::move(debug_overlay),
-        viewport_camera, &state_->scene.terrain_render_proxies, runtime_frame.total_seconds);
+        viewport_camera, &state_->scene.terrain_render_proxies, runtime_frame.total_seconds,
+        scene::scene_render_editor_options{
+            .primary_selection = state_->preview_stopped ? state_->scene.selected_entity : ecs::entity{},
+            .hovered_entity = state_->preview_stopped ? state_->hovered_entity : ecs::entity{},
+            .selection_outline = state_->preview_stopped && state_->viewport_options.selection_outline,
+            .hover_outline = state_->preview_stopped && state_->viewport_options.hover_outline,
+            .selection_hierarchy = state_->preview_stopped && state_->viewport_options.selection_hierarchy});
 
     auto view_config = state_->renderer->resolved_config();
     auto requested_anti_aliasing = to_render_anti_aliasing(state_->viewport_options.anti_aliasing);
@@ -6777,6 +6803,29 @@ const host_viewport_set_tool_command& arc_host::viewport_tool_state() const noex
 void arc_host::set_viewport_gizmo_highlight(gizmo_axis axis) noexcept
 {
     state_->gizmo_highlight = axis;
+}
+
+void arc_host::set_viewport_hover(std::int32_t x, std::int32_t y) noexcept
+{
+    state_->hovered_entity = {};
+    if (!state_->preview_stopped || !state_->viewport_options.hover_outline) return;
+
+    const auto* camera = state_->scene.scene.try_get<scene::camera_component>(state_->scene.camera_entity);
+    const auto* transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity);
+    editor_viewport viewport;
+    viewport.set_size(static_cast<float>(state_->viewport_options.width),
+                      static_cast<float>(state_->viewport_options.height));
+    if (!camera || !transform || !viewport.valid()) return;
+
+    const auto ray =
+        screen_ray_from_camera(*camera, *transform, viewport, static_cast<float>(x), static_cast<float>(y));
+    const auto picked = pick_scene_entity(state_->scene.scene, *state_->renderer, ray);
+    if (state_->scene.scene.alive(picked.entity)) state_->hovered_entity = picked.entity;
+}
+
+void arc_host::clear_viewport_hover() noexcept
+{
+    state_->hovered_entity = {};
 }
 
 in_process_host_session::in_process_host_session(std::shared_ptr<arc_host> host) : host_(std::move(host)) {}

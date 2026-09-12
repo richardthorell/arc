@@ -834,6 +834,58 @@ TEST_CASE("mesh renderer keeps conventional fallback when virtual geometry is un
     REQUIRE(item.selected);
 }
 
+TEST_CASE("render scene classifies clean editor selection outlines")
+{
+    arc::ecs::world scene;
+    arc::render::renderer renderer;
+    const arc::render::mesh_handle mesh{.index = 2, .generation = 1};
+
+    const auto camera = scene.create();
+    arc::scene::transform_component camera_transform;
+    camera_transform.position = {0.0f, 0.0f, 5.0f};
+    scene.emplace<arc::scene::transform_component>(camera, camera_transform);
+    scene.emplace<arc::scene::camera_component>(camera);
+
+    const auto make_mesh = [&]
+    {
+        const auto entity = scene.create();
+        scene.emplace<arc::scene::transform_component>(entity);
+        scene.emplace<arc::scene::mesh_renderer_component>(
+            entity, arc::scene::mesh_renderer_component{.mesh = arc::render::geometry_resource_handle{mesh}});
+        return entity;
+    };
+    const auto primary = make_mesh();
+    const auto secondary = make_mesh();
+    const auto hovered = make_mesh();
+    const auto child = make_mesh();
+    scene.emplace<arc::scene::selection_component>(primary, true);
+    scene.emplace<arc::scene::selection_component>(secondary, true);
+    REQUIRE(arc::scene::reparent(scene, child, primary));
+
+    arc::scene::scene_render_editor_options editor_options{
+        .primary_selection = primary, .hovered_entity = hovered, .selection_hierarchy = true};
+    REQUIRE(arc::scene::render_scene(scene, renderer, 1280, 720, arc::render::render_mode::shaded,
+                                     arc::render::mesh_visualization_mode::standard,
+                                     arc::render::editor_overlay_mode::none, true, {}, 0.0f, {}, camera, nullptr, 0.0,
+                                     editor_options)
+                .camera_found);
+
+    const auto packet = renderer.frame_queue().commit(1);
+    const auto& world = *std::get<arc::render::render_world_event>(packet.events.back().payload).packet;
+    const auto state_for = [&](arc::ecs::entity entity)
+    {
+        const auto found = std::find_if(world.items.begin(), world.items.end(),
+                                        [&](const auto& item) { return item.object_id.index == entity.index; });
+        REQUIRE(found != world.items.end());
+        return found->selection_state;
+    };
+    CHECK(state_for(primary) == arc::render::editor_selection_state::primary);
+    CHECK(state_for(secondary) == arc::render::editor_selection_state::secondary);
+    CHECK(state_for(hovered) == arc::render::editor_selection_state::hovered);
+    CHECK(state_for(child) == arc::render::editor_selection_state::secondary);
+    CHECK(world.overlay == arc::render::editor_overlay_mode::none);
+}
+
 TEST_CASE("render scene can request wireframe overlay for every draw")
 {
     arc::ecs::world scene;

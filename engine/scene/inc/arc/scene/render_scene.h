@@ -58,6 +58,16 @@ struct scene_render_visibility
     bool decals{true};
 };
 
+/** Editor-only selection decoration inputs. Runtime callers may leave this empty. */
+struct scene_render_editor_options
+{
+    ecs::entity primary_selection{};
+    ecs::entity hovered_entity{};
+    bool selection_outline{true};
+    bool hover_outline{true};
+    bool selection_hierarchy{};
+};
+
 /** Prewarm all extraction queries so subsequent frames perform no query allocation. */
 void prepare_render_scene_queries(ecs::world& scene);
 
@@ -68,10 +78,10 @@ render_scene_result
 render_scene(ecs::world& scene, render::renderer& renderer, std::uint32_t viewport_width, std::uint32_t viewport_height,
              render::render_mode mode = render::render_mode::shaded,
              render::mesh_visualization_mode visualization = render::mesh_visualization_mode::standard,
-             render::editor_overlay_mode overlay = render::editor_overlay_mode::selected_wireframe,
-             bool shadows_enabled = true, scene_render_visibility environment_visibility = {},
-             float delta_seconds = 0.0f, render::debug_overlay_stream debug_overlay = {},
-             ecs::entity preferred_camera = {}, terrain_render_proxy_cache* terrain_proxies = nullptr,
-             double simulation_time_seconds = 0.0);
+             render::editor_overlay_mode overlay = render::editor_overlay_mode::none, bool shadows_enabled = true,
+             scene_render_visibility environment_visibility = {}, float delta_seconds = 0.0f,
+             render::debug_overlay_stream debug_overlay = {}, ecs::entity preferred_camera = {},
+             terrain_render_proxy_cache* terrain_proxies = nullptr, double simulation_time_seconds = 0.0,
+             scene_render_editor_options editor_options = {});
 
 } // namespace arc::scene

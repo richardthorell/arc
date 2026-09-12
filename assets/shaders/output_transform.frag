@@ -7,6 +7,7 @@ layout(location = 0) in vec2 in_uv;
 layout(location = 0) out vec4 out_color;
 
 layout(set = 0, binding = 0) uniform sampler2D scene_color;
+layout(set = 0, binding = 2) uniform sampler2D selection_mask;
 layout(std430, set = 0, binding = 1) readonly buffer exposure_buffer
 {
     uint bins[256];
@@ -23,10 +24,28 @@ layout(push_constant) uniform output_constants
     vec4 post_process;
 } constants;
 
+const vec3 outline_accent = vec3(1.0, 0.48, 0.04);
+
 vec3 arc_output_linear(vec2 uv, float exposure_multiplier)
 {
     vec3 exposed = texture(scene_color, uv).rgb * max(exposure_multiplier, 0.0);
     return arc_aces_fitted(exposed);
+}
+
+float selection_outline()
+{
+    ivec2 extent = textureSize(selection_mask, 0);
+    ivec2 pixel = clamp(ivec2(gl_FragCoord.xy), ivec2(0), extent - ivec2(1));
+    float center = texelFetch(selection_mask, pixel, 0).r;
+    float neighbor = 0.0;
+    for (int y = -2; y <= 2; ++y)
+        for (int x = -2; x <= 2; ++x)
+        {
+            if (x == 0 && y == 0) continue;
+            ivec2 sample_pixel = clamp(pixel + ivec2(x, y), ivec2(0), extent - ivec2(1));
+            neighbor = max(neighbor, texelFetch(selection_mask, sample_pixel, 0).r);
+        }
+    return max(0.0, neighbor - center);
 }
 
 void main()
@@ -34,7 +53,9 @@ void main()
     vec4 hdr = texture(scene_color, in_uv);
     if (constants.exposure_output.w > 0.5)
     {
-        out_color = vec4(arc_linear_to_srgb(clamp(hdr.rgb, vec3(0.0), vec3(1.0))), hdr.a);
+        vec3 display_color = arc_linear_to_srgb(clamp(hdr.rgb, vec3(0.0), vec3(1.0)));
+        display_color = mix(display_color, arc_linear_to_srgb(outline_accent), selection_outline());
+        out_color = vec4(display_color, hdr.a);
         return;
     }
     float exposure_multiplier = constants.exposure_output.x;
@@ -70,5 +91,8 @@ void main()
         float sample_b_luma = dot(sample_b, luminance_weights);
         display_linear = sample_b_luma < minimum_luma || sample_b_luma > maximum_luma ? sample_a : sample_b;
     }
+    // ARC's accent is applied after scene anti-aliasing so the silhouette
+    // remains a stable two output pixels regardless of camera distance.
+    display_linear = mix(display_linear, outline_accent, selection_outline());
     out_color = vec4(arc_linear_to_srgb(display_linear), hdr.a);
 }

@@ -1437,7 +1437,12 @@ struct host_viewport_set_render_options_command
     std::string viewport_id{"viewport-1"};
     host_render_mode render_mode{host_render_mode::shaded};
     host_visualization_mode visualization{host_visualization_mode::standard};
-    host_overlay_mode overlay{host_overlay_mode::selected_wireframe};
+    host_overlay_mode overlay{host_overlay_mode::none};
+    bool selection_outline{true};
+    bool hover_outline{true};
+    bool selection_bounds{};
+    bool component_gizmos{true};
+    bool selection_hierarchy{};
     bool shadows{true};
     bool grid{true};
     bool skeletons{};
@@ -1722,7 +1727,12 @@ struct host_viewport_request
     std::uint32_t height{};
     host_render_mode render_mode{host_render_mode::shaded};
     host_visualization_mode visualization{host_visualization_mode::standard};
-    host_overlay_mode overlay{host_overlay_mode::selected_wireframe};
+    host_overlay_mode overlay{host_overlay_mode::none};
+    bool selection_outline{true};
+    bool hover_outline{true};
+    bool selection_bounds{};
+    bool component_gizmos{true};
+    bool selection_hierarchy{};
     bool shadows{true};
     bool grid{true};
     bool skeletons{};

@@ -60,6 +60,8 @@ public:
     const editor_scene_state& scene_state() const noexcept;
     const host_viewport_set_tool_command& viewport_tool_state() const noexcept;
     void set_viewport_gizmo_highlight(gizmo_axis axis) noexcept;
+    void set_viewport_hover(std::int32_t x, std::int32_t y) noexcept;
+    void clear_viewport_hover() noexcept;
 
 private:
     // Internal entry points implemented by arc_host_base.inc. Public wrappers

@@ -65,6 +65,11 @@ type ViewportRenderOptions = {
   renderMode: 'shaded' | 'wireframe';
   visualization: string;
   overlay: 'none' | 'selectedWireframe' | 'allWireframe';
+  selectionOutline: boolean;
+  hoverOutline: boolean;
+  selectionBounds: boolean;
+  componentGizmos: boolean;
+  selectionHierarchy: boolean;
   shadows: boolean;
   grid: boolean;
   skeletons: boolean;
@@ -84,7 +89,12 @@ type ViewportRenderOptions = {
 const defaultRenderOptions: ViewportRenderOptions = {
   renderMode: 'shaded',
   visualization: 'standard',
-  overlay: 'selectedWireframe',
+  overlay: 'none',
+  selectionOutline: true,
+  hoverOutline: true,
+  selectionBounds: false,
+  componentGizmos: true,
+  selectionHierarchy: false,
   shadows: true,
   grid: true,
   skeletons: false,
@@ -932,6 +942,43 @@ export function ViewportPanel({
           <details className="arc-viewport-show-menu">
             <summary>Show</summary>
             <div className="arc-viewport-show-popup">
+              {[
+                ['selectionOutline', 'Selection Outline'],
+                ['hoverOutline', 'Hover Outline'],
+                ['selectionBounds', 'Selection Bounds'],
+                ['componentGizmos', 'Component Gizmos'],
+                ['selectionHierarchy', 'Selection Hierarchy'],
+              ].map(([option, label]) => {
+                const enabled = renderOptions[option as keyof ViewportRenderOptions] as boolean;
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={enabled}
+                    onClick={() => void updateRenderOptions({ [option]: !enabled })}
+                  >
+                    <span className="arc-viewport-menu-check">{enabled ? '✓' : ''}</span>
+                    {label}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={renderOptions.overlay === 'selectedWireframe'}
+                onClick={() =>
+                  void updateRenderOptions({
+                    overlay: renderOptions.overlay === 'selectedWireframe' ? 'none' : 'selectedWireframe',
+                  })
+                }
+              >
+                <span className="arc-viewport-menu-check">
+                  {renderOptions.overlay === 'selectedWireframe' ? '✓' : ''}
+                </span>
+                Selection Wireframe
+              </button>
+              <hr />
               <button
                 type="button"
                 role="menuitemcheckbox"

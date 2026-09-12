@@ -989,7 +989,7 @@ const char* to_string(host_overlay_mode value) noexcept
         case host_overlay_mode::all_wireframe:
             return "allWireframe";
     }
-    return "selectedWireframe";
+    return "none";
 }
 
 const char* to_string(host_sky_source value) noexcept
@@ -1829,6 +1829,11 @@ std::string to_json(const host_command_envelope& envelope)
                        ",\"renderMode\":" + quote(to_string(payload.render_mode)) +
                        ",\"visualization\":" + quote(to_string(payload.visualization)) +
                        ",\"overlay\":" + quote(to_string(payload.overlay)) +
+                       ",\"selectionOutline\":" + bool_json(payload.selection_outline) +
+                       ",\"hoverOutline\":" + bool_json(payload.hover_outline) +
+                       ",\"selectionBounds\":" + bool_json(payload.selection_bounds) +
+                       ",\"componentGizmos\":" + bool_json(payload.component_gizmos) +
+                       ",\"selectionHierarchy\":" + bool_json(payload.selection_hierarchy) +
                        ",\"shadows\":" + bool_json(payload.shadows) + ",\"grid\":" + bool_json(payload.grid) +
                        ",\"skeletons\":" + bool_json(payload.skeletons) +
                        ",\"realtime\":" + bool_json(payload.realtime) +
@@ -3183,6 +3188,11 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         parse_enum(payload, "renderMode", render_modes, std::size(render_modes), command.render_mode);
         parse_enum(payload, "visualization", visualizations, std::size(visualizations), command.visualization);
         parse_enum(payload, "overlay", overlays, std::size(overlays), command.overlay);
+        bool_value(payload, "selectionOutline", command.selection_outline);
+        bool_value(payload, "hoverOutline", command.hover_outline);
+        bool_value(payload, "selectionBounds", command.selection_bounds);
+        bool_value(payload, "componentGizmos", command.component_gizmos);
+        bool_value(payload, "selectionHierarchy", command.selection_hierarchy);
         bool_value(payload, "shadows", command.shadows);
         bool_value(payload, "grid", command.grid);
         bool_value(payload, "skeletons", command.skeletons);

@@ -459,6 +459,11 @@ void vulkan_render_backend::destroy_mesh_pipeline() noexcept
         vkDestroyPipeline(device_, mesh_wire_pipeline_, nullptr);
         mesh_wire_pipeline_ = VK_NULL_HANDLE;
     }
+    if (selection_mask_pipeline_ != VK_NULL_HANDLE)
+    {
+        vkDestroyPipeline(device_, selection_mask_pipeline_, nullptr);
+        selection_mask_pipeline_ = VK_NULL_HANDLE;
+    }
     if (mesh_transparent_pipeline_ != VK_NULL_HANDLE)
     {
         vkDestroyPipeline(device_, mesh_transparent_pipeline_, nullptr);
@@ -1783,6 +1788,30 @@ bool vulkan_render_backend::ensure_mesh_pipeline()
 
     if (result == VK_SUCCESS)
     {
+        const auto selection_frag =
+            create_shader_module(builtin::selection_mask_frag_spv, std::size(builtin::selection_mask_frag_spv));
+        if (selection_frag != VK_NULL_HANDLE)
+        {
+            stages[1].module = selection_frag;
+            raster.polygonMode = VK_POLYGON_MODE_FILL;
+            depth.depthWriteEnable = VK_FALSE;
+            color_attachment = {};
+            color_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT;
+            const VkFormat selection_format = VK_FORMAT_R8_UNORM;
+            rendering.pColorAttachmentFormats = &selection_format;
+            pipeline.layout = mesh_pipeline_layout_;
+            if (vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr,
+                                          &selection_mask_pipeline_) != VK_SUCCESS)
+                arc::diagnostics::warn("render.vulkan",
+                                       "Vulkan selection-mask pipeline creation failed; outlines are disabled");
+            vkDestroyShaderModule(device_, selection_frag, nullptr);
+            stages[1].module = frag;
+            rendering.pColorAttachmentFormats = &scene_color_format_;
+        }
+    }
+
+    if (result == VK_SUCCESS)
+    {
         VkShaderModule terrain_surface_frag = create_shader_module(
             builtin::terrain_surface_forward_frag_spv, std::size(builtin::terrain_surface_forward_frag_spv));
         if (terrain_surface_frag != VK_NULL_HANDLE)
@@ -2623,18 +2652,27 @@ bool vulkan_render_backend::ensure_output_transform_pipeline()
         VkDescriptorImageInfo image{viewport_sampler_,
                                     temporal_output_view_ != VK_NULL_HANDLE ? temporal_output_view_ : scene_color_.view,
                                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-        VkWriteDescriptorSet write{};
-        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write.dstSet = output_transform_descriptor_set_;
-        write.descriptorCount = 1;
-        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        write.pImageInfo = &image;
-        vkUpdateDescriptorSets(device_, 1, &write, 0, nullptr);
+        VkDescriptorImageInfo mask{viewport_sampler_, selection_mask_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        std::array<VkWriteDescriptorSet, 2> writes{};
+        for (auto& write : writes)
+        {
+            write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            write.dstSet = output_transform_descriptor_set_;
+            write.descriptorCount = 1;
+            write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        }
+        writes[0].dstBinding = 0;
+        writes[0].pImageInfo = &image;
+        writes[1].dstBinding = 2;
+        writes[1].pImageInfo = &mask;
+        vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
         return true;
     }
-    if (scene_color_.view == VK_NULL_HANDLE || viewport_sampler_ == VK_NULL_HANDLE) return false;
+    if (scene_color_.view == VK_NULL_HANDLE || selection_mask_.view == VK_NULL_HANDLE ||
+        viewport_sampler_ == VK_NULL_HANDLE)
+        return false;
 
-    std::array<VkDescriptorSetLayoutBinding, 2> bindings{};
+    std::array<VkDescriptorSetLayoutBinding, 3> bindings{};
     bindings[0].binding = 0;
     bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     bindings[0].descriptorCount = 1;
@@ -2643,6 +2681,10 @@ bool vulkan_render_backend::ensure_output_transform_pipeline()
     bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     bindings[1].descriptorCount = 1;
     bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+    bindings[2].binding = 2;
+    bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    bindings[2].descriptorCount = 1;
+    bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     VkDescriptorSetLayoutCreateInfo descriptor_layout{};
     descriptor_layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     descriptor_layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
@@ -2651,7 +2693,7 @@ bool vulkan_render_backend::ensure_output_transform_pipeline()
         VK_SUCCESS)
         return false;
 
-    std::array<VkDescriptorPoolSize, 2> pool_sizes{VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
+    std::array<VkDescriptorPoolSize, 2> pool_sizes{VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2},
                                                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}};
     VkDescriptorPoolCreateInfo pool{};
     pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -2669,8 +2711,9 @@ bool vulkan_render_backend::ensure_output_transform_pipeline()
     VkDescriptorImageInfo image{viewport_sampler_,
                                 temporal_output_view_ != VK_NULL_HANDLE ? temporal_output_view_ : scene_color_.view,
                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+    VkDescriptorImageInfo mask{viewport_sampler_, selection_mask_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
     VkDescriptorBufferInfo exposure_buffer_info{exposure_buffer_.buffer, 0, exposure_buffer_bytes};
-    std::array<VkWriteDescriptorSet, 2> writes{};
+    std::array<VkWriteDescriptorSet, 3> writes{};
     writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     writes[0].dstSet = output_transform_descriptor_set_;
     writes[0].dstBinding = 0;
@@ -2683,6 +2726,12 @@ bool vulkan_render_backend::ensure_output_transform_pipeline()
     writes[1].descriptorCount = 1;
     writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     writes[1].pBufferInfo = &exposure_buffer_info;
+    writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[2].dstSet = output_transform_descriptor_set_;
+    writes[2].dstBinding = 2;
+    writes[2].descriptorCount = 1;
+    writes[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    writes[2].pImageInfo = &mask;
     vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
 
     const auto vert =
