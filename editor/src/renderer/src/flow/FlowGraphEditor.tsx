@@ -74,6 +74,12 @@ const nodeHeight = (node: FlowGraphNode) => {
   );
 };
 
+const vectorValue = (value: unknown, size: number, fallbackLast = 0) => {
+  if (Array.isArray(value) && value.length === size && value.every((entry) => typeof entry === 'number'))
+    return value as number[];
+  return Array.from({ length: size }, (_, index) => (index === size - 1 ? fallbackLast : 0));
+};
+
 export function FlowGraphEditor({ document, graph }: { document: EditorDocument; graph: FlowGraph }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(() => new Set());
@@ -99,6 +105,15 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
       replaceFlowGraph(document, next, { recordHistory });
     },
     [document, graph],
+  );
+
+  const setNodeValue = useCallback(
+    (nodeId: string, value: unknown) =>
+      mutate((next) => {
+        const target = next.nodes.find((candidate) => candidate.id === nodeId);
+        if (target) target.values.value = value;
+      }),
+    [mutate],
   );
 
   const graphPoint = useCallback(
@@ -544,6 +559,67 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
                   />
                 </label>
               )}
+
+              {node.type === 'boolLiteral' && (
+                <label className="flow-node-inline-value">
+                  Value
+                  <input
+                    aria-label="Boolean value"
+                    checked={node.values.value === true}
+                    disabled={document.readOnly}
+                    onChange={(event) => setNodeValue(node.id, event.target.checked)}
+                    style={{ height: 16, justifySelf: 'start', width: 16 }}
+                    type="checkbox"
+                  />
+                </label>
+              )}
+
+              {node.type === 'stringLiteral' && (
+                <label className="flow-node-inline-value">
+                  Value
+                  <input
+                    aria-label="String value"
+                    disabled={document.readOnly}
+                    onChange={(event) => setNodeValue(node.id, event.target.value)}
+                    value={typeof node.values.value === 'string' ? node.values.value : ''}
+                  />
+                </label>
+              )}
+
+              {(node.type === 'vector3Literal' || node.type === 'vector4Literal') && (() => {
+                const size = node.type === 'vector3Literal' ? 3 : 4;
+                const current = vectorValue(node.values.value, size, node.type === 'vector4Literal' ? 1 : 0);
+                return (
+                  <label className="flow-node-inline-value">
+                    Value
+                    <span
+                      style={{
+                        display: 'grid',
+                        gap: 4,
+                        gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
+                        minWidth: 0,
+                      }}
+                    >
+                      {current.map((entry, index) => (
+                        <input
+                          aria-label={`${node.type === 'vector3Literal' ? 'Vector3' : 'Vector4'} component ${index + 1}`}
+                          disabled={document.readOnly}
+                          key={index}
+                          onChange={(event) => {
+                            const next = [...current];
+                            const parsed = Number(event.target.value);
+                            next[index] = Number.isFinite(parsed) ? parsed : 0;
+                            setNodeValue(node.id, next);
+                          }}
+                          step="any"
+                          type="number"
+                          value={entry}
+                        />
+                      ))}
+                    </span>
+                  </label>
+                );
+              })()}
             </UiNodeCard>
           );
         })}
