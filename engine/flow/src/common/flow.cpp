@@ -26,6 +26,20 @@ enum class node_kind : std::uint8_t
     fixed_tick,
     input_action,
     branch,
+    self_entity,
+    entity_alive,
+    get_name,
+    set_name,
+    get_tag,
+    set_tag,
+    get_active,
+    set_active,
+    get_transform,
+    set_transform,
+    bool_literal,
+    string_literal,
+    vector3_literal,
+    vector4_literal,
 };
 
 enum class pin_kind : std::uint8_t
@@ -100,6 +114,20 @@ std::optional<node_kind> parse_node_kind(std::string_view value)
     if (value == "fixedTick") return node_kind::fixed_tick;
     if (value == "inputAction") return node_kind::input_action;
     if (value == "branch") return node_kind::branch;
+    if (value == "selfEntity") return node_kind::self_entity;
+    if (value == "isEntityAlive") return node_kind::entity_alive;
+    if (value == "getName") return node_kind::get_name;
+    if (value == "setName") return node_kind::set_name;
+    if (value == "getTag") return node_kind::get_tag;
+    if (value == "setTag") return node_kind::set_tag;
+    if (value == "getActive") return node_kind::get_active;
+    if (value == "setActive") return node_kind::set_active;
+    if (value == "getTransform") return node_kind::get_transform;
+    if (value == "setTransform") return node_kind::set_transform;
+    if (value == "boolLiteral") return node_kind::bool_literal;
+    if (value == "stringLiteral") return node_kind::string_literal;
+    if (value == "vector3Literal") return node_kind::vector3_literal;
+    if (value == "vector4Literal") return node_kind::vector4_literal;
     return std::nullopt;
 }
 
@@ -188,6 +216,49 @@ std::optional<flow_value> parse_default_value(value_type type, const json& value
     return std::nullopt;
 }
 
+std::optional<value_type> literal_type(node_kind kind)
+{
+    switch (kind)
+    {
+        case node_kind::bool_literal:
+            return value_type::boolean;
+        case node_kind::string_literal:
+            return value_type::string;
+        case node_kind::vector3_literal:
+            return value_type::vector3;
+        case node_kind::vector4_literal:
+            return value_type::vector4;
+        default:
+            return std::nullopt;
+    }
+}
+
+bool is_event_node(node_kind kind)
+{
+    return kind == node_kind::begin_play || kind == node_kind::end_play || kind == node_kind::tick ||
+           kind == node_kind::fixed_tick || kind == node_kind::input_action;
+}
+
+bool is_executable_node(node_kind kind)
+{
+    switch (kind)
+    {
+        case node_kind::branch:
+        case node_kind::entity_alive:
+        case node_kind::get_name:
+        case node_kind::set_name:
+        case node_kind::get_tag:
+        case node_kind::set_tag:
+        case node_kind::get_active:
+        case node_kind::set_active:
+        case node_kind::get_transform:
+        case node_kind::set_transform:
+            return true;
+        default:
+            return false;
+    }
+}
+
 std::optional<pin_info> output_pin(node_kind kind, std::string_view pin)
 {
     switch (kind)
@@ -208,15 +279,85 @@ std::optional<pin_info> output_pin(node_kind kind, std::string_view pin)
         case node_kind::branch:
             if (pin == "true" || pin == "false") return pin_info{.kind = pin_kind::execution};
             break;
+        case node_kind::self_entity:
+            if (pin == "entity") return pin_info{.kind = pin_kind::value, .type = value_type::entity};
+            break;
+        case node_kind::entity_alive:
+            if (pin == "then") return pin_info{.kind = pin_kind::execution};
+            if (pin == "alive") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
+            break;
+        case node_kind::get_name:
+            if (pin == "then") return pin_info{.kind = pin_kind::execution};
+            if (pin == "name") return pin_info{.kind = pin_kind::value, .type = value_type::string};
+            break;
+        case node_kind::get_tag:
+            if (pin == "then") return pin_info{.kind = pin_kind::execution};
+            if (pin == "tag") return pin_info{.kind = pin_kind::value, .type = value_type::string};
+            break;
+        case node_kind::get_active:
+            if (pin == "then") return pin_info{.kind = pin_kind::execution};
+            if (pin == "active") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
+            break;
+        case node_kind::get_transform:
+            if (pin == "then") return pin_info{.kind = pin_kind::execution};
+            if (pin == "position") return pin_info{.kind = pin_kind::value, .type = value_type::vector3};
+            if (pin == "rotation") return pin_info{.kind = pin_kind::value, .type = value_type::vector4};
+            if (pin == "scale") return pin_info{.kind = pin_kind::value, .type = value_type::vector3};
+            break;
+        case node_kind::set_name:
+        case node_kind::set_tag:
+        case node_kind::set_active:
+        case node_kind::set_transform:
+            if (pin == "then") return pin_info{.kind = pin_kind::execution};
+            break;
+        case node_kind::bool_literal:
+            if (pin == "value") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
+            break;
+        case node_kind::string_literal:
+            if (pin == "value") return pin_info{.kind = pin_kind::value, .type = value_type::string};
+            break;
+        case node_kind::vector3_literal:
+            if (pin == "value") return pin_info{.kind = pin_kind::value, .type = value_type::vector3};
+            break;
+        case node_kind::vector4_literal:
+            if (pin == "value") return pin_info{.kind = pin_kind::value, .type = value_type::vector4};
+            break;
     }
     return std::nullopt;
 }
 
 std::optional<pin_info> input_pin(node_kind kind, std::string_view pin)
 {
-    if (kind != node_kind::branch) return std::nullopt;
+    if (kind == node_kind::branch)
+    {
+        if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+        if (pin == "condition") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
+        return std::nullopt;
+    }
+
+    if (!is_executable_node(kind)) return std::nullopt;
     if (pin == "exec") return pin_info{.kind = pin_kind::execution};
-    if (pin == "condition") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
+    if (pin == "entity") return pin_info{.kind = pin_kind::value, .type = value_type::entity};
+
+    switch (kind)
+    {
+        case node_kind::set_name:
+            if (pin == "name") return pin_info{.kind = pin_kind::value, .type = value_type::string};
+            break;
+        case node_kind::set_tag:
+            if (pin == "tag") return pin_info{.kind = pin_kind::value, .type = value_type::string};
+            break;
+        case node_kind::set_active:
+            if (pin == "active") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
+            break;
+        case node_kind::set_transform:
+            if (pin == "position") return pin_info{.kind = pin_kind::value, .type = value_type::vector3};
+            if (pin == "rotation") return pin_info{.kind = pin_kind::value, .type = value_type::vector4};
+            if (pin == "scale") return pin_info{.kind = pin_kind::value, .type = value_type::vector3};
+            break;
+        default:
+            break;
+    }
     return std::nullopt;
 }
 
@@ -418,6 +559,7 @@ struct validation_state
     std::unordered_map<std::string, const source_connection*> incoming;
     std::unordered_map<std::string, const source_connection*> execution_outgoing;
     std::unordered_map<std::string, std::vector<std::string>> execution_adjacency;
+    std::unordered_set<std::string> reachable;
 };
 
 validation_state validate_graph(const source_graph& graph, std::vector<diagnostic>& diagnostics)
@@ -437,12 +579,21 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
         if (!state.nodes.emplace(node.id, &node).second)
             add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_DUPLICATE_NODE_ID",
                            "Flow node ids must be unique.", node.id);
+
         if (node.kind == node_kind::input_action)
         {
             const auto action = node.values.find("action");
             if (action == node.values.end() || !action->is_string() || action->get<std::string>().empty())
                 add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_INPUT_ACTION_NAME",
                                "Input Action nodes require a non-empty action name.", node.id);
+        }
+
+        if (const auto type = literal_type(node.kind))
+        {
+            const auto value = node.values.find("value");
+            if (value == node.values.end() || !parse_default_value(*type, *value))
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_LITERAL_VALUE",
+                               "Flow literal value does not match its node type.", node.id, "value");
         }
     }
 
@@ -515,6 +666,47 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
         }
     }
 
+    const auto require_input = [&](const source_node& node, std::string_view pin)
+    {
+        if (state.incoming.find(pin_key(node.id, pin)) == state.incoming.end())
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_REQUIRED_INPUT",
+                           "Gameplay node requires this value input to be connected.", node.id, std::string{pin});
+    };
+
+    for (const source_node& node : graph.nodes)
+    {
+        switch (node.kind)
+        {
+            case node_kind::entity_alive:
+            case node_kind::get_name:
+            case node_kind::get_tag:
+            case node_kind::get_active:
+            case node_kind::get_transform:
+                require_input(node, "entity");
+                break;
+            case node_kind::set_name:
+                require_input(node, "entity");
+                require_input(node, "name");
+                break;
+            case node_kind::set_tag:
+                require_input(node, "entity");
+                require_input(node, "tag");
+                break;
+            case node_kind::set_active:
+                require_input(node, "entity");
+                require_input(node, "active");
+                break;
+            case node_kind::set_transform:
+                require_input(node, "entity");
+                require_input(node, "position");
+                require_input(node, "rotation");
+                require_input(node, "scale");
+                break;
+            default:
+                break;
+        }
+    }
+
     enum class visit_state : std::uint8_t
     {
         visiting,
@@ -550,15 +742,12 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
         if (visits.find(node.id) == visits.end() && !visit(node.id)) break;
     }
 
-    std::unordered_set<std::string> reachable;
     std::queue<std::string> pending;
     for (const source_node& node : graph.nodes)
     {
-        if (node.kind != node_kind::branch)
-        {
-            reachable.insert(node.id);
-            pending.push(node.id);
-        }
+        if (!is_event_node(node.kind)) continue;
+        state.reachable.insert(node.id);
+        pending.push(node.id);
     }
     while (!pending.empty())
     {
@@ -567,11 +756,11 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
         const auto adjacency = state.execution_adjacency.find(current);
         if (adjacency == state.execution_adjacency.end()) continue;
         for (const std::string& target : adjacency->second)
-            if (reachable.insert(target).second) pending.push(target);
+            if (state.reachable.insert(target).second) pending.push(target);
     }
     for (const source_node& node : graph.nodes)
     {
-        if (node.kind == node_kind::branch && reachable.find(node.id) == reachable.end())
+        if (is_executable_node(node.kind) && state.reachable.find(node.id) == state.reachable.end())
             add_diagnostic(diagnostics, diagnostic_severity::warning, "FLOW_UNREACHABLE_NODE",
                            "Flow node is not reachable from an event entry point.", node.id);
     }
@@ -588,6 +777,35 @@ std::vector<const source_node*> sorted_nodes(const source_graph& graph)
     std::sort(result.begin(), result.end(),
               [](const source_node* left, const source_node* right) { return left->id < right->id; });
     return result;
+}
+
+ir_opcode opcode_for(node_kind kind)
+{
+    switch (kind)
+    {
+        case node_kind::branch:
+            return ir_opcode::branch;
+        case node_kind::entity_alive:
+            return ir_opcode::world_entity_alive;
+        case node_kind::get_name:
+            return ir_opcode::world_get_name;
+        case node_kind::set_name:
+            return ir_opcode::world_set_name;
+        case node_kind::get_tag:
+            return ir_opcode::world_get_tag;
+        case node_kind::set_tag:
+            return ir_opcode::world_set_tag;
+        case node_kind::get_active:
+            return ir_opcode::world_get_active;
+        case node_kind::set_active:
+            return ir_opcode::world_set_active;
+        case node_kind::get_transform:
+            return ir_opcode::world_get_transform;
+        case node_kind::set_transform:
+            return ir_opcode::world_set_transform;
+        default:
+            return ir_opcode::branch;
+    }
 }
 
 ir_program build_ir(const source_graph& graph, const validation_state& validation)
@@ -616,45 +834,144 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
 
     for (const source_node* node : nodes)
     {
-        if (node->kind == node_kind::tick || node->kind == node_kind::fixed_tick)
-            allocate_slot(*node, "deltaSeconds", value_type::float32, default_value(value_type::float32));
-        else if (node->kind == node_kind::input_action)
-            allocate_slot(*node, "value", value_type::float32, default_value(value_type::float32));
+        switch (node->kind)
+        {
+            case node_kind::tick:
+            case node_kind::fixed_tick:
+                allocate_slot(*node, "deltaSeconds", value_type::float32, default_value(value_type::float32));
+                break;
+            case node_kind::input_action:
+                allocate_slot(*node, "value", value_type::float32, default_value(value_type::float32));
+                break;
+            case node_kind::self_entity:
+                allocate_slot(*node, "entity", value_type::entity, default_value(value_type::entity));
+                break;
+            case node_kind::entity_alive:
+                allocate_slot(*node, "alive", value_type::boolean, false);
+                break;
+            case node_kind::get_name:
+                allocate_slot(*node, "name", value_type::string, std::string{});
+                break;
+            case node_kind::get_tag:
+                allocate_slot(*node, "tag", value_type::string, std::string{});
+                break;
+            case node_kind::get_active:
+                allocate_slot(*node, "active", value_type::boolean, false);
+                break;
+            case node_kind::get_transform:
+                allocate_slot(*node, "position", value_type::vector3, default_value(value_type::vector3));
+                allocate_slot(*node, "rotation", value_type::vector4,
+                              flow_value{std::array<double, 4>{0.0, 0.0, 0.0, 1.0}});
+                allocate_slot(*node, "scale", value_type::vector3,
+                              flow_value{std::array<double, 3>{1.0, 1.0, 1.0}});
+                break;
+            case node_kind::bool_literal:
+            case node_kind::string_literal:
+            case node_kind::vector3_literal:
+            case node_kind::vector4_literal:
+            {
+                const value_type type = *literal_type(node->kind);
+                allocate_slot(*node, "value", type, *parse_default_value(type, node->values.at("value")));
+                break;
+            }
+            default:
+                break;
+        }
     }
 
-    std::unordered_map<std::string, std::uint32_t> branch_instructions;
+    const auto input_slot = [&](const source_node& node, std::string_view pin)
+    {
+        const source_connection* connection = validation.incoming.at(pin_key(node.id, pin));
+        return value_slots.at(pin_key(connection->from.node_id, connection->from.pin));
+    };
+
+    std::unordered_map<std::string, std::uint32_t> instruction_indices;
     for (const source_node* node : nodes)
     {
-        if (node->kind != node_kind::branch) continue;
+        if (!is_executable_node(node->kind)) continue;
         const auto index = static_cast<std::uint32_t>(program.instructions.size());
-        branch_instructions.emplace(node->id, index);
-        program.instructions.push_back({.opcode = ir_opcode::branch, .node_id = node->id});
+        instruction_indices.emplace(node->id, index);
+        program.instructions.push_back({.opcode = opcode_for(node->kind), .node_id = node->id});
     }
 
     const auto execution_target = [&](const source_node& node, std::string_view pin)
     {
         const auto connection = validation.execution_outgoing.find(pin_key(node.id, pin));
         if (connection == validation.execution_outgoing.end()) return invalid_instruction;
-        const auto target = branch_instructions.find(connection->second->to.node_id);
-        return target == branch_instructions.end() ? invalid_instruction : target->second;
+        const auto target = instruction_indices.find(connection->second->to.node_id);
+        return target == instruction_indices.end() ? invalid_instruction : target->second;
     };
 
     for (const source_node* node : nodes)
     {
-        if (node->kind != node_kind::branch) continue;
-        ir_instruction& instruction = program.instructions[branch_instructions.at(node->id)];
-        const auto condition_connection = validation.incoming.find(pin_key(node->id, "condition"));
-        if (condition_connection == validation.incoming.end())
+        if (!is_executable_node(node->kind)) continue;
+        ir_instruction& instruction = program.instructions[instruction_indices.at(node->id)];
+        switch (node->kind)
         {
-            instruction.condition_slot = allocate_slot(*node, "condition", value_type::boolean, false);
+            case node_kind::branch:
+            {
+                const auto condition_connection = validation.incoming.find(pin_key(node->id, "condition"));
+                if (condition_connection == validation.incoming.end())
+                    instruction.condition_slot = allocate_slot(*node, "condition", value_type::boolean, false);
+                else
+                    instruction.condition_slot = value_slots.at(pin_key(condition_connection->second->from.node_id,
+                                                                         condition_connection->second->from.pin));
+                instruction.true_instruction = execution_target(*node, "true");
+                instruction.false_instruction = execution_target(*node, "false");
+                break;
+            }
+            case node_kind::entity_alive:
+                instruction.operand0 = input_slot(*node, "entity");
+                instruction.operand1 = value_slots.at(pin_key(node->id, "alive"));
+                instruction.operand2 = execution_target(*node, "then");
+                break;
+            case node_kind::get_name:
+                instruction.operand0 = input_slot(*node, "entity");
+                instruction.operand1 = value_slots.at(pin_key(node->id, "name"));
+                instruction.operand2 = execution_target(*node, "then");
+                break;
+            case node_kind::set_name:
+                instruction.operand0 = input_slot(*node, "entity");
+                instruction.operand1 = input_slot(*node, "name");
+                instruction.operand2 = execution_target(*node, "then");
+                break;
+            case node_kind::get_tag:
+                instruction.operand0 = input_slot(*node, "entity");
+                instruction.operand1 = value_slots.at(pin_key(node->id, "tag"));
+                instruction.operand2 = execution_target(*node, "then");
+                break;
+            case node_kind::set_tag:
+                instruction.operand0 = input_slot(*node, "entity");
+                instruction.operand1 = input_slot(*node, "tag");
+                instruction.operand2 = execution_target(*node, "then");
+                break;
+            case node_kind::get_active:
+                instruction.operand0 = input_slot(*node, "entity");
+                instruction.operand1 = value_slots.at(pin_key(node->id, "active"));
+                instruction.operand2 = execution_target(*node, "then");
+                break;
+            case node_kind::set_active:
+                instruction.operand0 = input_slot(*node, "entity");
+                instruction.operand1 = input_slot(*node, "active");
+                instruction.operand2 = execution_target(*node, "then");
+                break;
+            case node_kind::get_transform:
+                instruction.operand0 = input_slot(*node, "entity");
+                instruction.operand1 = value_slots.at(pin_key(node->id, "position"));
+                instruction.operand2 = value_slots.at(pin_key(node->id, "rotation"));
+                instruction.operand3 = value_slots.at(pin_key(node->id, "scale"));
+                instruction.operand4 = execution_target(*node, "then");
+                break;
+            case node_kind::set_transform:
+                instruction.operand0 = input_slot(*node, "entity");
+                instruction.operand1 = input_slot(*node, "position");
+                instruction.operand2 = input_slot(*node, "rotation");
+                instruction.operand3 = input_slot(*node, "scale");
+                instruction.operand4 = execution_target(*node, "then");
+                break;
+            default:
+                break;
         }
-        else
-        {
-            instruction.condition_slot = value_slots.at(
-                pin_key(condition_connection->second->from.node_id, condition_connection->second->from.pin));
-        }
-        instruction.true_instruction = execution_target(*node, "true");
-        instruction.false_instruction = execution_target(*node, "false");
     }
 
     const auto add_binding =
@@ -711,12 +1028,96 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                 program.entry_points.push_back(std::move(completed));
                 break;
             }
-            case node_kind::branch:
+            default:
                 break;
         }
     }
 
+    const auto reachable_from = [&](std::string_view start, std::string_view target)
+    {
+        if (start == target) return true;
+        std::queue<std::string> pending;
+        std::unordered_set<std::string> seen;
+        pending.push(std::string{start});
+        seen.insert(std::string{start});
+        while (!pending.empty())
+        {
+            const std::string current = pending.front();
+            pending.pop();
+            const auto adjacency = validation.execution_adjacency.find(current);
+            if (adjacency == validation.execution_adjacency.end()) continue;
+            for (const std::string& next : adjacency->second)
+            {
+                if (next == target) return true;
+                if (seen.insert(next).second) pending.push(next);
+            }
+        }
+        return false;
+    };
+
+    std::vector<const source_node*> self_nodes;
+    for (const source_node* node : nodes)
+        if (node->kind == node_kind::self_entity) self_nodes.push_back(node);
+
+    for (ir_entry_point& entry : program.entry_points)
+    {
+        std::uint32_t target = entry.instruction;
+        for (auto iterator = self_nodes.rbegin(); iterator != self_nodes.rend(); ++iterator)
+        {
+            const source_node& self = **iterator;
+            bool needed = false;
+            for (const source_connection& connection : graph.connections)
+            {
+                if (connection.kind != connection_kind::value || connection.from.node_id != self.id) continue;
+                if (reachable_from(entry.node_id, connection.to.node_id))
+                {
+                    needed = true;
+                    break;
+                }
+            }
+            if (!needed) continue;
+
+            const auto index = static_cast<std::uint32_t>(program.instructions.size());
+            program.instructions.push_back({.opcode = ir_opcode::self_entity,
+                                            .node_id = self.id,
+                                            .operand0 = value_slots.at(pin_key(self.id, "entity")),
+                                            .operand1 = target});
+            target = index;
+        }
+        entry.instruction = target;
+    }
+
     return program;
+}
+
+bytecode_opcode lower_opcode(ir_opcode opcode)
+{
+    switch (opcode)
+    {
+        case ir_opcode::branch:
+            return bytecode_opcode::branch;
+        case ir_opcode::self_entity:
+            return bytecode_opcode::self_entity;
+        case ir_opcode::world_entity_alive:
+            return bytecode_opcode::world_entity_alive;
+        case ir_opcode::world_get_name:
+            return bytecode_opcode::world_get_name;
+        case ir_opcode::world_set_name:
+            return bytecode_opcode::world_set_name;
+        case ir_opcode::world_get_transform:
+            return bytecode_opcode::world_get_transform;
+        case ir_opcode::world_set_transform:
+            return bytecode_opcode::world_set_transform;
+        case ir_opcode::world_get_tag:
+            return bytecode_opcode::world_get_tag;
+        case ir_opcode::world_set_tag:
+            return bytecode_opcode::world_set_tag;
+        case ir_opcode::world_get_active:
+            return bytecode_opcode::world_get_active;
+        case ir_opcode::world_set_active:
+            return bytecode_opcode::world_set_active;
+    }
+    return bytecode_opcode::branch;
 }
 
 bytecode_program lower_bytecode(const ir_program& ir)
@@ -738,10 +1139,22 @@ bytecode_program lower_bytecode(const ir_program& ir)
     bytecode.instruction_nodes.reserve(ir.instructions.size());
     for (const ir_instruction& instruction : ir.instructions)
     {
-        bytecode.instructions.push_back({.opcode = bytecode_opcode::branch,
-                                         .operand0 = instruction.condition_slot,
-                                         .operand1 = instruction.true_instruction,
-                                         .operand2 = instruction.false_instruction});
+        if (instruction.opcode == ir_opcode::branch)
+        {
+            bytecode.instructions.push_back({.opcode = bytecode_opcode::branch,
+                                             .operand0 = instruction.condition_slot,
+                                             .operand1 = instruction.true_instruction,
+                                             .operand2 = instruction.false_instruction});
+        }
+        else
+        {
+            bytecode.instructions.push_back({.opcode = lower_opcode(instruction.opcode),
+                                             .operand0 = instruction.operand0,
+                                             .operand1 = instruction.operand1,
+                                             .operand2 = instruction.operand2,
+                                             .operand3 = instruction.operand3,
+                                             .operand4 = instruction.operand4});
+        }
         bytecode.instruction_nodes.push_back(instruction.node_id);
     }
     return bytecode;
