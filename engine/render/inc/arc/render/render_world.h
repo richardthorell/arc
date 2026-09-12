@@ -473,7 +473,7 @@ struct render_world_packet
     render_camera camera;
     render_mode mode{render_mode::shaded};
     mesh_visualization_mode visualization{mesh_visualization_mode::standard};
-    editor_overlay_mode overlay{editor_overlay_mode::selected_wireframe};
+    editor_overlay_mode overlay{editor_overlay_mode::none};
     bool shadows_enabled{true};
     std::vector<directional_light_event> directional_lights;
     std::vector<point_light_event> point_lights;
