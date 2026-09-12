@@ -17,7 +17,18 @@ jobs:
           ref: terrain/m3.4-region-rebuilds
           fetch-depth: 0
       - name: Apply brush performance fixes
-        run: python3 .github/temp_m34_patch.py
+        shell: bash
+        run: |
+          sed -i '/^host_text = host.read_text()/,$d' .github/temp_m34_patch.py
+          python3 .github/temp_m34_patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('editor/native/src/arc_host_base.inc').read_text()
+          start = text.index('else if constexpr (std::is_same_v<command_type, host_terrain_stroke_command>)')
+          end = text.index('else if constexpr (std::is_same_v<command_type, host_terrain_hover_command>)', start)
+          if 'pending.get()' in text[start:end]:
+              raise SystemExit('terrain stroke still blocks on a pending asset load')
+          PY
       - name: Install build tools
         run: |
           sudo apt-get update
