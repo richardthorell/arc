@@ -753,8 +753,10 @@ template <class HostState> void refresh_scene_terrain_assets(HostState& host)
         else if (binding.bound)
         {
             auto pending = host.asset_registry->template load<scene::terrain_asset>(
-                {.reference = terrain->asset, .priority = assets::asset_streaming_priority::high,
-                 .residency = assets::asset_residency::cpu, .allow_fallback = false});
+                {.reference = terrain->asset,
+                 .priority = assets::asset_streaming_priority::high,
+                 .residency = assets::asset_residency::cpu,
+                 .allow_fallback = false});
             auto loaded = pending.get();
             if (loaded && loaded.asset.get()) host.rebuild_terrain(entity, *loaded.asset.get(), true);
         }
@@ -876,6 +878,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 std::holds_alternative<host_open_recovery_scene_command>(command.payload))
             {
                 state_->terrain_rebuilds.clear();
+                state_->terrain_preview_dirty.clear();
                 if (ensure_terrain_asset_importer(*state_)) refresh_scene_terrain_assets(*state_);
                 if (ensure_water_asset_importer(*state_)) refresh_scene_water_assets(*state_);
             }

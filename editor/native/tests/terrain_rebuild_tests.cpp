@@ -3,6 +3,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <vector>
+
 namespace
 {
 bool rebuild(arc::editor::terrain_rebuild_session& session, arc::scene::terrain_render_proxy_cache& cache,
@@ -36,7 +38,11 @@ TEST_CASE("M3.4 sculpt preview transitions to asset-owned regions and preserves 
     REQUIRE(rebuild(session, cache, guid, terrain, renderer));
     REQUIRE(cache.find(guid)->asset_owned);
     REQUIRE(cache.find(guid)->regions.size() == 16u);
-    const auto distant = cache.find(guid)->regions.back().geometry;
+    std::vector<render::geometry_resource_handle> original_geometry;
+    original_geometry.reserve(cache.find(guid)->regions.size());
+    for (const auto& region : cache.find(guid)->regions)
+        original_geometry.push_back(region.geometry);
+    const auto distant = original_geometry.back();
     const auto generation = cache.find(guid)->generation;
     const auto address = scene::terrain_modifier_sample_at(
         asset.coordinates, asset.partition, asset.coordinates.origin_x - 448.0, asset.coordinates.origin_z - 448.0);
@@ -50,6 +56,13 @@ TEST_CASE("M3.4 sculpt preview transitions to asset-owned regions and preserves 
         .min_x = 1u, .min_z = 1u, .max_x = 1u, .max_z = 1u, .valid = true, .heights_changed = true};
     REQUIRE(cache.synchronize(guid, terrain, renderer, &dirty));
     CHECK_FALSE(cache.find(guid)->asset_owned);
+    REQUIRE(cache.find(guid)->regions.size() == original_geometry.size());
+    CHECK(cache.find(guid)->regions.back().geometry == distant);
+    bool local_region_changed{};
+    for (std::size_t index = 0; index < original_geometry.size(); ++index)
+        local_region_changed =
+            local_region_changed || cache.find(guid)->regions[index].geometry != original_geometry[index];
+    CHECK(local_region_changed);
     CHECK(renderer.mesh_alive(distant.conventional));
     session.update(asset);
     REQUIRE(rebuild(session, cache, guid, terrain, renderer));
