@@ -289,6 +289,7 @@ struct input_device_capabilities
     bool pointer{};
     bool scroll{};
     bool rumble{};
+    bool trigger_rumble{};
     bool haptics{};
     bool gyroscope{};
     bool accelerometer{};
@@ -374,16 +375,20 @@ struct input_device_event
 };
 
 /**
- * @brief Normalized dual-motor rumble strengths.
+ * @brief Normalized four-motor rumble strengths.
  *
  * Values are clamped to [0, 1] before they reach a platform backend. The low
  * frequency channel maps to the heavy motor and the high frequency channel maps
- * to the light motor on traditional gamepads.
+ * to the light motor on traditional gamepads. Trigger channels are independent
+ * rumble motors when the device exposes them; they are not adaptive-trigger
+ * resistance controls.
  */
 struct input_rumble_state
 {
     float low_frequency{};
     float high_frequency{};
+    float left_trigger{};
+    float right_trigger{};
 
     friend bool operator==(const input_rumble_state&, const input_rumble_state&) = default;
 };
