@@ -53,6 +53,16 @@ describe('Flow graph authoring schema', () => {
     ]);
   });
 
+  it('creates structural gameplay nodes with stable defaults', () => {
+    const create = createFlowNode('createEntity', [0, 0]);
+    const hasComponent = createFlowNode('hasCoreComponent', [200, 0]);
+    const removeComponent = createFlowNode('removeCoreComponent', [400, 0]);
+
+    expect(create.values).toEqual({});
+    expect(hasComponent.values.component).toBe('transform');
+    expect(removeComponent.values.component).toBe('transform');
+  });
+
   it('rejects connections that reference missing nodes', () => {
     const graph = createDefaultFlowGraph();
     graph.connections.push({

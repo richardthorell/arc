@@ -111,6 +111,14 @@ Required gameplay value inputs are compiler-validated. Missing entity/value conn
 
 F5.1 deliberately does not expose structural entity mutation. `Create Entity`, `Destroy Entity`, `Has Component`, and `Remove Component` remain the next F5.2 slice so their deferred-entity behavior can be exercised separately through authored graphs.
 
+## F5.2 structural entity authoring
+
+F5.2 exposes the structural F4 world instructions as authored Flow nodes: Create Entity, Destroy Entity, Has Component, and Remove Component. Has/Remove currently target ARC core components (`Name`, `Transform`, `Tag`, and `Active`) through an inline component selector.
+
+Create Entity writes the M3.5 entity target into a typed Flow entity slot. During scheduled gameplay this may be a deferred target; downstream structural nodes and existing setters consume that same slot without forcing a premature ECS commit. This makes graphs such as `Begin Play -> Create Entity -> Set Name -> Set Transform` valid within one dispatch.
+
+Reads that require committed world state, including Has Component and the existing Get/Alive nodes, still require an immediate entity at runtime. Flow preserves that M3.5 distinction rather than silently resolving deferred entities.
+
 ## Runtime boundary
 
 The editable graph remains source authoring data:

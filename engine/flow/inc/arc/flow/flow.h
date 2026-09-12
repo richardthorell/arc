@@ -125,6 +125,10 @@ enum class ir_opcode : std::uint8_t
 {
     branch,
     self_entity,
+    world_create_entity,
+    world_destroy_entity,
+    world_has_core_component,
+    world_remove_core_component,
     world_entity_alive,
     world_get_name,
     world_set_name,

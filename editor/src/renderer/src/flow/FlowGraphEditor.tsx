@@ -116,6 +116,15 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
     [mutate],
   );
 
+  const setNodeField = useCallback(
+    (nodeId: string, field: string, value: unknown) =>
+      mutate((next) => {
+        const target = next.nodes.find((candidate) => candidate.id === nodeId);
+        if (target) target.values[field] = value;
+      }),
+    [mutate],
+  );
+
   const graphPoint = useCallback(
     (clientX: number, clientY: number): GraphPoint => {
       const rect = canvasRef.current?.getBoundingClientRect();
@@ -557,6 +566,23 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
                     }
                     value={typeof node.values.action === 'string' ? node.values.action : ''}
                   />
+                </label>
+              )}
+
+              {(node.type === 'hasCoreComponent' || node.type === 'removeCoreComponent') && (
+                <label className="flow-node-inline-value">
+                  Component
+                  <select
+                    aria-label="Core component"
+                    disabled={document.readOnly}
+                    onChange={(event) => setNodeField(node.id, 'component', event.target.value)}
+                    value={typeof node.values.component === 'string' ? node.values.component : 'transform'}
+                  >
+                    <option value="name">Name</option>
+                    <option value="transform">Transform</option>
+                    <option value="tag">Tag</option>
+                    <option value="active">Active</option>
+                  </select>
                 </label>
               )}
 
