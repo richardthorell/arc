@@ -1451,6 +1451,116 @@ bool vulkan_render_backend::render_deferred_scene(VkCommandBuffer command_buffer
     return true;
 }
 
+void vulkan_render_backend::render_selection_mask(VkCommandBuffer command_buffer)
+{
+    if (selection_mask_.view == VK_NULL_HANDLE) return;
+
+    transition_graph_image(command_buffer, selection_mask_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    transition_depth(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
+    VkRenderingAttachmentInfo color_attachment{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+    color_attachment.imageView = selection_mask_.view;
+    color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    color_attachment.clearValue.color.float32[0] = 0.0f;
+
+    VkRenderingAttachmentInfo depth_attachment{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+    depth_attachment.imageView = viewport_depth_view_;
+    depth_attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+    VkRenderingInfo rendering{VK_STRUCTURE_TYPE_RENDERING_INFO};
+    rendering.renderArea.extent = {viewport_width_, viewport_height_};
+    rendering.layerCount = 1;
+    rendering.colorAttachmentCount = 1;
+    rendering.pColorAttachments = &color_attachment;
+    rendering.pDepthAttachment = &depth_attachment;
+    cmd_begin_rendering(command_buffer, &rendering);
+
+    if (selection_mask_pipeline_ != VK_NULL_HANDLE)
+    {
+        VkViewport viewport{};
+        viewport.y = static_cast<float>(viewport_height_);
+        viewport.width = static_cast<float>(viewport_width_);
+        viewport.height = -static_cast<float>(viewport_height_);
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        VkRect2D scissor{};
+        scissor.extent = {viewport_width_, viewport_height_};
+        vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+        vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, selection_mask_pipeline_);
+
+        const auto intensity = [](editor_selection_state state)
+        {
+            switch (state)
+            {
+                case editor_selection_state::hovered:
+                    return 0.30f;
+                case editor_selection_state::secondary:
+                    return 0.65f;
+                case editor_selection_state::primary:
+                    return 1.0f;
+                case editor_selection_state::none:
+                    break;
+            }
+            return 0.0f;
+        };
+        const auto draw_mesh = [&](const draw_mesh_event& draw)
+        {
+            const auto found = meshes_.find(resource_key(draw.mesh));
+            if (found == meshes_.end()) return;
+            auto constants = build_mesh_constants(draw);
+            constants.base_color[0] = intensity(draw.selection_state);
+            vkCmdPushConstants(command_buffer, mesh_pipeline_layout_,
+                               VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants),
+                               &constants);
+            const VkDeviceSize offset = 0;
+            const VkBuffer vertex_buffer = mesh_vertex_buffer(found->second, draw.gpu_scene_instance);
+            if (vertex_buffer == VK_NULL_HANDLE) return;
+            vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer, &offset);
+            vkCmdBindIndexBuffer(command_buffer, found->second.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+            if (!draw_gpu_visibility_command(command_buffer, draw.gpu_scene_instance))
+                vkCmdDrawIndexed(command_buffer, found->second.index_count, 1, 0, 0, 0);
+        };
+        const auto draw_virtual = [&](const virtual_cluster_draw& draw)
+        {
+            const auto found = virtual_meshes_.find(resource_key(draw.mesh));
+            if (found == virtual_meshes_.end() || draw.cluster_index >= found->second.clusters.size()) return;
+            const auto& cluster = found->second.clusters[draw.cluster_index];
+            if (cluster.index_count == 0 || cluster.first_index + cluster.index_count > found->second.index_count)
+                return;
+            auto constants = build_mesh_constants(draw.draw);
+            constants.base_color[0] = intensity(draw.draw.selection_state);
+            vkCmdPushConstants(command_buffer, mesh_pipeline_layout_,
+                               VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants),
+                               &constants);
+            const VkDeviceSize offset = 0;
+            vkCmdBindVertexBuffers(command_buffer, 0, 1, &found->second.vertices.buffer, &offset);
+            vkCmdBindIndexBuffer(command_buffer, found->second.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+            if (!draw_gpu_visibility_command(command_buffer, draw.draw.gpu_scene_instance))
+                vkCmdDrawIndexed(command_buffer, cluster.index_count, 1, cluster.first_index, 0, 0);
+        };
+
+        // Weak states are submitted first so a primary selection always wins
+        // where independently selected surfaces meet in the mask.
+        constexpr std::array states{editor_selection_state::hovered, editor_selection_state::secondary,
+                                    editor_selection_state::primary};
+        for (const auto state : states)
+        {
+            for (const auto& draw : frame_draws_)
+                if (draw.selection_state == state) draw_mesh(draw);
+            for (const auto& draw : frame_virtual_draws_)
+                if (draw.draw.selection_state == state) draw_virtual(draw);
+        }
+    }
+
+    cmd_end_rendering(command_buffer);
+    transition_graph_image(command_buffer, selection_mask_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+}
+
 void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool render_scene, bool render_output)
 {
     if (viewport_image_ == VK_NULL_HANDLE) return;
@@ -1712,9 +1822,8 @@ void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool
                                                                                            : mesh_pipeline_);
             }
 
-            // Selection is an editor overlay, not part of the material path.
-            // Draw it after deferred, forward, and transparent geometry so
-            // ordinary deferred objects cannot skip their highlight.
+            // Mesh edges are an explicit technical overlay. The default
+            // selection treatment is the screen-space silhouette mask below.
             if (mesh_wire_pipeline_ != VK_NULL_HANDLE)
             {
                 for (const auto& draw : frame_draws_)
@@ -1729,6 +1838,7 @@ void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool
 
         draw_debug_overlay(command_buffer, debug_overlay_depth_mode::tested);
         cmd_end_rendering(command_buffer);
+        render_selection_mask(command_buffer);
     }
 
     if (!render_output) return;

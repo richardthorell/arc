@@ -85,6 +85,27 @@ bool entity_selected(const ecs::world& scene, entity value)
     return selection && selection->selected;
 }
 
+render::editor_selection_state entity_selection_state(const ecs::world& scene, entity value,
+                                                      const scene_render_editor_options& options)
+{
+    if (options.selection_outline && entity_selected(scene, value))
+        return value == options.primary_selection ? render::editor_selection_state::primary
+                                                  : render::editor_selection_state::secondary;
+    if (options.selection_outline && options.selection_hierarchy)
+    {
+        entity current = value;
+        for (std::size_t depth = 0; depth < 1024; ++depth)
+        {
+            const auto* hierarchy = scene.try_get<hierarchy_component>(current);
+            if (!hierarchy || !scene.alive(hierarchy->parent)) break;
+            current = hierarchy->parent;
+            if (entity_selected(scene, current)) return render::editor_selection_state::secondary;
+        }
+    }
+    if (options.hover_outline && value == options.hovered_entity) return render::editor_selection_state::hovered;
+    return render::editor_selection_state::none;
+}
+
 math::vector3f effective_light_color(const math::vector3f& color, bool use_temperature, float kelvin)
 {
     if (!use_temperature) return color;
@@ -108,7 +129,8 @@ render::water_ocean_grid_descriptor water_grid_descriptor_for(const water_compon
     return grid;
 }
 
-void append_mesh_item(ecs::world& scene, render::render_world_packet& packet, render_scene_result& result, entity value,
+void append_mesh_item(ecs::world& scene, render::render_world_packet& packet, render_scene_result& result,
+                      const scene_render_editor_options& editor_options, entity value,
                       const transform_component& transform, render::mesh_handle mesh, render::material_handle material,
                       bool visible, bool transparent = false, render::buffer_handle skin = {},
                       std::uint32_t joint_count = 0, std::uint32_t instance_count = 1,
@@ -136,6 +158,7 @@ void append_mesh_item(ecs::world& scene, render::render_world_packet& packet, re
                             .instance_count = instance_count,
                             .visible = visible,
                             .selected = selected,
+                            .selection_state = entity_selection_state(scene, value, editor_options),
                             .transparent = transparent,
                             .casts_shadows = casts_shadows,
                             .receives_shadows = receives_shadows,
@@ -151,7 +174,8 @@ void append_mesh_item(ecs::world& scene, render::render_world_packet& packet, re
 }
 
 void append_virtual_mesh_items(ecs::world& scene, render::renderer& renderer, render::render_world_packet& packet,
-                               render_scene_result& result, entity value, const transform_component& transform,
+                               render_scene_result& result, const scene_render_editor_options& editor_options,
+                               entity value, const transform_component& transform,
                                const mesh_renderer_component& mesh_renderer)
 {
     if (!entity_is_active(scene, value)) return;
@@ -178,6 +202,7 @@ void append_virtual_mesh_items(ecs::world& scene, render::renderer& renderer, re
          .object_id = object,
          .visible = mesh_renderer.visible,
          .selected = selected,
+         .selection_state = entity_selection_state(scene, value, editor_options),
          .casts_shadows = mesh_renderer.casts_shadows,
          .receives_shadows = mesh_renderer.receives_shadows,
          .mobility = entity_mobility(scene, value),
@@ -392,7 +417,7 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                                  bool shadows_enabled, scene_render_visibility environment_visibility,
                                  float delta_seconds, render::debug_overlay_stream debug_overlay,
                                  entity preferred_camera, terrain_render_proxy_cache* terrain_proxies,
-                                 double simulation_time_seconds)
+                                 double simulation_time_seconds, scene_render_editor_options editor_options)
 {
     render_scene_result result{};
     prepare_render_scene_queries(scene);
@@ -544,7 +569,8 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
             if (!transparent && may_virtualize && renderer.resolved_config().features.virtual_geometry &&
                 renderer.virtual_mesh_alive(mesh_renderer.mesh.virtualized))
             {
-                append_virtual_mesh_items(scene, renderer, world_packet, result, value, transform, mesh_renderer);
+                append_virtual_mesh_items(scene, renderer, world_packet, result, editor_options, value, transform,
+                                          mesh_renderer);
                 return;
             }
             render::mesh_handle mesh = select_cooked_lod(mesh_renderer.mesh, world_packet.camera, renderer_bounds,
@@ -552,7 +578,7 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                                                          mesh_renderer.forced_lod, mesh_renderer.lod_bias);
             auto material = mesh_renderer.material;
             if (mesh_renderer.mesh.conventional_lod_count <= 1) apply_lod(scene, value, mesh, material);
-            append_mesh_item(scene, world_packet, result, value, render_transform, mesh, material,
+            append_mesh_item(scene, world_packet, result, editor_options, value, render_transform, mesh, material,
                              mesh_renderer.visible, transparent, {}, 0, 1, math::vector4f::one,
                              mesh_renderer.casts_shadows, mesh_renderer.receives_shadows, mesh_renderer.shadow_lod_bias,
                              mesh_renderer.maximum_shadow_distance, mesh_renderer.affects_indirect_lighting,
@@ -615,6 +641,7 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                          .object_id = render::make_render_object_id(value.index, value.generation),
                          .visible = true,
                          .selected = selected,
+                         .selection_state = entity_selection_state(scene, value, editor_options),
                          .casts_shadows = terrain.cast_shadows,
                          .receives_shadows = terrain.receive_shadows,
                          .mobility = entity_mobility(scene, value),
@@ -630,9 +657,9 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                                                     renderer.resolved_config().geometry_error_threshold, -1, 0.0f);
                 if (!renderer.mesh_alive(mesh)) continue;
 
-                append_mesh_item(scene, world_packet, result, value, transform, mesh, proxy->material, true, false, {},
-                                 0, 1, math::vector4f::one, terrain.cast_shadows, terrain.receive_shadows,
-                                 terrain.shadow_lod_bias, terrain.maximum_shadow_distance);
+                append_mesh_item(scene, world_packet, result, editor_options, value, transform, mesh, proxy->material,
+                                 true, false, {}, 0, 1, math::vector4f::one, terrain.cast_shadows,
+                                 terrain.receive_shadows, terrain.shadow_lod_bias, terrain.maximum_shadow_distance);
                 if (!world_packet.items.empty())
                 {
                     auto& item = world_packet.items.back();
@@ -746,17 +773,18 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
     scene.view<transform_component, skinned_mesh_renderer_component>().each(
         [&](entity value, const transform_component& transform, const skinned_mesh_renderer_component& mesh_renderer)
         {
-            append_mesh_item(scene, world_packet, result, value, transform, mesh_renderer.mesh, mesh_renderer.material,
-                             mesh_renderer.visible, false, mesh_renderer.skin_matrices, mesh_renderer.joint_count, 1,
-                             math::vector4f::one, mesh_renderer.casts_shadows, mesh_renderer.receives_shadows,
-                             mesh_renderer.shadow_lod_bias, mesh_renderer.maximum_shadow_distance);
+            append_mesh_item(scene, world_packet, result, editor_options, value, transform, mesh_renderer.mesh,
+                             mesh_renderer.material, mesh_renderer.visible, false, mesh_renderer.skin_matrices,
+                             mesh_renderer.joint_count, 1, math::vector4f::one, mesh_renderer.casts_shadows,
+                             mesh_renderer.receives_shadows, mesh_renderer.shadow_lod_bias,
+                             mesh_renderer.maximum_shadow_distance);
         });
 
     scene.view<transform_component, instance_group_component>().each(
         [&](entity value, const transform_component& transform, const instance_group_component& instances)
         {
-            append_mesh_item(scene, world_packet, result, value, transform, instances.mesh, instances.material,
-                             instances.visible, false, {}, 0, instances.instance_count);
+            append_mesh_item(scene, world_packet, result, editor_options, value, transform, instances.mesh,
+                             instances.material, instances.visible, false, {}, 0, instances.instance_count);
         });
 
     scene.view<transform_component, directional_light_component>().each(

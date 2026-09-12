@@ -364,7 +364,7 @@ TEST_CASE("editor gizmos keep constant screen size and hit test colored axes")
     const arc::editor::editor_gizmo_context context{
         .tool = arc::editor::editor_tool::translate, .viewport_width = 800, .viewport_height = 600};
     const auto overlay = arc::editor::build_editor_gizmo_overlay(registry, selected, camera_entity, context);
-    REQUIRE(overlay.lines.size() == 12);
+    REQUIRE(overlay.lines.empty());
     REQUIRE(overlay.triangles.size() == 120);
     REQUIRE(overlay.triangles.front().color[0] > overlay.triangles.front().color[1]);
     REQUIRE(arc::editor::hit_test_editor_gizmo(registry, selected, camera_entity, context, 450.0f, 300.0f) ==
@@ -414,9 +414,16 @@ TEST_CASE("editor gizmos keep constant screen size and hit test colored axes")
         {.tool = arc::editor::editor_tool::scale, .viewport_width = 800, .viewport_height = 600},
         arc::editor::gizmo_axis::all, 400.0f, 300.0f, uniform_direction));
     REQUIRE(arc::math::length(uniform_direction) == Catch::Approx(1.0f));
+
+    const auto bounds_overlay = arc::editor::build_editor_gizmo_overlay(registry, selected, camera_entity,
+                                                                        {.tool = arc::editor::editor_tool::select,
+                                                                         .show_selection_bounds = true,
+                                                                         .viewport_width = 800,
+                                                                         .viewport_height = 600});
+    REQUIRE(bounds_overlay.lines.size() == 12);
 }
 
-TEST_CASE("editor viewport shows camera and light icons plus selected camera frustum")
+TEST_CASE("editor viewport only shows component gizmos for the selected entity")
 {
     arc::ecs::world registry;
     const auto view_camera = registry.create();
@@ -441,7 +448,7 @@ TEST_CASE("editor viewport shows camera and light icons plus selected camera fru
     const auto overlay = arc::editor::build_editor_gizmo_overlay(
         registry, scene_camera, view_camera,
         {.tool = arc::editor::editor_tool::select, .viewport_width = 1280, .viewport_height = 720});
-    REQUIRE(overlay.lines.size() >= 40);
+    REQUIRE(overlay.lines.size() == 19);
     const auto frustum_lines = std::count_if(overlay.lines.begin(), overlay.lines.end(),
                                              [](const auto& line)
                                              {
@@ -450,6 +457,13 @@ TEST_CASE("editor viewport shows camera and light icons plus selected camera fru
                                                         line.color[1] < 0.8f;
                                              });
     REQUIRE(frustum_lines == 12);
+
+    const auto hidden = arc::editor::build_editor_gizmo_overlay(registry, scene_camera, view_camera,
+                                                                {.tool = arc::editor::editor_tool::select,
+                                                                 .show_component_gizmos = false,
+                                                                 .viewport_width = 1280,
+                                                                 .viewport_height = 720});
+    REQUIRE(hidden.lines.empty());
 }
 
 TEST_CASE("editor grid is adaptive and remains anchored to world axes")
@@ -1034,6 +1048,11 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
                  .render_mode = arc::editor::host_render_mode::wireframe,
                  .visualization = arc::editor::host_visualization_mode::world_normal,
                  .overlay = arc::editor::host_overlay_mode::all_wireframe,
+                 .selection_outline = false,
+                 .hover_outline = false,
+                 .selection_bounds = true,
+                 .component_gizmos = false,
+                 .selection_hierarchy = true,
                  .shadows = false,
                  .grid = false}},
         {.request_id = 12,
@@ -1112,6 +1131,11 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
         {
             const auto& options = std::get<arc::editor::host_viewport_set_render_options_command>(parsed.payload);
             REQUIRE_FALSE(options.grid);
+            REQUIRE_FALSE(options.selection_outline);
+            REQUIRE_FALSE(options.hover_outline);
+            REQUIRE(options.selection_bounds);
+            REQUIRE_FALSE(options.component_gizmos);
+            REQUIRE(options.selection_hierarchy);
         }
         if (command.request_id == 26)
         {

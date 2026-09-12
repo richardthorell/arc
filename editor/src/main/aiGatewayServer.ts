@@ -427,6 +427,11 @@ export class AiGatewayServer {
             ])
             .optional(),
           overlay: z.enum(['none', 'selectedWireframe', 'allWireframe']).optional(),
+          selectionOutline: z.boolean().optional(),
+          hoverOutline: z.boolean().optional(),
+          selectionBounds: z.boolean().optional(),
+          componentGizmos: z.boolean().optional(),
+          selectionHierarchy: z.boolean().optional(),
           shadows: z.boolean().optional(),
           environment: z
             .object({
@@ -522,6 +527,11 @@ export class AiGatewayServer {
                 ])
                 .optional(),
               overlay: z.enum(['none', 'selectedWireframe', 'allWireframe']).optional(),
+              selectionOutline: z.boolean().optional(),
+              hoverOutline: z.boolean().optional(),
+              selectionBounds: z.boolean().optional(),
+              componentGizmos: z.boolean().optional(),
+              selectionHierarchy: z.boolean().optional(),
               shadows: z.boolean().optional(),
               environment: z
                 .object({

@@ -145,6 +145,21 @@ enum class editor_overlay_mode : std::uint8_t
 };
 
 /**
+ * @brief Editor-only silhouette emphasis carried with a render item.
+ *
+ * Backends may implement this with a screen-space mask. The ordered values are
+ * intentional: later states are visually stronger and may safely overwrite
+ * earlier states when several outlined surfaces touch.
+ */
+enum class editor_selection_state : std::uint8_t
+{
+    none,
+    hovered,
+    secondary,
+    primary
+};
+
+/**
  * @brief Shadow filtering requested by a light.
  */
 enum class shadow_filter : std::uint8_t
@@ -339,6 +354,7 @@ struct draw_mesh_event
     buffer_handle skin_palette{};
     std::uint32_t skin_joint_count{};
     bool selected{};
+    editor_selection_state selection_state{editor_selection_state::none};
     bool casts_shadows{true};
     bool receives_shadows{true};
     render_mobility mobility{render_mobility::movable};

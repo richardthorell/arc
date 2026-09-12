@@ -105,6 +105,11 @@ type ViewportRenderOptions = {
   renderMode: 'shaded' | 'wireframe';
   visualization: string;
   overlay: 'none' | 'selectedWireframe' | 'allWireframe';
+  selectionOutline: boolean;
+  hoverOutline: boolean;
+  selectionBounds: boolean;
+  componentGizmos: boolean;
+  selectionHierarchy: boolean;
   shadows: boolean;
   grid: boolean;
   environment: {
@@ -723,6 +728,13 @@ export class SceneGatewayCore {
       renderMode: renderMode as ViewportRenderOptions['renderMode'],
       visualization,
       overlay: overlay as ViewportRenderOptions['overlay'],
+      selectionOutline:
+        typeof params.selectionOutline === 'boolean' ? params.selectionOutline : previous.selectionOutline,
+      hoverOutline: typeof params.hoverOutline === 'boolean' ? params.hoverOutline : previous.hoverOutline,
+      selectionBounds: typeof params.selectionBounds === 'boolean' ? params.selectionBounds : previous.selectionBounds,
+      componentGizmos: typeof params.componentGizmos === 'boolean' ? params.componentGizmos : previous.componentGizmos,
+      selectionHierarchy:
+        typeof params.selectionHierarchy === 'boolean' ? params.selectionHierarchy : previous.selectionHierarchy,
       shadows: typeof params.shadows === 'boolean' ? params.shadows : previous.shadows,
       grid: typeof params.grid === 'boolean' ? params.grid : previous.grid,
       environment: visibility,
@@ -886,6 +898,11 @@ export class SceneGatewayCore {
       renderMode: value.renderMode === 'wireframe' ? 'wireframe' : 'shaded',
       visualization: typeof value.visualization === 'string' ? value.visualization : 'standard',
       overlay: value.overlay === 'selectedWireframe' || value.overlay === 'allWireframe' ? value.overlay : 'none',
+      selectionOutline: typeof value.selectionOutline === 'boolean' ? value.selectionOutline : true,
+      hoverOutline: typeof value.hoverOutline === 'boolean' ? value.hoverOutline : true,
+      selectionBounds: typeof value.selectionBounds === 'boolean' ? value.selectionBounds : false,
+      componentGizmos: typeof value.componentGizmos === 'boolean' ? value.componentGizmos : true,
+      selectionHierarchy: typeof value.selectionHierarchy === 'boolean' ? value.selectionHierarchy : false,
       shadows: typeof value.shadows === 'boolean' ? value.shadows : true,
       grid: typeof value.grid === 'boolean' ? value.grid : true,
       environment: {
@@ -904,6 +921,11 @@ export class SceneGatewayCore {
     if (requested.renderMode !== effective.renderMode) mismatches.push('renderMode');
     if (requested.visualization !== effective.visualization) mismatches.push('visualization');
     if (requested.overlay !== effective.overlay) mismatches.push('overlay');
+    if (requested.selectionOutline !== effective.selectionOutline) mismatches.push('selectionOutline');
+    if (requested.hoverOutline !== effective.hoverOutline) mismatches.push('hoverOutline');
+    if (requested.selectionBounds !== effective.selectionBounds) mismatches.push('selectionBounds');
+    if (requested.componentGizmos !== effective.componentGizmos) mismatches.push('componentGizmos');
+    if (requested.selectionHierarchy !== effective.selectionHierarchy) mismatches.push('selectionHierarchy');
     if (requested.shadows !== effective.shadows) mismatches.push('shadows');
     if (requested.grid !== effective.grid) mismatches.push('grid');
     for (const key of Object.keys(requested.environment) as Array<keyof ViewportRenderOptions['environment']>) {

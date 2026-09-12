@@ -27,6 +27,8 @@ struct editor_gizmo_context
     editor_tool tool{editor_tool::translate};
     gizmo_coordinate_space coordinate_space{gizmo_coordinate_space::world};
     gizmo_axis highlighted_axis{gizmo_axis::none};
+    bool show_selection_bounds{};
+    bool show_component_gizmos{true};
     std::uint32_t viewport_width{};
     std::uint32_t viewport_height{};
 };
