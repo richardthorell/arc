@@ -1,7 +1,17 @@
 import type { GraphConnectionLike, GraphNodeDefinition, GraphNodeLike, GraphPoint, GraphViewport } from '../graph';
 
 export type FlowValueType =
-  'bool' | 'int' | 'float' | 'vec2' | 'vec3' | 'vec4' | 'string' | 'name' | 'entity' | 'component' | 'any';
+  | 'bool'
+  | 'int'
+  | 'float'
+  | 'vec2'
+  | 'vec3'
+  | 'vec4'
+  | 'string'
+  | 'name'
+  | 'entity'
+  | 'component'
+  | 'any';
 
 export type FlowPinType =
   | { kind: 'execution' }
@@ -10,10 +20,38 @@ export type FlowPinType =
       valueType: FlowValueType;
     };
 
-export type FlowNodeType = 'beginPlay' | 'endPlay' | 'tick' | 'fixedTick' | 'inputAction' | 'branch';
+export type FlowNodeType =
+  | 'beginPlay'
+  | 'endPlay'
+  | 'tick'
+  | 'fixedTick'
+  | 'inputAction'
+  | 'branch'
+  | 'selfEntity'
+  | 'isEntityAlive'
+  | 'getName'
+  | 'setName'
+  | 'getTag'
+  | 'setTag'
+  | 'getActive'
+  | 'setActive'
+  | 'getTransform'
+  | 'setTransform'
+  | 'boolLiteral'
+  | 'stringLiteral'
+  | 'vector3Literal'
+  | 'vector4Literal';
 
-export type FlowNodeCategory = 'Events' | 'Input' | 'Flow Control';
-export type FlowNodeSubcategory = 'Lifecycle' | 'Update' | 'Actions' | 'Branching';
+export type FlowNodeCategory = 'Events' | 'Input' | 'Flow Control' | 'Entity' | 'Components' | 'Values';
+export type FlowNodeSubcategory =
+  | 'Lifecycle'
+  | 'Update'
+  | 'Actions'
+  | 'Branching'
+  | 'Identity'
+  | 'State'
+  | 'Transform'
+  | 'Literals';
 
 export type FlowGraphNode = GraphNodeLike<FlowNodeType> & {
   values: Record<string, unknown>;
@@ -109,12 +147,152 @@ export const flowNodeDefinitions: Record<
     inputs: [execution('exec', 'In'), value('condition', 'Condition', 'bool')],
     outputs: [execution('true', 'True'), execution('false', 'False')],
   },
+  selfEntity: {
+    type: 'selfEntity',
+    title: 'Self Entity',
+    category: 'Entity',
+    subcategory: 'Identity',
+    inputs: [],
+    outputs: [value('entity', 'Entity', 'entity')],
+  },
+  isEntityAlive: {
+    type: 'isEntityAlive',
+    title: 'Is Entity Alive',
+    category: 'Entity',
+    subcategory: 'State',
+    inputs: [execution('exec', 'In'), value('entity', 'Entity', 'entity')],
+    outputs: [execution('then', 'Then'), value('alive', 'Alive', 'bool')],
+  },
+  getName: {
+    type: 'getName',
+    title: 'Get Name',
+    category: 'Components',
+    subcategory: 'Identity',
+    inputs: [execution('exec', 'In'), value('entity', 'Entity', 'entity')],
+    outputs: [execution('then', 'Then'), value('name', 'Name', 'string')],
+  },
+  setName: {
+    type: 'setName',
+    title: 'Set Name',
+    category: 'Components',
+    subcategory: 'Identity',
+    inputs: [execution('exec', 'In'), value('entity', 'Entity', 'entity'), value('name', 'Name', 'string')],
+    outputs: [execution('then', 'Then')],
+  },
+  getTag: {
+    type: 'getTag',
+    title: 'Get Tag',
+    category: 'Components',
+    subcategory: 'Identity',
+    inputs: [execution('exec', 'In'), value('entity', 'Entity', 'entity')],
+    outputs: [execution('then', 'Then'), value('tag', 'Tag', 'string')],
+  },
+  setTag: {
+    type: 'setTag',
+    title: 'Set Tag',
+    category: 'Components',
+    subcategory: 'Identity',
+    inputs: [execution('exec', 'In'), value('entity', 'Entity', 'entity'), value('tag', 'Tag', 'string')],
+    outputs: [execution('then', 'Then')],
+  },
+  getActive: {
+    type: 'getActive',
+    title: 'Get Active',
+    category: 'Components',
+    subcategory: 'State',
+    inputs: [execution('exec', 'In'), value('entity', 'Entity', 'entity')],
+    outputs: [execution('then', 'Then'), value('active', 'Active', 'bool')],
+  },
+  setActive: {
+    type: 'setActive',
+    title: 'Set Active',
+    category: 'Components',
+    subcategory: 'State',
+    inputs: [execution('exec', 'In'), value('entity', 'Entity', 'entity'), value('active', 'Active', 'bool')],
+    outputs: [execution('then', 'Then')],
+  },
+  getTransform: {
+    type: 'getTransform',
+    title: 'Get Transform',
+    category: 'Components',
+    subcategory: 'Transform',
+    inputs: [execution('exec', 'In'), value('entity', 'Entity', 'entity')],
+    outputs: [
+      execution('then', 'Then'),
+      value('position', 'Position', 'vec3'),
+      value('rotation', 'Rotation', 'vec4'),
+      value('scale', 'Scale', 'vec3'),
+    ],
+  },
+  setTransform: {
+    type: 'setTransform',
+    title: 'Set Transform',
+    category: 'Components',
+    subcategory: 'Transform',
+    inputs: [
+      execution('exec', 'In'),
+      value('entity', 'Entity', 'entity'),
+      value('position', 'Position', 'vec3'),
+      value('rotation', 'Rotation', 'vec4'),
+      value('scale', 'Scale', 'vec3'),
+    ],
+    outputs: [execution('then', 'Then')],
+  },
+  boolLiteral: {
+    type: 'boolLiteral',
+    title: 'Boolean',
+    category: 'Values',
+    subcategory: 'Literals',
+    inputs: [],
+    outputs: [value('value', 'Value', 'bool')],
+  },
+  stringLiteral: {
+    type: 'stringLiteral',
+    title: 'String',
+    category: 'Values',
+    subcategory: 'Literals',
+    inputs: [],
+    outputs: [value('value', 'Value', 'string')],
+  },
+  vector3Literal: {
+    type: 'vector3Literal',
+    title: 'Vector3',
+    category: 'Values',
+    subcategory: 'Literals',
+    inputs: [],
+    outputs: [value('value', 'Value', 'vec3')],
+  },
+  vector4Literal: {
+    type: 'vector4Literal',
+    title: 'Vector4',
+    category: 'Values',
+    subcategory: 'Literals',
+    inputs: [],
+    outputs: [value('value', 'Value', 'vec4')],
+  },
 };
 
 let generatedId = 0;
 export const flowGraphId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(generatedId++).toString(36)}`;
 
 export const cloneFlowGraph = (graph: FlowGraph): FlowGraph => JSON.parse(JSON.stringify(graph)) as FlowGraph;
+
+const defaultNodeValues = (type: FlowNodeType): Record<string, unknown> => {
+  switch (type) {
+    case 'inputAction':
+      return { action: 'Jump' };
+    case 'boolLiteral':
+      return { value: false };
+    case 'stringLiteral':
+      return { value: '' };
+    case 'vector3Literal':
+      return { value: [0, 0, 0] };
+    case 'vector4Literal':
+      return { value: [0, 0, 0, 1] };
+    default:
+      return {};
+  }
+};
 
 export const createFlowNode = (
   type: FlowNodeType,
@@ -124,7 +302,7 @@ export const createFlowNode = (
   id: flowGraphId(type),
   type,
   position,
-  values: type === 'inputAction' ? { action: 'Jump', ...values } : { ...values },
+  values: { ...defaultNodeValues(type), ...values },
 });
 
 export const createDefaultFlowGraph = (): FlowGraph => ({
@@ -198,8 +376,7 @@ export const isFlowGraph = (value: unknown): value is FlowGraph => {
   if (!value || typeof value !== 'object') return false;
   const graph = value as Partial<FlowGraph>;
   if (graph.version !== 1 || !Array.isArray(graph.nodes) || !Array.isArray(graph.connections)) return false;
-  if (!Array.isArray(graph.variables) || !graph.variables.every(isVariable) || !isViewport(graph.viewport))
-    return false;
+  if (!Array.isArray(graph.variables) || !graph.variables.every(isVariable) || !isViewport(graph.viewport)) return false;
 
   const nodeIds = new Set<string>();
   for (const node of graph.nodes) {
@@ -236,9 +413,7 @@ export const isFlowGraph = (value: unknown): value is FlowGraph => {
 export const isFlowAssetJson = (value: unknown): value is FlowAssetJson => {
   if (!value || typeof value !== 'object') return false;
   const asset = value as Partial<FlowAssetJson>;
-  return (
-    asset.version === 1 && asset.assetType === 'flow' && typeof asset.name === 'string' && isFlowGraph(asset.graph)
-  );
+  return asset.version === 1 && asset.assetType === 'flow' && typeof asset.name === 'string' && isFlowGraph(asset.graph);
 };
 
 export const flowGraphFromAsset = (asset: FlowAssetJson): FlowGraph => {
