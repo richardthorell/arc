@@ -50,7 +50,7 @@ The typed IR explicitly models:
 - branch instructions and control-flow targets
 - source node IDs for diagnostics and debugging
 
-Bytecode removes editor-only graph topology while retaining the typed slots, entry points, compact instructions, and an instruction-to-node source map. `invalid_instruction` is the explicit return/end-of-flow target. Unconnected Branch conditions currently lower to the type default (`false`), keeping the bytecode deterministic until literal/value nodes expand the language.
+Bytecode removes editor-only graph topology while retaining the typed slots, entry points, compact instructions, and an instruction-to-node source map. `invalid_instruction` is the explicit return/end-of-flow target. Unconnected Branch conditions currently lower to the type default (`false`).
 
 Execution outputs intentionally allow only one target in F2. Future fan-out is represented by an explicit Sequence node so execution order stays deterministic rather than depending on connection storage order.
 
@@ -89,7 +89,27 @@ World instructions consume the same per-dispatch instruction budget as control-f
 
 World failures are explicit VM outcomes. Dispatch reports `world_unavailable` when no usable world callback is supplied and `world_operation_failed` when the M3.5 operation itself cannot be completed. Source-node mapping is preserved so runtime diagnostics can later jump back to the authoring node.
 
-F4 establishes the runtime instruction set only. The F2 compiler continues to emit the existing authored node set in this milestone; F5 adds the editor/compiler gameplay nodes that lower to these world opcodes. This keeps the VM/M3.5 boundary testable before expanding the visual language.
+## F5.1 core gameplay authoring
+
+F5.1 exposes the first F4 world operations as authored Flow nodes and extends the typed IR compiler so those nodes lower directly to the existing world bytecode instructions.
+
+The editor node palette adds:
+
+- `Self Entity`
+- `Is Entity Alive`
+- `Get Name` / `Set Name`
+- `Get Tag` / `Set Tag`
+- `Get Active` / `Set Active`
+- `Get Transform` / `Set Transform`
+- Boolean, String, Vector3, and Vector4 literal nodes
+
+Literal values are edited directly on the node and remain ordinary authored graph data. Gameplay inputs stay strongly typed; for example, a Vector3 cannot be connected to a quaternion/Vector4 pin.
+
+Gameplay read nodes are explicit execution nodes in F5.1. This makes read ordering deterministic without introducing an expression scheduler yet: a graph that reads Active before branching wires `Get Active -> Branch` through both execution and value connections. `Self Entity` is a pure value source; the compiler injects a source-mapped `self_entity` prelude for event paths that consume it so authors do not need to put Self on the execution chain.
+
+Required gameplay value inputs are compiler-validated. Missing entity/value connections produce `FLOW_REQUIRED_INPUT` diagnostics tied to the node and pin rather than deferring the error until VM execution.
+
+F5.1 deliberately does not expose structural entity mutation. `Create Entity`, `Destroy Entity`, `Has Component`, and `Remove Component` remain the next F5.2 slice so their deferred-entity behavior can be exercised separately through authored graphs.
 
 ## Runtime boundary
 
@@ -99,10 +119,10 @@ The editable graph remains source authoring data:
 .arcflow
    |
    v
-Flow validation / compiler     (F2, arc-flow)
+Flow validation / compiler     (F2 + F5 authoring lowering, arc-flow)
    |
    v
-Typed Flow IR / bytecode       (F2, arc-flow)
+Typed Flow IR / bytecode       (F2/F5)
    |
    v
 Flow VM                        (F3)
@@ -117,4 +137,4 @@ Stable project world API       (M3.5)
 ECS / runtime world
 ```
 
-F2 owns semantic validation, typed IR, diagnostics tied to node/pin/connection IDs, and bytecode generation. F3 owns deterministic bytecode execution, per-instance state, lifecycle/input events, runtime bytecode validation, and instruction budgets. F4 owns gameplay/world operations and their integration through the stable M3.5 world API. F5 exposes those operations as authored Flow nodes and compiler lowering.
+F2 owns the base compiler, typed IR, diagnostics, and bytecode generation. F3 owns deterministic bytecode execution, per-instance state, lifecycle/input events, runtime bytecode validation, and instruction budgets. F4 owns gameplay/world operations and their integration through the stable M3.5 world API. F5 exposes those operations as authored Flow nodes and compiler lowering, beginning with the F5.1 core read/write slice.
