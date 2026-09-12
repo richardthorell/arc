@@ -586,40 +586,41 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
                 </label>
               )}
 
-              {(node.type === 'vector3Literal' || node.type === 'vector4Literal') && (() => {
-                const size = node.type === 'vector3Literal' ? 3 : 4;
-                const current = vectorValue(node.values.value, size, node.type === 'vector4Literal' ? 1 : 0);
-                return (
-                  <label className="flow-node-inline-value">
-                    Value
-                    <span
-                      style={{
-                        display: 'grid',
-                        gap: 4,
-                        gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
-                        minWidth: 0,
-                      }}
-                    >
-                      {current.map((entry, index) => (
-                        <input
-                          aria-label={`${node.type === 'vector3Literal' ? 'Vector3' : 'Vector4'} component ${index + 1}`}
-                          disabled={document.readOnly}
-                          key={index}
-                          onChange={(event) => {
-                            const next = [...current];
-                            const parsed = Number(event.target.value);
-                            next[index] = Number.isFinite(parsed) ? parsed : 0;
-                            setNodeValue(node.id, next);
-                          }}
-                          step="any"
-                          type="number"
-                          value={entry}
-                        />
-                      ))}
-                    </span>
-                  </label>
-                );
-              })()}
+              {(node.type === 'vector3Literal' || node.type === 'vector4Literal') &&
+                (() => {
+                  const size = node.type === 'vector3Literal' ? 3 : 4;
+                  const current = vectorValue(node.values.value, size, node.type === 'vector4Literal' ? 1 : 0);
+                  return (
+                    <label className="flow-node-inline-value">
+                      Value
+                      <span
+                        style={{
+                          display: 'grid',
+                          gap: 4,
+                          gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
+                          minWidth: 0,
+                        }}
+                      >
+                        {current.map((entry, index) => (
+                          <input
+                            aria-label={`${node.type === 'vector3Literal' ? 'Vector3' : 'Vector4'} component ${index + 1}`}
+                            disabled={document.readOnly}
+                            key={index}
+                            onChange={(event) => {
+                              const next = [...current];
+                              const parsed = Number(event.target.value);
+                              next[index] = Number.isFinite(parsed) ? parsed : 0;
+                              setNodeValue(node.id, next);
+                            }}
+                            step="any"
+                            type="number"
+                            value={entry}
+                          />
+                        ))}
+                      </span>
+                    </label>
+                  );
+                })()}
             </UiNodeCard>
           );
         })}

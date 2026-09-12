@@ -862,8 +862,7 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                 allocate_slot(*node, "position", value_type::vector3, default_value(value_type::vector3));
                 allocate_slot(*node, "rotation", value_type::vector4,
                               flow_value{std::array<double, 4>{0.0, 0.0, 0.0, 1.0}});
-                allocate_slot(*node, "scale", value_type::vector3,
-                              flow_value{std::array<double, 3>{1.0, 1.0, 1.0}});
+                allocate_slot(*node, "scale", value_type::vector3, flow_value{std::array<double, 3>{1.0, 1.0, 1.0}});
                 break;
             case node_kind::bool_literal:
             case node_kind::string_literal:
@@ -914,8 +913,8 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                 if (condition_connection == validation.incoming.end())
                     instruction.condition_slot = allocate_slot(*node, "condition", value_type::boolean, false);
                 else
-                    instruction.condition_slot = value_slots.at(pin_key(condition_connection->second->from.node_id,
-                                                                         condition_connection->second->from.pin));
+                    instruction.condition_slot = value_slots.at(
+                        pin_key(condition_connection->second->from.node_id, condition_connection->second->from.pin));
                 instruction.true_instruction = execution_target(*node, "true");
                 instruction.false_instruction = execution_target(*node, "false");
                 break;

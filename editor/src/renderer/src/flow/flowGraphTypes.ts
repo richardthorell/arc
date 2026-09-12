@@ -1,17 +1,7 @@
 import type { GraphConnectionLike, GraphNodeDefinition, GraphNodeLike, GraphPoint, GraphViewport } from '../graph';
 
 export type FlowValueType =
-  | 'bool'
-  | 'int'
-  | 'float'
-  | 'vec2'
-  | 'vec3'
-  | 'vec4'
-  | 'string'
-  | 'name'
-  | 'entity'
-  | 'component'
-  | 'any';
+  'bool' | 'int' | 'float' | 'vec2' | 'vec3' | 'vec4' | 'string' | 'name' | 'entity' | 'component' | 'any';
 
 export type FlowPinType =
   | { kind: 'execution' }
@@ -44,14 +34,7 @@ export type FlowNodeType =
 
 export type FlowNodeCategory = 'Events' | 'Input' | 'Flow Control' | 'Entity' | 'Components' | 'Values';
 export type FlowNodeSubcategory =
-  | 'Lifecycle'
-  | 'Update'
-  | 'Actions'
-  | 'Branching'
-  | 'Identity'
-  | 'State'
-  | 'Transform'
-  | 'Literals';
+  'Lifecycle' | 'Update' | 'Actions' | 'Branching' | 'Identity' | 'State' | 'Transform' | 'Literals';
 
 export type FlowGraphNode = GraphNodeLike<FlowNodeType> & {
   values: Record<string, unknown>;
@@ -376,7 +359,8 @@ export const isFlowGraph = (value: unknown): value is FlowGraph => {
   if (!value || typeof value !== 'object') return false;
   const graph = value as Partial<FlowGraph>;
   if (graph.version !== 1 || !Array.isArray(graph.nodes) || !Array.isArray(graph.connections)) return false;
-  if (!Array.isArray(graph.variables) || !graph.variables.every(isVariable) || !isViewport(graph.viewport)) return false;
+  if (!Array.isArray(graph.variables) || !graph.variables.every(isVariable) || !isViewport(graph.viewport))
+    return false;
 
   const nodeIds = new Set<string>();
   for (const node of graph.nodes) {
@@ -413,7 +397,9 @@ export const isFlowGraph = (value: unknown): value is FlowGraph => {
 export const isFlowAssetJson = (value: unknown): value is FlowAssetJson => {
   if (!value || typeof value !== 'object') return false;
   const asset = value as Partial<FlowAssetJson>;
-  return asset.version === 1 && asset.assetType === 'flow' && typeof asset.name === 'string' && isFlowGraph(asset.graph);
+  return (
+    asset.version === 1 && asset.assetType === 'flow' && typeof asset.name === 'string' && isFlowGraph(asset.graph)
+  );
 };
 
 export const flowGraphFromAsset = (asset: FlowAssetJson): FlowGraph => {

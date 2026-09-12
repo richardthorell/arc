@@ -15,9 +15,9 @@ bool has_code(const arc::flow::compile_result& result, std::string_view code)
 
 std::uint32_t find_slot(const arc::flow::ir_program& program, std::string_view node, std::string_view pin)
 {
-    const auto iterator = std::find_if(program.value_slots.begin(), program.value_slots.end(),
-                                       [&](const arc::flow::ir_value_slot& slot)
-                                       { return slot.source_node_id == node && slot.source_pin_id == pin; });
+    const auto iterator =
+        std::find_if(program.value_slots.begin(), program.value_slots.end(), [&](const arc::flow::ir_value_slot& slot)
+                     { return slot.source_node_id == node && slot.source_pin_id == pin; });
     assert(iterator != program.value_slots.end());
     return iterator->index;
 }
