@@ -988,15 +988,15 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                 break;
             case node_kind::has_core_component:
                 instruction.operand0 = input_slot(*node, "entity");
-                instruction.operand1 = static_cast<std::uint32_t>(
-                    *parse_core_component(node->values.at("component").get<std::string>()));
+                instruction.operand1 =
+                    static_cast<std::uint32_t>(*parse_core_component(node->values.at("component").get<std::string>()));
                 instruction.operand2 = value_slots.at(pin_key(node->id, "has"));
                 instruction.operand3 = execution_target(*node, "then");
                 break;
             case node_kind::remove_core_component:
                 instruction.operand0 = input_slot(*node, "entity");
-                instruction.operand1 = static_cast<std::uint32_t>(
-                    *parse_core_component(node->values.at("component").get<std::string>()));
+                instruction.operand1 =
+                    static_cast<std::uint32_t>(*parse_core_component(node->values.at("component").get<std::string>()));
                 instruction.operand2 = execution_target(*node, "then");
                 break;
             case node_kind::entity_alive:

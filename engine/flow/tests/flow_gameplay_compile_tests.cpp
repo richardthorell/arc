@@ -221,14 +221,14 @@ void run_flow_gameplay_compile_tests()
         })json");
 
         assert(result.succeeded && result.bytecode);
-        [[maybe_unused]] const auto has = std::find_if(
-            result.bytecode->instructions.begin(), result.bytecode->instructions.end(),
-            [](const bytecode_instruction& instruction)
-            { return instruction.opcode == bytecode_opcode::world_has_core_component; });
-        [[maybe_unused]] const auto remove = std::find_if(
-            result.bytecode->instructions.begin(), result.bytecode->instructions.end(),
-            [](const bytecode_instruction& instruction)
-            { return instruction.opcode == bytecode_opcode::world_remove_core_component; });
+        [[maybe_unused]] const auto has =
+            std::find_if(result.bytecode->instructions.begin(), result.bytecode->instructions.end(),
+                         [](const bytecode_instruction& instruction)
+                         { return instruction.opcode == bytecode_opcode::world_has_core_component; });
+        [[maybe_unused]] const auto remove =
+            std::find_if(result.bytecode->instructions.begin(), result.bytecode->instructions.end(),
+                         [](const bytecode_instruction& instruction)
+                         { return instruction.opcode == bytecode_opcode::world_remove_core_component; });
         assert(has != result.bytecode->instructions.end());
         assert(remove != result.bytecode->instructions.end());
         assert(has->operand1 == static_cast<std::uint32_t>(world_core_component::tag));
@@ -259,5 +259,4 @@ void run_flow_gameplay_compile_tests()
         assert(!result.succeeded);
         assert(has_code(result, "FLOW_CORE_COMPONENT"));
     }
-
 }
