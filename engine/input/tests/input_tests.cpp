@@ -136,6 +136,10 @@ int main()
     player_one.add_context("gameplay", 0);
     player_one.bind_action("gameplay", "jump", key_binding(key::enter));
     player_one.bind_action("gameplay", "accept", gamepad_button_binding(gamepad_button::south));
+    player_one.bind_action("gameplay", "paddle", gamepad_button_binding(gamepad_button::paddle_left_1));
+    player_one.bind_action("gameplay", "trigger_press", gamepad_button_binding(gamepad_button::left_trigger_button));
+    player_one.bind_action("gameplay", "guide", gamepad_button_binding(gamepad_button::guide));
+    player_one.bind_action("gameplay", "share", gamepad_button_binding(gamepad_button::share));
     player_one.bind_axis2d("gameplay", "move", gamepad_axis_binding(gamepad_axis::left_x), {1.0f, 0.0f});
     player_one.bind_axis2d("gameplay", "move", gamepad_axis_binding(gamepad_axis::left_y), {0.0f, 1.0f});
     player_one.bind_axis("gameplay", "gyro_x", sensor_axis_binding(sensor_axis::gyroscope_x));
@@ -148,6 +152,10 @@ int main()
     input.begin_frame();
     assert(input.device_events().empty());
     assert(input.submit_button(controller, make_gamepad_button_control(gamepad_button::south), true));
+    assert(input.submit_button(controller, make_gamepad_button_control(gamepad_button::paddle_left_1), true));
+    assert(input.submit_button(controller, make_gamepad_button_control(gamepad_button::left_trigger_button), true));
+    assert(input.submit_button(controller, make_gamepad_button_control(gamepad_button::guide), true));
+    assert(input.submit_button(controller, make_gamepad_button_control(gamepad_button::share), true));
     assert(input.submit_axis(controller, make_gamepad_axis_control(gamepad_axis::left_x), 0.75f));
     assert(input.submit_axis(controller, make_gamepad_axis_control(gamepad_axis::left_y), -0.25f));
     assert(input.submit_axis(controller, make_sensor_axis_control(sensor_axis::gyroscope_x), 1.25f));
@@ -158,6 +166,10 @@ int main()
     assert(input.submit_axis(controller, make_sensor_axis_control(sensor_axis::accelerometer_z), 0.5f));
     assert(player_one.pressed("accept"));
     assert(player_one.down("accept"));
+    assert(player_one.pressed("paddle"));
+    assert(player_one.pressed("trigger_press"));
+    assert(player_one.pressed("guide"));
+    assert(player_one.pressed("share"));
     const arc::math::vector2f gamepad_move = player_one.axis2d("move");
     assert(gamepad_move[0] == 0.75f);
     assert(gamepad_move[1] == -0.25f);
@@ -171,10 +183,22 @@ int main()
     input.begin_frame();
     assert(!player_one.pressed("accept"));
     assert(player_one.down("accept"));
+    assert(player_one.down("paddle"));
+    assert(player_one.down("trigger_press"));
+    assert(player_one.down("guide"));
+    assert(player_one.down("share"));
     assert(player_one.axis("gyro_x") == 1.25f);
     assert(player_one.axis("accel_x") == 9.80665f);
     assert(input.submit_button(controller, make_gamepad_button_control(gamepad_button::south), false));
+    assert(input.submit_button(controller, make_gamepad_button_control(gamepad_button::paddle_left_1), false));
+    assert(input.submit_button(controller, make_gamepad_button_control(gamepad_button::left_trigger_button), false));
+    assert(input.submit_button(controller, make_gamepad_button_control(gamepad_button::guide), false));
+    assert(input.submit_button(controller, make_gamepad_button_control(gamepad_button::share), false));
     assert(player_one.released("accept"));
+    assert(player_one.released("paddle"));
+    assert(player_one.released("trigger_press"));
+    assert(player_one.released("guide"));
+    assert(player_one.released("share"));
 
     input.begin_frame();
     assert(input.submit_button(keyboard, make_key_control(key::space), true));
