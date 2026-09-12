@@ -160,4 +160,103 @@ void run_flow_gameplay_compile_tests()
         assert(!result.succeeded);
         assert(has_code(result, "FLOW_REQUIRED_INPUT"));
     }
+
+    {
+        const compile_result result = compile_asset(R"json({
+            "version": 1,
+            "assetType": "flow",
+            "name": "CreateAndName",
+            "graph": {
+                "version": 1,
+                "variables": [],
+                "nodes": [
+                    {"id": "begin", "type": "beginPlay", "position": [0, 0], "values": {}},
+                    {"id": "create", "type": "createEntity", "position": [220, 0], "values": {}},
+                    {"id": "name", "type": "stringLiteral", "position": [220, 180], "values": {"value": "Spawned"}},
+                    {"id": "set", "type": "setName", "position": [460, 0], "values": {}}
+                ],
+                "connections": [
+                    {"id": "e1", "kind": "execution", "from": {"nodeId": "begin", "pin": "exec"}, "to": {"nodeId": "create", "pin": "exec"}},
+                    {"id": "e2", "kind": "execution", "from": {"nodeId": "create", "pin": "then"}, "to": {"nodeId": "set", "pin": "exec"}},
+                    {"id": "v1", "kind": "value", "from": {"nodeId": "create", "pin": "entity"}, "to": {"nodeId": "set", "pin": "entity"}},
+                    {"id": "v2", "kind": "value", "from": {"nodeId": "name", "pin": "value"}, "to": {"nodeId": "set", "pin": "name"}}
+                ],
+                "viewport": {"x": 0, "y": 0, "zoom": 1}
+            }
+        })json");
+
+        assert(result.succeeded && result.ir && result.bytecode);
+        [[maybe_unused]] const std::uint32_t entity_slot = find_slot(*result.ir, "create", "entity");
+        assert(result.bytecode->instructions.size() == 2);
+        assert(result.bytecode->entry_points[0].instruction == 0);
+        assert(result.bytecode->instructions[0].opcode == bytecode_opcode::world_create_entity);
+        assert(result.bytecode->instructions[0].operand0 == entity_slot);
+        assert(result.bytecode->instructions[0].operand1 == 1);
+        assert(result.bytecode->instructions[1].opcode == bytecode_opcode::world_set_name);
+        assert(result.bytecode->instructions[1].operand0 == entity_slot);
+    }
+
+    {
+        const compile_result result = compile_asset(R"json({
+            "version": 1,
+            "assetType": "flow",
+            "name": "CoreComponents",
+            "graph": {
+                "version": 1,
+                "variables": [],
+                "nodes": [
+                    {"id": "begin", "type": "beginPlay", "position": [0, 0], "values": {}},
+                    {"id": "self", "type": "selfEntity", "position": [0, 160], "values": {}},
+                    {"id": "has", "type": "hasCoreComponent", "position": [240, 0], "values": {"component": "tag"}},
+                    {"id": "remove", "type": "removeCoreComponent", "position": [480, 0], "values": {"component": "tag"}}
+                ],
+                "connections": [
+                    {"id": "e1", "kind": "execution", "from": {"nodeId": "begin", "pin": "exec"}, "to": {"nodeId": "has", "pin": "exec"}},
+                    {"id": "e2", "kind": "execution", "from": {"nodeId": "has", "pin": "then"}, "to": {"nodeId": "remove", "pin": "exec"}},
+                    {"id": "v1", "kind": "value", "from": {"nodeId": "self", "pin": "entity"}, "to": {"nodeId": "has", "pin": "entity"}},
+                    {"id": "v2", "kind": "value", "from": {"nodeId": "self", "pin": "entity"}, "to": {"nodeId": "remove", "pin": "entity"}}
+                ],
+                "viewport": {"x": 0, "y": 0, "zoom": 1}
+            }
+        })json");
+
+        assert(result.succeeded && result.bytecode);
+        [[maybe_unused]] const auto has =
+            std::find_if(result.bytecode->instructions.begin(), result.bytecode->instructions.end(),
+                         [](const bytecode_instruction& instruction)
+                         { return instruction.opcode == bytecode_opcode::world_has_core_component; });
+        [[maybe_unused]] const auto remove =
+            std::find_if(result.bytecode->instructions.begin(), result.bytecode->instructions.end(),
+                         [](const bytecode_instruction& instruction)
+                         { return instruction.opcode == bytecode_opcode::world_remove_core_component; });
+        assert(has != result.bytecode->instructions.end());
+        assert(remove != result.bytecode->instructions.end());
+        assert(has->operand1 == static_cast<std::uint32_t>(world_core_component::tag));
+        assert(remove->operand1 == static_cast<std::uint32_t>(world_core_component::tag));
+    }
+
+    {
+        const compile_result result = compile_asset(R"json({
+            "version": 1,
+            "assetType": "flow",
+            "name": "BadComponent",
+            "graph": {
+                "version": 1,
+                "variables": [],
+                "nodes": [
+                    {"id": "begin", "type": "beginPlay", "position": [0, 0], "values": {}},
+                    {"id": "self", "type": "selfEntity", "position": [0, 120], "values": {}},
+                    {"id": "remove", "type": "removeCoreComponent", "position": [240, 0], "values": {"component": "physics"}}
+                ],
+                "connections": [
+                    {"id": "e1", "kind": "execution", "from": {"nodeId": "begin", "pin": "exec"}, "to": {"nodeId": "remove", "pin": "exec"}},
+                    {"id": "v1", "kind": "value", "from": {"nodeId": "self", "pin": "entity"}, "to": {"nodeId": "remove", "pin": "entity"}}
+                ],
+                "viewport": {"x": 0, "y": 0, "zoom": 1}
+            }
+        })json");
+
+        assert(!result.succeeded);
+        assert(has_code(result, "FLOW_CORE_COMPONENT"));
+    }
 }

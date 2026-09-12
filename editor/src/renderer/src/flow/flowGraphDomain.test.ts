@@ -41,6 +41,20 @@ describe('Flow graph domain', () => {
     ).toBe(false);
   });
 
+  it('connects deferred entity outputs to structural gameplay writes', () => {
+    const create = createFlowNode('createEntity', [0, 0]);
+    const destroy = createFlowNode('destroyEntity', [300, 0]);
+    const entity = flowNodeDefinitions.createEntity.outputs.find((pin) => pin.id === 'entity')!;
+    const target = flowNodeDefinitions.destroyEntity.inputs.find((pin) => pin.id === 'entity')!;
+
+    expect(
+      flowGraphDomain.canConnect(
+        { node: create, pin: entity, direction: 'output' },
+        { node: destroy, pin: target, direction: 'input' },
+      ).allowed,
+    ).toBe(true);
+  });
+
   it('allows execution between different nodes', () => {
     const begin = createFlowNode('beginPlay', [0, 0]);
     const branch = createFlowNode('branch', [300, 0]);

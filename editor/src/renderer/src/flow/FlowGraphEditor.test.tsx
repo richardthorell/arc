@@ -85,6 +85,23 @@ describe('FlowGraphEditor', () => {
     expect(nextGraph.nodes.find((node: { type: string }) => node.type === 'stringLiteral').values.value).toBe('Hero');
   });
 
+  it('edits the selected core component on structural nodes', () => {
+    const graph = createDefaultFlowGraph();
+    graph.nodes.push({
+      id: 'remove-component',
+      type: 'removeCoreComponent',
+      position: [320, 140],
+      values: { component: 'transform' },
+    });
+    render(<FlowGraphEditor document={document} graph={graph} />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Core component' }), { target: { value: 'tag' } });
+
+    expect(flowState.replaceFlowGraph).toHaveBeenCalledTimes(1);
+    const nextGraph = flowState.replaceFlowGraph.mock.calls[0][1];
+    expect(nextGraph.nodes.find((node: { id: string }) => node.id === 'remove-component').values.component).toBe('tag');
+  });
+
   it('does not mutate a read-only Flow graph', () => {
     render(<FlowGraphEditor document={{ ...document, readOnly: true }} graph={createDefaultFlowGraph()} />);
 

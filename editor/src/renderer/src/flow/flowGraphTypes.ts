@@ -18,6 +18,10 @@ export type FlowNodeType =
   | 'inputAction'
   | 'branch'
   | 'selfEntity'
+  | 'createEntity'
+  | 'destroyEntity'
+  | 'hasCoreComponent'
+  | 'removeCoreComponent'
   | 'isEntityAlive'
   | 'getName'
   | 'setName'
@@ -34,7 +38,7 @@ export type FlowNodeType =
 
 export type FlowNodeCategory = 'Events' | 'Input' | 'Flow Control' | 'Entity' | 'Components' | 'Values';
 export type FlowNodeSubcategory =
-  'Lifecycle' | 'Update' | 'Actions' | 'Branching' | 'Identity' | 'State' | 'Transform' | 'Literals';
+  'Lifecycle' | 'Update' | 'Actions' | 'Branching' | 'Identity' | 'Lifetime' | 'State' | 'Transform' | 'Literals';
 
 export type FlowGraphNode = GraphNodeLike<FlowNodeType> & {
   values: Record<string, unknown>;
@@ -137,6 +141,38 @@ export const flowNodeDefinitions: Record<
     subcategory: 'Identity',
     inputs: [],
     outputs: [value('entity', 'Entity', 'entity')],
+  },
+  createEntity: {
+    type: 'createEntity',
+    title: 'Create Entity',
+    category: 'Entity',
+    subcategory: 'Lifetime',
+    inputs: [execution('exec', 'In')],
+    outputs: [execution('then', 'Then'), value('entity', 'Entity', 'entity')],
+  },
+  destroyEntity: {
+    type: 'destroyEntity',
+    title: 'Destroy Entity',
+    category: 'Entity',
+    subcategory: 'Lifetime',
+    inputs: [execution('exec', 'In'), value('entity', 'Entity', 'entity')],
+    outputs: [execution('then', 'Then')],
+  },
+  hasCoreComponent: {
+    type: 'hasCoreComponent',
+    title: 'Has Component',
+    category: 'Components',
+    subcategory: 'State',
+    inputs: [execution('exec', 'In'), value('entity', 'Entity', 'entity')],
+    outputs: [execution('then', 'Then'), value('has', 'Has', 'bool')],
+  },
+  removeCoreComponent: {
+    type: 'removeCoreComponent',
+    title: 'Remove Component',
+    category: 'Components',
+    subcategory: 'State',
+    inputs: [execution('exec', 'In'), value('entity', 'Entity', 'entity')],
+    outputs: [execution('then', 'Then')],
   },
   isEntityAlive: {
     type: 'isEntityAlive',
@@ -264,6 +300,9 @@ const defaultNodeValues = (type: FlowNodeType): Record<string, unknown> => {
   switch (type) {
     case 'inputAction':
       return { action: 'Jump' };
+    case 'hasCoreComponent':
+    case 'removeCoreComponent':
+      return { component: 'transform' };
     case 'boolLiteral':
       return { value: false };
     case 'stringLiteral':

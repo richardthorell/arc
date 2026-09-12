@@ -214,6 +214,7 @@
 }
 
 .flow-node-inline-value input,
+.flow-node-inline-value select,
 .flow-variable input,
 .flow-variable select {
   min-width: 0;
@@ -228,6 +229,7 @@
 }
 
 .flow-node-inline-value input:focus,
+.flow-node-inline-value select:focus,
 .flow-variable input:focus,
 .flow-variable select:focus {
   border-color: #4d97ad;

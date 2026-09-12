@@ -27,6 +27,10 @@ enum class node_kind : std::uint8_t
     input_action,
     branch,
     self_entity,
+    create_entity,
+    destroy_entity,
+    has_core_component,
+    remove_core_component,
     entity_alive,
     get_name,
     set_name,
@@ -115,6 +119,10 @@ std::optional<node_kind> parse_node_kind(std::string_view value)
     if (value == "inputAction") return node_kind::input_action;
     if (value == "branch") return node_kind::branch;
     if (value == "selfEntity") return node_kind::self_entity;
+    if (value == "createEntity") return node_kind::create_entity;
+    if (value == "destroyEntity") return node_kind::destroy_entity;
+    if (value == "hasCoreComponent") return node_kind::has_core_component;
+    if (value == "removeCoreComponent") return node_kind::remove_core_component;
     if (value == "isEntityAlive") return node_kind::entity_alive;
     if (value == "getName") return node_kind::get_name;
     if (value == "setName") return node_kind::set_name;
@@ -216,6 +224,15 @@ std::optional<flow_value> parse_default_value(value_type type, const json& value
     return std::nullopt;
 }
 
+std::optional<world_core_component> parse_core_component(std::string_view value)
+{
+    if (value == "name") return world_core_component::name;
+    if (value == "transform") return world_core_component::transform;
+    if (value == "tag") return world_core_component::tag;
+    if (value == "active") return world_core_component::active;
+    return std::nullopt;
+}
+
 std::optional<value_type> literal_type(node_kind kind)
 {
     switch (kind)
@@ -244,6 +261,10 @@ bool is_executable_node(node_kind kind)
     switch (kind)
     {
         case node_kind::branch:
+        case node_kind::create_entity:
+        case node_kind::destroy_entity:
+        case node_kind::has_core_component:
+        case node_kind::remove_core_component:
         case node_kind::entity_alive:
         case node_kind::get_name:
         case node_kind::set_name:
@@ -281,6 +302,18 @@ std::optional<pin_info> output_pin(node_kind kind, std::string_view pin)
             break;
         case node_kind::self_entity:
             if (pin == "entity") return pin_info{.kind = pin_kind::value, .type = value_type::entity};
+            break;
+        case node_kind::create_entity:
+            if (pin == "then") return pin_info{.kind = pin_kind::execution};
+            if (pin == "entity") return pin_info{.kind = pin_kind::value, .type = value_type::entity};
+            break;
+        case node_kind::destroy_entity:
+        case node_kind::remove_core_component:
+            if (pin == "then") return pin_info{.kind = pin_kind::execution};
+            break;
+        case node_kind::has_core_component:
+            if (pin == "then") return pin_info{.kind = pin_kind::execution};
+            if (pin == "has") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
             break;
         case node_kind::entity_alive:
             if (pin == "then") return pin_info{.kind = pin_kind::execution};
@@ -337,7 +370,8 @@ std::optional<pin_info> input_pin(node_kind kind, std::string_view pin)
 
     if (!is_executable_node(kind)) return std::nullopt;
     if (pin == "exec") return pin_info{.kind = pin_kind::execution};
-    if (pin == "entity") return pin_info{.kind = pin_kind::value, .type = value_type::entity};
+    if (kind != node_kind::create_entity && pin == "entity")
+        return pin_info{.kind = pin_kind::value, .type = value_type::entity};
 
     switch (kind)
     {
@@ -588,6 +622,16 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
                                "Input Action nodes require a non-empty action name.", node.id);
         }
 
+        if (node.kind == node_kind::has_core_component || node.kind == node_kind::remove_core_component)
+        {
+            const auto component = node.values.find("component");
+            if (component == node.values.end() || !component->is_string() ||
+                !parse_core_component(component->get<std::string>()))
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_CORE_COMPONENT",
+                               "Core-component nodes require one of name, transform, tag, or active.", node.id,
+                               "component");
+        }
+
         if (const auto type = literal_type(node.kind))
         {
             const auto value = node.values.find("value");
@@ -677,6 +721,9 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
     {
         switch (node.kind)
         {
+            case node_kind::destroy_entity:
+            case node_kind::has_core_component:
+            case node_kind::remove_core_component:
             case node_kind::entity_alive:
             case node_kind::get_name:
             case node_kind::get_tag:
@@ -785,6 +832,14 @@ ir_opcode opcode_for(node_kind kind)
     {
         case node_kind::branch:
             return ir_opcode::branch;
+        case node_kind::create_entity:
+            return ir_opcode::world_create_entity;
+        case node_kind::destroy_entity:
+            return ir_opcode::world_destroy_entity;
+        case node_kind::has_core_component:
+            return ir_opcode::world_has_core_component;
+        case node_kind::remove_core_component:
+            return ir_opcode::world_remove_core_component;
         case node_kind::entity_alive:
             return ir_opcode::world_entity_alive;
         case node_kind::get_name:
@@ -844,7 +899,11 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                 allocate_slot(*node, "value", value_type::float32, default_value(value_type::float32));
                 break;
             case node_kind::self_entity:
+            case node_kind::create_entity:
                 allocate_slot(*node, "entity", value_type::entity, default_value(value_type::entity));
+                break;
+            case node_kind::has_core_component:
+                allocate_slot(*node, "has", value_type::boolean, false);
                 break;
             case node_kind::entity_alive:
                 allocate_slot(*node, "alive", value_type::boolean, false);
@@ -919,6 +978,27 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                 instruction.false_instruction = execution_target(*node, "false");
                 break;
             }
+            case node_kind::create_entity:
+                instruction.operand0 = value_slots.at(pin_key(node->id, "entity"));
+                instruction.operand1 = execution_target(*node, "then");
+                break;
+            case node_kind::destroy_entity:
+                instruction.operand0 = input_slot(*node, "entity");
+                instruction.operand1 = execution_target(*node, "then");
+                break;
+            case node_kind::has_core_component:
+                instruction.operand0 = input_slot(*node, "entity");
+                instruction.operand1 =
+                    static_cast<std::uint32_t>(*parse_core_component(node->values.at("component").get<std::string>()));
+                instruction.operand2 = value_slots.at(pin_key(node->id, "has"));
+                instruction.operand3 = execution_target(*node, "then");
+                break;
+            case node_kind::remove_core_component:
+                instruction.operand0 = input_slot(*node, "entity");
+                instruction.operand1 =
+                    static_cast<std::uint32_t>(*parse_core_component(node->values.at("component").get<std::string>()));
+                instruction.operand2 = execution_target(*node, "then");
+                break;
             case node_kind::entity_alive:
                 instruction.operand0 = input_slot(*node, "entity");
                 instruction.operand1 = value_slots.at(pin_key(node->id, "alive"));
@@ -1097,6 +1177,14 @@ bytecode_opcode lower_opcode(ir_opcode opcode)
             return bytecode_opcode::branch;
         case ir_opcode::self_entity:
             return bytecode_opcode::self_entity;
+        case ir_opcode::world_create_entity:
+            return bytecode_opcode::world_create_entity;
+        case ir_opcode::world_destroy_entity:
+            return bytecode_opcode::world_destroy_entity;
+        case ir_opcode::world_has_core_component:
+            return bytecode_opcode::world_has_core_component;
+        case ir_opcode::world_remove_core_component:
+            return bytecode_opcode::world_remove_core_component;
         case ir_opcode::world_entity_alive:
             return bytecode_opcode::world_entity_alive;
         case ir_opcode::world_get_name:
