@@ -463,6 +463,8 @@ bool input_system::set_rumble(input_device_id device_value, input_rumble_state s
 
     state.low_frequency = normalize_output(state.low_frequency);
     state.high_frequency = normalize_output(state.high_frequency);
+    state.left_trigger = normalize_output(state.left_trigger);
+    state.right_trigger = normalize_output(state.right_trigger);
     return sink_found->second->set_rumble(device_value, state);
 }
 

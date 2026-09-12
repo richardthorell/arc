@@ -52,6 +52,11 @@ float acceleration_meters_per_second_squared(float acceleration_g) noexcept
     return acceleration_g * standard_gravity_meters_per_second_squared;
 }
 
+bool supports_rumble_motor(GameInputRumbleMotors supported, GameInputRumbleMotors motor) noexcept
+{
+    return (supported & motor) != GameInputRumbleNone;
+}
+
 std::uint16_t supported_button_count(GameInputGamepadButtons layout, GameInputSystemButtons system_buttons) noexcept
 {
     const auto layout_bits = static_cast<std::uint32_t>(layout);
@@ -198,9 +203,16 @@ struct windows_game_input_backend::implementation
             (void)native;
             if (record.id != device) continue;
 
+            const GameInputRumbleMotors supported = record.supported_rumble_motors;
             GameInputRumbleParams params{};
-            params.lowFrequency = std::clamp(state.low_frequency, 0.0f, 1.0f);
-            params.highFrequency = std::clamp(state.high_frequency, 0.0f, 1.0f);
+            if (supports_rumble_motor(supported, GameInputRumbleLowFrequency))
+                params.lowFrequency = std::clamp(state.low_frequency, 0.0f, 1.0f);
+            if (supports_rumble_motor(supported, GameInputRumbleHighFrequency))
+                params.highFrequency = std::clamp(state.high_frequency, 0.0f, 1.0f);
+            if (supports_rumble_motor(supported, GameInputRumbleLeftTrigger))
+                params.leftTrigger = std::clamp(state.left_trigger, 0.0f, 1.0f);
+            if (supports_rumble_motor(supported, GameInputRumbleRightTrigger))
+                params.rightTrigger = std::clamp(state.right_trigger, 0.0f, 1.0f);
             record.device->SetRumbleState(&params);
             return true;
         }
@@ -240,6 +252,7 @@ private:
         input::input_device_id id{};
         GameInputGamepadButtons supported_layout{GameInputGamepadNone};
         GameInputSystemButtons supported_system_buttons{GameInputSystemButtonNone};
+        GameInputRumbleMotors supported_rumble_motors{GameInputRumbleNone};
         std::uint64_t last_gamepad_timestamp{};
         std::uint64_t last_sensor_timestamp{};
         bool gyroscope{};
@@ -308,7 +321,11 @@ private:
         const bool gyroscope = (supported_sensors & GameInputSensorsGyrometer) != GameInputSensorsNone;
         const bool accelerometer = (supported_sensors & GameInputSensorsAccelerometer) != GameInputSensorsNone;
         const input::input_device_id id = stable_device_id(info->deviceId);
-        const bool supports_rumble = info->supportedRumbleMotors != GameInputRumbleNone;
+        const GameInputRumbleMotors supported_rumble_motors = info->supportedRumbleMotors;
+        const bool supports_rumble = supported_rumble_motors != GameInputRumbleNone;
+        const bool supports_trigger_rumble =
+            supports_rumble_motor(supported_rumble_motors, GameInputRumbleLeftTrigger) ||
+            supports_rumble_motor(supported_rumble_motors, GameInputRumbleRightTrigger);
         const GameInputGamepadButtons supported_layout =
             info->gamepadInfo ? info->gamepadInfo->supportedLayout
                               : static_cast<GameInputGamepadButtons>(fallback_gamepad_layout);
@@ -329,6 +346,7 @@ private:
                                 .capabilities = {.buttons = button_count != 0,
                                                  .axes = true,
                                                  .rumble = supports_rumble,
+                                                 .trigger_rumble = supports_trigger_rumble,
                                                  .gyroscope = gyroscope,
                                                  .accelerometer = accelerometer,
                                                  .button_count = button_count,
@@ -339,6 +357,7 @@ private:
                                                .id = id,
                                                .supported_layout = supported_layout,
                                                .supported_system_buttons = supported_system_buttons,
+                                               .supported_rumble_motors = supported_rumble_motors,
                                                .gyroscope = gyroscope,
                                                .accelerometer = accelerometer});
         if (supports_rumble && owner_) input_->register_output_sink(id, *owner_);
