@@ -622,24 +622,86 @@ terrain_raycast_hit raycast_terrain(const terrain_component& terrain, const math
 {
     terrain_raycast_hit result{};
     if (!terrain_heightfield_valid(terrain)) return result;
+
+    constexpr float epsilon = 1.0e-6f;
     const float half = terrain.size * 0.5f;
     const float spacing = terrain.size / terrain.subdivisions;
-    float nearest = std::numeric_limits<float>::max();
-    for (std::uint32_t z = 0; z < terrain.subdivisions; ++z)
+    float enter = 0.0f;
+    float exit = std::numeric_limits<float>::max();
+    const auto clip_axis = [&](float origin, float direction)
     {
-        for (std::uint32_t x = 0; x < terrain.subdivisions; ++x)
+        if (std::abs(direction) <= epsilon) return origin >= -half && origin <= half;
+        float first = (-half - origin) / direction;
+        float second = (half - origin) / direction;
+        if (first > second) std::swap(first, second);
+        enter = std::max(enter, first);
+        exit = std::min(exit, second);
+        return enter <= exit;
+    };
+    if (!clip_axis(local_origin[0], local_direction[0]) || !clip_axis(local_origin[2], local_direction[2]) ||
+        exit < 0.0f)
+        return result;
+    enter = std::max(enter, 0.0f);
+    if (enter > exit) return result;
+
+    const auto start = math::add(local_origin, math::mul(local_direction, enter));
+    const auto initial_cell = [&](float value, float direction)
+    {
+        const float coordinate = (value + half) / spacing;
+        int cell = static_cast<int>(std::floor(coordinate));
+        cell = std::clamp(cell, 0, static_cast<int>(terrain.subdivisions) - 1);
+        const float boundary = std::round(coordinate);
+        if (direction < -epsilon && std::abs(coordinate - boundary) <= epsilon && cell > 0) --cell;
+        return cell;
+    };
+    int x = initial_cell(start[0], local_direction[0]);
+    int z = initial_cell(start[2], local_direction[2]);
+    const int step_x = local_direction[0] > epsilon ? 1 : local_direction[0] < -epsilon ? -1 : 0;
+    const int step_z = local_direction[2] > epsilon ? 1 : local_direction[2] < -epsilon ? -1 : 0;
+    const float infinity = std::numeric_limits<float>::infinity();
+    const auto first_crossing = [&](int cell, int step, float origin, float direction)
+    {
+        if (step == 0) return infinity;
+        const float boundary = -half + static_cast<float>(step > 0 ? cell + 1 : cell) * spacing;
+        return (boundary - origin) / direction;
+    };
+    float next_x = first_crossing(x, step_x, local_origin[0], local_direction[0]);
+    float next_z = first_crossing(z, step_z, local_origin[2], local_direction[2]);
+    const float delta_x = step_x == 0 ? infinity : spacing / std::abs(local_direction[0]);
+    const float delta_z = step_z == 0 ? infinity : spacing / std::abs(local_direction[2]);
+    float nearest = std::numeric_limits<float>::max();
+
+    while (x >= 0 && z >= 0 && x < static_cast<int>(terrain.subdivisions) && z < static_cast<int>(terrain.subdivisions))
+    {
+        const auto sx = static_cast<std::uint32_t>(x);
+        const auto sz = static_cast<std::uint32_t>(z);
+        const math::vector3f a{-half + static_cast<float>(sx) * spacing, height_at(terrain, sx, sz),
+                               -half + static_cast<float>(sz) * spacing};
+        const math::vector3f b{a[0] + spacing, height_at(terrain, sx + 1u, sz), a[2]};
+        const math::vector3f c{a[0] + spacing, height_at(terrain, sx + 1u, sz + 1u), a[2] + spacing};
+        const math::vector3f d{a[0], height_at(terrain, sx, sz + 1u), a[2] + spacing};
+        float distance{};
+        if ((intersect_triangle(local_origin, local_direction, a, b, c, distance) ||
+             intersect_triangle(local_origin, local_direction, a, c, d, distance)) &&
+            distance + epsilon >= enter && distance <= exit + epsilon && distance < nearest)
+            nearest = distance;
+
+        const float crossing = std::min(next_x, next_z);
+        if (nearest <= crossing + epsilon || crossing > exit) break;
+        const float previous_x = next_x;
+        const float previous_z = next_z;
+        if (previous_x <= previous_z + epsilon)
         {
-            const math::vector3f a{-half + x * spacing, height_at(terrain, x, z), -half + z * spacing};
-            const math::vector3f b{a[0] + spacing, height_at(terrain, x + 1u, z), a[2]};
-            const math::vector3f c{a[0] + spacing, height_at(terrain, x + 1u, z + 1u), a[2] + spacing};
-            const math::vector3f d{a[0], height_at(terrain, x, z + 1u), a[2] + spacing};
-            float distance{};
-            if ((intersect_triangle(local_origin, local_direction, a, b, c, distance) ||
-                 intersect_triangle(local_origin, local_direction, a, c, d, distance)) &&
-                distance < nearest)
-                nearest = distance;
+            x += step_x;
+            next_x += delta_x;
+        }
+        if (previous_z <= previous_x + epsilon)
+        {
+            z += step_z;
+            next_z += delta_z;
         }
     }
+
     if (nearest < std::numeric_limits<float>::max())
     {
         result.hit = true;

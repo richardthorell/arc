@@ -628,6 +628,7 @@ public:
     {
         if (!surface_.preview_scene) return;
         std::swap(host_.scene, *surface_.preview_scene);
+        host_.terrain_rebuilds_suspended = !host_.terrain_rebuilds_suspended;
         std::swap(host_.camera_controller, surface_.preview_camera);
         active_ = true;
     }
@@ -637,6 +638,7 @@ public:
         if (!active_) return;
         std::swap(host_.camera_controller, surface_.preview_camera);
         std::swap(host_.scene, *surface_.preview_scene);
+        host_.terrain_rebuilds_suspended = !host_.terrain_rebuilds_suspended;
     }
 
     asset_preview_scene_scope(const asset_preview_scene_scope&) = delete;
@@ -748,6 +750,16 @@ template <class HostState> void refresh_scene_terrain_assets(HostState& host)
         const auto binding = scene::refresh_terrain_asset_binding(*terrain, *host.asset_registry);
         if (!binding.succeeded)
             arc::diagnostics::warn("editor.terrain", "Terrain asset refresh failed: " + binding.message);
+        else if (binding.bound)
+        {
+            auto pending = host.asset_registry->template load<scene::terrain_asset>(
+                {.reference = terrain->asset,
+                 .priority = assets::asset_streaming_priority::high,
+                 .residency = assets::asset_residency::cpu,
+                 .allow_fallback = false});
+            auto loaded = pending.get();
+            if (loaded && loaded.asset.get()) host.rebuild_terrain(entity, *loaded.asset.get(), true);
+        }
     }
 }
 
@@ -865,6 +877,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 std::holds_alternative<host_open_scene_command>(command.payload) ||
                 std::holds_alternative<host_open_recovery_scene_command>(command.payload))
             {
+                state_->terrain_rebuilds.clear();
+                state_->terrain_preview_dirty.clear();
                 if (ensure_terrain_asset_importer(*state_)) refresh_scene_terrain_assets(*state_);
                 if (ensure_water_asset_importer(*state_)) refresh_scene_water_assets(*state_);
             }

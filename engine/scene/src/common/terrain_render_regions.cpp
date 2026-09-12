@@ -69,8 +69,8 @@ std::uint32_t region_quad_span(float extent, std::uint32_t total_quads, double t
 {
     const double spacing = static_cast<double>(extent) / static_cast<double>(total_quads);
     if (!std::isfinite(spacing) || spacing <= 0.0) return total_quads;
-    const auto desired = static_cast<std::uint64_t>(std::floor(target_size / spacing));
-    return static_cast<std::uint32_t>(std::clamp<std::uint64_t>(desired, 1u, total_quads));
+    const double desired = std::clamp(std::floor(target_size / spacing), 1.0, static_cast<double>(total_quads));
+    return static_cast<std::uint32_t>(desired);
 }
 
 std::vector<math::vector3f> source_normals(const terrain_surface_ir& surface)
