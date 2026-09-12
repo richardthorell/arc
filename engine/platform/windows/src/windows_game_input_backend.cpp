@@ -3,6 +3,7 @@
 #include <arc/input/gamepad.h>
 
 #include <algorithm>
+#include <bit>
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
@@ -39,6 +40,7 @@ constexpr std::uint64_t fnv_prime = 1099511628211ull;
 constexpr std::uint64_t game_input_namespace = 0x4749000000000000ull;
 constexpr std::uint64_t device_payload_mask = 0x0000ffffffffffffull;
 constexpr float standard_gravity_meters_per_second_squared = 9.80665f;
+constexpr std::uint32_t fallback_gamepad_layout = 0x00003fffu;
 
 float normalized_axis(float value, float minimum, float maximum) noexcept
 {
@@ -48,6 +50,13 @@ float normalized_axis(float value, float minimum, float maximum) noexcept
 float acceleration_meters_per_second_squared(float acceleration_g) noexcept
 {
     return acceleration_g * standard_gravity_meters_per_second_squared;
+}
+
+std::uint16_t supported_button_count(GameInputGamepadButtons layout, GameInputSystemButtons system_buttons) noexcept
+{
+    const auto layout_bits = static_cast<std::uint32_t>(layout);
+    const auto system_bits = static_cast<std::uint32_t>(system_buttons);
+    return static_cast<std::uint16_t>(std::popcount(layout_bits) + std::popcount(system_bits));
 }
 
 input::input_connectivity_type connectivity_from_path(const char* path)
@@ -90,9 +99,10 @@ std::string backend_id(input::input_device_id id)
 }
 
 void submit_button(input::input_system& system, input::input_device_id device, GameInputGamepadButtons buttons,
-                   GameInputGamepadButtons mask, input::gamepad_button button)
+                   GameInputGamepadButtons supported, GameInputGamepadButtons mask, input::gamepad_button button)
 {
-    system.submit_button(device, input::make_gamepad_button_control(button), (buttons & mask) != 0);
+    if ((supported & mask) == GameInputGamepadNone) return;
+    system.submit_button(device, input::make_gamepad_button_control(button), (buttons & mask) != GameInputGamepadNone);
 }
 
 #endif
@@ -106,17 +116,22 @@ struct windows_game_input_backend::implementation
 #if ARC_WINDOWS_HAS_GAMEINPUT_V3
         if (FAILED(GameInputCreate(&game_input_)) || !game_input_) return;
 
-        const HRESULT result = game_input_->RegisterDeviceCallback(
+        const HRESULT device_result = game_input_->RegisterDeviceCallback(
             nullptr, GameInputKindGamepad, GameInputDeviceConnected, GameInputBlockingEnumeration, this,
-            &implementation::device_callback, &callback_token_);
-        if (FAILED(result))
+            &implementation::device_callback, &device_callback_token_);
+        if (FAILED(device_result))
         {
             game_input_->Release();
             game_input_ = nullptr;
             return;
         }
 
-        callback_registered_ = true;
+        device_callback_registered_ = true;
+        const auto system_filter =
+            static_cast<GameInputSystemButtons>(GameInputSystemButtonGuide | GameInputSystemButtonShare);
+        const HRESULT system_result = game_input_->RegisterSystemButtonCallback(
+            nullptr, system_filter, this, &implementation::system_button_callback, &system_button_callback_token_);
+        system_button_callback_registered_ = SUCCEEDED(system_result);
         available_ = true;
 #endif
     }
@@ -124,13 +139,18 @@ struct windows_game_input_backend::implementation
     ~implementation()
     {
 #if ARC_WINDOWS_HAS_GAMEINPUT_V3
-        if (game_input_ && callback_registered_) game_input_->UnregisterCallback(callback_token_);
+        if (game_input_ && system_button_callback_registered_)
+            game_input_->UnregisterCallback(system_button_callback_token_);
+        if (game_input_ && device_callback_registered_) game_input_->UnregisterCallback(device_callback_token_);
 
         {
             std::scoped_lock lock(pending_mutex_);
-            for (const pending_device_event& event : pending_events_)
+            for (const pending_device_event& event : pending_device_events_)
                 if (event.device) event.device->Release();
-            pending_events_.clear();
+            for (const pending_system_button_event& event : pending_system_button_events_)
+                if (event.device) event.device->Release();
+            pending_device_events_.clear();
+            pending_system_button_events_.clear();
         }
 
         for (auto& [native, record] : devices_)
@@ -159,7 +179,7 @@ struct windows_game_input_backend::implementation
     {
 #if ARC_WINDOWS_HAS_GAMEINPUT_V3
         if (!available_) return;
-        drain_device_events();
+        drain_pending_events();
 
         for (auto& [native, record] : devices_)
         {
@@ -208,10 +228,18 @@ private:
         bool connected{};
     };
 
+    struct pending_system_button_event
+    {
+        IGameInputDevice* device{};
+        GameInputSystemButtons buttons{GameInputSystemButtonNone};
+    };
+
     struct device_record
     {
         IGameInputDevice* device{};
         input::input_device_id id{};
+        GameInputGamepadButtons supported_layout{GameInputGamepadNone};
+        GameInputSystemButtons supported_system_buttons{GameInputSystemButtonNone};
         std::uint64_t last_gamepad_timestamp{};
         std::uint64_t last_sensor_timestamp{};
         bool gyroscope{};
@@ -225,25 +253,45 @@ private:
         auto& self = *static_cast<implementation*>(context);
         device->AddRef();
         std::scoped_lock lock(self.pending_mutex_);
-        self.pending_events_.push_back(
+        self.pending_device_events_.push_back(
             {.device = device, .connected = (current_status & GameInputDeviceConnected) != 0});
     }
 
-    void drain_device_events()
+    static void CALLBACK system_button_callback(GameInputCallbackToken, void* context, IGameInputDevice* device,
+                                                std::uint64_t, GameInputSystemButtons current_buttons,
+                                                GameInputSystemButtons)
     {
-        std::vector<pending_device_event> events;
+        if (!context || !device) return;
+        auto& self = *static_cast<implementation*>(context);
+        device->AddRef();
+        std::scoped_lock lock(self.pending_mutex_);
+        self.pending_system_button_events_.push_back({.device = device, .buttons = current_buttons});
+    }
+
+    void drain_pending_events()
+    {
+        std::vector<pending_device_event> device_events;
+        std::vector<pending_system_button_event> system_button_events;
         {
             std::scoped_lock lock(pending_mutex_);
-            events.swap(pending_events_);
+            device_events.swap(pending_device_events_);
+            system_button_events.swap(pending_system_button_events_);
         }
 
-        for (pending_device_event& event : events)
+        for (pending_device_event& event : device_events)
         {
             if (event.connected)
                 connect_device(event.device);
             else
                 disconnect_device(event.device);
 
+            if (event.device) event.device->Release();
+        }
+
+        for (pending_system_button_event& event : system_button_events)
+        {
+            const auto found = devices_.find(event.device);
+            if (found != devices_.end()) submit_system_button_state(found->second, event.buttons);
             if (event.device) event.device->Release();
         }
     }
@@ -261,6 +309,12 @@ private:
         const bool accelerometer = (supported_sensors & GameInputSensorsAccelerometer) != GameInputSensorsNone;
         const input::input_device_id id = stable_device_id(info->deviceId);
         const bool supports_rumble = info->supportedRumbleMotors != GameInputRumbleNone;
+        const GameInputGamepadButtons supported_layout =
+            info->gamepadInfo ? info->gamepadInfo->supportedLayout
+                              : static_cast<GameInputGamepadButtons>(fallback_gamepad_layout);
+        const GameInputSystemButtons supported_system_buttons =
+            system_button_callback_registered_ ? info->supportedSystemButtons : GameInputSystemButtonNone;
+        const std::uint16_t button_count = supported_button_count(supported_layout, supported_system_buttons);
         std::string name = info->displayName && *info->displayName ? info->displayName : "GameInput Gamepad";
         input_->connect_device({.id = id,
                                 .type = input::input_device_type::gamepad,
@@ -272,17 +326,21 @@ private:
                                                 .version = info->revisionNumber},
                                 .backend_id = backend_id(id),
                                 .name = std::move(name),
-                                .capabilities = {.buttons = true,
+                                .capabilities = {.buttons = button_count != 0,
                                                  .axes = true,
                                                  .rumble = supports_rumble,
                                                  .gyroscope = gyroscope,
                                                  .accelerometer = accelerometer,
-                                                 .button_count = 14,
+                                                 .button_count = button_count,
                                                  .axis_count = 6}});
 
         device->AddRef();
-        devices_.emplace(
-            device, device_record{.device = device, .id = id, .gyroscope = gyroscope, .accelerometer = accelerometer});
+        devices_.emplace(device, device_record{.device = device,
+                                               .id = id,
+                                               .supported_layout = supported_layout,
+                                               .supported_system_buttons = supported_system_buttons,
+                                               .gyroscope = gyroscope,
+                                               .accelerometer = accelerometer});
         if (supports_rumble && owner_) input_->register_output_sink(id, *owner_);
     }
 
@@ -306,7 +364,7 @@ private:
         if (timestamp != record.last_gamepad_timestamp)
         {
             GameInputGamepadState state{};
-            if (reading->GetGamepadState(&state)) submit_gamepad_state(record.id, state);
+            if (reading->GetGamepadState(&state)) submit_gamepad_state(record, state);
             record.last_gamepad_timestamp = timestamp;
         }
         reading->Release();
@@ -329,26 +387,62 @@ private:
         reading->Release();
     }
 
-    void submit_gamepad_state(input::input_device_id device, const GameInputGamepadState& state)
+    void submit_gamepad_state(const device_record& record, const GameInputGamepadState& state)
     {
-        submit_button(*input_, device, state.buttons, GameInputGamepadA, input::gamepad_button::south);
-        submit_button(*input_, device, state.buttons, GameInputGamepadB, input::gamepad_button::east);
-        submit_button(*input_, device, state.buttons, GameInputGamepadX, input::gamepad_button::west);
-        submit_button(*input_, device, state.buttons, GameInputGamepadY, input::gamepad_button::north);
-        submit_button(*input_, device, state.buttons, GameInputGamepadDPadUp, input::gamepad_button::dpad_up);
-        submit_button(*input_, device, state.buttons, GameInputGamepadDPadDown, input::gamepad_button::dpad_down);
-        submit_button(*input_, device, state.buttons, GameInputGamepadDPadLeft, input::gamepad_button::dpad_left);
-        submit_button(*input_, device, state.buttons, GameInputGamepadDPadRight, input::gamepad_button::dpad_right);
-        submit_button(*input_, device, state.buttons, GameInputGamepadLeftShoulder,
+        const input::input_device_id device = record.id;
+        const GameInputGamepadButtons supported = record.supported_layout;
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadA, input::gamepad_button::south);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadB, input::gamepad_button::east);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadX, input::gamepad_button::west);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadY, input::gamepad_button::north);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadC, input::gamepad_button::auxiliary_1);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadZ, input::gamepad_button::auxiliary_2);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadDPadUp,
+                      input::gamepad_button::dpad_up);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadDPadDown,
+                      input::gamepad_button::dpad_down);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadDPadLeft,
+                      input::gamepad_button::dpad_left);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadDPadRight,
+                      input::gamepad_button::dpad_right);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadLeftShoulder,
                       input::gamepad_button::left_shoulder);
-        submit_button(*input_, device, state.buttons, GameInputGamepadRightShoulder,
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadRightShoulder,
                       input::gamepad_button::right_shoulder);
-        submit_button(*input_, device, state.buttons, GameInputGamepadLeftThumbstick,
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadLeftTriggerButton,
+                      input::gamepad_button::left_trigger_button);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadRightTriggerButton,
+                      input::gamepad_button::right_trigger_button);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadLeftThumbstick,
                       input::gamepad_button::left_stick);
-        submit_button(*input_, device, state.buttons, GameInputGamepadRightThumbstick,
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadRightThumbstick,
                       input::gamepad_button::right_stick);
-        submit_button(*input_, device, state.buttons, GameInputGamepadView, input::gamepad_button::view);
-        submit_button(*input_, device, state.buttons, GameInputGamepadMenu, input::gamepad_button::menu);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadLeftThumbstickUp,
+                      input::gamepad_button::left_stick_up);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadLeftThumbstickDown,
+                      input::gamepad_button::left_stick_down);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadLeftThumbstickLeft,
+                      input::gamepad_button::left_stick_left);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadLeftThumbstickRight,
+                      input::gamepad_button::left_stick_right);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadRightThumbstickUp,
+                      input::gamepad_button::right_stick_up);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadRightThumbstickDown,
+                      input::gamepad_button::right_stick_down);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadRightThumbstickLeft,
+                      input::gamepad_button::right_stick_left);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadRightThumbstickRight,
+                      input::gamepad_button::right_stick_right);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadPaddleLeft1,
+                      input::gamepad_button::paddle_left_1);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadPaddleLeft2,
+                      input::gamepad_button::paddle_left_2);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadPaddleRight1,
+                      input::gamepad_button::paddle_right_1);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadPaddleRight2,
+                      input::gamepad_button::paddle_right_2);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadView, input::gamepad_button::view);
+        submit_button(*input_, device, state.buttons, supported, GameInputGamepadMenu, input::gamepad_button::menu);
 
         input_->submit_axis(device, input::make_gamepad_axis_control(input::gamepad_axis::left_x),
                             normalized_axis(state.leftThumbstickX, -1.0f, 1.0f));
@@ -362,6 +456,16 @@ private:
                             normalized_axis(state.leftTrigger, 0.0f, 1.0f));
         input_->submit_axis(device, input::make_gamepad_axis_control(input::gamepad_axis::right_trigger),
                             normalized_axis(state.rightTrigger, 0.0f, 1.0f));
+    }
+
+    void submit_system_button_state(const device_record& record, GameInputSystemButtons buttons)
+    {
+        if ((record.supported_system_buttons & GameInputSystemButtonGuide) != GameInputSystemButtonNone)
+            input_->submit_button(record.id, input::make_gamepad_button_control(input::gamepad_button::guide),
+                                  (buttons & GameInputSystemButtonGuide) != GameInputSystemButtonNone);
+        if ((record.supported_system_buttons & GameInputSystemButtonShare) != GameInputSystemButtonNone)
+            input_->submit_button(record.id, input::make_gamepad_button_control(input::gamepad_button::share),
+                                  (buttons & GameInputSystemButtonShare) != GameInputSystemButtonNone);
     }
 
     void submit_sensor_state(const device_record& record, const GameInputSensorsState& state)
@@ -390,11 +494,14 @@ private:
     input::input_system* input_{};
     input::input_output_sink* owner_{};
     IGameInput* game_input_{};
-    GameInputCallbackToken callback_token_{};
-    bool callback_registered_{};
+    GameInputCallbackToken device_callback_token_{};
+    GameInputCallbackToken system_button_callback_token_{};
+    bool device_callback_registered_{};
+    bool system_button_callback_registered_{};
     bool available_{};
     std::mutex pending_mutex_;
-    std::vector<pending_device_event> pending_events_;
+    std::vector<pending_device_event> pending_device_events_;
+    std::vector<pending_system_button_event> pending_system_button_events_;
     std::unordered_map<IGameInputDevice*, device_record> devices_;
 #else
     input::input_system* input_{};
