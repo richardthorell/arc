@@ -52,8 +52,8 @@ void run_flow_gameplay_compile_tests()
         })json");
 
         assert(result.succeeded && result.ir && result.bytecode);
-        const std::uint32_t self_slot = find_slot(*result.ir, "self", "entity");
-        const std::uint32_t name_slot = find_slot(*result.ir, "name-value", "value");
+        [[maybe_unused]] const std::uint32_t self_slot = find_slot(*result.ir, "self", "entity");
+        [[maybe_unused]] const std::uint32_t name_slot = find_slot(*result.ir, "name-value", "value");
         assert(std::get<std::string>(result.ir->value_slots[name_slot].initial_value) == "Player");
         assert(result.bytecode->instructions.size() == 2);
         assert(result.bytecode->entry_points[0].instruction == 1);
@@ -92,13 +92,13 @@ void run_flow_gameplay_compile_tests()
         })json");
 
         assert(result.succeeded && result.ir && result.bytecode);
-        const std::uint32_t active_slot = find_slot(*result.ir, "active", "active");
+        [[maybe_unused]] const std::uint32_t active_slot = find_slot(*result.ir, "active", "active");
         assert(result.bytecode->instructions.size() == 3);
         assert(result.bytecode->instructions[0].opcode == bytecode_opcode::world_get_active ||
                result.bytecode->instructions[1].opcode == bytecode_opcode::world_get_active);
-        const auto branch = std::find_if(result.bytecode->instructions.begin(), result.bytecode->instructions.end(),
-                                         [](const bytecode_instruction& instruction)
-                                         { return instruction.opcode == bytecode_opcode::branch; });
+        [[maybe_unused]] const auto branch =
+            std::find_if(result.bytecode->instructions.begin(), result.bytecode->instructions.end(),
+                         [](const bytecode_instruction& instruction) { return instruction.opcode == bytecode_opcode::branch; });
         assert(branch != result.bytecode->instructions.end());
         assert(branch->operand0 == active_slot);
     }
@@ -131,9 +131,10 @@ void run_flow_gameplay_compile_tests()
         })json");
 
         assert(result.succeeded && result.bytecode);
-        const auto transform = std::find_if(result.bytecode->instructions.begin(), result.bytecode->instructions.end(),
-                                            [](const bytecode_instruction& instruction)
-                                            { return instruction.opcode == bytecode_opcode::world_set_transform; });
+        [[maybe_unused]] const auto transform =
+            std::find_if(result.bytecode->instructions.begin(), result.bytecode->instructions.end(),
+                         [](const bytecode_instruction& instruction)
+                         { return instruction.opcode == bytecode_opcode::world_set_transform; });
         assert(transform != result.bytecode->instructions.end());
     }
 
