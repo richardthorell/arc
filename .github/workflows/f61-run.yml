@@ -1,0 +1,40 @@
+name: F61 run
+on:
+  push:
+    branches:
+      - feature/flow-f61-entity-play-integration
+permissions:
+  contents: write
+jobs:
+  implement:
+    if: github.event.head_commit.message != 'Add Flow F6.1 entity Play integration'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Apply implementation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          lines = Path('.github/workflows/f61-implement.yml').read_text().splitlines()
+          start = next(i for i, line in enumerate(lines) if "python3 - <<'PY'" in line)
+          end = next(i for i, line in enumerate(lines[start + 1:], start + 1) if line.strip() == '- name: Configure native editor')
+          body = []
+          for line in lines[start:end]:
+              body.append(line[10:] if line.startswith('          ') else line)
+          Path('/tmp/f61-apply.sh').write_text('\n'.join(body) + '\n')
+          PY
+          bash /tmp/f61-apply.sh
+      - name: Configure native editor
+        run: cmake --preset editor-no-vulkan
+      - name: Build native editor tests
+        run: cmake --build --preset editor-no-vulkan --target arc_editor_host_tests -j 2
+      - name: Run Flow F6.1 tests
+        run: ctest --test-dir out/build/editor-no-vulkan --output-on-failure -R 'Flow F6.1'
+      - name: Frontend checks
+        working-directory: editor
+        run: |
+          npm ci
+          npm run typecheck
