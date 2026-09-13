@@ -1,8 +1,10 @@
 #include "windows_controller_manager.h"
 
+#include "windows_controller_extension_host.h"
 #include "windows_controller_provider.h"
 #include "windows_game_input_backend.h"
 #include "windows_gamepad_backend.h"
+#include "windows_hid_extension_manager.h"
 
 #include <algorithm>
 #include <memory>
@@ -26,6 +28,8 @@ std::vector<std::unique_ptr<windows_controller_provider>> default_providers(inpu
 windows_controller_manager::windows_controller_manager(input::input_system& input)
     : windows_controller_manager(default_providers(input))
 {
+    extension_host_ = std::make_unique<windows_controller_extension_host>(input);
+    hid_extensions_ = std::make_unique<windows_hid_extension_manager>(input, *extension_host_);
 }
 
 windows_controller_manager::windows_controller_manager(
@@ -40,6 +44,7 @@ windows_controller_manager::~windows_controller_manager() = default;
 void windows_controller_manager::poll()
 {
     if (active_) active_->poll();
+    if (hid_extensions_) hid_extensions_->poll();
 }
 
 input::input_backend_type windows_controller_manager::active_backend() const noexcept
