@@ -86,7 +86,10 @@ export function SettingsDialog({ onClose, onResetLayout }: SettingsDialogProps) 
     if (!snapshot) return;
     try {
       const next = await window.arc.settings.update(scope, { [key]: value }, snapshot.revision);
-      if (next) setSnapshot(next);
+      if (next) {
+        setSnapshot(next);
+        window.dispatchEvent(new CustomEvent('arc-editor-settings-changed', { detail: next }));
+      }
       setMessage(`${key} updated in ${scope} settings`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
@@ -96,6 +99,17 @@ export function SettingsDialog({ onClose, onResetLayout }: SettingsDialogProps) 
   const editor = (descriptor: EditorSettingDescriptor, value: unknown) => {
     const { key } = descriptor;
     const disabled = !descriptor.scopes.includes(scope);
+    if (descriptor.format === 'color' && typeof value === 'string')
+      return (
+        <input
+          aria-label={descriptor.label}
+          className="settings-color-control"
+          disabled={disabled}
+          onChange={(event) => void update(key, event.target.value.toUpperCase())}
+          type="color"
+          value={value}
+        />
+      );
     if (descriptor.type === 'enum')
       return (
         <UiSelect

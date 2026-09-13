@@ -1445,6 +1445,7 @@ struct host_viewport_set_render_options_command
     bool selection_hierarchy{};
     bool shadows{true};
     bool grid{true};
+    host_vec3 grid_color{0.2f, 0.21568628f, 0.23921569f};
     bool skeletons{};
     bool realtime{true};
     float camera_speed{4.0f};
@@ -1735,6 +1736,7 @@ struct host_viewport_request
     bool selection_hierarchy{};
     bool shadows{true};
     bool grid{true};
+    host_vec3 grid_color{0.2f, 0.21568628f, 0.23921569f};
     bool skeletons{};
     bool realtime{true};
     float camera_speed{4.0f};

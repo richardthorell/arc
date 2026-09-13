@@ -71,6 +71,19 @@ describe('SettingsService', () => {
     expect(snapshot.sources['renderer.qualityTier']).toBe('user');
   });
 
+  it('persists and validates the viewport grid color', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-settings-'));
+    roots.push(root);
+    const service = new SettingsService(path.join(root, 'user.json'), () => project(root));
+    let snapshot = service.snapshot();
+
+    expect(snapshot.values['renderer.gridColor']).toBe('#33373D');
+    snapshot = service.update('user', { 'renderer.gridColor': '#4A5058' }, snapshot.revision);
+    expect(snapshot.values['renderer.gridColor']).toBe('#4A5058');
+    expect(snapshot.sources['renderer.gridColor']).toBe('user');
+    expect(() => service.update('user', { 'renderer.gridColor': 'white' }, snapshot.revision)).toThrow('#RRGGBB');
+  });
+
   it('rejects unknown, out-of-range, machine-only, stale, and read-only changes', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-settings-'));
     roots.push(root);

@@ -3195,6 +3195,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         bool_value(payload, "selectionHierarchy", command.selection_hierarchy);
         bool_value(payload, "shadows", command.shadows);
         bool_value(payload, "grid", command.grid);
+        array3_value(payload, "gridColor", command.grid_color);
         bool_value(payload, "skeletons", command.skeletons);
         bool_value(payload, "realtime", command.realtime);
         number_value(payload, "cameraSpeed", command.camera_speed);

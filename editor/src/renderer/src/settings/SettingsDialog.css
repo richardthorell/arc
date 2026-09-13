@@ -274,3 +274,18 @@
     grid-column: 1;
   }
 }
+
+.settings-color-control {
+  width: 44px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid var(--arc-color-border);
+  border-radius: var(--arc-radius-sm);
+  background: var(--arc-color-bg-control);
+  cursor: pointer;
+}
+
+.settings-color-control:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
