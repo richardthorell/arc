@@ -27,6 +27,14 @@ jobs:
           Path('/tmp/f61-apply.sh').write_text('\n'.join(body) + '\n')
           PY
           bash /tmp/f61-apply.sh
+      - name: Commit implementation
+        shell: bash
+        run: |
+          git config user.name "Richard Thorell"
+          git config user.email "richard.thorell@outlook.com"
+          git add -A
+          git commit -m "Add Flow F6.1 entity Play integration"
+          git push origin HEAD:feature/flow-f61-entity-play-integration
       - name: Configure native editor
         run: cmake --preset editor-no-vulkan
       - name: Build native editor tests
