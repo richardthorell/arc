@@ -1,0 +1,165 @@
+name: F61 complete
+on:
+  push:
+    branches: [feature/flow-f61-entity-play-integration]
+permissions:
+  contents: write
+jobs:
+  complete:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Complete F6.1 source integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -q 'struct host_set_flow_command' editor/native/inc/arc/editor/host_protocol_base.h; then
+            echo 'F6.1 integration already applied'
+            exit 0
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def load(p): return Path(p).read_text()
+          def save(p,s): Path(p).write_text(s)
+          def one(p, old, new):
+              s=load(p); n=s.count(old)
+              if n != 1: raise SystemExit(f'{p}: expected one anchor, got {n}: {old[:100]!r}')
+              save(p,s.replace(old,new,1))
+          def regex_one(p, pattern, repl):
+              s=load(p); out,n=re.subn(pattern,repl,s,count=1,flags=re.S)
+              if n != 1: raise SystemExit(f'{p}: regex anchor count {n}: {pattern[:100]!r}')
+              save(p,out)
+
+          # Complete Play lifecycle installation and authoring duplication.
+          p='editor/native/src/arc_host_base.inc'
+          one(p,
+          '    copy_component<scene::water_component>(state.scene, state.scene, source, duplicate);\n    copy_component<scene::vegetation_component>',
+          '    copy_component<scene::water_component>(state.scene, state.scene, source, duplicate);\n    copy_component<scene::flow_component>(state.scene, state.scene, source, duplicate);\n    copy_component<scene::vegetation_component>')
+          one(p,
+          '''        const auto installed = project_module.install_systems(*runtime_world);\n        if (!installed.succeeded)\n        {\n            diagnostics::error("editor.play", installed.error);\n            abandon_runtime_world();\n            return false;\n        }\n        try\n        {\n            runtime_world->start();''',
+          '''        const auto installed = project_module.install_systems(*runtime_world);\n        if (!installed.succeeded)\n        {\n            diagnostics::error("editor.play", installed.error);\n            abandon_runtime_world();\n            return false;\n        }\n        const auto flow_install =\n            install_flow_play_runtime(*runtime_world, !assets.root.empty() ? assets.root : project.root / "Content");\n        if (!flow_install.succeeded)\n        {\n            diagnostics::error("editor.play", flow_install.error);\n            abandon_runtime_world();\n            return false;\n        }\n        try\n        {\n            runtime_world->start();''')
+
+          # Host protocol declarations.
+          p='editor/native/inc/arc/editor/host_protocol_base.h'
+          one(p,'    terrain,\n    water,\n    vegetation,','    terrain,\n    water,\n    flow,\n    vegetation,')
+          one(p,'enum class host_terrain_operation_state : std::uint8_t',
+          '''struct host_flow_snapshot\n{\n    std::string graph_path;\n    bool enabled{true};\n};\n\nenum class host_terrain_operation_state : std::uint8_t''')
+          one(p,'    std::optional<host_water_snapshot> water;\n    std::optional<host_prefab_snapshot> prefab;',
+          '    std::optional<host_water_snapshot> water;\n    std::optional<host_flow_snapshot> flow;\n    std::optional<host_prefab_snapshot> prefab;')
+          one(p,'struct host_set_transform_command\n{',
+          '''struct host_set_flow_command\n{\n    host_entity_id entity{};\n    std::string graph_path;\n    bool enabled{true};\n    bool apply_to_selection{};\n};\n\nstruct host_set_transform_command\n{''')
+          one(p,'    host_set_tag_command, host_set_transform_command, host_set_render_layer_command, host_set_mobility_command,',
+          '    host_set_tag_command, host_set_flow_command, host_set_transform_command, host_set_render_layer_command,\n    host_set_mobility_command,')
+
+          # Host protocol serialization/parsing.
+          p='editor/native/src/host_protocol_base.inc'
+          one(p,'        case host_component_kind::water:\n            return "water";\n        case host_component_kind::vegetation:',
+          '        case host_component_kind::water:\n            return "water";\n        case host_component_kind::flow:\n            return "flow";\n        case host_component_kind::vegetation:')
+          one(p,'            else if constexpr (std::is_same_v<type, host_set_tag_command>)\n                return "entity.setTag";\n            else if constexpr (std::is_same_v<type, host_set_transform_command>)',
+          '            else if constexpr (std::is_same_v<type, host_set_tag_command>)\n                return "entity.setTag";\n            else if constexpr (std::is_same_v<type, host_set_flow_command>)\n                return "entity.setFlow";\n            else if constexpr (std::is_same_v<type, host_set_transform_command>)')
+          one(p,'            else if constexpr (std::is_same_v<type, host_set_tag_command>)\n                return "{\\\"entity\\\":" + to_json(payload.entity) + ",\\\"tag\\\":" + quote(payload.tag) + \'}\';\n            else if constexpr (std::is_same_v<type, host_set_transform_command>)',
+          '            else if constexpr (std::is_same_v<type, host_set_tag_command>)\n                return "{\\\"entity\\\":" + to_json(payload.entity) + ",\\\"tag\\\":" + quote(payload.tag) + \'}\';\n            else if constexpr (std::is_same_v<type, host_set_flow_command>)\n                return "{\\\"entity\\\":" + to_json(payload.entity) + ",\\\"graphPath\\\":" + quote(payload.graph_path) +\n                       ",\\\"enabled\\\":" + bool_json(payload.enabled) + \'}\';\n            else if constexpr (std::is_same_v<type, host_set_transform_command>)')
+          one(p,'    json += ",\\\"water\\\":";\n    json += snapshot.water ? to_json(*snapshot.water) : "null";\n    json += ",\\\"prefab\\\":";',
+          '''    json += ",\\\"water\\\":";\n    json += snapshot.water ? to_json(*snapshot.water) : "null";\n    json += ",\\\"flow\\\":";\n    if (snapshot.flow)\n        json += "{\\\"graphPath\\\":" + quote(snapshot.flow->graph_path) +\n                ",\\\"enabled\\\":" + bool_json(snapshot.flow->enabled) + '}';\n    else\n        json += "null";\n    json += ",\\\"prefab\\\":";''')
+          one(p,'    else if (type == "entity.setTransform")\n    {',
+          '''    else if (type == "entity.setFlow")\n    {\n        host_set_flow_command command;\n        if (!entity_field_value(payload, "entity", command.entity) ||\n            !string_value(payload, "graphPath", command.graph_path))\n        {\n            error = "Flow command requires entity and graphPath";\n            return false;\n        }\n        bool_value(payload, "enabled", command.enabled);\n        bool_value(payload, "applyToSelection", command.apply_to_selection);\n        envelope.payload = std::move(command);\n    }\n    else if (type == "entity.setTransform")\n    {''')
+
+          # Authoring command, generic component ops, selected snapshot.
+          p='editor/native/src/arc_host_base.inc'
+          one(p,'           std::is_same_v<Command, host_set_tag_command> || std::is_same_v<Command, host_set_transform_command> ||',
+          '           std::is_same_v<Command, host_set_tag_command> || std::is_same_v<Command, host_set_flow_command> ||\n           std::is_same_v<Command, host_set_transform_command> ||')
+          one(p,'            else if constexpr (std::is_same_v<type, host_set_transform_command>)\n                return "Transform Entity";',
+          '            else if constexpr (std::is_same_v<type, host_set_flow_command>)\n                return "Edit Flow";\n            else if constexpr (std::is_same_v<type, host_set_transform_command>)\n                return "Transform Entity";')
+          one(p,'            else if constexpr (std::is_same_v<command_type, host_set_transform_command>)\n            {',
+          '''            else if constexpr (std::is_same_v<command_type, host_set_flow_command>)\n            {\n                const auto entity = to_scene_entity(payload.entity);\n                const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);\n                if (targets.empty()) return fail("Cannot edit a missing or unselected entity", entity);\n                if (!payload.graph_path.empty() && !valid_flow_graph_path(payload.graph_path))\n                    return fail("Flow graph path must be a normalized Content-relative .arcflow path", entity);\n                for (const auto target : targets)\n                    state_->scene.scene.emplace<scene::flow_component>(\n                        target, scene::flow_component{payload.graph_path, payload.enabled});\n                push_event(state_->events, state_->event_sequence, host_event_type::component_changed,\n                           "Flow binding changed for " + std::to_string(targets.size()) + " entity(s)", entity);\n                return success("{\\\"entity\\\":" + to_json(payload.entity) + '}');\n            }\n            else if constexpr (std::is_same_v<command_type, host_set_transform_command>)\n            {''')
+          one(p,'                                   payload.component == "areaLight" || payload.component == "renderLayer" ||\n                                   payload.component == "mobility";',
+          '                                   payload.component == "areaLight" || payload.component == "renderLayer" ||\n                                   payload.component == "mobility" || payload.component == "flow";')
+          one(p,'                    else if (payload.component == "mobility")\n                        changed = apply(target, scene::mobility_component{});',
+          '                    else if (payload.component == "mobility")\n                        changed = apply(target, scene::mobility_component{});\n                    else if (payload.component == "flow")\n                        changed = apply(target, scene::flow_component{});')
+          regex_one(p,
+          r'(\s+if \(const auto\* prefab = state_->scene\.scene\.try_get<scene::prefab_instance_component>\(selected\)\))',
+          '''\n        if (const auto* flow = state_->scene.scene.try_get<scene::flow_component>(selected))\n        {\n            snapshot.flow = host_flow_snapshot{flow->graph_path, flow->enabled};\n            snapshot.components.push_back({host_component_kind::flow, "arc::scene.flow_component", "Flow",\n                                           state_->scene_revision, 0, true});\n        }\n\\1''')
+
+          # Scene persistence.
+          p='editor/native/src/scene_document.cpp'
+          one(p,'bool validate_asset_reference_json(const json& value, const std::filesystem::path& project_root)\n{',
+          '''bool valid_flow_graph_reference(std::string_view value)\n{\n    if (value.empty()) return true;\n    if (value.find('\\\\') != std::string_view::npos) return false;\n    const std::filesystem::path path{value};\n    if (path.is_absolute() || path.has_root_name() || path.extension() != ".arcflow") return false;\n    const auto normalized = path.lexically_normal();\n    return normalized.generic_string() == value &&\n           std::none_of(normalized.begin(), normalized.end(), [](const auto& part) { return part == ".."; });\n}\n\nbool validate_asset_reference_json(const json& value, const std::filesystem::path& project_root)\n{''')
+          s=load(p)
+          s,n1=re.subn(r'("Water",\n(?P<i>\s*))"Vegetation"',r'\1"Flow",\n\g<i>"Vegetation"',s)
+          if n1 < 2: raise SystemExit(f'{p}: expected >=2 known component set insertions, got {n1}')
+          save(p,s)
+          one(p,'    if (name == "Active")\n        return value.contains("value") && value["value"].is_boolean() ? true : fail("has an invalid active value");',
+          '''    if (name == "Active")\n        return value.contains("value") && value["value"].is_boolean() ? true : fail("has an invalid active value");\n    if (name == "Flow")\n    {\n        if (!value.contains("graph") || !value["graph"].is_string() || !value.contains("enabled") ||\n            !value["enabled"].is_boolean())\n            return fail("has an invalid Flow graph binding");\n        return valid_flow_graph_reference(value["graph"].get<std::string>())\n                   ? true\n                   : fail("has an invalid Flow graph path");\n    }''')
+          one(p,'    if (const auto* component = state.scene.try_get<scene::water_component>(value))\n        components["Water"] =',
+          '    if (const auto* component = state.scene.try_get<scene::flow_component>(value))\n        components["Flow"] = {{"version", 1}, {"graph", component->graph_path}, {"enabled", component->enabled}};\n    if (const auto* component = state.scene.try_get<scene::water_component>(value))\n        components["Water"] =')
+          one(p,'            if (components.contains("RenderLayer"))\n                loaded.scene.emplace<scene::render_layer_component>(entity,',
+          '''            if (components.contains("Flow"))\n            {\n                const auto& flow = components["Flow"];\n                loaded.scene.emplace<scene::flow_component>(\n                    entity, scene::flow_component{flow.value("graph", ""), flow.value("enabled", true)});\n            }\n            if (components.contains("RenderLayer"))\n                loaded.scene.emplace<scene::render_layer_component>(entity,''')
+
+          # Frontend snapshot, inspector schema and Add Component.
+          p='editor/src/renderer/src/inspector/inspectorTypes.ts'
+          one(p,'export type InspectorEntitySnapshot = Omit<BaseInspectorEntitySnapshot, \'meshRenderer\'> & {\n  meshRenderer: InspectorMeshRenderer | null;',
+          '''export type InspectorFlow = {\n  graphPath: string;\n  enabled: boolean;\n};\n\nexport type InspectorEntitySnapshot = Omit<BaseInspectorEntitySnapshot, 'meshRenderer'> & {\n  meshRenderer: InspectorMeshRenderer | null;\n  flow?: InspectorFlow | null;''')
+          one(p,'function parseProceduralMesh(value: unknown): InspectorProceduralMesh | null {',
+          '''function parseFlow(value: unknown): InspectorFlow | null {\n  if (!value || typeof value !== 'object') return null;\n  const raw = value as Record<string, unknown>;\n  return {\n    graphPath: typeof raw.graphPath === 'string' ? raw.graphPath : '',\n    enabled: raw.enabled !== false,\n  };\n}\n\nfunction parseProceduralMesh(value: unknown): InspectorProceduralMesh | null {''')
+          one(p,'    proceduralMesh: parseProceduralMesh(raw?.proceduralMesh),',
+          '    flow: parseFlow(raw?.flow),\n    proceduralMesh: parseProceduralMesh(raw?.proceduralMesh),')
+
+          p='editor/src/renderer/src/inspector/componentSchemas.ts'
+          one(p,"  {\n    id: 'prefab',\n    title: 'Prefab Instance',",
+          '''  {\n    id: 'flow',\n    title: 'Flow',\n    badge: 'Gameplay',\n    fields: [\n      { id: 'enabled', label: 'Enabled', path: 'flow.enabled', type: 'boolean' },\n      {\n        id: 'graph',\n        label: 'Graph',\n        path: 'flow.graphPath',\n        type: 'asset',\n        assetKind: 'asset',\n        referenceMode: 'path',\n        allowedExtensions: ['.arcflow'],\n        allowEmpty: false,\n        tooltip: 'Flow Graph instantiated for this entity when Play starts.',\n      },\n    ],\n  },\n  {\n    id: 'prefab',\n    title: 'Prefab Instance',''')
+          one(p,"                  : schema.id === 'terrain'\n                    ? snapshot.terrain !== null\n                    : schema.id === 'water'\n                      ? snapshot.water !== null\n                      : snapshot.prefab !== null,",
+          "                  : schema.id === 'terrain'\n                    ? snapshot.terrain !== null\n                    : schema.id === 'water'\n                      ? snapshot.water !== null\n                      : schema.id === 'flow'\n                        ? snapshot.flow != null\n                        : snapshot.prefab !== null,")
+
+          p='editor/src/renderer/src/inspector/AddComponentPicker.tsx'
+          one(p,"  { id: 'terrain', label: 'Terrain', category: 'World' },\n];",
+          "  { id: 'terrain', label: 'Terrain', category: 'World' },\n  { id: 'flow', label: 'Flow', category: 'Gameplay', tooltip: 'Run a Flow Graph on this entity during Play.' },\n];")
+          one(p,"  if (id === 'terrain') return snapshot.terrain !== null;\n  return false;",
+          "  if (id === 'terrain') return snapshot.terrain !== null;\n  if (id === 'flow') return snapshot.flow != null;\n  return false;")
+
+          p='editor/src/renderer/src/inspector/InspectorPanel.tsx'
+          one(p,"              : component === 'water'\n                ? 'Edit Water'\n                : 'Edit Terrain';",
+          "              : component === 'water'\n                ? 'Edit Water'\n                : component === 'flow'\n                  ? 'Edit Flow'\n                  : 'Edit Terrain';")
+          one(p,"    } else if (component === 'water' && next.water) {",
+          '''    } else if (component === 'flow' && next.flow) {\n      void runMutation(\n        next,\n        'entity.setFlow',\n        { ...entityPayload(next), graphPath: next.flow.graphPath, enabled: next.flow.enabled },\n        settled,\n        transactionKey,\n        transactionLabel,\n      );\n    } else if (component === 'water' && next.water) {''')
+          one(p,"      water: 'water',\n      prefab: 'prefab',",
+          "      water: 'water',\n      flow: 'flow',\n      prefab: 'prefab',")
+
+          # Focused native integration coverage and milestone docs.
+          Path('editor/native/tests/flow_play_runtime_tests.cpp').write_text(r'''#include "../src/flow_play_runtime.h"\n\n#include <catch2/catch_test_macros.hpp>\n\nTEST_CASE("Flow F6.1 validates Content-relative graph paths")\n{\n    using arc::editor::valid_flow_graph_path;\n    REQUIRE(valid_flow_graph_path("Logic/Player.arcflow"));\n    REQUIRE_FALSE(valid_flow_graph_path(""));\n    REQUIRE_FALSE(valid_flow_graph_path("../Player.arcflow"));\n    REQUIRE_FALSE(valid_flow_graph_path("Logic\\\\Player.arcflow"));\n    REQUIRE_FALSE(valid_flow_graph_path("Logic/../Player.arcflow"));\n    REQUIRE_FALSE(valid_flow_graph_path("Logic/Player.json"));\n}\n''')
+          Path('docs/flow-play-integration.md').write_text('''# Flow Play integration\n\nFlow F6.1 binds authored `.arcflow` graphs to scene entities through the `Flow` component. The component stores a normalized path relative to the project Content directory plus an enabled flag.\n\nWhen Play starts, ARC scans the isolated Play World for enabled Flow bindings. Each unique graph is compiled once into immutable bytecode while every bound entity owns an independent `vm_instance`, so variables and value slots do not leak between entities sharing one graph.\n\n`Begin Play` is dispatched before the runtime world starts. Physical input and `Fixed Tick` run in the gameplay-command phase, frame `Tick` runs in presentation extraction, and `End Play` runs when the Play runtime world releases its Flow systems. Flow world operations are routed through the stable M3.5 `game_world_api_v1` bridge and retain scheduler command-buffer boundaries.\n\nF6.1 maps the current physical Play input stream to deterministic Flow action tokens: `Key.<code>`, `MouseButton.<code>`, `MouseWheel`, and `Focus`. Semantic action-map names are a later input/Flow integration step.\n\nBindings are instantiated from authored scene state when Play starts. Runtime-created entities do not automatically gain a VM when a Flow component is attached during that session; hot lifecycle management remains a later Flow milestone.\n''')
+          PY
+
+          # Avoid relying on local formatter availability for correctness; CI formatting owns final canonical layout.
+          git status --short
+
+      - name: Commit completed integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
+            echo 'No completion changes to commit'
+            exit 0
+          fi
+          git config user.name "Richard Thorell"
+          git config user.email "richard.thorell@outlook.com"
+          git add engine/scene/inc/arc/scene/components.h \
+                  editor/native/CMakeLists.txt editor/native/src/arc_host_impl.inc \
+                  editor/native/src/arc_host_base.inc editor/native/src/flow_play_runtime.h \
+                  editor/native/src/flow_play_runtime.cpp editor/native/inc/arc/editor/host_protocol_base.h \
+                  editor/native/src/host_protocol_base.inc editor/native/src/scene_document.cpp \
+                  editor/native/tests/flow_play_runtime_tests.cpp docs/flow-play-integration.md \
+                  editor/src/renderer/src/inspector/inspectorTypes.ts \
+                  editor/src/renderer/src/inspector/componentSchemas.ts \
+                  editor/src/renderer/src/inspector/AddComponentPicker.tsx \
+                  editor/src/renderer/src/inspector/InspectorPanel.tsx
+          git commit -m "Add Flow F6.1 entity Play integration"
+          git push origin HEAD:feature/flow-f61-entity-play-integration
+      - name: Frontend typecheck
+        working-directory: editor
+        run: |
+          npm ci
+          npm run typecheck
