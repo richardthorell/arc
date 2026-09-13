@@ -49,8 +49,14 @@ export type InspectorSkeleton = {
   joints: InspectorSkeletonJoint[];
 };
 
+export type InspectorFlow = {
+  graphPath: string;
+  enabled: boolean;
+};
+
 export type InspectorEntitySnapshot = Omit<BaseInspectorEntitySnapshot, 'meshRenderer'> & {
   meshRenderer: InspectorMeshRenderer | null;
+  flow?: InspectorFlow | null;
   proceduralMesh?: InspectorProceduralMesh | null;
   skeleton?: InspectorSkeleton | null;
 };
@@ -107,6 +113,15 @@ function parseSkeleton(value: unknown): InspectorSkeleton | null {
   };
 }
 
+function parseFlow(value: unknown): InspectorFlow | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  return {
+    graphPath: typeof raw.graphPath === 'string' ? raw.graphPath : '',
+    enabled: raw.enabled !== false,
+  };
+}
+
 function parseProceduralMesh(value: unknown): InspectorProceduralMesh | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as Record<string, unknown>;
@@ -147,6 +162,7 @@ export function parseSelectedEntitySnapshot(value: unknown): InspectorEntitySnap
           meshPath: typeof rawMeshRenderer?.meshPath === 'string' ? rawMeshRenderer.meshPath : '',
         }
       : null,
+    flow: parseFlow(raw?.flow),
     proceduralMesh: parseProceduralMesh(raw?.proceduralMesh),
     skeleton: parseSkeleton(raw?.skeleton),
   };

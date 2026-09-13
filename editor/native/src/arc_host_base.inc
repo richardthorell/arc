@@ -135,6 +135,7 @@ ecs::entity duplicate_entity_subtree(editor_scene_state& state, ecs::entity sour
     copy_component<scene::height_fog_component>(state.scene, state.scene, source, duplicate);
     copy_component<scene::terrain_component>(state.scene, state.scene, source, duplicate);
     copy_component<scene::water_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::flow_component>(state.scene, state.scene, source, duplicate);
     copy_component<scene::vegetation_component>(state.scene, state.scene, source, duplicate);
     copy_component<scene::decal_component>(state.scene, state.scene, source, duplicate);
     state.scene.emplace<scene::persistent_id_component>(duplicate, ecs::generate_entity_guid());
@@ -250,7 +251,8 @@ template <class Command> constexpr bool is_authoring_command() noexcept
            std::is_same_v<Command, host_unpack_prefab_command> ||
            std::is_same_v<Command, host_reorder_entity_command> ||
            std::is_same_v<Command, host_rename_entity_command> || std::is_same_v<Command, host_set_active_command> ||
-           std::is_same_v<Command, host_set_tag_command> || std::is_same_v<Command, host_set_transform_command> ||
+           std::is_same_v<Command, host_set_tag_command> || std::is_same_v<Command, host_set_flow_command> ||
+           std::is_same_v<Command, host_set_transform_command> ||
            std::is_same_v<Command, host_set_render_layer_command> ||
            std::is_same_v<Command, host_set_mobility_command> || std::is_same_v<Command, host_set_camera_command> ||
            std::is_same_v<Command, host_set_light_command> || std::is_same_v<Command, host_set_mesh_renderer_command> ||
@@ -314,6 +316,8 @@ std::string history_label(const host_command_payload& command)
                 return "Reorder Entity";
             else if constexpr (std::is_same_v<type, host_rename_entity_command>)
                 return "Rename Entity";
+            else if constexpr (std::is_same_v<type, host_set_flow_command>)
+                return "Edit Flow";
             else if constexpr (std::is_same_v<type, host_set_transform_command>)
                 return "Transform Entity";
             else if constexpr (std::is_same_v<type, host_set_mobility_command>)
@@ -1922,6 +1926,14 @@ struct arc_host::state
             abandon_runtime_world();
             return false;
         }
+        const auto flow_install =
+            install_flow_play_runtime(*runtime_world, !assets.root.empty() ? assets.root : project.root / "Content");
+        if (!flow_install.succeeded)
+        {
+            diagnostics::error("editor.play", flow_install.error);
+            abandon_runtime_world();
+            return false;
+        }
         try
         {
             runtime_world->start();
@@ -2313,8 +2325,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 push_event(state_->events, state_->event_sequence, host_event_type::command_failed, message, entity);
                 return host_response{.request_id = request_id, .succeeded = false, .error = std::move(message)};
             };
-            const auto success = [request_id](std::string payload_json = "{}")
-            {
+            const auto success = [request_id](std::string payload_json = "{}") {
                 return host_response{
                     .request_id = request_id, .succeeded = true, .payload_json = std::move(payload_json)};
             };
@@ -2339,8 +2350,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     {
                         const auto editor_module =
                             std::find_if(descriptor.value().modules.begin(), descriptor.value().modules.end(),
-                                         [&](const auto& module)
-                                         {
+                                         [&](const auto& module) {
                                              return module.enabled && module.kind == project::module_kind::editor &&
                                                     module.id == payload.editor_module_id;
                                          });
@@ -3335,6 +3345,20 @@ host_response arc_host::execute(const host_command_envelope& command)
                 return success("{\"entity\":" + to_json(payload.entity) +
                                ",\"distance\":" + std::to_string(std::abs(delta_y)) +
                                ",\"exact\":" + std::string(hit.exact ? "true" : "false") + '}');
+            }
+            else if constexpr (std::is_same_v<command_type, host_set_flow_command>)
+            {
+                const auto entity = to_scene_entity(payload.entity);
+                const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);
+                if (targets.empty()) return fail("Cannot edit a missing or unselected entity", entity);
+                if (!payload.graph_path.empty() && !valid_flow_graph_path(payload.graph_path))
+                    return fail("Flow graph path must be a normalized Content-relative .arcflow path", entity);
+                for (const auto target : targets)
+                    state_->scene.scene.emplace<scene::flow_component>(
+                        target, scene::flow_component{payload.graph_path, payload.enabled});
+                push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                           "Flow binding changed for " + std::to_string(targets.size()) + " entity(s)", entity);
+                return success("{\"entity\":" + to_json(payload.entity) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_set_transform_command>)
             {
@@ -4373,7 +4397,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                                    payload.component == "meshRenderer" || payload.component == "directionalLight" ||
                                    payload.component == "pointLight" || payload.component == "spotLight" ||
                                    payload.component == "areaLight" || payload.component == "renderLayer" ||
-                                   payload.component == "mobility";
+                                   payload.component == "mobility" || payload.component == "flow";
                 const auto* project_schema = find_project_component(state_->project_module, payload.component);
                 if (!known && !project_schema) return fail("Component is not supported by generic operations");
                 if (payload.operation == host_component_operation::remove && payload.component == "transform")
@@ -4456,6 +4480,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                         entity_changed = apply(entity, scene::render_layer_component{});
                     else if (payload.component == "mobility")
                         entity_changed = apply(entity, scene::mobility_component{});
+                    else if (payload.component == "flow")
+                        entity_changed = apply(entity, scene::flow_component{});
                     if (entity_changed) ++changed;
                 }
                 if (!changed)
@@ -6246,6 +6272,13 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
     if (state_->scene.scene.has<scene::decal_component>(selected))
         add_component_snapshot<scene::decal_component>(state_->scene.scene, selected, snapshot.components,
                                                        host_component_kind::decal, "Decal");
+    if (const auto* flow = state_->scene.scene.try_get<scene::flow_component>(selected))
+    {
+        snapshot.flow = host_flow_snapshot{flow->graph_path, flow->enabled};
+        snapshot.components.push_back(
+            {host_component_kind::flow, "arc::scene.flow_component", "Flow", state_->scene_revision, 0, true});
+    }
+
     if (const auto* prefab = state_->scene.scene.try_get<scene::prefab_instance_component>(selected))
     {
         snapshot.prefab = host_prefab_snapshot{.prefab_guid = ecs::to_string(prefab->prefab_guid),

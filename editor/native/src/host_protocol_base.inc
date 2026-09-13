@@ -800,6 +800,8 @@ const char* to_string(host_component_kind value) noexcept
             return "terrain";
         case host_component_kind::water:
             return "water";
+        case host_component_kind::flow:
+            return "flow";
         case host_component_kind::vegetation:
             return "vegetation";
         case host_component_kind::decal:
@@ -1149,6 +1151,8 @@ std::string command_type(const host_command_payload& payload)
                 return "entity.setActive";
             else if constexpr (std::is_same_v<type, host_set_tag_command>)
                 return "entity.setTag";
+            else if constexpr (std::is_same_v<type, host_set_flow_command>)
+                return "entity.setFlow";
             else if constexpr (std::is_same_v<type, host_set_transform_command>)
                 return "entity.setTransform";
             else if constexpr (std::is_same_v<type, host_set_render_layer_command>)
@@ -1656,6 +1660,9 @@ std::string to_json(const host_command_envelope& envelope)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"active\":" + bool_json(payload.active) + '}';
             else if constexpr (std::is_same_v<type, host_set_tag_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"tag\":" + quote(payload.tag) + '}';
+            else if constexpr (std::is_same_v<type, host_set_flow_command>)
+                return "{\"entity\":" + to_json(payload.entity) + ",\"graphPath\":" + quote(payload.graph_path) +
+                       ",\"enabled\":" + bool_json(payload.enabled) + '}';
             else if constexpr (std::is_same_v<type, host_set_transform_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"transform\":" + to_json(payload.transform) + '}';
             else if constexpr (std::is_same_v<type, host_set_render_layer_command>)
@@ -2088,6 +2095,12 @@ std::string to_json(const host_selected_entity_snapshot& snapshot)
     json += snapshot.terrain ? to_json(*snapshot.terrain) : "null";
     json += ",\"water\":";
     json += snapshot.water ? to_json(*snapshot.water) : "null";
+    json += ",\"flow\":";
+    if (snapshot.flow)
+        json += "{\"graphPath\":" + quote(snapshot.flow->graph_path) +
+                ",\"enabled\":" + bool_json(snapshot.flow->enabled) + '}';
+    else
+        json += "null";
     json += ",\"prefab\":";
     if (snapshot.prefab)
     {
@@ -2619,6 +2632,19 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             return false;
         }
         string_value(payload, "tag", command.tag);
+        bool_value(payload, "applyToSelection", command.apply_to_selection);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "entity.setFlow")
+    {
+        host_set_flow_command command;
+        if (!entity_field_value(payload, "entity", command.entity) ||
+            !string_value(payload, "graphPath", command.graph_path))
+        {
+            error = "Flow command requires entity and graphPath";
+            return false;
+        }
+        bool_value(payload, "enabled", command.enabled);
         bool_value(payload, "applyToSelection", command.apply_to_selection);
         envelope.payload = std::move(command);
     }

@@ -194,7 +194,9 @@ export function InspectorPanel({
               ? 'Edit Mesh Renderer'
               : component === 'water'
                 ? 'Edit Water'
-                : 'Edit Terrain';
+                : component === 'flow'
+                  ? 'Edit Flow'
+                  : 'Edit Terrain';
     if (component === 'transform' && next.transform) {
       void runMutation(
         next,
@@ -309,6 +311,15 @@ export function InspectorPanel({
           transactionLabel,
         );
       }
+    } else if (component === 'flow' && next.flow) {
+      void runMutation(
+        next,
+        'entity.setFlow',
+        { ...entityPayload(next), graphPath: next.flow.graphPath, enabled: next.flow.enabled },
+        settled,
+        transactionKey,
+        transactionLabel,
+      );
     } else if (component === 'water' && next.water) {
       const water = {
         ...next.water,
@@ -376,6 +387,7 @@ export function InspectorPanel({
       areaLight: 'light',
       terrain: 'terrain',
       water: 'water',
+      flow: 'flow',
       prefab: 'prefab',
     };
     const key = componentKey[component];

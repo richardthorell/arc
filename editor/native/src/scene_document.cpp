@@ -225,6 +225,7 @@ bool finite_color(const json& value, std::size_t size)
 }
 
 bool validate_asset_reference_json(const json& value, const std::filesystem::path& project_root);
+bool valid_flow_graph_reference(std::string_view value) noexcept;
 
 bool validate_component_json(std::string_view name, const json& value, std::string& error)
 {
@@ -252,6 +253,7 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                                                             "WorldEnvironment",
                                                             "Terrain",
                                                             "Water",
+                                                            "Flow",
                                                             "Vegetation",
                                                             "Decal",
                                                             "PrefabInstance",
@@ -283,6 +285,14 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
         return value.contains("value") && value["value"].is_string() ? true : fail("has an invalid string value");
     if (name == "Active")
         return value.contains("value") && value["value"].is_boolean() ? true : fail("has an invalid active value");
+    if (name == "Flow")
+    {
+        if (!value.contains("graph") || !value["graph"].is_string() || !value.contains("enabled") ||
+            !value["enabled"].is_boolean())
+            return fail("has an invalid Flow graph binding");
+        return valid_flow_graph_reference(value["graph"].get<std::string>()) ? true
+                                                                             : fail("has an invalid Flow graph path");
+    }
     if (name == "RenderLayer")
         return value.contains("mask") && value["mask"].is_number_unsigned() ? true : fail("has an invalid layer mask");
     if (name == "Mobility")
@@ -675,6 +685,17 @@ std::optional<std::filesystem::path> resolve_document_asset_path(std::string_vie
         std::any_of(normalized.begin(), normalized.end(), [](const auto& part) { return part == ".."; }))
         return std::nullopt;
     return (project_root / normalized).lexically_normal();
+}
+
+bool valid_flow_graph_reference(std::string_view value)
+{
+    if (value.empty()) return true;
+    if (value.find('\\') != std::string_view::npos) return false;
+    const std::filesystem::path path{value};
+    if (path.is_absolute() || path.has_root_name() || path.extension() != ".arcflow") return false;
+    const auto normalized = path.lexically_normal();
+    return normalized.generic_string() == value &&
+           std::none_of(normalized.begin(), normalized.end(), [](const auto& part) { return part == ".."; });
 }
 
 bool validate_asset_reference_json(const json& value, const std::filesystem::path& project_root)
@@ -1078,6 +1099,8 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                                  {"weights", base64_encode(weight_bytes)},
                                  {"revision", component->content_revision}};
     }
+    if (const auto* component = state.scene.try_get<scene::flow_component>(value))
+        components["Flow"] = {{"version", 1}, {"graph", component->graph_path}, {"enabled", component->enabled}};
     if (const auto* component = state.scene.try_get<scene::water_component>(value))
         components["Water"] = {{"version", 2},
                                {"type", static_cast<std::uint8_t>(component->type)},
@@ -1463,6 +1486,12 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                 loaded.scene.emplace<scene::tag_component>(entity, components["Tag"].value("value", "Untagged"));
             if (components.contains("Active"))
                 loaded.scene.emplace<scene::active_component>(entity, components["Active"].value("value", true));
+            if (components.contains("Flow"))
+            {
+                const auto& flow = components["Flow"];
+                loaded.scene.emplace<scene::flow_component>(
+                    entity, scene::flow_component{flow.value("graph", ""), flow.value("enabled", true)});
+            }
             if (components.contains("RenderLayer"))
                 loaded.scene.emplace<scene::render_layer_component>(entity,
                                                                     components["RenderLayer"].value("mask", 1u));
@@ -1924,6 +1953,7 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                                                                "WorldEnvironment",
                                                                "Terrain",
                                                                "Water",
+                                                               "Flow",
                                                                "Vegetation",
                                                                "Decal",
                                                                "PrefabInstance",
