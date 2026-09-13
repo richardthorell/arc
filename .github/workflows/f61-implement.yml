@@ -1,0 +1,645 @@
+name: F61 implement
+on:
+  push:
+    branches: [feature/flow-f61-entity-play-integration]
+permissions:
+  contents: write
+jobs:
+  implement:
+    if: ${{ !contains(github.event.head_commit.message, 'Add Flow F6.1 entity Play integration') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Apply F6.1 implementation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def read(path): return Path(path).read_text()
+          def write(path, text):
+              Path(path).parent.mkdir(parents=True, exist_ok=True)
+              Path(path).write_text(text)
+          def replace_once(path, old, new):
+              text=read(path)
+              if old not in text:
+                  raise SystemExit(f'anchor missing in {path}: {old[:120]!r}')
+              if text.count(old) != 1:
+                  raise SystemExit(f'anchor not unique in {path}: {old[:120]!r} count={text.count(old)}')
+              write(path,text.replace(old,new,1))
+
+          # Scene Flow binding.
+          p='engine/scene/inc/arc/scene/components.h'
+          replace_once(p,
+          '''struct active_component\n{\n    bool active{true};\n};\n\n/**\n * @brief Editor selection state for an entity.\n */''',
+          '''struct active_component\n{\n    bool active{true};\n};\n\n/**\n * @brief Authored gameplay Flow Graph binding instantiated for this entity in Play.\n *\n * graph_path is normalized relative to the project's Content root. The editor compiles\n * the graph once per unique path when a Play World starts while each entity owns its\n * own Flow VM state.\n */\nstruct flow_component\n{\n    std::string graph_path;\n    bool enabled{true};\n};\n\n/**\n * @brief Editor selection state for an entity.\n */''')
+
+          # Private runtime integration API.
+          write('editor/native/src/flow_play_runtime.h', r'''#pragma once
+
+#include <arc/framework/runtime_world.h>
+
+#include <cstddef>
+#include <filesystem>
+#include <string>
+#include <string_view>
+
+namespace arc::editor
+{
+
+struct flow_play_install_result
+{
+    bool succeeded{};
+    std::size_t instances{};
+    std::size_t unique_programs{};
+    std::string error;
+};
+
+/** Returns true for a normalized Content-relative .arcflow path. */
+[[nodiscard]] bool valid_flow_graph_path(std::string_view value) noexcept;
+
+/**
+ * Compile and attach authored Flow bindings to an isolated Play World.
+ *
+ * Compiled programs are shared by path; VM state remains per entity. Begin Play is
+ * dispatched before this returns and End Play is dispatched when the runtime world's
+ * scheduler releases the installed systems.
+ */
+[[nodiscard]] flow_play_install_result install_flow_play_runtime(framework::runtime_world& world,
+                                                                 const std::filesystem::path& content_root);
+
+} // namespace arc::editor
+''')
+
+          write('editor/native/src/flow_play_runtime.cpp', r'''#include "flow_play_runtime.h"
+
+#include "project_runtime_world_bridge.h"
+
+#include <arc/flow/flow.h>
+#include <arc/scene/components.h>
+
+#include <algorithm>
+#include <fstream>
+#include <memory>
+#include <sstream>
+#include <stdexcept>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+namespace arc::editor
+{
+namespace
+{
+
+std::string execution_error(const flow::execution_result& result, std::string_view graph, ecs::entity entity)
+{
+    std::string message = "Flow graph '" + std::string(graph) + "' failed for entity " +
+                          std::to_string(entity.index) + ':' + std::to_string(entity.generation) +
+                          " (status " + std::to_string(static_cast<unsigned>(result.status)) + ')';
+    if (!result.node_id.empty()) message += " at node '" + result.node_id + '\'';
+    return message;
+}
+
+flow::flow_entity flow_entity(ecs::entity entity) noexcept
+{
+    return {.index = entity.index, .generation = entity.generation};
+}
+
+struct bound_flow_instance
+{
+    ecs::entity entity{};
+    std::string graph_path;
+    std::shared_ptr<const flow::bytecode_program> program;
+    flow::vm_instance vm;
+
+    bound_flow_instance(ecs::entity value, std::string path, std::shared_ptr<const flow::bytecode_program> bytecode)
+        : entity(value), graph_path(std::move(path)), program(std::move(bytecode)), vm(*program)
+    {
+    }
+};
+
+class flow_play_session
+{
+public:
+    explicit flow_play_session(ecs::world& world) : world_(&world) {}
+    flow_play_session(const flow_play_session&) = delete;
+    flow_play_session& operator=(const flow_play_session&) = delete;
+
+    ~flow_play_session()
+    {
+        if (!world_) return;
+        runtime_world_bridge_context bridge{.world = world_, .unrestricted_access = true};
+        const auto api = make_runtime_world_api(bridge);
+        for (auto& instance : instances_)
+        {
+            if (!instance.vm.active()) continue;
+            (void)instance.vm.end_play({.api = &api, .self = flow_entity(instance.entity)});
+        }
+    }
+
+    void add(ecs::entity entity, std::string path, std::shared_ptr<const flow::bytecode_program> program)
+    {
+        instances_.emplace_back(entity, std::move(path), std::move(program));
+    }
+
+    [[nodiscard]] std::size_t size() const noexcept { return instances_.size(); }
+
+    flow_play_install_result begin_play()
+    {
+        runtime_world_bridge_context bridge{.world = world_, .unrestricted_access = true};
+        const auto api = make_runtime_world_api(bridge);
+        for (auto& instance : instances_)
+        {
+            const auto result = instance.vm.begin_play({.api = &api, .self = flow_entity(instance.entity)});
+            if (!result.succeeded())
+                return {.error = execution_error(result, instance.graph_path, instance.entity)};
+        }
+        return {.succeeded = true, .instances = instances_.size()};
+    }
+
+    void run_fixed(ecs::system_context& context)
+    {
+        runtime_world_bridge_context bridge{.world = &context.owner(),
+                                            .commands = &context.commands(),
+                                            .unrestricted_access = true};
+        const auto api = make_runtime_world_api(bridge);
+        const auto input = context.input();
+        for (auto& instance : instances_)
+        {
+            if (!context.owner().alive(instance.entity)) continue;
+            const flow::vm_world_context world{.api = &api, .self = flow_entity(instance.entity)};
+            for (const auto& command : input.commands) dispatch_input(instance, command, world);
+            const auto result = instance.vm.fixed_tick(context.fixed_delta_seconds(), world);
+            if (!result.succeeded()) throw std::runtime_error(execution_error(result, instance.graph_path, instance.entity));
+        }
+    }
+
+    void run_tick(ecs::system_context& context)
+    {
+        runtime_world_bridge_context bridge{.world = &context.owner(),
+                                            .commands = &context.commands(),
+                                            .unrestricted_access = true};
+        const auto api = make_runtime_world_api(bridge);
+        for (auto& instance : instances_)
+        {
+            if (!context.owner().alive(instance.entity)) continue;
+            const auto result = instance.vm.tick(
+                context.frame_delta_seconds(), {.api = &api, .self = flow_entity(instance.entity)});
+            if (!result.succeeded()) throw std::runtime_error(execution_error(result, instance.graph_path, instance.entity));
+        }
+    }
+
+private:
+    static std::string input_action_name(const ecs::simulation_input_command& command)
+    {
+        switch (command.kind)
+        {
+            case ecs::simulation_input_kind::key:
+                return "Key." + std::to_string(command.code);
+            case ecs::simulation_input_kind::mouse_button:
+                return "MouseButton." + std::to_string(command.code);
+            case ecs::simulation_input_kind::mouse_wheel:
+                return "MouseWheel";
+            case ecs::simulation_input_kind::focus:
+                return "Focus";
+            case ecs::simulation_input_kind::mouse_position:
+                break;
+        }
+        return {};
+    }
+
+    static void dispatch_input(bound_flow_instance& instance, const ecs::simulation_input_command& command,
+                               flow::vm_world_context world)
+    {
+        if (command.kind == ecs::simulation_input_kind::mouse_position) return;
+        const std::string action = input_action_name(command);
+        if (action.empty()) return;
+
+        flow::execution_result result;
+        bool dispatched{};
+        switch (command.action)
+        {
+            case ecs::simulation_input_action::pressed:
+                result = instance.vm.input_action_triggered(action, command.value == 0.0f ? 1.0 : command.value, world);
+                dispatched = true;
+                break;
+            case ecs::simulation_input_action::released:
+                result = instance.vm.input_action_completed(action, 0.0, world);
+                dispatched = true;
+                break;
+            case ecs::simulation_input_action::changed:
+                if (command.kind == ecs::simulation_input_kind::mouse_wheel ||
+                    command.kind == ecs::simulation_input_kind::focus)
+                {
+                    result = command.value > 0.0f ? instance.vm.input_action_triggered(action, command.value, world)
+                                                  : instance.vm.input_action_completed(action, command.value, world);
+                    dispatched = true;
+                }
+                break;
+        }
+        if (dispatched && !result.succeeded())
+            throw std::runtime_error(execution_error(result, instance.graph_path, instance.entity));
+    }
+
+    ecs::world* world_{};
+    std::vector<bound_flow_instance> instances_;
+};
+
+std::optional<std::string> read_text_file(const std::filesystem::path& path)
+{
+    std::ifstream input(path, std::ios::binary);
+    if (!input) return std::nullopt;
+    std::ostringstream stream;
+    stream << input.rdbuf();
+    return stream.str();
+}
+
+} // namespace
+
+bool valid_flow_graph_path(std::string_view value) noexcept
+{
+    try
+    {
+        if (value.empty() || value.find('\\') != std::string_view::npos) return false;
+        const std::filesystem::path path{value};
+        if (path.is_absolute() || path.has_root_name() || path.extension() != ".arcflow") return false;
+        const auto normalized = path.lexically_normal();
+        if (normalized.generic_string() != value) return false;
+        return std::none_of(normalized.begin(), normalized.end(), [](const auto& part) { return part == ".."; });
+    }
+    catch (...)
+    {
+        return false;
+    }
+}
+
+flow_play_install_result install_flow_play_runtime(framework::runtime_world& world,
+                                                   const std::filesystem::path& content_root)
+{
+    std::unordered_map<std::string, std::shared_ptr<const flow::bytecode_program>> programs;
+    auto session = std::make_shared<flow_play_session>(world.entities());
+
+    for (const auto entity : world.entities().entities())
+    {
+        const auto* binding = std::as_const(world.entities()).try_get<scene::flow_component>(entity);
+        if (!binding || !binding->enabled) continue;
+        if (const auto* active = std::as_const(world.entities()).try_get<scene::active_component>(entity);
+            active && !active->active)
+            continue;
+        if (!valid_flow_graph_path(binding->graph_path))
+            return {.error = "Flow entity " + std::to_string(entity.index) + " has an invalid graph path '" +
+                             binding->graph_path + "'"};
+
+        const auto found = programs.find(binding->graph_path);
+        std::shared_ptr<const flow::bytecode_program> program;
+        if (found != programs.end())
+        {
+            program = found->second;
+        }
+        else
+        {
+            const auto source = read_text_file(content_root / std::filesystem::path{binding->graph_path});
+            if (!source)
+                return {.error = "Flow graph could not be read: " + binding->graph_path};
+            auto compiled = flow::compile_asset(*source);
+            if (!compiled.succeeded || !compiled.bytecode)
+            {
+                std::string detail = "Flow graph failed to compile: " + binding->graph_path;
+                if (!compiled.diagnostics.empty()) detail += ": " + compiled.diagnostics.front().message;
+                return {.error = std::move(detail)};
+            }
+            program = std::make_shared<const flow::bytecode_program>(std::move(*compiled.bytecode));
+            programs.emplace(binding->graph_path, program);
+        }
+        session->add(entity, binding->graph_path, std::move(program));
+    }
+
+    if (session->size() == 0) return {.succeeded = true};
+
+    auto begun = session->begin_play();
+    if (!begun.succeeded) return begun;
+
+    if (!world.systems().add({.name = "__arc.flow.fixed",
+                              .phase = ecs::system_phase::gameplay_commands,
+                              .exclusive_world_access = true,
+                              .execute = [session](ecs::system_context& context) { session->run_fixed(context); }}))
+        return {.error = "Flow fixed-step system could not be installed"};
+    if (!world.systems().add({.name = "__arc.flow.tick",
+                              .phase = ecs::system_phase::presentation_extraction,
+                              .exclusive_world_access = true,
+                              .execute = [session](ecs::system_context& context) { session->run_tick(context); }}))
+        return {.error = "Flow frame-tick system could not be installed"};
+
+    return {.succeeded = true, .instances = session->size(), .unique_programs = programs.size()};
+}
+
+} // namespace arc::editor
+''')
+
+          # Native build.
+          replace_once('editor/native/CMakeLists.txt','''    src/editor_viewport.cpp\n    src/host_protocol.cpp''','''    src/editor_viewport.cpp\n    src/flow_play_runtime.cpp\n    src/host_protocol.cpp''')
+          replace_once('editor/native/src/arc_host_impl.inc','''#include "project_module_loader.h"\n#include <arc/editor/world_environment_host.h>''','''#include "flow_play_runtime.h"\n#include "project_module_loader.h"\n#include <arc/editor/world_environment_host.h>''')
+
+          # Play lifecycle install, after project systems and before runtime world start.
+          p='editor/native/src/arc_host_base.inc'
+          replace_once(p,
+          '''        if (!project_module.install_systems(*runtime_world))\n        {\n            simulation.worlds().destroy(play_runtime_world_id);\n            play_runtime_world_id = {};\n            play_world.reset();\n            return false;\n        }\n        runtime_world->start();''',
+          '''        if (!project_module.install_systems(*runtime_world))\n        {\n            simulation.worlds().destroy(play_runtime_world_id);\n            play_runtime_world_id = {};\n            play_world.reset();\n            return false;\n        }\n        const auto flow_install =\n            install_flow_play_runtime(*runtime_world, !assets.root.empty() ? assets.root : project.root / "Content");\n        if (!flow_install.succeeded)\n        {\n            diagnostics::error("Flow", flow_install.error);\n            simulation.worlds().destroy(play_runtime_world_id);\n            play_runtime_world_id = {};\n            play_world.reset();\n            return false;\n        }\n        runtime_world->start();''')
+
+          # Host protocol types.
+          p='editor/native/inc/arc/editor/host_protocol_base.h'
+          replace_once(p,'''    water,\n    vegetation,''','''    water,\n    flow,\n    vegetation,''')
+          replace_once(p,
+          '''struct host_terrain_operation_snapshot\n{''',
+          '''struct host_flow_snapshot\n{\n    std::string graph_path;\n    bool enabled{true};\n};\n\nstruct host_terrain_operation_snapshot\n{''')
+          replace_once(p,
+          '''    std::optional<host_water_snapshot> water;\n    std::optional<host_prefab_snapshot> prefab;''',
+          '''    std::optional<host_water_snapshot> water;\n    std::optional<host_flow_snapshot> flow;\n    std::optional<host_prefab_snapshot> prefab;''')
+          replace_once(p,
+          '''struct host_set_transform_command\n{''',
+          '''struct host_set_flow_command\n{\n    host_entity_id entity{};\n    std::string graph_path;\n    bool enabled{true};\n    bool apply_to_selection{};\n};\n\nstruct host_set_transform_command\n{''')
+          replace_once(p,
+          '''    host_set_tag_command, host_set_transform_command, host_set_render_layer_command, host_set_mobility_command,''',
+          '''    host_set_tag_command, host_set_flow_command, host_set_transform_command, host_set_render_layer_command,\n    host_set_mobility_command,''')
+
+          # Protocol serialization/parser.
+          p='editor/native/src/host_protocol_base.inc'
+          replace_once(p,
+          '''        case host_component_kind::water:\n            return "water";\n        case host_component_kind::vegetation:''',
+          '''        case host_component_kind::water:\n            return "water";\n        case host_component_kind::flow:\n            return "flow";\n        case host_component_kind::vegetation:''')
+          replace_once(p,
+          '''            else if constexpr (std::is_same_v<type, host_set_tag_command>)\n                return "entity.setTag";\n            else if constexpr (std::is_same_v<type, host_set_transform_command>)''',
+          '''            else if constexpr (std::is_same_v<type, host_set_tag_command>)\n                return "entity.setTag";\n            else if constexpr (std::is_same_v<type, host_set_flow_command>)\n                return "entity.setFlow";\n            else if constexpr (std::is_same_v<type, host_set_transform_command>)''')
+          replace_once(p,
+          '''            else if constexpr (std::is_same_v<type, host_set_tag_command>)\n                return "{\\\"entity\\\":" + to_json(payload.entity) + ",\\\"tag\\\":" + quote(payload.tag) + '}';\n            else if constexpr (std::is_same_v<type, host_set_transform_command>)''',
+          '''            else if constexpr (std::is_same_v<type, host_set_tag_command>)\n                return "{\\\"entity\\\":" + to_json(payload.entity) + ",\\\"tag\\\":" + quote(payload.tag) + '}';\n            else if constexpr (std::is_same_v<type, host_set_flow_command>)\n                return "{\\\"entity\\\":" + to_json(payload.entity) + ",\\\"graphPath\\\":" + quote(payload.graph_path) +\n                       ",\\\"enabled\\\":" + bool_json(payload.enabled) + '}';\n            else if constexpr (std::is_same_v<type, host_set_transform_command>)''')
+          replace_once(p,
+          '''    json += ",\\\"water\\\":";\n    json += snapshot.water ? to_json(*snapshot.water) : "null";\n    json += ",\\\"prefab\\\":";''',
+          '''    json += ",\\\"water\\\":";\n    json += snapshot.water ? to_json(*snapshot.water) : "null";\n    json += ",\\\"flow\\\":";\n    if (snapshot.flow)\n        json += "{\\\"graphPath\\\":" + quote(snapshot.flow->graph_path) +\n                ",\\\"enabled\\\":" + bool_json(snapshot.flow->enabled) + '}';\n    else\n        json += "null";\n    json += ",\\\"prefab\\\":";''')
+          replace_once(p,
+          '''    else if (type == "entity.setTransform")\n    {''',
+          '''    else if (type == "entity.setFlow")\n    {\n        host_set_flow_command command;\n        if (!entity_field_value(payload, "entity", command.entity) ||\n            !string_value(payload, "graphPath", command.graph_path))\n        {\n            error = "Flow command requires entity and graphPath";\n            return false;\n        }\n        bool_value(payload, "enabled", command.enabled);\n        bool_value(payload, "applyToSelection", command.apply_to_selection);\n        envelope.payload = std::move(command);\n    }\n    else if (type == "entity.setTransform")\n    {''')
+
+          # Host authoring mutation and snapshot.
+          p='editor/native/src/arc_host_base.inc'
+          replace_once(p,
+          '''           std::is_same_v<Command, host_set_tag_command> || std::is_same_v<Command, host_set_transform_command> ||''',
+          '''           std::is_same_v<Command, host_set_tag_command> || std::is_same_v<Command, host_set_flow_command> ||\n           std::is_same_v<Command, host_set_transform_command> ||''')
+          replace_once(p,
+          '''            else if constexpr (std::is_same_v<type, host_set_transform_command>)\n                return "Transform Entity";''',
+          '''            else if constexpr (std::is_same_v<type, host_set_flow_command>)\n                return "Edit Flow";\n            else if constexpr (std::is_same_v<type, host_set_transform_command>)\n                return "Transform Entity";''')
+          replace_once(p,
+          '''            else if constexpr (std::is_same_v<command_type, host_set_transform_command>)\n            {''',
+          '''            else if constexpr (std::is_same_v<command_type, host_set_flow_command>)\n            {\n                const auto entity = to_scene_entity(payload.entity);\n                const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);\n                if (targets.empty()) return fail("Cannot edit a missing or unselected entity", entity);\n                if (!valid_flow_graph_path(payload.graph_path))\n                    return fail("Flow graph path must be a normalized Content-relative .arcflow path", entity);\n                for (const auto target : targets)\n                    state_->scene.scene.emplace<scene::flow_component>(\n                        target, scene::flow_component{payload.graph_path, payload.enabled});\n                push_event(state_->events, state_->event_sequence, host_event_type::component_changed,\n                           "Flow binding changed for " + std::to_string(targets.size()) + " entity(s)", entity);\n                return success("{\\\"entity\\\":" + to_json(payload.entity) + '}');\n            }\n            else if constexpr (std::is_same_v<command_type, host_set_transform_command>)\n            {''')
+          replace_once(p,
+          '''                                   payload.component == "areaLight" || payload.component == "renderLayer" ||\n                                   payload.component == "mobility";''',
+          '''                                   payload.component == "areaLight" || payload.component == "renderLayer" ||\n                                   payload.component == "mobility" || payload.component == "flow";''')
+          # Add flow generic operation adjacent to mobility operation.
+          replace_once(p,
+          '''                    else if (payload.component == "mobility")\n                        changed = apply(target, scene::mobility_component{});''',
+          '''                    else if (payload.component == "mobility")\n                        changed = apply(target, scene::mobility_component{});\n                    else if (payload.component == "flow")\n                        changed = apply(target, scene::flow_component{});''')
+          # Snapshot: add Flow after Water snapshot block by inserting before prefab check.
+          replace_once(p,
+          '''        if (const auto* prefab = state_->scene.scene.try_get<scene::prefab_instance_component>(selected))''',
+          '''        if (const auto* flow = state_->scene.scene.try_get<scene::flow_component>(selected))\n        {\n            snapshot.flow = host_flow_snapshot{flow->graph_path, flow->enabled};\n            snapshot.components.push_back({host_component_kind::flow, "arc::scene.flow_component", "Flow",\n                                           state_->scene_revision, 0, true});\n        }\n        if (const auto* prefab = state_->scene.scene.try_get<scene::prefab_instance_component>(selected))''')
+
+          # Scene persistence validation, save, load, and known-component preservation.
+          p='editor/native/src/scene_document.cpp'
+          # Add helper next to path validation.
+          replace_once(p,
+          '''bool validate_asset_reference_json(const json& value, const std::filesystem::path& project_root)\n{''',
+          '''bool valid_flow_graph_reference(std::string_view value)\n{\n    if (value.empty() || value.find('\\\\') != std::string_view::npos) return false;\n    const std::filesystem::path path{value};\n    if (path.is_absolute() || path.has_root_name() || path.extension() != ".arcflow") return false;\n    const auto normalized = path.lexically_normal();\n    return normalized.generic_string() == value &&\n           std::none_of(normalized.begin(), normalized.end(), [](const auto& part) { return part == ".."; });\n}\n\nbool validate_asset_reference_json(const json& value, const std::filesystem::path& project_root)\n{''')
+          # Every known set: Flow after Water.
+          text=read(p)
+          old='''                                                            "Water",\n                                                            "Vegetation",'''
+          if old not in text: raise SystemExit('known-set anchor missing')
+          text=text.replace(old,'''                                                            "Water",\n                                                            "Flow",\n                                                            "Vegetation",''')
+          old2='''                                                               "Water",\n                                                               "Vegetation",'''
+          if old2 in text:
+              text=text.replace(old2,'''                                                               "Water",\n                                                               "Flow",\n                                                               "Vegetation",''')
+          write(p,text)
+          replace_once(p,
+          '''    if (name == "Active")\n        return value.contains("value") && value["value"].is_boolean() ? true : fail("has an invalid active value");''',
+          '''    if (name == "Active")\n        return value.contains("value") && value["value"].is_boolean() ? true : fail("has an invalid active value");\n    if (name == "Flow")\n        return value.contains("graph") && value["graph"].is_string() &&\n                       valid_flow_graph_reference(value["graph"].get<std::string>()) && value.contains("enabled") &&\n                       value["enabled"].is_boolean()\n                   ? true\n                   : fail("has an invalid Flow graph binding");''')
+          replace_once(p,
+          '''    if (const auto* component = state.scene.try_get<scene::water_component>(value))\n        components["Water"] =''',
+          '''    if (const auto* component = state.scene.try_get<scene::flow_component>(value))\n        components["Flow"] = {{"version", 1}, {"graph", component->graph_path}, {"enabled", component->enabled}};\n    if (const auto* component = state.scene.try_get<scene::water_component>(value))\n        components["Water"] =''')
+          replace_once(p,
+          '''            if (components.contains("RenderLayer"))\n                loaded.scene.emplace<scene::render_layer_component>(entity,''',
+          '''            if (components.contains("Flow"))\n            {\n                const auto& flow = components["Flow"];\n                loaded.scene.emplace<scene::flow_component>(\n                    entity, scene::flow_component{flow.value("graph", ""), flow.value("enabled", true)});\n            }\n            if (components.contains("RenderLayer"))\n                loaded.scene.emplace<scene::render_layer_component>(entity,''')
+
+          # Frontend inspector type parsing.
+          p='editor/src/renderer/src/inspector/inspectorTypes.ts'
+          replace_once(p,
+          '''export type InspectorEntitySnapshot = Omit<BaseInspectorEntitySnapshot, 'meshRenderer'> & {\n  meshRenderer: InspectorMeshRenderer | null;''',
+          '''export type InspectorFlow = {\n  graphPath: string;\n  enabled: boolean;\n};\n\nexport type InspectorEntitySnapshot = Omit<BaseInspectorEntitySnapshot, 'meshRenderer'> & {\n  meshRenderer: InspectorMeshRenderer | null;\n  flow?: InspectorFlow | null;''')
+          # Add parser before exported parse function using mesh parser anchor.
+          replace_once(p,
+          '''export function parseInspectorSnapshot(payloadJson: string): InspectorEntitySnapshot | null {''',
+          '''function parseFlow(value: unknown): InspectorFlow | null {\n  if (!value || typeof value !== 'object') return null;\n  const raw = value as Record<string, unknown>;\n  return {\n    graphPath: typeof raw.graphPath === 'string' ? raw.graphPath : '',\n    enabled: raw.enabled !== false,\n  };\n}\n\nexport function parseInspectorSnapshot(payloadJson: string): InspectorEntitySnapshot | null {''')
+          replace_once(p,
+          '''    meshRenderer: parseMeshRenderer(raw.meshRenderer),''',
+          '''    meshRenderer: parseMeshRenderer(raw.meshRenderer),\n    flow: parseFlow(raw.flow),''')
+
+          # Inspector schema.
+          p='editor/src/renderer/src/inspector/componentSchemas.ts'
+          replace_once(p,
+          '''  {\n    id: 'prefab',\n    title: 'Prefab Instance',''',
+          '''  {\n    id: 'flow',\n    title: 'Flow',\n    badge: 'Gameplay',\n    fields: [\n      { id: 'enabled', label: 'Enabled', path: 'flow.enabled', type: 'boolean' },\n      {\n        id: 'graph',\n        label: 'Graph',\n        path: 'flow.graphPath',\n        type: 'asset',\n        assetKind: 'asset',\n        allowedExtensions: ['.arcflow'],\n        allowEmpty: false,\n        tooltip: 'Flow Graph instantiated for this entity when Play starts.',\n      },\n    ],\n  },\n  {\n    id: 'prefab',\n    title: 'Prefab Instance',''')
+          replace_once(p,
+          '''                    : schema.id === 'water'\n                      ? snapshot.water !== null\n                      : snapshot.prefab !== null,''',
+          '''                    : schema.id === 'water'\n                      ? snapshot.water !== null\n                      : schema.id === 'flow'\n                        ? snapshot.flow !== null && snapshot.flow !== undefined\n                        : snapshot.prefab !== null,''')
+
+          # Add Component picker.
+          p='editor/src/renderer/src/inspector/AddComponentPicker.tsx'
+          replace_once(p,
+          '''  { id: 'terrain', label: 'Terrain', category: 'World' },\n];''',
+          '''  { id: 'terrain', label: 'Terrain', category: 'World' },\n  { id: 'flow', label: 'Flow', category: 'Gameplay', tooltip: 'Run a Flow Graph on this entity during Play.' },\n];''')
+          replace_once(p,
+          '''  if (id === 'terrain') return snapshot.terrain !== null;\n  return false;''',
+          '''  if (id === 'terrain') return snapshot.terrain !== null;\n  if (id === 'flow') return snapshot.flow !== null && snapshot.flow !== undefined;\n  return false;''')
+
+          # Inspector edits/actions.
+          p='editor/src/renderer/src/inspector/InspectorPanel.tsx'
+          replace_once(p,
+          '''              : component === 'water'\n                ? 'Edit Water'\n                : 'Edit Terrain';''',
+          '''              : component === 'water'\n                ? 'Edit Water'\n                : component === 'flow'\n                  ? 'Edit Flow'\n                  : 'Edit Terrain';''')
+          replace_once(p,
+          '''    } else if (component === 'water' && next.water) {''',
+          '''    } else if (component === 'flow' && next.flow) {\n      void runMutation(\n        next,\n        'entity.setFlow',\n        { ...entityPayload(next), graphPath: next.flow.graphPath, enabled: next.flow.enabled },\n        settled,\n        transactionKey,\n        transactionLabel,\n      );\n    } else if (component === 'water' && next.water) {''')
+          replace_once(p,
+          '''      water: 'water',\n      prefab: 'prefab',''',
+          '''      water: 'water',\n      flow: 'flow',\n      prefab: 'prefab',''')
+
+          # Dedicated integration tests.
+          write('editor/native/tests/flow_play_runtime_tests.cpp', r'''#include "../src/flow_play_runtime.h"
+
+#include <arc/framework/framework.h>
+#include <arc/scene/components.h>
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <filesystem>
+#include <fstream>
+
+namespace
+{
+class flow_test_application final : public arc::framework::application
+{
+};
+
+std::filesystem::path temporary_content_root()
+{
+    const auto root = std::filesystem::temp_directory_path() / "arc-flow-f61-tests";
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+    std::filesystem::create_directories(root / "Logic");
+    return root;
+}
+
+void write_empty_flow(const std::filesystem::path& path)
+{
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    output << R"json({
+      "version":1,"assetType":"flow","name":"Runtime",
+      "graph":{"version":1,"variables":[],"nodes":[
+        {"id":"begin","type":"beginPlay","position":[0,0],"values":{}},
+        {"id":"fixed","type":"fixedTick","position":[0,100],"values":{}},
+        {"id":"tick","type":"tick","position":[0,200],"values":{}},
+        {"id":"end","type":"endPlay","position":[0,300],"values":{}}
+      ],"connections":[],"viewport":{"x":0,"y":0,"zoom":1}}
+    })json";
+}
+} // namespace
+
+TEST_CASE("Flow F6.1 accepts only normalized Content-relative graph paths")
+{
+    using arc::editor::valid_flow_graph_path;
+    REQUIRE(valid_flow_graph_path("Logic/Player.arcflow"));
+    REQUIRE_FALSE(valid_flow_graph_path(""));
+    REQUIRE_FALSE(valid_flow_graph_path("../Player.arcflow"));
+    REQUIRE_FALSE(valid_flow_graph_path("Logic\\Player.arcflow"));
+    REQUIRE_FALSE(valid_flow_graph_path("Logic/../Player.arcflow"));
+    REQUIRE_FALSE(valid_flow_graph_path("Logic/Player.json"));
+}
+
+TEST_CASE("Flow F6.1 shares bytecode and keeps one VM per Play entity")
+{
+    const auto content = temporary_content_root();
+    write_empty_flow(content / "Logic" / "Shared.arcflow");
+
+    flow_test_application app;
+    arc::framework::runtime host(app);
+    auto& runtime_world = host.worlds().create({.name = "Flow Test",
+                                                 .role = arc::framework::runtime_world_role::editor_preview,
+                                                 .install_placeholder_systems = false});
+    for (int index = 0; index < 2; ++index)
+    {
+        const auto entity = runtime_world.entities().create();
+        runtime_world.entities().emplace<arc::scene::active_component>(entity);
+        runtime_world.entities().emplace<arc::scene::flow_component>(
+            entity, arc::scene::flow_component{"Logic/Shared.arcflow", true});
+    }
+
+    const auto installed = arc::editor::install_flow_play_runtime(runtime_world, content);
+    REQUIRE(installed.succeeded);
+    REQUIRE(installed.instances == 2);
+    REQUIRE(installed.unique_programs == 1);
+    REQUIRE(runtime_world.systems().size() == 2);
+
+    host.start();
+    const auto frame = host.advance(1.0 / 60.0);
+    REQUIRE(frame.completed_ticks == 1);
+    host.shutdown();
+
+    std::error_code error;
+    std::filesystem::remove_all(content, error);
+}
+
+TEST_CASE("Flow F6.1 rejects missing authored graphs before Play starts")
+{
+    const auto content = temporary_content_root();
+    flow_test_application app;
+    arc::framework::runtime host(app);
+    auto& runtime_world = host.worlds().create({.name = "Missing Flow",
+                                                 .role = arc::framework::runtime_world_role::editor_preview,
+                                                 .install_placeholder_systems = false});
+    const auto entity = runtime_world.entities().create();
+    runtime_world.entities().emplace<arc::scene::flow_component>(
+        entity, arc::scene::flow_component{"Logic/Missing.arcflow", true});
+
+    const auto installed = arc::editor::install_flow_play_runtime(runtime_world, content);
+    REQUIRE_FALSE(installed.succeeded);
+    REQUIRE_FALSE(installed.error.empty());
+
+    std::error_code error;
+    std::filesystem::remove_all(content, error);
+}
+''')
+
+          # Documentation.
+          write('docs/flow-play-integration.md', r'''# Flow Play integration
+
+Flow F6.1 binds authored `.arcflow` graphs to scene entities through the `Flow` component.
+The component stores a normalized path relative to the project's `Content` directory and an enabled flag.
+
+When Play starts, ARC clones the Authoring World first, then scans the isolated Play World for enabled Flow bindings.
+Each unique graph path is read and compiled once into immutable Flow bytecode. Every bound entity receives its own
+`vm_instance`, so graph variables and value slots never leak between entities that share the same graph asset.
+
+`Begin Play` is dispatched after project-module BeginPlay and before the runtime world starts. Fixed simulation ticks
+and physical input events run in the gameplay-command phase; frame `Tick` runs in presentation extraction. `End Play`
+runs when the Play runtime world releases its Flow systems. All Flow world operations use the stable M3.5
+`game_world_api_v1` bridge and therefore preserve normal scheduler command-buffer boundaries.
+
+F6.1 exposes deterministic physical input action tokens until the higher-level input action-map layer is connected:
+`Key.<code>`, `MouseButton.<code>`, `MouseWheel`, and `Focus`. Presses dispatch Triggered and releases dispatch Completed.
+Mouse position changes are not Flow actions.
+
+The binding set is established at Play start. Runtime-created entities do not automatically instantiate newly attached
+Flow components in F6.1; that hot-instantiation lifecycle is intentionally left to a later Flow milestone.
+''')
+          PY
+
+          if command -v clang-format-18 >/dev/null 2>&1; then
+            clang-format-18 -i \
+              engine/scene/inc/arc/scene/components.h \
+              editor/native/src/flow_play_runtime.h \
+              editor/native/src/flow_play_runtime.cpp \
+              editor/native/inc/arc/editor/host_protocol_base.h \
+              editor/native/src/host_protocol_base.inc \
+              editor/native/src/arc_host_base.inc \
+              editor/native/src/scene_document.cpp \
+              editor/native/tests/flow_play_runtime_tests.cpp
+          fi
+
+          git status --short
+          git config user.name "Richard Thorell"
+          git config user.email "richard.thorell@outlook.com"
+          git add engine/scene/inc/arc/scene/components.h \
+                  editor/native/CMakeLists.txt editor/native/src/arc_host_impl.inc \
+                  editor/native/src/arc_host_base.inc editor/native/src/flow_play_runtime.h \
+                  editor/native/src/flow_play_runtime.cpp editor/native/inc/arc/editor/host_protocol_base.h \
+                  editor/native/src/host_protocol_base.inc editor/native/src/scene_document.cpp \
+                  editor/native/tests/flow_play_runtime_tests.cpp docs/flow-play-integration.md \
+                  editor/src/renderer/src/inspector/inspectorTypes.ts \
+                  editor/src/renderer/src/inspector/componentSchemas.ts \
+                  editor/src/renderer/src/inspector/AddComponentPicker.tsx \
+                  editor/src/renderer/src/inspector/InspectorPanel.tsx
+          git commit -m "Add Flow F6.1 entity Play integration"
+          git push origin HEAD:feature/flow-f61-entity-play-integration
+
+      - name: Configure native editor
+        run: cmake --preset editor-no-vulkan
+      - name: Build native editor tests
+        run: cmake --build --preset editor-no-vulkan --target arc_editor_host_tests -j 2
+      - name: Run Flow F6.1 native tests
+        run: ctest --test-dir out/build/editor-no-vulkan --output-on-failure -R "Flow F6.1"
+      - name: Frontend checks
+        working-directory: editor
+        run: |
+          npm ci
+          npm run typecheck
