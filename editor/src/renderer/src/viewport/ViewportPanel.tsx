@@ -1,26 +1,42 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DragEvent, KeyboardEvent, PointerEvent, ReactNode, WheelEvent } from 'react';
-import { Box, Camera, Eye, EyeOff, Focus, Maximize2, RefreshCw } from 'lucide-react';
+import {
+  Box,
+  Camera,
+  Eye,
+  EyeOff,
+  Focus,
+  Maximize2,
+  RefreshCw,
+} from 'lucide-react';
+import {
+  type DragEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+  type WheelEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
-import type { CommandId } from '../app/workbenchTypes';
-import type { StartupState } from '../app/workbenchTypes';
-import type { ProjectSnapshot } from '../services/editorHostTypes';
-import { collectSceneCameraSources } from './viewportCameraSource';
-import { arcAssetDragMime, arcEnvironmentDragMime, readArcAssetDragPayload } from '../services/assetDragPayload';
-import { assignDroppedMaterialToViewport, instantiateDroppedMeshInViewport } from './viewportAssetDrop';
+import type { ProjectSnapshot } from '../../../common/projectTypes';
+import type { StartupState } from '../../../common/startupTypes';
+import type { HostResponse, ViewportRenderOptions, ViewportStats } from '../../../common/types';
+import { arcAssetDragMime, arcEnvironmentDragMime, readArcAssetDragPayload } from '../assets/assetDrag';
+import { assignDroppedMaterialToViewport, instantiateDroppedMeshInViewport } from '../assets/assetDrop';
+import { collectSceneCameraSources } from './cameraSources';
+import { normalizeViewportWheel, toViewportPixels, viewportFlyMovement, viewportFlyMovementCodes } from './viewportInput';
 
-import './viewport.css';
-import { toViewportPixels } from './viewportCoordinates';
-import { viewportFlyMovement, viewportFlyMovementCodes } from './viewportFlyNavigation';
-import { normalizeViewportWheel } from './viewportWheel';
+import './ViewportPanel.css';
 
 type ViewportPanelProps = {
   viewportId?: string;
   project: ProjectSnapshot | null;
   startupState: StartupState | null;
   playSessionActive?: boolean;
-  onCommand: (command: CommandId) => void;
-  onReconnect: () => Promise<void>;
+  onCommand: (command: string) => void;
+  onReconnect: () => void | Promise<void>;
   gridVisible?: boolean;
   onGridVisibilityChange?: (visible: boolean) => void;
   onFocusChange?: (focused: boolean) => void;
@@ -37,58 +53,10 @@ type DragState = {
   y: number;
 };
 
-type HostResponse<T> = {
-  kind: 'response';
-  requestId: number;
-  succeeded: boolean;
-  error: string;
-  payload: T;
-};
-
-type ViewportStats = {
-  viewportId?: string;
-  width: number;
-  height: number;
-  fps: number;
-  frameTimeMs: number;
-  drawCalls: number;
-  frameIndex: number;
-  submitted: boolean;
-  renderOptions?: ViewportRenderOptions;
-  camera?: {
-    transform: { position: [number, number, number] };
-    focus: { position: [number, number, number] };
-  } | null;
-};
-
-type ViewportRenderOptions = {
-  renderMode: 'shaded' | 'wireframe';
-  visualization: string;
-  overlay: 'none' | 'selectedWireframe' | 'allWireframe';
-  selectionOutline: boolean;
-  hoverOutline: boolean;
-  selectionBounds: boolean;
-  componentGizmos: boolean;
-  selectionHierarchy: boolean;
-  shadows: boolean;
-  grid: boolean;
-  skeletons: boolean;
-  realtime: boolean;
-  cameraSpeed: number;
-  antiAliasing: 'inherit' | 'disabled' | 'fxaa' | 'taa' | 'taau';
-  environment: {
-    sky: boolean;
-    fog: boolean;
-    terrain: boolean;
-    water: boolean;
-    vegetation: boolean;
-    decals: boolean;
-  };
-};
-
 const defaultRenderOptions: ViewportRenderOptions = {
   renderMode: 'shaded',
   visualization: 'standard',
+  indirectLighting: 'auto',
   overlay: 'none',
   selectionOutline: true,
   hoverOutline: true,
@@ -333,12 +301,15 @@ export function ViewportPanel({
       if (response?.succeeded === false) throw new Error(response.error || 'Native viewport fallback was rejected');
       viewportAttachedRef.current = true;
       lastViewportBoundsRef.current = boundsKey(bounds);
+      void sendGridColor(gridColorRef.current).catch((error) => {
+        setViewportError(error instanceof Error ? error.message : String(error));
+      });
       setTransport('native');
       setViewportError('');
     } catch (error) {
       setViewportError(error instanceof Error ? error.message : String(error));
     }
-  }, [streamedAvailable, viewportBounds]);
+  }, [sendGridColor, streamedAvailable, viewportBounds]);
 
   const resizeViewport = useCallback(() => {
     if (!viewportActive || !viewportAttachedRef.current) {
@@ -760,13 +731,14 @@ export function ViewportPanel({
     onGridVisibilityChange?.(visible);
     try {
       const renderOptions = viewportStats.renderOptions ?? defaultRenderOptions;
+      const next = { ...renderOptions, grid: visible };
       const response = (await window.arc.host.command('viewport.setRenderOptions', {
         viewportId,
-        ...renderOptions,
-        grid: visible,
+        ...next,
         gridColor: gridColorValue(gridColorRef.current),
       })) as ViewportCommandResponse;
       if (!response?.succeeded) throw new Error(response?.error || 'Could not update viewport grid');
+      renderOptionsRef.current = next;
       setViewportStats((current) => ({
         ...current,
         renderOptions: { ...(current.renderOptions ?? defaultRenderOptions), grid: visible },
@@ -791,6 +763,7 @@ export function ViewportPanel({
       })) as ViewportCommandResponse;
       if (response?.succeeded === false) throw new Error(response.error || 'Viewport options were rejected');
     } catch (error) {
+      renderOptionsRef.current = previous;
       setViewportStats((current) => ({ ...current, renderOptions: previous }));
       setViewportError(error instanceof Error ? error.message : String(error));
     }
