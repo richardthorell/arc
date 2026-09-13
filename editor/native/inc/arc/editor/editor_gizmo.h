@@ -44,7 +44,8 @@ float editor_gizmo_world_scale(const scene::camera_component& camera,
  * density while zooming. World axes remain anchored at the origin.
  */
 void append_editor_grid_overlay(render::debug_overlay_stream& stream, const scene::camera_component& camera,
-                                const scene::transform_component& camera_transform, std::uint32_t viewport_height);
+                                const scene::transform_component& camera_transform, std::uint32_t viewport_height,
+                                const math::vector3f& grid_color = {0.2f, 0.21568628f, 0.23921569f});
 
 /** Append an editor-only bind-pose skeleton visualization without creating bone entities. */
 void append_editor_skeleton_overlay(render::debug_overlay_stream& stream, const ecs::world& registry,

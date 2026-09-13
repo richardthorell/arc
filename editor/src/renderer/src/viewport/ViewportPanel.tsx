@@ -131,6 +131,17 @@ const fallbackStats = (project: ProjectSnapshot | null): ViewportStats => ({
   submitted: false,
 });
 
+const defaultGridColor = '#33373D';
+const gridColorValue = (value: string) => {
+  const match = /^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/.exec(value);
+  if (!match) return [0.2, 0.21568628, 0.23921569] as const;
+  return [
+    Number.parseInt(match[1], 16) / 255,
+    Number.parseInt(match[2], 16) / 255,
+    Number.parseInt(match[3], 16) / 255,
+  ] as const;
+};
+
 const formatNumber = (value: number) => Math.max(0, value).toLocaleString();
 const formatFps = (value: number) => (Number.isFinite(value) && value > 0 ? value.toFixed(0) : '--');
 const formatFrameTime = (value: number) => (Number.isFinite(value) && value > 0 ? value.toFixed(2) : '--');
@@ -168,6 +179,8 @@ export function ViewportPanel({
   const [playInputCaptured, setPlayInputCaptured] = useState(false);
   const [sharedFailure, setSharedFailure] = useState('');
   const [viewportStats, setViewportStats] = useState<ViewportStats>(() => fallbackStats(project));
+  const renderOptionsRef = useRef<ViewportRenderOptions>(defaultRenderOptions);
+  const gridColorRef = useRef(defaultGridColor);
   const [localGridVisible, setLocalGridVisible] = useState(true);
   const [projection, setProjection] = useState('perspective');
   const [cameraSourceId, setCameraSourceId] = useState('editor');
@@ -224,6 +237,43 @@ export function ViewportPanel({
     setViewportError(`Shared GPU viewport failed: ${detail}`);
   }, []);
 
+  const sendGridColor = useCallback(
+    async (value: string) => {
+      if (!viewportActive || !viewportAttachedRef.current) return;
+      const [red, green, blue] = gridColorValue(value);
+      const response = (await window.arc.host.command('viewport.setRenderOptions', {
+        viewportId,
+        ...renderOptionsRef.current,
+        gridColor: [red, green, blue],
+      })) as ViewportCommandResponse;
+      if (response?.succeeded === false) throw new Error(response.error || 'Could not update viewport grid color');
+    },
+    [viewportActive, viewportId],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const applySnapshot = (next: import('../../../common/editorWorkflowTypes').EditorSettingsSnapshot | null) => {
+      if (cancelled) return;
+      const value = next?.values['renderer.gridColor'];
+      if (typeof value !== 'string') return;
+      gridColorRef.current = value;
+      void sendGridColor(value).catch((error) => {
+        if (!cancelled) setViewportError(error instanceof Error ? error.message : String(error));
+      });
+    };
+    if (window.arc.settings) void window.arc.settings.snapshot().then(applySnapshot);
+    const onSettingsChanged = (event: Event) =>
+      applySnapshot(
+        (event as CustomEvent<import('../../../common/editorWorkflowTypes').EditorSettingsSnapshot>).detail,
+      );
+    window.addEventListener('arc-editor-settings-changed', onSettingsChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('arc-editor-settings-changed', onSettingsChanged);
+    };
+  }, [sendGridColor]);
+
   const attachViewport = useCallback(async () => {
     if (!viewportActive || (streamedAvailable && sharedFailureRef.current)) {
       return;
@@ -246,6 +296,9 @@ export function ViewportPanel({
       }
       viewportAttachedRef.current = true;
       lastViewportBoundsRef.current = boundsKey(bounds);
+      void sendGridColor(gridColorRef.current).catch((error) => {
+        setViewportError(error instanceof Error ? error.message : String(error));
+      });
       if (streamedAvailable) {
         sharedFailureRef.current = '';
         setSharedFailure('');
@@ -259,7 +312,7 @@ export function ViewportPanel({
       }
       setViewportError(reason);
     }
-  }, [recordSharedFailure, streamedAvailable, viewportActive, viewportBounds]);
+  }, [recordSharedFailure, sendGridColor, streamedAvailable, viewportActive, viewportBounds]);
 
   const retrySharedViewport = useCallback(() => {
     if (!streamedAvailable) return;
@@ -374,6 +427,7 @@ export function ViewportPanel({
       try {
         const response = (await window.arc.host.query('viewport.state', { viewportId })) as HostResponse<ViewportStats>;
         if (!cancelled && response?.succeeded && response.payload) {
+          if (response.payload.renderOptions) renderOptionsRef.current = response.payload.renderOptions;
           setViewportStats(response.payload);
           if (typeof response.payload.renderOptions?.grid === 'boolean')
             setLocalGridVisible(response.payload.renderOptions.grid);
@@ -710,6 +764,7 @@ export function ViewportPanel({
         viewportId,
         ...renderOptions,
         grid: visible,
+        gridColor: gridColorValue(gridColorRef.current),
       })) as ViewportCommandResponse;
       if (!response?.succeeded) throw new Error(response?.error || 'Could not update viewport grid');
       setViewportStats((current) => ({
@@ -726,11 +781,13 @@ export function ViewportPanel({
   const updateRenderOptions = async (changes: Partial<ViewportRenderOptions>) => {
     const previous = viewportStats.renderOptions ?? defaultRenderOptions;
     const next = { ...previous, ...changes, environment: changes.environment ?? previous.environment };
+    renderOptionsRef.current = next;
     setViewportStats((current) => ({ ...current, renderOptions: next }));
     try {
       const response = (await window.arc.host.command('viewport.setRenderOptions', {
         viewportId,
         ...next,
+        gridColor: gridColorValue(gridColorRef.current),
       })) as ViewportCommandResponse;
       if (response?.succeeded === false) throw new Error(response.error || 'Viewport options were rejected');
     } catch (error) {

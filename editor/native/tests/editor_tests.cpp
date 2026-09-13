@@ -318,7 +318,7 @@ TEST_CASE("editor selection keeps one selected entity")
     REQUIRE_FALSE(scene.get<arc::scene::selection_component>(second).selected);
 }
 
-TEST_CASE("editor grid is white and extends beyond the default floor")
+TEST_CASE("editor perspective grid uses adaptive hierarchy and semantic XZ axes")
 {
     arc::ecs::world registry;
     const auto camera_entity = registry.create();
@@ -329,21 +329,85 @@ TEST_CASE("editor grid is white and extends beyond the default floor")
     arc::scene::update_world_transforms(registry);
 
     arc::render::debug_overlay_stream overlay;
+    const arc::math::vector3f grid_color{0.2f, 0.21568628f, 0.23921569f};
     arc::editor::append_editor_grid_overlay(overlay, registry.get<arc::scene::camera_component>(camera_entity),
-                                            registry.get<arc::scene::transform_component>(camera_entity), 720u);
+                                            registry.get<arc::scene::transform_component>(camera_entity), 720u,
+                                            grid_color);
     REQUIRE_FALSE(overlay.lines.empty());
 
     float maximum_extent = 0.0f;
+    bool saw_minor{};
+    bool saw_major{};
+    bool saw_x_axis{};
+    bool saw_z_axis{};
     for (const auto& line : overlay.lines)
     {
-        CHECK(line.color[0] == Catch::Approx(line.color[1]));
-        CHECK(line.color[1] == Catch::Approx(line.color[2]));
+        CHECK(line.depth == arc::render::debug_overlay_depth_mode::tested);
         maximum_extent = std::max(maximum_extent, std::abs(line.start[0]));
         maximum_extent = std::max(maximum_extent, std::abs(line.start[2]));
         maximum_extent = std::max(maximum_extent, std::abs(line.end[0]));
         maximum_extent = std::max(maximum_extent, std::abs(line.end[2]));
+        if (line.color[0] == Catch::Approx(0.7882353f).margin(0.0001f) &&
+            line.color[1] == Catch::Approx(0.3372549f).margin(0.0001f))
+            saw_x_axis = true;
+        else if (line.color[0] == Catch::Approx(0.2980392f).margin(0.0001f) &&
+                 line.color[2] == Catch::Approx(0.8196079f).margin(0.0001f))
+            saw_z_axis = true;
+        else
+        {
+            saw_minor = saw_minor || line.color[3] < 0.45f;
+            saw_major = saw_major || line.color[3] > 0.50f;
+        }
     }
     CHECK(maximum_extent >= 50.0f);
+    CHECK(saw_minor);
+    CHECK(saw_major);
+    CHECK(saw_x_axis);
+    CHECK(saw_z_axis);
+}
+
+TEST_CASE("editor orthographic grid rotates onto the camera plane and emphasizes its axes")
+{
+    arc::ecs::world registry;
+    const auto camera_entity = registry.create();
+    arc::scene::transform_component camera_transform;
+    camera_transform.position = {0.0f, 0.0f, 10.0f};
+    registry.emplace<arc::scene::transform_component>(camera_entity, camera_transform);
+    arc::scene::camera_component camera;
+    camera.projection = arc::scene::camera_projection::orthographic;
+    camera.orthographic_height = 67.5f;
+    registry.emplace<arc::scene::camera_component>(camera_entity, camera);
+    arc::scene::update_world_transforms(registry);
+
+    arc::render::debug_overlay_stream overlay;
+    arc::editor::append_editor_grid_overlay(overlay, registry.get<arc::scene::camera_component>(camera_entity),
+                                            registry.get<arc::scene::transform_component>(camera_entity), 720u);
+    REQUIRE_FALSE(overlay.lines.empty());
+
+    bool saw_x_axis{};
+    bool saw_y_axis{};
+    float minimum_grid_alpha = 1.0f;
+    float maximum_grid_alpha = 0.0f;
+    for (const auto& line : overlay.lines)
+    {
+        CHECK(std::abs(line.start[2]) < 0.01f);
+        CHECK(std::abs(line.end[2]) < 0.01f);
+        const bool x_axis = line.color[0] == Catch::Approx(0.7882353f).margin(0.0001f) &&
+                            line.color[1] == Catch::Approx(0.3372549f).margin(0.0001f);
+        const bool y_axis = line.color[0] == Catch::Approx(0.4117647f).margin(0.0001f) &&
+                            line.color[1] == Catch::Approx(0.7098039f).margin(0.0001f);
+        saw_x_axis = saw_x_axis || x_axis;
+        saw_y_axis = saw_y_axis || y_axis;
+        if (!x_axis && !y_axis)
+        {
+            minimum_grid_alpha = std::min(minimum_grid_alpha, line.color[3]);
+            maximum_grid_alpha = std::max(maximum_grid_alpha, line.color[3]);
+        }
+    }
+    CHECK(saw_x_axis);
+    CHECK(saw_y_axis);
+    CHECK(minimum_grid_alpha < 0.45f);
+    CHECK(maximum_grid_alpha > minimum_grid_alpha + 0.1f);
 }
 
 TEST_CASE("editor gizmos keep constant screen size and hit test colored axes")

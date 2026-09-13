@@ -25,6 +25,16 @@ const schema: EditorSettingDescriptor[] = [
     scopes: ['user', 'project'],
   },
   {
+    key: 'renderer.gridColor',
+    section: 'Renderer',
+    label: 'Grid Color',
+    description: 'Base color used by the editor viewport grid.',
+    type: 'string',
+    format: 'color',
+    defaultValue: '#33373D',
+    scopes: ['user', 'project'],
+  },
+  {
     key: 'renderer.qualityTier',
     section: 'Renderer',
     label: 'Quality Tier',
@@ -277,6 +287,8 @@ const validateValue = (descriptor: EditorSettingDescriptor, value: unknown): voi
   if (descriptor.type === 'boolean' && typeof value !== 'boolean')
     throw new Error(`${descriptor.key} must be a Boolean value`);
   if (descriptor.type === 'string' && typeof value !== 'string') throw new Error(`${descriptor.key} must be a string`);
+  if (descriptor.format === 'color' && (typeof value !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(value)))
+    throw new Error(`${descriptor.key} must be a #RRGGBB color`);
   if (descriptor.type === 'enum') {
     if (typeof value !== 'string' || !descriptor.options?.includes(value))
       throw new Error(`${descriptor.key} must be one of ${descriptor.options?.join(', ')}`);

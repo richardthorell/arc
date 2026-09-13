@@ -2313,8 +2313,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 push_event(state_->events, state_->event_sequence, host_event_type::command_failed, message, entity);
                 return host_response{.request_id = request_id, .succeeded = false, .error = std::move(message)};
             };
-            const auto success = [request_id](std::string payload_json = "{}")
-            {
+            const auto success = [request_id](std::string payload_json = "{}") {
                 return host_response{
                     .request_id = request_id, .succeeded = true, .payload_json = std::move(payload_json)};
             };
@@ -2339,8 +2338,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     {
                         const auto editor_module =
                             std::find_if(descriptor.value().modules.begin(), descriptor.value().modules.end(),
-                                         [&](const auto& module)
-                                         {
+                                         [&](const auto& module) {
                                              return module.enabled && module.kind == project::module_kind::editor &&
                                                     module.id == payload.editor_module_id;
                                          });
@@ -4763,6 +4761,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 state_->viewport_options.selection_hierarchy = payload.selection_hierarchy;
                 state_->viewport_options.shadows = payload.shadows;
                 state_->viewport_options.grid = payload.grid;
+                state_->viewport_options.grid_color = payload.grid_color;
                 state_->viewport_options.skeletons = payload.skeletons;
                 state_->viewport_options.realtime = payload.realtime;
                 state_->viewport_options.camera_speed = payload.camera_speed;
@@ -6785,7 +6784,8 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         const auto* camera_transform =
             state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity);
         if (camera && camera_transform)
-            append_editor_grid_overlay(debug_overlay, *camera, *camera_transform, request.height);
+            append_editor_grid_overlay(debug_overlay, *camera, *camera_transform, request.height,
+                                       {request.grid_color.x, request.grid_color.y, request.grid_color.z});
     }
     if (state_->preview_stopped && state_->viewport_tool.tool == host_viewport_tool::terrain &&
         state_->terrain_brush_local_position && state_->scene.scene.alive(state_->scene.terrain_entity))

@@ -39,6 +39,7 @@ export type EditorSettingDescriptor = {
   label: string;
   description: string;
   type: 'boolean' | 'number' | 'string' | 'enum';
+  format?: 'color';
   defaultValue: boolean | number | string;
   minimum?: number;
   maximum?: number;
