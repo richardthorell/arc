@@ -1,0 +1,55 @@
+name: F61 final inspect
+on:
+  push:
+    branches: [feature/flow-f61-entity-play-integration]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Print exact hooks
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          def print_range(p,a,b):
+            l=Path(p).read_text(errors='replace').splitlines()
+            print(f'\n### {p}:{a}-{b}')
+            print('\n'.join(f'{i+1}: {l[i]}' for i in range(a-1,min(b,len(l)))))
+          # project module exact install/lifecycle
+          p='editor/native/src/project_module_loader.cpp'; l=Path(p).read_text().splitlines()
+          for needle in ['bool project_module::install_systems','install_systems(','project_system_context','game_world_api_v1']:
+            for i,s in enumerate(l):
+              if needle in s:
+                print_range(p,max(1,i-20),i+170); break
+          # framework runtime/scheduler exact declarations
+          for p in Path('engine/framework').rglob('*.h'):
+            t=p.read_text(errors='ignore')
+            if 'class runtime_world' in t or 'struct runtime_world' in t or 'register_system' in t or 'system_descriptor' in t:
+              print(f'\n### FULL {p}')
+              print(t[:30000])
+          # selected snapshot builder
+          p='editor/native/src/arc_host_base.inc'; l=Path(p).read_text().splitlines()
+          for needle in ['host_selected_entity_snapshot selected_entity_snapshot','host_selected_entity_snapshot snapshot','selected_entity_snapshot()']:
+            for i,s in enumerate(l):
+              if needle in s:
+                print_range(p,max(1,i-30),i+180); break
+          # editor native cmake links
+          print_range('editor/native/CMakeLists.txt',1,150)
+          # inspector types and edit dispatch
+          for p in ['editor/src/renderer/src/inspector/inspectorTypes.ts','editor/src/renderer/src/inspector/componentSchemas.ts','editor/src/renderer/src/InspectorPanel.tsx']:
+            if Path(p).exists():
+              print(f'\n### FULL {p}')
+              print(Path(p).read_text(errors='replace')[:30000])
+          # host bridge TS request helpers
+          for p in Path('editor/src/renderer/src').rglob('*.ts*'):
+            t=p.read_text(errors='ignore')
+            if 'entity.setTag' in t or 'component.operation' in t:
+              print(f'\n### COMMAND FILE {p}')
+              lines=t.splitlines()
+              for i,s in enumerate(lines):
+                if 'entity.setTag' in s or 'component.operation' in s:
+                  print('\n'.join(f'{j+1}: {lines[j]}' for j in range(max(0,i-25),min(len(lines),i+90))))
+          PY
