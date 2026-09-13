@@ -1,5 +1,6 @@
 #include "../src/flow_play_runtime.h"
 
+#include <arc/memory/memory.h>
 #include <arc/scene/components.h>
 
 #include <catch2/catch_test_macros.hpp>
@@ -21,7 +22,9 @@ TEST_CASE("Flow graph paths stay inside Content")
 
 TEST_CASE("Play world without Flow bindings installs cleanly")
 {
-    arc::framework::runtime_world world({.name = "flow-test"});
+    arc::memory::memory_system memory;
+    arc::framework::runtime_world world(memory, arc::framework::runtime_world_id{1},
+                                        {.name = "flow-test", .install_placeholder_systems = false});
     const auto root = std::filesystem::temp_directory_path() / "arc-flow-empty-content";
     const auto result = arc::editor::install_flow_play_runtime(world, root);
     CHECK(result.succeeded);
@@ -31,7 +34,9 @@ TEST_CASE("Play world without Flow bindings installs cleanly")
 
 TEST_CASE("Unassigned Flow binding is inert during Play install")
 {
-    arc::framework::runtime_world world({.name = "flow-unassigned-test"});
+    arc::memory::memory_system memory;
+    arc::framework::runtime_world world(memory, arc::framework::runtime_world_id{1},
+                                        {.name = "flow-unassigned-test", .install_placeholder_systems = false});
     const auto entity = world.entities().create();
     world.entities().emplace<arc::scene::flow_component>(entity);
 
