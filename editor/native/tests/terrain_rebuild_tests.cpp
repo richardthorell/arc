@@ -103,3 +103,68 @@ TEST_CASE("M3.4 obsolete builds cannot overwrite newer sculpt edits")
     CHECK(terrain.asset_authoring_revision == asset.authoring_revision);
     cache.clear(renderer);
 }
+
+TEST_CASE("M3.5 paint rebuild publishes attribute regions without replacing geometry")
+{
+    using namespace arc;
+    scene::terrain_component terrain;
+    terrain.size = 512.0f;
+    terrain.subdivisions = 8u;
+    terrain.heights.assign(81u, 0.0f);
+    terrain.layer_weights.assign(81u, {255u, 0u, 0u, 0u});
+    scene::terrain_asset asset;
+    asset.source.id = scene::generate_terrain_stable_id();
+    const auto layer = scene::add_terrain_paint_layer(asset).id;
+    render::renderer renderer;
+    scene::terrain_render_proxy_cache cache;
+    const auto guid = ecs::generate_entity_guid();
+    editor::terrain_rebuild_session session(asset, terrain);
+    REQUIRE(rebuild(session, cache, guid, terrain, renderer));
+    REQUIRE(cache.find(guid) != nullptr);
+    std::vector<render::geometry_resource_handle> geometry;
+    std::vector<render::texture_handle> attributes;
+    for (const auto& region : cache.find(guid)->regions)
+    {
+        geometry.push_back(region.geometry);
+        attributes.push_back(region.surface_attribute_texture);
+    }
+    const auto generation = cache.find(guid)->generation;
+    terrain.layer_weights[40u] = {127u, 128u, 0u, 0u};
+    ++terrain.content_revision;
+    const scene::terrain_dirty_region preview_dirty{
+        .min_x = 4u, .min_z = 4u, .max_x = 4u, .max_z = 4u, .valid = true, .weights_changed = true};
+    REQUIRE(cache.preview_attributes(guid, terrain, renderer, preview_dirty));
+    CHECK(cache.find(guid)->asset_owned);
+    bool preview_attributes_changed{};
+    for (std::size_t index = 0; index < geometry.size(); ++index)
+    {
+        CHECK(cache.find(guid)->regions[index].geometry == geometry[index]);
+        preview_attributes_changed = preview_attributes_changed ||
+                                     cache.find(guid)->regions[index].surface_attribute_texture != attributes[index];
+    }
+    CHECK(preview_attributes_changed);
+
+    const auto address = scene::terrain_modifier_sample_at(asset.coordinates, asset.partition, 0.0, 0.0);
+    REQUIRE(scene::accumulate_terrain_paint_samples(
+                asset, layer,
+                std::array{scene::terrain_paint_sample_edit{address.region, {address.x, address.z, {-128, 128, 0, 0}}}})
+                .revision != 0u);
+
+    session.update(asset);
+    REQUIRE(rebuild(session, cache, guid, terrain, renderer));
+    const auto* published = cache.find(guid);
+    REQUIRE(published != nullptr);
+    CHECK(published->asset_owned);
+    CHECK(published->generation == generation + 1u);
+    REQUIRE(published->regions.size() == geometry.size());
+    bool attributes_changed{};
+    for (std::size_t index = 0; index < geometry.size(); ++index)
+    {
+        CHECK(published->regions[index].geometry == geometry[index]);
+        attributes_changed =
+            attributes_changed || published->regions[index].surface_attribute_texture != attributes[index];
+    }
+    CHECK(attributes_changed);
+    CHECK(terrain.layer_weights[40u] == std::array<std::uint8_t, 4>{127u, 128u, 0u, 0u});
+    cache.clear(renderer);
+}

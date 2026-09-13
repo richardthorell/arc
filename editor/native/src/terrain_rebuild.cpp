@@ -145,7 +145,8 @@ void terrain_rebuild_session::update(scene::terrain_asset asset, bool invalidate
         asset.coordinates.origin_y,
         std::nextafter(asset.coordinates.origin_z + half, asset.coordinates.origin_z - half)};
     const auto regions = scene::terrain_regions_overlapping(asset.coordinates, asset.partition, extent);
-    std::vector<scene::terrain_region_id> dirty;
+    std::vector<scene::terrain_region_id> dirty_geometry;
+    std::vector<scene::terrain_region_id> dirty_attributes;
     for (const auto id : regions)
     {
         auto& next = scene::ensure_terrain_region(asset, id);
@@ -158,22 +159,36 @@ void terrain_rebuild_session::update(scene::terrain_asset asset, bool invalidate
         }
         if (invalidate_all || (next.dirty_domains & (scene::terrain_domain::geometry |
                                                      scene::terrain_domain::topology)) != scene::terrain_domain::none)
-            dirty.push_back(id);
+            dirty_geometry.push_back(id);
+        if ((next.dirty_domains & scene::terrain_domain::attributes) != scene::terrain_domain::none)
+            dirty_attributes.push_back(id);
     }
     // Seam positions and normals read adjacent samples. Rebuild only overlapping dependency halos.
     for (const auto id : regions)
     {
         auto& next = scene::ensure_terrain_region(asset, id);
-        const auto halo =
+        const auto geometry_halo =
             scene::expand_terrain_bounds(next.authoring_bounds, std::max(asset.partition.dependency_halo, spacing_));
-        for (const auto changed : dirty)
+        for (const auto changed : dirty_geometry)
         {
             const auto bounds = scene::terrain_region_bounds(asset.coordinates, asset.partition, changed);
-            if (halo.min_x <= bounds.max_x && halo.max_x >= bounds.min_x && halo.min_z <= bounds.max_z &&
-                halo.max_z >= bounds.min_z)
+            if (geometry_halo.min_x <= bounds.max_x && geometry_halo.max_x >= bounds.min_x &&
+                geometry_halo.min_z <= bounds.max_z && geometry_halo.max_z >= bounds.min_z)
             {
                 next.dirty_revision = asset.authoring_revision;
                 next.dirty_domains |= scene::terrain_domain::geometry;
+                break;
+            }
+        }
+        const auto attribute_halo = scene::expand_terrain_bounds(next.authoring_bounds, spacing_);
+        for (const auto changed : dirty_attributes)
+        {
+            const auto bounds = scene::terrain_region_bounds(asset.coordinates, asset.partition, changed);
+            if (attribute_halo.min_x <= bounds.max_x && attribute_halo.max_x >= bounds.min_x &&
+                attribute_halo.min_z <= bounds.max_z && attribute_halo.max_z >= bounds.min_z)
+            {
+                next.dirty_revision = asset.authoring_revision;
+                next.dirty_domains |= scene::terrain_domain::attributes;
                 break;
             }
         }
@@ -185,36 +200,6 @@ void terrain_rebuild_session::update(scene::terrain_asset asset, bool invalidate
     failed_revision_ = 0u;
     error_.clear();
 }
-
-namespace
-{
-// Painting still uses the compatibility attribute cache in M3.4. Geometry publication must
-// preserve its latest weights, including paint applied while a geometry job was in flight.
-bool publish_regions(scene::terrain_render_proxy_cache& proxies, scene::terrain_region_build_batch& batch,
-                     ecs::entity_guid guid, const scene::terrain_component& terrain, render::renderer& renderer)
-{
-    if (!scene::terrain_heightfield_valid(terrain)) return false;
-    const double spacing = static_cast<double>(terrain.size) / terrain.subdivisions;
-    for (auto& region : batch.regions)
-    {
-        if (!region.attributes) return false;
-        const auto& bounds = region.evaluation.surface.local_bounds;
-        const auto x0 = std::llround((bounds.min_x + terrain.size * 0.5) / spacing);
-        const auto z0 = std::llround((bounds.min_z + terrain.size * 0.5) / spacing);
-        auto& attributes = *region.attributes;
-        if (x0 < 0 || z0 < 0 || x0 + attributes.width > terrain.subdivisions + 1u ||
-            z0 + attributes.height > terrain.subdivisions + 1u)
-            return false;
-        if (terrain.layer_weights.empty()) continue;
-        for (std::uint32_t z = 0; z < attributes.height; ++z)
-            for (std::uint32_t x = 0; x < attributes.width; ++x)
-                attributes.material_weights[static_cast<std::size_t>(z) * attributes.width + x] =
-                    terrain.layer_weights[(static_cast<std::size_t>(z0) + z) * (terrain.subdivisions + 1u) +
-                                          static_cast<std::size_t>(x0) + x];
-    }
-    return proxies.publish(guid, batch, terrain, renderer);
-}
-} // namespace
 
 bool terrain_rebuild_session::pump(jobs::job_system& jobs, scene::terrain_render_proxy_cache& proxies,
                                    ecs::entity_guid guid, scene::terrain_component& terrain, render::renderer& renderer)
@@ -233,9 +218,10 @@ bool terrain_rebuild_session::pump(jobs::job_system& jobs, scene::terrain_render
             failed_revision_ = asset_.authoring_revision;
             ready_.reset();
         }
-        else if (publish_regions(proxies, *ready_, guid, terrain, renderer))
+        else if (proxies.publish(guid, *ready_, terrain, renderer))
         {
-            // Keep the picking/sculpt cache in agreement with the asset-owned result, without serializing products.
+            // Keep the interactive height/weight cache in agreement with the asset-owned result, without serializing
+            // compiled products into the scene document.
             for (const auto& region : ready_->regions)
             {
                 const auto& surface = region.evaluation.surface;
@@ -246,11 +232,19 @@ bool terrain_rebuild_session::pump(jobs::job_system& jobs, scene::terrain_render
                     static_cast<std::uint32_t>(std::llround((surface.local_bounds.min_z + size_ * 0.5) / spacing_));
                 for (std::uint32_t z = 0; z < grid.sample_height; ++z)
                     for (std::uint32_t x = 0; x < grid.sample_width; ++x)
-                        terrain.heights[static_cast<std::size_t>(z0 + z) * (terrain.subdivisions + 1u) + x0 + x] =
-                            grid.heights[static_cast<std::size_t>(z) * grid.sample_width + x];
-                (void)scene::mark_terrain_region_compiled(
-                    asset_, region.evaluation.region, scene::terrain_domain::geometry | scene::terrain_domain::topology,
-                    region.evaluation.build_snapshot.target_dirty_revision);
+                    {
+                        const auto destination =
+                            static_cast<std::size_t>(z0 + z) * (terrain.subdivisions + 1u) + x0 + x;
+                        const auto source = static_cast<std::size_t>(z) * grid.sample_width + x;
+                        if ((region.domains & (scene::terrain_domain::geometry | scene::terrain_domain::topology)) !=
+                            scene::terrain_domain::none)
+                            terrain.heights[destination] = grid.heights[source];
+                        if ((region.domains & scene::terrain_domain::attributes) != scene::terrain_domain::none ||
+                            region.geometry)
+                            terrain.layer_weights[destination] = grid.material_weights[source];
+                    }
+                (void)scene::mark_terrain_region_compiled(asset_, region.evaluation.region, region.domains,
+                                                          region.evaluation.build_snapshot.target_dirty_revision);
             }
             replace_all_regions_ = false;
             terrain.asset_authoring_revision = asset_.authoring_revision;

@@ -14,6 +14,7 @@ namespace arc::scene
 struct terrain_region_build
 {
     terrain_evaluation_result evaluation;
+    terrain_domain domains{terrain_domain::none};
     std::optional<render::virtual_mesh_data> geometry;
     std::optional<terrain_render_attributes> attributes;
 };

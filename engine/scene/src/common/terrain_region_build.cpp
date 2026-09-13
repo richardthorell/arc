@@ -13,21 +13,24 @@ bool terrain_region_build_queue::schedule(jobs::job_system& jobs, const terrain_
     snapshot_ = std::make_shared<const terrain_asset>(asset);
     for (const auto& region : asset.regions)
     {
-        // Painting has its own compiler; never acknowledge attribute-only dirtiness here.
-        if ((region.dirty_domains & (terrain_domain::geometry | terrain_domain::topology)) == terrain_domain::none)
-            continue;
+        const auto render_domains = terrain_domain::geometry | terrain_domain::topology | terrain_domain::attributes;
+        const auto domains = region.dirty_domains & render_domains;
+        if (domains == terrain_domain::none) continue;
         jobs_.push_back(jobs.submit_future(
             {.name = "terrain.region.build"},
-            [snapshot = snapshot_, evaluate, id = region.id]
+            [snapshot = snapshot_, evaluate, id = region.id, domains]
             {
                 terrain_region_build result;
                 result.evaluation = evaluate(*snapshot, id);
+                result.domains = domains;
                 if (result.evaluation.succeeded)
                 {
-                    result.geometry = result.evaluation.vertex_normals.empty()
-                                          ? build_terrain_render_geometry(result.evaluation.surface.view())
-                                          : build_terrain_render_region_geometry(result.evaluation.surface.view(),
-                                                                                 result.evaluation.vertex_normals);
+                    const auto geometry_domains = terrain_domain::geometry | terrain_domain::topology;
+                    if ((domains & geometry_domains) != terrain_domain::none)
+                        result.geometry = result.evaluation.vertex_normals.empty()
+                                              ? build_terrain_render_geometry(result.evaluation.surface.view())
+                                              : build_terrain_render_region_geometry(result.evaluation.surface.view(),
+                                                                                     result.evaluation.vertex_normals);
                     result.attributes = build_terrain_render_attributes(result.evaluation.surface.view());
                 }
                 return result;
@@ -62,8 +65,13 @@ std::optional<terrain_region_build_batch> terrain_region_build_queue::take_ready
         auto region = job.get();
         const auto fresh = make_terrain_build_region_snapshot(current, region.evaluation.region);
         if (fresh.target_dirty_revision != region.evaluation.build_snapshot.target_dirty_revision) result.stale = true;
-        result.succeeded = result.succeeded && !result.stale && region.evaluation.succeeded &&
-                           region.geometry.has_value() && region.attributes.has_value();
+        const auto geometry_domains = terrain_domain::geometry | terrain_domain::topology;
+        const bool geometry_ready = (region.domains & geometry_domains) == terrain_domain::none || region.geometry;
+        const bool attributes_ready =
+            (region.domains & (geometry_domains | terrain_domain::attributes)) == terrain_domain::none ||
+            region.attributes;
+        result.succeeded =
+            result.succeeded && !result.stale && region.evaluation.succeeded && geometry_ready && attributes_ready;
         result.regions.push_back(std::move(region));
     }
     jobs_.clear();
