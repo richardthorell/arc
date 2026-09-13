@@ -193,7 +193,7 @@ bool valid_flow_graph_path(std::string_view value) noexcept
     {
         if (value.empty() || value.find('\\') != std::string_view::npos) return false;
         const std::filesystem::path path{value};
-        if (path.is_absolute() || path.has_root_name() || path.extension() != ".arcflow") return false;
+        if (path.has_root_path() || path.extension() != ".arcflow") return false;
         const auto normalized = path.lexically_normal();
         if (normalized.generic_string() != value) return false;
         return std::none_of(normalized.begin(), normalized.end(), [](const auto& part) { return part == ".."; });
