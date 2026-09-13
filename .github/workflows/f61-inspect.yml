@@ -1,0 +1,55 @@
+name: F61 inspect
+on:
+  push:
+    branches: [feature/flow-f61-entity-play-integration]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Inspect Flow and play integration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          files = [
+            'engine/flow/inc/arc/flow/flow_vm.h',
+            'engine/flow/inc/arc/flow/flow_bytecode.h',
+            'engine/flow/src/common/flow_vm.cpp',
+            'engine/flow/CMakeLists.txt',
+            'editor/native/src/arc_host_base.inc',
+            'editor/native/inc/arc/editor/host_protocol_base.h',
+            'editor/native/src/host_protocol_base.inc',
+            'editor/native/src/scene_document.cpp',
+            'editor/native/CMakeLists.txt',
+            'engine/scene/inc/arc/scene/components.h',
+            'engine/scene/inc/arc/scene/editor_components.h',
+          ]
+          needles = {
+            'editor/native/src/arc_host_base.inc': ['begin_play_session','end_play_session','play_world','project_runtime_world_bridge','project_module','host_selected_entity_snapshot','runtime_frame','input'],
+            'editor/native/src/host_protocol_base.inc': ['host_selected_entity_snapshot','command_type','component.operation'],
+            'editor/native/src/scene_document.cpp': ['components["Terrain"]','components["Name"]','project_component','unknown_component_records','serialize_scene_subtree'],
+            'editor/native/CMakeLists.txt': ['arc-flow','arc-project','test','arc-editor-host'],
+            'engine/scene/inc/arc/scene/components.h': ['struct','component'],
+            'engine/scene/inc/arc/scene/editor_components.h': ['struct','component'],
+          }
+          for f in files:
+            p=Path(f)
+            print(f'\n===== {f} =====')
+            if not p.exists():
+              print('MISSING')
+              continue
+            lines=p.read_text(errors='replace').splitlines()
+            if f.startswith('engine/flow/'):
+              print('\n'.join(f'{i+1}: {l}' for i,l in enumerate(lines)))
+            else:
+              for n in needles.get(f,[]):
+                for i,l in enumerate(lines):
+                  if n in l:
+                    a=max(0,i-20); b=min(len(lines),i+55)
+                    print(f'\n--- {n} @ {i+1} ---')
+                    print('\n'.join(f'{j+1}: {lines[j]}' for j in range(a,b)))
+                    break
+          PY
