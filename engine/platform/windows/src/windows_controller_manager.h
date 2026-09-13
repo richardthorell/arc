@@ -8,14 +8,17 @@
 namespace arc::platform::windows
 {
 
+class windows_controller_extension_host;
 class windows_controller_provider;
+class windows_hid_extension_manager;
 
 /**
  * @brief Selects one Windows controller provider for the process.
  *
  * Providers are ranked by priority. Only the highest-priority available backend
  * is polled, avoiding duplicate logical controllers when several Windows APIs
- * expose the same physical device.
+ * expose the same physical device. Device extensions are polled afterward and
+ * may augment those logical devices without registering additional controllers.
  */
 class windows_controller_manager final
 {
@@ -37,6 +40,8 @@ private:
 
     std::vector<std::unique_ptr<windows_controller_provider>> providers_;
     windows_controller_provider* active_{};
+    std::unique_ptr<windows_controller_extension_host> extension_host_;
+    std::unique_ptr<windows_hid_extension_manager> hid_extensions_;
 };
 
 } // namespace arc::platform::windows
