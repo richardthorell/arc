@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <memory>
+#include <string_view>
 #include <utility>
 
 namespace arc::editor
@@ -14,7 +16,8 @@ namespace
 
 scene::terrain_evaluation_result evaluate_region(const scene::terrain_asset& asset, scene::terrain_region_id id,
                                                  float size, std::uint32_t quads, float height_scale,
-                                                 const std::filesystem::path& source_path)
+                                                 const scene::terrain_heightmap* decoded_source,
+                                                 std::string_view source_error)
 {
     scene::terrain_evaluation_result result;
     result.region = id;
@@ -57,19 +60,19 @@ scene::terrain_evaluation_result evaluate_region(const scene::terrain_asset& ass
     std::vector<std::array<std::uint8_t, 4>> weights(heights.size(), {255u, 0u, 0u, 0u});
     if (asset.source.kind == scene::terrain_source_kind::heightfield)
     {
-        scene::terrain_heightmap decoded;
-        const auto loaded = load_terrain_heightmap(source_path, quads + 1u, quads + 1u, decoded);
-        if (!loaded.succeeded) return fail(loaded.message);
-        if (decoded.width != quads + 1u || decoded.height != quads + 1u)
+        if (!decoded_source)
+            return fail(source_error.empty() ? "Terrain heightmap source is unavailable" : std::string{source_error});
+        if (decoded_source->width != quads + 1u || decoded_source->height != quads + 1u)
             return fail("Terrain source resolution must match the authoring grid");
-        const auto minimum = decoded.encoded_minimum_elevation.value_or(0.0f);
-        const auto maximum = decoded.encoded_maximum_elevation.value_or(height_scale);
+        const auto minimum = decoded_source->encoded_minimum_elevation.value_or(0.0f);
+        const auto maximum = decoded_source->encoded_maximum_elevation.value_or(height_scale);
         for (std::uint32_t z = hz0; z <= hz1; ++z)
             for (std::uint32_t x = hx0; x <= hx1; ++x)
                 heights[static_cast<std::size_t>(z - hz0) * width + x - hx0] =
                     minimum +
                     (maximum - minimum) *
-                        (static_cast<float>(decoded.samples[static_cast<std::size_t>(z) * decoded.width + x]) /
+                        (static_cast<float>(
+                             decoded_source->samples[static_cast<std::size_t>(z) * decoded_source->width + x]) /
                          65535.0f);
     }
     const double origin_x = (bounds.min_x + bounds.max_x) * 0.5;
@@ -124,9 +127,22 @@ terrain_rebuild_session::terrain_rebuild_session(scene::terrain_asset asset, con
                                                  std::filesystem::path source_path)
     : size_(terrain.size), spacing_(static_cast<double>(terrain.size) / std::max(terrain.subdivisions, 1u))
 {
+    std::shared_ptr<const scene::terrain_heightmap> decoded_source;
+    std::string source_error;
+    if (asset.source.kind == scene::terrain_source_kind::heightfield)
+    {
+        scene::terrain_heightmap decoded;
+        const auto loaded =
+            load_terrain_heightmap(source_path, terrain.subdivisions + 1u, terrain.subdivisions + 1u, decoded);
+        if (loaded.succeeded)
+            decoded_source = std::make_shared<const scene::terrain_heightmap>(std::move(decoded));
+        else
+            source_error = loaded.message;
+    }
     evaluate_ = [size = terrain.size, quads = terrain.subdivisions, scale = terrain.height_scale,
-                 path = std::move(source_path)](const scene::terrain_asset& snapshot, scene::terrain_region_id id)
-    { return evaluate_region(snapshot, id, size, quads, scale, path); };
+                 decoded_source = std::move(decoded_source), source_error = std::move(source_error)](
+                    const scene::terrain_asset& snapshot, scene::terrain_region_id id)
+    { return evaluate_region(snapshot, id, size, quads, scale, decoded_source.get(), source_error); };
     update(std::move(asset), true);
 }
 
