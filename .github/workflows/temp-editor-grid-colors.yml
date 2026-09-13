@@ -18,11 +18,12 @@ jobs:
           ref: feature/editor-grid-colors
           fetch-depth: 0
 
-      - name: Apply grid color implementation
+      - name: Apply grid implementation
         run: |
           python3 .github/temp_grid_color_patch.py
           python3 .github/temp_grid_color_order_fix.py
           python3 .github/temp_grid_color_test_fix.py
+          python3 .github/temp_grid_adaptive_patch.py
 
       - name: Install native tools
         run: |
@@ -36,7 +37,8 @@ jobs:
             editor/native/inc/arc/editor/host_protocol_base.h \
             editor/native/src/editor_gizmo.cpp \
             editor/native/src/host_protocol_base.inc \
-            editor/native/src/arc_host_base.inc
+            editor/native/src/arc_host_base.inc \
+            editor/native/tests/editor_tests.cpp
 
       - name: Validate editor
         working-directory: editor
@@ -74,9 +76,9 @@ jobs:
 
       - name: Commit implementation and clean temporary files
         run: |
-          rm -f .github/temp_grid_color_patch.py .github/temp_grid_color_order_fix.py .github/temp_grid_color_test_fix.py .github/workflows/temp-editor-grid-colors.yml
+          rm -f .github/temp_grid_color_patch.py .github/temp_grid_color_order_fix.py .github/temp_grid_color_test_fix.py .github/temp_grid_adaptive_patch.py .github/workflows/temp-editor-grid-colors.yml
           git add -A
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Add configurable editor grid colors"
+          git commit -m "Improve adaptive editor grid presentation"
           git push origin HEAD:feature/editor-grid-colors
