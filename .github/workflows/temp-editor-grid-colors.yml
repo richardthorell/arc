@@ -22,6 +22,7 @@ jobs:
         run: |
           python3 .github/temp_grid_color_patch.py
           python3 .github/temp_grid_color_order_fix.py
+          python3 .github/temp_grid_color_test_fix.py
 
       - name: Install native tools
         run: |
@@ -73,7 +74,7 @@ jobs:
 
       - name: Commit implementation and clean temporary files
         run: |
-          rm -f .github/temp_grid_color_patch.py .github/temp_grid_color_order_fix.py .github/workflows/temp-editor-grid-colors.yml
+          rm -f .github/temp_grid_color_patch.py .github/temp_grid_color_order_fix.py .github/temp_grid_color_test_fix.py .github/workflows/temp-editor-grid-colors.yml
           git add -A
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
