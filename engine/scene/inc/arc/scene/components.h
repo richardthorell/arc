@@ -100,6 +100,19 @@ struct active_component
 };
 
 /**
+ * @brief Authored gameplay Flow Graph binding instantiated for this entity in Play.
+ *
+ * graph_path is normalized relative to the project's Content root. The editor compiles
+ * the graph once per unique path when a Play World starts while each entity owns its
+ * own Flow VM state.
+ */
+struct flow_component
+{
+    std::string graph_path;
+    bool enabled{true};
+};
+
+/**
  * @brief Editor selection state for an entity.
  */
 struct selection_component

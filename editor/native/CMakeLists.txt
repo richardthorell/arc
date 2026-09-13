@@ -7,6 +7,7 @@ add_library(arc-editor-host STATIC
     src/editor_history.cpp
     src/editor_state.cpp
     src/editor_viewport.cpp
+    src/flow_play_runtime.cpp
     src/host_protocol.cpp
     src/material_asset.cpp
     src/material_instance_bridge.cpp

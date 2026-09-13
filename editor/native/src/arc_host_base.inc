@@ -2313,8 +2313,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 push_event(state_->events, state_->event_sequence, host_event_type::command_failed, message, entity);
                 return host_response{.request_id = request_id, .succeeded = false, .error = std::move(message)};
             };
-            const auto success = [request_id](std::string payload_json = "{}")
-            {
+            const auto success = [request_id](std::string payload_json = "{}") {
                 return host_response{
                     .request_id = request_id, .succeeded = true, .payload_json = std::move(payload_json)};
             };
@@ -2339,8 +2338,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     {
                         const auto editor_module =
                             std::find_if(descriptor.value().modules.begin(), descriptor.value().modules.end(),
-                                         [&](const auto& module)
-                                         {
+                                         [&](const auto& module) {
                                              return module.enabled && module.kind == project::module_kind::editor &&
                                                     module.id == payload.editor_module_id;
                                          });

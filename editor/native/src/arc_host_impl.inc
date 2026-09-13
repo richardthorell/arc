@@ -13,6 +13,7 @@
 #include <arc/editor/scene_document.h>
 #include <arc/editor/terrain_heightmap_io.h>
 #include <arc/editor/viewport_render_stats.h>
+#include "flow_play_runtime.h"
 #include "project_module_loader.h"
 #include <arc/editor/world_environment_host.h>
 #include <arc/assets/assets.h>
