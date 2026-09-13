@@ -741,6 +741,7 @@ private:
                                                                        .width = value.width,
                                                                        .height = value.height});
         }
+        ++render_progress_sequence_;
         auto present = backend_->present_surface_frame(value.width, value.height);
         rendered = present.has_value();
         if (!rendered) message = std::move(present.error().message);
@@ -765,6 +766,7 @@ private:
                                                                        .width = target.width,
                                                                        .height = target.height});
         }
+        ++render_progress_sequence_;
         auto present = backend_->present_viewport_output(target.viewport_id);
         rendered = present.has_value();
         if (!rendered) message = std::move(present.error().message);
@@ -1041,7 +1043,7 @@ private:
         terrain_stroking_ = true;
         terrain_entity_ = snapshot.entity;
         terrain_transaction_ = transaction;
-        terrain_last_preview_frame_ = frame_index_;
+        terrain_last_preview_frame_ = render_progress_sequence_;
         return true;
     }
 
@@ -1069,10 +1071,12 @@ private:
 
     void update_terrain_stroke(int x, int y)
     {
-        if (terrain_last_preview_frame_ == frame_index_) return;
-        terrain_last_preview_frame_ = frame_index_;
+        if (terrain_last_preview_frame_ == render_progress_sequence_) return;
+        terrain_last_preview_frame_ = render_progress_sequence_;
         std::lock_guard lock(host_mutex_);
-        const bool invert = (GetKeyState(VK_SHIFT) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
+        const bool invert = shared_texture_
+                                ? input_shift_
+                                : (GetKeyState(VK_SHIFT) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
         host_->execute(arc::editor::host_command_envelope{
             .command_type = "terrain.stroke",
             .payload =
@@ -1706,6 +1710,7 @@ private:
     bool input_shift_{};
     bool input_control_{};
     std::uint64_t frame_index_{};
+    std::uint64_t render_progress_sequence_{};
     std::string last_render_error_;
     std::chrono::steady_clock::time_point last_render_error_time_{};
     std::chrono::steady_clock::time_point last_backend_recovery_attempt_{};

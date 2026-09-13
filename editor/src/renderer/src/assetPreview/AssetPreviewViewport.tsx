@@ -54,6 +54,7 @@ type ViewportBounds = {
   y: number;
   width: number;
   height: number;
+  devicePixelRatio: number;
 };
 
 type DragState = {
@@ -63,7 +64,7 @@ type DragState = {
 };
 
 const boundsKey = (bounds: ViewportBounds) =>
-  `${bounds.viewportId}:${bounds.x}:${bounds.y}:${bounds.width}:${bounds.height}`;
+  `${bounds.viewportId}:${bounds.x}:${bounds.y}:${bounds.width}:${bounds.height}:${bounds.devicePixelRatio}`;
 
 const normalizedAssetGuid = (guid?: string) => guid?.trim().toLowerCase() ?? '';
 
@@ -167,12 +168,17 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
     const element = rootRef.current;
     if (!element) return null;
     const rect = element.getBoundingClientRect();
+    const devicePixelRatio =
+      Number.isFinite(window.devicePixelRatio) && window.devicePixelRatio > 0
+        ? Number(window.devicePixelRatio.toFixed(4))
+        : 1;
     return {
       viewportId,
       x: Math.round(rect.left),
       y: Math.round(rect.top),
       width: Math.round(rect.width),
       height: Math.round(rect.height),
+      devicePixelRatio,
     };
   }, [viewportId]);
 

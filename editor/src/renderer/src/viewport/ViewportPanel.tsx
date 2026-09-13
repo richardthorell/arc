@@ -115,10 +115,11 @@ type ViewportBounds = {
   y: number;
   width: number;
   height: number;
+  devicePixelRatio: number;
 };
 
 const boundsKey = (bounds: ViewportBounds) =>
-  `${bounds.viewportId}:${bounds.x}:${bounds.y}:${bounds.width}:${bounds.height}`;
+  `${bounds.viewportId}:${bounds.x}:${bounds.y}:${bounds.width}:${bounds.height}:${bounds.devicePixelRatio}`;
 
 const fallbackStats = (project: ProjectSnapshot | null): ViewportStats => ({
   width: 0,
@@ -188,12 +189,17 @@ export function ViewportPanel({
       return null;
     }
     const rect = element.getBoundingClientRect();
+    const devicePixelRatio =
+      Number.isFinite(window.devicePixelRatio) && window.devicePixelRatio > 0
+        ? Number(window.devicePixelRatio.toFixed(4))
+        : 1;
     return {
       viewportId,
       x: Math.round(rect.left),
       y: Math.round(rect.top),
       width: Math.round(rect.width),
       height: Math.round(rect.height),
+      devicePixelRatio,
     };
   }, [viewportId]);
 

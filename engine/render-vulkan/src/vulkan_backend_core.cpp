@@ -2109,7 +2109,12 @@ surface_frame_result vulkan_render_backend::resize_viewport_output(std::string_v
     auto& output = found->second;
     width = std::max(1u, width);
     height = std::max(1u, height);
-    if (output.width == width && output.height == height) return surface_frame_result::success();
+    if (output.width == width && output.height == height)
+    {
+        output.pending_width = 0;
+        output.pending_height = 0;
+        return surface_frame_result::success();
+    }
     if (std::ranges::any_of(output.slots,
                             [](const auto& slot) { return slot.state == shared_viewport_frame_state::consumer_owned; }))
     {
@@ -2117,6 +2122,8 @@ surface_frame_result vulkan_render_backend::resize_viewport_output(std::string_v
         output.pending_height = height;
         return surface_frame_result::success();
     }
+    output.pending_width = 0;
+    output.pending_height = 0;
     wait_for_shared_output(output);
     retire_shared_output(output, true);
     output.width = width;

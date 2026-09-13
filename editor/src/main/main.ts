@@ -102,7 +102,10 @@ type NativeViewportBounds = {
   y: number;
   width: number;
   height: number;
+  devicePixelRatio?: number;
 };
+
+type ScaledViewportBounds = Omit<NativeViewportBounds, 'devicePixelRatio'>;
 
 type SharedViewportFrame = {
   viewportId: string;
@@ -608,9 +611,19 @@ export class ArcHostClient {
   }
 }
 
-const scaleViewportBounds = (window: BrowserWindow, bounds: NativeViewportBounds): NativeViewportBounds => {
+const scaleViewportBounds = (
+  window: BrowserWindow,
+  bounds: NativeViewportBounds,
+  useRendererPixelRatio = false,
+): ScaledViewportBounds => {
   const display = screen.getDisplayMatching(window.getBounds());
-  const scale = display.scaleFactor || 1;
+  const displayScale = display.scaleFactor || 1;
+  const reportedPixelRatio = Number(bounds.devicePixelRatio);
+  const rendererScale =
+    Number.isFinite(reportedPixelRatio) && reportedPixelRatio > 0 ? reportedPixelRatio : displayScale;
+  // Native child windows use monitor pixels for placement. Shared textures use
+  // Chromium's exact backing-store ratio, which also follows zoom and DPI moves.
+  const scale = useRendererPixelRatio ? rendererScale : displayScale;
   return {
     viewportId: bounds.viewportId,
     x: Math.round(bounds.x * scale),
@@ -1243,7 +1256,7 @@ void app.whenReady().then(async () => {
     if (isCiSmoke) return { skipped: true, reason: 'ci-smoke' };
     const target = BrowserWindow.fromWebContents(event.sender);
     if (!target) throw new Error('No active editor window');
-    const scaled = scaleViewportBounds(target, bounds);
+    const scaled = scaleViewportBounds(target, bounds, true);
     sharedViewportTargets.set(scaled.viewportId, target.webContents.id);
     sharedViewportFailures.delete(scaled.viewportId);
     try {
@@ -1281,7 +1294,10 @@ void app.whenReady().then(async () => {
     if (!target) {
       throw new Error('No active editor window');
     }
-    return hostClient?.command('viewport.resize', scaleViewportBounds(target, bounds));
+    return hostClient?.command(
+      'viewport.resize',
+      scaleViewportBounds(target, bounds, sharedViewportTargets.has(bounds.viewportId)),
+    );
   });
   ipcMain.handle('viewport:detach', (_event, viewportId: string) => {
     sharedViewportTargets.delete(viewportId);

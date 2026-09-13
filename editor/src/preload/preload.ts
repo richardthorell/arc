@@ -38,6 +38,7 @@ export type NativeViewportBounds = {
   y: number;
   width: number;
   height: number;
+  devicePixelRatio: number;
 };
 
 type SharedViewportMetadata = {

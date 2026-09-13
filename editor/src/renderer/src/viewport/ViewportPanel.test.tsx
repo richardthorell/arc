@@ -164,6 +164,63 @@ describe('ViewportPanel', () => {
     );
   });
 
+  it('keeps the shared viewport backing texture synchronized with the device pixel ratio', async () => {
+    vi.stubGlobal('devicePixelRatio', 2);
+    const create = vi.fn().mockResolvedValue({ succeeded: true });
+    const resize = vi.fn().mockResolvedValue({ succeeded: true });
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        host: {
+          query: vi.fn().mockResolvedValue({
+            succeeded: true,
+            payload: {
+              width: 1280,
+              height: 960,
+              fps: 60,
+              frameTimeMs: 1,
+              drawCalls: 1,
+              frameIndex: 2,
+              submitted: true,
+            },
+          }),
+        },
+        viewport: {
+          create,
+          attach: vi.fn(),
+          resize,
+          detach: vi.fn().mockResolvedValue({ succeeded: true }),
+          cameraInput: vi.fn().mockResolvedValue({ succeeded: true }),
+          pointer: vi.fn().mockResolvedValue({ succeeded: true }),
+          key: vi.fn(),
+          registerSurface: vi.fn(),
+          unregisterSurface: vi.fn(),
+          setVisibility: vi.fn(),
+        },
+      },
+    });
+
+    render(
+      <ViewportPanel
+        project={null}
+        startupState={{ appVersion: '0.1.0', engineHostConnected: true, viewportMode: 'streamed' }}
+        onCommand={vi.fn()}
+        onReconnect={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ width: 640, height: 480, devicePixelRatio: 2 })),
+    );
+
+    vi.stubGlobal('devicePixelRatio', 1.25);
+    nextAnimationFrame?.(16);
+
+    await waitFor(() =>
+      expect(resize).toHaveBeenCalledWith(expect.objectContaining({ width: 640, height: 480, devicePixelRatio: 1.25 })),
+    );
+  });
+
   it('resizes the native viewport when docking changes its position without changing its size', async () => {
     let left = 40;
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({
