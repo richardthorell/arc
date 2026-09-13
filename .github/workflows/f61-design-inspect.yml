@@ -1,0 +1,50 @@
+name: F61 design inspect
+on:
+  push:
+    branches: [feature/flow-f61-entity-play-integration]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Inspect design hooks
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          def around(path, needle, before=25, after=80, all_matches=False):
+            ls=Path(path).read_text(errors='replace').splitlines()
+            found=0
+            for i,l in enumerate(ls):
+              if needle in l:
+                print(f'\n===== {path} :: {needle} @ {i+1} =====')
+                print('\n'.join(f'{j+1}: {ls[j]}' for j in range(max(0,i-before),min(len(ls),i+after))))
+                found += 1
+                if not all_matches: break
+            if not found: print(f'\nMISS {path} :: {needle}')
+          for n in ['make_runtime_world', 'game_world_api_v1', 'runtime_world_bridge_context']:
+            around('editor/native/src/project_runtime_world_bridge.h', n, 15, 70, True)
+          for n in ['install_systems', 'runtime_world_bridge_context', 'game_world_api_v1', 'scheduler', 'system_context']:
+            around('editor/native/src/project_module_loader.cpp', n, 20, 90, True)
+          for n in ['struct runtime_world', 'class runtime_world', 'add_system', 'scheduler()', 'register_system']:
+            for p in Path('engine/framework').rglob('*'):
+              if p.is_file() and p.suffix in {'.h','.cpp','.inc'}:
+                t=p.read_text(errors='ignore')
+                if n in t:
+                  around(str(p), n, 20, 90, True)
+          for n in ['struct flow_component', 'terrain_component', 'water_component', 'mesh_renderer_component']:
+            for p in [Path('engine/scene/inc/arc/scene/components.h'),Path('engine/scene/inc/arc/scene/editor_components.h')]:
+              if p.exists() and n in p.read_text(errors='ignore'):
+                around(str(p), n, 20, 70, True)
+          for n in ['selected_entity_snapshot()', 'host_selected_entity_snapshot snapshot', 'snapshot.components', 'project_components']:
+            around('editor/native/src/arc_host_base.inc', n, 30, 100, True)
+          for n in ['setInspectorField', 'component.operation', 'entity.setTag', 'meshRenderer', 'projectComponents']:
+            for p in Path('editor/src/renderer/src').rglob('*.ts*'):
+              try:t=p.read_text(errors='ignore')
+              except:continue
+              if n in t:
+                around(str(p), n, 15, 70, False)
+          around('editor/native/CMakeLists.txt','arc-flow',25,55,True)
+          around('editor/native/CMakeLists.txt','target_link_libraries',15,50,True)
+          PY
