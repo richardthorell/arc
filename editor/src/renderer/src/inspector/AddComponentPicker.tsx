@@ -27,6 +27,7 @@ const builtInOptions: ReadonlyArray<AddComponentOption> = [
   { id: 'spotLight', label: 'Spot Light', category: 'Lighting' },
   { id: 'areaLight', label: 'Area Light', category: 'Lighting' },
   { id: 'terrain', label: 'Terrain', category: 'World' },
+  { id: 'flow', label: 'Flow', category: 'Gameplay', tooltip: 'Run a Flow Graph on this entity during Play.' },
 ];
 
 function builtInAlreadyPresent(snapshot: InspectorEntitySnapshot, id: string) {
@@ -34,6 +35,7 @@ function builtInAlreadyPresent(snapshot: InspectorEntitySnapshot, id: string) {
   if (id === 'meshRenderer') return snapshot.meshRenderer !== null;
   if (id.endsWith('Light')) return snapshot.light !== null;
   if (id === 'terrain') return snapshot.terrain !== null;
+  if (id === 'flow') return snapshot.flow != null;
   return false;
 }
 

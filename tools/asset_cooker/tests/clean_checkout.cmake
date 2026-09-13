@@ -3,52 +3,62 @@ if(NOT DEFINED ARC_COOK OR NOT DEFINED ARC_SOURCE_ROOT OR NOT DEFINED ARC_TEST_R
 endif()
 
 file(REMOVE_RECURSE "${ARC_TEST_ROOT}")
-file(MAKE_DIRECTORY
-    "${ARC_TEST_ROOT}/assets/fixtures"
-    "${ARC_TEST_ROOT}/assets/models"
-    "${ARC_TEST_ROOT}/assets/materials"
-    "${ARC_TEST_ROOT}/assets/textures/terrain/aerial_grass_rock"
-    "${ARC_TEST_ROOT}/assets/shaders/include"
-    "${ARC_TEST_ROOT}/assets/environments"
-)
+file(MAKE_DIRECTORY "${ARC_TEST_ROOT}/assets/fixtures")
 
 file(COPY
     "${ARC_SOURCE_ROOT}/assets/fixtures/persistence_fixture.arcscene"
     "${ARC_SOURCE_ROOT}/assets/fixtures/persistence_fixture.arcscene.arcmeta"
-    "${ARC_SOURCE_ROOT}/assets/fixtures/persistence_fixture.arcprefab"
     "${ARC_SOURCE_ROOT}/assets/fixtures/persistence_fixture.arcprefab.arcmeta"
     DESTINATION "${ARC_TEST_ROOT}/assets/fixtures"
 )
-file(COPY
-    "${ARC_SOURCE_ROOT}/assets/models/UAL2_Standard.glb"
-    "${ARC_SOURCE_ROOT}/assets/models/UAL2_Standard.glb.arcmeta"
-    DESTINATION "${ARC_TEST_ROOT}/assets/models"
-)
-file(COPY
-    "${ARC_SOURCE_ROOT}/assets/materials/default_phong.arcmat"
-    "${ARC_SOURCE_ROOT}/assets/materials/default_phong.arcmat.arcmeta"
-    DESTINATION "${ARC_TEST_ROOT}/assets/materials"
-)
-file(COPY
-    "${ARC_SOURCE_ROOT}/assets/textures/terrain/aerial_grass_rock/aerial_grass_rock_diff_1k.jpg"
-    "${ARC_SOURCE_ROOT}/assets/textures/terrain/aerial_grass_rock/aerial_grass_rock_diff_1k.jpg.arcmeta"
-    DESTINATION "${ARC_TEST_ROOT}/assets/textures/terrain/aerial_grass_rock"
-)
-file(COPY
-    "${ARC_SOURCE_ROOT}/assets/shaders/default_phong.frag"
-    "${ARC_SOURCE_ROOT}/assets/shaders/default_phong.frag.arcmeta"
-    DESTINATION "${ARC_TEST_ROOT}/assets/shaders"
-)
-file(COPY
-    "${ARC_SOURCE_ROOT}/assets/shaders/include/"
-    DESTINATION "${ARC_TEST_ROOT}/assets/shaders/include"
-    FILES_MATCHING PATTERN "*.glsl" PATTERN "*.arcmeta"
-)
-file(COPY
-    "${ARC_SOURCE_ROOT}/assets/environments/autumn_field_puresky_1k.hdr"
-    "${ARC_SOURCE_ROOT}/assets/environments/autumn_field_puresky_1k.hdr.arcmeta"
-    DESTINATION "${ARC_TEST_ROOT}/assets/environments"
-)
+
+# Keep this smoke focused on clean-checkout dependency discovery, incremental
+# cooking, packaging, and verification. The production persistence prefab pulls
+# in the editor startup mesh plus render assets, which makes the child arc-cook
+# process unnecessarily expensive under LLVM coverage instrumentation.
+file(WRITE "${ARC_TEST_ROOT}/assets/fixtures/persistence_fixture.arcprefab" [=[
+{
+  "format": "arc.prefab",
+  "formatVersion": 2,
+  "prefab": {
+    "id": "d499b8de-bb46-4cb7-b58f-0dc6f53e0102",
+    "name": "Persistence Fixture Prop",
+    "root": "b60e59c7-2781-4cf8-99a9-ff70193c1001"
+  },
+  "entities": [
+    {
+      "id": "b60e59c7-2781-4cf8-99a9-ff70193c1001",
+      "parent": null,
+      "order": 0,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Cooked Persistence Prop"
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "futureEditorNote": "This unknown field must survive a round trip."
+        },
+        "FutureGameplay": {
+          "typeId": "f0010000000000010000000000000001",
+          "version": 7,
+          "opaqueState": {
+            "enabled": true,
+            "values": [1, 2, 3]
+          }
+        }
+      }
+    }
+  ],
+  "dependencies": []
+}
+]=])
+
 file(WRITE "${ARC_TEST_ROOT}/CookFixture.arcproject" [=[
 {
   "format":"arc-project","formatVersion":2,

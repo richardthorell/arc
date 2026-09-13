@@ -1109,6 +1109,25 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
     ],
   },
   {
+    id: 'flow',
+    title: 'Flow',
+    badge: 'Gameplay',
+    fields: [
+      { id: 'enabled', label: 'Enabled', path: 'flow.enabled', type: 'boolean' },
+      {
+        id: 'graph',
+        label: 'Graph',
+        path: 'flow.graphPath',
+        type: 'asset',
+        assetKind: 'asset',
+        referenceMode: 'path',
+        allowedExtensions: ['.arcflow'],
+        allowEmpty: false,
+        tooltip: 'Flow Graph instantiated for this entity when Play starts.',
+      },
+    ],
+  },
+  {
     id: 'prefab',
     title: 'Prefab Instance',
     badge: 'Instance',
@@ -1201,7 +1220,9 @@ export const schemaForSnapshot = (
                     ? snapshot.terrain !== null
                     : schema.id === 'water'
                       ? snapshot.water !== null
-                      : snapshot.prefab !== null,
+                      : schema.id === 'flow'
+                        ? snapshot.flow != null
+                        : snapshot.prefab !== null,
   );
   const dynamic = snapshot.projectComponents.flatMap((component, index) => {
     const schema = projectSchemas.find((candidate) => candidate.id === component.typeId);
