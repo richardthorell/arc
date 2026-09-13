@@ -1,0 +1,52 @@
+name: F61 inspect2
+on:
+  push:
+    branches: [feature/flow-f61-entity-play-integration]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Inspect exact runtime hooks
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          def show(path,a,b):
+            ls=Path(path).read_text(errors='replace').splitlines()
+            print(f'\n===== {path}:{a}-{b} =====')
+            print('\n'.join(f'{i+1}: {ls[i]}' for i in range(a-1,min(b,len(ls)))))
+          show('editor/native/src/arc_host_base.inc', 1760, 1965)
+          show('editor/native/src/arc_host_base.inc', 1680, 1760)
+          show('editor/native/src/arc_host_base.inc', 6480, 6690)
+          show('editor/native/CMakeLists.txt', 1, 95)
+          show('editor/native/tests/CMakeLists.txt', 1, 220)
+          for p in Path('editor/native/tests').glob('*.cpp'):
+            t=p.read_text(errors='replace')
+            if any(x in t for x in ['runtime_resume','play session','runtime.step','viewport.key','project_module']):
+              print(f'\n===== TEST {p} =====')
+              for i,l in enumerate(t.splitlines()):
+                if any(x in l for x in ['runtime_resume','runtime_stop','runtime_step','viewport_key','project_module']):
+                  a=max(0,i-15); b=min(len(t.splitlines()),i+45)
+                  ls=t.splitlines(); print('\n'.join(f'{j+1}: {ls[j]}' for j in range(a,b)))
+          print('\n===== FLOW FILES =====')
+          for p in Path('engine/flow').rglob('*'):
+            if p.is_file(): print(p)
+          print('\n===== ARCFLOW REFERENCES =====')
+          for root in ['editor','engine']:
+            for p in Path(root).rglob('*'):
+              if not p.is_file() or p.suffix.lower() in {'.png','.jpg','.jpeg','.woff','.ttf','.bin'}: continue
+              try: t=p.read_text(errors='ignore')
+              except: continue
+              if '.arcflow' in t or 'flow_asset' in t or 'asset_types::flow' in t:
+                print(p)
+                for i,l in enumerate(t.splitlines()):
+                  if '.arcflow' in l or 'flow_asset' in l or 'asset_types::flow' in l:
+                    print(f'  {i+1}: {l[:240]}')
+          print('\n===== INPUT DISPATCH REFERENCES =====')
+          t=Path('editor/native/src/arc_host_base.inc').read_text(errors='replace').splitlines()
+          for i,l in enumerate(t):
+            if 'dispatch_input' in l or 'input_event' in l or 'viewport_key_command' in l or 'game_input' in l:
+              print(f'{i+1}: {l}')
+          PY
