@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <bit>
 #include <cctype>
+#include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
@@ -41,6 +43,7 @@ constexpr std::uint64_t game_input_namespace = 0x4749000000000000ull;
 constexpr std::uint64_t device_payload_mask = 0x0000ffffffffffffull;
 constexpr float standard_gravity_meters_per_second_squared = 9.80665f;
 constexpr std::uint32_t fallback_gamepad_layout = 0x00003fffu;
+constexpr auto battery_poll_interval = std::chrono::seconds(5);
 
 float normalized_axis(float value, float minimum, float maximum) noexcept
 {
@@ -55,6 +58,36 @@ float acceleration_meters_per_second_squared(float acceleration_g) noexcept
 bool supports_rumble_motor(GameInputRumbleMotors supported, GameInputRumbleMotors motor) noexcept
 {
     return (supported & motor) != GameInputRumbleNone;
+}
+
+input::input_battery_status battery_status(GameInputBatteryStatus status) noexcept
+{
+    switch (status)
+    {
+        case GameInputBatteryNotPresent:
+            return input::input_battery_status::not_present;
+        case GameInputBatteryDischarging:
+            return input::input_battery_status::discharging;
+        case GameInputBatteryIdle:
+            return input::input_battery_status::idle;
+        case GameInputBatteryCharging:
+            return input::input_battery_status::charging;
+        case GameInputBatteryUnknown:
+        default:
+            return input::input_battery_status::unknown;
+    }
+}
+
+input::input_battery_state normalized_battery_state(const GameInputBatteryState& state) noexcept
+{
+    input::input_battery_state result{.status = battery_status(state.status)};
+    if (std::isfinite(state.remainingCapacity) && std::isfinite(state.fullChargeCapacity) &&
+        state.fullChargeCapacity > 0.0f && state.remainingCapacity >= 0.0f)
+    {
+        result.level = std::clamp(state.remainingCapacity / state.fullChargeCapacity, 0.0f, 1.0f);
+        result.level_available = true;
+    }
+    return result;
 }
 
 std::uint16_t supported_button_count(GameInputGamepadButtons layout, GameInputSystemButtons system_buttons) noexcept
@@ -186,11 +219,13 @@ struct windows_game_input_backend::implementation
         if (!available_) return;
         drain_pending_events();
 
+        const auto now = std::chrono::steady_clock::now();
         for (auto& [native, record] : devices_)
         {
             (void)native;
             poll_gamepad(record);
             poll_sensors(record);
+            poll_battery(record, now);
         }
 #endif
     }
@@ -255,6 +290,7 @@ private:
         GameInputRumbleMotors supported_rumble_motors{GameInputRumbleNone};
         std::uint64_t last_gamepad_timestamp{};
         std::uint64_t last_sensor_timestamp{};
+        std::chrono::steady_clock::time_point next_battery_poll{};
         bool gyroscope{};
         bool accelerometer{};
     };
@@ -332,6 +368,10 @@ private:
         const GameInputSystemButtons supported_system_buttons =
             system_button_callback_registered_ ? info->supportedSystemButtons : GameInputSystemButtonNone;
         const std::uint16_t button_count = supported_button_count(supported_layout, supported_system_buttons);
+        GameInputBatteryState native_battery{};
+        device->GetBatteryState(&native_battery);
+        const input::input_battery_state initial_battery = normalized_battery_state(native_battery);
+        const bool supports_battery = initial_battery.status != input::input_battery_status::not_present;
         std::string name = info->displayName && *info->displayName ? info->displayName : "GameInput Gamepad";
         input_->connect_device({.id = id,
                                 .type = input::input_device_type::gamepad,
@@ -349,17 +389,21 @@ private:
                                                  .trigger_rumble = supports_trigger_rumble,
                                                  .gyroscope = gyroscope,
                                                  .accelerometer = accelerometer,
+                                                 .battery = supports_battery,
                                                  .button_count = button_count,
                                                  .axis_count = 6}});
 
         device->AddRef();
-        devices_.emplace(device, device_record{.device = device,
-                                               .id = id,
-                                               .supported_layout = supported_layout,
-                                               .supported_system_buttons = supported_system_buttons,
-                                               .supported_rumble_motors = supported_rumble_motors,
-                                               .gyroscope = gyroscope,
-                                               .accelerometer = accelerometer});
+        devices_.emplace(device,
+                         device_record{.device = device,
+                                       .id = id,
+                                       .supported_layout = supported_layout,
+                                       .supported_system_buttons = supported_system_buttons,
+                                       .supported_rumble_motors = supported_rumble_motors,
+                                       .next_battery_poll = std::chrono::steady_clock::now() + battery_poll_interval,
+                                       .gyroscope = gyroscope,
+                                       .accelerometer = accelerometer});
+        input_->submit_battery_state(id, initial_battery);
         if (supports_rumble && owner_) input_->register_output_sink(id, *owner_);
     }
 
@@ -404,6 +448,16 @@ private:
             record.last_sensor_timestamp = timestamp;
         }
         reading->Release();
+    }
+
+    void poll_battery(device_record& record, std::chrono::steady_clock::time_point now)
+    {
+        if (now < record.next_battery_poll) return;
+
+        GameInputBatteryState state{};
+        record.device->GetBatteryState(&state);
+        input_->submit_battery_state(record.id, normalized_battery_state(state));
+        record.next_battery_poll = now + battery_poll_interval;
     }
 
     void submit_gamepad_state(const device_record& record, const GameInputGamepadState& state)

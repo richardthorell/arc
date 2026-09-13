@@ -302,6 +302,34 @@ struct input_device_capabilities
 };
 
 /**
+ * @brief Current power state reported by a battery-capable input device.
+ */
+enum class input_battery_status : std::uint8_t
+{
+    unknown,
+    not_present,
+    discharging,
+    idle,
+    charging
+};
+
+/**
+ * @brief Platform-neutral battery snapshot for one physical input device.
+ *
+ * Level is normalized to [0, 1] when level_available is true. Some backends
+ * report only coarse battery buckets or a charging state, so consumers must not
+ * assume more precision than the backend provides.
+ */
+struct input_battery_state
+{
+    input_battery_status status{input_battery_status::unknown};
+    float level{};
+    bool level_available{};
+
+    friend bool operator==(const input_battery_state&, const input_battery_state&) = default;
+};
+
+/**
  * @brief Platform-neutral metadata for one physical device.
  */
 struct input_device_descriptor
@@ -328,6 +356,7 @@ public:
     [[nodiscard]] input_connectivity_type connectivity() const noexcept;
     [[nodiscard]] std::string_view name() const noexcept;
     [[nodiscard]] const input_device_capabilities& capabilities() const noexcept;
+    [[nodiscard]] const input_battery_state& battery_state() const noexcept;
     [[nodiscard]] bool connected() const noexcept;
 
     [[nodiscard]] input_device_subtype subtype() const noexcept
@@ -354,6 +383,7 @@ private:
     friend class input_system;
 
     input_device_descriptor descriptor_{};
+    input_battery_state battery_state_{};
     bool connected_{};
     std::unordered_map<std::uint32_t, float> current_values_;
     std::unordered_map<std::uint32_t, float> previous_values_;
@@ -547,6 +577,7 @@ public:
 
     bool submit_button(input_device_id id, input_control control, bool down);
     bool submit_axis(input_device_id id, input_control control, float value);
+    bool submit_battery_state(input_device_id id, input_battery_state state);
     void release_all();
 
     [[nodiscard]] const input_device* device(input_device_id id) const noexcept;
