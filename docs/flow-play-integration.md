@@ -1,6 +1,6 @@
 # Flow Play integration
 
-Flow F6.1 binds authored `.arcflow` graphs to scene entities through the `Flow` component. The component stores a normalized path relative to the project Content directory plus an enabled flag.
+Flow F6.1 binds authored `.arcflow` graphs to scene entities through the `Flow` component. The component stores a normalized path relative to the project Content directory plus an enabled flag. A newly added Flow component with no graph selected is inert, so entities can be authored incrementally without blocking Play startup.
 
 When Play starts, ARC scans the isolated Play World for enabled Flow bindings. Each unique graph is compiled once into immutable bytecode while every bound entity owns an independent `vm_instance`, so variables and value slots do not leak between entities sharing one graph.
 
