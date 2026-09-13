@@ -225,7 +225,7 @@ bool finite_color(const json& value, std::size_t size)
 }
 
 bool validate_asset_reference_json(const json& value, const std::filesystem::path& project_root);
-bool valid_flow_graph_reference(std::string_view value) noexcept;
+bool valid_flow_graph_reference(std::string_view value);
 
 bool validate_component_json(std::string_view name, const json& value, std::string& error)
 {
