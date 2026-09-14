@@ -96,7 +96,8 @@ public:
         {
             const auto* binding = active_flow_binding(std::as_const(*world_), entity);
             if (!binding) continue;
-            if (const auto error = append_instance(entity, binding->graph_path); !error.empty()) return {.error = error};
+            if (const auto error = append_instance(entity, binding->graph_path); !error.empty())
+                return {.error = error};
         }
 
         for (auto& instance : instances_)
@@ -186,14 +187,15 @@ public:
     }
 
 private:
+    using shared_program = std::shared_ptr<const flow::bytecode_program>;
+
     [[nodiscard]] bool matches_current_binding(const bound_flow_instance& instance) const noexcept
     {
         const auto* binding = active_flow_binding(std::as_const(*world_), instance.entity);
         return binding && binding->graph_path == instance.graph_path;
     }
 
-    [[nodiscard]] std::shared_ptr<const flow::bytecode_program> program_for(std::string_view graph_path,
-                                                                           std::string& error)
+    [[nodiscard]] shared_program program_for(std::string_view graph_path, std::string& error)
     {
         if (!valid_flow_graph_path(graph_path))
         {
@@ -235,9 +237,10 @@ private:
 
     [[nodiscard]] flow::execution_result begin_instance(bound_flow_instance& instance, ecs::system_context* context)
     {
-        runtime_world_bridge_context bridge{.world = world_,
-                                            .commands = context ? &context->commands() : nullptr,
-                                            .unrestricted_access = true};
+        runtime_world_bridge_context bridge{};
+        bridge.world = world_;
+        bridge.commands = context ? &context->commands() : nullptr;
+        bridge.unrestricted_access = true;
         const auto api = make_runtime_world_api(bridge);
         return instance.vm.begin_play({.api = &api, .self = flow_entity(instance.entity)});
     }
@@ -245,9 +248,10 @@ private:
     [[nodiscard]] flow::execution_result end_instance(bound_flow_instance& instance, ecs::system_context* context)
     {
         if (!instance.vm.active()) return {};
-        runtime_world_bridge_context bridge{.world = world_,
-                                            .commands = context ? &context->commands() : nullptr,
-                                            .unrestricted_access = true};
+        runtime_world_bridge_context bridge{};
+        bridge.world = world_;
+        bridge.commands = context ? &context->commands() : nullptr;
+        bridge.unrestricted_access = true;
         const auto api = make_runtime_world_api(bridge);
         return instance.vm.end_play({.api = &api, .self = flow_entity(instance.entity)});
     }
