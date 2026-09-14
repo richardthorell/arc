@@ -55,4 +55,21 @@ if(BUILD_TESTING)
     )
 
     add_test(NAME arc-input-touch-tests COMMAND arc-input-touch-tests)
+
+    add_executable(arc-input-advanced-output-tests
+        test_support/advanced_output_tests.cpp
+    )
+    arc_configure_first_party_target(arc-input-advanced-output-tests)
+
+    target_compile_features(arc-input-advanced-output-tests
+        PRIVATE
+            cxx_std_20
+    )
+
+    target_link_libraries(arc-input-advanced-output-tests
+        PRIVATE
+            arc-input
+    )
+
+    add_test(NAME arc-input-advanced-output-tests COMMAND arc-input-advanced-output-tests)
 endif()

@@ -448,10 +448,56 @@ struct input_rumble_state
 };
 
 /**
- * @brief Platform output sink associated with one or more physical devices.
+ * @brief Normalized RGB controller light output.
+ */
+struct input_light_state
+{
+    float red{};
+    float green{};
+    float blue{};
+
+    friend bool operator==(const input_light_state&, const input_light_state&) = default;
+};
+
+/**
+ * @brief Portable adaptive-trigger effect families supported by ARC.
+ */
+enum class input_adaptive_trigger_effect_type : std::uint8_t
+{
+    off,
+    resistance,
+    weapon,
+    vibration
+};
+
+/**
+ * @brief One normalized adaptive-trigger effect.
  *
- * Platform backends implement this interface and register themselves with the
- * input system. Gameplay never depends on the concrete platform implementation.
+ * Positions and strength use [0, 1]. Frequency is expressed in hertz and is
+ * clamped to the portable controller range [0, 255]. Backends quantize these
+ * values to the closest supported hardware effect.
+ */
+struct input_adaptive_trigger_effect
+{
+    input_adaptive_trigger_effect_type type{input_adaptive_trigger_effect_type::off};
+    float start_position{};
+    float end_position{1.0f};
+    float strength{};
+    float frequency_hz{};
+
+    friend bool operator==(const input_adaptive_trigger_effect&, const input_adaptive_trigger_effect&) = default;
+};
+
+struct input_adaptive_trigger_state
+{
+    input_adaptive_trigger_effect left;
+    input_adaptive_trigger_effect right;
+
+    friend bool operator==(const input_adaptive_trigger_state&, const input_adaptive_trigger_state&) = default;
+};
+
+/**
+ * @brief Platform rumble sink associated with one or more physical devices.
  */
 class input_output_sink
 {
@@ -459,6 +505,21 @@ public:
     virtual ~input_output_sink() = default;
 
     virtual bool set_rumble(input_device_id device, input_rumble_state state) = 0;
+};
+
+/**
+ * @brief Optional advanced output sink layered onto an existing logical device.
+ *
+ * Device-specific extensions can register this alongside the provider-owned
+ * rumble sink, so richer outputs do not replace the backend that owns input.
+ */
+class input_advanced_output_sink
+{
+public:
+    virtual ~input_advanced_output_sink() = default;
+
+    virtual bool set_light(input_device_id device, input_light_state state) = 0;
+    virtual bool set_adaptive_triggers(input_device_id device, input_adaptive_trigger_state state) = 0;
 };
 
 /**
@@ -534,6 +595,9 @@ public:
      * @brief Stop rumble on every assigned connected device that supports it.
      */
     [[nodiscard]] bool stop_rumble() const;
+
+    [[nodiscard]] bool set_light(input_light_state state) const;
+    [[nodiscard]] bool set_adaptive_triggers(input_adaptive_trigger_state state) const;
 
 private:
     friend class input_system;
@@ -642,6 +706,9 @@ public:
      */
     bool unregister_output_sink(input_device_id device, input_output_sink& sink) noexcept;
 
+    bool register_advanced_output_sink(input_device_id device, input_advanced_output_sink& sink) noexcept;
+    bool unregister_advanced_output_sink(input_device_id device, input_advanced_output_sink& sink) noexcept;
+
     /**
      * @brief Apply normalized rumble to one physical device.
      */
@@ -657,6 +724,9 @@ public:
      */
     void stop_all_rumble();
 
+    bool set_light(input_device_id device, input_light_state state);
+    bool set_adaptive_triggers(input_device_id device, input_adaptive_trigger_state state);
+
 private:
     friend class input_player;
 
@@ -671,6 +741,7 @@ private:
     std::unordered_map<player_id, std::vector<input_device_id>> player_devices_;
     std::unordered_map<std::uint64_t, std::vector<player_id>> device_players_;
     std::unordered_map<std::uint64_t, input_output_sink*> output_sinks_;
+    std::unordered_map<std::uint64_t, input_advanced_output_sink*> advanced_output_sinks_;
     std::unordered_map<std::uint64_t, std::vector<input_touch_contact>> touch_contacts_;
     std::vector<input_device_event> device_events_;
     std::uint64_t next_device_id_{1};
