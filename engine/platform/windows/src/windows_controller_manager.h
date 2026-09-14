@@ -2,6 +2,8 @@
 
 #include <arc/input/input.h>
 
+#include <windows.h>
+
 #include <memory>
 #include <vector>
 
@@ -30,6 +32,8 @@ public:
     windows_controller_manager(const windows_controller_manager&) = delete;
     windows_controller_manager& operator=(const windows_controller_manager&) = delete;
 
+    [[nodiscard]] bool attach(HWND window);
+    void process_message(UINT message, WPARAM wparam, LPARAM lparam);
     void poll();
 
     [[nodiscard]] input::input_backend_type active_backend() const noexcept;

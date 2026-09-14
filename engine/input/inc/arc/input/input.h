@@ -330,6 +330,30 @@ struct input_battery_state
 };
 
 /**
+ * @brief One active contact on a touch-capable input surface.
+ *
+ * Positions are normalized to [0, 1] across the physical surface. Contact IDs
+ * are backend-stable for the lifetime of a touch and may be reused after lift.
+ * Surface zero is the primary touch surface. Pressure is valid only when
+ * pressure_available is true.
+ */
+struct input_touch_contact
+{
+    std::uint32_t id{};
+    std::uint16_t surface{};
+    math::vector2f position{};
+    float pressure{};
+    bool pressure_available{};
+
+    friend bool operator==(const input_touch_contact& lhs, const input_touch_contact& rhs) noexcept
+    {
+        return lhs.id == rhs.id && lhs.surface == rhs.surface && lhs.position[0] == rhs.position[0] &&
+               lhs.position[1] == rhs.position[1] && lhs.pressure == rhs.pressure &&
+               lhs.pressure_available == rhs.pressure_available;
+    }
+};
+
+/**
  * @brief Platform-neutral metadata for one physical device.
  */
 struct input_device_descriptor
@@ -578,6 +602,21 @@ public:
     bool submit_button(input_device_id id, input_control control, bool down);
     bool submit_axis(input_device_id id, input_control control, float value);
     bool submit_battery_state(input_device_id id, input_battery_state state);
+
+    /**
+     * @brief Replace the active contacts for one physical touch surface device.
+     *
+     * Contact positions and optional pressure are normalized to [0, 1]. Passing
+     * an empty vector clears the device's active contacts and is allowed for a
+     * retained disconnected device so platform extensions can clean up state.
+     */
+    bool submit_touch_contacts(input_device_id id, std::vector<input_touch_contact> contacts);
+
+    /**
+     * @brief Return the current active touch contacts for a connected device.
+     */
+    [[nodiscard]] const std::vector<input_touch_contact>& touch_contacts(input_device_id id) const noexcept;
+
     void release_all();
 
     [[nodiscard]] const input_device* device(input_device_id id) const noexcept;
@@ -632,6 +671,7 @@ private:
     std::unordered_map<player_id, std::vector<input_device_id>> player_devices_;
     std::unordered_map<std::uint64_t, std::vector<player_id>> device_players_;
     std::unordered_map<std::uint64_t, input_output_sink*> output_sinks_;
+    std::unordered_map<std::uint64_t, std::vector<input_touch_contact>> touch_contacts_;
     std::vector<input_device_event> device_events_;
     std::uint64_t next_device_id_{1};
 };
