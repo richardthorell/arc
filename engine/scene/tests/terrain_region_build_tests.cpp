@@ -36,7 +36,7 @@ arc::scene::terrain_region_build_batch compile(const arc::scene::terrain_asset& 
 }
 } // namespace
 
-TEST_CASE("M3.4 workers build only dirty geometry regions from immutable snapshots")
+TEST_CASE("M3.5 workers build dirty geometry and attribute regions from immutable snapshots")
 {
     auto asset = build_asset();
     arc::jobs::job_system jobs({.worker_count = 1u, .io_worker_count = 1u, .enable_render_thread = false});
@@ -53,10 +53,13 @@ TEST_CASE("M3.4 workers build only dirty geometry regions from immutable snapsho
     auto result = queue.take_ready(asset);
     REQUIRE(result);
     REQUIRE(result->succeeded);
-    CHECK(calls == 2u);
-    REQUIRE(result->regions.size() == 2u);
+    CHECK(calls == 3u);
+    REQUIRE(result->regions.size() == 3u);
     CHECK(result->regions[0].evaluation.region.x == 0);
-    CHECK(result->regions[1].evaluation.region.x == 2);
+    CHECK(result->regions[1].evaluation.region.x == 1);
+    CHECK_FALSE(result->regions[1].geometry.has_value());
+    CHECK(result->regions[1].attributes.has_value());
+    CHECK(result->regions[2].evaluation.region.x == 2);
     CHECK_FALSE(queue.pending());
     CHECK(asset.regions[0].dirty_domains == arc::scene::terrain_domain::geometry);
     CHECK_FALSE(queue.take_ready(asset));
@@ -97,6 +100,8 @@ TEST_CASE("M3.4 worker failure and abandoned queues cannot publish partial batch
 TEST_CASE("M3.4 publication retains unaffected handles and rolls back incomplete staging")
 {
     auto asset = build_asset();
+    for (auto& region : asset.regions)
+        region.dirty_domains = arc::scene::terrain_domain::geometry;
     auto initial = compile(asset);
     REQUIRE(initial.succeeded);
     arc::render::renderer renderer;
@@ -114,9 +119,11 @@ TEST_CASE("M3.4 publication retains unaffected handles and rolls back incomplete
     CHECK(cache.find(guid)->regions[0].geometry == first);
     CHECK(renderer.mesh_alive(first.conventional));
     CHECK(renderer.mesh_alive(unaffected.conventional));
-    asset.regions.back().dirty_domains = arc::scene::terrain_domain::none;
+    for (auto& region : asset.regions)
+        region.dirty_domains = arc::scene::terrain_domain::none;
     ++asset.authoring_revision;
     asset.regions.front().dirty_revision = asset.authoring_revision;
+    asset.regions.front().dirty_domains = arc::scene::terrain_domain::geometry;
     auto next = compile(asset);
     REQUIRE(cache.publish(guid, next, terrain, renderer));
     CHECK(cache.find(guid)->generation == generation + 1u);
@@ -128,5 +135,42 @@ TEST_CASE("M3.4 publication retains unaffected handles and rolls back incomplete
     REQUIRE(cache.publish(guid, replacement, terrain, renderer));
     CHECK(cache.find(guid)->regions.size() == 1u);
     CHECK_FALSE(renderer.mesh_alive(unaffected.conventional));
+    cache.clear(renderer);
+}
+
+TEST_CASE("M3.5 attribute-only publication replaces textures without replacing geometry")
+{
+    auto asset = build_asset();
+    for (auto& region : asset.regions)
+        region.dirty_domains = arc::scene::terrain_domain::geometry;
+    auto initial = compile(asset);
+    REQUIRE(initial.succeeded);
+    arc::render::renderer renderer;
+    arc::scene::terrain_render_proxy_cache cache;
+    arc::scene::terrain_component terrain;
+    const auto guid = arc::ecs::generate_entity_guid();
+    REQUIRE(cache.publish(guid, initial, terrain, renderer));
+    const auto geometry = cache.find(guid)->regions[1].geometry;
+    const auto attributes = cache.find(guid)->regions[1].surface_attribute_texture;
+
+    for (auto& region : asset.regions)
+        region.dirty_domains = arc::scene::terrain_domain::none;
+    ++asset.authoring_revision;
+    asset.regions[1].dirty_revision = asset.authoring_revision;
+    asset.regions[1].dirty_domains = arc::scene::terrain_domain::attributes;
+    auto painted = compile(asset);
+    REQUIRE(painted.succeeded);
+    REQUIRE(painted.regions.size() == 1u);
+    CHECK_FALSE(painted.regions.front().geometry.has_value());
+    REQUIRE(painted.regions.front().attributes.has_value());
+    painted.regions.front().attributes->material_weights.front() = {0u, 255u, 0u, 0u};
+
+    REQUIRE(cache.publish(guid, painted, terrain, renderer));
+    const auto* published = cache.find(guid);
+    REQUIRE(published != nullptr);
+    CHECK(published->regions[1].geometry == geometry);
+    CHECK(published->regions[1].surface_attribute_texture != attributes);
+    CHECK(renderer.mesh_alive(geometry.conventional));
+    CHECK_FALSE(renderer.texture_alive(attributes));
     cache.clear(renderer);
 }

@@ -3570,6 +3570,130 @@ TEST_CASE("terrain host snapshots validate brush settings and group a stroke int
     REQUIRE(host->scene_state().scene.get<arc::scene::terrain_component>(terrain_entity).layer_weights == before);
 }
 
+TEST_CASE("M3.5 newly created terrain persists paint into its asset without leaving asset-owned rendering")
+{
+    const auto root =
+        std::filesystem::temp_directory_path() /
+        ("arc-editor-terrain-m3-5-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(root / "Content");
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    assets.root = root / "Content";
+    REQUIRE(host->open_project({.name = "Terrain M3.5", .root = root}, assets).succeeded);
+    REQUIRE(host->execute(arc::editor::host_viewport_create_command{
+                              .viewport_id = "viewport-1", .width = 800u, .height = 600u})
+                .succeeded);
+
+    const auto created = host->execute(
+        arc::editor::host_create_terrain_command{.minimum_elevation = -12.0f, .maximum_elevation = 36.0f});
+    REQUIRE(created.succeeded);
+    const auto terrain_entity = host->scene_state().terrain_entity;
+    auto& terrain = host->scene_state().scene.get<arc::scene::terrain_component>(terrain_entity);
+    REQUIRE(terrain.asset.guid.valid());
+    REQUIRE(terrain.asset.expected_type == arc::assets::asset_types::terrain);
+    const auto terrain_path = root / terrain.asset.path_hint;
+    REQUIRE(std::filesystem::is_regular_file(terrain_path));
+    REQUIRE(std::filesystem::is_regular_file(root / "Content" / "Terrain" / "Terrain.height.png"));
+
+    const auto guid = host->scene_state().scene.get<arc::scene::persistent_id_component>(terrain_entity).value;
+    bool asset_owned{};
+    for (std::uint64_t frame = 1u; frame <= 5000u && !asset_owned; ++frame)
+    {
+        host->request_viewport({.frame_index = frame, .width = 800u, .height = 600u});
+        if (const auto* proxy = host->scene_state().terrain_render_proxies.find(guid)) asset_owned = proxy->asset_owned;
+        if (!asset_owned) std::this_thread::sleep_for(std::chrono::milliseconds{2});
+    }
+    REQUIRE(asset_owned);
+    CHECK(terrain.heights.front() == Catch::Approx(-12.0f));
+    const auto* initial_proxy = host->scene_state().terrain_render_proxies.find(guid);
+    REQUIRE(initial_proxy != nullptr);
+    std::vector<arc::render::geometry_resource_handle> geometry;
+    for (const auto& region : initial_proxy->regions)
+        geometry.push_back(region.geometry);
+
+    const auto terrain_id = arc::editor::host_entity_id{terrain_entity.index, terrain_entity.generation};
+    REQUIRE(
+        host->execute(arc::editor::host_set_terrain_brush_command{.entity = terrain_id,
+                                                                  .tool = arc::editor::host_terrain_brush_tool::paint,
+                                                                  .radius = 8.0f,
+                                                                  .strength = 0.4f,
+                                                                  .falloff = 0.75f,
+                                                                  .active_layer = 1u})
+            .succeeded);
+    REQUIRE(host->execute(arc::editor::host_viewport_set_tool_command{.tool = arc::editor::host_viewport_tool::terrain})
+                .succeeded);
+    host->request_viewport({.frame_index = 101u, .width = 800u, .height = 600u});
+    REQUIRE(
+        host->execute(arc::editor::host_terrain_hover_command{.entity = terrain_id, .x = 400u, .y = 300u}).succeeded);
+    REQUIRE(host->terrain_tool_snapshot().hover_visible);
+    const auto before = terrain.layer_weights;
+    REQUIRE(
+        host
+            ->execute(arc::editor::host_command_envelope{
+                .payload = arc::editor::host_terrain_stroke_command{terrain_id, 400u, 300u,
+                                                                    arc::editor::host_edit_phase::begin, false},
+                .edit = arc::editor::host_edit_transaction{935u, arc::editor::host_edit_phase::begin, "Terrain Paint"}})
+            .succeeded);
+    REQUIRE(terrain.layer_weights != before);
+    host->request_viewport({.frame_index = 102u, .width = 800u, .height = 600u});
+    const auto* preview_proxy = host->scene_state().terrain_render_proxies.find(guid);
+    REQUIRE(preview_proxy != nullptr);
+    CHECK(preview_proxy->asset_owned);
+    REQUIRE(preview_proxy->regions.size() == geometry.size());
+    for (std::size_t index = 0; index < geometry.size(); ++index)
+        CHECK(preview_proxy->regions[index].geometry == geometry[index]);
+
+    REQUIRE(host
+                ->execute(arc::editor::host_command_envelope{
+                    .payload = arc::editor::host_terrain_stroke_command{terrain_id, 400u, 300u,
+                                                                        arc::editor::host_edit_phase::commit, false},
+                    .edit = arc::editor::host_edit_transaction{935u, arc::editor::host_edit_phase::commit,
+                                                               "Terrain Paint"}})
+                .succeeded);
+    std::ifstream terrain_document(terrain_path, std::ios::binary);
+    const std::string terrain_json((std::istreambuf_iterator<char>(terrain_document)),
+                                   std::istreambuf_iterator<char>());
+    const auto decoded = arc::scene::read_terrain_asset_json(terrain_json);
+    REQUIRE(decoded.has_value());
+    const auto paint =
+        std::ranges::find_if(decoded.value().modifiers, [](const auto& modifier)
+                             { return modifier.type_id == arc::scene::terrain_builtin_modifier_types::paint_layer; });
+    REQUIRE(paint != decoded.value().modifiers.end());
+    CHECK_FALSE(paint->region_payloads.empty());
+
+    const auto committed_weights = terrain.layer_weights;
+    REQUIRE(
+        host
+            ->execute(arc::editor::host_command_envelope{
+                .payload = arc::editor::host_terrain_stroke_command{terrain_id, 420u, 300u,
+                                                                    arc::editor::host_edit_phase::begin, false},
+                .edit = arc::editor::host_edit_transaction{936u, arc::editor::host_edit_phase::begin, "Terrain Paint"}})
+            .succeeded);
+    REQUIRE(terrain.layer_weights != committed_weights);
+    host->request_viewport({.frame_index = 103u, .width = 800u, .height = 600u});
+    REQUIRE(host
+                ->execute(arc::editor::host_command_envelope{
+                    .payload = arc::editor::host_terrain_stroke_command{terrain_id, 420u, 300u,
+                                                                        arc::editor::host_edit_phase::cancel, false},
+                    .edit = arc::editor::host_edit_transaction{936u, arc::editor::host_edit_phase::cancel,
+                                                               "Terrain Paint"}})
+                .succeeded);
+    const auto& restored = host->scene_state().scene.get<arc::scene::terrain_component>(terrain_entity);
+    CHECK(restored.layer_weights == committed_weights);
+    const auto* restored_proxy = host->scene_state().terrain_render_proxies.find(guid);
+    REQUIRE(restored_proxy != nullptr);
+    CHECK(restored_proxy->asset_owned);
+    REQUIRE(restored_proxy->regions.size() == geometry.size());
+    for (std::size_t index = 0; index < geometry.size(); ++index)
+        CHECK(restored_proxy->regions[index].geometry == geometry[index]);
+
+    host.reset();
+    std::error_code cleanup_error;
+    std::filesystem::remove_all(root, cleanup_error);
+}
+
 TEST_CASE("terrain scene v4 bridge preserves legacy heightfields and terrain asset references")
 {
     const auto root = std::filesystem::temp_directory_path() / "arc-terrain-scene-v2-test";

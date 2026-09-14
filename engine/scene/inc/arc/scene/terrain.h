@@ -147,6 +147,13 @@ struct terrain_sculpt_brush_delta
     float delta{};
 };
 
+struct terrain_paint_brush_delta
+{
+    std::uint32_t x{};
+    std::uint32_t z{};
+    std::array<std::int16_t, 4> delta{};
+};
+
 struct terrain_dirty_region
 {
     std::uint32_t min_x{};
@@ -194,6 +201,9 @@ public:
                      render::renderer& renderer, const terrain_dirty_region* dirty_region = nullptr);
     bool synchronize(ecs::entity_guid guid, const terrain_component& terrain, render::renderer& renderer,
                      const terrain_dirty_region* dirty_region = nullptr);
+    /** Replace only visible asset-owned attribute pages for an interactive paint preview. */
+    bool preview_attributes(ecs::entity_guid guid, const terrain_component& terrain, render::renderer& renderer,
+                            const terrain_dirty_region& dirty_region);
     /** Stage every resource before replacing the visible generation. Failure leaves the preview intact. */
     bool publish(ecs::entity_guid guid, terrain_region_build_batch& batch, const terrain_component& terrain,
                  render::renderer& renderer);
@@ -234,7 +244,8 @@ void generate_terrain_heightfield(terrain_component& terrain);
                                                    float local_z) noexcept;
 terrain_dirty_region apply_terrain_brush(terrain_component& terrain, const math::vector3f& local_center,
                                          const terrain_brush_settings& settings, float delta_seconds = 1.0f / 60.0f,
-                                         std::vector<terrain_sculpt_brush_delta>* sculpt_deltas = nullptr);
+                                         std::vector<terrain_sculpt_brush_delta>* sculpt_deltas = nullptr,
+                                         std::vector<terrain_paint_brush_delta>* paint_deltas = nullptr);
 [[nodiscard]] terrain_raycast_hit raycast_terrain(const terrain_component& terrain, const math::vector3f& local_origin,
                                                   const math::vector3f& local_direction) noexcept;
 [[nodiscard]] terrain_raycast_hit raycast_terrain(const terrain_component& terrain,

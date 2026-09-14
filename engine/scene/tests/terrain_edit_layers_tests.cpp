@@ -129,6 +129,59 @@ TEST_CASE("M3.1 clearing the last sparse sample removes the region payload")
     CHECK_FALSE(sculpt->affected_bounds.has_value());
 }
 
+TEST_CASE("M3.5 paint edits fold into sparse attribute payloads with one revision")
+{
+    using namespace arc::scene;
+
+    auto asset = make_asset();
+    const auto layer = add_terrain_paint_layer(asset, "Mud").id;
+    const auto start_revision = asset.authoring_revision;
+    const auto address = terrain_modifier_sample_at(asset.coordinates, asset.partition, 40.0, -12.0);
+    const std::array edits{
+        terrain_paint_sample_edit{address.region, {address.x, address.z, {-10, 10, 0, 0}}},
+        terrain_paint_sample_edit{address.region, {address.x, address.z, {-15, 15, 0, 0}}},
+    };
+
+    const auto update = accumulate_terrain_paint_samples(asset, layer, edits);
+
+    CHECK(update.revision == start_revision + 1u);
+    REQUIRE(update.regions == std::vector<terrain_region_id>{address.region});
+    const auto* modifier = find_terrain_modifier(asset, layer);
+    REQUIRE(modifier != nullptr);
+    const auto* payload = find_terrain_modifier_payload(*modifier, address.region);
+    REQUIRE(payload != nullptr);
+    const auto& samples = std::get<terrain_paint_region_payload>(payload->data).samples;
+    REQUIRE(samples.size() == 1u);
+    CHECK(samples.front().delta == std::array<std::int16_t, 4>{-25, 25, 0, 0});
+    const auto region =
+        std::ranges::find_if(asset.regions, [&](const auto& value) { return value.id == address.region; });
+    REQUIRE(region != asset.regions.end());
+    CHECK(region->dirty_domains == terrain_domain::attributes);
+    CHECK(validate_terrain_asset(asset).valid());
+}
+
+TEST_CASE("M3.5 paint edits remove a sparse sample when its accumulated delta returns to zero")
+{
+    using namespace arc::scene;
+
+    auto asset = make_asset();
+    const auto layer = add_terrain_paint_layer(asset).id;
+    const auto address = terrain_modifier_sample_at(asset.coordinates, asset.partition, 4.0, 8.0);
+    REQUIRE(accumulate_terrain_paint_samples(
+                asset, layer,
+                std::array{terrain_paint_sample_edit{address.region, {address.x, address.z, {-32, 32, 0, 0}}}})
+                .revision != 0u);
+    REQUIRE(accumulate_terrain_paint_samples(
+                asset, layer,
+                std::array{terrain_paint_sample_edit{address.region, {address.x, address.z, {32, -32, 0, 0}}}})
+                .revision != 0u);
+
+    const auto* modifier = find_terrain_modifier(asset, layer);
+    REQUIRE(modifier != nullptr);
+    CHECK(find_terrain_modifier_payload(*modifier, address.region) == nullptr);
+    CHECK_FALSE(modifier->affected_bounds.has_value());
+}
+
 TEST_CASE("M3.1 rejects sparse payloads attached to incompatible modifier types")
 {
     using namespace arc::scene;

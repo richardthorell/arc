@@ -137,6 +137,75 @@ bool apply_sculpt_layer(const terrain_modifier_descriptor& modifier, const terra
     return true;
 }
 
+std::array<std::uint8_t, 4> normalize_weights(const std::array<std::int32_t, 4>& input) noexcept
+{
+    std::uint32_t total{};
+    for (const auto value : input)
+        total += static_cast<std::uint32_t>(std::max(value, 0));
+    std::array<std::uint8_t, 4> result{};
+    if (total == 0u)
+    {
+        result[0] = 255u;
+        return result;
+    }
+    std::uint32_t remaining{255u};
+    for (std::size_t channel = 0; channel < 3u; ++channel)
+    {
+        const auto encoded = static_cast<std::uint32_t>(
+            std::clamp(std::lround(static_cast<double>(std::max(input[channel], 0)) / total * 255.0), 0l, 255l));
+        result[channel] = static_cast<std::uint8_t>(std::min(encoded, remaining));
+        remaining -= result[channel];
+    }
+    result[3] = static_cast<std::uint8_t>(remaining);
+    return result;
+}
+
+bool apply_paint_layer(const terrain_modifier_descriptor& modifier, const terrain_build_region_snapshot& snapshot,
+                       terrain_evaluated_surface& surface, std::string& error)
+{
+    auto* heightfield = std::get_if<terrain_evaluated_heightfield>(&surface.geometry);
+    if (!heightfield || heightfield->sample_width < 2u || heightfield->sample_height < 2u)
+    {
+        error = "Paint Layer currently requires heightfield-backed TerrainSurfaceIR";
+        return false;
+    }
+
+    const auto region_width = snapshot.authoring_bounds.max_x - snapshot.authoring_bounds.min_x;
+    const auto region_depth = snapshot.authoring_bounds.max_z - snapshot.authoring_bounds.min_z;
+    const auto spacing_x = heightfield->width / static_cast<double>(heightfield->sample_width - 1u);
+    const auto spacing_z = heightfield->depth / static_cast<double>(heightfield->sample_height - 1u);
+    for (const auto& payload : modifier.region_payloads)
+    {
+        const auto* paint = std::get_if<terrain_paint_region_payload>(&payload.data);
+        if (!paint)
+        {
+            error = "Paint Layer contains an incompatible sparse region payload";
+            return false;
+        }
+        for (const auto& sample : paint->samples)
+        {
+            const auto local_x = (static_cast<double>(payload.region.x) - static_cast<double>(snapshot.target.x) - 0.5 +
+                                  static_cast<double>(sample.x) / terrain_modifier_sample_coordinate_max) *
+                                 region_width;
+            const auto local_z = (static_cast<double>(payload.region.z) - static_cast<double>(snapshot.target.z) - 0.5 +
+                                  static_cast<double>(sample.z) / terrain_modifier_sample_coordinate_max) *
+                                 region_depth;
+            const auto column = std::round((local_x - surface.local_bounds.min_x) / spacing_x);
+            const auto row = std::round((local_z - surface.local_bounds.min_z) / spacing_z);
+            if (column < 0.0 || row < 0.0 || column >= heightfield->sample_width || row >= heightfield->sample_height)
+                continue;
+            const auto index =
+                static_cast<std::size_t>(row) * heightfield->sample_width + static_cast<std::size_t>(column);
+            std::array<std::int32_t, 4> next{};
+            for (std::size_t channel = 0; channel < next.size(); ++channel)
+                next[channel] =
+                    static_cast<std::int32_t>(heightfield->material_weights[index][channel]) + sample.delta[channel];
+            heightfield->material_weights[index] = normalize_weights(next);
+        }
+    }
+    return true;
+}
+
 std::optional<terrain_evaluated_surface> evaluate_flat_source(const terrain_asset& asset,
                                                               const terrain_build_region_snapshot& snapshot)
 {
@@ -278,8 +347,8 @@ terrain_evaluation_result terrain_evaluator::evaluate(const terrain_asset& asset
     for (const auto& modifier : asset.modifiers)
     {
         if (!modifier.enabled) continue;
-        const auto geometry_domains = terrain_domain::geometry | terrain_domain::topology;
-        if ((modifier.domains & geometry_domains) == terrain_domain::none) continue;
+        const auto render_domains = terrain_domain::geometry | terrain_domain::topology | terrain_domain::attributes;
+        if ((modifier.domains & render_domains) == terrain_domain::none) continue;
         if (modifier.affected_bounds &&
             !overlaps_xz(*modifier.affected_bounds, result.build_snapshot.evaluation_bounds))
             continue;
@@ -326,6 +395,7 @@ terrain_evaluator make_default_terrain_evaluator()
     terrain_evaluator result;
     (void)result.register_modifier("arc.height-offset", apply_height_offset);
     (void)result.register_modifier(std::string(terrain_builtin_modifier_types::sculpt_layer), apply_sculpt_layer);
+    (void)result.register_modifier(std::string(terrain_builtin_modifier_types::paint_layer), apply_paint_layer);
     return result;
 }
 

@@ -48,6 +48,11 @@
 #include <vector>
 #include <nlohmann/json.hpp>
 
+#if defined(_WIN32)
+#define NOMINMAX
+#include <Windows.h>
+#endif
+
 namespace arc::editor
 {
 namespace

@@ -184,6 +184,13 @@ struct terrain_paint_sample_delta
                                      const terrain_paint_sample_delta&) noexcept = default;
 };
 
+/** @brief One additive sparse paint edit routed to a stable authoring region. */
+struct terrain_paint_sample_edit
+{
+    terrain_region_id region{};
+    terrain_paint_sample_delta sample{};
+};
+
 struct terrain_sculpt_region_payload
 {
     std::vector<terrain_sculpt_sample_delta> samples;
@@ -437,6 +444,13 @@ find_terrain_modifier_payload(const terrain_modifier_descriptor& modifier, terra
 [[nodiscard]] terrain_dirty_update set_terrain_paint_region_samples(terrain_asset& asset, terrain_stable_id modifier,
                                                                     terrain_region_id region,
                                                                     std::vector<terrain_paint_sample_delta> samples);
+
+/**
+ * Add sparse weight deltas into one paint modifier using stable region-local coordinates.
+ * Duplicate sample edits are folded, zero results are removed, and every changed region shares one authoring revision.
+ */
+[[nodiscard]] terrain_dirty_update accumulate_terrain_paint_samples(terrain_asset& asset, terrain_stable_id modifier,
+                                                                    std::span<const terrain_paint_sample_edit> edits);
 
 /** Validate built-in sparse payload ownership, schemas, values, and per-region uniqueness. */
 [[nodiscard]] bool validate_terrain_modifier_payloads(const terrain_modifier_descriptor& modifier) noexcept;

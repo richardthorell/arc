@@ -549,6 +549,49 @@ std::optional<std::filesystem::path> resolve_project_document(const std::filesys
     return candidate;
 }
 
+bool write_text_file_atomic(const std::filesystem::path& path, std::string_view contents, std::string& message)
+{
+    std::error_code error;
+    std::filesystem::create_directories(path.parent_path(), error);
+    if (error)
+    {
+        message = "Could not create the asset directory";
+        return false;
+    }
+    const auto temporary =
+        path.string() + ".tmp-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    {
+        std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+        if (!output)
+        {
+            message = "Could not create the temporary asset document";
+            return false;
+        }
+        output.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+        output.flush();
+        if (!output)
+        {
+            message = "Could not write the temporary asset document";
+            std::filesystem::remove(temporary, error);
+            return false;
+        }
+    }
+#if defined(_WIN32)
+    const bool published = MoveFileExW(std::filesystem::path(temporary).c_str(), path.c_str(),
+                                       MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
+    if (!published)
+#else
+    std::filesystem::rename(temporary, path, error);
+    if (error)
+#endif
+    {
+        std::filesystem::remove(temporary, error);
+        message = "Could not publish the asset document";
+        return false;
+    }
+    return true;
+}
+
 ecs::entity to_scene_entity(host_entity_id entity) noexcept
 {
     return {.index = entity.index, .generation = entity.generation};
@@ -1803,14 +1846,16 @@ public:
     }
 };
 
-struct terrain_sculpt_stroke_session
+struct terrain_asset_stroke_session
 {
     ecs::entity_guid entity{};
     assets::asset_guid asset_guid{};
     scene::terrain_stable_id modifier{};
+    scene::terrain_brush_tool tool{scene::terrain_brush_tool::sculpt};
     std::filesystem::path source_path;
     scene::terrain_asset asset;
-    std::vector<scene::terrain_sculpt_sample_edit> edits;
+    std::vector<scene::terrain_sculpt_sample_edit> sculpt_edits;
+    std::vector<scene::terrain_paint_sample_edit> paint_edits;
 };
 
 struct arc_host::state
@@ -2031,8 +2076,15 @@ struct arc_host::state
         {
             const auto entity = find_entity_by_guid(scene, guid);
             if (!scene.scene.alive(entity)) continue;
-            if (!synchronize_terrain_render_resource(scene, *renderer, entity, &dirty))
-                diagnostics::warn("editor.terrain", "Terrain compatibility preview update failed");
+            const auto* proxy = scene.terrain_render_proxies.find(guid);
+            auto* terrain = scene.scene.try_get<scene::terrain_component>(entity);
+            const bool attribute_only_asset_preview =
+                terrain && dirty.weights_changed && !dirty.heights_changed && proxy && proxy->asset_owned;
+            const bool synchronized =
+                attribute_only_asset_preview
+                    ? scene.terrain_render_proxies.preview_attributes(guid, *terrain, *renderer, dirty)
+                    : synchronize_terrain_render_resource(scene, *renderer, entity, &dirty);
+            if (!synchronized) diagnostics::warn("editor.terrain", "Terrain preview update failed");
         }
     }
 
@@ -2048,8 +2100,8 @@ struct arc_host::state
                 it = terrain_rebuilds.erase(it);
                 continue;
             }
-            // An active brush owns the compatibility preview until its authoring transaction commits.
-            if (!terrain_sculpt_stroke || terrain_sculpt_stroke->entity != it->first)
+            // An active brush owns the interactive preview until its authoring transaction commits.
+            if (!terrain_asset_stroke || terrain_asset_stroke->entity != it->first)
             {
                 const auto previous_error = it->second.error();
                 if (it->second.pump(simulation.jobs(), scene.terrain_render_proxies, it->first, *terrain, *renderer))
@@ -2103,7 +2155,7 @@ struct arc_host::state
     host_viewport_set_tool_command viewport_tool;
     scene::terrain_brush_settings terrain_brush;
     std::unordered_map<ecs::entity_guid, scene::terrain_stable_id, ecs::entity_guid_hash> terrain_active_modifiers;
-    std::optional<terrain_sculpt_stroke_session> terrain_sculpt_stroke;
+    std::optional<terrain_asset_stroke_session> terrain_asset_stroke;
     std::unordered_map<ecs::entity_guid, terrain_rebuild_session, ecs::entity_guid_hash> terrain_rebuilds;
     std::unordered_map<ecs::entity_guid, scene::terrain_dirty_region, ecs::entity_guid_hash> terrain_preview_dirty;
     bool terrain_rebuilds_suspended{};
@@ -2282,6 +2334,10 @@ host_response arc_host::execute(const host_command_envelope& command)
     }
     if (command.edit && command.edit->phase == host_edit_phase::cancel)
     {
+        const auto cancelled_paint_entity =
+            state_->terrain_asset_stroke && state_->terrain_asset_stroke->tool == scene::terrain_brush_tool::paint
+                ? state_->terrain_asset_stroke->entity
+                : ecs::entity_guid{};
         if (!state_->history.cancel(command.edit->id, state_->scene))
             return {.request_id = command.request_id,
                     .succeeded = false,
@@ -2290,9 +2346,24 @@ host_response arc_host::execute(const host_command_envelope& command)
                     .world_epoch = state_->world_epoch,
                     .frame_revision = state_->viewport_frame_index};
         synchronize_all_terrain_resources(state_->scene, *state_->renderer);
+        if (cancelled_paint_entity.valid())
+        {
+            const auto terrain_entity = find_entity_by_guid(state_->scene, cancelled_paint_entity);
+            if (auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(terrain_entity))
+            {
+                const scene::terrain_dirty_region dirty{.min_x = 0u,
+                                                        .min_z = 0u,
+                                                        .max_x = terrain->subdivisions,
+                                                        .max_z = terrain->subdivisions,
+                                                        .valid = true,
+                                                        .weights_changed = true};
+                (void)state_->scene.terrain_render_proxies.preview_attributes(cancelled_paint_entity, *terrain,
+                                                                              *state_->renderer, dirty);
+            }
+        }
         state_->terrain_brush_local_position.reset();
         state_->terrain_stroke_previous_position.reset();
-        state_->terrain_sculpt_stroke.reset();
+        state_->terrain_asset_stroke.reset();
         ++state_->scene_revision;
         push_event(state_->events, state_->event_sequence, host_event_type::scene_changed,
                    "Edit transaction cancelled");
@@ -3053,7 +3124,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 {
                     state_->terrain_brush_local_position.reset();
                     state_->terrain_stroke_previous_position.reset();
-                    state_->terrain_sculpt_stroke.reset();
+                    state_->terrain_asset_stroke.reset();
                     state_->terrain_flatten_height_captured = false;
                     if (state_->viewport_tool.tool == host_viewport_tool::terrain)
                         state_->viewport_tool.tool = host_viewport_tool::select;
@@ -3685,12 +3756,34 @@ host_response arc_host::execute(const host_command_envelope& command)
                 state_->terrain_brush.strength = payload.strength;
                 state_->terrain_brush.falloff = payload.falloff;
                 state_->terrain_brush.active_layer = payload.active_layer;
+                if (auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(entity);
+                    terrain && (terrain->asset.guid.valid() || !terrain->asset.path_hint.empty()))
+                {
+                    const auto entity_guid = entity_guid_of(state_->scene, entity);
+                    if (const auto rebuild = state_->terrain_rebuilds.find(entity_guid);
+                        rebuild != state_->terrain_rebuilds.end())
+                    {
+                        const auto target_type = state_->terrain_brush.tool == scene::terrain_brush_tool::paint
+                                                     ? scene::terrain_builtin_modifier_types::paint_layer
+                                                     : scene::terrain_builtin_modifier_types::sculpt_layer;
+                        for (auto it = rebuild->second.asset().modifiers.rbegin();
+                             it != rebuild->second.asset().modifiers.rend(); ++it)
+                            if (it->enabled && it->type_id == target_type)
+                            {
+                                state_->terrain_active_modifiers[entity_guid] = it->id;
+                                break;
+                            }
+                    }
+                }
                 push_event(state_->events, state_->event_sequence, host_event_type::terrain_tool_changed,
                            "Terrain brush changed", entity, to_json(terrain_tool_snapshot()));
                 return success(to_json(terrain_tool_snapshot()));
             }
             else if constexpr (std::is_same_v<command_type, host_create_terrain_command>)
             {
+                const auto requested_parent = to_scene_entity(payload.parent);
+                if (payload.parent.valid() && !state_->scene.scene.alive(requested_parent))
+                    return fail("Terrain parent is missing or invalid");
                 scene::terrain_creation_descriptor descriptor;
                 descriptor.size = payload.size;
                 descriptor.minimum_elevation = payload.minimum_elevation;
@@ -3732,6 +3825,123 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto generated = scene::generate_terrain(staged, generation);
                 if (!generated.succeeded) return fail(generated.message);
 
+                std::optional<scene::terrain_asset> authored_asset;
+                std::filesystem::path terrain_asset_path;
+                std::filesystem::path terrain_source_path;
+                std::filesystem::path terrain_asset_reference;
+                scene::terrain_stable_id default_sculpt_layer{};
+                const auto remove_created_terrain_assets = [&]
+                {
+                    std::error_code cleanup_error;
+                    if (!terrain_asset_path.empty())
+                    {
+                        std::filesystem::remove(terrain_asset_path, cleanup_error);
+                        std::filesystem::remove(assets::metadata_path_for(terrain_asset_path), cleanup_error);
+                    }
+                    if (!terrain_source_path.empty())
+                    {
+                        std::filesystem::remove(terrain_source_path, cleanup_error);
+                        std::filesystem::remove(assets::metadata_path_for(terrain_source_path), cleanup_error);
+                        std::filesystem::remove(terrain_source_path.string() + ".arcmeta.json", cleanup_error);
+                    }
+                };
+
+                if (state_->asset_registry && !state_->project.root.empty())
+                {
+                    const auto terrain_directory = state_->asset_registry->config().asset_root / "Terrain";
+                    std::error_code path_error;
+                    std::filesystem::create_directories(terrain_directory, path_error);
+                    if (path_error) return fail("Terrain asset directory could not be created");
+                    for (std::uint32_t serial = 1u; serial <= 10000u; ++serial)
+                    {
+                        const auto stem = serial == 1u ? std::string{"Terrain"} : "Terrain_" + std::to_string(serial);
+                        const auto asset_candidate = terrain_directory / (stem + ".terrain");
+                        const auto source_candidate = terrain_directory / (stem + ".height.png");
+                        if (!std::filesystem::exists(asset_candidate, path_error) &&
+                            !std::filesystem::exists(source_candidate, path_error))
+                        {
+                            terrain_asset_path = asset_candidate;
+                            terrain_source_path = source_candidate;
+                            break;
+                        }
+                        path_error.clear();
+                    }
+                    if (terrain_asset_path.empty()) return fail("No available Terrain asset name could be allocated");
+
+                    const auto normalized_asset_path =
+                        std::filesystem::relative(terrain_asset_path, state_->project.root, path_error);
+                    if (path_error || normalized_asset_path.empty() || normalized_asset_path.is_absolute() ||
+                        normalized_asset_path.native().starts_with(std::filesystem::path("..").native()))
+                        return fail("Terrain assets must be created inside the project root");
+                    const auto normalized_source_path =
+                        std::filesystem::relative(terrain_source_path, state_->project.root, path_error);
+                    if (path_error || normalized_source_path.empty() || normalized_source_path.is_absolute() ||
+                        normalized_source_path.native().starts_with(std::filesystem::path("..").native()))
+                        return fail("Terrain source data must be created inside the project root");
+
+                    const auto heightmap =
+                        scene::export_terrain_heightmap(staged, {.format = scene::terrain_heightmap_format::png16,
+                                                                 .minimum_elevation = descriptor.minimum_elevation,
+                                                                 .maximum_elevation = descriptor.maximum_elevation});
+                    const auto saved_heightmap = save_terrain_heightmap(terrain_source_path, heightmap);
+                    if (!saved_heightmap.succeeded)
+                    {
+                        remove_created_terrain_assets();
+                        return fail(saved_heightmap.message);
+                    }
+
+                    scene::terrain_asset asset;
+                    asset.source.id = scene::generate_terrain_stable_id();
+                    asset.source.kind = scene::terrain_source_kind::heightfield;
+                    asset.source.transform.translation[1] = descriptor.minimum_elevation;
+                    asset.source.asset.expected_type = assets::asset_types::texture_2d;
+                    asset.source.asset.path_hint = assets::normalize_asset_path(normalized_source_path);
+                    // Authoring regions bound evaluation work by source-sample density. This partition remains
+                    // independent from runtime render clusters/pages and scales with both resolution and world size.
+                    constexpr std::uint32_t authoring_region_quads = 64u;
+                    const auto source_spacing =
+                        static_cast<double>(descriptor.size) / static_cast<double>(descriptor.sample_resolution - 1u);
+                    asset.partition.authoring_region_size = source_spacing * authoring_region_quads;
+                    asset.partition.dependency_halo = source_spacing;
+                    default_sculpt_layer = scene::add_terrain_sculpt_layer(asset).id;
+                    (void)scene::add_terrain_paint_layer(asset);
+                    const auto encoded = scene::write_terrain_asset_json(asset, true);
+                    if (!encoded)
+                    {
+                        remove_created_terrain_assets();
+                        return fail("Terrain asset could not be serialized");
+                    }
+                    std::string write_error;
+                    if (!write_text_file_atomic(terrain_asset_path, encoded.value(), write_error))
+                    {
+                        remove_created_terrain_assets();
+                        return fail(write_error);
+                    }
+
+                    const auto scan = state_->asset_registry->scan();
+                    if (!scan.succeeded())
+                    {
+                        remove_created_terrain_assets();
+                        (void)state_->asset_registry->scan();
+                        return fail(scan.error.message.empty() ? "Terrain asset could not be registered"
+                                                               : scan.error.message);
+                    }
+                    terrain_asset_reference = normalized_asset_path;
+                    const auto asset_snapshot =
+                        state_->asset_registry->find(assets::normalize_asset_path(terrain_asset_reference));
+                    if (!asset_snapshot || asset_snapshot->type != assets::asset_types::terrain)
+                    {
+                        remove_created_terrain_assets();
+                        (void)state_->asset_registry->scan();
+                        return fail("Terrain asset was written but could not be resolved by the asset registry");
+                    }
+                    staged.asset = {.guid = asset_snapshot->guid,
+                                    .expected_type = assets::asset_types::terrain,
+                                    .path_hint = assets::normalize_asset_path(terrain_asset_reference)};
+                    staged.asset_authoring_revision = asset.authoring_revision;
+                    authored_asset = std::move(asset);
+                }
+
                 const auto created = state_->scene.scene.create();
                 state_->scene.scene.emplace<scene::name_component>(created, "Terrain");
                 state_->scene.scene.emplace<scene::tag_component>(created, "Environment");
@@ -3740,17 +3950,26 @@ host_response arc_host::execute(const host_command_envelope& command)
                 state_->scene.scene.emplace<scene::selection_component>(created, false);
                 state_->scene.scene.emplace<scene::terrain_component>(created, std::move(staged));
                 ensure_scene_authoring_metadata(state_->scene);
-                if (payload.parent.valid() &&
-                    !scene::reparent(state_->scene.scene, created, to_scene_entity(payload.parent), {},
-                                     scene::reparent_transform_policy::preserve_local))
+                if (payload.parent.valid() && !scene::reparent(state_->scene.scene, created, requested_parent, {},
+                                                               scene::reparent_transform_policy::preserve_local))
                 {
                     state_->scene.scene.destroy(created);
+                    remove_created_terrain_assets();
+                    if (state_->asset_registry) (void)state_->asset_registry->scan();
                     return fail("Terrain parent is missing or invalid");
                 }
                 if (!synchronize_terrain_render_resource(state_->scene, *state_->renderer, created))
                 {
                     state_->scene.scene.destroy(created);
+                    remove_created_terrain_assets();
+                    if (state_->asset_registry) (void)state_->asset_registry->scan();
                     return fail("Terrain render resource could not be created");
+                }
+                if (authored_asset)
+                {
+                    const auto guid = entity_guid_of(state_->scene, created);
+                    state_->terrain_active_modifiers[guid] = default_sculpt_layer;
+                    state_->rebuild_terrain(created, *authored_asset, true);
                 }
                 select_entity(state_->scene.scene, created, state_->scene.selected_entity);
                 state_->scene.terrain_entity = created;
@@ -3764,7 +3983,11 @@ host_response arc_host::execute(const host_command_envelope& command)
                 push_event(state_->events, state_->event_sequence, host_event_type::entity_created, "Created terrain",
                            created);
                 return success("{\"entity\":" + to_json(to_host_entity(created)) +
-                               ",\"operationId\":" + std::to_string(state_->terrain_operation.operation_id) + '}');
+                               ",\"operationId\":" + std::to_string(state_->terrain_operation.operation_id) +
+                               (terrain_asset_reference.empty()
+                                    ? std::string{}
+                                    : ",\"assetPath\":" + to_json_string(terrain_asset_reference.generic_string())) +
+                               '}');
             }
             else if constexpr (std::is_same_v<command_type, host_generate_terrain_command>)
             {
@@ -4056,12 +4279,9 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto resolved = resolve_editor_asset(state_->assets, state_->asset_registry.get(),
                                                            state_->project.root, source_reference);
                 if (!resolved || resolved->read_only) return fail("Terrain asset source is not writable", entity);
-                {
-                    std::ofstream output(resolved->path, std::ios::binary | std::ios::trunc);
-                    if (!output) return fail("Terrain asset source could not be opened for writing", entity);
-                    output.write(encoded.value().data(), static_cast<std::streamsize>(encoded.value().size()));
-                    if (!output) return fail("Terrain asset source could not be written", entity);
-                }
+                std::string write_error;
+                if (!write_text_file_atomic(resolved->path, encoded.value(), write_error))
+                    return fail(write_error, entity);
 
                 terrain->asset.guid = loaded.asset.requested_guid();
                 terrain->asset.expected_type = assets::asset_types::terrain;
@@ -4133,8 +4353,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto local_origin = math::transform_point(inverse_terrain, ray.origin);
                 const auto local_direction = math::normalize(math::transform_vector(inverse_terrain, ray.direction));
                 const auto hit = scene::raycast_terrain(*terrain, local_origin, local_direction);
-                const bool asset_backed_sculpt = state_->terrain_brush.tool != scene::terrain_brush_tool::paint &&
-                                                 (terrain->asset.guid.valid() || !terrain->asset.path_hint.empty());
+                const bool asset_backed_stroke = terrain->asset.guid.valid() || !terrain->asset.path_hint.empty();
                 if (!hit.hit && payload.phase != host_edit_phase::commit)
                 {
                     state_->terrain_brush_local_position.reset();
@@ -4144,34 +4363,42 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (hit.hit) state_->terrain_brush_local_position = hit.position;
                 if (payload.phase == host_edit_phase::begin)
                 {
-                    state_->terrain_sculpt_stroke.reset();
-                    if (asset_backed_sculpt)
+                    state_->terrain_asset_stroke.reset();
+                    if (asset_backed_stroke)
                     {
                         if (!state_->asset_registry) return fail("Terrain asset registry is unavailable", entity);
                         const auto entity_guid = entity_guid_of(state_->scene, entity);
                         const auto rebuild = state_->terrain_rebuilds.find(entity_guid);
                         if (rebuild == state_->terrain_rebuilds.end())
-                            return fail("Terrain asset is still preparing for sculpting", entity);
+                            return fail("Terrain asset is still preparing for editing", entity);
+                        const auto* render_proxy = state_->scene.terrain_render_proxies.find(entity_guid);
+                        if (!render_proxy || !render_proxy->asset_owned)
+                            return fail("Terrain asset is still preparing for editing", entity);
                         auto authored = rebuild->second.asset();
+                        const auto target_type = state_->terrain_brush.tool == scene::terrain_brush_tool::paint
+                                                     ? scene::terrain_builtin_modifier_types::paint_layer
+                                                     : scene::terrain_builtin_modifier_types::sculpt_layer;
                         scene::terrain_stable_id target{};
                         if (const auto active = state_->terrain_active_modifiers.find(entity_guid);
                             active != state_->terrain_active_modifiers.end())
                         {
                             const auto* modifier = scene::find_terrain_modifier(authored, active->second);
-                            if (modifier && modifier->enabled &&
-                                modifier->type_id == scene::terrain_builtin_modifier_types::sculpt_layer)
+                            if (modifier && modifier->enabled && modifier->type_id == target_type)
                                 target = modifier->id;
                         }
                         if (!target.valid())
                             for (auto it = authored.modifiers.rbegin(); it != authored.modifiers.rend(); ++it)
-                                if (it->enabled && it->type_id == scene::terrain_builtin_modifier_types::sculpt_layer)
+                                if (it->enabled && it->type_id == target_type)
                                 {
                                     target = it->id;
                                     state_->terrain_active_modifiers[entity_guid] = target;
                                     break;
                                 }
                         if (!target.valid())
-                            return fail("Asset-backed sculpting requires an enabled Sculpt Layer", entity);
+                            return fail(state_->terrain_brush.tool == scene::terrain_brush_tool::paint
+                                            ? "Asset-backed painting requires an enabled Paint Layer"
+                                            : "Asset-backed sculpting requires an enabled Sculpt Layer",
+                                        entity);
 
                         auto reference = terrain->asset;
                         reference.expected_type = assets::asset_types::terrain;
@@ -4191,11 +4418,12 @@ host_response arc_host::execute(const host_command_envelope& command)
                                                                    state_->project.root, source_reference);
                         if (!resolved || resolved->read_only)
                             return fail("Terrain asset source is not writable", entity);
-                        state_->terrain_sculpt_stroke = terrain_sculpt_stroke_session{.entity = entity_guid,
-                                                                                      .asset_guid = reference.guid,
-                                                                                      .modifier = target,
-                                                                                      .source_path = resolved->path,
-                                                                                      .asset = std::move(authored)};
+                        state_->terrain_asset_stroke = terrain_asset_stroke_session{.entity = entity_guid,
+                                                                                    .asset_guid = reference.guid,
+                                                                                    .modifier = target,
+                                                                                    .tool = state_->terrain_brush.tool,
+                                                                                    .source_path = resolved->path,
+                                                                                    .asset = std::move(authored)};
                     }
                     state_->terrain_flatten_height_captured = true;
                     state_->terrain_brush.flatten_height = hit.position[1];
@@ -4205,37 +4433,41 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (payload.phase == host_edit_phase::commit)
                 {
                     state_->terrain_stroke_previous_position.reset();
-                    if (asset_backed_sculpt)
+                    if (asset_backed_stroke)
                     {
-                        if (!state_->terrain_sculpt_stroke ||
-                            state_->terrain_sculpt_stroke->entity != entity_guid_of(state_->scene, entity))
-                            return fail("Terrain sculpt transaction is missing", entity);
-                        auto session = std::move(*state_->terrain_sculpt_stroke);
-                        state_->terrain_sculpt_stroke.reset();
-                        const auto update =
-                            scene::accumulate_terrain_sculpt_samples(session.asset, session.modifier, session.edits);
+                        if (!state_->terrain_asset_stroke ||
+                            state_->terrain_asset_stroke->entity != entity_guid_of(state_->scene, entity))
+                            return fail("Terrain asset transaction is missing", entity);
+                        auto session = std::move(*state_->terrain_asset_stroke);
+                        state_->terrain_asset_stroke.reset();
+                        const auto update = session.tool == scene::terrain_brush_tool::paint
+                                                ? scene::accumulate_terrain_paint_samples(
+                                                      session.asset, session.modifier, session.paint_edits)
+                                                : scene::accumulate_terrain_sculpt_samples(
+                                                      session.asset, session.modifier, session.sculpt_edits);
                         if (update.revision != 0u)
                         {
                             const auto encoded = scene::write_terrain_asset_json(session.asset, true);
                             if (!encoded) return fail("Terrain asset could not be serialized", entity);
-                            {
-                                std::ofstream output(session.source_path, std::ios::binary | std::ios::trunc);
-                                if (!output)
-                                    return fail("Terrain asset source could not be opened for writing", entity);
-                                output.write(encoded.value().data(),
-                                             static_cast<std::streamsize>(encoded.value().size()));
-                                if (!output) return fail("Terrain asset source could not be written", entity);
-                            }
+                            std::string write_error;
+                            if (!write_text_file_atomic(session.source_path, encoded.value(), write_error))
+                                return fail(write_error, entity);
                             terrain->asset_authoring_revision = session.asset.authoring_revision;
                             state_->rebuild_terrain(entity, session.asset);
                             if (state_->asset_registry)
                             {
-                                state_->asset_registry->mark_stale(session.asset_guid, "Terrain sculpt layer changed");
+                                const auto change = session.tool == scene::terrain_brush_tool::paint
+                                                        ? "Terrain paint layer changed"
+                                                        : "Terrain sculpt layer changed";
+                                state_->asset_registry->mark_stale(session.asset_guid, change);
                                 [[maybe_unused]] const auto reimport = state_->asset_registry->reimport(
                                     session.asset_guid, assets::asset_streaming_priority::high);
                             }
                             push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
-                                       "Terrain sculpt layer changed", entity);
+                                       session.tool == scene::terrain_brush_tool::paint
+                                           ? "Terrain paint layer changed"
+                                           : "Terrain sculpt layer changed",
+                                       entity);
                         }
                     }
                     push_event(state_->events, state_->event_sequence, host_event_type::terrain_stroke_committed,
@@ -4271,19 +4503,20 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto stamp_count = std::max(1u, static_cast<std::uint32_t>(std::ceil(distance / spacing)));
                 const auto stamp_seconds = payload.elapsed_seconds / static_cast<float>(stamp_count);
                 std::vector<scene::terrain_sculpt_brush_delta> sculpt_deltas;
+                std::vector<scene::terrain_paint_brush_delta> paint_deltas;
                 for (std::uint32_t stamp_index = 1; stamp_index <= stamp_count; ++stamp_index)
                 {
                     const auto alpha = static_cast<float>(stamp_index) / static_cast<float>(stamp_count);
-                    merge_dirty(scene::apply_terrain_brush(*terrain, previous + offset * alpha, state_->terrain_brush,
-                                                           stamp_seconds,
-                                                           asset_backed_sculpt ? &sculpt_deltas : nullptr));
+                    merge_dirty(scene::apply_terrain_brush(
+                        *terrain, previous + offset * alpha, state_->terrain_brush, stamp_seconds,
+                        asset_backed_stroke ? &sculpt_deltas : nullptr, asset_backed_stroke ? &paint_deltas : nullptr));
                 }
-                if (asset_backed_sculpt && state_->terrain_sculpt_stroke)
+                if (asset_backed_stroke && state_->terrain_asset_stroke)
                 {
                     const auto spacing = terrain->size / static_cast<float>(terrain->subdivisions);
                     const auto half = terrain->size * 0.5f;
-                    auto& session = *state_->terrain_sculpt_stroke;
-                    session.edits.reserve(session.edits.size() + sculpt_deltas.size());
+                    auto& session = *state_->terrain_asset_stroke;
+                    session.sculpt_edits.reserve(session.sculpt_edits.size() + sculpt_deltas.size());
                     for (const auto& delta : sculpt_deltas)
                     {
                         const auto sample_index =
@@ -4296,7 +4529,18 @@ host_response arc_host::execute(const host_command_envelope& command)
                             session.asset.coordinates, session.asset.partition,
                             session.asset.coordinates.origin_x + static_cast<double>(local[0]),
                             session.asset.coordinates.origin_z + static_cast<double>(local[2]));
-                        session.edits.push_back({address.region, {address.x, address.z, delta.delta}});
+                        session.sculpt_edits.push_back({address.region, {address.x, address.z, delta.delta}});
+                    }
+                    session.paint_edits.reserve(session.paint_edits.size() + paint_deltas.size());
+                    for (const auto& delta : paint_deltas)
+                    {
+                        const math::vector3f local{-half + static_cast<float>(delta.x) * spacing, 0.0f,
+                                                   -half + static_cast<float>(delta.z) * spacing};
+                        const auto address = scene::terrain_modifier_sample_at(
+                            session.asset.coordinates, session.asset.partition,
+                            session.asset.coordinates.origin_x + static_cast<double>(local[0]),
+                            session.asset.coordinates.origin_z + static_cast<double>(local[2]));
+                        session.paint_edits.push_back({address.region, {address.x, address.z, delta.delta}});
                     }
                 }
                 state_->terrain_stroke_previous_position = hit.position;
@@ -6719,6 +6963,10 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
     state_->viewport_options.width = request.width;
     state_->viewport_options.height = request.height;
     state_->viewport_frame_index = request.frame_index;
+    // Terrain authoring work belongs to the editor world rather than presentation. Keep regional builds and
+    // interactive previews progressing while a viewport backend is being attached, resized, or recovered.
+    state_->pump_terrain_previews();
+    state_->pump_terrain_rebuilds();
     if (!state_->renderer->backend())
     {
         const std::string message = "Viewport render skipped: no render backend attached";
@@ -6850,8 +7098,6 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
             }
         }
     }
-    state_->pump_terrain_previews();
-    state_->pump_terrain_rebuilds();
     ecs::world& viewport_scene = state_->viewport_scene();
     const ecs::entity viewport_camera = state_->viewport_camera_entity();
     state_->scene.last_render = scene::render_scene(
