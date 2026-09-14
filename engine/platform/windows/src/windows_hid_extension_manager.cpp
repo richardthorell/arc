@@ -1,11 +1,13 @@
 #include "windows_hid_extension_manager.h"
 
+#include "windows_dualsense_output.h"
 #include "windows_dualsense_touch.h"
 
 #include <windows.h>
 
 #include <cstddef>
 #include <limits>
+#include <memory>
 #include <span>
 #include <unordered_map>
 #include <utility>
@@ -36,6 +38,13 @@ bool hardware_matches(const input::input_device_hardware_id& candidate,
     if (candidate.vendor_id != interface.vendor_id || candidate.product_id != interface.product_id) return false;
     if (candidate.version != 0 && interface.version != 0 && candidate.version != interface.version) return false;
     return true;
+}
+
+dualsense_output_transport output_transport(const input::input_device* device) noexcept
+{
+    if (device && device->connectivity() == input::input_connectivity_type::wireless)
+        return dualsense_output_transport::bluetooth;
+    return dualsense_output_transport::usb;
 }
 
 } // namespace
@@ -78,11 +87,8 @@ windows_hid_extension_manager::windows_hid_extension_manager(input::input_system
 
 windows_hid_extension_manager::~windows_hid_extension_manager()
 {
-    for (const auto& [_, attachment] : attachments_)
-    {
-        if (is_dualsense_hardware(attachment.hardware_id)) input_->submit_touch_contacts(attachment.device, {});
-        host_->detach(attachment.device, attachment.extension);
-    }
+    for (auto& [_, value] : attachments_)
+        detach_attachment(value);
 }
 
 bool windows_hid_extension_manager::attach(HWND window)
@@ -143,8 +149,7 @@ void windows_hid_extension_manager::poll()
             continue;
         }
 
-        if (is_dualsense_hardware(it->second.hardware_id)) input_->submit_touch_contacts(it->second.device, {});
-        host_->detach(it->second.device, it->second.extension);
+        detach_attachment(it->second);
         it = attachments_.erase(it);
     }
 
@@ -152,16 +157,46 @@ void windows_hid_extension_manager::poll()
     {
         if (attachments_.contains(match.path)) continue;
 
+        const bool dualsense = is_dualsense_hardware(match.hardware_id);
+        const input::input_device* device = input_->device(match.device);
+        std::unique_ptr<windows_dualsense_output_sink> advanced_output;
+        if (dualsense)
+        {
+            advanced_output =
+                std::make_unique<windows_dualsense_output_sink>(match.device, match.path, output_transport(device));
+            if (!advanced_output->available() || !input_->register_advanced_output_sink(match.device, *advanced_output))
+                advanced_output.reset();
+        }
+
         windows_controller_extension_descriptor descriptor{};
         descriptor.backend = input::input_backend_type::hid;
         descriptor.backend_id = utf8_path(match.path);
-        descriptor.capabilities.touchpad = is_dualsense_hardware(match.hardware_id);
+        descriptor.capabilities.touchpad = dualsense;
+        descriptor.capabilities.light = advanced_output != nullptr;
+        descriptor.capabilities.adaptive_triggers = advanced_output != nullptr;
         const windows_controller_extension_id extension = host_->attach(match.device, std::move(descriptor));
-        if (extension)
-            attachments_.emplace(
-                match.path,
-                attachment{.device = match.device, .hardware_id = match.hardware_id, .extension = extension});
+        if (!extension)
+        {
+            if (advanced_output) input_->unregister_advanced_output_sink(match.device, *advanced_output);
+            continue;
+        }
+
+        attachments_.emplace(match.path, attachment{.device = match.device,
+                                                    .hardware_id = match.hardware_id,
+                                                    .extension = extension,
+                                                    .advanced_output = std::move(advanced_output)});
     }
+}
+
+void windows_hid_extension_manager::detach_attachment(attachment& value)
+{
+    if (is_dualsense_hardware(value.hardware_id)) input_->submit_touch_contacts(value.device, {});
+    if (value.advanced_output)
+    {
+        input_->unregister_advanced_output_sink(value.device, *value.advanced_output);
+        value.advanced_output.reset();
+    }
+    host_->detach(value.device, value.extension);
 }
 
 void windows_hid_extension_manager::handle_raw_input(HRAWINPUT raw_input)

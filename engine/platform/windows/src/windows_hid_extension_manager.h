@@ -7,12 +7,15 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace arc::platform::windows
 {
+
+class windows_dualsense_output_sink;
 
 struct windows_hid_interface
 {
@@ -64,8 +67,10 @@ private:
         input::input_device_id device{};
         input::input_device_hardware_id hardware_id{};
         windows_controller_extension_id extension{};
+        std::unique_ptr<windows_dualsense_output_sink> advanced_output;
     };
 
+    void detach_attachment(attachment& value);
     void handle_raw_input(HRAWINPUT raw_input);
     [[nodiscard]] static std::vector<windows_hid_interface> enumerate_interfaces();
     [[nodiscard]] static std::wstring device_path(HANDLE native_device);
