@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -33,10 +34,17 @@ struct windows_hid_extension_match
 };
 
 /**
+ * @brief Classify a Windows HID interface path as USB, wireless, or unknown.
+ */
+[[nodiscard]] input::input_connectivity_type hid_connectivity_from_path(std::wstring_view path) noexcept;
+
+/**
  * @brief Match controller-class HID interfaces to existing GameInput devices.
  *
  * Matching is intentionally conservative: hardware identity must resolve to one
- * connected GameInput device or the interface is left unattached.
+ * connected GameInput device or the interface is left unattached. When Windows
+ * exposes multiple controller HID collections for one logical device, only the
+ * best controller collection is selected.
  */
 [[nodiscard]] std::vector<windows_hid_extension_match>
 match_hid_extensions(const std::vector<windows_hid_interface>& interfaces, const input::input_system& input);
