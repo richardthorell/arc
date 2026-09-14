@@ -64,6 +64,7 @@ endif()
 add_library(arc-platform-windows STATIC
     src/windows_controller_extension_host.cpp
     src/windows_controller_manager.cpp
+    src/windows_dualsense_touch.cpp
     src/windows_entry.cpp
     src/windows_game_input_backend.cpp
     src/windows_gamepad_backend.cpp
@@ -161,4 +162,13 @@ if(BUILD_TESTING AND ARC_BUILD_ENGINE_TESTS)
     target_include_directories(arc_windows_hid_extension_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_link_libraries(arc_windows_hid_extension_tests PRIVATE arc-platform-windows)
     add_test(NAME arc_windows_hid_extension_tests COMMAND arc_windows_hid_extension_tests)
+
+    add_executable(arc_windows_dualsense_touch_tests
+        tests/windows_dualsense_touch_tests.cpp
+    )
+    arc_configure_first_party_target(arc_windows_dualsense_touch_tests)
+    target_compile_features(arc_windows_dualsense_touch_tests PRIVATE cxx_std_20)
+    target_include_directories(arc_windows_dualsense_touch_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_link_libraries(arc_windows_dualsense_touch_tests PRIVATE arc-platform-windows)
+    add_test(NAME arc_windows_dualsense_touch_tests COMMAND arc_windows_dualsense_touch_tests)
 endif()

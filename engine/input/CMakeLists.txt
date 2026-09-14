@@ -38,4 +38,21 @@ if(BUILD_TESTING)
     )
 
     add_test(NAME arc-input-battery-tests COMMAND arc-input-battery-tests)
+
+    add_executable(arc-input-touch-tests
+        test_support/touch_tests.cpp
+    )
+    arc_configure_first_party_target(arc-input-touch-tests)
+
+    target_compile_features(arc-input-touch-tests
+        PRIVATE
+            cxx_std_20
+    )
+
+    target_link_libraries(arc-input-touch-tests
+        PRIVATE
+            arc-input
+    )
+
+    add_test(NAME arc-input-touch-tests COMMAND arc-input-touch-tests)
 endif()

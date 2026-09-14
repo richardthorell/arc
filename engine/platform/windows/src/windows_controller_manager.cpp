@@ -41,6 +41,16 @@ windows_controller_manager::windows_controller_manager(
 
 windows_controller_manager::~windows_controller_manager() = default;
 
+bool windows_controller_manager::attach(HWND window)
+{
+    return !hid_extensions_ || hid_extensions_->attach(window);
+}
+
+void windows_controller_manager::process_message(UINT message, WPARAM wparam, LPARAM lparam)
+{
+    if (hid_extensions_) hid_extensions_->process_message(message, wparam, lparam);
+}
+
 void windows_controller_manager::poll()
 {
     if (active_) active_->poll();

@@ -24,6 +24,7 @@ struct window_state
 {
     arc::framework::runtime* runtime{};
     arc::platform::windows::windows_input_backend* input{};
+    arc::platform::windows::windows_controller_manager* controllers{};
 };
 
 std::wstring widen(const std::string& value)
@@ -77,6 +78,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
 
     window_state* state = state_from_window(window);
     if (state && state->input) state->input->process_message(message, wparam, lparam);
+    if (state && state->controllers) state->controllers->process_message(message, wparam, lparam);
     arc::framework::runtime* runtime = state ? state->runtime : nullptr;
 
     switch (message)
@@ -200,7 +202,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
     arc::framework::runtime runtime(*app);
     arc::platform::windows::windows_input_backend input_backend(runtime.input());
     arc::platform::windows::windows_controller_manager controller_manager(runtime.input());
-    window_state state{.runtime = &runtime, .input = &input_backend};
+    window_state state{.runtime = &runtime, .input = &input_backend, .controllers = &controller_manager};
     const arc::framework::application_config& config = runtime.config();
     const std::wstring class_name = L"ArcWindowsHost";
     const std::wstring title = widen(config.title);
@@ -230,6 +232,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
         DestroyWindow(window);
         return -4;
     }
+    static_cast<void>(controller_manager.attach(window));
 
     runtime.start();
 
