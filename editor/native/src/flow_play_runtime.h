@@ -24,9 +24,9 @@ struct flow_play_install_result
 /**
  * Compile and attach authored Flow bindings to an isolated Play World.
  *
- * Compiled programs are shared by path; VM state remains per entity. Begin Play is
- * dispatched before this returns and End Play is dispatched when the runtime world's
- * scheduler releases the installed systems.
+ * Compiled programs are shared by path; VM state remains per entity. Initial bindings receive Begin Play before this
+ * returns. Runtime Flow/Active component and entity lifecycle changes are then reconciled at fixed-tick phase
+ * boundaries so newly eligible bindings receive Begin Play and bindings that become ineligible receive End Play.
  */
 [[nodiscard]] flow_play_install_result install_flow_play_runtime(framework::runtime_world& world,
                                                                  const std::filesystem::path& content_root);
