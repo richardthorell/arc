@@ -11,6 +11,7 @@
 #include <fstream>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace
 {
@@ -22,10 +23,7 @@ class flow_test_application final : public arc::framework::application
 class temporary_flow_content
 {
 public:
-    temporary_flow_content()
-        : root_(std::filesystem::temp_directory_path() /
-                ("arc-flow-hot-lifecycle-" +
-                 std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())))
+    temporary_flow_content() : root_(make_root())
     {
         std::filesystem::create_directories(root_);
     }
@@ -50,6 +48,13 @@ public:
     }
 
 private:
+    [[nodiscard]] static std::filesystem::path make_root()
+    {
+        return std::filesystem::temp_directory_path() /
+               ("arc-flow-hot-lifecycle-" +
+                std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    }
+
     std::filesystem::path root_;
 };
 
@@ -169,8 +174,8 @@ TEST_CASE("Flow bindings reconcile while Play is running")
 
     const auto entity = world.entities().create();
     world.entities().emplace<arc::scene::name_component>(entity, arc::scene::name_component{"idle"});
-    world.entities().emplace<arc::scene::flow_component>(
-        entity, arc::scene::flow_component{"Lifecycle.arcflow", true});
+    arc::scene::flow_component binding{"Lifecycle.arcflow", true};
+    world.entities().emplace<arc::scene::flow_component>(entity, std::move(binding));
     REQUIRE(host.advance(1.0 / 60.0).completed_ticks == 1);
     CHECK(std::as_const(world.entities()).get<arc::scene::name_component>(entity).value == "running");
 
@@ -190,8 +195,8 @@ TEST_CASE("Flow bindings reconcile while Play is running")
     REQUIRE(host.advance(1.0 / 60.0).completed_ticks == 1);
     CHECK(std::as_const(world.entities()).get<arc::scene::name_component>(entity).value == "alternate-stopped");
 
-    world.entities().emplace<arc::scene::flow_component>(
-        entity, arc::scene::flow_component{"Lifecycle.arcflow", true});
+    arc::scene::flow_component rebound{"Lifecycle.arcflow", true};
+    world.entities().emplace<arc::scene::flow_component>(entity, std::move(rebound));
     REQUIRE(host.advance(1.0 / 60.0).completed_ticks == 1);
     CHECK(std::as_const(world.entities()).get<arc::scene::name_component>(entity).value == "running");
 
