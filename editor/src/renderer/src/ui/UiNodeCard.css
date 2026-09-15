@@ -40,6 +40,61 @@
   background: var(--arc-color-bg-active);
 }
 
+.ui-node-card-has-color {
+  border-color: color-mix(in srgb, var(--ui-node-card-color) 58%, var(--arc-color-border-strong));
+}
+
+.ui-node-card-has-color:hover {
+  border-color: color-mix(in srgb, var(--ui-node-card-color) 78%, white 8%);
+}
+
+.ui-node-card-has-color.is-selected {
+  border-color: var(--ui-node-card-color);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--ui-node-card-color) 42%, transparent),
+    0 9px 24px rgba(0, 0, 0, 0.4);
+}
+
+.ui-node-card-has-color > .ui-node-card-header {
+  border-bottom-color: color-mix(in srgb, var(--ui-node-card-color) 34%, var(--arc-color-border-subtle));
+  background:
+    linear-gradient(
+      100deg,
+      color-mix(in srgb, var(--ui-node-card-color) 34%, transparent) 0%,
+      color-mix(in srgb, var(--ui-node-card-color) 12%, transparent) 58%,
+      transparent 100%
+    ),
+    var(--arc-color-bg-chrome-raised);
+}
+
+.ui-node-card-accent.ui-node-card-has-color > .ui-node-card-header {
+  background:
+    linear-gradient(
+      100deg,
+      color-mix(in srgb, var(--ui-node-card-color) 34%, transparent) 0%,
+      color-mix(in srgb, var(--ui-node-card-color) 12%, transparent) 58%,
+      transparent 100%
+    ),
+    var(--arc-color-bg-active);
+}
+
+.ui-node-card-icon {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--ui-node-card-color, var(--arc-color-text-dim));
+  font-size: 13px;
+  line-height: 1;
+}
+
+.ui-node-card-icon > svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.8;
+}
+
 .ui-node-card-title {
   min-width: 0;
   flex: 1;
@@ -70,9 +125,136 @@
   align-items: start;
 }
 
+.material-graph-node {
+  --ui-node-card-color: #d09252;
+
+  border-color: color-mix(in srgb, var(--ui-node-card-color) 58%, var(--arc-color-border-strong));
+}
+
+.material-graph-node:hover {
+  border-color: color-mix(in srgb, var(--ui-node-card-color) 78%, white 8%);
+}
+
+.material-graph-node.is-selected {
+  border-color: var(--ui-node-card-color);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--ui-node-card-color) 42%, transparent),
+    0 9px 24px rgba(0, 0, 0, 0.4);
+}
+
+.material-graph-node-output {
+  --ui-node-card-color: #8fa6bb;
+}
+
+.material-graph-node-constant,
+.material-graph-node-vector2,
+.material-graph-node-vector3,
+.material-graph-node-vector4 {
+  --ui-node-card-color: #50b57b;
+}
+
+.material-graph-node-colorRgb,
+.material-graph-node-colorRgba {
+  --ui-node-card-color: #c86dc6;
+}
+
+.material-graph-node-textureSample {
+  --ui-node-card-color: #4c9fe8;
+}
+
+.material-graph-node-normalMap {
+  --ui-node-card-color: #8a72e6;
+}
+
+.material-graph-node-texCoord {
+  --ui-node-card-color: #c36f7d;
+}
+
+.material-graph-node-time {
+  --ui-node-card-color: #c89f52;
+}
+
 .material-graph-node > .ui-node-card-header,
 .ui-lab-material-node > .ui-node-card-header {
   grid-column: 1 / -1;
+}
+
+.material-graph-node > .ui-node-card-header {
+  border-bottom-color: color-mix(in srgb, var(--ui-node-card-color) 34%, var(--arc-color-border-subtle));
+  background:
+    linear-gradient(
+      100deg,
+      color-mix(in srgb, var(--ui-node-card-color) 34%, transparent) 0%,
+      color-mix(in srgb, var(--ui-node-card-color) 12%, transparent) 58%,
+      transparent 100%
+    ),
+    var(--arc-color-bg-chrome-raised);
+}
+
+.material-graph-node.ui-node-card-accent > .ui-node-card-header {
+  background:
+    linear-gradient(
+      100deg,
+      color-mix(in srgb, var(--ui-node-card-color) 34%, transparent) 0%,
+      color-mix(in srgb, var(--ui-node-card-color) 12%, transparent) 58%,
+      transparent 100%
+    ),
+    var(--arc-color-bg-active);
+}
+
+.material-graph-node > .ui-node-card-header::before {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--ui-node-card-color);
+  content: '∑';
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.material-graph-node-output > .ui-node-card-header::before {
+  content: '◇';
+  font-size: 16px;
+}
+
+.material-graph-node-constant > .ui-node-card-header::before {
+  content: 'Σ';
+}
+
+.material-graph-node-vector2 > .ui-node-card-header::before,
+.material-graph-node-vector3 > .ui-node-card-header::before,
+.material-graph-node-vector4 > .ui-node-card-header::before {
+  content: 'V';
+  font-size: 11px;
+}
+
+.material-graph-node-colorRgb > .ui-node-card-header::before,
+.material-graph-node-colorRgba > .ui-node-card-header::before {
+  content: '●';
+  font-size: 11px;
+}
+
+.material-graph-node-textureSample > .ui-node-card-header::before {
+  content: '▧';
+  font-size: 15px;
+}
+
+.material-graph-node-normalMap > .ui-node-card-header::before {
+  content: '◉';
+  font-size: 14px;
+}
+
+.material-graph-node-texCoord > .ui-node-card-header::before {
+  content: '⌗';
+  font-size: 14px;
+}
+
+.material-graph-node-time > .ui-node-card-header::before {
+  content: '◷';
+  font-size: 15px;
 }
 
 .material-graph-node > .material-node-pins,
