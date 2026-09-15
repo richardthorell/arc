@@ -130,10 +130,60 @@ int test_hid_matching()
     return 0;
 }
 
+int test_hid_collection_deduplication()
+{
+    arc::input::input_system input;
+    const arc::input::input_device_id device{.value = 4001};
+    input.connect_device(controller_descriptor(device, arc::input::input_backend_type::game_input, 0x054c, 0x0ce6, 1));
+
+    const std::vector<arc::platform::windows::windows_hid_interface> interfaces{
+        {.path = L"hid-multi-axis",
+         .hardware_id = {.vendor_id = 0x054c, .product_id = 0x0ce6, .version = 1},
+         .usage_page = 0x01,
+         .usage = 0x08},
+        {.path = L"hid-joystick",
+         .hardware_id = {.vendor_id = 0x054c, .product_id = 0x0ce6, .version = 1},
+         .usage_page = 0x01,
+         .usage = 0x04},
+        {.path = L"hid-gamepad-z",
+         .hardware_id = {.vendor_id = 0x054c, .product_id = 0x0ce6, .version = 1},
+         .usage_page = 0x01,
+         .usage = 0x05},
+        {.path = L"hid-gamepad-a",
+         .hardware_id = {.vendor_id = 0x054c, .product_id = 0x0ce6, .version = 1},
+         .usage_page = 0x01,
+         .usage = 0x05}};
+
+    const auto matches = arc::platform::windows::match_hid_extensions(interfaces, input);
+    if (const int error = require(matches.size() == 1, 40)) return error;
+    if (const int error = require(matches.front().device == device, 41)) return error;
+    if (const int error = require(matches.front().path == L"hid-gamepad-a", 42)) return error;
+    return 0;
+}
+
+int test_hid_transport_detection()
+{
+    using arc::input::input_connectivity_type;
+    using arc::platform::windows::hid_connectivity_from_path;
+
+    if (const int error =
+            require(hid_connectivity_from_path(L"\\\\?\\BTHENUM#DEV_123") == input_connectivity_type::wireless, 50))
+        return error;
+    if (const int error =
+            require(hid_connectivity_from_path(L"\\\\?\\HID#VID_054C&PID_0CE6") == input_connectivity_type::usb, 51))
+        return error;
+    if (const int error =
+            require(hid_connectivity_from_path(L"controller-path") == input_connectivity_type::unknown, 52))
+        return error;
+    return 0;
+}
+
 } // namespace
 
 int main()
 {
     if (const int error = test_extension_lifecycle()) return error;
-    return test_hid_matching();
+    if (const int error = test_hid_matching()) return error;
+    if (const int error = test_hid_collection_deduplication()) return error;
+    return test_hid_transport_detection();
 }

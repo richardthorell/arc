@@ -5,7 +5,9 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cstddef>
+#include <cwctype>
 #include <limits>
 #include <memory>
 #include <span>
@@ -30,6 +32,14 @@ bool controller_usage(const windows_hid_interface& interface) noexcept
     return interface.usage == joystick_usage || interface.usage == gamepad_usage || interface.usage == multi_axis_usage;
 }
 
+int usage_preference(const windows_hid_interface& interface) noexcept
+{
+    if (interface.usage == gamepad_usage) return 3;
+    if (interface.usage == joystick_usage) return 2;
+    if (interface.usage == multi_axis_usage) return 1;
+    return 0;
+}
+
 bool hardware_matches(const input::input_device_hardware_id& candidate,
                       const input::input_device_hardware_id& interface) noexcept
 {
@@ -40,19 +50,40 @@ bool hardware_matches(const input::input_device_hardware_id& candidate,
     return true;
 }
 
-dualsense_output_transport output_transport(const input::input_device* device) noexcept
+dualsense_output_transport output_transport(const input::input_device* device, std::wstring_view path) noexcept
 {
-    if (device && device->connectivity() == input::input_connectivity_type::wireless)
-        return dualsense_output_transport::bluetooth;
-    return dualsense_output_transport::usb;
+    input::input_connectivity_type connectivity =
+        device ? device->connectivity() : input::input_connectivity_type::unknown;
+    if (connectivity == input::input_connectivity_type::unknown) connectivity = hid_connectivity_from_path(path);
+    return connectivity == input::input_connectivity_type::wireless ? dualsense_output_transport::bluetooth
+                                                                    : dualsense_output_transport::usb;
 }
 
+struct selected_match
+{
+    windows_hid_extension_match match;
+    int preference{};
+};
+
 } // namespace
+
+input::input_connectivity_type hid_connectivity_from_path(std::wstring_view path) noexcept
+{
+    std::wstring normalized(path);
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+                   [](wchar_t value) { return static_cast<wchar_t>(std::towupper(value)); });
+
+    if (normalized.find(L"BTH") != std::wstring::npos || normalized.find(L"BLUETOOTH") != std::wstring::npos)
+        return input::input_connectivity_type::wireless;
+    if (normalized.find(L"USB") != std::wstring::npos || normalized.find(L"HID") != std::wstring::npos)
+        return input::input_connectivity_type::usb;
+    return input::input_connectivity_type::unknown;
+}
 
 std::vector<windows_hid_extension_match> match_hid_extensions(const std::vector<windows_hid_interface>& interfaces,
                                                               const input::input_system& input)
 {
-    std::vector<windows_hid_extension_match> matches;
+    std::unordered_map<std::uint64_t, selected_match> selected;
     for (const windows_hid_interface& interface : interfaces)
     {
         if (!controller_usage(interface)) continue;
@@ -73,9 +104,26 @@ std::vector<windows_hid_extension_match> match_hid_extensions(const std::vector<
             candidate = id;
         }
 
-        if (candidate && !ambiguous)
-            matches.push_back({.path = interface.path, .device = candidate, .hardware_id = interface.hardware_id});
+        if (!candidate || ambiguous) continue;
+
+        windows_hid_extension_match match{
+            .path = interface.path, .device = candidate, .hardware_id = interface.hardware_id};
+        const int preference = usage_preference(interface);
+        const auto current = selected.find(candidate.value);
+        if (current == selected.end() || preference > current->second.preference ||
+            (preference == current->second.preference && match.path < current->second.match.path))
+        {
+            selected.insert_or_assign(candidate.value,
+                                      selected_match{.match = std::move(match), .preference = preference});
+        }
     }
+
+    std::vector<windows_hid_extension_match> matches;
+    matches.reserve(selected.size());
+    for (auto& [_, value] : selected)
+        matches.push_back(std::move(value.match));
+    std::sort(matches.begin(), matches.end(),
+              [](const auto& lhs, const auto& rhs) { return lhs.device.value < rhs.device.value; });
     return matches;
 }
 
@@ -162,8 +210,8 @@ void windows_hid_extension_manager::poll()
         std::unique_ptr<windows_dualsense_output_sink> advanced_output;
         if (dualsense)
         {
-            advanced_output =
-                std::make_unique<windows_dualsense_output_sink>(match.device, match.path, output_transport(device));
+            advanced_output = std::make_unique<windows_dualsense_output_sink>(match.device, match.path,
+                                                                              output_transport(device, match.path));
             if (!advanced_output->available() || !input_->register_advanced_output_sink(match.device, *advanced_output))
                 advanced_output.reset();
         }
