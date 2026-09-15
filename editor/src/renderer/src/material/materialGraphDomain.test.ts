@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { materialGraphDomain } from './materialGraphDomain';
+import { materialGraphDomain, materialGraphPinTypesCompatible } from './materialGraphDomain';
 import { createMaterialNode } from './materialGraphTypes';
 
 describe('materialGraphDomain', () => {
@@ -31,5 +31,13 @@ describe('materialGraphDomain', () => {
       ).allowed,
     ).toBe(false);
     expect(materialGraphDomain.canDeleteNode(createMaterialNode('output', [0, 0]))).toBe(false);
+  });
+
+  it('accepts generic numeric pins but rejects incompatible concrete value types', () => {
+    expect(materialGraphPinTypesCompatible('float', 'numeric')).toBe(true);
+    expect(materialGraphPinTypesCompatible('numeric', 'vec3')).toBe(true);
+    expect(materialGraphPinTypesCompatible('vec3', 'vec3')).toBe(true);
+    expect(materialGraphPinTypesCompatible('vec4', 'vec3')).toBe(false);
+    expect(materialGraphPinTypesCompatible('texture2d', 'vec4')).toBe(false);
   });
 });
