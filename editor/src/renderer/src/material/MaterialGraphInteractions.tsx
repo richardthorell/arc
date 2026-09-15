@@ -255,12 +255,14 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
     return () => cleanups.forEach((cleanup) => cleanup());
   }, [pinMetadata]);
 
+  const hoveredWireId = hoveredWire?.id;
+
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
     const endpointKeys = new Set<string>();
-    if (hoveredWire) {
-      const wire = wires.find((candidate) => candidate.id === hoveredWire.id);
+    if (hoveredWireId) {
+      const wire = wires.find((candidate) => candidate.id === hoveredWireId);
       if (wire) {
         endpointKeys.add(wire.fromPinKey);
         endpointKeys.add(wire.toPinKey);
@@ -271,7 +273,7 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
     return () => {
       for (const element of elements.values()) element.classList.remove('is-wire-endpoint');
     };
-  }, [hoveredWire?.id, wires]);
+  }, [hoveredWireId, wires]);
 
   useEffect(() => {
     const host = hostRef.current;
