@@ -2185,6 +2185,28 @@ surface_frame_result vulkan_render_backend::present_viewport_output(std::string_
 #endif
 }
 
+bool vulkan_render_backend::can_present_viewport_output(std::string_view viewport_id)
+{
+#if ARC_VULKAN_SHARED_VIEWPORT
+    auto found = shared_viewports_.find(std::string(viewport_id));
+    if (found == shared_viewports_.end() || !found->second.visible) return false;
+    auto& output = found->second;
+    poll_shared_output_fences(output);
+    if (output.pending_width != 0 &&
+        std::ranges::any_of(output.slots,
+                            [](const auto& slot) { return slot.state == shared_viewport_frame_state::consumer_owned; }))
+        return false;
+    if (std::ranges::any_of(output.slots,
+                            [](const auto& slot) { return slot.state == shared_viewport_frame_state::rendering; }))
+        return false;
+    return std::ranges::any_of(output.slots,
+                               [](const auto& slot) { return slot.state == shared_viewport_frame_state::available; });
+#else
+    (void)viewport_id;
+    return false;
+#endif
+}
+
 shared_viewport_frame_result vulkan_render_backend::poll_viewport_output(std::string_view viewport_id)
 {
 #if ARC_VULKAN_SHARED_VIEWPORT

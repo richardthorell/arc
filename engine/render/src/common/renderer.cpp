@@ -1034,6 +1034,11 @@ surface_frame_result render_backend::present_viewport_output(std::string_view)
         {.code = surface_frame_error_code::unsupported, .message = "viewport output presentation is unsupported"});
 }
 
+bool render_backend::can_present_viewport_output(std::string_view)
+{
+    return false;
+}
+
 shared_viewport_frame_result render_backend::poll_viewport_output(std::string_view)
 {
     return shared_viewport_frame_result::failure(

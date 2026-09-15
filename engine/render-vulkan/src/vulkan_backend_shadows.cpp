@@ -975,7 +975,7 @@ shadow_uniform_data vulkan_render_backend::build_shadow_uniform(const directiona
     cascade_settings.maximum_distance =
         std::min(cascade_settings.maximum_distance, resolved_config_.directional_shadow_distance);
     const auto layout =
-        fit_directional_shadow_cascades({.inverse_view_projection = frame_camera_.inverse_view_projection,
+        fit_directional_shadow_cascades({.inverse_view_projection = frame_camera_.unjittered_inverse_view_projection,
                                          .near_plane = frame_camera_.near_plane,
                                          .far_plane = frame_camera_.far_plane},
                                         light->direction, cascade_settings, shadow_atlas_.resolution);

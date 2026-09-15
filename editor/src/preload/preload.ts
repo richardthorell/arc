@@ -50,6 +50,7 @@ type SharedViewportMetadata = {
 };
 
 const sharedViewportSurfaces = new Map<string, string>();
+const sharedViewportLastFrames = new Map<string, { generation: number; frameId: number }>();
 sharedTexture.setSharedTextureReceiver(async ({ importedSharedTexture }, metadata: SharedViewportMetadata) => {
   try {
     const elementId = sharedViewportSurfaces.get(metadata.viewportId);
@@ -59,6 +60,12 @@ sharedTexture.setSharedTextureReceiver(async ({ importedSharedTexture }, metadat
     if (canvas.height !== metadata.height) canvas.height = metadata.height;
     const context = canvas.getContext('2d', { alpha: false });
     if (!context) return;
+    const previous = sharedViewportLastFrames.get(metadata.viewportId);
+    if (previous?.generation === metadata.generation && metadata.frameId <= previous.frameId) return;
+    sharedViewportLastFrames.set(metadata.viewportId, {
+      generation: metadata.generation,
+      frameId: metadata.frameId,
+    });
     const frame = importedSharedTexture.getVideoFrame();
     try {
       context.drawImage(frame, 0, 0, canvas.width, canvas.height);
@@ -455,9 +462,11 @@ const arcApi = {
     key: (input: Record<string, unknown>): Promise<unknown> => ipcRenderer.invoke('viewport:key', input),
     registerSurface: (viewportId: string, elementId: string): void => {
       sharedViewportSurfaces.set(viewportId, elementId);
+      sharedViewportLastFrames.delete(viewportId);
     },
     unregisterSurface: (viewportId: string): void => {
       sharedViewportSurfaces.delete(viewportId);
+      sharedViewportLastFrames.delete(viewportId);
     },
   },
   nativeWindow: {

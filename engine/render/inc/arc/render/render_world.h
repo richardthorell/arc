@@ -41,6 +41,8 @@ struct render_camera
     math::matrix4f view_projection{math::identity<float, 4>()};
     math::matrix4f previous_view_projection{math::identity<float, 4>()};
     math::matrix4f inverse_view_projection{math::identity<float, 4>()};
+    /// Inverse camera matrix before temporal jitter, used by stable view-dependent projections.
+    math::matrix4f unjittered_inverse_view_projection{math::identity<float, 4>()};
     math::vector2f jitter{};
     math::vector3f position{};
     math::vector3f forward{0.0f, 0.0f, -1.0f};

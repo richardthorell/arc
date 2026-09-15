@@ -483,6 +483,7 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
     world_packet.camera.previous_view_projection = vp;
     if (!math::try_inverse(vp, world_packet.camera.inverse_view_projection))
         arc::diagnostics::warn("scene", "Active camera produced a singular view-projection matrix");
+    world_packet.camera.unjittered_inverse_view_projection = world_packet.camera.inverse_view_projection;
     world_packet.camera.position = world_position(*camera_transform);
     world_packet.camera.forward = world_forward_direction(*camera_transform);
     world_packet.camera.up = world_up_direction(*camera_transform);
