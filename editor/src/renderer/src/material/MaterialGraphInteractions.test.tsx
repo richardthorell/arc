@@ -29,7 +29,9 @@ beforeEach(() => {
 
 describe('MaterialGraphWithInteractions', () => {
   it('shows wire direction and highlights both endpoint sockets on hover', () => {
-    const { container } = render(<MaterialGraphWithInteractions document={document} graph={createDefaultMaterialGraph()} />);
+    const { container } = render(
+      <MaterialGraphWithInteractions document={document} graph={createDefaultMaterialGraph()} />,
+    );
     const wire = container.querySelector<SVGPathElement>('.material-wire-hit');
     expect(wire).not.toBeNull();
 

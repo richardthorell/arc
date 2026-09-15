@@ -4,12 +4,7 @@ import type { EditorDocument } from '../editors/editorTypes';
 import { graphConnectionPath, graphPinKey, type GraphPoint } from '../graph';
 import { materialGraphDomain } from './materialGraphDomain';
 import { MaterialGraphEditor } from './MaterialGraphEditor';
-import type {
-  MaterialGraph,
-  MaterialGraphNode,
-  MaterialGraphPinType,
-  MaterialNodePin,
-} from './materialGraphTypes';
+import type { MaterialGraph, MaterialGraphNode, MaterialGraphPinType, MaterialNodePin } from './materialGraphTypes';
 import './materialGraphInteractions.css';
 
 type MaterialPinMetadata = {
@@ -148,7 +143,10 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
     return metadata;
   }, [graph.nodes]);
 
-  const pinMetadataByKey = useMemo(() => new Map(pinMetadata.map((metadata) => [metadata.key, metadata])), [pinMetadata]);
+  const pinMetadataByKey = useMemo(
+    () => new Map(pinMetadata.map((metadata) => [metadata.key, metadata])),
+    [pinMetadata],
+  );
 
   const wireMetadata = useMemo(() => {
     return new Map(
