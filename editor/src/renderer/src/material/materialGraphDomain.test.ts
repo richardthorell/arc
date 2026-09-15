@@ -39,5 +39,16 @@ describe('materialGraphDomain', () => {
     expect(materialGraphPinTypesCompatible('vec3', 'vec3')).toBe(true);
     expect(materialGraphPinTypesCompatible('vec4', 'vec3')).toBe(false);
     expect(materialGraphPinTypesCompatible('texture2d', 'vec4')).toBe(false);
+
+    const color = createMaterialNode('colorRgba', [0, 0]);
+    const output = createMaterialNode('output', [100, 0]);
+    const rgba = materialGraphDomain.getNodeDefinition(color).outputs.find((pin) => pin.id === 'rgba')!;
+    const baseColor = materialGraphDomain.getNodeDefinition(output).inputs.find((pin) => pin.id === 'baseColor')!;
+    expect(
+      materialGraphDomain.canConnect(
+        { node: color, pin: rgba, direction: 'output' },
+        { node: output, pin: baseColor, direction: 'input' },
+      ).allowed,
+    ).toBe(false);
   });
 });
