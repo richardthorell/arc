@@ -182,7 +182,7 @@ describe('AiGatewayPanel', () => {
     const deny = vi.fn();
     const open = vi.fn();
     render(<AiGatewayApprovalPrompt status={status} onApprove={approve} onDeny={deny} onOpenGateway={open} />);
-    expect(screen.getByRole('alertdialog')).toHaveTextContent('Codex requests scene edit access');
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Codex requests editor action access');
     fireEvent.click(screen.getByText('Allow'));
     fireEvent.click(screen.getByText('Deny'));
     fireEvent.click(screen.getByText('Details'));

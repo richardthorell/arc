@@ -166,7 +166,7 @@ function AiGatewayDiagnostics({
       {status.activeEditSession && (
         <div className="ai-gateway-section active-edit">
           <h4>
-            <ShieldCheck size={14} /> Active in-memory edit
+            <ShieldCheck size={14} /> Active agent transaction
           </h4>
           <article>
             <div>
@@ -461,13 +461,13 @@ export function AiGatewayApprovalPrompt({
   const request = status?.pendingEditRequests[0];
   if (!request) return null;
   return (
-    <aside className="ai-gateway-approval-prompt" role="alertdialog" aria-label="AI scene edit approval">
+    <aside className="ai-gateway-approval-prompt" role="alertdialog" aria-label="AI editor action approval">
       <span>
         <ShieldCheck size={18} />
       </span>
       <div>
-        <strong>{request.clientName} requests scene edit access</strong>
-        <small>{request.label} · in-memory only · expires after 15 minutes of inactivity</small>
+        <strong>{request.clientName} requests editor action access</strong>
+        <small>{request.label} · applies only on commit · expires after 15 minutes of inactivity</small>
       </div>
       <UiButton onClick={() => onApprove(request.id)} variant="primary">
         <Check size={13} /> Allow

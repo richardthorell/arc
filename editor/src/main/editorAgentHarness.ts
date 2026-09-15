@@ -1,6 +1,8 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
-export type GatewayHostResponse = {
+import { agentEditActions, agentHarnessMethods } from './agentHarnessContract';
+
+export type AgentHostResponse = {
   kind: 'response';
   requestId: number;
   succeeded: boolean;
@@ -11,17 +13,27 @@ export type GatewayHostResponse = {
   frameRevision: number;
 };
 
-export interface GatewayHostTransport {
+export interface AgentHarnessHost {
   command(
     type: string,
     payload?: Record<string, unknown>,
     edit?: Record<string, unknown>,
     expectedSceneRevision?: number,
-  ): Promise<GatewayHostResponse>;
-  query(type: string, payload?: Record<string, unknown>): Promise<GatewayHostResponse>;
+  ): Promise<AgentHostResponse>;
+  query(type: string, payload?: Record<string, unknown>): Promise<AgentHostResponse>;
 }
 
-export type GatewayAuditEntry = {
+export interface AgentAssetWorkspace {
+  exists(path: string): Promise<boolean>;
+  create(path: string, contents: string): Promise<void>;
+  remove(path: string): Promise<void>;
+}
+
+export type AgentHarnessOptions = {
+  assets?: AgentAssetWorkspace;
+};
+
+export type AgentAuditEntry = {
   sequence: number;
   timestamp: string;
   clientId: string;
@@ -31,7 +43,7 @@ export type GatewayAuditEntry = {
   detail: string;
 };
 
-export type GatewayEvent = {
+export type AgentEvent = {
   sequence: number;
   timestamp: string;
   type: string;
@@ -40,14 +52,14 @@ export type GatewayEvent = {
   payload: unknown;
 };
 
-export type GatewayClient = {
+export type AgentClient = {
   id: string;
   name: string;
   connectedAt: string;
   lastSeenAt: string;
 };
 
-export type GatewayEditRequest = {
+export type AgentEditRequest = {
   id: string;
   clientId: string;
   clientName: string;
@@ -57,7 +69,7 @@ export type GatewayEditRequest = {
   expiresAt?: string;
 };
 
-export type GatewayEditSession = {
+export type AgentEditSession = {
   id: string;
   transactionId: number;
   clientId: string;
@@ -65,20 +77,17 @@ export type GatewayEditSession = {
   startedAt: string;
   lastActivityAt: string;
   expectedSceneRevision: number;
+  stagedAssetCount: number;
 };
 
-export type GatewayStatus = {
-  enabled: boolean;
-  endpoint: string;
-  discoveryFile: string;
-  protocolVersion: 1;
+export type AgentHarnessStatus = {
   sceneRevision: number;
   worldEpoch: number;
   frameRevision: number;
   eventSequence: number;
-  clients: GatewayClient[];
-  pendingEditRequests: GatewayEditRequest[];
-  activeEditSession: GatewayEditSession | null;
+  clients: AgentClient[];
+  pendingEditRequests: AgentEditRequest[];
+  activeEditSession: AgentEditSession | null;
   lastCommittedEdit: {
     clientId: string;
     label: string;
@@ -86,18 +95,18 @@ export type GatewayStatus = {
     committedAt: string;
   } | null;
   viewportLease: { clientId: string; expiresAt: string } | null;
-  audit: GatewayAuditEntry[];
+  audit: AgentAuditEntry[];
 };
 
-type StatusListener = (status: GatewayStatus) => void;
-type EventListener = (event: GatewayEvent) => void;
+type StatusListener = (status: AgentHarnessStatus) => void;
+type EventListener = (event: AgentEvent) => void;
 
 const now = (): string => new Date().toISOString();
 const editIdleMilliseconds = 15 * 60 * 1000;
 const maximumAuditEntries = 500;
 const captureTimeoutMilliseconds = 10_000;
 const viewportLeaseMilliseconds = 30_000;
-const maximumGatewayEvents = 500;
+const maximumAgentEvents = 500;
 const maximumRememberedCaptures = 8;
 const maximumRememberedCaptureBytes = 128 * 1024 * 1024;
 
@@ -156,37 +165,156 @@ const requireRevision = (value: unknown): number => {
 
 const requireProjectAssetPath = (value: unknown, name: string): string => {
   const assetPath = requireString(value, name);
+  const segments = assetPath.split('/');
   if (
+    assetPath !== assetPath.trim() ||
     assetPath.includes('\\') ||
     assetPath.startsWith('/') ||
     /^[A-Za-z]:/.test(assetPath) ||
-    assetPath.split('/').some((segment) => segment === '..' || segment === '.')
+    segments.some(
+      (segment) =>
+        segment === '' ||
+        segment === '..' ||
+        segment === '.' ||
+        /[<>:"|?*\u0000-\u001f]/.test(segment) ||
+        segment.endsWith('.') ||
+        segment.endsWith(' '),
+    )
   ) {
-    throw new Error(`${name} must be a normalized project-relative path`);
+    throw new Error(`${name} must be a normalized content-relative path`);
   }
   return assetPath;
 };
 
-export class SceneGatewayCore {
-  readonly token = randomBytes(32).toString('base64url');
-  private endpoint = '';
-  private discoveryFile = '';
+const assetExtension = (path: string): string => path.slice(path.lastIndexOf('.')).toLowerCase();
+
+const assetName = (path: string): string => {
+  const filename = path.slice(path.lastIndexOf('/') + 1);
+  return filename.slice(0, filename.lastIndexOf('.')) || 'New Asset';
+};
+
+const defaultMaterialDefinition = (name: string): Record<string, unknown> => ({
+  version: 4,
+  name,
+  domain: 'surface',
+  blendMode: 'opaque',
+  shadingModel: 'standard',
+  doubleSided: false,
+  graph: {
+    version: 1,
+    nodes: [
+      {
+        id: 'base-color',
+        type: 'colorRgba',
+        position: [80, 120],
+        values: { value: [0.78, 0.8, 0.84, 1] },
+        parameter: { exposed: true, name: 'Base Color' },
+      },
+      {
+        id: 'metallic',
+        type: 'constant',
+        position: [80, 290],
+        values: { value: 0 },
+        parameter: { exposed: true, name: 'Metallic' },
+      },
+      {
+        id: 'roughness',
+        type: 'constant',
+        position: [80, 420],
+        values: { value: 0.62 },
+        parameter: { exposed: true, name: 'Roughness' },
+      },
+      { id: 'material-output', type: 'output', position: [520, 210], values: {} },
+    ],
+    connections: [
+      {
+        id: 'base-color-output',
+        from: { nodeId: 'base-color', pin: 'rgb' },
+        to: { nodeId: 'material-output', pin: 'baseColor' },
+      },
+      {
+        id: 'metallic-output',
+        from: { nodeId: 'metallic', pin: 'value' },
+        to: { nodeId: 'material-output', pin: 'metallic' },
+      },
+      {
+        id: 'roughness-output',
+        from: { nodeId: 'roughness', pin: 'value' },
+        to: { nodeId: 'material-output', pin: 'roughness' },
+      },
+    ],
+    viewport: { x: 40, y: 40, zoom: 1 },
+  },
+});
+
+const defaultFlowDefinition = (name: string): Record<string, unknown> => ({
+  version: 1,
+  assetType: 'flow',
+  name,
+  graph: {
+    version: 1,
+    variables: [],
+    nodes: [{ id: 'begin-play', type: 'beginPlay', position: [120, 140], values: {} }],
+    connections: [],
+    viewport: { x: 40, y: 40, zoom: 1 },
+  },
+});
+
+const authoredAssetContents = (kind: string, path: string, value: Record<string, unknown>): string => {
+  const extension = assetExtension(path);
+  const definition = asObject(value.definition);
+  if (kind === 'material') {
+    if (extension !== '.arcmat') throw new Error('Material assets must use the .arcmat extension');
+    const material = { ...defaultMaterialDefinition(assetName(path)), ...definition };
+    const graph = asObject(material.graph);
+    if (
+      material.version !== 4 ||
+      graph.version !== 1 ||
+      !Array.isArray(graph.nodes) ||
+      !Array.isArray(graph.connections)
+    )
+      throw new Error('Material definition must contain a version-4 asset and version-1 graph');
+    return `${JSON.stringify(material, null, 2)}\n`;
+  }
+  if (kind === 'flow') {
+    if (extension !== '.arcflow') throw new Error('Flow assets must use the .arcflow extension');
+    const flow = { ...defaultFlowDefinition(assetName(path)), ...definition };
+    const graph = asObject(flow.graph);
+    if (
+      flow.version !== 1 ||
+      flow.assetType !== 'flow' ||
+      graph.version !== 1 ||
+      !Array.isArray(graph.variables) ||
+      !Array.isArray(graph.nodes) ||
+      !Array.isArray(graph.connections)
+    )
+      throw new Error('Flow definition must contain a version-1 Flow asset and graph');
+    return `${JSON.stringify(flow, null, 2)}\n`;
+  }
+  if (kind === 'shader') {
+    if (extension !== '.slang') throw new Error('Shader assets must use the .slang extension');
+    return requireString(value.source, 'value.source');
+  }
+  throw new Error('value.kind must be material, flow, or shader');
+};
+
+export class EditorAgentHarness {
   private auditSequence = 0;
   private eventSequence = 0;
   private sceneRevision = 0;
   private worldEpoch = 0;
   private frameRevision = 0;
-  private readonly clients = new Map<string, GatewayClient>();
-  private readonly auditEntries: GatewayAuditEntry[] = [];
-  private readonly editRequests = new Map<string, GatewayEditRequest>();
+  private readonly clients = new Map<string, AgentClient>();
+  private readonly auditEntries: AgentAuditEntry[] = [];
+  private readonly editRequests = new Map<string, AgentEditRequest>();
   private readonly approvedClients = new Map<string, number>();
-  private activeEdit: GatewayEditSession | null = null;
-  private lastCommittedEdit: GatewayStatus['lastCommittedEdit'] = null;
+  private activeEdit: AgentEditSession | null = null;
+  private lastCommittedEdit: AgentHarnessStatus['lastCommittedEdit'] = null;
   private viewportLease: { clientId: string; expiresAt: number } | null = null;
   private readonly listeners = new Set<StatusListener>();
   private readonly eventListeners = new Set<EventListener>();
-  private readonly recentEvents: GatewayEvent[] = [];
-  private readonly eventWaiters = new Set<(event: GatewayEvent) => void>();
+  private readonly recentEvents: AgentEvent[] = [];
+  private readonly eventWaiters = new Set<(event: AgentEvent) => void>();
   private nextTransactionId = Math.max(1, Math.floor(Math.random() * 0x3fffffff));
   private nextCaptureId = Math.max(1, Date.now());
   private readonly recentHostLogs: Array<{
@@ -196,14 +324,12 @@ export class SceneGatewayCore {
     message: string;
   }> = [];
   private readonly rememberedCaptures = new Map<number, RememberedCapture>();
+  private readonly stagedAssets = new Map<string, Array<{ kind: string; path: string; contents: string }>>();
 
-  constructor(private readonly host: GatewayHostTransport) {}
-
-  configure(endpoint: string, discoveryFile: string): void {
-    this.endpoint = endpoint;
-    this.discoveryFile = discoveryFile;
-    this.notify();
-  }
+  constructor(
+    private readonly host: AgentHarnessHost,
+    private readonly options: AgentHarnessOptions = {},
+  ) {}
 
   onStatus(listener: StatusListener): () => void {
     this.listeners.add(listener);
@@ -229,13 +355,9 @@ export class SceneGatewayCore {
     });
   }
 
-  status(): GatewayStatus {
+  status(): AgentHarnessStatus {
     this.expirePermissions();
     return {
-      enabled: Boolean(this.endpoint),
-      endpoint: this.endpoint,
-      discoveryFile: this.discoveryFile,
-      protocolVersion: 1,
       sceneRevision: this.sceneRevision,
       worldEpoch: this.worldEpoch,
       frameRevision: this.frameRevision,
@@ -254,7 +376,7 @@ export class SceneGatewayCore {
     };
   }
 
-  touchClient(clientId: string, clientName = 'Local AI client'): GatewayClient {
+  touchClient(clientId: string, clientName = 'Local AI client'): AgentClient {
     const timestamp = now();
     const existing = this.clients.get(clientId);
     if (existing) {
@@ -271,6 +393,7 @@ export class SceneGatewayCore {
 
   async disconnectClient(clientId: string): Promise<void> {
     if (this.activeEdit?.clientId === clientId) {
+      const editSessionId = this.activeEdit.id;
       const transactionId = this.activeEdit.transactionId;
       try {
         this.expect(await this.host.command('history.cancelTransaction', { id: transactionId }));
@@ -283,6 +406,7 @@ export class SceneGatewayCore {
           error instanceof Error ? error.message : String(error),
         );
       } finally {
+        this.stagedAssets.delete(editSessionId);
         this.activeEdit = null;
       }
     }
@@ -294,13 +418,13 @@ export class SceneGatewayCore {
     }
   }
 
-  requestEdit(clientId: string, label: string): GatewayEditRequest {
+  requestEdit(clientId: string, label: string): AgentEditRequest {
     const client = this.touchClient(clientId);
     const existing = [...this.editRequests.values()].find(
       (request) => request.clientId === clientId && request.state === 'pending',
     );
     if (existing) return existing;
-    const request: GatewayEditRequest = {
+    const request: AgentEditRequest = {
       id: randomUUID(),
       clientId,
       clientName: client.name,
@@ -349,6 +473,7 @@ export class SceneGatewayCore {
   }
 
   async invalidateAuthority(reason: string): Promise<void> {
+    const editSessionId = this.activeEdit?.id;
     if (this.activeEdit) {
       try {
         await this.host.command('history.cancelTransaction', { id: this.activeEdit.transactionId });
@@ -356,6 +481,7 @@ export class SceneGatewayCore {
         // The native host may already have replaced the world; clearing the lease is still required.
       }
     }
+    if (editSessionId) this.stagedAssets.delete(editSessionId);
     this.activeEdit = null;
     this.lastCommittedEdit = null;
     this.viewportLease = null;
@@ -404,8 +530,30 @@ export class SceneGatewayCore {
 
   private async dispatch(method: string, params: Record<string, unknown>, clientId: string): Promise<unknown> {
     switch (method) {
-      case 'gateway.status':
-        return this.publicStatus();
+      case 'agent.capabilities':
+        return {
+          operations: agentHarnessMethods,
+          editActions: agentEditActions,
+          entityKinds: [
+            'empty',
+            'plane',
+            'cube',
+            'sphere',
+            'cylinder',
+            'cone',
+            'capsule',
+            'worldEnvironment',
+            'terrain',
+            'water',
+            'grassPatch',
+            'decal',
+          ],
+          assetKinds: this.options.assets ? ['material', 'flow', 'shader'] : [],
+          assetAuthoringAvailable: Boolean(this.options.assets),
+          sceneRevision: this.sceneRevision,
+          worldEpoch: this.worldEpoch,
+          frameRevision: this.frameRevision,
+        };
       case 'scene.overview':
         return this.expect(
           await this.host.query('gateway.sceneEntities', {
@@ -497,7 +645,7 @@ export class SceneGatewayCore {
           await this.host.command(method, {}, undefined, requireRevision(params.expectedSceneRevision)),
         );
       default:
-        throw new Error(`Unsupported gateway method: ${method}`);
+        throw new Error(`Unsupported agent harness method: ${method}`);
     }
   }
 
@@ -537,7 +685,7 @@ export class SceneGatewayCore {
     }
 
     const afterSequence = Math.max(0, Math.floor(Number(params.afterSequence) || 0));
-    const matches = (event: GatewayEvent) =>
+    const matches = (event: AgentEvent) =>
       event.sequence > afterSequence &&
       (kind === 'selection'
         ? event.type === 'entity.selected'
@@ -546,8 +694,8 @@ export class SceneGatewayCore {
           : event.type !== 'entity.selected' && !event.type.startsWith('diagnostic.'));
     let event = this.recentEvents.find(matches);
     if (!event) {
-      event = await new Promise<GatewayEvent>((resolve, reject) => {
-        const waiter = (candidate: GatewayEvent) => {
+      event = await new Promise<AgentEvent>((resolve, reject) => {
+        const waiter = (candidate: AgentEvent) => {
           if (!matches(candidate)) return;
           clearTimeout(timer);
           this.eventWaiters.delete(waiter);
@@ -1272,7 +1420,7 @@ export class SceneGatewayCore {
     return anomalies;
   }
 
-  private async beginEdit(clientId: string, params: Record<string, unknown>): Promise<GatewayEditSession> {
+  private async beginEdit(clientId: string, params: Record<string, unknown>): Promise<AgentEditSession> {
     this.requireApproved(clientId);
     if (this.activeEdit) throw new Error(`Another edit session is active for ${this.activeEdit.clientId}`);
     if (this.viewportLease && this.viewportLease.clientId !== clientId)
@@ -1296,6 +1444,7 @@ export class SceneGatewayCore {
       startedAt: timestamp,
       lastActivityAt: timestamp,
       expectedSceneRevision: response.sceneRevision,
+      stagedAssetCount: 0,
     };
     this.notify();
     return this.activeEdit;
@@ -1309,6 +1458,13 @@ export class SceneGatewayCore {
     }
     const action = requireString(params.action, 'action');
     const value = asObject(params.value);
+    if (action === 'createAsset') {
+      const result = await this.stageAssetCreate(session, value);
+      session.lastActivityAt = now();
+      this.approvedClients.set(clientId, Date.now() + editIdleMilliseconds);
+      this.notify();
+      return result;
+    }
     const { type, payload } = await this.editCommand(action, value);
     const response = await this.host.command(
       type,
@@ -1326,6 +1482,33 @@ export class SceneGatewayCore {
     this.approvedClients.set(clientId, Date.now() + editIdleMilliseconds);
     this.notify();
     return result;
+  }
+
+  private async stageAssetCreate(
+    session: AgentEditSession,
+    value: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const workspace = this.options.assets;
+    if (!workspace) throw new Error('Asset authoring is not available in this editor session');
+    const kind = requireString(value.kind, 'value.kind').toLowerCase();
+    const path = requireProjectAssetPath(value.path, 'value.path');
+    const contents = authoredAssetContents(kind, path, value);
+    if (Buffer.byteLength(contents, 'utf8') > 8 * 1024 * 1024) throw new Error('Authored asset exceeds 8 MiB');
+    const staged = this.stagedAssets.get(session.id) ?? [];
+    if (staged.some((asset) => asset.path.toLowerCase() === path.toLowerCase()) || (await workspace.exists(path)))
+      throw new Error(`Asset already exists: ${path}`);
+    staged.push({ kind, path, contents });
+    this.stagedAssets.set(session.id, staged);
+    session.stagedAssetCount = staged.length;
+    return {
+      staged: true,
+      asset: { kind, path },
+      editSessionId: session.id,
+      expectedSceneRevision: session.expectedSceneRevision,
+      sceneRevision: this.sceneRevision,
+      worldEpoch: this.worldEpoch,
+      frameRevision: this.frameRevision,
+    };
   }
 
   private async editCommand(
@@ -1349,12 +1532,25 @@ export class SceneGatewayCore {
     if (action === 'setMobility') return { type: 'entity.setMobility', payload: { entity, mobility: value.mobility } };
     if (action === 'setTransform')
       return { type: 'entity.setTransform', payload: { entity, transform: value.transform } };
+    if (action === 'setRenderLayer')
+      return { type: 'entity.setRenderLayer', payload: { entity, renderLayerMask: value.renderLayerMask } };
     if (action === 'setMaterial') {
       return {
         type: 'entity.setMaterial',
         payload: { entity, path: requireProjectAssetPath(value.path, 'value.path') },
       };
     }
+    if (action === 'setFlow') {
+      const graphPath =
+        typeof value.path === 'string' && value.path ? requireProjectAssetPath(value.path, 'value.path') : '';
+      if (graphPath && assetExtension(graphPath) !== '.arcflow')
+        throw new Error('value.path must reference a .arcflow asset');
+      return {
+        type: 'entity.setFlow',
+        payload: { entity, graphPath, enabled: value.enabled !== false },
+      };
+    }
+    if (action === 'snapToFloor') return { type: 'entity.snapToFloor', payload: { entity } };
     if (action === 'delete') return { type: 'entity.delete', payload: { entity } };
     if (action === 'duplicate') return { type: 'entity.duplicate', payload: { entity } };
     if (action === 'reparent') {
@@ -1407,6 +1603,21 @@ export class SceneGatewayCore {
           payload: { entity, ...asObject(snapshot.terrain), ...fields },
         };
       }
+      if (component === 'water') {
+        return {
+          type: 'water.update',
+          payload: { entity, ...asObject(snapshot.water), ...fields },
+        };
+      }
+      if (component === 'flow') {
+        const flow = { ...asObject(snapshot.flow), ...fields };
+        const graphPath = typeof flow.graphPath === 'string' ? flow.graphPath : '';
+        if (graphPath) requireProjectAssetPath(graphPath, 'fields.graphPath');
+        return {
+          type: 'entity.setFlow',
+          payload: { entity, graphPath, enabled: flow.enabled !== false },
+        };
+      }
       if (component === 'worldenvironment') {
         const current = this.expect(await this.host.query('environment.state', { entity }));
         return {
@@ -1414,7 +1625,7 @@ export class SceneGatewayCore {
           payload: { entity, environment: { ...asObject(current), ...fields } },
         };
       }
-      throw new Error(`Component ${String(value.component)} does not have a gateway patch binder`);
+      throw new Error(`Component ${String(value.component)} does not have an agent harness patch binder`);
     }
     throw new Error(`Unsupported scene edit action: ${action}`);
   }
@@ -1424,12 +1635,20 @@ export class SceneGatewayCore {
     if (expected !== session.expectedSceneRevision) {
       throw new Error(`Edit session expects scene revision ${session.expectedSceneRevision}`);
     }
-    const response = await this.host.command(
-      'history.commitTransaction',
-      { id: session.transactionId },
-      undefined,
-      expected,
-    );
+    const createdAssets = await this.createStagedAssets(editSessionId);
+    let response: AgentHostResponse;
+    try {
+      response = await this.host.command(
+        'history.commitTransaction',
+        { id: session.transactionId },
+        undefined,
+        expected,
+      );
+      if (!response.succeeded) throw new Error(response.error || 'Native host request failed');
+    } catch (error) {
+      await this.rollbackCreatedAssets(createdAssets);
+      throw error;
+    }
     const result = this.expect(response);
     this.lastCommittedEdit = {
       clientId,
@@ -1437,6 +1656,7 @@ export class SceneGatewayCore {
       sceneRevision: response.sceneRevision,
       committedAt: now(),
     };
+    this.stagedAssets.delete(editSessionId);
     this.activeEdit = null;
     this.notify();
     return result;
@@ -1446,9 +1666,43 @@ export class SceneGatewayCore {
     const session = this.requireSession(editSessionId, clientId);
     const response = await this.host.command('history.cancelTransaction', { id: session.transactionId });
     const result = this.expect(response);
+    this.stagedAssets.delete(editSessionId);
     this.activeEdit = null;
     this.notify();
     return result;
+  }
+
+  private async createStagedAssets(
+    editSessionId: string,
+  ): Promise<Array<{ kind: string; path: string; contents: string }>> {
+    const staged = this.stagedAssets.get(editSessionId) ?? [];
+    if (staged.length === 0) return [];
+    const workspace = this.options.assets;
+    if (!workspace) throw new Error('Asset authoring became unavailable before commit');
+    const created: Array<{ kind: string; path: string; contents: string }> = [];
+    try {
+      for (const asset of staged) {
+        await workspace.create(asset.path, asset.contents);
+        created.push(asset);
+      }
+      return created;
+    } catch (error) {
+      await this.rollbackCreatedAssets(created);
+      throw error;
+    }
+  }
+
+  private async rollbackCreatedAssets(assets: Array<{ path: string }>): Promise<void> {
+    const workspace = this.options.assets;
+    if (!workspace) return;
+    for (const asset of [...assets].reverse()) {
+      try {
+        await workspace.remove(asset.path);
+      } catch {
+        // Keep the original transaction failure. The workspace owns diagnostics
+        // for a failed rollback and never receives paths not staged here.
+      }
+    }
   }
 
   private requireApproved(clientId: string): void {
@@ -1459,7 +1713,7 @@ export class SceneGatewayCore {
     }
   }
 
-  private requireSession(id: string, clientId: string): GatewayEditSession {
+  private requireSession(id: string, clientId: string): AgentEditSession {
     this.requireApproved(clientId);
     if (!this.activeEdit || this.activeEdit.id !== id || this.activeEdit.clientId !== clientId) {
       throw new Error('Edit session is not active for this client');
@@ -1474,7 +1728,7 @@ export class SceneGatewayCore {
     return entity as Record<string, unknown>;
   }
 
-  private expect(response: GatewayHostResponse): unknown {
+  private expect(response: AgentHostResponse): unknown {
     this.sceneRevision = response?.sceneRevision ?? this.sceneRevision;
     this.worldEpoch = response?.worldEpoch ?? this.worldEpoch;
     this.frameRevision = response?.frameRevision ?? this.frameRevision;
@@ -1511,6 +1765,7 @@ export class SceneGatewayCore {
       try {
         this.expect(await this.host.command('history.cancelTransaction', { id: active.transactionId }));
       } finally {
+        this.stagedAssets.delete(active.id);
         this.activeEdit = null;
         this.approvedClients.delete(active.clientId);
         this.audit(active.clientId, 'security', 'edit.expire', true, active.label);
@@ -1548,27 +1803,9 @@ export class SceneGatewayCore {
     this.notify();
   }
 
-  private publicStatus(): Omit<GatewayStatus, 'audit' | 'discoveryFile'> {
-    const status = this.status();
-    return {
-      enabled: status.enabled,
-      endpoint: status.endpoint,
-      protocolVersion: status.protocolVersion,
-      sceneRevision: status.sceneRevision,
-      worldEpoch: status.worldEpoch,
-      frameRevision: status.frameRevision,
-      eventSequence: status.eventSequence,
-      clients: status.clients,
-      pendingEditRequests: status.pendingEditRequests,
-      activeEditSession: status.activeEditSession,
-      lastCommittedEdit: status.lastCommittedEdit,
-      viewportLease: status.viewportLease,
-    };
-  }
-
   private audit(
     clientId: string,
-    category: GatewayAuditEntry['category'],
+    category: AgentAuditEntry['category'],
     operation: string,
     succeeded: boolean,
     detail: string,
@@ -1587,15 +1824,15 @@ export class SceneGatewayCore {
     }
   }
 
-  private appendEvent(event: Omit<GatewayEvent, 'sequence' | 'timestamp'>): void {
-    const sequenced: GatewayEvent = {
+  private appendEvent(event: Omit<AgentEvent, 'sequence' | 'timestamp'>): void {
+    const sequenced: AgentEvent = {
       ...event,
       sequence: ++this.eventSequence,
       timestamp: now(),
     };
     this.recentEvents.push(sequenced);
-    if (this.recentEvents.length > maximumGatewayEvents)
-      this.recentEvents.splice(0, this.recentEvents.length - maximumGatewayEvents);
+    if (this.recentEvents.length > maximumAgentEvents)
+      this.recentEvents.splice(0, this.recentEvents.length - maximumAgentEvents);
     for (const waiter of this.eventWaiters) waiter(sequenced);
     for (const listener of this.eventListeners) listener(sequenced);
   }

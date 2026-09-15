@@ -4,8 +4,9 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
-import { SceneGatewayCore } from './aiGatewayCore';
+import { EditorAgentHarness } from './editorAgentHarness';
 import { AiGatewayServer } from './aiGatewayServer';
+import { ProjectAssetWorkspace } from './projectAssetWorkspace';
 import { ProjectService } from './projectService';
 import { RecoveryService } from './recoveryService';
 import { ExtensionService } from './extensionService';
@@ -32,6 +33,7 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 
 let mainWindow: BrowserWindow | null = null;
 let hostClient: ArcHostClient | null = null;
+let agentHarness: EditorAgentHarness | null = null;
 let aiGateway: AiGatewayServer | null = null;
 let projectService: ProjectService | null = null;
 let settingsService: SettingsService | null = null;
@@ -231,7 +233,7 @@ const sendHostLog = (event: Omit<HostLogEvent, 'timestamp'>): void => {
     ...event,
     timestamp: hostLogTimestamp(),
   } satisfies HostLogEvent;
-  aiGateway?.core.recordHostLog(timestamped);
+  agentHarness?.recordHostLog(timestamped);
   activeWindow()?.webContents.send('host:log', timestamped);
 };
 
@@ -887,18 +889,30 @@ void app.whenReady().then(async () => {
       });
   }
   if (!isCiSmoke) {
-    const gatewayCore = new SceneGatewayCore(hostClient);
+    const harness = new EditorAgentHarness(hostClient, {
+      assets: new ProjectAssetWorkspace(() => {
+        const project = projectService?.active();
+        return project
+          ? {
+              projectRoot: project.projectRoot,
+              assetRoots: project.descriptor.assetRoots,
+              writable: project.writable,
+            }
+          : null;
+      }),
+    });
+    agentHarness = harness;
     hostClient.onEvent((event) => {
-      gatewayCore.recordHostEvent(event);
+      harness.recordHostEvent(event);
       if (
         event.type === 'project.opened' ||
         event.type === 'project.closed' ||
         (event.type === 'scene.changed' && /opened|loaded|new scene/i.test(event.message))
       ) {
-        void gatewayCore.invalidateAuthority(event.message || event.type);
+        void harness.invalidateAuthority(event.message || event.type);
       }
     });
-    aiGateway = new AiGatewayServer(gatewayCore, {
+    aiGateway = new AiGatewayServer(harness, {
       appDataPath: app.getPath('userData'),
       onStatus: (status) => activeWindow()?.webContents.send('ai-gateway:status', status),
     });
@@ -1140,16 +1154,16 @@ void app.whenReady().then(async () => {
     (_event, type: string, payload: Record<string, unknown>, edit?: Record<string, unknown>) =>
       hostClient?.command(type, payload, edit),
   );
-  ipcMain.handle('ai-gateway:status', () => aiGateway?.core.status() ?? null);
-  ipcMain.handle('ai-gateway:approve', (_event, requestId: string) => aiGateway?.core.approveEdit(requestId) ?? false);
-  ipcMain.handle('ai-gateway:deny', (_event, requestId: string) => aiGateway?.core.denyEdit(requestId) ?? false);
+  ipcMain.handle('ai-gateway:status', () => aiGateway?.status() ?? null);
+  ipcMain.handle('ai-gateway:approve', (_event, requestId: string) => agentHarness?.approveEdit(requestId) ?? false);
+  ipcMain.handle('ai-gateway:deny', (_event, requestId: string) => agentHarness?.denyEdit(requestId) ?? false);
   ipcMain.handle('ai-gateway:revoke', async (_event, clientId: string) => {
-    await aiGateway?.core.revokeClient(clientId);
+    await agentHarness?.revokeClient(clientId);
   });
   ipcMain.handle('ai-gateway:cancelEdit', async (_event, sessionId: string, clientId: string) =>
-    aiGateway?.core.invoke('edit.cancel', { editSessionId: sessionId }, clientId),
+    agentHarness?.invoke('edit.cancel', { editSessionId: sessionId }, clientId),
   );
-  ipcMain.handle('ai-gateway:undoLastEdit', async () => aiGateway?.core.undoLastCommittedEdit());
+  ipcMain.handle('ai-gateway:undoLastEdit', async () => agentHarness?.undoLastCommittedEdit());
   ipcMain.handle('dialog:openScene', async (_event, options: OpenSceneDialogOptions = {}) => {
     const target = activeWindow();
     if (!target) {
@@ -1368,6 +1382,7 @@ app.on('before-quit', (event) => {
       await aiGateway?.stop();
     } finally {
       aiGateway = null;
+      agentHarness = null;
       projectService = null;
       settingsService = null;
       sourceControlService = null;

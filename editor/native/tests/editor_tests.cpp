@@ -3181,6 +3181,7 @@ TEST_CASE("arc host process speaks newline delimited json over stdio")
             .payload = arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::cube}}));
     const auto created_entity = parse_entity_from_response(create_response);
     REQUIRE(created_entity.valid());
+    REQUIRE(create_response.find("\"guid\":") != std::string::npos);
 
     const auto hierarchy_response =
         request(3, arc::editor::to_json(arc::editor::host_query_envelope{
