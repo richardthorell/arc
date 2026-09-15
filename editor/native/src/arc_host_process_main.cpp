@@ -757,6 +757,11 @@ private:
     void render_shared_once(const shared_render_target& target)
     {
         if (!backend_) return;
+        // Publish the completed producer frame before admitting another one.
+        // Renderer submission advances temporal state, so it must only happen
+        // when the shared output can execute that exact frame.
+        publish_ready_frame(target.viewport_id, target.consumer_process_id);
+        if (!backend_->can_present_viewport_output(target.viewport_id)) return;
         bool rendered{};
         std::string message;
         {
@@ -765,6 +770,12 @@ private:
                                                                        .frame_index = target.frame_index,
                                                                        .width = target.width,
                                                                        .height = target.height});
+        }
+        {
+            std::lock_guard lock(bounds_mutex_);
+            if (const auto found = shared_surfaces_.find(target.viewport_id);
+                found != shared_surfaces_.end() && found->second.frame_index == target.frame_index)
+                ++found->second.frame_index;
         }
         ++render_progress_sequence_;
         auto present = backend_->present_viewport_output(target.viewport_id);
@@ -1537,7 +1548,7 @@ private:
                                           .consumer_process_id = surface.consumer_process_id,
                                           .width = surface.width,
                                           .height = surface.height,
-                                          .frame_index = surface.frame_index++});
+                                          .frame_index = surface.frame_index});
         }
         attached_ = std::any_of(shared_surfaces_.begin(), shared_surfaces_.end(),
                                 [](const auto& entry) { return entry.second.attached; });

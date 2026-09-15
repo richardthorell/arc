@@ -923,6 +923,8 @@ private:
 
     surface_frame_result present_viewport_output(std::string_view viewport_id) override;
 
+    bool can_present_viewport_output(std::string_view viewport_id) override;
+
     shared_viewport_frame_result poll_viewport_output(std::string_view viewport_id) override;
 
     void release_viewport_frame(std::string_view viewport_id, std::uint64_t generation,

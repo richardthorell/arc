@@ -66,6 +66,8 @@ void main()
     out_normal = vec4(normal * 0.5 + 0.5, ao);
     out_material = vec4(metallic, roughness, 1.0, 0.0);
     out_emissive = vec4(emissive, 1.0);
-    out_motion = (current_ndc - previous_ndc) * 0.5;
+    // Fullscreen texture UVs invert clip-space Y. Store velocity in that
+    // texture space so history reprojection cancels camera and TAA jitter.
+    out_motion = (current_ndc - previous_ndc) * vec2(0.5, -0.5);
     out_object_id = in_object_id;
 }

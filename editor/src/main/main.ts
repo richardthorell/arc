@@ -126,6 +126,7 @@ const connectedViewportMode = (): 'streamed' | 'native' => (sharedViewportEnable
 const sharedViewportTargets = new Map<string, number>();
 const sharedViewportPresented = new Set<string>();
 const sharedViewportFailures = new Map<string, string>();
+const sharedViewportPresentationTails = new Map<string, Promise<void>>();
 
 const sharedViewportWindow = (viewportId: string): BrowserWindow | null => {
   const webContentsId = sharedViewportTargets.get(viewportId);
@@ -207,6 +208,29 @@ const presentSharedViewportFrame = async (event: HostEvent): Promise<void> => {
       message: `Could not import shared viewport frame: ${error instanceof Error ? error.message : String(error)}`,
     });
   }
+};
+
+const queueSharedViewportFrame = (event: HostEvent): void => {
+  const frame = event.payload as Partial<SharedViewportFrame>;
+  if (typeof frame.viewportId !== 'string') {
+    void presentSharedViewportFrame(event);
+    return;
+  }
+  const viewportId = frame.viewportId;
+
+  // Electron's texture delivery is asynchronous. Serialize it per viewport so
+  // a slower frame can never paint over a newer one or retain producer slots
+  // out of order.
+  const previous = sharedViewportPresentationTails.get(viewportId) ?? Promise.resolve();
+  const current = previous.then(
+    () => presentSharedViewportFrame(event),
+    () => presentSharedViewportFrame(event),
+  );
+  sharedViewportPresentationTails.set(viewportId, current);
+  const cleanup = () => {
+    if (sharedViewportPresentationTails.get(viewportId) === current) sharedViewportPresentationTails.delete(viewportId);
+  };
+  void current.then(cleanup, cleanup);
 };
 
 type CameraInput = {
@@ -577,7 +601,7 @@ export class ArcHostClient {
       const event = parsed as HostEvent;
       for (const listener of this.eventListeners) listener(event);
       if (event.type === 'viewport.frameReady') {
-        void presentSharedViewportFrame(event);
+        queueSharedViewportFrame(event);
       } else if (event.type === 'runtime.tickCompleted') {
         this.pendingRuntimeTick = event;
         if (!this.runtimeTickScheduled) {

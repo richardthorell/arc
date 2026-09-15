@@ -1233,6 +1233,9 @@ public:
     /** @brief Submit the latest rendered frame to a named viewport output. */
     [[nodiscard]] virtual surface_frame_result present_viewport_output(std::string_view viewport_id);
 
+    /** @brief Return whether a named viewport can accept the latest submitted frame without dropping it. */
+    [[nodiscard]] virtual bool can_present_viewport_output(std::string_view viewport_id);
+
     /** @brief Poll one producer-complete frame without blocking the CPU. */
     [[nodiscard]] virtual shared_viewport_frame_result poll_viewport_output(std::string_view viewport_id);
 

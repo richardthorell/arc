@@ -337,6 +337,10 @@ TEST_CASE("render scene extracts visible mesh draw events from active camera")
     const auto& world_event = std::get<arc::render::render_world_event>(packet.events[0].payload);
     REQUIRE(world_event.packet);
     REQUIRE(world_event.packet->visible_items.size() == 1);
+    for (std::size_t row = 0; row < 4; ++row)
+        for (std::size_t column = 0; column < 4; ++column)
+            REQUIRE(world_event.packet->camera.unjittered_inverse_view_projection(row, column) ==
+                    Catch::Approx(world_event.packet->camera.inverse_view_projection(row, column)));
     const auto& item = world_event.packet->items[world_event.packet->visible_items[0]];
     REQUIRE(item.mesh == mesh);
     REQUIRE(world_event.packet->mode == arc::render::render_mode::wireframe);
