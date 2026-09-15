@@ -3098,7 +3098,9 @@ host_response arc_host::execute(const host_command_envelope& command)
                            created);
                 push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Scene changed",
                            created);
-                return success("{\"entity\":" + to_json(to_host_entity(created)) + '}');
+                return success("{\"entity\":" + to_json(to_host_entity(created)) +
+                               ",\"guid\":" + to_json_string(ecs::to_string(entity_guid_of(state_->scene, created))) +
+                               '}');
             }
             else if constexpr (std::is_same_v<command_type, host_delete_entity_command>)
             {
@@ -3167,7 +3169,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                            duplicate);
                 push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Scene changed",
                            duplicate);
-                return success("{\"entity\":" + to_json(to_host_entity(duplicate)) + '}');
+                return success(
+                    "{\"entity\":" + to_json(to_host_entity(duplicate)) +
+                    ",\"guid\":" + to_json_string(ecs::to_string(entity_guid_of(state_->scene, duplicate))) +
+                    '}');
             }
             else if constexpr (std::is_same_v<command_type, host_create_prefab_command>)
             {

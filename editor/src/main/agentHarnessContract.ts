@@ -1,12 +1,12 @@
 /**
- * Transport-neutral ARC AI Scene Gateway operation catalog.
+ * Transport-neutral ARC editor agent harness operation catalog.
  *
- * MCP tools, JSON-RPC, OpenAPI metadata, and direct HTTP routes all resolve to
- * these names. Keep operation behavior in SceneGatewayCore; adapters must not
- * invent aliases or validation semantics.
+ * Built-in agents and external transports invoke the same operation names.
+ * Connection adapters may expose additional connection-only operations, but
+ * must not invent aliases or different editing semantics.
  */
-export const gatewayMethods = [
-  'gateway.status',
+export const agentHarnessMethods = [
+  'agent.capabilities',
   'scene.overview',
   'scene.findEntities',
   'scene.getEntity',
@@ -33,9 +33,34 @@ export const gatewayMethods = [
   'history.redo',
 ] as const;
 
+export type AgentHarnessMethod = (typeof agentHarnessMethods)[number];
+
+export const agentEditActions = [
+  'create',
+  'rename',
+  'setActive',
+  'setTag',
+  'setMobility',
+  'setTransform',
+  'setRenderLayer',
+  'setMaterial',
+  'setFlow',
+  'snapToFloor',
+  'delete',
+  'duplicate',
+  'reparent',
+  'patchComponent',
+  'createAsset',
+] as const;
+
+export type AgentEditAction = (typeof agentEditActions)[number];
+
+export const gatewayMethods = ['gateway.status', ...agentHarnessMethods] as const;
+
 export type GatewayMethod = (typeof gatewayMethods)[number];
 
 export const gatewayHttpMethods = {
+  '/api/v1/agent/capabilities': 'agent.capabilities',
   '/api/v1/scene/overview': 'scene.overview',
   '/api/v1/scene/find-entities': 'scene.findEntities',
   '/api/v1/scene/entity': 'scene.getEntity',

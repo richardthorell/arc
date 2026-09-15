@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -8,10 +8,17 @@ import { nativeImage } from 'electron';
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import { SceneGatewayCore, type GatewayStatus } from './aiGatewayCore';
-import { gatewayHttpMethods, gatewayMethods } from './aiGatewayContract';
+import { EditorAgentHarness, type AgentHarnessStatus } from './editorAgentHarness';
+import { agentEditActions, gatewayHttpMethods, gatewayMethods } from './agentHarnessContract';
 
 type RequestContext = { clientId: string };
+export type GatewayStatus = AgentHarnessStatus & {
+  enabled: boolean;
+  endpoint: string;
+  discoveryFile: string;
+  protocolVersion: 1;
+};
+
 type GatewayServerOptions = {
   appDataPath: string;
   onStatus?: (status: GatewayStatus) => void;
@@ -55,6 +62,7 @@ const sendJson = (response: ServerResponse, status: number, value: unknown): voi
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 export class AiGatewayServer {
+  readonly token = randomBytes(32).toString('base64url');
   private server: Server | null = null;
   private endpoint = '';
   private readonly discoveryPath: string;
@@ -67,12 +75,40 @@ export class AiGatewayServer {
   private authorityTimer?: NodeJS.Timeout;
 
   constructor(
-    readonly core: SceneGatewayCore,
+    readonly harness: EditorAgentHarness,
     private readonly options: GatewayServerOptions,
   ) {
     const directory = path.join(options.appDataPath, 'ai-gateway');
     this.discoveryPath = path.join(directory, 'active.json');
     mkdirSync(directory, { recursive: true, mode: 0o700 });
+  }
+
+  status(): GatewayStatus {
+    return {
+      ...this.harness.status(),
+      enabled: Boolean(this.endpoint),
+      endpoint: this.endpoint,
+      discoveryFile: this.discoveryPath,
+      protocolVersion: 1,
+    };
+  }
+
+  private publicStatus(): Omit<GatewayStatus, 'audit' | 'discoveryFile'> {
+    const status = this.status();
+    return {
+      enabled: status.enabled,
+      endpoint: status.endpoint,
+      protocolVersion: status.protocolVersion,
+      sceneRevision: status.sceneRevision,
+      worldEpoch: status.worldEpoch,
+      frameRevision: status.frameRevision,
+      eventSequence: status.eventSequence,
+      clients: status.clients,
+      pendingEditRequests: status.pendingEditRequests,
+      activeEditSession: status.activeEditSession,
+      lastCommittedEdit: status.lastCommittedEdit,
+      viewportLease: status.viewportLease,
+    };
   }
 
   async start(): Promise<void> {
@@ -87,14 +123,13 @@ export class AiGatewayServer {
     const address = this.server.address();
     if (!address || typeof address === 'string') throw new Error('AI gateway did not receive a TCP port');
     this.endpoint = `http://127.0.0.1:${address.port}`;
-    this.core.configure(this.endpoint, this.discoveryPath);
     const discovery = {
       protocolVersion: 1,
       endpoint: this.endpoint,
       mcpEndpoint: `${this.endpoint}/mcp`,
       rpcEndpoint: `${this.endpoint}/rpc/v1`,
       openApiEndpoint: `${this.endpoint}/openapi.json`,
-      token: this.core.token,
+      token: this.token,
       pid: process.pid,
       startedAt: new Date().toISOString(),
     };
@@ -104,16 +139,17 @@ export class AiGatewayServer {
     } catch {
       // Windows applies the containing user-profile ACL; chmod is best-effort.
     }
-    this.unsubscribeStatus = this.core.onStatus((status) => {
+    this.unsubscribeStatus = this.harness.onStatus(() => {
+      const status = this.status();
       this.options.onStatus?.(status);
       this.publishEvent('gateway.status', status);
     });
-    this.unsubscribeEvents = this.core.onEvent((event) => this.publishEvent('arc.event', event));
+    this.unsubscribeEvents = this.harness.onEvent((event) => this.publishEvent('arc.event', event));
     this.authorityTimer = setInterval(() => {
-      void this.core.expireInactiveAuthority();
+      void this.harness.expireInactiveAuthority();
     }, 30_000);
     this.authorityTimer.unref();
-    this.options.onStatus?.(this.core.status());
+    this.options.onStatus?.(this.status());
   }
 
   async stop(): Promise<void> {
@@ -121,7 +157,7 @@ export class AiGatewayServer {
       clearInterval(this.authorityTimer);
       this.authorityTimer = undefined;
     }
-    await this.core.invalidateAuthority('editor shutdown');
+    await this.harness.invalidateAuthority('editor shutdown');
     this.unsubscribeStatus?.();
     this.unsubscribeStatus = undefined;
     this.unsubscribeEvents?.();
@@ -155,7 +191,7 @@ export class AiGatewayServer {
         sendJson(response, 429, { error: 'Gateway rate limit exceeded' });
         return;
       }
-      this.core.touchClient(clientId, this.clientName(request));
+      this.harness.touchClient(clientId, this.clientName(request));
       const url = new URL(request.url ?? '/', this.endpoint);
 
       if (url.pathname === '/mcp') {
@@ -182,11 +218,11 @@ export class AiGatewayServer {
           'cache-control': 'no-cache',
           connection: 'keep-alive',
         });
-        response.write(`event: gateway.status\ndata: ${JSON.stringify(this.core.status())}\n\n`);
+        response.write(`event: gateway.status\ndata: ${JSON.stringify(this.status())}\n\n`);
         this.eventStreams.add(response);
         request.on('close', () => {
           this.eventStreams.delete(response);
-          void this.core.disconnectClient(clientId);
+          void this.harness.disconnectClient(clientId);
         });
         return;
       }
@@ -209,7 +245,7 @@ export class AiGatewayServer {
         return;
       }
       if (url.pathname === '/api/v1/status' && request.method === 'GET') {
-        sendJson(response, 200, await this.core.invoke('gateway.status', {}, clientId));
+        sendJson(response, 200, this.publicStatus());
         return;
       }
       if (url.pathname === '/api/v1/invoke' && request.method === 'POST') {
@@ -283,6 +319,15 @@ export class AiGatewayServer {
     const invoke = async (method: string, params: unknown) =>
       result(await this.invoke(method, params, this.currentClient()));
 
+    server.registerTool(
+      'arc_agent_capabilities',
+      {
+        description: 'Describe the operations, edit actions, entity kinds, and asset authoring available to agents.',
+        inputSchema: {},
+        annotations: { readOnlyHint: true, openWorldHint: false },
+      },
+      async () => invoke('agent.capabilities', {}),
+    );
     server.registerTool(
       'arc_scene_overview',
       {
@@ -645,7 +690,7 @@ export class AiGatewayServer {
     server.registerTool(
       'arc_request_edit_access',
       {
-        description: 'Ask the user to grant a temporary, in-memory ARC scene editing scope.',
+        description: 'Ask the user to grant a temporary ARC editor action scope.',
         inputSchema: { label: z.string().optional(), clientName: z.string().optional() },
         annotations: { readOnlyHint: true, openWorldHint: false },
       },
@@ -654,7 +699,7 @@ export class AiGatewayServer {
     server.registerTool(
       'arc_begin_edit',
       {
-        description: 'Begin one undoable AI scene edit after the user grants access.',
+        description: 'Begin one transactional AI editor action after the user grants access.',
         inputSchema: { label: z.string(), expectedSceneRevision: z.number().int().positive() },
         annotations: { destructiveHint: false, openWorldHint: false },
       },
@@ -663,23 +708,12 @@ export class AiGatewayServer {
     server.registerTool(
       'arc_apply_edit',
       {
-        description: 'Apply one validated operation inside an active AI edit transaction.',
+        description:
+          'Apply one validated scene operation or stage a material, Flow, or shader asset inside an active transaction.',
         inputSchema: {
           editSessionId: z.string(),
           expectedSceneRevision: z.number().int().positive(),
-          action: z.enum([
-            'create',
-            'rename',
-            'setActive',
-            'setTag',
-            'setMobility',
-            'setTransform',
-            'setMaterial',
-            'delete',
-            'duplicate',
-            'reparent',
-            'patchComponent',
-          ]),
+          action: z.enum(agentEditActions),
           value: z.record(z.string(), z.unknown()),
         },
         annotations: { destructiveHint: true, openWorldHint: false },
@@ -759,7 +793,8 @@ export class AiGatewayServer {
   }
 
   private async invoke(method: string, params: unknown, clientId: string): Promise<unknown> {
-    return this.materializeCaptureArtifacts(await this.core.invoke(method, params, clientId));
+    if (method === 'gateway.status') return this.publicStatus();
+    return this.materializeCaptureArtifacts(await this.harness.invoke(method, params, clientId));
   }
 
   private materializeCaptureArtifacts(value: unknown, inheritedMaxWidth = 1920, inheritedMaxHeight = 1080): unknown {
@@ -981,7 +1016,7 @@ export class AiGatewayServer {
         ? request.headers['x-arc-token']
         : '';
     const actual = Buffer.from(token);
-    const expected = Buffer.from(this.core.token);
+    const expected = Buffer.from(this.token);
     return actual.length === expected.length && timingSafeEqual(actual, expected);
   }
 
@@ -1049,7 +1084,7 @@ export class AiGatewayServer {
     );
     return {
       openapi: '3.1.0',
-      info: { title: 'ARC AI Scene Gateway', version: '1.0.0' },
+      info: { title: 'ARC Editor Agent Gateway', version: '1.0.0' },
       servers: [{ url: this.endpoint }],
       security: [{ bearerAuth: [] }],
       paths: {

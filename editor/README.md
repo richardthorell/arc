@@ -58,12 +58,20 @@ copy its MCP Streamable HTTP endpoint, OpenAPI document, or bundled `arc-mcp`
 stdio command. The same details and the per-launch bearer token are written to
 the user-only discovery file shown in that panel.
 
-The gateway exposes equivalent MCP, JSON-RPC, and HTTP operations for live
-scene inspection, viewport navigation and capture, renderer diagnostics, and
-validated in-memory edits. Scene edits require approval in the editor, use one
-writer lease, and form a single cancellable/undoable history transaction.
-Gateway clients cannot save scenes, execute processes or scripts, or access
-arbitrary files.
+Agent integration is split into two layers. `EditorAgentHarness` owns the
+transport-neutral editor operations, approval model, revisions, viewport
+leases, diagnostics, and transactions. `AiGatewayServer` is only the external
+connection layer: discovery, authentication, HTTP, JSON-RPC, MCP, SSE, and
+capture artifacts. A built-in agent can invoke the same harness directly
+without connecting to ARC over localhost.
+
+The harness supports scene inspection, viewport navigation and capture,
+renderer diagnostics, entity creation and transformation, material and Flow
+binding, and typed material, Flow, and shader asset creation. Asset creates are
+staged with the active approved edit, written only during commit, and discarded
+on cancel. Scene edits still use one writer lease and a single
+cancellable/undoable native history transaction. Agents cannot save scenes,
+execute processes or scripts, or access arbitrary files.
 
 For renderer debugging, prefer the atomic `viewport.debug` operation (MCP:
 `arc_debug_viewport`). It applies optional camera and render-debug settings,
@@ -77,5 +85,6 @@ Captures can include displayed color, pre-output scene-linear HDR color,
 linear depth, ObjectID, world normal, base color, material properties, and
 emissive attachments. Every channel has both a PNG visualization and a
 compressed raw artifact. The shared operation catalog in
-`src/main/aiGatewayContract.ts` drives JSON-RPC, direct HTTP, and OpenAPI method
-names so adapter documentation cannot silently drift.
+`src/main/agentHarnessContract.ts` drives the reusable harness plus JSON-RPC,
+direct HTTP, MCP, and OpenAPI so capabilities and transport documentation cannot
+silently drift.

@@ -25,7 +25,8 @@ and validated in-memory scene edits.
 6. Verify the result before committing. Cancel the transaction when the result
    is incorrect, incomplete, or based on stale state.
 7. The gateway cannot save scenes, execute scripts/processes, or read arbitrary
-   files. Do not attempt to bypass those boundaries.
+   files. It can stage typed material, Flow, and shader asset creation inside an
+   approved edit transaction.
 8. Never print, log, commit, or otherwise expose the per-launch bearer token.
 
 ## Discovery and connection
@@ -218,6 +219,7 @@ operations.
 | Operation | MCP tool | Direct HTTP route |
 | --- | --- | --- |
 | `gateway.status` | none; use HTTP or JSON-RPC | `GET /api/v1/status` |
+| `agent.capabilities` | `arc_agent_capabilities` | `POST /api/v1/agent/capabilities` |
 | `scene.overview` | `arc_scene_overview` | `POST /api/v1/scene/overview` |
 | `scene.findEntities` | `arc_find_entities` | `POST /api/v1/scene/find-entities` |
 | `scene.getEntity` | `arc_get_entity` | `POST /api/v1/scene/entity` |
@@ -561,21 +563,31 @@ Supported actions and value fields:
 | `setTag` | `guid`, `tag` |
 | `setMobility` | `guid`, `mobility` |
 | `setTransform` | `guid`, `transform` |
-| `setMaterial` | `guid`, normalized project-relative `path` from `assets.list` |
+| `setRenderLayer` | `guid`, `renderLayerMask` |
+| `setMaterial` | `guid`, normalized content-relative `path` from `assets.list` |
+| `setFlow` | `guid`, optional content-relative `.arcflow` `path`, optional `enabled` |
+| `snapToFloor` | `guid` |
 | `delete` | `guid` |
 | `duplicate` | `guid` |
 | `reparent` | `guid`, optional `parentGuid`, optional `preserveWorld` (defaults to true) |
 | `patchComponent` | `guid`, `component`, `fields` |
+| `createAsset` | `kind` (`material`, `flow`, or `shader`), content-relative `path`, optional JSON `definition` or shader `source` |
 
 `patchComponent` currently binds these component names, case-insensitively:
 
 ```text
 transform, camera, directionallight, pointlight, spotlight, arealight, light,
-meshrenderer, terrain, worldenvironment
+meshrenderer, terrain, water, flow, worldenvironment
 ```
 
 Always inspect `scene.componentSchemas` and the entity snapshot first. Patch
 only intended fields; the gateway merges them with current component state.
+
+`create` and `duplicate` return the new entity's persistent `guid`; use it for
+subsequent actions in the same transaction. `createAsset` is staged in memory,
+does not overwrite existing assets, becomes visible only after `edit.commit`,
+and is discarded by `edit.cancel`. Paths are relative to the primary content
+root, matching paths returned by `assets.list`.
 
 #### `edit.commit`
 
