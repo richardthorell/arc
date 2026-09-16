@@ -50,8 +50,9 @@ public:
     void write_input(std::string_view control) const
     {
         std::ofstream output(root_ / "Config" / "Input.json", std::ios::binary);
-        output << R"json({"version":1,"contexts":[{"name":"Gameplay","priority":0,"actions":[{"name":"Jump","bindings":[{"device":"keyboard","control":")json"
-               << control << R"json("}]}]}]})json";
+        output
+            << R"json({"version":1,"contexts":[{"name":"Gameplay","priority":0,"actions":[{"name":"Jump","bindings":[{"device":"keyboard","control":")json"
+            << control << R"json("}]}]}]})json";
     }
 
 private:
