@@ -12,11 +12,11 @@ namespace
 {
 
 constexpr std::uint64_t artifact_magic = 0x3158455443524141ull; // "AARCTEX1" little endian.
-constexpr std::uint32_t header_bytes = 164;
-constexpr std::uint32_t mip_entry_bytes = 32;
+constexpr std::uint32_t header_bytes = 180;
+constexpr std::uint32_t mip_entry_bytes = 36;
 constexpr std::uint32_t tile_entry_bytes = 44;
-constexpr std::size_t table_hash_offset = 148;
-constexpr std::size_t header_hash_offset = 156;
+constexpr std::size_t table_hash_offset = 164;
+constexpr std::size_t header_hash_offset = 172;
 
 texture_artifact_error failure(texture_artifact_error_code code, std::string message)
 {
@@ -181,7 +181,29 @@ bool valid_range(std::uint64_t offset, std::uint32_t size, std::uint64_t lower, 
     return offset >= lower && offset % texture_artifact_alignment == 0 && offset <= total && size <= total - offset;
 }
 
-std::uint64_t payload_bytes(std::uint32_t width, std::uint32_t height, texture_format format) noexcept
+std::uint32_t face_count_for(texture_dimension dimension) noexcept
+{
+    return dimension == texture_dimension::cube ? 6u : 1u;
+}
+
+bool valid_texture_topology(texture_dimension dimension, std::uint32_t width, std::uint32_t height,
+                            std::uint32_t depth, std::uint32_t array_layers, std::uint32_t face_count) noexcept
+{
+    if (width == 0 || height == 0 || depth == 0 || array_layers == 0 || face_count != face_count_for(dimension))
+        return false;
+    switch (dimension)
+    {
+        case texture_dimension::texture_2d:
+            return depth == 1;
+        case texture_dimension::texture_3d:
+            return array_layers == 1 && face_count == 1;
+        case texture_dimension::cube:
+            return width == height && depth == 1 && face_count == 6;
+    }
+    return false;
+}
+
+std::uint64_t payload_bytes_2d(std::uint32_t width, std::uint32_t height, texture_format format) noexcept
 {
     const auto layout = layout_for(format);
     if (layout.unit_bytes == 0 || width == 0 || height == 0) return 0;
@@ -193,13 +215,29 @@ std::uint64_t payload_bytes(std::uint32_t width, std::uint32_t height, texture_f
     return units_x * units_y * layout.unit_bytes;
 }
 
-std::uint32_t complete_mip_count(std::uint32_t width, std::uint32_t height) noexcept
+std::uint64_t payload_bytes(std::uint32_t width, std::uint32_t height, std::uint32_t depth,
+                            std::uint32_t array_layers, std::uint32_t face_count, texture_format format) noexcept
+{
+    const auto slice_bytes = payload_bytes_2d(width, height, format);
+    if (slice_bytes == 0 || depth == 0 || array_layers == 0 || face_count == 0) return 0;
+    std::uint64_t multiplier = depth;
+    if (multiplier > std::numeric_limits<std::uint64_t>::max() / array_layers) return 0;
+    multiplier *= array_layers;
+    if (multiplier > std::numeric_limits<std::uint64_t>::max() / face_count) return 0;
+    multiplier *= face_count;
+    if (slice_bytes > std::numeric_limits<std::uint64_t>::max() / multiplier) return 0;
+    return slice_bytes * multiplier;
+}
+
+std::uint32_t complete_mip_count(std::uint32_t width, std::uint32_t height, std::uint32_t depth,
+                                 texture_dimension dimension) noexcept
 {
     std::uint32_t count = 1;
-    while (width > 1 || height > 1)
+    while (width > 1 || height > 1 || (dimension == texture_dimension::texture_3d && depth > 1))
     {
         width = std::max(1u, width / 2u);
         height = std::max(1u, height / 2u);
+        if (dimension == texture_dimension::texture_3d) depth = std::max(1u, depth / 2u);
         ++count;
     }
     return count;
@@ -238,41 +276,55 @@ bool ranges_do_not_overlap(std::span<const texture_artifact_mip_range> mips,
 texture_artifact_bytes_result encode_texture_artifact(const texture_data& texture, texture_streaming_mode mode,
                                                       texture_artifact_metadata metadata)
 {
-    if (texture.dimension != texture_dimension::texture_2d || texture.array_layers != 1 || texture.width == 0 ||
-        texture.height == 0 || texture.mips.empty())
+    const auto face_count = face_count_for(texture.dimension);
+    if (!valid_texture_topology(texture.dimension, texture.width, texture.height, texture.depth, texture.array_layers,
+                                face_count) ||
+        texture.mips.empty())
         return texture_artifact_bytes_result::failure(
-            failure(texture_artifact_error_code::unsupported_texture,
-                    "streamed texture artifacts require one ordinary 2D texture with a complete mip payload"));
+            failure(texture_artifact_error_code::unsupported_texture, "texture artifact topology is unsupported"));
+    if (mode == texture_streaming_mode::virtual_tiles &&
+        (texture.dimension != texture_dimension::texture_2d || texture.depth != 1 || texture.array_layers != 1))
+        return texture_artifact_bytes_result::failure(failure(
+            texture_artifact_error_code::unsupported_texture, "virtual texture artifacts currently require one 2D layer"));
     if (layout_for(texture.format).unit_bytes == 0)
         return texture_artifact_bytes_result::failure(
             failure(texture_artifact_error_code::unsupported_texture, "texture format is not pageable"));
+    const auto expected_mips = complete_mip_count(texture.width, texture.height, texture.depth, texture.dimension);
     if (texture.mips.front().width != texture.width || texture.mips.front().height != texture.height ||
         ((mode == texture_streaming_mode::streamed_mips || mode == texture_streaming_mode::virtual_tiles) &&
-         texture.mips.size() != complete_mip_count(texture.width, texture.height)))
+         texture.mips.size() != expected_mips))
         return texture_artifact_bytes_result::failure(
             failure(texture_artifact_error_code::invalid_data, "texture artifact mip chain is incomplete"));
 
     std::uint32_t expected_width = texture.width;
     std::uint32_t expected_height = texture.height;
+    std::uint32_t expected_depth = texture.depth;
     for (const auto& mip : texture.mips)
     {
-        const auto expected_bytes = payload_bytes(expected_width, expected_height, texture.format);
+        const auto expected_bytes =
+            payload_bytes(expected_width, expected_height, expected_depth, texture.array_layers, face_count, texture.format);
         if (mip.width != expected_width || mip.height != expected_height || expected_bytes == 0 ||
-            mip.size != expected_bytes)
+            expected_bytes > std::numeric_limits<std::size_t>::max() || mip.size != expected_bytes)
             return texture_artifact_bytes_result::failure(
                 failure(texture_artifact_error_code::invalid_data, "texture artifact mip layout is invalid"));
         expected_width = std::max(1u, expected_width / 2u);
         expected_height = std::max(1u, expected_height / 2u);
+        if (texture.dimension == texture_dimension::texture_3d)
+            expected_depth = std::max(1u, expected_depth / 2u);
     }
 
     std::uint32_t tail_first = static_cast<std::uint32_t>(texture.mips.size() - 1u);
+    expected_depth = texture.depth;
     for (std::uint32_t mip = 0; mip < texture.mips.size(); ++mip)
+    {
         if (texture.mips[mip].width <= virtual_texture_tile_size &&
-            texture.mips[mip].height <= virtual_texture_tile_size)
+            texture.mips[mip].height <= virtual_texture_tile_size && expected_depth <= virtual_texture_tile_size)
         {
             tail_first = mip;
             break;
         }
+        if (texture.dimension == texture_dimension::texture_3d) expected_depth = std::max(1u, expected_depth / 2u);
+    }
 
     std::vector<pending_payload> mip_payloads;
     mip_payloads.reserve(texture.mips.size());
@@ -355,6 +407,10 @@ texture_artifact_bytes_result encode_texture_artifact(const texture_data& textur
     output.value(static_cast<std::uint32_t>(texture.format));
     output.value(static_cast<std::uint32_t>(texture.color_space));
     output.value(static_cast<std::uint32_t>(texture.semantic));
+    output.value(static_cast<std::uint32_t>(texture.dimension));
+    output.value(texture.depth);
+    output.value(texture.array_layers);
+    output.value(face_count);
     output.value(texture.width);
     output.value(texture.height);
     output.value(static_cast<std::uint32_t>(texture.mips.size()));
@@ -365,7 +421,8 @@ texture_artifact_bytes_result encode_texture_artifact(const texture_data& textur
     output.value(static_cast<std::uint32_t>(tile_payloads.size()));
     if (metadata.source_width == 0) metadata.source_width = texture.width;
     if (metadata.source_height == 0) metadata.source_height = texture.height;
-    if (metadata.resolved_max_size == 0) metadata.resolved_max_size = std::max(texture.width, texture.height);
+    if (metadata.resolved_max_size == 0)
+        metadata.resolved_max_size = std::max({texture.width, texture.height, texture.depth});
     if (!finite_metadata(metadata))
         return texture_artifact_bytes_result::failure(
             failure(texture_artifact_error_code::invalid_data, "texture artifact import metadata is invalid"));
@@ -396,14 +453,18 @@ texture_artifact_bytes_result encode_texture_artifact(const texture_data& textur
     output.value(cursor);
     output.value(std::uint64_t{});
     output.value(std::uint64_t{});
+    expected_depth = texture.depth;
     for (std::uint32_t mip = 0; mip < texture.mips.size(); ++mip)
     {
         output.value(texture.mips[mip].width);
         output.value(texture.mips[mip].height);
+        output.value(expected_depth);
         output.value(mip_payloads[mip].offset);
         output.value(static_cast<std::uint32_t>(mip_payloads[mip].bytes.size()));
         output.value(static_cast<std::uint32_t>(mip_payloads[mip].bytes.size()));
         output.value(mip_payloads[mip].hash);
+        if (texture.dimension == texture_dimension::texture_3d)
+            expected_depth = std::max(1u, expected_depth / 2u);
     }
     for (const auto& tile : tile_payloads)
     {
@@ -446,6 +507,7 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
     std::uint32_t format{};
     std::uint32_t color_space{};
     std::uint32_t semantic{};
+    std::uint32_t dimension{};
     std::uint32_t mip_entries{};
     std::uint32_t tile_entries{};
     std::uint32_t power_of_two{};
@@ -460,10 +522,11 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
     std::uint64_t header_hash{};
     texture_artifact_index result;
     if (!input.value(magic) || !input.value(schema) || !input.value(declared_header) || !input.value(mode) ||
-        !input.value(format) || !input.value(color_space) || !input.value(semantic) || !input.value(result.width) ||
-        !input.value(result.height) || !input.value(result.mip_count) || !input.value(result.tail_first_mip) ||
-        !input.value(result.tile_size) || !input.value(result.tile_border) || !input.value(mip_entries) ||
-        !input.value(tile_entries) || !input.value(result.metadata.source_width) ||
+        !input.value(format) || !input.value(color_space) || !input.value(semantic) || !input.value(dimension) ||
+        !input.value(result.depth) || !input.value(result.array_layers) || !input.value(result.face_count) ||
+        !input.value(result.width) || !input.value(result.height) || !input.value(result.mip_count) ||
+        !input.value(result.tail_first_mip) || !input.value(result.tile_size) || !input.value(result.tile_border) ||
+        !input.value(mip_entries) || !input.value(tile_entries) || !input.value(result.metadata.source_width) ||
         !input.value(result.metadata.source_height) || !input.value(result.metadata.requested_max_size) ||
         !input.value(result.metadata.resolved_max_size) || !input.value(power_of_two) || !input.value(compression) ||
         !input.value(min_filter) || !input.value(mag_filter) || !input.value(mip_filter) || !input.value(wrap_u) ||
@@ -487,19 +550,29 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
         format > static_cast<std::uint32_t>(texture_format::bc7_rgba_srgb) ||
         color_space > static_cast<std::uint32_t>(texture_color_space::srgb) ||
         semantic > static_cast<std::uint32_t>(texture_semantic::environment) ||
+        dimension > static_cast<std::uint32_t>(texture_dimension::cube) ||
         power_of_two > static_cast<std::uint32_t>(texture_power_of_two_policy::resize_up) ||
         compression > static_cast<std::uint32_t>(texture_compression_policy::uncompressed) ||
         min_filter > static_cast<std::uint32_t>(texture_filter_mode::linear) ||
         mag_filter > static_cast<std::uint32_t>(texture_filter_mode::linear) ||
         mip_filter > static_cast<std::uint32_t>(texture_mip_filter_mode::linear) ||
         wrap_u > static_cast<std::uint32_t>(texture_address_mode::mirrored_repeat) ||
-        wrap_v > static_cast<std::uint32_t>(texture_address_mode::mirrored_repeat) || result.width == 0 ||
-        result.height == 0 || result.mip_count == 0 || mip_entries != result.mip_count ||
-        result.tail_first_mip >= result.mip_count || result.table_end < header_bytes ||
-        result.table_end > bytes.size() || result.artifact_size != bytes.size() || !finite_metadata(result.metadata) ||
+        wrap_v > static_cast<std::uint32_t>(texture_address_mode::mirrored_repeat))
+        return texture_artifact_index_result::failure(
+            failure(texture_artifact_error_code::invalid_data, "texture artifact metadata is invalid"));
+
+    result.dimension = static_cast<texture_dimension>(dimension);
+    if (!valid_texture_topology(result.dimension, result.width, result.height, result.depth, result.array_layers,
+                                result.face_count) ||
+        result.mip_count == 0 || mip_entries != result.mip_count || result.tail_first_mip >= result.mip_count ||
+        result.table_end < header_bytes || result.table_end > bytes.size() || result.artifact_size != bytes.size() ||
+        !finite_metadata(result.metadata) ||
         ((mode == static_cast<std::uint32_t>(texture_streaming_mode::streamed_mips) ||
           mode == static_cast<std::uint32_t>(texture_streaming_mode::virtual_tiles)) &&
-         result.mip_count != complete_mip_count(result.width, result.height)) ||
+         result.mip_count != complete_mip_count(result.width, result.height, result.depth, result.dimension)) ||
+        (mode == static_cast<std::uint32_t>(texture_streaming_mode::virtual_tiles) &&
+         (result.dimension != texture_dimension::texture_2d || result.depth != 1 || result.array_layers != 1 ||
+          result.face_count != 1)) ||
         (mode != static_cast<std::uint32_t>(texture_streaming_mode::virtual_tiles) && tile_entries != 0) ||
         result.tile_size != virtual_texture_tile_size || result.tile_border != virtual_texture_tile_border)
         return texture_artifact_index_result::failure(
@@ -532,22 +605,28 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
     result.mips.reserve(mip_entries);
     std::uint32_t expected_width = result.width;
     std::uint32_t expected_height = result.height;
+    std::uint32_t expected_depth = result.depth;
     const auto payload_begin =
         (result.table_end + texture_artifact_alignment - 1u) / texture_artifact_alignment * texture_artifact_alignment;
     for (std::uint32_t mip = 0; mip < mip_entries; ++mip)
     {
         texture_artifact_mip_range range;
-        const auto expected_size = payload_bytes(expected_width, expected_height, result.format);
-        if (!input.value(range.width) || !input.value(range.height) || !input.value(range.offset) ||
-            !input.value(range.stored_size) || !input.value(range.decoded_size) || !input.value(range.content_hash) ||
-            range.width != expected_width || range.height != expected_height || expected_size == 0 ||
-            range.decoded_size != expected_size || range.stored_size != range.decoded_size ||
+        const auto expected_size = payload_bytes(expected_width, expected_height, expected_depth, result.array_layers,
+                                                 result.face_count, result.format);
+        if (!input.value(range.width) || !input.value(range.height) || !input.value(range.depth) ||
+            !input.value(range.offset) || !input.value(range.stored_size) || !input.value(range.decoded_size) ||
+            !input.value(range.content_hash) || range.width != expected_width || range.height != expected_height ||
+            range.depth != expected_depth || expected_size == 0 ||
+            expected_size > std::numeric_limits<std::uint32_t>::max() || range.decoded_size != expected_size ||
+            range.stored_size != range.decoded_size ||
             !valid_range(range.offset, range.stored_size, payload_begin, bytes.size()))
             return texture_artifact_index_result::failure(
                 failure(texture_artifact_error_code::out_of_bounds, "texture artifact mip range is invalid"));
         result.mips.push_back(range);
         expected_width = std::max(1u, expected_width / 2u);
         expected_height = std::max(1u, expected_height / 2u);
+        if (result.dimension == texture_dimension::texture_3d)
+            expected_depth = std::max(1u, expected_depth / 2u);
     }
     result.tiles.reserve(tile_entries);
     std::unordered_set<std::uint64_t> tile_keys;
@@ -561,7 +640,7 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
             range.height != result.tile_size + result.tile_border * 2u ||
             range.x >= (result.mips[range.mip].width + result.tile_size - 1u) / result.tile_size ||
             range.y >= (result.mips[range.mip].height + result.tile_size - 1u) / result.tile_size ||
-            range.decoded_size != payload_bytes(range.width, range.height, result.format) ||
+            range.decoded_size != payload_bytes_2d(range.width, range.height, result.format) ||
             range.stored_size != range.decoded_size ||
             !valid_range(range.offset, range.stored_size, payload_begin, bytes.size()) ||
             !tile_keys
