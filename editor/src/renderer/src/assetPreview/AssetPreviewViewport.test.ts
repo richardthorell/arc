@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { assetPreviewViewportId, serializeAssetPreviewViewportLifecycle } from './AssetPreviewViewport';
+import {
+  assetPreviewViewportId,
+  materialPreviewRenderOptions,
+  serializeAssetPreviewViewportLifecycle,
+} from './AssetPreviewViewport';
 
 describe('assetPreviewViewportId', () => {
   it('uses a reserved material preview surface namespace', () => {
@@ -19,6 +23,33 @@ describe('assetPreviewViewportId', () => {
     const guid = '11111111-2222-3333-4444-555555555555';
     expect(assetPreviewViewportId('material', guid, 7)).toBe(`asset-preview-material-${guid}~7`);
     expect(assetPreviewViewportId('material', guid, 7)).not.toBe(assetPreviewViewportId('material', guid, 8));
+  });
+});
+
+describe('materialPreviewRenderOptions', () => {
+  it('disables authoring selection visuals without changing the studio preview', () => {
+    expect(materialPreviewRenderOptions('asset-preview-material-test')).toMatchObject({
+      viewportId: 'asset-preview-material-test',
+      renderMode: 'shaded',
+      visualization: 'standard',
+      overlay: 'none',
+      selectionOutline: false,
+      hoverOutline: false,
+      selectionBounds: false,
+      componentGizmos: false,
+      selectionHierarchy: false,
+      shadows: true,
+      grid: false,
+      realtime: true,
+      environment: {
+        sky: true,
+        fog: false,
+        terrain: false,
+        water: false,
+        vegetation: false,
+        decals: false,
+      },
+    });
   });
 });
 
