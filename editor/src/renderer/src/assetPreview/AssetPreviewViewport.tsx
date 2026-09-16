@@ -90,6 +90,35 @@ export function assetPreviewViewportId(kind: AssetPreviewViewportProps['kind'], 
   return instance === undefined ? base : `${base}~${instance}`;
 }
 
+export function materialPreviewRenderOptions(viewportId: string): Record<string, unknown> {
+  return {
+    viewportId,
+    renderMode: 'shaded',
+    visualization: 'standard',
+    overlay: 'none',
+    selectionOutline: false,
+    hoverOutline: false,
+    selectionBounds: false,
+    componentGizmos: false,
+    selectionHierarchy: false,
+    shadows: true,
+    grid: false,
+    gridColor: [0.2, 0.21568628, 0.23921569],
+    skeletons: false,
+    realtime: true,
+    cameraSpeed: 4,
+    antiAliasing: 'inherit',
+    environment: {
+      sky: true,
+      fog: false,
+      terrain: false,
+      water: false,
+      vegetation: false,
+      decals: false,
+    },
+  };
+}
+
 export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState }: AssetPreviewViewportProps) {
   const normalizedGuid = normalizedAssetGuid(assetGuid);
   const viewportInstanceRef = useRef<number | null>(null);
@@ -249,6 +278,14 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
           window.arc.viewport.create(bounds),
         )) as ViewportCommandResponse | undefined;
         if (response?.succeeded === false) throw new Error(response.error || 'Asset preview surface was rejected');
+        if (kind === 'material') {
+          const optionsResponse = (await window.arc.host.command(
+            'viewport.setRenderOptions',
+            materialPreviewRenderOptions(viewportId),
+          )) as ViewportCommandResponse | undefined;
+          if (optionsResponse?.succeeded === false)
+            throw new Error(optionsResponse.error || 'Material preview render options were rejected');
+        }
         if (cancelled) return;
         attachedRef.current = true;
         lastBoundsRef.current = boundsKey(bounds);
