@@ -149,6 +149,13 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
         aria-valuemax={maximumMaterialSidebarWidth}
         aria-valuenow={sidebarWidth}
         tabIndex={0}
+        style={{
+          cursor: 'col-resize',
+          touchAction: 'none',
+          borderLeft: '1px solid rgba(102, 132, 146, 0.14)',
+          borderRight: '1px solid rgba(102, 132, 146, 0.22)',
+          background: '#0e171c',
+        }}
         onPointerDown={onSidebarResizeStart}
         onPointerMove={onSidebarResizeMove}
         onPointerUp={finishSidebarResize}
