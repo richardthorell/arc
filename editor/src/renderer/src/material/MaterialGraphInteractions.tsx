@@ -119,6 +119,29 @@ const pinSocketCenter = (element: HTMLElement, hostRect: DOMRect): GraphPoint | 
   return [rect.left + rect.width / 2 - hostRect.left, rect.top + rect.height / 2 - hostRect.top];
 };
 
+export function materialConnectionFlowIds(graph: MaterialGraph, connectionId: string): Set<string> {
+  const selected = graph.connections.find((connection) => connection.id === connectionId);
+  if (!selected) return new Set();
+
+  const flow = new Set<string>([selected.id]);
+  const visitedNodes = new Set<string>();
+  const pendingNodes = [selected.from.nodeId];
+
+  while (pendingNodes.length > 0) {
+    const nodeId = pendingNodes.pop();
+    if (!nodeId || visitedNodes.has(nodeId)) continue;
+    visitedNodes.add(nodeId);
+
+    for (const connection of graph.connections) {
+      if (connection.to.nodeId !== nodeId || flow.has(connection.id)) continue;
+      flow.add(connection.id);
+      pendingNodes.push(connection.from.nodeId);
+    }
+  }
+
+  return flow;
+}
+
 export function MaterialGraphWithInteractions({ document, graph }: { document: EditorDocument; graph: MaterialGraph }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [wires, setWires] = useState<MaterialWireOverlay[]>([]);
@@ -256,24 +279,36 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
   }, [pinMetadata]);
 
   const hoveredWireId = hoveredWire?.id;
+  const flowWireIds = useMemo(
+    () => (hoveredWireId ? materialConnectionFlowIds(graph, hoveredWireId) : new Set<string>()),
+    [graph, hoveredWireId],
+  );
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const endpointKeys = new Set<string>();
-    if (hoveredWireId) {
-      const wire = wires.find((candidate) => candidate.id === hoveredWireId);
-      if (wire) {
-        endpointKeys.add(wire.fromPinKey);
-        endpointKeys.add(wire.toPinKey);
+    const primaryEndpointKeys = new Set<string>();
+    const flowEndpointKeys = new Set<string>();
+    for (const wire of wires) {
+      if (!flowWireIds.has(wire.id)) continue;
+      flowEndpointKeys.add(wire.fromPinKey);
+      flowEndpointKeys.add(wire.toPinKey);
+      if (wire.id === hoveredWireId) {
+        primaryEndpointKeys.add(wire.fromPinKey);
+        primaryEndpointKeys.add(wire.toPinKey);
       }
     }
     const elements = graphPinElementMap(host);
-    for (const [key, element] of elements) element.classList.toggle('is-wire-endpoint', endpointKeys.has(key));
+    for (const [key, element] of elements) {
+      element.classList.toggle('is-wire-flow-endpoint', flowEndpointKeys.has(key));
+      element.classList.toggle('is-wire-endpoint', primaryEndpointKeys.has(key));
+    }
     return () => {
-      for (const element of elements.values()) element.classList.remove('is-wire-endpoint');
+      for (const element of elements.values()) {
+        element.classList.remove('is-wire-flow-endpoint', 'is-wire-endpoint');
+      }
     };
-  }, [hoveredWireId, wires]);
+  }, [flowWireIds, hoveredWireId, wires]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -333,17 +368,16 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
       {editor}
       <svg aria-hidden="true" className="material-graph-interaction-overlay">
         {wires.map((wire) => {
-          const pathId = `material-wire-${wire.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+          const isFlow = flowWireIds.has(wire.id);
+          const isPrimary = wire.id === hoveredWireId;
           return (
-            <g className="material-wire-interaction" data-material-wire-id={wire.id} key={wire.id}>
-              <path className="material-wire-hover-line" d={wire.path} id={pathId} />
-              {[32, 50, 68].map((offset) => (
-                <text className="material-wire-chevron" key={offset}>
-                  <textPath href={`#${pathId}`} startOffset={`${offset}%`}>
-                    ›
-                  </textPath>
-                </text>
-              ))}
+            <g
+              className={`material-wire-interaction${isFlow ? ' is-flow' : ''}${isPrimary ? ' is-primary' : ''}`}
+              data-material-wire-id={wire.id}
+              key={wire.id}
+            >
+              <path className="material-wire-flow-glow" d={wire.path} />
+              <path className="material-wire-flow-texture" d={wire.path} pathLength={100} />
               <path
                 className="material-wire-hit"
                 d={wire.path}
