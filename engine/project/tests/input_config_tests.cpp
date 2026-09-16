@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -68,7 +69,8 @@ TEST_CASE("project input config drives ARC semantic action contexts")
 
     const auto loaded = arc::project::load_input_config(path);
     REQUIRE(loaded.succeeded);
-    CHECK(arc::project::input_action_names(loaded.config) == std::vector<std::string>{"Jump", "Fire"});
+    const std::vector<std::string> expected_actions{"Jump", "Fire"};
+    CHECK(arc::project::input_action_names(loaded.config) == expected_actions);
 
     arc::input::input_system input;
     const auto keyboard = input.connect_device({.type = arc::input::input_device_type::keyboard,
