@@ -217,6 +217,8 @@ function MaterialNodeValueEditor({
 
 export function MaterialGraphEditor({ document, graph }: { document: EditorDocument; graph: MaterialGraph }) {
   const canvasRef = useRef<HTMLDivElement>(null);
+  const invalidConnectionNodeRef = useRef<HTMLElement | null>(null);
+  const invalidConnectionTimeoutRef = useRef<number | null>(null);
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(() => new Set());
   const [pendingConnection, setPendingConnection] = useState<MaterialGraphPinRef | null>(null);
   const [pointerGraph, setPointerGraph] = useState<GraphPoint>([0, 0]);
@@ -233,6 +235,34 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
   useEffect(() => {
     setSelectedNodes((current) => new Set([...current].filter((id) => graph.nodes.some((node) => node.id === id))));
   }, [graph.nodes]);
+
+  useEffect(
+    () => () => {
+      if (invalidConnectionTimeoutRef.current !== null) window.clearTimeout(invalidConnectionTimeoutRef.current);
+    },
+    [],
+  );
+
+  const flashRejectedConnection = useCallback((nodeId: string) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const targetNode = Array.from(canvas.querySelectorAll<HTMLElement>('[data-node-id]')).find(
+      (candidate) => candidate.dataset.nodeId === nodeId,
+    );
+    if (!targetNode) return;
+
+    if (invalidConnectionTimeoutRef.current !== null) window.clearTimeout(invalidConnectionTimeoutRef.current);
+    invalidConnectionNodeRef.current?.classList.remove('is-connection-invalid');
+    targetNode.classList.remove('is-connection-invalid');
+    void targetNode.offsetWidth;
+    targetNode.classList.add('is-connection-invalid');
+    invalidConnectionNodeRef.current = targetNode;
+    invalidConnectionTimeoutRef.current = window.setTimeout(() => {
+      targetNode.classList.remove('is-connection-invalid');
+      if (invalidConnectionNodeRef.current === targetNode) invalidConnectionNodeRef.current = null;
+      invalidConnectionTimeoutRef.current = null;
+    }, 1000);
+  }, []);
 
   const mutate = useCallback(
     (updater: (draft: MaterialGraph) => void, recordHistory = true) => {
@@ -449,6 +479,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
         { node: toNode, pin: toPin, direction: 'input' },
       ).allowed;
     if (!allowed) {
+      flashRejectedConnection(target.nodeId);
       setPendingConnection(null);
       return;
     }

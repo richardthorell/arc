@@ -3,9 +3,9 @@ import { AlertCircle, CheckCircle2, Code2, Lock } from 'lucide-react';
 import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/AssetPreviewPanel';
 import { AssetPreviewViewport } from '../assetPreview/AssetPreviewViewport';
 import type { EditorDocument } from '../editors/editorTypes';
-import { MaterialGraphEditor } from './MaterialGraphEditor';
 import { materialEditorParameters } from './materialCompiler';
 import { replaceMaterialGraph, useMaterialDocumentState } from './materialDocumentState';
+import { MaterialGraphWithInteractions } from './MaterialGraphInteractions';
 import { cloneMaterialGraph, type MaterialGraphNode } from './materialGraphTypes';
 import './materialCustomShader.css';
 import './materialEditor.css';
@@ -70,7 +70,7 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
           </div>
         </section>
       ) : (
-        <MaterialGraphEditor document={document} graph={state.graph} />
+        <MaterialGraphWithInteractions document={document} graph={state.graph} />
       )}
 
       <aside className="material-editor-sidebar editor-property-panel">

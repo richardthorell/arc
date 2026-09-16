@@ -146,7 +146,7 @@ describe('MaterialGraphEditor', () => {
     expect(nextGraph.nodes.some((node: { type: string }) => node.type === 'output')).toBe(true);
   });
 
-  it('uses the material graph domain to reject a self connection', () => {
+  it('rejects and flashes a self connection', () => {
     const graph = createDefaultMaterialGraph();
     graph.nodes.push(createMaterialNode('normalMap', [320, 520]));
     render(<MaterialGraphEditor document={document} graph={graph} />);
@@ -158,5 +158,22 @@ describe('MaterialGraphEditor', () => {
     fireEvent.pointerDown(within(normalMap!).getByRole('button', { name: 'Texture RGB' }), { button: 0 });
 
     expect(materialState.replaceMaterialGraph).not.toHaveBeenCalled();
+    expect(normalMap).toHaveClass('is-connection-invalid');
+  });
+
+  it('rejects and flashes an incompatible pin type', () => {
+    render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
+
+    const color = screen.getByText('Color', { selector: '.ui-node-card-title' }).closest('article');
+    const output = screen.getByText('Material Output').closest('article');
+    expect(color).not.toBeNull();
+    expect(output).not.toBeNull();
+
+    fireEvent.pointerDown(within(color!).getByRole('button', { name: 'RGBA' }), { button: 0 });
+    materialState.replaceMaterialGraph.mockClear();
+    fireEvent.pointerDown(within(output!).getByRole('button', { name: 'Base Color' }), { button: 0 });
+
+    expect(materialState.replaceMaterialGraph).not.toHaveBeenCalled();
+    expect(output).toHaveClass('is-connection-invalid');
   });
 });
