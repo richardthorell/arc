@@ -77,7 +77,13 @@ describe('MaterialGraphWithInteractions', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('Vector3 • Color.rgb → Base Color');
     expect(container.querySelectorAll('.material-wire-chevron')).toHaveLength(0);
     expect(container.querySelectorAll('.material-wire-flow-texture')).toHaveLength(3);
-    expect(wire!.closest('.material-wire-interaction')).toHaveClass('is-flow', 'is-primary');
+    const interaction = wire!.closest('.material-wire-interaction');
+    expect(interaction).toHaveClass('is-flow', 'is-primary');
+    const flowTexture = interaction!.querySelector('.material-wire-flow-texture');
+    const wirePath = wire!.getAttribute('d');
+    expect(wirePath).not.toBeNull();
+    expect(flowTexture).toHaveAttribute('d', wirePath!);
+    expect(container.querySelectorAll('.material-wire-endpoint-cap.is-primary')).toHaveLength(2);
 
     const color = screen.getByText('Color', { selector: '.ui-node-card-title' }).closest('article');
     const output = screen.getByText('Material Output').closest('article');
