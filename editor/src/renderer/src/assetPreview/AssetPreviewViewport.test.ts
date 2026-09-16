@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { assetPreviewViewportId, serializeAssetPreviewViewportLifecycle } from './AssetPreviewViewport';
+import {
+  assetPreviewViewportId,
+  materialPreviewRenderOptions,
+  serializeAssetPreviewViewportLifecycle,
+} from './AssetPreviewViewport';
 
 describe('assetPreviewViewportId', () => {
   it('uses a reserved material preview surface namespace', () => {
@@ -19,6 +23,28 @@ describe('assetPreviewViewportId', () => {
     const guid = '11111111-2222-3333-4444-555555555555';
     expect(assetPreviewViewportId('material', guid, 7)).toBe(`asset-preview-material-${guid}~7`);
     expect(assetPreviewViewportId('material', guid, 7)).not.toBe(assetPreviewViewportId('material', guid, 8));
+  });
+});
+
+describe('materialPreviewRenderOptions', () => {
+  it('disables editor selection affordances while keeping the preview scene lit', () => {
+    const options = materialPreviewRenderOptions();
+
+    expect(options.selectionOutline).toBe(false);
+    expect(options.hoverOutline).toBe(false);
+    expect(options.selectionBounds).toBe(false);
+    expect(options.componentGizmos).toBe(false);
+    expect(options.selectionHierarchy).toBe(false);
+    expect(options.grid).toBe(false);
+    expect(options.shadows).toBe(true);
+    expect(options.environment).toEqual({
+      sky: true,
+      fog: false,
+      terrain: false,
+      water: false,
+      vegetation: false,
+      decals: false,
+    });
   });
 });
 

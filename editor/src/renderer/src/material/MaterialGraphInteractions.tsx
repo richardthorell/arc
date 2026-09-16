@@ -16,10 +16,12 @@ type MaterialPinMetadata = {
 };
 
 type MaterialWireOverlay = {
+  from: GraphPoint;
   fromPinKey: string;
   id: string;
   label: string;
   path: string;
+  to: GraphPoint;
   toPinKey: string;
 };
 
@@ -98,6 +100,10 @@ const sameWireOverlays = (left: MaterialWireOverlay[], right: MaterialWireOverla
       candidate !== undefined &&
       wire.id === candidate.id &&
       wire.path === candidate.path &&
+      wire.from[0] === candidate.from[0] &&
+      wire.from[1] === candidate.from[1] &&
+      wire.to[0] === candidate.to[0] &&
+      wire.to[1] === candidate.to[1] &&
       wire.label === candidate.label &&
       wire.fromPinKey === candidate.fromPinKey &&
       wire.toPinKey === candidate.toPinKey
@@ -118,6 +124,29 @@ const pinSocketCenter = (element: HTMLElement, hostRect: DOMRect): GraphPoint | 
   const rect = socket.getBoundingClientRect();
   return [rect.left + rect.width / 2 - hostRect.left, rect.top + rect.height / 2 - hostRect.top];
 };
+
+export function materialConnectionFlowIds(graph: MaterialGraph, connectionId: string): Set<string> {
+  const selected = graph.connections.find((connection) => connection.id === connectionId);
+  if (!selected) return new Set();
+
+  const flow = new Set<string>([selected.id]);
+  const visitedNodes = new Set<string>();
+  const pendingNodes = [selected.from.nodeId];
+
+  while (pendingNodes.length > 0) {
+    const nodeId = pendingNodes.pop();
+    if (!nodeId || visitedNodes.has(nodeId)) continue;
+    visitedNodes.add(nodeId);
+
+    for (const connection of graph.connections) {
+      if (connection.to.nodeId !== nodeId || flow.has(connection.id)) continue;
+      flow.add(connection.id);
+      pendingNodes.push(connection.from.nodeId);
+    }
+  }
+
+  return flow;
+}
 
 export function MaterialGraphWithInteractions({ document, graph }: { document: EditorDocument; graph: MaterialGraph }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -189,10 +218,12 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
       if (!from || !to) return [];
       return [
         {
+          from,
           fromPinKey: metadata.fromPinKey,
           id: connection.id,
           label: metadata.label,
           path: graphConnectionPath(from, to),
+          to,
           toPinKey: metadata.toPinKey,
         },
       ];
@@ -256,24 +287,51 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
   }, [pinMetadata]);
 
   const hoveredWireId = hoveredWire?.id;
+  const flowWireIds = useMemo(
+    () => (hoveredWireId ? materialConnectionFlowIds(graph, hoveredWireId) : new Set<string>()),
+    [graph, hoveredWireId],
+  );
+  const flowEndpoints = useMemo(() => {
+    const endpoints = new Map<string, { key: string; point: GraphPoint; primary: boolean }>();
+    for (const wire of wires) {
+      if (!flowWireIds.has(wire.id)) continue;
+      const primary = wire.id === hoveredWireId;
+      for (const [key, point] of [
+        [wire.fromPinKey, wire.from],
+        [wire.toPinKey, wire.to],
+      ] as const) {
+        const current = endpoints.get(key);
+        if (!current || primary) endpoints.set(key, { key, point, primary });
+      }
+    }
+    return [...endpoints.values()];
+  }, [flowWireIds, hoveredWireId, wires]);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const endpointKeys = new Set<string>();
-    if (hoveredWireId) {
-      const wire = wires.find((candidate) => candidate.id === hoveredWireId);
-      if (wire) {
-        endpointKeys.add(wire.fromPinKey);
-        endpointKeys.add(wire.toPinKey);
+    const primaryEndpointKeys = new Set<string>();
+    const flowEndpointKeys = new Set<string>();
+    for (const wire of wires) {
+      if (!flowWireIds.has(wire.id)) continue;
+      flowEndpointKeys.add(wire.fromPinKey);
+      flowEndpointKeys.add(wire.toPinKey);
+      if (wire.id === hoveredWireId) {
+        primaryEndpointKeys.add(wire.fromPinKey);
+        primaryEndpointKeys.add(wire.toPinKey);
       }
     }
     const elements = graphPinElementMap(host);
-    for (const [key, element] of elements) element.classList.toggle('is-wire-endpoint', endpointKeys.has(key));
+    for (const [key, element] of elements) {
+      element.classList.toggle('is-wire-flow-endpoint', flowEndpointKeys.has(key));
+      element.classList.toggle('is-wire-endpoint', primaryEndpointKeys.has(key));
+    }
     return () => {
-      for (const element of elements.values()) element.classList.remove('is-wire-endpoint');
+      for (const element of elements.values()) {
+        element.classList.remove('is-wire-flow-endpoint', 'is-wire-endpoint');
+      }
     };
-  }, [hoveredWireId, wires]);
+  }, [flowWireIds, hoveredWireId, wires]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -333,17 +391,16 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
       {editor}
       <svg aria-hidden="true" className="material-graph-interaction-overlay">
         {wires.map((wire) => {
-          const pathId = `material-wire-${wire.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+          const isFlow = flowWireIds.has(wire.id);
+          const isPrimary = wire.id === hoveredWireId;
           return (
-            <g className="material-wire-interaction" data-material-wire-id={wire.id} key={wire.id}>
-              <path className="material-wire-hover-line" d={wire.path} id={pathId} />
-              {[32, 50, 68].map((offset) => (
-                <text className="material-wire-chevron" key={offset}>
-                  <textPath href={`#${pathId}`} startOffset={`${offset}%`}>
-                    ›
-                  </textPath>
-                </text>
-              ))}
+            <g
+              className={`material-wire-interaction${isFlow ? ' is-flow' : ''}${isPrimary ? ' is-primary' : ''}`}
+              data-material-wire-id={wire.id}
+              key={wire.id}
+            >
+              <path className="material-wire-flow-glow" d={wire.path} />
+              <path className="material-wire-flow-texture" d={wire.path} />
               <path
                 className="material-wire-hit"
                 d={wire.path}
@@ -366,6 +423,15 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
             </g>
           );
         })}
+        {flowEndpoints.map((endpoint) => (
+          <circle
+            className={`material-wire-endpoint-cap${endpoint.primary ? ' is-primary' : ''}`}
+            cx={endpoint.point[0]}
+            cy={endpoint.point[1]}
+            key={endpoint.key}
+            r="5.5"
+          />
+        ))}
       </svg>
       {tooltip && (
         <div
