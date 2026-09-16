@@ -1,7 +1,7 @@
 arc_add_module(
     NAME arc-project
     TYPE STATIC
-    DEPS arc-core arc-assets arc-persistence arc-diagnostics
+    DEPS arc-core arc-assets arc-persistence arc-diagnostics arc-input
     NO_TESTS
 )
 
