@@ -33,23 +33,24 @@
 }
 
 .material-wire-flow-glow {
-  stroke: rgba(255, 255, 255, 0.96);
-  stroke-width: 2.5;
+  stroke: rgba(8, 14, 18, 0.96);
+  stroke-width: 4.6;
   opacity: 0;
-  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.18));
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.12));
   transition:
     opacity 100ms ease,
     stroke-width 100ms ease;
 }
 
 .material-wire-flow-texture {
-  stroke: rgba(255, 255, 255, 0.92);
-  stroke-width: 1.6;
+  stroke: rgba(255, 255, 255, 0.98);
+  stroke-width: 2;
   stroke-linecap: round;
-  stroke-dasharray: 4 10;
+  stroke-dasharray: 7 9;
   stroke-dashoffset: 0;
   opacity: 0;
-  animation: material-wire-flow 720ms linear infinite;
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.28));
+  animation: material-wire-flow 820ms linear infinite;
   animation-play-state: paused;
   transition:
     opacity 100ms ease,
@@ -63,33 +64,34 @@
 }
 
 .material-wire-interaction.is-flow .material-wire-flow-glow {
-  opacity: 0.46;
+  opacity: 0.34;
 }
 
 .material-wire-interaction.is-flow .material-wire-flow-texture {
-  opacity: 0.58;
+  opacity: 0.72;
   animation-play-state: running;
 }
 
 .material-wire-interaction.is-primary .material-wire-flow-glow {
-  stroke-width: 3.3;
-  opacity: 0.96;
+  stroke-width: 5.2;
+  opacity: 0.62;
 }
 
 .material-wire-interaction.is-primary .material-wire-flow-texture {
-  stroke-width: 2;
-  opacity: 0.94;
+  stroke-width: 2.35;
+  opacity: 1;
 }
 
 @keyframes material-wire-flow {
   to {
-    stroke-dashoffset: -28;
+    stroke-dashoffset: -32;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .material-wire-flow-texture {
     animation: none;
+    stroke-dasharray: 7 9;
   }
 }
 
