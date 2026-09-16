@@ -46,11 +46,11 @@
   stroke: rgba(255, 255, 255, 0.98);
   stroke-width: 2;
   stroke-linecap: round;
-  stroke-dasharray: 7 9;
+  stroke-dasharray: 5 8;
   stroke-dashoffset: 0;
   opacity: 0;
   filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.28));
-  animation: material-wire-flow 820ms linear infinite;
+  animation: material-wire-flow 700ms linear infinite;
   animation-play-state: paused;
   transition:
     opacity 100ms ease,
@@ -84,14 +84,14 @@
 
 @keyframes material-wire-flow {
   to {
-    stroke-dashoffset: -32;
+    stroke-dashoffset: -26;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .material-wire-flow-texture {
     animation: none;
-    stroke-dasharray: 7 9;
+    stroke-dasharray: 5 8;
   }
 }
 
