@@ -1,3 +1,5 @@
+import { useRef, useState } from 'react';
+import type { KeyboardEvent, PointerEvent } from 'react';
 import { AlertCircle, CheckCircle2, Code2, Lock } from 'lucide-react';
 
 import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/AssetPreviewPanel';
@@ -11,6 +13,21 @@ import './materialCustomShader.css';
 import './materialEditor.css';
 import './materialWorkspace.css';
 
+export const defaultMaterialSidebarWidth = 472;
+export const minimumMaterialSidebarWidth = 320;
+export const maximumMaterialSidebarWidth = 640;
+export const minimumMaterialGraphWidth = 520;
+export const materialEditorDividerWidth = 5;
+
+export function clampMaterialSidebarWidth(containerWidth: number, requestedWidth: number): number {
+  const availableWidth = Math.max(
+    minimumMaterialSidebarWidth,
+    containerWidth - minimumMaterialGraphWidth - materialEditorDividerWidth,
+  );
+  const maximumWidth = Math.min(maximumMaterialSidebarWidth, availableWidth);
+  return Math.round(Math.min(maximumWidth, Math.max(minimumMaterialSidebarWidth, requestedWidth)));
+}
+
 const parameterValue = (node: MaterialGraphNode): number[] => {
   if (typeof node.values.value === 'number') return [node.values.value];
   if (Array.isArray(node.values.value))
@@ -20,12 +37,21 @@ const parameterValue = (node: MaterialGraphNode): number[] => {
 
 const componentLabels = ['X', 'Y', 'Z', 'W'];
 
+type SidebarResize = {
+  pointerId: number;
+  startX: number;
+  startWidth: number;
+};
+
 export function MaterialEditor({ document }: { document: EditorDocument }) {
   const state = useMaterialDocumentState(document);
   const customShader = typeof state.asset.shaderPath === 'string' ? state.asset.shaderPath.trim() : '';
   const parameters = customShader ? [] : materialEditorParameters(state.graph);
   const errors = state.compilation.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
   const warnings = state.compilation.diagnostics.filter((diagnostic) => diagnostic.severity === 'warning');
+  const editorRef = useRef<HTMLElement | null>(null);
+  const sidebarResizeRef = useRef<SidebarResize | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(defaultMaterialSidebarWidth);
   const fallbackPreview = state.previewDataUrl ? (
     <img alt={`${document.title} material preview`} src={state.previewDataUrl} />
   ) : (
@@ -54,8 +80,49 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
     replaceMaterialGraph(document, next);
   };
 
+  const resizeSidebar = (requestedWidth: number) => {
+    const containerWidth = editorRef.current?.getBoundingClientRect().width ?? window.innerWidth;
+    setSidebarWidth(clampMaterialSidebarWidth(containerWidth, requestedWidth));
+  };
+
+  const onSidebarResizeStart = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    sidebarResizeRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: sidebarWidth,
+    };
+  };
+
+  const onSidebarResizeMove = (event: PointerEvent<HTMLDivElement>) => {
+    const resize = sidebarResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    resizeSidebar(resize.startWidth + resize.startX - event.clientX);
+  };
+
+  const finishSidebarResize = (event: PointerEvent<HTMLDivElement>) => {
+    if (sidebarResizeRef.current?.pointerId === event.pointerId) sidebarResizeRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+
+  const onSidebarResizeKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home') return;
+    event.preventDefault();
+    if (event.key === 'Home') {
+      resizeSidebar(defaultMaterialSidebarWidth);
+      return;
+    }
+    resizeSidebar(sidebarWidth + (event.key === 'ArrowLeft' ? 16 : -16));
+  };
+
   return (
-    <section className="material-editor">
+    <section
+      ref={editorRef}
+      className="material-editor"
+      style={{ gridTemplateColumns: `minmax(${minimumMaterialGraphWidth}px, 1fr) ${materialEditorDividerWidth}px ${sidebarWidth}px` }}
+    >
       {customShader ? (
         <section className="material-custom-shader">
           <Code2 size={30} />
@@ -72,6 +139,23 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
       ) : (
         <MaterialGraphWithInteractions document={document} graph={state.graph} />
       )}
+
+      <div
+        className="material-editor-divider"
+        role="separator"
+        aria-label="Resize material preview panel"
+        aria-orientation="vertical"
+        aria-valuemin={minimumMaterialSidebarWidth}
+        aria-valuemax={maximumMaterialSidebarWidth}
+        aria-valuenow={sidebarWidth}
+        tabIndex={0}
+        onPointerDown={onSidebarResizeStart}
+        onPointerMove={onSidebarResizeMove}
+        onPointerUp={finishSidebarResize}
+        onPointerCancel={finishSidebarResize}
+        onDoubleClick={() => resizeSidebar(defaultMaterialSidebarWidth)}
+        onKeyDown={onSidebarResizeKeyDown}
+      />
 
       <aside className="material-editor-sidebar editor-property-panel">
         <AssetPreviewPanel
