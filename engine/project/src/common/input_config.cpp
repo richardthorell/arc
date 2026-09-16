@@ -16,8 +16,8 @@ namespace
 
 std::string normalized_token(std::string value)
 {
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch)
-                   { return static_cast<char>(std::tolower(ch)); });
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
     value.erase(std::remove_if(value.begin(), value.end(), [](unsigned char ch) { return ch == '_' || ch == '-'; }),
                 value.end());
     return value;
@@ -32,36 +32,60 @@ std::optional<input::key> key_from_token(std::string token)
         if (value >= 'a' && value <= 'z')
             return static_cast<input::key>(static_cast<unsigned>(input::key::a) + static_cast<unsigned>(value - 'a'));
         if (value >= '0' && value <= '9')
-            return static_cast<input::key>(static_cast<unsigned>(input::key::num0) + static_cast<unsigned>(value - '0'));
+            return static_cast<input::key>(static_cast<unsigned>(input::key::num0) +
+                                           static_cast<unsigned>(value - '0'));
     }
 
     const std::pair<std::string_view, input::key> named[] = {
-        {"escape", input::key::escape},       {"esc", input::key::escape},
-        {"space", input::key::space},         {"spacebar", input::key::space},
-        {"enter", input::key::enter},         {"return", input::key::enter},
-        {"tab", input::key::tab},             {"backspace", input::key::backspace},
-        {"leftshift", input::key::left_shift},   {"rightshift", input::key::right_shift},
-        {"shift", input::key::left_shift},       {"leftcontrol", input::key::left_control},
-        {"leftctrl", input::key::left_control},  {"rightcontrol", input::key::right_control},
-        {"rightctrl", input::key::right_control},{"control", input::key::left_control},
-        {"ctrl", input::key::left_control},      {"leftalt", input::key::left_alt},
-        {"rightalt", input::key::right_alt},     {"alt", input::key::left_alt},
-        {"left", input::key::left},           {"arrowleft", input::key::left},
-        {"right", input::key::right},         {"arrowright", input::key::right},
-        {"up", input::key::up},               {"arrowup", input::key::up},
-        {"down", input::key::down},           {"arrowdown", input::key::down},
-        {"insert", input::key::insert},       {"delete", input::key::delete_key},
-        {"home", input::key::home},           {"end", input::key::end},
-        {"pageup", input::key::page_up},      {"pagedown", input::key::page_down},
-        {"f1", input::key::f1},               {"f2", input::key::f2},
-        {"f3", input::key::f3},               {"f4", input::key::f4},
-        {"f5", input::key::f5},               {"f6", input::key::f6},
-        {"f7", input::key::f7},               {"f8", input::key::f8},
-        {"f9", input::key::f9},               {"f10", input::key::f10},
-        {"f11", input::key::f11},             {"f12", input::key::f12},
+        {"escape", input::key::escape},
+        {"esc", input::key::escape},
+        {"space", input::key::space},
+        {"spacebar", input::key::space},
+        {"enter", input::key::enter},
+        {"return", input::key::enter},
+        {"tab", input::key::tab},
+        {"backspace", input::key::backspace},
+        {"leftshift", input::key::left_shift},
+        {"rightshift", input::key::right_shift},
+        {"shift", input::key::left_shift},
+        {"leftcontrol", input::key::left_control},
+        {"leftctrl", input::key::left_control},
+        {"rightcontrol", input::key::right_control},
+        {"rightctrl", input::key::right_control},
+        {"control", input::key::left_control},
+        {"ctrl", input::key::left_control},
+        {"leftalt", input::key::left_alt},
+        {"rightalt", input::key::right_alt},
+        {"alt", input::key::left_alt},
+        {"left", input::key::left},
+        {"arrowleft", input::key::left},
+        {"right", input::key::right},
+        {"arrowright", input::key::right},
+        {"up", input::key::up},
+        {"arrowup", input::key::up},
+        {"down", input::key::down},
+        {"arrowdown", input::key::down},
+        {"insert", input::key::insert},
+        {"delete", input::key::delete_key},
+        {"home", input::key::home},
+        {"end", input::key::end},
+        {"pageup", input::key::page_up},
+        {"pagedown", input::key::page_down},
+        {"f1", input::key::f1},
+        {"f2", input::key::f2},
+        {"f3", input::key::f3},
+        {"f4", input::key::f4},
+        {"f5", input::key::f5},
+        {"f6", input::key::f6},
+        {"f7", input::key::f7},
+        {"f8", input::key::f8},
+        {"f9", input::key::f9},
+        {"f10", input::key::f10},
+        {"f11", input::key::f11},
+        {"f12", input::key::f12},
     };
-    const auto found = std::find_if(std::begin(named), std::end(named),
-                                    [&token](const auto& entry) { return entry.first == token; });
+    const auto found =
+        std::find_if(std::begin(named), std::end(named), [&token](const auto& entry) { return entry.first == token; });
     return found == std::end(named) ? std::nullopt : std::optional<input::key>{found->second};
 }
 
@@ -200,8 +224,7 @@ input_config_load_result load_input_config(const std::filesystem::path& path)
 
             if (context_json.contains("actions"))
             {
-                if (!context_json.at("actions").is_array())
-                    return {.error = "input context actions must be an array"};
+                if (!context_json.at("actions").is_array()) return {.error = "input context actions must be an array"};
                 std::unordered_set<std::string> action_names;
                 for (const auto& action_json : context_json.at("actions"))
                 {
@@ -223,8 +246,7 @@ input_config_load_result load_input_config(const std::filesystem::path& path)
                     {
                         std::string error;
                         auto binding = parse_binding(binding_json, error);
-                        if (!binding)
-                            return {.error = "input action '" + action.name + "': " + std::move(error)};
+                        if (!binding) return {.error = "input action '" + action.name + "': " + std::move(error)};
                         action.bindings.push_back(std::move(*binding));
                     }
                     context.actions.push_back(std::move(action));
@@ -240,36 +262,26 @@ input_config_load_result load_input_config(const std::filesystem::path& path)
     }
 }
 
-bool apply_input_config(const input_config& config, input::input_system& system, input::player_id player_id,
-                        std::string* error)
+input_config_apply_result apply_input_config(const input_config& config, input::input_system& system,
+                                             input::player_id player_id)
 {
     if (config.version != input_config_version)
-    {
-        if (error) *error = "unsupported input config version " + std::to_string(config.version);
-        return false;
-    }
+        return {.error = "unsupported input config version " + std::to_string(config.version)};
 
     auto& player = system.player(player_id);
     for (const auto& context : config.contexts)
     {
-        if (context.name.empty())
-        {
-            if (error) *error = "input context name cannot be empty";
-            return false;
-        }
+        if (context.name.empty()) return {.error = "input context name cannot be empty"};
         player.add_context(context.name, context.priority, context.enabled);
         for (const auto& action : context.actions)
         {
             if (action.name.empty() || action.bindings.empty())
-            {
-                if (error) *error = "input action requires a name and at least one binding";
-                return false;
-            }
+                return {.error = "input action requires a name and at least one binding"};
             for (const auto& binding : action.bindings)
                 player.bind_action(context.name, action.name, binding);
         }
     }
-    return true;
+    return {.succeeded = true};
 }
 
 std::vector<std::string> input_action_names(const input_config& config)
