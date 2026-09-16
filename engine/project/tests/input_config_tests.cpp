@@ -16,8 +16,7 @@ class temporary_input_config
 public:
     temporary_input_config()
         : root_(std::filesystem::temp_directory_path() /
-                ("arc-input-config-" +
-                 std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())))
+                ("arc-input-config-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())))
     {
         std::filesystem::create_directories(root_);
     }
@@ -73,14 +72,11 @@ TEST_CASE("project input config drives ARC semantic action contexts")
     CHECK(arc::project::input_action_names(loaded.config) == expected_actions);
 
     arc::input::input_system input;
-    const auto keyboard = input.connect_device({.type = arc::input::input_device_type::keyboard,
-                                                .name = "Keyboard",
-                                                .capabilities = {.buttons = true}});
-    const auto mouse = input.connect_device({.type = arc::input::input_device_type::mouse,
-                                             .name = "Mouse",
-                                             .capabilities = {.buttons = true}});
-    std::string error;
-    REQUIRE(arc::project::apply_input_config(loaded.config, input, 0, &error));
+    const auto keyboard = input.connect_device(
+        {.type = arc::input::input_device_type::keyboard, .name = "Keyboard", .capabilities = {.buttons = true}});
+    const auto mouse = input.connect_device(
+        {.type = arc::input::input_device_type::mouse, .name = "Mouse", .capabilities = {.buttons = true}});
+    REQUIRE(arc::project::apply_input_config(loaded.config, input, 0).succeeded);
 
     auto& player = input.player(0);
     input.begin_frame();
