@@ -13,7 +13,7 @@ endif()
 FetchContent_GetProperties(Catch2 SOURCE_DIR catch2_SOURCE_DIR)
 list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
 
-add_executable(arc_project_tests project_tests.cpp)
+add_executable(arc_project_tests project_tests.cpp input_config_tests.cpp)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(ARC_PROJECT_TEST_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 set(ARC_PROJECT_TEST_REFLECTION_HEADER "${ARC_PROJECT_TEST_GENERATED_DIR}/arc_project_test.reflection.h")

@@ -3,6 +3,8 @@
 #include "project_runtime_world_bridge.h"
 
 #include <arc/flow/flow.h>
+#include <arc/input/input.h>
+#include <arc/project/input_config.h>
 #include <arc/scene/components.h>
 
 #include <algorithm>
@@ -49,6 +51,75 @@ const scene::flow_component* active_flow_binding(const ecs::world& world, ecs::e
     return binding;
 }
 
+std::optional<input::key> simulation_key(std::int32_t code) noexcept
+{
+    if (code >= 'A' && code <= 'Z')
+        return static_cast<input::key>(static_cast<unsigned>(input::key::a) + static_cast<unsigned>(code - 'A'));
+    if (code >= 'a' && code <= 'z')
+        return static_cast<input::key>(static_cast<unsigned>(input::key::a) + static_cast<unsigned>(code - 'a'));
+    if (code >= '0' && code <= '9')
+        return static_cast<input::key>(static_cast<unsigned>(input::key::num0) + static_cast<unsigned>(code - '0'));
+
+    switch (code)
+    {
+        case 27:
+            return input::key::escape;
+        case 32:
+            return input::key::space;
+        case 13:
+            return input::key::enter;
+        case 9:
+            return input::key::tab;
+        case 8:
+            return input::key::backspace;
+        case 127:
+            return input::key::delete_key;
+        case 0x1001:
+            return input::key::left;
+        case 0x1002:
+            return input::key::right;
+        case 0x1003:
+            return input::key::up;
+        case 0x1004:
+            return input::key::down;
+        case 0x1005:
+            return input::key::home;
+        case 0x1006:
+            return input::key::end;
+        case 0x1007:
+            return input::key::page_up;
+        case 0x1008:
+            return input::key::page_down;
+        case 0x1010:
+            return input::key::left_shift;
+        case 0x1011:
+            return input::key::left_control;
+        case 0x1012:
+            return input::key::left_alt;
+        default:
+            return std::nullopt;
+    }
+}
+
+std::optional<input::mouse_button> simulation_mouse_button(std::int32_t code) noexcept
+{
+    switch (code)
+    {
+        case 1:
+            return input::mouse_button::left;
+        case 2:
+            return input::mouse_button::right;
+        case 3:
+            return input::mouse_button::middle;
+        case 4:
+            return input::mouse_button::x1;
+        case 5:
+            return input::mouse_button::x2;
+        default:
+            return std::nullopt;
+    }
+}
+
 struct bound_flow_instance
 {
     ecs::entity entity{};
@@ -64,19 +135,31 @@ struct bound_flow_instance
 
 std::optional<std::string> read_text_file(const std::filesystem::path& path)
 {
-    std::ifstream input(path, std::ios::binary);
-    if (!input) return std::nullopt;
+    std::ifstream input_file(path, std::ios::binary);
+    if (!input_file) return std::nullopt;
     std::ostringstream stream;
-    stream << input.rdbuf();
+    stream << input_file.rdbuf();
     return stream.str();
 }
 
 class flow_play_session
 {
 public:
-    flow_play_session(ecs::world& world, std::filesystem::path content_root)
-        : world_(&world), content_root_(std::move(content_root))
+    flow_play_session(ecs::world& world, std::filesystem::path content_root, std::filesystem::path input_config_path)
+        : world_(&world), content_root_(std::move(content_root)), input_config_path_(std::move(input_config_path))
     {
+        keyboard_ = input_.connect_device({.type = input::input_device_type::keyboard,
+                                           .connectivity = input::input_connectivity_type::builtin,
+                                           .backend = input::input_backend_type::native,
+                                           .name = "Play Keyboard",
+                                           .capabilities = {.buttons = true, .button_count = 104}});
+        mouse_ = input_.connect_device(
+            {.type = input::input_device_type::mouse,
+             .connectivity = input::input_connectivity_type::builtin,
+             .backend = input::input_backend_type::native,
+             .name = "Play Mouse",
+             .capabilities = {
+                 .buttons = true, .axes = true, .pointer = true, .scroll = true, .button_count = 5, .axis_count = 6}});
     }
 
     flow_play_session(const flow_play_session&) = delete;
@@ -91,6 +174,8 @@ public:
 
     [[nodiscard]] flow_play_install_result initialize()
     {
+        if (const auto error = initialize_input(); !error.empty()) return {.error = error};
+
         const ecs::change_revision baseline = world_->revision();
         for (const auto entity : world_->entities())
         {
@@ -155,16 +240,22 @@ public:
 
     void run_fixed(ecs::system_context& context)
     {
+        sample_input(context.input());
+
         runtime_world_bridge_context bridge{
             .world = &context.owner(), .commands = &context.commands(), .unrestricted_access = true};
         const auto api = make_runtime_world_api(bridge);
-        const auto input = context.input();
+        const auto& player = input_.player(0);
+
         for (auto& instance : instances_)
         {
             if (!matches_current_binding(instance)) continue;
             const flow::vm_world_context world{.api = &api, .self = flow_entity(instance.entity)};
-            for (const auto& command : input.commands)
-                dispatch_input(instance, command, world);
+            for (const auto& action : input_actions_)
+            {
+                if (player.pressed(action)) dispatch_input(instance, action, true, world);
+                if (player.released(action)) dispatch_input(instance, action, false, world);
+            }
             const auto result = instance.vm.fixed_tick(context.fixed_delta_seconds(), world);
             if (!result.succeeded())
                 throw std::runtime_error(execution_error(result, instance.graph_path, instance.entity));
@@ -188,6 +279,83 @@ public:
 
 private:
     using shared_program = std::shared_ptr<const flow::bytecode_program>;
+
+    [[nodiscard]] std::string initialize_input()
+    {
+        const bool explicit_path = !input_config_path_.empty();
+        if (!explicit_path) input_config_path_ = content_root_.parent_path() / "Config" / "Input.json";
+
+        std::error_code exists_error;
+        const bool exists = std::filesystem::exists(input_config_path_, exists_error);
+        if (exists_error)
+            return "Input config could not be inspected: " + input_config_path_.generic_string() + ": " +
+                   exists_error.message();
+        if (!exists)
+        {
+            if (explicit_path) return "Input config could not be read: " + input_config_path_.generic_string();
+            return {};
+        }
+
+        std::error_code regular_error;
+        if (!std::filesystem::is_regular_file(input_config_path_, regular_error))
+        {
+            if (regular_error)
+                return "Input config could not be inspected: " + input_config_path_.generic_string() + ": " +
+                       regular_error.message();
+            return "Input config is not a regular file: " + input_config_path_.generic_string();
+        }
+
+        auto loaded = project::load_input_config(input_config_path_);
+        if (!loaded.succeeded) return loaded.error;
+        const auto applied = project::apply_input_config(loaded.config, input_, 0);
+        if (!applied.succeeded) return applied.error;
+        input_actions_ = project::input_action_names(loaded.config);
+        return {};
+    }
+
+    void sample_input(const ecs::simulation_input_snapshot& snapshot)
+    {
+        input_.begin_frame();
+        for (const auto& command : snapshot.commands)
+        {
+            switch (command.kind)
+            {
+                case ecs::simulation_input_kind::key:
+                {
+                    const auto key = simulation_key(command.code);
+                    if (!key) break;
+                    if (command.action == ecs::simulation_input_action::pressed)
+                        (void)input_.submit_button(keyboard_, input::make_key_control(*key), true);
+                    else if (command.action == ecs::simulation_input_action::released)
+                        (void)input_.submit_button(keyboard_, input::make_key_control(*key), false);
+                    break;
+                }
+                case ecs::simulation_input_kind::mouse_button:
+                {
+                    const auto button = simulation_mouse_button(command.code);
+                    if (!button) break;
+                    if (command.action == ecs::simulation_input_action::pressed)
+                        (void)input_.submit_button(mouse_, input::make_mouse_button_control(*button), true);
+                    else if (command.action == ecs::simulation_input_action::released)
+                        (void)input_.submit_button(mouse_, input::make_mouse_button_control(*button), false);
+                    break;
+                }
+                case ecs::simulation_input_kind::mouse_position:
+                    (void)input_.submit_axis(mouse_, input::make_mouse_axis_control(input::mouse_axis::position_x),
+                                             static_cast<float>(command.x));
+                    (void)input_.submit_axis(mouse_, input::make_mouse_axis_control(input::mouse_axis::position_y),
+                                             static_cast<float>(command.y));
+                    break;
+                case ecs::simulation_input_kind::mouse_wheel:
+                    (void)input_.submit_axis(mouse_, input::make_mouse_axis_control(input::mouse_axis::wheel_y),
+                                             command.value);
+                    break;
+                case ecs::simulation_input_kind::focus:
+                    if (command.value <= 0.0f) input_.release_all();
+                    break;
+            }
+        }
+    }
 
     [[nodiscard]] bool matches_current_binding(const bound_flow_instance& instance) const noexcept
     {
@@ -292,59 +460,22 @@ private:
         return error;
     }
 
-    static std::string input_action_name(const ecs::simulation_input_command& command)
-    {
-        switch (command.kind)
-        {
-            case ecs::simulation_input_kind::key:
-                return "Key." + std::to_string(command.code);
-            case ecs::simulation_input_kind::mouse_button:
-                return "MouseButton." + std::to_string(command.code);
-            case ecs::simulation_input_kind::mouse_wheel:
-                return "MouseWheel";
-            case ecs::simulation_input_kind::focus:
-                return "Focus";
-            case ecs::simulation_input_kind::mouse_position:
-                break;
-        }
-        return {};
-    }
-
-    static void dispatch_input(bound_flow_instance& instance, const ecs::simulation_input_command& command,
+    static void dispatch_input(bound_flow_instance& instance, std::string_view action, bool triggered,
                                flow::vm_world_context world)
     {
-        if (command.kind == ecs::simulation_input_kind::mouse_position) return;
-        const std::string action = input_action_name(command);
-        if (action.empty()) return;
-
-        flow::execution_result result;
-        bool dispatched{};
-        switch (command.action)
-        {
-            case ecs::simulation_input_action::pressed:
-                result = instance.vm.input_action_triggered(action, command.value == 0.0f ? 1.0 : command.value, world);
-                dispatched = true;
-                break;
-            case ecs::simulation_input_action::released:
-                result = instance.vm.input_action_completed(action, 0.0, world);
-                dispatched = true;
-                break;
-            case ecs::simulation_input_action::changed:
-                if (command.kind == ecs::simulation_input_kind::mouse_wheel ||
-                    command.kind == ecs::simulation_input_kind::focus)
-                {
-                    result = command.value > 0.0f ? instance.vm.input_action_triggered(action, command.value, world)
-                                                  : instance.vm.input_action_completed(action, command.value, world);
-                    dispatched = true;
-                }
-                break;
-        }
-        if (dispatched && !result.succeeded())
+        const auto result = triggered ? instance.vm.input_action_triggered(action, 1.0, world)
+                                      : instance.vm.input_action_completed(action, 0.0, world);
+        if (!result.succeeded())
             throw std::runtime_error(execution_error(result, instance.graph_path, instance.entity));
     }
 
     ecs::world* world_{};
     std::filesystem::path content_root_;
+    std::filesystem::path input_config_path_;
+    input::input_system input_;
+    input::input_device_id keyboard_{};
+    input::input_device_id mouse_{};
+    std::vector<std::string> input_actions_;
     ecs::change_cursor cursor_{};
     std::unordered_map<std::string, std::shared_ptr<const flow::bytecode_program>> programs_;
     std::vector<bound_flow_instance> instances_;
@@ -370,9 +501,10 @@ bool valid_flow_graph_path(std::string_view value) noexcept
 }
 
 flow_play_install_result install_flow_play_runtime(framework::runtime_world& world,
-                                                   const std::filesystem::path& content_root)
+                                                   const std::filesystem::path& content_root,
+                                                   std::filesystem::path input_config_path)
 {
-    auto session = std::make_shared<flow_play_session>(world.entities(), content_root);
+    auto session = std::make_shared<flow_play_session>(world.entities(), content_root, std::move(input_config_path));
     auto result = session->initialize();
     if (!result.succeeded) return result;
 
