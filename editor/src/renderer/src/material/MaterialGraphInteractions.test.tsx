@@ -98,7 +98,10 @@ describe('MaterialGraphWithInteractions', () => {
 
     fireEvent.pointerEnter(hovered!, { clientX: 420, clientY: 160 });
 
-    expect(container.querySelector('[data-material-wire-id="multiply-to-output"]')).toHaveClass('is-flow', 'is-primary');
+    expect(container.querySelector('[data-material-wire-id="multiply-to-output"]')).toHaveClass(
+      'is-flow',
+      'is-primary',
+    );
     expect(container.querySelector('[data-material-wire-id="left-to-multiply"]')).toHaveClass('is-flow');
     expect(container.querySelector('[data-material-wire-id="right-to-multiply"]')).toHaveClass('is-flow');
   });
