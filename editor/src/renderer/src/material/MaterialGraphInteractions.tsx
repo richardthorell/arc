@@ -377,7 +377,7 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
               key={wire.id}
             >
               <path className="material-wire-flow-glow" d={wire.path} />
-              <path className="material-wire-flow-texture" d={wire.path} pathLength={100} />
+              <path className="material-wire-flow-texture" d={wire.path} />
               <path
                 className="material-wire-hit"
                 d={wire.path}
