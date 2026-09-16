@@ -117,7 +117,8 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
 
   const finishSidebarResize = (event: PointerEvent<HTMLDivElement>) => {
     if (sidebarResizeRef.current?.pointerId === event.pointerId) sidebarResizeRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
   const onSidebarResizeKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -134,7 +135,9 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
     <section
       ref={editorRef}
       className="material-editor"
-      style={{ gridTemplateColumns: `minmax(${minimumMaterialGraphWidth}px, 1fr) ${materialEditorDividerWidth}px ${sidebarWidth}px` }}
+      style={{
+        gridTemplateColumns: `minmax(${minimumMaterialGraphWidth}px, 1fr) ${materialEditorDividerWidth}px ${sidebarWidth}px`,
+      }}
     >
       {customShader ? (
         <section className="material-custom-shader">
