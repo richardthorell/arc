@@ -16,6 +16,7 @@ type MaterialPinMetadata = {
 };
 
 type MaterialWireOverlay = {
+  flowPath: string;
   fromPinKey: string;
   id: string;
   label: string;
@@ -28,6 +29,8 @@ type HoveredTooltip = {
   position: GraphPoint;
   text: string;
 };
+
+const materialWireEndpointInset = 6;
 
 const materialPinTypeLabel = (type: MaterialGraphPinType) => {
   switch (type) {
@@ -90,6 +93,21 @@ const localPointerPosition = (host: HTMLElement, clientX: number, clientY: numbe
   return [clientX - rect.left, clientY - rect.top];
 };
 
+const insetWireEndpoints = (from: GraphPoint, to: GraphPoint): [GraphPoint, GraphPoint] => {
+  const dx = to[0] - from[0];
+  const dy = to[1] - from[1];
+  const length = Math.hypot(dx, dy);
+  if (length <= 0) return [from, to];
+
+  const inset = Math.min(materialWireEndpointInset, length / 3);
+  const x = (dx / length) * inset;
+  const y = (dy / length) * inset;
+  return [
+    [from[0] + x, from[1] + y],
+    [to[0] - x, to[1] - y],
+  ];
+};
+
 const sameWireOverlays = (left: MaterialWireOverlay[], right: MaterialWireOverlay[]) =>
   left.length === right.length &&
   left.every((wire, index) => {
@@ -98,6 +116,7 @@ const sameWireOverlays = (left: MaterialWireOverlay[], right: MaterialWireOverla
       candidate !== undefined &&
       wire.id === candidate.id &&
       wire.path === candidate.path &&
+      wire.flowPath === candidate.flowPath &&
       wire.label === candidate.label &&
       wire.fromPinKey === candidate.fromPinKey &&
       wire.toPinKey === candidate.toPinKey
@@ -210,8 +229,10 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
       const from = pinSocketCenter(fromElement, hostRect);
       const to = pinSocketCenter(toElement, hostRect);
       if (!from || !to) return [];
+      const [flowFrom, flowTo] = insetWireEndpoints(from, to);
       return [
         {
+          flowPath: graphConnectionPath(flowFrom, flowTo),
           fromPinKey: metadata.fromPinKey,
           id: connection.id,
           label: metadata.label,
@@ -376,8 +397,8 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
               data-material-wire-id={wire.id}
               key={wire.id}
             >
-              <path className="material-wire-flow-glow" d={wire.path} />
-              <path className="material-wire-flow-texture" d={wire.path} />
+              <path className="material-wire-flow-glow" d={wire.flowPath} />
+              <path className="material-wire-flow-texture" d={wire.flowPath} />
               <path
                 className="material-wire-hit"
                 d={wire.path}
