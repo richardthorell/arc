@@ -153,16 +153,13 @@ public:
                                            .backend = input::input_backend_type::native,
                                            .name = "Play Keyboard",
                                            .capabilities = {.buttons = true, .button_count = 104}});
-        mouse_ = input_.connect_device({.type = input::input_device_type::mouse,
-                                        .connectivity = input::input_connectivity_type::builtin,
-                                        .backend = input::input_backend_type::native,
-                                        .name = "Play Mouse",
-                                        .capabilities = {.buttons = true,
-                                                         .axes = true,
-                                                         .pointer = true,
-                                                         .scroll = true,
-                                                         .button_count = 5,
-                                                         .axis_count = 6}});
+        mouse_ = input_.connect_device(
+            {.type = input::input_device_type::mouse,
+             .connectivity = input::input_connectivity_type::builtin,
+             .backend = input::input_backend_type::native,
+             .name = "Play Mouse",
+             .capabilities = {
+                 .buttons = true, .axes = true, .pointer = true, .scroll = true, .button_count = 5, .axis_count = 6}});
     }
 
     flow_play_session(const flow_play_session&) = delete;
@@ -289,7 +286,7 @@ private:
         if (!explicit_path) input_config_path_ = content_root_.parent_path() / "Config" / "Input.json";
 
         std::error_code exists_error;
-        const bool exists = std::filesystem::is_regular_file(input_config_path_, exists_error);
+        const bool exists = std::filesystem::exists(input_config_path_, exists_error);
         if (exists_error)
             return "Input config could not be inspected: " + input_config_path_.generic_string() + ": " +
                    exists_error.message();
@@ -299,10 +296,19 @@ private:
             return {};
         }
 
+        std::error_code regular_error;
+        if (!std::filesystem::is_regular_file(input_config_path_, regular_error))
+        {
+            if (regular_error)
+                return "Input config could not be inspected: " + input_config_path_.generic_string() + ": " +
+                       regular_error.message();
+            return "Input config is not a regular file: " + input_config_path_.generic_string();
+        }
+
         auto loaded = project::load_input_config(input_config_path_);
         if (!loaded.succeeded) return loaded.error;
-        std::string error;
-        if (!project::apply_input_config(loaded.config, input_, 0, &error)) return error;
+        const auto applied = project::apply_input_config(loaded.config, input_, 0);
+        if (!applied.succeeded) return applied.error;
         input_actions_ = project::input_action_names(loaded.config);
         return {};
     }
@@ -498,8 +504,7 @@ flow_play_install_result install_flow_play_runtime(framework::runtime_world& wor
                                                    const std::filesystem::path& content_root,
                                                    std::filesystem::path input_config_path)
 {
-    auto session =
-        std::make_shared<flow_play_session>(world.entities(), content_root, std::move(input_config_path));
+    auto session = std::make_shared<flow_play_session>(world.entities(), content_root, std::move(input_config_path));
     auto result = session->initialize();
     if (!result.succeeded) return result;
 
