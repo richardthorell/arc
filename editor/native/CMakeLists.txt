@@ -66,9 +66,21 @@ if(NOT TARGET arc::editor-host)
     add_library(arc::editor-host ALIAS arc-editor-host)
 endif()
 
-add_executable(arc_host_process
+set(ARC_HOST_PROCESS_SOURCES
     src/arc_host_process_main.cpp
+    src/native_viewport_controller.h
 )
+if(WIN32 AND ARC_BUILD_RENDER_VULKAN AND TARGET arc-render-vulkan)
+    list(APPEND ARC_HOST_PROCESS_SOURCES
+        src/windows/native_viewport_controller.cpp
+    )
+else()
+    list(APPEND ARC_HOST_PROCESS_SOURCES
+        src/native_viewport_controller_stub.cpp
+    )
+endif()
+
+add_executable(arc_host_process ${ARC_HOST_PROCESS_SOURCES})
 arc_configure_first_party_target(arc_host_process)
 
 target_compile_features(arc_host_process
