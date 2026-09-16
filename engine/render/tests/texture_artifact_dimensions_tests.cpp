@@ -50,6 +50,24 @@ arc::render::texture_data make_dimension_texture(arc::render::texture_dimension 
 
 } // namespace
 
+TEST_CASE("texture artifacts preserve ordinary 2D topology under schema v4")
+{
+    using namespace arc::render;
+    const auto texture = make_dimension_texture(texture_dimension::texture_2d, 8, 4);
+    const auto encoded = encode_texture_artifact(texture, texture_streaming_mode::streamed_mips);
+    REQUIRE(encoded.has_value());
+
+    const auto inspected = inspect_texture_artifact(encoded.value());
+    REQUIRE(inspected.has_value());
+    const auto& index = inspected.value();
+    CHECK(index.schema_version == texture_artifact_schema_version);
+    CHECK(index.dimension == texture_dimension::texture_2d);
+    CHECK(index.depth == 1);
+    CHECK(index.array_layers == 1);
+    CHECK(index.face_count == 1);
+    CHECK(index.mips[0].depth == 1);
+}
+
 TEST_CASE("texture artifacts preserve cube topology and atomic face mips")
 {
     using namespace arc::render;
