@@ -39,12 +39,18 @@ struct [[nodiscard]] input_config_load_result
     std::string error;
 };
 
+struct [[nodiscard]] input_config_apply_result
+{
+    bool succeeded{};
+    std::string error;
+};
+
 /** Load the project semantic input mapping stored in Config/Input.json. */
 [[nodiscard]] input_config_load_result load_input_config(const std::filesystem::path& path);
 
 /** Apply one project mapping to a player in ARC's runtime-owned input system. */
-[[nodiscard]] bool apply_input_config(const input_config& config, input::input_system& system,
-                                      input::player_id player = 0, std::string* error = nullptr);
+[[nodiscard]] input_config_apply_result apply_input_config(const input_config& config, input::input_system& system,
+                                                           input::player_id player = 0);
 
 /** Return unique semantic action names in deterministic config order. */
 [[nodiscard]] std::vector<std::string> input_action_names(const input_config& config);
