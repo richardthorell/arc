@@ -12,12 +12,12 @@
 namespace arc::render
 {
 
-inline constexpr std::uint32_t texture_artifact_schema_version = 3;
+inline constexpr std::uint32_t texture_artifact_schema_version = 4;
 inline constexpr std::uint32_t texture_artifact_alignment = 4096;
 inline constexpr std::uint32_t virtual_texture_tile_size = 128;
 inline constexpr std::uint32_t virtual_texture_tile_border = 4;
 
-/** @brief Runtime storage policy authored for a conventional 2D texture. */
+/** @brief Runtime storage policy authored for a texture resource. */
 enum class texture_streaming_mode : std::uint8_t
 {
     resident,
@@ -103,18 +103,25 @@ struct texture_artifact_error
     std::string message;
 };
 
-/** @brief Independently readable conventional mip payload. */
+/**
+ * @brief Independently readable conventional mip payload.
+ *
+ * One range is one logical mip residency unit. Cube ranges contain every face,
+ * array ranges contain every layer, and 3D ranges contain the complete mip
+ * volume so streaming can publish a dimensionally complete mip atomically.
+ */
 struct texture_artifact_mip_range
 {
     std::uint32_t width{};
     std::uint32_t height{};
+    std::uint32_t depth{1};
     std::uint64_t offset{};
     std::uint32_t stored_size{};
     std::uint32_t decoded_size{};
     std::uint64_t content_hash{};
 };
 
-/** @brief Independently readable virtual-texture tile including its cooked gutter. */
+/** @brief Independently readable 2D virtual-texture tile including its cooked gutter. */
 struct texture_artifact_tile_range
 {
     std::uint32_t mip{};
@@ -136,6 +143,12 @@ struct texture_artifact_index
     texture_format format{texture_format::rgba8_srgb};
     texture_color_space color_space{texture_color_space::srgb};
     texture_semantic semantic{texture_semantic::generic_color};
+    texture_dimension dimension{texture_dimension::texture_2d};
+    std::uint32_t depth{1};
+    /** @brief Logical array elements; cube faces are represented separately by face_count. */
+    std::uint32_t array_layers{1};
+    /** @brief Faces per array element: six for cube textures and one otherwise. */
+    std::uint32_t face_count{1};
     std::uint32_t width{};
     std::uint32_t height{};
     std::uint32_t mip_count{};
