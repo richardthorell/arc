@@ -21,6 +21,9 @@ list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
 
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 list(FILTER TEST_SOURCES EXCLUDE REGEX "game_module_fixture_.*\\.cpp$")
+if(NOT WIN32)
+  list(FILTER TEST_SOURCES EXCLUDE REGEX "/windows/")
+endif()
 
 add_library(arc_test_game_module_v1 MODULE game_module_fixture_v1.cpp)
 add_library(arc_test_game_module_v2 MODULE game_module_fixture_v2.cpp)
