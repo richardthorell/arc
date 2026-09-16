@@ -236,8 +236,8 @@ input_config_load_result load_input_config(const std::filesystem::path& path)
                     action.name = action_json.at("name").get<std::string>();
                     if (action.name.empty()) return {.error = "input action name cannot be empty"};
                     if (!action_names.emplace(action.name).second)
-                        return {.error = "duplicate input action '" + action.name + "' in context '" + context.name +
-                                         "'"};
+                        return {.error =
+                                    "duplicate input action '" + action.name + "' in context '" + context.name + "'"};
                     if (!action_json.contains("bindings") || !action_json.at("bindings").is_array() ||
                         action_json.at("bindings").empty())
                         return {.error = "input action '" + action.name + "' requires at least one binding"};
