@@ -1,6 +1,7 @@
 #include "vulkan_backend_internal.h"
 
 #include "builtin_shaders.h"
+#include "vulkan_texture_layout.h"
 
 namespace arc::render::vulkan::backend_detail
 {
@@ -78,6 +79,12 @@ void vulkan_render_backend::retire_texture(texture_handle handle)
 void vulkan_render_backend::register_streamed_texture(const texture_stream_register_event& event)
 {
     if (!event.descriptor) return;
+    if (!vulkan_texture_topology_supported(event.descriptor->artifact))
+    {
+        arc::diagnostics::warn("render.vulkan", "Streamed texture topology is unsupported by the Vulkan T2 path");
+        return;
+    }
+
     gpu_texture texture;
     texture.handle = event.handle;
     texture.streaming = *event.descriptor;
@@ -85,14 +92,15 @@ void vulkan_render_backend::register_streamed_texture(const texture_stream_regis
     texture.mip_window_base = texture.streaming.artifact.mip_count;
     texture.streamed_mips.resize(texture.streaming.artifact.mip_count);
     texture.data.name = texture.streaming.texture.name;
-    texture.data.width = texture.streaming.texture.width;
-    texture.data.height = texture.streaming.texture.height;
-    texture.data.depth = texture.streaming.texture.depth;
-    texture.data.dimension = texture.streaming.texture.dimension;
-    texture.data.format = texture.streaming.texture.format;
-    texture.data.color_space = texture.streaming.texture.color_space;
-    texture.data.semantic = texture.streaming.texture.semantic;
-    texture.data.mip_levels = texture.streaming.texture.mip_levels;
+    texture.data.width = texture.streaming.artifact.width;
+    texture.data.height = texture.streaming.artifact.height;
+    texture.data.depth = texture.streaming.artifact.depth;
+    texture.data.dimension = texture.streaming.artifact.dimension;
+    texture.data.format = texture.streaming.artifact.format;
+    texture.data.color_space = texture.streaming.artifact.color_space;
+    texture.data.semantic = texture.streaming.artifact.semantic;
+    texture.data.array_layers = texture.streaming.artifact.array_layers;
+    texture.data.mip_levels = texture.streaming.artifact.mip_count;
     texture.feedback_slot = allocate_texture_feedback_slot(event.handle, texture.streaming.content_generation,
                                                            texture.streaming.artifact.mip_count);
     const auto key = resource_key(event.handle);
@@ -140,17 +148,20 @@ bool vulkan_render_backend::rebuild_streamed_mip_window(gpu_texture& texture)
     if (base == texture.streamed_mips.size()) return false;
     if (base == texture.mip_window_base && texture.image != VK_NULL_HANDLE) return true;
 
+    streamed_texture_window_layout layout;
+    if (!resolve_streamed_texture_window_layout(texture.streaming.artifact, base, layout)) return false;
+
     texture_data data;
     data.name = texture.streaming.texture.name;
-    data.width = std::max(1u, texture.streaming.texture.width >> base);
-    data.height = std::max(1u, texture.streaming.texture.height >> base);
-    data.depth = 1;
-    data.dimension = texture_dimension::texture_2d;
-    data.format = texture.streaming.texture.format;
-    data.color_space = texture.streaming.texture.color_space;
-    data.semantic = texture.streaming.texture.semantic;
-    data.array_layers = 1;
-    data.mip_levels = static_cast<std::uint32_t>(texture.streamed_mips.size()) - base;
+    data.width = layout.width;
+    data.height = layout.height;
+    data.depth = layout.depth;
+    data.dimension = layout.dimension;
+    data.format = texture.streaming.artifact.format;
+    data.color_space = texture.streaming.artifact.color_space;
+    data.semantic = texture.streaming.artifact.semantic;
+    data.array_layers = layout.array_layers;
+    data.mip_levels = layout.mip_levels;
     data.mips.reserve(data.mip_levels);
     std::size_t offset{};
     for (std::uint32_t mip = base; mip < texture.streamed_mips.size(); ++mip)
@@ -158,6 +169,7 @@ bool vulkan_render_backend::rebuild_streamed_mip_window(gpu_texture& texture)
         const auto& bytes = texture.streamed_mips[mip];
         if (!bytes) return false;
         const auto& artifact_mip = texture.streaming.artifact.mips[mip];
+        if (bytes->size() != artifact_mip.decoded_size) return false;
         data.mips.push_back(
             {.width = artifact_mip.width, .height = artifact_mip.height, .offset = offset, .size = bytes->size()});
         data.encoded.insert(data.encoded.end(), bytes->begin(), bytes->end());
@@ -836,8 +848,14 @@ void vulkan_render_backend::upload_texture(const texture_upload_event& event)
     if (!event.texture) return;
 
     gpu_texture texture{.handle = event.handle, .data = *event.texture};
-    const bool uploaded = upload_texture_image(*event.texture, texture);
-    if (!uploaded && event.texture->dds && event.texture->compressed)
+    const bool topology_supported = vulkan_texture_topology_supported(*event.texture);
+    const bool uploaded = topology_supported && upload_texture_image(*event.texture, texture);
+    if (!topology_supported)
+    {
+        arc::diagnostics::warn("render.vulkan",
+                               "Texture '" + event.label + "' uses topology unsupported by the Vulkan T2 path");
+    }
+    else if (!uploaded && event.texture->dds && event.texture->compressed)
     {
         arc::diagnostics::warn(
             "render.vulkan",
