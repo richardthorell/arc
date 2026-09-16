@@ -5,8 +5,8 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { EditorDocument } from '../editors/editorTypes';
-import { MaterialGraphWithInteractions } from './MaterialGraphInteractions';
-import { createDefaultMaterialGraph } from './materialGraphTypes';
+import { materialConnectionFlowIds, MaterialGraphWithInteractions } from './MaterialGraphInteractions';
+import { createDefaultMaterialGraph, createMaterialNode, type MaterialGraph } from './materialGraphTypes';
 
 const materialState = vi.hoisted(() => ({
   redoMaterialGraph: vi.fn(),
@@ -19,6 +19,35 @@ vi.mock('./materialDocumentState', () => materialState);
 
 const document = { readOnly: false } as EditorDocument;
 
+const createBranchedFlowGraph = (): MaterialGraph => {
+  const left = { ...createMaterialNode('constant', [40, 80]), id: 'left' };
+  const right = { ...createMaterialNode('constant', [40, 220]), id: 'right' };
+  const multiply = { ...createMaterialNode('multiply', [260, 140]), id: 'multiply' };
+  const output = { ...createMaterialNode('output', [520, 140]), id: 'material-output' };
+  return {
+    version: 1,
+    nodes: [left, right, multiply, output],
+    connections: [
+      {
+        id: 'left-to-multiply',
+        from: { nodeId: left.id, pin: 'value' },
+        to: { nodeId: multiply.id, pin: 'a' },
+      },
+      {
+        id: 'right-to-multiply',
+        from: { nodeId: right.id, pin: 'value' },
+        to: { nodeId: multiply.id, pin: 'b' },
+      },
+      {
+        id: 'multiply-to-output',
+        from: { nodeId: multiply.id, pin: 'result' },
+        to: { nodeId: output.id, pin: 'roughness' },
+      },
+    ],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+};
+
 afterEach(cleanup);
 beforeEach(() => {
   materialState.redoMaterialGraph.mockClear();
@@ -27,8 +56,16 @@ beforeEach(() => {
   materialState.undoMaterialGraph.mockClear();
 });
 
+describe('materialConnectionFlowIds', () => {
+  it('includes every upstream connection that contributes to the hovered connection', () => {
+    expect(materialConnectionFlowIds(createBranchedFlowGraph(), 'multiply-to-output')).toEqual(
+      new Set(['multiply-to-output', 'left-to-multiply', 'right-to-multiply']),
+    );
+  });
+});
+
 describe('MaterialGraphWithInteractions', () => {
-  it('shows wire direction and highlights both endpoint sockets on hover', () => {
+  it('shows animated flow direction and highlights both endpoint sockets on hover', () => {
     const { container } = render(
       <MaterialGraphWithInteractions document={document} graph={createDefaultMaterialGraph()} />,
     );
@@ -38,7 +75,9 @@ describe('MaterialGraphWithInteractions', () => {
     fireEvent.pointerEnter(wire!, { clientX: 160, clientY: 120 });
 
     expect(screen.getByRole('tooltip')).toHaveTextContent('Vector3 • Color.rgb → Base Color');
-    expect(container.querySelectorAll('.material-wire-chevron')).toHaveLength(9);
+    expect(container.querySelectorAll('.material-wire-chevron')).toHaveLength(0);
+    expect(container.querySelectorAll('.material-wire-flow-texture')).toHaveLength(3);
+    expect(wire!.closest('.material-wire-interaction')).toHaveClass('is-flow', 'is-primary');
 
     const color = screen.getByText('Color', { selector: '.ui-node-card-title' }).closest('article');
     const output = screen.getByText('Material Output').closest('article');
@@ -46,6 +85,22 @@ describe('MaterialGraphWithInteractions', () => {
     expect(output).not.toBeNull();
     expect(within(color!).getByRole('button', { name: 'RGB' })).toHaveClass('is-wire-endpoint');
     expect(within(output!).getByRole('button', { name: 'Base Color' })).toHaveClass('is-wire-endpoint');
+  });
+
+  it('highlights the full upstream flow when hovering a downstream connection', () => {
+    const { container } = render(
+      <MaterialGraphWithInteractions document={document} graph={createBranchedFlowGraph()} />,
+    );
+    const hovered = container.querySelector<SVGPathElement>(
+      '[data-material-wire-id="multiply-to-output"] .material-wire-hit',
+    );
+    expect(hovered).not.toBeNull();
+
+    fireEvent.pointerEnter(hovered!, { clientX: 420, clientY: 160 });
+
+    expect(container.querySelector('[data-material-wire-id="multiply-to-output"]')).toHaveClass('is-flow', 'is-primary');
+    expect(container.querySelector('[data-material-wire-id="left-to-multiply"]')).toHaveClass('is-flow');
+    expect(container.querySelector('[data-material-wire-id="right-to-multiply"]')).toHaveClass('is-flow');
   });
 
   it('shows direction, type and semantic meaning when hovering a socket', () => {
