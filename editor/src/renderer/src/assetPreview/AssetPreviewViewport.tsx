@@ -90,6 +90,31 @@ export function assetPreviewViewportId(kind: AssetPreviewViewportProps['kind'], 
   return instance === undefined ? base : `${base}~${instance}`;
 }
 
+export function materialPreviewRenderOptions() {
+  return {
+    renderMode: 'shaded',
+    visualization: 'standard',
+    overlay: 'none',
+    selectionOutline: false,
+    hoverOutline: false,
+    selectionBounds: false,
+    componentGizmos: false,
+    selectionHierarchy: false,
+    shadows: true,
+    grid: false,
+    skeletons: false,
+    realtime: true,
+    environment: {
+      sky: true,
+      fog: false,
+      terrain: false,
+      water: false,
+      vegetation: false,
+      decals: false,
+    },
+  } as const;
+}
+
 export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState }: AssetPreviewViewportProps) {
   const normalizedGuid = normalizedAssetGuid(assetGuid);
   const viewportInstanceRef = useRef<number | null>(null);
@@ -245,9 +270,18 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
         return;
       }
       try {
-        const response = (await serializeAssetPreviewViewportLifecycle(viewportId, () =>
-          window.arc.viewport.create(bounds),
-        )) as ViewportCommandResponse | undefined;
+        const response = (await serializeAssetPreviewViewportLifecycle(viewportId, async () => {
+          const created = (await window.arc.viewport.create(bounds)) as ViewportCommandResponse | undefined;
+          if (created?.succeeded === false) return created;
+          if (kind !== 'material') return created;
+          const configured = (await window.arc.host.command('viewport.setRenderOptions', {
+            viewportId,
+            ...materialPreviewRenderOptions(),
+          })) as ViewportCommandResponse | undefined;
+          if (configured?.succeeded === false)
+            throw new Error(configured.error || 'Material preview render options were rejected');
+          return created;
+        })) as ViewportCommandResponse | undefined;
         if (response?.succeeded === false) throw new Error(response.error || 'Asset preview surface was rejected');
         if (cancelled) return;
         attachedRef.current = true;
