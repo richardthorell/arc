@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent } from 'react';
 import { AlertCircle, CheckCircle2, Code2, Lock } from 'lucide-react';
 
@@ -66,6 +66,19 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
       }
     />
   );
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const clampToEditor = () => {
+      const width = editor.getBoundingClientRect().width;
+      setSidebarWidth((current) => clampMaterialSidebarWidth(width, current));
+    };
+    clampToEditor();
+    const observer = new ResizeObserver(clampToEditor);
+    observer.observe(editor);
+    return () => observer.disconnect();
+  }, []);
 
   const setParameterComponent = (nodeId: string, component: number, value: number) => {
     const next = cloneMaterialGraph(state.graph);
