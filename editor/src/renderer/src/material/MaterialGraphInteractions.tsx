@@ -16,11 +16,12 @@ type MaterialPinMetadata = {
 };
 
 type MaterialWireOverlay = {
-  flowPath: string;
+  from: GraphPoint;
   fromPinKey: string;
   id: string;
   label: string;
   path: string;
+  to: GraphPoint;
   toPinKey: string;
 };
 
@@ -29,8 +30,6 @@ type HoveredTooltip = {
   position: GraphPoint;
   text: string;
 };
-
-const materialWireEndpointInset = 6;
 
 const materialPinTypeLabel = (type: MaterialGraphPinType) => {
   switch (type) {
@@ -93,21 +92,6 @@ const localPointerPosition = (host: HTMLElement, clientX: number, clientY: numbe
   return [clientX - rect.left, clientY - rect.top];
 };
 
-const insetWireEndpoints = (from: GraphPoint, to: GraphPoint): [GraphPoint, GraphPoint] => {
-  const dx = to[0] - from[0];
-  const dy = to[1] - from[1];
-  const length = Math.hypot(dx, dy);
-  if (length <= 0) return [from, to];
-
-  const inset = Math.min(materialWireEndpointInset, length / 3);
-  const x = (dx / length) * inset;
-  const y = (dy / length) * inset;
-  return [
-    [from[0] + x, from[1] + y],
-    [to[0] - x, to[1] - y],
-  ];
-};
-
 const sameWireOverlays = (left: MaterialWireOverlay[], right: MaterialWireOverlay[]) =>
   left.length === right.length &&
   left.every((wire, index) => {
@@ -116,7 +100,10 @@ const sameWireOverlays = (left: MaterialWireOverlay[], right: MaterialWireOverla
       candidate !== undefined &&
       wire.id === candidate.id &&
       wire.path === candidate.path &&
-      wire.flowPath === candidate.flowPath &&
+      wire.from[0] === candidate.from[0] &&
+      wire.from[1] === candidate.from[1] &&
+      wire.to[0] === candidate.to[0] &&
+      wire.to[1] === candidate.to[1] &&
       wire.label === candidate.label &&
       wire.fromPinKey === candidate.fromPinKey &&
       wire.toPinKey === candidate.toPinKey
@@ -229,14 +216,14 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
       const from = pinSocketCenter(fromElement, hostRect);
       const to = pinSocketCenter(toElement, hostRect);
       if (!from || !to) return [];
-      const [flowFrom, flowTo] = insetWireEndpoints(from, to);
       return [
         {
-          flowPath: graphConnectionPath(flowFrom, flowTo),
+          from,
           fromPinKey: metadata.fromPinKey,
           id: connection.id,
           label: metadata.label,
           path: graphConnectionPath(from, to),
+          to,
           toPinKey: metadata.toPinKey,
         },
       ];
@@ -304,6 +291,21 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
     () => (hoveredWireId ? materialConnectionFlowIds(graph, hoveredWireId) : new Set<string>()),
     [graph, hoveredWireId],
   );
+  const flowEndpoints = useMemo(() => {
+    const endpoints = new Map<string, { key: string; point: GraphPoint; primary: boolean }>();
+    for (const wire of wires) {
+      if (!flowWireIds.has(wire.id)) continue;
+      const primary = wire.id === hoveredWireId;
+      for (const [key, point] of [
+        [wire.fromPinKey, wire.from],
+        [wire.toPinKey, wire.to],
+      ] as const) {
+        const current = endpoints.get(key);
+        if (!current || primary) endpoints.set(key, { key, point, primary });
+      }
+    }
+    return [...endpoints.values()];
+  }, [flowWireIds, hoveredWireId, wires]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -397,8 +399,8 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
               data-material-wire-id={wire.id}
               key={wire.id}
             >
-              <path className="material-wire-flow-glow" d={wire.flowPath} />
-              <path className="material-wire-flow-texture" d={wire.flowPath} />
+              <path className="material-wire-flow-glow" d={wire.path} />
+              <path className="material-wire-flow-texture" d={wire.path} />
               <path
                 className="material-wire-hit"
                 d={wire.path}
@@ -421,6 +423,15 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
             </g>
           );
         })}
+        {flowEndpoints.map((endpoint) => (
+          <circle
+            className={`material-wire-endpoint-cap${endpoint.primary ? ' is-primary' : ''}`}
+            cx={endpoint.point[0]}
+            cy={endpoint.point[1]}
+            key={endpoint.key}
+            r="5.5"
+          />
+        ))}
       </svg>
       {tooltip && (
         <div
