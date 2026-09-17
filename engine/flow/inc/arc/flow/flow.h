@@ -17,8 +17,8 @@ struct game_world_api_v1;
 namespace arc::flow
 {
 
-inline constexpr std::uint32_t flow_ir_version = 2;
-inline constexpr std::uint32_t flow_bytecode_version = 2;
+inline constexpr std::uint32_t flow_ir_version = 3;
+inline constexpr std::uint32_t flow_bytecode_version = 3;
 inline constexpr std::uint32_t invalid_instruction = std::numeric_limits<std::uint32_t>::max();
 inline constexpr std::uint32_t invalid_entity_index = std::numeric_limits<std::uint32_t>::max();
 inline constexpr std::uint32_t default_instruction_budget = 4096;
@@ -124,6 +124,28 @@ struct ir_entry_point
 enum class ir_opcode : std::uint8_t
 {
     branch,
+    load_variable,
+    store_variable,
+    add,
+    subtract,
+    multiply,
+    divide,
+    compare_equal,
+    compare_not_equal,
+    compare_less,
+    compare_less_equal,
+    compare_greater,
+    compare_greater_equal,
+    boolean_and,
+    boolean_or,
+    boolean_not,
+    vector_dot,
+    vector_length,
+    vector_normalize,
+    vector_scale,
+    select,
+    convert_int_to_float,
+    convert_float_to_int,
     self_entity,
     world_create_entity,
     world_destroy_entity,
@@ -143,7 +165,7 @@ enum class ir_opcode : std::uint8_t
 /**
  * @brief Typed Flow IR instruction.
  *
- * Branch keeps descriptive fields for its condition and targets. Gameplay/world instructions use operand0..operand4
+ * Branch keeps descriptive fields for its condition and targets. Data and gameplay instructions use operand0..operand4
  * with the same typed slot/target interpretation as their bytecode equivalents. IR remains source-mapped through
  * @ref node_id and is never executed directly.
  */
@@ -196,6 +218,28 @@ enum class world_core_component : std::uint8_t
 enum class bytecode_opcode : std::uint8_t
 {
     branch,
+    load_variable,
+    store_variable,
+    add,
+    subtract,
+    multiply,
+    divide,
+    compare_equal,
+    compare_not_equal,
+    compare_less,
+    compare_less_equal,
+    compare_greater,
+    compare_greater_equal,
+    boolean_and,
+    boolean_or,
+    boolean_not,
+    vector_dot,
+    vector_length,
+    vector_normalize,
+    vector_scale,
+    select,
+    convert_int_to_float,
+    convert_float_to_int,
     self_entity,
     world_create_entity,
     world_destroy_entity,
@@ -215,8 +259,10 @@ enum class bytecode_opcode : std::uint8_t
 /**
  * @brief Compact Flow instruction.
  *
- * Operand interpretation is opcode-specific. World transform instructions use all five operands; simpler opcodes use
- * only the leading operands they need. Control-flow targets use @ref invalid_instruction as the explicit return target.
+ * Operand interpretation is opcode-specific. Pure data operations are inserted as source-mapped preludes immediately
+ * before the executable node that consumes them, so values are evaluated against the latest per-instance state. World
+ * transform and Select instructions use all five operands; simpler opcodes use only the leading operands they need.
+ * Control-flow targets use @ref invalid_instruction as the explicit return target.
  */
 struct bytecode_instruction
 {
@@ -260,6 +306,7 @@ enum class execution_status : std::uint8_t
     invalid_program,
     instruction_budget_exceeded,
     type_mismatch,
+    invalid_operation,
     world_unavailable,
     world_operation_failed,
 };
