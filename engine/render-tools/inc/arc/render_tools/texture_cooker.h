@@ -66,7 +66,7 @@ struct texture_curve
 
 struct texture_import_settings
 {
-    static constexpr std::uint32_t current_version = 7;
+    static constexpr std::uint32_t current_version = 8;
     texture_import_preset preset{texture_import_preset::custom};
     texture_semantic semantic{texture_semantic::generic_color};
     texture_color_space color_space{texture_color_space::srgb};
@@ -76,6 +76,7 @@ struct texture_import_settings
     texture_filter_mode min_filter{texture_filter_mode::linear};
     texture_filter_mode mag_filter{texture_filter_mode::linear};
     texture_mip_filter_mode mip_filter{texture_mip_filter_mode::linear};
+    texture_mip_policy mip_policy{texture_mip_policy::preserve_source};
     texture_address_mode wrap_u{texture_address_mode::repeat};
     texture_address_mode wrap_v{texture_address_mode::repeat};
     texture_mip_generation_filter mip_generation_filter{texture_mip_generation_filter::box};
@@ -115,6 +116,7 @@ struct texture_import_settings
     bool invert_g{};
     bool invert_b{};
     bool invert_a{};
+    /** @brief Compatibility alias for settings authored before mipPolicy was introduced. */
     bool generate_mips{true};
     bool preserve_alpha_coverage{};
 };
@@ -137,6 +139,7 @@ using texture_preprocess_result_type = core::result<texture_preprocess_result, s
 [[nodiscard]] std::string_view texture_power_of_two_policy_name(texture_power_of_two_policy policy) noexcept;
 [[nodiscard]] std::string_view texture_filter_mode_name(texture_filter_mode filter) noexcept;
 [[nodiscard]] std::string_view texture_mip_filter_mode_name(texture_mip_filter_mode filter) noexcept;
+[[nodiscard]] std::string_view texture_mip_policy_name(texture_mip_policy policy) noexcept;
 [[nodiscard]] std::string_view texture_address_mode_name(texture_address_mode mode) noexcept;
 [[nodiscard]] std::string_view texture_mip_generation_filter_name(texture_mip_generation_filter filter) noexcept;
 [[nodiscard]] std::string_view texture_channel_source_name(texture_channel_source source) noexcept;
@@ -150,6 +153,7 @@ parse_texture_compression_policy(std::string_view value) noexcept;
 parse_texture_power_of_two_policy(std::string_view value) noexcept;
 [[nodiscard]] std::optional<texture_filter_mode> parse_texture_filter_mode(std::string_view value) noexcept;
 [[nodiscard]] std::optional<texture_mip_filter_mode> parse_texture_mip_filter_mode(std::string_view value) noexcept;
+[[nodiscard]] std::optional<texture_mip_policy> parse_texture_mip_policy(std::string_view value) noexcept;
 [[nodiscard]] std::optional<texture_address_mode> parse_texture_address_mode(std::string_view value) noexcept;
 [[nodiscard]] std::optional<texture_mip_generation_filter>
 parse_texture_mip_generation_filter(std::string_view value) noexcept;

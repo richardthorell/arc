@@ -12,7 +12,7 @@
 namespace arc::render
 {
 
-inline constexpr std::uint32_t texture_artifact_schema_version = 4;
+inline constexpr std::uint32_t texture_artifact_schema_version = 5;
 inline constexpr std::uint32_t texture_artifact_alignment = 4096;
 inline constexpr std::uint32_t virtual_texture_tile_size = 128;
 inline constexpr std::uint32_t virtual_texture_tile_border = 4;
@@ -61,15 +61,25 @@ enum class texture_compression_policy : std::uint8_t
     uncompressed
 };
 
+/** @brief How authored source mip levels participate in texture cooking. */
+enum class texture_mip_policy : std::uint8_t
+{
+    preserve_source,
+    generate,
+    none
+};
+
 /** @brief Resolved deterministic import policy embedded into a cooked texture artifact. */
 struct texture_artifact_metadata
 {
     std::uint32_t source_width{};
     std::uint32_t source_height{};
+    std::uint32_t source_mip_count{};
     std::uint32_t requested_max_size{};
     std::uint32_t resolved_max_size{};
     texture_power_of_two_policy power_of_two{texture_power_of_two_policy::preserve};
     texture_compression_policy compression{texture_compression_policy::automatic};
+    texture_mip_policy mip_policy{texture_mip_policy::preserve_source};
     texture_filter_mode min_filter{texture_filter_mode::linear};
     texture_filter_mode mag_filter{texture_filter_mode::linear};
     texture_mip_filter_mode mip_filter{texture_mip_filter_mode::linear};
@@ -80,6 +90,7 @@ struct texture_artifact_metadata
     float minimum_lod{};
     float maximum_lod{1000.0f};
     float alpha_coverage_threshold{0.5f};
+    bool source_mips_preserved{};
     bool generated_mips{};
     bool resized{};
     bool power_of_two_adjusted{};
