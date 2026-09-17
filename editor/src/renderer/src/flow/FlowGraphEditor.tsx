@@ -599,6 +599,60 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
                 </label>
               )}
 
+              {node.type === 'switchInt' &&
+                (() => {
+                  const rawCases = Array.isArray(node.values.cases) ? node.values.cases : [];
+                  const cases = Array.from({ length: 4 }, (_, index) =>
+                    typeof rawCases[index] === 'number' && Number.isFinite(rawCases[index])
+                      ? Math.trunc(rawCases[index] as number)
+                      : index,
+                  );
+                  return (
+                    <label className="flow-node-inline-value">
+                      Cases
+                      <span
+                        style={{
+                          display: 'grid',
+                          gap: 4,
+                          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                          minWidth: 0,
+                        }}
+                      >
+                        {cases.map((entry, index) => (
+                          <input
+                            aria-label={`Switch case ${index + 1}`}
+                            disabled={document.readOnly}
+                            key={index}
+                            onChange={(event) => {
+                              const next = [...cases];
+                              const parsed = Number(event.target.value);
+                              next[index] = Number.isFinite(parsed) ? Math.trunc(parsed) : 0;
+                              setNodeField(node.id, 'cases', next);
+                            }}
+                            step={1}
+                            type="number"
+                            value={entry}
+                          />
+                        ))}
+                      </span>
+                    </label>
+                  );
+                })()}
+
+              {node.type === 'gate' && (
+                <label className="flow-node-inline-value">
+                  Start Closed
+                  <input
+                    aria-label="Gate starts closed"
+                    checked={node.values.startClosed === true}
+                    disabled={document.readOnly}
+                    onChange={(event) => setNodeField(node.id, 'startClosed', event.target.checked)}
+                    style={{ height: 16, justifySelf: 'start', width: 16 }}
+                    type="checkbox"
+                  />
+                </label>
+              )}
+
               {(node.type === 'hasCoreComponent' || node.type === 'removeCoreComponent') && (
                 <label className="flow-node-inline-value">
                   Component

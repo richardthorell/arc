@@ -17,8 +17,8 @@ struct game_world_api_v1;
 namespace arc::flow
 {
 
-inline constexpr std::uint32_t flow_ir_version = 3;
-inline constexpr std::uint32_t flow_bytecode_version = 3;
+inline constexpr std::uint32_t flow_ir_version = 4;
+inline constexpr std::uint32_t flow_bytecode_version = 4;
 inline constexpr std::uint32_t invalid_instruction = std::numeric_limits<std::uint32_t>::max();
 inline constexpr std::uint32_t invalid_entity_index = std::numeric_limits<std::uint32_t>::max();
 inline constexpr std::uint32_t default_instruction_budget = 4096;
@@ -124,6 +124,16 @@ struct ir_entry_point
 enum class ir_opcode : std::uint8_t
 {
     branch,
+    sequence,
+    switch_integer,
+    do_once,
+    do_once_reset,
+    gate_enter,
+    gate_open,
+    gate_close,
+    gate_toggle,
+    for_loop,
+    while_loop,
     load_variable,
     store_variable,
     add,
@@ -183,6 +193,15 @@ struct ir_instruction
     std::uint32_t operand4{invalid_instruction};
 };
 
+/** @brief Fixed-width integer switch table used by F7.2 Switch nodes. */
+struct switch_int_table
+{
+    std::array<std::int64_t, 4> values{};
+    // Targets 0..3 correspond to values 0..3. Target 4 is Default.
+    std::array<std::uint32_t, 5> instructions{invalid_instruction, invalid_instruction, invalid_instruction,
+                                              invalid_instruction, invalid_instruction};
+};
+
 struct ir_program
 {
     std::uint32_t version{flow_ir_version};
@@ -190,6 +209,7 @@ struct ir_program
     std::vector<ir_value_slot> value_slots;
     std::vector<ir_entry_point> entry_points;
     std::vector<ir_instruction> instructions;
+    std::vector<switch_int_table> switch_int_tables;
 };
 
 struct bytecode_value_slot
@@ -218,6 +238,16 @@ enum class world_core_component : std::uint8_t
 enum class bytecode_opcode : std::uint8_t
 {
     branch,
+    sequence,
+    switch_integer,
+    do_once,
+    do_once_reset,
+    gate_enter,
+    gate_open,
+    gate_close,
+    gate_toggle,
+    for_loop,
+    while_loop,
     load_variable,
     store_variable,
     add,
@@ -281,6 +311,7 @@ struct bytecode_program
     std::vector<bytecode_value_slot> value_slots;
     std::vector<bytecode_entry_point> entry_points;
     std::vector<bytecode_instruction> instructions;
+    std::vector<switch_int_table> switch_int_tables;
 
     // Instruction-index aligned source map used by editor diagnostics/debugging.
     std::vector<std::string> instruction_nodes;

@@ -118,6 +118,17 @@ bool validate_program(const bytecode_program& program)
     for (const bytecode_value_slot& slot : program.value_slots)
         if (!value_matches_type(slot.type, slot.initial_value)) return false;
 
+    for (const switch_int_table& table : program.switch_int_tables)
+    {
+        std::unordered_set<std::int64_t> unique;
+        for (std::size_t index = 0; index < table.values.size(); ++index)
+        {
+            if (!unique.insert(table.values[index]).second) return false;
+            if (!valid_instruction_target(program, table.instructions[index])) return false;
+        }
+        if (!valid_instruction_target(program, table.instructions[4])) return false;
+    }
+
     for (const bytecode_entry_point& entry : program.entry_points)
     {
         if (!valid_instruction_target(program, entry.instruction)) return false;
@@ -141,6 +152,49 @@ bool validate_program(const bytecode_program& program)
                 if (!slot_has_type(program, instruction.operand0, value_type::boolean)) return false;
                 if (!valid_instruction_target(program, instruction.operand1) ||
                     !valid_instruction_target(program, instruction.operand2))
+                    return false;
+                break;
+            case bytecode_opcode::sequence:
+                if (!valid_instruction_target(program, instruction.operand0) ||
+                    !valid_instruction_target(program, instruction.operand1) ||
+                    !valid_instruction_target(program, instruction.operand2) ||
+                    !valid_instruction_target(program, instruction.operand3))
+                    return false;
+                break;
+            case bytecode_opcode::switch_integer:
+                if (!slot_has_type(program, instruction.operand0, value_type::integer) ||
+                    instruction.operand1 >= program.switch_int_tables.size())
+                    return false;
+                break;
+            case bytecode_opcode::do_once:
+                if (!slot_has_type(program, instruction.operand0, value_type::boolean) ||
+                    !valid_instruction_target(program, instruction.operand1))
+                    return false;
+                break;
+            case bytecode_opcode::do_once_reset:
+            case bytecode_opcode::gate_open:
+            case bytecode_opcode::gate_close:
+            case bytecode_opcode::gate_toggle:
+                if (!slot_has_type(program, instruction.operand0, value_type::boolean)) return false;
+                break;
+            case bytecode_opcode::gate_enter:
+                if (!slot_has_type(program, instruction.operand0, value_type::boolean) ||
+                    !valid_instruction_target(program, instruction.operand1))
+                    return false;
+                break;
+            case bytecode_opcode::for_loop:
+                if (!slot_has_type(program, instruction.operand0, value_type::integer) ||
+                    !slot_has_type(program, instruction.operand1, value_type::integer) ||
+                    !slot_has_type(program, instruction.operand2, value_type::integer) ||
+                    !valid_instruction_target(program, instruction.operand3) ||
+                    !valid_instruction_target(program, instruction.operand4))
+                    return false;
+                break;
+            case bytecode_opcode::while_loop:
+                if (!slot_has_type(program, instruction.operand0, value_type::boolean) ||
+                    !valid_instruction_target(program, instruction.operand1) ||
+                    !valid_instruction_target(program, instruction.operand2) ||
+                    !valid_instruction_target(program, instruction.operand3))
                     return false;
                 break;
             case bytecode_opcode::load_variable:
@@ -581,6 +635,20 @@ execution_result execute_chain(const bytecode_program& program, std::vector<flow
     execution_result result;
     std::uint32_t instruction = first_instruction;
 
+    const auto run_nested = [&](std::uint32_t target) -> bool
+    {
+        if (target == invalid_instruction) return true;
+        const std::uint32_t remaining =
+            result.instructions_executed < instruction_budget ? instruction_budget - result.instructions_executed : 0;
+        execution_result nested = execute_chain(program, variable_values, value_slots, target, remaining, world);
+        result.instructions_executed += nested.instructions_executed;
+        if (nested.succeeded()) return true;
+        result.status = nested.status;
+        result.stopped_instruction = nested.stopped_instruction;
+        result.node_id = std::move(nested.node_id);
+        return false;
+    };
+
     while (instruction != invalid_instruction)
     {
         if (instruction >= program.instructions.size())
@@ -608,6 +676,146 @@ execution_result execute_chain(const bytecode_program& program, std::vector<flow
                     return result;
                 }
                 instruction = *condition ? current.operand1 : current.operand2;
+                break;
+            }
+            case bytecode_opcode::sequence:
+            {
+                const std::array<std::uint32_t, 4> targets{current.operand0, current.operand1, current.operand2,
+                                                           current.operand3};
+                for (const std::uint32_t target : targets)
+                    if (!run_nested(target)) return result;
+                instruction = invalid_instruction;
+                break;
+            }
+            case bytecode_opcode::switch_integer:
+            {
+                const auto* selection = std::get_if<std::int64_t>(&value_slots[current.operand0]);
+                if (!selection)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                const switch_int_table& table = program.switch_int_tables[current.operand1];
+                instruction = table.instructions[4];
+                for (std::size_t case_index = 0; case_index < table.values.size(); ++case_index)
+                    if (*selection == table.values[case_index])
+                    {
+                        instruction = table.instructions[case_index];
+                        break;
+                    }
+                break;
+            }
+            case bytecode_opcode::do_once:
+            {
+                bool* fired = std::get_if<bool>(&value_slots[current.operand0]);
+                if (!fired)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                if (*fired)
+                    instruction = invalid_instruction;
+                else
+                {
+                    *fired = true;
+                    instruction = current.operand1;
+                }
+                break;
+            }
+            case bytecode_opcode::do_once_reset:
+            {
+                bool* fired = std::get_if<bool>(&value_slots[current.operand0]);
+                if (!fired)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                *fired = false;
+                instruction = invalid_instruction;
+                break;
+            }
+            case bytecode_opcode::gate_enter:
+            {
+                const bool* open = std::get_if<bool>(&value_slots[current.operand0]);
+                if (!open)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                instruction = *open ? current.operand1 : invalid_instruction;
+                break;
+            }
+            case bytecode_opcode::gate_open:
+            case bytecode_opcode::gate_close:
+            case bytecode_opcode::gate_toggle:
+            {
+                bool* open = std::get_if<bool>(&value_slots[current.operand0]);
+                if (!open)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                if (current.opcode == bytecode_opcode::gate_open)
+                    *open = true;
+                else if (current.opcode == bytecode_opcode::gate_close)
+                    *open = false;
+                else
+                    *open = !*open;
+                instruction = invalid_instruction;
+                break;
+            }
+            case bytecode_opcode::for_loop:
+            {
+                const auto* first_value = std::get_if<std::int64_t>(&value_slots[current.operand0]);
+                const auto* last_value = std::get_if<std::int64_t>(&value_slots[current.operand1]);
+                if (!first_value || !last_value)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                const std::int64_t first = *first_value;
+                const std::int64_t last = *last_value;
+                if (first <= last)
+                {
+                    for (std::int64_t index = first;; ++index)
+                    {
+                        value_slots[current.operand2] = index;
+                        if (!run_nested(current.operand3)) return result;
+                        if (index == last) break;
+                        if (result.instructions_executed >= instruction_budget)
+                        {
+                            stop_execution(result, execution_status::instruction_budget_exceeded, program, instruction);
+                            return result;
+                        }
+                        ++result.instructions_executed;
+                    }
+                }
+                instruction = current.operand4;
+                break;
+            }
+            case bytecode_opcode::while_loop:
+            {
+                while (true)
+                {
+                    const bool* condition = std::get_if<bool>(&value_slots[current.operand0]);
+                    if (!condition)
+                    {
+                        stop_execution(result, execution_status::type_mismatch, program, instruction);
+                        return result;
+                    }
+                    if (!*condition)
+                    {
+                        instruction = current.operand2;
+                        break;
+                    }
+                    if (!run_nested(current.operand1) || !run_nested(current.operand3)) return result;
+                    if (result.instructions_executed >= instruction_budget)
+                    {
+                        stop_execution(result, execution_status::instruction_budget_exceeded, program, instruction);
+                        return result;
+                    }
+                    ++result.instructions_executed;
+                }
                 break;
             }
             case bytecode_opcode::load_variable:
