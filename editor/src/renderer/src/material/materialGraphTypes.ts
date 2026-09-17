@@ -11,6 +11,9 @@ export type MaterialGraphNodeType =
   | 'colorRgb'
   | 'colorRgba'
   | 'textureSample'
+  | 'textureSample2D'
+  | 'textureSampleCube'
+  | 'textureSample3D'
   | 'texCoord'
   | 'time'
   | 'add'
@@ -280,6 +283,33 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     outputs: colorOutputs(),
     defaultValues: { texture: '', dimension: '2d' },
   },
+  textureSample2D: {
+    type: 'textureSample2D',
+    title: 'Texture Sample 2D',
+    category: 'Textures',
+    subcategory: 'Sampling',
+    inputs: [pin('uv', 'UV', 'vec2')],
+    outputs: colorOutputs(),
+    defaultValues: { texture: '', dimension: '2d' },
+  },
+  textureSampleCube: {
+    type: 'textureSampleCube',
+    title: 'Texture Sample Cube',
+    category: 'Textures',
+    subcategory: 'Sampling',
+    inputs: [pin('uv', 'Direction', 'vec3')],
+    outputs: colorOutputs(),
+    defaultValues: { texture: '', dimension: 'cube' },
+  },
+  textureSample3D: {
+    type: 'textureSample3D',
+    title: 'Texture Sample 3D',
+    category: 'Textures',
+    subcategory: 'Sampling',
+    inputs: [pin('uv', 'UVW', 'vec3')],
+    outputs: colorOutputs(),
+    defaultValues: { texture: '', dimension: '3d' },
+  },
   texCoord: {
     type: 'texCoord',
     title: 'Texture Coordinate',
@@ -490,7 +520,13 @@ export const materialGraphFromAsset = (asset: MaterialAssetJson): MaterialGraph 
   return cloneMaterialGraph(asset.graph);
 };
 
+export const isMaterialTextureSampleNodeType = (type: MaterialGraphNodeType) =>
+  type === 'textureSample' || type === 'textureSample2D' || type === 'textureSampleCube' || type === 'textureSample3D';
+
 export const materialTextureDimension = (node: MaterialGraphNode): MaterialTextureDimension => {
+  if (node.type === 'textureSampleCube') return 'cube';
+  if (node.type === 'textureSample3D') return '3d';
+  if (node.type === 'textureSample2D') return '2d';
   const dimension = node.values.dimension;
   return dimension === 'cube' || dimension === '3d' ? dimension : '2d';
 };

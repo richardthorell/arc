@@ -10,7 +10,9 @@ import {
 } from './materialGraphTypes';
 
 const materialDefinitions = () =>
-  Object.values(materialNodeDefinitions) as Array<(typeof materialNodeDefinitions)[MaterialGraphNodeType]>;
+  (Object.values(materialNodeDefinitions) as Array<(typeof materialNodeDefinitions)[MaterialGraphNodeType]>).filter(
+    (definition) => definition.type !== 'textureSample',
+  );
 
 const numericPinTypes = new Set<MaterialGraphPinType>(['float', 'vec2', 'vec3', 'vec4', 'numeric']);
 

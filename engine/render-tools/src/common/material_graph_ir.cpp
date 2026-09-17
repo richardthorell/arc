@@ -71,7 +71,9 @@ std::optional<material_ir_node_kind> node_kind(std::string_view type) noexcept
     if (type == "vector4" || type == "colorRgba") return material_ir_node_kind::vector4;
     if (type == "texCoord") return material_ir_node_kind::tex_coord;
     if (type == "time") return material_ir_node_kind::time;
-    if (type == "textureSample") return material_ir_node_kind::texture_sample;
+    if (type == "textureSample" || type == "textureSample2D" || type == "textureSampleCube" ||
+        type == "textureSample3D")
+        return material_ir_node_kind::texture_sample;
     if (type == "normalMap") return material_ir_node_kind::normal_map;
     if (type == "saturate") return material_ir_node_kind::saturate;
     if (type == "clamp") return material_ir_node_kind::clamp;
@@ -377,7 +379,11 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
 
         if (*kind == material_ir_node_kind::texture_sample)
         {
-            const auto texture_type = texture_parameter_type(values.value("dimension", "2d"));
+            std::string texture_dimension = values.value("dimension", "2d");
+            if (type == "textureSample2D") texture_dimension = "2d";
+            if (type == "textureSampleCube") texture_dimension = "cube";
+            if (type == "textureSample3D") texture_dimension = "3d";
+            const auto texture_type = texture_parameter_type(texture_dimension);
             if (!texture_type)
                 return material_graph_compile_result::failure(
                     {.code = shader_compile_error_code::validation_failed,

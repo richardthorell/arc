@@ -14,7 +14,7 @@ describe('materialGraphDomain', () => {
   it('adapts material definitions to the shared graph domain contract', () => {
     const node = createMaterialNode('multiply', [10, 20]);
     expect(materialGraphDomain.getNodeDefinition(node).title).toBe('Multiply');
-    expect(materialGraphDomain.getNodeDefinitions().some((definition) => definition.type === 'textureSample')).toBe(
+    expect(materialGraphDomain.getNodeDefinitions().some((definition) => definition.type === 'textureSample2D')).toBe(
       true,
     );
   });
@@ -74,5 +74,22 @@ describe('material texture sample dimensions', () => {
   it('uses vec3 UVW coordinates for Texture3D', () => {
     const definition = materialGraphDomain.getNodeDefinition(textureNode('3d'));
     expect(definition.inputs[0]).toMatchObject({ id: 'uv', label: 'UVW', type: 'vec3' });
+  });
+  it('exposes fixed texture sample dimensions and hides the legacy generic sample from the add menu', () => {
+    const definitions = materialGraphDomain.getNodeDefinitions();
+    expect(definitions.some((definition) => definition.type === 'textureSample')).toBe(false);
+    expect(definitions.some((definition) => definition.type === 'textureSample2D')).toBe(true);
+    expect(definitions.some((definition) => definition.type === 'textureSampleCube')).toBe(true);
+    expect(definitions.some((definition) => definition.type === 'textureSample3D')).toBe(true);
+
+    const sample2D = createMaterialNode('textureSample2D', [0, 0]);
+    const sampleCube = createMaterialNode('textureSampleCube', [0, 0]);
+    const sample3D = createMaterialNode('textureSample3D', [0, 0]);
+    expect(materialGraphDomain.getNodeDefinition(sample2D).inputs[0]).toMatchObject({ label: 'UV', type: 'vec2' });
+    expect(materialGraphDomain.getNodeDefinition(sampleCube).inputs[0]).toMatchObject({
+      label: 'Direction',
+      type: 'vec3',
+    });
+    expect(materialGraphDomain.getNodeDefinition(sample3D).inputs[0]).toMatchObject({ label: 'UVW', type: 'vec3' });
   });
 });

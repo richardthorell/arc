@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { TexturePicker, type AssetPickerItem } from '../inspector/AssetPicker';
-import { materialTextureDimension, type MaterialGraphNode, type MaterialTextureDimension } from './materialGraphTypes';
+import { materialTextureDimension, type MaterialGraphNode } from './materialGraphTypes';
 import './materialTextureSample.css';
 
 type HostResponse<T> = {
@@ -18,6 +18,7 @@ type HostAssetSnapshot = {
   typeId: string;
   importerId: string;
   state: 'unknown' | 'queued' | 'importing' | 'ready' | 'stale' | 'failed';
+  textureDimension?: '2d' | 'cube' | '3d';
 };
 
 type HostProjectAssetsSnapshot = {
@@ -69,6 +70,12 @@ export function MaterialTextureSampleEditor({
               status: pickerStatus(asset.state),
               scope: asset.scope,
               readOnly: asset.readOnly,
+              textureDimension:
+                asset.textureDimension === 'cube' || asset.textureDimension === '3d'
+                  ? asset.textureDimension
+                  : asset.kind === 'environment'
+                    ? 'cube'
+                    : '2d',
             })),
         );
       })
@@ -93,24 +100,6 @@ export function MaterialTextureSampleEditor({
 
   return (
     <>
-      <label className="material-node-texture-dimension">
-        <span>Type</span>
-        <select
-          aria-label="Texture type"
-          disabled={readOnly}
-          value={textureDimension}
-          onChange={(event) =>
-            onChange({
-              ...node,
-              values: { ...node.values, dimension: event.target.value as MaterialTextureDimension },
-            })
-          }
-        >
-          <option value="2d">Texture2D</option>
-          <option value="cube">TextureCube</option>
-          <option value="3d">Texture3D</option>
-        </select>
-      </label>
       <div
         className="material-node-value-area material-node-texture-picker"
         title={selectedAsset?.path || texturePath || 'Choose texture asset'}
@@ -118,7 +107,8 @@ export function MaterialTextureSampleEditor({
         <TexturePicker
           assets={assets}
           value={texturePath}
-          label="Texture"
+          label={textureDimension === 'cube' ? 'TextureCube' : textureDimension === '3d' ? 'Texture3D' : 'Texture2D'}
+          expectedTextureDimension={textureDimension}
           allowEmpty
           thumbnailProvider={thumbnailProvider}
           onChange={(texture) => onChange({ ...node, values: { ...node.values, texture } })}

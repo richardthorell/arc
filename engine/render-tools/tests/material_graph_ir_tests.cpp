@@ -263,3 +263,16 @@ TEST_CASE("cube and 3D material texture samples require explicit vec3 coordinate
     REQUIRE_FALSE(result);
     REQUIRE(result.error().message.find("requires a vec3 coordinate input") != std::string::npos);
 }
+\n\nTEST_CASE("native material graph compiler accepts explicit typed texture sample nodes")\n
+{
+    \n constexpr std::string_view graph =
+        R"({\n      "version":1,\n      "nodes":[\n        {"id":"sample-2d","type":"textureSample2D","values":{}},\n        {"id":"sample-cube","type":"textureSampleCube","values":{}},\n        {"id":"sample-3d","type":"textureSample3D","values":{}},\n        {"id":"direction","type":"vector3","values":{"value":[0,0,1]}},\n        {"id":"coords","type":"vector3","values":{"value":[0.5,0.5,0.5]}},\n        {"id":"material-output","type":"output","values":{}}\n      ],\n      "connections":[\n        {"id":"1","from":{"nodeId":"sample-2d","pin":"rgb"},"to":{"nodeId":"material-output","pin":"baseColor"}},\n        {"id":"2","from":{"nodeId":"direction","pin":"value"},"to":{"nodeId":"sample-cube","pin":"uv"}},\n        {"id":"3","from":{"nodeId":"sample-cube","pin":"r"},"to":{"nodeId":"material-output","pin":"metallic"}},\n        {"id":"4","from":{"nodeId":"coords","pin":"value"},"to":{"nodeId":"sample-3d","pin":"uv"}},\n        {"id":"5","from":{"nodeId":"sample-3d","pin":"r"},"to":{"nodeId":"material-output","pin":"roughness"}}\n      ]\n    })";
+    \n\n const auto result = arc::render::tools::compile_material_graph_json(graph);
+    \n REQUIRE(result);
+    \n REQUIRE(result.value().descriptor.textures.size() == 3);
+    \n REQUIRE(result.value().descriptor.textures[0].type == arc::render::shader_parameter_type::texture_2d);
+    \n REQUIRE(result.value().descriptor.textures[1].type == arc::render::shader_parameter_type::texture_3d);
+    \n REQUIRE(result.value().descriptor.textures[2].type == arc::render::shader_parameter_type::texture_cube);
+    \n
+}
+\n

@@ -17,6 +17,7 @@ export type AssetPickerItem = {
   status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'stale' | 'importing' | 'failed' | 'missing';
   scope?: 'builtin' | 'project' | 'user' | 'organization' | 'procedural';
   readOnly?: boolean;
+  textureDimension?: '2d' | 'cube' | '3d';
 };
 
 export type AssetThumbnailProvider = (path: string) => Promise<string | null>;
@@ -36,6 +37,7 @@ export type AssetPickerProps = {
   createNewLabel?: string;
   onCreateNew?: (name: string) => Promise<string>;
   onOpen?: (asset: AssetPickerItem) => void;
+  assetCompatibility?: (asset: AssetPickerItem) => string | null;
   onChange: (path: string) => void;
 };
 
@@ -193,6 +195,7 @@ export function AssetPicker({
   createNewLabel,
   onCreateNew,
   onOpen,
+  assetCompatibility,
   onChange,
 }: AssetPickerProps) {
   const [open, setOpen] = useState(false);
@@ -221,6 +224,7 @@ export function AssetPicker({
         (dropped.guid && (asset.guid === dropped.guid || asset.id === dropped.guid)) ||
         normalizedPath(asset.path) === normalizedPath(dropped.pathHint),
     );
+    if (candidate && assetCompatibility?.(candidate)) return;
     if (!candidate) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'copy';
@@ -289,6 +293,7 @@ export function AssetPicker({
           anchorRef={anchorRef}
           assets={candidates}
           assetTypeLabel={assetTypeLabel}
+          assetCompatibility={assetCompatibility}
           createNewLabel={createNewLabel}
           filter={filter}
           label={label}
@@ -316,8 +321,32 @@ export function AssetPicker({
   );
 }
 
-export function TexturePicker(props: Omit<AssetPickerProps, 'assetKinds'>) {
-  return <AssetPicker {...props} assetKinds={['texture', 'environment']} assetTypeLabel="Texture" />;
+export type TextureDimension = '2d' | 'cube' | '3d';
+
+const textureDimensionLabel = (dimension: TextureDimension) =>
+  dimension === 'cube' ? 'TextureCube' : dimension === '3d' ? 'Texture3D' : 'Texture2D';
+
+const textureAssetDimension = (asset: AssetPickerItem): TextureDimension =>
+  asset.textureDimension ?? (asset.kind === 'environment' ? 'cube' : '2d');
+
+export function TexturePicker({
+  expectedTextureDimension = '2d',
+  assetCompatibility,
+  ...props
+}: Omit<AssetPickerProps, 'assetKinds'> & { expectedTextureDimension?: TextureDimension }) {
+  const dimensionCompatibility = (asset: AssetPickerItem) => {
+    const actual = textureAssetDimension(asset);
+    if (actual === expectedTextureDimension) return assetCompatibility?.(asset) ?? null;
+    return `Expected ${textureDimensionLabel(expectedTextureDimension)} · ${textureDimensionLabel(actual)} provided`;
+  };
+  return (
+    <AssetPicker
+      {...props}
+      assetCompatibility={dimensionCompatibility}
+      assetKinds={['texture', 'environment']}
+      assetTypeLabel={textureDimensionLabel(expectedTextureDimension)}
+    />
+  );
 }
 
 export function MaterialPicker(
@@ -407,6 +436,7 @@ function AssetPickerPopover({
   anchorRef,
   assets,
   assetTypeLabel,
+  assetCompatibility,
   createNewLabel,
   filter,
   label,
@@ -421,6 +451,7 @@ function AssetPickerPopover({
   anchorRef: React.RefObject<HTMLElement | null>;
   assets: ReadonlyArray<AssetPickerItem>;
   assetTypeLabel: string;
+  assetCompatibility?: (asset: AssetPickerItem) => string | null;
   createNewLabel?: string;
   filter: string;
   label: string;
@@ -592,21 +623,24 @@ function AssetPickerPopover({
                 <small>Project asset</small>
               </button>
             )}
-            {shown.map((asset) => (
-              <button
-                aria-label={`Select ${displayNameOf(asset)}`}
-                className={valueFor(asset) === selectedValue ? 'is-selected' : ''}
-                key={asset.id}
-                onClick={() => onSelect(asset)}
-                type="button"
-              >
-                <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} />
-                <strong>{displayNameOf(asset)}</strong>
-                <small>
-                  {sourceLabelOf(asset, assetTypeLabel)} · {asset.status}
-                </small>
-              </button>
-            ))}
+            {shown.map((asset) => {
+              const incompatibility = assetCompatibility?.(asset) ?? null;
+              return (
+                <button
+                  aria-label={`Select ${displayNameOf(asset)}`}
+                  className={valueFor(asset) === selectedValue ? 'is-selected' : ''}
+                  disabled={Boolean(incompatibility)}
+                  key={asset.id}
+                  onClick={() => onSelect(asset)}
+                  title={incompatibility ?? undefined}
+                  type="button"
+                >
+                  <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} />
+                  <strong>{displayNameOf(asset)}</strong>
+                  <small>{incompatibility ?? `${sourceLabelOf(asset, assetTypeLabel)} · ${asset.status}`}</small>
+                </button>
+              );
+            })}
             {!shown.length && !onCreateNew && (
               <div className="asset-picker-empty">
                 <Image size={22} />
