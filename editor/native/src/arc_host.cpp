@@ -41,7 +41,8 @@ struct arc_material_preview_resources
 // exists. Other primitive call sites resolve this fallback instead, so only
 // material-preview construction consumes the optional surface-id mesh token.
 struct arc_material_preview_surface_fallback
-{};
+{
+};
 inline constexpr arc_material_preview_surface_fallback surface{};
 
 std::unordered_map<editor_scene_state*, arc_material_preview_resources> arc_material_preview_scene_resources;
@@ -315,8 +316,7 @@ void arc_append_model_preview_metadata(nlohmann::json& payload, const editor_sce
 } // namespace
 } // namespace arc::editor
 
-#define add_primitive_to_scene(state, renderer, type)                                                                  \
-    arc_material_preview_add_primitive(state, renderer, type, surface)
+#define add_primitive_to_scene(state, renderer, type) arc_material_preview_add_primitive(state, renderer, type, surface)
 #define clear_imported_scene_content(state, renderer) arc_clear_preview_imported_content(state, renderer)
 #define focus_selected_entity(registry, selected, camera) arc_model_preview_focus(registry, selected, camera)
 #define collect_viewport_render_stats(scene, renderer)                                                                 \
