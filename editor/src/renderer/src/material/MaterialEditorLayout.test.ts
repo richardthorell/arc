@@ -8,8 +8,8 @@ import {
 } from './MaterialEditor';
 
 describe('material editor sidebar sizing', () => {
-  it('starts roughly fifteen percent wider than the previous 410px panel', () => {
-    expect(defaultMaterialSidebarWidth).toBe(472);
+  it('starts wider for the preview and material controls', () => {
+    expect(defaultMaterialSidebarWidth).toBe(560);
   });
 
   it('clamps resizing to the supported sidebar range', () => {

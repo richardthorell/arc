@@ -13,7 +13,7 @@ import './materialCustomShader.css';
 import './materialEditor.css';
 import './materialWorkspace.css';
 
-export const defaultMaterialSidebarWidth = 472;
+export const defaultMaterialSidebarWidth = 560;
 export const minimumMaterialSidebarWidth = 320;
 export const maximumMaterialSidebarWidth = 640;
 export const minimumMaterialGraphWidth = 520;
@@ -36,6 +36,8 @@ const parameterValue = (node: MaterialGraphNode): number[] => {
 };
 
 const componentLabels = ['X', 'Y', 'Z', 'W'];
+const materialPreviewMeshes = ['sphere', 'cube', 'pill'] as const;
+type MaterialPreviewMesh = (typeof materialPreviewMeshes)[number];
 
 type SidebarResize = {
   pointerId: number;
@@ -52,6 +54,9 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
   const editorRef = useRef<HTMLElement | null>(null);
   const sidebarResizeRef = useRef<SidebarResize | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(defaultMaterialSidebarWidth);
+  const [previewMesh, setPreviewMesh] = useState<MaterialPreviewMesh>('sphere');
+  const previewAssetGuid =
+    document.assetGuid && previewMesh !== 'sphere' ? `${document.assetGuid}~${previewMesh}` : document.assetGuid;
   const fallbackPreview = state.previewDataUrl ? (
     <img alt={`${document.title} material preview`} src={state.previewDataUrl} />
   ) : (
@@ -185,13 +190,29 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
           title="Material Preview"
           subtitle="Native renderer"
           metadata={[
-            { label: 'Mesh', value: 'Sphere' },
-            { label: 'Environment', value: 'Studio' },
+            {
+              label: 'Mesh',
+              value: (
+                <span className="material-preview-mesh-toggle" role="group" aria-label="Material preview mesh">
+                  {materialPreviewMeshes.map((mesh) => (
+                    <button
+                      key={mesh}
+                      type="button"
+                      aria-pressed={previewMesh === mesh}
+                      onClick={() => setPreviewMesh(mesh)}
+                    >
+                      {mesh[0].toUpperCase() + mesh.slice(1)}
+                    </button>
+                  ))}
+                </span>
+              ),
+            },
+            { label: 'Environment', value: 'Studio HDRI' },
           ]}
         >
           <AssetPreviewViewport
             kind="material"
-            assetGuid={document.assetGuid}
+            assetGuid={previewAssetGuid}
             label={`${document.title} material preview viewport`}
             fallback={fallbackPreview}
           />

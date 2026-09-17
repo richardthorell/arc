@@ -167,3 +167,37 @@
   color: #a7bac3;
   font-weight: 500;
 }
+
+.material-preview-mesh-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid rgba(102, 132, 146, 0.22);
+  border-radius: 4px;
+  background: rgba(7, 13, 16, 0.32);
+}
+
+.material-preview-mesh-toggle button {
+  min-width: 42px;
+  height: 22px;
+  padding: 0 7px;
+  color: #8096a1;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.material-preview-mesh-toggle button:hover {
+  color: #d2dee4;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.material-preview-mesh-toggle button[aria-pressed='true'] {
+  color: #dce8ed;
+  background: rgba(82, 143, 170, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(104, 174, 204, 0.24);
+}
