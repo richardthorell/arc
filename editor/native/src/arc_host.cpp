@@ -3,102 +3,12 @@
 #include <arc/editor/editor_state.h>
 #include <arc/editor/viewport_render_stats.h>
 #include <arc/geometric/box.h>
-#include <arc/render/texture.h>
 #include <arc/scene/scene.h>
 
 #include <algorithm>
-#include <array>
-#include <cstring>
 #include <limits>
-#include <optional>
-#include <source_location>
 #include <string_view>
 #include <nlohmann/json.hpp>
-
-namespace arc::render
-{
-namespace
-{
-std::optional<texture_data> cubemap_cross_thumbnail_source(const texture_data& texture)
-{
-    if (texture.dimension != texture_dimension::cube || texture.width == 0u || texture.height == 0u ||
-        texture.width != texture.height || texture.array_layers == 0u || !texture.has_pixels() || texture.mips.empty())
-        return std::nullopt;
-
-    const std::size_t bytes_per_pixel = texture.format == texture_format::rgba32f   ? sizeof(float) * 4u
-                                        : texture.format == texture_format::rgba8_unorm ||
-                                                  texture.format == texture_format::rgba8_srgb
-                                            ? 4u
-                                            : 0u;
-    if (bytes_per_pixel == 0u) return std::nullopt;
-
-    const auto& base_mip = texture.mips.front();
-    const std::size_t face_bytes = static_cast<std::size_t>(texture.width) * texture.height * bytes_per_pixel;
-    constexpr std::size_t cube_face_count = 6u;
-    const std::size_t cube_bytes = face_bytes * cube_face_count;
-    if (base_mip.offset > texture.pixels.size() || base_mip.size < cube_bytes ||
-        cube_bytes > texture.pixels.size() - base_mip.offset)
-        return std::nullopt;
-
-    texture_data cross;
-    cross.name = texture.name;
-    cross.source_path = texture.source_path;
-    cross.width = texture.width * 4u;
-    cross.height = texture.height * 3u;
-    cross.depth = 1u;
-    cross.dimension = texture_dimension::texture_2d;
-    cross.format = texture.format;
-    cross.color_space = texture.color_space;
-    cross.semantic = texture.semantic;
-    cross.mime_type = texture.mime_type;
-    cross.array_layers = 1u;
-    cross.mip_levels = 1u;
-    cross.compressed = false;
-    cross.dds = false;
-    cross.pixels.resize(static_cast<std::size_t>(cross.width) * cross.height * bytes_per_pixel);
-
-    // ARC cube payloads use the conventional +X, -X, +Y, -Y, +Z, -Z face order.
-    // Lay those faces out as a conventional unfolded cross. This is deliberately
-    // topology-based rather than source-format-based so any future cube loader gets
-    // the same Content Browser thumbnail automatically.
-    constexpr std::array<std::array<std::uint32_t, 2>, cube_face_count> placements{{
-        {{2u, 1u}}, // +X
-        {{0u, 1u}}, // -X
-        {{1u, 0u}}, // +Y
-        {{1u, 2u}}, // -Y
-        {{1u, 1u}}, // +Z
-        {{3u, 1u}}, // -Z
-    }};
-
-    const std::size_t source_row_bytes = static_cast<std::size_t>(texture.width) * bytes_per_pixel;
-    const std::size_t target_row_bytes = static_cast<std::size_t>(cross.width) * bytes_per_pixel;
-    for (std::size_t face = 0; face < cube_face_count; ++face)
-    {
-        const auto target_x = static_cast<std::size_t>(placements[face][0]) * texture.width;
-        const auto target_y = static_cast<std::size_t>(placements[face][1]) * texture.height;
-        for (std::uint32_t y = 0; y < texture.height; ++y)
-        {
-            const auto source_offset = base_mip.offset + face * face_bytes + static_cast<std::size_t>(y) * source_row_bytes;
-            const auto target_offset =
-                (target_y + y) * target_row_bytes + target_x * bytes_per_pixel;
-            std::memcpy(cross.pixels.data() + target_offset, texture.pixels.data() + source_offset, source_row_bytes);
-        }
-    }
-    cross.mips.push_back({.width = cross.width, .height = cross.height, .offset = 0u, .size = cross.pixels.size()});
-    return cross;
-}
-} // namespace
-
-texture_load_result load_texture_asset_for_editor_host(const std::filesystem::path& path,
-                                                       const std::source_location& caller)
-{
-    auto loaded = load_texture_asset(path);
-    if (!loaded.succeeded() || std::string_view{caller.function_name()}.find("asset_thumbnail") == std::string_view::npos)
-        return loaded;
-    if (auto cross = cubemap_cross_thumbnail_source(loaded.texture)) loaded.texture = std::move(*cross);
-    return loaded;
-}
-} // namespace arc::render
 
 namespace arc::editor
 {
@@ -200,12 +110,6 @@ void arc_append_model_preview_metadata(nlohmann::json& payload, const editor_sce
             return arc_model_preview_render_stats(scene, renderer);                                                    \
         }())
 
-// The legacy host owns thumbnail generation inside arc_host_base.inc. Redirect
-// only its texture-load call through an editor-local adapter so cube topology can
-// be unfolded before the existing BMP/tonemap path runs. Non-thumbnail callers
-// receive the original texture unchanged.
-#define load_texture_asset(path) load_texture_asset_for_editor_host((path), std::source_location::current())
-
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsubobject-linkage"
@@ -222,6 +126,5 @@ void arc_append_model_preview_metadata(nlohmann::json& payload, const editor_sce
 #pragma GCC diagnostic pop
 #endif
 
-#undef load_texture_asset
 #undef collect_viewport_render_stats
 #undef focus_selected_entity
