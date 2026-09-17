@@ -12,6 +12,13 @@ if(NOT TARGET arc-third-party-tinyexr)
     )
 endif()
 
+if(NOT TARGET arc-third-party-tiff)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/tiff"
+        "${CMAKE_BINARY_DIR}/third_party/tiff"
+    )
+endif()
+
 target_sources(arc-render PRIVATE src/common/lighting_scene.cpp)
 
 if(TARGET arc-third-party-ufbx)
@@ -27,6 +34,10 @@ endif()
 
 if(TARGET arc-third-party-tinyexr)
     target_link_libraries(arc-render PRIVATE "$<BUILD_INTERFACE:arc-third-party-tinyexr>")
+endif()
+
+if(TARGET arc-third-party-tiff)
+    target_link_libraries(arc-render PRIVATE "$<BUILD_INTERFACE:arc-third-party-tiff>")
 endif()
 
 if(BUILD_TESTING AND ARC_BUILD_ENGINE_TESTS)
