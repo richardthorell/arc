@@ -587,9 +587,13 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
     const auto preview_type = surface.preview_kind == asset_preview_kind::material
                                   ? arc_material_preview_primitive_type(surface.options.viewport_id)
                                   : editor_primitive_type::sphere;
-    const auto preview_entity = surface.preview_kind == asset_preview_kind::material
-                                    ? arc_material_preview_add_primitive(*preview, *host.renderer, preview_type)
-                                    : add_primitive_to_scene(*preview, *host.renderer, preview_type);
+    const auto room_material = surface.preview_kind == asset_preview_kind::material
+                                   ? arc_material_preview_room_material(host.scene, *host.renderer, host.assets)
+                                   : render::material_handle{};
+    const auto preview_entity =
+        surface.preview_kind == asset_preview_kind::material
+            ? arc_material_preview_add_primitive(*preview, *host.renderer, preview_type, host.assets, room_material)
+            : add_primitive_to_scene(*preview, *host.renderer, preview_type);
     if (!preview->scene.alive(preview_entity))
     {
         surface.preview_error = "Renderer could not create the asset preview mesh";
