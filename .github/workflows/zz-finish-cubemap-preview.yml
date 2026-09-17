@@ -1,36 +1,30 @@
 name: Finish cubemap preview wiring
 
-on:
-  push:
-    branches:
-      - feat/tinyexr-texture-import
+on: push
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.event.head_commit.message == 'chore: wire generic cubemap preview'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: feat/tinyexr-texture-import
           fetch-depth: 0
-
-      - name: Wire generic texture previews into asset.thumbnail
-        shell: python
+      - name: Patch host thumbnail wiring
         run: |
+          python3 - <<'PY'
           from pathlib import Path
 
           path = Path('editor/native/src/arc_host_impl.inc')
           text = path.read_text()
 
           include_anchor = '#include <arc/editor/terrain_heightmap_io.h>\n'
-          include_replacement = include_anchor + '#include <arc/editor/texture_preview.h>\n'
           if '#include <arc/editor/texture_preview.h>' not in text:
               assert include_anchor in text
-              text = text.replace(include_anchor, include_replacement, 1)
+              text = text.replace(include_anchor, include_anchor + '#include <arc/editor/texture_preview.h>\n', 1)
 
           macro_anchor = '#define execute execute_base\n'
           if '#define asset_thumbnail asset_thumbnail_base' not in text:
@@ -45,7 +39,7 @@ jobs:
           query_anchor = 'host_response arc_host::query(const host_query_envelope& query) const\n{\n'
           assert query_anchor in text
 
-          method = r'''std::optional<host_asset_thumbnail_snapshot> arc_host::asset_thumbnail(std::string_view path,
+          method = '''std::optional<host_asset_thumbnail_snapshot> arc_host::asset_thumbnail(std::string_view path,
                                                                        std::uint32_t max_size) const
 {
     const auto resolved = resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
@@ -78,7 +72,7 @@ jobs:
           if 'arc_host::asset_thumbnail(std::string_view path' not in text:
               text = text.replace(query_anchor, method + query_anchor, 1)
 
-          thumbnail_query = r'''    if (const auto* thumbnail_query = std::get_if<host_asset_thumbnail_query>(&query.payload))
+          thumbnail_query = '''    if (const auto* thumbnail_query = std::get_if<host_asset_thumbnail_query>(&query.payload))
     {
         const auto thumbnail = asset_thumbnail(thumbnail_query->path, thumbnail_query->max_size);
         host_response response;
@@ -98,11 +92,8 @@ jobs:
               text = text.replace(query_anchor, query_anchor + thumbnail_query, 1)
 
           path.write_text(text)
-
-          workflow = Path('.github/workflows/zz-finish-cubemap-preview.yml')
-          if workflow.exists():
-              workflow.unlink()
-
+          Path('.github/workflows/zz-finish-cubemap-preview.yml').unlink()
+          PY
       - name: Commit wiring
         run: |
           git config user.name "github-actions[bot]"
