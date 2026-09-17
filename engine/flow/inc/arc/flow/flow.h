@@ -199,7 +199,7 @@ struct switch_int_table
     std::array<std::int64_t, 4> values{};
     // Targets 0..3 correspond to values 0..3. Target 4 is Default.
     std::array<std::uint32_t, 5> instructions{invalid_instruction, invalid_instruction, invalid_instruction,
-                                               invalid_instruction, invalid_instruction};
+                                              invalid_instruction, invalid_instruction};
 };
 
 struct ir_program

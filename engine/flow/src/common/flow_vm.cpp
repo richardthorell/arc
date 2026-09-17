@@ -680,8 +680,8 @@ execution_result execute_chain(const bytecode_program& program, std::vector<flow
             }
             case bytecode_opcode::sequence:
             {
-                const std::array<std::uint32_t, 4> targets{
-                    current.operand0, current.operand1, current.operand2, current.operand3};
+                const std::array<std::uint32_t, 4> targets{current.operand0, current.operand1, current.operand2,
+                                                           current.operand3};
                 for (const std::uint32_t target : targets)
                     if (!run_nested(target)) return result;
                 instruction = invalid_instruction;
@@ -784,8 +784,7 @@ execution_result execute_chain(const bytecode_program& program, std::vector<flow
                         if (index == last) break;
                         if (result.instructions_executed >= instruction_budget)
                         {
-                            stop_execution(result, execution_status::instruction_budget_exceeded, program,
-                                           instruction);
+                            stop_execution(result, execution_status::instruction_budget_exceeded, program, instruction);
                             return result;
                         }
                         ++result.instructions_executed;

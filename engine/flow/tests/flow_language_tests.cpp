@@ -203,8 +203,7 @@ void test_sequence_and_switch_bytecode()
     switch_program.variables = {
         {.id = "result", .name = "Result", .type = value_type::integer, .default_value = std::int64_t{0}}};
     switch_program.value_slots = {int_slot(3), int_slot(10), int_slot(20), int_slot(30), int_slot(40), int_slot(99)};
-    switch_program.switch_int_tables.push_back(
-        {.values = {1, 2, 3, 4}, .instructions = {1, 2, 3, 4, 5}});
+    switch_program.switch_int_tables.push_back({.values = {1, 2, 3, 4}, .instructions = {1, 2, 3, 4, 5}});
     switch_program.entry_points.push_back({.kind = entry_point_kind::begin_play, .instruction = 0});
     switch_program.instructions = {
         {.opcode = bytecode_opcode::switch_integer, .operand0 = 0, .operand1 = 0},

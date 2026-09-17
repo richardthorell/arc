@@ -232,11 +232,7 @@ export const flowNodeDefinitions: Record<FlowNodeType, FlowNodeDefinition> = {
     category: 'Flow Control',
     subcategory: 'Looping',
     inputs: [execution('exec', 'In'), value('first', 'First', 'int'), value('last', 'Last', 'int')],
-    outputs: [
-      execution('loopBody', 'Loop Body'),
-      execution('completed', 'Completed'),
-      value('index', 'Index', 'int'),
-    ],
+    outputs: [execution('loopBody', 'Loop Body'), execution('completed', 'Completed'), value('index', 'Index', 'int')],
   },
   whileLoop: {
     type: 'whileLoop',
