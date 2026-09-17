@@ -3,7 +3,17 @@ import path from 'node:path';
 
 import type { ArcProjectCandidate } from '../common/projectTypes';
 
-export const supportedTextureExtensions = new Set(['.bmp', '.exr', '.hdr', '.jpeg', '.jpg', '.png', '.tga', '.webp']);
+export const supportedTextureExtensions = new Set([
+  '.bmp',
+  '.exr',
+  '.hdr',
+  '.jpeg',
+  '.jpg',
+  '.png',
+  '.psd',
+  '.tga',
+  '.webp',
+]);
 
 export type ExternalTextureImportResult = {
   path: string;
