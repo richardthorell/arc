@@ -129,6 +129,7 @@ std::string mime_type_for_path(const std::filesystem::path& path)
     const auto ext = lowercase(path.extension().string());
     if (ext == ".png") return "image/png";
     if (ext == ".jpg" || ext == ".jpeg") return "image/jpeg";
+    if (ext == ".psd") return "image/vnd.adobe.photoshop";
     if (ext == ".tga") return "image/tga";
     if (ext == ".hdr") return "image/vnd.radiance";
     if (ext == ".exr") return "image/x-exr";
@@ -663,8 +664,8 @@ jobs::job_future<texture_load_result> load_texture_asset_async(io::async_file_se
 bool is_supported_texture_asset(const std::filesystem::path& path)
 {
     const auto ext = lowercase(path.extension().string());
-    return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp" || ext == ".hdr" ||
-           ext == ".exr" || ext == ".dds";
+    return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".psd" || ext == ".tga" || ext == ".bmp" ||
+           ext == ".hdr" || ext == ".exr" || ext == ".dds";
 }
 
 } // namespace arc::render
