@@ -168,7 +168,8 @@ void test_compiler_emits_variable_math_prelude()
     [[maybe_unused]] const bytecode_instruction& add_instruction = compiled.bytecode->instructions[entry_instruction];
     assert(add_instruction.opcode == bytecode_opcode::add);
     assert(add_instruction.operand3 < compiled.bytecode->instructions.size());
-    [[maybe_unused]] const bytecode_instruction& store_instruction = compiled.bytecode->instructions[add_instruction.operand3];
+    [[maybe_unused]] const bytecode_instruction& store_instruction =
+        compiled.bytecode->instructions[add_instruction.operand3];
     assert(store_instruction.opcode == bytecode_opcode::store_variable);
 
     vm_instance instance{*compiled.bytecode};
