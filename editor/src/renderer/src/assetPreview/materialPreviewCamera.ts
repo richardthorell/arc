@@ -57,7 +57,10 @@ export function clampMaterialPreviewOrbitY(
 }
 
 /** Keep the current pitch valid after dolly distance changes, returning the orbit correction needed by the host. */
-export function constrainMaterialPreviewPitchToFloor(currentPitch: number, currentDistance: number): MaterialPreviewOrbit {
+export function constrainMaterialPreviewPitchToFloor(
+  currentPitch: number,
+  currentDistance: number,
+): MaterialPreviewOrbit {
   const pitch = Number.isFinite(currentPitch) ? currentPitch : materialPreviewInitialCameraPitch;
   const nextPitch = Math.min(pitch, materialPreviewMaximumPitchForDistance(currentDistance));
   return {

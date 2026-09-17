@@ -54,7 +54,8 @@ std::optional<std::filesystem::path> arc_material_preview_environment_path()
     if (source_path.is_absolute())
     {
         auto source_root = source_path;
-        for (int depth = 0; depth < 4; ++depth) source_root = source_root.parent_path();
+        for (int depth = 0; depth < 4; ++depth)
+            source_root = source_root.parent_path();
         if (const auto path = available(source_root / relative)) return path;
     }
 
