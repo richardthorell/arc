@@ -2,12 +2,16 @@
 #include <arc/editor/editor_interaction.h>
 #include <arc/editor/editor_state.h>
 #include <arc/editor/viewport_render_stats.h>
+#include <arc/diagnostics/log.h>
 #include <arc/geometric/box.h>
+#include <arc/render/render.h>
 #include <arc/scene/scene.h>
 
 #include <algorithm>
 #include <array>
+#include <filesystem>
 #include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -18,6 +22,7 @@ namespace arc::editor
 namespace
 {
 constexpr std::string_view arc_material_preview_scene_name = "Asset Preview: material";
+constexpr std::string_view arc_material_preview_environment_name = "material_preview_studio_4k.exr";
 
 struct arc_material_preview_panel
 {
@@ -26,7 +31,111 @@ struct arc_material_preview_panel
     math::vector3f scale;
 };
 
-std::unordered_map<editor_scene_state*, render::mesh_handle> arc_material_preview_room_meshes;
+struct arc_material_preview_resources
+{
+    render::mesh_handle room_mesh{};
+    render::texture_handle environment_texture{};
+    render::environment_handle environment{};
+};
+
+std::unordered_map<editor_scene_state*, arc_material_preview_resources> arc_material_preview_scene_resources;
+
+std::optional<std::filesystem::path> arc_material_preview_environment_path()
+{
+    const auto relative = std::filesystem::path{"assets"} / "environments" / arc_material_preview_environment_name;
+    const auto available = [](const std::filesystem::path& candidate) -> std::optional<std::filesystem::path>
+    {
+        std::error_code error;
+        if (!std::filesystem::is_regular_file(candidate, error) || error) return std::nullopt;
+        return candidate.lexically_normal();
+    };
+
+    std::filesystem::path source_path{__FILE__};
+    if (source_path.is_absolute())
+    {
+        auto source_root = source_path;
+        for (int depth = 0; depth < 4; ++depth) source_root = source_root.parent_path();
+        if (const auto path = available(source_root / relative)) return path;
+    }
+
+    std::error_code error;
+    auto current = std::filesystem::current_path(error);
+    if (error) return std::nullopt;
+    for (int depth = 0; depth < 8; ++depth)
+    {
+        if (const auto path = available(current / relative)) return path;
+        const auto parent = current.parent_path();
+        if (parent.empty() || parent == current) break;
+        current = parent;
+    }
+    return std::nullopt;
+}
+
+bool arc_configure_material_preview_environment(editor_scene_state& state, render::renderer& renderer,
+                                                arc_material_preview_resources& resources)
+{
+    if (resources.environment_texture.valid()) return true;
+
+    const auto path = arc_material_preview_environment_path();
+    if (!path)
+    {
+        arc::diagnostics::warn("editor.materials", "Material preview HDRI is unavailable; using the neutral fallback");
+        return false;
+    }
+
+    auto loaded = render::load_texture_asset(*path);
+    if (!loaded.succeeded())
+    {
+        arc::diagnostics::warn("editor.materials", "Material preview HDRI failed to decode: " + loaded.message);
+        return false;
+    }
+    loaded.texture.name = "Material Preview Studio HDRI";
+    const auto texture = renderer.create_texture(std::move(loaded.texture));
+    if (!texture.valid())
+    {
+        arc::diagnostics::warn("editor.materials", "Material preview HDRI could not be uploaded");
+        return false;
+    }
+
+    const auto environment_entity = add_world_environment_to_scene(state);
+    auto* world = state.scene.try_get<scene::world_environment_component>(environment_entity);
+    auto* lighting = state.scene.try_get<scene::environment_lighting_component>(environment_entity);
+    if (!world || !lighting)
+    {
+        (void)renderer.destroy_texture(texture);
+        return false;
+    }
+
+    world->enabled = true;
+    world->sky_visible = true;
+    world->affect_lighting = true;
+    world->source = scene::sky_source::hdri;
+    world->hdri_texture = texture;
+    world->radiance_intensity = 1.0f;
+
+    lighting->enabled = true;
+    lighting->source = scene::environment_lighting_source::hdri;
+    lighting->hdri_texture = texture;
+
+    render::environment_descriptor environment;
+    environment.name = "Material Preview Studio Environment";
+    environment.equirectangular_texture = texture;
+    environment.fallback_color = world->solid_color;
+    environment.intensity = world->radiance_intensity;
+    environment.diffuse_irradiance = lighting->constant_color;
+    environment.diffuse_intensity = lighting->diffuse_intensity;
+    const auto environment_handle = renderer.create_environment(std::move(environment));
+    if (environment_handle.valid())
+    {
+        lighting->environment = environment_handle;
+        state.environment_lighting_resource = environment_handle;
+    }
+
+    resources.environment_texture = texture;
+    resources.environment = environment_handle;
+    state.world_environment_hdri_path = std::filesystem::path{"environments"} / arc_material_preview_environment_name;
+    return true;
+}
 
 void arc_configure_material_preview_panel(editor_scene_state& state, ecs::entity entity,
                                           const arc_material_preview_panel& panel)
@@ -71,8 +180,11 @@ ecs::entity arc_material_preview_add_primitive(editor_scene_state& state, render
 {
     const auto entity = add_primitive_to_scene(state, renderer, type);
     if (type != editor_primitive_type::sphere || state.scene_name != arc_material_preview_scene_name ||
-        !state.scene.alive(entity) || arc_material_preview_room_meshes.contains(&state))
+        !state.scene.alive(entity) || arc_material_preview_scene_resources.contains(&state))
         return entity;
+
+    auto& resources = arc_material_preview_scene_resources[&state];
+    (void)arc_configure_material_preview_environment(state, renderer, resources);
 
     // The material sphere has a 0.5-unit radius. Keep its center at the orbit
     // pivot and place the studio floor at y=-0.5 so it physically rests on it.
@@ -87,7 +199,7 @@ ecs::entity arc_material_preview_add_primitive(editor_scene_state& state, render
     if (!state.scene.alive(room_template)) return entity;
     const auto* room_renderer = state.scene.try_get<scene::mesh_renderer_component>(room_template);
     if (!room_renderer || !room_renderer->mesh.valid()) return entity;
-    arc_material_preview_room_meshes[&state] = room_renderer->mesh;
+    resources.room_mesh = room_renderer->mesh;
 
     constexpr std::array<arc_material_preview_panel, 5> panels{{
         {"Material Preview Floor",
@@ -115,16 +227,21 @@ ecs::entity arc_material_preview_add_primitive(editor_scene_state& state, render
 
 void arc_clear_preview_imported_content(editor_scene_state& state, render::renderer& renderer)
 {
-    render::mesh_handle room_mesh{};
-    if (const auto found = arc_material_preview_room_meshes.find(&state);
-        found != arc_material_preview_room_meshes.end())
+    arc_material_preview_resources resources{};
+    if (const auto found = arc_material_preview_scene_resources.find(&state);
+        found != arc_material_preview_scene_resources.end())
     {
-        room_mesh = found->second;
-        arc_material_preview_room_meshes.erase(found);
+        resources = found->second;
+        arc_material_preview_scene_resources.erase(found);
     }
 
     clear_imported_scene_content(state, renderer);
-    if (room_mesh.valid() && renderer.mesh_alive(room_mesh)) (void)renderer.destroy_mesh(room_mesh);
+    if (resources.room_mesh.valid() && renderer.mesh_alive(resources.room_mesh))
+        (void)renderer.destroy_mesh(resources.room_mesh);
+    if (resources.environment.valid() && renderer.environment_alive(resources.environment))
+        (void)renderer.destroy_environment(resources.environment);
+    if (resources.environment_texture.valid() && renderer.texture_alive(resources.environment_texture))
+        (void)renderer.destroy_texture(resources.environment_texture);
 }
 
 bool arc_model_preview_focus(const ecs::world& registry, ecs::entity selected,
