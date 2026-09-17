@@ -7,6 +7,7 @@
 #if defined(ARC_RENDER_HAS_TINYEXR) && defined(ARC_RENDER_HAS_STB)
 #if defined(_MSC_VER)
 #pragma warning(push)
+// Third-party TinyEXR/STB code triggers unreachable-code and legacy sprintf warnings under MSVC /WX.
 #pragma warning(disable : 4702 4996)
 #endif
 #define STB_IMAGE_WRITE_IMPLEMENTATION
