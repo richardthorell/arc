@@ -1,7 +1,17 @@
 import type { GraphConnectionLike, GraphNodeDefinition, GraphNodeLike, GraphPoint, GraphViewport } from '../graph';
 
 export type FlowValueType =
-  'bool' | 'int' | 'float' | 'vec2' | 'vec3' | 'vec4' | 'string' | 'name' | 'entity' | 'component' | 'any';
+  | 'bool'
+  | 'int'
+  | 'float'
+  | 'vec2'
+  | 'vec3'
+  | 'vec4'
+  | 'string'
+  | 'name'
+  | 'entity'
+  | 'component'
+  | 'any';
 
 export type FlowPinType =
   | { kind: 'execution' }
@@ -32,13 +42,55 @@ export type FlowNodeType =
   | 'getTransform'
   | 'setTransform'
   | 'boolLiteral'
+  | 'intLiteral'
+  | 'floatLiteral'
+  | 'vector2Literal'
   | 'stringLiteral'
   | 'vector3Literal'
-  | 'vector4Literal';
+  | 'vector4Literal'
+  | 'getVariable'
+  | 'setVariable'
+  | 'add'
+  | 'subtract'
+  | 'multiply'
+  | 'divide'
+  | 'compare'
+  | 'boolAnd'
+  | 'boolOr'
+  | 'boolNot'
+  | 'vectorDot'
+  | 'vectorLength'
+  | 'vectorNormalize'
+  | 'vectorScale'
+  | 'select'
+  | 'convertNumber';
 
-export type FlowNodeCategory = 'Events' | 'Input' | 'Flow Control' | 'Entity' | 'Components' | 'Values';
+export type FlowNodeCategory =
+  | 'Events'
+  | 'Input'
+  | 'Flow Control'
+  | 'Entity'
+  | 'Components'
+  | 'Values'
+  | 'Variables'
+  | 'Math';
 export type FlowNodeSubcategory =
-  'Lifecycle' | 'Update' | 'Actions' | 'Branching' | 'Identity' | 'Lifetime' | 'State' | 'Transform' | 'Literals';
+  | 'Lifecycle'
+  | 'Update'
+  | 'Actions'
+  | 'Branching'
+  | 'Identity'
+  | 'Lifetime'
+  | 'State'
+  | 'Transform'
+  | 'Literals'
+  | 'Access'
+  | 'Arithmetic'
+  | 'Comparison'
+  | 'Boolean'
+  | 'Vector'
+  | 'Selection'
+  | 'Conversion';
 
 export type FlowGraphNode = GraphNodeLike<FlowNodeType> & {
   values: Record<string, unknown>;
@@ -71,6 +123,8 @@ export type FlowAssetJson = {
   graph: FlowGraph;
 };
 
+export type FlowNodeDefinition = GraphNodeDefinition<FlowNodeType, FlowPinType, FlowNodeCategory, FlowNodeSubcategory>;
+
 const execution = (id: string, label: string) => ({ id, label, type: { kind: 'execution' } as FlowPinType });
 const value = (id: string, label: string, valueType: FlowValueType) => ({
   id,
@@ -78,10 +132,7 @@ const value = (id: string, label: string, valueType: FlowValueType) => ({
   type: { kind: 'value', valueType } as FlowPinType,
 });
 
-export const flowNodeDefinitions: Record<
-  FlowNodeType,
-  GraphNodeDefinition<FlowNodeType, FlowPinType, FlowNodeCategory, FlowNodeSubcategory>
-> = {
+export const flowNodeDefinitions: Record<FlowNodeType, FlowNodeDefinition> = {
   beginPlay: {
     type: 'beginPlay',
     title: 'Begin Play',
@@ -265,6 +316,30 @@ export const flowNodeDefinitions: Record<
     inputs: [],
     outputs: [value('value', 'Value', 'bool')],
   },
+  intLiteral: {
+    type: 'intLiteral',
+    title: 'Integer',
+    category: 'Values',
+    subcategory: 'Literals',
+    inputs: [],
+    outputs: [value('value', 'Value', 'int')],
+  },
+  floatLiteral: {
+    type: 'floatLiteral',
+    title: 'Float',
+    category: 'Values',
+    subcategory: 'Literals',
+    inputs: [],
+    outputs: [value('value', 'Value', 'float')],
+  },
+  vector2Literal: {
+    type: 'vector2Literal',
+    title: 'Vector2',
+    category: 'Values',
+    subcategory: 'Literals',
+    inputs: [],
+    outputs: [value('value', 'Value', 'vec2')],
+  },
   stringLiteral: {
     type: 'stringLiteral',
     title: 'String',
@@ -289,6 +364,183 @@ export const flowNodeDefinitions: Record<
     inputs: [],
     outputs: [value('value', 'Value', 'vec4')],
   },
+  getVariable: {
+    type: 'getVariable',
+    title: 'Get Variable',
+    category: 'Variables',
+    subcategory: 'Access',
+    inputs: [],
+    outputs: [value('value', 'Value', 'any')],
+  },
+  setVariable: {
+    type: 'setVariable',
+    title: 'Set Variable',
+    category: 'Variables',
+    subcategory: 'Access',
+    inputs: [execution('exec', 'In'), value('value', 'Value', 'any')],
+    outputs: [execution('then', 'Then')],
+  },
+  add: {
+    type: 'add',
+    title: 'Add',
+    category: 'Math',
+    subcategory: 'Arithmetic',
+    inputs: [value('a', 'A', 'any'), value('b', 'B', 'any')],
+    outputs: [value('value', 'Value', 'any')],
+  },
+  subtract: {
+    type: 'subtract',
+    title: 'Subtract',
+    category: 'Math',
+    subcategory: 'Arithmetic',
+    inputs: [value('a', 'A', 'any'), value('b', 'B', 'any')],
+    outputs: [value('value', 'Value', 'any')],
+  },
+  multiply: {
+    type: 'multiply',
+    title: 'Multiply',
+    category: 'Math',
+    subcategory: 'Arithmetic',
+    inputs: [value('a', 'A', 'any'), value('b', 'B', 'any')],
+    outputs: [value('value', 'Value', 'any')],
+  },
+  divide: {
+    type: 'divide',
+    title: 'Divide',
+    category: 'Math',
+    subcategory: 'Arithmetic',
+    inputs: [value('a', 'A', 'any'), value('b', 'B', 'any')],
+    outputs: [value('value', 'Value', 'any')],
+  },
+  compare: {
+    type: 'compare',
+    title: 'Compare',
+    category: 'Math',
+    subcategory: 'Comparison',
+    inputs: [value('a', 'A', 'any'), value('b', 'B', 'any')],
+    outputs: [value('result', 'Result', 'bool')],
+  },
+  boolAnd: {
+    type: 'boolAnd',
+    title: 'AND',
+    category: 'Math',
+    subcategory: 'Boolean',
+    inputs: [value('a', 'A', 'bool'), value('b', 'B', 'bool')],
+    outputs: [value('result', 'Result', 'bool')],
+  },
+  boolOr: {
+    type: 'boolOr',
+    title: 'OR',
+    category: 'Math',
+    subcategory: 'Boolean',
+    inputs: [value('a', 'A', 'bool'), value('b', 'B', 'bool')],
+    outputs: [value('result', 'Result', 'bool')],
+  },
+  boolNot: {
+    type: 'boolNot',
+    title: 'NOT',
+    category: 'Math',
+    subcategory: 'Boolean',
+    inputs: [value('value', 'Value', 'bool')],
+    outputs: [value('result', 'Result', 'bool')],
+  },
+  vectorDot: {
+    type: 'vectorDot',
+    title: 'Dot Product',
+    category: 'Math',
+    subcategory: 'Vector',
+    inputs: [value('a', 'A', 'any'), value('b', 'B', 'any')],
+    outputs: [value('value', 'Value', 'float')],
+  },
+  vectorLength: {
+    type: 'vectorLength',
+    title: 'Vector Length',
+    category: 'Math',
+    subcategory: 'Vector',
+    inputs: [value('value', 'Vector', 'any')],
+    outputs: [value('value', 'Length', 'float')],
+  },
+  vectorNormalize: {
+    type: 'vectorNormalize',
+    title: 'Normalize',
+    category: 'Math',
+    subcategory: 'Vector',
+    inputs: [value('value', 'Vector', 'any')],
+    outputs: [value('value', 'Value', 'any')],
+  },
+  vectorScale: {
+    type: 'vectorScale',
+    title: 'Scale Vector',
+    category: 'Math',
+    subcategory: 'Vector',
+    inputs: [value('vector', 'Vector', 'any'), value('scale', 'Scale', 'float')],
+    outputs: [value('value', 'Value', 'any')],
+  },
+  select: {
+    type: 'select',
+    title: 'Select',
+    category: 'Flow Control',
+    subcategory: 'Selection',
+    inputs: [value('condition', 'Condition', 'bool'), value('trueValue', 'True', 'any'), value('falseValue', 'False', 'any')],
+    outputs: [value('value', 'Value', 'any')],
+  },
+  convertNumber: {
+    type: 'convertNumber',
+    title: 'Convert Number',
+    category: 'Math',
+    subcategory: 'Conversion',
+    inputs: [value('value', 'Value', 'any')],
+    outputs: [value('value', 'Value', 'any')],
+  },
+};
+
+const concreteFlowValueTypes = new Set<FlowValueType>([
+  'bool',
+  'int',
+  'float',
+  'vec2',
+  'vec3',
+  'vec4',
+  'string',
+  'name',
+  'entity',
+  'component',
+]);
+
+const nodeConfiguredType = (node: FlowGraphNode): FlowValueType => {
+  if (node.type === 'getVariable' || node.type === 'setVariable') {
+    const type = node.values.variableType;
+    return typeof type === 'string' && concreteFlowValueTypes.has(type as FlowValueType) ? (type as FlowValueType) : 'any';
+  }
+  const type = node.values.valueType;
+  return typeof type === 'string' && concreteFlowValueTypes.has(type as FlowValueType) ? (type as FlowValueType) : 'any';
+};
+
+export const resolveFlowNodeDefinition = (node: FlowGraphNode): FlowNodeDefinition => {
+  const definition = flowNodeDefinitions[node.type];
+  let inputType = nodeConfiguredType(node);
+  let outputType = inputType;
+
+  if (node.type === 'convertNumber') {
+    if (node.values.conversion === 'floatToInt') {
+      inputType = 'float';
+      outputType = 'int';
+    } else {
+      inputType = 'int';
+      outputType = 'float';
+    }
+  }
+
+  const resolvePin = (pin: (typeof definition.inputs)[number], direction: 'input' | 'output') => {
+    if (pin.type.kind !== 'value' || pin.type.valueType !== 'any') return pin;
+    return { ...pin, type: { kind: 'value', valueType: direction === 'input' ? inputType : outputType } as FlowPinType };
+  };
+
+  return {
+    ...definition,
+    inputs: definition.inputs.map((pin) => resolvePin(pin, 'input')),
+    outputs: definition.outputs.map((pin) => resolvePin(pin, 'output')),
+  };
 };
 
 let generatedId = 0;
@@ -305,12 +557,36 @@ const defaultNodeValues = (type: FlowNodeType): Record<string, unknown> => {
       return { component: 'transform' };
     case 'boolLiteral':
       return { value: false };
+    case 'intLiteral':
+    case 'floatLiteral':
+      return { value: 0 };
+    case 'vector2Literal':
+      return { value: [0, 0] };
     case 'stringLiteral':
       return { value: '' };
     case 'vector3Literal':
       return { value: [0, 0, 0] };
     case 'vector4Literal':
       return { value: [0, 0, 0, 1] };
+    case 'getVariable':
+    case 'setVariable':
+      return { variableId: '', variableType: 'float' };
+    case 'add':
+    case 'subtract':
+    case 'multiply':
+    case 'divide':
+      return { valueType: 'float' };
+    case 'compare':
+      return { valueType: 'float', operator: 'equal' };
+    case 'vectorDot':
+    case 'vectorLength':
+    case 'vectorNormalize':
+    case 'vectorScale':
+      return { valueType: 'vec3' };
+    case 'select':
+      return { valueType: 'float' };
+    case 'convertNumber':
+      return { conversion: 'intToFloat' };
     default:
       return {};
   }
@@ -398,8 +674,7 @@ export const isFlowGraph = (value: unknown): value is FlowGraph => {
   if (!value || typeof value !== 'object') return false;
   const graph = value as Partial<FlowGraph>;
   if (graph.version !== 1 || !Array.isArray(graph.nodes) || !Array.isArray(graph.connections)) return false;
-  if (!Array.isArray(graph.variables) || !graph.variables.every(isVariable) || !isViewport(graph.viewport))
-    return false;
+  if (!Array.isArray(graph.variables) || !graph.variables.every(isVariable) || !isViewport(graph.viewport)) return false;
 
   const nodeIds = new Set<string>();
   for (const node of graph.nodes) {
@@ -436,9 +711,7 @@ export const isFlowGraph = (value: unknown): value is FlowGraph => {
 export const isFlowAssetJson = (value: unknown): value is FlowAssetJson => {
   if (!value || typeof value !== 'object') return false;
   const asset = value as Partial<FlowAssetJson>;
-  return (
-    asset.version === 1 && asset.assetType === 'flow' && typeof asset.name === 'string' && isFlowGraph(asset.graph)
-  );
+  return asset.version === 1 && asset.assetType === 'flow' && typeof asset.name === 'string' && isFlowGraph(asset.graph);
 };
 
 export const flowGraphFromAsset = (asset: FlowAssetJson): FlowGraph => {
