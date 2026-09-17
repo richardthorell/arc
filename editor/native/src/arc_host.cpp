@@ -37,9 +37,9 @@ struct arc_material_preview_resources
     render::environment_handle environment{};
 };
 
-// The macro around arc_host_impl.inc passes a local viewport `surface` when one
-// exists. Other primitive call sites resolve this fallback instead, so only
-// material-preview construction consumes the optional surface-id mesh token.
+// Some add_primitive_to_scene call sites in arc_host_impl.inc do not have a
+// local viewport surface. They resolve this fallback while the actual asset
+// preview call supplies viewport_surface_registry::surface_state.
 struct arc_material_preview_surface_fallback
 {
 };
@@ -159,58 +159,8 @@ void arc_configure_material_preview_panel(editor_scene_state& state, ecs::entity
 }
 
 template <class SurfaceHint>
-editor_primitive_type arc_material_preview_primitive_type(const editor_scene_state& state, editor_primitive_type type,
-                                                          const SurfaceHint& surface_hint)
-{
-    if (type != editor_primitive_type::sphere || state.scene_name != arc_material_preview_scene_name) return type;
-
-    if constexpr (requires { surface_hint.options.viewport_id; })
-    {
-        const std::string_view viewport_id{surface_hint.options.viewport_id};
-        const auto selector = viewport_id.find('~');
-        if (selector != std::string_view::npos)
-        {
-            const auto token = viewport_id.substr(selector + 1);
-            if (token.starts_with("cube")) return editor_primitive_type::cube;
-            if (token.starts_with("pill")) return editor_primitive_type::capsule;
-        }
-    }
-    return type;
-}
-
-template <class SurfaceHint>
 ecs::entity arc_material_preview_add_primitive(editor_scene_state& state, render::renderer& renderer,
-                                               editor_primitive_type type, const SurfaceHint& surface_hint)
-{
-    const auto preview_type = arc_material_preview_primitive_type(state, type, surface_hint);
-    const auto entity = add_primitive_to_scene(state, renderer, preview_type);
-    if (type != editor_primitive_type::sphere || state.scene_name != arc_material_preview_scene_name ||
-        !state.scene.alive(entity) || arc_material_preview_scene_resources.contains(&state))
-        return entity;
-
-    auto& resources = arc_material_preview_scene_resources[&state];
-    (void)arc_configure_material_preview_environment(state, renderer, resources);
-
-    // Keep one neutral ground plane for useful contact/shadows, but leave the
-    // sides/back/ceiling open so the HDRI is visible as the actual backdrop.
-    constexpr float half_extent = 4.0f;
-    constexpr float panel_thickness = 0.10f;
-    constexpr float floor_surface_y = -0.5f;
-
-    const auto floor = add_primitive_to_scene(state, renderer, editor_primitive_type::cube);
-    if (!state.scene.alive(floor)) return entity;
-    const auto* floor_renderer = state.scene.try_get<scene::mesh_renderer_component>(floor);
-    if (!floor_renderer || !floor_renderer->mesh.valid()) return entity;
-    resources.room_mesh = floor_renderer->mesh;
-
-    constexpr arc_material_preview_panel floor_panel{
-        "Material Preview Floor",
-        {0.0f, floor_surface_y - panel_thickness * 0.5f, 0.0f},
-        {half_extent * 2.0f, panel_thickness, half_extent * 2.0f},
-    };
-    arc_configure_material_preview_panel(state, floor, floor_panel);
-    return entity;
-}
+                                               editor_primitive_type type, const SurfaceHint& surface_hint);
 
 void arc_clear_preview_imported_content(editor_scene_state& state, render::renderer& renderer)
 {
@@ -349,3 +299,67 @@ void arc_append_model_preview_metadata(nlohmann::json& payload, const editor_sce
 #undef focus_selected_entity
 #undef clear_imported_scene_content
 #undef add_primitive_to_scene
+
+namespace arc::editor
+{
+namespace
+{
+std::string_view arc_material_preview_viewport_id(const viewport_surface_registry::surface_state& surface_state)
+{
+    return surface_state.options.viewport_id;
+}
+
+template <class SurfaceHint> std::string_view arc_material_preview_viewport_id(const SurfaceHint&)
+{
+    return {};
+}
+
+editor_primitive_type arc_material_preview_primitive_type(std::string_view viewport_id, editor_primitive_type fallback)
+{
+    const auto selector = viewport_id.find('~');
+    if (selector == std::string_view::npos) return fallback;
+
+    const auto token = viewport_id.substr(selector + 1);
+    if (token.starts_with("cube")) return editor_primitive_type::cube;
+    if (token.starts_with("pill")) return editor_primitive_type::capsule;
+    return fallback;
+}
+
+template <class SurfaceHint>
+ecs::entity arc_material_preview_add_primitive(editor_scene_state& state, render::renderer& renderer,
+                                               editor_primitive_type type, const SurfaceHint& surface_hint)
+{
+    auto preview_type = type;
+    if (type == editor_primitive_type::sphere && state.scene_name == arc_material_preview_scene_name)
+        preview_type = arc_material_preview_primitive_type(arc_material_preview_viewport_id(surface_hint), type);
+
+    const auto entity = add_primitive_to_scene(state, renderer, preview_type);
+    if (state.scene_name != arc_material_preview_scene_name || !state.scene.alive(entity) ||
+        arc_material_preview_scene_resources.contains(&state))
+        return entity;
+
+    auto& resources = arc_material_preview_scene_resources[&state];
+    (void)arc_configure_material_preview_environment(state, renderer, resources);
+
+    // Keep one neutral ground plane for useful contact/shadows, but leave the
+    // sides/back/ceiling open so the HDRI is visible as the actual backdrop.
+    constexpr float half_extent = 4.0f;
+    constexpr float panel_thickness = 0.10f;
+    constexpr float floor_surface_y = -0.5f;
+
+    const auto floor = add_primitive_to_scene(state, renderer, editor_primitive_type::cube);
+    if (!state.scene.alive(floor)) return entity;
+    const auto* floor_renderer = state.scene.try_get<scene::mesh_renderer_component>(floor);
+    if (!floor_renderer || !floor_renderer->mesh.valid()) return entity;
+    resources.room_mesh = floor_renderer->mesh;
+
+    constexpr arc_material_preview_panel floor_panel{
+        "Material Preview Floor",
+        {0.0f, floor_surface_y - panel_thickness * 0.5f, 0.0f},
+        {half_extent * 2.0f, panel_thickness, half_extent * 2.0f},
+    };
+    arc_configure_material_preview_panel(state, floor, floor_panel);
+    return entity;
+}
+} // namespace
+} // namespace arc::editor
