@@ -2,6 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent, ReactNode, WheelEvent } from 'react';
 
 import { normalizeViewportWheel } from '../viewport/viewportWheel';
+import {
+  clampMaterialPreviewOrbitY,
+  clampMaterialPreviewZoom,
+  constrainMaterialPreviewPitchToFloor,
+  materialPreviewDefaultCameraDistance,
+  materialPreviewInitialCameraPitch,
+  materialPreviewInitialZoom,
+  materialPreviewNativeCameraDistance,
+} from './materialPreviewCamera';
 
 import './AssetPreviewViewport.css';
 
@@ -135,6 +144,8 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
   const resizeInFlightRef = useRef(false);
   const pendingBoundsRef = useRef<ViewportBounds | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const materialCameraDistanceRef = useRef(materialPreviewNativeCameraDistance);
+  const materialCameraPitchRef = useRef(materialPreviewInitialCameraPitch);
   const onStateRef = useRef(onState);
   const [streamed, setStreamed] = useState(false);
   const [error, setError] = useState('');
@@ -280,6 +291,16 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
           })) as ViewportCommandResponse | undefined;
           if (configured?.succeeded === false)
             throw new Error(configured.error || 'Material preview render options were rejected');
+
+          materialCameraDistanceRef.current = materialPreviewNativeCameraDistance;
+          materialCameraPitchRef.current = materialPreviewInitialCameraPitch;
+          const framed = (await window.arc.viewport.cameraInput({
+            viewportId,
+            zoom: materialPreviewInitialZoom,
+          })) as ViewportCommandResponse | undefined;
+          if (framed?.succeeded === false)
+            throw new Error(framed.error || 'Material preview camera framing was rejected');
+          materialCameraDistanceRef.current = materialPreviewDefaultCameraDistance;
           return created;
         })) as ViewportCommandResponse | undefined;
         if (response?.succeeded === false) throw new Error(response.error || 'Asset preview surface was rejected');
@@ -306,6 +327,8 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
       pendingBoundsRef.current = null;
       lastBoundsRef.current = '';
       lastPreviewErrorRef.current = '';
+      materialCameraDistanceRef.current = materialPreviewNativeCameraDistance;
+      materialCameraPitchRef.current = materialPreviewInitialCameraPitch;
       if (attachedRef.current) {
         console.info('[material-flow] asset preview viewport detaching', { kind, viewportId, guid: normalizedGuid });
         void traceViewportState('before-detach');
@@ -327,13 +350,25 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
     const drag = dragRef.current;
     if (!attachedRef.current || !drag || drag.pointerId !== event.pointerId) return;
     const orbitX = event.clientX - drag.x;
-    const orbitY = event.clientY - drag.y;
+    let orbitY = event.clientY - drag.y;
     drag.x = event.clientX;
     drag.y = event.clientY;
+
+    const previousMaterialPitch = materialCameraPitchRef.current;
+    let nextMaterialPitch: number | undefined;
+    if (kind === 'material') {
+      const clamped = clampMaterialPreviewOrbitY(previousMaterialPitch, materialCameraDistanceRef.current, orbitY);
+      orbitY = clamped.orbitY;
+      nextMaterialPitch = clamped.pitch;
+      materialCameraPitchRef.current = clamped.pitch;
+    }
+
     if (orbitX === 0 && orbitY === 0) return;
-    void window.arc.viewport
-      .cameraInput({ viewportId, orbitX, orbitY })
-      .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
+    void window.arc.viewport.cameraInput({ viewportId, orbitX, orbitY }).catch((reason) => {
+      if (kind === 'material' && nextMaterialPitch === materialCameraPitchRef.current)
+        materialCameraPitchRef.current = previousMaterialPitch;
+      setError(reason instanceof Error ? reason.message : String(reason));
+    });
   };
 
   const finishPointer = (event: PointerEvent<HTMLDivElement>) => {
@@ -345,11 +380,34 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (!attachedRef.current) return;
     event.preventDefault();
-    const zoom = normalizeViewportWheel(event.deltaY, event.deltaMode);
+    let zoom = normalizeViewportWheel(event.deltaY, event.deltaMode);
     if (!zoom) return;
-    void window.arc.viewport
-      .cameraInput({ viewportId, zoom })
-      .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
+
+    const previousMaterialDistance = materialCameraDistanceRef.current;
+    const previousMaterialPitch = materialCameraPitchRef.current;
+    let nextMaterialDistance: number | undefined;
+    let nextMaterialPitch: number | undefined;
+    let orbitY = 0;
+    if (kind === 'material') {
+      const clamped = clampMaterialPreviewZoom(previousMaterialDistance, zoom);
+      zoom = clamped.zoom;
+      nextMaterialDistance = clamped.distance;
+      if (!zoom) return;
+      materialCameraDistanceRef.current = clamped.distance;
+
+      const floorConstrained = constrainMaterialPreviewPitchToFloor(previousMaterialPitch, clamped.distance);
+      orbitY = floorConstrained.orbitY;
+      nextMaterialPitch = floorConstrained.pitch;
+      materialCameraPitchRef.current = floorConstrained.pitch;
+    }
+
+    void window.arc.viewport.cameraInput({ viewportId, zoom, ...(orbitY ? { orbitY } : {}) }).catch((reason) => {
+      if (kind === 'material' && nextMaterialDistance === materialCameraDistanceRef.current)
+        materialCameraDistanceRef.current = previousMaterialDistance;
+      if (kind === 'material' && nextMaterialPitch === materialCameraPitchRef.current)
+        materialCameraPitchRef.current = previousMaterialPitch;
+      setError(reason instanceof Error ? reason.message : String(reason));
+    });
   };
 
   if (!normalizedGuid || !streamed || error) {

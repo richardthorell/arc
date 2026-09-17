@@ -23,6 +23,13 @@ attribution. Attribution is still recorded here for traceability.
   - Download: https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/bell_park_dawn_1k.hdr
   - License: CC0
 
+- `environments/material_preview_studio_4k.exr`
+  - Source: https://polyhaven.com/a/cobblestone_parish_road
+  - Download: https://dl.polyhaven.org/file/ph-assets/HDRIs/exr/4k/cobblestone_parish_road_4k.exr
+  - Resolution/format: 4k EXR
+  - License: CC0
+  - Purpose: default material-preview HDRI
+
 ### Terrain Textures
 
 - `textures/terrain/aerial_grass_rock/`
