@@ -32,6 +32,29 @@ TEST_CASE("TinyEXR decodes HDR texture data as linear RGBA32F", "[render][textur
     CHECK(std::max({pixels[4], pixels[5], pixels[6]}) > 1.0f);
 }
 
+TEST_CASE("generic texture loading routes OpenEXR through TinyEXR", "[render][texture][exr]")
+{
+    const auto path = std::filesystem::path(__FILE__).parent_path() / "data" / "tiny_hdr.exr";
+
+    CHECK(arc::render::is_supported_texture_asset(path));
+
+    const auto info = arc::render::inspect_texture_asset(path);
+    REQUIRE(info.succeeded());
+    CHECK(info.width == 2);
+    CHECK(info.height == 1);
+    CHECK(info.format == arc::render::texture_format::rgba32f);
+    CHECK(info.mip_count == 1);
+
+    const auto loaded = arc::render::load_texture_asset(path);
+    REQUIRE(loaded.succeeded());
+    CHECK(loaded.texture.width == 2);
+    CHECK(loaded.texture.height == 1);
+    CHECK(loaded.texture.format == arc::render::texture_format::rgba32f);
+    CHECK(loaded.texture.color_space == arc::render::texture_color_space::linear);
+    CHECK(loaded.texture.semantic == arc::render::texture_semantic::environment);
+    CHECK(loaded.texture.mime_type == "image/x-exr");
+}
+
 TEST_CASE("TinyEXR reports malformed payloads without producing texture data", "[render][texture][exr]")
 {
     std::vector<std::byte> invalid(16, std::byte{0});
