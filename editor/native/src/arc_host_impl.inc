@@ -483,7 +483,7 @@ bool refresh_asset_preview_material(HostState& host, viewport_surface_registry::
     auto* mesh_renderer = surface.preview_scene->scene.try_get<scene::mesh_renderer_component>(surface.preview_entity);
     if (!mesh_renderer)
     {
-        surface.preview_error = "Material preview sphere has no mesh renderer";
+        surface.preview_error = "Material preview mesh has no mesh renderer";
         return false;
     }
     mesh_renderer->material = surface.preview_material;
@@ -553,13 +553,13 @@ bool refresh_asset_preview_model(HostState& host, viewport_surface_registry::sur
     }
 
     surface.preview_camera = {};
-    if (!focus_selected_entity(preview->scene, preview->selected_entity, surface.preview_camera))
+    if (!arc_model_preview_focus(preview->scene, preview->selected_entity, surface.preview_camera))
         (void)surface.preview_camera.place({2.5f, 1.5f, 2.5f}, {0.0f, 0.0f, 0.0f});
     if (auto* camera_transform = preview->scene.template try_get<scene::transform_component>(preview->camera_entity))
         surface.preview_camera.apply_to(*camera_transform);
     clear_selection(preview->scene, preview->selected_entity);
 
-    if (surface.preview_scene) clear_imported_scene_content(*surface.preview_scene, *host.renderer);
+    if (surface.preview_scene) arc_clear_preview_imported_content(*surface.preview_scene, *host.renderer);
     surface.preview_scene = std::move(preview);
     surface.preview_entity = {};
     surface.preview_mesh = {};
@@ -584,16 +584,19 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
     preview->scene_name = std::string{"Asset Preview: "} + asset_preview_kind_name(surface.preview_kind);
     preview->primitive_material =
         host.scene.primitive_material.valid() ? host.scene.primitive_material : host.scene.default_material;
-    const auto sphere = add_primitive_to_scene(*preview, *host.renderer, editor_primitive_type::sphere);
-    if (!preview->scene.alive(sphere))
+    const auto preview_type = surface.preview_kind == asset_preview_kind::material
+                                  ? arc_material_preview_primitive_type(surface.options.viewport_id)
+                                  : editor_primitive_type::sphere;
+    const auto preview_entity = surface.preview_kind == asset_preview_kind::material
+                                    ? arc_material_preview_add_primitive(*preview, *host.renderer, preview_type)
+                                    : add_primitive_to_scene(*preview, *host.renderer, preview_type);
+    if (!preview->scene.alive(preview_entity))
     {
-        surface.preview_error = "Renderer could not create the asset preview sphere";
+        surface.preview_error = "Renderer could not create the asset preview mesh";
         return false;
     }
-    if (auto* name = preview->scene.template try_get<scene::name_component>(sphere))
-    {
-        name->value = "Asset Preview Sphere";
-    }
+    if (auto* name = preview->scene.template try_get<scene::name_component>(preview_entity))
+        name->value = "Asset Preview " + std::string{primitive_type_name(preview_type)};
     clear_selection(preview->scene, preview->selected_entity);
 
     surface.preview_camera = {};
@@ -603,9 +606,9 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
         surface.preview_camera.apply_to(*camera_transform);
     }
 
-    surface.preview_entity = sphere;
+    surface.preview_entity = preview_entity;
     if (const auto* mesh_renderer =
-            std::as_const(preview->scene).template try_get<scene::mesh_renderer_component>(sphere))
+            std::as_const(preview->scene).template try_get<scene::mesh_renderer_component>(preview_entity))
         surface.preview_mesh = mesh_renderer->mesh;
     surface.preview_scene = std::move(preview);
 
@@ -659,7 +662,7 @@ private:
 void cleanup_asset_preview_surface(viewport_surface_registry::surface_state& surface, render::renderer& renderer)
 {
     if (!surface.preview_scene) return;
-    clear_imported_scene_content(*surface.preview_scene, renderer);
+    arc_clear_preview_imported_content(*surface.preview_scene, renderer);
     surface.preview_scene->terrain_render_proxies.clear(renderer);
     if (surface.preview_mesh.valid()) (void)renderer.destroy_mesh(surface.preview_mesh);
     if (surface.preview_scene->environment_lighting_resource.valid())
@@ -1224,7 +1227,9 @@ host_response arc_host::query(const host_query_envelope& query) const
     }
 
     const auto& telemetry_scene = viewport_surface->preview_scene ? *viewport_surface->preview_scene : state_->scene;
-    const auto stats = collect_viewport_render_stats(telemetry_scene, *state_->renderer);
+    const auto stats = arc_model_preview_render_stats(telemetry_scene, *state_->renderer);
+    if (viewport_surface->preview_kind == asset_preview_kind::model && viewport_surface->preview_scene)
+        arc_append_model_preview_metadata(payload, *viewport_surface->preview_scene);
     payload["viewportTelemetryVersion"] = viewport_render_stats_schema_version;
     payload["triangles"] = stats.triangles;
     payload["verticesComplete"] = stats.vertices_complete;
