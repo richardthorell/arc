@@ -118,7 +118,6 @@ private:
 class stdio_host_session final
 {
 public:
-    static std::string command_line(const host_query_envelope& query);
     static std::string command_line(const host_command_envelope& command);
     static std::string query_line(const host_query_envelope& query);
 };
