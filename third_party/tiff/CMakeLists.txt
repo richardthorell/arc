@@ -47,6 +47,7 @@ elseif(ARC_FETCH_TIFF AND ARC_FETCH_THIRD_PARTY)
     target_compile_definitions(arc-third-party-tiff INTERFACE ARC_RENDER_HAS_TIFF=1)
 
     if(TARGET tiff)
+        set_target_properties(tiff PROPERTIES POSITION_INDEPENDENT_CODE ON)
         if(MSVC)
             target_compile_options(tiff PRIVATE /W0)
         else()
