@@ -1,17 +1,7 @@
 import type { GraphConnectionLike, GraphNodeDefinition, GraphNodeLike, GraphPoint, GraphViewport } from '../graph';
 
 export type FlowValueType =
-  | 'bool'
-  | 'int'
-  | 'float'
-  | 'vec2'
-  | 'vec3'
-  | 'vec4'
-  | 'string'
-  | 'name'
-  | 'entity'
-  | 'component'
-  | 'any';
+  'bool' | 'int' | 'float' | 'vec2' | 'vec3' | 'vec4' | 'string' | 'name' | 'entity' | 'component' | 'any';
 
 export type FlowPinType =
   | { kind: 'execution' }
@@ -66,14 +56,7 @@ export type FlowNodeType =
   | 'convertNumber';
 
 export type FlowNodeCategory =
-  | 'Events'
-  | 'Input'
-  | 'Flow Control'
-  | 'Entity'
-  | 'Components'
-  | 'Values'
-  | 'Variables'
-  | 'Math';
+  'Events' | 'Input' | 'Flow Control' | 'Entity' | 'Components' | 'Values' | 'Variables' | 'Math';
 export type FlowNodeSubcategory =
   | 'Lifecycle'
   | 'Update'
@@ -481,7 +464,11 @@ export const flowNodeDefinitions: Record<FlowNodeType, FlowNodeDefinition> = {
     title: 'Select',
     category: 'Flow Control',
     subcategory: 'Selection',
-    inputs: [value('condition', 'Condition', 'bool'), value('trueValue', 'True', 'any'), value('falseValue', 'False', 'any')],
+    inputs: [
+      value('condition', 'Condition', 'bool'),
+      value('trueValue', 'True', 'any'),
+      value('falseValue', 'False', 'any'),
+    ],
     outputs: [value('value', 'Value', 'any')],
   },
   convertNumber: {
@@ -510,10 +497,14 @@ const concreteFlowValueTypes = new Set<FlowValueType>([
 const nodeConfiguredType = (node: FlowGraphNode): FlowValueType => {
   if (node.type === 'getVariable' || node.type === 'setVariable') {
     const type = node.values.variableType;
-    return typeof type === 'string' && concreteFlowValueTypes.has(type as FlowValueType) ? (type as FlowValueType) : 'any';
+    return typeof type === 'string' && concreteFlowValueTypes.has(type as FlowValueType)
+      ? (type as FlowValueType)
+      : 'any';
   }
   const type = node.values.valueType;
-  return typeof type === 'string' && concreteFlowValueTypes.has(type as FlowValueType) ? (type as FlowValueType) : 'any';
+  return typeof type === 'string' && concreteFlowValueTypes.has(type as FlowValueType)
+    ? (type as FlowValueType)
+    : 'any';
 };
 
 export const resolveFlowNodeDefinition = (node: FlowGraphNode): FlowNodeDefinition => {
@@ -533,7 +524,10 @@ export const resolveFlowNodeDefinition = (node: FlowGraphNode): FlowNodeDefiniti
 
   const resolvePin = (pin: (typeof definition.inputs)[number], direction: 'input' | 'output') => {
     if (pin.type.kind !== 'value' || pin.type.valueType !== 'any') return pin;
-    return { ...pin, type: { kind: 'value', valueType: direction === 'input' ? inputType : outputType } as FlowPinType };
+    return {
+      ...pin,
+      type: { kind: 'value', valueType: direction === 'input' ? inputType : outputType } as FlowPinType,
+    };
   };
 
   return {
@@ -674,7 +668,8 @@ export const isFlowGraph = (value: unknown): value is FlowGraph => {
   if (!value || typeof value !== 'object') return false;
   const graph = value as Partial<FlowGraph>;
   if (graph.version !== 1 || !Array.isArray(graph.nodes) || !Array.isArray(graph.connections)) return false;
-  if (!Array.isArray(graph.variables) || !graph.variables.every(isVariable) || !isViewport(graph.viewport)) return false;
+  if (!Array.isArray(graph.variables) || !graph.variables.every(isVariable) || !isViewport(graph.viewport))
+    return false;
 
   const nodeIds = new Set<string>();
   for (const node of graph.nodes) {
@@ -711,7 +706,9 @@ export const isFlowGraph = (value: unknown): value is FlowGraph => {
 export const isFlowAssetJson = (value: unknown): value is FlowAssetJson => {
   if (!value || typeof value !== 'object') return false;
   const asset = value as Partial<FlowAssetJson>;
-  return asset.version === 1 && asset.assetType === 'flow' && typeof asset.name === 'string' && isFlowGraph(asset.graph);
+  return (
+    asset.version === 1 && asset.assetType === 'flow' && typeof asset.name === 'string' && isFlowGraph(asset.graph)
+  );
 };
 
 export const flowGraphFromAsset = (asset: FlowAssetJson): FlowGraph => {

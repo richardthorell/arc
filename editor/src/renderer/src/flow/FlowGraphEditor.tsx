@@ -147,8 +147,7 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
         Object.assign(target.values, extra);
         next.connections = next.connections.filter(
           (connection) =>
-            connection.kind === 'execution' ||
-            (connection.from.nodeId !== nodeId && connection.to.nodeId !== nodeId),
+            connection.kind === 'execution' || (connection.from.nodeId !== nodeId && connection.to.nodeId !== nodeId),
         );
       }),
     [mutate],
@@ -798,7 +797,8 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
                 (() => {
                   const size = node.type === 'vector2Literal' ? 2 : node.type === 'vector3Literal' ? 3 : 4;
                   const current = vectorValue(node.values.value, size, node.type === 'vector4Literal' ? 1 : 0);
-                  const label = node.type === 'vector2Literal' ? 'Vector2' : node.type === 'vector3Literal' ? 'Vector3' : 'Vector4';
+                  const label =
+                    node.type === 'vector2Literal' ? 'Vector2' : node.type === 'vector3Literal' ? 'Vector3' : 'Vector4';
                   return (
                     <label className="flow-node-inline-value">
                       Value

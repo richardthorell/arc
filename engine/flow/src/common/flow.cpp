@@ -1334,7 +1334,8 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
         program.instructions.push_back({.opcode = executable_opcode_for(node->kind), .node_id = node->id});
     }
 
-    const auto node_by_id = [&](std::string_view id) -> const source_node& { return *validation.nodes.at(std::string{id}); };
+    const auto node_by_id = [&](std::string_view id) -> const source_node&
+    { return *validation.nodes.at(std::string{id}); };
 
     const auto make_data_instruction = [&](const source_node& node, std::uint32_t next)
     {
@@ -1352,10 +1353,10 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
             case node_kind::subtract:
             case node_kind::multiply:
             case node_kind::divide:
-                instruction.opcode = node.kind == node_kind::add          ? ir_opcode::add
-                                     : node.kind == node_kind::subtract   ? ir_opcode::subtract
-                                     : node.kind == node_kind::multiply   ? ir_opcode::multiply
-                                                                          : ir_opcode::divide;
+                instruction.opcode = node.kind == node_kind::add        ? ir_opcode::add
+                                     : node.kind == node_kind::subtract ? ir_opcode::subtract
+                                     : node.kind == node_kind::multiply ? ir_opcode::multiply
+                                                                        : ir_opcode::divide;
                 instruction.operand0 = input_slot(node, "a");
                 instruction.operand1 = input_slot(node, "b");
                 instruction.operand2 = value_slots.at(pin_key(node.id, "value"));
@@ -1688,8 +1689,9 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
         for (auto iterator = self_nodes.rbegin(); iterator != self_nodes.rend(); ++iterator)
         {
             const source_node& self = **iterator;
-            const bool needed = std::any_of(executable_nodes.begin(), executable_nodes.end(), [&](const source_node* node)
-                                            { return reachable_from(entry.node_id, node->id) && value_reaches(self.id, node->id); });
+            const bool needed =
+                std::any_of(executable_nodes.begin(), executable_nodes.end(), [&](const source_node* node)
+                            { return reachable_from(entry.node_id, node->id) && value_reaches(self.id, node->id); });
             if (!needed) continue;
 
             const auto index = static_cast<std::uint32_t>(program.instructions.size());

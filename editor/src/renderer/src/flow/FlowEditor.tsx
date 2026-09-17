@@ -156,9 +156,7 @@ export function FlowEditor({ document }: { document: EditorDocument; context?: E
                         if (index < 0) return;
                         variables.splice(index, 1);
                         const affected = new Set(
-                          graph.nodes
-                            .filter((node) => node.values.variableId === variable.id)
-                            .map((node) => node.id),
+                          graph.nodes.filter((node) => node.values.variableId === variable.id).map((node) => node.id),
                         );
                         for (const node of graph.nodes) {
                           if (!affected.has(node.id)) continue;
@@ -189,9 +187,7 @@ export function FlowEditor({ document }: { document: EditorDocument; context?: E
                           target.type = event.target.value as FlowValueType;
                           target.defaultValue = defaultValueForType(target.type);
                           const affected = new Set(
-                            graph.nodes
-                              .filter((node) => node.values.variableId === variable.id)
-                              .map((node) => node.id),
+                            graph.nodes.filter((node) => node.values.variableId === variable.id).map((node) => node.id),
                           );
                           for (const node of graph.nodes)
                             if (affected.has(node.id)) node.values.variableType = target.type;

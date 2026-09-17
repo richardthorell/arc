@@ -194,19 +194,22 @@ bool validate_program(const bytecode_program& program)
                     return false;
                 break;
             case bytecode_opcode::vector_length:
-                if (!slot_exists(program, instruction.operand0) || !is_vector_type(program.value_slots[instruction.operand0].type) ||
+                if (!slot_exists(program, instruction.operand0) ||
+                    !is_vector_type(program.value_slots[instruction.operand0].type) ||
                     !slot_has_type(program, instruction.operand1, value_type::float32) ||
                     !valid_instruction_target(program, instruction.operand2))
                     return false;
                 break;
             case bytecode_opcode::vector_normalize:
                 if (!same_slot_type(program, instruction.operand0, instruction.operand1) ||
-                    !slot_exists(program, instruction.operand0) || !is_vector_type(program.value_slots[instruction.operand0].type) ||
+                    !slot_exists(program, instruction.operand0) ||
+                    !is_vector_type(program.value_slots[instruction.operand0].type) ||
                     !valid_instruction_target(program, instruction.operand2))
                     return false;
                 break;
             case bytecode_opcode::vector_scale:
-                if (!slot_exists(program, instruction.operand0) || !is_vector_type(program.value_slots[instruction.operand0].type) ||
+                if (!slot_exists(program, instruction.operand0) ||
+                    !is_vector_type(program.value_slots[instruction.operand0].type) ||
                     !slot_has_type(program, instruction.operand1, value_type::float32) ||
                     !same_slot_type(program, instruction.operand0, instruction.operand2) ||
                     !valid_instruction_target(program, instruction.operand3))
@@ -470,10 +473,10 @@ bool execute_arithmetic(bytecode_opcode opcode, value_type type, const flow_valu
         const auto* rhs = std::get_if<std::int64_t>(&right);
         if (!lhs || !rhs) return false;
         std::int64_t result{};
-        const bool succeeded = opcode == bytecode_opcode::add          ? checked_add(*lhs, *rhs, result)
-                               : opcode == bytecode_opcode::subtract   ? checked_subtract(*lhs, *rhs, result)
-                               : opcode == bytecode_opcode::multiply   ? checked_multiply(*lhs, *rhs, result)
-                                                                        : checked_divide(*lhs, *rhs, result);
+        const bool succeeded = opcode == bytecode_opcode::add        ? checked_add(*lhs, *rhs, result)
+                               : opcode == bytecode_opcode::subtract ? checked_subtract(*lhs, *rhs, result)
+                               : opcode == bytecode_opcode::multiply ? checked_multiply(*lhs, *rhs, result)
+                                                                     : checked_divide(*lhs, *rhs, result);
         if (!succeeded) return false;
         output = result;
         return true;
@@ -483,10 +486,10 @@ bool execute_arithmetic(bytecode_opcode opcode, value_type type, const flow_valu
         const auto* lhs = std::get_if<double>(&left);
         const auto* rhs = std::get_if<double>(&right);
         if (!lhs || !rhs || (opcode == bytecode_opcode::divide && *rhs == 0.0)) return false;
-        output = opcode == bytecode_opcode::add          ? *lhs + *rhs
-                 : opcode == bytecode_opcode::subtract   ? *lhs - *rhs
-                 : opcode == bytecode_opcode::multiply   ? *lhs * *rhs
-                                                          : *lhs / *rhs;
+        output = opcode == bytecode_opcode::add        ? *lhs + *rhs
+                 : opcode == bytecode_opcode::subtract ? *lhs - *rhs
+                 : opcode == bytecode_opcode::multiply ? *lhs * *rhs
+                                                       : *lhs / *rhs;
         return true;
     }
     if (type == value_type::vector2) return execute_vector_arithmetic<2>(opcode, left, right, output);
@@ -503,12 +506,12 @@ bool execute_compare(bytecode_opcode opcode, value_type type, const flow_value& 
         const auto* lhs = std::get_if<std::int64_t>(&left);
         const auto* rhs = std::get_if<std::int64_t>(&right);
         if (!lhs || !rhs) return false;
-        output = opcode == bytecode_opcode::compare_equal          ? *lhs == *rhs
-                 : opcode == bytecode_opcode::compare_not_equal    ? *lhs != *rhs
-                 : opcode == bytecode_opcode::compare_less         ? *lhs < *rhs
-                 : opcode == bytecode_opcode::compare_less_equal   ? *lhs <= *rhs
-                 : opcode == bytecode_opcode::compare_greater      ? *lhs > *rhs
-                                                                    : *lhs >= *rhs;
+        output = opcode == bytecode_opcode::compare_equal        ? *lhs == *rhs
+                 : opcode == bytecode_opcode::compare_not_equal  ? *lhs != *rhs
+                 : opcode == bytecode_opcode::compare_less       ? *lhs < *rhs
+                 : opcode == bytecode_opcode::compare_less_equal ? *lhs <= *rhs
+                 : opcode == bytecode_opcode::compare_greater    ? *lhs > *rhs
+                                                                 : *lhs >= *rhs;
         return true;
     }
     if (type == value_type::float32)
@@ -516,12 +519,12 @@ bool execute_compare(bytecode_opcode opcode, value_type type, const flow_value& 
         const auto* lhs = std::get_if<double>(&left);
         const auto* rhs = std::get_if<double>(&right);
         if (!lhs || !rhs) return false;
-        output = opcode == bytecode_opcode::compare_equal          ? *lhs == *rhs
-                 : opcode == bytecode_opcode::compare_not_equal    ? *lhs != *rhs
-                 : opcode == bytecode_opcode::compare_less         ? *lhs < *rhs
-                 : opcode == bytecode_opcode::compare_less_equal   ? *lhs <= *rhs
-                 : opcode == bytecode_opcode::compare_greater      ? *lhs > *rhs
-                                                                    : *lhs >= *rhs;
+        output = opcode == bytecode_opcode::compare_equal        ? *lhs == *rhs
+                 : opcode == bytecode_opcode::compare_not_equal  ? *lhs != *rhs
+                 : opcode == bytecode_opcode::compare_less       ? *lhs < *rhs
+                 : opcode == bytecode_opcode::compare_less_equal ? *lhs <= *rhs
+                 : opcode == bytecode_opcode::compare_greater    ? *lhs > *rhs
+                                                                 : *lhs >= *rhs;
         return true;
     }
     return false;
@@ -663,8 +666,8 @@ execution_result execute_chain(const bytecode_program& program, std::vector<flow
                     stop_execution(result, execution_status::type_mismatch, program, instruction);
                     return result;
                 }
-                value_slots[current.operand2] = current.opcode == bytecode_opcode::boolean_and ? *left && *right
-                                                                                                : *left || *right;
+                value_slots[current.operand2] =
+                    current.opcode == bytecode_opcode::boolean_and ? *left && *right : *left || *right;
                 instruction = current.operand3;
                 break;
             }
@@ -706,10 +709,13 @@ execution_result execute_chain(const bytecode_program& program, std::vector<flow
                 const value_type type = program.value_slots[current.operand0].type;
                 flow_value normalized;
                 double length = 0.0;
-                const bool valid = type == value_type::vector2   ? vector_normalize<2>(value_slots[current.operand0], normalized, &length)
-                                   : type == value_type::vector3 ? vector_normalize<3>(value_slots[current.operand0], normalized, &length)
-                                   : type == value_type::vector4 ? vector_normalize<4>(value_slots[current.operand0], normalized, &length)
-                                                                  : false;
+                const bool valid = type == value_type::vector2
+                                       ? vector_normalize<2>(value_slots[current.operand0], normalized, &length)
+                                   : type == value_type::vector3
+                                       ? vector_normalize<3>(value_slots[current.operand0], normalized, &length)
+                                   : type == value_type::vector4
+                                       ? vector_normalize<4>(value_slots[current.operand0], normalized, &length)
+                                       : false;
                 if (!valid)
                 {
                     stop_execution(result, execution_status::type_mismatch, program, instruction);
@@ -727,10 +733,12 @@ execution_result execute_chain(const bytecode_program& program, std::vector<flow
                 const auto* scale = std::get_if<double>(&value_slots[current.operand1]);
                 const value_type type = program.value_slots[current.operand0].type;
                 flow_value output;
-                const bool valid = scale && (type == value_type::vector2   ? vector_scale<2>(value_slots[current.operand0], *scale, output)
-                                             : type == value_type::vector3 ? vector_scale<3>(value_slots[current.operand0], *scale, output)
-                                             : type == value_type::vector4 ? vector_scale<4>(value_slots[current.operand0], *scale, output)
-                                                                            : false);
+                const bool valid =
+                    scale &&
+                    (type == value_type::vector2   ? vector_scale<2>(value_slots[current.operand0], *scale, output)
+                     : type == value_type::vector3 ? vector_scale<3>(value_slots[current.operand0], *scale, output)
+                     : type == value_type::vector4 ? vector_scale<4>(value_slots[current.operand0], *scale, output)
+                                                   : false);
                 if (!valid)
                 {
                     stop_execution(result, execution_status::type_mismatch, program, instruction);

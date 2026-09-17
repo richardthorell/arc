@@ -34,11 +34,12 @@ bytecode_value_slot vector3_slot(std::array<double, 3> value = {})
 void test_scalar_language_bytecode()
 {
     bytecode_program program;
-    program.variables = {{.id = "result", .name = "Result", .type = value_type::integer, .default_value = std::int64_t{0}}};
+    program.variables = {
+        {.id = "result", .name = "Result", .type = value_type::integer, .default_value = std::int64_t{0}}};
     program.value_slots = {
-        int_slot(6), int_slot(3), int_slot(), int_slot(), int_slot(), int_slot(), bool_slot(), bool_slot(true),
-        bool_slot(false), bool_slot(), bool_slot(), bool_slot(), float_slot(), int_slot(), int_slot(10), int_slot(20),
-        bool_slot(true), int_slot(),
+        int_slot(6),  int_slot(3),     int_slot(),       int_slot(),   int_slot(),      int_slot(),
+        bool_slot(),  bool_slot(true), bool_slot(false), bool_slot(),  bool_slot(),     bool_slot(),
+        float_slot(), int_slot(),      int_slot(10),     int_slot(20), bool_slot(true), int_slot(),
     };
     program.entry_points.push_back({.kind = entry_point_kind::begin_play, .instruction = 0});
     program.instructions = {
@@ -83,8 +84,13 @@ void test_vector_language_bytecode()
 {
     bytecode_program program;
     program.value_slots = {
-        vector3_slot({3.0, 4.0, 0.0}), vector3_slot({1.0, 2.0, 3.0}), float_slot(), float_slot(), vector3_slot(),
-        float_slot(2.0), vector3_slot(),
+        vector3_slot({3.0, 4.0, 0.0}),
+        vector3_slot({1.0, 2.0, 3.0}),
+        float_slot(),
+        float_slot(),
+        vector3_slot(),
+        float_slot(2.0),
+        vector3_slot(),
     };
     program.entry_points.push_back({.kind = entry_point_kind::begin_play, .instruction = 0});
     program.instructions = {
