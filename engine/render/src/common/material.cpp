@@ -33,6 +33,7 @@ bool parameter_type_matches(shader_parameter_type expected, const material_param
             return std::holds_alternative<math::matrix4x4f>(value);
         case shader_parameter_type::texture_2d:
         case shader_parameter_type::texture_cube:
+        case shader_parameter_type::texture_3d:
         case shader_parameter_type::sampler:
             return std::holds_alternative<resource_handle>(value);
     }
@@ -106,6 +107,7 @@ bool apply_runtime_parameter_override(material_runtime_program& program,
         }
         case shader_parameter_type::texture_2d:
         case shader_parameter_type::texture_cube:
+        case shader_parameter_type::texture_3d:
         case shader_parameter_type::sampler:
             return false;
     }

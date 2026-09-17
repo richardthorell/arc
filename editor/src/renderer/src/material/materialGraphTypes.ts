@@ -1,4 +1,5 @@
 export type MaterialGraphValueType = 'float' | 'vec2' | 'vec3' | 'vec4' | 'texture2d';
+export type MaterialTextureDimension = '2d' | 'cube' | '3d';
 export type MaterialGraphPinType = MaterialGraphValueType | 'numeric';
 
 export type MaterialGraphNodeType =
@@ -277,7 +278,7 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     subcategory: 'Sampling',
     inputs: [pin('uv', 'UV', 'vec2')],
     outputs: colorOutputs(),
-    defaultValues: { texture: '' },
+    defaultValues: { texture: '', dimension: '2d' },
   },
   texCoord: {
     type: 'texCoord',
@@ -487,4 +488,23 @@ export const isMaterialGraph = (value: unknown): value is MaterialGraph => {
 export const materialGraphFromAsset = (asset: MaterialAssetJson): MaterialGraph => {
   if (!isMaterialGraph(asset.graph)) throw new Error('Material asset does not contain a valid native material graph');
   return cloneMaterialGraph(asset.graph);
+};
+
+export const materialTextureDimension = (node: MaterialGraphNode): MaterialTextureDimension => {
+  const dimension = node.values.dimension;
+  return dimension === 'cube' || dimension === '3d' ? dimension : '2d';
+};
+
+export const materialNodeDefinition = (node: MaterialGraphNode): MaterialNodeDefinition => {
+  const definition = materialNodeDefinitions[node.type];
+  if (node.type !== 'textureSample') return definition;
+
+  const dimension = materialTextureDimension(node);
+  const coordinate =
+    dimension === '2d'
+      ? pin('uv', 'UV', 'vec2')
+      : dimension === 'cube'
+        ? pin('uv', 'Direction', 'vec3')
+        : pin('uv', 'UVW', 'vec3');
+  return { ...definition, inputs: [coordinate] };
 };

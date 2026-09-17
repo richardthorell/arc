@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { TexturePicker, type AssetPickerItem } from '../inspector/AssetPicker';
-import type { MaterialGraphNode } from './materialGraphTypes';
+import { materialTextureDimension, type MaterialGraphNode, type MaterialTextureDimension } from './materialGraphTypes';
 import './materialTextureSample.css';
 
 type HostResponse<T> = {
@@ -43,6 +43,7 @@ export function MaterialTextureSampleEditor({
 }) {
   const [assets, setAssets] = useState<AssetPickerItem[]>([]);
   const texturePath = typeof node.values.texture === 'string' ? node.values.texture : '';
+  const textureDimension = materialTextureDimension(node);
   const parameterName = node.parameter?.name ?? 'Texture';
   const parameterEnabled = Boolean(node.parameter?.exposed);
 
@@ -92,6 +93,24 @@ export function MaterialTextureSampleEditor({
 
   return (
     <>
+      <label className="material-node-texture-dimension">
+        <span>Type</span>
+        <select
+          aria-label="Texture type"
+          disabled={readOnly}
+          value={textureDimension}
+          onChange={(event) =>
+            onChange({
+              ...node,
+              values: { ...node.values, dimension: event.target.value as MaterialTextureDimension },
+            })
+          }
+        >
+          <option value="2d">Texture2D</option>
+          <option value="cube">TextureCube</option>
+          <option value="3d">Texture3D</option>
+        </select>
+      </label>
       <div
         className="material-node-value-area material-node-texture-picker"
         title={selectedAsset?.path || texturePath || 'Choose texture asset'}

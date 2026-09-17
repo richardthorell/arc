@@ -24,7 +24,7 @@ namespace arc::render::tools
 inline constexpr std::uint32_t material_ir_version = 1;
 
 /** @brief Version of the deterministic Material IR to Slang generator. */
-inline constexpr std::uint32_t material_shader_codegen_version = 4;
+inline constexpr std::uint32_t material_shader_codegen_version = 5;
 
 /** @brief Version of first-class reusable Material/Shader Function documents. */
 inline constexpr std::uint32_t material_function_version = 1;
@@ -132,6 +132,7 @@ struct material_ir_node
     material_ir_node_kind kind{material_ir_node_kind::constant};
     material_math_operation math_operation{material_math_operation::none};
     material_ir_literal literal;
+    shader_parameter_type texture_type{shader_parameter_type::texture_2d};
     float strength{1.0f};
     float minimum{};
     float maximum{1.0f};
@@ -215,6 +216,8 @@ struct material_texture_binding
     std::uint32_t slot{};
     shader_parameter_id parameter_id{};
     std::string parameter_name;
+    shader_parameter_type type{shader_parameter_type::texture_2d};
+    std::uint32_t dimension_slot{};
 };
 
 /** @brief Runtime/input capabilities required by a compiled material graph. */

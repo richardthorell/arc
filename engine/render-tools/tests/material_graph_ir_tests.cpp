@@ -202,3 +202,64 @@ TEST_CASE("native material graph compiler rejects structurally ambiguous graphs"
         REQUIRE(result.error().message == "material graph contains a cycle");
     }
 }
+
+TEST_CASE("material graph texture samples preserve typed dimensions")
+{
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"tex2d","type":"textureSample","values":{"dimension":"2d"},"parameter":{"exposed":true,"name":"Albedo"}},
+        {"id":"cube","type":"textureSample","values":{"dimension":"cube"},"parameter":{"exposed":true,"name":"Environment"}},
+        {"id":"volume","type":"textureSample","values":{"dimension":"3d"},"parameter":{"exposed":true,"name":"Volume"}},
+        {"id":"direction","type":"vector3","values":{"value":[0,0,1]}},
+        {"id":"uvw","type":"vector3","values":{"value":[0.5,0.5,0.5]}}
+      ],
+      "connections":[
+        {"id":"1","from":{"nodeId":"tex2d","pin":"rgb"},"to":{"nodeId":"out","pin":"baseColor"}},
+        {"id":"2","from":{"nodeId":"direction","pin":"value"},"to":{"nodeId":"cube","pin":"uv"}},
+        {"id":"3","from":{"nodeId":"cube","pin":"rgb"},"to":{"nodeId":"out","pin":"emissive"}},
+        {"id":"4","from":{"nodeId":"uvw","pin":"value"},"to":{"nodeId":"volume","pin":"uv"}},
+        {"id":"5","from":{"nodeId":"volume","pin":"r"},"to":{"nodeId":"out","pin":"roughness"}}
+      ]
+    })";
+
+    const auto result = arc::render::tools::compile_material_graph_json(graph);
+    REQUIRE(result);
+    const auto& descriptor = result.value().descriptor;
+    REQUIRE(descriptor.textures.size() == 3);
+    REQUIRE(descriptor.textures[0].type == arc::render::shader_parameter_type::texture_cube);
+    REQUIRE(descriptor.textures[0].dimension_slot == 0);
+    REQUIRE(descriptor.textures[1].type == arc::render::shader_parameter_type::texture_2d);
+    REQUIRE(descriptor.textures[1].dimension_slot == 0);
+    REQUIRE(descriptor.textures[2].type == arc::render::shader_parameter_type::texture_3d);
+    REQUIRE(descriptor.textures[2].dimension_slot == 0);
+    REQUIRE(descriptor.requirements.uses_uv0);
+
+    const auto* albedo = find_parameter(descriptor, "Albedo");
+    const auto* environment = find_parameter(descriptor, "Environment");
+    const auto* volume = find_parameter(descriptor, "Volume");
+    REQUIRE(albedo != nullptr);
+    REQUIRE(environment != nullptr);
+    REQUIRE(volume != nullptr);
+    REQUIRE(albedo->type == arc::render::shader_parameter_type::texture_2d);
+    REQUIRE(environment->type == arc::render::shader_parameter_type::texture_cube);
+    REQUIRE(volume->type == arc::render::shader_parameter_type::texture_3d);
+}
+
+TEST_CASE("cube and 3D material texture samples require explicit vec3 coordinates")
+{
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"cube","type":"textureSample","values":{"dimension":"cube"}}
+      ],
+      "connections":[
+        {"id":"1","from":{"nodeId":"cube","pin":"rgb"},"to":{"nodeId":"out","pin":"baseColor"}}
+      ]
+    })";
+    const auto result = arc::render::tools::compile_material_graph_json(graph);
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().message.find("requires a vec3 coordinate input") != std::string::npos);
+}

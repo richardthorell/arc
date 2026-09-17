@@ -1,5 +1,6 @@
 import type { GraphConnectionEndpoint, GraphDomain } from '../graph';
 import {
+  materialNodeDefinition,
   materialNodeDefinitions,
   type MaterialGraphNode,
   type MaterialGraphNodeType,
@@ -26,7 +27,7 @@ export const materialGraphDomain: GraphDomain<
   MaterialNodeCategory,
   MaterialNodeSubcategory
 > = {
-  getNodeDefinition: (node) => materialNodeDefinitions[node.type],
+  getNodeDefinition: materialNodeDefinition,
   getNodeDefinitions: materialDefinitions,
   canConnect: (
     from: GraphConnectionEndpoint<MaterialGraphNode, MaterialGraphPinType>,

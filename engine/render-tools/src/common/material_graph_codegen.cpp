@@ -71,6 +71,12 @@ std::string parameter_field(shader_parameter_id id)
     return "arc_param_" + std::to_string(id.representation());
 }
 
+bool is_texture_parameter_type(shader_parameter_type type) noexcept
+{
+    return type == shader_parameter_type::texture_2d || type == shader_parameter_type::texture_cube ||
+           type == shader_parameter_type::texture_3d;
+}
+
 std::string_view slang_parameter_type(shader_parameter_type type)
 {
     switch (type)
@@ -255,7 +261,7 @@ public:
         for (const auto& connection : compilation_.ir.connections)
             inputs_.emplace(std::pair{connection.target_node, connection.target_pin}, &connection);
         for (const auto& texture : compilation_.descriptor.textures)
-            texture_slots_.emplace(texture.node_id, texture.slot);
+            texture_bindings_.emplace(texture.node_id, &texture);
         for (const auto& parameter : compilation_.descriptor.parameters)
             parameter_types_.emplace(parameter.id.representation(), parameter.type);
     }
@@ -649,12 +655,39 @@ private:
                 break;
             case material_ir_node_kind::texture_sample:
             {
-                const auto slot = texture_slots_.find(node.id);
-                if (slot == texture_slots_.end())
+                const auto found = texture_bindings_.find(node.id);
+                if (found == texture_bindings_.end())
                     throw std::runtime_error("material IR texture node has no descriptor slot: " + node.id);
-                const auto sample = "arcSampleTexture2D(arcMaterialTextures[" + std::to_string(slot->second) +
-                                    "],arcMaterialSampler," + input(node.id, "uv", "input.uv0") + ',' +
-                                    std::to_string(slot->second) + ')';
+                const auto& binding = *found->second;
+                std::string resource_name;
+                std::string sample_function;
+                material_expression_type coordinate_type{material_expression_type::vector2};
+                std::string coordinate_fallback{"input.uv0"};
+                switch (binding.type)
+                {
+                    case shader_parameter_type::texture_2d:
+                        resource_name = "arcMaterialTextures2D";
+                        sample_function = "arcSampleTexture2D";
+                        break;
+                    case shader_parameter_type::texture_cube:
+                        resource_name = "arcMaterialTexturesCube";
+                        sample_function = "arcSampleTextureCube";
+                        coordinate_type = material_expression_type::vector3;
+                        coordinate_fallback = "float3(0.0,0.0,1.0)";
+                        break;
+                    case shader_parameter_type::texture_3d:
+                        resource_name = "arcMaterialTextures3D";
+                        sample_function = "arcSampleTexture3D";
+                        coordinate_type = material_expression_type::vector3;
+                        coordinate_fallback = "float3(0.0)";
+                        break;
+                    default:
+                        throw std::runtime_error("material texture node has an unsupported texture type: " + node.id);
+                }
+                const auto sample = sample_function + '(' + resource_name + '[' +
+                                    std::to_string(binding.dimension_slot) + "],arcMaterialSampler," +
+                                    input_as(node.id, "uv", coordinate_fallback, coordinate_type) + ',' +
+                                    std::to_string(binding.slot) + ')';
                 expression = pin == "rgb" ? sample + ".rgb" : pin == "rgba" ? sample : sample + '.' + pin;
                 break;
             }
@@ -717,7 +750,7 @@ private:
     const material_graph_compilation& compilation_;
     std::map<std::string, const material_ir_node*> nodes_;
     std::map<std::pair<std::string, std::string>, const material_ir_connection*> inputs_;
-    std::map<std::string, std::uint32_t> texture_slots_;
+    std::map<std::string, const material_texture_binding*> texture_bindings_;
     std::map<std::uint64_t, shader_parameter_type> parameter_types_;
     std::map<std::pair<std::string, std::string>, std::string> expressions_;
     std::map<std::pair<std::string, std::string>, material_expression_type> expression_types_;
@@ -735,6 +768,16 @@ void append_material_abi(source_builder& source)
                   "float2 uv, uint textureMetadataIndex)");
     source.append("{");
     source.append("    return textureResource.Sample(samplerResource, uv);");
+    source.append("}");
+    source.append("float4 arcSampleTextureCube(TextureCube<float4> textureResource, SamplerState samplerResource, "
+                  "float3 direction, uint textureMetadataIndex)");
+    source.append("{");
+    source.append("    return textureResource.Sample(samplerResource, direction);");
+    source.append("}");
+    source.append("float4 arcSampleTexture3D(Texture3D<float4> textureResource, SamplerState samplerResource, "
+                  "float3 coordinates, uint textureMetadataIndex)");
+    source.append("{");
+    source.append("    return textureResource.Sample(samplerResource, coordinates);");
     source.append("}");
     source.append("struct ArcSurfaceInput");
     source.append("{");
@@ -904,13 +947,13 @@ material_shader_codegen_result generate_material_slang(const material_graph_comp
 
         const auto has_material_parameters =
             std::ranges::any_of(generated.parameters, [](const shader_parameter_descriptor& parameter)
-                                { return parameter.type != shader_parameter_type::texture_2d; });
+                                { return !is_texture_parameter_type(parameter.type); });
         if (has_material_parameters)
         {
             source.append("struct ArcMaterialParameters");
             source.append("{");
             for (const auto& parameter : generated.parameters)
-                if (parameter.type != shader_parameter_type::texture_2d)
+                if (!is_texture_parameter_type(parameter.type))
                     source.append("    " + std::string(slang_parameter_type(parameter.type)) + ' ' +
                                   parameter_field(parameter.id) + ';');
             source.append("};");
@@ -926,8 +969,22 @@ material_shader_codegen_result generate_material_slang(const material_graph_comp
         }
         if (compilation.descriptor.requirements.uses_texture_sampling)
         {
-            source.append("Texture2D<float4> arcMaterialTextures[" +
-                          std::to_string(compilation.descriptor.textures.size()) + "];");
+            const auto texture_count = [&compilation](shader_parameter_type type)
+            {
+                return std::ranges::count_if(compilation.descriptor.textures,
+                                             [type](const material_texture_binding& binding)
+                                             { return binding.type == type; });
+            };
+            const auto texture_2d_count = texture_count(shader_parameter_type::texture_2d);
+            const auto texture_cube_count = texture_count(shader_parameter_type::texture_cube);
+            const auto texture_3d_count = texture_count(shader_parameter_type::texture_3d);
+            if (texture_2d_count != 0)
+                source.append("Texture2D<float4> arcMaterialTextures2D[" + std::to_string(texture_2d_count) + "];");
+            if (texture_cube_count != 0)
+                source.append("TextureCube<float4> arcMaterialTexturesCube[" + std::to_string(texture_cube_count) +
+                              "];");
+            if (texture_3d_count != 0)
+                source.append("Texture3D<float4> arcMaterialTextures3D[" + std::to_string(texture_3d_count) + "];");
             source.append("SamplerState arcMaterialSampler;");
         }
 
