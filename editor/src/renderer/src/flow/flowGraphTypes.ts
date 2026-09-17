@@ -17,6 +17,12 @@ export type FlowNodeType =
   | 'fixedTick'
   | 'inputAction'
   | 'branch'
+  | 'sequence'
+  | 'switchInt'
+  | 'doOnce'
+  | 'gate'
+  | 'forLoop'
+  | 'whileLoop'
   | 'selfEntity'
   | 'createEntity'
   | 'destroyEntity'
@@ -62,6 +68,10 @@ export type FlowNodeSubcategory =
   | 'Update'
   | 'Actions'
   | 'Branching'
+  | 'Sequencing'
+  | 'Switching'
+  | 'Stateful'
+  | 'Looping'
   | 'Identity'
   | 'Lifetime'
   | 'State'
@@ -167,6 +177,74 @@ export const flowNodeDefinitions: Record<FlowNodeType, FlowNodeDefinition> = {
     subcategory: 'Branching',
     inputs: [execution('exec', 'In'), value('condition', 'Condition', 'bool')],
     outputs: [execution('true', 'True'), execution('false', 'False')],
+  },
+  sequence: {
+    type: 'sequence',
+    title: 'Sequence',
+    category: 'Flow Control',
+    subcategory: 'Sequencing',
+    inputs: [execution('exec', 'In')],
+    outputs: [
+      execution('then0', 'Then 0'),
+      execution('then1', 'Then 1'),
+      execution('then2', 'Then 2'),
+      execution('then3', 'Then 3'),
+    ],
+  },
+  switchInt: {
+    type: 'switchInt',
+    title: 'Switch Integer',
+    category: 'Flow Control',
+    subcategory: 'Switching',
+    inputs: [execution('exec', 'In'), value('selection', 'Selection', 'int')],
+    outputs: [
+      execution('case0', 'Case 0'),
+      execution('case1', 'Case 1'),
+      execution('case2', 'Case 2'),
+      execution('case3', 'Case 3'),
+      execution('default', 'Default'),
+    ],
+  },
+  doOnce: {
+    type: 'doOnce',
+    title: 'Do Once',
+    category: 'Flow Control',
+    subcategory: 'Stateful',
+    inputs: [execution('exec', 'In'), execution('reset', 'Reset')],
+    outputs: [execution('then', 'Then')],
+  },
+  gate: {
+    type: 'gate',
+    title: 'Gate',
+    category: 'Flow Control',
+    subcategory: 'Stateful',
+    inputs: [
+      execution('enter', 'Enter'),
+      execution('open', 'Open'),
+      execution('close', 'Close'),
+      execution('toggle', 'Toggle'),
+    ],
+    outputs: [execution('exit', 'Exit')],
+  },
+  forLoop: {
+    type: 'forLoop',
+    title: 'For Loop',
+    category: 'Flow Control',
+    subcategory: 'Looping',
+    inputs: [execution('exec', 'In'), value('first', 'First', 'int'), value('last', 'Last', 'int')],
+    outputs: [
+      execution('loopBody', 'Loop Body'),
+      execution('completed', 'Completed'),
+      value('index', 'Index', 'int'),
+    ],
+  },
+  whileLoop: {
+    type: 'whileLoop',
+    title: 'While Loop',
+    category: 'Flow Control',
+    subcategory: 'Looping',
+    inputs: [execution('exec', 'In'), value('condition', 'Condition', 'bool')],
+    outputs: [execution('loopBody', 'Loop Body'), execution('completed', 'Completed')],
   },
   selfEntity: {
     type: 'selfEntity',
@@ -530,10 +608,20 @@ export const resolveFlowNodeDefinition = (node: FlowGraphNode): FlowNodeDefiniti
     };
   };
 
+  const outputs =
+    node.type === 'switchInt'
+      ? definition.outputs.map((pin, index) => {
+          if (index >= 4) return pin;
+          const cases = Array.isArray(node.values.cases) ? node.values.cases : [];
+          const caseValue = typeof cases[index] === 'number' ? Math.trunc(cases[index] as number) : index;
+          return { ...pin, label: `Case ${caseValue}` };
+        })
+      : definition.outputs;
+
   return {
     ...definition,
     inputs: definition.inputs.map((pin) => resolvePin(pin, 'input')),
-    outputs: definition.outputs.map((pin) => resolvePin(pin, 'output')),
+    outputs: outputs.map((pin) => resolvePin(pin, 'output')),
   };
 };
 
@@ -572,6 +660,10 @@ const defaultNodeValues = (type: FlowNodeType): Record<string, unknown> => {
       return { valueType: 'float' };
     case 'compare':
       return { valueType: 'float', operator: 'equal' };
+    case 'switchInt':
+      return { cases: [0, 1, 2, 3] };
+    case 'gate':
+      return { startClosed: false };
     case 'vectorDot':
     case 'vectorLength':
     case 'vectorNormalize':

@@ -26,6 +26,12 @@ enum class node_kind : std::uint8_t
     fixed_tick,
     input_action,
     branch,
+    sequence,
+    switch_integer,
+    do_once,
+    gate,
+    for_loop,
+    while_loop,
     self_entity,
     create_entity,
     destroy_entity,
@@ -137,6 +143,12 @@ std::optional<node_kind> parse_node_kind(std::string_view value)
     if (value == "fixedTick") return node_kind::fixed_tick;
     if (value == "inputAction") return node_kind::input_action;
     if (value == "branch") return node_kind::branch;
+    if (value == "sequence") return node_kind::sequence;
+    if (value == "switchInt") return node_kind::switch_integer;
+    if (value == "doOnce") return node_kind::do_once;
+    if (value == "gate") return node_kind::gate;
+    if (value == "forLoop") return node_kind::for_loop;
+    if (value == "whileLoop") return node_kind::while_loop;
     if (value == "selfEntity") return node_kind::self_entity;
     if (value == "createEntity") return node_kind::create_entity;
     if (value == "destroyEntity") return node_kind::destroy_entity;
@@ -371,6 +383,12 @@ bool is_executable_node(node_kind kind)
     switch (kind)
     {
         case node_kind::branch:
+        case node_kind::sequence:
+        case node_kind::switch_integer:
+        case node_kind::do_once:
+        case node_kind::gate:
+        case node_kind::for_loop:
+        case node_kind::while_loop:
         case node_kind::create_entity:
         case node_kind::destroy_entity:
         case node_kind::has_core_component:
@@ -435,6 +453,27 @@ std::optional<pin_info> output_pin(const source_graph& graph, const source_node&
             break;
         case node_kind::branch:
             if (pin == "true" || pin == "false") return pin_info{.kind = pin_kind::execution};
+            break;
+        case node_kind::sequence:
+            if (pin == "then0" || pin == "then1" || pin == "then2" || pin == "then3")
+                return pin_info{.kind = pin_kind::execution};
+            break;
+        case node_kind::switch_integer:
+            if (pin == "case0" || pin == "case1" || pin == "case2" || pin == "case3" || pin == "default")
+                return pin_info{.kind = pin_kind::execution};
+            break;
+        case node_kind::do_once:
+            if (pin == "then") return pin_info{.kind = pin_kind::execution};
+            break;
+        case node_kind::gate:
+            if (pin == "exit") return pin_info{.kind = pin_kind::execution};
+            break;
+        case node_kind::for_loop:
+            if (pin == "loopBody" || pin == "completed") return pin_info{.kind = pin_kind::execution};
+            if (pin == "index") return pin_info{.kind = pin_kind::value, .type = value_type::integer};
+            break;
+        case node_kind::while_loop:
+            if (pin == "loopBody" || pin == "completed") return pin_info{.kind = pin_kind::execution};
             break;
         case node_kind::self_entity:
             if (pin == "entity") return pin_info{.kind = pin_kind::value, .type = value_type::entity};
@@ -516,6 +555,41 @@ std::optional<pin_info> output_pin(const source_graph& graph, const source_node&
 
 std::optional<pin_info> input_pin(const source_graph& graph, const source_node& node, std::string_view pin)
 {
+    if (node.kind == node_kind::sequence)
+    {
+        if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+        return std::nullopt;
+    }
+    if (node.kind == node_kind::switch_integer)
+    {
+        if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+        if (pin == "selection") return pin_info{.kind = pin_kind::value, .type = value_type::integer};
+        return std::nullopt;
+    }
+    if (node.kind == node_kind::do_once)
+    {
+        if (pin == "exec" || pin == "reset") return pin_info{.kind = pin_kind::execution};
+        return std::nullopt;
+    }
+    if (node.kind == node_kind::gate)
+    {
+        if (pin == "enter" || pin == "open" || pin == "close" || pin == "toggle")
+            return pin_info{.kind = pin_kind::execution};
+        return std::nullopt;
+    }
+    if (node.kind == node_kind::for_loop)
+    {
+        if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+        if (pin == "first" || pin == "last") return pin_info{.kind = pin_kind::value, .type = value_type::integer};
+        return std::nullopt;
+    }
+    if (node.kind == node_kind::while_loop)
+    {
+        if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+        if (pin == "condition") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
+        return std::nullopt;
+    }
+
     if (node.kind == node_kind::branch)
     {
         if (pin == "exec") return pin_info{.kind = pin_kind::execution};
@@ -891,6 +965,30 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
         if (node.kind == node_kind::convert_number && (!convert_input_type(node) || !node_data_type(graph, node)))
             add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_CONVERSION",
                            "Convert Number requires intToFloat or floatToInt conversion.", node.id, "conversion");
+
+        if (node.kind == node_kind::switch_integer)
+        {
+            const auto cases = node.values.find("cases");
+            bool valid = cases != node.values.end() && cases->is_array() && cases->size() == 4;
+            std::unordered_set<std::int64_t> unique;
+            if (valid)
+                for (const json& item : *cases)
+                    if (!item.is_number_integer() || !unique.insert(item.get<std::int64_t>()).second)
+                    {
+                        valid = false;
+                        break;
+                    }
+            if (!valid)
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_SWITCH_CASES",
+                               "Switch Integer requires four unique integer case values.", node.id, "cases");
+        }
+        if (node.kind == node_kind::gate)
+        {
+            const auto start_closed = node.values.find("startClosed");
+            if (start_closed == node.values.end() || !start_closed->is_boolean())
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_GATE_STATE",
+                               "Gate requires a boolean startClosed value.", node.id, "startClosed");
+        }
     }
 
     std::unordered_set<std::string> connection_ids;
@@ -1012,6 +1110,16 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
             case node_kind::vector_normalize:
             case node_kind::convert_number:
                 require_input(node, "value");
+                break;
+            case node_kind::switch_integer:
+                require_input(node, "selection");
+                break;
+            case node_kind::for_loop:
+                require_input(node, "first");
+                require_input(node, "last");
+                break;
+            case node_kind::while_loop:
+                require_input(node, "condition");
                 break;
             case node_kind::add:
             case node_kind::subtract:
@@ -1143,6 +1251,18 @@ ir_opcode executable_opcode_for(node_kind kind)
     {
         case node_kind::branch:
             return ir_opcode::branch;
+        case node_kind::sequence:
+            return ir_opcode::sequence;
+        case node_kind::switch_integer:
+            return ir_opcode::switch_integer;
+        case node_kind::do_once:
+            return ir_opcode::do_once;
+        case node_kind::gate:
+            return ir_opcode::gate_enter;
+        case node_kind::for_loop:
+            return ir_opcode::for_loop;
+        case node_kind::while_loop:
+            return ir_opcode::while_loop;
         case node_kind::set_variable:
             return ir_opcode::store_variable;
         case node_kind::create_entity:
@@ -1314,6 +1434,15 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
             case node_kind::vector_length:
                 allocate_slot(*node, "value", value_type::float32, 0.0);
                 break;
+            case node_kind::do_once:
+                allocate_slot(*node, "$fired", value_type::boolean, false);
+                break;
+            case node_kind::gate:
+                allocate_slot(*node, "$open", value_type::boolean, !node->values.at("startClosed").get<bool>());
+                break;
+            case node_kind::for_loop:
+                allocate_slot(*node, "index", value_type::integer, std::int64_t{0});
+                break;
             default:
                 break;
         }
@@ -1326,12 +1455,36 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
     };
 
     std::unordered_map<std::string, std::uint32_t> instruction_indices;
+    std::unordered_map<std::string, std::uint32_t> entry_instruction_indices;
+    const auto add_entry_instruction = [&](const source_node& node, std::string_view pin, ir_opcode opcode)
+    {
+        const auto index = static_cast<std::uint32_t>(program.instructions.size());
+        program.instructions.push_back({.opcode = opcode, .node_id = node.id});
+        entry_instruction_indices.emplace(pin_key(node.id, pin), index);
+        return index;
+    };
     for (const source_node* node : nodes)
     {
         if (!is_executable_node(node->kind)) continue;
-        const auto index = static_cast<std::uint32_t>(program.instructions.size());
-        instruction_indices.emplace(node->id, index);
-        program.instructions.push_back({.opcode = executable_opcode_for(node->kind), .node_id = node->id});
+        if (node->kind == node_kind::do_once)
+        {
+            const auto index = add_entry_instruction(*node, "exec", ir_opcode::do_once);
+            instruction_indices.emplace(node->id, index);
+            add_entry_instruction(*node, "reset", ir_opcode::do_once_reset);
+        }
+        else if (node->kind == node_kind::gate)
+        {
+            const auto index = add_entry_instruction(*node, "enter", ir_opcode::gate_enter);
+            instruction_indices.emplace(node->id, index);
+            add_entry_instruction(*node, "open", ir_opcode::gate_open);
+            add_entry_instruction(*node, "close", ir_opcode::gate_close);
+            add_entry_instruction(*node, "toggle", ir_opcode::gate_toggle);
+        }
+        else
+        {
+            const auto index = add_entry_instruction(*node, "exec", executable_opcode_for(node->kind));
+            instruction_indices.emplace(node->id, index);
+        }
     }
 
     const auto node_by_id = [&](std::string_view id) -> const source_node&
@@ -1432,10 +1585,8 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
         return instruction;
     };
 
-    std::unordered_map<std::string, std::uint32_t> execution_entries;
-    for (const source_node* executable : nodes)
+    const auto collect_data_order = [&](const source_node& executable, std::optional<std::string_view> only_pin)
     {
-        if (!is_executable_node(executable->kind)) continue;
         std::vector<const source_node*> order;
         std::unordered_set<std::string> seen;
         std::function<void(const source_node&)> collect = [&](const source_node& node)
@@ -1450,29 +1601,69 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
             order.push_back(&node);
         };
 
-        for (const source_connection& connection : graph.connections)
+        if (only_pin)
         {
-            if (connection.kind != connection_kind::value || connection.to.node_id != executable->id) continue;
-            collect(node_by_id(connection.from.node_id));
+            const auto incoming = validation.incoming.find(pin_key(executable.id, *only_pin));
+            if (incoming != validation.incoming.end()) collect(node_by_id(incoming->second->from.node_id));
         }
+        else
+        {
+            for (const source_connection& connection : graph.connections)
+            {
+                if (connection.kind != connection_kind::value || connection.to.node_id != executable.id) continue;
+                collect(node_by_id(connection.from.node_id));
+            }
+        }
+        return order;
+    };
 
-        std::uint32_t target = instruction_indices.at(executable->id);
-        for (auto iterator = order.rbegin(); iterator != order.rend(); ++iterator)
+    const auto execution_inputs = [](node_kind kind)
+    {
+        if (kind == node_kind::do_once) return std::vector<std::string_view>{"exec", "reset"};
+        if (kind == node_kind::gate) return std::vector<std::string_view>{"enter", "open", "close", "toggle"};
+        return std::vector<std::string_view>{"exec"};
+    };
+
+    std::unordered_map<std::string, std::uint32_t> execution_entries;
+    for (const source_node* executable : nodes)
+    {
+        if (!is_executable_node(executable->kind)) continue;
+        const std::vector<const source_node*> order = collect_data_order(*executable, std::nullopt);
+        for (const std::string_view input : execution_inputs(executable->kind))
         {
-            const auto index = static_cast<std::uint32_t>(program.instructions.size());
-            program.instructions.push_back(make_data_instruction(**iterator, target));
-            target = index;
+            std::uint32_t target = entry_instruction_indices.at(pin_key(executable->id, input));
+            for (auto iterator = order.rbegin(); iterator != order.rend(); ++iterator)
+            {
+                const auto index = static_cast<std::uint32_t>(program.instructions.size());
+                program.instructions.push_back(make_data_instruction(**iterator, target));
+                target = index;
+            }
+            execution_entries.emplace(pin_key(executable->id, input), target);
         }
-        execution_entries.emplace(executable->id, target);
     }
 
     const auto execution_target = [&](const source_node& node, std::string_view pin)
     {
         const auto connection = validation.execution_outgoing.find(pin_key(node.id, pin));
         if (connection == validation.execution_outgoing.end()) return invalid_instruction;
-        const auto target = execution_entries.find(connection->second->to.node_id);
+        const auto target = execution_entries.find(pin_key(connection->second->to.node_id, connection->second->to.pin));
         return target == execution_entries.end() ? invalid_instruction : target->second;
     };
+
+    std::unordered_map<std::string, std::uint32_t> while_condition_entries;
+    for (const source_node* node : nodes)
+    {
+        if (node->kind != node_kind::while_loop) continue;
+        const std::vector<const source_node*> order = collect_data_order(*node, std::string_view{"condition"});
+        std::uint32_t target = invalid_instruction;
+        for (auto iterator = order.rbegin(); iterator != order.rend(); ++iterator)
+        {
+            const auto index = static_cast<std::uint32_t>(program.instructions.size());
+            program.instructions.push_back(make_data_instruction(**iterator, target));
+            target = index;
+        }
+        while_condition_entries.emplace(node->id, target);
+    }
 
     for (const source_node* node : nodes)
     {
@@ -1492,6 +1683,60 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                 instruction.false_instruction = execution_target(*node, "false");
                 break;
             }
+            case node_kind::sequence:
+                instruction.operand0 = execution_target(*node, "then0");
+                instruction.operand1 = execution_target(*node, "then1");
+                instruction.operand2 = execution_target(*node, "then2");
+                instruction.operand3 = execution_target(*node, "then3");
+                break;
+            case node_kind::switch_integer:
+            {
+                switch_int_table table;
+                const json& cases = node->values.at("cases");
+                for (std::size_t case_index = 0; case_index < table.values.size(); ++case_index)
+                {
+                    table.values[case_index] = cases[case_index].get<std::int64_t>();
+                    const std::string pin = std::string{"case"} + std::to_string(case_index);
+                    table.instructions[case_index] = execution_target(*node, pin);
+                }
+                table.instructions[4] = execution_target(*node, "default");
+                instruction.operand0 = input_slot(*node, "selection");
+                instruction.operand1 = static_cast<std::uint32_t>(program.switch_int_tables.size());
+                program.switch_int_tables.push_back(std::move(table));
+                break;
+            }
+            case node_kind::do_once:
+            {
+                const std::uint32_t state = value_slots.at(pin_key(node->id, "$fired"));
+                instruction.operand0 = state;
+                instruction.operand1 = execution_target(*node, "then");
+                ir_instruction& reset = program.instructions[entry_instruction_indices.at(pin_key(node->id, "reset"))];
+                reset.operand0 = state;
+                break;
+            }
+            case node_kind::gate:
+            {
+                const std::uint32_t state = value_slots.at(pin_key(node->id, "$open"));
+                instruction.operand0 = state;
+                instruction.operand1 = execution_target(*node, "exit");
+                program.instructions[entry_instruction_indices.at(pin_key(node->id, "open"))].operand0 = state;
+                program.instructions[entry_instruction_indices.at(pin_key(node->id, "close"))].operand0 = state;
+                program.instructions[entry_instruction_indices.at(pin_key(node->id, "toggle"))].operand0 = state;
+                break;
+            }
+            case node_kind::for_loop:
+                instruction.operand0 = input_slot(*node, "first");
+                instruction.operand1 = input_slot(*node, "last");
+                instruction.operand2 = value_slots.at(pin_key(node->id, "index"));
+                instruction.operand3 = execution_target(*node, "loopBody");
+                instruction.operand4 = execution_target(*node, "completed");
+                break;
+            case node_kind::while_loop:
+                instruction.operand0 = input_slot(*node, "condition");
+                instruction.operand1 = execution_target(*node, "loopBody");
+                instruction.operand2 = execution_target(*node, "completed");
+                instruction.operand3 = while_condition_entries.at(node->id);
+                break;
             case node_kind::set_variable:
                 instruction.operand0 = variable_indices.at(variable_for(graph, *node)->id);
                 instruction.operand1 = input_slot(*node, "value");
@@ -1713,6 +1958,26 @@ bytecode_opcode lower_opcode(ir_opcode opcode)
     {
         case ir_opcode::branch:
             return bytecode_opcode::branch;
+        case ir_opcode::sequence:
+            return bytecode_opcode::sequence;
+        case ir_opcode::switch_integer:
+            return bytecode_opcode::switch_integer;
+        case ir_opcode::do_once:
+            return bytecode_opcode::do_once;
+        case ir_opcode::do_once_reset:
+            return bytecode_opcode::do_once_reset;
+        case ir_opcode::gate_enter:
+            return bytecode_opcode::gate_enter;
+        case ir_opcode::gate_open:
+            return bytecode_opcode::gate_open;
+        case ir_opcode::gate_close:
+            return bytecode_opcode::gate_close;
+        case ir_opcode::gate_toggle:
+            return bytecode_opcode::gate_toggle;
+        case ir_opcode::for_loop:
+            return bytecode_opcode::for_loop;
+        case ir_opcode::while_loop:
+            return bytecode_opcode::while_loop;
         case ir_opcode::load_variable:
             return bytecode_opcode::load_variable;
         case ir_opcode::store_variable:
@@ -1793,6 +2058,7 @@ bytecode_program lower_bytecode(const ir_program& ir)
 {
     bytecode_program bytecode;
     bytecode.variables = ir.variables;
+    bytecode.switch_int_tables = ir.switch_int_tables;
     bytecode.value_slots.reserve(ir.value_slots.size());
     for (const ir_value_slot& slot : ir.value_slots)
         bytecode.value_slots.push_back({.type = slot.type, .initial_value = slot.initial_value});
