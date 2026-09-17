@@ -345,6 +345,7 @@ shader_parameter_type reflected_parameter_type(const nlohmann::json& type)
     if (kind.find("int") != std::string::npos) return shader_parameter_type::int32;
     if (kind.find("matrix") != std::string::npos) return shader_parameter_type::matrix4x4;
     if (kind.find("texturecube") != std::string::npos) return shader_parameter_type::texture_cube;
+    if (kind.find("texture3d") != std::string::npos) return shader_parameter_type::texture_3d;
     if (kind.find("texture") != std::string::npos) return shader_parameter_type::texture_2d;
     if (kind.find("sampler") != std::string::npos) return shader_parameter_type::sampler;
     if (columns == 4 || kind.find("vector4") != std::string::npos) return shader_parameter_type::float4;

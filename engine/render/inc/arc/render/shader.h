@@ -80,7 +80,8 @@ enum class shader_parameter_type : std::uint8_t
     matrix4x4,
     texture_2d,
     texture_cube,
-    sampler
+    sampler,
+    texture_3d
 };
 
 /** @brief Kind of a reflected shader resource binding. */

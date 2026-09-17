@@ -237,6 +237,8 @@ struct material_runtime_texture_binding
 {
     std::uint32_t slot{};
     shader_parameter_id parameter_id{};
+    shader_parameter_type type{shader_parameter_type::texture_2d};
+    std::uint32_t dimension_slot{};
 };
 
 struct material_runtime_program

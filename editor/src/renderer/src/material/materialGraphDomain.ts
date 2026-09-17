@@ -1,5 +1,6 @@
 import type { GraphConnectionEndpoint, GraphDomain } from '../graph';
 import {
+  materialNodeDefinition,
   materialNodeDefinitions,
   type MaterialGraphNode,
   type MaterialGraphNodeType,
@@ -9,7 +10,9 @@ import {
 } from './materialGraphTypes';
 
 const materialDefinitions = () =>
-  Object.values(materialNodeDefinitions) as Array<(typeof materialNodeDefinitions)[MaterialGraphNodeType]>;
+  (Object.values(materialNodeDefinitions) as Array<(typeof materialNodeDefinitions)[MaterialGraphNodeType]>).filter(
+    (definition) => definition.type !== 'textureSample',
+  );
 
 const numericPinTypes = new Set<MaterialGraphPinType>(['float', 'vec2', 'vec3', 'vec4', 'numeric']);
 
@@ -26,7 +29,7 @@ export const materialGraphDomain: GraphDomain<
   MaterialNodeCategory,
   MaterialNodeSubcategory
 > = {
-  getNodeDefinition: (node) => materialNodeDefinitions[node.type],
+  getNodeDefinition: materialNodeDefinition,
   getNodeDefinitions: materialDefinitions,
   canConnect: (
     from: GraphConnectionEndpoint<MaterialGraphNode, MaterialGraphPinType>,

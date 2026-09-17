@@ -20,6 +20,16 @@ float4 arcSampleTexture2D(Texture2D<float4> textureResource, SamplerState sample
 {
     return textureResource.Sample(samplerResource, uv);
 }
+float4 arcSampleTextureCube(TextureCube<float4> textureResource, SamplerState samplerResource, float3 direction,
+                            uint textureMetadataIndex)
+{
+    return textureResource.Sample(samplerResource, direction);
+}
+float4 arcSampleTexture3D(Texture3D<float4> textureResource, SamplerState samplerResource, float3 coordinates,
+                          uint textureMetadataIndex)
+{
+    return textureResource.Sample(samplerResource, coordinates);
+}
 struct ArcSurfaceInput
 {
     float3 positionWS;

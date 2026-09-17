@@ -5,6 +5,42 @@
 
 namespace arc::render::vulkan::backend_detail
 {
+namespace
+{
+std::optional<shader_parameter_type> material_texture_resource_type(std::string_view name) noexcept
+{
+    if (name == "arcMaterialTextures2D") return shader_parameter_type::texture_2d;
+    if (name == "arcMaterialTexturesCube") return shader_parameter_type::texture_cube;
+    if (name == "arcMaterialTextures3D") return shader_parameter_type::texture_3d;
+    return std::nullopt;
+}
+
+texture_dimension material_texture_dimension(shader_parameter_type type) noexcept
+{
+    switch (type)
+    {
+        case shader_parameter_type::texture_cube:
+            return texture_dimension::cube;
+        case shader_parameter_type::texture_3d:
+            return texture_dimension::texture_3d;
+        default:
+            return texture_dimension::texture_2d;
+    }
+}
+
+std::string_view material_texture_type_name(shader_parameter_type type) noexcept
+{
+    switch (type)
+    {
+        case shader_parameter_type::texture_cube:
+            return "TextureCube";
+        case shader_parameter_type::texture_3d:
+            return "Texture3D";
+        default:
+            return "Texture2D";
+    }
+}
+} // namespace
 void vulkan_render_backend::update_light_buffer()
 {
     if (light_buffer_.buffer == VK_NULL_HANDLE)
@@ -657,6 +693,7 @@ bool vulkan_render_backend::update_runtime_parameter_buffer(gpu_buffer& buffer, 
                 break;
             case shader_parameter_type::texture_2d:
             case shader_parameter_type::texture_cube:
+            case shader_parameter_type::texture_3d:
             case shader_parameter_type::sampler:
                 break;
         }
@@ -778,16 +815,43 @@ bool vulkan_render_backend::update_runtime_texture_descriptors(gpu_material& mat
         infos.resize(resource.kind == shader_resource_kind::sampled_texture ? resource.count : 1u);
         if (resource.kind == shader_resource_kind::sampled_texture)
         {
-            for (std::uint32_t texture_slot = 0; texture_slot < resource.count; ++texture_slot)
+            const auto expected_type = material_texture_resource_type(resource.name);
+            if (!expected_type)
+                return reject_runtime_material(material, "unsupported reflected Material ABI texture resource '" +
+                                                             resource.name + "'");
+            for (std::uint32_t dimension_slot = 0; dimension_slot < resource.count; ++dimension_slot)
             {
+                const auto binding = std::ranges::find_if(
+                    material.data.runtime_program->texture_bindings,
+                    [expected_type, dimension_slot](const material_runtime_texture_binding& value)
+                    { return value.type == *expected_type && value.dimension_slot == dimension_slot; });
+                if (binding == material.data.runtime_program->texture_bindings.end())
+                    return reject_runtime_material(material,
+                                                   "compiled Material ABI texture binding table is incomplete");
+
                 VkImageView view = white_view_;
-                const auto handle = runtime_texture_handle(material, texture_slot);
-                if (handle.valid())
+                const auto handle = runtime_texture_handle(material, binding->slot);
+                if (!handle.valid())
+                {
+                    if (*expected_type != shader_parameter_type::texture_2d) return false;
+                }
+                else
                 {
                     const auto found = textures_.find(resource_key(handle));
-                    if (found != textures_.end() && found->second.view != VK_NULL_HANDLE) view = found->second.view;
+                    if (found == textures_.end() || found->second.view == VK_NULL_HANDLE)
+                    {
+                        if (*expected_type != shader_parameter_type::texture_2d) return false;
+                    }
+                    else
+                    {
+                        if (found->second.data.dimension != material_texture_dimension(*expected_type))
+                            return reject_runtime_material(
+                                material, std::string(material_texture_type_name(*expected_type)) +
+                                              " material binding received a texture with incompatible dimensionality");
+                        view = found->second.view;
+                    }
                 }
-                infos[texture_slot] = {VK_NULL_HANDLE, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+                infos[dimension_slot] = {VK_NULL_HANDLE, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
             }
         }
         else
@@ -823,7 +887,8 @@ bool vulkan_render_backend::create_runtime_material_descriptors(gpu_material& ma
         const bool supported_name =
             (resource.kind == shader_resource_kind::constant_buffer &&
              (resource.name == "arcMaterialParameters" || resource.name == "arcFrame")) ||
-            (resource.kind == shader_resource_kind::sampled_texture && resource.name == "arcMaterialTextures") ||
+            (resource.kind == shader_resource_kind::sampled_texture &&
+             material_texture_resource_type(resource.name).has_value()) ||
             (resource.kind == shader_resource_kind::sampler && resource.name == "arcMaterialSampler");
         if (!supported_name)
             return reject_runtime_material(material,

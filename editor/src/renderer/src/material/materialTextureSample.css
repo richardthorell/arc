@@ -40,3 +40,16 @@
   inset: 0;
   pointer-events: none;
 }
+
+.material-node-texture-dimension {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px 6px;
+  font-size: 11px;
+}
+
+.material-node-texture-dimension select {
+  min-width: 104px;
+}

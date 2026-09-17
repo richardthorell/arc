@@ -71,7 +71,9 @@ std::optional<material_ir_node_kind> node_kind(std::string_view type) noexcept
     if (type == "vector4" || type == "colorRgba") return material_ir_node_kind::vector4;
     if (type == "texCoord") return material_ir_node_kind::tex_coord;
     if (type == "time") return material_ir_node_kind::time;
-    if (type == "textureSample") return material_ir_node_kind::texture_sample;
+    if (type == "textureSample" || type == "textureSample2D" || type == "textureSampleCube" ||
+        type == "textureSample3D")
+        return material_ir_node_kind::texture_sample;
     if (type == "normalMap") return material_ir_node_kind::normal_map;
     if (type == "saturate") return material_ir_node_kind::saturate;
     if (type == "clamp") return material_ir_node_kind::clamp;
@@ -193,9 +195,23 @@ material_ir_literal literal(const json& values, material_ir_node_kind kind)
     return result;
 }
 
-shader_parameter_type parameter_type(material_ir_node_kind kind) noexcept
+bool is_texture_parameter_type(shader_parameter_type type) noexcept
 {
-    switch (kind)
+    return type == shader_parameter_type::texture_2d || type == shader_parameter_type::texture_cube ||
+           type == shader_parameter_type::texture_3d;
+}
+
+std::optional<shader_parameter_type> texture_parameter_type(std::string_view dimension) noexcept
+{
+    if (dimension == "2d") return shader_parameter_type::texture_2d;
+    if (dimension == "cube") return shader_parameter_type::texture_cube;
+    if (dimension == "3d") return shader_parameter_type::texture_3d;
+    return std::nullopt;
+}
+
+shader_parameter_type parameter_type(const material_ir_node& node) noexcept
+{
+    switch (node.kind)
     {
         case material_ir_node_kind::vector2:
             return shader_parameter_type::float2;
@@ -204,7 +220,7 @@ shader_parameter_type parameter_type(material_ir_node_kind kind) noexcept
         case material_ir_node_kind::vector4:
             return shader_parameter_type::float4;
         case material_ir_node_kind::texture_sample:
-            return shader_parameter_type::texture_2d;
+            return node.texture_type;
         default:
             return shader_parameter_type::float32;
     }
@@ -227,7 +243,7 @@ std::uint32_t parameter_size(shader_parameter_type type) noexcept
 
 std::vector<std::byte> parameter_default(const material_ir_node& node, shader_parameter_type type)
 {
-    if (type == shader_parameter_type::texture_2d || node.literal.components == 0) return {};
+    if (is_texture_parameter_type(type) || node.literal.components == 0) return {};
     const auto count = static_cast<std::size_t>(node.literal.components);
     const auto bytes = std::as_bytes(std::span<const float>(node.literal.values.data(), count));
     return {bytes.begin(), bytes.end()};
@@ -361,6 +377,20 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
                               .parameter_id = make_shader_parameter_id(id),
                               .parameter_name = parameter.value("name", id)};
 
+        if (*kind == material_ir_node_kind::texture_sample)
+        {
+            std::string texture_dimension = values.value("dimension", "2d");
+            if (type == "textureSample2D") texture_dimension = "2d";
+            if (type == "textureSampleCube") texture_dimension = "cube";
+            if (type == "textureSample3D") texture_dimension = "3d";
+            const auto texture_type = texture_parameter_type(texture_dimension);
+            if (!texture_type)
+                return material_graph_compile_result::failure(
+                    {.code = shader_compile_error_code::validation_failed,
+                     .message = "unsupported material texture sample dimension: " + values.value("dimension", "")});
+            node.texture_type = *texture_type;
+        }
+
         if (*kind == material_ir_node_kind::function_call)
         {
             node.function_path = values.value("path", "");
@@ -464,7 +494,7 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
                 return material_graph_compile_result::failure(
                     {.code = shader_compile_error_code::validation_failed,
                      .message = "material graph contains colliding stable parameter IDs"});
-            const auto type = parameter_type(node.kind);
+            const auto type = parameter_type(node);
             compilation.descriptor.parameters.push_back({.id = node.parameter_id,
                                                          .name = node.parameter_name,
                                                          .type = type,
@@ -483,13 +513,31 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
             case material_ir_node_kind::texture_sample:
             {
                 compilation.descriptor.requirements.uses_texture_sampling = true;
-                if (!inputs.contains({node.id, "uv"})) compilation.descriptor.requirements.uses_uv0 = true;
+                const bool has_coordinates = inputs.contains({node.id, "uv"});
+                if (node.texture_type == shader_parameter_type::texture_2d)
+                {
+                    if (!has_coordinates) compilation.descriptor.requirements.uses_uv0 = true;
+                }
+                else if (!has_coordinates)
+                {
+                    const auto kind_name =
+                        node.texture_type == shader_parameter_type::texture_cube ? "TextureCube" : "Texture3D";
+                    return material_graph_compile_result::failure(
+                        {.code = shader_compile_error_code::validation_failed,
+                         .message =
+                             std::string(kind_name) + " sample '" + node.id + "' requires a vec3 coordinate input"});
+                }
                 const auto slot = static_cast<std::uint32_t>(compilation.descriptor.textures.size());
+                const auto dimension_slot = static_cast<std::uint32_t>(std::ranges::count_if(
+                    compilation.descriptor.textures,
+                    [&node](const material_texture_binding& binding) { return binding.type == node.texture_type; }));
                 compilation.descriptor.textures.push_back(
                     {.node_id = node.id,
                      .slot = slot,
                      .parameter_id = node.exposed_parameter ? node.parameter_id : shader_parameter_id{},
-                     .parameter_name = node.exposed_parameter ? node.parameter_name : std::string{}});
+                     .parameter_name = node.exposed_parameter ? node.parameter_name : std::string{},
+                     .type = node.texture_type,
+                     .dimension_slot = dimension_slot});
                 break;
             }
             case material_ir_node_kind::normal_map:

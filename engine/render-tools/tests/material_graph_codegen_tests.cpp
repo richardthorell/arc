@@ -65,10 +65,10 @@ TEST_CASE("Material IR codegen deterministically implements the full material AB
     REQUIRE(source.find("ConstantBuffer<ArcFrame> arcFrame;") != std::string::npos);
     REQUIRE(source.find("ParameterBlock<ArcMaterialParameters>") == std::string::npos);
     REQUIRE(source.find("ParameterBlock<ArcFrame>") == std::string::npos);
-    REQUIRE(source.find("Texture2D<float4> arcMaterialTextures[2];") != std::string::npos);
-    REQUIRE(source.find("float3 arc_node_a_texture_rgb = arcSampleTexture2D(arcMaterialTextures[0]") !=
+    REQUIRE(source.find("Texture2D<float4> arcMaterialTextures2D[2];") != std::string::npos);
+    REQUIRE(source.find("float3 arc_node_a_texture_rgb = arcSampleTexture2D(arcMaterialTextures2D[0]") !=
             std::string::npos);
-    REQUIRE(source.find("float3 arc_node_z_texture_rgb = arcSampleTexture2D(arcMaterialTextures[1]") !=
+    REQUIRE(source.find("float3 arc_node_z_texture_rgb = arcSampleTexture2D(arcMaterialTextures2D[1]") !=
             std::string::npos);
     REQUIRE(source.find("float3 arc_node_tinted_result =") != std::string::npos);
     REQUIRE(source.find("float arc_node_clock_time = arcFrame.timeSeconds") != std::string::npos);
@@ -144,7 +144,7 @@ TEST_CASE("Material IR generated source compiles with the pinned Slang toolchain
                                     [name](const arc::render::shader_resource_descriptor& resource)
                                     { return resource.name == name; });
     };
-    const auto texture = find_resource("arcMaterialTextures");
+    const auto texture = find_resource("arcMaterialTextures2D");
     REQUIRE(texture != result.value().reflection.resources.end());
     REQUIRE(texture->kind == arc::render::shader_resource_kind::sampled_texture);
     REQUIRE(texture->count == 1);
@@ -183,4 +183,37 @@ TEST_CASE("Material shader codegen rejects incompatible IR or ABI versions")
     const auto bad_abi = arc::render::tools::generate_material_slang(compilation);
     REQUIRE_FALSE(bad_abi);
     REQUIRE(bad_abi.error().code == arc::render::shader_compile_error_code::validation_failed);
+}
+
+TEST_CASE("Material IR codegen emits typed texture sampling resources")
+{
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"tex2d","type":"textureSample","values":{"dimension":"2d"}},
+        {"id":"cube","type":"textureSample","values":{"dimension":"cube"}},
+        {"id":"volume","type":"textureSample","values":{"dimension":"3d"}},
+        {"id":"direction","type":"vector3","values":{"value":[0,0,1]}},
+        {"id":"uvw","type":"vector3","values":{"value":[0.5,0.5,0.5]}}
+      ],
+      "connections":[
+        {"id":"1","from":{"nodeId":"tex2d","pin":"rgb"},"to":{"nodeId":"out","pin":"baseColor"}},
+        {"id":"2","from":{"nodeId":"direction","pin":"value"},"to":{"nodeId":"cube","pin":"uv"}},
+        {"id":"3","from":{"nodeId":"cube","pin":"rgb"},"to":{"nodeId":"out","pin":"emissive"}},
+        {"id":"4","from":{"nodeId":"uvw","pin":"value"},"to":{"nodeId":"volume","pin":"uv"}},
+        {"id":"5","from":{"nodeId":"volume","pin":"r"},"to":{"nodeId":"out","pin":"roughness"}}
+      ]
+    })";
+
+    const auto compilation = arc::render::tools::compile_material_graph_json(graph);
+    REQUIRE(compilation);
+    const auto generated = arc::render::tools::generate_material_slang(compilation.value());
+    REQUIRE(generated);
+    const auto& source = generated.value().source;
+    REQUIRE(source.find("Texture2D<float4> arcMaterialTextures2D[1];") != std::string::npos);
+    REQUIRE(source.find("TextureCube<float4> arcMaterialTexturesCube[1];") != std::string::npos);
+    REQUIRE(source.find("Texture3D<float4> arcMaterialTextures3D[1];") != std::string::npos);
+    REQUIRE(source.find("arcSampleTextureCube(arcMaterialTexturesCube[0]") != std::string::npos);
+    REQUIRE(source.find("arcSampleTexture3D(arcMaterialTextures3D[0]") != std::string::npos);
 }

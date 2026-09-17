@@ -430,12 +430,16 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
     program->uses_time = compilation.descriptor.requirements.uses_time;
     program->uses_texture_sampling = compilation.descriptor.requirements.uses_texture_sampling;
     for (const auto& texture : compilation.descriptor.textures)
-        program->texture_bindings.push_back({.slot = texture.slot, .parameter_id = texture.parameter_id});
+        program->texture_bindings.push_back({.slot = texture.slot,
+                                             .parameter_id = texture.parameter_id,
+                                             .type = texture.type,
+                                             .dimension_slot = texture.dimension_slot});
 
     for (const auto& authored_parameter : evaluator.value().parameters)
     {
         if (authored_parameter.type == render::shader_parameter_type::texture_2d ||
             authored_parameter.type == render::shader_parameter_type::texture_cube ||
+            authored_parameter.type == render::shader_parameter_type::texture_3d ||
             authored_parameter.type == render::shader_parameter_type::sampler)
             continue;
 

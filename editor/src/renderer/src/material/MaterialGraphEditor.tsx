@@ -24,6 +24,7 @@ import {
   cloneMaterialGraph,
   createMaterialNode,
   materialGraphId,
+  isMaterialTextureSampleNodeType,
   materialNodeCategoryOrder,
   materialNodeSubcategoryOrder,
   type MaterialGraph,
@@ -56,6 +57,9 @@ export const materialNodeWidth = (type: MaterialGraphNodeType) => {
     case 'colorRgba':
       return 300;
     case 'textureSample':
+    case 'textureSample2D':
+    case 'textureSampleCube':
+    case 'textureSample3D':
       return 286;
     case 'output':
       return 236;
@@ -177,7 +181,7 @@ function MaterialNodeValueEditor({
     );
   }
 
-  if (node.type === 'textureSample')
+  if (isMaterialTextureSampleNodeType(node.type))
     return <MaterialTextureSampleEditor node={node} readOnly={readOnly} onChange={onChange} />;
 
   if (node.type === 'normalMap')

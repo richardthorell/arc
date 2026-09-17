@@ -225,4 +225,50 @@ describe('AssetPicker', () => {
     expect(asset.graph.nodes.some((node: { type: string }) => node.type === 'output')).toBe(true);
     await waitFor(() => expect(onChange).toHaveBeenCalledWith('GameContent/Hero Surface.arcmat'));
   });
+  it('rejects cubemaps in Texture2D fields and accepts them in TextureCube fields', async () => {
+    const assets = [
+      {
+        id: 'albedo-guid',
+        guid: 'albedo-guid',
+        name: 'Albedo',
+        path: 'Content/Textures/Albedo.png',
+        kind: 'texture',
+        textureDimension: '2d' as const,
+        status: 'ready' as const,
+      },
+      {
+        id: 'sky-guid',
+        guid: 'sky-guid',
+        name: 'Studio Sky',
+        path: 'Content/Environments/Studio.hdr',
+        kind: 'environment',
+        textureDimension: 'cube' as const,
+        status: 'ready' as const,
+      },
+    ];
+    const on2DChange = vi.fn();
+    const { unmount } = render(<TexturePicker assets={assets} label="Base Color" value="" onChange={on2DChange} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Choose Base Color asset' }));
+    expect(screen.getByRole('button', { name: 'Select Studio Sky' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Select Studio Sky' })).toHaveAttribute(
+      'title',
+      'Expected Texture2D · TextureCube provided',
+    );
+    unmount();
+
+    const onCubeChange = vi.fn();
+    render(
+      <TexturePicker
+        assets={assets}
+        expectedTextureDimension="cube"
+        label="Environment"
+        value=""
+        onChange={onCubeChange}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Choose Environment asset' }));
+    expect(screen.getByRole('button', { name: 'Select Albedo' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Select Studio Sky' })).toBeEnabled();
+  });
 });

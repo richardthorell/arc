@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { TexturePicker, type AssetPickerItem } from '../inspector/AssetPicker';
-import type { MaterialGraphNode } from './materialGraphTypes';
+import { materialTextureDimension, type MaterialGraphNode } from './materialGraphTypes';
 import './materialTextureSample.css';
 
 type HostResponse<T> = {
@@ -18,6 +18,7 @@ type HostAssetSnapshot = {
   typeId: string;
   importerId: string;
   state: 'unknown' | 'queued' | 'importing' | 'ready' | 'stale' | 'failed';
+  textureDimension?: '2d' | 'cube' | '3d';
 };
 
 type HostProjectAssetsSnapshot = {
@@ -43,6 +44,7 @@ export function MaterialTextureSampleEditor({
 }) {
   const [assets, setAssets] = useState<AssetPickerItem[]>([]);
   const texturePath = typeof node.values.texture === 'string' ? node.values.texture : '';
+  const textureDimension = materialTextureDimension(node);
   const parameterName = node.parameter?.name ?? 'Texture';
   const parameterEnabled = Boolean(node.parameter?.exposed);
 
@@ -68,6 +70,12 @@ export function MaterialTextureSampleEditor({
               status: pickerStatus(asset.state),
               scope: asset.scope,
               readOnly: asset.readOnly,
+              textureDimension:
+                asset.textureDimension === 'cube' || asset.textureDimension === '3d'
+                  ? asset.textureDimension
+                  : asset.kind === 'environment'
+                    ? 'cube'
+                    : '2d',
             })),
         );
       })
@@ -99,7 +107,8 @@ export function MaterialTextureSampleEditor({
         <TexturePicker
           assets={assets}
           value={texturePath}
-          label="Texture"
+          label={textureDimension === 'cube' ? 'TextureCube' : textureDimension === '3d' ? 'Texture3D' : 'Texture2D'}
+          expectedTextureDimension={textureDimension}
           allowEmpty
           thumbnailProvider={thumbnailProvider}
           onChange={(texture) => onChange({ ...node, values: { ...node.values, texture } })}
