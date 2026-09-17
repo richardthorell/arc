@@ -107,7 +107,7 @@ void test_vector_language_bytecode()
     assert(std::abs(normalized[0] - 0.6) < 1e-9);
     assert(std::abs(normalized[1] - 0.8) < 1e-9);
     const auto scaled = std::get<std::array<double, 3>>(*instance.value_slot(6));
-    assert(scaled == std::array<double, 3>{6.0, 8.0, 0.0});
+    assert((scaled == std::array<double, 3>{6.0, 8.0, 0.0}));
 }
 
 void test_invalid_arithmetic_is_reported()
