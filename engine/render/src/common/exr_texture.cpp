@@ -5,6 +5,10 @@
 #include <fstream>
 
 #if defined(ARC_RENDER_HAS_TINYEXR) && defined(ARC_RENDER_HAS_STB)
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
@@ -12,6 +16,9 @@
 #define TINYEXR_USE_MINIZ 0
 #define TINYEXR_USE_STB_ZLIB 1
 #include <tinyexr.h>
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 #endif
 
 namespace arc::render
