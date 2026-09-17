@@ -8,6 +8,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <vector>
 
 namespace
 {
@@ -56,4 +57,37 @@ TEST_CASE("texture metadata inspection does not require DDS payload", "[render][
 
     std::error_code error;
     std::filesystem::remove(path, error);
+}
+
+TEST_CASE("PSD textures are supported and decoded through stb", "[render][texture]")
+{
+    const std::array<std::uint8_t, 43> psd = {
+        0x38, 0x42, 0x50, 0x53, // signature: 8BPS
+        0x00, 0x01,             // version
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x03,                         // channels
+        0x00, 0x00, 0x00, 0x01,             // height
+        0x00, 0x00, 0x00, 0x01,             // width
+        0x00, 0x08,                         // depth
+        0x00, 0x03,                         // RGB color mode
+        0x00, 0x00, 0x00, 0x00,             // color mode data
+        0x00, 0x00, 0x00, 0x00,             // image resources
+        0x00, 0x00, 0x00, 0x00,             // layer and mask data
+        0x00, 0x00,                         // raw image data
+        0x12, 0x34, 0x56                    // R, G, B planes
+    };
+
+    std::vector<std::byte> bytes;
+    bytes.reserve(psd.size());
+    for (const auto value : psd)
+        bytes.push_back(static_cast<std::byte>(value));
+
+    CHECK(arc::render::is_supported_texture_asset("source.PSD"));
+    const auto loaded = arc::render::load_texture_asset_bytes(std::move(bytes), "source.psd");
+    REQUIRE(loaded.succeeded());
+    CHECK(loaded.texture.width == 1);
+    CHECK(loaded.texture.height == 1);
+    CHECK(loaded.texture.format == arc::render::texture_format::rgba8_srgb);
+    CHECK(loaded.texture.mime_type == "image/vnd.adobe.photoshop");
+    CHECK(loaded.texture.mip_levels == 1);
 }
