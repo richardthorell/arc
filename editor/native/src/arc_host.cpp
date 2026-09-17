@@ -8,7 +8,6 @@
 #include <arc/scene/scene.h>
 
 #include <algorithm>
-#include <array>
 #include <filesystem>
 #include <limits>
 #include <optional>
@@ -37,6 +36,13 @@ struct arc_material_preview_resources
     render::texture_handle environment_texture{};
     render::environment_handle environment{};
 };
+
+// The macro around arc_host_impl.inc passes a local viewport `surface` when one
+// exists. Other primitive call sites resolve this fallback instead, so only
+// material-preview construction consumes the optional surface-id mesh token.
+struct arc_material_preview_surface_fallback
+{};
+inline constexpr arc_material_preview_surface_fallback surface{};
 
 std::unordered_map<editor_scene_state*, arc_material_preview_resources> arc_material_preview_scene_resources;
 
@@ -151,35 +157,32 @@ void arc_configure_material_preview_panel(editor_scene_state& state, ecs::entity
     }
 }
 
-ecs::entity arc_duplicate_material_preview_panel(editor_scene_state& state, ecs::entity source,
-                                                 const arc_material_preview_panel& panel)
+template <class SurfaceHint>
+editor_primitive_type arc_material_preview_primitive_type(const editor_scene_state& state, editor_primitive_type type,
+                                                          const SurfaceHint& surface_hint)
 {
-    const auto* source_bounds = state.scene.try_get<scene::bounds_component>(source);
-    const auto* source_renderer = state.scene.try_get<scene::mesh_renderer_component>(source);
-    if (!source_bounds || !source_renderer) return {};
+    if (type != editor_primitive_type::sphere || state.scene_name != arc_material_preview_scene_name) return type;
 
-    const auto entity = state.scene.create();
-    scene::transform_component transform;
-    transform.set_position(panel.position);
-    transform.set_scale(panel.scale);
-    state.scene.emplace<scene::name_component>(entity, panel.name);
-    state.scene.emplace<scene::tag_component>(entity, "Environment");
-    state.scene.emplace<scene::active_component>(entity);
-    state.scene.emplace<scene::selection_component>(entity, false);
-    state.scene.emplace<scene::bounds_component>(entity, source_bounds->local_bounds, source_bounds->local_bounds,
-                                                 true);
-    state.scene.emplace<scene::transform_component>(entity, transform);
-    state.scene.emplace<scene::mesh_renderer_component>(entity, *source_renderer);
-    state.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
-    state.scene.emplace<scene::hierarchy_component>(entity);
-    state.primitive_entities.push_back(entity);
-    return entity;
+    if constexpr (requires { surface_hint.options.viewport_id; })
+    {
+        const std::string_view viewport_id{surface_hint.options.viewport_id};
+        const auto selector = viewport_id.find('~');
+        if (selector != std::string_view::npos)
+        {
+            const auto token = viewport_id.substr(selector + 1);
+            if (token.starts_with("cube")) return editor_primitive_type::cube;
+            if (token.starts_with("pill")) return editor_primitive_type::capsule;
+        }
+    }
+    return type;
 }
 
+template <class SurfaceHint>
 ecs::entity arc_material_preview_add_primitive(editor_scene_state& state, render::renderer& renderer,
-                                               editor_primitive_type type)
+                                               editor_primitive_type type, const SurfaceHint& surface_hint)
 {
-    const auto entity = add_primitive_to_scene(state, renderer, type);
+    const auto preview_type = arc_material_preview_primitive_type(state, type, surface_hint);
+    const auto entity = add_primitive_to_scene(state, renderer, preview_type);
     if (type != editor_primitive_type::sphere || state.scene_name != arc_material_preview_scene_name ||
         !state.scene.alive(entity) || arc_material_preview_scene_resources.contains(&state))
         return entity;
@@ -187,42 +190,24 @@ ecs::entity arc_material_preview_add_primitive(editor_scene_state& state, render
     auto& resources = arc_material_preview_scene_resources[&state];
     (void)arc_configure_material_preview_environment(state, renderer, resources);
 
-    // The material sphere has a 0.5-unit radius. Keep its center at the orbit
-    // pivot and place the studio floor at y=-0.5 so it physically rests on it.
+    // Keep one neutral ground plane for useful contact/shadows, but leave the
+    // sides/back/ceiling open so the HDRI is visible as the actual backdrop.
     constexpr float half_extent = 4.0f;
-    constexpr float room_height = 5.5f;
     constexpr float panel_thickness = 0.10f;
     constexpr float floor_surface_y = -0.5f;
-    constexpr float wall_center_y = floor_surface_y + room_height * 0.5f;
-    constexpr float ceiling_center_y = floor_surface_y + room_height + panel_thickness * 0.5f;
 
-    const auto room_template = add_primitive_to_scene(state, renderer, editor_primitive_type::cube);
-    if (!state.scene.alive(room_template)) return entity;
-    const auto* room_renderer = state.scene.try_get<scene::mesh_renderer_component>(room_template);
-    if (!room_renderer || !room_renderer->mesh.valid()) return entity;
-    resources.room_mesh = room_renderer->mesh;
+    const auto floor = add_primitive_to_scene(state, renderer, editor_primitive_type::cube);
+    if (!state.scene.alive(floor)) return entity;
+    const auto* floor_renderer = state.scene.try_get<scene::mesh_renderer_component>(floor);
+    if (!floor_renderer || !floor_renderer->mesh.valid()) return entity;
+    resources.room_mesh = floor_renderer->mesh;
 
-    constexpr std::array<arc_material_preview_panel, 5> panels{{
-        {"Material Preview Floor",
-         {0.0f, floor_surface_y - panel_thickness * 0.5f, 0.0f},
-         {half_extent * 2.0f, panel_thickness, half_extent * 2.0f}},
-        {"Material Preview Back Wall",
-         {0.0f, wall_center_y, -half_extent},
-         {half_extent * 2.0f, room_height, panel_thickness}},
-        {"Material Preview Left Wall",
-         {-half_extent, wall_center_y, 0.0f},
-         {panel_thickness, room_height, half_extent * 2.0f}},
-        {"Material Preview Right Wall",
-         {half_extent, wall_center_y, 0.0f},
-         {panel_thickness, room_height, half_extent * 2.0f}},
-        {"Material Preview Ceiling",
-         {0.0f, ceiling_center_y, 0.0f},
-         {half_extent * 2.0f, panel_thickness, half_extent * 2.0f}},
-    }};
-
-    arc_configure_material_preview_panel(state, room_template, panels.front());
-    for (std::size_t index = 1; index < panels.size(); ++index)
-        (void)arc_duplicate_material_preview_panel(state, room_template, panels[index]);
+    constexpr arc_material_preview_panel floor_panel{
+        "Material Preview Floor",
+        {0.0f, floor_surface_y - panel_thickness * 0.5f, 0.0f},
+        {half_extent * 2.0f, panel_thickness, half_extent * 2.0f},
+    };
+    arc_configure_material_preview_panel(state, floor, floor_panel);
     return entity;
 }
 
@@ -330,7 +315,8 @@ void arc_append_model_preview_metadata(nlohmann::json& payload, const editor_sce
 } // namespace
 } // namespace arc::editor
 
-#define add_primitive_to_scene(state, renderer, type) arc_material_preview_add_primitive(state, renderer, type)
+#define add_primitive_to_scene(state, renderer, type)                                                                  \
+    arc_material_preview_add_primitive(state, renderer, type, surface)
 #define clear_imported_scene_content(state, renderer) arc_clear_preview_imported_content(state, renderer)
 #define focus_selected_entity(registry, selected, camera) arc_model_preview_focus(registry, selected, camera)
 #define collect_viewport_render_stats(scene, renderer)                                                                 \
