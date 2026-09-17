@@ -5,6 +5,13 @@ arc_add_module(
     NO_TESTS
 )
 
+if(NOT TARGET arc-third-party-tinyexr)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/tinyexr"
+        "${CMAKE_BINARY_DIR}/third_party/tinyexr"
+    )
+endif()
+
 target_sources(arc-render PRIVATE src/common/lighting_scene.cpp)
 
 if(TARGET arc-third-party-ufbx)
@@ -16,6 +23,10 @@ endif()
 
 if(TARGET arc-third-party-stb)
     target_link_libraries(arc-render PRIVATE "$<BUILD_INTERFACE:arc-third-party-stb>")
+endif()
+
+if(TARGET arc-third-party-tinyexr)
+    target_link_libraries(arc-render PRIVATE "$<BUILD_INTERFACE:arc-third-party-tinyexr>")
 endif()
 
 if(BUILD_TESTING AND ARC_BUILD_ENGINE_TESTS)
