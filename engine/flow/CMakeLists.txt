@@ -13,6 +13,7 @@ target_link_libraries(arc-flow
 if(BUILD_TESTING)
     add_executable(arc-flow-world-tests
         test_support/world_tests_main.cpp
+        tests/flow_language_tests.cpp
         tests/flow_world_tests.cpp
     )
     arc_configure_first_party_target(arc-flow-world-tests)

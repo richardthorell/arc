@@ -5,7 +5,7 @@ import type { EditorDocument, EditorSurfaceContext } from '../editors/editorType
 import { UiButton } from '../ui';
 import { FlowGraphEditor } from './FlowGraphEditor';
 import { disposeFlowDocument, replaceFlowGraph, useFlowDocumentState } from './flowDocumentState';
-import { flowGraphId, type FlowValueType } from './flowGraphTypes';
+import { flowGraphId, type FlowGraph, type FlowValueType } from './flowGraphTypes';
 import './flowEditor.css';
 
 const variableTypes: FlowValueType[] = [
@@ -44,6 +44,12 @@ const defaultValueForType = (type: FlowValueType): unknown => {
   }
 };
 
+const vectorValue = (value: unknown, size: number) => {
+  if (Array.isArray(value) && value.length === size && value.every((entry) => typeof entry === 'number'))
+    return value as number[];
+  return Array.from({ length: size }, () => 0);
+};
+
 export function FlowEditor({ document }: { document: EditorDocument; context?: EditorSurfaceContext }) {
   const state = useFlowDocumentState(document);
 
@@ -57,11 +63,14 @@ export function FlowEditor({ document }: { document: EditorDocument; context?: E
       </div>
     );
 
-  const mutateVariables = (updater: (variables: typeof state.graph.variables) => void) => {
+  const mutateGraph = (updater: (graph: FlowGraph) => void) => {
     const graph = structuredClone(state.graph);
-    updater(graph.variables);
+    updater(graph);
     replaceFlowGraph(document, graph);
   };
+
+  const mutateVariables = (updater: (variables: typeof state.graph.variables, graph: FlowGraph) => void) =>
+    mutateGraph((graph) => updater(graph.variables, graph));
 
   return (
     <section className="flow-editor">
@@ -142,9 +151,23 @@ export function FlowEditor({ document }: { document: EditorDocument; context?: E
                     aria-label={`Delete variable ${variable.name}`}
                     disabled={document.readOnly}
                     onClick={() =>
-                      mutateVariables((variables) => {
+                      mutateVariables((variables, graph) => {
                         const index = variables.findIndex((candidate) => candidate.id === variable.id);
-                        if (index >= 0) variables.splice(index, 1);
+                        if (index < 0) return;
+                        variables.splice(index, 1);
+                        const affected = new Set(
+                          graph.nodes.filter((node) => node.values.variableId === variable.id).map((node) => node.id),
+                        );
+                        for (const node of graph.nodes) {
+                          if (!affected.has(node.id)) continue;
+                          node.values.variableId = '';
+                          node.values.variableType = 'float';
+                        }
+                        graph.connections = graph.connections.filter(
+                          (connection) =>
+                            connection.kind === 'execution' ||
+                            (!affected.has(connection.from.nodeId) && !affected.has(connection.to.nodeId)),
+                        );
                       })
                     }
                     variant="ghost"
@@ -158,11 +181,21 @@ export function FlowEditor({ document }: { document: EditorDocument; context?: E
                     <select
                       disabled={document.readOnly}
                       onChange={(event) =>
-                        mutateVariables((variables) => {
+                        mutateVariables((variables, graph) => {
                           const target = variables.find((candidate) => candidate.id === variable.id);
                           if (!target) return;
                           target.type = event.target.value as FlowValueType;
                           target.defaultValue = defaultValueForType(target.type);
+                          const affected = new Set(
+                            graph.nodes.filter((node) => node.values.variableId === variable.id).map((node) => node.id),
+                          );
+                          for (const node of graph.nodes)
+                            if (affected.has(node.id)) node.values.variableType = target.type;
+                          graph.connections = graph.connections.filter(
+                            (connection) =>
+                              connection.kind === 'execution' ||
+                              (!affected.has(connection.from.nodeId) && !affected.has(connection.to.nodeId)),
+                          );
                         })
                       }
                       value={variable.type}
@@ -189,6 +222,95 @@ export function FlowEditor({ document }: { document: EditorDocument; context?: E
                     Expose
                   </label>
                 </div>
+
+                {variable.type === 'bool' && (
+                  <label className="flow-variable-default">
+                    Default
+                    <input
+                      checked={variable.defaultValue === true}
+                      disabled={document.readOnly}
+                      onChange={(event) =>
+                        mutateVariables((variables) => {
+                          const target = variables.find((candidate) => candidate.id === variable.id);
+                          if (target) target.defaultValue = event.target.checked;
+                        })
+                      }
+                      type="checkbox"
+                    />
+                  </label>
+                )}
+
+                {(variable.type === 'int' || variable.type === 'float') && (
+                  <label className="flow-variable-default">
+                    Default
+                    <input
+                      disabled={document.readOnly}
+                      onChange={(event) => {
+                        const value = Number(event.target.value);
+                        mutateVariables((variables) => {
+                          const target = variables.find((candidate) => candidate.id === variable.id);
+                          if (target)
+                            target.defaultValue = Number.isFinite(value)
+                              ? variable.type === 'int'
+                                ? Math.trunc(value)
+                                : value
+                              : 0;
+                        });
+                      }}
+                      step={variable.type === 'int' ? 1 : 'any'}
+                      type="number"
+                      value={typeof variable.defaultValue === 'number' ? variable.defaultValue : 0}
+                    />
+                  </label>
+                )}
+
+                {(variable.type === 'string' || variable.type === 'name') && (
+                  <label className="flow-variable-default">
+                    Default
+                    <input
+                      disabled={document.readOnly}
+                      onChange={(event) =>
+                        mutateVariables((variables) => {
+                          const target = variables.find((candidate) => candidate.id === variable.id);
+                          if (target) target.defaultValue = event.target.value;
+                        })
+                      }
+                      value={typeof variable.defaultValue === 'string' ? variable.defaultValue : ''}
+                    />
+                  </label>
+                )}
+
+                {(variable.type === 'vec2' || variable.type === 'vec3' || variable.type === 'vec4') &&
+                  (() => {
+                    const size = variable.type === 'vec2' ? 2 : variable.type === 'vec3' ? 3 : 4;
+                    const values = vectorValue(variable.defaultValue, size);
+                    return (
+                      <label className="flow-variable-default">
+                        Default
+                        <span style={{ display: 'grid', gap: 4, gridTemplateColumns: `repeat(${size}, 1fr)` }}>
+                          {values.map((entry, component) => (
+                            <input
+                              aria-label={`${variable.name} default component ${component + 1}`}
+                              disabled={document.readOnly}
+                              key={component}
+                              onChange={(event) => {
+                                const next = [...values];
+                                const parsed = Number(event.target.value);
+                                next[component] = Number.isFinite(parsed) ? parsed : 0;
+                                mutateVariables((variables) => {
+                                  const target = variables.find((candidate) => candidate.id === variable.id);
+                                  if (target) target.defaultValue = next;
+                                });
+                              }}
+                              step="any"
+                              type="number"
+                              value={entry}
+                            />
+                          ))}
+                        </span>
+                      </label>
+                    );
+                  })()}
               </article>
             ))}
           </div>

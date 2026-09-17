@@ -41,9 +41,28 @@ enum class node_kind : std::uint8_t
     get_transform,
     set_transform,
     bool_literal,
+    int_literal,
+    float_literal,
+    vector2_literal,
     string_literal,
     vector3_literal,
     vector4_literal,
+    get_variable,
+    set_variable,
+    add,
+    subtract,
+    multiply,
+    divide,
+    compare,
+    boolean_and,
+    boolean_or,
+    boolean_not,
+    vector_dot,
+    vector_length,
+    vector_normalize,
+    vector_scale,
+    select,
+    convert_number,
 };
 
 enum class pin_kind : std::uint8_t
@@ -133,9 +152,28 @@ std::optional<node_kind> parse_node_kind(std::string_view value)
     if (value == "getTransform") return node_kind::get_transform;
     if (value == "setTransform") return node_kind::set_transform;
     if (value == "boolLiteral") return node_kind::bool_literal;
+    if (value == "intLiteral") return node_kind::int_literal;
+    if (value == "floatLiteral") return node_kind::float_literal;
+    if (value == "vector2Literal") return node_kind::vector2_literal;
     if (value == "stringLiteral") return node_kind::string_literal;
     if (value == "vector3Literal") return node_kind::vector3_literal;
     if (value == "vector4Literal") return node_kind::vector4_literal;
+    if (value == "getVariable") return node_kind::get_variable;
+    if (value == "setVariable") return node_kind::set_variable;
+    if (value == "add") return node_kind::add;
+    if (value == "subtract") return node_kind::subtract;
+    if (value == "multiply") return node_kind::multiply;
+    if (value == "divide") return node_kind::divide;
+    if (value == "compare") return node_kind::compare;
+    if (value == "boolAnd") return node_kind::boolean_and;
+    if (value == "boolOr") return node_kind::boolean_or;
+    if (value == "boolNot") return node_kind::boolean_not;
+    if (value == "vectorDot") return node_kind::vector_dot;
+    if (value == "vectorLength") return node_kind::vector_length;
+    if (value == "vectorNormalize") return node_kind::vector_normalize;
+    if (value == "vectorScale") return node_kind::vector_scale;
+    if (value == "select") return node_kind::select;
+    if (value == "convertNumber") return node_kind::convert_number;
     return std::nullopt;
 }
 
@@ -233,12 +271,56 @@ std::optional<world_core_component> parse_core_component(std::string_view value)
     return std::nullopt;
 }
 
+bool is_numeric_type(value_type type)
+{
+    return type == value_type::integer || type == value_type::float32;
+}
+
+bool is_arithmetic_type(value_type type)
+{
+    return is_numeric_type(type) || type == value_type::vector2 || type == value_type::vector3 ||
+           type == value_type::vector4;
+}
+
+bool is_vector_type(value_type type)
+{
+    return type == value_type::vector2 || type == value_type::vector3 || type == value_type::vector4;
+}
+
+bool is_select_type(value_type type)
+{
+    return type != value_type::component;
+}
+
+std::optional<value_type> configured_type(const source_node& node)
+{
+    const auto iterator = node.values.find("valueType");
+    if (iterator == node.values.end() || !iterator->is_string()) return std::nullopt;
+    return parse_value_type(iterator->get<std::string>());
+}
+
+const variable* variable_for(const source_graph& graph, const source_node& node)
+{
+    const auto iterator = node.values.find("variableId");
+    if (iterator == node.values.end() || !iterator->is_string()) return nullptr;
+    const std::string id = iterator->get<std::string>();
+    const auto found = std::find_if(graph.variables.begin(), graph.variables.end(),
+                                    [&id](const variable& item) { return item.id == id; });
+    return found == graph.variables.end() ? nullptr : &*found;
+}
+
 std::optional<value_type> literal_type(node_kind kind)
 {
     switch (kind)
     {
         case node_kind::bool_literal:
             return value_type::boolean;
+        case node_kind::int_literal:
+            return value_type::integer;
+        case node_kind::float_literal:
+            return value_type::float32;
+        case node_kind::vector2_literal:
+            return value_type::vector2;
         case node_kind::string_literal:
             return value_type::string;
         case node_kind::vector3_literal:
@@ -248,6 +330,34 @@ std::optional<value_type> literal_type(node_kind kind)
         default:
             return std::nullopt;
     }
+}
+
+std::optional<value_type> node_data_type(const source_graph& graph, const source_node& node)
+{
+    if (const auto type = literal_type(node.kind)) return type;
+    if (node.kind == node_kind::get_variable || node.kind == node_kind::set_variable)
+    {
+        const variable* item = variable_for(graph, node);
+        return item ? std::optional<value_type>{item->type} : std::nullopt;
+    }
+    if (node.kind == node_kind::convert_number)
+    {
+        const auto conversion = node.values.find("conversion");
+        if (conversion == node.values.end() || !conversion->is_string()) return std::nullopt;
+        if (conversion->get<std::string>() == "intToFloat") return value_type::float32;
+        if (conversion->get<std::string>() == "floatToInt") return value_type::integer;
+        return std::nullopt;
+    }
+    return configured_type(node);
+}
+
+std::optional<value_type> convert_input_type(const source_node& node)
+{
+    const auto conversion = node.values.find("conversion");
+    if (conversion == node.values.end() || !conversion->is_string()) return std::nullopt;
+    if (conversion->get<std::string>() == "intToFloat") return value_type::integer;
+    if (conversion->get<std::string>() == "floatToInt") return value_type::float32;
+    return std::nullopt;
 }
 
 bool is_event_node(node_kind kind)
@@ -274,15 +384,41 @@ bool is_executable_node(node_kind kind)
         case node_kind::set_active:
         case node_kind::get_transform:
         case node_kind::set_transform:
+        case node_kind::set_variable:
             return true;
         default:
             return false;
     }
 }
 
-std::optional<pin_info> output_pin(node_kind kind, std::string_view pin)
+bool is_computed_value_node(node_kind kind)
 {
     switch (kind)
+    {
+        case node_kind::get_variable:
+        case node_kind::add:
+        case node_kind::subtract:
+        case node_kind::multiply:
+        case node_kind::divide:
+        case node_kind::compare:
+        case node_kind::boolean_and:
+        case node_kind::boolean_or:
+        case node_kind::boolean_not:
+        case node_kind::vector_dot:
+        case node_kind::vector_length:
+        case node_kind::vector_normalize:
+        case node_kind::vector_scale:
+        case node_kind::select:
+        case node_kind::convert_number:
+            return true;
+        default:
+            return false;
+    }
+}
+
+std::optional<pin_info> output_pin(const source_graph& graph, const source_node& node, std::string_view pin)
+{
+    switch (node.kind)
     {
         case node_kind::begin_play:
         case node_kind::end_play:
@@ -309,6 +445,7 @@ std::optional<pin_info> output_pin(node_kind kind, std::string_view pin)
             break;
         case node_kind::destroy_entity:
         case node_kind::remove_core_component:
+        case node_kind::set_variable:
             if (pin == "then") return pin_info{.kind = pin_kind::execution};
             break;
         case node_kind::has_core_component:
@@ -344,36 +481,101 @@ std::optional<pin_info> output_pin(node_kind kind, std::string_view pin)
             if (pin == "then") return pin_info{.kind = pin_kind::execution};
             break;
         case node_kind::bool_literal:
-            if (pin == "value") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
-            break;
+        case node_kind::int_literal:
+        case node_kind::float_literal:
+        case node_kind::vector2_literal:
         case node_kind::string_literal:
-            if (pin == "value") return pin_info{.kind = pin_kind::value, .type = value_type::string};
-            break;
         case node_kind::vector3_literal:
-            if (pin == "value") return pin_info{.kind = pin_kind::value, .type = value_type::vector3};
-            break;
         case node_kind::vector4_literal:
-            if (pin == "value") return pin_info{.kind = pin_kind::value, .type = value_type::vector4};
+            if (pin == "value") return pin_info{.kind = pin_kind::value, .type = literal_type(node.kind)};
+            break;
+        case node_kind::get_variable:
+        case node_kind::add:
+        case node_kind::subtract:
+        case node_kind::multiply:
+        case node_kind::divide:
+        case node_kind::vector_normalize:
+        case node_kind::vector_scale:
+        case node_kind::select:
+        case node_kind::convert_number:
+            if (pin == "value") return pin_info{.kind = pin_kind::value, .type = node_data_type(graph, node)};
+            break;
+        case node_kind::compare:
+        case node_kind::boolean_and:
+        case node_kind::boolean_or:
+        case node_kind::boolean_not:
+            if (pin == "result") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
+            break;
+        case node_kind::vector_dot:
+        case node_kind::vector_length:
+            if (pin == "value") return pin_info{.kind = pin_kind::value, .type = value_type::float32};
             break;
     }
     return std::nullopt;
 }
 
-std::optional<pin_info> input_pin(node_kind kind, std::string_view pin)
+std::optional<pin_info> input_pin(const source_graph& graph, const source_node& node, std::string_view pin)
 {
-    if (kind == node_kind::branch)
+    if (node.kind == node_kind::branch)
     {
         if (pin == "exec") return pin_info{.kind = pin_kind::execution};
         if (pin == "condition") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
         return std::nullopt;
     }
 
-    if (!is_executable_node(kind)) return std::nullopt;
+    if (node.kind == node_kind::set_variable)
+    {
+        if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+        if (pin == "value") return pin_info{.kind = pin_kind::value, .type = node_data_type(graph, node)};
+        return std::nullopt;
+    }
+
+    if (node.kind == node_kind::add || node.kind == node_kind::subtract || node.kind == node_kind::multiply ||
+        node.kind == node_kind::divide || node.kind == node_kind::compare || node.kind == node_kind::vector_dot)
+    {
+        if (pin == "a" || pin == "b") return pin_info{.kind = pin_kind::value, .type = configured_type(node)};
+        return std::nullopt;
+    }
+    if (node.kind == node_kind::boolean_and || node.kind == node_kind::boolean_or)
+    {
+        if (pin == "a" || pin == "b") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
+        return std::nullopt;
+    }
+    if (node.kind == node_kind::boolean_not)
+    {
+        if (pin == "value") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
+        return std::nullopt;
+    }
+    if (node.kind == node_kind::vector_length || node.kind == node_kind::vector_normalize)
+    {
+        if (pin == "value") return pin_info{.kind = pin_kind::value, .type = configured_type(node)};
+        return std::nullopt;
+    }
+    if (node.kind == node_kind::vector_scale)
+    {
+        if (pin == "vector") return pin_info{.kind = pin_kind::value, .type = configured_type(node)};
+        if (pin == "scale") return pin_info{.kind = pin_kind::value, .type = value_type::float32};
+        return std::nullopt;
+    }
+    if (node.kind == node_kind::select)
+    {
+        if (pin == "condition") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
+        if (pin == "trueValue" || pin == "falseValue")
+            return pin_info{.kind = pin_kind::value, .type = configured_type(node)};
+        return std::nullopt;
+    }
+    if (node.kind == node_kind::convert_number)
+    {
+        if (pin == "value") return pin_info{.kind = pin_kind::value, .type = convert_input_type(node)};
+        return std::nullopt;
+    }
+
+    if (!is_executable_node(node.kind)) return std::nullopt;
     if (pin == "exec") return pin_info{.kind = pin_kind::execution};
-    if (kind != node_kind::create_entity && pin == "entity")
+    if (node.kind != node_kind::create_entity && pin == "entity")
         return pin_info{.kind = pin_kind::value, .type = value_type::entity};
 
-    switch (kind)
+    switch (node.kind)
     {
         case node_kind::set_name:
             if (pin == "name") return pin_info{.kind = pin_kind::value, .type = value_type::string};
@@ -593,6 +795,7 @@ struct validation_state
     std::unordered_map<std::string, const source_connection*> incoming;
     std::unordered_map<std::string, const source_connection*> execution_outgoing;
     std::unordered_map<std::string, std::vector<std::string>> execution_adjacency;
+    std::unordered_map<std::string, std::vector<std::string>> value_adjacency;
     std::unordered_set<std::string> reachable;
 };
 
@@ -639,6 +842,55 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
                 add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_LITERAL_VALUE",
                                "Flow literal value does not match its node type.", node.id, "value");
         }
+
+        if (node.kind == node_kind::get_variable || node.kind == node_kind::set_variable)
+        {
+            if (!variable_for(graph, node))
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_VARIABLE_REFERENCE",
+                               "Variable node references a variable that does not exist.", node.id, "variableId");
+        }
+
+        if (node.kind == node_kind::add || node.kind == node_kind::subtract || node.kind == node_kind::multiply ||
+            node.kind == node_kind::divide)
+        {
+            const auto type = configured_type(node);
+            if (!type || !is_arithmetic_type(*type))
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_VALUE_TYPE",
+                               "Arithmetic nodes require int, float, vec2, vec3, or vec4 valueType.", node.id,
+                               "valueType");
+        }
+        if (node.kind == node_kind::compare)
+        {
+            const auto type = configured_type(node);
+            if (!type || !is_numeric_type(*type))
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_VALUE_TYPE",
+                               "Compare nodes require int or float valueType.", node.id, "valueType");
+            const auto operation = node.values.find("operator");
+            if (operation == node.values.end() || !operation->is_string() ||
+                (operation->get<std::string>() != "equal" && operation->get<std::string>() != "notEqual" &&
+                 operation->get<std::string>() != "less" && operation->get<std::string>() != "lessEqual" &&
+                 operation->get<std::string>() != "greater" && operation->get<std::string>() != "greaterEqual"))
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_COMPARE_OPERATOR",
+                               "Compare node has an unsupported operator.", node.id, "operator");
+        }
+        if (node.kind == node_kind::vector_dot || node.kind == node_kind::vector_length ||
+            node.kind == node_kind::vector_normalize || node.kind == node_kind::vector_scale)
+        {
+            const auto type = configured_type(node);
+            if (!type || !is_vector_type(*type))
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_VALUE_TYPE",
+                               "Vector math nodes require vec2, vec3, or vec4 valueType.", node.id, "valueType");
+        }
+        if (node.kind == node_kind::select)
+        {
+            const auto type = configured_type(node);
+            if (!type || !is_select_type(*type))
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_VALUE_TYPE",
+                               "Select requires a concrete selectable valueType.", node.id, "valueType");
+        }
+        if (node.kind == node_kind::convert_number && (!convert_input_type(node) || !node_data_type(graph, node)))
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_CONVERSION",
+                           "Convert Number requires intToFloat or floatToInt conversion.", node.id, "conversion");
     }
 
     std::unordered_set<std::string> connection_ids;
@@ -664,12 +916,13 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
             continue;
         }
 
-        const auto from_pin = output_pin(from_node_iterator->second->kind, connection.from.pin);
-        const auto to_pin = input_pin(to_node_iterator->second->kind, connection.to.pin);
-        if (!from_pin || !to_pin)
+        const auto from_pin = output_pin(graph, *from_node_iterator->second, connection.from.pin);
+        const auto to_pin = input_pin(graph, *to_node_iterator->second, connection.to.pin);
+        if (!from_pin || !to_pin || !from_pin->type.has_value() == (from_pin && from_pin->kind == pin_kind::value) ||
+            !to_pin->type.has_value() == (to_pin && to_pin->kind == pin_kind::value))
         {
             add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_PIN_NOT_FOUND",
-                           "Flow connection references an unknown output or input pin.",
+                           "Flow connection references an unknown or unresolved output/input pin.",
                            !from_pin ? connection.from.node_id : connection.to.node_id,
                            !from_pin ? connection.from.pin : connection.to.pin, connection.id);
             continue;
@@ -708,13 +961,17 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
                     connection.from.node_id, connection.from.pin, connection.id);
             state.execution_adjacency[connection.from.node_id].push_back(connection.to.node_id);
         }
+        else
+        {
+            state.value_adjacency[connection.from.node_id].push_back(connection.to.node_id);
+        }
     }
 
     const auto require_input = [&](const source_node& node, std::string_view pin)
     {
         if (state.incoming.find(pin_key(node.id, pin)) == state.incoming.end())
             add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_REQUIRED_INPUT",
-                           "Gameplay node requires this value input to be connected.", node.id, std::string{pin});
+                           "Flow node requires this value input to be connected.", node.id, std::string{pin});
     };
 
     for (const source_node& node : graph.nodes)
@@ -749,6 +1006,33 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
                 require_input(node, "rotation");
                 require_input(node, "scale");
                 break;
+            case node_kind::set_variable:
+            case node_kind::boolean_not:
+            case node_kind::vector_length:
+            case node_kind::vector_normalize:
+            case node_kind::convert_number:
+                require_input(node, "value");
+                break;
+            case node_kind::add:
+            case node_kind::subtract:
+            case node_kind::multiply:
+            case node_kind::divide:
+            case node_kind::compare:
+            case node_kind::boolean_and:
+            case node_kind::boolean_or:
+            case node_kind::vector_dot:
+                require_input(node, "a");
+                require_input(node, "b");
+                break;
+            case node_kind::vector_scale:
+                require_input(node, "vector");
+                require_input(node, "scale");
+                break;
+            case node_kind::select:
+                require_input(node, "condition");
+                require_input(node, "trueValue");
+                require_input(node, "falseValue");
+                break;
             default:
                 break;
         }
@@ -760,7 +1044,7 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
         visited,
     };
     std::unordered_map<std::string, visit_state> visits;
-    std::function<bool(const std::string&)> visit = [&](const std::string& node_id)
+    std::function<bool(const std::string&)> visit_execution = [&](const std::string& node_id)
     {
         const auto existing = visits.find(node_id);
         if (existing != visits.end())
@@ -779,14 +1063,41 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
         const auto adjacency = state.execution_adjacency.find(node_id);
         if (adjacency != state.execution_adjacency.end())
             for (const std::string& target : adjacency->second)
-                if (!visit(target)) return false;
+                if (!visit_execution(target)) return false;
         visits[node_id] = visit_state::visited;
         return true;
     };
 
     for (const source_node& node : graph.nodes)
     {
-        if (visits.find(node.id) == visits.end() && !visit(node.id)) break;
+        if (visits.find(node.id) == visits.end() && !visit_execution(node.id)) break;
+    }
+
+    visits.clear();
+    std::function<bool(const std::string&)> visit_value = [&](const std::string& node_id)
+    {
+        const auto existing = visits.find(node_id);
+        if (existing != visits.end())
+        {
+            if (existing->second == visit_state::visiting)
+            {
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_VALUE_CYCLE",
+                               "Value dependency cycles are not allowed.", node_id);
+                return false;
+            }
+            return true;
+        }
+        visits[node_id] = visit_state::visiting;
+        const auto adjacency = state.value_adjacency.find(node_id);
+        if (adjacency != state.value_adjacency.end())
+            for (const std::string& target : adjacency->second)
+                if (!visit_value(target)) return false;
+        visits[node_id] = visit_state::visited;
+        return true;
+    };
+    for (const source_node& node : graph.nodes)
+    {
+        if (visits.find(node.id) == visits.end() && !visit_value(node.id)) break;
     }
 
     std::queue<std::string> pending;
@@ -826,12 +1137,14 @@ std::vector<const source_node*> sorted_nodes(const source_graph& graph)
     return result;
 }
 
-ir_opcode opcode_for(node_kind kind)
+ir_opcode executable_opcode_for(node_kind kind)
 {
     switch (kind)
     {
         case node_kind::branch:
             return ir_opcode::branch;
+        case node_kind::set_variable:
+            return ir_opcode::store_variable;
         case node_kind::create_entity:
             return ir_opcode::world_create_entity;
         case node_kind::destroy_entity:
@@ -863,12 +1176,54 @@ ir_opcode opcode_for(node_kind kind)
     }
 }
 
+ir_opcode compare_opcode(const source_node& node)
+{
+    const std::string operation = node.values.at("operator").get<std::string>();
+    if (operation == "equal") return ir_opcode::compare_equal;
+    if (operation == "notEqual") return ir_opcode::compare_not_equal;
+    if (operation == "less") return ir_opcode::compare_less;
+    if (operation == "lessEqual") return ir_opcode::compare_less_equal;
+    if (operation == "greater") return ir_opcode::compare_greater;
+    return ir_opcode::compare_greater_equal;
+}
+
+std::vector<std::string_view> data_inputs(node_kind kind)
+{
+    switch (kind)
+    {
+        case node_kind::add:
+        case node_kind::subtract:
+        case node_kind::multiply:
+        case node_kind::divide:
+        case node_kind::compare:
+        case node_kind::boolean_and:
+        case node_kind::boolean_or:
+        case node_kind::vector_dot:
+            return {"a", "b"};
+        case node_kind::boolean_not:
+        case node_kind::vector_length:
+        case node_kind::vector_normalize:
+        case node_kind::convert_number:
+            return {"value"};
+        case node_kind::vector_scale:
+            return {"vector", "scale"};
+        case node_kind::select:
+            return {"condition", "trueValue", "falseValue"};
+        default:
+            return {};
+    }
+}
+
 ir_program build_ir(const source_graph& graph, const validation_state& validation)
 {
     ir_program program;
     program.variables = graph.variables;
     std::sort(program.variables.begin(), program.variables.end(),
               [](const variable& left, const variable& right) { return left.id < right.id; });
+
+    std::unordered_map<std::string, std::uint32_t> variable_indices;
+    for (std::uint32_t index = 0; index < program.variables.size(); ++index)
+        variable_indices.emplace(program.variables[index].id, index);
 
     const auto nodes = sorted_nodes(graph);
     std::unordered_map<std::string, std::uint32_t> value_slots;
@@ -924,6 +1279,9 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                 allocate_slot(*node, "scale", value_type::vector3, flow_value{std::array<double, 3>{1.0, 1.0, 1.0}});
                 break;
             case node_kind::bool_literal:
+            case node_kind::int_literal:
+            case node_kind::float_literal:
+            case node_kind::vector2_literal:
             case node_kind::string_literal:
             case node_kind::vector3_literal:
             case node_kind::vector4_literal:
@@ -932,6 +1290,30 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                 allocate_slot(*node, "value", type, *parse_default_value(type, node->values.at("value")));
                 break;
             }
+            case node_kind::get_variable:
+            case node_kind::add:
+            case node_kind::subtract:
+            case node_kind::multiply:
+            case node_kind::divide:
+            case node_kind::vector_normalize:
+            case node_kind::vector_scale:
+            case node_kind::select:
+            case node_kind::convert_number:
+            {
+                const value_type type = *node_data_type(graph, *node);
+                allocate_slot(*node, "value", type, default_value(type));
+                break;
+            }
+            case node_kind::compare:
+            case node_kind::boolean_and:
+            case node_kind::boolean_or:
+            case node_kind::boolean_not:
+                allocate_slot(*node, "result", value_type::boolean, false);
+                break;
+            case node_kind::vector_dot:
+            case node_kind::vector_length:
+                allocate_slot(*node, "value", value_type::float32, 0.0);
+                break;
             default:
                 break;
         }
@@ -949,15 +1331,147 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
         if (!is_executable_node(node->kind)) continue;
         const auto index = static_cast<std::uint32_t>(program.instructions.size());
         instruction_indices.emplace(node->id, index);
-        program.instructions.push_back({.opcode = opcode_for(node->kind), .node_id = node->id});
+        program.instructions.push_back({.opcode = executable_opcode_for(node->kind), .node_id = node->id});
+    }
+
+    const auto node_by_id = [&](std::string_view id) -> const source_node&
+    { return *validation.nodes.at(std::string{id}); };
+
+    const auto make_data_instruction = [&](const source_node& node, std::uint32_t next)
+    {
+        ir_instruction instruction;
+        instruction.node_id = node.id;
+        switch (node.kind)
+        {
+            case node_kind::get_variable:
+                instruction.opcode = ir_opcode::load_variable;
+                instruction.operand0 = variable_indices.at(variable_for(graph, node)->id);
+                instruction.operand1 = value_slots.at(pin_key(node.id, "value"));
+                instruction.operand2 = next;
+                break;
+            case node_kind::add:
+            case node_kind::subtract:
+            case node_kind::multiply:
+            case node_kind::divide:
+                instruction.opcode = node.kind == node_kind::add        ? ir_opcode::add
+                                     : node.kind == node_kind::subtract ? ir_opcode::subtract
+                                     : node.kind == node_kind::multiply ? ir_opcode::multiply
+                                                                        : ir_opcode::divide;
+                instruction.operand0 = input_slot(node, "a");
+                instruction.operand1 = input_slot(node, "b");
+                instruction.operand2 = value_slots.at(pin_key(node.id, "value"));
+                instruction.operand3 = next;
+                break;
+            case node_kind::compare:
+                instruction.opcode = compare_opcode(node);
+                instruction.operand0 = input_slot(node, "a");
+                instruction.operand1 = input_slot(node, "b");
+                instruction.operand2 = value_slots.at(pin_key(node.id, "result"));
+                instruction.operand3 = next;
+                break;
+            case node_kind::boolean_and:
+            case node_kind::boolean_or:
+                instruction.opcode =
+                    node.kind == node_kind::boolean_and ? ir_opcode::boolean_and : ir_opcode::boolean_or;
+                instruction.operand0 = input_slot(node, "a");
+                instruction.operand1 = input_slot(node, "b");
+                instruction.operand2 = value_slots.at(pin_key(node.id, "result"));
+                instruction.operand3 = next;
+                break;
+            case node_kind::boolean_not:
+                instruction.opcode = ir_opcode::boolean_not;
+                instruction.operand0 = input_slot(node, "value");
+                instruction.operand1 = value_slots.at(pin_key(node.id, "result"));
+                instruction.operand2 = next;
+                break;
+            case node_kind::vector_dot:
+                instruction.opcode = ir_opcode::vector_dot;
+                instruction.operand0 = input_slot(node, "a");
+                instruction.operand1 = input_slot(node, "b");
+                instruction.operand2 = value_slots.at(pin_key(node.id, "value"));
+                instruction.operand3 = next;
+                break;
+            case node_kind::vector_length:
+                instruction.opcode = ir_opcode::vector_length;
+                instruction.operand0 = input_slot(node, "value");
+                instruction.operand1 = value_slots.at(pin_key(node.id, "value"));
+                instruction.operand2 = next;
+                break;
+            case node_kind::vector_normalize:
+                instruction.opcode = ir_opcode::vector_normalize;
+                instruction.operand0 = input_slot(node, "value");
+                instruction.operand1 = value_slots.at(pin_key(node.id, "value"));
+                instruction.operand2 = next;
+                break;
+            case node_kind::vector_scale:
+                instruction.opcode = ir_opcode::vector_scale;
+                instruction.operand0 = input_slot(node, "vector");
+                instruction.operand1 = input_slot(node, "scale");
+                instruction.operand2 = value_slots.at(pin_key(node.id, "value"));
+                instruction.operand3 = next;
+                break;
+            case node_kind::select:
+                instruction.opcode = ir_opcode::select;
+                instruction.operand0 = input_slot(node, "condition");
+                instruction.operand1 = input_slot(node, "trueValue");
+                instruction.operand2 = input_slot(node, "falseValue");
+                instruction.operand3 = value_slots.at(pin_key(node.id, "value"));
+                instruction.operand4 = next;
+                break;
+            case node_kind::convert_number:
+                instruction.opcode = node.values.at("conversion").get<std::string>() == "intToFloat"
+                                         ? ir_opcode::convert_int_to_float
+                                         : ir_opcode::convert_float_to_int;
+                instruction.operand0 = input_slot(node, "value");
+                instruction.operand1 = value_slots.at(pin_key(node.id, "value"));
+                instruction.operand2 = next;
+                break;
+            default:
+                break;
+        }
+        return instruction;
+    };
+
+    std::unordered_map<std::string, std::uint32_t> execution_entries;
+    for (const source_node* executable : nodes)
+    {
+        if (!is_executable_node(executable->kind)) continue;
+        std::vector<const source_node*> order;
+        std::unordered_set<std::string> seen;
+        std::function<void(const source_node&)> collect = [&](const source_node& node)
+        {
+            if (!is_computed_value_node(node.kind) || !seen.insert(node.id).second) return;
+            for (const std::string_view pin : data_inputs(node.kind))
+            {
+                const auto incoming = validation.incoming.find(pin_key(node.id, pin));
+                if (incoming == validation.incoming.end()) continue;
+                collect(node_by_id(incoming->second->from.node_id));
+            }
+            order.push_back(&node);
+        };
+
+        for (const source_connection& connection : graph.connections)
+        {
+            if (connection.kind != connection_kind::value || connection.to.node_id != executable->id) continue;
+            collect(node_by_id(connection.from.node_id));
+        }
+
+        std::uint32_t target = instruction_indices.at(executable->id);
+        for (auto iterator = order.rbegin(); iterator != order.rend(); ++iterator)
+        {
+            const auto index = static_cast<std::uint32_t>(program.instructions.size());
+            program.instructions.push_back(make_data_instruction(**iterator, target));
+            target = index;
+        }
+        execution_entries.emplace(executable->id, target);
     }
 
     const auto execution_target = [&](const source_node& node, std::string_view pin)
     {
         const auto connection = validation.execution_outgoing.find(pin_key(node.id, pin));
         if (connection == validation.execution_outgoing.end()) return invalid_instruction;
-        const auto target = instruction_indices.find(connection->second->to.node_id);
-        return target == instruction_indices.end() ? invalid_instruction : target->second;
+        const auto target = execution_entries.find(connection->second->to.node_id);
+        return target == execution_entries.end() ? invalid_instruction : target->second;
     };
 
     for (const source_node* node : nodes)
@@ -978,6 +1492,11 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                 instruction.false_instruction = execution_target(*node, "false");
                 break;
             }
+            case node_kind::set_variable:
+                instruction.operand0 = variable_indices.at(variable_for(graph, *node)->id);
+                instruction.operand1 = input_slot(*node, "value");
+                instruction.operand2 = execution_target(*node, "then");
+                break;
             case node_kind::create_entity:
                 instruction.operand0 = value_slots.at(pin_key(node->id, "entity"));
                 instruction.operand1 = execution_target(*node, "then");
@@ -1134,9 +1653,35 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
         return false;
     };
 
+    const auto value_reaches = [&](std::string_view start, std::string_view target)
+    {
+        if (start == target) return true;
+        std::queue<std::string> pending;
+        std::unordered_set<std::string> seen;
+        pending.push(std::string{start});
+        seen.insert(std::string{start});
+        while (!pending.empty())
+        {
+            const std::string current = pending.front();
+            pending.pop();
+            const auto adjacency = validation.value_adjacency.find(current);
+            if (adjacency == validation.value_adjacency.end()) continue;
+            for (const std::string& next : adjacency->second)
+            {
+                if (next == target) return true;
+                if (seen.insert(next).second) pending.push(next);
+            }
+        }
+        return false;
+    };
+
     std::vector<const source_node*> self_nodes;
+    std::vector<const source_node*> executable_nodes;
     for (const source_node* node : nodes)
+    {
         if (node->kind == node_kind::self_entity) self_nodes.push_back(node);
+        if (is_executable_node(node->kind)) executable_nodes.push_back(node);
+    }
 
     for (ir_entry_point& entry : program.entry_points)
     {
@@ -1144,16 +1689,9 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
         for (auto iterator = self_nodes.rbegin(); iterator != self_nodes.rend(); ++iterator)
         {
             const source_node& self = **iterator;
-            bool needed = false;
-            for (const source_connection& connection : graph.connections)
-            {
-                if (connection.kind != connection_kind::value || connection.from.node_id != self.id) continue;
-                if (reachable_from(entry.node_id, connection.to.node_id))
-                {
-                    needed = true;
-                    break;
-                }
-            }
+            const bool needed =
+                std::any_of(executable_nodes.begin(), executable_nodes.end(), [&](const source_node* node)
+                            { return reachable_from(entry.node_id, node->id) && value_reaches(self.id, node->id); });
             if (!needed) continue;
 
             const auto index = static_cast<std::uint32_t>(program.instructions.size());
@@ -1175,6 +1713,50 @@ bytecode_opcode lower_opcode(ir_opcode opcode)
     {
         case ir_opcode::branch:
             return bytecode_opcode::branch;
+        case ir_opcode::load_variable:
+            return bytecode_opcode::load_variable;
+        case ir_opcode::store_variable:
+            return bytecode_opcode::store_variable;
+        case ir_opcode::add:
+            return bytecode_opcode::add;
+        case ir_opcode::subtract:
+            return bytecode_opcode::subtract;
+        case ir_opcode::multiply:
+            return bytecode_opcode::multiply;
+        case ir_opcode::divide:
+            return bytecode_opcode::divide;
+        case ir_opcode::compare_equal:
+            return bytecode_opcode::compare_equal;
+        case ir_opcode::compare_not_equal:
+            return bytecode_opcode::compare_not_equal;
+        case ir_opcode::compare_less:
+            return bytecode_opcode::compare_less;
+        case ir_opcode::compare_less_equal:
+            return bytecode_opcode::compare_less_equal;
+        case ir_opcode::compare_greater:
+            return bytecode_opcode::compare_greater;
+        case ir_opcode::compare_greater_equal:
+            return bytecode_opcode::compare_greater_equal;
+        case ir_opcode::boolean_and:
+            return bytecode_opcode::boolean_and;
+        case ir_opcode::boolean_or:
+            return bytecode_opcode::boolean_or;
+        case ir_opcode::boolean_not:
+            return bytecode_opcode::boolean_not;
+        case ir_opcode::vector_dot:
+            return bytecode_opcode::vector_dot;
+        case ir_opcode::vector_length:
+            return bytecode_opcode::vector_length;
+        case ir_opcode::vector_normalize:
+            return bytecode_opcode::vector_normalize;
+        case ir_opcode::vector_scale:
+            return bytecode_opcode::vector_scale;
+        case ir_opcode::select:
+            return bytecode_opcode::select;
+        case ir_opcode::convert_int_to_float:
+            return bytecode_opcode::convert_int_to_float;
+        case ir_opcode::convert_float_to_int:
+            return bytecode_opcode::convert_float_to_int;
         case ir_opcode::self_entity:
             return bytecode_opcode::self_entity;
         case ir_opcode::world_create_entity:
