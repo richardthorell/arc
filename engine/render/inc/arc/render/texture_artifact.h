@@ -74,7 +74,7 @@ struct texture_artifact_metadata
 {
     std::uint32_t source_width{};
     std::uint32_t source_height{};
-    std::uint32_t source_mip_count{1};
+    std::uint32_t source_mip_count{};
     std::uint32_t requested_max_size{};
     std::uint32_t resolved_max_size{};
     texture_power_of_two_policy power_of_two{texture_power_of_two_policy::preserve};
