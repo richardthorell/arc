@@ -7,7 +7,7 @@
 #if defined(ARC_RENDER_HAS_TINYEXR) && defined(ARC_RENDER_HAS_STB)
 #if defined(_MSC_VER)
 #pragma warning(push)
-#pragma warning(disable : 4996)
+#pragma warning(disable : 4702 4996)
 #endif
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
