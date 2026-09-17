@@ -75,6 +75,7 @@ describe('material texture sample dimensions', () => {
     const definition = materialGraphDomain.getNodeDefinition(textureNode('3d'));
     expect(definition.inputs[0]).toMatchObject({ id: 'uv', label: 'UVW', type: 'vec3' });
   });
+
   it('exposes fixed texture sample dimensions and hides the legacy generic sample from the add menu', () => {
     const definitions = materialGraphDomain.getNodeDefinitions();
     expect(definitions.some((definition) => definition.type === 'textureSample')).toBe(false);
