@@ -535,9 +535,9 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
         !input.value(mip_entries) || !input.value(tile_entries) || !input.value(result.metadata.source_width) ||
         !input.value(result.metadata.source_height) || !input.value(result.metadata.source_mip_count) ||
         !input.value(result.metadata.requested_max_size) || !input.value(result.metadata.resolved_max_size) ||
-        !input.value(power_of_two) || !input.value(compression) || !input.value(mip_policy) || !input.value(min_filter) ||
-        !input.value(mag_filter) || !input.value(mip_filter) || !input.value(wrap_u) || !input.value(wrap_v) ||
-        !input.value(result.metadata.anisotropy) || !input.value(result.metadata.lod_bias) ||
+        !input.value(power_of_two) || !input.value(compression) || !input.value(mip_policy) ||
+        !input.value(min_filter) || !input.value(mag_filter) || !input.value(mip_filter) || !input.value(wrap_u) ||
+        !input.value(wrap_v) || !input.value(result.metadata.anisotropy) || !input.value(result.metadata.lod_bias) ||
         !input.value(result.metadata.minimum_lod) || !input.value(result.metadata.maximum_lod) ||
         !input.value(result.metadata.alpha_coverage_threshold) || !input.value(processing_flags) ||
         !input.value(result.table_end) || !input.value(result.artifact_size) || !input.value(table_hash) ||
@@ -574,8 +574,8 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
     if (!valid_texture_topology(result.dimension, result.width, result.height, result.depth, result.array_layers,
                                 result.face_count) ||
         result.mip_count == 0 || result.metadata.source_mip_count == 0 || mip_entries != result.mip_count ||
-        result.tail_first_mip >= result.mip_count || result.table_end < header_bytes || result.table_end > bytes.size() ||
-        result.artifact_size != bytes.size() || !finite_metadata(result.metadata) ||
+        result.tail_first_mip >= result.mip_count || result.table_end < header_bytes ||
+        result.table_end > bytes.size() || result.artifact_size != bytes.size() || !finite_metadata(result.metadata) ||
         ((mode == static_cast<std::uint32_t>(texture_streaming_mode::streamed_mips) ||
           mode == static_cast<std::uint32_t>(texture_streaming_mode::virtual_tiles)) &&
          result.mip_count != complete_mip_count(result.width, result.height, result.depth, result.dimension)) ||
