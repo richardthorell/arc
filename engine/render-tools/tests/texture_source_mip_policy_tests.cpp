@@ -91,8 +91,8 @@ TEST_CASE("texture mip policy round trips through current import settings")
 
     auto settings = texture_import_settings_for_preset(texture_import_preset::color);
     settings.mip_policy = texture_mip_policy::generate;
-    const auto parsed =
-        parse_texture_import_settings(serialize_texture_import_settings(settings), texture_import_settings::current_version);
+    const auto parsed = parse_texture_import_settings(serialize_texture_import_settings(settings),
+                                                      texture_import_settings::current_version);
     REQUIRE(parsed.has_value());
     CHECK(parsed.value().mip_policy == texture_mip_policy::generate);
 
