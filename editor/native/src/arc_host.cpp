@@ -8,6 +8,7 @@
 #include <arc/scene/scene.h>
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <limits>
 #include <optional>
@@ -39,7 +40,8 @@ struct arc_material_preview_resources
 
 std::unordered_map<editor_scene_state*, arc_material_preview_resources> arc_material_preview_scene_resources;
 
-std::optional<std::filesystem::path> arc_material_preview_environment_path()
+std::optional<std::filesystem::path>
+arc_material_preview_environment_path(const editor_asset_state& editor_assets)
 {
     const auto relative = std::filesystem::path{"assets"} / "environments" / arc_material_preview_environment_name;
     const auto available = [](const std::filesystem::path& candidate) -> std::optional<std::filesystem::path>
@@ -48,6 +50,15 @@ std::optional<std::filesystem::path> arc_material_preview_environment_path()
         if (!std::filesystem::is_regular_file(candidate, error) || error) return std::nullopt;
         return candidate.lexically_normal();
     };
+
+    // Built-in roots are the authoritative location in installed/editor builds.
+    // Source-tree probing remains only as a development fallback.
+    for (const auto& builtin_root : editor_assets.builtin_roots)
+        if (const auto path = available(builtin_root / "environments" / arc_material_preview_environment_name))
+            return path;
+    if (!editor_assets.root.empty())
+        if (const auto path = available(editor_assets.root / "environments" / arc_material_preview_environment_name))
+            return path;
 
     std::filesystem::path source_path{__FILE__};
     if (source_path.is_absolute())
@@ -71,12 +82,37 @@ std::optional<std::filesystem::path> arc_material_preview_environment_path()
     return std::nullopt;
 }
 
+render::material_handle arc_material_preview_room_material(editor_scene_state& host_scene, render::renderer& renderer,
+                                                           const editor_asset_state& editor_assets)
+{
+    for (const auto& builtin_root : editor_assets.builtin_roots)
+    {
+        const auto authored_path = builtin_root / "materials" / "dark_rubber.arcmat";
+        std::error_code error;
+        if (!std::filesystem::is_regular_file(authored_path, error) || error) continue;
+
+        const auto material =
+            load_material_for_editor(host_scene.material_library, renderer, builtin_root, authored_path, nullptr);
+        if (material.valid()) return material;
+    }
+
+    // Keep the preview deterministic even if built-in authoring assets are not
+    // mounted. This is deliberately separate from the previewed material.
+    render::material_descriptor material;
+    material.name = "Material Preview Studio";
+    material.base_color = math::vector4f{0.025f, 0.028f, 0.032f, 1.0f};
+    material.metallic = 0.0f;
+    material.roughness = 0.86f;
+    return renderer.create_material(std::move(material));
+}
+
 bool arc_configure_material_preview_environment(editor_scene_state& state, render::renderer& renderer,
+                                                const editor_asset_state& editor_assets,
                                                 arc_material_preview_resources& resources)
 {
     if (resources.environment_texture.valid()) return true;
 
-    const auto path = arc_material_preview_environment_path();
+    const auto path = arc_material_preview_environment_path(editor_assets);
     if (!path)
     {
         arc::diagnostics::warn("editor.materials", "Material preview HDRI is unavailable; using the neutral fallback");
@@ -138,7 +174,8 @@ bool arc_configure_material_preview_environment(editor_scene_state& state, rende
 }
 
 void arc_configure_material_preview_panel(editor_scene_state& state, ecs::entity entity,
-                                          const arc_material_preview_panel& panel)
+                                          const arc_material_preview_panel& panel,
+                                          render::material_handle room_material)
 {
     if (auto* name = state.scene.try_get<scene::name_component>(entity)) name->value = panel.name;
     if (auto* tag = state.scene.try_get<scene::tag_component>(entity)) tag->value = "Environment";
@@ -148,6 +185,37 @@ void arc_configure_material_preview_panel(editor_scene_state& state, ecs::entity
         transform->set_position(panel.position);
         transform->set_scale(panel.scale);
     }
+    if (room_material.valid())
+        if (auto* mesh = state.scene.try_get<scene::mesh_renderer_component>(entity)) mesh->material = room_material;
+}
+
+ecs::entity arc_duplicate_material_preview_panel(editor_scene_state& state, ecs::entity source,
+                                                 const arc_material_preview_panel& panel,
+                                                 render::material_handle room_material)
+{
+    const auto* source_bounds = state.scene.try_get<scene::bounds_component>(source);
+    const auto* source_renderer = state.scene.try_get<scene::mesh_renderer_component>(source);
+    if (!source_bounds || !source_renderer) return {};
+
+    auto renderer_component = *source_renderer;
+    if (room_material.valid()) renderer_component.material = room_material;
+
+    const auto entity = state.scene.create();
+    scene::transform_component transform;
+    transform.set_position(panel.position);
+    transform.set_scale(panel.scale);
+    state.scene.emplace<scene::name_component>(entity, panel.name);
+    state.scene.emplace<scene::tag_component>(entity, "Environment");
+    state.scene.emplace<scene::active_component>(entity);
+    state.scene.emplace<scene::selection_component>(entity, false);
+    state.scene.emplace<scene::bounds_component>(entity, source_bounds->local_bounds, source_bounds->local_bounds,
+                                                 true);
+    state.scene.emplace<scene::transform_component>(entity, transform);
+    state.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
+    state.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
+    state.scene.emplace<scene::hierarchy_component>(entity);
+    state.primitive_entities.push_back(entity);
+    return entity;
 }
 
 editor_primitive_type arc_material_preview_primitive_type(std::string_view viewport_id)
@@ -162,7 +230,8 @@ editor_primitive_type arc_material_preview_primitive_type(std::string_view viewp
 }
 
 ecs::entity arc_material_preview_add_primitive(editor_scene_state& state, render::renderer& renderer,
-                                               editor_primitive_type type)
+                                               editor_primitive_type type, const editor_asset_state& editor_assets,
+                                               render::material_handle room_material)
 {
     const auto entity = add_primitive_to_scene(state, renderer, type);
     if (state.scene_name != arc_material_preview_scene_name || !state.scene.alive(entity) ||
@@ -170,26 +239,41 @@ ecs::entity arc_material_preview_add_primitive(editor_scene_state& state, render
         return entity;
 
     auto& resources = arc_material_preview_scene_resources[&state];
-    (void)arc_configure_material_preview_environment(state, renderer, resources);
+    (void)arc_configure_material_preview_environment(state, renderer, editor_assets, resources);
 
-    // Keep one neutral ground plane for useful contact/shadows, but leave the
-    // sides/back/ceiling open so the HDRI is visible as the actual backdrop.
+    // The preview object has a 0.5-unit base radius. Give it a dark, neutral
+    // physical studio so the room never inherits the previewed/default material.
+    // Leave the front and ceiling open so HDRI lighting/backdrop remains useful.
     constexpr float half_extent = 4.0f;
+    constexpr float room_height = 5.5f;
     constexpr float panel_thickness = 0.10f;
     constexpr float floor_surface_y = -0.5f;
+    constexpr float wall_center_y = floor_surface_y + room_height * 0.5f;
 
-    const auto floor = add_primitive_to_scene(state, renderer, editor_primitive_type::cube);
-    if (!state.scene.alive(floor)) return entity;
-    const auto* floor_renderer = state.scene.try_get<scene::mesh_renderer_component>(floor);
-    if (!floor_renderer || !floor_renderer->mesh.valid()) return entity;
-    resources.room_mesh = floor_renderer->mesh;
+    const auto room_template = add_primitive_to_scene(state, renderer, editor_primitive_type::cube);
+    if (!state.scene.alive(room_template)) return entity;
+    const auto* room_renderer = state.scene.try_get<scene::mesh_renderer_component>(room_template);
+    if (!room_renderer || !room_renderer->mesh.valid()) return entity;
+    resources.room_mesh = room_renderer->mesh;
 
-    constexpr arc_material_preview_panel floor_panel{
-        "Material Preview Floor",
-        {0.0f, floor_surface_y - panel_thickness * 0.5f, 0.0f},
-        {half_extent * 2.0f, panel_thickness, half_extent * 2.0f},
-    };
-    arc_configure_material_preview_panel(state, floor, floor_panel);
+    constexpr std::array<arc_material_preview_panel, 4> panels{{
+        {"Material Preview Floor",
+         {0.0f, floor_surface_y - panel_thickness * 0.5f, 0.0f},
+         {half_extent * 2.0f, panel_thickness, half_extent * 2.0f}},
+        {"Material Preview Back Wall",
+         {0.0f, wall_center_y, -half_extent},
+         {half_extent * 2.0f, room_height, panel_thickness}},
+        {"Material Preview Left Wall",
+         {-half_extent, wall_center_y, 0.0f},
+         {panel_thickness, room_height, half_extent * 2.0f}},
+        {"Material Preview Right Wall",
+         {half_extent, wall_center_y, 0.0f},
+         {panel_thickness, room_height, half_extent * 2.0f}},
+    }};
+
+    arc_configure_material_preview_panel(state, room_template, panels.front(), room_material);
+    for (std::size_t index = 1; index < panels.size(); ++index)
+        (void)arc_duplicate_material_preview_panel(state, room_template, panels[index], room_material);
     return entity;
 }
 
