@@ -60,6 +60,17 @@ texture_load_result parse_dds_texture(const std::vector<std::byte>& bytes, std::
 texture_load_result load_texture_asset(const std::filesystem::path& path);
 
 /**
+ * @brief Load an OpenEXR texture as linear RGBA32F data using the tools/runtime TinyEXR integration.
+ */
+texture_load_result load_exr_texture_asset(const std::filesystem::path& path);
+
+/**
+ * @brief Decode OpenEXR bytes already supplied by an async or streaming source.
+ */
+texture_load_result load_exr_texture_asset_bytes(std::vector<std::byte> bytes,
+                                                 const std::filesystem::path& source_path);
+
+/**
  * @brief Inspect dimensions, format, and mip metadata without decoding texture pixels.
  */
 texture_asset_info inspect_texture_asset(const std::filesystem::path& path);

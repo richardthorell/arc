@@ -70,7 +70,10 @@ private:
     host_response execute_base(host_command_payload command);
     host_response open_project_base(const host_open_project_command& command, const editor_asset_state& assets,
                                     std::uint64_t request_id = 0);
+    host_response query_raw(const host_query_envelope& query) const;
     host_response query_base(const host_query_envelope& query) const;
+    std::optional<host_asset_thumbnail_snapshot> asset_thumbnail_base(std::string_view path,
+                                                                      std::uint32_t max_size = 96) const;
     host_viewport_frame request_viewport_base(const host_viewport_request& request);
 
     struct state;
@@ -105,6 +108,7 @@ private:
     // The base implementation is macro-renamed together with arc_host wrappers
     // so the externally visible virtual entry points can add editor extensions.
     host_response execute_base(const host_command_envelope& command);
+    host_response query_raw(const host_query_envelope& query);
     host_response query_base(const host_query_envelope& query);
     host_viewport_frame request_viewport_base(const host_viewport_request& request);
 

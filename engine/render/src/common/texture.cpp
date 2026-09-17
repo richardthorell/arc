@@ -131,6 +131,7 @@ std::string mime_type_for_path(const std::filesystem::path& path)
     if (ext == ".jpg" || ext == ".jpeg") return "image/jpeg";
     if (ext == ".tga") return "image/tga";
     if (ext == ".hdr") return "image/vnd.radiance";
+    if (ext == ".exr") return "image/x-exr";
     if (ext == ".dds") return "image/vnd-ms.dds";
     return "application/octet-stream";
 }
@@ -519,6 +520,16 @@ texture_asset_info inspect_texture_asset(const std::filesystem::path& path)
                 .mip_count = std::max(1u, read_u32(bytes, 28)),
                 .message = "inspected DDS texture"};
     }
+    if (extension == ".exr")
+    {
+        const auto loaded = load_exr_texture_asset(path);
+        if (!loaded.succeeded()) return {.message = loaded.message};
+        return {.width = loaded.texture.width,
+                .height = loaded.texture.height,
+                .format = loaded.texture.format,
+                .mip_count = loaded.texture.mip_levels,
+                .message = "inspected OpenEXR texture"};
+    }
 
 #if defined(ARC_RENDER_HAS_STB)
     int width{};
@@ -556,7 +567,8 @@ texture_load_result load_texture_asset(const std::filesystem::path& path)
 texture_load_result load_texture_asset_bytes(std::vector<std::byte> bytes, const std::filesystem::path& path)
 {
     if (bytes.empty()) return {.message = "texture payload is empty"};
-    if (lowercase(path.extension().string()) == ".dds")
+    const auto extension = lowercase(path.extension().string());
+    if (extension == ".dds")
     {
         auto result = parse_dds_texture(bytes, path.filename().string());
         if (result.succeeded())
@@ -567,17 +579,16 @@ texture_load_result load_texture_asset_bytes(std::vector<std::byte> bytes, const
         }
         return result;
     }
+    if (extension == ".exr") return load_exr_texture_asset_bytes(std::move(bytes), path);
 
     texture_data texture;
     texture.name = path.filename().string();
     texture.source_path = path;
     texture.mime_type = mime_type_for_path(path);
-    texture.format =
-        lowercase(path.extension().string()) == ".hdr" ? texture_format::rgba32f : texture_format::rgba8_srgb;
+    texture.format = extension == ".hdr" ? texture_format::rgba32f : texture_format::rgba8_srgb;
     texture.color_space =
         texture.format == texture_format::rgba8_srgb ? texture_color_space::srgb : texture_color_space::linear;
-    texture.semantic = lowercase(path.extension().string()) == ".hdr" ? texture_semantic::environment
-                                                                      : texture_semantic::generic_color;
+    texture.semantic = extension == ".hdr" ? texture_semantic::environment : texture_semantic::generic_color;
     apply_filename_color_space(texture, path);
 
 #if defined(ARC_RENDER_HAS_STB)
@@ -653,7 +664,7 @@ bool is_supported_texture_asset(const std::filesystem::path& path)
 {
     const auto ext = lowercase(path.extension().string());
     return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp" || ext == ".hdr" ||
-           ext == ".dds";
+           ext == ".exr" || ext == ".dds";
 }
 
 } // namespace arc::render
