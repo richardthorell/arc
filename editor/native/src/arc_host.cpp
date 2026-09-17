@@ -6,14 +6,127 @@
 #include <arc/scene/scene.h>
 
 #include <algorithm>
+#include <array>
 #include <limits>
+#include <string>
 #include <string_view>
+#include <unordered_map>
 #include <nlohmann/json.hpp>
 
 namespace arc::editor
 {
 namespace
 {
+constexpr std::string_view arc_material_preview_scene_name = "Asset Preview: material";
+
+struct arc_material_preview_panel
+{
+    const char* name;
+    math::vector3f position;
+    math::vector3f scale;
+};
+
+std::unordered_map<editor_scene_state*, render::mesh_handle> arc_material_preview_room_meshes;
+
+void arc_configure_material_preview_panel(editor_scene_state& state, ecs::entity entity,
+                                          const arc_material_preview_panel& panel)
+{
+    if (auto* name = state.scene.try_get<scene::name_component>(entity)) name->value = panel.name;
+    if (auto* tag = state.scene.try_get<scene::tag_component>(entity)) tag->value = "Environment";
+    if (auto* selection = state.scene.try_get<scene::selection_component>(entity)) selection->selected = false;
+    if (auto* transform = state.scene.try_get<scene::transform_component>(entity))
+    {
+        transform->set_position(panel.position);
+        transform->set_scale(panel.scale);
+    }
+}
+
+ecs::entity arc_duplicate_material_preview_panel(editor_scene_state& state, ecs::entity source,
+                                                 const arc_material_preview_panel& panel)
+{
+    const auto* source_bounds = state.scene.try_get<scene::bounds_component>(source);
+    const auto* source_renderer = state.scene.try_get<scene::mesh_renderer_component>(source);
+    if (!source_bounds || !source_renderer) return {};
+
+    const auto entity = state.scene.create();
+    scene::transform_component transform;
+    transform.set_position(panel.position);
+    transform.set_scale(panel.scale);
+    state.scene.emplace<scene::name_component>(entity, panel.name);
+    state.scene.emplace<scene::tag_component>(entity, "Environment");
+    state.scene.emplace<scene::active_component>(entity);
+    state.scene.emplace<scene::selection_component>(entity, false);
+    state.scene.emplace<scene::bounds_component>(entity, source_bounds->local_bounds, source_bounds->local_bounds,
+                                                 true);
+    state.scene.emplace<scene::transform_component>(entity, transform);
+    state.scene.emplace<scene::mesh_renderer_component>(entity, *source_renderer);
+    state.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
+    state.scene.emplace<scene::hierarchy_component>(entity);
+    state.primitive_entities.push_back(entity);
+    return entity;
+}
+
+ecs::entity arc_material_preview_add_primitive(editor_scene_state& state, render::renderer& renderer,
+                                               editor_primitive_type type)
+{
+    const auto entity = add_primitive_to_scene(state, renderer, type);
+    if (type != editor_primitive_type::sphere || state.scene_name != arc_material_preview_scene_name ||
+        !state.scene.alive(entity) || arc_material_preview_room_meshes.contains(&state))
+        return entity;
+
+    // The material sphere has a 0.5-unit radius. Keep its center at the orbit
+    // pivot and place the studio floor at y=-0.5 so it physically rests on it.
+    constexpr float half_extent = 4.0f;
+    constexpr float room_height = 5.5f;
+    constexpr float panel_thickness = 0.10f;
+    constexpr float floor_surface_y = -0.5f;
+    constexpr float wall_center_y = floor_surface_y + room_height * 0.5f;
+    constexpr float ceiling_center_y = floor_surface_y + room_height + panel_thickness * 0.5f;
+
+    const auto room_template = add_primitive_to_scene(state, renderer, editor_primitive_type::cube);
+    if (!state.scene.alive(room_template)) return entity;
+    const auto* room_renderer = state.scene.try_get<scene::mesh_renderer_component>(room_template);
+    if (!room_renderer || !room_renderer->mesh.valid()) return entity;
+    arc_material_preview_room_meshes[&state] = room_renderer->mesh;
+
+    constexpr std::array<arc_material_preview_panel, 5> panels{{
+        {"Material Preview Floor",
+         {0.0f, floor_surface_y - panel_thickness * 0.5f, 0.0f},
+         {half_extent * 2.0f, panel_thickness, half_extent * 2.0f}},
+        {"Material Preview Back Wall",
+         {0.0f, wall_center_y, -half_extent},
+         {half_extent * 2.0f, room_height, panel_thickness}},
+        {"Material Preview Left Wall",
+         {-half_extent, wall_center_y, 0.0f},
+         {panel_thickness, room_height, half_extent * 2.0f}},
+        {"Material Preview Right Wall",
+         {half_extent, wall_center_y, 0.0f},
+         {panel_thickness, room_height, half_extent * 2.0f}},
+        {"Material Preview Ceiling",
+         {0.0f, ceiling_center_y, 0.0f},
+         {half_extent * 2.0f, panel_thickness, half_extent * 2.0f}},
+    }};
+
+    arc_configure_material_preview_panel(state, room_template, panels.front());
+    for (std::size_t index = 1; index < panels.size(); ++index)
+        (void)arc_duplicate_material_preview_panel(state, room_template, panels[index]);
+    return entity;
+}
+
+void arc_clear_preview_imported_content(editor_scene_state& state, render::renderer& renderer)
+{
+    render::mesh_handle room_mesh{};
+    if (const auto found = arc_material_preview_room_meshes.find(&state);
+        found != arc_material_preview_room_meshes.end())
+    {
+        room_mesh = found->second;
+        arc_material_preview_room_meshes.erase(found);
+    }
+
+    clear_imported_scene_content(state, renderer);
+    if (room_mesh.valid() && renderer.mesh_alive(room_mesh)) (void)renderer.destroy_mesh(room_mesh);
+}
+
 bool arc_model_preview_focus(const ecs::world& registry, ecs::entity selected,
                              editor_camera_controller& camera) noexcept
 {
@@ -99,6 +212,8 @@ void arc_append_model_preview_metadata(nlohmann::json& payload, const editor_sce
 } // namespace
 } // namespace arc::editor
 
+#define add_primitive_to_scene(state, renderer, type) arc_material_preview_add_primitive(state, renderer, type)
+#define clear_imported_scene_content(state, renderer) arc_clear_preview_imported_content(state, renderer)
 #define focus_selected_entity(registry, selected, camera) arc_model_preview_focus(registry, selected, camera)
 #define collect_viewport_render_stats(scene, renderer)                                                                 \
     (                                                                                                                  \
@@ -128,3 +243,5 @@ void arc_append_model_preview_metadata(nlohmann::json& payload, const editor_sce
 
 #undef collect_viewport_render_stats
 #undef focus_selected_entity
+#undef clear_imported_scene_content
+#undef add_primitive_to_scene
