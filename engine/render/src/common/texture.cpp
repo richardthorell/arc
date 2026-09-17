@@ -243,8 +243,7 @@ toff_t tiff_seek(thandle_t handle, toff_t offset, int whence) noexcept
             return static_cast<toff_t>(-1);
     }
 
-    if (offset > static_cast<toff_t>(std::numeric_limits<std::size_t>::max() - base))
-        return static_cast<toff_t>(-1);
+    if (offset > static_cast<toff_t>(std::numeric_limits<std::size_t>::max() - base)) return static_cast<toff_t>(-1);
     const auto target = base + static_cast<std::size_t>(offset);
     if (target > source->size) return static_cast<toff_t>(-1);
     source->offset = target;
@@ -787,8 +786,8 @@ texture_load_result load_texture_asset_bytes(std::vector<std::byte> bytes, const
     else
     {
         stbi_uc* decoded =
-            stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(bytes.data()), static_cast<int>(bytes.size()), &width,
-                                  &height, &channels, STBI_rgb_alpha);
+            stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(bytes.data()), static_cast<int>(bytes.size()),
+                                  &width, &height, &channels, STBI_rgb_alpha);
         if (decoded)
         {
             texture.width = static_cast<std::uint32_t>(width);
