@@ -108,6 +108,7 @@ private:
     // The base implementation is macro-renamed together with arc_host wrappers
     // so the externally visible virtual entry points can add editor extensions.
     host_response execute_base(const host_command_envelope& command);
+    host_response query_raw(const host_query_envelope& query);
     host_response query_base(const host_query_envelope& query);
     host_viewport_frame request_viewport_base(const host_viewport_request& request);
 
@@ -117,6 +118,7 @@ private:
 class stdio_host_session final
 {
 public:
+    static std::string command_line(const host_query_envelope& query);
     static std::string command_line(const host_command_envelope& command);
     static std::string query_line(const host_query_envelope& query);
 };
