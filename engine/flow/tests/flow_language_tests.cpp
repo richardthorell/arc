@@ -103,10 +103,10 @@ void test_vector_language_bytecode()
     assert(result.succeeded());
     assert(std::get<double>(*instance.value_slot(2)) == 11.0);
     assert(std::get<double>(*instance.value_slot(3)) == 5.0);
-    const auto normalized = std::get<std::array<double, 3>>(*instance.value_slot(4));
+    [[maybe_unused]] const auto normalized = std::get<std::array<double, 3>>(*instance.value_slot(4));
     assert(std::abs(normalized[0] - 0.6) < 1e-9);
     assert(std::abs(normalized[1] - 0.8) < 1e-9);
-    const auto scaled = std::get<std::array<double, 3>>(*instance.value_slot(6));
+    [[maybe_unused]] const auto scaled = std::get<std::array<double, 3>>(*instance.value_slot(6));
     assert((scaled == std::array<double, 3>{6.0, 8.0, 0.0}));
 }
 
