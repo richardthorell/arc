@@ -1,6 +1,7 @@
 import type { GraphConnectionEndpoint, GraphDomain } from '../graph';
 import {
   flowNodeDefinitions,
+  resolveFlowNodeDefinition,
   type FlowGraphNode,
   type FlowNodeCategory,
   type FlowNodeSubcategory,
@@ -24,7 +25,7 @@ export const flowGraphDomain: GraphDomain<
   FlowNodeCategory,
   FlowNodeSubcategory
 > = {
-  getNodeDefinition: (node) => flowNodeDefinitions[node.type],
+  getNodeDefinition: resolveFlowNodeDefinition,
   getNodeDefinitions: flowDefinitions,
   canConnect: (
     from: GraphConnectionEndpoint<FlowGraphNode, FlowPinType>,
