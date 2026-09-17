@@ -26,16 +26,22 @@ import {
   createFlowNode,
   flowGraphId,
   type FlowGraph,
-  type FlowGraphNode,
   type FlowGraphConnection,
+  type FlowGraphNode,
   type FlowNodeType,
   type FlowPinType,
+  type FlowValueType,
 } from './flowGraphTypes';
 
 const nodeWidth = 238;
 const headerHeight = 34;
 const pinRowHeight = 25;
 const nodePaddingTop = 9;
+
+const arithmeticTypes: FlowValueType[] = ['int', 'float', 'vec2', 'vec3', 'vec4'];
+const comparisonTypes: FlowValueType[] = ['int', 'float'];
+const vectorTypes: FlowValueType[] = ['vec2', 'vec3', 'vec4'];
+const selectableTypes: FlowValueType[] = ['bool', 'int', 'float', 'vec2', 'vec3', 'vec4', 'string', 'name', 'entity'];
 
 type PendingConnection = {
   nodeId: string;
@@ -80,6 +86,13 @@ const vectorValue = (value: unknown, size: number, fallbackLast = 0) => {
   return Array.from({ length: size }, (_, index) => (index === size - 1 ? fallbackLast : 0));
 };
 
+const displayType = (type: FlowValueType) => {
+  if (type === 'vec2') return 'Vector2';
+  if (type === 'vec3') return 'Vector3';
+  if (type === 'vec4') return 'Vector4';
+  return type.charAt(0).toUpperCase() + type.slice(1);
+};
+
 export function FlowGraphEditor({ document, graph }: { document: EditorDocument; graph: FlowGraph }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(() => new Set());
@@ -121,6 +134,22 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
       mutate((next) => {
         const target = next.nodes.find((candidate) => candidate.id === nodeId);
         if (target) target.values[field] = value;
+      }),
+    [mutate],
+  );
+
+  const setTypedNodeField = useCallback(
+    (nodeId: string, field: string, value: unknown, extra: Record<string, unknown> = {}) =>
+      mutate((next) => {
+        const target = next.nodes.find((candidate) => candidate.id === nodeId);
+        if (!target) return;
+        target.values[field] = value;
+        Object.assign(target.values, extra);
+        next.connections = next.connections.filter(
+          (connection) =>
+            connection.kind === 'execution' ||
+            (connection.from.nodeId !== nodeId && connection.to.nodeId !== nodeId),
+        );
       }),
     [mutate],
   );
@@ -347,7 +376,14 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
 
   const addNode = (type: FlowNodeType) => {
     if (document.readOnly || !addMenu) return;
-    const node = createFlowNode(type, addMenu.graph);
+    const variable = graph.variables[0];
+    const node = createFlowNode(
+      type,
+      addMenu.graph,
+      (type === 'getVariable' || type === 'setVariable') && variable
+        ? { variableId: variable.id, variableType: variable.type }
+        : {},
+    );
     mutate((next) => next.nodes.push(node));
     setSelectedNodes(new Set([node.id]));
     setAddMenu(null);
@@ -558,12 +594,7 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
                   <input
                     aria-label="Input action"
                     disabled={document.readOnly}
-                    onChange={(event) =>
-                      mutate((next) => {
-                        const target = next.nodes.find((candidate) => candidate.id === node.id);
-                        if (target) target.values.action = event.target.value;
-                      })
-                    }
+                    onChange={(event) => setNodeField(node.id, 'action', event.target.value)}
                     value={typeof node.values.action === 'string' ? node.values.action : ''}
                   />
                 </label>
@@ -586,6 +617,137 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
                 </label>
               )}
 
+              {(node.type === 'getVariable' || node.type === 'setVariable') && (
+                <label className="flow-node-inline-value">
+                  Variable
+                  <select
+                    aria-label={`${node.type === 'getVariable' ? 'Get' : 'Set'} variable`}
+                    disabled={document.readOnly || graph.variables.length === 0}
+                    onChange={(event) => {
+                      const variable = graph.variables.find((candidate) => candidate.id === event.target.value);
+                      setTypedNodeField(node.id, 'variableId', event.target.value, {
+                        variableType: variable?.type ?? 'float',
+                      });
+                    }}
+                    value={typeof node.values.variableId === 'string' ? node.values.variableId : ''}
+                  >
+                    {graph.variables.length === 0 && <option value="">No variables</option>}
+                    {graph.variables.map((variable) => (
+                      <option key={variable.id} value={variable.id}>
+                        {variable.name} · {displayType(variable.type)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              {(['add', 'subtract', 'multiply', 'divide'] as FlowNodeType[]).includes(node.type) && (
+                <label className="flow-node-inline-value">
+                  Type
+                  <select
+                    aria-label={`${definition.title} type`}
+                    disabled={document.readOnly}
+                    onChange={(event) => setTypedNodeField(node.id, 'valueType', event.target.value)}
+                    value={typeof node.values.valueType === 'string' ? node.values.valueType : 'float'}
+                  >
+                    {arithmeticTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {displayType(type)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              {node.type === 'compare' && (
+                <>
+                  <label className="flow-node-inline-value">
+                    Type
+                    <select
+                      aria-label="Compare type"
+                      disabled={document.readOnly}
+                      onChange={(event) => setTypedNodeField(node.id, 'valueType', event.target.value)}
+                      value={typeof node.values.valueType === 'string' ? node.values.valueType : 'float'}
+                    >
+                      {comparisonTypes.map((type) => (
+                        <option key={type} value={type}>
+                          {displayType(type)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flow-node-inline-value">
+                    Compare
+                    <select
+                      aria-label="Compare operator"
+                      disabled={document.readOnly}
+                      onChange={(event) => setNodeField(node.id, 'operator', event.target.value)}
+                      value={typeof node.values.operator === 'string' ? node.values.operator : 'equal'}
+                    >
+                      <option value="equal">Equal</option>
+                      <option value="notEqual">Not Equal</option>
+                      <option value="less">Less</option>
+                      <option value="lessEqual">Less or Equal</option>
+                      <option value="greater">Greater</option>
+                      <option value="greaterEqual">Greater or Equal</option>
+                    </select>
+                  </label>
+                </>
+              )}
+
+              {(['vectorDot', 'vectorLength', 'vectorNormalize', 'vectorScale'] as FlowNodeType[]).includes(
+                node.type,
+              ) && (
+                <label className="flow-node-inline-value">
+                  Type
+                  <select
+                    aria-label={`${definition.title} type`}
+                    disabled={document.readOnly}
+                    onChange={(event) => setTypedNodeField(node.id, 'valueType', event.target.value)}
+                    value={typeof node.values.valueType === 'string' ? node.values.valueType : 'vec3'}
+                  >
+                    {vectorTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {displayType(type)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              {node.type === 'select' && (
+                <label className="flow-node-inline-value">
+                  Type
+                  <select
+                    aria-label="Select type"
+                    disabled={document.readOnly}
+                    onChange={(event) => setTypedNodeField(node.id, 'valueType', event.target.value)}
+                    value={typeof node.values.valueType === 'string' ? node.values.valueType : 'float'}
+                  >
+                    {selectableTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {displayType(type)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              {node.type === 'convertNumber' && (
+                <label className="flow-node-inline-value">
+                  Conversion
+                  <select
+                    aria-label="Number conversion"
+                    disabled={document.readOnly}
+                    onChange={(event) => setTypedNodeField(node.id, 'conversion', event.target.value)}
+                    value={typeof node.values.conversion === 'string' ? node.values.conversion : 'intToFloat'}
+                  >
+                    <option value="intToFloat">Integer → Float</option>
+                    <option value="floatToInt">Float → Integer</option>
+                  </select>
+                </label>
+              )}
+
               {node.type === 'boolLiteral' && (
                 <label className="flow-node-inline-value">
                   Value
@@ -596,6 +758,26 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
                     onChange={(event) => setNodeValue(node.id, event.target.checked)}
                     style={{ height: 16, justifySelf: 'start', width: 16 }}
                     type="checkbox"
+                  />
+                </label>
+              )}
+
+              {(node.type === 'intLiteral' || node.type === 'floatLiteral') && (
+                <label className="flow-node-inline-value">
+                  Value
+                  <input
+                    aria-label={node.type === 'intLiteral' ? 'Integer value' : 'Float value'}
+                    disabled={document.readOnly}
+                    onChange={(event) => {
+                      const parsed = Number(event.target.value);
+                      setNodeValue(
+                        node.id,
+                        Number.isFinite(parsed) ? (node.type === 'intLiteral' ? Math.trunc(parsed) : parsed) : 0,
+                      );
+                    }}
+                    step={node.type === 'intLiteral' ? 1 : 'any'}
+                    type="number"
+                    value={typeof node.values.value === 'number' ? node.values.value : 0}
                   />
                 </label>
               )}
@@ -612,10 +794,11 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
                 </label>
               )}
 
-              {(node.type === 'vector3Literal' || node.type === 'vector4Literal') &&
+              {(['vector2Literal', 'vector3Literal', 'vector4Literal'] as FlowNodeType[]).includes(node.type) &&
                 (() => {
-                  const size = node.type === 'vector3Literal' ? 3 : 4;
+                  const size = node.type === 'vector2Literal' ? 2 : node.type === 'vector3Literal' ? 3 : 4;
                   const current = vectorValue(node.values.value, size, node.type === 'vector4Literal' ? 1 : 0);
+                  const label = node.type === 'vector2Literal' ? 'Vector2' : node.type === 'vector3Literal' ? 'Vector3' : 'Vector4';
                   return (
                     <label className="flow-node-inline-value">
                       Value
@@ -629,7 +812,7 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
                       >
                         {current.map((entry, index) => (
                           <input
-                            aria-label={`${node.type === 'vector3Literal' ? 'Vector3' : 'Vector4'} component ${index + 1}`}
+                            aria-label={`${label} component ${index + 1}`}
                             disabled={document.readOnly}
                             key={index}
                             onChange={(event) => {
