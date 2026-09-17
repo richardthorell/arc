@@ -1702,7 +1702,7 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                 table.instructions[4] = execution_target(*node, "default");
                 instruction.operand0 = input_slot(*node, "selection");
                 instruction.operand1 = static_cast<std::uint32_t>(program.switch_int_tables.size());
-                program.switch_int_tables.push_back(std::move(table));
+                program.switch_int_tables.push_back(table);
                 break;
             }
             case node_kind::do_once:
