@@ -12,11 +12,11 @@ namespace
 {
 
 constexpr std::uint64_t artifact_magic = 0x3158455443524141ull; // "AARCTEX1" little endian.
-constexpr std::uint32_t header_bytes = 180;
+constexpr std::uint32_t header_bytes = 188;
 constexpr std::uint32_t mip_entry_bytes = 36;
 constexpr std::uint32_t tile_entry_bytes = 44;
-constexpr std::size_t table_hash_offset = 164;
-constexpr std::size_t header_hash_offset = 172;
+constexpr std::size_t table_hash_offset = 172;
+constexpr std::size_t header_hash_offset = 180;
 
 texture_artifact_error failure(texture_artifact_error_code code, std::string message)
 {
@@ -245,7 +245,9 @@ std::uint32_t complete_mip_count(std::uint32_t width, std::uint32_t height, std:
 
 bool finite_metadata(const texture_artifact_metadata& metadata) noexcept
 {
-    return std::isfinite(metadata.anisotropy) && metadata.anisotropy >= 1.0f && std::isfinite(metadata.lod_bias) &&
+    return metadata.source_mip_count > 0 &&
+           static_cast<std::uint32_t>(metadata.mip_policy) <= static_cast<std::uint32_t>(texture_mip_policy::none) &&
+           std::isfinite(metadata.anisotropy) && metadata.anisotropy >= 1.0f && std::isfinite(metadata.lod_bias) &&
            std::isfinite(metadata.minimum_lod) && std::isfinite(metadata.maximum_lod) &&
            metadata.minimum_lod <= metadata.maximum_lod && std::isfinite(metadata.alpha_coverage_threshold) &&
            metadata.alpha_coverage_threshold >= 0.0f && metadata.alpha_coverage_threshold <= 1.0f;
@@ -421,6 +423,7 @@ texture_artifact_bytes_result encode_texture_artifact(const texture_data& textur
     output.value(static_cast<std::uint32_t>(tile_payloads.size()));
     if (metadata.source_width == 0) metadata.source_width = texture.width;
     if (metadata.source_height == 0) metadata.source_height = texture.height;
+    if (metadata.source_mip_count == 0) metadata.source_mip_count = static_cast<std::uint32_t>(texture.mips.size());
     if (metadata.resolved_max_size == 0)
         metadata.resolved_max_size = std::max({texture.width, texture.height, texture.depth});
     if (!finite_metadata(metadata))
@@ -428,10 +431,12 @@ texture_artifact_bytes_result encode_texture_artifact(const texture_data& textur
             failure(texture_artifact_error_code::invalid_data, "texture artifact import metadata is invalid"));
     output.value(metadata.source_width);
     output.value(metadata.source_height);
+    output.value(metadata.source_mip_count);
     output.value(metadata.requested_max_size);
     output.value(metadata.resolved_max_size);
     output.value(static_cast<std::uint32_t>(metadata.power_of_two));
     output.value(static_cast<std::uint32_t>(metadata.compression));
+    output.value(static_cast<std::uint32_t>(metadata.mip_policy));
     output.value(static_cast<std::uint32_t>(metadata.min_filter));
     output.value(static_cast<std::uint32_t>(metadata.mag_filter));
     output.value(static_cast<std::uint32_t>(metadata.mip_filter));
@@ -448,6 +453,7 @@ texture_artifact_bytes_result encode_texture_artifact(const texture_data& textur
     if (metadata.power_of_two_adjusted) processing_flags |= 1u << 2u;
     if (metadata.normal_mips_renormalized) processing_flags |= 1u << 3u;
     if (metadata.alpha_coverage_preserved) processing_flags |= 1u << 4u;
+    if (metadata.source_mips_preserved) processing_flags |= 1u << 5u;
     output.value(processing_flags);
     output.value(table_end);
     output.value(cursor);
@@ -511,6 +517,7 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
     std::uint32_t tile_entries{};
     std::uint32_t power_of_two{};
     std::uint32_t compression{};
+    std::uint32_t mip_policy{};
     std::uint32_t min_filter{};
     std::uint32_t mag_filter{};
     std::uint32_t mip_filter{};
@@ -526,10 +533,11 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
         !input.value(result.width) || !input.value(result.height) || !input.value(result.mip_count) ||
         !input.value(result.tail_first_mip) || !input.value(result.tile_size) || !input.value(result.tile_border) ||
         !input.value(mip_entries) || !input.value(tile_entries) || !input.value(result.metadata.source_width) ||
-        !input.value(result.metadata.source_height) || !input.value(result.metadata.requested_max_size) ||
-        !input.value(result.metadata.resolved_max_size) || !input.value(power_of_two) || !input.value(compression) ||
-        !input.value(min_filter) || !input.value(mag_filter) || !input.value(mip_filter) || !input.value(wrap_u) ||
-        !input.value(wrap_v) || !input.value(result.metadata.anisotropy) || !input.value(result.metadata.lod_bias) ||
+        !input.value(result.metadata.source_height) || !input.value(result.metadata.source_mip_count) ||
+        !input.value(result.metadata.requested_max_size) || !input.value(result.metadata.resolved_max_size) ||
+        !input.value(power_of_two) || !input.value(compression) || !input.value(mip_policy) || !input.value(min_filter) ||
+        !input.value(mag_filter) || !input.value(mip_filter) || !input.value(wrap_u) || !input.value(wrap_v) ||
+        !input.value(result.metadata.anisotropy) || !input.value(result.metadata.lod_bias) ||
         !input.value(result.metadata.minimum_lod) || !input.value(result.metadata.maximum_lod) ||
         !input.value(result.metadata.alpha_coverage_threshold) || !input.value(processing_flags) ||
         !input.value(result.table_end) || !input.value(result.artifact_size) || !input.value(table_hash) ||
@@ -552,6 +560,7 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
         dimension > static_cast<std::uint32_t>(texture_dimension::cube) ||
         power_of_two > static_cast<std::uint32_t>(texture_power_of_two_policy::resize_up) ||
         compression > static_cast<std::uint32_t>(texture_compression_policy::uncompressed) ||
+        mip_policy > static_cast<std::uint32_t>(texture_mip_policy::none) ||
         min_filter > static_cast<std::uint32_t>(texture_filter_mode::linear) ||
         mag_filter > static_cast<std::uint32_t>(texture_filter_mode::linear) ||
         mip_filter > static_cast<std::uint32_t>(texture_mip_filter_mode::linear) ||
@@ -561,11 +570,12 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
             failure(texture_artifact_error_code::invalid_data, "texture artifact metadata is invalid"));
 
     result.dimension = static_cast<texture_dimension>(dimension);
+    result.metadata.mip_policy = static_cast<texture_mip_policy>(mip_policy);
     if (!valid_texture_topology(result.dimension, result.width, result.height, result.depth, result.array_layers,
                                 result.face_count) ||
-        result.mip_count == 0 || mip_entries != result.mip_count || result.tail_first_mip >= result.mip_count ||
-        result.table_end < header_bytes || result.table_end > bytes.size() || result.artifact_size != bytes.size() ||
-        !finite_metadata(result.metadata) ||
+        result.mip_count == 0 || result.metadata.source_mip_count == 0 || mip_entries != result.mip_count ||
+        result.tail_first_mip >= result.mip_count || result.table_end < header_bytes || result.table_end > bytes.size() ||
+        result.artifact_size != bytes.size() || !finite_metadata(result.metadata) ||
         ((mode == static_cast<std::uint32_t>(texture_streaming_mode::streamed_mips) ||
           mode == static_cast<std::uint32_t>(texture_streaming_mode::virtual_tiles)) &&
          result.mip_count != complete_mip_count(result.width, result.height, result.depth, result.dimension)) ||
@@ -601,6 +611,7 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
     result.metadata.power_of_two_adjusted = (processing_flags & (1u << 2u)) != 0;
     result.metadata.normal_mips_renormalized = (processing_flags & (1u << 3u)) != 0;
     result.metadata.alpha_coverage_preserved = (processing_flags & (1u << 4u)) != 0;
+    result.metadata.source_mips_preserved = (processing_flags & (1u << 5u)) != 0;
     result.mips.reserve(mip_entries);
     std::uint32_t expected_width = result.width;
     std::uint32_t expected_height = result.height;
