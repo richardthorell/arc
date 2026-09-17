@@ -62,20 +62,9 @@ TEST_CASE("texture metadata inspection does not require DDS payload", "[render][
 TEST_CASE("PSD textures are supported and decoded through stb", "[render][texture]")
 {
     const std::array<std::uint8_t, 43> psd = {
-        0x38, 0x42, 0x50, 0x53, // signature: 8BPS
-        0x00, 0x01,             // version
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x03,                         // channels
-        0x00, 0x00, 0x00, 0x01,             // height
-        0x00, 0x00, 0x00, 0x01,             // width
-        0x00, 0x08,                         // depth
-        0x00, 0x03,                         // RGB color mode
-        0x00, 0x00, 0x00, 0x00,             // color mode data
-        0x00, 0x00, 0x00, 0x00,             // image resources
-        0x00, 0x00, 0x00, 0x00,             // layer and mask data
-        0x00, 0x00,                         // raw image data
-        0x12, 0x34, 0x56                    // R, G, B planes
-    };
+        0x38, 0x42, 0x50, 0x53, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00,
+        0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x34, 0x56};
 
     std::vector<std::byte> bytes;
     bytes.reserve(psd.size());
@@ -83,7 +72,7 @@ TEST_CASE("PSD textures are supported and decoded through stb", "[render][textur
         bytes.push_back(static_cast<std::byte>(value));
 
     CHECK(arc::render::is_supported_texture_asset("source.PSD"));
-    const auto loaded = arc::render::load_texture_asset_bytes(std::move(bytes), "source.psd");
+    const auto loaded = arc::render::load_texture_asset_bytes(bytes, "source.psd");
     REQUIRE(loaded.succeeded());
     CHECK(loaded.texture.width == 1);
     CHECK(loaded.texture.height == 1);
