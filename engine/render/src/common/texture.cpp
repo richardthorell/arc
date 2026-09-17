@@ -665,7 +665,7 @@ jobs::job_future<texture_load_result> load_texture_asset_async(io::async_file_se
 bool is_supported_texture_asset(const std::filesystem::path& path)
 {
     static constexpr std::array<std::string_view, 9> supported_extensions = {".png", ".jpg", ".jpeg", ".psd", ".tga",
-                                                                             ".bmp", ".hdr", ".exr", ".dds"};
+                                                                             ".bmp", ".hdr", ".exr",  ".dds"};
     const auto extension = lowercase(path.extension().string());
     return std::any_of(supported_extensions.begin(), supported_extensions.end(),
                        [&extension](std::string_view supported) { return extension == supported; });
