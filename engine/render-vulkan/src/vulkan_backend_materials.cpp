@@ -693,6 +693,7 @@ bool vulkan_render_backend::update_runtime_parameter_buffer(gpu_buffer& buffer, 
                 break;
             case shader_parameter_type::texture_2d:
             case shader_parameter_type::texture_cube:
+            case shader_parameter_type::texture_3d:
             case shader_parameter_type::sampler:
                 break;
         }
