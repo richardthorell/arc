@@ -3,14 +3,14 @@
 Small default assets used by the editor and renderer bring-up live here.
 
 - `models/UAL2_Standard.glb` is the default startup mesh.
-- `environments/` contains small CC0 HDRIs for outdoor lighting and future IBL
-  tests.
+- `environments/` contains small CC0 HDRIs for outdoor lighting, IBL tests, and
+  the editor material-preview environment.
 - `textures/terrain/` contains small CC0 terrain material maps for renderer and
   terrain-editor bring-up.
 - `materials/` contains editable `.arcmat` JSON material assets. These can be
   dragged from the Content Browser onto mesh renderer material slots or directly
   onto objects in the viewport.
-- Texture slots accept `.png`, `.jpg`, `.jpeg`, `.tga`, `.hdr`, and `.dds`.
+- Texture slots accept `.png`, `.jpg`, `.jpeg`, `.tga`, `.hdr`, `.exr`, and `.dds`.
   Common images are decoded to upload-ready RGBA pixels in graphics builds.
   DDS headers, mip payloads, and BC compression metadata remain intact for
   native GPU upload, with a visible fallback on unsupported devices.
