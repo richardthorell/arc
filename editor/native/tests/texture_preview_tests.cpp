@@ -8,12 +8,10 @@
 
 namespace
 {
-std::array<std::uint8_t, 4> pixel_at(const arc::editor::texture_preview_image& image, std::uint32_t x,
-                                     std::uint32_t y)
+std::array<std::uint8_t, 4> pixel_at(const arc::editor::texture_preview_image& image, std::uint32_t x, std::uint32_t y)
 {
     const auto offset = (static_cast<std::size_t>(y) * image.width + x) * 4u;
-    return {std::to_integer<std::uint8_t>(image.rgba[offset]),
-            std::to_integer<std::uint8_t>(image.rgba[offset + 1u]),
+    return {std::to_integer<std::uint8_t>(image.rgba[offset]), std::to_integer<std::uint8_t>(image.rgba[offset + 1u]),
             std::to_integer<std::uint8_t>(image.rgba[offset + 2u]),
             std::to_integer<std::uint8_t>(image.rgba[offset + 3u])};
 }

@@ -46,8 +46,7 @@ texture_load_result load_exr_texture_asset(const std::filesystem::path& path)
     return load_exr_texture_asset_bytes(std::move(bytes), path);
 }
 
-texture_load_result load_exr_texture_asset_bytes(std::vector<std::byte> bytes,
-                                                 const std::filesystem::path& source_path)
+texture_load_result load_exr_texture_asset_bytes(std::vector<std::byte> bytes, const std::filesystem::path& source_path)
 {
     if (bytes.empty()) return {.message = "OpenEXR payload is empty"};
 

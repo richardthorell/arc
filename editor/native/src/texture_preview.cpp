@@ -11,9 +11,7 @@ namespace arc::editor
 namespace
 {
 constexpr std::array<std::int8_t, 12> cube_cross_faces{
-    -1, 2, -1, -1,
-    1, 4, 0, 5,
-    -1, 3, -1, -1,
+    -1, 2, -1, -1, 1, 4, 0, 5, -1, 3, -1, -1,
 };
 
 std::uint8_t preview_channel(float linear_value)
