@@ -3,6 +3,8 @@
 #include <arc/project/runtime_world_api.h>
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <optional>
 #include <string>
 #include <unordered_set>
@@ -50,6 +52,33 @@ bool slot_has_type(const bytecode_program& program, std::uint32_t slot, value_ty
     return slot < program.value_slots.size() && program.value_slots[slot].type == type;
 }
 
+bool slot_exists(const bytecode_program& program, std::uint32_t slot)
+{
+    return slot < program.value_slots.size();
+}
+
+bool same_slot_type(const bytecode_program& program, std::uint32_t left, std::uint32_t right)
+{
+    return slot_exists(program, left) && slot_exists(program, right) &&
+           program.value_slots[left].type == program.value_slots[right].type;
+}
+
+bool is_numeric_type(value_type type)
+{
+    return type == value_type::integer || type == value_type::float32;
+}
+
+bool is_arithmetic_type(value_type type)
+{
+    return is_numeric_type(type) || type == value_type::vector2 || type == value_type::vector3 ||
+           type == value_type::vector4;
+}
+
+bool is_vector_type(value_type type)
+{
+    return type == value_type::vector2 || type == value_type::vector3 || type == value_type::vector4;
+}
+
 bool valid_world_component(std::uint32_t value)
 {
     return value <= static_cast<std::uint32_t>(world_core_component::active);
@@ -64,6 +93,12 @@ bool binding_matches_slot(entry_value_kind source, const bytecode_value_slot& sl
             return slot.type == value_type::float32;
     }
     return false;
+}
+
+bool variable_matches_slot(const bytecode_program& program, std::uint32_t variable_index, std::uint32_t slot)
+{
+    return variable_index < program.variables.size() && slot < program.value_slots.size() &&
+           program.variables[variable_index].type == program.value_slots[slot].type;
 }
 
 bool validate_program(const bytecode_program& program)
@@ -105,6 +140,94 @@ bool validate_program(const bytecode_program& program)
             case bytecode_opcode::branch:
                 if (!slot_has_type(program, instruction.operand0, value_type::boolean)) return false;
                 if (!valid_instruction_target(program, instruction.operand1) ||
+                    !valid_instruction_target(program, instruction.operand2))
+                    return false;
+                break;
+            case bytecode_opcode::load_variable:
+            case bytecode_opcode::store_variable:
+                if (!variable_matches_slot(program, instruction.operand0, instruction.operand1) ||
+                    !valid_instruction_target(program, instruction.operand2))
+                    return false;
+                break;
+            case bytecode_opcode::add:
+            case bytecode_opcode::subtract:
+            case bytecode_opcode::multiply:
+            case bytecode_opcode::divide:
+                if (!same_slot_type(program, instruction.operand0, instruction.operand1) ||
+                    !same_slot_type(program, instruction.operand0, instruction.operand2) ||
+                    !is_arithmetic_type(program.value_slots[instruction.operand0].type) ||
+                    !valid_instruction_target(program, instruction.operand3))
+                    return false;
+                break;
+            case bytecode_opcode::compare_equal:
+            case bytecode_opcode::compare_not_equal:
+            case bytecode_opcode::compare_less:
+            case bytecode_opcode::compare_less_equal:
+            case bytecode_opcode::compare_greater:
+            case bytecode_opcode::compare_greater_equal:
+                if (!same_slot_type(program, instruction.operand0, instruction.operand1) ||
+                    !is_numeric_type(program.value_slots[instruction.operand0].type) ||
+                    !slot_has_type(program, instruction.operand2, value_type::boolean) ||
+                    !valid_instruction_target(program, instruction.operand3))
+                    return false;
+                break;
+            case bytecode_opcode::boolean_and:
+            case bytecode_opcode::boolean_or:
+                if (!slot_has_type(program, instruction.operand0, value_type::boolean) ||
+                    !slot_has_type(program, instruction.operand1, value_type::boolean) ||
+                    !slot_has_type(program, instruction.operand2, value_type::boolean) ||
+                    !valid_instruction_target(program, instruction.operand3))
+                    return false;
+                break;
+            case bytecode_opcode::boolean_not:
+                if (!slot_has_type(program, instruction.operand0, value_type::boolean) ||
+                    !slot_has_type(program, instruction.operand1, value_type::boolean) ||
+                    !valid_instruction_target(program, instruction.operand2))
+                    return false;
+                break;
+            case bytecode_opcode::vector_dot:
+                if (!same_slot_type(program, instruction.operand0, instruction.operand1) ||
+                    !slot_exists(program, instruction.operand0) ||
+                    !is_vector_type(program.value_slots[instruction.operand0].type) ||
+                    !slot_has_type(program, instruction.operand2, value_type::float32) ||
+                    !valid_instruction_target(program, instruction.operand3))
+                    return false;
+                break;
+            case bytecode_opcode::vector_length:
+                if (!slot_exists(program, instruction.operand0) || !is_vector_type(program.value_slots[instruction.operand0].type) ||
+                    !slot_has_type(program, instruction.operand1, value_type::float32) ||
+                    !valid_instruction_target(program, instruction.operand2))
+                    return false;
+                break;
+            case bytecode_opcode::vector_normalize:
+                if (!same_slot_type(program, instruction.operand0, instruction.operand1) ||
+                    !slot_exists(program, instruction.operand0) || !is_vector_type(program.value_slots[instruction.operand0].type) ||
+                    !valid_instruction_target(program, instruction.operand2))
+                    return false;
+                break;
+            case bytecode_opcode::vector_scale:
+                if (!slot_exists(program, instruction.operand0) || !is_vector_type(program.value_slots[instruction.operand0].type) ||
+                    !slot_has_type(program, instruction.operand1, value_type::float32) ||
+                    !same_slot_type(program, instruction.operand0, instruction.operand2) ||
+                    !valid_instruction_target(program, instruction.operand3))
+                    return false;
+                break;
+            case bytecode_opcode::select:
+                if (!slot_has_type(program, instruction.operand0, value_type::boolean) ||
+                    !same_slot_type(program, instruction.operand1, instruction.operand2) ||
+                    !same_slot_type(program, instruction.operand1, instruction.operand3) ||
+                    !valid_instruction_target(program, instruction.operand4))
+                    return false;
+                break;
+            case bytecode_opcode::convert_int_to_float:
+                if (!slot_has_type(program, instruction.operand0, value_type::integer) ||
+                    !slot_has_type(program, instruction.operand1, value_type::float32) ||
+                    !valid_instruction_target(program, instruction.operand2))
+                    return false;
+                break;
+            case bytecode_opcode::convert_float_to_int:
+                if (!slot_has_type(program, instruction.operand0, value_type::float32) ||
+                    !slot_has_type(program, instruction.operand1, value_type::integer) ||
                     !valid_instruction_target(program, instruction.operand2))
                     return false;
                 break;
@@ -256,9 +379,201 @@ bool require_world(const vm_world_context& world, execution_result& result, cons
     return false;
 }
 
-execution_result execute_chain(const bytecode_program& program, std::vector<flow_value>& value_slots,
-                               std::uint32_t first_instruction, std::uint32_t instruction_budget,
-                               const vm_world_context& world)
+bool checked_add(std::int64_t left, std::int64_t right, std::int64_t& result)
+{
+    if ((right > 0 && left > std::numeric_limits<std::int64_t>::max() - right) ||
+        (right < 0 && left < std::numeric_limits<std::int64_t>::min() - right))
+        return false;
+    result = left + right;
+    return true;
+}
+
+bool checked_subtract(std::int64_t left, std::int64_t right, std::int64_t& result)
+{
+    if ((right < 0 && left > std::numeric_limits<std::int64_t>::max() + right) ||
+        (right > 0 && left < std::numeric_limits<std::int64_t>::min() + right))
+        return false;
+    result = left - right;
+    return true;
+}
+
+bool checked_multiply(std::int64_t left, std::int64_t right, std::int64_t& result)
+{
+    if (left == 0 || right == 0)
+    {
+        result = 0;
+        return true;
+    }
+    if ((left == -1 && right == std::numeric_limits<std::int64_t>::min()) ||
+        (right == -1 && left == std::numeric_limits<std::int64_t>::min()))
+        return false;
+    if (left > 0)
+    {
+        if (right > 0 && left > std::numeric_limits<std::int64_t>::max() / right) return false;
+        if (right < 0 && right < std::numeric_limits<std::int64_t>::min() / left) return false;
+    }
+    else
+    {
+        if (right > 0 && left < std::numeric_limits<std::int64_t>::min() / right) return false;
+        if (right < 0 && left < std::numeric_limits<std::int64_t>::max() / right) return false;
+    }
+    result = left * right;
+    return true;
+}
+
+bool checked_divide(std::int64_t left, std::int64_t right, std::int64_t& result)
+{
+    if (right == 0 || (left == std::numeric_limits<std::int64_t>::min() && right == -1)) return false;
+    result = left / right;
+    return true;
+}
+
+template <std::size_t N>
+bool execute_vector_arithmetic(bytecode_opcode opcode, const flow_value& left_value, const flow_value& right_value,
+                               flow_value& output)
+{
+    const auto* left = std::get_if<std::array<double, N>>(&left_value);
+    const auto* right = std::get_if<std::array<double, N>>(&right_value);
+    if (!left || !right) return false;
+    std::array<double, N> result{};
+    for (std::size_t index = 0; index < N; ++index)
+    {
+        switch (opcode)
+        {
+            case bytecode_opcode::add:
+                result[index] = (*left)[index] + (*right)[index];
+                break;
+            case bytecode_opcode::subtract:
+                result[index] = (*left)[index] - (*right)[index];
+                break;
+            case bytecode_opcode::multiply:
+                result[index] = (*left)[index] * (*right)[index];
+                break;
+            case bytecode_opcode::divide:
+                if ((*right)[index] == 0.0) return false;
+                result[index] = (*left)[index] / (*right)[index];
+                break;
+            default:
+                return false;
+        }
+    }
+    output = result;
+    return true;
+}
+
+bool execute_arithmetic(bytecode_opcode opcode, value_type type, const flow_value& left, const flow_value& right,
+                        flow_value& output)
+{
+    if (type == value_type::integer)
+    {
+        const auto* lhs = std::get_if<std::int64_t>(&left);
+        const auto* rhs = std::get_if<std::int64_t>(&right);
+        if (!lhs || !rhs) return false;
+        std::int64_t result{};
+        const bool succeeded = opcode == bytecode_opcode::add          ? checked_add(*lhs, *rhs, result)
+                               : opcode == bytecode_opcode::subtract   ? checked_subtract(*lhs, *rhs, result)
+                               : opcode == bytecode_opcode::multiply   ? checked_multiply(*lhs, *rhs, result)
+                                                                        : checked_divide(*lhs, *rhs, result);
+        if (!succeeded) return false;
+        output = result;
+        return true;
+    }
+    if (type == value_type::float32)
+    {
+        const auto* lhs = std::get_if<double>(&left);
+        const auto* rhs = std::get_if<double>(&right);
+        if (!lhs || !rhs || (opcode == bytecode_opcode::divide && *rhs == 0.0)) return false;
+        output = opcode == bytecode_opcode::add          ? *lhs + *rhs
+                 : opcode == bytecode_opcode::subtract   ? *lhs - *rhs
+                 : opcode == bytecode_opcode::multiply   ? *lhs * *rhs
+                                                          : *lhs / *rhs;
+        return true;
+    }
+    if (type == value_type::vector2) return execute_vector_arithmetic<2>(opcode, left, right, output);
+    if (type == value_type::vector3) return execute_vector_arithmetic<3>(opcode, left, right, output);
+    if (type == value_type::vector4) return execute_vector_arithmetic<4>(opcode, left, right, output);
+    return false;
+}
+
+bool execute_compare(bytecode_opcode opcode, value_type type, const flow_value& left, const flow_value& right,
+                     bool& output)
+{
+    if (type == value_type::integer)
+    {
+        const auto* lhs = std::get_if<std::int64_t>(&left);
+        const auto* rhs = std::get_if<std::int64_t>(&right);
+        if (!lhs || !rhs) return false;
+        output = opcode == bytecode_opcode::compare_equal          ? *lhs == *rhs
+                 : opcode == bytecode_opcode::compare_not_equal    ? *lhs != *rhs
+                 : opcode == bytecode_opcode::compare_less         ? *lhs < *rhs
+                 : opcode == bytecode_opcode::compare_less_equal   ? *lhs <= *rhs
+                 : opcode == bytecode_opcode::compare_greater      ? *lhs > *rhs
+                                                                    : *lhs >= *rhs;
+        return true;
+    }
+    if (type == value_type::float32)
+    {
+        const auto* lhs = std::get_if<double>(&left);
+        const auto* rhs = std::get_if<double>(&right);
+        if (!lhs || !rhs) return false;
+        output = opcode == bytecode_opcode::compare_equal          ? *lhs == *rhs
+                 : opcode == bytecode_opcode::compare_not_equal    ? *lhs != *rhs
+                 : opcode == bytecode_opcode::compare_less         ? *lhs < *rhs
+                 : opcode == bytecode_opcode::compare_less_equal   ? *lhs <= *rhs
+                 : opcode == bytecode_opcode::compare_greater      ? *lhs > *rhs
+                                                                    : *lhs >= *rhs;
+        return true;
+    }
+    return false;
+}
+
+template <std::size_t N> double vector_dot(const flow_value& left_value, const flow_value& right_value, bool& valid)
+{
+    const auto* left = std::get_if<std::array<double, N>>(&left_value);
+    const auto* right = std::get_if<std::array<double, N>>(&right_value);
+    if (!left || !right)
+    {
+        valid = false;
+        return 0.0;
+    }
+    double result = 0.0;
+    for (std::size_t index = 0; index < N; ++index)
+        result += (*left)[index] * (*right)[index];
+    valid = true;
+    return result;
+}
+
+template <std::size_t N> bool vector_normalize(const flow_value& input_value, flow_value& output, double* length_output)
+{
+    const auto* input = std::get_if<std::array<double, N>>(&input_value);
+    if (!input) return false;
+    double squared = 0.0;
+    for (double component : *input)
+        squared += component * component;
+    const double length = std::sqrt(squared);
+    if (length_output) *length_output = length;
+    std::array<double, N> result{};
+    if (length > 0.0)
+        for (std::size_t index = 0; index < N; ++index)
+            result[index] = (*input)[index] / length;
+    output = result;
+    return true;
+}
+
+template <std::size_t N> bool vector_scale(const flow_value& input_value, double scale, flow_value& output)
+{
+    const auto* input = std::get_if<std::array<double, N>>(&input_value);
+    if (!input) return false;
+    std::array<double, N> result{};
+    for (std::size_t index = 0; index < N; ++index)
+        result[index] = (*input)[index] * scale;
+    output = result;
+    return true;
+}
+
+execution_result execute_chain(const bytecode_program& program, std::vector<flow_value>& variable_values,
+                               std::vector<flow_value>& value_slots, std::uint32_t first_instruction,
+                               std::uint32_t instruction_budget, const vm_world_context& world)
 {
     execution_result result;
     std::uint32_t instruction = first_instruction;
@@ -290,6 +605,181 @@ execution_result execute_chain(const bytecode_program& program, std::vector<flow
                     return result;
                 }
                 instruction = *condition ? current.operand1 : current.operand2;
+                break;
+            }
+            case bytecode_opcode::load_variable:
+                value_slots[current.operand1] = variable_values[current.operand0];
+                instruction = current.operand2;
+                break;
+            case bytecode_opcode::store_variable:
+                variable_values[current.operand0] = value_slots[current.operand1];
+                instruction = current.operand2;
+                break;
+            case bytecode_opcode::add:
+            case bytecode_opcode::subtract:
+            case bytecode_opcode::multiply:
+            case bytecode_opcode::divide:
+            {
+                const value_type type = program.value_slots[current.operand2].type;
+                flow_value output;
+                if (!execute_arithmetic(current.opcode, type, value_slots[current.operand0],
+                                        value_slots[current.operand1], output))
+                {
+                    stop_execution(result, execution_status::invalid_operation, program, instruction);
+                    return result;
+                }
+                value_slots[current.operand2] = std::move(output);
+                instruction = current.operand3;
+                break;
+            }
+            case bytecode_opcode::compare_equal:
+            case bytecode_opcode::compare_not_equal:
+            case bytecode_opcode::compare_less:
+            case bytecode_opcode::compare_less_equal:
+            case bytecode_opcode::compare_greater:
+            case bytecode_opcode::compare_greater_equal:
+            {
+                bool compared = false;
+                const value_type type = program.value_slots[current.operand0].type;
+                bool valid = false;
+                valid = execute_compare(current.opcode, type, value_slots[current.operand0],
+                                        value_slots[current.operand1], compared);
+                if (!valid)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                value_slots[current.operand2] = compared;
+                instruction = current.operand3;
+                break;
+            }
+            case bytecode_opcode::boolean_and:
+            case bytecode_opcode::boolean_or:
+            {
+                const bool* left = std::get_if<bool>(&value_slots[current.operand0]);
+                const bool* right = std::get_if<bool>(&value_slots[current.operand1]);
+                if (!left || !right)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                value_slots[current.operand2] = current.opcode == bytecode_opcode::boolean_and ? *left && *right
+                                                                                                : *left || *right;
+                instruction = current.operand3;
+                break;
+            }
+            case bytecode_opcode::boolean_not:
+            {
+                const bool* value = std::get_if<bool>(&value_slots[current.operand0]);
+                if (!value)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                value_slots[current.operand1] = !*value;
+                instruction = current.operand2;
+                break;
+            }
+            case bytecode_opcode::vector_dot:
+            {
+                const value_type type = program.value_slots[current.operand0].type;
+                bool valid = false;
+                double dot = 0.0;
+                if (type == value_type::vector2)
+                    dot = vector_dot<2>(value_slots[current.operand0], value_slots[current.operand1], valid);
+                else if (type == value_type::vector3)
+                    dot = vector_dot<3>(value_slots[current.operand0], value_slots[current.operand1], valid);
+                else if (type == value_type::vector4)
+                    dot = vector_dot<4>(value_slots[current.operand0], value_slots[current.operand1], valid);
+                if (!valid)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                value_slots[current.operand2] = dot;
+                instruction = current.operand3;
+                break;
+            }
+            case bytecode_opcode::vector_length:
+            case bytecode_opcode::vector_normalize:
+            {
+                const value_type type = program.value_slots[current.operand0].type;
+                flow_value normalized;
+                double length = 0.0;
+                const bool valid = type == value_type::vector2   ? vector_normalize<2>(value_slots[current.operand0], normalized, &length)
+                                   : type == value_type::vector3 ? vector_normalize<3>(value_slots[current.operand0], normalized, &length)
+                                   : type == value_type::vector4 ? vector_normalize<4>(value_slots[current.operand0], normalized, &length)
+                                                                  : false;
+                if (!valid)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                if (current.opcode == bytecode_opcode::vector_length)
+                    value_slots[current.operand1] = length;
+                else
+                    value_slots[current.operand1] = std::move(normalized);
+                instruction = current.operand2;
+                break;
+            }
+            case bytecode_opcode::vector_scale:
+            {
+                const auto* scale = std::get_if<double>(&value_slots[current.operand1]);
+                const value_type type = program.value_slots[current.operand0].type;
+                flow_value output;
+                const bool valid = scale && (type == value_type::vector2   ? vector_scale<2>(value_slots[current.operand0], *scale, output)
+                                             : type == value_type::vector3 ? vector_scale<3>(value_slots[current.operand0], *scale, output)
+                                             : type == value_type::vector4 ? vector_scale<4>(value_slots[current.operand0], *scale, output)
+                                                                            : false);
+                if (!valid)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                value_slots[current.operand2] = std::move(output);
+                instruction = current.operand3;
+                break;
+            }
+            case bytecode_opcode::select:
+            {
+                const bool* condition = std::get_if<bool>(&value_slots[current.operand0]);
+                if (!condition)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                value_slots[current.operand3] = value_slots[*condition ? current.operand1 : current.operand2];
+                instruction = current.operand4;
+                break;
+            }
+            case bytecode_opcode::convert_int_to_float:
+            {
+                const auto* value = std::get_if<std::int64_t>(&value_slots[current.operand0]);
+                if (!value)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                value_slots[current.operand1] = static_cast<double>(*value);
+                instruction = current.operand2;
+                break;
+            }
+            case bytecode_opcode::convert_float_to_int:
+            {
+                const auto* value = std::get_if<double>(&value_slots[current.operand0]);
+                if (!value)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                if (!std::isfinite(*value) || *value < static_cast<double>(std::numeric_limits<std::int64_t>::min()) ||
+                    *value > static_cast<double>(std::numeric_limits<std::int64_t>::max()))
+                {
+                    stop_execution(result, execution_status::invalid_operation, program, instruction);
+                    return result;
+                }
+                value_slots[current.operand1] = static_cast<std::int64_t>(*value);
+                instruction = current.operand2;
                 break;
             }
             case bytecode_opcode::self_entity:
@@ -549,9 +1039,9 @@ void bind_entry_values(const bytecode_entry_point& entry, std::vector<flow_value
     }
 }
 
-execution_result execute_event(const bytecode_program& program, std::vector<flow_value>& value_slots,
-                               entry_point_kind kind, std::string_view action, double event_value,
-                               std::uint32_t instruction_budget, const vm_world_context& world)
+execution_result execute_event(const bytecode_program& program, std::vector<flow_value>& variable_values,
+                               std::vector<flow_value>& value_slots, entry_point_kind kind, std::string_view action,
+                               double event_value, std::uint32_t instruction_budget, const vm_world_context& world)
 {
     execution_result result;
 
@@ -563,7 +1053,8 @@ execution_result execute_event(const bytecode_program& program, std::vector<flow
         bind_entry_values(entry, value_slots, event_value);
 
         const std::uint32_t remaining_budget = instruction_budget - result.instructions_executed;
-        execution_result entry_result = execute_chain(program, value_slots, entry.instruction, remaining_budget, world);
+        execution_result entry_result =
+            execute_chain(program, variable_values, value_slots, entry.instruction, remaining_budget, world);
         result.instructions_executed += entry_result.instructions_executed;
 
         if (!entry_result.succeeded())
@@ -672,8 +1163,8 @@ execution_result vm_instance::begin_play(vm_world_context world)
     if (active_) return status_result(execution_status::already_active);
 
     active_ = true;
-    execution_result result = execute_event(*program_, value_slots_, entry_point_kind::begin_play, {}, 0.0,
-                                            limits_.instruction_budget, world);
+    execution_result result = execute_event(*program_, variable_values_, value_slots_, entry_point_kind::begin_play, {},
+                                            0.0, limits_.instruction_budget, world);
     if (!result.succeeded()) active_ = false;
     return result;
 }
@@ -683,8 +1174,8 @@ execution_result vm_instance::end_play(vm_world_context world)
     if (!valid_ || !program_) return status_result(execution_status::invalid_program);
     if (!active_) return status_result(execution_status::inactive);
 
-    execution_result result =
-        execute_event(*program_, value_slots_, entry_point_kind::end_play, {}, 0.0, limits_.instruction_budget, world);
+    execution_result result = execute_event(*program_, variable_values_, value_slots_, entry_point_kind::end_play, {},
+                                            0.0, limits_.instruction_budget, world);
     active_ = false;
     return result;
 }
@@ -693,15 +1184,15 @@ execution_result vm_instance::tick(double delta_seconds, vm_world_context world)
 {
     if (!valid_ || !program_) return status_result(execution_status::invalid_program);
     if (!active_) return status_result(execution_status::inactive);
-    return execute_event(*program_, value_slots_, entry_point_kind::tick, {}, delta_seconds, limits_.instruction_budget,
-                         world);
+    return execute_event(*program_, variable_values_, value_slots_, entry_point_kind::tick, {}, delta_seconds,
+                         limits_.instruction_budget, world);
 }
 
 execution_result vm_instance::fixed_tick(double delta_seconds, vm_world_context world)
 {
     if (!valid_ || !program_) return status_result(execution_status::invalid_program);
     if (!active_) return status_result(execution_status::inactive);
-    return execute_event(*program_, value_slots_, entry_point_kind::fixed_tick, {}, delta_seconds,
+    return execute_event(*program_, variable_values_, value_slots_, entry_point_kind::fixed_tick, {}, delta_seconds,
                          limits_.instruction_budget, world);
 }
 
@@ -709,16 +1200,16 @@ execution_result vm_instance::input_action_triggered(std::string_view action, do
 {
     if (!valid_ || !program_) return status_result(execution_status::invalid_program);
     if (!active_) return status_result(execution_status::inactive);
-    return execute_event(*program_, value_slots_, entry_point_kind::input_action_triggered, action, value,
-                         limits_.instruction_budget, world);
+    return execute_event(*program_, variable_values_, value_slots_, entry_point_kind::input_action_triggered, action,
+                         value, limits_.instruction_budget, world);
 }
 
 execution_result vm_instance::input_action_completed(std::string_view action, double value, vm_world_context world)
 {
     if (!valid_ || !program_) return status_result(execution_status::invalid_program);
     if (!active_) return status_result(execution_status::inactive);
-    return execute_event(*program_, value_slots_, entry_point_kind::input_action_completed, action, value,
-                         limits_.instruction_budget, world);
+    return execute_event(*program_, variable_values_, value_slots_, entry_point_kind::input_action_completed, action,
+                         value, limits_.instruction_budget, world);
 }
 
 } // namespace arc::flow
