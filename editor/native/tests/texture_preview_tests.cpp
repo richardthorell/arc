@@ -53,7 +53,7 @@ TEST_CASE("cube texture previews use the generic 4x3 cross layout", "[editor][te
     CHECK(pixel_at(preview, 2u, 1u) == faces[0]); // +X
     CHECK(pixel_at(preview, 3u, 1u) == faces[5]); // -Z
     CHECK(pixel_at(preview, 1u, 2u) == faces[3]); // -Y
-    CHECK(pixel_at(preview, 0u, 0u) == std::array<std::uint8_t, 4>{0u, 0u, 0u, 0u});
+    CHECK((pixel_at(preview, 0u, 0u) == std::array<std::uint8_t, 4>{0u, 0u, 0u, 0u}));
 }
 
 TEST_CASE("ordinary texture previews remain flat", "[editor][texture][preview]")
@@ -71,6 +71,6 @@ TEST_CASE("ordinary texture previews remain flat", "[editor][texture][preview]")
     REQUIRE(preview.valid());
     CHECK(preview.width == 2u);
     CHECK(preview.height == 1u);
-    CHECK(pixel_at(preview, 0u, 0u) == std::array<std::uint8_t, 4>{255u, 32u, 16u, 255u});
-    CHECK(pixel_at(preview, 1u, 0u) == std::array<std::uint8_t, 4>{16u, 32u, 255u, 255u});
+    CHECK((pixel_at(preview, 0u, 0u) == std::array<std::uint8_t, 4>{255u, 32u, 16u, 255u}));
+    CHECK((pixel_at(preview, 1u, 0u) == std::array<std::uint8_t, 4>{16u, 32u, 255u, 255u}));
 }
