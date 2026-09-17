@@ -163,8 +163,13 @@ void test_compiler_emits_variable_math_prelude()
     const compile_result compiled = compile_asset(source);
     assert(compiled.succeeded && compiled.bytecode);
     assert(compiled.bytecode->instructions.size() == 2);
-    assert(compiled.bytecode->instructions[0].opcode == bytecode_opcode::add);
-    assert(compiled.bytecode->instructions[1].opcode == bytecode_opcode::store_variable);
+    [[maybe_unused]] const std::uint32_t entry_instruction = compiled.bytecode->entry_points[0].instruction;
+    assert(entry_instruction < compiled.bytecode->instructions.size());
+    [[maybe_unused]] const bytecode_instruction& add_instruction = compiled.bytecode->instructions[entry_instruction];
+    assert(add_instruction.opcode == bytecode_opcode::add);
+    assert(add_instruction.operand3 < compiled.bytecode->instructions.size());
+    [[maybe_unused]] const bytecode_instruction& store_instruction = compiled.bytecode->instructions[add_instruction.operand3];
+    assert(store_instruction.opcode == bytecode_opcode::store_variable);
 
     vm_instance instance{*compiled.bytecode};
     const execution_result result = instance.begin_play();
