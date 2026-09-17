@@ -1366,8 +1366,7 @@ texture_import_settings_result parse_texture_import_settings(std::string_view ca
     else
     {
         settings.generate_mips = document.value("generateMips", settings.generate_mips);
-        settings.mip_policy =
-            settings.generate_mips ? texture_mip_policy::preserve_source : texture_mip_policy::none;
+        settings.mip_policy = settings.generate_mips ? texture_mip_policy::preserve_source : texture_mip_policy::none;
     }
     if (settings.max_size == 0 || settings.max_size > 32768 || !std::isfinite(settings.anisotropy) ||
         settings.anisotropy < 1.0f || settings.anisotropy > 16.0f || !std::isfinite(settings.lod_bias) ||
