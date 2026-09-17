@@ -169,6 +169,13 @@ texture_compression_policy resolved_compression_policy(const texture_import_sett
     return texture_compression_policy::color;
 }
 
+texture_mip_policy resolved_mip_policy(const texture_import_settings& settings) noexcept
+{
+    if (settings.mip_policy == texture_mip_policy::preserve_source && !settings.generate_mips)
+        return texture_mip_policy::none;
+    return settings.mip_policy;
+}
+
 std::array<std::uint8_t, 8> bc4_palette(std::uint8_t maximum, std::uint8_t minimum) noexcept
 {
     std::array<std::uint8_t, 8> palette{};
@@ -676,6 +683,7 @@ void rebuild_rgba8_mips(texture_data& texture, const texture_import_settings& se
     auto level = std::move(base_level);
     auto width = texture.width;
     auto height = texture.height;
+    const auto mip_policy = resolved_mip_policy(settings);
     const float target_coverage =
         settings.preserve_alpha_coverage ? alpha_coverage(level, settings.alpha_coverage_threshold) : 0.0f;
     while (true)
@@ -683,7 +691,7 @@ void rebuild_rgba8_mips(texture_data& texture, const texture_import_settings& se
         const auto offset = texture.pixels.size();
         texture.pixels.insert(texture.pixels.end(), level.begin(), level.end());
         texture.mips.push_back({.width = width, .height = height, .offset = offset, .size = level.size()});
-        if (!settings.generate_mips || (width == 1u && height == 1u)) break;
+        if (mip_policy == texture_mip_policy::none || (width == 1u && height == 1u)) break;
         const auto next_width = std::max(1u, width / 2u);
         const auto next_height = std::max(1u, height / 2u);
         auto next = downsample_rgba8(level, width, height, next_width, next_height, settings);
@@ -911,6 +919,19 @@ std::string_view texture_mip_filter_mode_name(texture_mip_filter_mode value) noe
 {
     return value == texture_mip_filter_mode::nearest ? "nearest" : "linear";
 }
+std::string_view texture_mip_policy_name(texture_mip_policy value) noexcept
+{
+    switch (value)
+    {
+        case texture_mip_policy::preserve_source:
+            return "preserve_source";
+        case texture_mip_policy::generate:
+            return "generate";
+        case texture_mip_policy::none:
+            return "none";
+    }
+    return "preserve_source";
+}
 std::string_view texture_address_mode_name(texture_address_mode value) noexcept
 {
     switch (value)
@@ -1033,6 +1054,13 @@ std::optional<texture_mip_filter_mode> parse_texture_mip_filter_mode(std::string
 {
     return enum_value<texture_mip_filter_mode>(
         value, {{"nearest", texture_mip_filter_mode::nearest}, {"linear", texture_mip_filter_mode::linear}});
+}
+std::optional<texture_mip_policy> parse_texture_mip_policy(std::string_view value) noexcept
+{
+    return enum_value<texture_mip_policy>(value, {{"preserve_source", texture_mip_policy::preserve_source},
+                                                  {"preserve", texture_mip_policy::preserve_source},
+                                                  {"generate", texture_mip_policy::generate},
+                                                  {"none", texture_mip_policy::none}});
 }
 std::optional<texture_address_mode> parse_texture_address_mode(std::string_view value) noexcept
 {
@@ -1201,6 +1229,7 @@ texture_import_settings texture_import_settings_for_preset(texture_import_preset
             settings.compression = texture_compression_policy::color;
             settings.wrap_u = texture_address_mode::clamp_to_edge;
             settings.wrap_v = texture_address_mode::clamp_to_edge;
+            settings.mip_policy = texture_mip_policy::none;
             settings.generate_mips = false;
             settings.anisotropy = 1.0f;
             settings.max_size = 4096;
@@ -1327,8 +1356,19 @@ texture_import_settings_result parse_texture_import_settings(std::string_view ca
     settings.minimum_lod = document.value("minimumLod", settings.minimum_lod);
     settings.maximum_lod = document.value("maximumLod", settings.maximum_lod);
     settings.alpha_coverage_threshold = document.value("alphaCoverageThreshold", settings.alpha_coverage_threshold);
-    settings.generate_mips = document.value("generateMips", settings.generate_mips);
     settings.preserve_alpha_coverage = document.value("preserveAlphaCoverage", settings.preserve_alpha_coverage);
+    if (settings_version >= 8 && document.contains("mipPolicy"))
+    {
+        if (const auto error = parse_string_field("mipPolicy", parse_texture_mip_policy, settings.mip_policy))
+            return texture_import_settings_result::failure(*error);
+        settings.generate_mips = settings.mip_policy != texture_mip_policy::none;
+    }
+    else
+    {
+        settings.generate_mips = document.value("generateMips", settings.generate_mips);
+        settings.mip_policy =
+            settings.generate_mips ? texture_mip_policy::preserve_source : texture_mip_policy::none;
+    }
     if (settings.max_size == 0 || settings.max_size > 32768 || !std::isfinite(settings.anisotropy) ||
         settings.anisotropy < 1.0f || settings.anisotropy > 16.0f || !std::isfinite(settings.lod_bias) ||
         !std::isfinite(settings.minimum_lod) || !std::isfinite(settings.maximum_lod) ||
@@ -1354,6 +1394,7 @@ texture_import_settings_result parse_texture_import_settings(std::string_view ca
 
 std::string serialize_texture_import_settings(const texture_import_settings& settings)
 {
+    const auto mip_policy = resolved_mip_policy(settings);
     return json{{"alphaCoverageThreshold", settings.alpha_coverage_threshold},
                 {"anisotropy", settings.anisotropy},
                 {"brightness", settings.brightness},
@@ -1371,7 +1412,7 @@ std::string serialize_texture_import_settings(const texture_import_settings& set
                 {"curveB", json::parse(serialize_texture_curve(settings.curve_b))},
                 {"curveA", json::parse(serialize_texture_curve(settings.curve_a))},
                 {"gamma", settings.gamma},
-                {"generateMips", settings.generate_mips},
+                {"generateMips", mip_policy != texture_mip_policy::none},
                 {"inputBlack", settings.input_black},
                 {"inputWhite", settings.input_white},
                 {"invertA", settings.invert_a},
@@ -1382,6 +1423,7 @@ std::string serialize_texture_import_settings(const texture_import_settings& set
                 {"magFilter", texture_filter_mode_name(settings.mag_filter)},
                 {"maxSize", settings.max_size},
                 {"maximumLod", settings.maximum_lod},
+                {"mipPolicy", texture_mip_policy_name(mip_policy)},
                 {"mipSharpen", settings.mip_sharpen},
                 {"ditherMips", settings.dither_mips},
                 {"debandMips", settings.deband_mips},
@@ -1412,12 +1454,17 @@ texture_preprocess_result_type preprocess_texture_for_cook(texture_data texture,
                                                            const assets::cook_target& target)
 {
     texture_preprocess_result result;
+    const auto mip_policy = resolved_mip_policy(settings);
+    const auto source_mip_count = texture.dds ? static_cast<std::uint32_t>(texture.mips.size()) : 1u;
+    const bool source_has_authored_mips = texture.dds && source_mip_count > 1u;
     result.metadata.source_width = texture.width;
     result.metadata.source_height = texture.height;
+    result.metadata.source_mip_count = source_mip_count;
     result.metadata.requested_max_size = settings.max_size;
     result.metadata.resolved_max_size = std::min(settings.max_size, platform_max_size(target));
     result.metadata.power_of_two = settings.power_of_two;
     result.metadata.compression = settings.compression;
+    result.metadata.mip_policy = mip_policy;
     result.metadata.min_filter = settings.min_filter;
     result.metadata.mag_filter = settings.mag_filter;
     result.metadata.mip_filter = settings.mip_filter;
@@ -1434,6 +1481,15 @@ texture_preprocess_result_type preprocess_texture_for_cook(texture_data texture,
     texture.format = format_for_color_space(texture.format, settings.color_space);
     if (texture.width == 0 || texture.height == 0 || texture.mips.empty())
         return texture_preprocess_result_type::failure("texture source has no mip payload");
+    if (mip_policy == texture_mip_policy::none && settings.streaming_mode != texture_streaming_mode::resident)
+        return texture_preprocess_result_type::failure("mip policy 'none' requires resident texture streaming mode");
+    if (mip_policy == texture_mip_policy::generate && texture.dds)
+        return texture_preprocess_result_type::failure(
+            "compressed source mip regeneration requires DDS block decoding; use preserve_source or none");
+    if (mip_policy == texture_mip_policy::preserve_source && texture.dds && texture.mips.size() == 1u &&
+        settings.streaming_mode != texture_streaming_mode::resident)
+        return texture_preprocess_result_type::failure(
+            "compressed source has no authored mip chain to preserve for streamed texture mode");
 
     std::uint32_t desired_width = texture.width;
     std::uint32_t desired_height = texture.height;
@@ -1468,7 +1524,7 @@ texture_preprocess_result_type preprocess_texture_for_cook(texture_data texture,
         texture.width = desired_width;
         texture.height = desired_height;
         rebuild_rgba8_mips(texture, settings, std::move(level));
-        result.metadata.generated_mips = settings.generate_mips && texture.mips.size() > 1u;
+        result.metadata.generated_mips = mip_policy != texture_mip_policy::none && texture.mips.size() > 1u;
         result.metadata.normal_mips_renormalized =
             settings.semantic == texture_semantic::normal && result.metadata.generated_mips;
         result.metadata.alpha_coverage_preserved = settings.preserve_alpha_coverage && result.metadata.generated_mips;
@@ -1497,7 +1553,7 @@ texture_preprocess_result_type preprocess_texture_for_cook(texture_data texture,
                 sliced.insert(sliced.end(), storage.begin() + static_cast<std::ptrdiff_t>(source.offset),
                               storage.begin() + static_cast<std::ptrdiff_t>(source.offset + source.size));
                 mips.push_back({.width = source.width, .height = source.height, .offset = offset, .size = source.size});
-                if (!settings.generate_mips) break;
+                if (mip_policy == texture_mip_policy::none) break;
             }
             if (texture.has_encoded_mips())
                 texture.encoded = std::move(sliced);
@@ -1508,7 +1564,7 @@ texture_preprocess_result_type preprocess_texture_for_cook(texture_data texture,
             texture.height = texture.mips.front().height;
             texture.mip_levels = static_cast<std::uint32_t>(texture.mips.size());
         }
-        else if (!settings.generate_mips && texture.mips.size() > 1u)
+        else if (mip_policy == texture_mip_policy::none && texture.mips.size() > 1u)
         {
             const auto source = texture.mips.front();
             auto& storage = texture.has_encoded_mips() ? texture.encoded : texture.pixels;
@@ -1518,12 +1574,14 @@ texture_preprocess_result_type preprocess_texture_for_cook(texture_data texture,
             texture.mips = {{.width = source.width, .height = source.height, .offset = 0, .size = source.size}};
             texture.mip_levels = 1;
         }
-        if (settings.semantic == texture_semantic::normal && texture.mips.size() > 1u)
+        result.metadata.source_mips_preserved =
+            source_has_authored_mips && mip_policy == texture_mip_policy::preserve_source && texture.mips.size() > 1u;
+        if (settings.semantic == texture_semantic::normal && result.metadata.source_mips_preserved)
             result.diagnostics.push_back({.severity = assets::asset_diagnostic_severity::warning,
                                           .category = "texture.import",
                                           .message = "Compressed normal-map mips are preserved as authored; per-mip "
                                                      "renormalization requires decoded source data"});
-        if (settings.preserve_alpha_coverage && texture.mips.size() > 1u)
+        if (settings.preserve_alpha_coverage && result.metadata.source_mips_preserved)
             result.diagnostics.push_back({.severity = assets::asset_diagnostic_severity::warning,
                                           .category = "texture.import",
                                           .message = "Compressed alpha mip coverage is preserved as authored"});
@@ -1536,7 +1594,7 @@ texture_cook_processor::texture_cook_processor()
 {
     descriptor_ = {.id = assets::cook_processor_ids::texture,
                    .name = "ARC Texture Cooker",
-                   .version = 9,
+                   .version = 10,
                    .schema = assets::artifact_schemas::texture,
                    .schema_version = texture_artifact_schema_version,
                    .affinity = jobs::job_affinity::any_worker,
@@ -1548,7 +1606,7 @@ const assets::asset_cook_processor_descriptor& texture_cook_processor::descripto
 }
 std::string texture_cook_processor::toolchain_fingerprint() const
 {
-    return "arc-texture-cooker-v9:arctex-v3:checksummed-range-streaming:stb-dxt";
+    return "arc-texture-cooker-v10:arctex-v5:source-mip-policy:stb-dxt";
 }
 
 assets::asset_cook_result texture_cook_processor::cook(const assets::asset_cook_context& context)
