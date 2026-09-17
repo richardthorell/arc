@@ -3,17 +3,23 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
-#include <cmath>
 #include <fstream>
 #include <initializer_list>
+#include <limits>
 #include <string_view>
 
 #if defined(ARC_RENDER_HAS_STB)
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+#endif
+
+#if defined(ARC_RENDER_HAS_TIFF)
+#include <tiffio.h>
 #endif
 
 namespace arc::render
@@ -132,6 +138,7 @@ std::string mime_type_for_path(const std::filesystem::path& path)
     if (ext == ".jpg" || ext == ".jpeg") return "image/jpeg";
     if (ext == ".psd") return "image/vnd.adobe.photoshop";
     if (ext == ".tga") return "image/tga";
+    if (ext == ".tif" || ext == ".tiff") return "image/tiff";
     if (ext == ".hdr") return "image/vnd.radiance";
     if (ext == ".exr") return "image/x-exr";
     if (ext == ".dds") return "image/vnd-ms.dds";
@@ -175,6 +182,144 @@ std::uint32_t generated_mip_count(std::uint32_t width, std::uint32_t height) noe
     }
     return count;
 }
+
+#if defined(ARC_RENDER_HAS_TIFF)
+struct tiff_memory_source
+{
+    const std::byte* data{};
+    std::size_t size{};
+    std::size_t offset{};
+};
+
+struct decoded_tiff_image
+{
+    std::vector<unsigned char> rgba;
+    std::uint32_t width{};
+    std::uint32_t height{};
+    std::string message;
+
+    bool succeeded() const noexcept
+    {
+        return width > 0 && height > 0 && !rgba.empty();
+    }
+};
+
+tmsize_t tiff_read(thandle_t handle, void* destination, tmsize_t requested) noexcept
+{
+    if (requested <= 0) return 0;
+    auto* source = static_cast<tiff_memory_source*>(handle);
+    if (source == nullptr || source->offset >= source->size) return 0;
+
+    const auto available = source->size - source->offset;
+    const auto count = std::min(static_cast<std::size_t>(requested), available);
+    std::memcpy(destination, source->data + source->offset, count);
+    source->offset += count;
+    return static_cast<tmsize_t>(count);
+}
+
+tmsize_t tiff_write(thandle_t, void*, tmsize_t) noexcept
+{
+    return 0;
+}
+
+toff_t tiff_seek(thandle_t handle, toff_t offset, int whence) noexcept
+{
+    auto* source = static_cast<tiff_memory_source*>(handle);
+    if (source == nullptr) return static_cast<toff_t>(-1);
+
+    std::size_t base{};
+    switch (whence)
+    {
+        case SEEK_SET:
+            base = 0;
+            break;
+        case SEEK_CUR:
+            base = source->offset;
+            break;
+        case SEEK_END:
+            base = source->size;
+            break;
+        default:
+            return static_cast<toff_t>(-1);
+    }
+
+    if (offset > static_cast<toff_t>(std::numeric_limits<std::size_t>::max() - base)) return static_cast<toff_t>(-1);
+    const auto target = base + static_cast<std::size_t>(offset);
+    if (target > source->size) return static_cast<toff_t>(-1);
+    source->offset = target;
+    return static_cast<toff_t>(source->offset);
+}
+
+int tiff_close(thandle_t) noexcept
+{
+    return 0;
+}
+
+toff_t tiff_size(thandle_t handle) noexcept
+{
+    const auto* source = static_cast<const tiff_memory_source*>(handle);
+    return source == nullptr ? 0 : static_cast<toff_t>(source->size);
+}
+
+int tiff_map(thandle_t, void**, toff_t*) noexcept
+{
+    return 0;
+}
+
+void tiff_unmap(thandle_t, void*, toff_t) noexcept {}
+
+decoded_tiff_image decode_tiff(const std::vector<std::byte>& bytes)
+{
+    tiff_memory_source source{.data = bytes.data(), .size = bytes.size()};
+    TIFF* tiff = TIFFClientOpen("memory.tiff", "r", &source, tiff_read, tiff_write, tiff_seek, tiff_close, tiff_size,
+                                tiff_map, tiff_unmap);
+    if (tiff == nullptr) return {.message = "TIFF decoding failed: invalid TIFF data"};
+
+    std::uint32_t width{};
+    std::uint32_t height{};
+    if (TIFFGetField(tiff, TIFFTAG_IMAGEWIDTH, &width) == 0 || TIFFGetField(tiff, TIFFTAG_IMAGELENGTH, &height) == 0 ||
+        width == 0 || height == 0)
+    {
+        TIFFClose(tiff);
+        return {.message = "TIFF decoding failed: invalid dimensions"};
+    }
+
+    if (static_cast<std::size_t>(width) > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(height))
+    {
+        TIFFClose(tiff);
+        return {.message = "TIFF decoding failed: dimensions are too large"};
+    }
+    const auto pixel_count = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    if (pixel_count > std::numeric_limits<std::size_t>::max() / 4u)
+    {
+        TIFFClose(tiff);
+        return {.message = "TIFF decoding failed: image is too large"};
+    }
+
+    std::vector<std::uint32_t> raster(pixel_count);
+    if (TIFFReadRGBAImageOriented(tiff, width, height, raster.data(), ORIENTATION_TOPLEFT, 0) == 0)
+    {
+        TIFFClose(tiff);
+        return {.message = "TIFF decoding failed: pixel data could not be decoded"};
+    }
+    TIFFClose(tiff);
+
+    decoded_tiff_image decoded;
+    decoded.width = width;
+    decoded.height = height;
+    decoded.rgba.resize(pixel_count * 4u);
+    for (std::size_t index = 0; index < pixel_count; ++index)
+    {
+        const auto pixel = raster[index];
+        decoded.rgba[index * 4u] = TIFFGetR(pixel);
+        decoded.rgba[index * 4u + 1u] = TIFFGetG(pixel);
+        decoded.rgba[index * 4u + 2u] = TIFFGetB(pixel);
+        decoded.rgba[index * 4u + 3u] = TIFFGetA(pixel);
+    }
+    decoded.message = "decoded TIFF texture";
+    return decoded;
+}
+#endif
 
 float srgb_to_linear(float value) noexcept
 {
@@ -532,6 +677,16 @@ texture_asset_info inspect_texture_asset(const std::filesystem::path& path)
                 .mip_count = loaded.texture.mip_levels,
                 .message = "inspected OpenEXR texture"};
     }
+    if (extension == ".tif" || extension == ".tiff")
+    {
+        const auto loaded = load_texture_asset(path);
+        if (!loaded.succeeded()) return {.message = loaded.message};
+        return {.width = loaded.texture.width,
+                .height = loaded.texture.height,
+                .format = loaded.texture.format,
+                .mip_count = loaded.texture.mip_levels,
+                .message = "inspected TIFF texture"};
+    }
 
 #if defined(ARC_RENDER_HAS_STB)
     int width{};
@@ -592,6 +747,20 @@ texture_load_result load_texture_asset_bytes(std::vector<std::byte> bytes, const
         texture.format == texture_format::rgba8_srgb ? texture_color_space::srgb : texture_color_space::linear;
     texture.semantic = extension == ".hdr" ? texture_semantic::environment : texture_semantic::generic_color;
     apply_filename_color_space(texture, path);
+
+    if (extension == ".tif" || extension == ".tiff")
+    {
+#if defined(ARC_RENDER_HAS_TIFF)
+        auto decoded = decode_tiff(bytes);
+        if (!decoded.succeeded()) return {.message = std::move(decoded.message)};
+        texture.width = decoded.width;
+        texture.height = decoded.height;
+        store_rgba8_mip_chain(texture, decoded.rgba.data(), decoded.width, decoded.height);
+        return {.texture = std::move(texture), .message = "loaded decoded TIFF texture"};
+#else
+        return {.message = "TIFF decoding requires libtiff support"};
+#endif
+    }
 
 #if defined(ARC_RENDER_HAS_STB)
     int width{};
@@ -664,8 +833,8 @@ jobs::job_future<texture_load_result> load_texture_asset_async(io::async_file_se
 
 bool is_supported_texture_asset(const std::filesystem::path& path)
 {
-    static constexpr std::array<std::string_view, 9> supported_extensions = {".png", ".jpg", ".jpeg", ".psd", ".tga",
-                                                                             ".bmp", ".hdr", ".exr",  ".dds"};
+    static constexpr std::array<std::string_view, 11> supported_extensions = {
+        ".png", ".jpg", ".jpeg", ".psd", ".tga", ".tif", ".tiff", ".bmp", ".hdr", ".exr", ".dds"};
     const auto extension = lowercase(path.extension().string());
     return std::any_of(supported_extensions.begin(), supported_extensions.end(),
                        [&extension](std::string_view supported) { return extension == supported; });

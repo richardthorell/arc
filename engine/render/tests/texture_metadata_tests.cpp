@@ -24,6 +24,77 @@ void write_u32(std::array<std::byte, 128>& bytes, std::size_t offset, std::uint3
 {
     std::memcpy(bytes.data() + offset, &value, sizeof(value));
 }
+
+void write_u16(std::vector<std::byte>& bytes, std::size_t offset, std::uint16_t value)
+{
+    bytes[offset] = static_cast<std::byte>(value & 0xffu);
+    bytes[offset + 1u] = static_cast<std::byte>((value >> 8u) & 0xffu);
+}
+
+void write_u32(std::vector<std::byte>& bytes, std::size_t offset, std::uint32_t value)
+{
+    bytes[offset] = static_cast<std::byte>(value & 0xffu);
+    bytes[offset + 1u] = static_cast<std::byte>((value >> 8u) & 0xffu);
+    bytes[offset + 2u] = static_cast<std::byte>((value >> 16u) & 0xffu);
+    bytes[offset + 3u] = static_cast<std::byte>((value >> 24u) & 0xffu);
+}
+
+std::vector<std::byte> make_tiff_fixture()
+{
+    constexpr std::size_t ifd_offset = 8;
+    constexpr std::size_t entry_count = 10;
+    constexpr std::size_t bits_per_sample_offset = 134;
+    constexpr std::size_t pixel_offset = 140;
+
+    std::vector<std::byte> bytes(143);
+    bytes[0] = std::byte{0x49};
+    bytes[1] = std::byte{0x49};
+    write_u16(bytes, 2, 42);
+    write_u32(bytes, 4, static_cast<std::uint32_t>(ifd_offset));
+    write_u16(bytes, ifd_offset, static_cast<std::uint16_t>(entry_count));
+
+    std::size_t entry = ifd_offset + 2u;
+    const auto write_short_entry = [&](std::uint16_t tag, std::uint16_t value)
+    {
+        write_u16(bytes, entry, tag);
+        write_u16(bytes, entry + 2u, 3);
+        write_u32(bytes, entry + 4u, 1);
+        write_u16(bytes, entry + 8u, value);
+        entry += 12u;
+    };
+    const auto write_long_entry = [&](std::uint16_t tag, std::uint32_t value)
+    {
+        write_u16(bytes, entry, tag);
+        write_u16(bytes, entry + 2u, 4);
+        write_u32(bytes, entry + 4u, 1);
+        write_u32(bytes, entry + 8u, value);
+        entry += 12u;
+    };
+
+    write_short_entry(256, 1);
+    write_short_entry(257, 1);
+    write_u16(bytes, entry, 258);
+    write_u16(bytes, entry + 2u, 3);
+    write_u32(bytes, entry + 4u, 3);
+    write_u32(bytes, entry + 8u, static_cast<std::uint32_t>(bits_per_sample_offset));
+    entry += 12u;
+    write_short_entry(259, 1);
+    write_short_entry(262, 2);
+    write_long_entry(273, static_cast<std::uint32_t>(pixel_offset));
+    write_short_entry(277, 3);
+    write_long_entry(278, 1);
+    write_long_entry(279, 3);
+    write_short_entry(284, 1);
+    write_u32(bytes, entry, 0);
+
+    write_u16(bytes, bits_per_sample_offset, 8);
+    write_u16(bytes, bits_per_sample_offset + 2u, 8);
+    write_u16(bytes, bits_per_sample_offset + 4u, 8);
+    bytes[pixel_offset] = std::byte{0x12};
+    bytes[pixel_offset + 1u] = std::byte{0x34};
+    bytes[pixel_offset + 2u] = std::byte{0x56};
+    return bytes;
+}
 } // namespace
 
 TEST_CASE("texture metadata inspection does not require DDS payload", "[render][texture]")
@@ -79,4 +150,24 @@ TEST_CASE("PSD textures are supported and decoded through stb", "[render][textur
     CHECK(loaded.texture.format == arc::render::texture_format::rgba8_srgb);
     CHECK(loaded.texture.mime_type == "image/vnd.adobe.photoshop");
     CHECK(loaded.texture.mip_levels == 1);
+}
+
+TEST_CASE("TIFF textures are supported and decoded through libtiff", "[render][texture]")
+{
+    const auto bytes = make_tiff_fixture();
+
+    CHECK(arc::render::is_supported_texture_asset("source.TIF"));
+    CHECK(arc::render::is_supported_texture_asset("source.TIFF"));
+    const auto loaded = arc::render::load_texture_asset_bytes(bytes, "source.tiff");
+    REQUIRE(loaded.succeeded());
+    CHECK(loaded.texture.width == 1);
+    CHECK(loaded.texture.height == 1);
+    CHECK(loaded.texture.format == arc::render::texture_format::rgba8_srgb);
+    CHECK(loaded.texture.mime_type == "image/tiff");
+    CHECK(loaded.texture.mip_levels == 1);
+    REQUIRE(loaded.texture.pixels.size() == 4);
+    CHECK(std::to_integer<std::uint8_t>(loaded.texture.pixels[0]) == 0x12);
+    CHECK(std::to_integer<std::uint8_t>(loaded.texture.pixels[1]) == 0x34);
+    CHECK(std::to_integer<std::uint8_t>(loaded.texture.pixels[2]) == 0x56);
+    CHECK(std::to_integer<std::uint8_t>(loaded.texture.pixels[3]) == 0xff);
 }

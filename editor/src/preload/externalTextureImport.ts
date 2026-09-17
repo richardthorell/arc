@@ -12,6 +12,8 @@ export const supportedTextureExtensions = new Set([
   '.png',
   '.psd',
   '.tga',
+  '.tif',
+  '.tiff',
   '.webp',
 ]);
 
