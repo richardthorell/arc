@@ -94,7 +94,11 @@ const parseDescriptor = (value: unknown): ArcProjectDescriptor => {
   if (!value || typeof value !== 'object') throw new Error('Project descriptor must be a JSON object');
   const source = value as Partial<ArcProjectDescriptor>;
   if (source.format !== arcProjectFormat) throw new Error(`Expected project format '${arcProjectFormat}'`);
-  if (source.formatVersion !== 1 && source.formatVersion !== 2 && source.formatVersion !== arcProjectFormatVersion)
+  if (
+    source.formatVersion !== 1 &&
+    source.formatVersion !== 2 &&
+    source.formatVersion !== arcProjectFormatVersion
+  )
     throw new Error(`Unsupported project format version ${String(source.formatVersion)}`);
   if (
     typeof source.guid !== 'string' ||
@@ -345,7 +349,11 @@ export class ProjectService {
     const comparison = compareVersion(descriptor.engineVersion, this.currentEngineVersion);
     const formatUpgradeRequired = sourceFormatVersion !== arcProjectFormatVersion;
     const compatibility: ArcProjectCandidate['compatibility'] =
-      comparison > 0 ? 'newerEngineRequired' : formatUpgradeRequired || comparison < 0 ? 'upgradeRequired' : 'compatible';
+      comparison > 0
+        ? 'newerEngineRequired'
+        : formatUpgradeRequired || comparison < 0
+          ? 'upgradeRequired'
+          : 'compatible';
     const diagnostics: string[] = [];
     if (comparison > 0)
       diagnostics.push(
