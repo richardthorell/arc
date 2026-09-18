@@ -183,10 +183,10 @@ project_asset_reference parse_asset_reference(const json& value)
     return result;
 }
 
-project_descriptor parse_v2(const json& source)
+project_descriptor parse_descriptor(const json& source, std::uint32_t expected_version)
 {
     if (source.value("format", "") != project_format) throw std::runtime_error("unexpected project format");
-    if (source.value("formatVersion", 0u) != project_format_version)
+    if (source.value("formatVersion", 0u) != expected_version)
         throw std::runtime_error("unsupported project format version");
 
     project_descriptor result;
@@ -256,13 +256,26 @@ project_descriptor parse_v2(const json& source)
     result.renderer.anti_aliasing = renderer.value("antiAliasing", "auto");
 
     for (const auto& entry : source.value("cookProfiles", json::array()))
-        result.cook_profiles.push_back({.id = entry.value("id", ""),
+    {
+        cook_profile_descriptor profile{.id = entry.value("id", ""),
                                         .platform = entry.value("platform", ""),
                                         .architecture = entry.value("architecture", "x86_64"),
                                         .renderer = entry.value("renderer", "vulkan"),
                                         .api = entry.value("api", "1.2"),
-                                        .texture_family = entry.value("textureFamily", "bc"),
-                                        .configuration = entry.value("configuration", "Shipping")});
+                                        .configuration = entry.value("configuration", "Shipping")};
+        if (expected_version >= 3u)
+        {
+            const auto textures = entry.value("textures", json::object());
+            profile.textures.outputs = textures.value("outputs", std::vector<std::string>{"bc"});
+            profile.textures.quality = textures.value("quality", "balanced");
+        }
+        else
+        {
+            profile.textures.outputs = {entry.value("textureFamily", "bc")};
+            profile.textures.quality = "balanced";
+        }
+        result.cook_profiles.push_back(std::move(profile));
+    }
 
     const auto& package = source.value("package", json::object());
     result.package.application_name = package.value("applicationName", result.name);
@@ -311,7 +324,8 @@ json descriptor_json(const project_descriptor& value)
                                  {"architecture", profile.architecture},
                                  {"renderer", profile.renderer},
                                  {"api", profile.api},
-                                 {"textureFamily", profile.texture_family},
+                                 {"textures",
+                                  {{"outputs", profile.textures.outputs}, {"quality", profile.textures.quality}}},
                                  {"configuration", profile.configuration}});
     json startup = json::array();
     for (const auto& scene : value.startup_scenes)
@@ -563,7 +577,7 @@ descriptor_result load_descriptor(const std::filesystem::path& descriptor_path)
         if (!std::filesystem::is_regular_file(descriptor_path))
             return descriptor_result::failure(
                 make_error(project_error_code::not_found, descriptor_path, "project descriptor not found"));
-        return descriptor_result::success(parse_v2(read_json(descriptor_path)));
+        return descriptor_result::success(parse_descriptor(read_json(descriptor_path), project_format_version));
     }
     catch (const json::exception& error)
     {
@@ -681,6 +695,37 @@ validation_result validate_descriptor(const std::filesystem::path& descriptor_pa
     if (descriptor.build_configurations.empty())
         return validation_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path,
                                                      "at least one build configuration is required"));
+    std::set<std::string> cook_profile_ids;
+    constexpr std::array<std::string_view, 4> texture_families{"bc", "astc", "etc2", "portable"};
+    constexpr std::array<std::string_view, 3> texture_qualities{"balanced", "quality", "size"};
+    for (const auto& profile : descriptor.cook_profiles)
+    {
+        if (!is_identifier(profile.id) || profile.platform.empty() || !cook_profile_ids.insert(profile.id).second)
+            return validation_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path,
+                                                         "cook profile IDs must be unique and platforms non-empty",
+                                                         "cookProfiles"));
+        if (profile.textures.outputs.empty())
+            return validation_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path,
+                                                         "cook profiles require at least one texture output family",
+                                                         "cookProfiles.textures.outputs"));
+        std::set<std::string> outputs;
+        for (const auto& family : profile.textures.outputs)
+        {
+            if (std::find(texture_families.begin(), texture_families.end(), family) == texture_families.end())
+                return validation_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path,
+                                                             "unsupported texture output family: " + family,
+                                                             "cookProfiles.textures.outputs"));
+            if (!outputs.insert(family).second)
+                return validation_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path,
+                                                             "texture output families must be unique within a profile",
+                                                             "cookProfiles.textures.outputs"));
+        }
+        if (std::find(texture_qualities.begin(), texture_qualities.end(), profile.textures.quality) ==
+            texture_qualities.end())
+            return validation_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path,
+                                                         "texture quality must be balanced, quality, or size",
+                                                         "cookProfiles.textures.quality"));
+    }
     const auto context = resolve_context(descriptor_path, descriptor);
     if (!context) return validation_result::failure(context.error());
     const auto source_root = context.value().root / descriptor.paths.source;
@@ -797,13 +842,24 @@ project_status upgrade_descriptor(const std::filesystem::path& descriptor_path, 
         const auto version = source.value("formatVersion", 0u);
         if (version == project_format_version)
         {
-            auto descriptor = parse_v2(source);
+            auto descriptor = parse_descriptor(source, project_format_version);
             descriptor.engine_version = target_engine_version;
             return save_descriptor(descriptor_path, descriptor);
         }
+        if (version == 2u)
+        {
+            auto descriptor = parse_descriptor(source, 2u);
+            descriptor.engine_version = std::string(target_engine_version);
+            const auto backup = descriptor_path.string() + ".v2.bak";
+            std::filesystem::copy_file(descriptor_path, backup, std::filesystem::copy_options::overwrite_existing);
+            const auto saved = save_descriptor(descriptor_path, descriptor);
+            if (!saved)
+                std::filesystem::copy_file(backup, descriptor_path, std::filesystem::copy_options::overwrite_existing);
+            return saved;
+        }
         if (version != 1u)
             return project_status::failure(make_error(project_error_code::unsupported_version, descriptor_path,
-                                                      "only version 1 projects can be upgraded"));
+                                                      "only version 1 or 2 projects can be upgraded"));
         project_descriptor descriptor;
         descriptor.guid = source.value("guid", "");
         descriptor.name = source.value("name", "");
@@ -889,7 +945,8 @@ project_status upgrade_descriptor(const std::filesystem::path& descriptor_path, 
                      .architecture = iterator.value().value("architecture", "x86_64"),
                      .renderer = iterator.value().value("renderer", "vulkan"),
                      .api = iterator.value().value("api", "1.2"),
-                     .texture_family = iterator.value().value("textureFamily", "bc"),
+                     .textures = {.outputs = {iterator.value().value("textureFamily", "bc")},
+                                  .quality = "balanced"},
                      .configuration = iterator.value().value("configuration", "Shipping")});
         }
         const auto backup = descriptor_path.string() + ".v1.bak";
