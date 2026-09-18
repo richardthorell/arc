@@ -57,6 +57,7 @@ describe('material live preview compilation', () => {
   it('compiles semantic edits but ignores node movement and viewport changes', async () => {
     await loadMaterialDocument(document, true);
     await vi.advanceTimersByTimeAsync(250);
+    expect(getMaterialDocumentState(document).compilation.status).toBe('succeeded');
     command.mockClear();
 
     const initial = getMaterialDocumentState(document);
@@ -67,6 +68,7 @@ describe('material live preview compilation', () => {
 
     await vi.advanceTimersByTimeAsync(250);
     expect(command).not.toHaveBeenCalled();
+    expect(getMaterialDocumentState(document).compilation.status).toBe('succeeded');
 
     const valueEdit = cloneMaterialGraph(getMaterialDocumentState(document).graph);
     const constant = valueEdit.nodes.find((node) => node.type === 'constant');
