@@ -165,7 +165,7 @@ describe('TextureEditor', () => {
     render(<TextureEditor document={ddsDocument} />);
 
     expect(await screen.findByText('Authored / preserved')).toBeInTheDocument();
-    expect(screen.getByText('13')).toBeInTheDocument();
+    expect(screen.getAllByText('13')).toHaveLength(2);
     expect(screen.getByLabelText('Texture mip policy')).toHaveValue('preserve_source');
     expect(screen.getByRole('option', { name: 'Generate' })).toBeDisabled();
     expect(
