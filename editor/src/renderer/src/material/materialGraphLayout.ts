@@ -155,6 +155,7 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
   const outgoing = new Map<string, string[]>();
   const outgoingConnections = new Map<string, typeof next.connections>();
   const incoming = new Map<string, string[]>();
+  const incomingConnections = new Map<string, typeof next.connections>();
   const connectionCounts = new Map<string, number>();
   const connected = new Set<string>();
 
@@ -172,6 +173,10 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
     const sources = incoming.get(connection.to.nodeId) ?? [];
     sources.push(connection.from.nodeId);
     incoming.set(connection.to.nodeId, sources);
+
+    const targetConnections = incomingConnections.get(connection.to.nodeId) ?? [];
+    targetConnections.push(connection);
+    incomingConnections.set(connection.to.nodeId, targetConnections);
 
     connectionCounts.set(connection.from.nodeId, (connectionCounts.get(connection.from.nodeId) ?? 0) + 1);
     connectionCounts.set(connection.to.nodeId, (connectionCounts.get(connection.to.nodeId) ?? 0) + 1);
@@ -245,26 +250,13 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
 
   const rowGap = 34;
 
-  // Place columns from the sinks back toward the sources. The ideal Y for an
-  // upstream node is derived from the actual connected pin locations, not just
-  // the downstream node center. Single-link chains therefore become straight,
-  // while fan-in/fan-out nodes are centered across all of their connections.
-  for (let depth = maximumDepth; depth >= 0; --depth) {
-    const column = columns.get(depth);
-    if (!column?.length) continue;
-
+  const packColumn = (
+    column: MaterialGraphNode[],
+    idealTopFor: (node: MaterialGraphNode) => number,
+  ) => {
     const layout = column.map((node) => {
-      const connectionTargets = (outgoingConnections.get(node.id) ?? []).flatMap((connection) => {
-        const target = nodeById.get(connection.to.nodeId);
-        if (!target || (depths.get(target.id) ?? 0) <= depth) return [];
-
-        const targetPinY =
-          target.position[1] + materialNodePinOffsetY(target, connection.to.pin, 'input');
-        const sourcePinOffset = materialNodePinOffsetY(node, connection.from.pin, 'output');
-        return [targetPinY - sourcePinOffset];
-      });
       const height = materialNodeHeight(node);
-      const idealTop = connectionTargets.length ? average(connectionTargets) : node.position[1];
+      const idealTop = idealTopFor(node);
       return {
         node,
         height,
@@ -286,12 +278,70 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
       tops[index] = Math.max(tops[index], minimumTop);
     }
 
-    // Forward packing can push a whole column down. Translate it back toward
-    // the connection-derived ideals without changing the non-overlap spacing.
     const packedOffset = average(tops.map((top, index) => top - layout[index].idealTop));
-    for (let index = 0; index < layout.length; ++index) {
-      const item = layout[index];
-      item.node.position = [columnX.get(depth) ?? 0, tops[index] - packedOffset];
+    for (let index = 0; index < layout.length; ++index)
+      layout[index].node.position = [layout[index].node.position[0], tops[index] - packedOffset];
+  };
+
+  const outgoingIdealTop = (node: MaterialGraphNode) => {
+    const connectionTargets = (outgoingConnections.get(node.id) ?? []).flatMap((connection) => {
+      const target = nodeById.get(connection.to.nodeId);
+      if (!target) return [];
+
+      const targetPinY = target.position[1] + materialNodePinOffsetY(target, connection.to.pin, 'input');
+      const sourcePinOffset = materialNodePinOffsetY(node, connection.from.pin, 'output');
+      return [targetPinY - sourcePinOffset];
+    });
+    return connectionTargets.length ? average(connectionTargets) : node.position[1];
+  };
+
+  const connectedIdealTop = (node: MaterialGraphNode) => {
+    const candidates: number[] = [];
+
+    for (const connection of outgoingConnections.get(node.id) ?? []) {
+      const target = nodeById.get(connection.to.nodeId);
+      if (!target) continue;
+      candidates.push(
+        target.position[1] +
+          materialNodePinOffsetY(target, connection.to.pin, 'input') -
+          materialNodePinOffsetY(node, connection.from.pin, 'output'),
+      );
+    }
+
+    for (const connection of incomingConnections.get(node.id) ?? []) {
+      const source = nodeById.get(connection.from.nodeId);
+      if (!source) continue;
+      candidates.push(
+        source.position[1] +
+          materialNodePinOffsetY(source, connection.from.pin, 'output') -
+          materialNodePinOffsetY(node, connection.to.pin, 'input'),
+      );
+    }
+
+    return candidates.length ? average(candidates) : node.position[1];
+  };
+
+  // Place columns from the sinks back toward the sources. The ideal Y for an
+  // upstream node is derived from the actual connected pin locations, not just
+  // the downstream node center. Single-link chains therefore become straight,
+  // while fan-in/fan-out nodes are centered across all of their connections.
+  for (let depth = maximumDepth; depth >= 0; --depth) {
+    const column = columns.get(depth);
+    if (!column?.length) continue;
+    for (const node of column) node.position[0] = columnX.get(depth) ?? 0;
+    packColumn(column, outgoingIdealTop);
+  }
+
+  // Refine vertical placement from both directions. A node with one input and
+  // one output is pulled onto the line between those two pin endpoints; a
+  // fan-in/fan-out node is pulled toward the barycenter of all connected pins.
+  // Alternating the sweep direction avoids favoring only sources or sinks.
+  for (let pass = 0; pass < 4; ++pass) {
+    const forward = pass % 2 === 1;
+    for (let step = 0; step <= maximumDepth; ++step) {
+      const depth = forward ? step : maximumDepth - step;
+      const column = columns.get(depth);
+      if (column?.length) packColumn(column, connectedIdealTop);
     }
   }
 
