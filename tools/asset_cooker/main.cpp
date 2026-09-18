@@ -745,6 +745,12 @@ int main(int argc, char** argv)
         std::cerr << descriptor.error().message << '\n';
         return 1;
     }
+    const auto project_validation = project::validate_descriptor(descriptor_path, descriptor.value());
+    if (!project_validation)
+    {
+        std::cerr << project_validation.error().message << '\n';
+        return 1;
+    }
     const auto project_context = project::resolve_context(descriptor_path, descriptor.value());
     if (!project_context)
     {
