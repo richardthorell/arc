@@ -246,7 +246,7 @@ export const loadMaterialDocument = async (document: EditorDocument, force = fal
 
 export const replaceMaterialGraphViewport = (document: EditorDocument, viewport: MaterialGraphViewport) => {
   const current = ensureState(document);
-  if (current.readOnly || materialShaderPath(current.asset)) return;
+  if (materialShaderPath(current.asset)) return;
   setState(document.id, {
     graph: {
       ...current.graph,
