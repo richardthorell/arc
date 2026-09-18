@@ -97,12 +97,9 @@ const normalizedAsset = (asset: MaterialAssetJson, document: EditorDocument): Ma
 
   return {
     ...asset,
+    ...materialSettings(asset),
     version: currentMaterialAuthoringVersion,
     name: asset.name ?? document.title.replace(/\.arcmat$/i, ''),
-    domain: asset.domain ?? 'surface',
-    blendMode: asset.blendMode ?? 'opaque',
-    shadingModel: asset.shadingModel ?? 'standard',
-    doubleSided: asset.doubleSided ?? false,
   };
 };
 
