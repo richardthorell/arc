@@ -60,7 +60,6 @@ struct material_authoring_document
     material_alpha_mode alpha_mode{material_alpha_mode::opaque};
     bool double_sided{};
     bool cast_shadows{true};
-    bool force_forward{};
 };
 
 using material_authoring_result = core::result<material_authoring_document, material_asset_error>;
