@@ -7,6 +7,7 @@ import {
   materialPreviewDefaultCameraDistance,
   materialPreviewInitialCameraPitch,
   materialPreviewInitialZoom,
+  materialPreviewMaximumMeshExtent,
   materialPreviewMinimumCameraDistance,
   materialPreviewNativeCameraDistance,
   materialPreviewSphereRadius,
@@ -23,9 +24,10 @@ describe('material preview camera framing', () => {
   });
 
   it('keeps a visible zoom boundary outside the sphere', () => {
-    expect(materialPreviewSurfaceClearance).toBeGreaterThan(0.2);
+    expect(materialPreviewMaximumMeshExtent).toBeGreaterThan(materialPreviewSphereRadius);
+    expect(materialPreviewSurfaceClearance).toBeGreaterThan(0);
     expect(materialPreviewMinimumCameraDistance).toBeCloseTo(
-      materialPreviewSphereRadius + materialPreviewSurfaceClearance,
+      materialPreviewMaximumMeshExtent + materialPreviewSurfaceClearance,
       6,
     );
 
