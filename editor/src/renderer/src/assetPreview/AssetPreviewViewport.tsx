@@ -5,7 +5,6 @@ import { normalizeViewportWheel } from '../viewport/viewportWheel';
 import {
   clampMaterialPreviewOrbitY,
   clampMaterialPreviewZoom,
-  constrainMaterialPreviewPitchToFloor,
   materialPreviewDefaultCameraDistance,
   materialPreviewInitialCameraPitch,
   materialPreviewInitialZoom,
@@ -357,7 +356,7 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
     const previousMaterialPitch = materialCameraPitchRef.current;
     let nextMaterialPitch: number | undefined;
     if (kind === 'material') {
-      const clamped = clampMaterialPreviewOrbitY(previousMaterialPitch, materialCameraDistanceRef.current, orbitY);
+      const clamped = clampMaterialPreviewOrbitY(previousMaterialPitch, orbitY);
       orbitY = clamped.orbitY;
       nextMaterialPitch = clamped.pitch;
       materialCameraPitchRef.current = clamped.pitch;
@@ -384,28 +383,18 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
     if (!zoom) return;
 
     const previousMaterialDistance = materialCameraDistanceRef.current;
-    const previousMaterialPitch = materialCameraPitchRef.current;
     let nextMaterialDistance: number | undefined;
-    let nextMaterialPitch: number | undefined;
-    let orbitY = 0;
     if (kind === 'material') {
       const clamped = clampMaterialPreviewZoom(previousMaterialDistance, zoom);
       zoom = clamped.zoom;
       nextMaterialDistance = clamped.distance;
       if (!zoom) return;
       materialCameraDistanceRef.current = clamped.distance;
-
-      const floorConstrained = constrainMaterialPreviewPitchToFloor(previousMaterialPitch, clamped.distance);
-      orbitY = floorConstrained.orbitY;
-      nextMaterialPitch = floorConstrained.pitch;
-      materialCameraPitchRef.current = floorConstrained.pitch;
     }
 
-    void window.arc.viewport.cameraInput({ viewportId, zoom, ...(orbitY ? { orbitY } : {}) }).catch((reason) => {
+    void window.arc.viewport.cameraInput({ viewportId, zoom }).catch((reason) => {
       if (kind === 'material' && nextMaterialDistance === materialCameraDistanceRef.current)
         materialCameraDistanceRef.current = previousMaterialDistance;
-      if (kind === 'material' && nextMaterialPitch === materialCameraPitchRef.current)
-        materialCameraPitchRef.current = previousMaterialPitch;
       setError(reason instanceof Error ? reason.message : String(reason));
     });
   };
