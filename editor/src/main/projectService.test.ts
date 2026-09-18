@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { arcProjectFormatVersion } from '../common/projectTypes';
 import { ProjectService } from './projectService';
 
 const temporaryRoots: string[] = [];
@@ -60,6 +61,53 @@ describe('ProjectService', () => {
       payload: { name: 'Alpine', readOnly: false, builtinContentRoots: [builtinAssetsRoot] },
     });
     expect(service.snapshot().recentProjects[0].guid).toBe(created.project?.descriptor.guid);
+  });
+
+  it('treats version two texture profiles as an explicit project-format upgrade', () => {
+    const root = temporary();
+    const descriptor = path.join(root, 'VersionTwo.arcproject');
+    fs.writeFileSync(
+      descriptor,
+      JSON.stringify({
+        format: 'arc-project',
+        formatVersion: 2,
+        guid: '00000000-0000-4000-8000-000000000003',
+        name: 'Version Two',
+        engineVersion: '1.2.3',
+        assetRoots: ['Content'],
+        modules: [],
+        plugins: [],
+        defaultScene: null,
+        startupScenes: [],
+        targetPlatforms: [{ id: 'windows-x64-vulkan', enabled: true }],
+        cookProfiles: [
+          {
+            id: 'windows-x64-vulkan',
+            platform: 'windows',
+            architecture: 'x86_64',
+            renderer: 'vulkan',
+            api: '1.2',
+            textureFamily: 'bc',
+            configuration: 'Shipping',
+          },
+        ],
+      }),
+    );
+    const service = new ProjectService({
+      ...nativeProjectAuthority,
+      userDataPath: path.join(root, 'user'),
+      currentEngineVersion: '1.2.3',
+      currentEditorPath: 'arc-editor',
+      host: { connected: true, error: '', command: async () => ({ succeeded: true }) },
+    });
+
+    const inspected = service.inspect(descriptor);
+
+    expect(inspected.compatibility).toBe('upgradeRequired');
+    expect(inspected.writable).toBe(false);
+    expect(inspected.descriptor.formatVersion).toBe(arcProjectFormatVersion);
+    expect(inspected.descriptor.cookProfiles[0].textures).toEqual({ outputs: ['bc'], quality: 'balanced' });
+    expect(inspected.diagnostics[0]).toContain('Project format v2');
   });
 
   it('creates and reuses a Blank 3D quick-start project with the native default scene', async () => {

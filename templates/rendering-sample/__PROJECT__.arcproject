@@ -1,6 +1,6 @@
 {
   "format": "arc-project",
-  "formatVersion": 2,
+  "formatVersion": 3,
   "guid": "{{PROJECT_GUID}}",
   "name": "{{PROJECT_NAME}}",
   "engineVersion": "{{ENGINE_VERSION}}",
@@ -17,7 +17,7 @@
   "toolchain": {"compiler":"auto","minimumVersion":"","generator":"auto","architecture":"x86_64","cppStandard":20},
   "buildConfigurations": ["Debug","RelWithDebInfo","Shipping"],
   "renderer": {"backend":"vulkan","api":"1.2","quality":"standard"},
-  "cookProfiles": [{"id":"windows-x64-vulkan","platform":"windows","architecture":"x86_64","renderer":"vulkan","api":"1.2","textureFamily":"bc","configuration":"Shipping"}],
+  "cookProfiles": [{"id":"windows-x64-vulkan","platform":"windows","architecture":"x86_64","renderer":"vulkan","api":"1.2","textures":{"outputs":["bc"],"quality":"balanced"},"configuration":"Shipping"}],
   "package": {"applicationName":"{{PROJECT_NAME}}","companyName":"","output":"Build/Packages","regionChunks":true},
   "settings": {"editor":"Config/Editor.json","renderer":"Config/Renderer.json","input":"Config/Input.json"}
 }

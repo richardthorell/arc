@@ -50,7 +50,7 @@ TEST_CASE("generated project reflection supplies stable ECS component metadata")
           std::string_view{"cb3208e9cd18443693a80cbed1099ccd"});
 }
 
-TEST_CASE("version two project descriptors round trip and resolve project local paths")
+TEST_CASE("version three project descriptors round trip texture profiles and project local paths")
 {
     temporary_directory temporary;
     const auto path = temporary.path() / "Game.arcproject";
@@ -65,12 +65,16 @@ TEST_CASE("version two project descriptors round trip and resolve project local 
          .source_root = "Source/GameRuntime",
          .dependencies = {{.kind = arc::project::dependency_kind::engine, .id = "ARC.Runtime", .version = "0.1.0"}}});
     descriptor.target_platforms.push_back({.id = "windows-x64-vulkan"});
+    descriptor.cook_profiles.push_back({.id = "windows-x64-vulkan", .platform = "windows"});
 
     REQUIRE(arc::project::save_descriptor(path, descriptor));
     const auto loaded = arc::project::load_descriptor(path);
     REQUIRE(loaded);
     CHECK(loaded.value().name == "Game");
     CHECK(loaded.value().modules.front().target == "GameRuntime");
+    REQUIRE(loaded.value().cook_profiles.size() == 1);
+    CHECK(loaded.value().cook_profiles.front().textures.outputs == std::vector<std::string>{"bc"});
+    CHECK(loaded.value().cook_profiles.front().textures.quality == "balanced");
 
     const auto context = arc::project::resolve_context(path, loaded.value());
     REQUIRE(context);
@@ -175,6 +179,61 @@ TEST_CASE("version one upgrades preserve custom content roots and startup scenes
     REQUIRE(upgraded.value().default_scene);
     CHECK(upgraded.value().default_scene->guid == "12345678-1234-4234-8234-123456789abc");
     CHECK(std::filesystem::is_regular_file(descriptor_path.string() + ".v1.bak"));
+}
+
+TEST_CASE("version two upgrades migrate textureFamily to ordered texture outputs")
+{
+    temporary_directory temporary;
+    const auto descriptor_path = temporary.path() / "VersionTwo.arcproject";
+    std::ofstream(descriptor_path) << R"({
+          "format":"arc-project","formatVersion":2,
+          "guid":"12345678-1234-4234-8234-123456789abf",
+          "name":"Version Two","engineVersion":"0.1.0",
+          "assetRoots":["Content"],"modules":[],"plugins":[],
+          "defaultScene":null,"startupScenes":[],
+          "targetPlatforms":[{"id":"windows-x64-vulkan","enabled":true}],
+          "cookProfiles":[{"id":"windows-x64-vulkan","platform":"windows","textureFamily":"astc"}]
+        })";
+
+    REQUIRE(arc::project::upgrade_descriptor(descriptor_path, "0.2.0"));
+    const auto upgraded = arc::project::load_descriptor(descriptor_path);
+    REQUIRE(upgraded);
+    CHECK(upgraded.value().engine_version == "0.2.0");
+    REQUIRE(upgraded.value().cook_profiles.size() == 1);
+    CHECK(upgraded.value().cook_profiles.front().textures.outputs == std::vector<std::string>{"astc"});
+    CHECK(upgraded.value().cook_profiles.front().textures.quality == "balanced");
+    CHECK(std::filesystem::is_regular_file(descriptor_path.string() + ".v2.bak"));
+
+    std::ifstream input(descriptor_path);
+    const std::string serialized((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    CHECK(serialized.find(R"("formatVersion": 3)") != std::string::npos);
+    CHECK(serialized.find(R"("outputs": [)") != std::string::npos);
+    CHECK(serialized.find("textureFamily") == std::string::npos);
+}
+
+TEST_CASE("project validation accepts ordered texture families and rejects invalid output policies")
+{
+    temporary_directory temporary;
+    arc::project::project_descriptor descriptor;
+    descriptor.guid = "12345678-1234-4234-8234-123456789ac0";
+    descriptor.name = "Texture Profiles";
+    descriptor.engine_version = "0.1.0";
+    descriptor.target_platforms.push_back({.id = "windows-x64-vulkan"});
+    descriptor.cook_profiles.push_back({.id = "windows-x64-vulkan",
+                                        .platform = "windows",
+                                        .textures = {.outputs = {"bc", "astc"}, .quality = "balanced"}});
+
+    CHECK(arc::project::validate_descriptor(temporary.path() / "TextureProfiles.arcproject", descriptor));
+
+    descriptor.cook_profiles.front().textures.outputs = {"bc", "bc"};
+    auto validation = arc::project::validate_descriptor(temporary.path() / "TextureProfiles.arcproject", descriptor);
+    REQUIRE_FALSE(validation);
+    CHECK(validation.error().field == "cookProfiles.textures.outputs");
+
+    descriptor.cook_profiles.front().textures.outputs = {"pvrtc"};
+    validation = arc::project::validate_descriptor(temporary.path() / "TextureProfiles.arcproject", descriptor);
+    REQUIRE_FALSE(validation);
+    CHECK(validation.error().field == "cookProfiles.textures.outputs");
 }
 
 TEST_CASE("project validation rejects a default scene whose asset identity does not match")

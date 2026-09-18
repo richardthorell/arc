@@ -1,5 +1,5 @@
 {
-  "format":"arc-project","formatVersion":2,"guid":"{{PROJECT_GUID}}","name":"{{PROJECT_NAME}}","engineVersion":"{{ENGINE_VERSION}}",
+  "format":"arc-project","formatVersion": 3,"guid":"{{PROJECT_GUID}}","name":"{{PROJECT_NAME}}","engineVersion":"{{ENGINE_VERSION}}",
   "paths":{"source":"Source","content":"Content","config":"Config","plugins":"Plugins","saved":"Saved","intermediate":"Intermediate","build":"Build"},"assetRoots":["Content"],
   "modules":[
     {"id":"{{PROJECT_TOKEN}}.runtime","kind":"runtime","target":"{{PROJECT_TOKEN}}Runtime","sourceRoot":"Source/{{PROJECT_TOKEN}}Runtime","enabled":true,"dependencies":[{"kind":"engine","id":"ARC.Runtime","version":"{{ENGINE_VERSION}}"}]},

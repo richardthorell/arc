@@ -61,7 +61,7 @@ file(WRITE "${ARC_TEST_ROOT}/assets/fixtures/persistence_fixture.arcprefab" [=[
 
 file(WRITE "${ARC_TEST_ROOT}/CookFixture.arcproject" [=[
 {
-  "format":"arc-project","formatVersion":2,
+  "format":"arc-project","formatVersion":3,
   "guid":"00000000-0000-4000-8000-00000000c001","name":"Cook Fixture","engineVersion":"0.1.0",
   "paths":{"source":"Source","content":"assets","config":"Config","plugins":"Plugins","saved":"Saved","intermediate":"Intermediate","build":"Build"},
   "assetRoots":["assets"],"modules":[],"plugins":[],"startupScenes":[],
@@ -69,7 +69,7 @@ file(WRITE "${ARC_TEST_ROOT}/CookFixture.arcproject" [=[
   "toolchain":{"compiler":"auto","minimumVersion":"","generator":"auto","architecture":"x86_64","cppStandard":20},
   "buildConfigurations":["Debug","RelWithDebInfo","Shipping"],
   "renderer":{"backend":"vulkan","api":"1.2","quality":"standard"},
-  "cookProfiles":[{"id":"windows-x64-vulkan","platform":"windows","architecture":"x86_64","renderer":"vulkan","api":"1.2","textureFamily":"bc","configuration":"Shipping"}],
+  "cookProfiles":[{"id":"windows-x64-vulkan","platform":"windows","architecture":"x86_64","renderer":"vulkan","api":"1.2","textures":{"outputs":["bc"],"quality":"balanced"},"configuration":"Shipping"}],
   "package":{"applicationName":"Cook Fixture","companyName":"","output":"Build/Packages","regionChunks":true},
   "settings":{"editor":"Config/Editor.json","renderer":"Config/Renderer.json","input":"Config/Input.json"}
 }
