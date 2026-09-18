@@ -162,6 +162,7 @@ export function AssetPreviewViewport({
   const materialAutoRotateRef = useRef(materialAutoRotate);
   const onStateRef = useRef(onState);
   const [streamed, setStreamed] = useState(false);
+  const [attached, setAttached] = useState(false);
   const [previewReady, setPreviewReady] = useState(kind !== 'material');
   const [error, setError] = useState('');
 
@@ -302,24 +303,7 @@ export function AssetPreviewViewport({
     let cancelled = false;
     let animationFrame = 0;
     let traceTimer = 0;
-    let readyTimer = 0;
     let observer: ResizeObserver | null = null;
-
-    const pollPreviewReady = async () => {
-      if (cancelled || kind !== 'material') return;
-      try {
-        const response = (await window.arc.host.query('viewport.state', { viewportId })) as ViewportStateResponse;
-        const payload = response?.payload;
-        onStateRef.current?.(payload);
-        if (payload?.assetPreviewReady === true) {
-          if (!cancelled) setPreviewReady(true);
-          return;
-        }
-      } catch {
-        // The viewport may still be attaching. Keep the loading cover up and retry.
-      }
-      if (!cancelled) readyTimer = window.setTimeout(() => void pollPreviewReady(), 80);
-    };
 
     const attach = async () => {
       const bounds = currentBounds();
@@ -356,11 +340,11 @@ export function AssetPreviewViewport({
         if (response?.succeeded === false) throw new Error(response.error || 'Asset preview surface was rejected');
         if (cancelled) return;
         attachedRef.current = true;
+        setAttached(true);
         lastBoundsRef.current = boundsKey(bounds);
         setError('');
         console.info('[material-flow] asset preview viewport attached', { kind, viewportId, guid: normalizedGuid });
         void traceViewportState('attached');
-        if (kind === 'material') void pollPreviewReady();
         traceTimer = window.setTimeout(() => void traceViewportState('after-first-frame'), 150);
         observer = new ResizeObserver(resize);
         if (rootRef.current) observer.observe(rootRef.current);
@@ -374,7 +358,6 @@ export function AssetPreviewViewport({
       cancelled = true;
       if (animationFrame) window.cancelAnimationFrame(animationFrame);
       if (traceTimer) window.clearTimeout(traceTimer);
-      if (readyTimer) window.clearTimeout(readyTimer);
       observer?.disconnect();
       pendingBoundsRef.current = null;
       lastBoundsRef.current = '';
@@ -389,8 +372,40 @@ export function AssetPreviewViewport({
         await window.arc.viewport.detach?.(viewportId);
       });
       attachedRef.current = false;
+      setAttached(false);
     };
   }, [currentBounds, kind, normalizedGuid, resize, streamed, traceViewportState, viewportId]);
+
+  useEffect(() => {
+    if (kind !== 'material') return;
+    if (loading) {
+      setPreviewReady(false);
+      return;
+    }
+    if (!attached || !viewportId) return;
+
+    let cancelled = false;
+    let timer = 0;
+    const poll = async () => {
+      try {
+        const response = (await window.arc.host.query('viewport.state', { viewportId })) as ViewportStateResponse;
+        const payload = response?.payload;
+        onStateRef.current?.(payload);
+        if (payload?.assetPreviewReady === true) {
+          if (!cancelled) setPreviewReady(true);
+          return;
+        }
+      } catch {
+        // The renderer may still be publishing the next preview frame.
+      }
+      if (!cancelled) timer = window.setTimeout(() => void poll(), 80);
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [attached, kind, loading, viewportId]);
 
   const previewIsLoading = kind === 'material' && (loading || !previewReady);
 
