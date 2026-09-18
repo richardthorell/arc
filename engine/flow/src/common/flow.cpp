@@ -1703,10 +1703,9 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
         if (!is_executable_node(executable->kind)) continue;
         for (const std::string_view input : execution_inputs(executable->kind))
         {
-            const std::vector<const source_node*> order =
-                executable->kind == node_kind::timer && input == "stop"
-                    ? std::vector<const source_node*>{}
-                    : collect_data_order(*executable, std::nullopt);
+            const std::vector<const source_node*> order = executable->kind == node_kind::timer && input == "stop"
+                                                              ? std::vector<const source_node*>{}
+                                                              : collect_data_order(*executable, std::nullopt);
             std::uint32_t target = entry_instruction_indices.at(pin_key(executable->id, input));
             for (auto iterator = order.rbegin(); iterator != order.rend(); ++iterator)
             {
@@ -1816,14 +1815,14 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
             case node_kind::delay:
             case node_kind::retriggerable_delay:
             {
-                const latent_action_kind kind = node->kind == node_kind::delay ? latent_action_kind::delay
-                                                                              : latent_action_kind::retriggerable_delay;
+                const latent_action_kind kind = node->kind == node_kind::delay
+                                                    ? latent_action_kind::delay
+                                                    : latent_action_kind::retriggerable_delay;
                 const std::uint32_t latent_index = static_cast<std::uint32_t>(program.latent_actions.size());
-                program.latent_actions.push_back(
-                    {.kind = kind,
-                     .active_slot = value_slots.at(pin_key(node->id, "$active")),
-                     .remaining_slot = value_slots.at(pin_key(node->id, "$remaining")),
-                     .completed_instruction = execution_target(*node, "completed")});
+                program.latent_actions.push_back({.kind = kind,
+                                                  .active_slot = value_slots.at(pin_key(node->id, "$active")),
+                                                  .remaining_slot = value_slots.at(pin_key(node->id, "$remaining")),
+                                                  .completed_instruction = execution_target(*node, "completed")});
                 instruction.operand0 = input_slot(*node, "duration");
                 instruction.operand1 = latent_index;
                 break;
@@ -1831,15 +1830,14 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
             case node_kind::timer:
             {
                 const std::uint32_t latent_index = static_cast<std::uint32_t>(program.latent_actions.size());
-                program.latent_actions.push_back(
-                    {.kind = latent_action_kind::timer,
-                     .active_slot = value_slots.at(pin_key(node->id, "active")),
-                     .remaining_slot = value_slots.at(pin_key(node->id, "$remaining")),
-                     .period_slot = value_slots.at(pin_key(node->id, "$period")),
-                     .looping_slot = value_slots.at(pin_key(node->id, "$looping")),
-                     .generation_slot = value_slots.at(pin_key(node->id, "$generation")),
-                     .tick_instruction = execution_target(*node, "tick"),
-                     .completed_instruction = execution_target(*node, "completed")});
+                program.latent_actions.push_back({.kind = latent_action_kind::timer,
+                                                  .active_slot = value_slots.at(pin_key(node->id, "active")),
+                                                  .remaining_slot = value_slots.at(pin_key(node->id, "$remaining")),
+                                                  .period_slot = value_slots.at(pin_key(node->id, "$period")),
+                                                  .looping_slot = value_slots.at(pin_key(node->id, "$looping")),
+                                                  .generation_slot = value_slots.at(pin_key(node->id, "$generation")),
+                                                  .tick_instruction = execution_target(*node, "tick"),
+                                                  .completed_instruction = execution_target(*node, "completed")});
                 instruction.operand0 = input_slot(*node, "interval");
                 instruction.operand1 = input_slot(*node, "looping");
                 instruction.operand2 = latent_index;

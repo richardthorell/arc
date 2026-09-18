@@ -1366,8 +1366,7 @@ execution_result advance_latent_actions(const bytecode_program& program, std::ve
                                         std::uint32_t instruction_budget, const vm_world_context& world)
 {
     execution_result result;
-    if (!std::isfinite(delta_seconds) || delta_seconds < 0.0)
-        return status_result(execution_status::invalid_operation);
+    if (!std::isfinite(delta_seconds) || delta_seconds < 0.0) return status_result(execution_status::invalid_operation);
 
     std::vector<bool> active_at_start;
     active_at_start.reserve(program.latent_actions.size());
@@ -1383,8 +1382,7 @@ execution_result advance_latent_actions(const bytecode_program& program, std::ve
         if (target == invalid_instruction) return true;
         const std::uint32_t remaining_budget =
             result.instructions_executed < instruction_budget ? instruction_budget - result.instructions_executed : 0;
-        execution_result nested =
-            execute_chain(program, variable_values, value_slots, target, remaining_budget, world);
+        execution_result nested = execute_chain(program, variable_values, value_slots, target, remaining_budget, world);
         result.instructions_executed += nested.instructions_executed;
         if (nested.succeeded()) return true;
         result.status = nested.status;
@@ -1445,8 +1443,7 @@ execution_result advance_latent_actions(const bytecode_program& program, std::ve
             }
 
             if (*generation != generation_before || !*active) break;
-            if (!std::isfinite(*period) || *period <= 0.0)
-                return status_result(execution_status::invalid_operation);
+            if (!std::isfinite(*period) || *period <= 0.0) return status_result(execution_status::invalid_operation);
             *remaining += *period;
         }
     }
@@ -1640,13 +1637,13 @@ execution_result vm_instance::tick(double delta_seconds, vm_world_context world)
     if (!valid_ || !program_) return status_result(execution_status::invalid_program);
     if (!active_) return status_result(execution_status::inactive);
 
-    execution_result result =
-        advance_latent_actions(*program_, variable_values_, value_slots_, delta_seconds, limits_.instruction_budget, world);
+    execution_result result = advance_latent_actions(*program_, variable_values_, value_slots_, delta_seconds,
+                                                     limits_.instruction_budget, world);
     if (!result.succeeded()) return result;
 
-    const std::uint32_t remaining_budget =
-        result.instructions_executed < limits_.instruction_budget ? limits_.instruction_budget - result.instructions_executed
-                                                                 : 0;
+    const std::uint32_t remaining_budget = result.instructions_executed < limits_.instruction_budget
+                                               ? limits_.instruction_budget - result.instructions_executed
+                                               : 0;
     execution_result tick_result = execute_event(*program_, variable_values_, value_slots_, entry_point_kind::tick, {},
                                                  delta_seconds, remaining_budget, world);
     result.instructions_executed += tick_result.instructions_executed;

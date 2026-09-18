@@ -419,17 +419,14 @@ void test_compiler_reevaluates_while_condition()
     assert(std::get<std::int64_t>(*instance.variable_value("count")) == 0);
 }
 
-
 void test_delay_and_retriggerable_delay_bytecode()
 {
     bytecode_program delay_program;
     delay_program.variables = {
         {.id = "result", .name = "Result", .type = value_type::integer, .default_value = std::int64_t{0}}};
     delay_program.value_slots = {float_slot(0.5), bool_slot(false), float_slot(), int_slot(7)};
-    delay_program.latent_actions.push_back({.kind = latent_action_kind::delay,
-                                            .active_slot = 1,
-                                            .remaining_slot = 2,
-                                            .completed_instruction = 1});
+    delay_program.latent_actions.push_back(
+        {.kind = latent_action_kind::delay, .active_slot = 1, .remaining_slot = 2, .completed_instruction = 1});
     delay_program.entry_points.push_back({.kind = entry_point_kind::begin_play, .instruction = 0});
     delay_program.instructions = {
         {.opcode = bytecode_opcode::delay, .operand0 = 0, .operand1 = 0},
@@ -486,7 +483,7 @@ void test_timer_bytecode_and_budget()
     one_shot_program.variables = {
         {.id = "result", .name = "Result", .type = value_type::integer, .default_value = std::int64_t{0}}};
     one_shot_program.value_slots = {float_slot(0.25), bool_slot(false), bool_slot(false), float_slot(), float_slot(),
-                                    bool_slot(false), int_slot(), int_slot(1), int_slot(2)};
+                                    bool_slot(false), int_slot(),       int_slot(1),      int_slot(2)};
     one_shot_program.latent_actions.push_back({.kind = latent_action_kind::timer,
                                                .active_slot = 2,
                                                .remaining_slot = 3,
@@ -516,7 +513,7 @@ void test_timer_bytecode_and_budget()
     looping_program.variables = {
         {.id = "result", .name = "Result", .type = value_type::integer, .default_value = std::int64_t{0}}};
     looping_program.value_slots = {float_slot(0.25), bool_slot(true), bool_slot(false), float_slot(), float_slot(),
-                                   bool_slot(false), int_slot(), int_slot(1), int_slot(3)};
+                                   bool_slot(false), int_slot(),      int_slot(1),      int_slot(3)};
     looping_program.latent_actions.push_back({.kind = latent_action_kind::timer,
                                               .active_slot = 2,
                                               .remaining_slot = 3,
@@ -555,8 +552,8 @@ void test_timer_bytecode_and_budget()
     assert(std::get<std::int64_t>(*looping.variable_value("result")) == 3);
 
     bytecode_program budget_program;
-    budget_program.value_slots = {float_slot(0.1), bool_slot(true), bool_slot(false), float_slot(), float_slot(),
-                                  bool_slot(false), int_slot()};
+    budget_program.value_slots = {float_slot(0.1), bool_slot(true),  bool_slot(false), float_slot(),
+                                  float_slot(),    bool_slot(false), int_slot()};
     budget_program.latent_actions.push_back({.kind = latent_action_kind::timer,
                                              .active_slot = 2,
                                              .remaining_slot = 3,
