@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { EditorDocument } from '../editors/editorTypes';
 import {
+  compileMaterialDocument,
   disposeMaterialDocument,
   getMaterialDocumentState,
   loadMaterialDocument,
@@ -107,9 +108,10 @@ describe('material live preview compilation', () => {
 });
 
 describe('material settings editing', () => {
-  it('updates authored settings and republishes the live preview without saving first', async () => {
+  it('keeps authored setting edits in memory until an explicit compile', async () => {
     await loadMaterialDocument(document, true);
     await vi.advanceTimersByTimeAsync(250);
+    expect(getMaterialDocumentState(document).compilation.status).toBe('succeeded');
     command.mockClear();
 
     expect(
@@ -125,17 +127,18 @@ describe('material settings editing', () => {
     expect(updated.asset.blendMode).toBe('masked');
     expect(updated.asset.shadingModel).toBe('unlit');
     expect(updated.asset.doubleSided).toBe(true);
-    expect(updated.compilation.status).toBe('idle');
+    expect(updated.compilation.status).toBe('succeeded');
 
     await vi.advanceTimersByTimeAsync(250);
+    expect(command).not.toHaveBeenCalled();
 
+    expect(await compileMaterialDocument(document, { quiet: true })).toBe(true);
     expect(command).toHaveBeenCalledTimes(1);
     const payload = command.mock.calls[0]?.[1] as { previewSource?: string };
     const previewSource = JSON.parse(payload.previewSource ?? '{}');
     expect(previewSource.blendMode).toBe('masked');
     expect(previewSource.shadingModel).toBe('unlit');
     expect(previewSource.doubleSided).toBe(true);
-    expect(getMaterialDocumentState(document).compilation.status).toBe('succeeded');
   });
 
   it('does not compile when a material setting is unchanged', async () => {
