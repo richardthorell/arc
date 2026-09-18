@@ -22,6 +22,7 @@ export function GraphViewportLayer({
     <div
       className={className}
       data-graph-viewport
+      data-graph-zoom={viewport.zoom}
       style={{
         height: size,
         transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
