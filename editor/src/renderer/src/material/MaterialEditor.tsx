@@ -255,9 +255,7 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
                 disabled={document.readOnly}
                 options={materialDomainOptions}
                 value={materialDomain}
-                onValueChange={(value) =>
-                  replaceMaterialSettings(document, { domain: value as MaterialDomain })
-                }
+                onValueChange={(value) => replaceMaterialSettings(document, { domain: value as MaterialDomain })}
               />
             </div>
             <div className="material-setting-row">
@@ -267,9 +265,7 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
                 disabled={document.readOnly}
                 options={materialBlendModeOptions}
                 value={materialBlendMode}
-                onValueChange={(value) =>
-                  replaceMaterialSettings(document, { blendMode: value as MaterialBlendMode })
-                }
+                onValueChange={(value) => replaceMaterialSettings(document, { blendMode: value as MaterialBlendMode })}
               />
             </div>
             <div className="material-setting-row">
@@ -293,7 +289,6 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
                 onCheckedChange={(checked) => replaceMaterialSettings(document, { doubleSided: checked })}
               />
             </div>
-
           </UiPanelCard>
         </div>
       </aside>

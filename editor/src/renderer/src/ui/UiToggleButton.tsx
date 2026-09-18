@@ -8,13 +8,7 @@ type UiToggleButtonProps = Omit<
   onCheckedChange: (checked: boolean) => void;
 };
 
-export function UiToggleButton({
-  checked,
-  onCheckedChange,
-  className,
-  disabled,
-  ...props
-}: UiToggleButtonProps) {
+export function UiToggleButton({ checked, onCheckedChange, className, disabled, ...props }: UiToggleButtonProps) {
   return (
     <button
       {...props}

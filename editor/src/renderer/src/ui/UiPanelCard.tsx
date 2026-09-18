@@ -42,7 +42,9 @@ export const UiPanelCard = forwardRef<HTMLElement, UiPanelCardProps>(function Ui
         {actions && <div className="ui-panel-section-actions ui-panel-card-actions">{actions}</div>}
       </header>
       {!collapsed && (
-        <div className={['ui-panel-section-content', 'ui-panel-card-content', contentClassName].filter(Boolean).join(' ')}>
+        <div
+          className={['ui-panel-section-content', 'ui-panel-card-content', contentClassName].filter(Boolean).join(' ')}
+        >
           {children}
         </div>
       )}

@@ -106,7 +106,6 @@ describe('material live preview compilation', () => {
   });
 });
 
-
 describe('material settings editing', () => {
   it('updates authored settings and republishes the live preview without saving first', async () => {
     await loadMaterialDocument(document, true);
