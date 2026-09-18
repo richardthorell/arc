@@ -960,6 +960,7 @@ struct host_patch_texture_settings_command
     std::string min_filter;
     std::string mag_filter;
     std::string mip_filter;
+    std::string mip_policy;
     std::string wrap_u;
     std::string wrap_v;
     std::string mip_generation_filter;
