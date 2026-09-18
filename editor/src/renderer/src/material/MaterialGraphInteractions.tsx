@@ -125,6 +125,11 @@ const pinSocketCenter = (element: HTMLElement, hostRect: DOMRect): GraphPoint | 
   return [rect.left + rect.width / 2 - hostRect.left, rect.top + rect.height / 2 - hostRect.top];
 };
 
+const graphViewportZoom = (host: HTMLElement) => {
+  const value = Number(host.querySelector<HTMLElement>('[data-graph-viewport]')?.dataset.graphZoom);
+  return Number.isFinite(value) && value > 0 ? value : 1;
+};
+
 export function materialConnectionFlowIds(graph: MaterialGraph, connectionId: string): Set<string> {
   const selected = graph.connections.find((connection) => connection.id === connectionId);
   if (!selected) return new Set();
@@ -217,6 +222,7 @@ export function MaterialGraphWithInteractions({
     const host = hostRef.current;
     if (!host) return;
     const hostRect = host.getBoundingClientRect();
+    const zoom = graphViewportZoom(host);
     const elements = graphPinElementMap(host);
     const next = graph.connections.flatMap((connection) => {
       const metadata = wireMetadata.get(connection.id);
@@ -233,7 +239,10 @@ export function MaterialGraphWithInteractions({
           fromPinKey: metadata.fromPinKey,
           id: connection.id,
           label: metadata.label,
-          path: graphConnectionPath(from, to),
+          // The visible wire is authored in graph space and then scaled by the viewport.
+          // Scale the minimum Bezier handle too, otherwise the screen-space hover overlay
+          // diverges from short wires whenever the graph is not at 100% zoom.
+          path: graphConnectionPath(from, to, 55 * zoom),
           to,
           toPinKey: metadata.toPinKey,
         },
