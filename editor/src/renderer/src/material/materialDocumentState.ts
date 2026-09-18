@@ -16,6 +16,7 @@ import {
   materialGraphFromAsset,
   type MaterialAssetJson,
   type MaterialGraph,
+  type MaterialGraphViewport,
 } from './materialGraphTypes';
 
 export type MaterialDocumentState = {
@@ -241,6 +242,17 @@ export const loadMaterialDocument = async (document: EditorDocument, force = fal
     });
     return false;
   }
+};
+
+export const replaceMaterialGraphViewport = (document: EditorDocument, viewport: MaterialGraphViewport) => {
+  const current = ensureState(document);
+  if (materialShaderPath(current.asset)) return;
+  setState(document.id, {
+    graph: {
+      ...current.graph,
+      viewport: { ...viewport },
+    },
+  });
 };
 
 export const replaceMaterialGraph = (

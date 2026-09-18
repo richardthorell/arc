@@ -11,6 +11,7 @@ import { createDefaultMaterialGraph, createMaterialNode } from './materialGraphT
 const materialState = vi.hoisted(() => ({
   redoMaterialGraph: vi.fn(),
   replaceMaterialGraph: vi.fn(),
+  replaceMaterialGraphViewport: vi.fn(),
   saveMaterialDocument: vi.fn(async () => true),
   undoMaterialGraph: vi.fn(),
 }));
@@ -23,6 +24,7 @@ afterEach(cleanup);
 beforeEach(() => {
   materialState.redoMaterialGraph.mockClear();
   materialState.replaceMaterialGraph.mockClear();
+  materialState.replaceMaterialGraphViewport.mockClear();
   materialState.saveMaterialDocument.mockClear();
   materialState.undoMaterialGraph.mockClear();
 });
@@ -36,6 +38,19 @@ describe('MaterialGraphEditor', () => {
     expect(container.querySelectorAll('[data-graph-pin-key]').length).toBeGreaterThan(0);
   });
 
+  it('shows graph navigation controls with snap enabled by default', () => {
+    render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
+
+    expect(screen.getByRole('button', { name: /Frame All/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /Arrange/ })).toBeEnabled();
+    expect(screen.getByRole('slider', { name: 'Material graph zoom' })).toHaveValue('100');
+
+    const snap = screen.getByRole('button', { name: /Snap/ });
+    expect(snap).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(snap);
+    expect(snap).toHaveAttribute('aria-pressed', 'false');
+  });
+
   it('keeps Add Node menu scrolling from zooming the graph', () => {
     render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
 
@@ -46,16 +61,16 @@ describe('MaterialGraphEditor', () => {
     const constantsMenu = screen.getByRole('menu', { name: 'Constants material nodes' });
     const item = within(constantsMenu).getByRole('menuitem', { name: 'Constant' });
 
-    materialState.replaceMaterialGraph.mockClear();
+    materialState.replaceMaterialGraphViewport.mockClear();
     fireEvent.wheel(item, { clientX: 80, clientY: 100, deltaY: 120 });
-    expect(materialState.replaceMaterialGraph).not.toHaveBeenCalled();
+    expect(materialState.replaceMaterialGraphViewport).not.toHaveBeenCalled();
 
     fireEvent.wheel(screen.getByRole('application', { name: 'Material graph' }), {
       clientX: 300,
       clientY: 220,
       deltaY: 120,
     });
-    expect(materialState.replaceMaterialGraph).toHaveBeenCalledTimes(1);
+    expect(materialState.replaceMaterialGraphViewport).toHaveBeenCalledTimes(1);
   });
 
   it('opens material categories and subcategories as cascading side menus', () => {

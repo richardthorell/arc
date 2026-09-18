@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, Copy, Plus, Search, Trash2 } from 'lucide-react';
+import { ChevronRight, Copy, Magnet, Plus, RotateCcw, Scan, Search, Trash2, WandSparkles } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
 import {
@@ -18,7 +18,15 @@ import {
   type GraphPoint,
   type GraphSelection,
 } from '../graph';
-import { UiButton, UiColorControl, UiContextMenu, UiContextMenuItem, UiNodeCard, UiTextInput } from '../ui';
+import {
+  UiButton,
+  UiColorControl,
+  UiContextMenu,
+  UiContextMenuItem,
+  UiIconButton,
+  UiNodeCard,
+  UiTextInput,
+} from '../ui';
 import { materialGraphDomain } from './materialGraphDomain';
 import {
   cloneMaterialGraph,
@@ -35,41 +43,26 @@ import {
   type MaterialNodeCategory,
   type MaterialNodeSubcategory,
 } from './materialGraphTypes';
-import { redoMaterialGraph, replaceMaterialGraph, undoMaterialGraph } from './materialDocumentState';
+import {
+  redoMaterialGraph,
+  replaceMaterialGraph,
+  replaceMaterialGraphViewport,
+  undoMaterialGraph,
+} from './materialDocumentState';
+import {
+  autoArrangeMaterialGraph,
+  frameMaterialGraphViewport,
+  materialNodeHeight,
+  materialNodeWidth,
+  snapMaterialGraphPoint,
+} from './materialGraphLayout';
 import { MaterialTextureSampleEditor } from './MaterialTextureSampleEditor';
 
-const defaultNodeWidth = 214;
 const headerHeight = 34;
 const pinRowHeight = 25;
 const nodePaddingTop = 9;
 
 type AddMenuCategory = Exclude<MaterialNodeCategory, 'Output'>;
-
-export const materialNodeWidth = (type: MaterialGraphNodeType) => {
-  switch (type) {
-    case 'vector2':
-      return 232;
-    case 'vector3':
-      return 252;
-    case 'vector4':
-      return 286;
-    case 'colorRgb':
-    case 'colorRgba':
-      return 300;
-    case 'textureSample':
-    case 'textureSample2D':
-    case 'textureSampleCube':
-    case 'textureSample3D':
-      return 286;
-    case 'output':
-      return 236;
-    case 'normalMap':
-    case 'clamp':
-      return 232;
-    default:
-      return defaultNodeWidth;
-  }
-};
 
 const editableValueNode = (node: MaterialGraphNode) =>
   node.type === 'constant' ||
@@ -219,10 +212,19 @@ function MaterialNodeValueEditor({
   return null;
 }
 
-export function MaterialGraphEditor({ document, graph }: { document: EditorDocument; graph: MaterialGraph }) {
+export function MaterialGraphEditor({
+  document,
+  graph,
+  loaded = true,
+}: {
+  document: EditorDocument;
+  graph: MaterialGraph;
+  loaded?: boolean;
+}) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const invalidConnectionNodeRef = useRef<HTMLElement | null>(null);
   const invalidConnectionTimeoutRef = useRef<number | null>(null);
+  const autoFramedDocumentRef = useRef<string | null>(null);
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(() => new Set());
   const [pendingConnection, setPendingConnection] = useState<MaterialGraphPinRef | null>(null);
   const [pointerGraph, setPointerGraph] = useState<GraphPoint>([0, 0]);
@@ -234,6 +236,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
   const [nodeSearch, setNodeSearch] = useState('');
   const [nodeMenuCategory, setNodeMenuCategory] = useState<AddMenuCategory | null>(null);
   const [nodeMenuSubcategory, setNodeMenuSubcategory] = useState<MaterialNodeSubcategory | null>(null);
+  const [snapEnabled, setSnapEnabled] = useState(true);
   const viewport = useMemo(() => graph.viewport ?? { x: 40, y: 40, zoom: 1 }, [graph.viewport]);
 
   useEffect(() => {
@@ -309,12 +312,55 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
   }, [graph.nodes, measurePinPositions]);
 
   const updateViewport = useCallback(
-    (patch: Partial<typeof viewport>, recordHistory = false) =>
-      mutate((next) => {
-        next.viewport = { ...viewport, ...patch };
-      }, recordHistory),
-    [mutate, viewport],
+    (patch: Partial<typeof viewport>) =>
+      replaceMaterialGraphViewport(document, {
+        ...viewport,
+        ...patch,
+      }),
+    [document, viewport],
   );
+
+  const frameAll = useCallback(() => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0 || graph.nodes.length === 0) return false;
+    replaceMaterialGraphViewport(document, frameMaterialGraphViewport(graph, rect.width, rect.height));
+    return true;
+  }, [document, graph]);
+
+  const setZoomAroundCenter = useCallback(
+    (requestedZoom: number) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect || rect.width <= 0 || rect.height <= 0) return;
+      const zoom = clampGraphZoom(requestedZoom);
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      const graphCenterX = (centerX - viewport.x) / viewport.zoom;
+      const graphCenterY = (centerY - viewport.y) / viewport.zoom;
+      updateViewport({
+        x: centerX - graphCenterX * zoom,
+        y: centerY - graphCenterY * zoom,
+        zoom,
+      });
+    },
+    [updateViewport, viewport],
+  );
+
+  const autoArrange = useCallback(() => {
+    if (document.readOnly) return;
+    const arranged = autoArrangeMaterialGraph(graph);
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (rect && rect.width > 0 && rect.height > 0)
+      arranged.viewport = frameMaterialGraphViewport(arranged, rect.width, rect.height);
+    replaceMaterialGraph(document, arranged, { message: 'Auto-arranged material graph' });
+  }, [document, graph]);
+
+  useLayoutEffect(() => {
+    if (!loaded || autoFramedDocumentRef.current === document.id || graph.nodes.length === 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (frameAll()) autoFramedDocumentRef.current = document.id;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [document.id, frameAll, graph.nodes.length, loaded]);
 
   useEffect(() => {
     if (!drag && !pan && !box) return;
@@ -327,17 +373,17 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
         mutate((next) => {
           for (const node of next.nodes) {
             const origin = drag.nodes.get(node.id);
-            if (origin) node.position = [origin[0] + deltaX, origin[1] + deltaY];
+            if (origin) {
+              const position: GraphPoint = [origin[0] + deltaX, origin[1] + deltaY];
+              node.position = snapEnabled ? snapMaterialGraphPoint(position) : position;
+            }
           }
         }, false);
       } else if (pan) {
-        updateViewport(
-          {
-            x: pan.viewport[0] + (event.clientX - pan.start[0]),
-            y: pan.viewport[1] + (event.clientY - pan.start[1]),
-          },
-          false,
-        );
+        updateViewport({
+          x: pan.viewport[0] + (event.clientX - pan.start[0]),
+          y: pan.viewport[1] + (event.clientY - pan.start[1]),
+        });
       } else if (box) {
         setBox({ ...box, current: point });
       }
@@ -353,7 +399,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
                 (node) =>
                   node.position[0] + materialNodeWidth(node.type) >= bounds.left &&
                   node.position[0] <= bounds.right &&
-                  node.position[1] + 180 >= bounds.top &&
+                  node.position[1] + materialNodeHeight(node) >= bounds.top &&
                   node.position[1] <= bounds.bottom,
               )
               .map((node) => node.id),
@@ -370,7 +416,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
     };
-  }, [box, document, drag, graph, graphPoint, mutate, pan, updateViewport]);
+  }, [box, document, drag, graph, graphPoint, mutate, pan, snapEnabled, updateViewport]);
 
   const deleteSelected = () => {
     if (document.readOnly || selectedNodes.size === 0) return;
@@ -408,7 +454,8 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
     const nodes = graphClipboard.nodes.map((source) => {
       const id = materialGraphId(source.type);
       idMap.set(source.id, id);
-      return { ...source, id, position: [source.position[0] + 36, source.position[1] + 36] as [number, number] };
+      const position: GraphPoint = [source.position[0] + 36, source.position[1] + 36];
+      return { ...source, id, position: snapEnabled ? snapMaterialGraphPoint(position) : position };
     });
     const connections = graphClipboard.connections.map((connection) => ({
       ...connection,
@@ -507,7 +554,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
 
   const addNode = (type: MaterialGraphNodeType) => {
     if (type === 'output' || document.readOnly || !addMenu) return;
-    const node = createMaterialNode(type, addMenu.graph);
+    const node = createMaterialNode(type, snapEnabled ? snapMaterialGraphPoint(addMenu.graph) : addMenu.graph);
     mutate((next) => next.nodes.push(node));
     setSelectedNodes(new Set([node.id]));
     setAddMenu(null);
@@ -600,7 +647,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
         const zoom = clampGraphZoom(viewport.zoom * (event.deltaY > 0 ? 0.9 : 1.1));
         const x = event.clientX - rect.left - before[0] * zoom;
         const y = event.clientY - rect.top - before[1] * zoom;
-        updateViewport({ x, y, zoom }, false);
+        updateViewport({ x, y, zoom });
       }}
     >
       <div className="material-graph-canvas-actions">
@@ -624,7 +671,51 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
         <UiButton disabled={document.readOnly || !selectedNodes.size} onClick={deleteSelected} variant="ghost">
           <Trash2 size={13} /> Delete
         </UiButton>
-        <span>{Math.round(viewport.zoom * 100)}%</span>
+      </div>
+
+      <div
+        className="material-graph-navigation-toolbar"
+        onPointerDown={(event) => event.stopPropagation()}
+        onWheel={(event) => event.stopPropagation()}
+      >
+        <UiButton onClick={() => frameAll()} title="Frame all nodes" variant="toolbar">
+          <Scan size={13} /> Frame All
+        </UiButton>
+        <UiButton
+          disabled={document.readOnly}
+          onClick={autoArrange}
+          title="Arrange nodes by connection flow"
+          variant="toolbar"
+        >
+          <WandSparkles size={13} /> Arrange
+        </UiButton>
+        <span className="material-graph-toolbar-divider" />
+        <label className="material-graph-zoom-control">
+          <span>Zoom</span>
+          <input
+            aria-label="Material graph zoom"
+            max="180"
+            min="35"
+            step="5"
+            type="range"
+            value={Math.round(viewport.zoom * 100)}
+            onChange={(event) => setZoomAroundCenter(Number(event.target.value) / 100)}
+          />
+          <output>{Math.round(viewport.zoom * 100)}%</output>
+        </label>
+        <UiIconButton label="Reset zoom to 100%" onClick={() => setZoomAroundCenter(1)}>
+          <RotateCcw size={13} />
+        </UiIconButton>
+        <span className="material-graph-toolbar-divider" />
+        <UiButton
+          active={snapEnabled}
+          aria-pressed={snapEnabled}
+          onClick={() => setSnapEnabled((enabled) => !enabled)}
+          title="Snap nodes to the 20 px graph grid"
+          variant="toolbar"
+        >
+          <Magnet size={13} /> Snap
+        </UiButton>
       </div>
 
       <GraphViewportLayer className="material-graph-transform" viewport={viewport}>

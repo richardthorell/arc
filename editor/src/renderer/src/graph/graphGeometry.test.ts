@@ -20,6 +20,10 @@ describe('graph geometry', () => {
     expect(graphConnectionPath([10, 20], [110, 60])).toBe('M 10 20 C 65 20, 55 60, 110 60');
   });
 
+  it('scales the minimum bezier handle for screen-space interaction overlays', () => {
+    expect(graphConnectionPath([0, 0], [10, 20], 27.5)).toBe('M 0 0 C 27.5 0, -17.5 20, 10 20');
+  });
+
   it('clamps zoom and converts box selection to graph and screen bounds', () => {
     expect(clampGraphZoom(0.1)).toBe(0.35);
     expect(clampGraphZoom(3)).toBe(1.8);

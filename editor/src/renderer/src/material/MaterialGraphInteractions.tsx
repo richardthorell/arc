@@ -125,6 +125,11 @@ const pinSocketCenter = (element: HTMLElement, hostRect: DOMRect): GraphPoint | 
   return [rect.left + rect.width / 2 - hostRect.left, rect.top + rect.height / 2 - hostRect.top];
 };
 
+const graphViewportZoom = (host: HTMLElement) => {
+  const value = Number(host.querySelector<HTMLElement>('[data-graph-viewport]')?.dataset.graphZoom);
+  return Number.isFinite(value) && value > 0 ? value : 1;
+};
+
 export function materialConnectionFlowIds(graph: MaterialGraph, connectionId: string): Set<string> {
   const selected = graph.connections.find((connection) => connection.id === connectionId);
   if (!selected) return new Set();
@@ -148,13 +153,24 @@ export function materialConnectionFlowIds(graph: MaterialGraph, connectionId: st
   return flow;
 }
 
-export function MaterialGraphWithInteractions({ document, graph }: { document: EditorDocument; graph: MaterialGraph }) {
+export function MaterialGraphWithInteractions({
+  document,
+  graph,
+  loaded = true,
+}: {
+  document: EditorDocument;
+  graph: MaterialGraph;
+  loaded?: boolean;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [wires, setWires] = useState<MaterialWireOverlay[]>([]);
   const [hoveredWire, setHoveredWire] = useState<HoveredTooltip | null>(null);
   const [hoveredPin, setHoveredPin] = useState<HoveredTooltip | null>(null);
 
-  const editor = useMemo(() => <MaterialGraphEditor document={document} graph={graph} />, [document, graph]);
+  const editor = useMemo(
+    () => <MaterialGraphEditor document={document} graph={graph} loaded={loaded} />,
+    [document, graph, loaded],
+  );
 
   const pinMetadata = useMemo(() => {
     const metadata: MaterialPinMetadata[] = [];
@@ -206,6 +222,7 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
     const host = hostRef.current;
     if (!host) return;
     const hostRect = host.getBoundingClientRect();
+    const zoom = graphViewportZoom(host);
     const elements = graphPinElementMap(host);
     const next = graph.connections.flatMap((connection) => {
       const metadata = wireMetadata.get(connection.id);
@@ -222,7 +239,10 @@ export function MaterialGraphWithInteractions({ document, graph }: { document: E
           fromPinKey: metadata.fromPinKey,
           id: connection.id,
           label: metadata.label,
-          path: graphConnectionPath(from, to),
+          // The visible wire is authored in graph space and then scaled by the viewport.
+          // Scale the minimum Bezier handle too, otherwise the screen-space hover overlay
+          // diverges from short wires whenever the graph is not at 100% zoom.
+          path: graphConnectionPath(from, to, 55 * zoom),
           to,
           toPinKey: metadata.toPinKey,
         },

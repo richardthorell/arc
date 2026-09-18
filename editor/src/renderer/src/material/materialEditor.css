@@ -68,6 +68,64 @@
   text-align: right;
 }
 
+.material-graph-navigation-toolbar {
+  position: absolute;
+  z-index: 9;
+  bottom: 10px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 34px;
+  padding: 3px;
+  border: 1px solid rgba(109, 142, 159, 0.3);
+  border-radius: 5px;
+  background: rgba(15, 25, 31, 0.94);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(8px);
+}
+
+.material-graph-navigation-toolbar .ui-button {
+  min-height: 27px;
+  height: 27px;
+  padding: 0 8px;
+}
+
+.material-graph-navigation-toolbar .ui-icon-button {
+  width: 27px;
+  min-width: 27px;
+  padding: 0;
+}
+
+.material-graph-toolbar-divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: rgba(112, 142, 156, 0.22);
+}
+
+.material-graph-zoom-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 3px 0 5px;
+  color: var(--arc-color-text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.material-graph-zoom-control input[type='range'] {
+  width: 108px;
+  accent-color: #5eacbf;
+}
+
+.material-graph-zoom-control output {
+  width: 34px;
+  color: var(--arc-color-text-dim);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .material-graph-transform {
   position: absolute;
   inset: 0 auto auto 0;

@@ -35,8 +35,8 @@ export const clientToGraphPoint = (
   (clientY - rect.top - viewport.y) / viewport.zoom,
 ];
 
-export const graphConnectionPath = (from: GraphPoint, to: GraphPoint) => {
-  const distance = Math.max(55, Math.abs(to[0] - from[0]) * 0.45);
+export const graphConnectionPath = (from: GraphPoint, to: GraphPoint, minimumHandleDistance = 55) => {
+  const distance = Math.max(minimumHandleDistance, Math.abs(to[0] - from[0]) * 0.45);
   return `M ${from[0]} ${from[1]} C ${from[0] + distance} ${from[1]}, ${to[0] - distance} ${to[1]}, ${to[0]} ${to[1]}`;
 };
 
