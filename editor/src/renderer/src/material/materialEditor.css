@@ -390,7 +390,7 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(260px, 390px) minmax(0, 1fr);
+  grid-template-rows: minmax(260px, 430px) minmax(0, 1fr);
   overflow: hidden;
   border-left: 1px solid var(--arc-color-border-subtle);
   background: #111b21;
@@ -420,27 +420,13 @@
   padding: 6px 8px 10px;
 }
 
-.material-setting-row {
-  min-height: 36px;
-  display: grid;
+.material-settings-card .ui-panel-card-row {
   grid-template-columns: minmax(96px, 0.7fr) minmax(140px, 1fr);
-  align-items: center;
   gap: 10px;
-  padding: 5px 2px;
-  border-bottom: 1px solid rgba(94, 122, 136, 0.12);
-  color: #8da1ab;
-  font-size: 10px;
+  padding-inline: 2px;
 }
 
-.material-setting-row > span:first-child {
-  color: #788e99;
-}
-
-.material-setting-row .ui-select {
-  width: 100%;
-}
-
-.material-setting-row .ui-select-trigger {
+.material-settings-card .ui-select-trigger {
   width: 100%;
   min-height: 26px;
   height: 26px;
@@ -450,10 +436,6 @@
 
 .material-setting-toggle-row .ui-toggle-button {
   justify-self: start;
-}
-
-.material-setting-row :disabled {
-  cursor: default;
 }
 
 .material-editor-message {
@@ -498,6 +480,6 @@
   }
 
   .material-editor-sidebar {
-    grid-template-rows: minmax(230px, 330px) minmax(0, 1fr);
+    grid-template-rows: minmax(230px, 370px) minmax(0, 1fr);
   }
 }
