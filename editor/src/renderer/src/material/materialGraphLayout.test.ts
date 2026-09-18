@@ -39,6 +39,31 @@ const branchedGraph = (): MaterialGraph => {
   };
 };
 
+const fanInGraph = (connectionCount: number): MaterialGraph => {
+  const source = { ...createMaterialNode('textureSample2D', [0, 0]), id: 'source' };
+  const output = { ...createMaterialNode('output', [0, 0]), id: 'material-output' };
+  const outputPins = [
+    'baseColor',
+    'metallic',
+    'roughness',
+    'normal',
+    'ao',
+    'emissive',
+    'opacity',
+    'clearCoat',
+  ];
+  return {
+    version: 1,
+    nodes: [source, output],
+    connections: Array.from({ length: connectionCount }, (_, index) => ({
+      id: `connection-${index}`,
+      from: { nodeId: source.id, pin: 'rgb' },
+      to: { nodeId: output.id, pin: outputPins[index % outputPins.length] },
+    })),
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+};
+
 describe('material graph layout', () => {
   it('keeps simple nodes compact and widens controls that need more editing space', () => {
     expect(materialNodeWidth('constant')).toBe(214);
@@ -92,5 +117,18 @@ describe('material graph layout', () => {
       expect(node.position[0] % 20).toBe(0);
       expect(node.position[1] % 20).toBe(0);
     }
+  });
+
+  it('adds horizontal routing room as fan-in pressure increases', () => {
+    const connectionGap = (graph: MaterialGraph) => {
+      const arranged = autoArrangeMaterialGraph(graph);
+      const source = arranged.nodes.find((node) => node.id === 'source')!;
+      const output = arranged.nodes.find((node) => node.id === 'material-output')!;
+      return output.position[0] - (source.position[0] + materialNodeWidth(source.type));
+    };
+
+    const sparseGap = connectionGap(fanInGraph(1));
+    const denseGap = connectionGap(fanInGraph(8));
+    expect(denseGap).toBeGreaterThan(sparseGap + 100);
   });
 });
