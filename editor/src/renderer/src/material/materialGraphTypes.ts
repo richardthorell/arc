@@ -448,6 +448,23 @@ export const materialGraphId = (prefix: string) =>
 export const cloneMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
   JSON.parse(JSON.stringify(graph)) as MaterialGraph;
 
+/**
+ * Fingerprint only graph data that can change generated material code or runtime bindings.
+ * Node positions and the editor viewport are deliberately excluded so graph navigation never
+ * recompiles the live material preview.
+ */
+export const materialGraphCompileFingerprint = (graph: MaterialGraph): string =>
+  JSON.stringify({
+    version: graph.version,
+    nodes: graph.nodes.map((node) => ({
+      id: node.id,
+      type: node.type,
+      values: node.values,
+      parameter: node.parameter,
+    })),
+    connections: graph.connections,
+  });
+
 export const createMaterialNode = (
   type: MaterialGraphNodeType,
   position: MaterialGraphPosition,
