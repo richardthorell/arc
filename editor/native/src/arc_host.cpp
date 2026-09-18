@@ -31,8 +31,7 @@ struct arc_material_preview_resources
 
 std::unordered_map<editor_scene_state*, arc_material_preview_resources> arc_material_preview_scene_resources;
 
-std::optional<std::filesystem::path>
-arc_material_preview_environment_path(const editor_asset_state& editor_assets)
+std::optional<std::filesystem::path> arc_material_preview_environment_path(const editor_asset_state& editor_assets)
 {
     const auto relative = std::filesystem::path{"assets"} / "environments" / arc_material_preview_environment_name;
     const auto available = [](const std::filesystem::path& candidate) -> std::optional<std::filesystem::path>
@@ -174,8 +173,7 @@ bool arc_configure_material_preview_environment(editor_scene_state& state, rende
     resources.environment_texture = texture;
     resources.environment = environment_handle;
     state.world_environment_hdri_path = std::filesystem::path{"environments"} / arc_material_preview_environment_name;
-    arc::diagnostics::info("editor.materials",
-                           "Material preview HDRI skybox active: " + path->generic_string());
+    arc::diagnostics::info("editor.materials", "Material preview HDRI skybox active: " + path->generic_string());
     return true;
 }
 
