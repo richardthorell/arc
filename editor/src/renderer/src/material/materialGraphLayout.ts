@@ -73,11 +73,7 @@ export const materialNodeHeight = (node: MaterialGraphNode) => {
   return Math.max(88, height);
 };
 
-export const materialNodePinOffsetY = (
-  node: MaterialGraphNode,
-  pinId: string,
-  direction: 'input' | 'output',
-) => {
+export const materialNodePinOffsetY = (node: MaterialGraphNode, pinId: string, direction: 'input' | 'output') => {
   const definition = materialGraphDomain.getNodeDefinition(node);
   const pins = direction === 'input' ? definition.inputs : definition.outputs;
   const index = pins.findIndex((pin) => pin.id === pinId);
@@ -242,10 +238,7 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
 
   const rowGap = 34;
 
-  const packColumn = (
-    column: MaterialGraphNode[],
-    idealTopFor: (node: MaterialGraphNode) => number,
-  ) => {
+  const packColumn = (column: MaterialGraphNode[], idealTopFor: (node: MaterialGraphNode) => number) => {
     const layout = column.map((node) => {
       const height = materialNodeHeight(node);
       const idealTop = idealTopFor(node);

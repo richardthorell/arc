@@ -43,16 +43,7 @@ const branchedGraph = (): MaterialGraph => {
 const fanInGraph = (connectionCount: number): MaterialGraph => {
   const source = { ...createMaterialNode('textureSample2D', [0, 0]), id: 'source' };
   const output = { ...createMaterialNode('output', [0, 0]), id: 'material-output' };
-  const outputPins = [
-    'baseColor',
-    'metallic',
-    'roughness',
-    'normal',
-    'ao',
-    'emissive',
-    'opacity',
-    'clearCoat',
-  ];
+  const outputPins = ['baseColor', 'metallic', 'roughness', 'normal', 'ao', 'emissive', 'opacity', 'clearCoat'];
   return {
     version: 1,
     nodes: [source, output],
@@ -223,8 +214,7 @@ describe('material graph layout', () => {
     const normalMap = byId.get('normal-map')!;
     const output = byId.get('material-output')!;
 
-    const normalTextureOut =
-      normalTexture.position[1] + materialNodePinOffsetY(normalTexture, 'rgb', 'output');
+    const normalTextureOut = normalTexture.position[1] + materialNodePinOffsetY(normalTexture, 'rgb', 'output');
     const normalMapIn = normalMap.position[1] + materialNodePinOffsetY(normalMap, 'texture', 'input');
     const normalMapOut = normalMap.position[1] + materialNodePinOffsetY(normalMap, 'normal', 'output');
     const outputNormal = output.position[1] + materialNodePinOffsetY(output, 'normal', 'input');
@@ -255,9 +245,7 @@ describe('material graph layout', () => {
     const targets = ['base-color', 'packed', 'normal-texture'].map((id) => byId.get(id)!);
 
     const sourceY = texCoord.position[1] + materialNodePinOffsetY(texCoord, 'uv', 'output');
-    const targetYs = targets.map(
-      (target) => target.position[1] + materialNodePinOffsetY(target, 'uv', 'input'),
-    );
+    const targetYs = targets.map((target) => target.position[1] + materialNodePinOffsetY(target, 'uv', 'input'));
     const averageTargetY = targetYs.reduce((sum, value) => sum + value, 0) / targetYs.length;
 
     expect(sourceY).toBeCloseTo(averageTargetY, 0);
