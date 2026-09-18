@@ -141,46 +141,51 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
   const next = cloneMaterialGraph(graph);
   const nodeById = new Map(next.nodes.map((node) => [node.id, node]));
   const outgoing = new Map<string, string[]>();
+  const incoming = new Map<string, string[]>();
   const connectionCounts = new Map<string, number>();
   const connected = new Set<string>();
 
   for (const connection of next.connections) {
     if (!nodeById.has(connection.from.nodeId) || !nodeById.has(connection.to.nodeId)) continue;
+
     const targets = outgoing.get(connection.from.nodeId) ?? [];
     targets.push(connection.to.nodeId);
     outgoing.set(connection.from.nodeId, targets);
+
+    const sources = incoming.get(connection.to.nodeId) ?? [];
+    sources.push(connection.from.nodeId);
+    incoming.set(connection.to.nodeId, sources);
+
     connectionCounts.set(connection.from.nodeId, (connectionCounts.get(connection.from.nodeId) ?? 0) + 1);
     connectionCounts.set(connection.to.nodeId, (connectionCounts.get(connection.to.nodeId) ?? 0) + 1);
     connected.add(connection.from.nodeId);
     connected.add(connection.to.nodeId);
   }
 
-  const depthMemo = new Map<string, number>();
-  const depthFor = (nodeId: string, visiting = new Set<string>()): number => {
-    const cached = depthMemo.get(nodeId);
+  // Stage the graph forward from its sources instead of backward from Material
+  // Output. This keeps peer source nodes such as Texture Samples in one visual
+  // column even when one branch contains an extra processor (for example a
+  // Normal Map node) before reaching the output.
+  const stageMemo = new Map<string, number>();
+  const stageFor = (nodeId: string, visiting = new Set<string>()): number => {
+    const cached = stageMemo.get(nodeId);
     if (cached !== undefined) return cached;
     if (visiting.has(nodeId)) return 0;
 
-    const targets = outgoing.get(nodeId) ?? [];
-    if (targets.length === 0) {
-      depthMemo.set(nodeId, 0);
+    const sources = incoming.get(nodeId) ?? [];
+    if (sources.length === 0) {
+      stageMemo.set(nodeId, 0);
       return 0;
     }
 
     const branch = new Set(visiting);
     branch.add(nodeId);
-    const depth = 1 + Math.max(...targets.map((target) => depthFor(target, branch)));
-    depthMemo.set(nodeId, depth);
-    return depth;
+    const stage = 1 + Math.max(...sources.map((source) => stageFor(source, branch)));
+    stageMemo.set(nodeId, stage);
+    return stage;
   };
 
-  const depths = new Map(next.nodes.map((node) => [node.id, depthFor(node.id)]));
-  const connectedDepths = next.nodes.filter((node) => connected.has(node.id)).map((node) => depths.get(node.id) ?? 0);
-  const connectedMaximumDepth = connectedDepths.length > 0 ? Math.max(...connectedDepths) : 0;
-
-  for (const node of next.nodes)
-    if (!connected.has(node.id) && node.type !== 'output') depths.set(node.id, connectedMaximumDepth + 1);
-
+  const depths = new Map(next.nodes.map((node) => [node.id, stageFor(node.id)]));
   const maximumDepth = Math.max(...depths.values());
   const columns = new Map<number, MaterialGraphNode[]>();
   for (const node of next.nodes) {
@@ -194,11 +199,11 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
   for (const [depth, column] of columns)
     columnWidths.set(depth, Math.max(...column.map((node) => materialNodeWidth(node.type))));
 
-  const columnX = new Map<number, number>([[maximumDepth, 0]]);
-  for (let depth = maximumDepth - 1; depth >= 0; --depth) {
-    const upstreamDepth = depth + 1;
-    const upstreamX = columnX.get(upstreamDepth) ?? 0;
-    const upstreamWidth = columnWidths.get(upstreamDepth) ?? defaultNodeWidth;
+  const columnX = new Map<number, number>([[0, 0]]);
+  for (let depth = 1; depth <= maximumDepth; ++depth) {
+    const previousDepth = depth - 1;
+    const previousX = columnX.get(previousDepth) ?? 0;
+    const previousWidth = columnWidths.get(previousDepth) ?? defaultNodeWidth;
 
     let crossingConnections = 0;
     let maximumConnectionCount = 0;
@@ -206,7 +211,7 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
       const fromDepth = depths.get(connection.from.nodeId);
       const toDepth = depths.get(connection.to.nodeId);
       if (fromDepth === undefined || toDepth === undefined) continue;
-      if (fromDepth < upstreamDepth || toDepth >= upstreamDepth) continue;
+      if (fromDepth >= depth || toDepth < depth) continue;
       crossingConnections += 1;
       maximumConnectionCount = Math.max(
         maximumConnectionCount,
@@ -218,7 +223,7 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
     const pressure = Math.max(crossingConnections, maximumConnectionCount);
     const baseGap = 150;
     const pressureGap = Math.min(220, Math.max(0, pressure - 2) * 22);
-    columnX.set(depth, upstreamX + upstreamWidth + baseGap + pressureGap);
+    columnX.set(depth, previousX + previousWidth + baseGap + pressureGap);
   }
 
   const rowGap = 34;
