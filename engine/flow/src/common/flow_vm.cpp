@@ -107,6 +107,12 @@ bool interface_value_valid(const bytecode_program& program, const graph_interfac
            program.value_slots[item.slot].type == item.type && value_matches_type(item.type, item.default_value);
 }
 
+bool is_graph_output_slot(const bytecode_program& program, std::uint32_t slot)
+{
+    return std::any_of(program.graph_outputs.begin(), program.graph_outputs.end(),
+                       [slot](const graph_interface_value& item) { return item.slot == slot; });
+}
+
 bool validate_program(const bytecode_program& program)
 {
     if (program.version != flow_bytecode_version) return false;
@@ -142,6 +148,7 @@ bool validate_program(const bytecode_program& program)
             !event_names.insert(event.name).second)
             return false;
 
+    std::unordered_set<std::string> custom_event_entries;
     for (const switch_int_table& table : program.switch_int_tables)
     {
         std::unordered_set<std::int64_t> unique;
@@ -176,6 +183,9 @@ bool validate_program(const bytecode_program& program)
         if ((entry.kind == entry_point_kind::input_action_triggered ||
              entry.kind == entry_point_kind::input_action_completed || entry.kind == entry_point_kind::custom_event) &&
             entry.action.empty())
+            return false;
+        if (entry.kind == entry_point_kind::custom_event &&
+            (event_names.find(entry.action) == event_names.end() || !custom_event_entries.insert(entry.action).second))
             return false;
 
         for (const value_binding& binding : entry.value_bindings)
@@ -269,7 +279,8 @@ bool validate_program(const bytecode_program& program)
                     return false;
                 break;
             case bytecode_opcode::store_graph_output:
-                if (!same_slot_type(program, instruction.operand0, instruction.operand1) ||
+                if (!is_graph_output_slot(program, instruction.operand0) ||
+                    !same_slot_type(program, instruction.operand0, instruction.operand1) ||
                     !valid_instruction_target(program, instruction.operand2))
                     return false;
                 break;
