@@ -247,8 +247,10 @@ render::material_descriptor authored_pass_material(const render::tools::material
 {
     return {.domain = authored.domain,
             .shading_model = authored.shading_model,
+            .deferred_compatible = !authored.force_forward,
             .alpha_mode = authored.alpha_mode,
-            .double_sided = authored.double_sided};
+            .double_sided = authored.double_sided,
+            .cast_shadows = authored.cast_shadows};
 }
 
 bool graph_output_connected(const render::tools::material_graph_descriptor& graph,
