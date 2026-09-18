@@ -1,5 +1,5 @@
 export const arcProjectFormat = 'arc-project';
-export const arcProjectFormatVersion = 2;
+export const arcProjectFormatVersion = 3;
 
 export type ArcProjectDependency = {
   kind: 'engine' | 'project' | 'plugin';
@@ -65,7 +65,10 @@ export type ArcProjectDescriptor = {
     architecture: string;
     renderer: string;
     api: string;
-    textureFamily: string;
+    textures: {
+      outputs: string[];
+      quality: string;
+    };
     configuration: string;
   }>;
   package: { applicationName: string; companyName: string; output: string; regionChunks: boolean };
