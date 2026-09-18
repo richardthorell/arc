@@ -272,26 +272,32 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
                 onValueChange={(value) => replaceMaterialSettings(document, { domain: value as MaterialDomain })}
               />
             </UiPanelCardRow>
-            <UiPanelCardRow label="Blend Mode">
-              <UiSelect
-                ariaLabel="Material blend mode"
-                disabled={document.readOnly}
-                options={materialBlendModeOptions}
-                value={materialBlendMode}
-                onValueChange={(value) => replaceMaterialSettings(document, { blendMode: value as MaterialBlendMode })}
-              />
-            </UiPanelCardRow>
-            <UiPanelCardRow label="Shading Model">
-              <UiSelect
-                ariaLabel="Material shading model"
-                disabled={document.readOnly}
-                options={materialShadingModelOptions}
-                value={materialShadingModel}
-                onValueChange={(value) =>
-                  replaceMaterialSettings(document, { shadingModel: value as MaterialShadingModel })
-                }
-              />
-            </UiPanelCardRow>
+            {isSurfaceMaterial && (
+              <>
+                <UiPanelCardRow label="Blend Mode">
+                  <UiSelect
+                    ariaLabel="Material blend mode"
+                    disabled={document.readOnly}
+                    options={materialBlendModeOptions}
+                    value={materialBlendMode}
+                    onValueChange={(value) =>
+                      replaceMaterialSettings(document, { blendMode: value as MaterialBlendMode })
+                    }
+                  />
+                </UiPanelCardRow>
+                <UiPanelCardRow label="Shading Model">
+                  <UiSelect
+                    ariaLabel="Material shading model"
+                    disabled={document.readOnly}
+                    options={materialShadingModelOptions}
+                    value={materialShadingModel}
+                    onValueChange={(value) =>
+                      replaceMaterialSettings(document, { shadingModel: value as MaterialShadingModel })
+                    }
+                  />
+                </UiPanelCardRow>
+              </>
+            )}
 
           </UiPanelCard>
 
