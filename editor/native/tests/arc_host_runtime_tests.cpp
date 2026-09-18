@@ -294,7 +294,7 @@ TEST_CASE("arc host derives project roots from the validated descriptor")
     REQUIRE_FALSE(ec);
     const auto descriptor = root / "Context.arcproject";
     std::ofstream(descriptor)
-        << R"({"format":"arc-project","formatVersion":2,"guid":"12345678-1234-4234-8234-123456789abc","name":"Context","engineVersion":"0.1.0","assetRoots":["Content"],"modules":[],"plugins":[],"targetPlatforms":[{"id":"windows-x64-vulkan","enabled":true}],"renderer":{"backend":"vulkan","api":"1.2","quality":"standard"}})";
+        << R"({"format":"arc-project","formatVersion":3,"guid":"12345678-1234-4234-8234-123456789abc","name":"Context","engineVersion":"0.1.0","assetRoots":["Content"],"modules":[],"plugins":[],"targetPlatforms":[{"id":"windows-x64-vulkan","enabled":true}],"renderer":{"backend":"vulkan","api":"1.2","quality":"standard"}})";
 
     auto renderer = std::make_unique<arc::render::renderer>();
     arc::editor::arc_host_manager manager;
