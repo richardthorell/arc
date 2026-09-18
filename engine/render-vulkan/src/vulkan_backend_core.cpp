@@ -1807,8 +1807,7 @@ bool vulkan_render_backend::upload_texture_image(const texture_data& data, gpu_t
             return false;
         }
         std::memcpy(mapped, upload_bytes.data(), upload_bytes.size());
-        vmaFlushAllocation(allocator_, dedicated_staging.allocation, 0,
-                           static_cast<VkDeviceSize>(upload_bytes.size()));
+        vmaFlushAllocation(allocator_, dedicated_staging.allocation, 0, static_cast<VkDeviceSize>(upload_bytes.size()));
         vmaUnmapMemory(allocator_, dedicated_staging.allocation);
         staging_buffer = dedicated_staging.buffer;
     }
