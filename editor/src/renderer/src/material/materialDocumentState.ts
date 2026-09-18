@@ -328,12 +328,18 @@ export const compileMaterialDocument = async (
   });
 
   try {
+    const previewSource = JSON.stringify({
+      ...canonicalAssetFields(current.asset, document),
+      graph: cloneMaterialGraph(current.graph),
+    });
     const response = (await window.arc.host.command('shader.compile', {
       path: `${document.path ?? document.title}.generated.slang`,
       source: JSON.stringify(current.graph),
       entryPoint: 'main',
       stage: 'fragment',
       domain: 'materialGraph',
+      previewGuid: document.assetGuid ?? '',
+      previewSource,
     })) as HostResponse<NativeMaterialCompilePayload>;
     if (compileGenerations.get(document.id) !== generation) return false;
 

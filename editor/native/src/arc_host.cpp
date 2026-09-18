@@ -23,23 +23,15 @@ namespace
 constexpr std::string_view arc_material_preview_scene_name = "Asset Preview: material";
 constexpr std::string_view arc_material_preview_environment_name = "material_preview_studio_4k.exr";
 
-struct arc_material_preview_panel
-{
-    const char* name;
-    math::vector3f position;
-    math::vector3f scale;
-};
-
 struct arc_material_preview_resources
 {
-    render::mesh_handle room_mesh{};
     render::texture_handle environment_texture{};
     render::environment_handle environment{};
 };
 
 std::unordered_map<editor_scene_state*, arc_material_preview_resources> arc_material_preview_scene_resources;
 
-std::optional<std::filesystem::path> arc_material_preview_environment_path()
+std::optional<std::filesystem::path> arc_material_preview_environment_path(const editor_asset_state& editor_assets)
 {
     const auto relative = std::filesystem::path{"assets"} / "environments" / arc_material_preview_environment_name;
     const auto available = [](const std::filesystem::path& candidate) -> std::optional<std::filesystem::path>
@@ -49,13 +41,26 @@ std::optional<std::filesystem::path> arc_material_preview_environment_path()
         return candidate.lexically_normal();
     };
 
+    // Built-in roots are the authoritative location in installed/editor builds.
+    // Source-tree probing remains only as a development fallback.
+    for (const auto& builtin_root : editor_assets.builtin_roots)
+        if (const auto path = available(builtin_root / "environments" / arc_material_preview_environment_name))
+            return path;
+    if (!editor_assets.root.empty())
+        if (const auto path = available(editor_assets.root / "environments" / arc_material_preview_environment_name))
+            return path;
+
     std::filesystem::path source_path{__FILE__};
     if (source_path.is_absolute())
     {
-        auto source_root = source_path;
-        for (int depth = 0; depth < 4; ++depth)
-            source_root = source_root.parent_path();
-        if (const auto path = available(source_root / relative)) return path;
+        auto source_root = source_path.parent_path();
+        for (int depth = 0; depth < 8; ++depth)
+        {
+            if (const auto path = available(source_root / relative)) return path;
+            const auto parent = source_root.parent_path();
+            if (parent.empty() || parent == source_root) break;
+            source_root = parent;
+        }
     }
 
     std::error_code error;
@@ -72,11 +77,12 @@ std::optional<std::filesystem::path> arc_material_preview_environment_path()
 }
 
 bool arc_configure_material_preview_environment(editor_scene_state& state, render::renderer& renderer,
+                                                const editor_asset_state& editor_assets,
                                                 arc_material_preview_resources& resources)
 {
     if (resources.environment_texture.valid()) return true;
 
-    const auto path = arc_material_preview_environment_path();
+    const auto path = arc_material_preview_environment_path(editor_assets);
     if (!path)
     {
         arc::diagnostics::warn("editor.materials", "Material preview HDRI is unavailable; using the neutral fallback");
@@ -98,56 +104,77 @@ bool arc_configure_material_preview_environment(editor_scene_state& state, rende
     }
 
     const auto environment_entity = add_world_environment_to_scene(state);
-    auto* world = state.scene.try_get<scene::world_environment_component>(environment_entity);
-    auto* lighting = state.scene.try_get<scene::environment_lighting_component>(environment_entity);
-    if (!world || !lighting)
+    auto settings = scene::read_world_environment_settings(state.scene, environment_entity);
+    if (!settings)
     {
         (void)renderer.destroy_texture(texture);
+        arc::diagnostics::warn("editor.materials", "Material preview world environment is incomplete");
         return false;
     }
 
-    world->enabled = true;
-    world->sky_visible = true;
-    world->affect_lighting = true;
-    world->source = scene::sky_source::hdri;
-    world->hdri_texture = texture;
-    world->radiance_intensity = 1.0f;
-
-    lighting->enabled = true;
-    lighting->source = scene::environment_lighting_source::hdri;
-    lighting->hdri_texture = texture;
+    // Material preview uses the EXR directly as its visible equirectangular
+    // world. Disable the analytic sky decorations so clouds/sun/stars are not
+    // composited on top of the authored HDRI.
+    settings->world.enabled = true;
+    settings->world.sky_visible = true;
+    settings->world.affect_lighting = true;
+    settings->world.source = scene::sky_source::hdri;
+    settings->world.hdri_texture = texture;
+    settings->world.hdri_rotation_degrees = 0.0f;
+    settings->world.radiance_intensity = 1.0f;
+    settings->atmosphere.exposure = 1.0f;
+    settings->atmosphere.sun_disk_intensity = 0.0f;
+    settings->celestial.sun_mode = scene::sun_position_mode::manual_light;
+    settings->celestial.automatic_sun_light = false;
+    settings->celestial.stars_enabled = false;
+    settings->celestial.moon_enabled = false;
+    settings->clouds.enabled = false;
+    settings->fog.enabled = false;
+    settings->lighting.enabled = true;
+    settings->lighting.source = scene::environment_lighting_source::hdri;
+    settings->lighting.hdri_texture = texture;
 
     render::environment_descriptor environment;
     environment.name = "Material Preview Studio Environment";
     environment.equirectangular_texture = texture;
-    environment.fallback_color = world->solid_color;
-    environment.intensity = world->radiance_intensity;
-    environment.diffuse_irradiance = lighting->constant_color;
-    environment.diffuse_intensity = lighting->diffuse_intensity;
+    environment.fallback_color = settings->world.solid_color;
+    environment.intensity = settings->world.radiance_intensity;
+    environment.diffuse_irradiance = settings->lighting.constant_color;
+    environment.diffuse_intensity = settings->lighting.diffuse_intensity;
     const auto environment_handle = renderer.create_environment(std::move(environment));
     if (environment_handle.valid())
     {
-        lighting->environment = environment_handle;
+        settings->lighting.environment = environment_handle;
         state.environment_lighting_resource = environment_handle;
+    }
+
+    if (!scene::set_world_environment_settings(state.scene, environment_entity, *settings))
+    {
+        if (environment_handle.valid()) (void)renderer.destroy_environment(environment_handle);
+        (void)renderer.destroy_texture(texture);
+        state.environment_lighting_resource = {};
+        arc::diagnostics::warn("editor.materials", "Material preview HDRI environment failed validation");
+        return false;
+    }
+
+    // Keep a deterministic preview key light in addition to HDRI illumination.
+    // The normal blank-scene sun is authored in lux and is far too intense for
+    // this small material rig, so normalize it to a modest unitless key.
+    if (auto* key_light = state.scene.try_get<scene::directional_light_component>(state.sun_entity))
+    {
+        key_light->enabled = true;
+        key_light->color = math::vector3f::one;
+        key_light->intensity = 2.5f;
+        key_light->intensity_unit = render::light_intensity_unit::unitless;
+        key_light->use_color_temperature = false;
+        key_light->casts_shadows = false;
     }
 
     resources.environment_texture = texture;
     resources.environment = environment_handle;
     state.world_environment_hdri_path = std::filesystem::path{"environments"} / arc_material_preview_environment_name;
+    arc::diagnostics::info("editor.materials", "Material preview HDRI skybox active: " + path->generic_string());
     return true;
-}
-
-void arc_configure_material_preview_panel(editor_scene_state& state, ecs::entity entity,
-                                          const arc_material_preview_panel& panel)
-{
-    if (auto* name = state.scene.try_get<scene::name_component>(entity)) name->value = panel.name;
-    if (auto* tag = state.scene.try_get<scene::tag_component>(entity)) tag->value = "Environment";
-    if (auto* selection = state.scene.try_get<scene::selection_component>(entity)) selection->selected = false;
-    if (auto* transform = state.scene.try_get<scene::transform_component>(entity))
-    {
-        transform->set_position(panel.position);
-        transform->set_scale(panel.scale);
-    }
 }
 
 editor_primitive_type arc_material_preview_primitive_type(std::string_view viewport_id)
@@ -162,34 +189,18 @@ editor_primitive_type arc_material_preview_primitive_type(std::string_view viewp
 }
 
 ecs::entity arc_material_preview_add_primitive(editor_scene_state& state, render::renderer& renderer,
-                                               editor_primitive_type type)
+                                               editor_primitive_type type, const editor_asset_state& editor_assets)
 {
     const auto entity = add_primitive_to_scene(state, renderer, type);
     if (state.scene_name != arc_material_preview_scene_name || !state.scene.alive(entity) ||
         arc_material_preview_scene_resources.contains(&state))
         return entity;
 
+    // The EXR is the preview world itself. Do not add floor/wall helper meshes:
+    // the material object should be surrounded directly by the equirectangular
+    // environment, matching a normal HDRI material-preview viewport.
     auto& resources = arc_material_preview_scene_resources[&state];
-    (void)arc_configure_material_preview_environment(state, renderer, resources);
-
-    // Keep one neutral ground plane for useful contact/shadows, but leave the
-    // sides/back/ceiling open so the HDRI is visible as the actual backdrop.
-    constexpr float half_extent = 4.0f;
-    constexpr float panel_thickness = 0.10f;
-    constexpr float floor_surface_y = -0.5f;
-
-    const auto floor = add_primitive_to_scene(state, renderer, editor_primitive_type::cube);
-    if (!state.scene.alive(floor)) return entity;
-    const auto* floor_renderer = state.scene.try_get<scene::mesh_renderer_component>(floor);
-    if (!floor_renderer || !floor_renderer->mesh.valid()) return entity;
-    resources.room_mesh = floor_renderer->mesh;
-
-    constexpr arc_material_preview_panel floor_panel{
-        "Material Preview Floor",
-        {0.0f, floor_surface_y - panel_thickness * 0.5f, 0.0f},
-        {half_extent * 2.0f, panel_thickness, half_extent * 2.0f},
-    };
-    arc_configure_material_preview_panel(state, floor, floor_panel);
+    (void)arc_configure_material_preview_environment(state, renderer, editor_assets, resources);
     return entity;
 }
 
@@ -204,8 +215,6 @@ void arc_clear_preview_imported_content(editor_scene_state& state, render::rende
     }
 
     clear_imported_scene_content(state, renderer);
-    if (resources.room_mesh.valid() && renderer.mesh_alive(resources.room_mesh))
-        (void)renderer.destroy_mesh(resources.room_mesh);
     if (resources.environment.valid() && renderer.environment_alive(resources.environment))
         (void)renderer.destroy_environment(resources.environment);
     if (state.environment_lighting_resource == resources.environment) state.environment_lighting_resource = {};

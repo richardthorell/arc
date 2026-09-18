@@ -3,17 +3,19 @@ import { describe, expect, it } from 'vitest';
 import {
   clampMaterialPreviewOrbitY,
   clampMaterialPreviewZoom,
-  constrainMaterialPreviewPitchToFloor,
+  materialPreviewCameraMaximumPitch,
   materialPreviewDefaultCameraDistance,
   materialPreviewInitialCameraPitch,
   materialPreviewInitialZoom,
-  materialPreviewMaximumPitchForDistance,
+  materialPreviewMaximumMeshExtent,
   materialPreviewMinimumCameraDistance,
   materialPreviewNativeCameraDistance,
+  materialPreviewSphereRadius,
+  materialPreviewSurfaceClearance,
 } from './materialPreviewCamera';
 
 describe('material preview camera framing', () => {
-  it('starts closer than the native fallback while remaining outside the sphere', () => {
+  it('starts closer than the native fallback while remaining outside the preview mesh', () => {
     expect(materialPreviewDefaultCameraDistance).toBeLessThan(materialPreviewNativeCameraDistance);
     expect(materialPreviewDefaultCameraDistance).toBeGreaterThan(materialPreviewMinimumCameraDistance);
 
@@ -21,8 +23,15 @@ describe('material preview camera framing', () => {
     expect(framed.distance).toBeCloseTo(materialPreviewDefaultCameraDistance, 6);
   });
 
-  it('stops zoom-in motion before the camera can enter the sphere', () => {
-    const zoomed = clampMaterialPreviewZoom(0.7, 2);
+  it('keeps a visible zoom boundary outside every preview mesh', () => {
+    expect(materialPreviewMaximumMeshExtent).toBeGreaterThan(materialPreviewSphereRadius);
+    expect(materialPreviewSurfaceClearance).toBeGreaterThan(0);
+    expect(materialPreviewMinimumCameraDistance).toBeCloseTo(
+      materialPreviewMaximumMeshExtent + materialPreviewSurfaceClearance,
+      6,
+    );
+
+    const zoomed = clampMaterialPreviewZoom(materialPreviewDefaultCameraDistance, 2);
     expect(zoomed.distance).toBe(materialPreviewMinimumCameraDistance);
     expect(zoomed.zoom).toBeGreaterThan(0);
 
@@ -33,23 +42,22 @@ describe('material preview camera framing', () => {
   it('keeps zoom-out motion unrestricted', () => {
     const zoomed = clampMaterialPreviewZoom(materialPreviewMinimumCameraDistance, -1);
     expect(zoomed.distance).toBeGreaterThan(materialPreviewMinimumCameraDistance);
-    expect(zoomed.zoom).toBe(-1);
+    expect(zoomed.zoom).toBeCloseTo(-1, 12);
   });
 
-  it('stops orbiting before the material camera can pass through the studio floor', () => {
-    const clamped = clampMaterialPreviewOrbitY(materialPreviewInitialCameraPitch, 1.55, -200);
-    expect(clamped.pitch).toBeCloseTo(materialPreviewMaximumPitchForDistance(1.55), 6);
-    expect(Math.abs(clamped.orbitY)).toBeLessThan(200);
+  it('allows vertical orbiting past the old studio-floor limit', () => {
+    const downward = clampMaterialPreviewOrbitY(materialPreviewInitialCameraPitch, -100);
+    expect(downward.pitch).toBeGreaterThan(0);
+    expect(downward.orbitY).toBeCloseTo(-100, 6);
+  });
 
-    const blocked = clampMaterialPreviewOrbitY(clamped.pitch, 1.55, -20);
+  it('only stops vertical orbit at the pole guard', () => {
+    const clamped = clampMaterialPreviewOrbitY(materialPreviewInitialCameraPitch, -1000);
+    expect(clamped.pitch).toBeCloseTo(materialPreviewCameraMaximumPitch, 6);
+    expect(Math.abs(clamped.orbitY)).toBeLessThan(1000);
+
+    const blocked = clampMaterialPreviewOrbitY(clamped.pitch, -20);
     expect(blocked.pitch).toBeCloseTo(clamped.pitch, 6);
     expect(blocked.orbitY).toBeCloseTo(0, 6);
-  });
-
-  it('adjusts pitch when a distance change would otherwise put the camera below the floor', () => {
-    const closePitch = materialPreviewMaximumPitchForDistance(0.7);
-    const corrected = constrainMaterialPreviewPitchToFloor(closePitch, 2.0);
-    expect(corrected.pitch).toBeCloseTo(materialPreviewMaximumPitchForDistance(2.0), 6);
-    expect(corrected.orbitY).toBeGreaterThan(0);
   });
 });

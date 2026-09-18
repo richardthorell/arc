@@ -1010,6 +1010,11 @@ struct host_shader_compile_command
     std::string entry_point{"main"};
     std::string stage{"fragment"};
     std::string domain{"surface"};
+    // Material-editor compiles may carry the complete in-memory authoring
+    // document so an open native preview can render the working graph rather
+    // than waiting for a save/reimport cycle.
+    std::string preview_guid;
+    std::string preview_source;
 };
 struct host_asset_cancel_import_command
 {

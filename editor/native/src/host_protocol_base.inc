@@ -1619,7 +1619,8 @@ std::string to_json(const host_command_envelope& envelope)
             else if constexpr (std::is_same_v<type, host_shader_compile_command>)
                 return "{\"path\":" + quote(payload.path.generic_string()) + ",\"source\":" + quote(payload.source) +
                        ",\"entryPoint\":" + quote(payload.entry_point) + ",\"stage\":" + quote(payload.stage) +
-                       ",\"domain\":" + quote(payload.domain) + '}';
+                       ",\"domain\":" + quote(payload.domain) + ",\"previewGuid\":" + quote(payload.preview_guid) +
+                       ",\"previewSource\":" + quote(payload.preview_source) + '}';
             else if constexpr (std::is_same_v<type, host_asset_move_command>)
                 return "{\"guid\":" + quote(payload.guid) + ",\"path\":" + quote(payload.path.generic_string()) + '}';
             else if constexpr (std::is_same_v<type, host_asset_rename_command>)
@@ -2450,6 +2451,8 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         string_value(payload, "entryPoint", command.entry_point);
         string_value(payload, "stage", command.stage);
         string_value(payload, "domain", command.domain);
+        string_value(payload, "previewGuid", command.preview_guid);
+        string_value(payload, "previewSource", command.preview_source);
         envelope.payload = std::move(command);
     }
     else if (type == "asset.move")

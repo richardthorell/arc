@@ -1785,11 +1785,41 @@ bool vulkan_render_backend::upload_texture_image(const texture_data& data, gpu_t
     const auto& upload_bytes = encoded ? data.encoded : data.pixels;
     if (upload_bytes.empty()) return false;
 
-    const auto staging = reserve_upload(upload_bytes.size(), 16u);
-    if (!staging) return false;
-    std::memcpy(staging.bytes.data(), upload_bytes.data(), upload_bytes.size());
-    vmaFlushAllocation(allocator_, upload_staging_.allocation, static_cast<VkDeviceSize>(staging.offset),
-                       static_cast<VkDeviceSize>(upload_bytes.size()));
+    // The persistent upload arena is intentionally bounded, but decoded HDR
+    // environments can easily exceed it (a 4K RGBA32F equirectangular image is
+    // ~128 MiB). Use a temporary staging buffer for a single oversized texture
+    // instead of silently failing the upload.
+    gpu_buffer dedicated_staging{};
+    VkBuffer staging_buffer = upload_staging_.buffer;
+    VkDeviceSize staging_offset{};
+    const bool oversized_upload = upload_bytes.size() > static_cast<std::size_t>(upload_staging_capacity);
+    if (oversized_upload)
+    {
+        if (!begin_upload_batch() ||
+            !create_buffer(static_cast<VkDeviceSize>(upload_bytes.size()), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                           VMA_MEMORY_USAGE_CPU_TO_GPU, dedicated_staging))
+            return false;
+
+        void* mapped{};
+        if (vmaMapMemory(allocator_, dedicated_staging.allocation, &mapped) != VK_SUCCESS)
+        {
+            destroy_buffer(dedicated_staging);
+            return false;
+        }
+        std::memcpy(mapped, upload_bytes.data(), upload_bytes.size());
+        vmaFlushAllocation(allocator_, dedicated_staging.allocation, 0, static_cast<VkDeviceSize>(upload_bytes.size()));
+        vmaUnmapMemory(allocator_, dedicated_staging.allocation);
+        staging_buffer = dedicated_staging.buffer;
+    }
+    else
+    {
+        const auto staging = reserve_upload(upload_bytes.size(), 16u);
+        if (!staging) return false;
+        std::memcpy(staging.bytes.data(), upload_bytes.data(), upload_bytes.size());
+        vmaFlushAllocation(allocator_, upload_staging_.allocation, static_cast<VkDeviceSize>(staging.offset),
+                           static_cast<VkDeviceSize>(upload_bytes.size()));
+        staging_offset = static_cast<VkDeviceSize>(staging.offset);
+    }
 
     const bool has_mip_payload = !data.mips.empty();
     const std::uint32_t mip_count = has_mip_payload ? static_cast<std::uint32_t>(data.mips.size()) : 1u;
@@ -1812,7 +1842,10 @@ bool vulkan_render_backend::upload_texture_image(const texture_data& data, gpu_t
     allocation.usage = VMA_MEMORY_USAGE_GPU_ONLY;
     if (vmaCreateImage(allocator_, &image, &allocation, &destination.image, &destination.allocation, nullptr) !=
         VK_SUCCESS)
+    {
+        if (oversized_upload) destroy_buffer(dedicated_staging);
         return false;
+    }
 
     VkImageViewCreateInfo view{};
     view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -1828,6 +1861,7 @@ bool vulkan_render_backend::upload_texture_image(const texture_data& data, gpu_t
     if (vkCreateImageView(device_, &view, nullptr, &destination.view) != VK_SUCCESS)
     {
         destroy_texture(destination);
+        if (oversized_upload) destroy_buffer(dedicated_staging);
         return false;
     }
 
@@ -1850,6 +1884,7 @@ bool vulkan_render_backend::upload_texture_image(const texture_data& data, gpu_t
     if (vkCreateSampler(device_, &sampler, nullptr, &destination.sampler) != VK_SUCCESS)
     {
         destroy_texture(destination);
+        if (oversized_upload) destroy_buffer(dedicated_staging);
         return false;
     }
 
@@ -1875,8 +1910,7 @@ bool vulkan_render_backend::upload_texture_image(const texture_data& data, gpu_t
         {
             const auto& source_mip = data.mips[mip];
             VkBufferImageCopy copy{};
-            copy.bufferOffset =
-                static_cast<VkDeviceSize>(staging.offset) + static_cast<VkDeviceSize>(source_mip.offset);
+            copy.bufferOffset = staging_offset + static_cast<VkDeviceSize>(source_mip.offset);
             copy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
             copy.imageSubresource.mipLevel = mip;
             copy.imageSubresource.layerCount = image.arrayLayers;
@@ -1888,14 +1922,14 @@ bool vulkan_render_backend::upload_texture_image(const texture_data& data, gpu_t
     else
     {
         VkBufferImageCopy copy{};
-        copy.bufferOffset = static_cast<VkDeviceSize>(staging.offset);
+        copy.bufferOffset = staging_offset;
         copy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         copy.imageSubresource.layerCount = image.arrayLayers;
         copy.imageExtent = {data.width, data.height, data.dimension == texture_dimension::texture_3d ? data.depth : 1u};
         regions.push_back(copy);
     }
 
-    vkCmdCopyBufferToImage(upload_command_buffer_, upload_staging_.buffer, destination.image,
+    vkCmdCopyBufferToImage(upload_command_buffer_, staging_buffer, destination.image,
                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, static_cast<std::uint32_t>(regions.size()),
                            regions.data());
 
@@ -1910,6 +1944,20 @@ bool vulkan_render_backend::upload_texture_image(const texture_data& data, gpu_t
     destination.format = *format;
     destination.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     destination.mip_count = mip_count;
+
+    if (oversized_upload)
+    {
+        // The dedicated staging allocation cannot be released until the copy
+        // completes. Oversized uploads are exceptional, so finish this upload
+        // synchronously and immediately return the temporary memory.
+        const bool uploaded = flush_upload_batch();
+        destroy_buffer(dedicated_staging);
+        if (!uploaded)
+        {
+            destroy_texture(destination);
+            return false;
+        }
+    }
     return true;
 }
 

@@ -2545,7 +2545,15 @@ void vulkan_render_backend::update_gbuffer_descriptor_set()
     images[8] = {shadow_atlas_.sampler, shadow_atlas_.array_view, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL};
     images[9] = {local_shadow_atlas_.sampler, local_shadow_atlas_.view,
                  VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL};
-    if (const auto* environment = active_environment())
+    const environment_descriptor* environment{};
+    if (frame_environment_.lighting.environment.valid())
+    {
+        if (const auto found = environments_.find(resource_key(frame_environment_.lighting.environment));
+            found != environments_.end())
+            environment = &found->second.data;
+    }
+    if (!environment) environment = active_environment();
+    if (environment)
     {
         if (const auto found = textures_.find(resource_key(environment->equirectangular_texture));
             found != textures_.end() && found->second.view != VK_NULL_HANDLE)

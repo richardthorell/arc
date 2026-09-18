@@ -159,8 +159,15 @@ struct viewport_surface_registry
         render::mesh_handle preview_mesh{};
         render::material_handle preview_material{};
         std::uint64_t preview_material_generation{};
+        std::uint64_t preview_live_material_generation{};
         std::uint64_t preview_asset_generation{};
         std::string preview_error;
+    };
+
+    struct live_material_preview
+    {
+        std::string source;
+        std::uint64_t generation{};
     };
 
     viewport_surface_registry()
@@ -214,8 +221,10 @@ struct viewport_surface_registry
     }
 
     std::unordered_map<std::string, surface_state> surfaces;
+    std::unordered_map<assets::asset_guid, live_material_preview, assets::asset_guid_hash> live_material_previews;
     std::optional<std::string> pending_pick_surface;
     std::uint64_t next_renderer_frame_index{};
+    std::uint64_t next_live_material_generation{};
 };
 
 namespace
@@ -501,6 +510,64 @@ bool refresh_asset_preview_material(HostState& host, viewport_surface_registry::
 }
 
 template <class HostState>
+bool apply_live_asset_preview_material(HostState& host, viewport_surface_registry::surface_state& surface,
+                                       std::string_view source)
+{
+    if (surface.preview_kind != asset_preview_kind::material || !surface.preview_scene || source.empty()) return false;
+    if (!host.asset_registry || !host.renderer || !surface.preview_guid.valid()) return false;
+
+    const auto asset = host.asset_registry->find(surface.preview_guid);
+    if (!asset || asset->type != assets::asset_types::material) return false;
+    const auto resolved =
+        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, asset->source_path);
+    if (!resolved || !is_material_asset_path(resolved->path)) return false;
+
+    auto realized = realize_material_preview_descriptor(source, resolved->path.stem().string());
+    if (!realized.succeeded)
+    {
+        surface.preview_error =
+            realized.message.empty() ? "Live material preview realization failed" : realized.message;
+        return false;
+    }
+    resolve_material_runtime_textures(host.scene.material_library, *host.renderer, resolved->asset_root,
+                                      resolved->path, realized.texture_sources, realized.material);
+
+    bool uploaded{};
+    if (surface.preview_material.valid())
+        uploaded = host.renderer->update_material(surface.preview_material, std::move(realized.material));
+    if (!uploaded)
+    {
+        surface.preview_material = host.renderer->create_material(std::move(realized.material));
+        uploaded = surface.preview_material.valid();
+    }
+    if (!uploaded)
+    {
+        surface.preview_error = "Renderer could not publish the live material preview";
+        return false;
+    }
+
+    auto* mesh_renderer = surface.preview_scene->scene.try_get<scene::mesh_renderer_component>(surface.preview_entity);
+    if (!mesh_renderer)
+    {
+        surface.preview_error = "Material preview mesh has no mesh renderer";
+        return false;
+    }
+
+    mesh_renderer->material = surface.preview_material;
+    // Mark this as current for the asset generation so the per-frame saved-asset
+    // refresh does not immediately overwrite the in-memory editor material.
+    surface.preview_material_generation = asset->generation;
+    surface.preview_error.clear();
+    arc::diagnostics::info(
+        "editor.materials",
+        "[material-flow] live material preview applied guid=" + assets::to_string(surface.preview_guid) +
+            " generation=" + std::to_string(asset->generation));
+    for (const auto& diagnostic : realized.diagnostics)
+        arc::diagnostics::info("editor.materials", "[material-flow] live preview note: " + diagnostic);
+    return true;
+}
+
+template <class HostState>
 bool refresh_asset_preview_model(HostState& host, viewport_surface_registry::surface_state& surface)
 {
     if (surface.preview_kind != asset_preview_kind::model) return true;
@@ -587,9 +654,10 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
     const auto preview_type = surface.preview_kind == asset_preview_kind::material
                                   ? arc_material_preview_primitive_type(surface.options.viewport_id)
                                   : editor_primitive_type::sphere;
-    const auto preview_entity = surface.preview_kind == asset_preview_kind::material
-                                    ? arc_material_preview_add_primitive(*preview, *host.renderer, preview_type)
-                                    : add_primitive_to_scene(*preview, *host.renderer, preview_type);
+    const auto preview_entity =
+        surface.preview_kind == asset_preview_kind::material
+            ? arc_material_preview_add_primitive(*preview, *host.renderer, preview_type, host.assets)
+            : add_primitive_to_scene(*preview, *host.renderer, preview_type);
     if (!preview->scene.alive(preview_entity))
     {
         surface.preview_error = "Renderer could not create the asset preview mesh";
@@ -672,6 +740,7 @@ void cleanup_asset_preview_surface(viewport_surface_registry::surface_state& sur
     surface.preview_mesh = {};
     surface.preview_material = {};
     surface.preview_material_generation = 0;
+    surface.preview_live_material_generation = 0;
     surface.preview_asset_generation = 0;
 }
 
@@ -876,6 +945,31 @@ host_response arc_host::execute(const host_command_envelope& command)
         }
         if (response.succeeded)
         {
+            if (const auto* compile = std::get_if<host_shader_compile_command>(&command.payload);
+                compile && compile->domain == "materialGraph" && !compile->preview_guid.empty() &&
+                !compile->preview_source.empty())
+            {
+                const auto compile_result = nlohmann::json::parse(response.payload_json, nullptr, false);
+                const auto preview_guid = assets::parse_asset_guid(compile->preview_guid);
+                if (!compile_result.is_discarded() && compile_result.value("succeeded", false) && preview_guid)
+                {
+                    const auto live_generation = ++surfaces.next_live_material_generation;
+                    surfaces.live_material_previews[*preview_guid] = {
+                        .source = compile->preview_source,
+                        .generation = live_generation,
+                    };
+                    for (auto& [_, preview_surface] : surfaces.surfaces)
+                    {
+                        if (preview_surface.preview_kind != asset_preview_kind::material ||
+                            preview_surface.preview_guid != *preview_guid)
+                            continue;
+                        if (!preview_surface.preview_scene)
+                            (void)ensure_asset_preview_scene(*state_, preview_surface);
+                        if (apply_live_asset_preview_material(*state_, preview_surface, compile->preview_source))
+                            preview_surface.preview_live_material_generation = live_generation;
+                    }
+                }
+            }
             if (const auto* reimport = std::get_if<host_asset_reimport_command>(&command.payload))
             {
                 refresh_reimported_world_material(*state_, *reimport);
@@ -906,7 +1000,11 @@ host_response arc_host::execute(const host_command_envelope& command)
         }
         if (response.succeeded && (std::holds_alternative<host_open_project_command>(command.payload) ||
                                    std::holds_alternative<host_close_project_command>(command.payload)))
+        {
             reset_asset_preview_scenes(surfaces, *state_->renderer);
+            surfaces.live_material_previews.clear();
+            surfaces.next_live_material_generation = 0;
+        }
         if (response.succeeded && std::holds_alternative<host_viewport_detach_command>(command.payload) &&
             viewport_surface->preview_kind != asset_preview_kind::none)
         {
@@ -1256,6 +1354,17 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         !ensure_asset_preview_scene(*state_, *viewport_surface) && !viewport_surface->preview_scene)
         return {.message = viewport_surface->preview_error.empty() ? "Asset preview scene is unavailable"
                                                                    : viewport_surface->preview_error};
+
+    if (viewport_surface->preview_kind == asset_preview_kind::material && viewport_surface->preview_scene)
+    {
+        if (const auto live = surfaces.live_material_previews.find(viewport_surface->preview_guid);
+            live != surfaces.live_material_previews.end() &&
+            live->second.generation != viewport_surface->preview_live_material_generation)
+        {
+            if (apply_live_asset_preview_material(*state_, *viewport_surface, live->second.source))
+                viewport_surface->preview_live_material_generation = live->second.generation;
+        }
+    }
 
     activate_viewport_surface(*state_, *viewport_surface);
     host_viewport_request routed_request = request;
