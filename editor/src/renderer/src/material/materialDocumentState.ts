@@ -254,7 +254,7 @@ export const loadMaterialDocument = async (document: EditorDocument, force = fal
     });
     updateEditorDocumentInStore(document.id, { dirty: upgrade.upgraded && !document.readOnly });
     if (!customShader) scheduleNativeCompile(document);
-    void refreshMaterialPreview(document);
+    if (!upgrade.upgraded) void refreshMaterialPreview(document);
     return true;
   } catch (error) {
     setState(document.id, {
