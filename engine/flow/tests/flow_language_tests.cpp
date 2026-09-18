@@ -656,7 +656,6 @@ void test_compiler_executes_latent_nodes()
     assert(std::get<std::int64_t>(*timer.variable_value("result")) == 2);
 }
 
-
 void test_graph_interface_bytecode()
 {
     bytecode_program program;
@@ -667,10 +666,7 @@ void test_graph_interface_bytecode()
         {.id = "result", .name = "Result", .type = value_type::integer, .default_value = std::int64_t{0}, .slot = 1}};
     program.entry_points.push_back({.kind = entry_point_kind::begin_play, .instruction = 0});
     program.instructions = {
-        {.opcode = bytecode_opcode::store_graph_output,
-         .operand0 = 1,
-         .operand1 = 0,
-         .operand2 = invalid_instruction},
+        {.opcode = bytecode_opcode::store_graph_output, .operand0 = 1, .operand1 = 0, .operand2 = invalid_instruction},
     };
 
     vm_instance instance{program};

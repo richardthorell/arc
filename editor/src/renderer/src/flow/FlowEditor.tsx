@@ -5,12 +5,7 @@ import type { EditorDocument, EditorSurfaceContext } from '../editors/editorType
 import { UiButton } from '../ui';
 import { FlowGraphEditor } from './FlowGraphEditor';
 import { disposeFlowDocument, replaceFlowGraph, useFlowDocumentState } from './flowDocumentState';
-import {
-  flowGraphId,
-  type FlowGraph,
-  type FlowInterfaceValueDefinition,
-  type FlowValueType,
-} from './flowGraphTypes';
+import { flowGraphId, type FlowGraph, type FlowInterfaceValueDefinition, type FlowValueType } from './flowGraphTypes';
 import './flowEditor.css';
 
 const variableTypes: FlowValueType[] = [

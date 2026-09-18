@@ -344,8 +344,8 @@ const graph_interface_value* interface_value_for(const std::vector<graph_interfa
     const auto iterator = node.values.find("interfaceId");
     if (iterator == node.values.end() || !iterator->is_string()) return nullptr;
     const std::string id = iterator->get<std::string>();
-    const auto found = std::find_if(values.begin(), values.end(),
-                                    [&id](const graph_interface_value& item) { return item.id == id; });
+    const auto found =
+        std::find_if(values.begin(), values.end(), [&id](const graph_interface_value& item) { return item.id == id; });
     return found == values.end() ? nullptr : &*found;
 }
 
@@ -917,8 +917,7 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
                 continue;
             }
 
-            destination.push_back(
-                {.id = id, .name = name, .type = *type, .default_value = *parsed_default});
+            destination.push_back({.id = id, .name = name, .type = *type, .default_value = *parsed_default});
         }
     };
     parse_interface("inputs", graph.graph_inputs);
@@ -1596,7 +1595,8 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
     std::sort(program.graph_outputs.begin(), program.graph_outputs.end(),
               [](const graph_interface_value& left, const graph_interface_value& right) { return left.id < right.id; });
     std::sort(program.custom_events.begin(), program.custom_events.end(),
-              [](const custom_event_definition& left, const custom_event_definition& right) { return left.id < right.id; });
+              [](const custom_event_definition& left, const custom_event_definition& right)
+              { return left.id < right.id; });
 
     std::unordered_map<std::string, std::uint32_t> variable_indices;
     for (std::uint32_t index = 0; index < program.variables.size(); ++index)
@@ -1652,9 +1652,9 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
             case node_kind::graph_input:
             {
                 const graph_interface_value* source = interface_value_for(graph.graph_inputs, *node);
-                const auto item = std::find_if(program.graph_inputs.begin(), program.graph_inputs.end(),
-                                               [&](const graph_interface_value& candidate)
-                                               { return candidate.id == source->id; });
+                const auto item =
+                    std::find_if(program.graph_inputs.begin(), program.graph_inputs.end(),
+                                 [&](const graph_interface_value& candidate) { return candidate.id == source->id; });
                 value_slots.emplace(pin_key(node->id, "value"), item->slot);
                 break;
             }
@@ -2088,8 +2088,9 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
             case node_kind::graph_output:
             {
                 const graph_interface_value* source = interface_value_for(graph.graph_outputs, *node);
-                const auto output = std::find_if(program.graph_outputs.begin(), program.graph_outputs.end(),
-                                                 [&](const graph_interface_value& item) { return item.id == source->id; });
+                const auto output =
+                    std::find_if(program.graph_outputs.begin(), program.graph_outputs.end(),
+                                 [&](const graph_interface_value& item) { return item.id == source->id; });
                 instruction.operand0 = output->slot;
                 instruction.operand1 = input_slot(*node, "value");
                 instruction.operand2 = execution_target(*node, "then");

@@ -884,7 +884,8 @@ export const isFlowGraph = (value: unknown): value is FlowGraph => {
   if (graph.version !== 1 || !Array.isArray(graph.nodes) || !Array.isArray(graph.connections)) return false;
   if (!Array.isArray(graph.variables) || !graph.variables.every(isVariable) || !isViewport(graph.viewport))
     return false;
-  if (graph.inputs !== undefined && (!Array.isArray(graph.inputs) || !graph.inputs.every(isInterfaceValue))) return false;
+  if (graph.inputs !== undefined && (!Array.isArray(graph.inputs) || !graph.inputs.every(isInterfaceValue)))
+    return false;
   if (graph.outputs !== undefined && (!Array.isArray(graph.outputs) || !graph.outputs.every(isInterfaceValue)))
     return false;
   if (graph.events !== undefined && (!Array.isArray(graph.events) || !graph.events.every(isEvent))) return false;

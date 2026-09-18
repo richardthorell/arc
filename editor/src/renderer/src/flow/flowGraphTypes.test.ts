@@ -69,12 +69,8 @@ describe('Flow graph authoring schema', () => {
     asset.graph.outputs!.push({ id: 'result', name: 'Result', type: 'int', defaultValue: 0 });
     asset.graph.events!.push({ id: 'apply', name: 'Apply' });
     asset.graph.nodes.push(createFlowNode('customEvent', [300, 100], { eventId: 'apply' }));
-    asset.graph.nodes.push(
-      createFlowNode('graphInput', [300, 240], { interfaceId: 'amount', interfaceType: 'int' }),
-    );
-    asset.graph.nodes.push(
-      createFlowNode('graphOutput', [560, 100], { interfaceId: 'result', interfaceType: 'int' }),
-    );
+    asset.graph.nodes.push(createFlowNode('graphInput', [300, 240], { interfaceId: 'amount', interfaceType: 'int' }));
+    asset.graph.nodes.push(createFlowNode('graphOutput', [560, 100], { interfaceId: 'result', interfaceType: 'int' }));
 
     expect(isFlowAssetJson(asset)).toBe(true);
     expect(flowNodeDefinitions.customEvent.category).toBe('Events');
