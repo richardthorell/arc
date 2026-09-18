@@ -148,13 +148,24 @@ export function materialConnectionFlowIds(graph: MaterialGraph, connectionId: st
   return flow;
 }
 
-export function MaterialGraphWithInteractions({ document, graph }: { document: EditorDocument; graph: MaterialGraph }) {
+export function MaterialGraphWithInteractions({
+  document,
+  graph,
+  loaded = true,
+}: {
+  document: EditorDocument;
+  graph: MaterialGraph;
+  loaded?: boolean;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [wires, setWires] = useState<MaterialWireOverlay[]>([]);
   const [hoveredWire, setHoveredWire] = useState<HoveredTooltip | null>(null);
   const [hoveredPin, setHoveredPin] = useState<HoveredTooltip | null>(null);
 
-  const editor = useMemo(() => <MaterialGraphEditor document={document} graph={graph} />, [document, graph]);
+  const editor = useMemo(
+    () => <MaterialGraphEditor document={document} graph={graph} loaded={loaded} />,
+    [document, graph, loaded],
+  );
 
   const pinMetadata = useMemo(() => {
     const metadata: MaterialPinMetadata[] = [];
