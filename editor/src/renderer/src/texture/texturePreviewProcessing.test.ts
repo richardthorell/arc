@@ -13,6 +13,7 @@ const settings: TextureSettingsSnapshot = {
   minFilter: 'linear',
   magFilter: 'linear',
   mipFilter: 'linear',
+  mipPolicy: 'preserve_source',
   wrapU: 'repeat',
   wrapV: 'repeat',
   mipGenerationFilter: 'box',
