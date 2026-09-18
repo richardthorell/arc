@@ -2358,6 +2358,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             string_value(payload, "minFilter", command.min_filter);
             string_value(payload, "magFilter", command.mag_filter);
             string_value(payload, "mipFilter", command.mip_filter);
+            string_value(payload, "mipPolicy", command.mip_policy);
             string_value(payload, "wrapU", command.wrap_u);
             string_value(payload, "wrapV", command.wrap_v);
             string_value(payload, "mipGenerationFilter", command.mip_generation_filter);
@@ -2415,7 +2416,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             if (command.preset.empty() && command.semantic.empty() && command.color_space.empty() &&
                 command.streaming_mode.empty() && command.compression.empty() && command.power_of_two.empty() &&
                 command.min_filter.empty() && command.mag_filter.empty() && command.mip_filter.empty() &&
-                command.wrap_u.empty() && command.wrap_v.empty() && command.mip_generation_filter.empty() &&
+                command.mip_policy.empty() && command.wrap_u.empty() && command.wrap_v.empty() && command.mip_generation_filter.empty() &&
                 command.channel_r.empty() && command.channel_g.empty() && command.channel_b.empty() &&
                 command.channel_a.empty() && command.curve_master.empty() && command.curve_r.empty() &&
                 command.curve_g.empty() && command.curve_b.empty() && command.curve_a.empty() && !command.max_size &&

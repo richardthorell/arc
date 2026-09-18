@@ -5,6 +5,7 @@ import type { ArcProjectCandidate } from '../common/projectTypes';
 
 export const supportedTextureExtensions = new Set([
   '.bmp',
+  '.dds',
   '.exr',
   '.hdr',
   '.jpeg',
