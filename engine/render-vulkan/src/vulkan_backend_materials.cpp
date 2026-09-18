@@ -634,8 +634,7 @@ const material_runtime_pass* vulkan_render_backend::runtime_gbuffer_pass(const g
 {
     if (!material.data.runtime_program) return nullptr;
     const auto& program = *material.data.runtime_program;
-    if (program.contract_version != material_pass_contract_version || program.material_abi != material_abi_version)
-        return nullptr;
+    if (!material_runtime_program_compatible(program)) return nullptr;
     const auto found = std::ranges::find(program.passes, material_pass::gbuffer, &material_runtime_pass::pass);
     return found == program.passes.end() ? nullptr : &*found;
 }
@@ -1126,8 +1125,12 @@ bool vulkan_render_backend::ensure_runtime_gbuffer_pipeline(gpu_material& materi
     }
     material.runtime.generation = program->generation;
 
-    if (program->contract_version != 1u || program->material_abi != 1u)
-        return reject_runtime_material(material, "unsupported compiled Material ABI contract version");
+    if (!material_runtime_program_compatible(*program))
+        return reject_runtime_material(
+            material, "unsupported compiled Material ABI contract version (got pass " +
+                          std::to_string(program->contract_version) + " / ABI " + std::to_string(program->material_abi) +
+                          ", expected pass " + std::to_string(material_pass_contract_version) + " / ABI " +
+                          std::to_string(material_abi_version) + ')');
     if (material.data.alpha_mode != material_alpha_mode::opaque)
         return reject_runtime_material(material, "compiled preview execution currently requires an opaque material");
     const auto* pass = runtime_gbuffer_pass(material);
