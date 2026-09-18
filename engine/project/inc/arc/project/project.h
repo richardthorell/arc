@@ -168,13 +168,13 @@ struct texture_cook_profile_settings
 /** @brief Inline cooker target profile stored in the project descriptor. */
 struct cook_profile_descriptor
 {
-    std::string id;                        ///< Stable cook-profile ID.
-    std::string platform;                  ///< Target operating system.
-    std::string architecture{"x86_64"};    ///< Target architecture.
-    std::string renderer{"vulkan"};        ///< Runtime renderer or none.
-    std::string api{"1.2"};                ///< Target graphics API baseline.
+    std::string id;                         ///< Stable cook-profile ID.
+    std::string platform;                   ///< Target operating system.
+    std::string architecture{"x86_64"};     ///< Target architecture.
+    std::string renderer{"vulkan"};         ///< Runtime renderer or none.
+    std::string api{"1.2"};                 ///< Target graphics API baseline.
     texture_cook_profile_settings textures; ///< Runtime texture output policy.
-    std::string configuration{"Shipping"}; ///< Build configuration used for cooking.
+    std::string configuration{"Shipping"};  ///< Build configuration used for cooking.
 };
 
 /** @brief Package naming, output, and chunking policy. */
