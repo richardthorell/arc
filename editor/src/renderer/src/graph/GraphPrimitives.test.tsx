@@ -18,6 +18,7 @@ describe('shared graph primitives', () => {
     );
 
     expect(container.querySelector('[data-graph-viewport]')).toHaveStyle('transform: translate(12px, 24px) scale(1.5)');
+    expect(container.querySelector('[data-graph-viewport]')).toHaveAttribute('data-graph-zoom', '1.5');
     expect(container.querySelector('[data-graph-wires] path:not(.pending)')).toHaveAttribute('d', 'M 1 2 L 3 4');
     expect(screen.getByRole('button', { name: 'Then' })).toHaveAttribute('data-graph-pin-key', 'begin:output:then');
     expect(screen.getByRole('button', { name: 'Then' })).toHaveClass('output', 'connected');
