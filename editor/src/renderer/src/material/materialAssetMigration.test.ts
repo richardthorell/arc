@@ -33,6 +33,7 @@ describe('material asset migration', () => {
       },
       textures: {
         normal: 'Textures/normal.png',
+        clearCoat: 'Textures/clear_coat.png',
         height: 'Textures/height.png',
       },
       advanced: {
@@ -64,7 +65,10 @@ describe('material asset migration', () => {
     expect(graph.nodes.find((node) => node.id === 'legacy-roughness')?.values.value).toBe(0.25);
     expect(graph.nodes.find((node) => node.id === 'legacy-emissive')?.values.value).toEqual([0.2, 0.4, 0.6]);
     expect(graph.nodes.find((node) => node.id === 'legacy-normal-map')?.values.strength).toBe(0.6);
-    expect(graph.connections.some((connection) => connection.to.pin === 'clearCoat')).toBe(true);
+    expect(graph.connections.filter((connection) => connection.to.pin === 'clearCoat')).toHaveLength(1);
+    expect(graph.nodes.find((node) => node.id === 'legacy-clear-coat-texture-texture')?.values.texture).toBe(
+      'Textures/clear_coat.png',
+    );
     expect(graph.connections.some((connection) => connection.to.pin === 'anisotropy')).toBe(true);
   });
 
