@@ -61,6 +61,7 @@ afterEach(() => {
 describe('external texture import', () => {
   it('recognizes supported texture formats case-insensitively', () => {
     expect(isSupportedTexturePath('albedo.PNG')).toBe(true);
+    expect(isSupportedTexturePath('source.DDS')).toBe(true);
     expect(isSupportedTexturePath('source.PSD')).toBe(true);
     expect(isSupportedTexturePath('source.TIF')).toBe(true);
     expect(isSupportedTexturePath('source.TIFF')).toBe(true);
