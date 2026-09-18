@@ -236,8 +236,7 @@
   pointer-events: none;
 }
 
-.ui-lab-native-check,
-.ui-lab-switch {
+.ui-lab-native-check {
   display: inline-flex;
   align-items: center;
   gap: 9px;
@@ -273,59 +272,6 @@
   align-items: center;
   gap: 7px;
   white-space: nowrap;
-}
-
-.ui-lab-switch {
-  cursor: pointer;
-}
-
-.ui-lab-switch > input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.ui-lab-switch-track {
-  position: relative;
-  flex: 0 0 auto;
-  width: 34px;
-  height: 18px;
-  border: var(--arc-border-width) solid var(--arc-color-border-strong);
-  border-radius: 999px;
-  background: var(--arc-color-bg-field);
-  transition:
-    background 120ms ease,
-    border-color 120ms ease;
-}
-
-.ui-lab-switch-track > span {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--arc-color-text-muted);
-  transition:
-    transform 120ms ease,
-    background 120ms ease;
-}
-
-.ui-lab-switch > input:checked + .ui-lab-switch-track {
-  border-color: var(--arc-color-accent);
-  background: var(--arc-color-bg-selected-strong);
-}
-
-.ui-lab-switch > input:checked + .ui-lab-switch-track > span {
-  background: var(--arc-color-text-inverse);
-  transform: translateX(16px);
-}
-
-.ui-lab-switch > input:focus-visible + .ui-lab-switch-track {
-  outline: 2px solid var(--arc-color-focus-ring);
-  outline-offset: 2px;
 }
 
 .ui-lab-field-stack {
@@ -379,6 +325,44 @@
   min-width: 42px;
   color: var(--arc-color-text);
   text-align: right;
+}
+
+.ui-lab-toggle-example {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--arc-color-text);
+  font-size: var(--arc-text-sm);
+}
+
+.ui-lab-toggle-list {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+.ui-lab-panel-card-demo {
+  width: 100%;
+}
+
+.ui-lab-panel-card-demo > .ui-panel-card {
+  width: 100%;
+}
+
+.ui-lab-panel-card-content {
+  padding: 7px 10px 9px;
+}
+
+.ui-lab-panel-card-copy {
+  margin: 0;
+  color: var(--arc-color-text-muted);
+  font-size: var(--arc-text-sm);
+  line-height: 1.45;
+}
+
+.ui-lab-panel-value {
+  color: var(--arc-color-text);
+  font-size: var(--arc-text-xs);
 }
 
 .ui-lab-tree,
