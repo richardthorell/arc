@@ -343,10 +343,8 @@ export const replaceMaterialSettings = (document: EditorDocument, patch: Partial
   const nextAsset: MaterialAssetJson = { ...current.asset, ...nextSettings };
   if (settingsFingerprint(nextAsset) === settingsFingerprint(current.asset)) return false;
 
-  const customShader = materialShaderPath(current.asset);
   setState(document.id, {
     asset: nextAsset,
-    compilation: customShader ? current.compilation : emptyMaterialCompileResult(),
     message: '',
   });
   updateDirtyState(
@@ -357,7 +355,6 @@ export const replaceMaterialSettings = (document: EditorDocument, patch: Partial
     current.confirmedSettings,
     current.schemaUpgradePending,
   );
-  if (!customShader) scheduleNativeCompile(document);
   return true;
 };
 
