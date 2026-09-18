@@ -12,13 +12,13 @@ describe('UiToggleButton', () => {
     );
 
     const toggle = screen.getByRole('switch', { name: 'Two sided' });
-    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
 
     fireEvent.click(toggle);
     expect(onCheckedChange).toHaveBeenCalledWith(true);
 
     rerender(<UiToggleButton aria-label="Two sided" checked onCheckedChange={onCheckedChange} />);
-    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
   });
 
   it('does not change state while disabled', () => {
