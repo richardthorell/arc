@@ -19,7 +19,7 @@ namespace arc::project
 {
 
 inline constexpr std::string_view project_format = "arc-project"; ///< Project document format identifier.
-inline constexpr std::uint32_t project_format_version = 2;        ///< Current project document schema version.
+inline constexpr std::uint32_t project_format_version = 3;        ///< Current project document schema version.
 inline constexpr std::string_view installation_format = "arc-installation"; ///< Installation manifest format.
 inline constexpr std::uint32_t installation_format_version = 1;             ///< Installation manifest schema version.
 inline constexpr std::string_view template_format = "arc-project-template"; ///< Project-template manifest format.
@@ -158,6 +158,13 @@ struct project_renderer_settings
     std::string anti_aliasing{"auto"};                  ///< Project anti-aliasing policy.
 };
 
+/** @brief Texture outputs produced for one cook profile. */
+struct texture_cook_profile_settings
+{
+    std::vector<std::string> outputs{"bc"}; ///< Ordered runtime compression families; first is preferred.
+    std::string quality{"balanced"};        ///< Compression quality policy.
+};
+
 /** @brief Inline cooker target profile stored in the project descriptor. */
 struct cook_profile_descriptor
 {
@@ -166,7 +173,7 @@ struct cook_profile_descriptor
     std::string architecture{"x86_64"};    ///< Target architecture.
     std::string renderer{"vulkan"};        ///< Runtime renderer or none.
     std::string api{"1.2"};                ///< Target graphics API baseline.
-    std::string texture_family{"bc"};      ///< Runtime texture compression family.
+    texture_cook_profile_settings textures; ///< Runtime texture output policy.
     std::string configuration{"Shipping"}; ///< Build configuration used for cooking.
 };
 
