@@ -22,6 +22,7 @@
 #include <arc/framework/framework.h>
 #include <arc/project/project.h>
 #include <arc/render/render.h>
+#include <arc/render/primitives.h>
 #include <arc/render_tools/render_tools.h>
 #include <arc/scene/scene.h>
 #include <arc/water/water.h>
@@ -161,6 +162,12 @@ struct viewport_surface_registry
         std::uint64_t preview_material_generation{};
         std::uint64_t preview_live_material_generation{};
         std::uint64_t preview_asset_generation{};
+        editor_primitive_type preview_primitive_type{editor_primitive_type::sphere};
+        bool preview_auto_rotate{true};
+        float preview_rotation_radians{};
+        std::chrono::steady_clock::time_point preview_rotation_time{};
+        bool preview_material_ready{};
+        bool preview_ready{};
         std::string preview_error;
     };
 
@@ -414,6 +421,68 @@ geometric::box3f assigned_mesh_bounds(const render::mesh_data& mesh)
     return geometric::box3f{geometric::point3f{minimum}, geometric::point3f{maximum}};
 }
 
+std::optional<editor_primitive_type> material_preview_primitive_type(std::string_view token)
+{
+    if (token == "sphere") return editor_primitive_type::sphere;
+    if (token == "cube") return editor_primitive_type::cube;
+    if (token == "pill" || token == "capsule") return editor_primitive_type::capsule;
+    return std::nullopt;
+}
+
+std::string_view material_preview_primitive_token(editor_primitive_type type) noexcept
+{
+    switch (type)
+    {
+        case editor_primitive_type::cube:
+            return "cube";
+        case editor_primitive_type::capsule:
+            return "pill";
+        default:
+            return "sphere";
+    }
+}
+
+render::mesh_data make_material_preview_mesh(editor_primitive_type type)
+{
+    switch (type)
+    {
+        case editor_primitive_type::cube:
+            return render::make_cube_mesh(1.0f);
+        case editor_primitive_type::capsule:
+            return render::make_capsule_mesh(0.5f, 1.0f, 32, 8);
+        default:
+            return render::make_uv_sphere_mesh(0.5f, 32, 16);
+    }
+}
+
+bool replace_material_preview_mesh(viewport_surface_registry::surface_state& surface, render::renderer& renderer,
+                                   editor_primitive_type type)
+{
+    if (!surface.preview_scene || !surface.preview_scene->scene.alive(surface.preview_entity)) return false;
+    auto* mesh_renderer =
+        surface.preview_scene->scene.try_get<scene::mesh_renderer_component>(surface.preview_entity);
+    auto* bounds = surface.preview_scene->scene.try_get<scene::bounds_component>(surface.preview_entity);
+    if (!mesh_renderer || !bounds) return false;
+
+    auto mesh = make_material_preview_mesh(type);
+    const auto local_bounds = assigned_mesh_bounds(mesh);
+    const auto replacement = renderer.create_mesh(mesh);
+    if (!replacement.valid()) return false;
+
+    const auto previous = mesh_renderer->mesh;
+    mesh_renderer->mesh = replacement;
+    bounds->local_bounds = local_bounds;
+    bounds->world_bounds = local_bounds;
+    bounds->dirty = true;
+    if (auto* name = surface.preview_scene->scene.try_get<scene::name_component>(surface.preview_entity))
+        name->value = "Asset Preview " + std::string{primitive_type_name(type)};
+
+    surface.preview_mesh = replacement;
+    surface.preview_primitive_type = type;
+    if (previous.valid()) (void)renderer.destroy_mesh(previous);
+    return true;
+}
+
 template <class HostState>
 bool refresh_asset_preview_material(HostState& host, viewport_surface_registry::surface_state& surface)
 {
@@ -497,6 +566,8 @@ bool refresh_asset_preview_material(HostState& host, viewport_surface_registry::
     }
     mesh_renderer->material = surface.preview_material;
     surface.preview_material_generation = generation;
+    surface.preview_material_ready = true;
+    surface.preview_ready = false;
     surface.preview_error.clear();
 
     arc::diagnostics::info("editor.materials",
@@ -557,6 +628,8 @@ bool apply_live_asset_preview_material(HostState& host, viewport_surface_registr
     // Mark this as current for the asset generation so the per-frame saved-asset
     // refresh does not immediately overwrite the in-memory editor material.
     surface.preview_material_generation = asset->generation;
+    surface.preview_material_ready = true;
+    surface.preview_ready = false;
     surface.preview_error.clear();
     arc::diagnostics::info(
         "editor.materials",
@@ -652,7 +725,7 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
     preview->primitive_material =
         host.scene.primitive_material.valid() ? host.scene.primitive_material : host.scene.default_material;
     const auto preview_type = surface.preview_kind == asset_preview_kind::material
-                                  ? arc_material_preview_primitive_type(surface.options.viewport_id)
+                                  ? surface.preview_primitive_type
                                   : editor_primitive_type::sphere;
     const auto preview_entity =
         surface.preview_kind == asset_preview_kind::material
@@ -742,6 +815,10 @@ void cleanup_asset_preview_surface(viewport_surface_registry::surface_state& sur
     surface.preview_material_generation = 0;
     surface.preview_live_material_generation = 0;
     surface.preview_asset_generation = 0;
+    surface.preview_rotation_radians = 0.0f;
+    surface.preview_rotation_time = {};
+    surface.preview_material_ready = false;
+    surface.preview_ready = false;
 }
 
 void reset_asset_preview_scenes(viewport_surface_registry& surfaces, render::renderer& renderer)
@@ -901,6 +978,41 @@ host_response arc_host::execute(const host_command_envelope& command)
     if (viewport_surface->preview_kind != asset_preview_kind::none)
         (void)ensure_asset_preview_scene(*state_, *viewport_surface);
     activate_viewport_surface(*state_, *viewport_surface);
+
+    if (const auto* options = std::get_if<host_viewport_set_render_options_command>(&command.payload);
+        options && viewport_surface->preview_kind == asset_preview_kind::material)
+    {
+        const auto preview_type = material_preview_primitive_type(options->material_preview_mesh);
+        if (!preview_type)
+        {
+            host_response response{.request_id = command.request_id,
+                                   .succeeded = false,
+                                   .error = "Unsupported material preview mesh: " + options->material_preview_mesh};
+            response.scene_revision = state_->scene_revision;
+            response.world_epoch = state_->world_epoch;
+            response.frame_revision = state_->viewport_frame_index;
+            return response;
+        }
+
+        if (*preview_type != viewport_surface->preview_primitive_type)
+        {
+            if (!state_->renderer ||
+                !replace_material_preview_mesh(*viewport_surface, *state_->renderer, *preview_type))
+            {
+                host_response response{.request_id = command.request_id,
+                                       .succeeded = false,
+                                       .error = "Renderer could not replace the material preview mesh"};
+                response.scene_revision = state_->scene_revision;
+                response.world_epoch = state_->world_epoch;
+                response.frame_revision = state_->viewport_frame_index;
+                return response;
+            }
+        }
+
+        if (viewport_surface->preview_auto_rotate != options->material_preview_auto_rotate)
+            viewport_surface->preview_rotation_time = {};
+        viewport_surface->preview_auto_rotate = options->material_preview_auto_rotate;
+    }
 
     if (const auto* pick = std::get_if<host_viewport_pick_command>(&command.payload);
         pick && viewport_surface->preview_kind == asset_preview_kind::none &&
@@ -1321,6 +1433,14 @@ host_response arc_host::query(const host_query_envelope& query) const
     {
         payload["assetPreviewKind"] = asset_preview_kind_name(viewport_surface->preview_kind);
         payload["assetPreviewGuid"] = assets::to_string(viewport_surface->preview_guid);
+        payload["assetPreviewReady"] = viewport_surface->preview_kind != asset_preview_kind::material ||
+                                       viewport_surface->preview_ready;
+        if (viewport_surface->preview_kind == asset_preview_kind::material)
+        {
+            payload["assetPreviewMesh"] =
+                material_preview_primitive_token(viewport_surface->preview_primitive_type);
+            payload["assetPreviewAutoRotate"] = viewport_surface->preview_auto_rotate;
+        }
         if (!viewport_surface->preview_error.empty()) payload["assetPreviewError"] = viewport_surface->preview_error;
     }
 
@@ -1379,11 +1499,41 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
     }
 
     const auto request_time = std::chrono::steady_clock::now();
+    if (viewport_surface->preview_kind == asset_preview_kind::material && viewport_surface->preview_scene)
+    {
+        if (viewport_surface->preview_auto_rotate)
+        {
+            if (auto* transform = viewport_surface->preview_scene->scene.try_get<scene::transform_component>(
+                    viewport_surface->preview_entity))
+            {
+                if (viewport_surface->preview_rotation_time.time_since_epoch().count() != 0)
+                {
+                    const float delta_seconds = std::clamp(
+                        std::chrono::duration<float>(request_time - viewport_surface->preview_rotation_time).count(),
+                        0.0f, 0.1f);
+                    viewport_surface->preview_rotation_radians =
+                        std::fmod(viewport_surface->preview_rotation_radians + delta_seconds * 0.35f,
+                                  math::two_pi<float>);
+                    transform->set_rotation(math::from_axis_angle(math::vector3f{0.0f, 1.0f, 0.0f},
+                                                                  viewport_surface->preview_rotation_radians));
+                }
+                viewport_surface->preview_rotation_time = request_time;
+            }
+        }
+        else
+        {
+            viewport_surface->preview_rotation_time = {};
+        }
+    }
+
     host_viewport_frame response;
     {
         asset_preview_scene_scope preview_scope(*state_, *viewport_surface);
         response = request_viewport_base(routed_request);
     }
+    if (viewport_surface->preview_kind == asset_preview_kind::material &&
+        viewport_surface->preview_material_ready && response.submitted)
+        viewport_surface->preview_ready = true;
 
     if (suspended_pick)
         state_->pending_pick = std::move(suspended_pick);
