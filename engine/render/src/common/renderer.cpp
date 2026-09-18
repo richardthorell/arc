@@ -1113,8 +1113,8 @@ texture_handle renderer::create_streamed_texture(streamed_texture_descriptor des
     if (validation != streamed_texture_validation_error::none)
     {
         arc::diagnostics::warn("render.texture_streaming",
-                               "Rejected streamed texture '" + descriptor.texture.name + "': " +
-                                   std::string(streamed_texture_validation_error_message(validation)));
+                               "Rejected streamed texture '" + descriptor.texture.name +
+                                   "': " + std::string(streamed_texture_validation_error_message(validation)));
         return {};
     }
     const texture_handle handle = texture_handles_.allocate();
@@ -1141,8 +1141,8 @@ bool renderer::update_streamed_texture(texture_handle handle, streamed_texture_d
     if (validation != streamed_texture_validation_error::none)
     {
         arc::diagnostics::warn("render.texture_streaming",
-                               "Rejected streamed texture update '" + descriptor.texture.name + "': " +
-                                   std::string(streamed_texture_validation_error_message(validation)));
+                               "Rejected streamed texture update '" + descriptor.texture.name +
+                                   "': " + std::string(streamed_texture_validation_error_message(validation)));
         return false;
     }
     const auto key = renderer_resource_key(handle);

@@ -90,11 +90,34 @@ arc::render::streamed_texture_descriptor make_cube_streamed_descriptor()
     descriptor.artifact.depth = 1;
     descriptor.artifact.array_layers = 1;
     descriptor.artifact.face_count = 6;
-    descriptor.artifact.mips = {
-        {.width = 8, .height = 8, .depth = 1, .offset = 4096, .stored_size = 1536, .decoded_size = 1536, .content_hash = 1},
-        {.width = 4, .height = 4, .depth = 1, .offset = 8192, .stored_size = 384, .decoded_size = 384, .content_hash = 2},
-        {.width = 2, .height = 2, .depth = 1, .offset = 12288, .stored_size = 96, .decoded_size = 96, .content_hash = 3},
-        {.width = 1, .height = 1, .depth = 1, .offset = 16384, .stored_size = 24, .decoded_size = 24, .content_hash = 4}};
+    descriptor.artifact.mips = {{.width = 8,
+                                 .height = 8,
+                                 .depth = 1,
+                                 .offset = 4096,
+                                 .stored_size = 1536,
+                                 .decoded_size = 1536,
+                                 .content_hash = 1},
+                                {.width = 4,
+                                 .height = 4,
+                                 .depth = 1,
+                                 .offset = 8192,
+                                 .stored_size = 384,
+                                 .decoded_size = 384,
+                                 .content_hash = 2},
+                                {.width = 2,
+                                 .height = 2,
+                                 .depth = 1,
+                                 .offset = 12288,
+                                 .stored_size = 96,
+                                 .decoded_size = 96,
+                                 .content_hash = 3},
+                                {.width = 1,
+                                 .height = 1,
+                                 .depth = 1,
+                                 .offset = 16384,
+                                 .stored_size = 24,
+                                 .decoded_size = 24,
+                                 .content_hash = 4}};
     return descriptor;
 }
 
@@ -112,7 +135,13 @@ arc::render::streamed_texture_descriptor make_volume_streamed_descriptor()
     descriptor.artifact.array_layers = 1;
     descriptor.artifact.face_count = 1;
     descriptor.artifact.mips = {
-        {.width = 8, .height = 4, .depth = 4, .offset = 4096, .stored_size = 512, .decoded_size = 512, .content_hash = 1},
+        {.width = 8,
+         .height = 4,
+         .depth = 4,
+         .offset = 4096,
+         .stored_size = 512,
+         .decoded_size = 512,
+         .content_hash = 1},
         {.width = 4, .height = 2, .depth = 2, .offset = 8192, .stored_size = 64, .decoded_size = 64, .content_hash = 2},
         {.width = 2, .height = 1, .depth = 1, .offset = 12288, .stored_size = 8, .decoded_size = 8, .content_hash = 3},
         {.width = 1, .height = 1, .depth = 1, .offset = 16384, .stored_size = 4, .decoded_size = 4, .content_hash = 4}};
@@ -138,8 +167,7 @@ TEST_CASE("streamed texture validation accepts atomic cube and volume mips")
 
     auto cube_array = cube;
     cube_array.artifact.array_layers = 2;
-    CHECK(validate_streamed_texture_descriptor(cube_array) ==
-          streamed_texture_validation_error::unsupported_topology);
+    CHECK(validate_streamed_texture_descriptor(cube_array) == streamed_texture_validation_error::unsupported_topology);
 
     auto virtual_volume = volume;
     virtual_volume.mode = texture_streaming_mode::virtual_tiles;
@@ -183,9 +211,8 @@ TEST_CASE("texture residency streams cube faces and 3D volumes as one mip unit")
     REQUIRE(cube_mip != loads.end());
     CHECK(cube_mip->byte_size == 2u * 2u * 6u * 4u);
 
-    const auto volume_mip =
-        std::find_if(loads.begin(), loads.end(),
-                     [&](const auto& load) { return load.resource == volume_handle && load.mip == 2; });
+    const auto volume_mip = std::find_if(loads.begin(), loads.end(), [&](const auto& load)
+                                         { return load.resource == volume_handle && load.mip == 2; });
     REQUIRE(volume_mip != loads.end());
     CHECK(volume_mip->byte_size == 2u * 1u * 1u * 4u);
 

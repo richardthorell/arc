@@ -37,8 +37,7 @@ validate_streamed_texture_descriptor(const streamed_texture_descriptor& descript
 {
     const auto& texture = descriptor.texture;
     const auto& artifact = descriptor.artifact;
-    if (descriptor.mode == texture_streaming_mode::resident)
-        return streamed_texture_validation_error::resident_mode;
+    if (descriptor.mode == texture_streaming_mode::resident) return streamed_texture_validation_error::resident_mode;
     if (descriptor.source == 0) return streamed_texture_validation_error::missing_source;
     if (descriptor.content_generation == 0) return streamed_texture_validation_error::missing_generation;
     if (texture.width == 0 || texture.height == 0 || texture.depth == 0 || texture.mip_levels == 0)
@@ -51,8 +50,7 @@ validate_streamed_texture_descriptor(const streamed_texture_descriptor& descript
         artifact.format != texture.format || artifact.mips.size() != artifact.mip_count ||
         artifact.tail_first_mip >= artifact.mip_count)
         return streamed_texture_validation_error::artifact_metadata_mismatch;
-    if (descriptor.mode == texture_streaming_mode::virtual_tiles &&
-        texture.dimension != texture_dimension::texture_2d)
+    if (descriptor.mode == texture_streaming_mode::virtual_tiles && texture.dimension != texture_dimension::texture_2d)
         return streamed_texture_validation_error::virtual_tiles_require_2d;
 
     switch (texture.dimension)
