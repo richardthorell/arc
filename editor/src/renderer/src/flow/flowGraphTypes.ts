@@ -17,6 +17,9 @@ export type FlowNodeType =
   | 'fixedTick'
   | 'inputAction'
   | 'customEvent'
+  | 'functionEntry'
+  | 'functionReturn'
+  | 'callFunction'
   | 'branch'
   | 'sequence'
   | 'switchInt'
@@ -69,7 +72,16 @@ export type FlowNodeType =
   | 'convertNumber';
 
 export type FlowNodeCategory =
-  'Events' | 'Input' | 'Flow Control' | 'Interface' | 'Entity' | 'Components' | 'Values' | 'Variables' | 'Math';
+  | 'Events'
+  | 'Input'
+  | 'Flow Control'
+  | 'Interface'
+  | 'Functions'
+  | 'Entity'
+  | 'Components'
+  | 'Values'
+  | 'Variables'
+  | 'Math';
 export type FlowNodeSubcategory =
   | 'Lifecycle'
   | 'Update'
@@ -82,6 +94,7 @@ export type FlowNodeSubcategory =
   | 'Timing'
   | 'Custom'
   | 'Graph Interface'
+  | 'Local'
   | 'Identity'
   | 'Lifetime'
   | 'State'
@@ -123,12 +136,20 @@ export type FlowEventDefinition = {
   name: string;
 };
 
+export type FlowFunctionDefinition = {
+  id: string;
+  name: string;
+  inputs: FlowInterfaceValueDefinition[];
+  outputs: FlowInterfaceValueDefinition[];
+};
+
 export type FlowGraph = {
   version: 1;
   variables: FlowVariableDefinition[];
   inputs?: FlowInterfaceValueDefinition[];
   outputs?: FlowInterfaceValueDefinition[];
   events?: FlowEventDefinition[];
+  functions?: FlowFunctionDefinition[];
   nodes: FlowGraphNode[];
   connections: FlowGraphConnection[];
   viewport: GraphViewport;
@@ -202,6 +223,30 @@ export const flowNodeDefinitions: Record<FlowNodeType, FlowNodeDefinition> = {
     subcategory: 'Custom',
     inputs: [],
     outputs: [execution('exec', 'Then')],
+  },
+  functionEntry: {
+    type: 'functionEntry',
+    title: 'Function Entry',
+    category: 'Functions',
+    subcategory: 'Local',
+    inputs: [],
+    outputs: [execution('exec', 'Then')],
+  },
+  functionReturn: {
+    type: 'functionReturn',
+    title: 'Function Return',
+    category: 'Functions',
+    subcategory: 'Local',
+    inputs: [execution('exec', 'In')],
+    outputs: [],
+  },
+  callFunction: {
+    type: 'callFunction',
+    title: 'Call Function',
+    category: 'Functions',
+    subcategory: 'Local',
+    inputs: [execution('exec', 'In')],
+    outputs: [execution('then', 'Then')],
   },
   branch: {
     type: 'branch',
@@ -679,8 +724,57 @@ const nodeConfiguredType = (node: FlowGraphNode): FlowValueType => {
     : 'any';
 };
 
+const nodeFunctionInterface = (node: FlowGraphNode, key: 'functionInputs' | 'functionOutputs') => {
+  const values = node.values[key];
+  if (!Array.isArray(values)) return [] as FlowInterfaceValueDefinition[];
+  return values.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const candidate = item as Partial<FlowInterfaceValueDefinition>;
+    if (
+      typeof candidate.id !== 'string' ||
+      typeof candidate.name !== 'string' ||
+      typeof candidate.type !== 'string' ||
+      !concreteFlowValueTypes.has(candidate.type as FlowValueType)
+    )
+      return [];
+    return [
+      {
+        id: candidate.id,
+        name: candidate.name,
+        type: candidate.type as FlowValueType,
+        defaultValue: candidate.defaultValue,
+      },
+    ];
+  });
+};
+
 export const resolveFlowNodeDefinition = (node: FlowGraphNode): FlowNodeDefinition => {
   const definition = flowNodeDefinitions[node.type];
+
+  if (node.type === 'functionEntry' || node.type === 'functionReturn' || node.type === 'callFunction') {
+    const inputs = nodeFunctionInterface(node, 'functionInputs');
+    const outputs = nodeFunctionInterface(node, 'functionOutputs');
+    const functionName =
+      typeof node.values.functionName === 'string' && node.values.functionName ? node.values.functionName : 'Function';
+    if (node.type === 'functionEntry')
+      return {
+        ...definition,
+        title: `${functionName} Entry`,
+        outputs: [execution('exec', 'Then'), ...inputs.map((item) => value(`input:${item.id}`, item.name, item.type))],
+      };
+    if (node.type === 'functionReturn')
+      return {
+        ...definition,
+        title: `${functionName} Return`,
+        inputs: [execution('exec', 'In'), ...outputs.map((item) => value(`output:${item.id}`, item.name, item.type))],
+      };
+    return {
+      ...definition,
+      title: functionName,
+      inputs: [execution('exec', 'In'), ...inputs.map((item) => value(`input:${item.id}`, item.name, item.type))],
+      outputs: [execution('then', 'Then'), ...outputs.map((item) => value(`output:${item.id}`, item.name, item.type))],
+    };
+  }
   let inputType = nodeConfiguredType(node);
   let outputType = inputType;
 
@@ -731,6 +825,10 @@ const defaultNodeValues = (type: FlowNodeType): Record<string, unknown> => {
     case 'customEvent':
     case 'callCustomEvent':
       return { eventId: '' };
+    case 'functionEntry':
+    case 'functionReturn':
+    case 'callFunction':
+      return { functionId: '', functionName: '', functionInputs: [], functionOutputs: [] };
     case 'graphInput':
     case 'graphOutput':
       return { interfaceId: '', interfaceType: 'float' };
@@ -795,6 +893,7 @@ export const createDefaultFlowGraph = (): FlowGraph => ({
   inputs: [],
   outputs: [],
   events: [],
+  functions: [],
   nodes: [createFlowNode('beginPlay', [120, 140])],
   connections: [],
   viewport: { x: 40, y: 40, zoom: 1 },
@@ -878,6 +977,19 @@ const isEvent = (value: unknown): value is FlowEventDefinition => {
   return typeof event.id === 'string' && typeof event.name === 'string';
 };
 
+const isFunction = (value: unknown): value is FlowFunctionDefinition => {
+  if (!value || typeof value !== 'object') return false;
+  const functionValue = value as Partial<FlowFunctionDefinition>;
+  return (
+    typeof functionValue.id === 'string' &&
+    typeof functionValue.name === 'string' &&
+    Array.isArray(functionValue.inputs) &&
+    functionValue.inputs.every(isInterfaceValue) &&
+    Array.isArray(functionValue.outputs) &&
+    functionValue.outputs.every(isInterfaceValue)
+  );
+};
+
 export const isFlowGraph = (value: unknown): value is FlowGraph => {
   if (!value || typeof value !== 'object') return false;
   const graph = value as Partial<FlowGraph>;
@@ -889,6 +1001,8 @@ export const isFlowGraph = (value: unknown): value is FlowGraph => {
   if (graph.outputs !== undefined && (!Array.isArray(graph.outputs) || !graph.outputs.every(isInterfaceValue)))
     return false;
   if (graph.events !== undefined && (!Array.isArray(graph.events) || !graph.events.every(isEvent))) return false;
+  if (graph.functions !== undefined && (!Array.isArray(graph.functions) || !graph.functions.every(isFunction)))
+    return false;
 
   const nodeIds = new Set<string>();
   for (const node of graph.nodes) {
@@ -936,5 +1050,6 @@ export const flowGraphFromAsset = (asset: FlowAssetJson): FlowGraph => {
   graph.inputs ??= [];
   graph.outputs ??= [];
   graph.events ??= [];
+  graph.functions ??= [];
   return graph;
 };

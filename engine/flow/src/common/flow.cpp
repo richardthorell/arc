@@ -26,6 +26,9 @@ enum class node_kind : std::uint8_t
     fixed_tick,
     input_action,
     custom_event,
+    function_entry,
+    function_return,
+    call_function,
     branch,
     sequence,
     switch_integer,
@@ -123,6 +126,7 @@ struct source_graph
     std::vector<graph_interface_value> graph_inputs;
     std::vector<graph_interface_value> graph_outputs;
     std::vector<custom_event_definition> custom_events;
+    std::vector<function_definition> functions;
     std::vector<source_node> nodes;
     std::vector<source_connection> connections;
 };
@@ -153,6 +157,9 @@ std::optional<node_kind> parse_node_kind(std::string_view value)
     if (value == "fixedTick") return node_kind::fixed_tick;
     if (value == "inputAction") return node_kind::input_action;
     if (value == "customEvent") return node_kind::custom_event;
+    if (value == "functionEntry") return node_kind::function_entry;
+    if (value == "functionReturn") return node_kind::function_return;
+    if (value == "callFunction") return node_kind::call_function;
     if (value == "branch") return node_kind::branch;
     if (value == "sequence") return node_kind::sequence;
     if (value == "switchInt") return node_kind::switch_integer;
@@ -359,6 +366,26 @@ const custom_event_definition* custom_event_for(const source_graph& graph, const
     return found == graph.custom_events.end() ? nullptr : &*found;
 }
 
+const function_definition* function_for(const source_graph& graph, const source_node& node)
+{
+    const auto iterator = node.values.find("functionId");
+    if (iterator == node.values.end() || !iterator->is_string()) return nullptr;
+    const std::string id = iterator->get<std::string>();
+    const auto found = std::find_if(graph.functions.begin(), graph.functions.end(),
+                                    [&id](const function_definition& item) { return item.id == id; });
+    return found == graph.functions.end() ? nullptr : &*found;
+}
+
+const graph_interface_value* function_pin_value(const std::vector<graph_interface_value>& values,
+                                                std::string_view prefix, std::string_view pin)
+{
+    if (!pin.starts_with(prefix)) return nullptr;
+    const std::string_view id = pin.substr(prefix.size());
+    const auto found = std::find_if(values.begin(), values.end(),
+                                    [id](const graph_interface_value& item) { return item.id == id; });
+    return found == values.end() ? nullptr : &*found;
+}
+
 std::optional<value_type> literal_type(node_kind kind)
 {
     switch (kind)
@@ -423,7 +450,8 @@ std::optional<value_type> convert_input_type(const source_node& node)
 bool is_event_node(node_kind kind)
 {
     return kind == node_kind::begin_play || kind == node_kind::end_play || kind == node_kind::tick ||
-           kind == node_kind::fixed_tick || kind == node_kind::input_action || kind == node_kind::custom_event;
+           kind == node_kind::fixed_tick || kind == node_kind::input_action || kind == node_kind::custom_event ||
+           kind == node_kind::function_entry;
 }
 
 bool is_executable_node(node_kind kind)
@@ -441,6 +469,8 @@ bool is_executable_node(node_kind kind)
         case node_kind::retriggerable_delay:
         case node_kind::timer:
         case node_kind::call_custom_event:
+        case node_kind::call_function:
+        case node_kind::function_return:
         case node_kind::graph_output:
         case node_kind::create_entity:
         case node_kind::destroy_entity:
@@ -512,6 +542,26 @@ std::optional<pin_info> output_pin(const source_graph& graph, const source_node&
             break;
         case node_kind::custom_event:
             if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+            break;
+        case node_kind::function_entry:
+        {
+            if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+            const function_definition* function = function_for(graph, node);
+            if (!function) break;
+            if (const auto* item = function_pin_value(function->inputs, "input:", pin))
+                return pin_info{.kind = pin_kind::value, .type = item->type};
+            break;
+        }
+        case node_kind::call_function:
+        {
+            if (pin == "then") return pin_info{.kind = pin_kind::execution};
+            const function_definition* function = function_for(graph, node);
+            if (!function) break;
+            if (const auto* item = function_pin_value(function->outputs, "output:", pin))
+                return pin_info{.kind = pin_kind::value, .type = item->type};
+            break;
+        }
+        case node_kind::function_return:
             break;
         case node_kind::branch:
             if (pin == "true" || pin == "false") return pin_info{.kind = pin_kind::execution};
@@ -683,6 +733,24 @@ std::optional<pin_info> input_pin(const source_graph& graph, const source_node& 
     if (node.kind == node_kind::call_custom_event)
     {
         if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+        return std::nullopt;
+    }
+    if (node.kind == node_kind::call_function)
+    {
+        if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+        const function_definition* function = function_for(graph, node);
+        if (!function) return std::nullopt;
+        if (const auto* item = function_pin_value(function->inputs, "input:", pin))
+            return pin_info{.kind = pin_kind::value, .type = item->type};
+        return std::nullopt;
+    }
+    if (node.kind == node_kind::function_return)
+    {
+        if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+        const function_definition* function = function_for(graph, node);
+        if (!function) return std::nullopt;
+        if (const auto* item = function_pin_value(function->outputs, "output:", pin))
+            return pin_info{.kind = pin_kind::value, .type = item->type};
         return std::nullopt;
     }
     if (node.kind == node_kind::graph_output)
@@ -877,23 +945,22 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
                                    .exposed = variable_json["exposed"].get<bool>()});
     }
 
-    const auto parse_interface = [&](std::string_view field, std::vector<graph_interface_value>& destination)
+    const auto parse_interface_array = [&](const json& source_values, std::vector<graph_interface_value>& destination,
+                                           std::string_view owner)
     {
-        const auto iterator = graph_json.find(std::string{field});
-        if (iterator == graph_json.end()) return;
-        if (!iterator->is_array())
+        if (!source_values.is_array())
         {
             add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_INTERFACE_SCHEMA",
-                           "Flow graph interface fields must be arrays.");
+                           std::string{owner} + " interface fields must be arrays.");
             return;
         }
 
-        for (const json& value_json : *iterator)
+        for (const json& value_json : source_values)
         {
             if (!value_json.is_object())
             {
                 add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_INTERFACE_VALUE_SCHEMA",
-                               "Flow graph interface entries must be objects.");
+                               std::string{owner} + " interface entries must be objects.");
                 continue;
             }
 
@@ -905,7 +972,7 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
             if (id.empty() || name.empty() || !type || default_iterator == value_json.end())
             {
                 add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_INTERFACE_VALUE_SCHEMA",
-                               "Flow graph interface values require id, name, type, and defaultValue.", id);
+                               std::string{owner} + " interface values require id, name, type, and defaultValue.", id);
                 continue;
             }
 
@@ -913,12 +980,19 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
             if (!parsed_default)
             {
                 add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_INTERFACE_DEFAULT",
-                               "Flow graph interface defaultValue does not match its declared type.", id);
+                               std::string{owner} + " interface defaultValue does not match its declared type.", id);
                 continue;
             }
 
             destination.push_back({.id = id, .name = name, .type = *type, .default_value = *parsed_default});
         }
+    };
+
+    const auto parse_interface = [&](std::string_view field, std::vector<graph_interface_value>& destination)
+    {
+        const auto iterator = graph_json.find(std::string{field});
+        if (iterator == graph_json.end()) return;
+        parse_interface_array(*iterator, destination, "Flow graph");
     };
     parse_interface("inputs", graph.graph_inputs);
     parse_interface("outputs", graph.graph_outputs);
@@ -947,6 +1021,40 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
                     continue;
                 }
                 graph.custom_events.push_back({.id = id, .name = name});
+            }
+    }
+
+    const auto functions_iterator = graph_json.find("functions");
+    if (functions_iterator != graph_json.end())
+    {
+        if (!functions_iterator->is_array())
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_FUNCTIONS_SCHEMA",
+                           "Flow graph functions must be an array.");
+        else
+            for (const json& function_json : *functions_iterator)
+            {
+                if (!function_json.is_object())
+                {
+                    add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_FUNCTION_SCHEMA",
+                                   "Flow function entries must be objects.");
+                    continue;
+                }
+
+                function_definition function;
+                function.id = function_json.value("id", std::string{});
+                function.name = function_json.value("name", std::string{});
+                const auto inputs = function_json.find("inputs");
+                const auto outputs = function_json.find("outputs");
+                if (function.id.empty() || function.name.empty() || inputs == function_json.end() ||
+                    outputs == function_json.end())
+                {
+                    add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_FUNCTION_SCHEMA",
+                                   "Flow functions require id, name, inputs, and outputs.", function.id);
+                    continue;
+                }
+                parse_interface_array(*inputs, function.inputs, "Flow function input");
+                parse_interface_array(*outputs, function.outputs, "Flow function output");
+                graph.functions.push_back(std::move(function));
             }
     }
 
@@ -1090,7 +1198,22 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
                            "Flow custom-event names must be unique.", event.id);
     }
 
+    std::unordered_set<std::string> function_ids;
+    std::unordered_set<std::string> function_names;
+    for (const function_definition& function : graph.functions)
+    {
+        if (!function_ids.insert(function.id).second)
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_DUPLICATE_FUNCTION_ID",
+                           "Flow function ids must be unique.", function.id);
+        if (!function_names.insert(function.name).second)
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_DUPLICATE_FUNCTION_NAME",
+                           "Flow function names must be unique.", function.id);
+        validate_interface(function.inputs, "function input");
+        validate_interface(function.outputs, "function output");
+    }
+
     std::unordered_set<std::string> custom_event_entries;
+    std::unordered_set<std::string> function_entries;
     for (const source_node& node : graph.nodes)
     {
         if (!state.nodes.emplace(node.id, &node).second)
@@ -1114,6 +1237,18 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
             else if (node.kind == node_kind::custom_event && !custom_event_entries.insert(event->id).second)
                 add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_DUPLICATE_EVENT_ENTRY",
                                "A custom event can have only one entry node.", node.id, "eventId");
+        }
+
+        if (node.kind == node_kind::function_entry || node.kind == node_kind::function_return ||
+            node.kind == node_kind::call_function)
+        {
+            const function_definition* function = function_for(graph, node);
+            if (!function)
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_FUNCTION_REFERENCE",
+                               "Function node references a function that does not exist.", node.id, "functionId");
+            else if (node.kind == node_kind::function_entry && !function_entries.insert(function->id).second)
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_DUPLICATE_FUNCTION_ENTRY",
+                               "A Flow function can have only one Function Entry node.", node.id, "functionId");
         }
 
         if (node.kind == node_kind::graph_input && !interface_value_for(graph.graph_inputs, node))
@@ -1214,6 +1349,11 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
                                "Gate requires a boolean startClosed value.", node.id, "startClosed");
         }
     }
+
+    for (const function_definition& function : graph.functions)
+        if (function_entries.find(function.id) == function_entries.end())
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_FUNCTION_ENTRY_MISSING",
+                           "Flow functions require exactly one Function Entry node.", function.id);
 
     std::unordered_set<std::string> connection_ids;
     for (const source_connection& connection : graph.connections)
@@ -1445,6 +1585,83 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
         if (visits.find(node.id) == visits.end() && !visit_value(node.id)) break;
     }
 
+    std::unordered_map<std::string, std::vector<std::string>> function_calls;
+    for (const source_node& entry : graph.nodes)
+    {
+        if (entry.kind != node_kind::function_entry) continue;
+        const function_definition* function = function_for(graph, entry);
+        if (!function) continue;
+
+        std::queue<std::string> function_pending;
+        std::unordered_set<std::string> function_seen;
+        bool has_return = false;
+        function_pending.push(entry.id);
+        function_seen.insert(entry.id);
+        while (!function_pending.empty())
+        {
+            const std::string current = function_pending.front();
+            function_pending.pop();
+            const auto node = state.nodes.find(current);
+            if (node == state.nodes.end()) continue;
+
+            if (node->second->kind == node_kind::delay || node->second->kind == node_kind::retriggerable_delay ||
+                node->second->kind == node_kind::timer)
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_FUNCTION_LATENT",
+                               "Flow functions are synchronous and cannot contain latent timing nodes.",
+                               node->second->id);
+
+            if (node->second->kind == node_kind::call_function)
+                if (const function_definition* target = function_for(graph, *node->second))
+                    function_calls[function->id].push_back(target->id);
+
+            if (node->second->kind == node_kind::function_return)
+            {
+                has_return = true;
+                const function_definition* owner = function_for(graph, *node->second);
+                if (!owner || owner->id != function->id)
+                    add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_FUNCTION_RETURN_SCOPE",
+                                   "Function Return must belong to the function whose body reaches it.",
+                                   node->second->id, "functionId");
+            }
+
+            const auto adjacency = state.execution_adjacency.find(current);
+            if (adjacency == state.execution_adjacency.end()) continue;
+            for (const std::string& target : adjacency->second)
+                if (function_seen.insert(target).second) function_pending.push(target);
+        }
+
+        if (!function->outputs.empty() && !has_return)
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_FUNCTION_RETURN_MISSING",
+                           "Flow functions with return values require a reachable Function Return node.",
+                           function->id);
+    }
+
+    visits.clear();
+    std::function<bool(const std::string&)> visit_function = [&](const std::string& function_id)
+    {
+        const auto existing = visits.find(function_id);
+        if (existing != visits.end())
+        {
+            if (existing->second == visit_state::visiting)
+            {
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_FUNCTION_RECURSION",
+                               "Recursive Flow function calls are not supported.", function_id);
+                return false;
+            }
+            return true;
+        }
+
+        visits[function_id] = visit_state::visiting;
+        const auto adjacency = function_calls.find(function_id);
+        if (adjacency != function_calls.end())
+            for (const std::string& target : adjacency->second)
+                if (!visit_function(target)) return false;
+        visits[function_id] = visit_state::visited;
+        return true;
+    };
+    for (const function_definition& function : graph.functions)
+        if (visits.find(function.id) == visits.end() && !visit_function(function.id)) break;
+
     std::queue<std::string> pending;
     for (const source_node& node : graph.nodes)
     {
@@ -1508,6 +1725,10 @@ ir_opcode executable_opcode_for(node_kind kind)
             return ir_opcode::timer_start;
         case node_kind::call_custom_event:
             return ir_opcode::call_custom_event;
+        case node_kind::call_function:
+            return ir_opcode::call_function;
+        case node_kind::function_return:
+            return ir_opcode::return_function;
         case node_kind::graph_output:
             return ir_opcode::store_graph_output;
         case node_kind::set_variable:
@@ -1588,6 +1809,7 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
     program.graph_inputs = graph.graph_inputs;
     program.graph_outputs = graph.graph_outputs;
     program.custom_events = graph.custom_events;
+    program.functions = graph.functions;
     std::sort(program.variables.begin(), program.variables.end(),
               [](const variable& left, const variable& right) { return left.id < right.id; });
     std::sort(program.graph_inputs.begin(), program.graph_inputs.end(),
@@ -1597,6 +1819,8 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
     std::sort(program.custom_events.begin(), program.custom_events.end(),
               [](const custom_event_definition& left, const custom_event_definition& right)
               { return left.id < right.id; });
+    std::sort(program.functions.begin(), program.functions.end(),
+              [](const function_definition& left, const function_definition& right) { return left.id < right.id; });
 
     std::unordered_map<std::string, std::uint32_t> variable_indices;
     for (std::uint32_t index = 0; index < program.variables.size(); ++index)
@@ -1605,6 +1829,10 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
     std::unordered_map<std::string, std::uint32_t> event_indices;
     for (std::uint32_t index = 0; index < program.custom_events.size(); ++index)
         event_indices.emplace(program.custom_events[index].id, index);
+
+    std::unordered_map<std::string, std::uint32_t> function_indices;
+    for (std::uint32_t index = 0; index < program.functions.size(); ++index)
+        function_indices.emplace(program.functions[index].id, index);
 
     const auto nodes = sorted_nodes(graph);
     std::unordered_map<std::string, std::uint32_t> value_slots;
@@ -1637,6 +1865,11 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
     };
     allocate_interface_slots(program.graph_inputs, "input");
     allocate_interface_slots(program.graph_outputs, "output");
+    for (function_definition& function : program.functions)
+    {
+        allocate_interface_slots(function.inputs, std::string{"function-input:"} + function.id);
+        allocate_interface_slots(function.outputs, std::string{"function-output:"} + function.id);
+    }
 
     for (const source_node* node : nodes)
     {
@@ -1656,6 +1889,21 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                     std::find_if(program.graph_inputs.begin(), program.graph_inputs.end(),
                                  [&](const graph_interface_value& candidate) { return candidate.id == source->id; });
                 value_slots.emplace(pin_key(node->id, "value"), item->slot);
+                break;
+            }
+            case node_kind::function_entry:
+            {
+                const function_definition* source = function_for(graph, *node);
+                function_definition& function = program.functions[function_indices.at(source->id)];
+                for (const graph_interface_value& input : function.inputs)
+                    value_slots.emplace(pin_key(node->id, std::string{"input:"} + input.id), input.slot);
+                break;
+            }
+            case node_kind::call_function:
+            {
+                const function_definition* function = function_for(graph, *node);
+                for (const graph_interface_value& output : function->outputs)
+                    allocate_slot(*node, std::string{"output:"} + output.id, output.type, output.default_value);
                 break;
             }
             case node_kind::self_entity:
@@ -2085,6 +2333,49 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                 instruction.operand1 = execution_target(*node, "then");
                 break;
             }
+            case node_kind::call_function:
+            {
+                const function_definition* source = function_for(graph, *node);
+                const std::uint32_t function_index = function_indices.at(source->id);
+                const function_definition& function = program.functions[function_index];
+                function_call_definition call{.function_index = function_index,
+                                              .continuation_instruction = execution_target(*node, "then")};
+                for (const graph_interface_value& input : function.inputs)
+                {
+                    const std::string pin = std::string{"input:"} + input.id;
+                    const auto incoming = validation.incoming.find(pin_key(node->id, pin));
+                    if (incoming == validation.incoming.end()) continue;
+                    call.inputs.push_back(
+                        {.source_slot = value_slots.at(pin_key(incoming->second->from.node_id, incoming->second->from.pin)),
+                         .destination_slot = input.slot});
+                }
+                for (const graph_interface_value& output : function.outputs)
+                    call.outputs.push_back(
+                        {.source_slot = output.slot,
+                         .destination_slot = value_slots.at(pin_key(node->id, std::string{"output:"} + output.id))});
+                instruction.operand0 = static_cast<std::uint32_t>(program.function_calls.size());
+                program.function_calls.push_back(std::move(call));
+                break;
+            }
+            case node_kind::function_return:
+            {
+                const function_definition* source = function_for(graph, *node);
+                const std::uint32_t function_index = function_indices.at(source->id);
+                const function_definition& function = program.functions[function_index];
+                function_return_definition function_return{.function_index = function_index};
+                for (const graph_interface_value& output : function.outputs)
+                {
+                    const std::string pin = std::string{"output:"} + output.id;
+                    const auto incoming = validation.incoming.find(pin_key(node->id, pin));
+                    if (incoming == validation.incoming.end()) continue;
+                    function_return.outputs.push_back(
+                        {.source_slot = value_slots.at(pin_key(incoming->second->from.node_id, incoming->second->from.pin)),
+                         .destination_slot = output.slot});
+                }
+                instruction.operand0 = static_cast<std::uint32_t>(program.function_returns.size());
+                program.function_returns.push_back(std::move(function_return));
+                break;
+            }
             case node_kind::graph_output:
             {
                 const graph_interface_value* source = interface_value_for(graph.graph_outputs, *node);
@@ -2239,6 +2530,12 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                                                 .instruction = execution_target(*node, "exec")});
                 break;
             }
+            case node_kind::function_entry:
+            {
+                const function_definition* function = function_for(graph, *node);
+                program.functions[function_indices.at(function->id)].instruction = execution_target(*node, "exec");
+                break;
+            }
             default:
                 break;
         }
@@ -2296,15 +2593,14 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
         if (is_executable_node(node->kind)) executable_nodes.push_back(node);
     }
 
-    for (ir_entry_point& entry : program.entry_points)
+    const auto add_self_prelude = [&](std::string_view root_node_id, std::uint32_t target)
     {
-        std::uint32_t target = entry.instruction;
         for (auto iterator = self_nodes.rbegin(); iterator != self_nodes.rend(); ++iterator)
         {
             const source_node& self = **iterator;
             const bool needed =
                 std::any_of(executable_nodes.begin(), executable_nodes.end(), [&](const source_node* node)
-                            { return reachable_from(entry.node_id, node->id) && value_reaches(self.id, node->id); });
+                            { return reachable_from(root_node_id, node->id) && value_reaches(self.id, node->id); });
             if (!needed) continue;
 
             const auto index = static_cast<std::uint32_t>(program.instructions.size());
@@ -2314,7 +2610,22 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                                             .operand1 = target});
             target = index;
         }
-        entry.instruction = target;
+        return target;
+    };
+
+    for (ir_entry_point& entry : program.entry_points)
+        entry.instruction = add_self_prelude(entry.node_id, entry.instruction);
+
+    for (function_definition& function : program.functions)
+    {
+        const auto entry_node = std::find_if(nodes.begin(), nodes.end(), [&](const source_node* node)
+                                             {
+                                                 if (node->kind != node_kind::function_entry) return false;
+                                                 const function_definition* source = function_for(graph, *node);
+                                                 return source && source->id == function.id;
+                                             });
+        if (entry_node != nodes.end())
+            function.instruction = add_self_prelude((*entry_node)->id, function.instruction);
     }
 
     return program;
@@ -2358,6 +2669,10 @@ bytecode_opcode lower_opcode(ir_opcode opcode)
             return bytecode_opcode::call_custom_event;
         case ir_opcode::store_graph_output:
             return bytecode_opcode::store_graph_output;
+        case ir_opcode::call_function:
+            return bytecode_opcode::call_function;
+        case ir_opcode::return_function:
+            return bytecode_opcode::return_function;
         case ir_opcode::load_variable:
             return bytecode_opcode::load_variable;
         case ir_opcode::store_variable:
@@ -2441,6 +2756,9 @@ bytecode_program lower_bytecode(const ir_program& ir)
     bytecode.graph_inputs = ir.graph_inputs;
     bytecode.graph_outputs = ir.graph_outputs;
     bytecode.custom_events = ir.custom_events;
+    bytecode.functions = ir.functions;
+    bytecode.function_calls = ir.function_calls;
+    bytecode.function_returns = ir.function_returns;
     bytecode.switch_int_tables = ir.switch_int_tables;
     bytecode.latent_actions = ir.latent_actions;
     bytecode.value_slots.reserve(ir.value_slots.size());

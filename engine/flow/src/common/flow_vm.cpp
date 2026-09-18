@@ -113,6 +113,17 @@ bool is_graph_output_slot(const bytecode_program& program, std::uint32_t slot)
                        [slot](const graph_interface_value& item) { return item.slot == slot; });
 }
 
+bool function_interface_slot(const std::vector<graph_interface_value>& values, std::uint32_t slot)
+{
+    return std::any_of(values.begin(), values.end(),
+                       [slot](const graph_interface_value& item) { return item.slot == slot; });
+}
+
+bool function_binding_valid(const bytecode_program& program, const function_slot_binding& binding)
+{
+    return same_slot_type(program, binding.source_slot, binding.destination_slot);
+}
+
 bool validate_program(const bytecode_program& program)
 {
     if (program.version != flow_bytecode_version) return false;
@@ -149,6 +160,49 @@ bool validate_program(const bytecode_program& program)
             return false;
 
     std::unordered_set<std::string> custom_event_entries;
+
+    std::unordered_set<std::string> function_ids;
+    std::unordered_set<std::string> function_names;
+    for (const function_definition& function : program.functions)
+    {
+        if (function.id.empty() || function.name.empty() || !function_ids.insert(function.id).second ||
+            !function_names.insert(function.name).second || !validate_interface(function.inputs) ||
+            !validate_interface(function.outputs) || !valid_instruction_target(program, function.instruction))
+            return false;
+    }
+
+    for (const function_call_definition& call : program.function_calls)
+    {
+        if (call.function_index >= program.functions.size() ||
+            !valid_instruction_target(program, call.continuation_instruction))
+            return false;
+        const function_definition& function = program.functions[call.function_index];
+        std::unordered_set<std::uint32_t> input_destinations;
+        for (const function_slot_binding& binding : call.inputs)
+            if (!function_binding_valid(program, binding) ||
+                !function_interface_slot(function.inputs, binding.destination_slot) ||
+                !input_destinations.insert(binding.destination_slot).second)
+                return false;
+        std::unordered_set<std::uint32_t> output_sources;
+        for (const function_slot_binding& binding : call.outputs)
+            if (!function_binding_valid(program, binding) ||
+                !function_interface_slot(function.outputs, binding.source_slot) ||
+                !output_sources.insert(binding.source_slot).second)
+                return false;
+    }
+
+    for (const function_return_definition& function_return : program.function_returns)
+    {
+        if (function_return.function_index >= program.functions.size()) return false;
+        const function_definition& function = program.functions[function_return.function_index];
+        std::unordered_set<std::uint32_t> output_destinations;
+        for (const function_slot_binding& binding : function_return.outputs)
+            if (!function_binding_valid(program, binding) ||
+                !function_interface_slot(function.outputs, binding.destination_slot) ||
+                !output_destinations.insert(binding.destination_slot).second)
+                return false;
+    }
+
     for (const switch_int_table& table : program.switch_int_tables)
     {
         std::unordered_set<std::int64_t> unique;
@@ -283,6 +337,12 @@ bool validate_program(const bytecode_program& program)
                     !same_slot_type(program, instruction.operand0, instruction.operand1) ||
                     !valid_instruction_target(program, instruction.operand2))
                     return false;
+                break;
+            case bytecode_opcode::call_function:
+                if (instruction.operand0 >= program.function_calls.size()) return false;
+                break;
+            case bytecode_opcode::return_function:
+                if (instruction.operand0 >= program.function_returns.size()) return false;
                 break;
             case bytecode_opcode::load_variable:
             case bytecode_opcode::store_variable:
@@ -1005,6 +1065,30 @@ execution_result execute_chain(const bytecode_program& program, std::vector<flow
                 value_slots[current.operand0] = value_slots[current.operand1];
                 instruction = current.operand2;
                 break;
+            case bytecode_opcode::call_function:
+            {
+                const function_call_definition& call = program.function_calls[current.operand0];
+                const function_definition& function = program.functions[call.function_index];
+                for (const graph_interface_value& input : function.inputs)
+                    value_slots[input.slot] = input.default_value;
+                for (const graph_interface_value& output : function.outputs)
+                    value_slots[output.slot] = output.default_value;
+                for (const function_slot_binding& binding : call.inputs)
+                    value_slots[binding.destination_slot] = value_slots[binding.source_slot];
+                if (!run_nested(function.instruction)) return result;
+                for (const function_slot_binding& binding : call.outputs)
+                    value_slots[binding.destination_slot] = value_slots[binding.source_slot];
+                instruction = call.continuation_instruction;
+                break;
+            }
+            case bytecode_opcode::return_function:
+            {
+                const function_return_definition& function_return = program.function_returns[current.operand0];
+                for (const function_slot_binding& binding : function_return.outputs)
+                    value_slots[binding.destination_slot] = value_slots[binding.source_slot];
+                instruction = invalid_instruction;
+                break;
+            }
             case bytecode_opcode::load_variable:
                 value_slots[current.operand1] = variable_values[current.operand0];
                 instruction = current.operand2;

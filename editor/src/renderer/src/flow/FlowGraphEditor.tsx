@@ -379,6 +379,7 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
     const event = graph.events?.[0];
     const graphInput = graph.inputs?.[0];
     const graphOutput = graph.outputs?.[0];
+    const flowFunction = graph.functions?.[0];
     const initialValues =
       (type === 'getVariable' || type === 'setVariable') && variable
         ? { variableId: variable.id, variableType: variable.type }
@@ -388,7 +389,14 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
             ? { interfaceId: graphInput.id, interfaceType: graphInput.type }
             : type === 'graphOutput' && graphOutput
               ? { interfaceId: graphOutput.id, interfaceType: graphOutput.type }
-              : {};
+              : (type === 'functionEntry' || type === 'functionReturn' || type === 'callFunction') && flowFunction
+                ? {
+                    functionId: flowFunction.id,
+                    functionName: flowFunction.name,
+                    functionInputs: structuredClone(flowFunction.inputs),
+                    functionOutputs: structuredClone(flowFunction.outputs),
+                  }
+                : {};
     const node = createFlowNode(type, addMenu.graph, initialValues);
     mutate((next) => next.nodes.push(node));
     setSelectedNodes(new Set([node.id]));
@@ -619,6 +627,38 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
                     {(graph.events ?? []).map((event) => (
                       <option key={event.id} value={event.id}>
                         {event.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              {(node.type === 'functionEntry' || node.type === 'functionReturn' || node.type === 'callFunction') && (
+                <label className="flow-node-inline-value">
+                  Function
+                  <select
+                    aria-label={
+                      node.type === 'functionEntry'
+                        ? 'Function entry'
+                        : node.type === 'functionReturn'
+                          ? 'Function return'
+                          : 'Call function'
+                    }
+                    disabled={document.readOnly || (graph.functions?.length ?? 0) === 0}
+                    onChange={(event) => {
+                      const item = (graph.functions ?? []).find((candidate) => candidate.id === event.target.value);
+                      setTypedNodeField(node.id, 'functionId', event.target.value, {
+                        functionName: item?.name ?? '',
+                        functionInputs: structuredClone(item?.inputs ?? []),
+                        functionOutputs: structuredClone(item?.outputs ?? []),
+                      });
+                    }}
+                    value={typeof node.values.functionId === 'string' ? node.values.functionId : ''}
+                  >
+                    {(graph.functions?.length ?? 0) === 0 && <option value="">No functions</option>}
+                    {(graph.functions ?? []).map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
                       </option>
                     ))}
                   </select>
