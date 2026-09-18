@@ -8,17 +8,18 @@ describe('UiPanelCard', () => {
   it('shares the component-card structure and supports controlled collapsing', () => {
     const onToggle = vi.fn();
     const { rerender } = render(
-      <UiPanelCard title="Material" onToggle={onToggle}>
+      <UiPanelCard subtitle="Surface options" title="Material" onToggle={onToggle}>
         <span>Settings</span>
       </UiPanelCard>,
     );
 
+    expect(screen.getByText('Surface options')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Collapse Material' }));
     expect(onToggle).toHaveBeenCalledTimes(1);
     expect(screen.getByText('Settings')).toBeTruthy();
 
     rerender(
-      <UiPanelCard collapsed title="Material" onToggle={onToggle}>
+      <UiPanelCard collapsed subtitle="Surface options" title="Material" onToggle={onToggle}>
         <span>Settings</span>
       </UiPanelCard>,
     );
