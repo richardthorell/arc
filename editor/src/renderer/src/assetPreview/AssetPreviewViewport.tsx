@@ -175,14 +175,17 @@ export function AssetPreviewViewport({
     materialAutoRotateRef.current = materialAutoRotate;
     if (kind !== 'material' || !attachedRef.current || !viewportId) return;
 
-    void window.arc.host
-      .command('viewport.setRenderOptions', {
+    void (async () => {
+      const response = (await window.arc.host.command('viewport.setRenderOptions', {
         viewportId,
         ...materialPreviewRenderOptions(),
         materialPreviewMesh: materialMesh,
         materialPreviewAutoRotate,
-      })
-      .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
+      })) as ViewportCommandResponse | undefined;
+      if (response?.succeeded === false)
+        throw new Error(response.error || 'Material preview options were rejected');
+      setError('');
+    })().catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
   }, [kind, materialAutoRotate, materialMesh, viewportId]);
 
   const traceViewportState = useCallback(
