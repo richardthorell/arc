@@ -1,8 +1,10 @@
 export const materialPreviewSphereRadius = 0.5;
-// Keep a visible gap between the near camera position and the preview primitive.
-// This prevents clipping into the mesh while still allowing close material inspection.
-export const materialPreviewSurfaceClearance = 0.3;
-export const materialPreviewMinimumCameraDistance = materialPreviewSphereRadius + materialPreviewSurfaceClearance;
+// The pill reaches 1.0 unit from the origin vertically and is the largest of
+// the initial preview meshes. Keep one conservative boundary for all three so
+// switching mesh cannot leave the camera inside the replacement primitive.
+export const materialPreviewMaximumMeshExtent = 1.0;
+export const materialPreviewSurfaceClearance = 0.2;
+export const materialPreviewMinimumCameraDistance = materialPreviewMaximumMeshExtent + materialPreviewSurfaceClearance;
 export const materialPreviewDefaultCameraDistance = 1.55;
 
 // The native preview currently starts at { 1.65, 0.55, 2.25 } looking at the origin.
