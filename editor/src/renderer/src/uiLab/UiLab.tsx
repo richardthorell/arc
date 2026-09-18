@@ -28,6 +28,8 @@ import {
   UiContextMenuItem,
   UiIconButton,
   UiPanel,
+  UiPanelCard,
+  UiPanelCardRow,
   UiPanelHeader,
   UiSearchInput,
   UiSelect,
@@ -35,6 +37,7 @@ import {
   UiTab,
   UiTabs,
   UiTextInput,
+  UiToggleButton,
   UiTreeRow,
 } from '../ui';
 
@@ -254,6 +257,9 @@ export function UiLab() {
   const [nativeNumber, setNativeNumber] = useState(60);
   const [radioValue, setRadioValue] = useState('static');
   const [realtime, setRealtime] = useState(true);
+  const [panelCardCollapsed, setPanelCardCollapsed] = useState(false);
+  const [panelQuality, setPanelQuality] = useState('High');
+  const [panelFeature, setPanelFeature] = useState(false);
 
   const filteredAssets = useMemo(
     () => demoAssets.filter((asset) => asset.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())),
@@ -430,14 +436,15 @@ export function UiLab() {
               ))}
             </fieldset>
           </LabCard>
-          <LabCard title="Switch" caption="toggle pattern">
-            <label className="ui-lab-switch">
-              <input checked={realtime} onChange={(event) => setRealtime(event.target.checked)} type="checkbox" />
-              <span className="ui-lab-switch-track" aria-hidden="true">
-                <span />
-              </span>
+          <LabCard title="Switch" caption="UiToggleButton">
+            <div className="ui-lab-toggle-example">
+              <UiToggleButton
+                aria-label="Realtime updates"
+                checked={realtime}
+                onCheckedChange={setRealtime}
+              />
               <span>Realtime updates</span>
-            </label>
+            </div>
           </LabCard>
           <LabCard title="Mixed / disabled" caption="selection states">
             <div className="ui-lab-field-stack">
@@ -455,6 +462,86 @@ export function UiLab() {
                 <input disabled type="checkbox" />
                 <span>Unavailable option</span>
               </label>
+            </div>
+          </LabCard>
+        </LabSection>
+
+        <LabSection
+          title="Panel cards and settings"
+          description="Shared settings-card primitives used by material, inspector, and other editor sidebars."
+        >
+          <LabCard title="Collapsible card" caption="UiPanelCard" wide>
+            <div className="ui-lab-panel-card-demo">
+              <UiPanelCard
+                actions={
+                  <UiIconButton label="Panel card settings">
+                    <Settings size={13} />
+                  </UiIconButton>
+                }
+                collapsed={panelCardCollapsed}
+                contentClassName="ui-lab-panel-card-content"
+                title="Material"
+                onToggle={() => setPanelCardCollapsed((collapsed) => !collapsed)}
+              >
+                <p className="ui-lab-panel-card-copy">
+                  Shared collapsible section with a production header, action slot, and themed content surface.
+                </p>
+              </UiPanelCard>
+            </div>
+          </LabCard>
+
+          <LabCard title="Setting rows" caption="UiPanelCardRow" wide>
+            <div className="ui-lab-panel-card-demo">
+              <UiPanelCard contentClassName="ui-lab-panel-card-content" title="Rendering">
+                <UiPanelCardRow label="Quality" description="Controls the preview render quality.">
+                  <UiSelect
+                    ariaLabel="Panel quality"
+                    options={[
+                      { label: 'Default', value: 'Default' },
+                      { label: 'High', value: 'High' },
+                      { label: 'Ultra', value: 'Ultra' },
+                    ]}
+                    value={panelQuality}
+                    onValueChange={setPanelQuality}
+                  />
+                </UiPanelCardRow>
+                <UiPanelCardRow label="Realtime" description="Refresh the preview as settings change.">
+                  <UiToggleButton
+                    aria-label="Panel realtime"
+                    checked={realtime}
+                    onCheckedChange={setRealtime}
+                  />
+                </UiPanelCardRow>
+                <UiPanelCardRow controlClassName="is-end" label="Render Path">
+                  <span className="ui-lab-panel-value">Deferred</span>
+                </UiPanelCardRow>
+              </UiPanelCard>
+            </div>
+          </LabCard>
+
+          <LabCard title="Toggle states" caption="UiToggleButton">
+            <div className="ui-lab-toggle-list">
+              <div className="ui-lab-toggle-example">
+                <UiToggleButton
+                  aria-label="Feature toggle"
+                  checked={panelFeature}
+                  onCheckedChange={setPanelFeature}
+                />
+                <span>{panelFeature ? 'On' : 'Off'}</span>
+              </div>
+              <div className="ui-lab-toggle-example">
+                <UiToggleButton aria-label="Enabled toggle" checked onCheckedChange={() => undefined} />
+                <span>Checked</span>
+              </div>
+              <div className="ui-lab-toggle-example">
+                <UiToggleButton
+                  aria-label="Disabled shared toggle"
+                  checked={false}
+                  disabled
+                  onCheckedChange={() => undefined}
+                />
+                <span>Disabled</span>
+              </div>
             </div>
           </LabCard>
         </LabSection>
