@@ -390,32 +390,28 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(300px, 1.35fr) minmax(220px, 0.65fr);
+  grid-template-rows: minmax(260px, 390px) minmax(0, 1fr);
   overflow: hidden;
   border-left: 1px solid var(--arc-color-border-subtle);
   background: #111b21;
 }
 
-.material-details-panel {
+.material-settings-region {
+  min-width: 0;
   min-height: 0;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden;
-  border-bottom: 1px solid var(--arc-color-border-subtle);
+  overflow: auto;
+  padding: 6px;
+  background: var(--editor-property-bg);
 }
 
-.material-details-panel > header {
-  min-height: 40px;
-  display: flex;
-  align-items: center;
-  padding: 7px 10px;
-  border-bottom: 1px solid rgba(102, 132, 146, 0.18);
-  background: #17242b;
+.material-settings-card {
+  --inspector-bg-header-top: var(--editor-property-bg-header-top);
+  --inspector-bg-header-bottom: var(--editor-property-bg-header-bottom);
+  align-self: start;
 }
 
-.material-details-panel header strong {
-  color: #d7e3e8;
-  font-size: 11px;
+.material-settings-card .ui-panel-card-content {
+  background: #192128;
 }
 
 .material-settings-list {
@@ -452,57 +448,12 @@
   background: #10191f;
 }
 
-.material-setting-toggle-row {
-  grid-template-columns: minmax(96px, 0.7fr) minmax(140px, 1fr);
-}
-
-.material-setting-toggle-row input[type='checkbox'] {
-  position: relative;
-  width: 30px;
-  height: 16px;
-  margin: 0;
-  appearance: none;
-  border: 1px solid #344852;
-  border-radius: 999px;
-  outline: none;
-  background: #10191f;
-  cursor: pointer;
-  transition:
-    background 100ms ease,
-    border-color 100ms ease;
-}
-
-.material-setting-toggle-row input[type='checkbox']::after {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #71858f;
-  content: '';
-  transition:
-    transform 100ms ease,
-    background 100ms ease;
-}
-
-.material-setting-toggle-row input[type='checkbox']:checked {
-  border-color: rgba(91, 164, 187, 0.65);
-  background: rgba(54, 111, 133, 0.62);
-}
-
-.material-setting-toggle-row input[type='checkbox']:checked::after {
-  background: #d4e3e9;
-  transform: translateX(14px);
-}
-
-.material-setting-toggle-row input[type='checkbox']:focus-visible {
-  box-shadow: 0 0 0 1px rgba(79, 161, 194, 0.72);
+.material-setting-toggle-row .ui-toggle-button {
+  justify-self: start;
 }
 
 .material-setting-row :disabled {
   cursor: default;
-  opacity: 0.5;
 }
 
 .material-editor-message {
@@ -547,6 +498,6 @@
   }
 
   .material-editor-sidebar {
-    grid-template-rows: minmax(240px, 1.25fr) minmax(210px, 0.75fr);
+    grid-template-rows: minmax(230px, 330px) minmax(0, 1fr);
   }
 }
