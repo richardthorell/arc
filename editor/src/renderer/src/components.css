@@ -468,6 +468,10 @@ textarea {
   border-color: var(--arc-color-button-border-hover);
 }
 
+.ui-toggle-button:active:not(:disabled) .ui-toggle-button-track {
+  filter: brightness(0.94);
+}
+
 .ui-toggle-button.is-checked .ui-toggle-button-track {
   border-color: var(--arc-color-button-primary-border);
   background: linear-gradient(180deg, var(--arc-color-button-primary-top), var(--arc-color-button-primary-bottom));
