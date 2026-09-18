@@ -141,6 +141,7 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
   const next = cloneMaterialGraph(graph);
   const nodeById = new Map(next.nodes.map((node) => [node.id, node]));
   const outgoing = new Map<string, string[]>();
+  const connectionCounts = new Map<string, number>();
   const connected = new Set<string>();
 
   for (const connection of next.connections) {
@@ -148,6 +149,8 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
     const targets = outgoing.get(connection.from.nodeId) ?? [];
     targets.push(connection.to.nodeId);
     outgoing.set(connection.from.nodeId, targets);
+    connectionCounts.set(connection.from.nodeId, (connectionCounts.get(connection.from.nodeId) ?? 0) + 1);
+    connectionCounts.set(connection.to.nodeId, (connectionCounts.get(connection.to.nodeId) ?? 0) + 1);
     connected.add(connection.from.nodeId);
     connected.add(connection.to.nodeId);
   }
@@ -187,7 +190,37 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
     columns.set(depth, column);
   }
 
-  const columnSpacing = 350;
+  const columnWidths = new Map<number, number>();
+  for (const [depth, column] of columns)
+    columnWidths.set(depth, Math.max(...column.map((node) => materialNodeWidth(node.type))));
+
+  const columnX = new Map<number, number>([[maximumDepth, 0]]);
+  for (let depth = maximumDepth - 1; depth >= 0; --depth) {
+    const upstreamDepth = depth + 1;
+    const upstreamX = columnX.get(upstreamDepth) ?? 0;
+    const upstreamWidth = columnWidths.get(upstreamDepth) ?? defaultNodeWidth;
+
+    let crossingConnections = 0;
+    let maximumConnectionCount = 0;
+    for (const connection of next.connections) {
+      const fromDepth = depths.get(connection.from.nodeId);
+      const toDepth = depths.get(connection.to.nodeId);
+      if (fromDepth === undefined || toDepth === undefined) continue;
+      if (fromDepth < upstreamDepth || toDepth >= upstreamDepth) continue;
+      crossingConnections += 1;
+      maximumConnectionCount = Math.max(
+        maximumConnectionCount,
+        connectionCounts.get(connection.from.nodeId) ?? 0,
+        connectionCounts.get(connection.to.nodeId) ?? 0,
+      );
+    }
+
+    const pressure = Math.max(crossingConnections, maximumConnectionCount);
+    const baseGap = 150;
+    const pressureGap = Math.min(220, Math.max(0, pressure - 2) * 22);
+    columnX.set(depth, upstreamX + upstreamWidth + baseGap + pressureGap);
+  }
+
   const rowGap = 34;
   const centers = new Map<string, number>();
 
@@ -221,7 +254,7 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
     let y = targetCenter - totalHeight / 2;
 
     for (const item of layout) {
-      item.node.position = [(maximumDepth - depth) * columnSpacing, y];
+      item.node.position = [columnX.get(depth) ?? 0, y];
       centers.set(item.node.id, y + item.height / 2);
       y += item.height + rowGap;
     }
