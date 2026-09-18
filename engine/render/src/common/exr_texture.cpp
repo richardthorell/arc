@@ -51,7 +51,7 @@ void append_rgba32f_mip(texture_data& texture, const float* pixels, std::uint32_
 }
 
 std::vector<float> downsample_rgba32f(const float* source, std::uint32_t width, std::uint32_t height,
-                                     std::uint32_t next_width, std::uint32_t next_height)
+                                      std::uint32_t next_width, std::uint32_t next_height)
 {
     std::vector<float> result(static_cast<std::size_t>(next_width) * next_height * 4u);
     for (std::uint32_t y = 0; y < next_height; ++y)
