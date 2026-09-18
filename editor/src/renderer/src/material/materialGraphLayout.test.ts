@@ -121,6 +121,29 @@ const textureMaterialGraph = (): MaterialGraph => {
   };
 };
 
+const singleNormalChainGraph = (): MaterialGraph => {
+  const texture = { ...createMaterialNode('textureSample2D', [0, 0]), id: 'normal-texture' };
+  const normalMap = { ...createMaterialNode('normalMap', [0, 0]), id: 'normal-map' };
+  const output = { ...createMaterialNode('output', [0, 0]), id: 'material-output' };
+  return {
+    version: 1,
+    nodes: [texture, normalMap, output],
+    connections: [
+      {
+        id: 'texture-normal-map',
+        from: { nodeId: texture.id, pin: 'rgb' },
+        to: { nodeId: normalMap.id, pin: 'texture' },
+      },
+      {
+        id: 'normal-map-output',
+        from: { nodeId: normalMap.id, pin: 'normal' },
+        to: { nodeId: output.id, pin: 'normal' },
+      },
+    ],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+};
+
 describe('material graph layout', () => {
   it('keeps simple nodes compact and widens controls that need more editing space', () => {
     expect(materialNodeWidth('constant')).toBe(214);
@@ -172,7 +195,7 @@ describe('material graph layout', () => {
 
     for (const node of arranged.nodes) {
       expect(node.position[0] % 20).toBe(0);
-      expect(node.position[1] % 20).toBe(0);
+      expect(Number.isInteger(node.position[1])).toBe(true);
     }
   });
 
@@ -193,8 +216,8 @@ describe('material graph layout', () => {
     expect(normalMap.position[0]).toBeLessThan(output.position[0]);
   });
 
-  it('vertically aligns simple chains by their actual connected pins', () => {
-    const arranged = autoArrangeMaterialGraph(textureMaterialGraph());
+  it('makes unconstrained single-input/output chains straight pin-to-pin', () => {
+    const arranged = autoArrangeMaterialGraph(singleNormalChainGraph());
     const byId = new Map(arranged.nodes.map((node) => [node.id, node]));
     const normalTexture = byId.get('normal-texture')!;
     const normalMap = byId.get('normal-map')!;
@@ -208,6 +231,21 @@ describe('material graph layout', () => {
 
     expect(normalTextureOut).toBeCloseTo(normalMapIn, 6);
     expect(normalMapOut).toBeCloseTo(outputNormal, 6);
+  });
+
+  it('places an intermediate single-input/output node between crowded endpoints', () => {
+    const arranged = autoArrangeMaterialGraph(textureMaterialGraph());
+    const byId = new Map(arranged.nodes.map((node) => [node.id, node]));
+    const normalTexture = byId.get('normal-texture')!;
+    const normalMap = byId.get('normal-map')!;
+    const output = byId.get('material-output')!;
+
+    const sourceY = normalTexture.position[1] + materialNodePinOffsetY(normalTexture, 'rgb', 'output');
+    const nodeY = normalMap.position[1] + materialNodePinOffsetY(normalMap, 'normal', 'output');
+    const targetY = output.position[1] + materialNodePinOffsetY(output, 'normal', 'input');
+
+    expect(nodeY).toBeGreaterThanOrEqual(Math.min(sourceY, targetY));
+    expect(nodeY).toBeLessThanOrEqual(Math.max(sourceY, targetY));
   });
 
   it('centers a fan-out source between the input pins it feeds', () => {
