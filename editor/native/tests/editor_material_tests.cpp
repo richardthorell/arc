@@ -40,6 +40,7 @@ TEST_CASE("editor material assets load save and round trip")
     asset.material.metallic = 0.75f;
     asset.material.roughness = 0.32f;
     asset.material.normal_scale = 0.85f;
+    asset.material.cast_shadows = false;
     asset.textures.base_color = "textures/bronze_base.png";
     asset.textures.normal = "textures/bronze_n.png";
 
@@ -54,6 +55,7 @@ TEST_CASE("editor material assets load save and round trip")
     REQUIRE(loaded.material.metallic == Catch::Approx(0.75f));
     REQUIRE(loaded.material.roughness == Catch::Approx(0.32f));
     REQUIRE(loaded.material.normal_scale == Catch::Approx(0.85f));
+    REQUIRE_FALSE(loaded.material.cast_shadows);
     REQUIRE(loaded.textures.base_color == "textures/bronze_base.png");
     REQUIRE(loaded.textures.normal == "textures/bronze_n.png");
     REQUIRE(loaded.graph_reserved);
