@@ -23,6 +23,9 @@ export type FlowNodeType =
   | 'gate'
   | 'forLoop'
   | 'whileLoop'
+  | 'delay'
+  | 'retriggerableDelay'
+  | 'timer'
   | 'selfEntity'
   | 'createEntity'
   | 'destroyEntity'
@@ -72,6 +75,7 @@ export type FlowNodeSubcategory =
   | 'Switching'
   | 'Stateful'
   | 'Looping'
+  | 'Timing'
   | 'Identity'
   | 'Lifetime'
   | 'State'
@@ -241,6 +245,41 @@ export const flowNodeDefinitions: Record<FlowNodeType, FlowNodeDefinition> = {
     subcategory: 'Looping',
     inputs: [execution('exec', 'In'), value('condition', 'Condition', 'bool')],
     outputs: [execution('loopBody', 'Loop Body'), execution('completed', 'Completed')],
+  },
+  delay: {
+    type: 'delay',
+    title: 'Delay',
+    category: 'Flow Control',
+    subcategory: 'Timing',
+    inputs: [execution('exec', 'In'), value('duration', 'Duration', 'float')],
+    outputs: [execution('completed', 'Completed')],
+  },
+  retriggerableDelay: {
+    type: 'retriggerableDelay',
+    title: 'Retriggerable Delay',
+    category: 'Flow Control',
+    subcategory: 'Timing',
+    inputs: [execution('exec', 'In'), value('duration', 'Duration', 'float')],
+    outputs: [execution('completed', 'Completed')],
+  },
+  timer: {
+    type: 'timer',
+    title: 'Timer',
+    category: 'Flow Control',
+    subcategory: 'Timing',
+    inputs: [
+      execution('start', 'Start'),
+      execution('stop', 'Stop'),
+      value('interval', 'Interval', 'float'),
+      value('looping', 'Looping', 'bool'),
+    ],
+    outputs: [
+      execution('started', 'Started'),
+      execution('tick', 'Tick'),
+      execution('completed', 'Completed'),
+      execution('stopped', 'Stopped'),
+      value('active', 'Active', 'bool'),
+    ],
   },
   selfEntity: {
     type: 'selfEntity',
