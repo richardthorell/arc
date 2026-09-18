@@ -952,6 +952,11 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto preview_guid = assets::parse_asset_guid(compile->preview_guid);
                 if (!compile_result.is_discarded() && compile_result.value("succeeded", false) && preview_guid)
                 {
+                    const auto live_generation = ++surfaces.next_live_material_generation;
+                    surfaces.live_material_previews[*preview_guid] = {
+                        .source = compile->preview_source,
+                        .generation = live_generation,
+                    };
                     for (auto& [_, preview_surface] : surfaces.surfaces)
                     {
                         if (preview_surface.preview_kind != asset_preview_kind::material ||
@@ -959,7 +964,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                             continue;
                         if (!preview_surface.preview_scene)
                             (void)ensure_asset_preview_scene(*state_, preview_surface);
-                        (void)apply_live_asset_preview_material(*state_, preview_surface, compile->preview_source);
+                        if (apply_live_asset_preview_material(*state_, preview_surface, compile->preview_source))
+                            preview_surface.preview_live_material_generation = live_generation;
                     }
                 }
             }
@@ -993,7 +999,11 @@ host_response arc_host::execute(const host_command_envelope& command)
         }
         if (response.succeeded && (std::holds_alternative<host_open_project_command>(command.payload) ||
                                    std::holds_alternative<host_close_project_command>(command.payload)))
+        {
             reset_asset_preview_scenes(surfaces, *state_->renderer);
+            surfaces.live_material_previews.clear();
+            surfaces.next_live_material_generation = 0;
+        }
         if (response.succeeded && std::holds_alternative<host_viewport_detach_command>(command.payload) &&
             viewport_surface->preview_kind != asset_preview_kind::none)
         {
