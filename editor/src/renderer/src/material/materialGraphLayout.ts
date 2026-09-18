@@ -152,19 +152,13 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
 
   const next = cloneMaterialGraph(graph);
   const nodeById = new Map(next.nodes.map((node) => [node.id, node]));
-  const outgoing = new Map<string, string[]>();
   const outgoingConnections = new Map<string, typeof next.connections>();
   const incoming = new Map<string, string[]>();
   const incomingConnections = new Map<string, typeof next.connections>();
   const connectionCounts = new Map<string, number>();
-  const connected = new Set<string>();
 
   for (const connection of next.connections) {
     if (!nodeById.has(connection.from.nodeId) || !nodeById.has(connection.to.nodeId)) continue;
-
-    const targets = outgoing.get(connection.from.nodeId) ?? [];
-    targets.push(connection.to.nodeId);
-    outgoing.set(connection.from.nodeId, targets);
 
     const sourceConnections = outgoingConnections.get(connection.from.nodeId) ?? [];
     sourceConnections.push(connection);
@@ -180,8 +174,6 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
 
     connectionCounts.set(connection.from.nodeId, (connectionCounts.get(connection.from.nodeId) ?? 0) + 1);
     connectionCounts.set(connection.to.nodeId, (connectionCounts.get(connection.to.nodeId) ?? 0) + 1);
-    connected.add(connection.from.nodeId);
-    connected.add(connection.to.nodeId);
   }
 
   // Stage the graph forward from its sources instead of backward from Material
