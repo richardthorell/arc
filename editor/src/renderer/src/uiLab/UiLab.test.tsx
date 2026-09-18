@@ -16,6 +16,7 @@ describe('UiLab', () => {
     expect(screen.getByText('Buttons')).toBeInTheDocument();
     expect(screen.getByText('Text and form inputs')).toBeInTheDocument();
     expect(screen.getByText('Selection controls')).toBeInTheDocument();
+    expect(screen.getByText('Panel cards and settings')).toBeInTheDocument();
     expect(screen.getByText('Inspector controls')).toBeInTheDocument();
     expect(screen.getByText('Asset references')).toBeInTheDocument();
     expect(screen.getByText('Navigation and containers')).toBeInTheDocument();
@@ -25,7 +26,9 @@ describe('UiLab', () => {
     expect(screen.getAllByText('ExampleComponent').length).toBeGreaterThan(0);
 
     expect(screen.getByRole('radio', { name: 'Static' })).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'Realtime updates' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Realtime updates' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Panel realtime' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Collapse Material' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Entity notes' })).toBeInTheDocument();
     expect(screen.getByRole('slider', { name: 'Preview quality' })).toBeInTheDocument();
     expect(screen.getByRole('menu', { name: 'Context menu preview' })).toHaveClass('ui-context-menu');
@@ -51,9 +54,10 @@ describe('UiLab', () => {
     fireEvent.click(movable);
     expect(movable).toBeChecked();
 
-    const realtime = screen.getByRole('checkbox', { name: 'Realtime updates' });
+    const realtime = screen.getByRole('switch', { name: 'Realtime updates' });
     fireEvent.click(realtime);
-    expect(realtime).not.toBeChecked();
+    expect(realtime).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('switch', { name: 'Panel realtime' })).toHaveAttribute('aria-checked', 'false');
 
     const previewQuality = screen.getByRole('slider', { name: 'Preview quality' });
     fireEvent.change(previewQuality, { target: { value: '88' } });
@@ -61,6 +65,15 @@ describe('UiLab', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Global' }));
     expect(screen.getByRole('button', { name: 'Global' })).toHaveClass('is-active');
+
+    const featureToggle = screen.getByRole('switch', { name: 'Feature toggle' });
+    expect(featureToggle).toHaveAttribute('data-state', 'unchecked');
+    fireEvent.click(featureToggle);
+    expect(featureToggle).toHaveAttribute('data-state', 'checked');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse Material' }));
+    expect(screen.getByRole('button', { name: 'Expand Material' })).toBeInTheDocument();
+    expect(screen.queryByText(/Shared collapsible section/)).not.toBeInTheDocument();
   });
 
   it('uses the shared context-menu surface for ECS enum choices', () => {
