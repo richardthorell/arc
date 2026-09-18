@@ -11,6 +11,7 @@ export type MaterialSettings = {
   blendMode: MaterialBlendMode;
   shadingModel: MaterialShadingModel;
   doubleSided: boolean;
+  castShadows: boolean;
 };
 
 export type MaterialGraphNodeType =
@@ -110,6 +111,7 @@ export type MaterialAssetJson = Record<string, unknown> & {
   blendMode?: string;
   shadingModel?: string;
   doubleSided?: boolean;
+  castShadows?: boolean;
   graph?: MaterialGraph | null;
 };
 
