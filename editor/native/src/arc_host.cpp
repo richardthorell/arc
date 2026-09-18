@@ -158,11 +158,18 @@ bool arc_configure_material_preview_environment(editor_scene_state& state, rende
         return false;
     }
 
-    // Keep the default scene directional light as a stable material-preview key.
-    // The procedural sun disk is disabled above, and manual-light mode prevents
-    // world-environment updates from moving or re-lighting this authored light.
+    // Keep a deterministic preview key light in addition to HDRI illumination.
+    // The normal blank-scene sun is authored in lux and is far too intense for
+    // this small material rig, so normalize it to a modest unitless key.
     if (auto* key_light = state.scene.try_get<scene::directional_light_component>(state.sun_entity))
+    {
         key_light->enabled = true;
+        key_light->color = math::vector3f::one;
+        key_light->intensity = 2.5f;
+        key_light->intensity_unit = render::light_intensity_unit::unitless;
+        key_light->use_color_temperature = false;
+        key_light->casts_shadows = false;
+    }
 
     resources.environment_texture = texture;
     resources.environment = environment_handle;
