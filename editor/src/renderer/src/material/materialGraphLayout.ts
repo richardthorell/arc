@@ -67,7 +67,8 @@ export const materialNodeHeight = (node: MaterialGraphNode) => {
   let height = headerHeight + nodePaddingTop + pinRows * pinRowHeight + nodePaddingBottom;
 
   if (isMaterialTextureSampleNodeType(node.type)) height += textureEditorHeight;
-  else if (editableValueNode(node) || node.type === 'normalMap' || node.type === 'clamp') height += valueEditorHeight;
+  else if (editableValueNode(node) || node.type === 'normalMap' || node.type === 'clamp')
+    height += valueEditorHeight;
 
   if (editableValueNode(node)) height += parameterEditorHeight;
   return Math.max(88, height);
@@ -172,11 +173,14 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
   };
 
   const depths = new Map(next.nodes.map((node) => [node.id, depthFor(node.id)]));
-  const connectedDepths = next.nodes.filter((node) => connected.has(node.id)).map((node) => depths.get(node.id) ?? 0);
+  const connectedDepths = next.nodes
+    .filter((node) => connected.has(node.id))
+    .map((node) => depths.get(node.id) ?? 0);
   const connectedMaximumDepth = connectedDepths.length > 0 ? Math.max(...connectedDepths) : 0;
 
   for (const node of next.nodes)
-    if (!connected.has(node.id) && node.type !== 'output') depths.set(node.id, connectedMaximumDepth + 1);
+    if (!connected.has(node.id) && node.type !== 'output')
+      depths.set(node.id, connectedMaximumDepth + 1);
 
   const maximumDepth = Math.max(...depths.values());
   const columns = new Map<number, MaterialGraphNode[]>();
@@ -211,7 +215,8 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
 
     layout.sort(
       (left, right) =>
-        left.idealCenter - right.idealCenter || left.node.position[1] - right.node.position[1] ||
+        left.idealCenter - right.idealCenter ||
+        left.node.position[1] - right.node.position[1] ||
         left.node.id.localeCompare(right.node.id),
     );
 
@@ -232,7 +237,10 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
     const offsetX = 80 - bounds.left;
     const offsetY = 80 - bounds.top;
     for (const node of next.nodes)
-      node.position = snapMaterialGraphPoint([node.position[0] + offsetX, node.position[1] + offsetY]);
+      node.position = snapMaterialGraphPoint([
+        node.position[0] + offsetX,
+        node.position[1] + offsetY,
+      ]);
   }
 
   return next;
