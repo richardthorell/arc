@@ -177,17 +177,6 @@ bool arc_configure_material_preview_environment(editor_scene_state& state, rende
     return true;
 }
 
-editor_primitive_type arc_material_preview_primitive_type(std::string_view viewport_id)
-{
-    const auto selector = viewport_id.find('~');
-    if (selector == std::string_view::npos) return editor_primitive_type::sphere;
-
-    const auto token = viewport_id.substr(selector + 1);
-    if (token.starts_with("cube")) return editor_primitive_type::cube;
-    if (token.starts_with("pill")) return editor_primitive_type::capsule;
-    return editor_primitive_type::sphere;
-}
-
 ecs::entity arc_material_preview_add_primitive(editor_scene_state& state, render::renderer& renderer,
                                                editor_primitive_type type, const editor_asset_state& editor_assets)
 {
