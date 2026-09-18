@@ -1843,7 +1843,10 @@ bool vulkan_render_backend::upload_texture_image(const texture_data& data, gpu_t
     allocation.usage = VMA_MEMORY_USAGE_GPU_ONLY;
     if (vmaCreateImage(allocator_, &image, &allocation, &destination.image, &destination.allocation, nullptr) !=
         VK_SUCCESS)
+    {
+        if (oversized_upload) destroy_buffer(dedicated_staging);
         return false;
+    }
 
     VkImageViewCreateInfo view{};
     view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -1859,6 +1862,7 @@ bool vulkan_render_backend::upload_texture_image(const texture_data& data, gpu_t
     if (vkCreateImageView(device_, &view, nullptr, &destination.view) != VK_SUCCESS)
     {
         destroy_texture(destination);
+        if (oversized_upload) destroy_buffer(dedicated_staging);
         return false;
     }
 
@@ -1881,6 +1885,7 @@ bool vulkan_render_backend::upload_texture_image(const texture_data& data, gpu_t
     if (vkCreateSampler(device_, &sampler, nullptr, &destination.sampler) != VK_SUCCESS)
     {
         destroy_texture(destination);
+        if (oversized_upload) destroy_buffer(dedicated_staging);
         return false;
     }
 
