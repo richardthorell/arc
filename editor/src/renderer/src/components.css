@@ -422,3 +422,74 @@ textarea {
   gap: var(--arc-space-2);
   min-width: 0;
 }
+
+
+.ui-toggle-button {
+  width: 34px;
+  min-width: 34px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  outline: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ui-toggle-button-track {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  display: block;
+  border: var(--arc-border-width) solid var(--arc-color-button-border);
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--arc-color-button-field-top), var(--arc-color-button-field-bottom));
+  box-shadow: inset 0 1px 2px var(--arc-color-button-shadow);
+  transition:
+    border-color 100ms ease,
+    background 100ms ease,
+    box-shadow 100ms ease;
+}
+
+.ui-toggle-button-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--arc-color-text-dim);
+  box-shadow: 0 1px 2px var(--arc-color-button-shadow);
+  transition:
+    background 100ms ease,
+    transform 100ms ease;
+}
+
+.ui-toggle-button:hover:not(:disabled) .ui-toggle-button-track {
+  border-color: var(--arc-color-button-border-hover);
+}
+
+.ui-toggle-button.is-checked .ui-toggle-button-track {
+  border-color: var(--arc-color-button-primary-border);
+  background: linear-gradient(180deg, var(--arc-color-button-primary-top), var(--arc-color-button-primary-bottom));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.075),
+    0 0 0 1px var(--arc-color-accent-soft);
+}
+
+.ui-toggle-button.is-checked .ui-toggle-button-thumb {
+  background: var(--arc-color-text-inverse);
+  transform: translateX(16px);
+}
+
+.ui-toggle-button:focus-visible .ui-toggle-button-track {
+  border-color: var(--arc-color-accent);
+  box-shadow:
+    0 0 0 2px var(--arc-color-focus-ring),
+    inset 0 1px 2px var(--arc-color-button-shadow);
+}
+
+.ui-toggle-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
