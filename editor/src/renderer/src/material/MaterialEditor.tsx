@@ -244,7 +244,7 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
             <strong>Material</strong>
           </header>
           <div className="material-settings-list">
-            <label className="material-setting-row">
+            <div className="material-setting-row">
               <span>Domain</span>
               <UiSelect
                 ariaLabel="Material domain"
@@ -255,8 +255,8 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
                   replaceMaterialSettings(document, { domain: value as MaterialDomain })
                 }
               />
-            </label>
-            <label className="material-setting-row">
+            </div>
+            <div className="material-setting-row">
               <span>Blend Mode</span>
               <UiSelect
                 ariaLabel="Material blend mode"
@@ -267,8 +267,8 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
                   replaceMaterialSettings(document, { blendMode: value as MaterialBlendMode })
                 }
               />
-            </label>
-            <label className="material-setting-row">
+            </div>
+            <div className="material-setting-row">
               <span>Shading Model</span>
               <UiSelect
                 ariaLabel="Material shading model"
@@ -279,7 +279,7 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
                   replaceMaterialSettings(document, { shadingModel: value as MaterialShadingModel })
                 }
               />
-            </label>
+            </div>
             <label className="material-setting-row material-setting-toggle-row">
               <span>Two Sided</span>
               <input
