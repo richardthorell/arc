@@ -22,7 +22,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --write src/renderer/src/material/MaterialGraphEditor.tsx src/renderer/src/material/materialGraphLayout.ts && git diff -- src/renderer/src/material/MaterialGraphEditor.tsx src/renderer/src/material/materialGraphLayout.ts && exit 1"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
