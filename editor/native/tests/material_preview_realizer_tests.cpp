@@ -1,5 +1,6 @@
 #include <arc/editor/material_preview.h>
 #include <arc/editor/material_preview_realizer.h>
+#include <arc/render/material_pass.h>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -51,6 +52,8 @@ TEST_CASE("material preview realizes authored base color through native Material
     if (result.material.runtime_program)
     {
         REQUIRE_FALSE(result.material.runtime_program->passes.empty());
+        CHECK(result.material.runtime_program->contract_version == arc::render::material_pass_contract_version);
+        CHECK(result.material.runtime_program->material_abi == arc::render::material_abi_version);
         CHECK(result.material.runtime_program->passes.front().pass == arc::render::material_pass::gbuffer);
         CHECK_FALSE(result.material.runtime_program->passes.front().compiled.bytecode.empty());
         CHECK_FALSE(result.material.runtime_program->parameters.empty());

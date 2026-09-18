@@ -427,6 +427,8 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
     }
 
     auto program = std::make_shared<render::material_runtime_program>();
+    program->contract_version = render::material_pass_contract_version;
+    program->material_abi = render::material_abi_version;
     program->uses_time = compilation.descriptor.requirements.uses_time;
     program->uses_texture_sampling = compilation.descriptor.requirements.uses_texture_sampling;
     for (const auto& texture : compilation.descriptor.textures)
