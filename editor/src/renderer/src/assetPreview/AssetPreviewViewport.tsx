@@ -33,6 +33,7 @@ type ViewportStatePayload = {
   assetPreviewKind?: string;
   assetPreviewGuid?: string;
   assetPreviewError?: string;
+  assetPreviewReady?: boolean;
   modelMeshes?: ModelPreviewMesh[];
   modelSkeleton?: ModelPreviewSkeleton;
 };
@@ -42,6 +43,9 @@ type AssetPreviewViewportProps = {
   assetGuid?: string;
   fallback: ReactNode;
   label: string;
+  materialMesh?: 'sphere' | 'cube' | 'pill';
+  materialAutoRotate?: boolean;
+  loading?: boolean;
   onState?: (payload: ViewportStatePayload | undefined) => void;
 };
 
@@ -123,7 +127,16 @@ export function materialPreviewRenderOptions() {
   } as const;
 }
 
-export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState }: AssetPreviewViewportProps) {
+export function AssetPreviewViewport({
+  kind,
+  assetGuid,
+  fallback,
+  label,
+  materialMesh = 'sphere',
+  materialAutoRotate = true,
+  loading = false,
+  onState,
+}: AssetPreviewViewportProps) {
   const normalizedGuid = normalizedAssetGuid(assetGuid);
   const viewportInstanceRef = useRef<number | null>(null);
   if (viewportInstanceRef.current === null) viewportInstanceRef.current = nextAssetPreviewViewportInstance++;
@@ -145,13 +158,31 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
   const dragRef = useRef<DragState | null>(null);
   const materialCameraDistanceRef = useRef(materialPreviewNativeCameraDistance);
   const materialCameraPitchRef = useRef(materialPreviewInitialCameraPitch);
+  const materialMeshRef = useRef(materialMesh);
+  const materialAutoRotateRef = useRef(materialAutoRotate);
   const onStateRef = useRef(onState);
   const [streamed, setStreamed] = useState(false);
+  const [previewReady, setPreviewReady] = useState(kind !== 'material');
   const [error, setError] = useState('');
 
   useEffect(() => {
     onStateRef.current = onState;
   }, [onState]);
+
+  useEffect(() => {
+    materialMeshRef.current = materialMesh;
+    materialAutoRotateRef.current = materialAutoRotate;
+    if (kind !== 'material' || !attachedRef.current || !viewportId) return;
+
+    void window.arc.host
+      .command('viewport.setRenderOptions', {
+        viewportId,
+        ...materialPreviewRenderOptions(),
+        materialPreviewMesh: materialMesh,
+        materialPreviewAutoRotate,
+      })
+      .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
+  }, [kind, materialAutoRotate, materialMesh, viewportId]);
 
   const traceViewportState = useCallback(
     async (phase: string) => {
@@ -271,7 +302,24 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
     let cancelled = false;
     let animationFrame = 0;
     let traceTimer = 0;
+    let readyTimer = 0;
     let observer: ResizeObserver | null = null;
+
+    const pollPreviewReady = async () => {
+      if (cancelled || kind !== 'material') return;
+      try {
+        const response = (await window.arc.host.query('viewport.state', { viewportId })) as ViewportStateResponse;
+        const payload = response?.payload;
+        onStateRef.current?.(payload);
+        if (payload?.assetPreviewReady === true) {
+          if (!cancelled) setPreviewReady(true);
+          return;
+        }
+      } catch {
+        // The viewport may still be attaching. Keep the loading cover up and retry.
+      }
+      if (!cancelled) readyTimer = window.setTimeout(() => void pollPreviewReady(), 80);
+    };
 
     const attach = async () => {
       const bounds = currentBounds();
@@ -280,6 +328,7 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
         return;
       }
       try {
+        if (kind === 'material') setPreviewReady(false);
         const response = (await serializeAssetPreviewViewportLifecycle(viewportId, async () => {
           const created = (await window.arc.viewport.create(bounds)) as ViewportCommandResponse | undefined;
           if (created?.succeeded === false) return created;
@@ -287,6 +336,8 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
           const configured = (await window.arc.host.command('viewport.setRenderOptions', {
             viewportId,
             ...materialPreviewRenderOptions(),
+            materialPreviewMesh: materialMeshRef.current,
+            materialPreviewAutoRotate: materialAutoRotateRef.current,
           })) as ViewportCommandResponse | undefined;
           if (configured?.succeeded === false)
             throw new Error(configured.error || 'Material preview render options were rejected');
@@ -309,6 +360,7 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
         setError('');
         console.info('[material-flow] asset preview viewport attached', { kind, viewportId, guid: normalizedGuid });
         void traceViewportState('attached');
+        if (kind === 'material') void pollPreviewReady();
         traceTimer = window.setTimeout(() => void traceViewportState('after-first-frame'), 150);
         observer = new ResizeObserver(resize);
         if (rootRef.current) observer.observe(rootRef.current);
@@ -322,6 +374,7 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
       cancelled = true;
       if (animationFrame) window.cancelAnimationFrame(animationFrame);
       if (traceTimer) window.clearTimeout(traceTimer);
+      if (readyTimer) window.clearTimeout(readyTimer);
       observer?.disconnect();
       pendingBoundsRef.current = null;
       lastBoundsRef.current = '';
@@ -339,15 +392,17 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
     };
   }, [currentBounds, kind, normalizedGuid, resize, streamed, traceViewportState, viewportId]);
 
+  const previewIsLoading = kind === 'material' && (loading || !previewReady);
+
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (!attachedRef.current) return;
+    if (!attachedRef.current || previewIsLoading) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
   };
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
-    if (!attachedRef.current || !drag || drag.pointerId !== event.pointerId) return;
+    if (!attachedRef.current || previewIsLoading || !drag || drag.pointerId !== event.pointerId) return;
     const orbitX = event.clientX - drag.x;
     let orbitY = event.clientY - drag.y;
     drag.x = event.clientX;
@@ -377,7 +432,7 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
   };
 
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (!attachedRef.current) return;
+    if (!attachedRef.current || previewIsLoading) return;
     event.preventDefault();
     let zoom = normalizeViewportWheel(event.deltaY, event.deltaMode);
     if (!zoom) return;
@@ -420,6 +475,13 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label, onState
       role="img"
     >
       <canvas id={surfaceId} className="asset-preview-viewport-canvas" aria-hidden="true" />
+      {previewIsLoading && (
+        <div className="asset-preview-viewport-loading" role="status" aria-live="polite">
+          <span className="asset-preview-viewport-loading-spinner" aria-hidden="true" />
+          <strong>Loading preview</strong>
+          <span>Preparing material and studio lighting…</span>
+        </div>
+      )}
       <span className="asset-preview-viewport-hint">Drag to orbit · Scroll to zoom</span>
     </div>
   );
