@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 
 export type UiPanelCardProps = Omit<HTMLAttributes<HTMLElement>, 'title'> & {
   title: ReactNode;
+  subtitle?: ReactNode;
   collapsed?: boolean;
   onToggle?: () => void;
   actions?: ReactNode;
@@ -11,7 +12,7 @@ export type UiPanelCardProps = Omit<HTMLAttributes<HTMLElement>, 'title'> & {
 };
 
 export const UiPanelCard = forwardRef<HTMLElement, UiPanelCardProps>(function UiPanelCard(
-  { title, collapsed = false, onToggle, actions, children, className, contentClassName, ...props },
+  { title, subtitle, collapsed = false, onToggle, actions, children, className, contentClassName, ...props },
   ref,
 ) {
   const toggleLabel = typeof title === 'string' ? `${collapsed ? 'Expand' : 'Collapse'} ${title}` : undefined;
@@ -34,10 +35,18 @@ export const UiPanelCard = forwardRef<HTMLElement, UiPanelCardProps>(function Ui
             type="button"
           >
             {collapsed ? <ChevronRight aria-hidden="true" size={15} /> : <ChevronDown aria-hidden="true" size={15} />}
-            <span>{title}</span>
+            <span className="ui-panel-card-heading">
+              <span>{title}</span>
+              {subtitle && <small className="ui-panel-card-subtitle">{subtitle}</small>}
+            </span>
           </button>
         ) : (
-          <div className="ui-panel-section-title ui-panel-card-title">{title}</div>
+          <div className="ui-panel-section-title ui-panel-card-title">
+            <span className="ui-panel-card-heading">
+              <span>{title}</span>
+              {subtitle && <small className="ui-panel-card-subtitle">{subtitle}</small>}
+            </span>
+          </div>
         )}
         {actions && <div className="ui-panel-section-actions ui-panel-card-actions">{actions}</div>}
       </header>
