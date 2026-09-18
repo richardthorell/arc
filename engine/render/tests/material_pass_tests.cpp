@@ -100,3 +100,19 @@ TEST_CASE("compiled routing accepts every raster material pass produced by the c
     REQUIRE(arc::render::material_program_supports_pass(program, arc::render::material_pass::object_id));
     REQUIRE(arc::render::material_program_supports_pass(program, arc::render::material_pass::selection));
 }
+
+
+TEST_CASE("runtime material compatibility follows the current pass contract and Material ABI")
+{
+    arc::render::material_runtime_program program;
+    REQUIRE(program.contract_version == arc::render::material_pass_contract_version);
+    REQUIRE(program.material_abi == arc::render::material_abi_version);
+    REQUIRE(arc::render::material_runtime_program_compatible(program));
+
+    ++program.material_abi;
+    REQUIRE_FALSE(arc::render::material_runtime_program_compatible(program));
+    program.material_abi = arc::render::material_abi_version;
+
+    ++program.contract_version;
+    REQUIRE_FALSE(arc::render::material_runtime_program_compatible(program));
+}
