@@ -2,6 +2,17 @@ export type MaterialGraphValueType = 'float' | 'vec2' | 'vec3' | 'vec4' | 'textu
 export type MaterialTextureDimension = '2d' | 'cube' | '3d';
 export type MaterialGraphPinType = MaterialGraphValueType | 'numeric';
 
+export type MaterialDomain = 'surface' | 'terrain';
+export type MaterialBlendMode = 'opaque' | 'masked' | 'blend';
+export type MaterialShadingModel = 'standard' | 'skin' | 'transmission' | 'unlit' | 'customLit';
+
+export type MaterialSettings = {
+  domain: MaterialDomain;
+  blendMode: MaterialBlendMode;
+  shadingModel: MaterialShadingModel;
+  doubleSided: boolean;
+};
+
 export type MaterialGraphNodeType =
   | 'output'
   | 'constant'
