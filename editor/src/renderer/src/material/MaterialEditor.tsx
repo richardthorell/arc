@@ -80,6 +80,8 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
     graph: state.graph,
     customShader: Boolean(customShader),
   });
+  const outputSource = (pin: string, fallback: string) =>
+    customShader ? 'Material Shader' : materialGraphOutputSource(state.graph, pin, fallback);
   const editorRef = useRef<HTMLElement | null>(null);
   const sidebarResizeRef = useRef<SidebarResize | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(defaultMaterialSidebarWidth);
@@ -332,12 +334,12 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
             >
               <UiPanelCardRow label="Opacity">
                 <span className="material-setting-readonly">
-                  {materialGraphOutputSource(state.graph, 'opacity', '1.0')}
+                  {outputSource('opacity', '1.0')}
                 </span>
               </UiPanelCardRow>
               <UiPanelCardRow label="Alpha Clip">
                 <span className="material-setting-readonly">
-                  {materialGraphOutputSource(state.graph, 'alphaClip', '0.5')}
+                  {outputSource('alphaClip', '0.5')}
                 </span>
               </UiPanelCardRow>
             </UiPanelCard>
@@ -353,22 +355,22 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
             >
               <UiPanelCardRow label="Opacity">
                 <span className="material-setting-readonly">
-                  {materialGraphOutputSource(state.graph, 'opacity', '1.0')}
+                  {outputSource('opacity', '1.0')}
                 </span>
               </UiPanelCardRow>
               <UiPanelCardRow label="Transmission">
                 <span className="material-setting-readonly">
-                  {materialGraphOutputSource(state.graph, 'transmission', '0.0')}
+                  {outputSource('transmission', '0.0')}
                 </span>
               </UiPanelCardRow>
               <UiPanelCardRow label="Index of Refraction">
                 <span className="material-setting-readonly">
-                  {materialGraphOutputSource(state.graph, 'indexOfRefraction', '1.5')}
+                  {outputSource('indexOfRefraction', '1.5')}
                 </span>
               </UiPanelCardRow>
               <UiPanelCardRow label="Thickness">
                 <span className="material-setting-readonly">
-                  {materialGraphOutputSource(state.graph, 'thickness', '0.0')}
+                  {outputSource('thickness', '0.0')}
                 </span>
               </UiPanelCardRow>
             </UiPanelCard>
