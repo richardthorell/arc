@@ -13,9 +13,9 @@ import './materialCustomShader.css';
 import './materialEditor.css';
 import './materialWorkspace.css';
 
-export const defaultMaterialSidebarWidth = 560;
+export const defaultMaterialSidebarWidth = 640;
 export const minimumMaterialSidebarWidth = 320;
-export const maximumMaterialSidebarWidth = 640;
+export const maximumMaterialSidebarWidth = 760;
 export const minimumMaterialGraphWidth = 520;
 export const materialEditorDividerWidth = 5;
 
@@ -55,8 +55,10 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
   const sidebarResizeRef = useRef<SidebarResize | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(defaultMaterialSidebarWidth);
   const [previewMesh, setPreviewMesh] = useState<MaterialPreviewMesh>('sphere');
-  const previewAssetGuid =
-    document.assetGuid && previewMesh !== 'sphere' ? `${document.assetGuid}~${previewMesh}` : document.assetGuid;
+  const [previewAutoRotate, setPreviewAutoRotate] = useState(true);
+  const previewLoading =
+    state.loading ||
+    (!customShader && (state.compilation.status === 'idle' || state.compilation.status === 'compiling'));
   const fallbackPreview = state.previewDataUrl ? (
     <img alt={`${document.title} material preview`} src={state.previewDataUrl} />
   ) : (
@@ -193,17 +195,28 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
             {
               label: 'Mesh',
               value: (
-                <span className="material-preview-mesh-toggle" role="group" aria-label="Material preview mesh">
-                  {materialPreviewMeshes.map((mesh) => (
-                    <button
-                      key={mesh}
-                      type="button"
-                      aria-pressed={previewMesh === mesh}
-                      onClick={() => setPreviewMesh(mesh)}
-                    >
-                      {mesh[0].toUpperCase() + mesh.slice(1)}
-                    </button>
-                  ))}
+                <span className="material-preview-controls">
+                  <span className="material-preview-mesh-toggle" role="group" aria-label="Material preview mesh">
+                    {materialPreviewMeshes.map((mesh) => (
+                      <button
+                        key={mesh}
+                        type="button"
+                        aria-pressed={previewMesh === mesh}
+                        onClick={() => setPreviewMesh(mesh)}
+                      >
+                        {mesh[0].toUpperCase() + mesh.slice(1)}
+                      </button>
+                    ))}
+                  </span>
+                  <button
+                    className="material-preview-auto-rotate"
+                    type="button"
+                    aria-pressed={previewAutoRotate}
+                    title="Slowly rotate the preview mesh around Y"
+                    onClick={() => setPreviewAutoRotate((enabled) => !enabled)}
+                  >
+                    Rotate
+                  </button>
                 </span>
               ),
             },
@@ -212,7 +225,10 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
         >
           <AssetPreviewViewport
             kind="material"
-            assetGuid={previewAssetGuid}
+            assetGuid={document.assetGuid}
+            materialMesh={previewMesh}
+            materialAutoRotate={previewAutoRotate}
+            loading={previewLoading}
             label={`${document.title} material preview viewport`}
             fallback={fallbackPreview}
           />

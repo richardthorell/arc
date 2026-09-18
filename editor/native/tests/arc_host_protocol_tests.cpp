@@ -87,7 +87,9 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
                  .component_gizmos = false,
                  .selection_hierarchy = true,
                  .shadows = false,
-                 .grid = false}},
+                 .grid = false,
+                 .material_preview_mesh = "cube",
+                 .material_preview_auto_rotate = false}},
         {.request_id = 12,
          .payload =
              arc::editor::host_viewport_camera_input_command{
@@ -169,6 +171,8 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
             REQUIRE(options.selection_bounds);
             REQUIRE_FALSE(options.component_gizmos);
             REQUIRE(options.selection_hierarchy);
+            REQUIRE(options.material_preview_mesh == "cube");
+            REQUIRE_FALSE(options.material_preview_auto_rotate);
         }
         if (command.request_id == 26)
         {

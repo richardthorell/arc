@@ -1473,6 +1473,8 @@ struct host_viewport_set_render_options_command
     float camera_speed{4.0f};
     host_camera_anti_aliasing anti_aliasing{host_camera_anti_aliasing::inherit};
     host_environment_visibility environment{};
+    std::string material_preview_mesh{"sphere"};
+    bool material_preview_auto_rotate{true};
 };
 
 struct host_viewport_set_skeleton_joint_command
