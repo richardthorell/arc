@@ -11,7 +11,11 @@ describe('UiPanelCardRow', () => {
         <UiPanelCardRow label="Domain">
           <button type="button">Surface</button>
         </UiPanelCardRow>
-        <UiPanelCardRow label="Two Sided">
+        <UiPanelCardRow
+          controlClassName="is-end"
+          description="Render both sides of the surface."
+          label="Two Sided"
+        >
           <button type="button">Off</button>
         </UiPanelCardRow>
       </div>,
@@ -19,6 +23,8 @@ describe('UiPanelCardRow', () => {
 
     expect(screen.getByText('Domain')).toBeTruthy();
     expect(screen.getByText('Two Sided')).toBeTruthy();
+    expect(screen.getByText('Render both sides of the surface.')).toBeTruthy();
+    expect(container.querySelector('.ui-panel-card-row-control.is-end')).toBeTruthy();
     expect(container.querySelectorAll('.ui-panel-card-row')).toHaveLength(2);
     expect(container.querySelector('hr')).toBeNull();
   });
