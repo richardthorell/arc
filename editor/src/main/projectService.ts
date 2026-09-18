@@ -94,11 +94,7 @@ const parseDescriptor = (value: unknown): ArcProjectDescriptor => {
   if (!value || typeof value !== 'object') throw new Error('Project descriptor must be a JSON object');
   const source = value as Partial<ArcProjectDescriptor>;
   if (source.format !== arcProjectFormat) throw new Error(`Expected project format '${arcProjectFormat}'`);
-  if (
-    source.formatVersion !== 1 &&
-    source.formatVersion !== 2 &&
-    source.formatVersion !== arcProjectFormatVersion
-  )
+  if (source.formatVersion !== 1 && source.formatVersion !== 2 && source.formatVersion !== arcProjectFormatVersion)
     throw new Error(`Unsupported project format version ${String(source.formatVersion)}`);
   if (
     typeof source.guid !== 'string' ||
