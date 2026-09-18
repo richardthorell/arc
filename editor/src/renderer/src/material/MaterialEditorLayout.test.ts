@@ -10,6 +10,7 @@ import {
 describe('material editor sidebar sizing', () => {
   it('starts wider for the preview and material controls', () => {
     expect(defaultMaterialSidebarWidth).toBe(640);
+    expect(maximumMaterialSidebarWidth).toBe(760);
   });
 
   it('clamps resizing to the supported sidebar range', () => {
