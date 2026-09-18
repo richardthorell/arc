@@ -5,7 +5,7 @@ import { Code2 } from 'lucide-react';
 import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/AssetPreviewPanel';
 import { AssetPreviewViewport } from '../assetPreview/AssetPreviewViewport';
 import type { EditorDocument } from '../editors/editorTypes';
-import { UiSelect } from '../ui/UiSelect';
+import { UiPanelCard, UiSelect, UiToggleButton } from '../ui';
 import { replaceMaterialSettings, useMaterialDocumentState } from './materialDocumentState';
 import { MaterialGraphWithInteractions } from './MaterialGraphInteractions';
 import type { MaterialBlendMode, MaterialDomain, MaterialShadingModel } from './materialGraphTypes';
@@ -74,6 +74,7 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
   const [sidebarWidth, setSidebarWidth] = useState(defaultMaterialSidebarWidth);
   const [previewMesh, setPreviewMesh] = useState<MaterialPreviewMesh>('sphere');
   const [previewAutoRotate, setPreviewAutoRotate] = useState(true);
+  const [materialSettingsCollapsed, setMaterialSettingsCollapsed] = useState(false);
   const previewLoading =
     state.loading ||
     (!customShader && (state.compilation.status === 'idle' || state.compilation.status === 'compiling'));
@@ -239,11 +240,14 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
           />
         </AssetPreviewPanel>
 
-        <section className="material-details-panel editor-property-section">
-          <header>
-            <strong>Material</strong>
-          </header>
-          <div className="material-settings-list">
+        <div className="material-settings-region">
+          <UiPanelCard
+            className="material-settings-card"
+            collapsed={materialSettingsCollapsed}
+            contentClassName="material-settings-list"
+            title="Material"
+            onToggle={() => setMaterialSettingsCollapsed((collapsed) => !collapsed)}
+          >
             <div className="material-setting-row">
               <span>Domain</span>
               <UiSelect
@@ -280,18 +284,18 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
                 }
               />
             </div>
-            <label className="material-setting-row material-setting-toggle-row">
+            <div className="material-setting-row material-setting-toggle-row">
               <span>Two Sided</span>
-              <input
+              <UiToggleButton
                 aria-label="Two sided material"
                 checked={state.asset.doubleSided === true}
                 disabled={document.readOnly}
-                type="checkbox"
-                onChange={(event) => replaceMaterialSettings(document, { doubleSided: event.target.checked })}
+                onCheckedChange={(checked) => replaceMaterialSettings(document, { doubleSided: checked })}
               />
-            </label>
-          </div>
-        </section>
+            </div>
+
+          </UiPanelCard>
+        </div>
       </aside>
 
       {state.message && <div className="material-editor-message">{state.message}</div>}
