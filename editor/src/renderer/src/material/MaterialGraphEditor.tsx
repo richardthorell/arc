@@ -683,7 +683,12 @@ export function MaterialGraphEditor({
         <UiButton onClick={() => frameAll()} title="Frame all nodes" variant="toolbar">
           <Scan size={13} /> Frame All
         </UiButton>
-        <UiButton disabled={document.readOnly} onClick={autoArrange} title="Arrange nodes by connection flow" variant="toolbar">
+        <UiButton
+          disabled={document.readOnly}
+          onClick={autoArrange}
+          title="Arrange nodes by connection flow"
+          variant="toolbar"
+        >
           <WandSparkles size={13} /> Arrange
         </UiButton>
         <span className="material-graph-toolbar-divider" />
