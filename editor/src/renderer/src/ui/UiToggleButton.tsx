@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes } from 'react';
 
-type UiToggleButtonProps = Omit<
+export type UiToggleButtonProps = Omit<
   ButtonHTMLAttributes<HTMLButtonElement>,
   'aria-pressed' | 'onChange' | 'onClick' | 'role' | 'type'
 > & {
@@ -14,6 +14,7 @@ export function UiToggleButton({ checked, onCheckedChange, className, disabled, 
       {...props}
       aria-checked={checked}
       className={['ui-toggle-button', checked ? 'is-checked' : '', className].filter(Boolean).join(' ')}
+      data-state={checked ? 'checked' : 'unchecked'}
       disabled={disabled}
       role="switch"
       type="button"
