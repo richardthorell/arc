@@ -380,12 +380,10 @@ export function MaterialGraphEditor({
           }
         }, false);
       } else if (pan) {
-        updateViewport(
-          {
-            x: pan.viewport[0] + (event.clientX - pan.start[0]),
-            y: pan.viewport[1] + (event.clientY - pan.start[1]),
-          },
-        );
+        updateViewport({
+          x: pan.viewport[0] + (event.clientX - pan.start[0]),
+          y: pan.viewport[1] + (event.clientY - pan.start[1]),
+        });
       } else if (box) {
         setBox({ ...box, current: point });
       }
