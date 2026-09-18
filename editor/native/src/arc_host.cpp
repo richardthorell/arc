@@ -54,10 +54,14 @@ arc_material_preview_environment_path(const editor_asset_state& editor_assets)
     std::filesystem::path source_path{__FILE__};
     if (source_path.is_absolute())
     {
-        auto source_root = source_path;
-        for (int depth = 0; depth < 4; ++depth)
-            source_root = source_root.parent_path();
-        if (const auto path = available(source_root / relative)) return path;
+        auto source_root = source_path.parent_path();
+        for (int depth = 0; depth < 8; ++depth)
+        {
+            if (const auto path = available(source_root / relative)) return path;
+            const auto parent = source_root.parent_path();
+            if (parent.empty() || parent == source_root) break;
+            source_root = parent;
+        }
     }
 
     std::error_code error;
