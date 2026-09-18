@@ -16,6 +16,7 @@ describe('UiLab', () => {
     expect(screen.getByText('Buttons')).toBeInTheDocument();
     expect(screen.getByText('Text and form inputs')).toBeInTheDocument();
     expect(screen.getByText('Selection controls')).toBeInTheDocument();
+    expect(screen.getByText('Panel cards and toggles')).toBeInTheDocument();
     expect(screen.getByText('Inspector controls')).toBeInTheDocument();
     expect(screen.getByText('Asset references')).toBeInTheDocument();
     expect(screen.getByText('Navigation and containers')).toBeInTheDocument();
@@ -25,7 +26,9 @@ describe('UiLab', () => {
     expect(screen.getAllByText('ExampleComponent').length).toBeGreaterThan(0);
 
     expect(screen.getByRole('radio', { name: 'Static' })).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'Realtime updates' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Realtime updates' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Collapse Rendering' })).toBeInTheDocument();
+    expect(screen.getByText('Shared property-panel chrome')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Entity notes' })).toBeInTheDocument();
     expect(screen.getByRole('slider', { name: 'Preview quality' })).toBeInTheDocument();
     expect(screen.getByRole('menu', { name: 'Context menu preview' })).toHaveClass('ui-context-menu');
@@ -51,9 +54,18 @@ describe('UiLab', () => {
     fireEvent.click(movable);
     expect(movable).toBeChecked();
 
-    const realtime = screen.getByRole('checkbox', { name: 'Realtime updates' });
+    const realtime = screen.getByRole('switch', { name: 'Realtime updates' });
+    expect(realtime).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(realtime);
-    expect(realtime).not.toBeChecked();
+    expect(realtime).toHaveAttribute('aria-checked', 'false');
+
+    const renderingCard = screen.getByRole('button', { name: 'Collapse Rendering' });
+    fireEvent.click(renderingCard);
+    expect(screen.getByRole('button', { name: 'Expand Rendering' })).toBeInTheDocument();
+
+    const twoSided = screen.getByRole('switch', { name: 'Panel card two sided' });
+    fireEvent.click(twoSided);
+    expect(twoSided).toHaveAttribute('aria-checked', 'true');
 
     const previewQuality = screen.getByRole('slider', { name: 'Preview quality' });
     fireEvent.change(previewQuality, { target: { value: '88' } });
