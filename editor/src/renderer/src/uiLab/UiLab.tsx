@@ -28,6 +28,8 @@ import {
   UiContextMenuItem,
   UiIconButton,
   UiPanel,
+  UiPanelCard,
+  UiPanelCardRow,
   UiPanelHeader,
   UiSearchInput,
   UiSelect,
@@ -35,6 +37,7 @@ import {
   UiTab,
   UiTabs,
   UiTextInput,
+  UiToggleButton,
   UiTreeRow,
 } from '../ui';
 
@@ -254,6 +257,9 @@ export function UiLab() {
   const [nativeNumber, setNativeNumber] = useState(60);
   const [radioValue, setRadioValue] = useState('static');
   const [realtime, setRealtime] = useState(true);
+  const [panelCardCollapsed, setPanelCardCollapsed] = useState(false);
+  const [panelCardMode, setPanelCardMode] = useState('Deferred');
+  const [panelCardTwoSided, setPanelCardTwoSided] = useState(false);
 
   const filteredAssets = useMemo(
     () => demoAssets.filter((asset) => asset.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())),
@@ -430,14 +436,11 @@ export function UiLab() {
               ))}
             </fieldset>
           </LabCard>
-          <LabCard title="Switch" caption="toggle pattern">
-            <label className="ui-lab-switch">
-              <input checked={realtime} onChange={(event) => setRealtime(event.target.checked)} type="checkbox" />
-              <span className="ui-lab-switch-track" aria-hidden="true">
-                <span />
-              </span>
-              <span>Realtime updates</span>
-            </label>
+          <LabCard title="Switch" caption="UiToggleButton">
+            <div className="ui-lab-toggle-stack">
+              <UiToggleButton checked={realtime} label="Realtime updates" onCheckedChange={setRealtime} />
+              <UiToggleButton checked={false} disabled label="Unavailable" onCheckedChange={() => undefined} />
+            </div>
           </LabCard>
           <LabCard title="Mixed / disabled" caption="selection states">
             <div className="ui-lab-field-stack">
@@ -455,6 +458,86 @@ export function UiLab() {
                 <input disabled type="checkbox" />
                 <span>Unavailable option</span>
               </label>
+            </div>
+          </LabCard>
+        </LabSection>
+
+        <LabSection
+          title="Panel cards and toggles"
+          description="Shared compact surfaces used by the Inspector, Material editor, and other property-oriented panels."
+        >
+          <LabCard title="Collapsible card" caption="UiPanelCard" wide>
+            <div className="ui-lab-panel-card-demo">
+              <UiPanelCard
+                actions={
+                  <UiIconButton label="Card settings">
+                    <Settings size={13} />
+                  </UiIconButton>
+                }
+                collapsed={panelCardCollapsed}
+                subtitle="Shared property-panel chrome"
+                title="Rendering"
+                onToggle={() => setPanelCardCollapsed((value) => !value)}
+              >
+                <div className="ui-lab-panel-card-copy">
+                  The card owns its header, collapse affordance, action slot, and content surface.
+                </div>
+              </UiPanelCard>
+            </div>
+          </LabCard>
+          <LabCard title="Property rows" caption="UiPanelCardRow" wide>
+            <div className="ui-lab-panel-card-demo">
+              <UiPanelCard title="Material">
+                <div className="ui-lab-panel-card-rows">
+                  <UiPanelCardRow label="Render path" description="Selected from material features">
+                    <UiSelect
+                      ariaLabel="Panel card render path"
+                      options={[
+                        { label: 'Deferred', value: 'Deferred' },
+                        { label: 'Forward', value: 'Forward' },
+                      ]}
+                      value={panelCardMode}
+                      onValueChange={setPanelCardMode}
+                    />
+                  </UiPanelCardRow>
+                  <UiPanelCardRow label="Two sided" description="Render both triangle faces">
+                    <UiToggleButton
+                      aria-label="Panel card two sided"
+                      checked={panelCardTwoSided}
+                      onCheckedChange={setPanelCardTwoSided}
+                    />
+                  </UiPanelCardRow>
+                  <UiPanelCardRow align="start" label="Output" description="Readonly derived information">
+                    <span className="ui-lab-panel-readonly">
+                      Material Graph
+                      <small>Deferred-compatible</small>
+                    </span>
+                  </UiPanelCardRow>
+                </div>
+              </UiPanelCard>
+            </div>
+          </LabCard>
+          <LabCard title="Labeled toggles" caption="UiToggleButton">
+            <div className="ui-lab-toggle-stack">
+              <UiToggleButton checked={realtime} label="Realtime" onCheckedChange={setRealtime} />
+              <UiToggleButton
+                checked={panelCardTwoSided}
+                label="Two sided"
+                labelPosition="start"
+                onCheckedChange={setPanelCardTwoSided}
+              />
+            </div>
+          </LabCard>
+          <LabCard title="Toggle states" caption="UiToggleButton">
+            <div className="ui-lab-toggle-stack">
+              <UiToggleButton aria-label="Toggle off example" checked={false} onCheckedChange={() => undefined} />
+              <UiToggleButton aria-label="Toggle on example" checked onCheckedChange={() => undefined} />
+              <UiToggleButton
+                aria-label="Toggle disabled example"
+                checked
+                disabled
+                onCheckedChange={() => undefined}
+              />
             </div>
           </LabCard>
         </LabSection>
