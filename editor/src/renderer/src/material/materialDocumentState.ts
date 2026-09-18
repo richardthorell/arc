@@ -19,6 +19,7 @@ import {
   type MaterialAssetJson,
   type MaterialGraph,
   type MaterialGraphViewport,
+  type MaterialSettings,
 } from './materialGraphTypes';
 
 export type MaterialDocumentState = {
@@ -29,6 +30,7 @@ export type MaterialDocumentState = {
   asset: MaterialAssetJson;
   graph: MaterialGraph;
   confirmedGraph: string;
+  confirmedSettings: string;
   history: MaterialGraph[];
   historyIndex: number;
   compilation: MaterialCompileResult;
@@ -61,6 +63,20 @@ const compileTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const compileGenerations = new Map<string, number>();
 
 const graphFingerprint = (graph: MaterialGraph) => JSON.stringify(graph);
+const materialSettings = (asset: MaterialAssetJson): MaterialSettings => ({
+  domain: asset.domain === 'terrain' ? 'terrain' : 'surface',
+  blendMode: asset.blendMode === 'masked' || asset.blendMode === 'blend' ? asset.blendMode : 'opaque',
+  shadingModel:
+    asset.shadingModel === 'skin' ||
+    asset.shadingModel === 'transmission' ||
+    asset.shadingModel === 'unlit' ||
+    asset.shadingModel === 'customLit'
+      ? asset.shadingModel
+      : 'standard',
+  doubleSided: asset.doubleSided === true,
+  castShadows: asset.castShadows !== false,
+});
+const settingsFingerprint = (asset: MaterialAssetJson) => JSON.stringify(materialSettings(asset));
 const materialShaderPath = (asset: MaterialAssetJson) =>
   typeof asset.shaderPath === 'string' && asset.shaderPath.trim() ? asset.shaderPath.trim() : '';
 
@@ -82,12 +98,9 @@ const normalizedAsset = (asset: MaterialAssetJson, document: EditorDocument): Ma
 
   return {
     ...asset,
+    ...materialSettings(asset),
     version: currentMaterialAuthoringVersion,
     name: asset.name ?? document.title.replace(/\.arcmat$/i, ''),
-    domain: asset.domain ?? 'surface',
-    blendMode: asset.blendMode ?? 'opaque',
-    shadingModel: asset.shadingModel ?? 'standard',
-    doubleSided: asset.doubleSided ?? false,
   };
 };
 
@@ -106,6 +119,7 @@ const initialState = (document: EditorDocument): MaterialDocumentState => ({
   asset: {},
   graph: cloneMaterialGraph(emptyGraph),
   confirmedGraph: '',
+  confirmedSettings: '',
   history: [],
   historyIndex: -1,
   compilation: emptyMaterialCompileResult(),
@@ -162,10 +176,16 @@ const updateDirtyState = (
   document: EditorDocument,
   graph: MaterialGraph,
   confirmedGraph: string,
+  asset: MaterialAssetJson,
+  confirmedSettings: string,
   schemaUpgradePending = false,
 ) =>
   updateEditorDocumentInStore(document.id, {
-    dirty: !document.readOnly && (schemaUpgradePending || graphFingerprint(graph) !== confirmedGraph),
+    dirty:
+      !document.readOnly &&
+      (schemaUpgradePending ||
+        graphFingerprint(graph) !== confirmedGraph ||
+        settingsFingerprint(asset) !== confirmedSettings),
   });
 
 const cancelScheduledCompile = (documentId: string) => {
@@ -235,10 +255,12 @@ export const loadMaterialDocument = async (document: EditorDocument, force = fal
     const customShader = materialShaderPath(parsed);
     const graph = customShader ? createDefaultMaterialGraph() : materialGraphFromAsset(parsed);
     const fingerprint = graphFingerprint(graph);
+    const confirmedSettings = settingsFingerprint(parsed);
     setState(document.id, {
       asset: parsed,
       graph,
       confirmedGraph: fingerprint,
+      confirmedSettings,
       history: customShader ? [] : [cloneMaterialGraph(graph)],
       historyIndex: customShader ? -1 : 0,
       compilation: emptyMaterialCompileResult(),
@@ -303,8 +325,38 @@ export const replaceMaterialGraph = (
     compilation: semanticChanged ? emptyMaterialCompileResult() : current.compilation,
     message: options.message ?? '',
   });
-  updateDirtyState(document, nextGraph, current.confirmedGraph, current.schemaUpgradePending);
+  updateDirtyState(
+    document,
+    nextGraph,
+    current.confirmedGraph,
+    current.asset,
+    current.confirmedSettings,
+    current.schemaUpgradePending,
+  );
   if (semanticChanged) scheduleNativeCompile(document);
+};
+
+export const replaceMaterialSettings = (document: EditorDocument, patch: Partial<MaterialSettings>) => {
+  const current = ensureState(document);
+  if (document.readOnly || current.readOnly) return false;
+
+  const nextSettings: MaterialSettings = { ...materialSettings(current.asset), ...patch };
+  const nextAsset: MaterialAssetJson = { ...current.asset, ...nextSettings };
+  if (settingsFingerprint(nextAsset) === settingsFingerprint(current.asset)) return false;
+
+  setState(document.id, {
+    asset: nextAsset,
+    message: '',
+  });
+  updateDirtyState(
+    document,
+    current.graph,
+    current.confirmedGraph,
+    nextAsset,
+    current.confirmedSettings,
+    current.schemaUpgradePending,
+  );
+  return true;
 };
 
 export const undoMaterialGraph = (document: EditorDocument) => {
@@ -319,7 +371,14 @@ export const undoMaterialGraph = (document: EditorDocument) => {
     compilation: semanticChanged ? emptyMaterialCompileResult() : current.compilation,
     message: 'Undo material graph edit',
   });
-  updateDirtyState(document, graph, current.confirmedGraph, current.schemaUpgradePending);
+  updateDirtyState(
+    document,
+    graph,
+    current.confirmedGraph,
+    current.asset,
+    current.confirmedSettings,
+    current.schemaUpgradePending,
+  );
   if (semanticChanged) scheduleNativeCompile(document);
   return true;
 };
@@ -337,7 +396,14 @@ export const redoMaterialGraph = (document: EditorDocument) => {
     compilation: semanticChanged ? emptyMaterialCompileResult() : current.compilation,
     message: 'Redo material graph edit',
   });
-  updateDirtyState(document, graph, current.confirmedGraph, current.schemaUpgradePending);
+  updateDirtyState(
+    document,
+    graph,
+    current.confirmedGraph,
+    current.asset,
+    current.confirmedSettings,
+    current.schemaUpgradePending,
+  );
   if (semanticChanged) scheduleNativeCompile(document);
   return true;
 };
@@ -458,6 +524,7 @@ export const saveMaterialDocument = async (document: EditorDocument): Promise<bo
     setState(document.id, {
       asset: serialized.asset,
       confirmedGraph,
+      confirmedSettings: settingsFingerprint(serialized.asset),
       saving: false,
       schemaUpgradePending: false,
       sourceVersion: currentMaterialAuthoringVersion,
@@ -520,7 +587,9 @@ export const saveAndPublishMaterialDocument = async (document: EditorDocument): 
 export const reloadMaterialDocument = async (document: EditorDocument): Promise<boolean> => {
   const current = ensureState(document);
   if (
-    (current.schemaUpgradePending || graphFingerprint(current.graph) !== current.confirmedGraph) &&
+    (current.schemaUpgradePending ||
+      graphFingerprint(current.graph) !== current.confirmedGraph ||
+      settingsFingerprint(current.asset) !== current.confirmedSettings) &&
     !window.confirm(`Discard unsaved changes to ${document.title}?`)
   )
     return false;

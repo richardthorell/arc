@@ -357,6 +357,7 @@ render::material_descriptor material_abi_preview_defaults(std::string_view name,
     material.shading_model = authored.shading_model;
     material.alpha_mode = authored.alpha_mode;
     material.double_sided = authored.double_sided;
+    material.cast_shadows = authored.cast_shadows;
     material.base_color = {0.8f, 0.8f, 0.8f, 1.0f};
     material.metallic = 0.0f;
     material.roughness = 0.6f;

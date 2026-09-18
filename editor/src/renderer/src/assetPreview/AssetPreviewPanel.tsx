@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import './AssetPreviewPanel.css';
 
 export interface AssetPreviewMetadataItem {
-  label: string;
+  label?: string;
   value: ReactNode;
 }
 
@@ -13,6 +13,7 @@ interface AssetPreviewPanelProps {
   actions?: ReactNode;
   children?: ReactNode;
   metadata?: readonly AssetPreviewMetadataItem[];
+  showHeader?: boolean;
 }
 
 interface AssetPreviewPlaceholderProps {
@@ -36,22 +37,31 @@ export function AssetPreviewPlaceholder({
   );
 }
 
-export function AssetPreviewPanel({ title, subtitle, actions, children, metadata = [] }: AssetPreviewPanelProps) {
+export function AssetPreviewPanel({
+  title,
+  subtitle,
+  actions,
+  children,
+  metadata = [],
+  showHeader = true,
+}: AssetPreviewPanelProps) {
   return (
-    <section className="asset-preview-panel" aria-label={title}>
-      <header className="asset-preview-header">
-        <div className="asset-preview-heading">
-          <strong>{title}</strong>
-          {subtitle && <span>{subtitle}</span>}
-        </div>
-        {actions && <div className="asset-preview-actions">{actions}</div>}
-      </header>
+    <section className={`asset-preview-panel${showHeader ? '' : ' without-header'}`} aria-label={title}>
+      {showHeader && (
+        <header className="asset-preview-header">
+          <div className="asset-preview-heading">
+            <strong>{title}</strong>
+            {subtitle && <span>{subtitle}</span>}
+          </div>
+          {actions && <div className="asset-preview-actions">{actions}</div>}
+        </header>
+      )}
       <div className="asset-preview-stage">{children ?? <AssetPreviewPlaceholder />}</div>
       {metadata.length > 0 && (
         <footer className="asset-preview-metadata">
           {metadata.map((item, index) => (
-            <span className="asset-preview-metadata-item" key={`${item.label}-${index}`}>
-              <span>{item.label}</span>
+            <span className="asset-preview-metadata-item" key={`${item.label ?? 'item'}-${index}`}>
+              {item.label && <span>{item.label}</span>}
               <strong>{item.value}</strong>
             </span>
           ))}

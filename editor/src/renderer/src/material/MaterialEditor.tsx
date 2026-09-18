@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent } from 'react';
-import { AlertCircle, CheckCircle2, Code2, Lock } from 'lucide-react';
+import { Code2 } from 'lucide-react';
 
 import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/AssetPreviewPanel';
 import { AssetPreviewViewport } from '../assetPreview/AssetPreviewViewport';
 import type { EditorDocument } from '../editors/editorTypes';
-import { materialEditorParameters } from './materialCompiler';
-import { replaceMaterialGraph, useMaterialDocumentState } from './materialDocumentState';
+import { UiPanelCard, UiPanelCardRow, UiSelect, UiToggleButton } from '../ui';
+import { replaceMaterialSettings, useMaterialDocumentState } from './materialDocumentState';
 import { MaterialGraphWithInteractions } from './MaterialGraphInteractions';
-import { cloneMaterialGraph, type MaterialGraphNode } from './materialGraphTypes';
+import type { MaterialBlendMode, MaterialDomain, MaterialShadingModel } from './materialGraphTypes';
+import { materialGraphOutputSource, materialRenderPathLabel } from './materialSettingsPresentation';
 import './materialCustomShader.css';
 import './materialEditor.css';
 import './materialWorkspace.css';
@@ -28,16 +29,27 @@ export function clampMaterialSidebarWidth(containerWidth: number, requestedWidth
   return Math.round(Math.min(maximumWidth, Math.max(minimumMaterialSidebarWidth, requestedWidth)));
 }
 
-const parameterValue = (node: MaterialGraphNode): number[] => {
-  if (typeof node.values.value === 'number') return [node.values.value];
-  if (Array.isArray(node.values.value))
-    return node.values.value.map((value) => (typeof value === 'number' ? value : 0));
-  return [];
-};
-
-const componentLabels = ['X', 'Y', 'Z', 'W'];
 const materialPreviewMeshes = ['sphere', 'cube', 'pill'] as const;
 type MaterialPreviewMesh = (typeof materialPreviewMeshes)[number];
+
+const materialDomainOptions = [
+  { value: 'surface', label: 'Surface' },
+  { value: 'terrain', label: 'Terrain' },
+] as const;
+
+const materialBlendModeOptions = [
+  { value: 'opaque', label: 'Opaque' },
+  { value: 'masked', label: 'Masked' },
+  { value: 'blend', label: 'Translucent' },
+] as const;
+
+const materialShadingModelOptions = [
+  { value: 'standard', label: 'Standard' },
+  { value: 'skin', label: 'Skin' },
+  { value: 'transmission', label: 'Transmission' },
+  { value: 'unlit', label: 'Unlit' },
+  { value: 'customLit', label: 'Custom Lit' },
+] as const;
 
 type SidebarResize = {
   pointerId: number;
@@ -48,14 +60,38 @@ type SidebarResize = {
 export function MaterialEditor({ document }: { document: EditorDocument }) {
   const state = useMaterialDocumentState(document);
   const customShader = typeof state.asset.shaderPath === 'string' ? state.asset.shaderPath.trim() : '';
-  const parameters = customShader ? [] : materialEditorParameters(state.graph);
-  const errors = state.compilation.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
-  const warnings = state.compilation.diagnostics.filter((diagnostic) => diagnostic.severity === 'warning');
+  const materialDomain: MaterialDomain = state.asset.domain === 'terrain' ? 'terrain' : 'surface';
+  const materialBlendMode: MaterialBlendMode =
+    state.asset.blendMode === 'masked' || state.asset.blendMode === 'blend' ? state.asset.blendMode : 'opaque';
+  const materialShadingModel: MaterialShadingModel =
+    state.asset.shadingModel === 'skin' ||
+    state.asset.shadingModel === 'transmission' ||
+    state.asset.shadingModel === 'unlit' ||
+    state.asset.shadingModel === 'customLit'
+      ? state.asset.shadingModel
+      : 'standard';
+  const isSurfaceMaterial = materialDomain === 'surface';
+  const isMaskedMaterial = isSurfaceMaterial && materialBlendMode === 'masked';
+  const isTranslucentMaterial = isSurfaceMaterial && materialBlendMode === 'blend';
+  const renderPathLabel = materialRenderPathLabel({
+    domain: materialDomain,
+    blendMode: materialBlendMode,
+    shadingModel: materialShadingModel,
+    graph: state.graph,
+    customShader: Boolean(customShader),
+  });
+  const outputSource = (pin: string, fallback: string) =>
+    customShader ? 'Material Shader' : materialGraphOutputSource(state.graph, pin, fallback);
   const editorRef = useRef<HTMLElement | null>(null);
   const sidebarResizeRef = useRef<SidebarResize | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(defaultMaterialSidebarWidth);
   const [previewMesh, setPreviewMesh] = useState<MaterialPreviewMesh>('sphere');
   const [previewAutoRotate, setPreviewAutoRotate] = useState(true);
+  const [materialSettingsCollapsed, setMaterialSettingsCollapsed] = useState(false);
+  const [renderingSettingsCollapsed, setRenderingSettingsCollapsed] = useState(false);
+  const [maskingSettingsCollapsed, setMaskingSettingsCollapsed] = useState(false);
+  const [translucencySettingsCollapsed, setTranslucencySettingsCollapsed] = useState(false);
+  const [advancedSettingsCollapsed, setAdvancedSettingsCollapsed] = useState(true);
   const previewLoading =
     state.loading ||
     (!customShader && (state.compilation.status === 'idle' || state.compilation.status === 'compiling'));
@@ -86,19 +122,6 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
     observer.observe(editor);
     return () => observer.disconnect();
   }, []);
-
-  const setParameterComponent = (nodeId: string, component: number, value: number) => {
-    const next = cloneMaterialGraph(state.graph);
-    const node = next.nodes.find((candidate) => candidate.id === nodeId);
-    if (!node) return;
-    if (typeof node.values.value === 'number') node.values.value = value;
-    else {
-      const values = Array.isArray(node.values.value) ? [...node.values.value] : [0];
-      values[component] = value;
-      node.values.value = values;
-    }
-    replaceMaterialGraph(document, next);
-  };
 
   const resizeSidebar = (requestedWidth: number) => {
     const containerWidth = editorRef.current?.getBoundingClientRect().width ?? window.innerWidth;
@@ -190,10 +213,9 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
       <aside className="material-editor-sidebar editor-property-panel">
         <AssetPreviewPanel
           title="Material Preview"
-          subtitle="Native renderer"
+          showHeader={false}
           metadata={[
             {
-              label: 'Mesh',
               value: (
                 <span className="material-preview-controls">
                   <span className="material-preview-mesh-toggle" role="group" aria-label="Material preview mesh">
@@ -220,7 +242,6 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
                 </span>
               ),
             },
-            { label: 'Environment', value: 'Studio HDRI' },
           ]}
         >
           <AssetPreviewViewport
@@ -234,107 +255,134 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
           />
         </AssetPreviewPanel>
 
-        <section className="material-parameters-panel editor-property-section">
-          <header>
-            <div>
-              <strong>Parameters</strong>
-              <span>{customShader ? 'Reflected during cook' : `${parameters.length} exposed`}</span>
-            </div>
-            {document.readOnly && (
-              <span className="material-readonly-badge">
-                <Lock size={11} /> Read-only
-              </span>
+        <div className="material-settings-region">
+          <UiPanelCard
+            className="material-settings-card"
+            collapsed={materialSettingsCollapsed}
+            contentClassName="material-settings-list"
+            title="Material"
+            onToggle={() => setMaterialSettingsCollapsed((collapsed) => !collapsed)}
+          >
+            <UiPanelCardRow label="Domain">
+              <UiSelect
+                ariaLabel="Material domain"
+                disabled={document.readOnly}
+                options={materialDomainOptions}
+                value={materialDomain}
+                onValueChange={(value) => replaceMaterialSettings(document, { domain: value as MaterialDomain })}
+              />
+            </UiPanelCardRow>
+            {isSurfaceMaterial && (
+              <>
+                <UiPanelCardRow label="Blend Mode">
+                  <UiSelect
+                    ariaLabel="Material blend mode"
+                    disabled={document.readOnly}
+                    options={materialBlendModeOptions}
+                    value={materialBlendMode}
+                    onValueChange={(value) =>
+                      replaceMaterialSettings(document, { blendMode: value as MaterialBlendMode })
+                    }
+                  />
+                </UiPanelCardRow>
+                <UiPanelCardRow label="Shading Model">
+                  <UiSelect
+                    ariaLabel="Material shading model"
+                    disabled={document.readOnly}
+                    options={materialShadingModelOptions}
+                    value={materialShadingModel}
+                    onValueChange={(value) =>
+                      replaceMaterialSettings(document, { shadingModel: value as MaterialShadingModel })
+                    }
+                  />
+                </UiPanelCardRow>
+              </>
             )}
-          </header>
-          <div className="material-parameter-list">
-            {parameters.map((parameter) => {
-              const node = state.graph.nodes.find((candidate) => candidate.id === parameter.nodeId);
-              if (!node) return null;
-              const values = parameterValue(node);
-              return (
-                <label className="material-parameter" key={parameter.nodeId}>
-                  <span>
-                    <strong>{parameter.name}</strong>
-                    <small>{parameter.type}</small>
-                  </span>
-                  <div>
-                    {values.map((value, index) => (
-                      <span className="material-parameter-component" key={index}>
-                        {values.length > 1 && <i>{componentLabels[index]}</i>}
-                        <input
-                          disabled={document.readOnly}
-                          type="number"
-                          step="0.01"
-                          value={value}
-                          onChange={(event) =>
-                            setParameterComponent(parameter.nodeId, index, Number(event.target.value))
-                          }
-                        />
-                      </span>
-                    ))}
-                  </div>
-                </label>
-              );
-            })}
-            {!parameters.length && (
-              <div className="material-empty-parameters">
-                {customShader
-                  ? 'Custom Material Shader parameters are reflected by the material cooker during asset cook.'
-                  : 'Expose a Constant or Vector node as a parameter to edit it here.'}
-              </div>
-            )}
-          </div>
-        </section>
+          </UiPanelCard>
 
-        <section className="material-details-panel editor-property-section">
-          <header>
-            <strong>Material</strong>
-            <span>{state.asset.name ?? document.title}</span>
-          </header>
-          <dl>
-            <dt>Domain</dt>
-            <dd>{String(state.asset.domain ?? 'surface')}</dd>
-            <dt>Blend</dt>
-            <dd>{String(state.asset.blendMode ?? 'opaque')}</dd>
-            <dt>Shading</dt>
-            <dd>{String(state.asset.shadingModel ?? 'standard')}</dd>
-            <dt>Implementation</dt>
-            <dd>{customShader ? 'Material Shader' : 'Material Graph'}</dd>
-            <dt>{customShader ? 'Source' : 'Compiler'}</dt>
-            <dd>{customShader || 'Native Material IR'}</dd>
-          </dl>
-          <div className="material-compile-summary">
-            {customShader ? (
-              <Code2 size={13} />
-            ) : errors.length ? (
-              <AlertCircle size={13} />
-            ) : (
-              <CheckCircle2 size={13} />
-            )}
-            <span>
-              {customShader
-                ? 'Validated during asset cook'
-                : state.compilation.status === 'compiling'
-                  ? 'Native compiler running…'
-                  : errors.length
-                    ? `${errors.length} error${errors.length === 1 ? '' : 's'}`
-                    : warnings.length
-                      ? `Compiled with ${warnings.length} warning${warnings.length === 1 ? '' : 's'}`
-                      : state.compilation.succeeded
-                        ? 'Native compilation succeeded'
-                        : 'Awaiting native compilation'}
-            </span>
-          </div>
-          {!customShader && (errors.length > 0 || warnings.length > 0) && (
-            <div className="material-diagnostics">
-              {[...errors, ...warnings].map((diagnostic, index) => (
-                <p className={diagnostic.severity} key={`${diagnostic.nodeId ?? 'graph'}-${index}`}>
-                  {diagnostic.message}
-                </p>
-              ))}
-            </div>
+          {isSurfaceMaterial && (
+            <UiPanelCard
+              className="material-settings-card"
+              collapsed={renderingSettingsCollapsed}
+              contentClassName="material-settings-list"
+              title="Rendering"
+              onToggle={() => setRenderingSettingsCollapsed((collapsed) => !collapsed)}
+            >
+              <UiPanelCardRow className="material-setting-toggle-row" label="Two Sided">
+                <UiToggleButton
+                  aria-label="Two sided material"
+                  checked={state.asset.doubleSided === true}
+                  disabled={document.readOnly}
+                  onCheckedChange={(checked) => replaceMaterialSettings(document, { doubleSided: checked })}
+                />
+              </UiPanelCardRow>
+              {!isTranslucentMaterial && (
+                <UiPanelCardRow className="material-setting-toggle-row" label="Cast Shadows">
+                  <UiToggleButton
+                    aria-label="Cast shadows"
+                    checked={state.asset.castShadows !== false}
+                    disabled={document.readOnly}
+                    onCheckedChange={(checked) => replaceMaterialSettings(document, { castShadows: checked })}
+                  />
+                </UiPanelCardRow>
+              )}
+            </UiPanelCard>
           )}
-        </section>
+
+          {isMaskedMaterial && (
+            <UiPanelCard
+              className="material-settings-card"
+              collapsed={maskingSettingsCollapsed}
+              contentClassName="material-settings-list"
+              title="Masking"
+              onToggle={() => setMaskingSettingsCollapsed((collapsed) => !collapsed)}
+            >
+              <UiPanelCardRow label="Opacity">
+                <span className="material-setting-readonly">{outputSource('opacity', '1.0')}</span>
+              </UiPanelCardRow>
+              <UiPanelCardRow label="Alpha Clip">
+                <span className="material-setting-readonly">{outputSource('alphaClip', '0.5')}</span>
+              </UiPanelCardRow>
+            </UiPanelCard>
+          )}
+
+          {isTranslucentMaterial && (
+            <UiPanelCard
+              className="material-settings-card"
+              collapsed={translucencySettingsCollapsed}
+              contentClassName="material-settings-list"
+              title="Translucency"
+              onToggle={() => setTranslucencySettingsCollapsed((collapsed) => !collapsed)}
+            >
+              <UiPanelCardRow label="Opacity">
+                <span className="material-setting-readonly">{outputSource('opacity', '1.0')}</span>
+              </UiPanelCardRow>
+              <UiPanelCardRow label="Transmission">
+                <span className="material-setting-readonly">{outputSource('transmission', '0.0')}</span>
+              </UiPanelCardRow>
+              <UiPanelCardRow label="Index of Refraction">
+                <span className="material-setting-readonly">{outputSource('indexOfRefraction', '1.5')}</span>
+              </UiPanelCardRow>
+              <UiPanelCardRow label="Thickness">
+                <span className="material-setting-readonly">{outputSource('thickness', '0.0')}</span>
+              </UiPanelCardRow>
+            </UiPanelCard>
+          )}
+
+          {isSurfaceMaterial && (
+            <UiPanelCard
+              className="material-settings-card"
+              collapsed={advancedSettingsCollapsed}
+              contentClassName="material-settings-list"
+              title="Advanced"
+              onToggle={() => setAdvancedSettingsCollapsed((collapsed) => !collapsed)}
+            >
+              <UiPanelCardRow label="Render Path">
+                <span className="material-setting-readonly">{renderPathLabel}</span>
+              </UiPanelCardRow>
+            </UiPanelCard>
+          )}
+        </div>
       </aside>
 
       {state.message && <div className="material-editor-message">{state.message}</div>}

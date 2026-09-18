@@ -240,6 +240,7 @@ bool load_material_asset(const std::filesystem::path& path, const std::filesyste
     asset.material.alpha_mode = blend_mode_from_string(string_value(json, "blendMode").value_or("opaque"));
     asset.material.shading_model = shading_model_from_string(string_value(json, "shadingModel").value_or("standard"));
     asset.material.double_sided = bool_value(json, "doubleSided").value_or(asset.material.double_sided);
+    asset.material.cast_shadows = bool_value(json, "castShadows").value_or(asset.material.cast_shadows);
     asset.graph_reserved = json.find("\"graph\"") != std::string::npos;
 
     if (auto surface = object_for_key(json, "surface"))
@@ -380,6 +381,7 @@ bool save_material_asset(const material_asset& asset, const std::filesystem::pat
     stream << "  \"blendMode\": \"" << blend_mode_to_string(asset.material.alpha_mode) << "\",\n";
     stream << "  \"shadingModel\": \"" << shading_model_to_string(asset.material.shading_model) << "\",\n";
     stream << "  \"doubleSided\": " << (asset.material.double_sided ? "true" : "false") << ",\n";
+    stream << "  \"castShadows\": " << (asset.material.cast_shadows ? "true" : "false") << ",\n";
     stream << "  \"surface\": {\n";
     stream << "    \"baseColor\": { \"r\": " << asset.material.base_color[0]
            << ", \"g\": " << asset.material.base_color[1] << ", \"b\": " << asset.material.base_color[2]

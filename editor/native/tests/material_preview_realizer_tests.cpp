@@ -27,6 +27,7 @@ const std::string red_material_source = R"({
   "blendMode": "opaque",
   "shadingModel": "standard",
   "doubleSided": false,
+  "castShadows": false,
   "graph": {
     "version": 1,
     "nodes": [
@@ -49,6 +50,7 @@ TEST_CASE("material preview realizes authored base color through native Material
     CHECK(near(result.material.base_color[1], 0.0f));
     CHECK(near(result.material.base_color[2], 0.0f));
     CHECK(near(result.material.roughness, 0.6f));
+    CHECK_FALSE(result.material.cast_shadows);
     if (result.material.runtime_program)
     {
         REQUIRE_FALSE(result.material.runtime_program->passes.empty());

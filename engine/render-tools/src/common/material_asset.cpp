@@ -178,7 +178,8 @@ material_authoring_result parse_material_authoring_json(std::string_view source)
                                                .domain = authored_domain(document),
                                                .shading_model = authored_shading_model(document),
                                                .alpha_mode = authored_alpha_mode(document),
-                                               .double_sided = document.value("doubleSided", false)});
+                                               .double_sided = document.value("doubleSided", false),
+                                               .cast_shadows = document.value("castShadows", true)});
 }
 
 std::vector<std::byte> serialize_material_package_v3(const material_package_v3& package)

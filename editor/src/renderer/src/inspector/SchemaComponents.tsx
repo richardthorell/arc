@@ -2,7 +2,7 @@ import { MoreVertical } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 
-import { UiButton, UiContextMenu, UiContextMenuItem, UiIconButton, UiPanelSection, UiSelect, UiTextInput } from '../ui';
+import { UiButton, UiContextMenu, UiContextMenuItem, UiIconButton, UiPanelCard, UiSelect, UiTextInput } from '../ui';
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
 import { AssetPicker, AssetPreview, MaterialPicker, PrefabPicker, TexturePicker } from './AssetPicker';
 import { ColorControl, NumberControl, Vector3Control } from './InspectorControls';
@@ -125,7 +125,7 @@ export function SchemaComponentCard<TContext extends object>({
   };
 
   return (
-    <UiPanelSection
+    <UiPanelCard
       actions={
         <>
           {headerAccessory && <div className="inspector-component-header-accessory">{headerAccessory}</div>}
@@ -228,7 +228,7 @@ export function SchemaComponentCard<TContext extends object>({
       {!visibleFields.length && !showMeshAsset && (
         <div className="inspector-component-empty">No settings are active for this mode.</div>
       )}
-    </UiPanelSection>
+    </UiPanelCard>
   );
 }
 

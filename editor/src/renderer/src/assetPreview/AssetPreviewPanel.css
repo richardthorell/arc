@@ -8,6 +8,10 @@
   background: #111b21;
 }
 
+.asset-preview-panel.without-header {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
 .asset-preview-header {
   min-height: 40px;
   display: flex;

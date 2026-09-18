@@ -38,6 +38,13 @@ TEST_CASE("material pass eligibility follows alpha and render routing")
     REQUIRE(arc::render::material_supports_pass(material, arc::render::material_pass::gbuffer));
     REQUIRE(arc::render::material_supports_pass(material, arc::render::material_pass::forward));
     REQUIRE(arc::render::material_supports_pass(material, arc::render::material_pass::motion));
+
+    material.cast_shadows = false;
+    REQUIRE_FALSE(arc::render::material_supports_pass(material, arc::render::material_pass::shadow));
+    REQUIRE(arc::render::material_supports_pass(material, arc::render::material_pass::depth));
+    REQUIRE(arc::render::material_supports_pass(material, arc::render::material_pass::motion));
+    material.cast_shadows = true;
+
     REQUIRE_FALSE(arc::render::material_pass_evaluates_surface(arc::render::material_pass::depth,
                                                                arc::render::material_alpha_mode::opaque));
 

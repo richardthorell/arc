@@ -64,9 +64,10 @@ bool material_supports_pass(const material_descriptor& material, material_pass p
     switch (pass)
     {
         case material_pass::depth:
-        case material_pass::shadow:
         case material_pass::motion:
             return material.alpha_mode != material_alpha_mode::blend;
+        case material_pass::shadow:
+            return material.cast_shadows && material.alpha_mode != material_alpha_mode::blend;
         case material_pass::gbuffer:
             return material.alpha_mode != material_alpha_mode::blend &&
                    resolve_material_render_path(material) == material_render_path::deferred;

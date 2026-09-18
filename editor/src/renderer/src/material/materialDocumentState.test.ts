@@ -3,10 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { EditorDocument } from '../editors/editorTypes';
 import {
+  compileMaterialDocument,
   disposeMaterialDocument,
   getMaterialDocumentState,
   loadMaterialDocument,
   replaceMaterialGraph,
+  replaceMaterialSettings,
 } from './materialDocumentState';
 import { cloneMaterialGraph, createDefaultMaterialGraph } from './materialGraphTypes';
 
@@ -21,7 +23,7 @@ const document: EditorDocument = {
   readOnly: false,
 };
 
-const command = vi.fn(async () => ({
+const command = vi.fn(async (_type?: string, _payload?: unknown) => ({
   succeeded: true,
   payload: { succeeded: true, diagnostics: [] },
 }));
@@ -102,5 +104,54 @@ describe('material live preview compilation', () => {
 
     await vi.advanceTimersByTimeAsync(250);
     expect(command).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('material settings editing', () => {
+  it('keeps authored setting edits in memory until an explicit compile', async () => {
+    await loadMaterialDocument(document, true);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(getMaterialDocumentState(document).compilation.status).toBe('succeeded');
+    command.mockClear();
+
+    expect(
+      replaceMaterialSettings(document, {
+        domain: 'surface',
+        blendMode: 'masked',
+        shadingModel: 'unlit',
+        doubleSided: true,
+        castShadows: false,
+      }),
+    ).toBe(true);
+
+    const updated = getMaterialDocumentState(document);
+    expect(updated.asset.blendMode).toBe('masked');
+    expect(updated.asset.shadingModel).toBe('unlit');
+    expect(updated.asset.doubleSided).toBe(true);
+    expect(updated.asset.castShadows).toBe(false);
+    expect(updated.compilation.status).toBe('succeeded');
+
+    await vi.advanceTimersByTimeAsync(250);
+    expect(command).not.toHaveBeenCalled();
+
+    expect(await compileMaterialDocument(document, { quiet: true })).toBe(true);
+    expect(command).toHaveBeenCalledTimes(1);
+    const payload = command.mock.calls[0]?.[1] as { previewSource?: string };
+    const previewSource = JSON.parse(payload.previewSource ?? '{}');
+    expect(previewSource.blendMode).toBe('masked');
+    expect(previewSource.shadingModel).toBe('unlit');
+    expect(previewSource.doubleSided).toBe(true);
+    expect(previewSource.castShadows).toBe(false);
+  });
+
+  it('does not compile when a material setting is unchanged', async () => {
+    await loadMaterialDocument(document, true);
+    await vi.advanceTimersByTimeAsync(250);
+    command.mockClear();
+
+    expect(replaceMaterialSettings(document, { blendMode: 'opaque' })).toBe(false);
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(command).not.toHaveBeenCalled();
   });
 });
