@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { EditorDocument } from '../editors/editorTypes';
@@ -36,6 +36,7 @@ const textureDocument: EditorDocument = {
 };
 
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
   Reflect.deleteProperty(window, 'arc');
 });
