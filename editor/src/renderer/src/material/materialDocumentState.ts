@@ -74,6 +74,7 @@ const materialSettings = (asset: MaterialAssetJson): MaterialSettings => ({
       ? asset.shadingModel
       : 'standard',
   doubleSided: asset.doubleSided === true,
+  castShadows: asset.castShadows !== false,
 });
 const settingsFingerprint = (asset: MaterialAssetJson) => JSON.stringify(materialSettings(asset));
 const materialShaderPath = (asset: MaterialAssetJson) =>
