@@ -19,6 +19,7 @@ import {
   type TextureFilterMode,
   type TextureMipFilterMode,
   type TextureMipGenerationFilter,
+  type TextureMipPolicy,
   type TexturePowerOfTwoPolicy,
   type TexturePreset,
   type TextureSemantic,
@@ -127,6 +128,7 @@ function TextureProperty({ label, value }: { label: string; value: string }) {
 }
 
 function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: TexturePreviewAnalysis['histogram'] }) {
+  const ddsSource = extensionOf(asset.path) === 'DDS';
   const [settings, setSettings] = useState<TextureSettingsSnapshot | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsBusy, setSettingsBusy] = useState(false);
@@ -348,15 +350,40 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
         >
           {settings && (
             <>
+              <TextureProperty
+                label="Source Mips"
+                value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)}
+              />
               <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Generate Mips</span>
-                <input
-                  checked={settings.generateMips}
+                <span className="inspector-property-label">Mip Policy</span>
+                <select
+                  aria-label="Texture mip policy"
+                  className="texture-inspector-select"
                   disabled={settingsBusy}
-                  onChange={(event) => void updateSettings({ generateMips: event.target.checked })}
-                  type="checkbox"
-                />
+                  value={settings.mipPolicy}
+                  onChange={(event) => void updateSettings({ mipPolicy: event.target.value as TextureMipPolicy })}
+                >
+                  <option value="preserve_source">Preserve Source</option>
+                  <option disabled={ddsSource} value="generate">
+                    Generate
+                  </option>
+                  <option disabled={settings.streamingMode !== 'resident'} value="none">
+                    None
+                  </option>
+                </select>
               </label>
+              <TextureProperty
+                label="Mip Source"
+                value={
+                  settings.mipPolicy === 'generate'
+                    ? 'Generated'
+                    : settings.mipPolicy === 'none'
+                      ? 'Base level only'
+                      : ddsSource
+                        ? 'Authored / preserved'
+                        : 'Generate if absent'
+                }
+              />
               <label className="inspector-property texture-inspector-property">
                 <span className="inspector-property-label">Generation Filter</span>
                 <select
@@ -379,7 +406,7 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
                 <span className="inspector-property-label">Sharpen</span>
                 <input
                   className="texture-inspector-input"
-                  disabled={settingsBusy || !settings.generateMips}
+                  disabled={settingsBusy || settings.mipPolicy === 'none' || (ddsSource && settings.mipPolicy === 'preserve_source')}
                   max={2}
                   min={0}
                   step={0.05}
@@ -392,7 +419,7 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
                 <span className="inspector-property-label">Dither</span>
                 <input
                   checked={settings.ditherMips}
-                  disabled={settingsBusy || !settings.generateMips}
+                  disabled={settingsBusy || settings.mipPolicy === 'none' || (ddsSource && settings.mipPolicy === 'preserve_source')}
                   type="checkbox"
                   onChange={(event) => void updateSettings({ ditherMips: event.target.checked })}
                 />
@@ -401,7 +428,7 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
                 <span className="inspector-property-label">De-band</span>
                 <input
                   checked={settings.debandMips}
-                  disabled={settingsBusy || !settings.generateMips}
+                  disabled={settingsBusy || settings.mipPolicy === 'none' || (ddsSource && settings.mipPolicy === 'preserve_source')}
                   type="checkbox"
                   onChange={(event) => void updateSettings({ debandMips: event.target.checked })}
                 />
@@ -410,7 +437,7 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
                 <span className="inspector-property-label">De-band Strength</span>
                 <input
                   className="texture-inspector-input"
-                  disabled={settingsBusy || !settings.generateMips || !settings.debandMips}
+                  disabled={settingsBusy || settings.mipPolicy === 'none' || (ddsSource && settings.mipPolicy === 'preserve_source') || !settings.debandMips}
                   max={1}
                   min={0}
                   step={0.05}
@@ -680,6 +707,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const panRef = useRef<PanState | null>(null);
   const resizeRef = useRef<{ startX: number; width: number } | null>(null);
+  const ddsSource = extensionOf(asset.path) === 'DDS';
   const [preview, setPreview] = useState<HostAssetThumbnailSnapshot | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
   const [analysis, setAnalysis] = useState<TexturePreviewAnalysis | null>(null);
@@ -973,7 +1001,11 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
               <div className="texture-preview-empty">
                 <Image aria-hidden="true" size={34} />
                 <strong>Preview unavailable</strong>
-                <span>The texture metadata is still available in the details panel.</span>
+                <span>
+                  {ddsSource
+                    ? 'BC-compressed DDS preview requires the block decoder; metadata and authored mip settings remain available.'
+                    : 'The texture metadata is still available in the details panel.'}
+                </span>
               </div>
             ) : (
               <div className="texture-preview-empty">
