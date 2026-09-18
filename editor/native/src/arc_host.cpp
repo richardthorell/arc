@@ -101,42 +101,66 @@ bool arc_configure_material_preview_environment(editor_scene_state& state, rende
     }
 
     const auto environment_entity = add_world_environment_to_scene(state);
-    auto* world = state.scene.try_get<scene::world_environment_component>(environment_entity);
-    auto* lighting = state.scene.try_get<scene::environment_lighting_component>(environment_entity);
-    if (!world || !lighting)
+    auto settings = scene::read_world_environment_settings(state.scene, environment_entity);
+    if (!settings)
     {
         (void)renderer.destroy_texture(texture);
+        arc::diagnostics::warn("editor.materials", "Material preview world environment is incomplete");
         return false;
     }
 
-    world->enabled = true;
-    world->sky_visible = true;
-    world->affect_lighting = true;
-    world->source = scene::sky_source::hdri;
-    world->hdri_texture = texture;
-    world->radiance_intensity = 1.0f;
-
-    lighting->enabled = true;
-    lighting->source = scene::environment_lighting_source::hdri;
-    lighting->hdri_texture = texture;
+    // Material preview uses the EXR directly as its visible equirectangular
+    // world. Disable the analytic sky decorations so clouds/sun/stars are not
+    // composited on top of the authored HDRI.
+    settings->world.enabled = true;
+    settings->world.sky_visible = true;
+    settings->world.affect_lighting = true;
+    settings->world.source = scene::sky_source::hdri;
+    settings->world.hdri_texture = texture;
+    settings->world.hdri_rotation_degrees = 0.0f;
+    settings->world.radiance_intensity = 1.0f;
+    settings->atmosphere.exposure = 1.0f;
+    settings->atmosphere.sun_disk_intensity = 0.0f;
+    settings->celestial.stars_enabled = false;
+    settings->celestial.moon_enabled = false;
+    settings->clouds.enabled = false;
+    settings->fog.enabled = false;
+    settings->lighting.enabled = true;
+    settings->lighting.source = scene::environment_lighting_source::hdri;
+    settings->lighting.hdri_texture = texture;
 
     render::environment_descriptor environment;
     environment.name = "Material Preview Studio Environment";
     environment.equirectangular_texture = texture;
-    environment.fallback_color = world->solid_color;
-    environment.intensity = world->radiance_intensity;
-    environment.diffuse_irradiance = lighting->constant_color;
-    environment.diffuse_intensity = lighting->diffuse_intensity;
+    environment.fallback_color = settings->world.solid_color;
+    environment.intensity = settings->world.radiance_intensity;
+    environment.diffuse_irradiance = settings->lighting.constant_color;
+    environment.diffuse_intensity = settings->lighting.diffuse_intensity;
     const auto environment_handle = renderer.create_environment(std::move(environment));
     if (environment_handle.valid())
     {
-        lighting->environment = environment_handle;
+        settings->lighting.environment = environment_handle;
         state.environment_lighting_resource = environment_handle;
     }
+
+    if (!scene::set_world_environment_settings(state.scene, environment_entity, *settings))
+    {
+        if (environment_handle.valid()) (void)renderer.destroy_environment(environment_handle);
+        (void)renderer.destroy_texture(texture);
+        state.environment_lighting_resource = {};
+        arc::diagnostics::warn("editor.materials", "Material preview HDRI environment failed validation");
+        return false;
+    }
+
+    // The preview is intentionally HDRI-lit; do not retain the default outdoor
+    // sun that create_blank_scene installs for normal editor scenes.
+    if (auto* sun = state.scene.try_get<scene::directional_light_component>(state.sun_entity)) sun->enabled = false;
 
     resources.environment_texture = texture;
     resources.environment = environment_handle;
     state.world_environment_hdri_path = std::filesystem::path{"environments"} / arc_material_preview_environment_name;
+    arc::diagnostics::info("editor.materials",
+                           "Material preview HDRI skybox active: " + path->generic_string());
     return true;
 }
 
