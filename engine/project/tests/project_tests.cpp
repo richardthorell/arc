@@ -170,8 +170,7 @@ TEST_CASE("version one upgrades preserve custom content roots and startup scenes
     std::ofstream(scene) << "{}";
     std::ofstream(scene.string() + ".arcmeta") << R"({"guid":"12345678-1234-4234-8234-123456789abc"})";
     const auto descriptor_path = temporary.path() / "Legacy.arcproject";
-    std::ofstream(descriptor_path)
-        << R"({"format":"arc-project","formatVersion":1,"guid":"12345678-1234-4234-8234-123456789abd","name":"Legacy","engineVersion":"0.0.1","assetRoots":["assets"],"startupScenes":["assets/scenes/Start.arcscene"],"modules":[],"extensions":[],"settings":{}})";
+    std::ofstream(descriptor_path) << R"({"format":"arc-project","formatVersion":1,"guid":"12345678-1234-4234-8234-123456789abd","name":"Legacy","engineVersion":"0.0.1","assetRoots":["assets"],"startupScenes":["assets/scenes/Start.arcscene"],"modules":[],"extensions":[],"settings":{}})";
     REQUIRE(arc::project::upgrade_descriptor(descriptor_path, "0.1.0"));
     const auto upgraded = arc::project::load_descriptor(descriptor_path);
     REQUIRE(upgraded);
@@ -220,10 +219,9 @@ TEST_CASE("project validation accepts ordered texture families and rejects inval
     descriptor.name = "Texture Profiles";
     descriptor.engine_version = "0.1.0";
     descriptor.target_platforms.push_back({.id = "windows-x64-vulkan"});
-    descriptor.cook_profiles.push_back(
-        {.id = "windows-x64-vulkan",
-         .platform = "windows",
-         .textures = {.outputs = {"bc", "astc"}, .quality = "balanced"}});
+    descriptor.cook_profiles.push_back({.id = "windows-x64-vulkan",
+                                        .platform = "windows",
+                                        .textures = {.outputs = {"bc", "astc"}, .quality = "balanced"}});
 
     CHECK(arc::project::validate_descriptor(temporary.path() / "TextureProfiles.arcproject", descriptor));
 
