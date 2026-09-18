@@ -711,7 +711,7 @@ validation_result validate_descriptor(const std::filesystem::path& descriptor_pa
         std::set<std::string> outputs;
         for (const auto& family : profile.textures.outputs)
         {
-            if (std::find(texture_families.begin(), texture_families.end(), family) == texture_families.end())
+            if (std::find(texture_families.begin(), texture_families.end(), std::string_view(family)) == texture_families.end())
                 return validation_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path,
                                                              "unsupported texture output family: " + family,
                                                              "cookProfiles.textures.outputs"));
@@ -720,7 +720,7 @@ validation_result validate_descriptor(const std::filesystem::path& descriptor_pa
                                                              "texture output families must be unique within a profile",
                                                              "cookProfiles.textures.outputs"));
         }
-        if (std::find(texture_qualities.begin(), texture_qualities.end(), profile.textures.quality) ==
+        if (std::find(texture_qualities.begin(), texture_qualities.end(), std::string_view(profile.textures.quality)) ==
             texture_qualities.end())
             return validation_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path,
                                                          "texture quality must be balanced, quality, or size",
