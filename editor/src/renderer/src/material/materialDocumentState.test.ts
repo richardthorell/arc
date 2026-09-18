@@ -7,6 +7,7 @@ import {
   getMaterialDocumentState,
   loadMaterialDocument,
   replaceMaterialGraph,
+  replaceMaterialSettings,
 } from './materialDocumentState';
 import { cloneMaterialGraph, createDefaultMaterialGraph } from './materialGraphTypes';
 
@@ -102,5 +103,50 @@ describe('material live preview compilation', () => {
 
     await vi.advanceTimersByTimeAsync(250);
     expect(command).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe('material settings editing', () => {
+  it('updates authored settings and republishes the live preview without saving first', async () => {
+    await loadMaterialDocument(document, true);
+    await vi.advanceTimersByTimeAsync(250);
+    command.mockClear();
+
+    expect(
+      replaceMaterialSettings(document, {
+        domain: 'surface',
+        blendMode: 'masked',
+        shadingModel: 'unlit',
+        doubleSided: true,
+      }),
+    ).toBe(true);
+
+    const updated = getMaterialDocumentState(document);
+    expect(updated.asset.blendMode).toBe('masked');
+    expect(updated.asset.shadingModel).toBe('unlit');
+    expect(updated.asset.doubleSided).toBe(true);
+    expect(updated.compilation.status).toBe('idle');
+
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(command).toHaveBeenCalledTimes(1);
+    const payload = command.mock.calls[0]?.[1] as { previewSource?: string };
+    const previewSource = JSON.parse(payload.previewSource ?? '{}');
+    expect(previewSource.blendMode).toBe('masked');
+    expect(previewSource.shadingModel).toBe('unlit');
+    expect(previewSource.doubleSided).toBe(true);
+    expect(getMaterialDocumentState(document).compilation.status).toBe('succeeded');
+  });
+
+  it('does not compile when a material setting is unchanged', async () => {
+    await loadMaterialDocument(document, true);
+    await vi.advanceTimersByTimeAsync(250);
+    command.mockClear();
+
+    expect(replaceMaterialSettings(document, { blendMode: 'opaque' })).toBe(false);
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(command).not.toHaveBeenCalled();
   });
 });
