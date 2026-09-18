@@ -194,7 +194,7 @@ struct project_settings_paths
     std::filesystem::path input{"Config/Input.json"};       ///< Input setting document.
 };
 
-/** @brief Complete in-memory representation of a version-2 ARC project. */
+/** @brief Complete in-memory representation of a version-3 ARC project. */
 struct project_descriptor
 {
     std::string guid;                                          ///< Persistent project GUID.
