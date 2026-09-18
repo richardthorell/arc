@@ -58,6 +58,7 @@ describe('TextureEditor', () => {
                 minFilter: 'linear',
                 magFilter: 'linear',
                 mipFilter: 'linear',
+                mipPolicy: 'preserve_source',
                 wrapU: 'repeat',
                 wrapV: 'repeat',
                 mipGenerationFilter: 'box',
@@ -108,4 +109,70 @@ describe('TextureEditor', () => {
       maxSize: 2048,
     });
   });
+  it('shows DDS authored mip policy and reports compressed preview limitations', async () => {
+    const ddsDocument: EditorDocument = {
+      ...textureDocument,
+      id: 'texture:dds-guid',
+      title: 'T_Authored.dds',
+      path: 'Content/Textures/T_Authored.dds',
+      assetId: 'dds-guid',
+      assetGuid: 'dds-guid',
+      assetSnapshot: {
+        ...textureDocument.assetSnapshot!,
+        id: 'dds-guid',
+        guid: 'dds-guid',
+        name: 'T_Authored.dds',
+        path: 'Content/Textures/T_Authored.dds',
+        textureFormat: 'BC7 RGBA sRGB',
+        mipLevels: 13,
+      },
+    };
+    const query = vi.fn().mockImplementation((type: string) =>
+      Promise.resolve(
+        type === 'texture.settings'
+          ? {
+              succeeded: true,
+              payload: {
+                settingsVersion: 8,
+                preset: 'color',
+                semantic: 'base_color',
+                colorSpace: 'srgb',
+                streamingMode: 'streamed_mips',
+                compression: 'color',
+                powerOfTwo: 'preserve',
+                minFilter: 'linear',
+                magFilter: 'linear',
+                mipFilter: 'linear',
+                mipPolicy: 'preserve_source',
+                wrapU: 'repeat',
+                wrapV: 'repeat',
+                mipGenerationFilter: 'kaiser',
+                maxSize: 8192,
+                anisotropy: 8,
+                lodBias: 0,
+                minimumLod: 0,
+                maximumLod: 1000,
+                alphaCoverageThreshold: 0.5,
+                generateMips: true,
+                preserveAlphaCoverage: false,
+              },
+            }
+          : { succeeded: false, error: 'Texture thumbnail could not be generated' },
+      ),
+    );
+    Object.defineProperty(window, 'arc', { configurable: true, value: { host: { query } } });
+
+    render(<TextureEditor document={ddsDocument} />);
+
+    expect(await screen.findByText('Authored / preserved')).toBeInTheDocument();
+    expect(screen.getByText('13')).toBeInTheDocument();
+    expect(screen.getByLabelText('Texture mip policy')).toHaveValue('preserve_source');
+    expect(screen.getByRole('option', { name: 'Generate' })).toBeDisabled();
+    expect(
+      await screen.findByText(
+        'BC-compressed DDS preview requires the block decoder; metadata and authored mip settings remain available.',
+      ),
+    ).toBeInTheDocument();
+  });
+
 });
