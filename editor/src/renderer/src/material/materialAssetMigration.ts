@@ -218,16 +218,19 @@ const legacyMaterialGraph = (asset: MaterialAssetJson): MaterialGraph => {
   scalar('legacy-alpha-clip', 'Alpha Clip', finite(surface.alphaCutoff, 0.5), 'alphaClip', 0.5,
     String(asset.blendMode ?? '').toLowerCase() === 'masked');
 
-  scalar('legacy-clear-coat', 'Clear Coat', finite(advanced.clearCoat, 0), 'clearCoat', 0);
-  scalar(
-    'legacy-clear-coat-roughness',
-    'Clear Coat Roughness',
-    finite(advanced.clearCoatRoughness, 0.1),
-    'clearCoatRoughness',
-    0.1,
-  );
+  if (!stringValue(textures.clearCoat))
+    scalar('legacy-clear-coat', 'Clear Coat', finite(advanced.clearCoat, 0), 'clearCoat', 0);
+  if (!stringValue(textures.clearCoatRoughness))
+    scalar(
+      'legacy-clear-coat-roughness',
+      'Clear Coat Roughness',
+      finite(advanced.clearCoatRoughness, 0.1),
+      'clearCoatRoughness',
+      0.1,
+    );
   scalar('legacy-sheen', 'Sheen', finite(advanced.sheen, 0), 'sheen', 0);
-  scalar('legacy-transmission', 'Transmission', finite(advanced.transmission, 0), 'transmission', 0);
+  if (!stringValue(textures.transmission))
+    scalar('legacy-transmission', 'Transmission', finite(advanced.transmission, 0), 'transmission', 0);
   scalar(
     'legacy-index-of-refraction',
     'Index of Refraction',
@@ -235,7 +238,8 @@ const legacyMaterialGraph = (asset: MaterialAssetJson): MaterialGraph => {
     'indexOfRefraction',
     1.5,
   );
-  scalar('legacy-thickness', 'Thickness', finite(advanced.thickness, 0), 'thickness', 0);
+  if (!stringValue(textures.thickness))
+    scalar('legacy-thickness', 'Thickness', finite(advanced.thickness, 0), 'thickness', 0);
   scalar(
     'legacy-attenuation-distance',
     'Attenuation Distance',
@@ -243,8 +247,10 @@ const legacyMaterialGraph = (asset: MaterialAssetJson): MaterialGraph => {
     'attenuationDistance',
     1,
   );
-  scalar('legacy-subsurface', 'Subsurface', finite(advanced.subsurface, 0), 'subsurface', 0);
-  scalar('legacy-anisotropy', 'Anisotropy', finite(advanced.anisotropy, 0), 'anisotropy', 0);
+  if (!stringValue(textures.subsurface))
+    scalar('legacy-subsurface', 'Subsurface', finite(advanced.subsurface, 0), 'subsurface', 0);
+  if (!stringValue(textures.anisotropy))
+    scalar('legacy-anisotropy', 'Anisotropy', finite(advanced.anisotropy, 0), 'anisotropy', 0);
   scalar(
     'legacy-anisotropy-rotation',
     'Anisotropy Rotation',
