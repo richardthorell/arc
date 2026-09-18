@@ -168,6 +168,12 @@
   font-weight: 500;
 }
 
+.material-preview-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .material-preview-mesh-toggle {
   display: inline-flex;
   align-items: center;
@@ -197,6 +203,30 @@
 }
 
 .material-preview-mesh-toggle button[aria-pressed='true'] {
+  color: #dce8ed;
+  background: rgba(82, 143, 170, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(104, 174, 204, 0.24);
+}
+
+
+.material-preview-auto-rotate {
+  height: 26px;
+  padding: 0 8px;
+  color: #8096a1;
+  border: 1px solid rgba(102, 132, 146, 0.22);
+  border-radius: 4px;
+  background: rgba(7, 13, 16, 0.32);
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.material-preview-auto-rotate:hover {
+  color: #d2dee4;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.material-preview-auto-rotate[aria-pressed='true'] {
   color: #dce8ed;
   background: rgba(82, 143, 170, 0.3);
   box-shadow: inset 0 0 0 1px rgba(104, 174, 204, 0.24);
