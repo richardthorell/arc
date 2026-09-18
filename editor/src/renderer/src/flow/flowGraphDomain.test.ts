@@ -93,6 +93,19 @@ describe('Flow graph domain', () => {
     ).toBe(true);
   });
 
+  it('resolves F8.1 graph interface pins to their authored types', () => {
+    const graphInput = createFlowNode('graphInput', [0, 0], { interfaceId: 'amount', interfaceType: 'int' });
+    const graphOutput = createFlowNode('graphOutput', [300, 0], { interfaceId: 'result', interfaceType: 'int' });
+    const inputDefinition = flowGraphDomain.getNodeDefinition(graphInput);
+    const outputDefinition = flowGraphDomain.getNodeDefinition(graphOutput);
+
+    expect(inputDefinition.outputs[0].type).toEqual({ kind: 'value', valueType: 'int' });
+    expect(outputDefinition.inputs.find((pin) => pin.id === 'value')?.type).toEqual({
+      kind: 'value',
+      valueType: 'int',
+    });
+  });
+
   it('keeps transform inputs strongly typed', () => {
     const vector3 = createFlowNode('vector3Literal', [0, 0]);
     const vector4 = createFlowNode('vector4Literal', [0, 120]);

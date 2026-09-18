@@ -16,6 +16,7 @@ export type FlowNodeType =
   | 'tick'
   | 'fixedTick'
   | 'inputAction'
+  | 'customEvent'
   | 'branch'
   | 'sequence'
   | 'switchInt'
@@ -26,6 +27,9 @@ export type FlowNodeType =
   | 'delay'
   | 'retriggerableDelay'
   | 'timer'
+  | 'callCustomEvent'
+  | 'graphInput'
+  | 'graphOutput'
   | 'selfEntity'
   | 'createEntity'
   | 'destroyEntity'
@@ -65,7 +69,7 @@ export type FlowNodeType =
   | 'convertNumber';
 
 export type FlowNodeCategory =
-  'Events' | 'Input' | 'Flow Control' | 'Entity' | 'Components' | 'Values' | 'Variables' | 'Math';
+  'Events' | 'Input' | 'Flow Control' | 'Interface' | 'Entity' | 'Components' | 'Values' | 'Variables' | 'Math';
 export type FlowNodeSubcategory =
   | 'Lifecycle'
   | 'Update'
@@ -76,6 +80,8 @@ export type FlowNodeSubcategory =
   | 'Stateful'
   | 'Looping'
   | 'Timing'
+  | 'Custom'
+  | 'Graph Interface'
   | 'Identity'
   | 'Lifetime'
   | 'State'
@@ -105,9 +111,24 @@ export type FlowVariableDefinition = {
   exposed: boolean;
 };
 
+export type FlowInterfaceValueDefinition = {
+  id: string;
+  name: string;
+  type: FlowValueType;
+  defaultValue: unknown;
+};
+
+export type FlowEventDefinition = {
+  id: string;
+  name: string;
+};
+
 export type FlowGraph = {
   version: 1;
   variables: FlowVariableDefinition[];
+  inputs?: FlowInterfaceValueDefinition[];
+  outputs?: FlowInterfaceValueDefinition[];
+  events?: FlowEventDefinition[];
   nodes: FlowGraphNode[];
   connections: FlowGraphConnection[];
   viewport: GraphViewport;
@@ -173,6 +194,14 @@ export const flowNodeDefinitions: Record<FlowNodeType, FlowNodeDefinition> = {
       execution('completed', 'Completed'),
       value('value', 'Value', 'float'),
     ],
+  },
+  customEvent: {
+    type: 'customEvent',
+    title: 'Custom Event',
+    category: 'Events',
+    subcategory: 'Custom',
+    inputs: [],
+    outputs: [execution('exec', 'Then')],
   },
   branch: {
     type: 'branch',
@@ -280,6 +309,30 @@ export const flowNodeDefinitions: Record<FlowNodeType, FlowNodeDefinition> = {
       execution('stopped', 'Stopped'),
       value('active', 'Active', 'bool'),
     ],
+  },
+  callCustomEvent: {
+    type: 'callCustomEvent',
+    title: 'Call Custom Event',
+    category: 'Events',
+    subcategory: 'Custom',
+    inputs: [execution('exec', 'In')],
+    outputs: [execution('then', 'Then')],
+  },
+  graphInput: {
+    type: 'graphInput',
+    title: 'Graph Input',
+    category: 'Interface',
+    subcategory: 'Graph Interface',
+    inputs: [],
+    outputs: [value('value', 'Value', 'any')],
+  },
+  graphOutput: {
+    type: 'graphOutput',
+    title: 'Graph Output',
+    category: 'Interface',
+    subcategory: 'Graph Interface',
+    inputs: [execution('exec', 'In'), value('value', 'Value', 'any')],
+    outputs: [execution('then', 'Then')],
   },
   selfEntity: {
     type: 'selfEntity',
@@ -614,6 +667,12 @@ const nodeConfiguredType = (node: FlowGraphNode): FlowValueType => {
       ? (type as FlowValueType)
       : 'any';
   }
+  if (node.type === 'graphInput' || node.type === 'graphOutput') {
+    const type = node.values.interfaceType;
+    return typeof type === 'string' && concreteFlowValueTypes.has(type as FlowValueType)
+      ? (type as FlowValueType)
+      : 'any';
+  }
   const type = node.values.valueType;
   return typeof type === 'string' && concreteFlowValueTypes.has(type as FlowValueType)
     ? (type as FlowValueType)
@@ -669,6 +728,12 @@ const defaultNodeValues = (type: FlowNodeType): Record<string, unknown> => {
   switch (type) {
     case 'inputAction':
       return { action: 'Jump' };
+    case 'customEvent':
+    case 'callCustomEvent':
+      return { eventId: '' };
+    case 'graphInput':
+    case 'graphOutput':
+      return { interfaceId: '', interfaceType: 'float' };
     case 'hasCoreComponent':
     case 'removeCoreComponent':
       return { component: 'transform' };
@@ -727,6 +792,9 @@ export const createFlowNode = (
 export const createDefaultFlowGraph = (): FlowGraph => ({
   version: 1,
   variables: [],
+  inputs: [],
+  outputs: [],
+  events: [],
   nodes: [createFlowNode('beginPlay', [120, 140])],
   connections: [],
   viewport: { x: 40, y: 40, zoom: 1 },
@@ -791,12 +859,36 @@ const isVariable = (value: unknown): value is FlowVariableDefinition => {
   );
 };
 
+const isInterfaceValue = (value: unknown): value is FlowInterfaceValueDefinition => {
+  if (!value || typeof value !== 'object') return false;
+  const item = value as Partial<FlowInterfaceValueDefinition>;
+  return (
+    typeof item.id === 'string' &&
+    typeof item.name === 'string' &&
+    typeof item.type === 'string' &&
+    item.type !== 'any' &&
+    flowValueTypes.has(item.type as FlowValueType) &&
+    'defaultValue' in item
+  );
+};
+
+const isEvent = (value: unknown): value is FlowEventDefinition => {
+  if (!value || typeof value !== 'object') return false;
+  const event = value as Partial<FlowEventDefinition>;
+  return typeof event.id === 'string' && typeof event.name === 'string';
+};
+
 export const isFlowGraph = (value: unknown): value is FlowGraph => {
   if (!value || typeof value !== 'object') return false;
   const graph = value as Partial<FlowGraph>;
   if (graph.version !== 1 || !Array.isArray(graph.nodes) || !Array.isArray(graph.connections)) return false;
   if (!Array.isArray(graph.variables) || !graph.variables.every(isVariable) || !isViewport(graph.viewport))
     return false;
+  if (graph.inputs !== undefined && (!Array.isArray(graph.inputs) || !graph.inputs.every(isInterfaceValue)))
+    return false;
+  if (graph.outputs !== undefined && (!Array.isArray(graph.outputs) || !graph.outputs.every(isInterfaceValue)))
+    return false;
+  if (graph.events !== undefined && (!Array.isArray(graph.events) || !graph.events.every(isEvent))) return false;
 
   const nodeIds = new Set<string>();
   for (const node of graph.nodes) {
@@ -840,5 +932,9 @@ export const isFlowAssetJson = (value: unknown): value is FlowAssetJson => {
 
 export const flowGraphFromAsset = (asset: FlowAssetJson): FlowGraph => {
   if (!isFlowAssetJson(asset)) throw new Error('Flow asset does not contain a valid Flow graph');
-  return cloneFlowGraph(asset.graph);
+  const graph = cloneFlowGraph(asset.graph);
+  graph.inputs ??= [];
+  graph.outputs ??= [];
+  graph.events ??= [];
+  return graph;
 };

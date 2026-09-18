@@ -25,6 +25,7 @@ enum class node_kind : std::uint8_t
     tick,
     fixed_tick,
     input_action,
+    custom_event,
     branch,
     sequence,
     switch_integer,
@@ -35,6 +36,9 @@ enum class node_kind : std::uint8_t
     delay,
     retriggerable_delay,
     timer,
+    call_custom_event,
+    graph_input,
+    graph_output,
     self_entity,
     create_entity,
     destroy_entity,
@@ -116,6 +120,9 @@ struct source_connection
 struct source_graph
 {
     std::vector<variable> variables;
+    std::vector<graph_interface_value> graph_inputs;
+    std::vector<graph_interface_value> graph_outputs;
+    std::vector<custom_event_definition> custom_events;
     std::vector<source_node> nodes;
     std::vector<source_connection> connections;
 };
@@ -145,6 +152,7 @@ std::optional<node_kind> parse_node_kind(std::string_view value)
     if (value == "tick") return node_kind::tick;
     if (value == "fixedTick") return node_kind::fixed_tick;
     if (value == "inputAction") return node_kind::input_action;
+    if (value == "customEvent") return node_kind::custom_event;
     if (value == "branch") return node_kind::branch;
     if (value == "sequence") return node_kind::sequence;
     if (value == "switchInt") return node_kind::switch_integer;
@@ -155,6 +163,9 @@ std::optional<node_kind> parse_node_kind(std::string_view value)
     if (value == "delay") return node_kind::delay;
     if (value == "retriggerableDelay") return node_kind::retriggerable_delay;
     if (value == "timer") return node_kind::timer;
+    if (value == "callCustomEvent") return node_kind::call_custom_event;
+    if (value == "graphInput") return node_kind::graph_input;
+    if (value == "graphOutput") return node_kind::graph_output;
     if (value == "selfEntity") return node_kind::self_entity;
     if (value == "createEntity") return node_kind::create_entity;
     if (value == "destroyEntity") return node_kind::destroy_entity;
@@ -327,6 +338,27 @@ const variable* variable_for(const source_graph& graph, const source_node& node)
     return found == graph.variables.end() ? nullptr : &*found;
 }
 
+const graph_interface_value* interface_value_for(const std::vector<graph_interface_value>& values,
+                                                 const source_node& node)
+{
+    const auto iterator = node.values.find("interfaceId");
+    if (iterator == node.values.end() || !iterator->is_string()) return nullptr;
+    const std::string id = iterator->get<std::string>();
+    const auto found =
+        std::find_if(values.begin(), values.end(), [&id](const graph_interface_value& item) { return item.id == id; });
+    return found == values.end() ? nullptr : &*found;
+}
+
+const custom_event_definition* custom_event_for(const source_graph& graph, const source_node& node)
+{
+    const auto iterator = node.values.find("eventId");
+    if (iterator == node.values.end() || !iterator->is_string()) return nullptr;
+    const std::string id = iterator->get<std::string>();
+    const auto found = std::find_if(graph.custom_events.begin(), graph.custom_events.end(),
+                                    [&id](const custom_event_definition& item) { return item.id == id; });
+    return found == graph.custom_events.end() ? nullptr : &*found;
+}
+
 std::optional<value_type> literal_type(node_kind kind)
 {
     switch (kind)
@@ -358,6 +390,16 @@ std::optional<value_type> node_data_type(const source_graph& graph, const source
         const variable* item = variable_for(graph, node);
         return item ? std::optional<value_type>{item->type} : std::nullopt;
     }
+    if (node.kind == node_kind::graph_input)
+    {
+        const graph_interface_value* item = interface_value_for(graph.graph_inputs, node);
+        return item ? std::optional<value_type>{item->type} : std::nullopt;
+    }
+    if (node.kind == node_kind::graph_output)
+    {
+        const graph_interface_value* item = interface_value_for(graph.graph_outputs, node);
+        return item ? std::optional<value_type>{item->type} : std::nullopt;
+    }
     if (node.kind == node_kind::convert_number)
     {
         const auto conversion = node.values.find("conversion");
@@ -381,7 +423,7 @@ std::optional<value_type> convert_input_type(const source_node& node)
 bool is_event_node(node_kind kind)
 {
     return kind == node_kind::begin_play || kind == node_kind::end_play || kind == node_kind::tick ||
-           kind == node_kind::fixed_tick || kind == node_kind::input_action;
+           kind == node_kind::fixed_tick || kind == node_kind::input_action || kind == node_kind::custom_event;
 }
 
 bool is_executable_node(node_kind kind)
@@ -398,6 +440,8 @@ bool is_executable_node(node_kind kind)
         case node_kind::delay:
         case node_kind::retriggerable_delay:
         case node_kind::timer:
+        case node_kind::call_custom_event:
+        case node_kind::graph_output:
         case node_kind::create_entity:
         case node_kind::destroy_entity:
         case node_kind::has_core_component:
@@ -466,6 +510,9 @@ std::optional<pin_info> output_pin(const source_graph& graph, const source_node&
             if (pin == "triggered" || pin == "completed") return pin_info{.kind = pin_kind::execution};
             if (pin == "value") return pin_info{.kind = pin_kind::value, .type = value_type::float32};
             break;
+        case node_kind::custom_event:
+            if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+            break;
         case node_kind::branch:
             if (pin == "true" || pin == "false") return pin_info{.kind = pin_kind::execution};
             break;
@@ -498,6 +545,13 @@ std::optional<pin_info> output_pin(const source_graph& graph, const source_node&
             if (pin == "started" || pin == "tick" || pin == "completed" || pin == "stopped")
                 return pin_info{.kind = pin_kind::execution};
             if (pin == "active") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
+            break;
+        case node_kind::call_custom_event:
+        case node_kind::graph_output:
+            if (pin == "then") return pin_info{.kind = pin_kind::execution};
+            break;
+        case node_kind::graph_input:
+            if (pin == "value") return pin_info{.kind = pin_kind::value, .type = node_data_type(graph, node)};
             break;
         case node_kind::self_entity:
             if (pin == "entity") return pin_info{.kind = pin_kind::value, .type = value_type::entity};
@@ -624,6 +678,17 @@ std::optional<pin_info> input_pin(const source_graph& graph, const source_node& 
         if (pin == "start" || pin == "stop") return pin_info{.kind = pin_kind::execution};
         if (pin == "interval") return pin_info{.kind = pin_kind::value, .type = value_type::float32};
         if (pin == "looping") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
+        return std::nullopt;
+    }
+    if (node.kind == node_kind::call_custom_event)
+    {
+        if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+        return std::nullopt;
+    }
+    if (node.kind == node_kind::graph_output)
+    {
+        if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+        if (pin == "value") return pin_info{.kind = pin_kind::value, .type = node_data_type(graph, node)};
         return std::nullopt;
     }
 
@@ -812,6 +877,79 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
                                    .exposed = variable_json["exposed"].get<bool>()});
     }
 
+    const auto parse_interface = [&](std::string_view field, std::vector<graph_interface_value>& destination)
+    {
+        const auto iterator = graph_json.find(std::string{field});
+        if (iterator == graph_json.end()) return;
+        if (!iterator->is_array())
+        {
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_INTERFACE_SCHEMA",
+                           "Flow graph interface fields must be arrays.");
+            return;
+        }
+
+        for (const json& value_json : *iterator)
+        {
+            if (!value_json.is_object())
+            {
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_INTERFACE_VALUE_SCHEMA",
+                               "Flow graph interface entries must be objects.");
+                continue;
+            }
+
+            const std::string id = value_json.value("id", std::string{});
+            const std::string name = value_json.value("name", std::string{});
+            const std::string type_name = value_json.value("type", std::string{});
+            const auto type = parse_value_type(type_name);
+            const auto default_iterator = value_json.find("defaultValue");
+            if (id.empty() || name.empty() || !type || default_iterator == value_json.end())
+            {
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_INTERFACE_VALUE_SCHEMA",
+                               "Flow graph interface values require id, name, type, and defaultValue.", id);
+                continue;
+            }
+
+            const auto parsed_default = parse_default_value(*type, *default_iterator);
+            if (!parsed_default)
+            {
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_INTERFACE_DEFAULT",
+                               "Flow graph interface defaultValue does not match its declared type.", id);
+                continue;
+            }
+
+            destination.push_back({.id = id, .name = name, .type = *type, .default_value = *parsed_default});
+        }
+    };
+    parse_interface("inputs", graph.graph_inputs);
+    parse_interface("outputs", graph.graph_outputs);
+
+    const auto events_iterator = graph_json.find("events");
+    if (events_iterator != graph_json.end())
+    {
+        if (!events_iterator->is_array())
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_EVENTS_SCHEMA",
+                           "Flow graph events must be an array.");
+        else
+            for (const json& event_json : *events_iterator)
+            {
+                if (!event_json.is_object())
+                {
+                    add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_EVENT_SCHEMA",
+                                   "Flow event entries must be objects.");
+                    continue;
+                }
+                const std::string id = event_json.value("id", std::string{});
+                const std::string name = event_json.value("name", std::string{});
+                if (id.empty() || name.empty())
+                {
+                    add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_EVENT_SCHEMA",
+                                   "Flow events require non-empty id and name.", id);
+                    continue;
+                }
+                graph.custom_events.push_back({.id = id, .name = name});
+            }
+    }
+
     const auto nodes_iterator = graph_json.find("nodes");
     if (nodes_iterator == graph_json.end() || !nodes_iterator->is_array())
     {
@@ -923,6 +1061,36 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
                            "Flow variable ids must be unique.", item.id);
     }
 
+    const auto validate_interface = [&](const std::vector<graph_interface_value>& values, std::string_view label)
+    {
+        std::unordered_set<std::string> ids;
+        std::unordered_set<std::string> names;
+        for (const graph_interface_value& item : values)
+        {
+            if (!ids.insert(item.id).second)
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_DUPLICATE_INTERFACE_ID",
+                               std::string{"Flow "} + std::string{label} + " ids must be unique.", item.id);
+            if (!names.insert(item.name).second)
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_DUPLICATE_INTERFACE_NAME",
+                               std::string{"Flow "} + std::string{label} + " names must be unique.", item.id);
+        }
+    };
+    validate_interface(graph.graph_inputs, "input");
+    validate_interface(graph.graph_outputs, "output");
+
+    std::unordered_set<std::string> event_ids;
+    std::unordered_set<std::string> event_names;
+    for (const custom_event_definition& event : graph.custom_events)
+    {
+        if (!event_ids.insert(event.id).second)
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_DUPLICATE_EVENT_ID",
+                           "Flow custom-event ids must be unique.", event.id);
+        if (!event_names.insert(event.name).second)
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_DUPLICATE_EVENT_NAME",
+                           "Flow custom-event names must be unique.", event.id);
+    }
+
+    std::unordered_set<std::string> custom_event_entries;
     for (const source_node& node : graph.nodes)
     {
         if (!state.nodes.emplace(node.id, &node).second)
@@ -936,6 +1104,24 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
                 add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_INPUT_ACTION_NAME",
                                "Input Action nodes require a non-empty action name.", node.id);
         }
+
+        if (node.kind == node_kind::custom_event || node.kind == node_kind::call_custom_event)
+        {
+            const custom_event_definition* event = custom_event_for(graph, node);
+            if (!event)
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_EVENT_REFERENCE",
+                               "Custom-event node references an event that does not exist.", node.id, "eventId");
+            else if (node.kind == node_kind::custom_event && !custom_event_entries.insert(event->id).second)
+                add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_DUPLICATE_EVENT_ENTRY",
+                               "A custom event can have only one entry node.", node.id, "eventId");
+        }
+
+        if (node.kind == node_kind::graph_input && !interface_value_for(graph.graph_inputs, node))
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_GRAPH_INPUT_REFERENCE",
+                           "Graph Input node references an input that does not exist.", node.id, "interfaceId");
+        if (node.kind == node_kind::graph_output && !interface_value_for(graph.graph_outputs, node))
+            add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_GRAPH_OUTPUT_REFERENCE",
+                           "Graph Output node references an output that does not exist.", node.id, "interfaceId");
 
         if (node.kind == node_kind::has_core_component || node.kind == node_kind::remove_core_component)
         {
@@ -1161,6 +1347,9 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
             case node_kind::while_loop:
                 require_input(node, "condition");
                 break;
+            case node_kind::graph_output:
+                require_input(node, "value");
+                break;
             case node_kind::delay:
             case node_kind::retriggerable_delay:
                 require_input(node, "duration");
@@ -1317,6 +1506,10 @@ ir_opcode executable_opcode_for(node_kind kind)
             return ir_opcode::retriggerable_delay;
         case node_kind::timer:
             return ir_opcode::timer_start;
+        case node_kind::call_custom_event:
+            return ir_opcode::call_custom_event;
+        case node_kind::graph_output:
+            return ir_opcode::store_graph_output;
         case node_kind::set_variable:
             return ir_opcode::store_variable;
         case node_kind::create_entity:
@@ -1392,12 +1585,26 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
 {
     ir_program program;
     program.variables = graph.variables;
+    program.graph_inputs = graph.graph_inputs;
+    program.graph_outputs = graph.graph_outputs;
+    program.custom_events = graph.custom_events;
     std::sort(program.variables.begin(), program.variables.end(),
               [](const variable& left, const variable& right) { return left.id < right.id; });
+    std::sort(program.graph_inputs.begin(), program.graph_inputs.end(),
+              [](const graph_interface_value& left, const graph_interface_value& right) { return left.id < right.id; });
+    std::sort(program.graph_outputs.begin(), program.graph_outputs.end(),
+              [](const graph_interface_value& left, const graph_interface_value& right) { return left.id < right.id; });
+    std::sort(program.custom_events.begin(), program.custom_events.end(),
+              [](const custom_event_definition& left, const custom_event_definition& right)
+              { return left.id < right.id; });
 
     std::unordered_map<std::string, std::uint32_t> variable_indices;
     for (std::uint32_t index = 0; index < program.variables.size(); ++index)
         variable_indices.emplace(program.variables[index].id, index);
+
+    std::unordered_map<std::string, std::uint32_t> event_indices;
+    for (std::uint32_t index = 0; index < program.custom_events.size(); ++index)
+        event_indices.emplace(program.custom_events[index].id, index);
 
     const auto nodes = sorted_nodes(graph);
     std::unordered_map<std::string, std::uint32_t> value_slots;
@@ -1416,6 +1623,21 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
         return index;
     };
 
+    const auto allocate_interface_slots = [&](std::vector<graph_interface_value>& values, std::string_view kind)
+    {
+        for (graph_interface_value& item : values)
+        {
+            item.slot = static_cast<std::uint32_t>(program.value_slots.size());
+            program.value_slots.push_back({.index = item.slot,
+                                           .type = item.type,
+                                           .initial_value = item.default_value,
+                                           .source_node_id = std::string{"$"} + std::string{kind} + ":" + item.id,
+                                           .source_pin_id = "value"});
+        }
+    };
+    allocate_interface_slots(program.graph_inputs, "input");
+    allocate_interface_slots(program.graph_outputs, "output");
+
     for (const source_node* node : nodes)
     {
         switch (node->kind)
@@ -1427,6 +1649,15 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
             case node_kind::input_action:
                 allocate_slot(*node, "value", value_type::float32, default_value(value_type::float32));
                 break;
+            case node_kind::graph_input:
+            {
+                const graph_interface_value* source = interface_value_for(graph.graph_inputs, *node);
+                const auto item =
+                    std::find_if(program.graph_inputs.begin(), program.graph_inputs.end(),
+                                 [&](const graph_interface_value& candidate) { return candidate.id == source->id; });
+                value_slots.emplace(pin_key(node->id, "value"), item->slot);
+                break;
+            }
             case node_kind::self_entity:
             case node_kind::create_entity:
                 allocate_slot(*node, "entity", value_type::entity, default_value(value_type::entity));
@@ -1847,6 +2078,24 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                 stop.operand1 = execution_target(*node, "stopped");
                 break;
             }
+            case node_kind::call_custom_event:
+            {
+                const custom_event_definition* event = custom_event_for(graph, *node);
+                instruction.operand0 = event_indices.at(event->id);
+                instruction.operand1 = execution_target(*node, "then");
+                break;
+            }
+            case node_kind::graph_output:
+            {
+                const graph_interface_value* source = interface_value_for(graph.graph_outputs, *node);
+                const auto output =
+                    std::find_if(program.graph_outputs.begin(), program.graph_outputs.end(),
+                                 [&](const graph_interface_value& item) { return item.id == source->id; });
+                instruction.operand0 = output->slot;
+                instruction.operand1 = input_slot(*node, "value");
+                instruction.operand2 = execution_target(*node, "then");
+                break;
+            }
             case node_kind::set_variable:
                 instruction.operand0 = variable_indices.at(variable_for(graph, *node)->id);
                 instruction.operand1 = input_slot(*node, "value");
@@ -1981,6 +2230,15 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                 program.entry_points.push_back(std::move(completed));
                 break;
             }
+            case node_kind::custom_event:
+            {
+                const custom_event_definition* event = custom_event_for(graph, *node);
+                program.entry_points.push_back({.kind = entry_point_kind::custom_event,
+                                                .node_id = node->id,
+                                                .action = event->name,
+                                                .instruction = execution_target(*node, "exec")});
+                break;
+            }
             default:
                 break;
         }
@@ -2096,6 +2354,10 @@ bytecode_opcode lower_opcode(ir_opcode opcode)
             return bytecode_opcode::timer_start;
         case ir_opcode::timer_stop:
             return bytecode_opcode::timer_stop;
+        case ir_opcode::call_custom_event:
+            return bytecode_opcode::call_custom_event;
+        case ir_opcode::store_graph_output:
+            return bytecode_opcode::store_graph_output;
         case ir_opcode::load_variable:
             return bytecode_opcode::load_variable;
         case ir_opcode::store_variable:
@@ -2176,6 +2438,9 @@ bytecode_program lower_bytecode(const ir_program& ir)
 {
     bytecode_program bytecode;
     bytecode.variables = ir.variables;
+    bytecode.graph_inputs = ir.graph_inputs;
+    bytecode.graph_outputs = ir.graph_outputs;
+    bytecode.custom_events = ir.custom_events;
     bytecode.switch_int_tables = ir.switch_int_tables;
     bytecode.latent_actions = ir.latent_actions;
     bytecode.value_slots.reserve(ir.value_slots.size());

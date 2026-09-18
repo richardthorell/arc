@@ -17,8 +17,8 @@ struct game_world_api_v1;
 namespace arc::flow
 {
 
-inline constexpr std::uint32_t flow_ir_version = 5;
-inline constexpr std::uint32_t flow_bytecode_version = 5;
+inline constexpr std::uint32_t flow_ir_version = 6;
+inline constexpr std::uint32_t flow_bytecode_version = 6;
 inline constexpr std::uint32_t invalid_instruction = std::numeric_limits<std::uint32_t>::max();
 inline constexpr std::uint32_t invalid_entity_index = std::numeric_limits<std::uint32_t>::max();
 inline constexpr std::uint32_t default_instruction_budget = 4096;
@@ -81,6 +81,23 @@ struct variable
     bool exposed{false};
 };
 
+/** @brief Typed local graph interface value used by F8.1 and later subgraph calls. */
+struct graph_interface_value
+{
+    std::string id;
+    std::string name;
+    value_type type{value_type::float32};
+    flow_value default_value{0.0};
+    std::uint32_t slot{invalid_instruction};
+};
+
+/** @brief Stable custom-event declaration. Nodes reference id while runtime dispatch uses name. */
+struct custom_event_definition
+{
+    std::string id;
+    std::string name;
+};
+
 enum class entry_point_kind : std::uint8_t
 {
     begin_play,
@@ -89,6 +106,7 @@ enum class entry_point_kind : std::uint8_t
     fixed_tick,
     input_action_triggered,
     input_action_completed,
+    custom_event,
 };
 
 enum class entry_value_kind : std::uint8_t
@@ -138,6 +156,8 @@ enum class ir_opcode : std::uint8_t
     retriggerable_delay,
     timer_start,
     timer_stop,
+    call_custom_event,
+    store_graph_output,
     load_variable,
     store_variable,
     add,
@@ -236,6 +256,9 @@ struct ir_program
 {
     std::uint32_t version{flow_ir_version};
     std::vector<variable> variables;
+    std::vector<graph_interface_value> graph_inputs;
+    std::vector<graph_interface_value> graph_outputs;
+    std::vector<custom_event_definition> custom_events;
     std::vector<ir_value_slot> value_slots;
     std::vector<ir_entry_point> entry_points;
     std::vector<ir_instruction> instructions;
@@ -283,6 +306,8 @@ enum class bytecode_opcode : std::uint8_t
     retriggerable_delay,
     timer_start,
     timer_stop,
+    call_custom_event,
+    store_graph_output,
     load_variable,
     store_variable,
     add,
@@ -343,6 +368,9 @@ struct bytecode_program
 {
     std::uint32_t version{flow_bytecode_version};
     std::vector<variable> variables;
+    std::vector<graph_interface_value> graph_inputs;
+    std::vector<graph_interface_value> graph_outputs;
+    std::vector<custom_event_definition> custom_events;
     std::vector<bytecode_value_slot> value_slots;
     std::vector<bytecode_entry_point> entry_points;
     std::vector<bytecode_instruction> instructions;
@@ -429,6 +457,9 @@ public:
 
     [[nodiscard]] const flow_value* variable_value(std::string_view id) const noexcept;
     [[nodiscard]] bool set_variable_value(std::string_view id, const flow_value& value);
+    [[nodiscard]] const flow_value* graph_input_value(std::string_view id) const noexcept;
+    [[nodiscard]] bool set_graph_input_value(std::string_view id, const flow_value& value);
+    [[nodiscard]] const flow_value* graph_output_value(std::string_view id) const noexcept;
     [[nodiscard]] const flow_value* value_slot(std::uint32_t slot) const noexcept;
 
     [[nodiscard]] execution_result begin_play(vm_world_context world = {});
@@ -439,6 +470,7 @@ public:
                                                           vm_world_context world = {});
     [[nodiscard]] execution_result input_action_completed(std::string_view action, double value,
                                                           vm_world_context world = {});
+    [[nodiscard]] execution_result custom_event(std::string_view event, vm_world_context world = {});
 
 private:
     const bytecode_program* program_{nullptr};

@@ -63,6 +63,34 @@ describe('Flow graph authoring schema', () => {
     expect(removeComponent.values.component).toBe('transform');
   });
 
+  it('creates and validates F8.1 graph interface and custom-event authoring data', () => {
+    const asset = createFlowAsset('ReusableLogic');
+    asset.graph.inputs!.push({ id: 'amount', name: 'Amount', type: 'int', defaultValue: 1 });
+    asset.graph.outputs!.push({ id: 'result', name: 'Result', type: 'int', defaultValue: 0 });
+    asset.graph.events!.push({ id: 'apply', name: 'Apply' });
+    asset.graph.nodes.push(createFlowNode('customEvent', [300, 100], { eventId: 'apply' }));
+    asset.graph.nodes.push(createFlowNode('graphInput', [300, 240], { interfaceId: 'amount', interfaceType: 'int' }));
+    asset.graph.nodes.push(createFlowNode('graphOutput', [560, 100], { interfaceId: 'result', interfaceType: 'int' }));
+
+    expect(isFlowAssetJson(asset)).toBe(true);
+    expect(flowNodeDefinitions.customEvent.category).toBe('Events');
+    expect(flowNodeDefinitions.graphInput.category).toBe('Interface');
+    expect(flowNodeDefinitions.graphOutput.inputs.map((pin) => pin.id)).toEqual(['exec', 'value']);
+  });
+
+  it('normalizes legacy v1 graphs without F8.1 declaration arrays', () => {
+    const asset = createFlowAsset('Legacy');
+    delete asset.graph.inputs;
+    delete asset.graph.outputs;
+    delete asset.graph.events;
+
+    expect(isFlowAssetJson(asset)).toBe(true);
+    const graph = flowGraphFromAsset(asset);
+    expect(graph.inputs).toEqual([]);
+    expect(graph.outputs).toEqual([]);
+    expect(graph.events).toEqual([]);
+  });
+
   it('rejects connections that reference missing nodes', () => {
     const graph = createDefaultFlowGraph();
     graph.connections.push({
