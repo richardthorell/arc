@@ -21,12 +21,18 @@ TEST_CASE("TinyEXR decodes HDR texture data as linear RGBA32F", "[render][textur
     CHECK(loaded.texture.color_space == arc::render::texture_color_space::linear);
     CHECK(loaded.texture.semantic == arc::render::texture_semantic::environment);
     CHECK(loaded.texture.mime_type == "image/x-exr");
-    REQUIRE(loaded.texture.mips.size() == 1);
-    CHECK(loaded.texture.mips.front().size == 2u * 4u * sizeof(float));
-    REQUIRE(loaded.texture.pixels.size() == 2u * 4u * sizeof(float));
+    REQUIRE(loaded.texture.mips.size() == 2);
+    CHECK(loaded.texture.mip_levels == 2);
+    CHECK(loaded.texture.mips[0].width == 2);
+    CHECK(loaded.texture.mips[0].height == 1);
+    CHECK(loaded.texture.mips[0].size == 2u * 4u * sizeof(float));
+    CHECK(loaded.texture.mips[1].width == 1);
+    CHECK(loaded.texture.mips[1].height == 1);
+    CHECK(loaded.texture.mips[1].size == 1u * 4u * sizeof(float));
+    REQUIRE(loaded.texture.pixels.size() == 3u * 4u * sizeof(float));
 
     std::array<float, 8> pixels{};
-    std::memcpy(pixels.data(), loaded.texture.pixels.data(), loaded.texture.pixels.size());
+    std::memcpy(pixels.data(), loaded.texture.pixels.data(), sizeof(pixels));
     CHECK(pixels[3] == 1.0f);
     CHECK(pixels[7] == 1.0f);
     CHECK(std::max({pixels[4], pixels[5], pixels[6]}) > 1.0f);
@@ -43,7 +49,7 @@ TEST_CASE("generic texture loading routes OpenEXR through TinyEXR", "[render][te
     CHECK(info.width == 2);
     CHECK(info.height == 1);
     CHECK(info.format == arc::render::texture_format::rgba32f);
-    CHECK(info.mip_count == 1);
+    CHECK(info.mip_count == 2);
 
     const auto loaded = arc::render::load_texture_asset(path);
     REQUIRE(loaded.succeeded());
