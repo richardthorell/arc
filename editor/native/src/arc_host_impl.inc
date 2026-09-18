@@ -935,6 +935,25 @@ host_response arc_host::execute(const host_command_envelope& command)
         }
         if (response.succeeded)
         {
+            if (const auto* compile = std::get_if<host_shader_compile_command>(&command.payload);
+                compile && compile->domain == "materialGraph" && !compile->preview_guid.empty() &&
+                !compile->preview_source.empty())
+            {
+                const auto compile_result = nlohmann::json::parse(response.payload_json, nullptr, false);
+                const auto preview_guid = assets::parse_asset_guid(compile->preview_guid);
+                if (!compile_result.is_discarded() && compile_result.value("succeeded", false) && preview_guid)
+                {
+                    for (auto& [_, preview_surface] : surfaces.surfaces)
+                    {
+                        if (preview_surface.preview_kind != asset_preview_kind::material ||
+                            preview_surface.preview_guid != *preview_guid)
+                            continue;
+                        if (!preview_surface.preview_scene)
+                            (void)ensure_asset_preview_scene(*state_, preview_surface);
+                        (void)apply_live_asset_preview_material(*state_, preview_surface, compile->preview_source);
+                    }
+                }
+            }
             if (const auto* reimport = std::get_if<host_asset_reimport_command>(&command.payload))
             {
                 refresh_reimported_world_material(*state_, *reimport);
