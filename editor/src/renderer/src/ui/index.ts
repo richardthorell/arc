@@ -12,6 +12,7 @@ export { UiNodeCard } from './UiNodeCard';
 export { UiPanel, UiPanelHeader } from './UiPanel';
 export { UiPanelCard } from './UiPanelCard';
 export type { UiPanelCardProps } from './UiPanelCard';
+export { UiPanelCardRow } from './UiPanelCardRow';
 export { UiPanelSection } from './UiPanelSection';
 export { UiSidebarPanel } from './UiSidebarPanel';
 export { UiSelect } from './UiSelect';
