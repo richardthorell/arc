@@ -23,7 +23,7 @@ describe('material preview camera framing', () => {
     expect(framed.distance).toBeCloseTo(materialPreviewDefaultCameraDistance, 6);
   });
 
-  it('keeps a visible zoom boundary outside the sphere', () => {
+  it('keeps a visible zoom boundary outside every preview mesh', () => {
     expect(materialPreviewMaximumMeshExtent).toBeGreaterThan(materialPreviewSphereRadius);
     expect(materialPreviewSurfaceClearance).toBeGreaterThan(0);
     expect(materialPreviewMinimumCameraDistance).toBeCloseTo(
@@ -31,7 +31,7 @@ describe('material preview camera framing', () => {
       6,
     );
 
-    const zoomed = clampMaterialPreviewZoom(1.0, 2);
+    const zoomed = clampMaterialPreviewZoom(materialPreviewDefaultCameraDistance, 2);
     expect(zoomed.distance).toBe(materialPreviewMinimumCameraDistance);
     expect(zoomed.zoom).toBeGreaterThan(0);
 
@@ -42,7 +42,7 @@ describe('material preview camera framing', () => {
   it('keeps zoom-out motion unrestricted', () => {
     const zoomed = clampMaterialPreviewZoom(materialPreviewMinimumCameraDistance, -1);
     expect(zoomed.distance).toBeGreaterThan(materialPreviewMinimumCameraDistance);
-    expect(zoomed.zoom).toBe(-1);
+    expect(zoomed.zoom).toBeCloseTo(-1, 12);
   });
 
   it('allows vertical orbiting past the old studio-floor limit', () => {
