@@ -17,8 +17,8 @@ struct game_world_api_v1;
 namespace arc::flow
 {
 
-inline constexpr std::uint32_t flow_ir_version = 4;
-inline constexpr std::uint32_t flow_bytecode_version = 4;
+inline constexpr std::uint32_t flow_ir_version = 5;
+inline constexpr std::uint32_t flow_bytecode_version = 5;
 inline constexpr std::uint32_t invalid_instruction = std::numeric_limits<std::uint32_t>::max();
 inline constexpr std::uint32_t invalid_entity_index = std::numeric_limits<std::uint32_t>::max();
 inline constexpr std::uint32_t default_instruction_budget = 4096;
@@ -134,6 +134,10 @@ enum class ir_opcode : std::uint8_t
     gate_toggle,
     for_loop,
     while_loop,
+    delay,
+    retriggerable_delay,
+    timer_start,
+    timer_stop,
     load_variable,
     store_variable,
     add,
@@ -202,6 +206,32 @@ struct switch_int_table
                                               invalid_instruction, invalid_instruction};
 };
 
+enum class latent_action_kind : std::uint8_t
+{
+    delay,
+    retriggerable_delay,
+    timer,
+};
+
+/**
+ * @brief Persistent per-instance state layout and continuations for one F7.3 latent node.
+ *
+ * The slots live in the normal VM value-slot array, so reset/end-play handling remains deterministic and no runtime
+ * pointers are stored in bytecode. Delay actions use active/remaining/completed. Timer actions additionally use
+ * period/looping/generation plus tick/completed continuations.
+ */
+struct latent_action_definition
+{
+    latent_action_kind kind{latent_action_kind::delay};
+    std::uint32_t active_slot{invalid_instruction};
+    std::uint32_t remaining_slot{invalid_instruction};
+    std::uint32_t period_slot{invalid_instruction};
+    std::uint32_t looping_slot{invalid_instruction};
+    std::uint32_t generation_slot{invalid_instruction};
+    std::uint32_t tick_instruction{invalid_instruction};
+    std::uint32_t completed_instruction{invalid_instruction};
+};
+
 struct ir_program
 {
     std::uint32_t version{flow_ir_version};
@@ -210,6 +240,7 @@ struct ir_program
     std::vector<ir_entry_point> entry_points;
     std::vector<ir_instruction> instructions;
     std::vector<switch_int_table> switch_int_tables;
+    std::vector<latent_action_definition> latent_actions;
 };
 
 struct bytecode_value_slot
@@ -248,6 +279,10 @@ enum class bytecode_opcode : std::uint8_t
     gate_toggle,
     for_loop,
     while_loop,
+    delay,
+    retriggerable_delay,
+    timer_start,
+    timer_stop,
     load_variable,
     store_variable,
     add,
@@ -312,6 +347,7 @@ struct bytecode_program
     std::vector<bytecode_entry_point> entry_points;
     std::vector<bytecode_instruction> instructions;
     std::vector<switch_int_table> switch_int_tables;
+    std::vector<latent_action_definition> latent_actions;
 
     // Instruction-index aligned source map used by editor diagnostics/debugging.
     std::vector<std::string> instruction_nodes;

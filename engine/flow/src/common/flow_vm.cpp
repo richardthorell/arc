@@ -129,6 +129,23 @@ bool validate_program(const bytecode_program& program)
         if (!valid_instruction_target(program, table.instructions[4])) return false;
     }
 
+    for (const latent_action_definition& action : program.latent_actions)
+    {
+        if (!slot_has_type(program, action.active_slot, value_type::boolean) ||
+            !slot_has_type(program, action.remaining_slot, value_type::float32) ||
+            !valid_instruction_target(program, action.completed_instruction))
+            return false;
+
+        if (action.kind == latent_action_kind::timer)
+        {
+            if (!slot_has_type(program, action.period_slot, value_type::float32) ||
+                !slot_has_type(program, action.looping_slot, value_type::boolean) ||
+                !slot_has_type(program, action.generation_slot, value_type::integer) ||
+                !valid_instruction_target(program, action.tick_instruction))
+                return false;
+        }
+    }
+
     for (const bytecode_entry_point& entry : program.entry_points)
     {
         if (!valid_instruction_target(program, entry.instruction)) return false;
@@ -195,6 +212,31 @@ bool validate_program(const bytecode_program& program)
                     !valid_instruction_target(program, instruction.operand1) ||
                     !valid_instruction_target(program, instruction.operand2) ||
                     !valid_instruction_target(program, instruction.operand3))
+                    return false;
+                break;
+            case bytecode_opcode::delay:
+            case bytecode_opcode::retriggerable_delay:
+                if (!slot_has_type(program, instruction.operand0, value_type::float32) ||
+                    instruction.operand1 >= program.latent_actions.size())
+                    return false;
+                if ((instruction.opcode == bytecode_opcode::delay &&
+                     program.latent_actions[instruction.operand1].kind != latent_action_kind::delay) ||
+                    (instruction.opcode == bytecode_opcode::retriggerable_delay &&
+                     program.latent_actions[instruction.operand1].kind != latent_action_kind::retriggerable_delay))
+                    return false;
+                break;
+            case bytecode_opcode::timer_start:
+                if (!slot_has_type(program, instruction.operand0, value_type::float32) ||
+                    !slot_has_type(program, instruction.operand1, value_type::boolean) ||
+                    instruction.operand2 >= program.latent_actions.size() ||
+                    program.latent_actions[instruction.operand2].kind != latent_action_kind::timer ||
+                    !valid_instruction_target(program, instruction.operand3))
+                    return false;
+                break;
+            case bytecode_opcode::timer_stop:
+                if (instruction.operand0 >= program.latent_actions.size() ||
+                    program.latent_actions[instruction.operand0].kind != latent_action_kind::timer ||
+                    !valid_instruction_target(program, instruction.operand1))
                     return false;
                 break;
             case bytecode_opcode::load_variable:
@@ -628,6 +670,11 @@ template <std::size_t N> bool vector_scale(const flow_value& input_value, double
     return true;
 }
 
+void bump_generation(std::int64_t& generation) noexcept
+{
+    generation = generation == std::numeric_limits<std::int64_t>::max() ? 0 : generation + 1;
+}
+
 execution_result execute_chain(const bytecode_program& program, std::vector<flow_value>& variable_values,
                                std::vector<flow_value>& value_slots, std::uint32_t first_instruction,
                                std::uint32_t instruction_budget, const vm_world_context& world)
@@ -816,6 +863,87 @@ execution_result execute_chain(const bytecode_program& program, std::vector<flow
                     }
                     ++result.instructions_executed;
                 }
+                break;
+            }
+            case bytecode_opcode::delay:
+            case bytecode_opcode::retriggerable_delay:
+            {
+                const auto* duration = std::get_if<double>(&value_slots[current.operand0]);
+                const latent_action_definition& action = program.latent_actions[current.operand1];
+                bool* active = std::get_if<bool>(&value_slots[action.active_slot]);
+                double* remaining = std::get_if<double>(&value_slots[action.remaining_slot]);
+                if (!duration || !active || !remaining)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                if (!std::isfinite(*duration) || *duration < 0.0)
+                {
+                    stop_execution(result, execution_status::invalid_operation, program, instruction);
+                    return result;
+                }
+                if (*duration == 0.0)
+                {
+                    *active = false;
+                    *remaining = 0.0;
+                    instruction = action.completed_instruction;
+                    break;
+                }
+                if (!*active || current.opcode == bytecode_opcode::retriggerable_delay)
+                {
+                    *active = true;
+                    *remaining = *duration;
+                }
+                instruction = invalid_instruction;
+                break;
+            }
+            case bytecode_opcode::timer_start:
+            {
+                const auto* interval = std::get_if<double>(&value_slots[current.operand0]);
+                const auto* looping_input = std::get_if<bool>(&value_slots[current.operand1]);
+                const latent_action_definition& action = program.latent_actions[current.operand2];
+                bool* active = std::get_if<bool>(&value_slots[action.active_slot]);
+                double* remaining = std::get_if<double>(&value_slots[action.remaining_slot]);
+                double* period = std::get_if<double>(&value_slots[action.period_slot]);
+                bool* looping = std::get_if<bool>(&value_slots[action.looping_slot]);
+                auto* generation = std::get_if<std::int64_t>(&value_slots[action.generation_slot]);
+                if (!interval || !looping_input || !active || !remaining || !period || !looping || !generation)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                if (!std::isfinite(*interval) || *interval < 0.0 || (*looping_input && *interval <= 0.0))
+                {
+                    stop_execution(result, execution_status::invalid_operation, program, instruction);
+                    return result;
+                }
+                *active = true;
+                *remaining = *interval;
+                *period = *interval;
+                *looping = *looping_input;
+                bump_generation(*generation);
+                instruction = current.operand3;
+                break;
+            }
+            case bytecode_opcode::timer_stop:
+            {
+                const latent_action_definition& action = program.latent_actions[current.operand0];
+                bool* active = std::get_if<bool>(&value_slots[action.active_slot]);
+                double* remaining = std::get_if<double>(&value_slots[action.remaining_slot]);
+                double* period = std::get_if<double>(&value_slots[action.period_slot]);
+                bool* looping = std::get_if<bool>(&value_slots[action.looping_slot]);
+                auto* generation = std::get_if<std::int64_t>(&value_slots[action.generation_slot]);
+                if (!active || !remaining || !period || !looping || !generation)
+                {
+                    stop_execution(result, execution_status::type_mismatch, program, instruction);
+                    return result;
+                }
+                *active = false;
+                *remaining = 0.0;
+                *period = 0.0;
+                *looping = false;
+                bump_generation(*generation);
+                instruction = current.operand1;
                 break;
             }
             case bytecode_opcode::load_variable:
@@ -1233,6 +1361,109 @@ execution_result execute_chain(const bytecode_program& program, std::vector<flow
     return result;
 }
 
+execution_result advance_latent_actions(const bytecode_program& program, std::vector<flow_value>& variable_values,
+                                        std::vector<flow_value>& value_slots, double delta_seconds,
+                                        std::uint32_t instruction_budget, const vm_world_context& world)
+{
+    execution_result result;
+    if (!std::isfinite(delta_seconds) || delta_seconds < 0.0) return status_result(execution_status::invalid_operation);
+
+    std::vector<bool> active_at_start;
+    active_at_start.reserve(program.latent_actions.size());
+    for (const latent_action_definition& action : program.latent_actions)
+    {
+        const bool* active = std::get_if<bool>(&value_slots[action.active_slot]);
+        if (!active) return status_result(execution_status::invalid_program);
+        active_at_start.push_back(*active);
+    }
+
+    const auto run_continuation = [&](std::uint32_t target) -> bool
+    {
+        if (target == invalid_instruction) return true;
+        const std::uint32_t remaining_budget =
+            result.instructions_executed < instruction_budget ? instruction_budget - result.instructions_executed : 0;
+        execution_result nested = execute_chain(program, variable_values, value_slots, target, remaining_budget, world);
+        result.instructions_executed += nested.instructions_executed;
+        if (nested.succeeded()) return true;
+        result.status = nested.status;
+        result.stopped_instruction = nested.stopped_instruction;
+        result.node_id = std::move(nested.node_id);
+        return false;
+    };
+
+    for (std::size_t action_index = 0; action_index < program.latent_actions.size(); ++action_index)
+    {
+        if (!active_at_start[action_index]) continue;
+
+        const latent_action_definition& action = program.latent_actions[action_index];
+        bool* active = std::get_if<bool>(&value_slots[action.active_slot]);
+        double* remaining = std::get_if<double>(&value_slots[action.remaining_slot]);
+        if (!active || !remaining) return status_result(execution_status::invalid_program);
+        if (!*active) continue;
+
+        *remaining -= delta_seconds;
+        if (*remaining > 0.0) continue;
+
+        if (action.kind != latent_action_kind::timer)
+        {
+            *active = false;
+            *remaining = 0.0;
+            if (!run_continuation(action.completed_instruction)) return result;
+            continue;
+        }
+
+        double* period = std::get_if<double>(&value_slots[action.period_slot]);
+        bool* looping = std::get_if<bool>(&value_slots[action.looping_slot]);
+        auto* generation = std::get_if<std::int64_t>(&value_slots[action.generation_slot]);
+        if (!period || !looping || !generation) return status_result(execution_status::invalid_program);
+
+        while (*active && *remaining <= 0.0)
+        {
+            if (result.instructions_executed >= instruction_budget)
+            {
+                result.status = execution_status::instruction_budget_exceeded;
+                return result;
+            }
+            ++result.instructions_executed;
+
+            const std::int64_t generation_before = *generation;
+            const bool repeat = *looping;
+            if (!repeat)
+            {
+                *active = false;
+                *remaining = 0.0;
+            }
+
+            if (!run_continuation(action.tick_instruction)) return result;
+
+            if (!repeat)
+            {
+                if (!run_continuation(action.completed_instruction)) return result;
+                break;
+            }
+
+            if (*generation != generation_before || !*active) break;
+            if (!std::isfinite(*period) || *period <= 0.0) return status_result(execution_status::invalid_operation);
+            *remaining += *period;
+        }
+    }
+
+    return result;
+}
+
+void clear_latent_actions(const bytecode_program& program, std::vector<flow_value>& value_slots)
+{
+    for (const latent_action_definition& action : program.latent_actions)
+    {
+        value_slots[action.active_slot] = false;
+        value_slots[action.remaining_slot] = 0.0;
+        if (action.kind != latent_action_kind::timer) continue;
+        value_slots[action.period_slot] = 0.0;
+        value_slots[action.looping_slot] = false;
+        value_slots[action.generation_slot] = std::int64_t{0};
+    }
+}
+
 bool entry_matches(const bytecode_entry_point& entry, entry_point_kind kind, std::string_view action)
 {
     if (entry.kind != kind) return false;
@@ -1381,7 +1612,11 @@ execution_result vm_instance::begin_play(vm_world_context world)
     active_ = true;
     execution_result result = execute_event(*program_, variable_values_, value_slots_, entry_point_kind::begin_play, {},
                                             0.0, limits_.instruction_budget, world);
-    if (!result.succeeded()) active_ = false;
+    if (!result.succeeded())
+    {
+        clear_latent_actions(*program_, value_slots_);
+        active_ = false;
+    }
     return result;
 }
 
@@ -1392,6 +1627,7 @@ execution_result vm_instance::end_play(vm_world_context world)
 
     execution_result result = execute_event(*program_, variable_values_, value_slots_, entry_point_kind::end_play, {},
                                             0.0, limits_.instruction_budget, world);
+    clear_latent_actions(*program_, value_slots_);
     active_ = false;
     return result;
 }
@@ -1400,8 +1636,25 @@ execution_result vm_instance::tick(double delta_seconds, vm_world_context world)
 {
     if (!valid_ || !program_) return status_result(execution_status::invalid_program);
     if (!active_) return status_result(execution_status::inactive);
-    return execute_event(*program_, variable_values_, value_slots_, entry_point_kind::tick, {}, delta_seconds,
-                         limits_.instruction_budget, world);
+
+    execution_result result = advance_latent_actions(*program_, variable_values_, value_slots_, delta_seconds,
+                                                     limits_.instruction_budget, world);
+    if (!result.succeeded()) return result;
+
+    const std::uint32_t remaining_budget = result.instructions_executed < limits_.instruction_budget
+                                               ? limits_.instruction_budget - result.instructions_executed
+                                               : 0;
+    execution_result tick_result = execute_event(*program_, variable_values_, value_slots_, entry_point_kind::tick, {},
+                                                 delta_seconds, remaining_budget, world);
+    result.instructions_executed += tick_result.instructions_executed;
+    result.entry_points_executed += tick_result.entry_points_executed;
+    if (!tick_result.succeeded())
+    {
+        result.status = tick_result.status;
+        result.stopped_instruction = tick_result.stopped_instruction;
+        result.node_id = std::move(tick_result.node_id);
+    }
+    return result;
 }
 
 execution_result vm_instance::fixed_tick(double delta_seconds, vm_world_context world)
