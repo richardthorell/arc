@@ -419,6 +419,246 @@ void test_compiler_reevaluates_while_condition()
     assert(std::get<std::int64_t>(*instance.variable_value("count")) == 0);
 }
 
+
+void test_delay_and_retriggerable_delay_bytecode()
+{
+    bytecode_program delay_program;
+    delay_program.variables = {
+        {.id = "result", .name = "Result", .type = value_type::integer, .default_value = std::int64_t{0}}};
+    delay_program.value_slots = {float_slot(0.5), bool_slot(false), float_slot(), int_slot(7)};
+    delay_program.latent_actions.push_back({.kind = latent_action_kind::delay,
+                                            .active_slot = 1,
+                                            .remaining_slot = 2,
+                                            .completed_instruction = 1});
+    delay_program.entry_points.push_back({.kind = entry_point_kind::begin_play, .instruction = 0});
+    delay_program.instructions = {
+        {.opcode = bytecode_opcode::delay, .operand0 = 0, .operand1 = 0},
+        {.opcode = bytecode_opcode::store_variable, .operand0 = 0, .operand1 = 3},
+    };
+
+    vm_instance delay{delay_program};
+    assert(delay.valid());
+    [[maybe_unused]] const execution_result begin_result = delay.begin_play();
+    assert(begin_result.succeeded());
+    [[maybe_unused]] const execution_result first_tick = delay.tick(0.25);
+    assert(first_tick.succeeded());
+    assert(std::get<std::int64_t>(*delay.variable_value("result")) == 0);
+    [[maybe_unused]] const execution_result second_tick = delay.tick(0.25);
+    assert(second_tick.succeeded());
+    assert(std::get<std::int64_t>(*delay.variable_value("result")) == 7);
+
+    bytecode_program retrigger_program;
+    retrigger_program.variables = {
+        {.id = "result", .name = "Result", .type = value_type::integer, .default_value = std::int64_t{0}}};
+    retrigger_program.value_slots = {float_slot(0.5), bool_slot(false), float_slot(), int_slot(9)};
+    retrigger_program.latent_actions.push_back({.kind = latent_action_kind::retriggerable_delay,
+                                                .active_slot = 1,
+                                                .remaining_slot = 2,
+                                                .completed_instruction = 1});
+    retrigger_program.entry_points = {
+        {.kind = entry_point_kind::begin_play, .instruction = 0},
+        {.kind = entry_point_kind::input_action_triggered, .action = "Again", .instruction = 0},
+    };
+    retrigger_program.instructions = {
+        {.opcode = bytecode_opcode::retriggerable_delay, .operand0 = 0, .operand1 = 0},
+        {.opcode = bytecode_opcode::store_variable, .operand0 = 0, .operand1 = 3},
+    };
+
+    vm_instance retrigger{retrigger_program};
+    assert(retrigger.valid());
+    [[maybe_unused]] const execution_result retrigger_begin = retrigger.begin_play();
+    assert(retrigger_begin.succeeded());
+    [[maybe_unused]] const execution_result retrigger_first_tick = retrigger.tick(0.25);
+    assert(retrigger_first_tick.succeeded());
+    [[maybe_unused]] const execution_result retrigger_again = retrigger.input_action_triggered("Again", 1.0);
+    assert(retrigger_again.succeeded());
+    [[maybe_unused]] const execution_result retrigger_second_tick = retrigger.tick(0.25);
+    assert(retrigger_second_tick.succeeded());
+    assert(std::get<std::int64_t>(*retrigger.variable_value("result")) == 0);
+    [[maybe_unused]] const execution_result retrigger_third_tick = retrigger.tick(0.25);
+    assert(retrigger_third_tick.succeeded());
+    assert(std::get<std::int64_t>(*retrigger.variable_value("result")) == 9);
+}
+
+void test_timer_bytecode_and_budget()
+{
+    bytecode_program one_shot_program;
+    one_shot_program.variables = {
+        {.id = "result", .name = "Result", .type = value_type::integer, .default_value = std::int64_t{0}}};
+    one_shot_program.value_slots = {float_slot(0.25), bool_slot(false), bool_slot(false), float_slot(), float_slot(),
+                                    bool_slot(false), int_slot(), int_slot(1), int_slot(2)};
+    one_shot_program.latent_actions.push_back({.kind = latent_action_kind::timer,
+                                               .active_slot = 2,
+                                               .remaining_slot = 3,
+                                               .period_slot = 4,
+                                               .looping_slot = 5,
+                                               .generation_slot = 6,
+                                               .tick_instruction = 1,
+                                               .completed_instruction = 2});
+    one_shot_program.entry_points.push_back({.kind = entry_point_kind::begin_play, .instruction = 0});
+    one_shot_program.instructions = {
+        {.opcode = bytecode_opcode::timer_start, .operand0 = 0, .operand1 = 1, .operand2 = 0},
+        {.opcode = bytecode_opcode::store_variable, .operand0 = 0, .operand1 = 7},
+        {.opcode = bytecode_opcode::store_variable, .operand0 = 0, .operand1 = 8},
+    };
+
+    vm_instance one_shot{one_shot_program};
+    assert(one_shot.valid());
+    [[maybe_unused]] const execution_result one_shot_begin = one_shot.begin_play();
+    assert(one_shot_begin.succeeded());
+    assert(std::get<bool>(*one_shot.value_slot(2)));
+    [[maybe_unused]] const execution_result one_shot_tick = one_shot.tick(0.25);
+    assert(one_shot_tick.succeeded());
+    assert(std::get<std::int64_t>(*one_shot.variable_value("result")) == 2);
+    assert(!std::get<bool>(*one_shot.value_slot(2)));
+
+    bytecode_program looping_program;
+    looping_program.variables = {
+        {.id = "result", .name = "Result", .type = value_type::integer, .default_value = std::int64_t{0}}};
+    looping_program.value_slots = {float_slot(0.25), bool_slot(true), bool_slot(false), float_slot(), float_slot(),
+                                   bool_slot(false), int_slot(), int_slot(1), int_slot(3)};
+    looping_program.latent_actions.push_back({.kind = latent_action_kind::timer,
+                                              .active_slot = 2,
+                                              .remaining_slot = 3,
+                                              .period_slot = 4,
+                                              .looping_slot = 5,
+                                              .generation_slot = 6,
+                                              .tick_instruction = 1});
+    looping_program.entry_points = {
+        {.kind = entry_point_kind::begin_play, .instruction = 0},
+        {.kind = entry_point_kind::input_action_triggered, .action = "Stop", .instruction = 2},
+    };
+    looping_program.instructions = {
+        {.opcode = bytecode_opcode::timer_start, .operand0 = 0, .operand1 = 1, .operand2 = 0},
+        {.opcode = bytecode_opcode::store_variable, .operand0 = 0, .operand1 = 7},
+        {.opcode = bytecode_opcode::timer_stop, .operand0 = 0, .operand1 = 3},
+        {.opcode = bytecode_opcode::store_variable, .operand0 = 0, .operand1 = 8},
+    };
+
+    vm_instance looping{looping_program};
+    assert(looping.valid());
+    [[maybe_unused]] const execution_result looping_begin = looping.begin_play();
+    assert(looping_begin.succeeded());
+    [[maybe_unused]] const execution_result looping_tick = looping.tick(0.25);
+    assert(looping_tick.succeeded());
+    assert(std::get<std::int64_t>(*looping.variable_value("result")) == 1);
+    assert(looping.set_variable_value("result", std::int64_t{0}));
+    [[maybe_unused]] const execution_result looping_tick_again = looping.tick(0.25);
+    assert(looping_tick_again.succeeded());
+    assert(std::get<std::int64_t>(*looping.variable_value("result")) == 1);
+    [[maybe_unused]] const execution_result stop_result = looping.input_action_triggered("Stop", 1.0);
+    assert(stop_result.succeeded());
+    assert(std::get<std::int64_t>(*looping.variable_value("result")) == 3);
+    assert(!std::get<bool>(*looping.value_slot(2)));
+    [[maybe_unused]] const execution_result stopped_tick = looping.tick(0.5);
+    assert(stopped_tick.succeeded());
+    assert(std::get<std::int64_t>(*looping.variable_value("result")) == 3);
+
+    bytecode_program budget_program;
+    budget_program.value_slots = {float_slot(0.1), bool_slot(true), bool_slot(false), float_slot(), float_slot(),
+                                  bool_slot(false), int_slot()};
+    budget_program.latent_actions.push_back({.kind = latent_action_kind::timer,
+                                             .active_slot = 2,
+                                             .remaining_slot = 3,
+                                             .period_slot = 4,
+                                             .looping_slot = 5,
+                                             .generation_slot = 6});
+    budget_program.entry_points.push_back({.kind = entry_point_kind::begin_play, .instruction = 0});
+    budget_program.instructions = {
+        {.opcode = bytecode_opcode::timer_start, .operand0 = 0, .operand1 = 1, .operand2 = 0}};
+
+    vm_instance budget_timer{budget_program, {.instruction_budget = 3}};
+    assert(budget_timer.valid());
+    [[maybe_unused]] const execution_result budget_begin = budget_timer.begin_play();
+    assert(budget_begin.succeeded());
+    [[maybe_unused]] const execution_result budget_tick = budget_timer.tick(1.0);
+    assert(budget_tick.status == execution_status::instruction_budget_exceeded);
+}
+
+void test_compiler_executes_latent_nodes()
+{
+    constexpr std::string_view delay_source = R"json({
+        "version": 1,
+        "assetType": "flow",
+        "name": "Delay",
+        "graph": {
+            "version": 1,
+            "variables": [
+                {"id": "result", "name": "Result", "type": "int", "defaultValue": 0, "exposed": false}
+            ],
+            "nodes": [
+                {"id": "begin", "type": "beginPlay", "position": [0, 0], "values": {}},
+                {"id": "duration", "type": "floatLiteral", "position": [0, 160], "values": {"value": 0.5}},
+                {"id": "delay", "type": "delay", "position": [220, 0], "values": {}},
+                {"id": "value", "type": "intLiteral", "position": [220, 180], "values": {"value": 42}},
+                {"id": "set", "type": "setVariable", "position": [460, 0], "values": {"variableId": "result", "variableType": "int"}}
+            ],
+            "connections": [
+                {"id": "e0", "kind": "execution", "from": {"nodeId": "begin", "pin": "exec"}, "to": {"nodeId": "delay", "pin": "exec"}},
+                {"id": "e1", "kind": "execution", "from": {"nodeId": "delay", "pin": "completed"}, "to": {"nodeId": "set", "pin": "exec"}},
+                {"id": "v0", "kind": "value", "from": {"nodeId": "duration", "pin": "value"}, "to": {"nodeId": "delay", "pin": "duration"}},
+                {"id": "v1", "kind": "value", "from": {"nodeId": "value", "pin": "value"}, "to": {"nodeId": "set", "pin": "value"}}
+            ],
+            "viewport": {"x": 0, "y": 0, "zoom": 1}
+        }
+    })json";
+
+    const compile_result delay_compiled = compile_asset(delay_source);
+    assert(delay_compiled.succeeded && delay_compiled.bytecode);
+    assert(delay_compiled.bytecode->latent_actions.size() == 1);
+    vm_instance delay{*delay_compiled.bytecode};
+    [[maybe_unused]] const execution_result delay_begin = delay.begin_play();
+    assert(delay_begin.succeeded());
+    [[maybe_unused]] const execution_result delay_first_tick = delay.tick(0.25);
+    assert(delay_first_tick.succeeded());
+    assert(std::get<std::int64_t>(*delay.variable_value("result")) == 0);
+    [[maybe_unused]] const execution_result delay_second_tick = delay.tick(0.25);
+    assert(delay_second_tick.succeeded());
+    assert(std::get<std::int64_t>(*delay.variable_value("result")) == 42);
+
+    constexpr std::string_view timer_source = R"json({
+        "version": 1,
+        "assetType": "flow",
+        "name": "Timer",
+        "graph": {
+            "version": 1,
+            "variables": [
+                {"id": "result", "name": "Result", "type": "int", "defaultValue": 0, "exposed": false}
+            ],
+            "nodes": [
+                {"id": "begin", "type": "beginPlay", "position": [0, 0], "values": {}},
+                {"id": "interval", "type": "floatLiteral", "position": [0, 160], "values": {"value": 0.25}},
+                {"id": "looping", "type": "boolLiteral", "position": [0, 240], "values": {"value": false}},
+                {"id": "timer", "type": "timer", "position": [220, 0], "values": {}},
+                {"id": "tickValue", "type": "intLiteral", "position": [220, 220], "values": {"value": 1}},
+                {"id": "doneValue", "type": "intLiteral", "position": [220, 300], "values": {"value": 2}},
+                {"id": "tickSet", "type": "setVariable", "position": [500, 0], "values": {"variableId": "result", "variableType": "int"}},
+                {"id": "doneSet", "type": "setVariable", "position": [500, 120], "values": {"variableId": "result", "variableType": "int"}}
+            ],
+            "connections": [
+                {"id": "e0", "kind": "execution", "from": {"nodeId": "begin", "pin": "exec"}, "to": {"nodeId": "timer", "pin": "start"}},
+                {"id": "e1", "kind": "execution", "from": {"nodeId": "timer", "pin": "tick"}, "to": {"nodeId": "tickSet", "pin": "exec"}},
+                {"id": "e2", "kind": "execution", "from": {"nodeId": "timer", "pin": "completed"}, "to": {"nodeId": "doneSet", "pin": "exec"}},
+                {"id": "v0", "kind": "value", "from": {"nodeId": "interval", "pin": "value"}, "to": {"nodeId": "timer", "pin": "interval"}},
+                {"id": "v1", "kind": "value", "from": {"nodeId": "looping", "pin": "value"}, "to": {"nodeId": "timer", "pin": "looping"}},
+                {"id": "v2", "kind": "value", "from": {"nodeId": "tickValue", "pin": "value"}, "to": {"nodeId": "tickSet", "pin": "value"}},
+                {"id": "v3", "kind": "value", "from": {"nodeId": "doneValue", "pin": "value"}, "to": {"nodeId": "doneSet", "pin": "value"}}
+            ],
+            "viewport": {"x": 0, "y": 0, "zoom": 1}
+        }
+    })json";
+
+    const compile_result timer_compiled = compile_asset(timer_source);
+    assert(timer_compiled.succeeded && timer_compiled.bytecode);
+    assert(timer_compiled.bytecode->latent_actions.size() == 1);
+    vm_instance timer{*timer_compiled.bytecode};
+    [[maybe_unused]] const execution_result timer_begin = timer.begin_play();
+    assert(timer_begin.succeeded());
+    [[maybe_unused]] const execution_result timer_tick = timer.tick(0.25);
+    assert(timer_tick.succeeded());
+    assert(std::get<std::int64_t>(*timer.variable_value("result")) == 2);
+}
+
 } // namespace
 
 void run_flow_language_tests()
@@ -432,4 +672,7 @@ void run_flow_language_tests()
     test_loop_bytecode_and_budget();
     test_compiler_executes_sequence_switch_and_for_loop();
     test_compiler_reevaluates_while_condition();
+    test_delay_and_retriggerable_delay_bytecode();
+    test_timer_bytecode_and_budget();
+    test_compiler_executes_latent_nodes();
 }
