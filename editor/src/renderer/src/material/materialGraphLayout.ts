@@ -73,6 +73,18 @@ export const materialNodeHeight = (node: MaterialGraphNode) => {
   return Math.max(88, height);
 };
 
+export const materialNodePinOffsetY = (
+  node: MaterialGraphNode,
+  pinId: string,
+  direction: 'input' | 'output',
+) => {
+  const definition = materialGraphDomain.getNodeDefinition(node);
+  const pins = direction === 'input' ? definition.inputs : definition.outputs;
+  const index = pins.findIndex((pin) => pin.id === pinId);
+  if (index < 0) return materialNodeHeight(node) / 2;
+  return headerHeight + nodePaddingTop + pinRowHeight * (index + 0.5);
+};
+
 export type MaterialGraphBounds = {
   left: number;
   top: number;
@@ -141,6 +153,7 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
   const next = cloneMaterialGraph(graph);
   const nodeById = new Map(next.nodes.map((node) => [node.id, node]));
   const outgoing = new Map<string, string[]>();
+  const outgoingConnections = new Map<string, typeof next.connections>();
   const incoming = new Map<string, string[]>();
   const connectionCounts = new Map<string, number>();
   const connected = new Set<string>();
@@ -151,6 +164,10 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
     const targets = outgoing.get(connection.from.nodeId) ?? [];
     targets.push(connection.to.nodeId);
     outgoing.set(connection.from.nodeId, targets);
+
+    const sourceConnections = outgoingConnections.get(connection.from.nodeId) ?? [];
+    sourceConnections.push(connection);
+    outgoingConnections.set(connection.from.nodeId, sourceConnections);
 
     const sources = incoming.get(connection.to.nodeId) ?? [];
     sources.push(connection.from.nodeId);
@@ -227,23 +244,32 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
   }
 
   const rowGap = 34;
-  const centers = new Map<string, number>();
 
-  for (let depth = 0; depth <= maximumDepth; ++depth) {
+  // Place columns from the sinks back toward the sources. The ideal Y for an
+  // upstream node is derived from the actual connected pin locations, not just
+  // the downstream node center. Single-link chains therefore become straight,
+  // while fan-in/fan-out nodes are centered across all of their connections.
+  for (let depth = maximumDepth; depth >= 0; --depth) {
     const column = columns.get(depth);
     if (!column?.length) continue;
 
     const layout = column.map((node) => {
-      const downstreamCenters = (outgoing.get(node.id) ?? []).flatMap((target) => {
-        const center = centers.get(target);
-        return center === undefined ? [] : [center];
+      const connectionTargets = (outgoingConnections.get(node.id) ?? []).flatMap((connection) => {
+        const target = nodeById.get(connection.to.nodeId);
+        if (!target || (depths.get(target.id) ?? 0) <= depth) return [];
+
+        const targetPinY =
+          target.position[1] + materialNodePinOffsetY(target, connection.to.pin, 'input');
+        const sourcePinOffset = materialNodePinOffsetY(node, connection.from.pin, 'output');
+        return [targetPinY - sourcePinOffset];
       });
+      const height = materialNodeHeight(node);
+      const idealTop = connectionTargets.length ? average(connectionTargets) : node.position[1];
       return {
         node,
-        height: materialNodeHeight(node),
-        idealCenter: downstreamCenters.length
-          ? average(downstreamCenters)
-          : node.position[1] + materialNodeHeight(node) / 2,
+        height,
+        idealTop,
+        idealCenter: idealTop + height / 2,
       };
     });
 
@@ -254,14 +280,18 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
         left.node.id.localeCompare(right.node.id),
     );
 
-    const totalHeight = layout.reduce((sum, item) => sum + item.height, 0) + Math.max(0, layout.length - 1) * rowGap;
-    const targetCenter = average(layout.map((item) => item.idealCenter));
-    let y = targetCenter - totalHeight / 2;
+    const tops = layout.map((item) => item.idealTop);
+    for (let index = 1; index < layout.length; ++index) {
+      const minimumTop = tops[index - 1] + layout[index - 1].height + rowGap;
+      tops[index] = Math.max(tops[index], minimumTop);
+    }
 
-    for (const item of layout) {
-      item.node.position = [columnX.get(depth) ?? 0, y];
-      centers.set(item.node.id, y + item.height / 2);
-      y += item.height + rowGap;
+    // Forward packing can push a whole column down. Translate it back toward
+    // the connection-derived ideals without changing the non-overlap spacing.
+    const packedOffset = average(tops.map((top, index) => top - layout[index].idealTop));
+    for (let index = 0; index < layout.length; ++index) {
+      const item = layout[index];
+      item.node.position = [columnX.get(depth) ?? 0, tops[index] - packedOffset];
     }
   }
 
@@ -269,8 +299,12 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
   if (bounds) {
     const offsetX = 80 - bounds.left;
     const offsetY = 80 - bounds.top;
-    for (const node of next.nodes)
-      node.position = snapMaterialGraphPoint([node.position[0] + offsetX, node.position[1] + offsetY]);
+    for (const node of next.nodes) {
+      const x = Math.round((node.position[0] + offsetX) / materialGraphSnapSize) * materialGraphSnapSize;
+      // Preserve relative vertical pin alignment. Independent Y snapping would
+      // turn a perfectly straight pin-to-pin connection back into a curve.
+      node.position = [x, Math.round(node.position[1] + offsetY)];
+    }
   }
 
   return next;
