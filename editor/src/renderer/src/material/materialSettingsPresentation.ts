@@ -1,9 +1,4 @@
-import type {
-  MaterialBlendMode,
-  MaterialDomain,
-  MaterialGraph,
-  MaterialShadingModel,
-} from './materialGraphTypes';
+import type { MaterialBlendMode, MaterialDomain, MaterialGraph, MaterialShadingModel } from './materialGraphTypes';
 
 export type MaterialRenderPathLabel = 'Deferred' | 'Clustered Forward' | 'Terrain Renderer';
 

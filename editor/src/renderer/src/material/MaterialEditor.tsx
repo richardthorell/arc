@@ -298,7 +298,6 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
                 </UiPanelCardRow>
               </>
             )}
-
           </UiPanelCard>
 
           {isSurfaceMaterial && (
@@ -339,14 +338,10 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
               onToggle={() => setMaskingSettingsCollapsed((collapsed) => !collapsed)}
             >
               <UiPanelCardRow label="Opacity">
-                <span className="material-setting-readonly">
-                  {outputSource('opacity', '1.0')}
-                </span>
+                <span className="material-setting-readonly">{outputSource('opacity', '1.0')}</span>
               </UiPanelCardRow>
               <UiPanelCardRow label="Alpha Clip">
-                <span className="material-setting-readonly">
-                  {outputSource('alphaClip', '0.5')}
-                </span>
+                <span className="material-setting-readonly">{outputSource('alphaClip', '0.5')}</span>
               </UiPanelCardRow>
             </UiPanelCard>
           )}
@@ -360,24 +355,16 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
               onToggle={() => setTranslucencySettingsCollapsed((collapsed) => !collapsed)}
             >
               <UiPanelCardRow label="Opacity">
-                <span className="material-setting-readonly">
-                  {outputSource('opacity', '1.0')}
-                </span>
+                <span className="material-setting-readonly">{outputSource('opacity', '1.0')}</span>
               </UiPanelCardRow>
               <UiPanelCardRow label="Transmission">
-                <span className="material-setting-readonly">
-                  {outputSource('transmission', '0.0')}
-                </span>
+                <span className="material-setting-readonly">{outputSource('transmission', '0.0')}</span>
               </UiPanelCardRow>
               <UiPanelCardRow label="Index of Refraction">
-                <span className="material-setting-readonly">
-                  {outputSource('indexOfRefraction', '1.5')}
-                </span>
+                <span className="material-setting-readonly">{outputSource('indexOfRefraction', '1.5')}</span>
               </UiPanelCardRow>
               <UiPanelCardRow label="Thickness">
-                <span className="material-setting-readonly">
-                  {outputSource('thickness', '0.0')}
-                </span>
+                <span className="material-setting-readonly">{outputSource('thickness', '0.0')}</span>
               </UiPanelCardRow>
             </UiPanelCard>
           )}
