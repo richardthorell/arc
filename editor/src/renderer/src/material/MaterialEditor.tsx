@@ -158,7 +158,7 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
           </div>
         </section>
       ) : (
-        <MaterialGraphWithInteractions document={document} graph={state.graph} />
+        <MaterialGraphWithInteractions document={document} graph={state.graph} loaded={state.loaded} />
       )}
 
       <div
