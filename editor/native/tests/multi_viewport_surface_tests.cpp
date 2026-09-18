@@ -103,3 +103,33 @@ TEST_CASE("detaching one viewport surface does not detach another")
     CHECK(preview.at("height") == 0);
     CHECK(preview.at("submitted") == false);
 }
+
+TEST_CASE("material preview mesh and animation options stay on the existing viewport surface")
+{
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+
+    const std::string viewport_id =
+        "asset-preview-material-00112233445566778899aabbccddeeff~1";
+    REQUIRE(host->execute(arc::editor::host_viewport_create_command{
+                              .viewport_id = viewport_id, .width = 420, .height = 420})
+                .succeeded);
+    REQUIRE(host->execute(arc::editor::host_viewport_set_render_options_command{
+                              .viewport_id = viewport_id,
+                              .grid = false,
+                              .material_preview_mesh = "cube",
+                              .material_preview_auto_rotate = false})
+                .succeeded);
+
+    const auto preview = viewport_state(host, viewport_id, 7);
+    CHECK(preview.at("viewportId") == viewport_id);
+    CHECK(preview.at("assetPreviewMesh") == "cube");
+    CHECK(preview.at("assetPreviewAutoRotate") == false);
+    CHECK(preview.at("assetPreviewReady") == false);
+
+    const auto invalid = host->execute(arc::editor::host_viewport_set_render_options_command{
+        .viewport_id = viewport_id, .material_preview_mesh = "teapot"});
+    CHECK_FALSE(invalid.succeeded);
+    CHECK(invalid.error == "Unsupported material preview mesh: teapot");
+}
