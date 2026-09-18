@@ -103,3 +103,34 @@
 .ui-panel-section-content {
   min-width: 0;
 }
+
+
+.ui-panel-card-row {
+  min-height: 36px;
+  display: grid;
+  grid-template-columns: minmax(96px, 0.7fr) minmax(140px, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 5px 2px;
+  color: var(--arc-color-text-muted);
+  font-size: var(--arc-text-xs);
+}
+
+.ui-panel-card-row:not(:last-child) {
+  border-bottom: 1px solid var(--arc-color-border-subtle);
+}
+
+.ui-panel-card-row-label {
+  min-width: 0;
+  color: var(--arc-color-text-muted);
+}
+
+.ui-panel-card-row-control {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.ui-panel-card-row-control > .ui-select {
+  width: 100%;
+}
