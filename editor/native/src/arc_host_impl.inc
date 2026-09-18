@@ -740,6 +740,7 @@ void cleanup_asset_preview_surface(viewport_surface_registry::surface_state& sur
     surface.preview_mesh = {};
     surface.preview_material = {};
     surface.preview_material_generation = 0;
+    surface.preview_live_material_generation = 0;
     surface.preview_asset_generation = 0;
 }
 
@@ -1353,6 +1354,17 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         !ensure_asset_preview_scene(*state_, *viewport_surface) && !viewport_surface->preview_scene)
         return {.message = viewport_surface->preview_error.empty() ? "Asset preview scene is unavailable"
                                                                    : viewport_surface->preview_error};
+
+    if (viewport_surface->preview_kind == asset_preview_kind::material && viewport_surface->preview_scene)
+    {
+        if (const auto live = surfaces.live_material_previews.find(viewport_surface->preview_guid);
+            live != surfaces.live_material_previews.end() &&
+            live->second.generation != viewport_surface->preview_live_material_generation)
+        {
+            if (apply_live_asset_preview_material(*state_, *viewport_surface, live->second.source))
+                viewport_surface->preview_live_material_generation = live->second.generation;
+        }
+    }
 
     activate_viewport_surface(*state_, *viewport_surface);
     host_viewport_request routed_request = request;
