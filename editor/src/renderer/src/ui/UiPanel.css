@@ -30,8 +30,8 @@
 .ui-panel-section {
   position: relative;
   min-width: 0;
-  border: 1px solid #28323a;
-  background: #192128;
+  border: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  background: var(--arc-color-bg-panel);
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.12);
   font-family: var(--arc-font-ui);
   font-size: var(--arc-text-sm);
@@ -42,7 +42,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   min-height: 28px;
-  border-bottom: 1px solid #2d363e;
+  border-bottom: var(--arc-border-width) solid var(--arc-color-border-subtle);
   background: linear-gradient(
     180deg,
     var(--inspector-bg-header-top, var(--arc-color-bg-panel-raised)),
@@ -62,7 +62,7 @@
   align-items: center;
   gap: 6px;
   padding: 0 7px;
-  color: #e0e5e9;
+  color: var(--arc-color-text-strong);
   background: transparent;
   border: 0;
   font: inherit;
@@ -76,8 +76,14 @@
 }
 
 .ui-panel-section-toggle:hover {
-  color: #f2f5f8;
-  background: rgba(255, 255, 255, 0.055);
+  color: var(--arc-color-text-strong);
+  background: var(--arc-color-bg-hover);
+}
+
+.ui-panel-section-toggle:focus-visible {
+  z-index: 1;
+  outline: 2px solid var(--arc-color-focus-ring);
+  outline-offset: -2px;
 }
 
 .ui-panel-section-toggle svg {
@@ -97,7 +103,9 @@
   position: relative;
   display: flex;
   align-items: center;
+  gap: var(--arc-space-2);
   min-height: 28px;
+  padding-right: var(--arc-space-2);
 }
 
 .ui-panel-section-content {
@@ -121,13 +129,31 @@
 
 .ui-panel-card-row-label {
   min-width: 0;
+  display: grid;
+  gap: 2px;
   color: var(--arc-color-text-muted);
+}
+
+.ui-panel-card-row-label > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-panel-card-row-label > small {
+  color: var(--arc-color-text-dim);
+  font-size: var(--arc-text-xxs);
+  line-height: 1.3;
 }
 
 .ui-panel-card-row-control {
   min-width: 0;
   display: flex;
   align-items: center;
+}
+
+.ui-panel-card-row-control.is-end {
+  justify-content: flex-end;
 }
 
 .ui-panel-card-row-control > .ui-select {
