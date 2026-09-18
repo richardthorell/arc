@@ -22,7 +22,7 @@ const document: EditorDocument = {
   readOnly: false,
 };
 
-const command = vi.fn(async () => ({
+const command = vi.fn(async (_type?: string, _payload?: unknown) => ({
   succeeded: true,
   payload: { succeeded: true, diagnostics: [] },
 }));
