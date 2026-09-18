@@ -64,6 +64,46 @@ const fanInGraph = (connectionCount: number): MaterialGraph => {
   };
 };
 
+const textureMaterialGraph = (): MaterialGraph => {
+  const baseColor = { ...createMaterialNode('textureSample2D', [0, 0]), id: 'base-color' };
+  const packed = { ...createMaterialNode('textureSample2D', [0, 0]), id: 'packed' };
+  const normalTexture = { ...createMaterialNode('textureSample2D', [0, 0]), id: 'normal-texture' };
+  const normalMap = { ...createMaterialNode('normalMap', [0, 0]), id: 'normal-map' };
+  const output = { ...createMaterialNode('output', [0, 0]), id: 'material-output' };
+  return {
+    version: 1,
+    nodes: [baseColor, packed, normalTexture, normalMap, output],
+    connections: [
+      {
+        id: 'base-color-output',
+        from: { nodeId: baseColor.id, pin: 'rgb' },
+        to: { nodeId: output.id, pin: 'baseColor' },
+      },
+      {
+        id: 'packed-metallic',
+        from: { nodeId: packed.id, pin: 'r' },
+        to: { nodeId: output.id, pin: 'metallic' },
+      },
+      {
+        id: 'packed-roughness',
+        from: { nodeId: packed.id, pin: 'g' },
+        to: { nodeId: output.id, pin: 'roughness' },
+      },
+      {
+        id: 'normal-texture-map',
+        from: { nodeId: normalTexture.id, pin: 'rgb' },
+        to: { nodeId: normalMap.id, pin: 'texture' },
+      },
+      {
+        id: 'normal-map-output',
+        from: { nodeId: normalMap.id, pin: 'normal' },
+        to: { nodeId: output.id, pin: 'normal' },
+      },
+    ],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+};
+
 describe('material graph layout', () => {
   it('keeps simple nodes compact and widens controls that need more editing space', () => {
     expect(materialNodeWidth('constant')).toBe(214);
@@ -117,6 +157,21 @@ describe('material graph layout', () => {
       expect(node.position[0] % 20).toBe(0);
       expect(node.position[1] % 20).toBe(0);
     }
+  });
+
+  it('keeps peer source node types aligned even when one branch has an extra processor', () => {
+    const arranged = autoArrangeMaterialGraph(textureMaterialGraph());
+    const byId = new Map(arranged.nodes.map((node) => [node.id, node]));
+    const baseColor = byId.get('base-color')!;
+    const packed = byId.get('packed')!;
+    const normalTexture = byId.get('normal-texture')!;
+    const normalMap = byId.get('normal-map')!;
+    const output = byId.get('material-output')!;
+
+    expect(baseColor.position[0]).toBe(packed.position[0]);
+    expect(baseColor.position[0]).toBe(normalTexture.position[0]);
+    expect(normalTexture.position[0]).toBeLessThan(normalMap.position[0]);
+    expect(normalMap.position[0]).toBeLessThan(output.position[0]);
   });
 
   it('adds horizontal routing room as fan-in pressure increases', () => {
