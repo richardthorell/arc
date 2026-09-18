@@ -16,6 +16,7 @@ const settings = {
   minFilter: 'linear' as const,
   magFilter: 'linear' as const,
   mipFilter: 'linear' as const,
+  mipPolicy: 'preserve_source' as const,
   wrapU: 'repeat' as const,
   wrapV: 'repeat' as const,
   mipGenerationFilter: 'box' as const,
