@@ -634,10 +634,11 @@ cook_target target_for(const project::cook_profile_descriptor& profile)
                       : profile.renderer == "direct3d12" ? cook_renderer::direct3d12
                       : profile.renderer == "metal"      ? cook_renderer::metal
                                                          : cook_renderer::vulkan;
-    result.textures = profile.texture_family == "astc"       ? cook_texture_family::astc
-                      : profile.texture_family == "etc2"     ? cook_texture_family::etc2
-                      : profile.texture_family == "portable" ? cook_texture_family::portable
-                                                             : cook_texture_family::bc;
+    const auto& texture_family = profile.textures.outputs.front();
+    result.textures = texture_family == "astc"       ? cook_texture_family::astc
+                      : texture_family == "etc2"     ? cook_texture_family::etc2
+                      : texture_family == "portable" ? cook_texture_family::portable
+                                                     : cook_texture_family::bc;
     result.configuration =
         profile.configuration == "Shipping" ? cook_configuration::shipping : cook_configuration::development;
     const auto separator = profile.api.find('.');
