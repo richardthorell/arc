@@ -867,6 +867,11 @@ void vulkan_render_backend::upload_texture(const texture_upload_event& event)
         arc::diagnostics::debug("render.vulkan",
                                 "Texture '" + event.label + "' kept as encoded data until image decoding is available");
     }
+    else if (!uploaded)
+    {
+        arc::diagnostics::warn("render.vulkan",
+                               "Texture '" + event.label + "' could not be uploaded to the Vulkan device");
+    }
 
     const std::uint64_t key = resource_key(event.handle);
     if (auto found = textures_.find(key); found != textures_.end())
