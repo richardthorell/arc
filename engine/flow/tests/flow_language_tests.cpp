@@ -656,6 +656,87 @@ void test_compiler_executes_latent_nodes()
     assert(std::get<std::int64_t>(*timer.variable_value("result")) == 2);
 }
 
+
+void test_graph_interface_bytecode()
+{
+    bytecode_program program;
+    program.value_slots = {int_slot(2), int_slot(0)};
+    program.graph_inputs = {
+        {.id = "amount", .name = "Amount", .type = value_type::integer, .default_value = std::int64_t{2}, .slot = 0}};
+    program.graph_outputs = {
+        {.id = "result", .name = "Result", .type = value_type::integer, .default_value = std::int64_t{0}, .slot = 1}};
+    program.entry_points.push_back({.kind = entry_point_kind::begin_play, .instruction = 0});
+    program.instructions = {
+        {.opcode = bytecode_opcode::store_graph_output,
+         .operand0 = 1,
+         .operand1 = 0,
+         .operand2 = invalid_instruction},
+    };
+
+    vm_instance instance{program};
+    assert(instance.valid());
+    assert(std::get<std::int64_t>(*instance.graph_input_value("amount")) == 2);
+    assert(instance.set_graph_input_value("amount", std::int64_t{7}));
+    assert(!instance.set_graph_input_value("amount", 7.0));
+    [[maybe_unused]] const execution_result result = instance.begin_play();
+    assert(result.succeeded());
+    assert(std::get<std::int64_t>(*instance.graph_output_value("result")) == 7);
+}
+
+void test_compiler_executes_custom_event_and_interface()
+{
+    constexpr std::string_view source = R"json({
+        "version": 1,
+        "assetType": "flow",
+        "name": "InterfaceEvent",
+        "graph": {
+            "version": 1,
+            "variables": [],
+            "inputs": [
+                {"id": "amount", "name": "Amount", "type": "int", "defaultValue": 1}
+            ],
+            "outputs": [
+                {"id": "result", "name": "Result", "type": "int", "defaultValue": 0}
+            ],
+            "events": [
+                {"id": "apply", "name": "Apply"}
+            ],
+            "nodes": [
+                {"id": "begin", "type": "beginPlay", "position": [0, 0], "values": {}},
+                {"id": "call", "type": "callCustomEvent", "position": [180, 0], "values": {"eventId": "apply"}},
+                {"id": "event", "type": "customEvent", "position": [0, 180], "values": {"eventId": "apply"}},
+                {"id": "input", "type": "graphInput", "position": [180, 260], "values": {"interfaceId": "amount", "interfaceType": "int"}},
+                {"id": "output", "type": "graphOutput", "position": [380, 180], "values": {"interfaceId": "result", "interfaceType": "int"}}
+            ],
+            "connections": [
+                {"id": "e0", "kind": "execution", "from": {"nodeId": "begin", "pin": "exec"}, "to": {"nodeId": "call", "pin": "exec"}},
+                {"id": "e1", "kind": "execution", "from": {"nodeId": "event", "pin": "exec"}, "to": {"nodeId": "output", "pin": "exec"}},
+                {"id": "v0", "kind": "value", "from": {"nodeId": "input", "pin": "value"}, "to": {"nodeId": "output", "pin": "value"}}
+            ],
+            "viewport": {"x": 0, "y": 0, "zoom": 1}
+        }
+    })json";
+
+    const compile_result compiled = compile_asset(source);
+    assert(compiled.succeeded && compiled.bytecode);
+    assert(compiled.bytecode->graph_inputs.size() == 1);
+    assert(compiled.bytecode->graph_outputs.size() == 1);
+    assert(compiled.bytecode->custom_events.size() == 1);
+
+    vm_instance instance{*compiled.bytecode};
+    assert(instance.valid());
+    assert(instance.set_graph_input_value("amount", std::int64_t{42}));
+    [[maybe_unused]] const execution_result begin_result = instance.begin_play();
+    assert(begin_result.succeeded());
+    assert(std::get<std::int64_t>(*instance.graph_output_value("result")) == 42);
+
+    assert(instance.set_graph_input_value("amount", std::int64_t{17}));
+    [[maybe_unused]] const execution_result event_result = instance.custom_event("Apply");
+    assert(event_result.succeeded());
+    assert(event_result.entry_points_executed == 1);
+    assert(std::get<std::int64_t>(*instance.graph_output_value("result")) == 17);
+}
+
 } // namespace
 
 void run_flow_language_tests()
@@ -672,4 +753,6 @@ void run_flow_language_tests()
     test_delay_and_retriggerable_delay_bytecode();
     test_timer_bytecode_and_budget();
     test_compiler_executes_latent_nodes();
+    test_graph_interface_bytecode();
+    test_compiler_executes_custom_event_and_interface();
 }

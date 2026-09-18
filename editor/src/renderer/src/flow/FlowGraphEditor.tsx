@@ -376,13 +376,20 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
   const addNode = (type: FlowNodeType) => {
     if (document.readOnly || !addMenu) return;
     const variable = graph.variables[0];
-    const node = createFlowNode(
-      type,
-      addMenu.graph,
+    const event = graph.events?.[0];
+    const graphInput = graph.inputs?.[0];
+    const graphOutput = graph.outputs?.[0];
+    const initialValues =
       (type === 'getVariable' || type === 'setVariable') && variable
         ? { variableId: variable.id, variableType: variable.type }
-        : {},
-    );
+        : (type === 'customEvent' || type === 'callCustomEvent') && event
+          ? { eventId: event.id }
+          : type === 'graphInput' && graphInput
+            ? { interfaceId: graphInput.id, interfaceType: graphInput.type }
+            : type === 'graphOutput' && graphOutput
+              ? { interfaceId: graphOutput.id, interfaceType: graphOutput.type }
+              : {};
+    const node = createFlowNode(type, addMenu.graph, initialValues);
     mutate((next) => next.nodes.push(node));
     setSelectedNodes(new Set([node.id]));
     setAddMenu(null);
@@ -598,6 +605,53 @@ export function FlowGraphEditor({ document, graph }: { document: EditorDocument;
                   />
                 </label>
               )}
+
+              {(node.type === 'customEvent' || node.type === 'callCustomEvent') && (
+                <label className="flow-node-inline-value">
+                  Event
+                  <select
+                    aria-label={node.type === 'customEvent' ? 'Custom event' : 'Call custom event'}
+                    disabled={document.readOnly || (graph.events?.length ?? 0) === 0}
+                    onChange={(event) => setNodeField(node.id, 'eventId', event.target.value)}
+                    value={typeof node.values.eventId === 'string' ? node.values.eventId : ''}
+                  >
+                    {(graph.events?.length ?? 0) === 0 && <option value="">No custom events</option>}
+                    {(graph.events ?? []).map((event) => (
+                      <option key={event.id} value={event.id}>
+                        {event.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              {(node.type === 'graphInput' || node.type === 'graphOutput') &&
+                (() => {
+                  const values = node.type === 'graphInput' ? (graph.inputs ?? []) : (graph.outputs ?? []);
+                  return (
+                    <label className="flow-node-inline-value">
+                      {node.type === 'graphInput' ? 'Input' : 'Output'}
+                      <select
+                        aria-label={node.type === 'graphInput' ? 'Graph input' : 'Graph output'}
+                        disabled={document.readOnly || values.length === 0}
+                        onChange={(event) => {
+                          const item = values.find((candidate) => candidate.id === event.target.value);
+                          setTypedNodeField(node.id, 'interfaceId', event.target.value, {
+                            interfaceType: item?.type ?? 'float',
+                          });
+                        }}
+                        value={typeof node.values.interfaceId === 'string' ? node.values.interfaceId : ''}
+                      >
+                        {values.length === 0 && <option value="">No graph interface values</option>}
+                        {values.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name} · {displayType(item.type)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  );
+                })()}
 
               {node.type === 'switchInt' &&
                 (() => {

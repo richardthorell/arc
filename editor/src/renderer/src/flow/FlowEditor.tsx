@@ -5,7 +5,12 @@ import type { EditorDocument, EditorSurfaceContext } from '../editors/editorType
 import { UiButton } from '../ui';
 import { FlowGraphEditor } from './FlowGraphEditor';
 import { disposeFlowDocument, replaceFlowGraph, useFlowDocumentState } from './flowDocumentState';
-import { flowGraphId, type FlowGraph, type FlowValueType } from './flowGraphTypes';
+import {
+  flowGraphId,
+  type FlowGraph,
+  type FlowInterfaceValueDefinition,
+  type FlowValueType,
+} from './flowGraphTypes';
 import './flowEditor.css';
 
 const variableTypes: FlowValueType[] = [
@@ -72,6 +77,139 @@ export function FlowEditor({ document }: { document: EditorDocument; context?: E
   const mutateVariables = (updater: (variables: typeof state.graph.variables, graph: FlowGraph) => void) =>
     mutateGraph((graph) => updater(graph.variables, graph));
 
+  const mutateInterface = (
+    kind: 'inputs' | 'outputs',
+    updater: (values: FlowInterfaceValueDefinition[], graph: FlowGraph) => void,
+  ) =>
+    mutateGraph((graph) => {
+      const values = graph[kind] ?? [];
+      graph[kind] = values;
+      updater(values, graph);
+    });
+
+  const mutateEvents = (updater: (events: NonNullable<FlowGraph['events']>, graph: FlowGraph) => void) =>
+    mutateGraph((graph) => {
+      const events = graph.events ?? [];
+      graph.events = events;
+      updater(events, graph);
+    });
+
+  const renderInterfacePanel = (kind: 'inputs' | 'outputs', title: string) => {
+    const values = state.graph[kind] ?? [];
+    const nodeType = kind === 'inputs' ? 'graphInput' : 'graphOutput';
+    return (
+      <section className="flow-variable-panel">
+        <div className="flow-variable-panel-heading">
+          <div>
+            <strong>{title}</strong>
+            <span>{kind === 'inputs' ? 'Values supplied to this graph' : 'Values produced by this graph'}</span>
+          </div>
+          <UiButton
+            aria-label={`Add graph ${kind === 'inputs' ? 'input' : 'output'}`}
+            disabled={document.readOnly}
+            onClick={() =>
+              mutateInterface(kind, (items) => {
+                items.push({
+                  id: flowGraphId(kind === 'inputs' ? 'input' : 'output'),
+                  name: `${kind === 'inputs' ? 'Input' : 'Output'} ${items.length + 1}`,
+                  type: 'float',
+                  defaultValue: 0,
+                });
+              })
+            }
+            variant="ghost"
+          >
+            <Plus size={13} /> Add
+          </UiButton>
+        </div>
+        <div className="flow-variable-list">
+          {values.length === 0 && <p className="flow-variable-empty">No {kind} yet.</p>}
+          {values.map((item) => (
+            <article className="flow-variable" key={item.id}>
+              <div className="flow-variable-name-row">
+                <input
+                  aria-label={`${title} name ${item.name}`}
+                  disabled={document.readOnly}
+                  onChange={(event) =>
+                    mutateInterface(kind, (items) => {
+                      const target = items.find((candidate) => candidate.id === item.id);
+                      if (target) target.name = event.target.value;
+                    })
+                  }
+                  value={item.name}
+                />
+                <UiButton
+                  aria-label={`Delete ${title.toLowerCase()} ${item.name}`}
+                  disabled={document.readOnly}
+                  onClick={() =>
+                    mutateInterface(kind, (items, graph) => {
+                      const index = items.findIndex((candidate) => candidate.id === item.id);
+                      if (index < 0) return;
+                      items.splice(index, 1);
+                      const affected = new Set(
+                        graph.nodes
+                          .filter((node) => node.type === nodeType && node.values.interfaceId === item.id)
+                          .map((node) => node.id),
+                      );
+                      for (const node of graph.nodes) {
+                        if (!affected.has(node.id)) continue;
+                        node.values.interfaceId = '';
+                        node.values.interfaceType = 'float';
+                      }
+                      graph.connections = graph.connections.filter(
+                        (connection) =>
+                          connection.kind === 'execution' ||
+                          (!affected.has(connection.from.nodeId) && !affected.has(connection.to.nodeId)),
+                      );
+                    })
+                  }
+                  variant="ghost"
+                >
+                  <Trash2 size={13} />
+                </UiButton>
+              </div>
+              <div className="flow-variable-fields">
+                <label>
+                  Type
+                  <select
+                    disabled={document.readOnly}
+                    onChange={(event) =>
+                      mutateInterface(kind, (items, graph) => {
+                        const target = items.find((candidate) => candidate.id === item.id);
+                        if (!target) return;
+                        target.type = event.target.value as FlowValueType;
+                        target.defaultValue = defaultValueForType(target.type);
+                        const affected = new Set(
+                          graph.nodes
+                            .filter((node) => node.type === nodeType && node.values.interfaceId === item.id)
+                            .map((node) => node.id),
+                        );
+                        for (const node of graph.nodes)
+                          if (affected.has(node.id)) node.values.interfaceType = target.type;
+                        graph.connections = graph.connections.filter(
+                          (connection) =>
+                            connection.kind === 'execution' ||
+                            (!affected.has(connection.from.nodeId) && !affected.has(connection.to.nodeId)),
+                        );
+                      })
+                    }
+                    value={item.type}
+                  >
+                    {variableTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    );
+  };
+
   return (
     <section className="flow-editor">
       <FlowGraphEditor document={document} graph={state.graph} />
@@ -98,12 +236,84 @@ export function FlowEditor({ document }: { document: EditorDocument; context?: E
               <dt>Variables</dt>
               <dd>{state.graph.variables.length}</dd>
             </div>
+            <div>
+              <dt>Interface</dt>
+              <dd>{(state.graph.inputs?.length ?? 0) + (state.graph.outputs?.length ?? 0)}</dd>
+            </div>
+            <div>
+              <dt>Events</dt>
+              <dd>{state.graph.events?.length ?? 0}</dd>
+            </div>
           </dl>
           <p>
             Flow graphs compile to typed runtime bytecode; gameplay world operations execute through ARC's stable world
             API.
           </p>
         </section>
+
+        <section className="flow-variable-panel">
+          <div className="flow-variable-panel-heading">
+            <div>
+              <strong>Custom Events</strong>
+              <span>Local entry points callable by name</span>
+            </div>
+            <UiButton
+              aria-label="Add custom event"
+              disabled={document.readOnly}
+              onClick={() =>
+                mutateEvents((events) => {
+                  events.push({ id: flowGraphId('event'), name: `Event ${events.length + 1}` });
+                })
+              }
+              variant="ghost"
+            >
+              <Plus size={13} /> Add
+            </UiButton>
+          </div>
+          <div className="flow-variable-list">
+            {(state.graph.events?.length ?? 0) === 0 && <p className="flow-variable-empty">No custom events yet.</p>}
+            {(state.graph.events ?? []).map((event) => (
+              <article className="flow-variable" key={event.id}>
+                <div className="flow-variable-name-row">
+                  <input
+                    aria-label={`Custom event name ${event.name}`}
+                    disabled={document.readOnly}
+                    onChange={(change) =>
+                      mutateEvents((events) => {
+                        const target = events.find((candidate) => candidate.id === event.id);
+                        if (target) target.name = change.target.value;
+                      })
+                    }
+                    value={event.name}
+                  />
+                  <UiButton
+                    aria-label={`Delete custom event ${event.name}`}
+                    disabled={document.readOnly}
+                    onClick={() =>
+                      mutateEvents((events, graph) => {
+                        const index = events.findIndex((candidate) => candidate.id === event.id);
+                        if (index < 0) return;
+                        events.splice(index, 1);
+                        for (const node of graph.nodes)
+                          if (
+                            (node.type === 'customEvent' || node.type === 'callCustomEvent') &&
+                            node.values.eventId === event.id
+                          )
+                            node.values.eventId = '';
+                      })
+                    }
+                    variant="ghost"
+                  >
+                    <Trash2 size={13} />
+                  </UiButton>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        {renderInterfacePanel('inputs', 'Graph Inputs')}
+        {renderInterfacePanel('outputs', 'Graph Outputs')}
 
         <section className="flow-variable-panel">
           <div className="flow-variable-panel-heading">

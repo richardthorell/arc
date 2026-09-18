@@ -101,6 +101,12 @@ bool variable_matches_slot(const bytecode_program& program, std::uint32_t variab
            program.variables[variable_index].type == program.value_slots[slot].type;
 }
 
+bool interface_value_valid(const bytecode_program& program, const graph_interface_value& item)
+{
+    return !item.id.empty() && !item.name.empty() && item.slot < program.value_slots.size() &&
+           program.value_slots[item.slot].type == item.type && value_matches_type(item.type, item.default_value);
+}
+
 bool validate_program(const bytecode_program& program)
 {
     if (program.version != flow_bytecode_version) return false;
@@ -117,6 +123,24 @@ bool validate_program(const bytecode_program& program)
 
     for (const bytecode_value_slot& slot : program.value_slots)
         if (!value_matches_type(slot.type, slot.initial_value)) return false;
+
+    const auto validate_interface = [&](const std::vector<graph_interface_value>& values)
+    {
+        std::unordered_set<std::string> ids;
+        std::unordered_set<std::string> names;
+        for (const graph_interface_value& item : values)
+            if (!interface_value_valid(program, item) || !ids.insert(item.id).second || !names.insert(item.name).second)
+                return false;
+        return true;
+    };
+    if (!validate_interface(program.graph_inputs) || !validate_interface(program.graph_outputs)) return false;
+
+    std::unordered_set<std::string> event_ids;
+    std::unordered_set<std::string> event_names;
+    for (const custom_event_definition& event : program.custom_events)
+        if (event.id.empty() || event.name.empty() || !event_ids.insert(event.id).second ||
+            !event_names.insert(event.name).second)
+            return false;
 
     for (const switch_int_table& table : program.switch_int_tables)
     {
@@ -150,7 +174,7 @@ bool validate_program(const bytecode_program& program)
     {
         if (!valid_instruction_target(program, entry.instruction)) return false;
         if ((entry.kind == entry_point_kind::input_action_triggered ||
-             entry.kind == entry_point_kind::input_action_completed) &&
+             entry.kind == entry_point_kind::input_action_completed || entry.kind == entry_point_kind::custom_event) &&
             entry.action.empty())
             return false;
 
@@ -237,6 +261,16 @@ bool validate_program(const bytecode_program& program)
                 if (instruction.operand0 >= program.latent_actions.size() ||
                     program.latent_actions[instruction.operand0].kind != latent_action_kind::timer ||
                     !valid_instruction_target(program, instruction.operand1))
+                    return false;
+                break;
+            case bytecode_opcode::call_custom_event:
+                if (instruction.operand0 >= program.custom_events.size() ||
+                    !valid_instruction_target(program, instruction.operand1))
+                    return false;
+                break;
+            case bytecode_opcode::store_graph_output:
+                if (!same_slot_type(program, instruction.operand0, instruction.operand1) ||
+                    !valid_instruction_target(program, instruction.operand2))
                     return false;
                 break;
             case bytecode_opcode::load_variable:
@@ -946,6 +980,20 @@ execution_result execute_chain(const bytecode_program& program, std::vector<flow
                 instruction = current.operand1;
                 break;
             }
+            case bytecode_opcode::call_custom_event:
+            {
+                const std::string& event = program.custom_events[current.operand0].name;
+                for (const bytecode_entry_point& entry : program.entry_points)
+                    if (entry.kind == entry_point_kind::custom_event && entry.action == event &&
+                        !run_nested(entry.instruction))
+                        return result;
+                instruction = current.operand1;
+                break;
+            }
+            case bytecode_opcode::store_graph_output:
+                value_slots[current.operand0] = value_slots[current.operand1];
+                instruction = current.operand2;
+                break;
             case bytecode_opcode::load_variable:
                 value_slots[current.operand1] = variable_values[current.operand0];
                 instruction = current.operand2;
@@ -1467,7 +1515,8 @@ void clear_latent_actions(const bytecode_program& program, std::vector<flow_valu
 bool entry_matches(const bytecode_entry_point& entry, entry_point_kind kind, std::string_view action)
 {
     if (entry.kind != kind) return false;
-    if (kind == entry_point_kind::input_action_triggered || kind == entry_point_kind::input_action_completed)
+    if (kind == entry_point_kind::input_action_triggered || kind == entry_point_kind::input_action_completed ||
+        kind == entry_point_kind::custom_event)
         return entry.action == action;
     return true;
 }
@@ -1598,6 +1647,32 @@ bool vm_instance::set_variable_value(std::string_view id, const flow_value& valu
     return false;
 }
 
+const flow_value* vm_instance::graph_input_value(std::string_view id) const noexcept
+{
+    if (!program_) return nullptr;
+    const auto found = std::find_if(program_->graph_inputs.begin(), program_->graph_inputs.end(),
+                                    [id](const graph_interface_value& item) { return item.id == id; });
+    return found == program_->graph_inputs.end() ? nullptr : value_slot(found->slot);
+}
+
+bool vm_instance::set_graph_input_value(std::string_view id, const flow_value& value)
+{
+    if (!program_) return false;
+    const auto found = std::find_if(program_->graph_inputs.begin(), program_->graph_inputs.end(),
+                                    [id](const graph_interface_value& item) { return item.id == id; });
+    if (found == program_->graph_inputs.end() || !value_matches_type(found->type, value)) return false;
+    value_slots_[found->slot] = value;
+    return true;
+}
+
+const flow_value* vm_instance::graph_output_value(std::string_view id) const noexcept
+{
+    if (!program_) return nullptr;
+    const auto found = std::find_if(program_->graph_outputs.begin(), program_->graph_outputs.end(),
+                                    [id](const graph_interface_value& item) { return item.id == id; });
+    return found == program_->graph_outputs.end() ? nullptr : value_slot(found->slot);
+}
+
 const flow_value* vm_instance::value_slot(std::uint32_t slot) const noexcept
 {
     if (slot >= value_slots_.size()) return nullptr;
@@ -1679,6 +1754,14 @@ execution_result vm_instance::input_action_completed(std::string_view action, do
     if (!active_) return status_result(execution_status::inactive);
     return execute_event(*program_, variable_values_, value_slots_, entry_point_kind::input_action_completed, action,
                          value, limits_.instruction_budget, world);
+}
+
+execution_result vm_instance::custom_event(std::string_view event, vm_world_context world)
+{
+    if (!valid_ || !program_) return status_result(execution_status::invalid_program);
+    if (!active_) return status_result(execution_status::inactive);
+    return execute_event(*program_, variable_values_, value_slots_, entry_point_kind::custom_event, event, 0.0,
+                         limits_.instruction_budget, world);
 }
 
 } // namespace arc::flow
