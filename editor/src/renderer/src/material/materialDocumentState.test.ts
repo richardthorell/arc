@@ -120,6 +120,7 @@ describe('material settings editing', () => {
         blendMode: 'masked',
         shadingModel: 'unlit',
         doubleSided: true,
+        castShadows: false,
       }),
     ).toBe(true);
 
@@ -127,6 +128,7 @@ describe('material settings editing', () => {
     expect(updated.asset.blendMode).toBe('masked');
     expect(updated.asset.shadingModel).toBe('unlit');
     expect(updated.asset.doubleSided).toBe(true);
+    expect(updated.asset.castShadows).toBe(false);
     expect(updated.compilation.status).toBe('succeeded');
 
     await vi.advanceTimersByTimeAsync(250);
@@ -139,6 +141,7 @@ describe('material settings editing', () => {
     expect(previewSource.blendMode).toBe('masked');
     expect(previewSource.shadingModel).toBe('unlit');
     expect(previewSource.doubleSided).toBe(true);
+    expect(previewSource.castShadows).toBe(false);
   });
 
   it('does not compile when a material setting is unchanged', async () => {
