@@ -321,7 +321,10 @@ export const autoArrangeMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
   // one output is pulled onto the line between those two pin endpoints; a
   // fan-in/fan-out node is pulled toward the barycenter of all connected pins.
   // Alternating the sweep direction avoids favoring only sources or sinks.
-  for (let pass = 0; pass < 4; ++pass) {
+  // Finish with a sink-to-source sweep so pure fan-out sources are centered
+  // against the final positions of the downstream columns rather than a stale
+  // position from the preceding left-to-right pass.
+  for (let pass = 0; pass < 5; ++pass) {
     const forward = pass % 2 === 1;
     for (let step = 0; step <= maximumDepth; ++step) {
       const depth = forward ? step : maximumDepth - step;
