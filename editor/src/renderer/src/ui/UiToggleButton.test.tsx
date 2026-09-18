@@ -21,6 +21,16 @@ describe('UiToggleButton', () => {
     expect(toggle.getAttribute('aria-checked')).toBe('true');
   });
 
+  it('can expose a visible accessible label without external wrapper markup', () => {
+    const onCheckedChange = vi.fn();
+    render(<UiToggleButton checked={false} label="Realtime" onCheckedChange={onCheckedChange} />);
+
+    const toggle = screen.getByRole('switch', { name: 'Realtime' });
+    expect(toggle).toHaveClass('has-label');
+    fireEvent.click(toggle);
+    expect(onCheckedChange).toHaveBeenCalledWith(true);
+  });
+
   it('does not change state while disabled', () => {
     const onCheckedChange = vi.fn();
     render(<UiToggleButton aria-label="Disabled toggle" checked={false} disabled onCheckedChange={onCheckedChange} />);
