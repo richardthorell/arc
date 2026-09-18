@@ -5,6 +5,7 @@ import {
   frameMaterialGraphViewport,
   materialGraphBounds,
   materialNodeHeight,
+  materialNodePinOffsetY,
   materialNodeWidth,
   snapMaterialGraphPoint,
 } from './materialGraphLayout';
@@ -65,6 +66,7 @@ const fanInGraph = (connectionCount: number): MaterialGraph => {
 };
 
 const textureMaterialGraph = (): MaterialGraph => {
+  const texCoord = { ...createMaterialNode('texCoord', [0, 0]), id: 'tex-coord' };
   const baseColor = { ...createMaterialNode('textureSample2D', [0, 0]), id: 'base-color' };
   const packed = { ...createMaterialNode('textureSample2D', [0, 0]), id: 'packed' };
   const normalTexture = { ...createMaterialNode('textureSample2D', [0, 0]), id: 'normal-texture' };
@@ -72,8 +74,23 @@ const textureMaterialGraph = (): MaterialGraph => {
   const output = { ...createMaterialNode('output', [0, 0]), id: 'material-output' };
   return {
     version: 1,
-    nodes: [baseColor, packed, normalTexture, normalMap, output],
+    nodes: [texCoord, baseColor, packed, normalTexture, normalMap, output],
     connections: [
+      {
+        id: 'tex-coord-base-color',
+        from: { nodeId: texCoord.id, pin: 'uv' },
+        to: { nodeId: baseColor.id, pin: 'uv' },
+      },
+      {
+        id: 'tex-coord-packed',
+        from: { nodeId: texCoord.id, pin: 'uv' },
+        to: { nodeId: packed.id, pin: 'uv' },
+      },
+      {
+        id: 'tex-coord-normal',
+        from: { nodeId: texCoord.id, pin: 'uv' },
+        to: { nodeId: normalTexture.id, pin: 'uv' },
+      },
       {
         id: 'base-color-output',
         from: { nodeId: baseColor.id, pin: 'rgb' },
@@ -162,16 +179,50 @@ describe('material graph layout', () => {
   it('keeps peer source node types aligned even when one branch has an extra processor', () => {
     const arranged = autoArrangeMaterialGraph(textureMaterialGraph());
     const byId = new Map(arranged.nodes.map((node) => [node.id, node]));
+    const texCoord = byId.get('tex-coord')!;
     const baseColor = byId.get('base-color')!;
     const packed = byId.get('packed')!;
     const normalTexture = byId.get('normal-texture')!;
     const normalMap = byId.get('normal-map')!;
     const output = byId.get('material-output')!;
 
+    expect(texCoord.position[0]).toBeLessThan(baseColor.position[0]);
     expect(baseColor.position[0]).toBe(packed.position[0]);
     expect(baseColor.position[0]).toBe(normalTexture.position[0]);
     expect(normalTexture.position[0]).toBeLessThan(normalMap.position[0]);
     expect(normalMap.position[0]).toBeLessThan(output.position[0]);
+  });
+
+  it('vertically aligns simple chains by their actual connected pins', () => {
+    const arranged = autoArrangeMaterialGraph(textureMaterialGraph());
+    const byId = new Map(arranged.nodes.map((node) => [node.id, node]));
+    const normalTexture = byId.get('normal-texture')!;
+    const normalMap = byId.get('normal-map')!;
+    const output = byId.get('material-output')!;
+
+    const normalTextureOut =
+      normalTexture.position[1] + materialNodePinOffsetY(normalTexture, 'rgb', 'output');
+    const normalMapIn = normalMap.position[1] + materialNodePinOffsetY(normalMap, 'texture', 'input');
+    const normalMapOut = normalMap.position[1] + materialNodePinOffsetY(normalMap, 'normal', 'output');
+    const outputNormal = output.position[1] + materialNodePinOffsetY(output, 'normal', 'input');
+
+    expect(normalTextureOut).toBeCloseTo(normalMapIn, 6);
+    expect(normalMapOut).toBeCloseTo(outputNormal, 6);
+  });
+
+  it('centers a fan-out source between the input pins it feeds', () => {
+    const arranged = autoArrangeMaterialGraph(textureMaterialGraph());
+    const byId = new Map(arranged.nodes.map((node) => [node.id, node]));
+    const texCoord = byId.get('tex-coord')!;
+    const targets = ['base-color', 'packed', 'normal-texture'].map((id) => byId.get(id)!);
+
+    const sourceY = texCoord.position[1] + materialNodePinOffsetY(texCoord, 'uv', 'output');
+    const targetYs = targets.map(
+      (target) => target.position[1] + materialNodePinOffsetY(target, 'uv', 'input'),
+    );
+    const averageTargetY = targetYs.reduce((sum, value) => sum + value, 0) / targetYs.length;
+
+    expect(sourceY).toBeCloseTo(averageTargetY, 0);
   });
 
   it('adds horizontal routing room as fan-in pressure increases', () => {
