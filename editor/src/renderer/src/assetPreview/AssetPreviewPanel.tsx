@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import './AssetPreviewPanel.css';
 
 export interface AssetPreviewMetadataItem {
-  label: string;
+  label?: string;
   value: ReactNode;
 }
 
@@ -60,8 +60,8 @@ export function AssetPreviewPanel({
       {metadata.length > 0 && (
         <footer className="asset-preview-metadata">
           {metadata.map((item, index) => (
-            <span className="asset-preview-metadata-item" key={`${item.label}-${index}`}>
-              <span>{item.label}</span>
+            <span className="asset-preview-metadata-item" key={`${item.label ?? 'item'}-${index}`}>
+              {item.label && <span>{item.label}</span>}
               <strong>{item.value}</strong>
             </span>
           ))}
