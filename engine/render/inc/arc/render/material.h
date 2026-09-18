@@ -283,6 +283,7 @@ struct material_descriptor
     float alpha_cutoff{0.5f};
     material_alpha_mode alpha_mode{material_alpha_mode::opaque};
     bool double_sided{};
+    bool cast_shadows{true};
 
     texture_handle base_color_texture{};
     texture_handle metallic_roughness_texture{};
