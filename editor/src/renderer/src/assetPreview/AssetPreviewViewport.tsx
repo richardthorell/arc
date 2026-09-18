@@ -180,7 +180,7 @@ export function AssetPreviewViewport({
         viewportId,
         ...materialPreviewRenderOptions(),
         materialPreviewMesh: materialMesh,
-        materialPreviewAutoRotate,
+        materialPreviewAutoRotate: materialAutoRotate,
       })) as ViewportCommandResponse | undefined;
       if (response?.succeeded === false) throw new Error(response.error || 'Material preview options were rejected');
       setError('');
