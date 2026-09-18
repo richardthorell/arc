@@ -32,6 +32,9 @@ enum class node_kind : std::uint8_t
     gate,
     for_loop,
     while_loop,
+    delay,
+    retriggerable_delay,
+    timer,
     self_entity,
     create_entity,
     destroy_entity,
@@ -149,6 +152,9 @@ std::optional<node_kind> parse_node_kind(std::string_view value)
     if (value == "gate") return node_kind::gate;
     if (value == "forLoop") return node_kind::for_loop;
     if (value == "whileLoop") return node_kind::while_loop;
+    if (value == "delay") return node_kind::delay;
+    if (value == "retriggerableDelay") return node_kind::retriggerable_delay;
+    if (value == "timer") return node_kind::timer;
     if (value == "selfEntity") return node_kind::self_entity;
     if (value == "createEntity") return node_kind::create_entity;
     if (value == "destroyEntity") return node_kind::destroy_entity;
@@ -389,6 +395,9 @@ bool is_executable_node(node_kind kind)
         case node_kind::gate:
         case node_kind::for_loop:
         case node_kind::while_loop:
+        case node_kind::delay:
+        case node_kind::retriggerable_delay:
+        case node_kind::timer:
         case node_kind::create_entity:
         case node_kind::destroy_entity:
         case node_kind::has_core_component:
@@ -407,6 +416,12 @@ bool is_executable_node(node_kind kind)
         default:
             return false;
     }
+}
+
+bool is_latent_execution_edge(node_kind kind, std::string_view pin)
+{
+    if ((kind == node_kind::delay || kind == node_kind::retriggerable_delay) && pin == "completed") return true;
+    return kind == node_kind::timer && (pin == "tick" || pin == "completed");
 }
 
 bool is_computed_value_node(node_kind kind)
@@ -474,6 +489,15 @@ std::optional<pin_info> output_pin(const source_graph& graph, const source_node&
             break;
         case node_kind::while_loop:
             if (pin == "loopBody" || pin == "completed") return pin_info{.kind = pin_kind::execution};
+            break;
+        case node_kind::delay:
+        case node_kind::retriggerable_delay:
+            if (pin == "completed") return pin_info{.kind = pin_kind::execution};
+            break;
+        case node_kind::timer:
+            if (pin == "started" || pin == "tick" || pin == "completed" || pin == "stopped")
+                return pin_info{.kind = pin_kind::execution};
+            if (pin == "active") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
             break;
         case node_kind::self_entity:
             if (pin == "entity") return pin_info{.kind = pin_kind::value, .type = value_type::entity};
@@ -587,6 +611,19 @@ std::optional<pin_info> input_pin(const source_graph& graph, const source_node& 
     {
         if (pin == "exec") return pin_info{.kind = pin_kind::execution};
         if (pin == "condition") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
+        return std::nullopt;
+    }
+    if (node.kind == node_kind::delay || node.kind == node_kind::retriggerable_delay)
+    {
+        if (pin == "exec") return pin_info{.kind = pin_kind::execution};
+        if (pin == "duration") return pin_info{.kind = pin_kind::value, .type = value_type::float32};
+        return std::nullopt;
+    }
+    if (node.kind == node_kind::timer)
+    {
+        if (pin == "start" || pin == "stop") return pin_info{.kind = pin_kind::execution};
+        if (pin == "interval") return pin_info{.kind = pin_kind::value, .type = value_type::float32};
+        if (pin == "looping") return pin_info{.kind = pin_kind::value, .type = value_type::boolean};
         return std::nullopt;
     }
 
@@ -869,6 +906,7 @@ struct validation_state
     std::unordered_map<std::string, const source_connection*> incoming;
     std::unordered_map<std::string, const source_connection*> execution_outgoing;
     std::unordered_map<std::string, std::vector<std::string>> execution_adjacency;
+    std::unordered_map<std::string, std::vector<std::string>> execution_cycle_adjacency;
     std::unordered_map<std::string, std::vector<std::string>> value_adjacency;
     std::unordered_set<std::string> reachable;
 };
@@ -1058,6 +1096,8 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
                     "Execution outputs must have a single target; use an explicit Sequence node for fan-out.",
                     connection.from.node_id, connection.from.pin, connection.id);
             state.execution_adjacency[connection.from.node_id].push_back(connection.to.node_id);
+            if (!is_latent_execution_edge(from_node_iterator->second->kind, connection.from.pin))
+                state.execution_cycle_adjacency[connection.from.node_id].push_back(connection.to.node_id);
         }
         else
         {
@@ -1121,6 +1161,14 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
             case node_kind::while_loop:
                 require_input(node, "condition");
                 break;
+            case node_kind::delay:
+            case node_kind::retriggerable_delay:
+                require_input(node, "duration");
+                break;
+            case node_kind::timer:
+                require_input(node, "interval");
+                require_input(node, "looping");
+                break;
             case node_kind::add:
             case node_kind::subtract:
             case node_kind::multiply:
@@ -1168,8 +1216,8 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
         }
 
         visits[node_id] = visit_state::visiting;
-        const auto adjacency = state.execution_adjacency.find(node_id);
-        if (adjacency != state.execution_adjacency.end())
+        const auto adjacency = state.execution_cycle_adjacency.find(node_id);
+        if (adjacency != state.execution_cycle_adjacency.end())
             for (const std::string& target : adjacency->second)
                 if (!visit_execution(target)) return false;
         visits[node_id] = visit_state::visited;
@@ -1263,6 +1311,12 @@ ir_opcode executable_opcode_for(node_kind kind)
             return ir_opcode::for_loop;
         case node_kind::while_loop:
             return ir_opcode::while_loop;
+        case node_kind::delay:
+            return ir_opcode::delay;
+        case node_kind::retriggerable_delay:
+            return ir_opcode::retriggerable_delay;
+        case node_kind::timer:
+            return ir_opcode::timer_start;
         case node_kind::set_variable:
             return ir_opcode::store_variable;
         case node_kind::create_entity:
@@ -1443,6 +1497,18 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
             case node_kind::for_loop:
                 allocate_slot(*node, "index", value_type::integer, std::int64_t{0});
                 break;
+            case node_kind::delay:
+            case node_kind::retriggerable_delay:
+                allocate_slot(*node, "$active", value_type::boolean, false);
+                allocate_slot(*node, "$remaining", value_type::float32, 0.0);
+                break;
+            case node_kind::timer:
+                allocate_slot(*node, "active", value_type::boolean, false);
+                allocate_slot(*node, "$remaining", value_type::float32, 0.0);
+                allocate_slot(*node, "$period", value_type::float32, 0.0);
+                allocate_slot(*node, "$looping", value_type::boolean, false);
+                allocate_slot(*node, "$generation", value_type::integer, std::int64_t{0});
+                break;
             default:
                 break;
         }
@@ -1479,6 +1545,12 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
             add_entry_instruction(*node, "open", ir_opcode::gate_open);
             add_entry_instruction(*node, "close", ir_opcode::gate_close);
             add_entry_instruction(*node, "toggle", ir_opcode::gate_toggle);
+        }
+        else if (node->kind == node_kind::timer)
+        {
+            const auto index = add_entry_instruction(*node, "start", ir_opcode::timer_start);
+            instruction_indices.emplace(node->id, index);
+            add_entry_instruction(*node, "stop", ir_opcode::timer_stop);
         }
         else
         {
@@ -1621,6 +1693,7 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
     {
         if (kind == node_kind::do_once) return std::vector<std::string_view>{"exec", "reset"};
         if (kind == node_kind::gate) return std::vector<std::string_view>{"enter", "open", "close", "toggle"};
+        if (kind == node_kind::timer) return std::vector<std::string_view>{"start", "stop"};
         return std::vector<std::string_view>{"exec"};
     };
 
@@ -1628,9 +1701,12 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
     for (const source_node* executable : nodes)
     {
         if (!is_executable_node(executable->kind)) continue;
-        const std::vector<const source_node*> order = collect_data_order(*executable, std::nullopt);
         for (const std::string_view input : execution_inputs(executable->kind))
         {
+            const std::vector<const source_node*> order =
+                executable->kind == node_kind::timer && input == "stop"
+                    ? std::vector<const source_node*>{}
+                    : collect_data_order(*executable, std::nullopt);
             std::uint32_t target = entry_instruction_indices.at(pin_key(executable->id, input));
             for (auto iterator = order.rbegin(); iterator != order.rend(); ++iterator)
             {
@@ -1737,6 +1813,42 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                 instruction.operand2 = execution_target(*node, "completed");
                 instruction.operand3 = while_condition_entries.at(node->id);
                 break;
+            case node_kind::delay:
+            case node_kind::retriggerable_delay:
+            {
+                const latent_action_kind kind = node->kind == node_kind::delay ? latent_action_kind::delay
+                                                                              : latent_action_kind::retriggerable_delay;
+                const std::uint32_t latent_index = static_cast<std::uint32_t>(program.latent_actions.size());
+                program.latent_actions.push_back(
+                    {.kind = kind,
+                     .active_slot = value_slots.at(pin_key(node->id, "$active")),
+                     .remaining_slot = value_slots.at(pin_key(node->id, "$remaining")),
+                     .completed_instruction = execution_target(*node, "completed")});
+                instruction.operand0 = input_slot(*node, "duration");
+                instruction.operand1 = latent_index;
+                break;
+            }
+            case node_kind::timer:
+            {
+                const std::uint32_t latent_index = static_cast<std::uint32_t>(program.latent_actions.size());
+                program.latent_actions.push_back(
+                    {.kind = latent_action_kind::timer,
+                     .active_slot = value_slots.at(pin_key(node->id, "active")),
+                     .remaining_slot = value_slots.at(pin_key(node->id, "$remaining")),
+                     .period_slot = value_slots.at(pin_key(node->id, "$period")),
+                     .looping_slot = value_slots.at(pin_key(node->id, "$looping")),
+                     .generation_slot = value_slots.at(pin_key(node->id, "$generation")),
+                     .tick_instruction = execution_target(*node, "tick"),
+                     .completed_instruction = execution_target(*node, "completed")});
+                instruction.operand0 = input_slot(*node, "interval");
+                instruction.operand1 = input_slot(*node, "looping");
+                instruction.operand2 = latent_index;
+                instruction.operand3 = execution_target(*node, "started");
+                ir_instruction& stop = program.instructions[entry_instruction_indices.at(pin_key(node->id, "stop"))];
+                stop.operand0 = latent_index;
+                stop.operand1 = execution_target(*node, "stopped");
+                break;
+            }
             case node_kind::set_variable:
                 instruction.operand0 = variable_indices.at(variable_for(graph, *node)->id);
                 instruction.operand1 = input_slot(*node, "value");
@@ -1978,6 +2090,14 @@ bytecode_opcode lower_opcode(ir_opcode opcode)
             return bytecode_opcode::for_loop;
         case ir_opcode::while_loop:
             return bytecode_opcode::while_loop;
+        case ir_opcode::delay:
+            return bytecode_opcode::delay;
+        case ir_opcode::retriggerable_delay:
+            return bytecode_opcode::retriggerable_delay;
+        case ir_opcode::timer_start:
+            return bytecode_opcode::timer_start;
+        case ir_opcode::timer_stop:
+            return bytecode_opcode::timer_stop;
         case ir_opcode::load_variable:
             return bytecode_opcode::load_variable;
         case ir_opcode::store_variable:
@@ -2059,6 +2179,7 @@ bytecode_program lower_bytecode(const ir_program& ir)
     bytecode_program bytecode;
     bytecode.variables = ir.variables;
     bytecode.switch_int_tables = ir.switch_int_tables;
+    bytecode.latent_actions = ir.latent_actions;
     bytecode.value_slots.reserve(ir.value_slots.size());
     for (const ir_value_slot& slot : ir.value_slots)
         bytecode.value_slots.push_back({.type = slot.type, .initial_value = slot.initial_value});
