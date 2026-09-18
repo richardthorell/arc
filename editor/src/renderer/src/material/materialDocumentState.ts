@@ -64,7 +64,8 @@ const materialShaderPath = (asset: MaterialAssetJson) =>
   typeof asset.shaderPath === 'string' && asset.shaderPath.trim() ? asset.shaderPath.trim() : '';
 
 const normalizedAsset = (asset: MaterialAssetJson, document: EditorDocument): MaterialAssetJson => {
-  if (asset.version !== 4) throw new Error('Material asset must use authoring schema v4');
+  if (asset.version !== currentMaterialAuthoringVersion)
+    throw new Error(`Material asset must use authoring schema v${currentMaterialAuthoringVersion}`);
   const legacyFields = ['shader', 'surface', 'textures', 'advanced'].filter((field) => field in asset);
   if (legacyFields.length > 0)
     throw new Error(`Legacy material fields are no longer supported: ${legacyFields.join(', ')}`);
@@ -80,7 +81,7 @@ const normalizedAsset = (asset: MaterialAssetJson, document: EditorDocument): Ma
 
   return {
     ...asset,
-    version: 4,
+    version: currentMaterialAuthoringVersion,
     name: asset.name ?? document.title.replace(/\.arcmat$/i, ''),
     domain: asset.domain ?? 'surface',
     blendMode: asset.blendMode ?? 'opaque',
