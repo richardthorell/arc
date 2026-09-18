@@ -2585,6 +2585,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                                        settings.mag_filter) ||
                         !parse_setting(payload.mip_filter, render::tools::parse_texture_mip_filter_mode,
                                        settings.mip_filter) ||
+                        !parse_setting(payload.mip_policy, render::tools::parse_texture_mip_policy,
+                                       settings.mip_policy) ||
                         !parse_setting(payload.wrap_u, render::tools::parse_texture_address_mode, settings.wrap_u) ||
                         !parse_setting(payload.wrap_v, render::tools::parse_texture_address_mode, settings.wrap_v) ||
                         !parse_setting(payload.mip_generation_filter,
@@ -2641,7 +2643,15 @@ host_response arc_host::execute(const host_command_envelope& command)
                         !parse_curve_patch(payload.curve_b, settings.curve_b) ||
                         !parse_curve_patch(payload.curve_a, settings.curve_a))
                         return fail("Texture curve payload is invalid");
-                    if (payload.generate_mips) settings.generate_mips = *payload.generate_mips;
+                    if (!payload.mip_policy.empty()) settings.generate_mips = settings.mip_policy != render::texture_mip_policy::none;
+                    if (payload.generate_mips)
+                    {
+                        settings.generate_mips = *payload.generate_mips;
+                        if (!*payload.generate_mips)
+                            settings.mip_policy = render::texture_mip_policy::none;
+                        else if (settings.mip_policy == render::texture_mip_policy::none)
+                            settings.mip_policy = render::texture_mip_policy::preserve_source;
+                    }
                     if (payload.preserve_alpha_coverage)
                         settings.preserve_alpha_coverage = *payload.preserve_alpha_coverage;
                     if (payload.preset.empty()) settings.preset = render::tools::texture_import_preset::custom;
@@ -6006,6 +6016,7 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"minFilter\":" + to_json_string(render::tools::texture_filter_mode_name(value.min_filter)) +
                     ",\"magFilter\":" + to_json_string(render::tools::texture_filter_mode_name(value.mag_filter)) +
                     ",\"mipFilter\":" + to_json_string(render::tools::texture_mip_filter_mode_name(value.mip_filter)) +
+                    ",\"mipPolicy\":" + to_json_string(render::tools::texture_mip_policy_name(value.mip_policy)) +
                     ",\"wrapU\":" + to_json_string(render::tools::texture_address_mode_name(value.wrap_u)) +
                     ",\"wrapV\":" + to_json_string(render::tools::texture_address_mode_name(value.wrap_v)) +
                     ",\"mipGenerationFilter\":" +
