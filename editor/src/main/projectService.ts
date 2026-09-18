@@ -348,12 +348,9 @@ export class ProjectService {
       this.runProjectTool(['validate', '--project', descriptorPath, '--require-paths']);
     const comparison = compareVersion(descriptor.engineVersion, this.currentEngineVersion);
     const formatUpgradeRequired = sourceFormatVersion !== arcProjectFormatVersion;
-    const compatibility: ArcProjectCandidate['compatibility'] =
-      comparison > 0
-        ? 'newerEngineRequired'
-        : formatUpgradeRequired || comparison < 0
-          ? 'upgradeRequired'
-          : 'compatible';
+    let compatibility: ArcProjectCandidate['compatibility'] = 'compatible';
+    if (comparison > 0) compatibility = 'newerEngineRequired';
+    else if (formatUpgradeRequired || comparison < 0) compatibility = 'upgradeRequired';
     const diagnostics: string[] = [];
     if (comparison > 0)
       diagnostics.push(
