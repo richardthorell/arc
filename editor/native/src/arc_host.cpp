@@ -125,6 +125,8 @@ bool arc_configure_material_preview_environment(editor_scene_state& state, rende
     settings->world.radiance_intensity = 1.0f;
     settings->atmosphere.exposure = 1.0f;
     settings->atmosphere.sun_disk_intensity = 0.0f;
+    settings->celestial.sun_mode = scene::sun_position_mode::manual_light;
+    settings->celestial.automatic_sun_light = false;
     settings->celestial.stars_enabled = false;
     settings->celestial.moon_enabled = false;
     settings->clouds.enabled = false;
@@ -156,9 +158,11 @@ bool arc_configure_material_preview_environment(editor_scene_state& state, rende
         return false;
     }
 
-    // The preview is intentionally HDRI-lit; do not retain the default outdoor
-    // sun that create_blank_scene installs for normal editor scenes.
-    if (auto* sun = state.scene.try_get<scene::directional_light_component>(state.sun_entity)) sun->enabled = false;
+    // Keep the default scene directional light as a stable material-preview key.
+    // The procedural sun disk is disabled above, and manual-light mode prevents
+    // world-environment updates from moving or re-lighting this authored light.
+    if (auto* key_light = state.scene.try_get<scene::directional_light_component>(state.sun_entity))
+        key_light->enabled = true;
 
     resources.environment_texture = texture;
     resources.environment = environment_handle;
