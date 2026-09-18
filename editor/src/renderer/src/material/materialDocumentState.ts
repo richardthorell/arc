@@ -9,6 +9,7 @@ import {
   type MaterialCompileResult,
   type NativeMaterialCompilePayload,
 } from './materialCompiler';
+import { currentMaterialAuthoringVersion, upgradeMaterialAsset } from './materialAssetMigration';
 import {
   cloneMaterialGraph,
   createDefaultMaterialGraph,
@@ -37,6 +38,8 @@ export type MaterialDocumentState = {
   compiling: boolean;
   previewLoading: boolean;
   loaded: boolean;
+  schemaUpgradePending: boolean;
+  sourceVersion: number;
   message: string;
 };
 
@@ -111,6 +114,8 @@ const initialState = (document: EditorDocument): MaterialDocumentState => ({
   compiling: false,
   previewLoading: false,
   loaded: false,
+  schemaUpgradePending: false,
+  sourceVersion: currentMaterialAuthoringVersion,
   message: '',
 });
 
@@ -151,8 +156,15 @@ const subscribe = (documentId: string, listener: () => void) => {
   };
 };
 
-const updateDirtyState = (document: EditorDocument, graph: MaterialGraph, confirmedGraph: string) =>
-  updateEditorDocumentInStore(document.id, { dirty: graphFingerprint(graph) !== confirmedGraph });
+const updateDirtyState = (
+  document: EditorDocument,
+  graph: MaterialGraph,
+  confirmedGraph: string,
+  schemaUpgradePending = false,
+) =>
+  updateEditorDocumentInStore(document.id, {
+    dirty: !document.readOnly && (schemaUpgradePending || graphFingerprint(graph) !== confirmedGraph),
+  });
 
 const cancelScheduledCompile = (documentId: string) => {
   const timer = compileTimers.get(documentId);
@@ -216,7 +228,8 @@ export const loadMaterialDocument = async (document: EditorDocument, force = fal
       document.path,
       document.assetScope === 'builtin' ? 'builtin' : 'project',
     );
-    const parsed = normalizedAsset(JSON.parse(file.text) as MaterialAssetJson, document);
+    const upgrade = upgradeMaterialAsset(JSON.parse(file.text) as MaterialAssetJson);
+    const parsed = normalizedAsset(upgrade.asset, document);
     const customShader = materialShaderPath(parsed);
     const graph = customShader ? createDefaultMaterialGraph() : materialGraphFromAsset(parsed);
     const fingerprint = graphFingerprint(graph);
@@ -229,9 +242,17 @@ export const loadMaterialDocument = async (document: EditorDocument, force = fal
       compilation: emptyMaterialCompileResult(),
       loading: false,
       loaded: true,
-      message: document.readOnly ? 'Engine material opened read-only' : '',
+      schemaUpgradePending: upgrade.upgraded,
+      sourceVersion: upgrade.sourceVersion,
+      message: upgrade.upgraded
+        ? document.readOnly
+          ? `Material schema v${upgrade.sourceVersion} opened as v${currentMaterialAuthoringVersion} in memory (read-only)`
+          : `Material upgraded from schema v${upgrade.sourceVersion} to v${currentMaterialAuthoringVersion} in memory; save to persist`
+        : document.readOnly
+          ? 'Engine material opened read-only'
+          : '',
     });
-    updateEditorDocumentInStore(document.id, { dirty: false });
+    updateEditorDocumentInStore(document.id, { dirty: upgrade.upgraded && !document.readOnly });
     if (!customShader) scheduleNativeCompile(document);
     void refreshMaterialPreview(document);
     return true;
@@ -270,7 +291,7 @@ export const replaceMaterialGraph = (
     compilation: semanticChanged ? emptyMaterialCompileResult() : current.compilation,
     message: options.message ?? '',
   });
-  updateDirtyState(document, nextGraph, current.confirmedGraph);
+  updateDirtyState(document, nextGraph, current.confirmedGraph, current.schemaUpgradePending);
   if (semanticChanged) scheduleNativeCompile(document);
 };
 
@@ -287,7 +308,7 @@ export const undoMaterialGraph = (document: EditorDocument) => {
     compilation: semanticChanged ? emptyMaterialCompileResult() : current.compilation,
     message: 'Undo material graph edit',
   });
-  updateDirtyState(document, graph, current.confirmedGraph);
+  updateDirtyState(document, graph, current.confirmedGraph, current.schemaUpgradePending);
   if (semanticChanged) scheduleNativeCompile(document);
   return true;
 };
@@ -306,7 +327,7 @@ export const redoMaterialGraph = (document: EditorDocument) => {
     compilation: semanticChanged ? emptyMaterialCompileResult() : current.compilation,
     message: 'Redo material graph edit',
   });
-  updateDirtyState(document, graph, current.confirmedGraph);
+  updateDirtyState(document, graph, current.confirmedGraph, current.schemaUpgradePending);
   if (semanticChanged) scheduleNativeCompile(document);
   return true;
 };
@@ -428,6 +449,8 @@ export const saveMaterialDocument = async (document: EditorDocument): Promise<bo
       asset: serialized.asset,
       confirmedGraph,
       saving: false,
+      schemaUpgradePending: false,
+      sourceVersion: currentMaterialAuthoringVersion,
       message: 'Material saved',
     });
     updateEditorDocumentInStore(document.id, { dirty: false });
@@ -487,7 +510,7 @@ export const saveAndPublishMaterialDocument = async (document: EditorDocument): 
 export const reloadMaterialDocument = async (document: EditorDocument): Promise<boolean> => {
   const current = ensureState(document);
   if (
-    graphFingerprint(current.graph) !== current.confirmedGraph &&
+    (current.schemaUpgradePending || graphFingerprint(current.graph) !== current.confirmedGraph) &&
     !window.confirm(`Discard unsaved changes to ${document.title}?`)
   )
     return false;
