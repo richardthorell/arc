@@ -48,7 +48,6 @@ describe('material graph schema', () => {
   });
 });
 
-
 describe('material graph compile fingerprint', () => {
   it('ignores node layout and viewport-only edits', () => {
     const graph = createDefaultMaterialGraph();

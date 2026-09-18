@@ -274,8 +274,7 @@ export const replaceMaterialGraph = (
   const current = ensureState(document);
   if (document.readOnly || current.readOnly || materialShaderPath(current.asset)) return;
   const nextGraph = cloneMaterialGraph(graph);
-  const semanticChanged =
-    materialGraphCompileFingerprint(nextGraph) !== materialGraphCompileFingerprint(current.graph);
+  const semanticChanged = materialGraphCompileFingerprint(nextGraph) !== materialGraphCompileFingerprint(current.graph);
   let history = current.history;
   let historyIndex = current.historyIndex;
   if (options.recordHistory !== false) {
@@ -301,8 +300,7 @@ export const undoMaterialGraph = (document: EditorDocument) => {
   if (document.readOnly || materialShaderPath(current.asset) || current.historyIndex <= 0) return false;
   const historyIndex = current.historyIndex - 1;
   const graph = cloneMaterialGraph(current.history[historyIndex]);
-  const semanticChanged =
-    materialGraphCompileFingerprint(graph) !== materialGraphCompileFingerprint(current.graph);
+  const semanticChanged = materialGraphCompileFingerprint(graph) !== materialGraphCompileFingerprint(current.graph);
   setState(document.id, {
     graph,
     historyIndex,
@@ -320,8 +318,7 @@ export const redoMaterialGraph = (document: EditorDocument) => {
     return false;
   const historyIndex = current.historyIndex + 1;
   const graph = cloneMaterialGraph(current.history[historyIndex]);
-  const semanticChanged =
-    materialGraphCompileFingerprint(graph) !== materialGraphCompileFingerprint(current.graph);
+  const semanticChanged = materialGraphCompileFingerprint(graph) !== materialGraphCompileFingerprint(current.graph);
   setState(document.id, {
     graph,
     historyIndex,

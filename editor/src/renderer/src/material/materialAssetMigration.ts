@@ -102,26 +102,13 @@ const legacyMaterialGraph = (asset: MaterialAssetJson): MaterialGraph => {
   };
   const output = node('material-output', 'output', {}, 760, 260);
 
-  const scalar = (
-    id: string,
-    label: string,
-    value: number,
-    outputPin: string,
-    defaultValue: number,
-    force = false,
-  ) => {
+  const scalar = (id: string, label: string, value: number, outputPin: string, defaultValue: number, force = false) => {
     if (!force && Math.abs(value - defaultValue) <= 1e-7) return undefined;
     const source = node(id, 'constant', { value }, 80, y, label);
     connect(source, 'value', output, outputPin);
     return source;
   };
-  const vector = (
-    id: string,
-    label: string,
-    value: [number, number, number],
-    outputPin: string,
-    positionY = y,
-  ) => {
+  const vector = (id: string, label: string, value: [number, number, number], outputPin: string, positionY = y) => {
     const source = node(id, 'vector3', { value }, 80, positionY, label);
     connect(source, 'value', output, outputPin);
     return source;
@@ -167,13 +154,7 @@ const legacyMaterialGraph = (asset: MaterialAssetJson): MaterialGraph => {
 
   const normalTexture = texture('legacy-normal-texture', textures.normal, 480);
   if (normalTexture) {
-    const normal = node(
-      'legacy-normal-map',
-      'normalMap',
-      { strength: finite(surface.normalScale, 1) },
-      560,
-      480,
-    );
+    const normal = node('legacy-normal-map', 'normalMap', { strength: finite(surface.normalScale, 1) }, 560, 480);
     connect(normalTexture, 'rgb', normal, 'texture');
     connect(normal, 'normal', output, 'normal');
   }
@@ -202,8 +183,7 @@ const legacyMaterialGraph = (asset: MaterialAssetJson): MaterialGraph => {
   ];
   const emissive = node('legacy-emissive', 'vector3', { value: emissiveValue }, 80, 740, 'Emissive');
   const emissiveTexture = texture('legacy-emissive-texture', textures.emissive, 740);
-  if (emissiveTexture)
-    multiply('legacy-emissive-multiply', emissiveTexture, 'rgb', emissive, 'value', 'emissive', 740);
+  if (emissiveTexture) multiply('legacy-emissive-multiply', emissiveTexture, 'rgb', emissive, 'value', 'emissive', 740);
   else if (emissiveValue.some((component) => Math.abs(component) > 1e-7))
     connect(emissive, 'value', output, 'emissive');
 
@@ -215,8 +195,14 @@ const legacyMaterialGraph = (asset: MaterialAssetJson): MaterialGraph => {
   } else {
     scalar('legacy-opacity', 'Opacity', opacity, 'opacity', 1);
   }
-  scalar('legacy-alpha-clip', 'Alpha Clip', finite(surface.alphaCutoff, 0.5), 'alphaClip', 0.5,
-    String(asset.blendMode ?? '').toLowerCase() === 'masked');
+  scalar(
+    'legacy-alpha-clip',
+    'Alpha Clip',
+    finite(surface.alphaCutoff, 0.5),
+    'alphaClip',
+    0.5,
+    String(asset.blendMode ?? '').toLowerCase() === 'masked',
+  );
 
   if (!stringValue(textures.clearCoat))
     scalar('legacy-clear-coat', 'Clear Coat', finite(advanced.clearCoat, 0), 'clearCoat', 0);
@@ -312,14 +298,7 @@ const legacyMaterialGraph = (asset: MaterialAssetJson): MaterialGraph => {
     1,
     1340,
   );
-  scalarTexture(
-    'legacy-thickness-texture',
-    textures.thickness,
-    'thickness',
-    finite(advanced.thickness, 0),
-    1,
-    1460,
-  );
+  scalarTexture('legacy-thickness-texture', textures.thickness, 'thickness', finite(advanced.thickness, 0), 1, 1460);
   scalarTexture(
     'legacy-transmission-texture',
     textures.transmission,
@@ -356,12 +335,11 @@ export const upgradeMaterialAsset = (asset: MaterialAssetJson): MaterialAssetUpg
   if (!Number.isInteger(sourceVersion) || sourceVersion < 1 || sourceVersion > currentMaterialAuthoringVersion)
     throw new Error(`Unsupported material authoring schema v${String(sourceVersion)}`);
 
-  if (sourceVersion === currentMaterialAuthoringVersion)
-    return { asset, sourceVersion, upgraded: false };
+  if (sourceVersion === currentMaterialAuthoringVersion) return { asset, sourceVersion, upgraded: false };
 
   const shaderPath = stringValue(asset.shaderPath);
   const existingGraph = isMaterialGraph(asset.graph) ? cloneMaterialGraph(asset.graph) : undefined;
-  const graph = shaderPath ? null : existingGraph ?? legacyMaterialGraph(asset);
+  const graph = shaderPath ? null : (existingGraph ?? legacyMaterialGraph(asset));
   const upgraded: MaterialAssetJson = {
     ...asset,
     version: currentMaterialAuthoringVersion,
