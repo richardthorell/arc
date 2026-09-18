@@ -1379,9 +1379,17 @@ bool vulkan_render_backend::render_deferred_scene(VkCommandBuffer command_buffer
             frame_lighting_.ambient_color_intensity[1] * frame_lighting_.ambient_color_intensity[3];
         constants.ambient_visualization[2] =
             frame_lighting_.ambient_color_intensity[2] * frame_lighting_.ambient_color_intensity[3];
-        if (const auto* environment = active_environment())
+        const environment_descriptor* lighting_environment{};
+        if (frame_environment_.lighting.environment.valid())
         {
-            const auto found = textures_.find(resource_key(environment->equirectangular_texture));
+            if (const auto found = environments_.find(resource_key(frame_environment_.lighting.environment));
+                found != environments_.end())
+                lighting_environment = &found->second.data;
+        }
+        if (!lighting_environment) lighting_environment = active_environment();
+        if (lighting_environment)
+        {
+            const auto found = textures_.find(resource_key(lighting_environment->equirectangular_texture));
             constants.light_color[3] = found != textures_.end() && found->second.view != VK_NULL_HANDLE ? 1.0f : 0.0f;
         }
         constants.ambient_visualization[3] = !frame_draws_.empty()
