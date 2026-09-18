@@ -94,7 +94,7 @@ const parseDescriptor = (value: unknown): ArcProjectDescriptor => {
   if (!value || typeof value !== 'object') throw new Error('Project descriptor must be a JSON object');
   const source = value as Partial<ArcProjectDescriptor>;
   if (source.format !== arcProjectFormat) throw new Error(`Expected project format '${arcProjectFormat}'`);
-  if (source.formatVersion !== 1 && source.formatVersion !== arcProjectFormatVersion)
+  if (source.formatVersion !== 1 && source.formatVersion !== 2 && source.formatVersion !== arcProjectFormatVersion)
     throw new Error(`Unsupported project format version ${String(source.formatVersion)}`);
   if (
     typeof source.guid !== 'string' ||
@@ -217,13 +217,18 @@ const parseDescriptor = (value: unknown): ArcProjectDescriptor => {
     cookProfiles: Array.isArray(raw.cookProfiles)
       ? raw.cookProfiles.map((entry) => {
           const profile = objectValue(entry);
+          const textureSettings = objectValue(profile.textures);
+          const outputs = normalizeStringArray(textureSettings.outputs);
           return {
             id: stringValue(profile.id),
             platform: stringValue(profile.platform),
             architecture: stringValue(profile.architecture, 'x86_64'),
             renderer: stringValue(profile.renderer, 'vulkan'),
             api: stringValue(profile.api, '1.2'),
-            textureFamily: stringValue(profile.textureFamily, 'bc'),
+            textures: {
+              outputs: outputs.length ? outputs : [stringValue(profile.textureFamily, 'bc')],
+              quality: stringValue(textureSettings.quality, 'balanced'),
+            },
             configuration: stringValue(profile.configuration, 'Shipping'),
           };
         })
@@ -338,20 +343,31 @@ export class ProjectService {
     if (sourceFormatVersion === arcProjectFormatVersion)
       this.runProjectTool(['validate', '--project', descriptorPath, '--require-paths']);
     const comparison = compareVersion(descriptor.engineVersion, this.currentEngineVersion);
+    const formatUpgradeRequired = sourceFormatVersion !== arcProjectFormatVersion;
+    const compatibility: ArcProjectCandidate['compatibility'] =
+      comparison > 0 ? 'newerEngineRequired' : formatUpgradeRequired || comparison < 0 ? 'upgradeRequired' : 'compatible';
+    const diagnostics: string[] = [];
+    if (comparison > 0)
+      diagnostics.push(
+        `Project requires ARC ${descriptor.engineVersion}; the running editor is ${this.currentEngineVersion}`,
+      );
+    else {
+      if (formatUpgradeRequired)
+        diagnostics.push(
+          `Project format v${String(sourceFormatVersion)} requires an explicit upgrade to v${arcProjectFormatVersion}`,
+        );
+      if (comparison < 0)
+        diagnostics.push(
+          `Project requires an explicit upgrade from ${descriptor.engineVersion} to ${this.currentEngineVersion}`,
+        );
+    }
     return {
       descriptor,
       descriptorPath,
       projectRoot: path.dirname(descriptorPath),
-      compatibility: comparison === 0 ? 'compatible' : comparison < 0 ? 'upgradeRequired' : 'newerEngineRequired',
-      writable: comparison === 0,
-      diagnostics:
-        comparison === 0
-          ? []
-          : [
-              comparison < 0
-                ? `Project requires an explicit upgrade from ${descriptor.engineVersion} to ${this.currentEngineVersion}`
-                : `Project requires ARC ${descriptor.engineVersion}; the running editor is ${this.currentEngineVersion}`,
-            ],
+      compatibility,
+      writable: compatibility === 'compatible',
+      diagnostics,
     };
   }
 
