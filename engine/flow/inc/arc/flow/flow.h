@@ -17,8 +17,8 @@ struct game_world_api_v1;
 namespace arc::flow
 {
 
-inline constexpr std::uint32_t flow_ir_version = 6;
-inline constexpr std::uint32_t flow_bytecode_version = 6;
+inline constexpr std::uint32_t flow_ir_version = 7;
+inline constexpr std::uint32_t flow_bytecode_version = 7;
 inline constexpr std::uint32_t invalid_instruction = std::numeric_limits<std::uint32_t>::max();
 inline constexpr std::uint32_t invalid_entity_index = std::numeric_limits<std::uint32_t>::max();
 inline constexpr std::uint32_t default_instruction_budget = 4096;
@@ -98,6 +98,41 @@ struct custom_event_definition
     std::string name;
 };
 
+/**
+ * @brief Local F8.2 function declaration.
+ *
+ * Function inputs/outputs use the same typed interface value representation as graph interfaces. Their slots are
+ * private implementation storage in the compiled program. Functions are synchronous and local to one .arcflow asset.
+ */
+struct function_definition
+{
+    std::string id;
+    std::string name;
+    std::vector<graph_interface_value> inputs;
+    std::vector<graph_interface_value> outputs;
+    std::uint32_t instruction{invalid_instruction};
+};
+
+struct function_slot_binding
+{
+    std::uint32_t source_slot{invalid_instruction};
+    std::uint32_t destination_slot{invalid_instruction};
+};
+
+struct function_call_definition
+{
+    std::uint32_t function_index{invalid_instruction};
+    std::vector<function_slot_binding> inputs;
+    std::vector<function_slot_binding> outputs;
+    std::uint32_t continuation_instruction{invalid_instruction};
+};
+
+struct function_return_definition
+{
+    std::uint32_t function_index{invalid_instruction};
+    std::vector<function_slot_binding> outputs;
+};
+
 enum class entry_point_kind : std::uint8_t
 {
     begin_play,
@@ -158,6 +193,8 @@ enum class ir_opcode : std::uint8_t
     timer_stop,
     call_custom_event,
     store_graph_output,
+    call_function,
+    return_function,
     load_variable,
     store_variable,
     add,
@@ -259,6 +296,9 @@ struct ir_program
     std::vector<graph_interface_value> graph_inputs;
     std::vector<graph_interface_value> graph_outputs;
     std::vector<custom_event_definition> custom_events;
+    std::vector<function_definition> functions;
+    std::vector<function_call_definition> function_calls;
+    std::vector<function_return_definition> function_returns;
     std::vector<ir_value_slot> value_slots;
     std::vector<ir_entry_point> entry_points;
     std::vector<ir_instruction> instructions;
@@ -308,6 +348,8 @@ enum class bytecode_opcode : std::uint8_t
     timer_stop,
     call_custom_event,
     store_graph_output,
+    call_function,
+    return_function,
     load_variable,
     store_variable,
     add,
@@ -371,6 +413,9 @@ struct bytecode_program
     std::vector<graph_interface_value> graph_inputs;
     std::vector<graph_interface_value> graph_outputs;
     std::vector<custom_event_definition> custom_events;
+    std::vector<function_definition> functions;
+    std::vector<function_call_definition> function_calls;
+    std::vector<function_return_definition> function_returns;
     std::vector<bytecode_value_slot> value_slots;
     std::vector<bytecode_entry_point> entry_points;
     std::vector<bytecode_instruction> instructions;

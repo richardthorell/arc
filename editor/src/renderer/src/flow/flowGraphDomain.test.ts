@@ -106,6 +106,33 @@ describe('Flow graph domain', () => {
     });
   });
 
+  it('resolves F8.2 function signatures into typed node pins', () => {
+    const signature = {
+      functionId: 'identity',
+      functionName: 'Identity',
+      functionInputs: [{ id: 'value', name: 'Value', type: 'int', defaultValue: 0 }],
+      functionOutputs: [{ id: 'result', name: 'Result', type: 'float', defaultValue: 0 }],
+    };
+    const entry = flowGraphDomain.getNodeDefinition(createFlowNode('functionEntry', [0, 0], signature));
+    const call = flowGraphDomain.getNodeDefinition(createFlowNode('callFunction', [300, 0], signature));
+    const functionReturn = flowGraphDomain.getNodeDefinition(createFlowNode('functionReturn', [600, 0], signature));
+
+    expect(entry.title).toBe('Identity Entry');
+    expect(entry.outputs.find((pin) => pin.id === 'input:value')?.type).toEqual({
+      kind: 'value',
+      valueType: 'int',
+    });
+    expect(call.inputs.find((pin) => pin.id === 'input:value')?.type).toEqual({ kind: 'value', valueType: 'int' });
+    expect(call.outputs.find((pin) => pin.id === 'output:result')?.type).toEqual({
+      kind: 'value',
+      valueType: 'float',
+    });
+    expect(functionReturn.inputs.find((pin) => pin.id === 'output:result')?.type).toEqual({
+      kind: 'value',
+      valueType: 'float',
+    });
+  });
+
   it('keeps transform inputs strongly typed', () => {
     const vector3 = createFlowNode('vector3Literal', [0, 0]);
     const vector4 = createFlowNode('vector4Literal', [0, 120]);

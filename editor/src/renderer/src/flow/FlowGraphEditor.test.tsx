@@ -73,6 +73,33 @@ describe('FlowGraphEditor', () => {
     expect(nextGraph.nodes.some((node: { type: string }) => node.type === 'setTransform')).toBe(true);
   });
 
+  it('adds an F8.2 Call Function node with the authored signature', () => {
+    const graph = createDefaultFlowGraph();
+    graph.functions = [
+      {
+        id: 'identity',
+        name: 'Identity',
+        inputs: [{ id: 'value', name: 'Value', type: 'int', defaultValue: 0 }],
+        outputs: [{ id: 'result', name: 'Result', type: 'int', defaultValue: 0 }],
+      },
+    ];
+    render(<FlowGraphEditor document={document} graph={graph} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Node' }));
+    const menu = screen.getByRole('menu', { name: 'Add Flow node' });
+    fireEvent.change(within(menu).getByRole('textbox', { name: 'Search Flow nodes' }), {
+      target: { value: 'call function' },
+    });
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /Call Function/ }));
+
+    const nextGraph = flowState.replaceFlowGraph.mock.calls[0][1];
+    const call = nextGraph.nodes.find((node: { type: string }) => node.type === 'callFunction');
+    expect(call.values.functionId).toBe('identity');
+    expect(call.values.functionName).toBe('Identity');
+    expect(call.values.functionInputs).toEqual(graph.functions[0].inputs);
+    expect(call.values.functionOutputs).toEqual(graph.functions[0].outputs);
+  });
+
   it('edits authored literal node values', () => {
     const graph = createDefaultFlowGraph();
     graph.nodes.push(createFlowNode('stringLiteral', [320, 140], { value: 'Player' }));
