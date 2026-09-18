@@ -59,6 +59,8 @@ struct material_authoring_document
     material_shading_model shading_model{material_shading_model::standard};
     material_alpha_mode alpha_mode{material_alpha_mode::opaque};
     bool double_sided{};
+    bool cast_shadows{true};
+    bool force_forward{};
 };
 
 using material_authoring_result = core::result<material_authoring_document, material_asset_error>;
