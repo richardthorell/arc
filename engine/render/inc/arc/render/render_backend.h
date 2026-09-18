@@ -1018,6 +1018,8 @@ struct render_texture_streaming_profile
     std::uint64_t upload_budget_bytes{};
     std::uint64_t uploaded_bytes{};
     std::uint32_t streamed_textures{};
+    std::uint32_t streamed_cube_textures{};
+    std::uint32_t streamed_volume_textures{};
     std::uint32_t virtual_textures{};
     std::uint32_t resident_mips{};
     std::uint32_t resident_pages{};

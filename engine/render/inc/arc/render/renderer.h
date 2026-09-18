@@ -228,7 +228,12 @@ public:
      */
     bool update_texture(texture_handle handle, texture_data texture);
 
-    /** @brief Create a streamable ordinary 2D texture from a validated artifact index. */
+    /**
+     * @brief Create a streamable 2D, cube, or 3D texture from a validated artifact index.
+     *
+     * Cube mips are published as complete six-face units and 3D mips as complete
+     * volumes. Virtual-tile streaming remains limited to ordinary 2D textures.
+     */
     [[nodiscard]] texture_handle create_streamed_texture(streamed_texture_descriptor descriptor);
 
     /** @brief Replace a streamable texture generation while retaining its handle. */

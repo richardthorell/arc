@@ -32,6 +32,74 @@ texture_streaming_mode resolve_texture_streaming_mode(texture_streaming_mode aut
     return capabilities.mip_streaming ? texture_streaming_mode::streamed_mips : texture_streaming_mode::resident;
 }
 
+streamed_texture_validation_error
+validate_streamed_texture_descriptor(const streamed_texture_descriptor& descriptor) noexcept
+{
+    const auto& texture = descriptor.texture;
+    const auto& artifact = descriptor.artifact;
+    if (descriptor.mode == texture_streaming_mode::resident) return streamed_texture_validation_error::resident_mode;
+    if (descriptor.source == 0) return streamed_texture_validation_error::missing_source;
+    if (descriptor.content_generation == 0) return streamed_texture_validation_error::missing_generation;
+    if (texture.width == 0 || texture.height == 0 || texture.depth == 0 || texture.mip_levels == 0)
+        return streamed_texture_validation_error::invalid_extent;
+    if (artifact.schema_version != texture_artifact_schema_version)
+        return streamed_texture_validation_error::artifact_schema_mismatch;
+    if (artifact.mode != descriptor.mode) return streamed_texture_validation_error::artifact_mode_mismatch;
+    if (artifact.width != texture.width || artifact.height != texture.height || artifact.depth != texture.depth ||
+        artifact.dimension != texture.dimension || artifact.mip_count != texture.mip_levels ||
+        artifact.format != texture.format || artifact.mips.size() != artifact.mip_count ||
+        artifact.tail_first_mip >= artifact.mip_count)
+        return streamed_texture_validation_error::artifact_metadata_mismatch;
+    if (descriptor.mode == texture_streaming_mode::virtual_tiles && texture.dimension != texture_dimension::texture_2d)
+        return streamed_texture_validation_error::virtual_tiles_require_2d;
+
+    switch (texture.dimension)
+    {
+        case texture_dimension::texture_2d:
+            if (texture.depth != 1 || artifact.face_count != 1)
+                return streamed_texture_validation_error::unsupported_topology;
+            break;
+        case texture_dimension::texture_3d:
+            if (artifact.array_layers != 1 || artifact.face_count != 1)
+                return streamed_texture_validation_error::unsupported_topology;
+            break;
+        case texture_dimension::cube:
+            if (texture.width != texture.height || texture.depth != 1 || artifact.array_layers != 1 ||
+                artifact.face_count != 6)
+                return streamed_texture_validation_error::unsupported_topology;
+            break;
+    }
+    return streamed_texture_validation_error::none;
+}
+
+std::string_view streamed_texture_validation_error_message(streamed_texture_validation_error error) noexcept
+{
+    switch (error)
+    {
+        case streamed_texture_validation_error::none:
+            return {};
+        case streamed_texture_validation_error::resident_mode:
+            return "streamable descriptors must use streamed_mips or virtual_tiles";
+        case streamed_texture_validation_error::missing_source:
+            return "stream source is missing";
+        case streamed_texture_validation_error::missing_generation:
+            return "content generation must be non-zero";
+        case streamed_texture_validation_error::invalid_extent:
+            return "texture extent or mip count is invalid";
+        case streamed_texture_validation_error::artifact_schema_mismatch:
+            return "texture artifact schema is incompatible";
+        case streamed_texture_validation_error::artifact_mode_mismatch:
+            return "texture artifact streaming mode does not match the descriptor";
+        case streamed_texture_validation_error::artifact_metadata_mismatch:
+            return "texture descriptor does not match the cooked artifact";
+        case streamed_texture_validation_error::virtual_tiles_require_2d:
+            return "virtual-tile streaming is supported only for 2D textures";
+        case streamed_texture_validation_error::unsupported_topology:
+            return "texture topology is unsupported for mip streaming";
+    }
+    return "unknown texture streaming validation error";
+}
+
 std::uint32_t texture_requested_mip(std::uint32_t width, std::uint32_t height, std::uint32_t mip_count,
                                     float projected_texel_extent, float lod_bias) noexcept
 {
@@ -551,7 +619,13 @@ texture_residency_snapshot texture_residency_manager::snapshot() const noexcept
                        implementation_->cpu_bytes > implementation_->config.cpu_cache_budget_bytes};
     for (const auto& [_, resource] : implementation_->resources)
     {
-        if (resource.descriptor.mode == texture_streaming_mode::streamed_mips) ++result.streamed_mip_resources;
+        if (resource.descriptor.mode == texture_streaming_mode::streamed_mips)
+        {
+            ++result.streamed_mip_resources;
+            if (resource.descriptor.artifact.dimension == texture_dimension::cube) ++result.streamed_cube_resources;
+            if (resource.descriptor.artifact.dimension == texture_dimension::texture_3d)
+                ++result.streamed_volume_resources;
+        }
         if (resource.descriptor.mode == texture_streaming_mode::virtual_tiles) ++result.virtual_texture_resources;
         const auto accumulate = [&](const implementation::subresource_entry& entry)
         {
@@ -609,6 +683,9 @@ std::vector<texture_streaming_resource_snapshot> texture_residency_manager::reso
                           .content_generation = resource.descriptor.content_generation,
                           .authored_mode = resource.authored_mode,
                           .resolved_mode = resource.descriptor.mode,
+                          .dimension = resource.descriptor.artifact.dimension,
+                          .depth = resource.descriptor.artifact.depth,
+                          .face_count = resource.descriptor.artifact.face_count,
                           .requested_mip = resource.requested_mip,
                           .resident_first_mip = resident_first,
                           .tail_first_mip = resource.descriptor.artifact.tail_first_mip,

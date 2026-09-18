@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace arc::render
@@ -96,6 +97,35 @@ struct streamed_texture_descriptor
     texture_artifact_index artifact;
     std::uint32_t content_generation{1};
 };
+
+/** @brief Stable validation reason for a streamable texture registration. */
+enum class streamed_texture_validation_error : std::uint8_t
+{
+    none,
+    resident_mode,
+    missing_source,
+    missing_generation,
+    invalid_extent,
+    artifact_schema_mismatch,
+    artifact_mode_mismatch,
+    artifact_metadata_mismatch,
+    virtual_tiles_require_2d,
+    unsupported_topology
+};
+
+/**
+ * @brief Validate the backend-neutral streaming contract for a cooked texture.
+ *
+ * Conventional mip streaming accepts 2D, cube, and 3D textures. Each artifact
+ * mip is one atomic residency unit: all six faces for cubes and the complete
+ * depth volume for 3D textures. Virtual tiles remain a 2D-only path.
+ */
+[[nodiscard]] streamed_texture_validation_error
+validate_streamed_texture_descriptor(const streamed_texture_descriptor& descriptor) noexcept;
+
+/** @brief Human-readable diagnostic for a streamable texture validation error. */
+[[nodiscard]] std::string_view
+streamed_texture_validation_error_message(streamed_texture_validation_error error) noexcept;
 
 struct texture_mip_feedback
 {
@@ -191,6 +221,9 @@ struct texture_streaming_resource_snapshot
     std::uint32_t content_generation{};
     texture_streaming_mode authored_mode{texture_streaming_mode::resident};
     texture_streaming_mode resolved_mode{texture_streaming_mode::resident};
+    texture_dimension dimension{texture_dimension::texture_2d};
+    std::uint32_t depth{1};
+    std::uint32_t face_count{1};
     std::uint32_t requested_mip{};
     std::uint32_t resident_first_mip{};
     std::uint32_t tail_first_mip{};
@@ -209,6 +242,8 @@ struct texture_residency_snapshot
     std::uint64_t uploaded_bytes{};
     std::uint32_t resource_count{};
     std::uint32_t streamed_mip_resources{};
+    std::uint32_t streamed_cube_resources{};
+    std::uint32_t streamed_volume_resources{};
     std::uint32_t virtual_texture_resources{};
     std::uint32_t resident_mips{};
     std::uint32_t resident_tiles{};

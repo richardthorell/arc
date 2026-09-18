@@ -48,19 +48,6 @@ std::uint64_t texture_content_hash(std::span<const std::byte> bytes) noexcept
     return hash;
 }
 
-bool valid_streamed_texture_descriptor(const streamed_texture_descriptor& descriptor) noexcept
-{
-    const auto& texture = descriptor.texture;
-    const auto& artifact = descriptor.artifact;
-    return descriptor.mode != texture_streaming_mode::resident && descriptor.source != 0 &&
-           descriptor.content_generation != 0 && texture.dimension == texture_dimension::texture_2d &&
-           texture.depth == 1 && texture.width > 0 && texture.height > 0 && texture.mip_levels > 0 &&
-           artifact.schema_version == texture_artifact_schema_version && artifact.width == texture.width &&
-           artifact.height == texture.height && artifact.mip_count == texture.mip_levels &&
-           artifact.format == texture.format && artifact.mips.size() == artifact.mip_count &&
-           artifact.tail_first_mip < artifact.mip_count;
-}
-
 gpu_texture_table_record texture_table_record(texture_handle handle, const texture_descriptor& texture,
                                               std::uint32_t mip_window_base, std::uint32_t flags) noexcept
 {
@@ -1122,7 +1109,14 @@ bool renderer::update_texture(texture_handle handle, texture_data texture)
 
 texture_handle renderer::create_streamed_texture(streamed_texture_descriptor descriptor)
 {
-    if (!valid_streamed_texture_descriptor(descriptor)) return {};
+    const auto validation = validate_streamed_texture_descriptor(descriptor);
+    if (validation != streamed_texture_validation_error::none)
+    {
+        arc::diagnostics::warn("render.texture_streaming",
+                               "Rejected streamed texture '" + descriptor.texture.name +
+                                   "': " + std::string(streamed_texture_validation_error_message(validation)));
+        return {};
+    }
     const texture_handle handle = texture_handles_.allocate();
     auto shared_descriptor = std::make_shared<streamed_texture_descriptor>(std::move(descriptor));
     streamed_texture_data_[renderer_resource_key(handle)] = shared_descriptor;
@@ -1142,7 +1136,15 @@ texture_handle renderer::create_streamed_texture(streamed_texture_descriptor des
 
 bool renderer::update_streamed_texture(texture_handle handle, streamed_texture_descriptor descriptor)
 {
-    if (!texture_handles_.alive(handle) || !valid_streamed_texture_descriptor(descriptor)) return false;
+    if (!texture_handles_.alive(handle)) return false;
+    const auto validation = validate_streamed_texture_descriptor(descriptor);
+    if (validation != streamed_texture_validation_error::none)
+    {
+        arc::diagnostics::warn("render.texture_streaming",
+                               "Rejected streamed texture update '" + descriptor.texture.name +
+                                   "': " + std::string(streamed_texture_validation_error_message(validation)));
+        return false;
+    }
     const auto key = renderer_resource_key(handle);
     const auto previous = streamed_texture_data_.find(key);
     if (previous == streamed_texture_data_.end()) return false;
@@ -1476,6 +1478,8 @@ render_backend_frame_profile renderer::last_frame_profile() const
                                 .upload_budget_bytes = textures.upload_budget_per_frame,
                                 .uploaded_bytes = textures.uploaded_bytes,
                                 .streamed_textures = textures.streamed_mip_resources,
+                                .streamed_cube_textures = textures.streamed_cube_resources,
+                                .streamed_volume_textures = textures.streamed_volume_resources,
                                 .virtual_textures = textures.virtual_texture_resources,
                                 .resident_mips = textures.resident_mips,
                                 .resident_pages = textures.resident_tiles,

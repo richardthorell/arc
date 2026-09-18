@@ -81,7 +81,7 @@ void vulkan_render_backend::register_streamed_texture(const texture_stream_regis
     if (!event.descriptor) return;
     if (!vulkan_texture_topology_supported(event.descriptor->artifact))
     {
-        arc::diagnostics::warn("render.vulkan", "Streamed texture topology is unsupported by the Vulkan T2 path");
+        arc::diagnostics::warn("render.vulkan", "Streamed texture topology is unsupported by the Vulkan texture path");
         return;
     }
 
@@ -853,7 +853,7 @@ void vulkan_render_backend::upload_texture(const texture_upload_event& event)
     if (!topology_supported)
     {
         arc::diagnostics::warn("render.vulkan",
-                               "Texture '" + event.label + "' uses topology unsupported by the Vulkan T2 path");
+                               "Texture '" + event.label + "' uses topology unsupported by the Vulkan texture path");
     }
     else if (!uploaded && event.texture->dds && event.texture->compressed)
     {

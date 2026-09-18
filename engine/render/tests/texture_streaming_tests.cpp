@@ -80,7 +80,169 @@ arc::render::streamed_texture_descriptor make_streamed_descriptor()
     return descriptor;
 }
 
+arc::render::streamed_texture_descriptor make_cube_streamed_descriptor()
+{
+    using namespace arc::render;
+    auto descriptor = make_streamed_descriptor();
+    descriptor.texture.name = "cube-streaming-test";
+    descriptor.texture.dimension = texture_dimension::cube;
+    descriptor.artifact.dimension = texture_dimension::cube;
+    descriptor.artifact.depth = 1;
+    descriptor.artifact.array_layers = 1;
+    descriptor.artifact.face_count = 6;
+    descriptor.artifact.mips = {{.width = 8,
+                                 .height = 8,
+                                 .depth = 1,
+                                 .offset = 4096,
+                                 .stored_size = 1536,
+                                 .decoded_size = 1536,
+                                 .content_hash = 1},
+                                {.width = 4,
+                                 .height = 4,
+                                 .depth = 1,
+                                 .offset = 8192,
+                                 .stored_size = 384,
+                                 .decoded_size = 384,
+                                 .content_hash = 2},
+                                {.width = 2,
+                                 .height = 2,
+                                 .depth = 1,
+                                 .offset = 12288,
+                                 .stored_size = 96,
+                                 .decoded_size = 96,
+                                 .content_hash = 3},
+                                {.width = 1,
+                                 .height = 1,
+                                 .depth = 1,
+                                 .offset = 16384,
+                                 .stored_size = 24,
+                                 .decoded_size = 24,
+                                 .content_hash = 4}};
+    return descriptor;
+}
+
+arc::render::streamed_texture_descriptor make_volume_streamed_descriptor()
+{
+    using namespace arc::render;
+    auto descriptor = make_streamed_descriptor();
+    descriptor.texture.name = "volume-streaming-test";
+    descriptor.texture.height = 4;
+    descriptor.texture.depth = 4;
+    descriptor.texture.dimension = texture_dimension::texture_3d;
+    descriptor.artifact.dimension = texture_dimension::texture_3d;
+    descriptor.artifact.height = 4;
+    descriptor.artifact.depth = 4;
+    descriptor.artifact.array_layers = 1;
+    descriptor.artifact.face_count = 1;
+    descriptor.artifact.mips = {
+        {.width = 8,
+         .height = 4,
+         .depth = 4,
+         .offset = 4096,
+         .stored_size = 512,
+         .decoded_size = 512,
+         .content_hash = 1},
+        {.width = 4, .height = 2, .depth = 2, .offset = 8192, .stored_size = 64, .decoded_size = 64, .content_hash = 2},
+        {.width = 2, .height = 1, .depth = 1, .offset = 12288, .stored_size = 8, .decoded_size = 8, .content_hash = 3},
+        {.width = 1, .height = 1, .depth = 1, .offset = 16384, .stored_size = 4, .decoded_size = 4, .content_hash = 4}};
+    return descriptor;
+}
+
 } // namespace
+
+TEST_CASE("streamed texture validation accepts atomic cube and volume mips")
+{
+    using namespace arc::render;
+
+    const auto cube = make_cube_streamed_descriptor();
+    CHECK(validate_streamed_texture_descriptor(cube) == streamed_texture_validation_error::none);
+
+    const auto volume = make_volume_streamed_descriptor();
+    CHECK(validate_streamed_texture_descriptor(volume) == streamed_texture_validation_error::none);
+
+    auto incomplete_cube = cube;
+    incomplete_cube.artifact.face_count = 1;
+    CHECK(validate_streamed_texture_descriptor(incomplete_cube) ==
+          streamed_texture_validation_error::unsupported_topology);
+
+    auto cube_array = cube;
+    cube_array.artifact.array_layers = 2;
+    CHECK(validate_streamed_texture_descriptor(cube_array) == streamed_texture_validation_error::unsupported_topology);
+
+    auto virtual_volume = volume;
+    virtual_volume.mode = texture_streaming_mode::virtual_tiles;
+    virtual_volume.artifact.mode = texture_streaming_mode::virtual_tiles;
+    CHECK(validate_streamed_texture_descriptor(virtual_volume) ==
+          streamed_texture_validation_error::virtual_tiles_require_2d);
+
+    auto mismatched_volume = volume;
+    mismatched_volume.artifact.depth = 2;
+    CHECK(validate_streamed_texture_descriptor(mismatched_volume) ==
+          streamed_texture_validation_error::artifact_metadata_mismatch);
+}
+
+TEST_CASE("texture residency streams cube faces and 3D volumes as one mip unit")
+{
+    using namespace arc::render;
+
+    texture_residency_manager residency;
+    const texture_handle cube_handle{20, 1};
+    const texture_handle volume_handle{21, 1};
+    const auto cube = make_cube_streamed_descriptor();
+    const auto volume = make_volume_streamed_descriptor();
+    residency.register_resource(cube_handle, cube);
+    residency.register_resource(volume_handle, volume);
+
+    const auto loads = residency.take_load_requests();
+    REQUIRE(loads.size() == 4);
+
+    const auto count_load = [&](texture_handle handle, std::uint32_t mip)
+    {
+        return std::count_if(loads.begin(), loads.end(),
+                             [&](const auto& load) { return load.resource == handle && load.mip == mip; });
+    };
+    CHECK(count_load(cube_handle, 2) == 1);
+    CHECK(count_load(cube_handle, 3) == 1);
+    CHECK(count_load(volume_handle, 2) == 1);
+    CHECK(count_load(volume_handle, 3) == 1);
+
+    const auto cube_mip = std::find_if(loads.begin(), loads.end(),
+                                       [&](const auto& load) { return load.resource == cube_handle && load.mip == 2; });
+    REQUIRE(cube_mip != loads.end());
+    CHECK(cube_mip->byte_size == 2u * 2u * 6u * 4u);
+
+    const auto volume_mip = std::find_if(loads.begin(), loads.end(), [&](const auto& load)
+                                         { return load.resource == volume_handle && load.mip == 2; });
+    REQUIRE(volume_mip != loads.end());
+    CHECK(volume_mip->byte_size == 2u * 1u * 1u * 4u);
+
+    residency.set_forced_mip(volume_handle, volume.content_generation, 1);
+    const auto volume_loads = residency.take_load_requests();
+    const auto volume_depth_mip = std::find_if(volume_loads.begin(), volume_loads.end(), [&](const auto& load)
+                                               { return load.resource == volume_handle && load.mip == 1; });
+    REQUIRE(volume_depth_mip != volume_loads.end());
+    CHECK(volume_depth_mip->byte_size == 4u * 2u * 2u * 4u);
+
+    const auto snapshot = residency.snapshot();
+    CHECK(snapshot.streamed_mip_resources == 2);
+    CHECK(snapshot.streamed_cube_resources == 1);
+    CHECK(snapshot.streamed_volume_resources == 1);
+
+    const auto resources = residency.resource_snapshots();
+    const auto cube_resource = std::find_if(resources.begin(), resources.end(),
+                                            [&](const auto& value) { return value.resource == cube_handle; });
+    REQUIRE(cube_resource != resources.end());
+    CHECK(cube_resource->dimension == texture_dimension::cube);
+    CHECK(cube_resource->face_count == 6);
+    CHECK(cube_resource->depth == 1);
+
+    const auto volume_resource = std::find_if(resources.begin(), resources.end(),
+                                              [&](const auto& value) { return value.resource == volume_handle; });
+    REQUIRE(volume_resource != resources.end());
+    CHECK(volume_resource->dimension == texture_dimension::texture_3d);
+    CHECK(volume_resource->face_count == 1);
+    CHECK(volume_resource->depth == 4);
+}
 
 TEST_CASE("texture artifacts are deterministic range-readable and include virtual companions")
 {
