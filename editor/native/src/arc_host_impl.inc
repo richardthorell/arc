@@ -159,8 +159,15 @@ struct viewport_surface_registry
         render::mesh_handle preview_mesh{};
         render::material_handle preview_material{};
         std::uint64_t preview_material_generation{};
+        std::uint64_t preview_live_material_generation{};
         std::uint64_t preview_asset_generation{};
         std::string preview_error;
+    };
+
+    struct live_material_preview
+    {
+        std::string source;
+        std::uint64_t generation{};
     };
 
     viewport_surface_registry()
@@ -214,8 +221,10 @@ struct viewport_surface_registry
     }
 
     std::unordered_map<std::string, surface_state> surfaces;
+    std::unordered_map<assets::asset_guid, live_material_preview, assets::asset_guid_hash> live_material_previews;
     std::optional<std::string> pending_pick_surface;
     std::uint64_t next_renderer_frame_index{};
+    std::uint64_t next_live_material_generation{};
 };
 
 namespace
