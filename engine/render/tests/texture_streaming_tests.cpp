@@ -218,9 +218,8 @@ TEST_CASE("texture residency streams cube faces and 3D volumes as one mip unit")
 
     residency.set_forced_mip(volume_handle, volume.content_generation, 1);
     const auto volume_loads = residency.take_load_requests();
-    const auto volume_depth_mip = std::find_if(
-        volume_loads.begin(), volume_loads.end(),
-        [&](const auto& load) { return load.resource == volume_handle && load.mip == 1; });
+    const auto volume_depth_mip = std::find_if(volume_loads.begin(), volume_loads.end(), [&](const auto& load)
+                                               { return load.resource == volume_handle && load.mip == 1; });
     REQUIRE(volume_depth_mip != volume_loads.end());
     CHECK(volume_depth_mip->byte_size == 4u * 2u * 2u * 4u);
 
