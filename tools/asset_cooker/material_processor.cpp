@@ -282,7 +282,7 @@ public:
         descriptor_.id = assets::cook_processor_ids::material;
         descriptor_.name = "ARC Material";
         descriptor_.schema = assets::artifact_schemas::material;
-        descriptor_.version = 9;
+        descriptor_.version = 10;
         descriptor_.schema_version = render::tools::material_package_version;
         descriptor_.input_types = {assets::asset_types::material};
     }
@@ -294,7 +294,7 @@ public:
 
     std::string toolchain_fingerprint() const override
     {
-        return "arc.material-cooker/9;arc-material-package/3;arc-material-authoring/4;arc-material-ir/1;"
+        return "arc.material-cooker/10;arc-material-package/3;arc-material-authoring/4;arc-material-ir/1;"
                "arc-material-codegen/3;arc-material-function/1;arc-material-pass-contract/1;"
                "arc-material-pass-codegen/2;arc-custom-material-shader/1;" +
                std::string(compiler_.fingerprint());
