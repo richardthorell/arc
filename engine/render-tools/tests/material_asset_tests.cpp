@@ -64,6 +64,7 @@ TEST_CASE("material authoring accepts the current graph schema")
       "shadingModel":"transmission",
       "blendMode":"masked",
       "doubleSided":true,
+      "castShadows":false,
       "graph":{"version":1,"nodes":[],"connections":[]},
       "futureEditorMetadata":{"keep":true}
     })";
@@ -77,6 +78,7 @@ TEST_CASE("material authoring accepts the current graph schema")
     REQUIRE(result.value().shading_model == arc::render::material_shading_model::transmission);
     REQUIRE(result.value().alpha_mode == arc::render::material_alpha_mode::masked);
     REQUIRE(result.value().double_sided);
+    REQUIRE_FALSE(result.value().cast_shadows);
     REQUIRE(result.value().canonical_json.find("\"futureEditorMetadata\":{\"keep\":true}") != std::string::npos);
 }
 
@@ -87,6 +89,7 @@ TEST_CASE("material authoring accepts a current handwritten Material Shader")
     REQUIRE(result);
     REQUIRE(result.value().graph_json.empty());
     REQUIRE(result.value().shader_path == "Shaders/custom.slang");
+    REQUIRE(result.value().cast_shadows);
 }
 
 TEST_CASE("material authoring rejects legacy schemas")
