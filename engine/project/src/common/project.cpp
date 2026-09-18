@@ -319,14 +319,14 @@ json descriptor_json(const project_descriptor& value)
         targets.push_back({{"id", target.id}, {"enabled", target.enabled}});
     json cook_profiles = json::array();
     for (const auto& profile : value.cook_profiles)
-        cook_profiles.push_back({{"id", profile.id},
-                                 {"platform", profile.platform},
-                                 {"architecture", profile.architecture},
-                                 {"renderer", profile.renderer},
-                                 {"api", profile.api},
-                                 {"textures",
-                                  {{"outputs", profile.textures.outputs}, {"quality", profile.textures.quality}}},
-                                 {"configuration", profile.configuration}});
+        cook_profiles.push_back(
+            {{"id", profile.id},
+             {"platform", profile.platform},
+             {"architecture", profile.architecture},
+             {"renderer", profile.renderer},
+             {"api", profile.api},
+             {"textures", {{"outputs", profile.textures.outputs}, {"quality", profile.textures.quality}}},
+             {"configuration", profile.configuration}});
     json startup = json::array();
     for (const auto& scene : value.startup_scenes)
         startup.push_back(asset_reference_json(scene));
@@ -711,7 +711,8 @@ validation_result validate_descriptor(const std::filesystem::path& descriptor_pa
         std::set<std::string> outputs;
         for (const auto& family : profile.textures.outputs)
         {
-            if (std::find(texture_families.begin(), texture_families.end(), std::string_view(family)) == texture_families.end())
+            if (std::find(texture_families.begin(), texture_families.end(), std::string_view(family)) ==
+                texture_families.end())
                 return validation_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path,
                                                              "unsupported texture output family: " + family,
                                                              "cookProfiles.textures.outputs"));
@@ -945,8 +946,7 @@ project_status upgrade_descriptor(const std::filesystem::path& descriptor_path, 
                      .architecture = iterator.value().value("architecture", "x86_64"),
                      .renderer = iterator.value().value("renderer", "vulkan"),
                      .api = iterator.value().value("api", "1.2"),
-                     .textures = {.outputs = {iterator.value().value("textureFamily", "bc")},
-                                  .quality = "balanced"},
+                     .textures = {.outputs = {iterator.value().value("textureFamily", "bc")}, .quality = "balanced"},
                      .configuration = iterator.value().value("configuration", "Shipping")});
         }
         const auto backup = descriptor_path.string() + ".v1.bak";
