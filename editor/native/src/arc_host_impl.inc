@@ -587,12 +587,9 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
     const auto preview_type = surface.preview_kind == asset_preview_kind::material
                                   ? arc_material_preview_primitive_type(surface.options.viewport_id)
                                   : editor_primitive_type::sphere;
-    const auto room_material = surface.preview_kind == asset_preview_kind::material
-                                   ? arc_material_preview_room_material(host.scene, *host.renderer, host.assets)
-                                   : render::material_handle{};
     const auto preview_entity =
         surface.preview_kind == asset_preview_kind::material
-            ? arc_material_preview_add_primitive(*preview, *host.renderer, preview_type, host.assets, room_material)
+            ? arc_material_preview_add_primitive(*preview, *host.renderer, preview_type, host.assets)
             : add_primitive_to_scene(*preview, *host.renderer, preview_type);
     if (!preview->scene.alive(preview_entity))
     {
