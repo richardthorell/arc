@@ -68,6 +68,12 @@ struct material_compiled_program
 /** @brief Return whether a material is eligible to participate in the requested render pass. */
 [[nodiscard]] bool material_supports_pass(const material_descriptor& material, material_pass pass) noexcept;
 
+/** @brief Return whether an executable runtime material program matches the current renderer contract. */
+[[nodiscard]] inline bool material_runtime_program_compatible(const material_runtime_program& program) noexcept
+{
+    return program.contract_version == material_pass_contract_version && program.material_abi == material_abi_version;
+}
+
 /** @brief Return whether this pass needs to execute the Material ABI evaluator. */
 [[nodiscard]] bool material_pass_evaluates_surface(material_pass pass, material_alpha_mode alpha_mode) noexcept;
 
