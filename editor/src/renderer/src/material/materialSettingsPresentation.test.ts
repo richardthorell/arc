@@ -82,6 +82,16 @@ describe('material settings presentation', () => {
 
     expect(
       materialRenderPathLabel({
+        domain: 'surface',
+        blendMode: 'opaque',
+        shadingModel: 'standard',
+        graph,
+        customShader: true,
+      }),
+    ).toBe('Clustered Forward');
+
+    expect(
+      materialRenderPathLabel({
         domain: 'terrain',
         blendMode: 'opaque',
         shadingModel: 'standard',
