@@ -1513,7 +1513,7 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
                         0.0f, 0.1f);
                     viewport_surface->preview_rotation_radians =
                         std::fmod(viewport_surface->preview_rotation_radians + delta_seconds * 0.35f,
-                                  math::two_pi<float>);
+                                  math::tau<float>);
                     transform->set_rotation(math::from_axis_angle(math::vector3f{0.0f, 1.0f, 0.0f},
                                                                   viewport_surface->preview_rotation_radians));
                 }
