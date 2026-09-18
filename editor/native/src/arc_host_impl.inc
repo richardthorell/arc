@@ -501,6 +501,64 @@ bool refresh_asset_preview_material(HostState& host, viewport_surface_registry::
 }
 
 template <class HostState>
+bool apply_live_asset_preview_material(HostState& host, viewport_surface_registry::surface_state& surface,
+                                       std::string_view source)
+{
+    if (surface.preview_kind != asset_preview_kind::material || !surface.preview_scene || source.empty()) return false;
+    if (!host.asset_registry || !host.renderer || !surface.preview_guid.valid()) return false;
+
+    const auto asset = host.asset_registry->find(surface.preview_guid);
+    if (!asset || asset->type != assets::asset_types::material) return false;
+    const auto resolved =
+        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, asset->source_path);
+    if (!resolved || !is_material_asset_path(resolved->path)) return false;
+
+    auto realized = realize_material_preview_descriptor(source, resolved->path.stem().string());
+    if (!realized.succeeded)
+    {
+        surface.preview_error =
+            realized.message.empty() ? "Live material preview realization failed" : realized.message;
+        return false;
+    }
+    resolve_material_runtime_textures(host.scene.material_library, *host.renderer, resolved->asset_root,
+                                      resolved->path, realized.texture_sources, realized.material);
+
+    bool uploaded{};
+    if (surface.preview_material.valid())
+        uploaded = host.renderer->update_material(surface.preview_material, std::move(realized.material));
+    if (!uploaded)
+    {
+        surface.preview_material = host.renderer->create_material(std::move(realized.material));
+        uploaded = surface.preview_material.valid();
+    }
+    if (!uploaded)
+    {
+        surface.preview_error = "Renderer could not publish the live material preview";
+        return false;
+    }
+
+    auto* mesh_renderer = surface.preview_scene->scene.try_get<scene::mesh_renderer_component>(surface.preview_entity);
+    if (!mesh_renderer)
+    {
+        surface.preview_error = "Material preview mesh has no mesh renderer";
+        return false;
+    }
+
+    mesh_renderer->material = surface.preview_material;
+    // Mark this as current for the asset generation so the per-frame saved-asset
+    // refresh does not immediately overwrite the in-memory editor material.
+    surface.preview_material_generation = asset->generation;
+    surface.preview_error.clear();
+    arc::diagnostics::info(
+        "editor.materials",
+        "[material-flow] live material preview applied guid=" + assets::to_string(surface.preview_guid) +
+            " generation=" + std::to_string(asset->generation));
+    for (const auto& diagnostic : realized.diagnostics)
+        arc::diagnostics::info("editor.materials", "[material-flow] live preview note: " + diagnostic);
+    return true;
+}
+
+template <class HostState>
 bool refresh_asset_preview_model(HostState& host, viewport_surface_registry::surface_state& surface)
 {
     if (surface.preview_kind != asset_preview_kind::model) return true;
