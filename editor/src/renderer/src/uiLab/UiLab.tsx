@@ -532,12 +532,7 @@ export function UiLab() {
             <div className="ui-lab-toggle-stack">
               <UiToggleButton aria-label="Toggle off example" checked={false} onCheckedChange={() => undefined} />
               <UiToggleButton aria-label="Toggle on example" checked onCheckedChange={() => undefined} />
-              <UiToggleButton
-                aria-label="Toggle disabled example"
-                checked
-                disabled
-                onCheckedChange={() => undefined}
-              />
+              <UiToggleButton aria-label="Toggle disabled example" checked disabled onCheckedChange={() => undefined} />
             </div>
           </LabCard>
         </LabSection>
