@@ -406,7 +406,11 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
                 <span className="inspector-property-label">Sharpen</span>
                 <input
                   className="texture-inspector-input"
-                  disabled={settingsBusy || settings.mipPolicy === 'none' || (ddsSource && settings.mipPolicy === 'preserve_source')}
+                  disabled={
+                    settingsBusy ||
+                    settings.mipPolicy === 'none' ||
+                    (ddsSource && settings.mipPolicy === 'preserve_source')
+                  }
                   max={2}
                   min={0}
                   step={0.05}
@@ -419,7 +423,11 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
                 <span className="inspector-property-label">Dither</span>
                 <input
                   checked={settings.ditherMips}
-                  disabled={settingsBusy || settings.mipPolicy === 'none' || (ddsSource && settings.mipPolicy === 'preserve_source')}
+                  disabled={
+                    settingsBusy ||
+                    settings.mipPolicy === 'none' ||
+                    (ddsSource && settings.mipPolicy === 'preserve_source')
+                  }
                   type="checkbox"
                   onChange={(event) => void updateSettings({ ditherMips: event.target.checked })}
                 />
@@ -428,7 +436,11 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
                 <span className="inspector-property-label">De-band</span>
                 <input
                   checked={settings.debandMips}
-                  disabled={settingsBusy || settings.mipPolicy === 'none' || (ddsSource && settings.mipPolicy === 'preserve_source')}
+                  disabled={
+                    settingsBusy ||
+                    settings.mipPolicy === 'none' ||
+                    (ddsSource && settings.mipPolicy === 'preserve_source')
+                  }
                   type="checkbox"
                   onChange={(event) => void updateSettings({ debandMips: event.target.checked })}
                 />
@@ -437,7 +449,12 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
                 <span className="inspector-property-label">De-band Strength</span>
                 <input
                   className="texture-inspector-input"
-                  disabled={settingsBusy || settings.mipPolicy === 'none' || (ddsSource && settings.mipPolicy === 'preserve_source') || !settings.debandMips}
+                  disabled={
+                    settingsBusy ||
+                    settings.mipPolicy === 'none' ||
+                    (ddsSource && settings.mipPolicy === 'preserve_source') ||
+                    !settings.debandMips
+                  }
                   max={1}
                   min={0}
                   step={0.05}
