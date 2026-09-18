@@ -1,5 +1,6 @@
 #include <arc/editor/material_preview.h>
 #include <arc/editor/material_preview_realizer.h>
+#include <arc/render/material_pass.h>
 
 #include <catch2/catch_test_macros.hpp>
 
