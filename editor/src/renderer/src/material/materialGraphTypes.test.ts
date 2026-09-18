@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createDefaultMaterialGraph,
   isMaterialGraph,
+  materialGraphCompileFingerprint,
   materialGraphFromAsset,
   materialNodeDefinitions,
 } from './materialGraphTypes';
@@ -44,5 +45,33 @@ describe('material graph schema', () => {
 
   it('rejects material assets without a native graph', () => {
     expect(() => materialGraphFromAsset({ graph: null })).toThrow('valid native material graph');
+  });
+});
+
+
+describe('material graph compile fingerprint', () => {
+  it('ignores node layout and viewport-only edits', () => {
+    const graph = createDefaultMaterialGraph();
+    const moved = JSON.parse(JSON.stringify(graph));
+    moved.nodes[0].position = [900, 700];
+    moved.viewport = { x: -250, y: 120, zoom: 1.4 };
+
+    expect(materialGraphCompileFingerprint(moved)).toBe(materialGraphCompileFingerprint(graph));
+  });
+
+  it('changes for values, parameters, and graph connections', () => {
+    const graph = createDefaultMaterialGraph();
+
+    const valueEdit = JSON.parse(JSON.stringify(graph));
+    valueEdit.nodes.find((node: { type: string }) => node.type === 'constant').values.value = 0.25;
+    expect(materialGraphCompileFingerprint(valueEdit)).not.toBe(materialGraphCompileFingerprint(graph));
+
+    const parameterEdit = JSON.parse(JSON.stringify(graph));
+    parameterEdit.nodes[0].parameter.name = 'Tint';
+    expect(materialGraphCompileFingerprint(parameterEdit)).not.toBe(materialGraphCompileFingerprint(graph));
+
+    const connectionEdit = JSON.parse(JSON.stringify(graph));
+    connectionEdit.connections.pop();
+    expect(materialGraphCompileFingerprint(connectionEdit)).not.toBe(materialGraphCompileFingerprint(graph));
   });
 });
