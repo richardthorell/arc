@@ -5,7 +5,7 @@ import { Code2 } from 'lucide-react';
 import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/AssetPreviewPanel';
 import { AssetPreviewViewport } from '../assetPreview/AssetPreviewViewport';
 import type { EditorDocument } from '../editors/editorTypes';
-import { UiPanelCard, UiSelect, UiToggleButton } from '../ui';
+import { UiPanelCard, UiPanelCardRow, UiSelect, UiToggleButton } from '../ui';
 import { replaceMaterialSettings, useMaterialDocumentState } from './materialDocumentState';
 import { MaterialGraphWithInteractions } from './MaterialGraphInteractions';
 import type { MaterialBlendMode, MaterialDomain, MaterialShadingModel } from './materialGraphTypes';
@@ -199,7 +199,6 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
           showHeader={false}
           metadata={[
             {
-              label: 'Mesh',
               value: (
                 <span className="material-preview-controls">
                   <span className="material-preview-mesh-toggle" role="group" aria-label="Material preview mesh">
@@ -226,7 +225,6 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
                 </span>
               ),
             },
-            { label: 'Environment', value: 'Studio HDRI' },
           ]}
         >
           <AssetPreviewViewport
@@ -248,8 +246,7 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
             title="Material"
             onToggle={() => setMaterialSettingsCollapsed((collapsed) => !collapsed)}
           >
-            <div className="material-setting-row">
-              <span>Domain</span>
+            <UiPanelCardRow label="Domain">
               <UiSelect
                 ariaLabel="Material domain"
                 disabled={document.readOnly}
@@ -257,9 +254,8 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
                 value={materialDomain}
                 onValueChange={(value) => replaceMaterialSettings(document, { domain: value as MaterialDomain })}
               />
-            </div>
-            <div className="material-setting-row">
-              <span>Blend Mode</span>
+            </UiPanelCardRow>
+            <UiPanelCardRow label="Blend Mode">
               <UiSelect
                 ariaLabel="Material blend mode"
                 disabled={document.readOnly}
@@ -267,9 +263,8 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
                 value={materialBlendMode}
                 onValueChange={(value) => replaceMaterialSettings(document, { blendMode: value as MaterialBlendMode })}
               />
-            </div>
-            <div className="material-setting-row">
-              <span>Shading Model</span>
+            </UiPanelCardRow>
+            <UiPanelCardRow label="Shading Model">
               <UiSelect
                 ariaLabel="Material shading model"
                 disabled={document.readOnly}
@@ -279,16 +274,15 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
                   replaceMaterialSettings(document, { shadingModel: value as MaterialShadingModel })
                 }
               />
-            </div>
-            <div className="material-setting-row material-setting-toggle-row">
-              <span>Two Sided</span>
+            </UiPanelCardRow>
+            <UiPanelCardRow className="material-setting-toggle-row" label="Two Sided">
               <UiToggleButton
                 aria-label="Two sided material"
                 checked={state.asset.doubleSided === true}
                 disabled={document.readOnly}
                 onCheckedChange={(checked) => replaceMaterialSettings(document, { doubleSided: checked })}
               />
-            </div>
+            </UiPanelCardRow>
           </UiPanelCard>
         </div>
       </aside>
