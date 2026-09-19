@@ -7,6 +7,7 @@ import { UiButton } from './UiButton';
 import { UiDialog } from './UiDialog';
 import { UiDropdown } from './UiDropdown';
 import { UiIconButton } from './UiIconButton';
+import { UiTextInput } from './UiTextInput';
 
 import './UiColorPicker.css';
 
@@ -603,8 +604,62 @@ function PickerChannelSlider({
         type="range"
         value={value}
       />
-      <output>{value.toFixed(precision)}</output>
+      <PickerNumericInput
+        ariaLabel={`Color ${label} value`}
+        max={max}
+        min={min}
+        precision={precision}
+        value={value}
+        onCommit={onChange}
+      />
     </label>
+  );
+}
+
+function PickerNumericInput({
+  ariaLabel,
+  value,
+  precision,
+  min,
+  max,
+  onCommit,
+}: {
+  ariaLabel: string;
+  value: number;
+  precision: number;
+  min: number;
+  max: number;
+  onCommit: (value: number) => void;
+}) {
+  const [text, setText] = useState(value.toFixed(precision));
+  useEffect(() => setText(value.toFixed(precision)), [precision, value]);
+
+  const commit = () => {
+    const parsed = Number.parseFloat(text);
+    if (!Number.isFinite(parsed)) {
+      setText(value.toFixed(precision));
+      return;
+    }
+    onCommit(clamp(parsed, min, max));
+  };
+
+  return (
+    <UiTextInput
+      aria-label={ariaLabel}
+      className="arc-color-channel-value"
+      inputMode="decimal"
+      value={text}
+      onBlur={commit}
+      onChange={(event) => setText(event.target.value)}
+      onFocus={(event) => event.currentTarget.select()}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') event.currentTarget.blur();
+        if (event.key === 'Escape') {
+          setText(value.toFixed(precision));
+          event.currentTarget.blur();
+        }
+      }}
+    />
   );
 }
 
@@ -612,8 +667,9 @@ function PickerTextField({ id, value, onCommit }: { id: string; value: string; o
   const [text, setText] = useState(value);
   useEffect(() => setText(value), [value]);
   return (
-    <input
+    <UiTextInput
       aria-label="Hex sRGB"
+      className="arc-color-hex-input"
       id={id}
       onBlur={() => onCommit(text)}
       onChange={(event) => setText(event.target.value)}
