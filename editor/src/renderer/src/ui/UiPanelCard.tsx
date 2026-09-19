@@ -1,4 +1,4 @@
-import { forwardRef, type HTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useEffect, useState, type HTMLAttributes, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
 export type UiPanelCardProps = Omit<HTMLAttributes<HTMLElement>, 'title'> & {
@@ -15,8 +15,20 @@ export const UiPanelCard = forwardRef<HTMLElement, UiPanelCardProps>(function Ui
   { title, expandable = true, collapsed = false, onToggle, actions, children, className, contentClassName, ...props },
   ref,
 ) {
-  const isCollapsed = expandable && collapsed;
+  const [internalCollapsed, setInternalCollapsed] = useState(collapsed);
+  const controlled = onToggle !== undefined;
+  const isCollapsed = expandable && (controlled ? collapsed : internalCollapsed);
   const toggleLabel = typeof title === 'string' ? `${isCollapsed ? 'Expand' : 'Collapse'} ${title}` : undefined;
+
+  useEffect(() => {
+    if (!controlled) setInternalCollapsed(collapsed);
+  }, [collapsed, controlled]);
+
+  const handleToggle = () => {
+    if (!expandable) return;
+    if (controlled) onToggle?.();
+    else setInternalCollapsed((value) => !value);
+  };
 
   return (
     <section
@@ -27,12 +39,12 @@ export const UiPanelCard = forwardRef<HTMLElement, UiPanelCardProps>(function Ui
       {...props}
     >
       <header className="ui-panel-section-header ui-panel-card-header">
-        {expandable && onToggle ? (
+        {expandable ? (
           <button
             aria-expanded={!isCollapsed}
             aria-label={toggleLabel}
             className="ui-panel-section-toggle ui-panel-card-toggle"
-            onClick={onToggle}
+            onClick={handleToggle}
             type="button"
           >
             {isCollapsed ? <ChevronRight aria-hidden="true" size={15} /> : <ChevronDown aria-hidden="true" size={15} />}
