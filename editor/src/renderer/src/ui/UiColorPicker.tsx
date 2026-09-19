@@ -1,7 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent, PointerEvent as ReactPointerEvent, RefObject } from 'react';
-import { Check, Copy, Pipette, X } from 'lucide-react';
+import { Check, Copy, Pipette } from 'lucide-react';
 import { createPortal } from 'react-dom';
+
+import { UiDialog } from './UiDialog';
 
 import './UiColorPicker.css';
 
@@ -29,6 +31,23 @@ export type UiColorPickerProps = {
 
 const pickerWidth = 306;
 const pickerEstimatedHeight = 500;
+const pickerViewportMargin = 8;
+
+const anchoredPickerPosition = (anchorRef: RefObject<HTMLElement | null>) => {
+  const anchor = anchorRef.current?.getBoundingClientRect();
+  if (!anchor) return { x: pickerViewportMargin, y: pickerViewportMargin };
+
+  const x = Math.max(
+    pickerViewportMargin,
+    Math.min(anchor.left, window.innerWidth - pickerWidth - pickerViewportMargin),
+  );
+  let y = anchor.bottom + 6;
+  if (y + pickerEstimatedHeight > window.innerHeight) {
+    y = Math.max(pickerViewportMargin, anchor.top - pickerEstimatedHeight - 6);
+  }
+  return { x, y };
+};
+
 const clamp = (value: number, min = 0, max = 1) => Math.min(Math.max(value, min), max);
 const wrapHue = (hue: number) => ((hue % 360) + 360) % 360;
 
@@ -130,14 +149,13 @@ export function UiColorPicker({
   const [draft, setDraft] = useState(value);
   const [mode, setMode] = useState<ColorMode>('rgb');
   const [space, setSpace] = useState<ColorSpace>('srgb');
-  const [position, setPosition] = useState({ left: 8, top: 8 });
   const original = useRef(value);
   const latest = useRef(value);
-  const pickerRef = useRef<HTMLDivElement>(null);
   const previewFrame = useRef<number | null>(null);
   const pendingPreview = useRef(value);
   const hsv = linearColorToHsv(draft);
   const hdr = maxChannelValue > 1;
+  const initialPosition = anchoredPickerPosition(anchorRef);
   const hdrScale = displayScale(draft);
   const applyHdrScale = (color: UiColorValue) =>
     hdr ? { ...color, x: color.x * hdrScale, y: color.y * hdrScale, z: color.z * hdrScale } : color;
@@ -148,33 +166,18 @@ export function UiColorPicker({
     latest.current = value;
   }, [value]);
 
-  useLayoutEffect(() => {
-    const anchor = anchorRef.current?.getBoundingClientRect();
-    if (!anchor) return;
-    const left = Math.min(anchor.left, window.innerWidth - pickerWidth - 8);
-    let top = anchor.bottom + 6;
-    if (top + pickerEstimatedHeight > window.innerHeight) top = Math.max(8, anchor.top - pickerEstimatedHeight - 6);
-    setPosition({ left: Math.max(8, left), top });
-  }, [anchorRef]);
-
   useEffect(() => {
-    const closeFromOutside = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!pickerRef.current?.contains(target) && !anchorRef.current?.contains(target)) onClose();
-    };
     const closeFromKeyboard = (event: globalThis.KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       onCommit(original.current);
       onClose();
     };
-    document.addEventListener('pointerdown', closeFromOutside, true);
     document.addEventListener('keydown', closeFromKeyboard);
     return () => {
-      document.removeEventListener('pointerdown', closeFromOutside, true);
       document.removeEventListener('keydown', closeFromKeyboard);
       if (previewFrame.current !== null) window.cancelAnimationFrame(previewFrame.current);
     };
-  }, [anchorRef, onClose, onCommit]);
+  }, [onClose, onCommit]);
 
   const emit = (next: UiColorValue, final: boolean) => {
     latest.current = next;
@@ -258,22 +261,18 @@ export function UiColorPicker({
     mode === 'hsv' ? ['H', 'S', 'V', ...(showAlpha ? ['A'] : [])] : ['R', 'G', 'B', ...(showAlpha ? ['A'] : [])];
 
   return createPortal(
-    <div
-      aria-label={`${label} color picker`}
-      aria-modal="false"
+    <UiDialog
+      ariaLabel={`${label} color picker`}
+      blurBackdrop={false}
       className="arc-color-picker"
-      ref={pickerRef}
-      role="dialog"
-      style={{ left: position.left, top: position.top }}
+      initialPosition={initialPosition}
+      modal={false}
+      onClose={onClose}
+      subtitle={`${showAlpha ? 'RGBA' : 'RGB'}${hdr ? ' · HDR' : ''}`}
+      title={label}
+      width={pickerWidth}
+      zIndex={1600}
     >
-      <header className="arc-color-picker-header">
-        <strong>{label}</strong>
-        <span>{`${showAlpha ? 'RGBA' : 'RGB'}${hdr ? ' · HDR' : ''}`}</span>
-        <button aria-label="Close color picker" onClick={onClose} type="button">
-          <X size={14} />
-        </button>
-      </header>
-
       <div className="arc-color-picker-preview-row">
         <button
           aria-label={`Restore original ${label}`}
@@ -426,7 +425,7 @@ export function UiColorPicker({
           <Check size={13} /> Linear storage
         </span>
       </div>
-    </div>,
+    </UiDialog>,
     document.body,
   );
 }
