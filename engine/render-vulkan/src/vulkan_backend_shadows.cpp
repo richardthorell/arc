@@ -2,6 +2,8 @@
 
 #include "builtin_shaders.h"
 
+#include <iostream>
+
 namespace arc::render::vulkan::backend_detail
 {
 void vulkan_render_backend::destroy_virtual_shadow_resources(vulkan_virtual_shadow_resources& resources) noexcept
@@ -676,6 +678,10 @@ const directional_light_event* vulkan_render_backend::active_directional_shadow_
 
 void vulkan_render_backend::execute_compiled_graph(VkCommandBuffer command_buffer)
 {
+    const bool diagnose_graph = first_graph_diagnostic_;
+    if (diagnose_graph)
+        std::cerr << "[debug][render.vulkan.graph] first graph: texture feedback begin\n";
+
     bool directional_shadows_executed{};
     bool viewport_executed{};
     bool scene_executed{};
@@ -687,10 +693,18 @@ void vulkan_render_backend::execute_compiled_graph(VkCommandBuffer command_buffe
                                       [](const auto& pass) { return pass.builtin == builtin_render_pass::fxaa; });
 
     dispatch_texture_mip_feedback(command_buffer);
+    if (diagnose_graph)
+        std::cerr << "[debug][render.vulkan.graph] first graph: texture feedback complete; pass count="
+                  << last_profile_.graph.passes.size() << "\n";
 
     for (const auto& pass : last_profile_.graph.passes)
     {
+        if (diagnose_graph)
+            std::cerr << "[debug][render.vulkan.graph] pass begin: '" << pass.name << "' builtin="
+                      << static_cast<int>(pass.builtin) << "\n";
         const auto scope = begin_gpu_scope(command_buffer, pass.name.c_str());
+        if (diagnose_graph)
+            std::cerr << "[debug][render.vulkan.graph] pass scope begun: '" << pass.name << "'\n";
         switch (pass.builtin)
         {
             case builtin_render_pass::virtual_shadow_page_marking:
@@ -804,7 +818,11 @@ void vulkan_render_backend::execute_compiled_graph(VkCommandBuffer command_buffe
             default:
                 break;
         }
+        if (diagnose_graph)
+            std::cerr << "[debug][render.vulkan.graph] pass body complete: '" << pass.name << "'\n";
         end_gpu_scope(command_buffer, scope);
+        if (diagnose_graph)
+            std::cerr << "[debug][render.vulkan.graph] pass scope ended: '" << pass.name << "'\n";
     }
 
     if (!directional_shadows_executed)
@@ -819,6 +837,11 @@ void vulkan_render_backend::execute_compiled_graph(VkCommandBuffer command_buffe
         transition_virtual_shadow_image(command_buffer, virtual_shadow_resources_.dynamic_image,
                                         virtual_shadow_resources_.dynamic_layout,
                                         VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+    }
+    if (diagnose_graph)
+    {
+        std::cerr << "[debug][render.vulkan.graph] first graph: complete\n";
+        first_graph_diagnostic_ = false;
     }
 }
 
