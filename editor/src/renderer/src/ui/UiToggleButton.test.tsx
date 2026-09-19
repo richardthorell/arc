@@ -31,6 +31,18 @@ describe('UiToggleButton', () => {
     expect(onCheckedChange).toHaveBeenCalledWith(true);
   });
 
+  it('resolves a mixed state to enabled on click', () => {
+    const onCheckedChange = vi.fn();
+    render(<UiToggleButton aria-label="Mixed toggle" checked={false} mixed onCheckedChange={onCheckedChange} />);
+
+    const toggle = screen.getByRole('switch', { name: 'Mixed toggle' });
+    expect(toggle).toHaveClass('is-mixed');
+    expect(toggle).toHaveAttribute('data-mixed', 'true');
+
+    fireEvent.click(toggle);
+    expect(onCheckedChange).toHaveBeenCalledWith(true);
+  });
+
   it('does not change state while disabled', () => {
     const onCheckedChange = vi.fn();
     render(<UiToggleButton aria-label="Disabled toggle" checked={false} disabled onCheckedChange={onCheckedChange} />);
