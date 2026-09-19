@@ -91,6 +91,18 @@ class ArcBuildTests(unittest.TestCase):
         self.assertFalse(installed)
         run.assert_not_called()
 
+    def test_remove_readonly_path_clears_flag_and_retries(self) -> None:
+        retry = mock.Mock()
+
+        with mock.patch.object(arc_build.os, "chmod") as chmod:
+            arc_build.remove_readonly_path(retry, "locked.idx", None)
+
+        chmod.assert_called_once_with(
+            "locked.idx",
+            arc_build.stat.S_IREAD | arc_build.stat.S_IWRITE,
+        )
+        retry.assert_called_once_with("locked.idx")
+
     def test_reset_cmake_build_directory_removes_existing_tree(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_root:
             build_dir = pathlib.Path(temporary_root) / "build"
