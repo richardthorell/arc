@@ -9,13 +9,7 @@ afterEach(cleanup);
 describe('UiColorControl', () => {
   it('shows the channel type and opens the shared picker', () => {
     const onCommit = vi.fn();
-    render(
-      <UiColorControl
-        label="Base Color"
-        value={{ x: 0.4, y: 0.2, z: 0.1, w: 0.5 }}
-        onCommit={onCommit}
-      />,
-    );
+    render(<UiColorControl label="Base Color" value={{ x: 0.4, y: 0.2, z: 0.1, w: 0.5 }} onCommit={onCommit} />);
 
     expect(screen.getByText('RGBA')).toBeTruthy();
     expect(screen.queryByText('HDR')).toBeNull();

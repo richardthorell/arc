@@ -222,7 +222,10 @@ export function UiColorPicker({
   const commitChannels = (channels: number[]) => {
     const alpha = showAlpha ? channels[3] : draft.w;
     if (mode === 'hsv') {
-      emit(applyHdrScale(hsvToLinearColor({ h: channels[0], s: channels[1] / 100, v: channels[2] / 100 }, alpha)), true);
+      emit(
+        applyHdrScale(hsvToLinearColor({ h: channels[0], s: channels[1] / 100, v: channels[2] / 100 }, alpha)),
+        true,
+      );
       return;
     }
     if (space === 'linear') {
@@ -384,7 +387,8 @@ export function UiColorPicker({
           <PickerNumberField
             key={`${mode}-${space}-${channelLabels[index]}`}
             label={channelLabels[index]}
-            max={mode === 'hsv'
+            max={
+              mode === 'hsv'
                 ? index === 0
                   ? 360
                   : index === 3
@@ -394,7 +398,8 @@ export function UiColorPicker({
                   ? 255
                   : index < 3
                     ? maxChannelValue
-                    : 1}
+                    : 1
+            }
             min={mode === 'rgb' && space === 'linear' && index < 3 ? minChannelValue : 0}
             precision={mode === 'hsv' ? (index === 0 ? 1 : index === 3 ? 3 : 1) : space === 'srgb' && index < 3 ? 0 : 3}
             value={channel}
