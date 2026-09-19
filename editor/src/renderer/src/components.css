@@ -481,6 +481,16 @@ textarea {
   transform: translateX(16px);
 }
 
+.ui-toggle-button.is-mixed .ui-toggle-button-track {
+  border-color: var(--arc-color-button-border-hover);
+  background: linear-gradient(180deg, var(--arc-color-button-field-top), var(--arc-color-button-field-bottom));
+}
+
+.ui-toggle-button.is-mixed .ui-toggle-button-thumb {
+  background: var(--arc-color-text-muted);
+  transform: translateX(8px);
+}
+
 .ui-toggle-button:focus-visible .ui-toggle-button-track {
   border-color: var(--arc-color-accent);
   box-shadow:
