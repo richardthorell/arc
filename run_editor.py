@@ -27,6 +27,10 @@ DEFAULT_NO_VULKAN_BUILD_DIR = "out/build/editor-no-vulkan"
 DEFAULT_QUICK_START_PROJECT = os.path.join("out", "editor-quick-start-project")
 SLANG_VERSION = "2026.14.1"
 SLANG_RELEASE_BASE_URL = "https://github.com/shader-slang/slang/releases/download/v{}".format(SLANG_VERSION)
+VISUAL_STUDIO_GENERATORS = {
+    18: "Visual Studio 18 2026",
+    17: "Visual Studio 17 2022",
+}
 
 
 def find_executable(name):
@@ -43,6 +47,89 @@ def find_executable(name):
             candidate = os.path.join(directory, name + extension)
             if os.path.exists(candidate):
                 return candidate
+    return None
+
+
+def find_vswhere():
+    executable = find_executable("vswhere")
+    if executable:
+        return executable
+
+    for variable in ("ProgramFiles(x86)", "ProgramFiles"):
+        root = os.environ.get(variable)
+        if not root:
+            continue
+        candidate = os.path.join(root, "Microsoft Visual Studio", "Installer", "vswhere.exe")
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+def resolve_visual_studio_generator(cmake):
+    if platform.system() != "Windows":
+        return None
+
+    vswhere = find_vswhere()
+    if vswhere is None:
+        raise RuntimeError(
+            "Visual Studio Installer's vswhere.exe was not found; install Visual Studio with the C++ desktop workload"
+        )
+
+    try:
+        version = subprocess.check_output(
+            [
+                vswhere,
+                "-latest",
+                "-products",
+                "*",
+                "-requires",
+                "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                "-property",
+                "installationVersion",
+            ],
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise RuntimeError("failed to query the installed Visual Studio C++ toolchain: {}".format(error))
+
+    if not version:
+        raise RuntimeError("Visual Studio with the Desktop development with C++ workload was not found")
+
+    try:
+        major_version = int(version.split(".", 1)[0])
+    except ValueError:
+        raise RuntimeError("could not determine the installed Visual Studio version from '{}'".format(version))
+
+    generator = VISUAL_STUDIO_GENERATORS.get(major_version)
+    if generator is None:
+        raise RuntimeError("unsupported Visual Studio version {}; update run_editor.py generator mapping".format(version))
+
+    try:
+        cmake_help = subprocess.check_output(
+            [cmake, "--help"], stderr=subprocess.STDOUT, universal_newlines=True
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise RuntimeError("failed to query CMake generators: {}".format(error))
+
+    if generator not in cmake_help:
+        requirement = "CMake 4.2 or newer" if major_version >= 18 else "a CMake version that supports Visual Studio 2022"
+        raise RuntimeError("{} does not support '{}'; install {}".format(cmake, generator, requirement))
+
+    return generator
+
+
+def cmake_cache_generator(build_dir):
+    cache = os.path.join(build_dir, "CMakeCache.txt")
+    if not os.path.isfile(cache):
+        return None
+    try:
+        with io.open(cache, "r", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                if line.startswith("CMAKE_GENERATOR:INTERNAL="):
+                    return line.split("=", 1)[1].strip()
+    except IOError:
+        return None
     return None
 
 
@@ -409,26 +496,36 @@ def prepare_native_editor(args, repo_root, env=None):
     if cmake is None:
         raise RuntimeError("could not find CMake executable '{}'".format(args.cmake))
 
+    generator = resolve_visual_studio_generator(cmake)
+    existing_generator = cmake_cache_generator(build_dir)
+    if generator and existing_generator and existing_generator != generator:
+        raise RuntimeError(
+            "CMake build directory '{}' uses generator '{}'; remove that build directory once so ARC can reconfigure it with '{}'".format(
+                build_dir, existing_generator, generator
+            )
+        )
+
     # Existing build trees created by older helpers may prohibit FetchContent
     # during CMake's automatic regeneration. Configure once with population
     # enabled so newly pinned dependencies can bootstrap. Subsequent launches
     # retain the setting and go directly to the incremental build.
     if cmake_cache_requires_configure(build_dir, args.vulkan_render):
-        run(
-            [
-                cmake,
-                "-B",
-                build_dir,
-                "-S",
-                repo_root,
-                "-DCMAKE_BUILD_TYPE={}".format(args.config),
-                "-DARC_BUILD_EDITOR=ON",
-                "-DARC_BUILD_RENDER_VULKAN={}".format("ON" if args.vulkan_render else "OFF"),
-                "-DFETCHCONTENT_FULLY_DISCONNECTED=OFF",
-            ],
+        configure_command = [
+            cmake,
+            "-B",
+            build_dir,
+            "-S",
             repo_root,
-            env,
-        )
+            "-DCMAKE_BUILD_TYPE={}".format(args.config),
+            "-DARC_BUILD_EDITOR=ON",
+            "-DARC_BUILD_RENDER_VULKAN={}".format("ON" if args.vulkan_render else "OFF"),
+            "-DFETCHCONTENT_FULLY_DISCONNECTED=OFF",
+        ]
+        if generator:
+            # Visual Studio generators initialize the MSVC environment themselves,
+            # so Windows builds do not depend on nmake.exe or a Developer Command Prompt.
+            configure_command.extend(["-G", generator, "-A", "x64"])
+        run(configure_command, repo_root, env)
 
     # Always ask the build system for the host. CMake/MSBuild/Ninja perform an
     # incremental no-op when it is current, while checking timestamps prevents
