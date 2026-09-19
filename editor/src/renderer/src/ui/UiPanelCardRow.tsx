@@ -1,7 +1,7 @@
 import type { HTMLAttributes, ReactNode } from 'react';
 
 export type UiPanelCardRowProps = HTMLAttributes<HTMLDivElement> & {
-  label: ReactNode;
+  label?: ReactNode;
   description?: ReactNode;
   align?: 'center' | 'start';
   controlClassName?: string;
@@ -31,11 +31,13 @@ export function UiPanelCardRow({
         .join(' ')}
       {...props}
     >
-      <span className="ui-panel-card-row-label">
-        <span>{label}</span>
-        {description && <small className="ui-panel-card-row-description">{description}</small>}
-      </span>
-      {!fullWidth && (
+      {label !== undefined && (
+        <span className="ui-panel-card-row-label">
+          <span>{label}</span>
+          {description && <small className="ui-panel-card-row-description">{description}</small>}
+        </span>
+      )}
+      {children !== undefined && (
         <div className={['ui-panel-card-row-control', controlClassName].filter(Boolean).join(' ')}>{children}</div>
       )}
     </div>
