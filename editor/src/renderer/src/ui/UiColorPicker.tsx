@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { Copy, Pipette } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
@@ -314,7 +314,7 @@ export function UiColorPicker({
           {
             label: 'Intensity',
             value: hdrScale,
-            min: 1,
+            min: 0,
             max: Math.max(1, maxChannelValue),
             step: 0.01,
             precision: 2,
@@ -460,7 +460,15 @@ export function UiColorPicker({
         />
       </div>
 
-      <div className="arc-color-channel-sliders">
+      <div
+        className="arc-color-channel-sliders"
+        style={
+          {
+            '--arc-picker-hue': hueCss,
+            '--arc-picker-color': colorToCss({ ...draft, w: 1 }),
+          } as CSSProperties
+        }
+      >
         {channelSliders.map((channel, index) => (
           <PickerChannelSlider
             className={channel.className}
