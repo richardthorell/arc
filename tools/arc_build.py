@@ -148,6 +148,15 @@ def cmake_cache_generator(build_dir):
     return None
 
 
+def reset_cmake_build_directory(build_dir):
+    if not os.path.exists(build_dir):
+        return
+    if not os.path.isdir(build_dir):
+        raise RuntimeError("CMake build path is not a directory: {}".format(build_dir))
+    print("Removing CMake build directory: {}".format(build_dir))
+    shutil.rmtree(build_dir)
+
+
 def build_cmake_target(cmake, build_dir, target, config, cwd, env=None, parallel=None):
     run(
         [

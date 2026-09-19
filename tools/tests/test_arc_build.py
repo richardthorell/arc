@@ -17,6 +17,16 @@ from tools import arc_build
 
 
 class ArcBuildTests(unittest.TestCase):
+    def test_reset_cmake_build_directory_removes_existing_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_root:
+            build_dir = pathlib.Path(temporary_root) / "build"
+            build_dir.mkdir()
+            (build_dir / "CMakeCache.txt").write_text("stale", encoding="utf-8")
+
+            arc_build.reset_cmake_build_directory(str(build_dir))
+
+            self.assertFalse(build_dir.exists())
+
     def test_selects_windows_pinned_archive(self) -> None:
         with mock.patch.object(arc_build.platform, "system", return_value="Windows"), mock.patch.object(
             arc_build.platform, "machine", return_value="AMD64"
