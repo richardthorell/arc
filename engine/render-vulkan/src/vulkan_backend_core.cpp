@@ -1,5 +1,7 @@
 #include "vulkan_backend_internal.h"
 
+#include <iostream>
+
 namespace arc::render::vulkan::backend_detail
 {
 const char* vk_result_name(VkResult result) noexcept
@@ -867,14 +869,24 @@ void vulkan_render_backend::wait_for_shared_output(shared_viewport_output& outpu
 surface_frame_result vulkan_render_backend::render_shared_viewport_frame(shared_viewport_output& output,
                                                                          shared_viewport_slot& slot)
 {
+    const bool diagnose_first_frame = output.next_frame_id == 1;
+    if (diagnose_first_frame)
+        std::cerr << "[debug][render.vulkan.shared] first frame: backend render begin\n";
+
     output_viewport_width_ = output.width;
     output_viewport_height_ = output.height;
     const auto slot_index = static_cast<std::uint32_t>(&slot - output.slots.data());
     active_frame_index_ = slot_index;
+    if (diagnose_first_frame)
+        std::cerr << "[debug][render.vulkan.shared] first frame: ensure viewport begin\n";
     ensure_viewport(scaled_dimension(output.width), scaled_dimension(output.height));
+    if (diagnose_first_frame)
+        std::cerr << "[debug][render.vulkan.shared] first frame: ensure viewport complete\n";
     if (viewport_image_ == VK_NULL_HANDLE)
         return surface_frame_result::failure(
             {.code = surface_frame_error_code::backend_failure, .message = "viewport render target is unavailable"});
+    if (diagnose_first_frame)
+        std::cerr << "[debug][render.vulkan.shared] first frame: frame resource preparation begin\n";
     collect_texture_mip_feedback(slot_index);
     collect_gpu_visibility_feedback(slot_index);
     collect_virtual_geometry_feedback(slot_index);
@@ -883,6 +895,8 @@ surface_frame_result vulkan_render_backend::render_shared_viewport_frame(shared_
     collect_frame_capture_result();
     retire_completed_resources();
     prepare_frame_gpu_resources();
+    if (diagnose_first_frame)
+        std::cerr << "[debug][render.vulkan.shared] first frame: frame resource preparation complete\n";
     vkResetFences(device_, 1, &slot.fence);
     vkResetCommandPool(device_, slot.command_pool, 0);
     VkCommandBufferBeginInfo begin{};
@@ -891,10 +905,16 @@ surface_frame_result vulkan_render_backend::render_shared_viewport_frame(shared_
     if (vkBeginCommandBuffer(slot.command_buffer, &begin) != VK_SUCCESS)
         return surface_frame_result::failure(
             {.code = surface_frame_error_code::backend_failure, .message = "failed to begin shared viewport frame"});
+    if (diagnose_first_frame)
+        std::cerr << "[debug][render.vulkan.shared] first frame: command buffer begun\n";
 
     begin_debug_label(slot.command_buffer, "ARC shared viewport frame", {0.16f, 0.75f, 0.65f, 1.0f});
     reset_timestamp_queries(slot.command_buffer);
+    if (diagnose_first_frame)
+        std::cerr << "[debug][render.vulkan.shared] first frame: render graph begin\n";
     execute_compiled_graph(slot.command_buffer);
+    if (diagnose_first_frame)
+        std::cerr << "[debug][render.vulkan.shared] first frame: render graph complete\n";
     transition_viewport(slot.command_buffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
     VkImageMemoryBarrier destination{};
@@ -919,6 +939,8 @@ surface_frame_result vulkan_render_backend::render_shared_viewport_frame(shared_
     blit.dstOffsets[1] = {static_cast<std::int32_t>(output.width), static_cast<std::int32_t>(output.height), 1};
     vkCmdBlitImage(slot.command_buffer, viewport_image_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, slot.image,
                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
+    if (diagnose_first_frame)
+        std::cerr << "[debug][render.vulkan.shared] first frame: shared image blit recorded\n";
     destination.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     destination.newLayout = VK_IMAGE_LAYOUT_GENERAL;
     destination.srcQueueFamilyIndex = graphics_queue_family_;
@@ -931,11 +953,18 @@ surface_frame_result vulkan_render_backend::render_shared_viewport_frame(shared_
     if (vkEndCommandBuffer(slot.command_buffer) != VK_SUCCESS)
         return surface_frame_result::failure(
             {.code = surface_frame_error_code::backend_failure, .message = "failed to record shared viewport frame"});
+    if (diagnose_first_frame)
+        std::cerr << "[debug][render.vulkan.shared] first frame: command buffer recorded\n";
     VkSubmitInfo submit{};
     submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit.commandBufferCount = 1;
     submit.pCommandBuffers = &slot.command_buffer;
+    if (diagnose_first_frame)
+        std::cerr << "[debug][render.vulkan.shared] first frame: queue submit begin\n";
     const auto result = vkQueueSubmit(queue_, 1, &submit, slot.fence);
+    if (diagnose_first_frame)
+        std::cerr << "[debug][render.vulkan.shared] first frame: queue submit returned "
+                  << describe_vk_result(result) << "\n";
     if (result != VK_SUCCESS)
         return surface_frame_result::failure(
             {.code = result == VK_ERROR_DEVICE_LOST ? surface_frame_error_code::device_lost
