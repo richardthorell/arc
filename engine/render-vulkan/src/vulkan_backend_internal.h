@@ -1606,7 +1606,6 @@ private:
     bool native_swapchain_initialized_{};
     bool swapchain_rebuild_{};
     bool device_lost_{};
-    bool first_graph_diagnostic_{true};
     std::uint32_t min_image_count_{2};
     VkFormat viewport_format_{VK_FORMAT_R16G16B16A16_SFLOAT};
     VkFormat scene_color_format_{VK_FORMAT_R16G16B16A16_SFLOAT};
