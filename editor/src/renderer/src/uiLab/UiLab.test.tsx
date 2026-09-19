@@ -13,6 +13,8 @@ describe('UiLab', () => {
     render(<UiLab />);
 
     expect(screen.getByText('ARC UI Lab')).toBeInTheDocument();
+    expect(screen.getByText('Component hierarchy')).toBeInTheDocument();
+    expect(screen.getByText('Shared component relationships')).toBeInTheDocument();
     expect(screen.getByText('Buttons')).toBeInTheDocument();
     expect(screen.getByText('Text and form inputs')).toBeInTheDocument();
     expect(screen.getByText('Selection controls')).toBeInTheDocument();
