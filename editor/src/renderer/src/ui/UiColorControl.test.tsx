@@ -18,6 +18,12 @@ describe('UiColorControl', () => {
     expect(screen.getByRole('dialog', { name: 'Base Color color picker' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'OK' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Color representation' })).toBeTruthy();
+    expect(screen.getByRole('slider', { name: 'Color R' })).toBeTruthy();
+    expect(screen.getByRole('slider', { name: 'Color G' })).toBeTruthy();
+    expect(screen.getByRole('slider', { name: 'Color B' })).toBeTruthy();
+    expect(screen.getByRole('slider', { name: 'Color A' })).toBeTruthy();
+    expect(screen.queryByText('Linear storage')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Close dialog' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
