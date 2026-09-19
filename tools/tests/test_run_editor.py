@@ -44,8 +44,6 @@ class EditorBuildCacheTests(unittest.TestCase):
             run_editor.prepare_native_editor(args, str(REPO_ROOT))
 
         reset.assert_called_once_with(str(REPO_ROOT / "out" / "build" / "editor-vulkan"))
-        self.assertLess(reset.call_args_list[0], resolve_generator.call_args_list[0]) if False else None
-        reset.assert_called_once()
         resolve_generator.assert_called_once_with("cmake")
 
     def test_missing_cache_requires_configure(self) -> None:
