@@ -62,13 +62,14 @@ const describeHostExit = (code: number | null, signal: NodeJS.Signals | null): s
   return 'an unknown process error';
 };
 
-const showFatalHostExit = (exitReason: string, lastError: string): void => {
+const showFatalHostExit = (exitReason: string, lastError: string, diagnostics: string[]): void => {
   if (isCiSmoke || shutdownPending || shutdownComplete || fatalHostExitPending) return;
   fatalHostExitPending = true;
 
   const detail = [
     `The ARC native rendering host stopped unexpectedly (${exitReason}).`,
     lastError ? `Last host error: ${lastError}` : '',
+    diagnostics.length ? `Recent native diagnostics:\n${diagnostics.join('\n')}` : '',
     'The editor cannot continue safely and will close.',
   ]
     .filter(Boolean)
@@ -406,6 +407,8 @@ export class ArcHostClient {
     { resolve: (value: HostResponse) => void; reject: (reason: Error) => void; finishTiming: () => number }
   >();
   private lastError = '';
+  private readonly recentDiagnostics: string[] = [];
+  private static readonly maxRecentDiagnostics = 24;
   private pendingRuntimeTick: HostEvent | null = null;
   private runtimeTickScheduled = false;
   private readonly coalescedQueries = new Map<string, Promise<HostResponse>>();
@@ -435,6 +438,17 @@ export class ArcHostClient {
     return this.lastError;
   }
 
+  private recordDiagnostic(stream: 'stdout' | 'stderr', line: string): void {
+    const diagnostic = line.trim();
+    if (!diagnostic) return;
+    this.recentDiagnostics.push(`[${stream}] ${diagnostic}`);
+    if (this.recentDiagnostics.length > ArcHostClient.maxRecentDiagnostics) this.recentDiagnostics.shift();
+  }
+
+  private crashDiagnostics(): string[] {
+    return this.recentDiagnostics.slice(-10);
+  }
+
   start(): void {
     if (this.process || this.reconnectRequired || !this.executablePath) {
       if (!this.executablePath) {
@@ -456,6 +470,7 @@ export class ArcHostClient {
     stderr.on('line', (line) => {
       const diagnostic = line.trim();
       if (diagnostic) {
+        this.recordDiagnostic('stderr', diagnostic);
         const event = parseHostLogLine(diagnostic, 'stderr');
         if (event.level === 'error') this.lastError = event.message;
         sendHostLog(event);
@@ -484,7 +499,13 @@ export class ArcHostClient {
         pending.resolve(this.failedResponse(requestId, exitDetail));
       }
       this.pending.clear();
-      showFatalHostExit(exitReason, hostError);
+
+      const diagnostics = this.crashDiagnostics();
+      const diagnosticDump = diagnostics.length
+        ? `\nRecent native diagnostics:\n${diagnostics.map((line) => `  ${line}`).join('\n')}`
+        : '';
+      console.error(`[arc_host_process] ${exitDetail}${diagnosticDump}`);
+      showFatalHostExit(exitReason, hostError, diagnostics);
     });
 
     if (isCiSmoke) {
@@ -647,6 +668,7 @@ export class ArcHostClient {
     try {
       parsed = JSON.parse(line);
     } catch {
+      this.recordDiagnostic('stdout', line);
       sendHostLog(parseHostLogLine(line, 'stdout'));
       return;
     }
