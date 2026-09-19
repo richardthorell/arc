@@ -20,7 +20,7 @@ describe('UiPanelCardRow', () => {
     expect(screen.getByText('Domain')).toBeTruthy();
     expect(screen.getByText('Material usage')).toBeTruthy();
     expect(screen.getByText('Two Sided')).toBeTruthy();
-    expect(container.querySelector('.ui-panel-card-row')).toHaveClass('is-start-aligned');
+    expect(container.querySelector('.ui-panel-card-row')?.classList.contains('is-start-aligned')).toBe(true);
     expect(container.querySelectorAll('.ui-panel-card-row')).toHaveLength(2);
     expect(container.querySelector('hr')).toBeNull();
   });
