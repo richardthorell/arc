@@ -77,11 +77,18 @@
 }
 
 .ui-dialog.is-compact .ui-dialog-heading {
+  align-items: center;
   gap: 6px;
+}
+
+.ui-dialog.is-compact .ui-dialog-heading > span {
+  justify-content: center;
+  line-height: 1;
 }
 
 .ui-dialog.is-compact .ui-dialog-heading strong {
   font-size: 12px;
+  line-height: 1;
 }
 
 .ui-dialog.is-compact .ui-dialog-heading small {
