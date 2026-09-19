@@ -3,6 +3,7 @@ import {
   Check,
   ChevronRight,
   MoreHorizontal,
+  MoreVertical,
   Play,
   Plus,
   RefreshCw,
@@ -558,11 +559,10 @@ export function UiLab() {
               <UiPanelCard
                 actions={
                   <UiIconButton label="Card settings">
-                    <Settings size={13} />
+                    <MoreVertical size={14} />
                   </UiIconButton>
                 }
                 collapsed={panelCardCollapsed}
-                subtitle="Shared property-panel chrome"
                 title="Rendering"
                 onToggle={() => setPanelCardCollapsed((value) => !value)}
               >
