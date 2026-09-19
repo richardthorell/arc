@@ -178,7 +178,10 @@ export function Vector3Control({
   ) : null;
 
   return (
-    <div className={showLabel ? 'inspector-property inspector-vector-property' : 'inspector-vector-control'} title={field.tooltip}>
+    <div
+      className={showLabel ? 'inspector-property inspector-vector-property' : 'inspector-vector-control'}
+      title={field.tooltip}
+    >
       {showLabel && (
         <div className="inspector-property-label">
           <span>{field.label}</span>
@@ -251,7 +254,11 @@ export function NumberControlLabel({
       onPreview(latestScrub.current);
     };
     const move = (moveEvent: PointerEvent) => {
-      latestScrub.current = clamp(startValue + (moveEvent.clientX - startX) * field.scrubSensitivity, field.min, field.max);
+      latestScrub.current = clamp(
+        startValue + (moveEvent.clientX - startX) * field.scrubSensitivity,
+        field.min,
+        field.max,
+      );
       if (frame.current === null) frame.current = window.requestAnimationFrame(flushPreview);
     };
     const finish = () => {
@@ -290,21 +297,21 @@ export function NumberControl({
   showLabel?: boolean;
 }) {
   const input = (
-      <NumericInput
-        ariaLabel={field.label}
-        max={field.max}
-        min={field.min}
-        precision={field.precision}
-        scrubClassName={showLabel ? 'inspector-scalar-scrub' : undefined}
-        scrubLabel={showLabel ? field.label : undefined}
-        scrubSensitivity={field.scrubSensitivity}
-        step={field.step}
-        unit={field.unit}
-        value={value}
-        mixed={mixed}
-        onCommit={onCommit}
-        onPreview={onPreview}
-      />
+    <NumericInput
+      ariaLabel={field.label}
+      max={field.max}
+      min={field.min}
+      precision={field.precision}
+      scrubClassName={showLabel ? 'inspector-scalar-scrub' : undefined}
+      scrubLabel={showLabel ? field.label : undefined}
+      scrubSensitivity={field.scrubSensitivity}
+      step={field.step}
+      unit={field.unit}
+      value={value}
+      mixed={mixed}
+      onCommit={onCommit}
+      onPreview={onPreview}
+    />
   );
   return showLabel ? <div className="inspector-property inspector-number-property">{input}</div> : input;
 }

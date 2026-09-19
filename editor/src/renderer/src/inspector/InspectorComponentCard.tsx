@@ -235,11 +235,7 @@ export function InspectorComponentCard<TContext extends object>({
           fullWidth: true,
           className: 'inspector-material-parameter-row',
           control: (
-            <MaterialParameterSubsection
-              assets={assets}
-              referenceMode={field.referenceMode}
-              value={materialValue}
-            />
+            <MaterialParameterSubsection assets={assets} referenceMode={field.referenceMode} value={materialValue} />
           ),
         });
       }
@@ -330,10 +326,7 @@ function proceduralMeshPropertyFields(
     },
   ];
 
-  const add = (
-    parameter: keyof Omit<InspectorProceduralMesh, 'type'>,
-    field: ReturnType<typeof dimensionField>,
-  ) => {
+  const add = (parameter: keyof Omit<InspectorProceduralMesh, 'type'>, field: ReturnType<typeof dimensionField>) => {
     const value = mesh[parameter];
     if (typeof value !== 'number') return;
     fields.push({
@@ -461,16 +454,16 @@ function SchemaField<TContext extends object>({
 
   if (field.type === 'text') {
     return (
-        <UiTextInput
-          aria-label={field.ariaLabel ?? field.label}
-          disabled={field.readOnly}
-          value={mixed ? '' : typeof value === 'string' ? value : ''}
-          onChange={(event) => onValue(event.target.value, false)}
-          onBlur={(event) => onValue(event.target.value, true)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') event.currentTarget.blur();
-          }}
-        />
+      <UiTextInput
+        aria-label={field.ariaLabel ?? field.label}
+        disabled={field.readOnly}
+        value={mixed ? '' : typeof value === 'string' ? value : ''}
+        onChange={(event) => onValue(event.target.value, false)}
+        onBlur={(event) => onValue(event.target.value, true)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur();
+        }}
+      />
     );
   }
   if (field.type === 'enum') {
@@ -479,12 +472,12 @@ function SchemaField<TContext extends object>({
       ...field.options.map((option) => ({ label: option.label, value: option.value })),
     ];
     return (
-        <UiSelect
-          ariaLabel={field.ariaLabel ?? field.label}
-          options={options}
-          value={mixed ? '' : (value as string)}
-          onValueChange={(next) => onValue(next, true)}
-        />
+      <UiSelect
+        ariaLabel={field.ariaLabel ?? field.label}
+        options={options}
+        value={mixed ? '' : (value as string)}
+        onValueChange={(next) => onValue(next, true)}
+      />
     );
   }
   if (field.type === 'asset') {
@@ -546,25 +539,29 @@ function SchemaField<TContext extends object>({
   }
   if (field.type === 'readonly') {
     const display = field.format ? field.format(value, context) : String(value ?? '');
-    return <output className="inspector-readonly-value" aria-label={field.ariaLabel ?? field.label}>{display}</output>;
+    return (
+      <output className="inspector-readonly-value" aria-label={field.ariaLabel ?? field.label}>
+        {display}
+      </output>
+    );
   }
   if (field.type === 'actions') {
     return (
-        <div className="ui-button-group ui-button-group-fill">
-          {field.actions.map((action) => (
-            <UiButton
-              aria-label={action.label}
-              disabled={action.disabled?.(context)}
-              key={action.id}
-              onClick={() => onAction(action.id)}
-              title={action.tooltip}
-              type="button"
-              variant={action.danger ? 'danger' : 'default'}
-            >
-              {action.label}
-            </UiButton>
-          ))}
-        </div>
+      <div className="ui-button-group ui-button-group-fill">
+        {field.actions.map((action) => (
+          <UiButton
+            aria-label={action.label}
+            disabled={action.disabled?.(context)}
+            key={action.id}
+            onClick={() => onAction(action.id)}
+            title={action.tooltip}
+            type="button"
+            variant={action.danger ? 'danger' : 'default'}
+          >
+            {action.label}
+          </UiButton>
+        ))}
+      </div>
     );
   }
   const source = value as Vec3 | Vec4;
