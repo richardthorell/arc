@@ -1,20 +1,16 @@
 .arc-color-picker {
-  position: fixed;
-  z-index: 1600;
-  width: 306px;
-  max-width: calc(100vw - 16px);
+  display: flex;
   max-height: calc(100vh - 16px);
-  overflow: auto;
-  border: 1px solid #3a4650;
-  border-radius: 4px;
-  color: #cdd4da;
-  background: #1b232a;
-  box-shadow:
-    0 14px 38px rgba(0, 0, 0, 0.58),
-    0 2px 8px rgba(0, 0, 0, 0.48);
+  flex-direction: column;
   font-family: var(--arc-font-ui);
   font-size: var(--arc-text-sm);
   line-height: 1.2;
+}
+
+.arc-color-picker .ui-dialog-body {
+  min-height: 0;
+  padding: 0;
+  overflow: auto;
 }
 
 .arc-color-picker button,
@@ -26,33 +22,6 @@
   color: inherit;
 }
 
-.arc-color-picker-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 25px;
-  align-items: center;
-  min-height: 31px;
-  padding-left: 9px;
-  border-bottom: 1px solid #303a42;
-  background: linear-gradient(180deg, #2a343c, #232c33);
-}
-
-.arc-color-picker-header strong {
-  color: #edf1f4;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.arc-color-picker-header > span {
-  padding: 2px 6px;
-  border: 1px solid #3a4650;
-  border-radius: 8px;
-  color: #8f9aa3;
-  font-size: 9px;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-.arc-color-picker-header button,
 .arc-color-tool {
   display: grid;
   border: 0;
@@ -61,13 +30,6 @@
   place-items: center;
 }
 
-.arc-color-picker-header button {
-  width: 25px;
-  height: 25px;
-  color: #8f9aa3;
-}
-
-.arc-color-picker-header button:hover,
 .arc-color-tool:hover:not(:disabled) {
   color: #f0f3f6;
   background: rgba(255, 255, 255, 0.06);
