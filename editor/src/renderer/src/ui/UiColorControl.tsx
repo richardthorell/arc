@@ -57,7 +57,7 @@ export function UiColorControl({
           value={value}
           onClose={() => setPickerOpen(false)}
           onCommit={onCommit}
-          onPreview={onPreview ?? onCommit}
+          onPreview={onPreview ?? (() => undefined)}
         />
       )}
     </div>
