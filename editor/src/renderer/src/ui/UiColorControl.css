@@ -8,10 +8,11 @@
 
 .ui-color-control-swatch {
   position: relative;
-  flex: 1 1 auto;
-  min-width: 56px;
+  flex: 0 0 44px;
+  width: 44px;
+  min-width: 44px;
   height: 24px;
-  padding: 2px;
+  padding: 0;
   overflow: hidden;
   border: 1px solid var(--arc-color-border-default, #35414b);
   border-radius: 3px;
@@ -23,6 +24,7 @@
     4px 4px;
   background-size: 8px 8px;
   cursor: pointer;
+  outline: none;
 }
 
 .ui-color-control-swatch:hover,
@@ -31,12 +33,17 @@
   box-shadow: 0 0 0 1px rgba(73, 117, 151, 0.22);
 }
 
+.ui-color-control-swatch:focus-visible {
+  border-color: var(--arc-color-accent, #5b91c1);
+  box-shadow: 0 0 0 1px var(--arc-color-accent, #5b91c1);
+}
+
 .ui-color-control-swatch-color {
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: 1px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  box-shadow: none;
 }
 
 .ui-color-control-swatch-color.is-mixed {
@@ -56,10 +63,10 @@
 .ui-color-control-badges > span {
   min-width: 0;
   padding: 2px 5px;
-  border: 1px solid var(--arc-color-border-subtle, #34404a);
+  border: 1px solid rgba(190, 132, 65, 0.48);
   border-radius: 7px;
-  color: var(--arc-color-text-dim, #77838c);
-  background: var(--arc-color-bg-field, #141c22);
+  color: rgba(216, 161, 96, 0.9);
+  background: rgba(190, 126, 52, 0.08);
   font-size: 8px;
   font-weight: 600;
   letter-spacing: 0.035em;
