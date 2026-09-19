@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
-import { Check, Copy, Pipette } from 'lucide-react';
+import { Copy, Pipette } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 import { UiButton } from './UiButton';
 import { UiDialog } from './UiDialog';
+import { UiDropdown } from './UiDropdown';
 import { UiIconButton } from './UiIconButton';
 
 import './UiColorPicker.css';
@@ -12,8 +13,7 @@ import './UiColorPicker.css';
 export type UiColorValue = { x: number; y: number; z: number; w: number };
 
 type HsvColor = { h: number; s: number; v: number };
-type ColorMode = 'rgb' | 'hsv';
-type ColorSpace = 'srgb' | 'linear';
+type ColorMode = 'rgb' | 'hsv' | 'linear';
 
 type EyeDropperResult = { sRGBHex: string };
 type EyeDropperInstance = { open: () => Promise<EyeDropperResult> };
@@ -33,6 +33,11 @@ export type UiColorPickerProps = {
 const pickerWidth = 430;
 const pickerEstimatedHeight = 650;
 const pickerViewportMargin = 8;
+const colorModeOptions = [
+  { value: 'rgb' as const, label: 'RGB' },
+  { value: 'hsv' as const, label: 'HSV' },
+  { value: 'linear' as const, label: 'Linear RGB' },
+];
 
 const centeredPickerPosition = () => ({
   x: Math.max(pickerViewportMargin, (window.innerWidth - pickerWidth) / 2),
@@ -138,7 +143,6 @@ export function UiColorPicker({
 }: UiColorPickerProps) {
   const [draft, setDraft] = useState(value);
   const [mode, setMode] = useState<ColorMode>('rgb');
-  const [space, setSpace] = useState<ColorSpace>('srgb');
   const original = useRef(value);
   const latest = useRef(value);
   const previewFrame = useRef<number | null>(null);
@@ -224,7 +228,6 @@ export function UiColorPicker({
     }
   };
 
-  const setAlpha = (alpha: number, final: boolean) => emit({ ...draft, w: clamp(alpha) }, final);
   const currentCss = colorToCss(draft);
   const originalCss = colorToCss(original.current);
   const hueCss = colorToCss(hsvToLinearColor({ h: hsv.h, s: 1, v: 1 }, 1));
@@ -246,43 +249,120 @@ export function UiColorPicker({
   const cancel = () => finish(original.current);
   const accept = () => finish(latest.current);
 
-  const commitChannels = (channels: number[]) => {
-    const alpha = showAlpha ? channels[3] : draft.w;
-    if (mode === 'hsv') {
-      emit(
-        applyHdrScale(hsvToLinearColor({ h: channels[0], s: channels[1] / 100, v: channels[2] / 100 }, alpha)),
-        true,
-      );
+  const setRgbChannel = (index: number, next: number) => {
+    if (index === 3) {
+      emit({ ...draft, w: clamp(next) }, true);
       return;
     }
-    if (space === 'linear') {
-      emit({ x: channels[0], y: channels[1], z: channels[2], w: alpha }, true);
+
+    if (mode === 'linear') {
+      const channels = [draft.x, draft.y, draft.z];
+      channels[index] = next;
+      emit({ x: channels[0], y: channels[1], z: channels[2], w: draft.w }, true);
       return;
     }
+
+    const rgb = [
+      linearToSrgb(draft.x / hdrScale) * 255,
+      linearToSrgb(draft.y / hdrScale) * 255,
+      linearToSrgb(draft.z / hdrScale) * 255,
+    ];
+    rgb[index] = next;
     emit(
       {
-        x: srgbToLinear(channels[0] / 255) * (hdr ? hdrScale : 1),
-        y: srgbToLinear(channels[1] / 255) * (hdr ? hdrScale : 1),
-        z: srgbToLinear(channels[2] / 255) * (hdr ? hdrScale : 1),
-        w: alpha,
+        x: srgbToLinear(rgb[0] / 255) * (hdr ? hdrScale : 1),
+        y: srgbToLinear(rgb[1] / 255) * (hdr ? hdrScale : 1),
+        z: srgbToLinear(rgb[2] / 255) * (hdr ? hdrScale : 1),
+        w: draft.w,
       },
       true,
     );
   };
 
-  const channels =
+  const setHsvChannel = (index: number, next: number) => {
+    if (index === 0) {
+      emit(applyHdrScale(hsvToLinearColor({ ...hsv, h: next }, draft.w)), true);
+      return;
+    }
+    if (index === 1) {
+      emit(applyHdrScale(hsvToLinearColor({ ...hsv, s: next / 100 }, draft.w)), true);
+      return;
+    }
+    if (index === 2) {
+      emit(applyHdrScale(hsvToLinearColor({ ...hsv, v: next / 100 }, draft.w)), true);
+      return;
+    }
+
+    const normalized = hsvToLinearColor(hsv, draft.w);
+    emit(
+      {
+        x: normalized.x * next,
+        y: normalized.y * next,
+        z: normalized.z * next,
+        w: draft.w,
+      },
+      true,
+    );
+  };
+
+  const channelSliders =
     mode === 'hsv'
-      ? [hsv.h, hsv.s * 100, hsv.v * 100, ...(showAlpha ? [draft.w] : [])]
-      : space === 'linear'
-        ? [draft.x, draft.y, draft.z, ...(showAlpha ? [draft.w] : [])]
-        : [
-            linearToSrgb(draft.x / hdrScale) * 255,
-            linearToSrgb(draft.y / hdrScale) * 255,
-            linearToSrgb(draft.z / hdrScale) * 255,
-            ...(showAlpha ? [draft.w] : []),
-          ];
-  const channelLabels =
-    mode === 'hsv' ? ['H', 'S', 'V', ...(showAlpha ? ['A'] : [])] : ['R', 'G', 'B', ...(showAlpha ? ['A'] : [])];
+      ? [
+          { label: 'H', value: hsv.h, min: 0, max: 360, step: 0.1, precision: 1, className: 'is-hue' },
+          { label: 'S', value: hsv.s * 100, min: 0, max: 100, step: 0.1, precision: 1, className: 'is-saturation' },
+          { label: 'V', value: hsv.v * 100, min: 0, max: 100, step: 0.1, precision: 1, className: 'is-value' },
+          {
+            label: 'Intensity',
+            value: hdrScale,
+            min: 1,
+            max: Math.max(1, maxChannelValue),
+            step: 0.01,
+            precision: 2,
+            className: 'is-intensity',
+          },
+        ]
+      : [
+          {
+            label: 'R',
+            value: mode === 'linear' ? draft.x : linearToSrgb(draft.x / hdrScale) * 255,
+            min: mode === 'linear' ? minChannelValue : 0,
+            max: mode === 'linear' ? maxChannelValue : 255,
+            step: mode === 'linear' ? 0.001 : 1,
+            precision: mode === 'linear' ? 3 : 0,
+            className: 'is-red',
+          },
+          {
+            label: 'G',
+            value: mode === 'linear' ? draft.y : linearToSrgb(draft.y / hdrScale) * 255,
+            min: mode === 'linear' ? minChannelValue : 0,
+            max: mode === 'linear' ? maxChannelValue : 255,
+            step: mode === 'linear' ? 0.001 : 1,
+            precision: mode === 'linear' ? 3 : 0,
+            className: 'is-green',
+          },
+          {
+            label: 'B',
+            value: mode === 'linear' ? draft.z : linearToSrgb(draft.z / hdrScale) * 255,
+            min: mode === 'linear' ? minChannelValue : 0,
+            max: mode === 'linear' ? maxChannelValue : 255,
+            step: mode === 'linear' ? 0.001 : 1,
+            precision: mode === 'linear' ? 3 : 0,
+            className: 'is-blue',
+          },
+          ...(showAlpha
+            ? [
+                {
+                  label: 'A',
+                  value: draft.w,
+                  min: 0,
+                  max: 1,
+                  step: 0.001,
+                  precision: 3,
+                  className: 'is-alpha',
+                },
+              ]
+            : []),
+        ];
 
   return createPortal(
     <UiDialog
@@ -370,77 +450,28 @@ export function UiColorPicker({
         </div>
       </div>
 
-      {showAlpha && (
-        <PickerRange
-          label="Alpha"
-          className="arc-color-alpha"
-          min={0}
-          max={1}
-          step={0.001}
-          value={draft.w}
-          style={{ '--arc-picker-color': colorToCss({ ...draft, w: 1 }) } as CSSProperties}
-          onChange={(next) => setAlpha(next, false)}
-          onFinal={() => setAlpha(latest.current.w, true)}
+      <div className="arc-color-picker-mode">
+        <UiDropdown
+          ariaLabel="Color representation"
+          className="arc-color-mode-dropdown"
+          onValueChange={setMode}
+          options={colorModeOptions}
+          value={mode}
         />
-      )}
-
-      <div className="arc-color-picker-options">
-        <div className="arc-color-segments" aria-label="Color model">
-          {(['rgb', 'hsv'] as const).map((option) => (
-            <button
-              className={mode === option ? 'is-active' : ''}
-              key={option}
-              onClick={() => setMode(option)}
-              type="button"
-            >
-              {option.toUpperCase()}
-            </button>
-          ))}
-        </div>
-        <div className="arc-color-segments" aria-label="RGB color space">
-          {(['srgb', 'linear'] as const).map((option) => (
-            <button
-              className={space === option ? 'is-active' : ''}
-              disabled={mode === 'hsv'}
-              key={option}
-              onClick={() => setSpace(option)}
-              type="button"
-            >
-              {option === 'srgb' ? 'sRGB' : 'Linear'}
-            </button>
-          ))}
-        </div>
       </div>
 
-      <div
-        className="arc-color-channel-grid"
-        style={{ gridTemplateColumns: `repeat(${channels.length}, minmax(0, 1fr))` }}
-      >
-        {channels.map((channel, index) => (
-          <PickerNumberField
-            key={`${mode}-${space}-${channelLabels[index]}`}
-            label={channelLabels[index]}
-            max={
-              mode === 'hsv'
-                ? index === 0
-                  ? 360
-                  : index === 3
-                    ? 1
-                    : 100
-                : space === 'srgb' && index < 3
-                  ? 255
-                  : index < 3
-                    ? maxChannelValue
-                    : 1
-            }
-            min={mode === 'rgb' && space === 'linear' && index < 3 ? minChannelValue : 0}
-            precision={mode === 'hsv' ? (index === 0 ? 1 : index === 3 ? 3 : 1) : space === 'srgb' && index < 3 ? 0 : 3}
-            value={channel}
-            onCommit={(next) => {
-              const updated = [...channels];
-              updated[index] = next;
-              commitChannels(updated);
-            }}
+      <div className="arc-color-channel-sliders">
+        {channelSliders.map((channel, index) => (
+          <PickerChannelSlider
+            className={channel.className}
+            key={`${mode}-${channel.label}`}
+            label={channel.label}
+            max={channel.max}
+            min={channel.min}
+            precision={channel.precision}
+            step={channel.step}
+            value={channel.value}
+            onChange={(next) => (mode === 'hsv' ? setHsvChannel(index, next) : setRgbChannel(index, next))}
           />
         ))}
       </div>
@@ -462,96 +493,44 @@ export function UiColorPicker({
         >
           <Copy size={14} />
         </UiIconButton>
-        <span title="Values are converted to ARC's scene-linear color storage">
-          <Check size={13} /> Linear storage
-        </span>
       </div>
     </UiDialog>,
     document.body,
   );
 }
 
-function PickerRange({
-  label,
+function PickerChannelSlider({
   className,
-  value,
-  min,
-  max,
-  step,
-  style,
-  onChange,
-  onFinal,
-}: {
-  label: string;
-  className: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  style?: CSSProperties;
-  onChange: (value: number) => void;
-  onFinal: () => void;
-}) {
-  return (
-    <label className="arc-color-range">
-      <span>{label}</span>
-      <input
-        aria-label={label}
-        className={className}
-        max={max}
-        min={min}
-        onChange={(event) => onChange(event.target.valueAsNumber)}
-        onKeyUp={onFinal}
-        onPointerUp={onFinal}
-        step={step}
-        style={style}
-        type="range"
-        value={value}
-      />
-    </label>
-  );
-}
-
-function PickerNumberField({
   label,
   value,
   precision,
   min,
   max,
-  onCommit,
+  step,
+  onChange,
 }: {
+  className: string;
   label: string;
   value: number;
   precision: number;
   min: number;
   max: number;
-  onCommit: (value: number) => void;
+  step: number;
+  onChange: (value: number) => void;
 }) {
-  const [text, setText] = useState(value.toFixed(precision));
-  useEffect(() => setText(value.toFixed(precision)), [precision, value]);
-  const commit = () => {
-    const parsed = Number.parseFloat(text);
-    if (!Number.isFinite(parsed)) return setText(value.toFixed(precision));
-    onCommit(clamp(parsed, min, max));
-  };
   return (
-    <label>
+    <label className={`arc-color-channel-slider ${className}`}>
       <span>{label}</span>
       <input
         aria-label={`Color ${label}`}
-        inputMode="decimal"
-        onBlur={commit}
-        onChange={(event) => setText(event.target.value)}
-        onFocus={(event) => event.currentTarget.select()}
-        onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
-          if (event.key === 'Enter') event.currentTarget.blur();
-          if (event.key === 'Escape') {
-            setText(value.toFixed(precision));
-            event.currentTarget.blur();
-          }
-        }}
-        value={text}
+        max={max}
+        min={min}
+        onChange={(event) => onChange(event.target.valueAsNumber)}
+        step={step}
+        type="range"
+        value={value}
       />
+      <output>{value.toFixed(precision)}</output>
     </label>
   );
 }
