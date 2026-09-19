@@ -46,12 +46,7 @@ describe('UiDialog', () => {
 
   it('supports a modeless positioned dialog without backdrop blur', () => {
     render(
-      <UiDialog
-        blurBackdrop={false}
-        initialPosition={{ x: 120, y: 80 }}
-        modal={false}
-        title="Color picker"
-      >
+      <UiDialog blurBackdrop={false} initialPosition={{ x: 120, y: 80 }} modal={false} title="Color picker">
         Picker
       </UiDialog>,
     );

@@ -1,5 +1,14 @@
 import { Check, ChevronDown } from 'lucide-react';
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 
 import { UiButton } from './UiButton';
@@ -55,10 +64,7 @@ export function UiDropdown<Value extends string = string>({
 
     const bounds = trigger.getBoundingClientRect();
     const width = Math.max(bounds.width, minimumMenuWidth);
-    const left = Math.max(
-      menuMargin,
-      Math.min(bounds.right - width, window.innerWidth - width - menuMargin),
-    );
+    const left = Math.max(menuMargin, Math.min(bounds.right - width, window.innerWidth - width - menuMargin));
     const top = bounds.bottom + menuGap;
 
     setMenuPosition({

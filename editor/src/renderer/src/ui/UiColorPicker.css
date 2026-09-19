@@ -197,9 +197,7 @@ button.arc-color-preview-row:hover small {
   height: 148px;
   border: 0;
   background:
-    linear-gradient(to top, #000, transparent),
-    linear-gradient(to right, #fff, transparent),
-    var(--arc-picker-hue);
+    linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent), var(--arc-picker-hue);
   box-shadow: none;
   cursor: crosshair;
   touch-action: none;
@@ -353,7 +351,6 @@ button.arc-color-preview-row:hover small {
   height: 28px;
 }
 
-
 @media (max-width: 900px) {
   .arc-color-picker-layout {
     grid-template-columns: minmax(0, 1fr);
@@ -362,5 +359,4 @@ button.arc-color-preview-row:hover small {
   .arc-color-preview-stack {
     align-self: start;
   }
-
 }

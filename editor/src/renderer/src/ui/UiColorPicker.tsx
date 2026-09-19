@@ -256,22 +256,12 @@ export function UiColorPicker({
     {
       value: 'custom',
       label: 'Custom',
-      icon: (
-        <span
-          className="arc-color-preset-swatch"
-          style={{ '--arc-preset-color': currentCss } as CSSProperties}
-        />
-      ),
+      icon: <span className="arc-color-preset-swatch" style={{ '--arc-preset-color': currentCss } as CSSProperties} />,
     },
     ...classicColorPresets.map((entry) => ({
       value: entry.value,
       label: entry.label,
-      icon: (
-        <span
-          className="arc-color-preset-swatch"
-          style={{ '--arc-preset-color': entry.hex } as CSSProperties}
-        />
-      ),
+      icon: <span className="arc-color-preset-swatch" style={{ '--arc-preset-color': entry.hex } as CSSProperties} />,
     })),
   ];
   const swatchStyle = (color: string) => ({ '--arc-picker-color': color }) as CSSProperties;
