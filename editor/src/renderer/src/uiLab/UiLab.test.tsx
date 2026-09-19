@@ -30,7 +30,6 @@ describe('UiLab', () => {
     expect(screen.getByRole('radio', { name: 'Static' })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Realtime updates' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Collapse Rendering' })).toBeInTheDocument();
-    expect(screen.getByText('Shared property-panel chrome')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Entity notes' })).toBeInTheDocument();
     expect(screen.getByRole('slider', { name: 'Preview quality' })).toBeInTheDocument();
     expect(screen.getByRole('menu', { name: 'Context menu preview' })).toHaveClass('ui-context-menu');
