@@ -22,25 +22,54 @@
   color: inherit;
 }
 
-.arc-color-picker-top {
+.arc-color-picker-layout {
+  display: grid;
+  grid-template-columns: minmax(380px, 1.05fr) minmax(330px, 0.95fr);
+  gap: 30px;
+  padding: 16px 18px 18px;
+}
+
+.arc-color-picker-wheel-pane,
+.arc-color-picker-controls-pane {
+  min-width: 0;
+}
+
+.arc-color-picker-wheel-pane {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 14px 8px;
+  flex-direction: column;
+}
+
+.arc-color-picker-preset {
+  display: flex;
+  justify-content: flex-start;
+  padding-bottom: 14px;
+}
+
+.arc-color-preset-dropdown {
+  width: 168px;
+}
+
+.arc-color-preset-dropdown .ui-dropdown-trigger.ui-button {
+  width: 100%;
+  height: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  font-weight: 600;
 }
 
 .arc-color-preview-stack {
   display: grid;
-  gap: 5px;
+  align-self: flex-end;
+  gap: 6px;
+  width: 218px;
 }
 
 .arc-color-preview-row {
   display: grid;
-  grid-template-columns: 54px 74px;
+  grid-template-columns: 62px 148px;
   align-items: center;
   gap: 8px;
-  min-height: 24px;
+  min-height: 26px;
   color: var(--arc-color-text-muted);
 }
 
@@ -68,8 +97,8 @@ button.arc-color-preview-row:hover small {
 .arc-color-preview-swatch {
   position: relative;
   display: block;
-  width: 74px;
-  height: 22px;
+  width: 148px;
+  height: 24px;
   overflow: hidden;
   border: 1px solid #3a4650;
   border-radius: 3px;
@@ -89,16 +118,27 @@ button.arc-color-preview-row:hover small {
   background: var(--arc-picker-color);
 }
 
+.arc-color-picker-tool-row {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 2px;
+}
+
 .arc-color-eyedropper.ui-icon-button {
   width: 32px;
   min-width: 32px;
   height: 32px;
 }
 
+.arc-color-controls-spacer {
+  height: 34px;
+}
+
 .arc-color-wheel-wrap {
   display: grid;
-  place-items: center;
-  padding: 4px 16px 10px;
+  flex: 1 1 auto;
+  place-items: start center;
+  padding: 0;
 }
 
 .arc-color-wheel {
@@ -172,12 +212,11 @@ button.arc-color-preview-row:hover small {
 .arc-color-picker-mode {
   display: flex;
   justify-content: flex-start;
-  padding: 6px 14px 8px;
-  border-top: 1px solid #2d373f;
+  padding: 0 0 12px;
 }
 
 .arc-color-mode-dropdown {
-  width: 132px;
+  width: 168px;
 }
 
 .arc-color-mode-dropdown .ui-dropdown-trigger.ui-button {
@@ -190,13 +229,13 @@ button.arc-color-preview-row:hover small {
 
 .arc-color-channel-sliders {
   display: grid;
-  gap: 7px;
-  padding: 2px 14px 11px;
+  gap: 10px;
+  padding: 0;
 }
 
 .arc-color-channel-slider {
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) 48px;
+  grid-template-columns: 64px minmax(0, 1fr) 54px;
   align-items: center;
   gap: 8px;
   min-height: 24px;
@@ -277,10 +316,11 @@ button.arc-color-preview-row:hover small {
 
 .arc-color-hex-row {
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) 28px;
+  grid-template-columns: 64px minmax(0, 1fr) 28px;
   align-items: center;
-  gap: 7px;
-  padding: 9px 14px 12px;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 14px 0 0;
   border-top: 1px solid #2d373f;
   color: #9ca6ae;
   font-size: 10px;
@@ -292,3 +332,17 @@ button.arc-color-preview-row:hover small {
   height: 28px;
 }
 
+
+@media (max-width: 900px) {
+  .arc-color-picker-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .arc-color-preview-stack {
+    align-self: start;
+  }
+
+  .arc-color-controls-spacer {
+    height: 18px;
+  }
+}
