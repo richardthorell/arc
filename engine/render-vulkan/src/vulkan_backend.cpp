@@ -26,6 +26,7 @@ namespace arc::render::vulkan
 {
 namespace
 {
+constexpr std::uint32_t arc_vulkan_api_version = VK_API_VERSION_1_2;
 bool has_extension(const std::vector<VkExtensionProperties>& extensions, const char* name)
 {
     return std::any_of(extensions.begin(), extensions.end(), [name](const VkExtensionProperties& extension)
@@ -374,7 +375,7 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
     app_info.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
     app_info.pEngineName = "ARC";
     app_info.engineVersion = VK_MAKE_VERSION(0, 1, 0);
-    app_info.apiVersion = VK_API_VERSION_1_2;
+    app_info.apiVersion = arc_vulkan_api_version;
 
     auto requested_instance_extensions = config.instance_extensions;
     if (instance_extension_available(VK_EXT_DEBUG_UTILS_EXTENSION_NAME) &&
@@ -449,7 +450,10 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
         const auto capabilities = query_capabilities(physical_device, surface);
         const auto queue_family = find_graphics_queue_family(physical_device, surface);
         auto candidate_extensions = required_device_extensions;
-        if (capabilities.api_major == 1 && capabilities.api_minor < 3)
+        // ARC targets Vulkan 1.2. Dynamic rendering was promoted to core in
+        // Vulkan 1.3, but a 1.2 application must still enable the KHR
+        // extension even when the physical device advertises Vulkan 1.3+.
+        if (arc_vulkan_api_version < VK_API_VERSION_1_3)
             append_unique_extension(candidate_extensions, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
 
         std::string rejection;
@@ -523,8 +527,7 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
     enabled_features.samplerAnisotropy =
         enable_optional_features && selected_capabilities.sampler_anisotropy ? VK_TRUE : VK_FALSE;
 
-    if (synchronization2.synchronization2 == VK_TRUE && selected_capabilities.api_major == 1 &&
-        selected_capabilities.api_minor < 3)
+    if (synchronization2.synchronization2 == VK_TRUE && arc_vulkan_api_version < VK_API_VERSION_1_3)
     {
         append_unique_extension(selected_device_extensions, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
     }
@@ -549,6 +552,19 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
     }
 
     volkLoadDevice(device);
+    const bool dynamic_rendering_available =
+        (vkCmdBeginRendering != nullptr && vkCmdEndRendering != nullptr) ||
+        (vkCmdBeginRenderingKHR != nullptr && vkCmdEndRenderingKHR != nullptr);
+    if (!dynamic_rendering_available)
+    {
+        vkDestroyDevice(device, nullptr);
+        if (surface != VK_NULL_HANDLE) vkDestroySurfaceKHR(instance, surface, nullptr);
+        vkDestroyInstance(instance, nullptr);
+        return render_backend_create_result::failure(
+            {render_backend_create_error_code::device_creation_failed,
+             "Vulkan dynamic rendering entry points are unavailable"});
+    }
+
     VkQueue queue = VK_NULL_HANDLE;
     vkGetDeviceQueue(device, graphics_queue_family, 0, &queue);
 
@@ -556,7 +572,7 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
     allocator_info.instance = instance;
     allocator_info.physicalDevice = selected_device;
     allocator_info.device = device;
-    allocator_info.vulkanApiVersion = VK_API_VERSION_1_2;
+    allocator_info.vulkanApiVersion = arc_vulkan_api_version;
 
     VmaAllocator allocator = VK_NULL_HANDLE;
     if (vmaCreateAllocator(&allocator_info, &allocator) != VK_SUCCESS)
