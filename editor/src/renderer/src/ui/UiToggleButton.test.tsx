@@ -36,8 +36,8 @@ describe('UiToggleButton', () => {
     render(<UiToggleButton aria-label="Mixed toggle" checked={false} mixed onCheckedChange={onCheckedChange} />);
 
     const toggle = screen.getByRole('switch', { name: 'Mixed toggle' });
-    expect(toggle).toHaveClass('is-mixed');
-    expect(toggle).toHaveAttribute('data-mixed', 'true');
+    expect(toggle.classList.contains('is-mixed')).toBe(true);
+    expect(toggle.getAttribute('data-mixed')).toBe('true');
 
     fireEvent.click(toggle);
     expect(onCheckedChange).toHaveBeenCalledWith(true);
