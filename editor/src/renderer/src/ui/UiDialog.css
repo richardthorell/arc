@@ -19,6 +19,25 @@
   backdrop-filter: none;
 }
 
+.ui-dialog-backdrop.is-no-blur {
+  backdrop-filter: none;
+}
+
+.ui-dialog-backdrop.is-modeless {
+  display: block;
+  padding: 0;
+  background: transparent;
+  backdrop-filter: none;
+  pointer-events: none;
+}
+
+.ui-dialog-backdrop.is-modeless .ui-dialog {
+  position: fixed;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  pointer-events: auto;
+}
+
 .ui-dialog {
   max-width: min(100%, calc(100vw - 64px));
   overflow: hidden;
@@ -49,6 +68,31 @@
   padding: 6px 9px 6px 14px;
   border-bottom: 1px solid var(--arc-border-subtle);
   background: #1c2830;
+}
+
+.ui-dialog.is-compact .ui-dialog-header {
+  min-height: 34px;
+  gap: 8px;
+  padding: 4px 8px 4px 10px;
+}
+
+.ui-dialog.is-compact .ui-dialog-heading {
+  align-items: center;
+  gap: 6px;
+}
+
+.ui-dialog.is-compact .ui-dialog-heading > span {
+  justify-content: center;
+  line-height: 1;
+}
+
+.ui-dialog.is-compact .ui-dialog-heading strong {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.ui-dialog.is-compact .ui-dialog-heading small {
+  font-size: 9px;
 }
 
 .ui-dialog-header.is-draggable {
@@ -93,6 +137,22 @@
 .ui-dialog-body {
   min-height: 84px;
   padding: 18px;
+}
+
+.ui-dialog.is-compact .ui-dialog-footer {
+  min-height: 38px;
+  padding: 6px 8px;
+}
+
+.ui-dialog.is-compact .ui-dialog-footer .ui-button {
+  height: var(--arc-control-height);
+  min-height: var(--arc-control-height);
+  max-height: var(--arc-control-height);
+  padding-inline: var(--arc-button-padding-x);
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-sm);
+  font-weight: 600;
+  line-height: 1;
 }
 
 .ui-dialog-footer {

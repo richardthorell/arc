@@ -8,9 +8,10 @@ import {
   type MaterialGraphNode,
   type MaterialGraphValueType,
 } from '../material/materialGraphTypes';
+import { UiColorControl } from '../ui';
 import { TexturePicker } from './AssetPicker';
 import type { HostEntityId, HostResponse, Vec4 } from './inspectorTypes';
-import { ColorControl, NumberControl, NumericInput } from './InspectorControls';
+import { NumberControl, NumericInput } from './InspectorControls';
 
 import './inspectorPolish.css';
 
@@ -316,9 +317,10 @@ export function MaterialParameterSubsection({
               });
               return (
                 <div className="inspector-material-parameter" key={parameter.nodeId}>
-                  <ColorControl
+                  <span className="inspector-property-label">{parameter.name}</span>
+                  <UiColorControl
+                    allowAlpha={parameter.type === 'vec4'}
                     label={parameter.name}
-                    showAlpha={parameter.type === 'vec4'}
                     value={rgba}
                     onPreview={(next) => updateLocalOverride(parameter, colorOverride(next))}
                     onCommit={(next) => void commitOverride(parameter, colorOverride(next))}

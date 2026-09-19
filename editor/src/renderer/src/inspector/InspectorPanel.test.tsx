@@ -536,26 +536,30 @@ describe('data-driven InspectorPanel', () => {
     expect(screen.getByRole('dialog', { name: 'Clear Color color picker' })).toBeInTheDocument();
     expect(screen.getByLabelText('Saturation and value')).toBeInTheDocument();
     expect(screen.getByLabelText('Hue')).toBeInTheDocument();
-    expect(screen.getByLabelText('Alpha')).toBeInTheDocument();
+    expect(screen.getByLabelText('Color A')).toBeInTheDocument();
     expect(screen.getByLabelText('Restore original Clear Color')).toBeInTheDocument();
 
     const hex = screen.getByLabelText('Hex sRGB');
     await userEvent.clear(hex);
     await userEvent.type(hex, '#FF000080{Enter}');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Color representation' }));
+    await userEvent.click(screen.getByRole('option', { name: 'HSV' }));
+    expect(screen.getByLabelText('Color H')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Color representation' })).toHaveTextContent('HSV');
+
+    await userEvent.click(screen.getByRole('button', { name: 'OK' }));
     await waitFor(() =>
       expect(command).toHaveBeenCalledWith(
         'entity.setCamera',
         expect.objectContaining({
           camera: expect.objectContaining({ clearColor: expect.arrayContaining([1, 0, 0]) }),
         }),
+        expect.objectContaining({ phase: 'commit' }),
       ),
     );
     const clearColor = command.mock.calls.at(-1)?.[1]?.camera?.clearColor as number[];
     expect(clearColor[3]).toBeCloseTo(128 / 255, 6);
-
-    await userEvent.click(screen.getByRole('button', { name: 'HSV' }));
-    expect(screen.getByLabelText('Color H')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Linear' })).toBeDisabled();
   });
 
   it('renders one Mesh Renderer material selector and assigns a material asset', async () => {

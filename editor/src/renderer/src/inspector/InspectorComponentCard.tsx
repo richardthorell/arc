@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   UiButton,
   UiContextMenu,
+  UiColorControl,
   UiContextMenuItem,
   UiIconButton,
   UiPropertyCard,
@@ -16,7 +17,7 @@ import type { UiPropertyCardField } from '../ui';
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
 import { AssetPicker, AssetPreview, MaterialPicker, PrefabPicker, TexturePicker } from './AssetPicker';
 import { MaterialParameterSubsection } from './MaterialParameterSubsection';
-import { ColorControl, NumberControl, NumberControlLabel, Vector3Control } from './InspectorControls';
+import { NumberControl, NumberControlLabel, Vector3Control } from './InspectorControls';
 import type { InspectorProceduralMesh, Vec3, Vec4 } from './inspectorTypes';
 import { getPathValue } from './propertySchema';
 import type { PropertyComponentSchema, PropertyFieldSchema, VectorAxis } from './propertySchema';
@@ -569,11 +570,12 @@ function SchemaField<TContext extends object>({
   const rgba: Vec4 = { x: source.x, y: source.y, z: source.z, w: hasAlpha ? source.w : 1 };
   const colorValue = (next: Vec4) => (hasAlpha ? next : { x: next.x, y: next.y, z: next.z });
   return (
-    <ColorControl
+    <UiColorControl
+      allowAlpha={hasAlpha}
       label={field.label}
+      maxChannelValue={field.max}
+      minChannelValue={field.min}
       mixed={mixed}
-      showAlpha={hasAlpha}
-      showLabel={false}
       value={rgba}
       onCommit={(next) => onValue(colorValue(next), true)}
       onPreview={(next) => onValue(colorValue(next), false)}

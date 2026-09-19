@@ -70,11 +70,10 @@
 }
 
 .ui-dropdown-menu {
-  position: absolute;
-  z-index: 1200;
-  top: calc(100% + var(--arc-space-2));
-  right: 0;
-  min-width: max(100%, 180px);
+  position: fixed;
+  z-index: 2200;
+  min-width: 180px;
+  overflow-y: auto;
   padding: var(--arc-space-2);
   border: var(--arc-border-width) solid var(--arc-color-border);
   border-radius: var(--arc-radius-2);

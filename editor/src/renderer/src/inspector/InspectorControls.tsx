@@ -2,9 +2,8 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { Link2, RotateCcw } from 'lucide-react';
 
-import { colorToCss, ColorPicker } from './ColorPicker';
-import type { Vec3, Vec4 } from './inspectorTypes';
-import type { ColorChannel, NumberFieldSchema, VectorAxis, Vector3FieldSchema } from './propertySchema';
+import type { Vec3 } from './inspectorTypes';
+import type { NumberFieldSchema, VectorAxis, Vector3FieldSchema } from './propertySchema';
 
 type NumericInputProps = {
   ariaLabel: string;
@@ -314,75 +313,4 @@ export function NumberControl({
     />
   );
   return showLabel ? <div className="inspector-property inspector-number-property">{input}</div> : input;
-}
-
-export function ColorControl({
-  label,
-  value,
-  showAlpha = true,
-  onPreview,
-  onCommit,
-  mixed = false,
-  showLabel = true,
-}: {
-  label: string;
-  value: Vec4;
-  showAlpha?: boolean;
-  onPreview: (value: Vec4) => void;
-  onCommit: (value: Vec4) => void;
-  mixed?: boolean;
-  showLabel?: boolean;
-}) {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const swatchRef = useRef<HTMLButtonElement>(null);
-  const update = (channel: ColorChannel, next: number) => onCommit({ ...value, [channel]: clamp(next, 0, 1) });
-  return (
-    <div className={showLabel ? 'inspector-property inspector-color-property' : 'inspector-color-control-shell'}>
-      {showLabel && <span className="inspector-property-label">{label}</span>}
-      <div
-        className="inspector-color-control"
-        style={{ gridTemplateColumns: `32px repeat(${showAlpha ? 4 : 3}, minmax(0, 1fr))` }}
-      >
-        <button
-          aria-expanded={pickerOpen}
-          aria-label={`Open ${label} color picker`}
-          className="inspector-color-swatch"
-          onClick={() => setPickerOpen((open) => !open)}
-          ref={swatchRef}
-          title="Open the advanced linear color picker"
-          type="button"
-        >
-          <span
-            className={mixed ? 'is-mixed' : undefined}
-            style={{ background: mixed ? undefined : colorToCss(value) }}
-          />
-        </button>
-        {(showAlpha ? (['x', 'y', 'z', 'w'] as const) : (['x', 'y', 'z'] as const)).map((channel, index) => (
-          <NumericInput
-            key={channel}
-            ariaLabel={`${label} ${'RGBA'[index]}`}
-            max={1}
-            min={0}
-            precision={2}
-            scrubSensitivity={0.005}
-            step={0.01}
-            value={value[channel]}
-            mixed={mixed}
-            onCommit={(next) => update(channel, next)}
-          />
-        ))}
-      </div>
-      {pickerOpen && (
-        <ColorPicker
-          anchorRef={swatchRef}
-          label={label}
-          showAlpha={showAlpha}
-          value={value}
-          onClose={() => setPickerOpen(false)}
-          onCommit={onCommit}
-          onPreview={onPreview}
-        />
-      )}
-    </div>
-  );
 }

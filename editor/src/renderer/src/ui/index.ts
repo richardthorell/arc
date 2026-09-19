@@ -1,9 +1,13 @@
 export { UiButton } from './UiButton';
 export { UiColorControl } from './UiColorControl';
+export type { UiColorControlProps } from './UiColorControl';
+export { UiColorPicker } from './UiColorPicker';
+export type { UiColorPickerProps, UiColorValue } from './UiColorPicker';
 export { UiCurveEditor, evaluateUiCurve } from './UiCurveEditor';
 export type { UiCurvePoint, UiCurveInterpolation, UiCurveHistogram } from './UiCurveEditor';
 export { UiContextMenu, UiContextMenuItem } from './UiContextMenu';
 export { UiDialog } from './UiDialog';
+export type { UiDialogPosition, UiDialogProps } from './UiDialog';
 export { UiDropdown } from './UiDropdown';
 export type { UiDropdownOption } from './UiDropdown';
 export { UiFloatingSurface } from './UiFloatingSurface';
