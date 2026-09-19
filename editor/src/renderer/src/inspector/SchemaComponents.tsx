@@ -6,6 +6,7 @@ import { UiButton, UiContextMenu, UiContextMenuItem, UiIconButton, UiPropertyCar
 import type { UiPropertyCardField } from '../ui';
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
 import { AssetPicker, AssetPreview, MaterialPicker, PrefabPicker, TexturePicker } from './AssetPicker';
+import { MaterialParameterSubsection } from './MaterialParameterSubsection';
 import { ColorControl, NumberControl, NumberControlLabel, Vector3Control } from './InspectorControls';
 import type { InspectorProceduralMesh, Vec3, Vec4 } from './inspectorTypes';
 import { getPathValue } from './propertySchema';
@@ -204,6 +205,24 @@ export function SchemaComponentCard<TContext extends object>({
         />
       ),
     });
+
+    if (field.type === 'asset' && field.assetKind === 'material') {
+      const mixed =
+        mixedFields.some((path) => path === field.path || path.startsWith(`${field.path}.`));
+      propertyFields.push({
+        id: `${field.id}-parameters`,
+        fullWidth: true,
+        className: 'inspector-material-parameter-row',
+        control: (
+          <MaterialParameterSubsection
+            assets={assets}
+            mixed={mixed}
+            referenceMode={field.referenceMode}
+            value={(value as string) || ''}
+          />
+        ),
+      });
+    }
   }
 
   return (
@@ -470,8 +489,24 @@ function SchemaField<TContext extends object>({
         />
       );
     }
-    const Picker =
-      field.assetKind === 'material' ? MaterialPicker : field.assetKind === 'prefab' ? PrefabPicker : TexturePicker;
+    if (field.assetKind === 'material') {
+      return (
+        <MaterialPicker
+          allowedExtensions={field.allowedExtensions}
+          allowEmpty={field.allowEmpty}
+          assets={assets}
+          label={field.label}
+          mixed={mixed}
+          referenceMode={field.referenceMode}
+          showLabel={false}
+          showParameters={false}
+          thumbnailProvider={thumbnailProvider}
+          value={(value as string) || ''}
+          onChange={(next) => onValue(next, true)}
+        />
+      );
+    }
+    const Picker = field.assetKind === 'prefab' ? PrefabPicker : TexturePicker;
     return (
       <Picker
         allowedExtensions={field.allowedExtensions}
