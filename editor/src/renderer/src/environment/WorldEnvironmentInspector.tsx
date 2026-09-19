@@ -2,7 +2,7 @@ import { Search, SlidersHorizontal } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import type { AssetPickerItem, AssetThumbnailProvider } from '../inspector/AssetPicker';
-import { SchemaComponentCard } from '../inspector/SchemaComponents';
+import { InspectorComponentCard } from '../inspector/InspectorComponentCard';
 import { setPathValue } from '../inspector/propertySchema';
 import type { HostWorldEnvironment } from './environmentTypes';
 import { worldEnvironmentSchemas } from './worldEnvironmentSchemas';
@@ -88,7 +88,7 @@ export function WorldEnvironmentInspector({
       </div>
       <div className="inspector-component-list environment-component-list">
         {schemas.map((schema) => (
-          <SchemaComponentCard
+          <InspectorComponentCard
             key={schema.id}
             assets={assets}
             collapsed={collapsed[schema.id] ?? false}
