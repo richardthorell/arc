@@ -512,13 +512,6 @@ textarea {
   white-space: nowrap;
 }
 
-.ui-panel-card-heading {
-  min-width: 0;
-  display: grid;
-  gap: 1px;
-}
-
-.ui-panel-card-subtitle,
 .ui-panel-card-row-description {
   color: var(--arc-color-text-dim);
   font-size: var(--arc-text-xxs);
