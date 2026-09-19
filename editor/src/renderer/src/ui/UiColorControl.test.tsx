@@ -16,6 +16,13 @@ describe('UiColorControl', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open Base Color color picker' }));
     expect(screen.getByRole('dialog', { name: 'Base Color color picker' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'OK' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Close dialog' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onCommit).toHaveBeenCalledWith({ x: 0.4, y: 0.2, z: 0.1, w: 0.5 });
+    expect(screen.queryByRole('dialog', { name: 'Base Color color picker' })).toBeNull();
   });
 
   it('shows RGB and HDR for a high-dynamic-range color without alpha', () => {
