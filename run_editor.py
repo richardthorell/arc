@@ -58,7 +58,11 @@ def parse_args():
         default=True,
         help="Build the native host without the Vulkan viewport backend.",
     )
-    parser.add_argument(\n        "--force-build",\n        action="store_true",\n        help="Discard the native CMake build tree and rerun native/npm preparation.",\n    )
+    parser.add_argument(
+        "--force-build",
+        action="store_true",
+        help="Discard the native CMake build tree and rerun native/npm preparation.",
+    )
     parser.add_argument("--build-only", action="store_true", help="Prepare and validate the editor without launching it.")
     parser.add_argument(
         "--quick-start",
