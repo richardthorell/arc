@@ -3,6 +3,7 @@ import type { CSSProperties, KeyboardEvent, PointerEvent as ReactPointerEvent, R
 import { Check, Copy, Pipette } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
+import { UiButton } from './UiButton';
 import { UiDialog } from './UiDialog';
 
 import './UiColorPicker.css';
@@ -222,6 +223,17 @@ export function UiColorPicker({
   const hueCss = colorToCss(hsvToLinearColor({ h: hsv.h, s: 1, v: 1 }, 1));
   const swatchStyle = (color: string) => ({ '--arc-picker-color': color }) as CSSProperties;
 
+  const finish = (value: UiColorValue) => {
+    if (previewFrame.current !== null) {
+      window.cancelAnimationFrame(previewFrame.current);
+      previewFrame.current = null;
+    }
+    onCommit(value);
+    onClose();
+  };
+  const cancel = () => finish(original.current);
+  const accept = () => finish(latest.current);
+
   const commitChannels = (channels: number[]) => {
     const alpha = showAlpha ? channels[3] : draft.w;
     if (mode === 'hsv') {
@@ -265,10 +277,21 @@ export function UiColorPicker({
       ariaLabel={`${label} color picker`}
       blurBackdrop={false}
       className="arc-color-picker"
+      compact
+      footer={
+        <>
+          <UiButton onClick={cancel} type="button">
+            Cancel
+          </UiButton>
+          <UiButton onClick={accept} type="button" variant="primary">
+            OK
+          </UiButton>
+        </>
+      }
       initialPosition={initialPosition}
       modal={false}
       onClose={onClose}
-      subtitle={`${showAlpha ? 'RGBA' : 'RGB'}${hdr ? ' · HDR' : ''}`}
+      showCloseButton={false}
       title={label}
       width={pickerWidth}
       zIndex={1600}
