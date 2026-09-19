@@ -63,13 +63,13 @@
   display: grid;
   align-self: flex-end;
   gap: 6px;
-  width: 218px;
-  margin-bottom: 16px;
+  width: 184px;
+  margin-bottom: 28px;
 }
 
 .arc-color-preview-row {
   display: grid;
-  grid-template-columns: 62px 148px;
+  grid-template-columns: 62px 114px;
   align-items: center;
   gap: 8px;
   min-height: 26px;
@@ -100,7 +100,7 @@ button.arc-color-preview-row:hover small {
 .arc-color-preview-swatch {
   position: relative;
   display: block;
-  width: 148px;
+  width: 114px;
   height: 24px;
   overflow: hidden;
   border: 1px solid #3a4650;
@@ -204,7 +204,7 @@ button.arc-color-preview-row:hover small {
 
 .arc-color-picker-mode {
   display: flex;
-  justify-content: flex-start;
+  justify-content: flex-end;
   padding: 0 0 10px;
 }
 
@@ -240,8 +240,11 @@ button.arc-color-preview-row:hover small {
   color: var(--arc-color-text-muted);
 }
 
-.arc-color-channel-slider > output {
-  color: var(--arc-color-text);
+.arc-color-channel-value.ui-text-input {
+  width: 54px;
+  min-width: 54px;
+  height: 24px;
+  padding-inline: 6px;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -309,7 +312,7 @@ button.arc-color-preview-row:hover small {
 
 .arc-color-hex-row {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) 28px;
+  grid-template-columns: 64px minmax(0, 1fr) 54px 28px;
   align-items: center;
   gap: 8px;
   margin-top: 16px;
@@ -319,7 +322,15 @@ button.arc-color-preview-row:hover small {
   font-size: 10px;
 }
 
+.arc-color-hex-input.ui-text-input {
+  grid-column: 2;
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+}
+
 .arc-color-copy.ui-icon-button {
+  grid-column: 4;
   width: 28px;
   min-width: 28px;
   height: 28px;
