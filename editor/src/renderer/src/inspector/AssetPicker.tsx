@@ -39,6 +39,7 @@ export type AssetPickerProps = {
   onOpen?: (asset: AssetPickerItem) => void;
   assetCompatibility?: (asset: AssetPickerItem) => string | null;
   onChange: (path: string) => void;
+  showLabel?: boolean;
 };
 
 const thumbnailCaches = new WeakMap<AssetThumbnailProvider, Map<string, Promise<string | null>>>();
@@ -197,6 +198,7 @@ export function AssetPicker({
   onOpen,
   assetCompatibility,
   onChange,
+  showLabel = true,
 }: AssetPickerProps) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
@@ -234,9 +236,7 @@ export function AssetPicker({
   const canOpen = Boolean(selected && onOpen && !mixed);
   const canClear = Boolean(allowEmpty && value && !mixed);
 
-  return (
-    <div className="inspector-property inspector-asset-property">
-      <span className="inspector-property-label">{label}</span>
+  const control = (
       <div className="asset-reference-control" onDragOver={(event) => event.preventDefault()} onDrop={acceptDrop}>
         <button
           aria-expanded={open}
@@ -317,7 +317,15 @@ export function AssetPicker({
           }}
         />
       )}
+  );
+
+  return showLabel ? (
+    <div className="inspector-property inspector-asset-property">
+      <span className="inspector-property-label">{label}</span>
+      {control}
     </div>
+  ) : (
+    control
   );
 }
 
