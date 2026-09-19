@@ -138,8 +138,10 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
-.ui-panel-card-row.is-full-width > .ui-panel-card-row-label {
+.ui-panel-card-row.is-full-width > .ui-panel-card-row-label,
+.ui-panel-card-row.is-full-width > .ui-panel-card-row-control {
   grid-column: 1 / -1;
+  width: 100%;
 }
 
 .ui-property-card-rows {
