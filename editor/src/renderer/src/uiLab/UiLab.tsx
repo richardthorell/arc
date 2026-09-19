@@ -16,7 +16,7 @@ import {
 import { AssetPicker, MaterialPicker, PrefabPicker, TexturePicker } from '../inspector/AssetPicker';
 import type { AssetPickerItem } from '../inspector/AssetPicker';
 import { ColorControl, NumberControl, Vector3Control } from '../inspector/InspectorControls';
-import { SchemaComponentCard } from '../inspector/SchemaComponents';
+import { InspectorComponentCard } from '../inspector/InspectorComponentCard';
 import type { Vec3, Vec4 } from '../inspector/inspectorTypes';
 import { setPathValue } from '../inspector/propertySchema';
 import type { PropertyComponentSchema } from '../inspector/propertySchema';
@@ -209,7 +209,7 @@ const uiHierarchy: readonly UiHierarchyNode[] = [
         name: 'UiPropertyCard',
         relation: 'data-driven wrapper',
         children: [
-          { name: 'SchemaComponentCard', relation: 'ECS adapter' },
+          { name: 'InspectorComponentCard', relation: 'ECS adapter' },
           { name: 'UiPanelCardRow', relation: 'renders fields' },
         ],
       },
@@ -789,8 +789,8 @@ export function UiLab() {
               <div className="ui-lab-demo-panel-body">Panel content region</div>
             </UiPanel>
           </LabCard>
-          <LabCard title="ECS component region" caption="SchemaComponentCard" wide>
-            <SchemaComponentCard
+          <LabCard title="ECS component region" caption="InspectorComponentCard" wide>
+            <InspectorComponentCard
               assets={demoAssets}
               collapsed={componentCollapsed}
               context={component}
@@ -818,9 +818,9 @@ export function UiLab() {
               </UiContextMenu>
             </div>
           </LabCard>
-          <LabCard title="Component actions" caption="SchemaComponentCard" wide>
+          <LabCard title="Component actions" caption="InspectorComponentCard" wide>
             <div className="ui-lab-component-menu-hint">
-              <SchemaComponentCard
+              <InspectorComponentCard
                 assets={demoAssets}
                 collapsed={false}
                 context={component}
