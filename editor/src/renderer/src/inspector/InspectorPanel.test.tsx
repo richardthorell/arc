@@ -555,6 +555,7 @@ describe('data-driven InspectorPanel', () => {
         expect.objectContaining({
           camera: expect.objectContaining({ clearColor: expect.arrayContaining([1, 0, 0]) }),
         }),
+        expect.objectContaining({ phase: 'commit' }),
       ),
     );
     const clearColor = command.mock.calls.at(-1)?.[1]?.camera?.clearColor as number[];
