@@ -1,5 +1,8 @@
 export { UiButton } from './UiButton';
 export { UiColorControl } from './UiColorControl';
+export type { UiColorControlProps } from './UiColorControl';
+export { UiColorPicker } from './UiColorPicker';
+export type { UiColorPickerProps, UiColorValue } from './UiColorPicker';
 export { UiCurveEditor, evaluateUiCurve } from './UiCurveEditor';
 export type { UiCurvePoint, UiCurveInterpolation, UiCurveHistogram } from './UiCurveEditor';
 export { UiContextMenu, UiContextMenuItem } from './UiContextMenu';
