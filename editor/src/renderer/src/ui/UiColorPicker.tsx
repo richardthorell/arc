@@ -449,6 +449,21 @@ export function UiColorPicker({
               options={colorPresetOptions}
               value="custom"
             />
+            <UiIconButton
+              className="arc-color-eyedropper"
+              disabled={!eyeDropper}
+              label="Pick color from screen"
+              onClick={() => {
+                if (!eyeDropper) return;
+                void new eyeDropper().open().then((result) => {
+                  const sampled = hexToLinearColor(result.sRGBHex, draft.w);
+                  if (sampled) emit(sampled, true);
+                });
+              }}
+              title={eyeDropper ? 'Pick an sRGB color from the screen' : 'Screen eyedropper is unavailable'}
+            >
+              <Pipette size={16} />
+            </UiIconButton>
           </div>
 
           <div className="arc-color-wheel-wrap">
@@ -496,26 +511,7 @@ export function UiColorPicker({
                 <i style={swatchStyle(currentCss)} />
               </span>
             </div>
-            <div className="arc-color-picker-tool-row">
-              <UiIconButton
-                className="arc-color-eyedropper"
-                disabled={!eyeDropper}
-                label="Pick color from screen"
-                onClick={() => {
-                  if (!eyeDropper) return;
-                  void new eyeDropper().open().then((result) => {
-                    const sampled = hexToLinearColor(result.sRGBHex, draft.w);
-                    if (sampled) emit(sampled, true);
-                  });
-                }}
-                title={eyeDropper ? 'Pick an sRGB color from the screen' : 'Screen eyedropper is unavailable'}
-              >
-                <Pipette size={16} />
-              </UiIconButton>
-            </div>
           </div>
-
-          <div className="arc-color-controls-spacer" />
 
           <div className="arc-color-picker-mode">
             <UiDropdown
