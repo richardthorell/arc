@@ -420,7 +420,7 @@
 .material-settings-list {
   min-height: 0;
   overflow: visible;
-  padding: 6px 8px 10px;
+  padding: 6px 8px 0;
 }
 
 .material-settings-card .ui-panel-card-row {
