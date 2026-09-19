@@ -3,6 +3,8 @@
 #include "builtin_shaders.h"
 #include "vulkan_texture_layout.h"
 
+#include <iostream>
+
 namespace arc::render::vulkan::backend_detail
 {
 void vulkan_render_backend::defer_texture_release(gpu_texture texture)
@@ -752,18 +754,34 @@ std::vector<gpu_texture_mip_demand> vulkan_render_backend::build_texture_mip_dem
 
 void vulkan_render_backend::dispatch_texture_mip_feedback(VkCommandBuffer command_buffer)
 {
-    if (!resolved_config_.features.texture_streaming || texture_feedback_slots_.empty()) return;
+    const bool diagnose_graph = first_graph_diagnostic_;
+    if (!resolved_config_.features.texture_streaming || texture_feedback_slots_.empty())
+    {
+        if (diagnose_graph)
+            std::cerr << "[debug][render.vulkan.graph] texture feedback: skipped (disabled or no slots)\n";
+        return;
+    }
+    if (diagnose_graph)
+        std::cerr << "[debug][render.vulkan.graph] texture feedback: build demands begin\n";
     auto demands = build_texture_mip_demands();
+    if (diagnose_graph)
+        std::cerr << "[debug][render.vulkan.graph] texture feedback: demands=" << demands.size() << "\n";
     if (demands.empty()) return;
     if (texture_feedback_frames_.size() < frame_resource_count())
         texture_feedback_frames_.resize(frame_resource_count());
     auto& frame = texture_feedback_frames_[current_frame_slot()];
     const auto slot_count = static_cast<std::uint32_t>(texture_feedback_slots_.size());
+    if (diagnose_graph)
+        std::cerr << "[debug][render.vulkan.graph] texture feedback: ensure resources begin\n";
     if (!ensure_texture_feedback_frame(frame, static_cast<std::uint32_t>(demands.size()), slot_count))
     {
         last_profile_.texture_streaming.fallback_reason = "texture feedback resources are unavailable";
+        if (diagnose_graph)
+            std::cerr << "[debug][render.vulkan.graph] texture feedback: resources unavailable\n";
         return;
     }
+    if (diagnose_graph)
+        std::cerr << "[debug][render.vulkan.graph] texture feedback: resources ready\n";
 
     std::vector<gpu_texture_mip_slot> slots(slot_count);
     for (std::uint32_t index = 0; index < slot_count; ++index)
@@ -778,6 +796,8 @@ void vulkan_render_backend::dispatch_texture_mip_feedback(VkCommandBuffer comman
     std::memcpy(mapped, slots.data(), slots.size() * sizeof(gpu_texture_mip_slot));
     vmaFlushAllocation(allocator_, frame.slots.allocation, 0, slots.size() * sizeof(gpu_texture_mip_slot));
     vmaUnmapMemory(allocator_, frame.slots.allocation);
+    if (diagnose_graph)
+        std::cerr << "[debug][render.vulkan.graph] texture feedback: CPU buffers uploaded\n";
 
     std::array<VkBufferMemoryBarrier, 2> input_barriers{};
     const std::array<gpu_buffer, 2> buffers{frame.demands, frame.slots};
@@ -812,6 +832,8 @@ void vulkan_render_backend::dispatch_texture_mip_feedback(VkCommandBuffer comman
                          nullptr, 1, &output, 0, nullptr);
     frame.submitted_slot_count = slot_count;
     frame.submitted_frame = last_profile_.frame_index;
+    if (diagnose_graph)
+        std::cerr << "[debug][render.vulkan.graph] texture feedback: dispatch recorded\n";
 }
 
 void vulkan_render_backend::collect_texture_mip_feedback(std::uint32_t frame_index)
