@@ -555,15 +555,13 @@ private:
                   << "ms\n";
         if (!result)
         {
-            std::cerr << "[error][render.vulkan] backend creation failed: " << result.error().message << '\n';
+            std::cerr << "arc_host_process Vulkan backend error: " << result.error().message << '\n';
             return false;
         }
 
-        std::cerr << "[debug][render.vulkan] backend object created; installing renderer backend\n";
         std::lock_guard lock(host_mutex_);
         host_->renderer_service().set_backend(std::move(result).value());
         backend_ = host_->renderer_service().backend();
-        std::cerr << "[debug][render.vulkan] renderer backend installed\n";
         return backend_ != nullptr;
     }
 
@@ -616,17 +614,9 @@ private:
     {
         if (!backend_) return;
 
-        const bool diagnose_first_frame = first_native_frame_diagnostic_;
         bool rendered{};
         std::string message;
-        if (diagnose_first_frame)
-            std::cerr << "[debug][viewport.native] first frame: terrain hover update begin\n";
         update_terrain_hover();
-        if (diagnose_first_frame)
-            std::cerr << "[debug][viewport.native] first frame: terrain hover update complete\n";
-
-        if (diagnose_first_frame)
-            std::cerr << "[debug][viewport.native] first frame: scene submission begin\n";
         {
             std::lock_guard lock(host_mutex_);
             host_->request_viewport(arc::editor::host_viewport_request{.viewport_id = viewport_id_,
@@ -634,25 +624,13 @@ private:
                                                                        .width = value.width,
                                                                        .height = value.height});
         }
-        if (diagnose_first_frame)
-            std::cerr << "[debug][viewport.native] first frame: scene submission complete\n";
         ++render_progress_sequence_;
-
-        if (diagnose_first_frame)
-            std::cerr << "[debug][viewport.native] first frame: Vulkan surface present begin\n";
         auto present = backend_->present_surface_frame(value.width, value.height);
-        if (diagnose_first_frame)
-            std::cerr << "[debug][viewport.native] first frame: Vulkan surface present returned\n";
         rendered = present.has_value();
         if (!rendered) message = std::move(present.error().message);
         if (rendered)
         {
             last_render_error_.clear();
-            if (diagnose_first_frame)
-            {
-                std::cerr << "[debug][viewport.native] first frame: complete\n";
-                first_native_frame_diagnostic_ = false;
-            }
             return;
         }
         if (message.empty()) return;
@@ -662,31 +640,13 @@ private:
     void render_shared_once(const shared_render_target& target)
     {
         if (!backend_) return;
-        const bool diagnose_first_frame = first_shared_frame_diagnostic_;
-        if (diagnose_first_frame)
-            std::cerr << "[debug][viewport.sharedTexture] first frame: begin\n";
-
         // Publish the completed producer frame before admitting another one.
         // Renderer submission advances temporal state, so it must only happen
         // when the shared output can execute that exact frame.
-        if (diagnose_first_frame)
-            std::cerr << "[debug][viewport.sharedTexture] first frame: initial poll begin\n";
         publish_ready_frame(target.viewport_id, target.consumer_process_id);
-        if (diagnose_first_frame)
-            std::cerr << "[debug][viewport.sharedTexture] first frame: initial poll complete\n";
-
-        if (diagnose_first_frame)
-            std::cerr << "[debug][viewport.sharedTexture] first frame: can-present query begin\n";
-        const bool can_present = backend_->can_present_viewport_output(target.viewport_id);
-        if (diagnose_first_frame)
-            std::cerr << "[debug][viewport.sharedTexture] first frame: can-present=" << (can_present ? "true" : "false")
-                      << "\n";
-        if (!can_present) return;
-
+        if (!backend_->can_present_viewport_output(target.viewport_id)) return;
         bool rendered{};
         std::string message;
-        if (diagnose_first_frame)
-            std::cerr << "[debug][viewport.sharedTexture] first frame: scene submission begin\n";
         {
             std::lock_guard lock(host_mutex_);
             host_->request_viewport(arc::editor::host_viewport_request{.viewport_id = target.viewport_id,
@@ -694,8 +654,6 @@ private:
                                                                        .width = target.width,
                                                                        .height = target.height});
         }
-        if (diagnose_first_frame)
-            std::cerr << "[debug][viewport.sharedTexture] first frame: scene submission complete\n";
         {
             std::lock_guard lock(bounds_mutex_);
             if (const auto found = shared_surfaces_.find(target.viewport_id);
@@ -703,25 +661,13 @@ private:
                 ++found->second.frame_index;
         }
         ++render_progress_sequence_;
-
-        if (diagnose_first_frame)
-            std::cerr << "[debug][viewport.sharedTexture] first frame: Vulkan present begin\n";
         auto present = backend_->present_viewport_output(target.viewport_id);
-        if (diagnose_first_frame)
-            std::cerr << "[debug][viewport.sharedTexture] first frame: Vulkan present returned\n";
         rendered = present.has_value();
         if (!rendered) message = std::move(present.error().message);
         if (rendered)
         {
             last_render_error_.clear();
-            if (diagnose_first_frame)
-                std::cerr << "[debug][viewport.sharedTexture] first frame: completed-frame poll begin\n";
             publish_ready_frame(target.viewport_id, target.consumer_process_id);
-            if (diagnose_first_frame)
-            {
-                std::cerr << "[debug][viewport.sharedTexture] first frame: completed-frame poll complete\n";
-                first_shared_frame_diagnostic_ = false;
-            }
             return;
         }
         if (message.empty()) return;
@@ -1454,8 +1400,6 @@ private:
             }
             if (surface.create_dirty && surface.attached && backend_)
             {
-                std::cerr << "[debug][viewport.sharedTexture] creating output '" << id << "' " << surface.width << 'x'
-                          << surface.height << "\n";
                 const auto created =
                     backend_->create_viewport_output({.id = id,
                                                       .type = arc::render::viewport_output_type::shared_texture,
@@ -1468,10 +1412,7 @@ private:
                     surface.output_created = false;
                 }
                 else
-                {
                     surface.output_created = true;
-                    std::cerr << "[debug][viewport.sharedTexture] output '" << id << "' created\n";
-                }
                 surface.create_dirty = false;
             }
             if (surface.resize_dirty && surface.output_created && backend_)
@@ -1502,17 +1443,12 @@ private:
         auto value = current_bounds();
         if (!shared_texture_ && !create_window(value))
         {
-            std::cerr << "[error][viewport.native] failed to create native viewport window\n";
+            std::cerr << "arc_host_process failed to create native viewport window\n";
             signal_setup("Failed to create native viewport window");
             running_ = false;
             return;
         }
-        if (!shared_texture_)
-        {
-            std::cerr << "[debug][viewport.native] native viewport window created\n";
-            apply_bounds(value);
-            std::cerr << "[debug][viewport.native] initial native viewport bounds applied\n";
-        }
+        if (!shared_texture_) apply_bounds(value);
         if (!create_backend())
         {
             signal_setup("Failed to create Vulkan viewport backend");
@@ -1537,16 +1473,10 @@ private:
             }
         }
         signal_setup({});
-        bool first_render_loop_iteration = true;
-        std::cerr << "[debug][viewport] renderer setup complete; entering render loop\n";
 
         while (running_)
         {
-            if (first_render_loop_iteration)
-                std::cerr << "[debug][viewport] first frame: render-thread pump begin\n";
             jobs_->pump_render_thread(32);
-            if (first_render_loop_iteration)
-                std::cerr << "[debug][viewport] first frame: render-thread pump complete\n";
             std::vector<arc::editor::host_viewport_pointer_command> pointer_inputs;
             std::vector<arc::editor::host_viewport_key_command> key_inputs;
             std::vector<shared_render_target> shared_targets;
@@ -1557,8 +1487,6 @@ private:
                 TranslateMessage(&message);
                 DispatchMessageW(&message);
             }
-            if (first_render_loop_iteration)
-                std::cerr << "[debug][viewport] first frame: window message pump complete\n";
 
             if (shared_texture_)
             {
@@ -1592,14 +1520,10 @@ private:
                 }
             }
 
-            if (first_render_loop_iteration)
-                std::cerr << "[debug][viewport] first frame: viewport state synchronized\n";
             for (const auto& pointer_input : pointer_inputs)
                 process_pointer(pointer_input);
             for (const auto& key_input : key_inputs)
                 process_key(key_input);
-            if (first_render_loop_iteration)
-                std::cerr << "[debug][viewport] first frame: input processing complete\n";
 
             if (!attached_)
             {
@@ -1618,7 +1542,6 @@ private:
             }
             else
                 render_once(value);
-            first_render_loop_iteration = false;
             std::this_thread::sleep_for(arc::editor::defaults::native_viewport_frame_interval);
         }
 
@@ -1682,8 +1605,6 @@ private:
     bool input_control_{};
     std::uint64_t frame_index_{};
     std::uint64_t render_progress_sequence_{};
-    bool first_shared_frame_diagnostic_{true};
-    bool first_native_frame_diagnostic_{true};
     std::string last_render_error_;
     std::chrono::steady_clock::time_point last_render_error_time_{};
     std::chrono::steady_clock::time_point last_backend_recovery_attempt_{};
