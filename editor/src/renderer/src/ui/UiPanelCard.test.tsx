@@ -27,6 +27,19 @@ describe('UiPanelCard', () => {
     expect(screen.getByRole('button', { name: 'Expand Material' })).toBeTruthy();
   });
 
+  it('toggles itself when no controlled toggle handler is supplied', () => {
+    render(
+      <UiPanelCard title="Material">
+        <span>Settings</span>
+      </UiPanelCard>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse Material' }));
+    expect(screen.queryByText('Settings')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Expand Material' }));
+    expect(screen.getByText('Settings')).toBeTruthy();
+  });
+
   it('can render a fixed non-expandable header', () => {
     const onToggle = vi.fn();
     render(
