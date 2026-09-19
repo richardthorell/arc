@@ -1,7 +1,7 @@
 .ui-color-control {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   min-width: 0;
   width: 100%;
 }
@@ -60,15 +60,25 @@
   user-select: none;
 }
 
-.ui-color-control-badges > span {
+.ui-color-control-badge {
   min-width: 0;
   padding: 2px 5px;
-  border: 1px solid rgba(190, 132, 65, 0.48);
+  border: 1px solid transparent;
   border-radius: 7px;
-  color: rgba(216, 161, 96, 0.9);
-  background: rgba(190, 126, 52, 0.08);
   font-size: 8px;
   font-weight: 600;
   letter-spacing: 0.035em;
   line-height: 1.15;
+}
+
+.ui-color-control-badge.is-channels {
+  border-color: rgba(183, 126, 59, 0.28);
+  color: rgba(197, 148, 88, 0.68);
+  background: rgba(183, 118, 46, 0.04);
+}
+
+.ui-color-control-badge.is-hdr {
+  border-color: rgba(76, 134, 177, 0.34);
+  color: rgba(111, 163, 202, 0.76);
+  background: rgba(66, 120, 164, 0.06);
 }
