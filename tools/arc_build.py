@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import zipfile
 
 try:
@@ -348,10 +349,18 @@ def cmake_cache_generator(build_dir):
 
 
 def remove_readonly_path(function, path, _exc_info):
-    # Git can leave pack/index files read-only on Windows. Clear the flag and
-    # retry the failed removal so a clean build does not require manual cleanup.
+    # Git can leave pack/index files read-only on Windows, and scanners can
+    # briefly keep them open after a failed configure. Clear the flag and retry
+    # a few times so a clean build does not require manual cleanup.
     os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
-    function(path)
+    for attempt in range(5):
+        try:
+            function(path)
+            return
+        except OSError:
+            if attempt == 4:
+                raise
+            time.sleep(0.1 * (attempt + 1))
 
 
 def reset_cmake_build_directory(build_dir):
