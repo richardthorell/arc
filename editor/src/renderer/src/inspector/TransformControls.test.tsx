@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { inspectorComponentSchemas } from './componentSchemas';
 import type { InspectorEntitySnapshot } from './inspectorTypes';
-import { SchemaComponentCard } from './SchemaComponents';
+import { InspectorComponentCard } from './InspectorComponentCard';
 
 const transformSchema = inspectorComponentSchemas.find((schema) => schema.id === 'transform')!;
 const context: InspectorEntitySnapshot = {
@@ -37,7 +37,7 @@ describe('Transform controls', () => {
   it('links scale axes by default and can unlink them', () => {
     const onValue = vi.fn();
     const view = render(
-      <SchemaComponentCard
+      <InspectorComponentCard
         schema={transformSchema}
         context={context}
         collapsed={false}
@@ -60,7 +60,7 @@ describe('Transform controls', () => {
   it('provides per-row reset actions and transform tooltips', () => {
     const onValue = vi.fn();
     const view = render(
-      <SchemaComponentCard
+      <InspectorComponentCard
         schema={transformSchema}
         context={context}
         collapsed={false}
