@@ -47,7 +47,7 @@ class EditorNativeBuildTests(unittest.TestCase):
         with mock.patch.object(run_editor.arc_build, "find_executable", return_value="cmake"), mock.patch.object(
             run_editor.arc_build,
             "reset_cmake_build_directory",
-            side_effect=lambda _: calls.append("reset"),
+            side_effect=lambda *_args, **_kwargs: calls.append("reset"),
         ) as reset, mock.patch.object(
             run_editor.arc_build,
             "resolve_visual_studio_generator",
@@ -69,11 +69,25 @@ class EditorNativeBuildTests(unittest.TestCase):
         ):
             run_editor.prepare_native_editor(self.make_args(force_build=True), str(REPO_ROOT))
 
-        reset.assert_called_once_with(str(REPO_ROOT / "out" / "build" / "editor-vulkan"))
+        reset.assert_called_once_with(
+            str(REPO_ROOT / "out" / "build" / "editor-vulkan"),
+            cmake="cmake",
+        )
         self.assertEqual(
             calls,
             ["reset", "resolve", "configure", "arc_host_process", "arc-project-cli"],
         )
+
+    def test_generator_platform_mismatch_requires_force_build(self) -> None:
+        with mock.patch.object(run_editor.arc_build, "find_executable", return_value="cmake"), mock.patch.object(
+            run_editor.arc_build, "resolve_visual_studio_generator", return_value="Visual Studio 17 2022"
+        ), mock.patch.object(
+            run_editor.arc_build, "cmake_cache_generator", return_value="Visual Studio 17 2022"
+        ), mock.patch.object(
+            run_editor.arc_build, "cmake_cache_generator_platform", return_value=""
+        ):
+            with self.assertRaisesRegex(RuntimeError, "generator platform '<default>'"):
+                run_editor.prepare_native_editor(self.make_args(), str(REPO_ROOT))
 
     def test_existing_tree_is_always_reconfigured_before_build(self) -> None:
         calls = []
