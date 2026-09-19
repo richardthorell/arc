@@ -359,9 +359,12 @@ export function TexturePicker({
   );
 }
 
-export function MaterialPicker(
-  props: Omit<AssetPickerProps, 'assetKinds' | 'assetTypeLabel' | 'createNewLabel' | 'onCreateNew' | 'onOpen'>,
-) {
+export function MaterialPicker({
+  showParameters = true,
+  ...props
+}: Omit<AssetPickerProps, 'assetKinds' | 'assetTypeLabel' | 'createNewLabel' | 'onCreateNew' | 'onOpen'> & {
+  showParameters?: boolean;
+}) {
   const openMaterial = (asset: AssetPickerItem) => {
     if (asset.kind !== 'material' || asset.scope === 'procedural') return;
     openAssetEditorDocument({
@@ -404,12 +407,14 @@ export function MaterialPicker(
         onCreateNew={createMaterial}
         onOpen={openMaterial}
       />
-      <MaterialParameterSubsection
-        assets={props.assets}
-        mixed={props.mixed}
-        referenceMode={props.referenceMode}
-        value={props.value}
-      />
+      {showParameters && (
+        <MaterialParameterSubsection
+          assets={props.assets}
+          mixed={props.mixed}
+          referenceMode={props.referenceMode}
+          value={props.value}
+        />
+      )}
     </>
   );
 }
