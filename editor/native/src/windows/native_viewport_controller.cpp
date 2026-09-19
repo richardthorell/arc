@@ -555,13 +555,15 @@ private:
                   << "ms\n";
         if (!result)
         {
-            std::cerr << "arc_host_process Vulkan backend error: " << result.error().message << '\n';
+            std::cerr << "[error][render.vulkan] backend creation failed: " << result.error().message << '\n';
             return false;
         }
 
+        std::cerr << "[debug][render.vulkan] backend object created; installing renderer backend\n";
         std::lock_guard lock(host_mutex_);
         host_->renderer_service().set_backend(std::move(result).value());
         backend_ = host_->renderer_service().backend();
+        std::cerr << "[debug][render.vulkan] renderer backend installed\n";
         return backend_ != nullptr;
     }
 
@@ -1400,6 +1402,8 @@ private:
             }
             if (surface.create_dirty && surface.attached && backend_)
             {
+                std::cerr << "[debug][viewport.sharedTexture] creating output '" << id << "' " << surface.width << 'x'
+                          << surface.height << "\n";
                 const auto created =
                     backend_->create_viewport_output({.id = id,
                                                       .type = arc::render::viewport_output_type::shared_texture,
@@ -1412,7 +1416,10 @@ private:
                     surface.output_created = false;
                 }
                 else
+                {
                     surface.output_created = true;
+                    std::cerr << "[debug][viewport.sharedTexture] output '" << id << "' created\n";
+                }
                 surface.create_dirty = false;
             }
             if (surface.resize_dirty && surface.output_created && backend_)
