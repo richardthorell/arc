@@ -59,6 +59,23 @@
   font-weight: 600;
 }
 
+.arc-color-preset-dropdown .ui-dropdown-menu {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.arc-color-preset-swatch {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  background:
+    linear-gradient(var(--arc-preset-color), var(--arc-preset-color)),
+    repeating-conic-gradient(#67717a 0 25%, #353e45 0 50%) 50% / 6px 6px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.28);
+}
+
 .arc-color-preview-stack {
   display: grid;
   align-self: flex-end;
