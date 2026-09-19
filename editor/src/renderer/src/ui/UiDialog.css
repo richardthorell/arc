@@ -19,6 +19,25 @@
   backdrop-filter: none;
 }
 
+.ui-dialog-backdrop.is-no-blur {
+  backdrop-filter: none;
+}
+
+.ui-dialog-backdrop.is-modeless {
+  display: block;
+  padding: 0;
+  background: transparent;
+  backdrop-filter: none;
+  pointer-events: none;
+}
+
+.ui-dialog-backdrop.is-modeless .ui-dialog {
+  position: fixed;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  pointer-events: auto;
+}
+
 .ui-dialog {
   max-width: min(100%, calc(100vw - 64px));
   overflow: hidden;
