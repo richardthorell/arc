@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties, KeyboardEvent, PointerEvent as ReactPointerEvent, RefObject } from 'react';
+import type { CSSProperties, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { Check, Copy, Pipette } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 import { UiButton } from './UiButton';
 import { UiDialog } from './UiDialog';
+import { UiIconButton } from './UiIconButton';
 
 import './UiColorPicker.css';
 
@@ -19,7 +20,6 @@ type EyeDropperInstance = { open: () => Promise<EyeDropperResult> };
 type EyeDropperConstructor = new () => EyeDropperInstance;
 
 export type UiColorPickerProps = {
-  anchorRef: RefObject<HTMLElement | null>;
   label: string;
   showAlpha?: boolean;
   minChannelValue?: number;
@@ -30,24 +30,14 @@ export type UiColorPickerProps = {
   onPreview: (value: UiColorValue) => void;
 };
 
-const pickerWidth = 306;
-const pickerEstimatedHeight = 500;
+const pickerWidth = 430;
+const pickerEstimatedHeight = 650;
 const pickerViewportMargin = 8;
 
-const anchoredPickerPosition = (anchorRef: RefObject<HTMLElement | null>) => {
-  const anchor = anchorRef.current?.getBoundingClientRect();
-  if (!anchor) return { x: pickerViewportMargin, y: pickerViewportMargin };
-
-  const x = Math.max(
-    pickerViewportMargin,
-    Math.min(anchor.left, window.innerWidth - pickerWidth - pickerViewportMargin),
-  );
-  let y = anchor.bottom + 6;
-  if (y + pickerEstimatedHeight > window.innerHeight) {
-    y = Math.max(pickerViewportMargin, anchor.top - pickerEstimatedHeight - 6);
-  }
-  return { x, y };
-};
+const centeredPickerPosition = () => ({
+  x: Math.max(pickerViewportMargin, (window.innerWidth - pickerWidth) / 2),
+  y: Math.max(pickerViewportMargin, (window.innerHeight - pickerEstimatedHeight) / 2),
+});
 
 const clamp = (value: number, min = 0, max = 1) => Math.min(Math.max(value, min), max);
 const wrapHue = (hue: number) => ((hue % 360) + 360) % 360;
@@ -137,7 +127,6 @@ export const colorToCss = (value: UiColorValue) => {
 };
 
 export function UiColorPicker({
-  anchorRef,
   label,
   value,
   showAlpha = true,
@@ -156,7 +145,7 @@ export function UiColorPicker({
   const pendingPreview = useRef(value);
   const hsv = linearColorToHsv(draft);
   const hdr = maxChannelValue > 1;
-  const initialPosition = anchoredPickerPosition(anchorRef);
+  const initialPosition = centeredPickerPosition();
   const hdrScale = displayScale(draft);
   const applyHdrScale = (color: UiColorValue) =>
     hdr ? { ...color, x: color.x * hdrScale, y: color.y * hdrScale, z: color.z * hdrScale } : color;
@@ -184,19 +173,37 @@ export function UiColorPicker({
     latest.current = next;
     pendingPreview.current = next;
     setDraft(next);
+
+    if (previewFrame.current !== null) {
+      window.cancelAnimationFrame(previewFrame.current);
+      previewFrame.current = null;
+    }
+
     if (final) {
-      if (previewFrame.current !== null) {
-        window.cancelAnimationFrame(previewFrame.current);
-        previewFrame.current = null;
-      }
-      onCommit(next);
+      onPreview(next);
       return;
     }
-    if (previewFrame.current === null) {
-      previewFrame.current = window.requestAnimationFrame(() => {
-        previewFrame.current = null;
-        onPreview(pendingPreview.current);
-      });
+
+    previewFrame.current = window.requestAnimationFrame(() => {
+      previewFrame.current = null;
+      onPreview(pendingPreview.current);
+    });
+  };
+
+  const updateHue = (event: ReactPointerEvent<HTMLDivElement>, final: boolean) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - (bounds.left + bounds.width / 2);
+    const y = event.clientY - (bounds.top + bounds.height / 2);
+    const hue = wrapHue((Math.atan2(y, x) * 180) / Math.PI);
+    emit(applyHdrScale(hsvToLinearColor({ ...hsv, h: hue }, draft.w)), final);
+  };
+
+  const huePointer = (event: ReactPointerEvent<HTMLDivElement>, final: boolean) => {
+    if (event.type === 'pointerdown') event.currentTarget.setPointerCapture(event.pointerId);
+    if (event.type === 'pointermove' && !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    updateHue(event, final);
+    if (final && event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
     }
   };
 
@@ -208,27 +215,32 @@ export function UiColorPicker({
   };
 
   const spectrumPointer = (event: ReactPointerEvent<HTMLDivElement>, final: boolean) => {
+    event.stopPropagation();
     if (event.type === 'pointerdown') event.currentTarget.setPointerCapture(event.pointerId);
     if (event.type === 'pointermove' && !event.currentTarget.hasPointerCapture(event.pointerId)) return;
     updateSpectrum(event, final);
-    if (final && event.currentTarget.hasPointerCapture(event.pointerId))
+    if (final && event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   };
 
-  const setHue = (hue: number, final: boolean) =>
-    emit(applyHdrScale(hsvToLinearColor({ ...hsv, h: hue }, draft.w)), final);
   const setAlpha = (alpha: number, final: boolean) => emit({ ...draft, w: clamp(alpha) }, final);
   const currentCss = colorToCss(draft);
   const originalCss = colorToCss(original.current);
   const hueCss = colorToCss(hsvToLinearColor({ h: hsv.h, s: 1, v: 1 }, 1));
   const swatchStyle = (color: string) => ({ '--arc-picker-color': color }) as CSSProperties;
+  const hueRadians = (hsv.h * Math.PI) / 180;
+  const hueCursorStyle = {
+    left: `${50 + Math.cos(hueRadians) * 44}%`,
+    top: `${50 + Math.sin(hueRadians) * 44}%`,
+  };
 
-  const finish = (value: UiColorValue) => {
+  const finish = (next: UiColorValue) => {
     if (previewFrame.current !== null) {
       window.cancelAnimationFrame(previewFrame.current);
       previewFrame.current = null;
     }
-    onCommit(value);
+    onCommit(next);
     onClose();
   };
   const cancel = () => finish(original.current);
@@ -296,34 +308,30 @@ export function UiColorPicker({
       width={pickerWidth}
       zIndex={1600}
     >
-      <div className="arc-color-picker-preview-row">
-        <button
-          aria-label={`Restore original ${label}`}
-          className="arc-color-preview"
-          onClick={() => emit(original.current, true)}
-          style={swatchStyle(originalCss)}
-          type="button"
-        >
-          <span />
-          <small>Original</small>
-        </button>
-        <div className="arc-color-preview is-current" style={swatchStyle(currentCss)}>
-          <span />
-          <small>Current</small>
+      <div className="arc-color-picker-top">
+        <div className="arc-color-preview-stack">
+          <button
+            aria-label={`Restore original ${label}`}
+            className="arc-color-preview-row is-original"
+            onClick={() => emit(original.current, true)}
+            type="button"
+          >
+            <small>Original</small>
+            <span className="arc-color-preview-swatch">
+              <i style={swatchStyle(originalCss)} />
+            </span>
+          </button>
+          <div className="arc-color-preview-row is-current">
+            <small>Current</small>
+            <span className="arc-color-preview-swatch">
+              <i style={swatchStyle(currentCss)} />
+            </span>
+          </div>
         </div>
-        <button
-          aria-label="Copy color hex"
-          className="arc-color-tool"
-          onClick={() => void navigator.clipboard?.writeText(colorToHex(draft, showAlpha))}
-          title="Copy sRGB hexadecimal value"
-          type="button"
-        >
-          <Copy size={14} />
-        </button>
-        <button
-          aria-label="Pick color from screen"
-          className="arc-color-tool"
+        <UiIconButton
+          className="arc-color-eyedropper"
           disabled={!eyeDropper}
+          label="Pick color from screen"
           onClick={() => {
             if (!eyeDropper) return;
             void new eyeDropper().open().then((result) => {
@@ -332,33 +340,36 @@ export function UiColorPicker({
             });
           }}
           title={eyeDropper ? 'Pick an sRGB color from the screen' : 'Screen eyedropper is unavailable'}
-          type="button"
         >
-          <Pipette size={15} />
-        </button>
+          <Pipette size={16} />
+        </UiIconButton>
       </div>
 
-      <div
-        aria-label="Saturation and value"
-        className="arc-color-spectrum"
-        onPointerDown={(event) => spectrumPointer(event, false)}
-        onPointerMove={(event) => spectrumPointer(event, false)}
-        onPointerUp={(event) => spectrumPointer(event, true)}
-        style={{ '--arc-picker-hue': hueCss } as CSSProperties}
-      >
-        <span className="arc-color-spectrum-cursor" style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }} />
+      <div className="arc-color-wheel-wrap">
+        <div
+          aria-label="Hue"
+          className="arc-color-wheel"
+          onPointerDown={(event) => huePointer(event, false)}
+          onPointerMove={(event) => huePointer(event, false)}
+          onPointerUp={(event) => huePointer(event, true)}
+        >
+          <span className="arc-color-wheel-cursor" style={hueCursorStyle} />
+          <div
+            aria-label="Saturation and value"
+            className="arc-color-wheel-square"
+            onPointerDown={(event) => spectrumPointer(event, false)}
+            onPointerMove={(event) => spectrumPointer(event, false)}
+            onPointerUp={(event) => spectrumPointer(event, true)}
+            style={{ '--arc-picker-hue': hueCss } as CSSProperties}
+          >
+            <span
+              className="arc-color-spectrum-cursor"
+              style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }}
+            />
+          </div>
+        </div>
       </div>
 
-      <PickerRange
-        label="Hue"
-        className="arc-color-hue"
-        min={0}
-        max={360}
-        step={0.1}
-        value={hsv.h}
-        onChange={(next) => setHue(next, false)}
-        onFinal={() => setHue(linearColorToHsv(latest.current).h, true)}
-      />
       {showAlpha && (
         <PickerRange
           label="Alpha"
@@ -444,6 +455,13 @@ export function UiColorPicker({
             if (parsed) emit(parsed, true);
           }}
         />
+        <UiIconButton
+          className="arc-color-copy"
+          label="Copy color hex"
+          onClick={() => void navigator.clipboard?.writeText(colorToHex(draft, showAlpha))}
+        >
+          <Copy size={14} />
+        </UiIconButton>
         <span title="Values are converted to ARC's scene-linear color storage">
           <Check size={13} /> Linear storage
         </span>
