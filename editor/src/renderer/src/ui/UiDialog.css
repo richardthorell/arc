@@ -144,6 +144,17 @@
   padding: 6px 8px;
 }
 
+.ui-dialog.is-compact .ui-dialog-footer .ui-button {
+  height: var(--arc-control-height);
+  min-height: var(--arc-control-height);
+  max-height: var(--arc-control-height);
+  padding-inline: var(--arc-button-padding-x);
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-sm);
+  font-weight: 600;
+  line-height: 1;
+}
+
 .ui-dialog-footer {
   display: flex;
   justify-content: flex-end;
