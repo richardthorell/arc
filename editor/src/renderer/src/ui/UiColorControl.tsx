@@ -47,8 +47,8 @@ export function UiColorControl({
         />
       </button>
       <div className="ui-color-control-badges" aria-hidden="true">
-        <span>{allowAlpha ? 'RGBA' : 'RGB'}</span>
-        {hdr && <span>HDR</span>}
+        <span className="ui-color-control-badge is-channels">{allowAlpha ? 'RGBA' : 'RGB'}</span>
+        {hdr && <span className="ui-color-control-badge is-hdr">HDR</span>}
       </div>
       {pickerOpen && (
         <UiColorPicker
