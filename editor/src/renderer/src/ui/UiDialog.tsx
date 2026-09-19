@@ -12,6 +12,7 @@ export type UiDialogProps = {
   blurBackdrop?: boolean;
   children?: ReactNode;
   className?: string;
+  compact?: boolean;
   draggable?: boolean;
   footer?: ReactNode;
   icon?: ReactNode;
@@ -19,6 +20,7 @@ export type UiDialogProps = {
   modal?: boolean;
   onClose?: () => void;
   preview?: boolean;
+  showCloseButton?: boolean;
   subtitle?: string;
   title?: string;
   width?: number;
@@ -38,6 +40,7 @@ export function UiDialog({
   blurBackdrop = true,
   children,
   className,
+  compact = false,
   draggable: draggableProp,
   footer,
   icon,
@@ -45,6 +48,7 @@ export function UiDialog({
   modal = true,
   onClose,
   preview = false,
+  showCloseButton = true,
   subtitle,
   title,
   width = 520,
@@ -63,7 +67,9 @@ export function UiDialog({
   ]
     .filter(Boolean)
     .join(' ');
-  const dialogClasses = ['ui-dialog', drag ? 'is-dragging' : '', className].filter(Boolean).join(' ');
+  const dialogClasses = ['ui-dialog', compact ? 'is-compact' : '', drag ? 'is-dragging' : '', className]
+    .filter(Boolean)
+    .join(' ');
   const hasHeader = Boolean(title || subtitle || icon || onClose);
   const draggable = draggableProp ?? (!preview && hasHeader);
 
@@ -130,7 +136,7 @@ export function UiDialog({
                 {subtitle && <small>{subtitle}</small>}
               </span>
             </div>
-            {onClose && (
+            {onClose && showCloseButton && (
               <UiIconButton aria-label="Close dialog" label="Close dialog" onClick={onClose}>
                 <X size={15} />
               </UiIconButton>
