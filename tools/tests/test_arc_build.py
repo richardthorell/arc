@@ -17,6 +17,80 @@ from tools import arc_build
 
 
 class ArcBuildTests(unittest.TestCase):
+    def test_prompt_yes_no_requires_explicit_yes(self) -> None:
+        self.assertTrue(arc_build.prompt_yes_no("Install CMake?", input_fn=lambda _: "yes"))
+        self.assertFalse(arc_build.prompt_yes_no("Install CMake?", input_fn=lambda _: ""))
+        self.assertFalse(arc_build.prompt_yes_no("Install CMake?", input_fn=lambda _: "no"))
+
+    def test_prerequisite_installer_prompts_for_each_component(self) -> None:
+        checks = [
+            {
+                "key": "cmake",
+                "name": "CMake",
+                "ok": False,
+                "detail": "not found",
+                "installable": True,
+            },
+            {
+                "key": "node",
+                "name": "Node.js / npm",
+                "ok": False,
+                "detail": "not found",
+                "installable": True,
+            },
+            {
+                "key": "visual_studio",
+                "name": "Visual Studio C++",
+                "ok": False,
+                "detail": "not found",
+                "installable": False,
+            },
+        ]
+        answers = iter(["yes", "no"])
+
+        with mock.patch.object(arc_build.platform, "system", return_value="Windows"), mock.patch.object(
+            arc_build, "check_editor_prerequisites", return_value=checks
+        ), mock.patch.object(
+            arc_build, "find_executable", return_value="winget.exe"
+        ), mock.patch.object(arc_build, "run") as run:
+            returned_checks, installed = arc_build.install_editor_prerequisites(
+                input_fn=lambda _: next(answers)
+            )
+
+        self.assertEqual(returned_checks, checks)
+        self.assertTrue(installed)
+        run.assert_called_once()
+        command = run.call_args.args[0]
+        self.assertEqual(command[:4], ["winget.exe", "install", "--id", arc_build.WINDOWS_CMAKE_PACKAGE])
+
+    def test_prerequisite_installer_does_nothing_when_all_installs_declined(self) -> None:
+        checks = [
+            {
+                "key": "cmake",
+                "name": "CMake",
+                "ok": False,
+                "detail": "not found",
+                "installable": True,
+            },
+            {
+                "key": "node",
+                "name": "Node.js / npm",
+                "ok": False,
+                "detail": "not found",
+                "installable": True,
+            },
+        ]
+
+        with mock.patch.object(arc_build.platform, "system", return_value="Windows"), mock.patch.object(
+            arc_build, "check_editor_prerequisites", return_value=checks
+        ), mock.patch.object(
+            arc_build, "find_executable", return_value="winget.exe"
+        ), mock.patch.object(arc_build, "run") as run:
+            _, installed = arc_build.install_editor_prerequisites(input_fn=lambda _: "no")
+
+        self.assertFalse(installed)
+        run.assert_not_called()
+
     def test_reset_cmake_build_directory_removes_existing_tree(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_root:
             build_dir = pathlib.Path(temporary_root) / "build"
