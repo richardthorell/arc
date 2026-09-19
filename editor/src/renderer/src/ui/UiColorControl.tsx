@@ -27,9 +27,10 @@ export function UiColorControl({
   onCommit: (value: UiColorValue) => void;
 }) {
   return (
-    <div className={`ui-color-control ${showLabel ? '' : 'is-label-hidden'}`}>
+    <div className="ui-color-control">
       <ColorControl
         label={label}
+        showLabel={showLabel}
         showAlpha={allowAlpha}
         value={toInspectorColor(value)}
         onPreview={(next) => onPreview?.(fromInspectorColor(next))}
