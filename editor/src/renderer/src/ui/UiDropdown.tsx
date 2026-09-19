@@ -1,5 +1,5 @@
 import { Check, ChevronDown } from 'lucide-react';
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 import { UiButton } from './UiButton';
@@ -49,7 +49,7 @@ export function UiDropdown<Value extends string = string>({
   const menuId = useId();
   const selected = options.find((option) => option.value === value) ?? options[0];
 
-  const updateMenuPosition = () => {
+  const updateMenuPosition = useCallback(() => {
     const trigger = triggerRef.current;
     if (!trigger) return;
 
@@ -67,12 +67,12 @@ export function UiDropdown<Value extends string = string>({
       width,
       maxHeight: Math.max(80, window.innerHeight - top - menuMargin),
     });
-  };
+  }, []);
 
   useLayoutEffect(() => {
     if (!open) return;
     updateMenuPosition();
-  }, [open]);
+  }, [open, updateMenuPosition]);
 
   useEffect(() => {
     if (!open) return;
@@ -91,7 +91,7 @@ export function UiDropdown<Value extends string = string>({
       window.removeEventListener('resize', reposition);
       window.removeEventListener('scroll', reposition, true);
     };
-  }, [open]);
+  }, [open, updateMenuPosition]);
 
   const choose = (option: UiDropdownOption<Value>) => {
     if (option.disabled) return;
