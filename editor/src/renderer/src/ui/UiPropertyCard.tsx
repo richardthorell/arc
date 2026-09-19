@@ -7,7 +7,7 @@ import type { UiPanelCardRowProps } from './UiPanelCardRow';
 
 export type UiPropertyCardField = {
   id: string;
-  label: ReactNode;
+  label?: ReactNode;
   description?: ReactNode;
   control?: ReactNode;
   align?: UiPanelCardRowProps['align'];
