@@ -256,7 +256,27 @@ def print_prerequisite_report(checks, show_install_hint=True):
         print("Run 'python run_editor.py --install-prerequisites' to install supported missing tools.")
 
 
-def install_editor_prerequisites(cmake="cmake", npm="npm", require_native=True):
+def prompt_yes_no(message, input_fn=None):
+    input_fn = input_fn or input
+    try:
+        response = input_fn("{} [y/N] ".format(message)).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print("")
+        return False
+    return response in ("y", "yes")
+
+
+def prerequisite_install_action(check):
+    if check["key"] == "cmake":
+        return "install", WINDOWS_CMAKE_PACKAGE, "CMake"
+    if check["key"] == "generator":
+        return "upgrade", WINDOWS_CMAKE_PACKAGE, "CMake"
+    if check["key"] == "node":
+        return "install", WINDOWS_NODE_PACKAGE, "Node.js 22 and npm"
+    return None
+
+
+def install_editor_prerequisites(cmake="cmake", npm="npm", require_native=True, input_fn=None):
     checks = check_editor_prerequisites(cmake=cmake, npm=npm, require_native=require_native)
     missing = [check for check in checks if not check["ok"]]
     installable = [check for check in missing if check["installable"]]
@@ -274,20 +294,34 @@ def install_editor_prerequisites(cmake="cmake", npm="npm", require_native=True):
         )
 
     installed = False
-    missing_keys = set(check["key"] for check in installable)
     common = [
         "--exact",
         "--accept-package-agreements",
         "--accept-source-agreements",
     ]
-    if "cmake" in missing_keys:
-        run([winget, "install", "--id", WINDOWS_CMAKE_PACKAGE] + common, os.getcwd())
-        installed = True
-    elif "generator" in missing_keys:
-        run([winget, "upgrade", "--id", WINDOWS_CMAKE_PACKAGE] + common, os.getcwd())
-        installed = True
-    if "node" in missing_keys:
-        run([winget, "install", "--id", WINDOWS_NODE_PACKAGE] + common, os.getcwd())
+
+    # Ask separately for every component. ARC never silently installs or
+    # upgrades development tools on the host.
+    handled_packages = set()
+    for check in installable:
+        action = prerequisite_install_action(check)
+        if action is None:
+            continue
+        verb, package, label = action
+        package_key = (verb, package)
+        if package_key in handled_packages:
+            continue
+        handled_packages.add(package_key)
+
+        prompt = "{} {} using Windows Package Manager?".format(
+            "Upgrade" if verb == "upgrade" else "Install",
+            label,
+        )
+        if not prompt_yes_no(prompt, input_fn=input_fn):
+            print("Skipped {}.".format(label))
+            continue
+
+        run([winget, verb, "--id", package] + common, os.getcwd())
         installed = True
 
     return checks, installed
