@@ -134,6 +134,18 @@
   border-bottom: 1px solid var(--arc-color-border-subtle);
 }
 
+.ui-panel-card-row.is-full-width {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ui-panel-card-row.is-full-width > .ui-panel-card-row-label {
+  grid-column: 1 / -1;
+}
+
+.ui-property-card-rows {
+  padding: 3px 7px 0;
+}
+
 .ui-panel-card-row-label {
   min-width: 0;
   color: var(--arc-color-text-muted);
