@@ -453,7 +453,7 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
         // ARC targets Vulkan 1.2. Dynamic rendering was promoted to core in
         // Vulkan 1.3, but a 1.2 application must still enable the KHR
         // extension even when the physical device advertises Vulkan 1.3+.
-        if (arc_vulkan_api_version < VK_API_VERSION_1_3)
+        if constexpr (arc_vulkan_api_version < VK_API_VERSION_1_3)
         {
             append_unique_extension(candidate_extensions, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
             if (capabilities.synchronization2)
