@@ -119,11 +119,6 @@
   border-bottom: 1px solid var(--arc-color-border-subtle);
 }
 
-.ui-panel-card-row:last-child {
-  min-height: 31px;
-  padding-bottom: 0;
-}
-
 .ui-panel-card-row-label {
   min-width: 0;
   color: var(--arc-color-text-muted);
