@@ -126,12 +126,6 @@ def clear_asset_database(repo_root, project_argument):
         print("No ARC asset database found for {}".format(project_path))
 
 
-def arc_build.run(command, cwd, env=None):
-    print("+ " + " ".join(command))
-    sys.stdout.flush()
-    subprocess.check_call(command, cwd=cwd, env=env)
-
-
 def host_executable_candidates(build_dir, config):
     executable = "arc_host_process.exe" if platform.system() == "Windows" else "arc_host_process"
     return [
