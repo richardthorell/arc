@@ -30,7 +30,7 @@ import {
   UiIconButton,
   UiPanel,
   UiPanelCard,
-  UiPanelCardRow,
+  UiPropertyCard,
   UiPanelHeader,
   UiSearchInput,
   UiSelect,
@@ -205,8 +205,14 @@ const uiHierarchy: readonly UiHierarchyNode[] = [
     name: 'UiPanelCard',
     relation: 'base card',
     children: [
-      { name: 'SchemaComponentCard', relation: 'specializes' },
-      { name: 'UiPanelCardRow', relation: 'contained row' },
+      {
+        name: 'UiPropertyCard',
+        relation: 'data-driven wrapper',
+        children: [
+          { name: 'SchemaComponentCard', relation: 'ECS adapter' },
+          { name: 'UiPanelCardRow', relation: 'renders fields' },
+        ],
+      },
     ],
   },
   {
@@ -572,36 +578,54 @@ export function UiLab() {
               </UiPanelCard>
             </div>
           </LabCard>
-          <LabCard title="Property rows" caption="UiPanelCardRow" wide>
+          <LabCard title="Data-driven property card" caption="UiPropertyCard / UiPanelCardRow" wide>
             <div className="ui-lab-panel-card-demo">
-              <UiPanelCard expandable={false} title="Material">
-                <div className="ui-lab-panel-card-rows">
-                  <UiPanelCardRow label="Render path" description="Selected from material features">
-                    <UiSelect
-                      ariaLabel="Panel card render path"
-                      options={[
-                        { label: 'Deferred', value: 'Deferred' },
-                        { label: 'Forward', value: 'Forward' },
-                      ]}
-                      value={panelCardMode}
-                      onValueChange={setPanelCardMode}
-                    />
-                  </UiPanelCardRow>
-                  <UiPanelCardRow label="Two sided" description="Render both triangle faces">
-                    <UiToggleButton
-                      aria-label="Panel card two sided"
-                      checked={panelCardTwoSided}
-                      onCheckedChange={setPanelCardTwoSided}
-                    />
-                  </UiPanelCardRow>
-                  <UiPanelCardRow align="start" label="Output" description="Readonly derived information">
-                    <span className="ui-lab-panel-readonly">
-                      Material Graph
-                      <small>Deferred-compatible</small>
-                    </span>
-                  </UiPanelCardRow>
-                </div>
-              </UiPanelCard>
+              <UiPropertyCard
+                expandable={false}
+                fields={[
+                  {
+                    id: 'renderPath',
+                    label: 'Render path',
+                    description: 'Selected from material features',
+                    control: (
+                      <UiSelect
+                        ariaLabel="Panel card render path"
+                        options={[
+                          { label: 'Deferred', value: 'Deferred' },
+                          { label: 'Forward', value: 'Forward' },
+                        ]}
+                        value={panelCardMode}
+                        onValueChange={setPanelCardMode}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'twoSided',
+                    label: 'Two sided',
+                    description: 'Render both triangle faces',
+                    control: (
+                      <UiToggleButton
+                        aria-label="Panel card two sided"
+                        checked={panelCardTwoSided}
+                        onCheckedChange={setPanelCardTwoSided}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'output',
+                    label: 'Output',
+                    description: 'Readonly derived information',
+                    align: 'start',
+                    control: (
+                      <span className="ui-lab-panel-readonly">
+                        Material Graph
+                        <small>Deferred-compatible</small>
+                      </span>
+                    ),
+                  },
+                ]}
+                title="Material"
+              />
             </div>
           </LabCard>
           <LabCard title="Labeled toggles" caption="UiToggleButton">
