@@ -5,7 +5,8 @@ export type UiPanelCardRowProps = HTMLAttributes<HTMLDivElement> & {
   description?: ReactNode;
   align?: 'center' | 'start';
   controlClassName?: string;
-  children: ReactNode;
+  children?: ReactNode;
+  fullWidth?: boolean;
 };
 
 export function UiPanelCardRow({
@@ -14,12 +15,18 @@ export function UiPanelCardRow({
   align = 'center',
   controlClassName,
   children,
+  fullWidth = false,
   className,
   ...props
 }: UiPanelCardRowProps) {
   return (
     <div
-      className={['ui-panel-card-row', align === 'start' ? 'is-start-aligned' : '', className]
+      className={[
+        'ui-panel-card-row',
+        align === 'start' ? 'is-start-aligned' : '',
+        fullWidth ? 'is-full-width' : '',
+        className,
+      ]
         .filter(Boolean)
         .join(' ')}
       {...props}
@@ -28,7 +35,9 @@ export function UiPanelCardRow({
         <span>{label}</span>
         {description && <small className="ui-panel-card-row-description">{description}</small>}
       </span>
-      <div className={['ui-panel-card-row-control', controlClassName].filter(Boolean).join(' ')}>{children}</div>
+      {!fullWidth && (
+        <div className={['ui-panel-card-row-control', controlClassName].filter(Boolean).join(' ')}>{children}</div>
+      )}
     </div>
   );
 }
