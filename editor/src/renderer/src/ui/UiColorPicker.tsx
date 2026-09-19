@@ -39,7 +39,24 @@ const colorModeOptions = [
   { value: 'hsv' as const, label: 'HSV' },
   { value: 'linear' as const, label: 'Linear RGB' },
 ];
-const colorPresetOptions = [{ value: 'custom' as const, label: 'Custom' }];
+const classicColorPresets = [
+  { value: 'black', label: 'Black', hex: '#000000' },
+  { value: 'silver', label: 'Silver', hex: '#C0C0C0' },
+  { value: 'gray', label: 'Gray', hex: '#808080' },
+  { value: 'white', label: 'White', hex: '#FFFFFF' },
+  { value: 'maroon', label: 'Maroon', hex: '#800000' },
+  { value: 'red', label: 'Red', hex: '#FF0000' },
+  { value: 'purple', label: 'Purple', hex: '#800080' },
+  { value: 'fuchsia', label: 'Fuchsia', hex: '#FF00FF' },
+  { value: 'green', label: 'Green', hex: '#008000' },
+  { value: 'lime', label: 'Lime', hex: '#00FF00' },
+  { value: 'olive', label: 'Olive', hex: '#808000' },
+  { value: 'yellow', label: 'Yellow', hex: '#FFFF00' },
+  { value: 'navy', label: 'Navy', hex: '#000080' },
+  { value: 'blue', label: 'Blue', hex: '#0000FF' },
+  { value: 'teal', label: 'Teal', hex: '#008080' },
+  { value: 'aqua', label: 'Aqua', hex: '#00FFFF' },
+] as const;
 
 const centeredPickerPosition = () => ({
   x: Math.max(pickerViewportMargin, (window.innerWidth - pickerWidth) / 2),
@@ -145,6 +162,7 @@ export function UiColorPicker({
 }: UiColorPickerProps) {
   const [draft, setDraft] = useState(value);
   const [mode, setMode] = useState<ColorMode>('rgb');
+  const [preset, setPreset] = useState('custom');
   const original = useRef(value);
   const latest = useRef(value);
   const previewFrame = useRef<number | null>(null);
@@ -175,7 +193,8 @@ export function UiColorPicker({
     };
   }, [onClose, onCommit]);
 
-  const emit = (next: UiColorValue, final: boolean) => {
+  const emit = (next: UiColorValue, final: boolean, markCustom = true) => {
+    if (markCustom) setPreset('custom');
     latest.current = next;
     pendingPreview.current = next;
     setDraft(next);
@@ -233,6 +252,28 @@ export function UiColorPicker({
   const currentCss = colorToCss(draft);
   const originalCss = colorToCss(original.current);
   const hueCss = colorToCss(hsvToLinearColor({ h: hsv.h, s: 1, v: 1 }, 1));
+  const presetOptions = [
+    {
+      value: 'custom',
+      label: 'Custom',
+      icon: (
+        <span
+          className="arc-color-preset-swatch"
+          style={{ '--arc-preset-color': currentCss } as CSSProperties}
+        />
+      ),
+    },
+    ...classicColorPresets.map((entry) => ({
+      value: entry.value,
+      label: entry.label,
+      icon: (
+        <span
+          className="arc-color-preset-swatch"
+          style={{ '--arc-preset-color': entry.hex } as CSSProperties}
+        />
+      ),
+    })),
+  ];
   const swatchStyle = (color: string) => ({ '--arc-picker-color': color }) as CSSProperties;
   const hueRadians = (hsv.h * Math.PI) / 180;
   const hueCursorStyle = {
@@ -446,9 +487,16 @@ export function UiColorPicker({
             <UiDropdown
               ariaLabel="Color preset"
               className="arc-color-preset-dropdown"
-              onValueChange={() => undefined}
-              options={colorPresetOptions}
-              value="custom"
+              onValueChange={(nextPreset) => {
+                setPreset(nextPreset);
+                if (nextPreset === 'custom') return;
+                const entry = classicColorPresets.find((candidate) => candidate.value === nextPreset);
+                if (!entry) return;
+                const next = hexToLinearColor(entry.hex, draft.w);
+                if (next) emit(next, true, false);
+              }}
+              options={presetOptions}
+              value={preset}
             />
             <UiIconButton
               className="arc-color-eyedropper"
