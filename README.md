@@ -96,6 +96,27 @@ Build and run the editor using the helper script:
 python run_editor.py
 ```
 
+On startup, the editor runner checks the development prerequisites. On Windows
+that includes CMake, Node.js/npm, and Visual Studio 2026 or 2022 with the
+**Desktop development with C++** workload. Missing CMake or Node.js/npm can be
+installed through Windows Package Manager, but ARC asks for confirmation before
+installing each component. Visual Studio is never installed automatically; the
+runner reports the missing workload and where to install it.
+
+You can run the prerequisite flow directly:
+
+```bash
+python run_editor.py --check-prerequisites
+python run_editor.py --install-prerequisites
+```
+
+Use `--no-install` to bypass prerequisite detection and install prompts
+entirely and continue directly into the existing build/launch flow:
+
+```bash
+python run_editor.py --no-install
+```
+
 The editor runner builds the native Vulkan host and launches the Electron
 workbench. To bypass the project browser while developing the editor, create or
 reuse a persistent Blank 3D project under `out/`:
