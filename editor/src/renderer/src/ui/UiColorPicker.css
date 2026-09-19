@@ -22,120 +22,161 @@
   color: inherit;
 }
 
-.arc-color-tool {
+.arc-color-picker-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px 8px;
+}
+
+.arc-color-preview-stack {
   display: grid;
+  gap: 5px;
+}
+
+.arc-color-preview-row {
+  display: grid;
+  grid-template-columns: 54px 74px;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  color: var(--arc-color-text-muted);
+}
+
+button.arc-color-preview-row {
+  padding: 0;
   border: 0;
   background: transparent;
+  text-align: left;
   cursor: pointer;
-  place-items: center;
 }
 
-.arc-color-tool:hover:not(:disabled) {
-  color: #f0f3f6;
-  background: rgba(255, 255, 255, 0.06);
+button.arc-color-preview-row:hover small {
+  color: var(--arc-color-text-strong);
 }
 
-.arc-color-picker-preview-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 27px 27px;
-  align-items: stretch;
-  gap: 5px;
-  padding: 8px;
+.arc-color-preview-row small {
+  color: inherit;
+  font-size: 10px;
 }
 
-.arc-color-preview {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  align-items: center;
-  min-width: 0;
-  height: 28px;
-  padding: 3px;
-  border: 1px solid #35414a;
+.arc-color-preview-row.is-current {
+  color: var(--arc-color-text);
+}
+
+.arc-color-preview-swatch {
+  position: relative;
+  display: block;
+  width: 74px;
+  height: 22px;
+  overflow: hidden;
+  border: 1px solid #3a4650;
   border-radius: 3px;
-  color: #929da6;
   background:
-    linear-gradient(45deg, #424b51 25%, transparent 25%, transparent 75%, #424b51 75%),
-    linear-gradient(45deg, #424b51 25%, #252e34 25%, #252e34 75%, #424b51 75%);
+    linear-gradient(45deg, #465058 25%, transparent 25%, transparent 75%, #465058 75%),
+    linear-gradient(45deg, #465058 25%, #252e34 25%, #252e34 75%, #465058 75%);
   background-position:
     0 0,
     4px 4px;
   background-size: 8px 8px;
 }
 
-button.arc-color-preview {
-  cursor: pointer;
-}
-
-button.arc-color-preview:hover {
-  border-color: #56758c;
-}
-
-.arc-color-preview > span {
-  width: 31px;
-  height: 20px;
-  border-radius: 1px;
+.arc-color-preview-swatch > i {
+  position: absolute;
+  inset: 0;
+  display: block;
   background: var(--arc-picker-color);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
-.arc-color-preview small {
-  overflow: hidden;
-  padding-left: 5px;
-  color: inherit;
-  font-size: 10px;
-  text-overflow: ellipsis;
+.arc-color-eyedropper.ui-icon-button {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
 }
 
-.arc-color-preview.is-current {
-  border-color: #465968;
-  color: #c4cbd1;
+.arc-color-wheel-wrap {
+  display: grid;
+  place-items: center;
+  padding: 4px 16px 10px;
 }
 
-.arc-color-tool {
-  width: 27px;
-  border: 1px solid #35414a;
-  border-radius: 3px;
-  color: #98a3ac;
-  background: #141c22;
-}
-
-.arc-color-tool:disabled {
-  cursor: not-allowed;
-  opacity: 0.34;
-}
-
-.arc-color-spectrum {
+.arc-color-wheel {
   position: relative;
-  height: 162px;
-  margin: 0 8px 7px;
-  border: 1px solid #43505a;
-  border-radius: 2px;
-  background:
-    linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent), var(--arc-picker-hue);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+  width: 304px;
+  height: 304px;
+  border-radius: 50%;
+  background: conic-gradient(from 90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 0 0 1px rgba(0, 0, 0, 0.75);
   cursor: crosshair;
   touch-action: none;
 }
 
-.arc-color-spectrum-cursor {
+.arc-color-wheel::before {
+  content: '';
   position: absolute;
-  width: 11px;
-  height: 11px;
+  inset: 31px;
+  border-radius: 50%;
+  background: #151f26;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.72);
+  pointer-events: none;
+}
+
+.arc-color-wheel-cursor {
+  position: absolute;
+  z-index: 3;
+  width: 18px;
+  height: 18px;
   border: 2px solid #fff;
   border-radius: 50%;
   box-shadow:
     0 0 0 1px #000,
-    0 1px 3px rgba(0, 0, 0, 0.8);
+    0 2px 5px rgba(0, 0, 0, 0.72);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.arc-color-wheel-square {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 50%;
+  width: 176px;
+  height: 176px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background:
+    linear-gradient(to top, #000, transparent),
+    linear-gradient(to right, #fff, transparent),
+    var(--arc-picker-hue);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.7),
+    0 4px 14px rgba(0, 0, 0, 0.28);
+  cursor: crosshair;
+  touch-action: none;
+  transform: translate(-50%, -50%);
+}
+
+.arc-color-spectrum-cursor {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1px #000,
+    0 1px 4px rgba(0, 0, 0, 0.8);
   pointer-events: none;
   transform: translate(-50%, -50%);
 }
 
 .arc-color-range {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-columns: 44px minmax(0, 1fr);
   align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
+  gap: 8px;
+  padding: 2px 14px;
   color: #9ca6ae;
   font-size: 10px;
 }
@@ -143,7 +184,7 @@ button.arc-color-preview:hover {
 .arc-color-range input[type='range'] {
   appearance: none;
   width: 100%;
-  height: 13px;
+  height: 14px;
   margin: 0;
   border: 1px solid #414c54;
   border-radius: 2px;
@@ -154,15 +195,11 @@ button.arc-color-preview:hover {
 .arc-color-range input[type='range']::-webkit-slider-thumb {
   appearance: none;
   width: 5px;
-  height: 17px;
+  height: 18px;
   border: 1px solid #0c1115;
   border-radius: 1px;
   background: #e5e9ec;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.32);
-}
-
-.arc-color-hue {
-  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
 }
 
 .arc-color-alpha {
@@ -183,10 +220,10 @@ button.arc-color-preview:hover {
 .arc-color-picker-options {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
-  margin: 6px 8px 5px;
+  gap: 12px;
+  margin: 10px 14px 8px;
   border-top: 1px solid #2d373f;
-  padding-top: 7px;
+  padding-top: 10px;
 }
 
 .arc-color-segments {
@@ -194,13 +231,14 @@ button.arc-color-preview:hover {
 }
 
 .arc-color-segments button {
-  min-width: 43px;
-  height: 22px;
-  padding: 0 7px;
+  min-width: 52px;
+  height: 26px;
+  padding: 0 9px;
   border: 1px solid #35414a;
   color: #8f9aa3;
   background: #141b21;
   font-size: 10px;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -211,14 +249,17 @@ button.arc-color-preview:hover {
 .arc-color-segments button:first-child {
   border-radius: 3px 0 0 3px;
 }
+
 .arc-color-segments button:last-child {
   border-radius: 0 3px 3px 0;
 }
+
 .arc-color-segments button.is-active {
   color: #e5e9ec;
   background: #30495c;
   box-shadow: inset 0 0 0 1px rgba(86, 137, 176, 0.26);
 }
+
 .arc-color-segments button:disabled {
   cursor: not-allowed;
   opacity: 0.35;
@@ -227,15 +268,15 @@ button.arc-color-preview:hover {
 .arc-color-channel-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 5px;
-  padding: 2px 8px 7px;
+  gap: 8px;
+  padding: 2px 14px 10px;
 }
 
 .arc-color-channel-grid label {
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr);
+  grid-template-columns: 15px minmax(0, 1fr);
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   color: #929da6;
   font-size: 10px;
 }
@@ -244,8 +285,8 @@ button.arc-color-preview:hover {
 .arc-color-hex-row input {
   min-width: 0;
   width: 100%;
-  height: 24px;
-  padding: 0 5px;
+  height: 27px;
+  padding: 0 7px;
   border: 1px solid #35414a;
   border-radius: 3px;
   color: #d5dbe0;
@@ -262,13 +303,19 @@ button.arc-color-preview:hover {
 
 .arc-color-hex-row {
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) auto;
+  grid-template-columns: 58px minmax(0, 1fr) 28px auto;
   align-items: center;
-  gap: 6px;
-  padding: 7px 8px 9px;
+  gap: 7px;
+  padding: 9px 14px 12px;
   border-top: 1px solid #2d373f;
   color: #9ca6ae;
   font-size: 10px;
+}
+
+.arc-color-copy.ui-icon-button {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
 }
 
 .arc-color-hex-row > span {
