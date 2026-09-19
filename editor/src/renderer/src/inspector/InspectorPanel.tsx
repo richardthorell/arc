@@ -10,7 +10,7 @@ import { schemaForSnapshot, setPathValue } from './componentSchemas';
 import type { HostProjectComponentSchema, InspectorComponentId } from './componentSchemas';
 import type { HostResponse, InspectorEntitySnapshot, Vec3 } from './inspectorTypes';
 import { cameraHostPayload, hostEntityKey, lightHostPayload, transformHostPayload } from './inspectorTypes';
-import { SchemaComponentCard } from './SchemaComponents';
+import { InspectorComponentCard } from './InspectorComponentCard';
 import { SkeletonInspector } from './SkeletonInspector';
 import { inspectorLocalToWorld, inspectorWorldToLocal } from './transformSpace';
 
@@ -625,7 +625,7 @@ export function InspectorPanel({
           </section>
         )}
         {schemas.map((schema) => (
-          <SchemaComponentCard
+          <InspectorComponentCard
             key={schema.id}
             collapsed={collapsed[schema.id] ?? false}
             context={displayDraft ?? draft}
