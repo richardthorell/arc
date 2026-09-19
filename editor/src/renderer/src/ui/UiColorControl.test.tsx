@@ -31,6 +31,34 @@ describe('UiColorControl', () => {
     expect(screen.queryByRole('dialog', { name: 'Base Color color picker' })).toBeNull();
   });
 
+  it('shows the classic color presets with named options', () => {
+    render(<UiColorControl label="Base Color" value={{ x: 0.4, y: 0.2, z: 0.1, w: 1 }} onCommit={() => undefined} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Base Color color picker' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Color preset' }));
+
+    for (const name of [
+      'Black',
+      'Silver',
+      'Gray',
+      'White',
+      'Maroon',
+      'Red',
+      'Purple',
+      'Fuchsia',
+      'Green',
+      'Lime',
+      'Olive',
+      'Yellow',
+      'Navy',
+      'Blue',
+      'Teal',
+      'Aqua',
+    ]) {
+      expect(screen.getByRole('option', { name })).toBeTruthy();
+    }
+  });
+
   it('shows RGB and HDR for a high-dynamic-range color without alpha', () => {
     render(
       <UiColorControl
