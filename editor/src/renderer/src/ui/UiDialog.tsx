@@ -53,6 +53,8 @@ export function UiDialog({
   const [position, setPosition] = useState<UiDialogPosition>(() => initialPosition ?? { x: 0, y: 0 });
   const [drag, setDrag] = useState<DialogDrag | null>(null);
   const modeless = !modal && !preview;
+  const initialX = initialPosition?.x;
+  const initialY = initialPosition?.y;
   const classes = [
     'ui-dialog-backdrop',
     preview ? 'is-preview' : '',
@@ -66,9 +68,9 @@ export function UiDialog({
   const draggable = draggableProp ?? (!preview && hasHeader);
 
   useEffect(() => {
-    if (!initialPosition) return;
-    setPosition(initialPosition);
-  }, [initialPosition?.x, initialPosition?.y]);
+    if (initialX === undefined || initialY === undefined) return;
+    setPosition({ x: initialX, y: initialY });
+  }, [initialX, initialY]);
 
   useEffect(() => {
     if (!drag) return;
