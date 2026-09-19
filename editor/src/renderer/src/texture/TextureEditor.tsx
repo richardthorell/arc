@@ -4,7 +4,7 @@ import { Image, Maximize2 } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
 import type { AssetItem } from '../services/editorHostTypes';
-import { UiButton, UiPanel, UiPanelSection } from '../ui';
+import { UiButton, UiPanel, UiPanelCard } from '../ui';
 import { setTextureEditorViewState, useTextureEditorViewState } from './textureEditorViewState';
 import { TextureStage3Controls } from './TextureStage3Controls';
 import { TextureCurveControls } from './TextureCurveControls';
@@ -187,7 +187,7 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
   return (
     <UiPanel aria-label="Texture details" className="texture-inspector" role="complementary" variant="inspector">
       <div className="texture-inspector-sections">
-        <UiPanelSection
+        <UiPanelCard
           className="texture-inspector-section"
           collapsed={collapsedSections.texture}
           onToggle={() => toggleSection('texture')}
@@ -259,12 +259,12 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
           )}
           <TextureProperty label="Alpha" value="Not reported" />
           <TextureProperty label="Source Size" value={formatBytes(asset.sourceBytes)} />
-        </UiPanelSection>
+        </UiPanelCard>
 
         <TextureStage3Controls asset={asset} />
         <TextureCurveControls asset={asset} histogram={histogram} />
 
-        <UiPanelSection
+        <UiPanelCard
           className="texture-inspector-section"
           collapsed={collapsedSections.sampling}
           onToggle={() => toggleSection('sampling')}
@@ -340,9 +340,9 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
           ) : (
             <TextureProperty label="Sampling" value={settingsError ?? 'Loading…'} />
           )}
-        </UiPanelSection>
+        </UiPanelCard>
 
-        <UiPanelSection
+        <UiPanelCard
           className="texture-inspector-section"
           collapsed={collapsedSections.mipmaps}
           onToggle={() => toggleSection('mipmaps')}
@@ -526,9 +526,9 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
             label="Mip Count"
             value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)}
           />
-        </UiPanelSection>
+        </UiPanelCard>
 
-        <UiPanelSection
+        <UiPanelCard
           className="texture-inspector-section"
           collapsed={collapsedSections.compression}
           onToggle={() => toggleSection('compression')}
@@ -556,9 +556,9 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
           )}
           <TextureProperty label="GPU Format" value={asset.textureFormat ?? 'Resolved at cook'} />
           <TextureProperty label="Artifact Size" value={formatBytes(asset.artifactSize)} />
-        </UiPanelSection>
+        </UiPanelCard>
 
-        <UiPanelSection
+        <UiPanelCard
           className="texture-inspector-section"
           collapsed={collapsedSections.streaming}
           onToggle={() => toggleSection('streaming')}
@@ -594,9 +594,9 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
           {asset.streamingEligibilityError && (
             <TextureProperty label="Eligibility" value={asset.streamingEligibilityError} />
           )}
-        </UiPanelSection>
+        </UiPanelCard>
 
-        <UiPanelSection
+        <UiPanelCard
           className="texture-inspector-section"
           collapsed={collapsedSections.import}
           onToggle={() => toggleSection('import')}
@@ -646,9 +646,9 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
               </label>
             </>
           )}
-        </UiPanelSection>
+        </UiPanelCard>
 
-        <UiPanelSection
+        <UiPanelCard
           className="texture-inspector-section"
           collapsed={collapsedSections.asset}
           onToggle={() => toggleSection('asset')}
@@ -658,7 +658,7 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
           <TextureProperty label="Scope" value={asset.scope ?? 'project'} />
           <TextureProperty label="Path" value={asset.path} />
           {asset.guid && <TextureProperty label="GUID" value={asset.guid} />}
-        </UiPanelSection>
+        </UiPanelCard>
       </div>
     </UiPanel>
   );
