@@ -26,7 +26,7 @@ describe('UiToggleButton', () => {
     render(<UiToggleButton checked={false} label="Realtime" onCheckedChange={onCheckedChange} />);
 
     const toggle = screen.getByRole('switch', { name: 'Realtime' });
-    expect(toggle).toHaveClass('has-label');
+    expect(toggle.classList.contains('has-label')).toBe(true);
     fireEvent.click(toggle);
     expect(onCheckedChange).toHaveBeenCalledWith(true);
   });
