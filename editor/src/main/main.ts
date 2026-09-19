@@ -446,7 +446,7 @@ export class ArcHostClient {
   }
 
   private crashDiagnostics(): string[] {
-    return this.recentDiagnostics.slice(-10);
+    return this.recentDiagnostics.slice(-20);
   }
 
   start(): void {
