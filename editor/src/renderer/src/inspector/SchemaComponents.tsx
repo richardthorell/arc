@@ -207,21 +207,33 @@ export function SchemaComponentCard<TContext extends object>({
     });
 
     if (field.type === 'asset' && field.assetKind === 'material') {
-      const mixed =
-        mixedFields.some((path) => path === field.path || path.startsWith(`${field.path}.`));
-      propertyFields.push({
-        id: `${field.id}-parameters`,
-        fullWidth: true,
-        className: 'inspector-material-parameter-row',
-        control: (
-          <MaterialParameterSubsection
-            assets={assets}
-            mixed={mixed}
-            referenceMode={field.referenceMode}
-            value={(value as string) || ''}
-          />
-        ),
-      });
+      const mixed = mixedFields.some((path) => path === field.path || path.startsWith(`${field.path}.`));
+      const materialValue = (value as string) || '';
+      const selectedMaterial = assets.find(
+        (asset) =>
+          asset.kind === 'material' &&
+          (field.referenceMode === 'guid' ? (asset.guid || asset.id) === materialValue : asset.path === materialValue),
+      );
+      const canShowMaterialParameters =
+        Boolean(materialValue) &&
+        !mixed &&
+        selectedMaterial?.scope !== 'procedural' &&
+        Boolean(selectedMaterial || (field.referenceMode !== 'guid' && /\.arcmat$/i.test(materialValue)));
+
+      if (canShowMaterialParameters) {
+        propertyFields.push({
+          id: `${field.id}-parameters`,
+          fullWidth: true,
+          className: 'inspector-material-parameter-row',
+          control: (
+            <MaterialParameterSubsection
+              assets={assets}
+              referenceMode={field.referenceMode}
+              value={materialValue}
+            />
+          ),
+        });
+      }
     }
   }
 
