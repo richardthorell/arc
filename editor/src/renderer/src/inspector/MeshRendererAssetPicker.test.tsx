@@ -5,7 +5,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { SchemaComponentCard } from './SchemaComponents';
+import { InspectorComponentCard } from './InspectorComponentCard';
 
 afterEach(cleanup);
 
@@ -13,7 +13,7 @@ describe('Mesh Renderer asset picker', () => {
   it('shows the authored mesh and routes a new mesh selection through the host assignment command path', async () => {
     const onValue = vi.fn();
     render(
-      <SchemaComponentCard
+      <InspectorComponentCard
         assets={[
           {
             id: 'mesh-cabin',
@@ -54,7 +54,7 @@ describe('Mesh Renderer asset picker', () => {
   it('shows built-in primitives as procedural meshes with shape icons and routes selections to the host', async () => {
     const onValue = vi.fn();
     render(
-      <SchemaComponentCard
+      <InspectorComponentCard
         collapsed={false}
         context={{ meshRenderer: { meshPath: 'arc://primitive/sphere' } }}
         schema={{ id: 'meshRenderer', title: 'Mesh Renderer', fields: [] }}
@@ -89,7 +89,7 @@ describe('Mesh Renderer asset picker', () => {
   it('shows shape-specific procedural controls and routes subdivision edits to the native host', async () => {
     const onValue = vi.fn();
     render(
-      <SchemaComponentCard
+      <InspectorComponentCard
         collapsed={false}
         context={{
           selectionCount: 1,
@@ -116,7 +116,7 @@ describe('Mesh Renderer asset picker', () => {
 
   it('exposes per-axis subdivisions for cube procedural meshes', () => {
     render(
-      <SchemaComponentCard
+      <InspectorComponentCard
         collapsed={false}
         context={{
           selectionCount: 1,
