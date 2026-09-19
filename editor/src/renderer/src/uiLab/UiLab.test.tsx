@@ -19,6 +19,7 @@ describe('UiLab', () => {
     expect(screen.getByText('Text and form inputs')).toBeInTheDocument();
     expect(screen.getByText('Selection controls')).toBeInTheDocument();
     expect(screen.getByText('Panel cards and toggles')).toBeInTheDocument();
+    expect(screen.getByText('Data-driven property card')).toBeInTheDocument();
     expect(screen.getByText('Inspector controls')).toBeInTheDocument();
     expect(screen.getByText('Asset references')).toBeInTheDocument();
     expect(screen.getByText('Navigation and containers')).toBeInTheDocument();
