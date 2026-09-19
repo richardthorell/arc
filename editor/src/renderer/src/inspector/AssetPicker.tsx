@@ -237,6 +237,7 @@ export function AssetPicker({
   const canClear = Boolean(allowEmpty && value && !mixed);
 
   const control = (
+    <>
       <div className="asset-reference-control" onDragOver={(event) => event.preventDefault()} onDrop={acceptDrop}>
         <button
           aria-expanded={open}
@@ -317,6 +318,7 @@ export function AssetPicker({
           }}
         />
       )}
+    </>
   );
 
   return showLabel ? (
