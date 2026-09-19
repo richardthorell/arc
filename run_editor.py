@@ -58,7 +58,7 @@ def parse_args():
         default=True,
         help="Build the native host without the Vulkan viewport backend.",
     )
-    parser.add_argument("--force-build", action="store_true", help="Force native and npm preparation work.")
+    parser.add_argument(\n        "--force-build",\n        action="store_true",\n        help="Discard the native CMake build tree and rerun native/npm preparation.",\n    )
     parser.add_argument("--build-only", action="store_true", help="Prepare and validate the editor without launching it.")
     parser.add_argument(
         "--quick-start",
@@ -165,11 +165,14 @@ def prepare_native_editor(args, repo_root, env=None):
     if cmake is None:
         raise RuntimeError("could not find CMake executable '{}'".format(args.cmake))
 
+    if args.force_build:
+        arc_build.reset_cmake_build_directory(build_dir)
+
     generator = arc_build.resolve_visual_studio_generator(cmake)
     existing_generator = arc_build.cmake_cache_generator(build_dir)
     if generator and existing_generator and existing_generator != generator:
         raise RuntimeError(
-            "CMake build directory '{}' uses generator '{}'; remove that build directory once so ARC can reconfigure it with '{}'".format(
+            "CMake build directory '{}' uses generator '{}'; rerun with --force-build to discard it and reconfigure with '{}'".format(
                 build_dir, existing_generator, generator
             )
         )
