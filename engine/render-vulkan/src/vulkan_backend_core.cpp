@@ -1,7 +1,5 @@
 #include "vulkan_backend_internal.h"
 
-#include <iostream>
-
 namespace arc::render::vulkan::backend_detail
 {
 const char* vk_result_name(VkResult result) noexcept
@@ -357,9 +355,6 @@ surface_frame_result vulkan_render_backend::present_surface_frame(std::uint32_t 
 bool vulkan_render_backend::render_native_viewport_frame(std::uint32_t width, std::uint32_t height,
                                                          std::string& message)
 {
-    const bool diagnose_first_frame = !native_swapchain_initialized_;
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.native] first frame: begin\n";
     message.clear();
     if (device_lost_)
     {
@@ -379,8 +374,6 @@ bool vulkan_render_backend::render_native_viewport_frame(std::uint32_t width, st
     if (!swapchain_.valid() || swapchain_rebuild_ || swapchain_.extent.width != width ||
         swapchain_.extent.height != height)
     {
-        if (diagnose_first_frame)
-            std::cerr << "[debug][render.vulkan.native] first frame: swapchain setup begin\n";
         VkBool32 present_supported = VK_FALSE;
         vkGetPhysicalDeviceSurfaceSupportKHR(physical_device_, graphics_queue_family_, surface_, &present_supported);
         if (present_supported != VK_TRUE)
@@ -396,8 +389,6 @@ bool vulkan_render_backend::render_native_viewport_frame(std::uint32_t width, st
                                          min_image_count_, VK_IMAGE_USAGE_TRANSFER_DST_BIT, formats,
                                          VK_PRESENT_MODE_FIFO_KHR, message))
             return false;
-        if (diagnose_first_frame)
-            std::cerr << "[debug][render.vulkan.native] first frame: swapchain setup complete\n";
 
         viewport_format_ = swapchain_.surface_format.format;
         native_swapchain_initialized_ = true;
@@ -419,13 +410,8 @@ bool vulkan_render_backend::render_native_viewport_frame(std::uint32_t width, st
     const auto& sync = swapchain_.semaphores[swapchain_.semaphore_index];
     const VkSemaphore image_acquired_semaphore = sync.image_acquired;
     const VkSemaphore render_complete_semaphore = sync.render_complete;
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.native] first frame: acquire swapchain image begin\n";
     VkResult result = vkAcquireNextImageKHR(device_, swapchain_.handle, UINT64_MAX, image_acquired_semaphore,
                                             VK_NULL_HANDLE, &swapchain_.frame_index);
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.native] first frame: acquire swapchain image returned "
-                  << describe_vk_result(result) << "\n";
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
     {
         swapchain_rebuild_ = true;
@@ -457,8 +443,6 @@ bool vulkan_render_backend::render_native_viewport_frame(std::uint32_t width, st
     active_frame_index_ = swapchain_.frame_index;
 
     auto* frame = &swapchain_.frames[swapchain_.frame_index];
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.native] first frame: frame preparation begin\n";
     vkWaitForFences(device_, 1, &frame->fence, VK_TRUE, UINT64_MAX);
     collect_texture_mip_feedback(swapchain_.frame_index);
     collect_gpu_visibility_feedback(swapchain_.frame_index);
@@ -471,8 +455,6 @@ bool vulkan_render_backend::render_native_viewport_frame(std::uint32_t width, st
     // Frame-dependent resources may wait on every swapchain fence. Keep
     // the acquired fence signaled until preparation has completed.
     prepare_frame_gpu_resources();
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.native] first frame: frame preparation complete\n";
 
     vkResetFences(device_, 1, &frame->fence);
     vkResetCommandPool(device_, frame->command_pool, 0);
@@ -485,11 +467,7 @@ bool vulkan_render_backend::render_native_viewport_frame(std::uint32_t width, st
     begin_debug_label(frame->command_buffer, "ARC native viewport frame", {0.16f, 0.45f, 1.0f, 1.0f});
     reset_timestamp_queries(frame->command_buffer);
 
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.native] first frame: render graph begin\n";
     execute_compiled_graph(frame->command_buffer);
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.native] first frame: render graph complete\n";
 
     transition_viewport(frame->command_buffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
@@ -517,8 +495,6 @@ bool vulkan_render_backend::render_native_viewport_frame(std::uint32_t width, st
                           static_cast<std::int32_t>(swapchain_.extent.height), 1};
     vkCmdBlitImage(frame->command_buffer, viewport_image_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, frame->backbuffer,
                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.native] first frame: swapchain blit recorded\n";
 
     VkImageMemoryBarrier swapchain_to_present = swapchain_to_transfer;
     swapchain_to_present.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
@@ -530,8 +506,6 @@ bool vulkan_render_backend::render_native_viewport_frame(std::uint32_t width, st
 
     end_debug_label(frame->command_buffer);
     vkEndCommandBuffer(frame->command_buffer);
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.native] first frame: command buffer recorded\n";
 
     VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
     VkSubmitInfo submit{};
@@ -543,12 +517,7 @@ bool vulkan_render_backend::render_native_viewport_frame(std::uint32_t width, st
     submit.pCommandBuffers = &frame->command_buffer;
     submit.signalSemaphoreCount = 1;
     submit.pSignalSemaphores = &render_complete_semaphore;
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.native] first frame: queue submit begin\n";
     result = vkQueueSubmit(queue_, 1, &submit, frame->fence);
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.native] first frame: queue submit returned "
-                  << describe_vk_result(result) << "\n";
     if (result != VK_SUCCESS)
     {
         device_lost_ = result == VK_ERROR_DEVICE_LOST;
@@ -563,12 +532,7 @@ bool vulkan_render_backend::render_native_viewport_frame(std::uint32_t width, st
     present.swapchainCount = 1;
     present.pSwapchains = &swapchain_.handle;
     present.pImageIndices = &swapchain_.frame_index;
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.native] first frame: queue present begin\n";
     result = vkQueuePresentKHR(queue_, &present);
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.native] first frame: queue present returned "
-                  << describe_vk_result(result) << "\n";
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
     {
         swapchain_rebuild_ = true;
@@ -903,24 +867,14 @@ void vulkan_render_backend::wait_for_shared_output(shared_viewport_output& outpu
 surface_frame_result vulkan_render_backend::render_shared_viewport_frame(shared_viewport_output& output,
                                                                          shared_viewport_slot& slot)
 {
-    const bool diagnose_first_frame = output.next_frame_id == 1;
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.shared] first frame: backend render begin\n";
-
     output_viewport_width_ = output.width;
     output_viewport_height_ = output.height;
     const auto slot_index = static_cast<std::uint32_t>(&slot - output.slots.data());
     active_frame_index_ = slot_index;
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.shared] first frame: ensure viewport begin\n";
     ensure_viewport(scaled_dimension(output.width), scaled_dimension(output.height));
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.shared] first frame: ensure viewport complete\n";
     if (viewport_image_ == VK_NULL_HANDLE)
         return surface_frame_result::failure(
             {.code = surface_frame_error_code::backend_failure, .message = "viewport render target is unavailable"});
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.shared] first frame: frame resource preparation begin\n";
     collect_texture_mip_feedback(slot_index);
     collect_gpu_visibility_feedback(slot_index);
     collect_virtual_geometry_feedback(slot_index);
@@ -929,8 +883,6 @@ surface_frame_result vulkan_render_backend::render_shared_viewport_frame(shared_
     collect_frame_capture_result();
     retire_completed_resources();
     prepare_frame_gpu_resources();
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.shared] first frame: frame resource preparation complete\n";
     vkResetFences(device_, 1, &slot.fence);
     vkResetCommandPool(device_, slot.command_pool, 0);
     VkCommandBufferBeginInfo begin{};
@@ -939,16 +891,10 @@ surface_frame_result vulkan_render_backend::render_shared_viewport_frame(shared_
     if (vkBeginCommandBuffer(slot.command_buffer, &begin) != VK_SUCCESS)
         return surface_frame_result::failure(
             {.code = surface_frame_error_code::backend_failure, .message = "failed to begin shared viewport frame"});
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.shared] first frame: command buffer begun\n";
 
     begin_debug_label(slot.command_buffer, "ARC shared viewport frame", {0.16f, 0.75f, 0.65f, 1.0f});
     reset_timestamp_queries(slot.command_buffer);
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.shared] first frame: render graph begin\n";
     execute_compiled_graph(slot.command_buffer);
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.shared] first frame: render graph complete\n";
     transition_viewport(slot.command_buffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
     VkImageMemoryBarrier destination{};
@@ -973,8 +919,6 @@ surface_frame_result vulkan_render_backend::render_shared_viewport_frame(shared_
     blit.dstOffsets[1] = {static_cast<std::int32_t>(output.width), static_cast<std::int32_t>(output.height), 1};
     vkCmdBlitImage(slot.command_buffer, viewport_image_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, slot.image,
                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.shared] first frame: shared image blit recorded\n";
     destination.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     destination.newLayout = VK_IMAGE_LAYOUT_GENERAL;
     destination.srcQueueFamilyIndex = graphics_queue_family_;
@@ -987,18 +931,11 @@ surface_frame_result vulkan_render_backend::render_shared_viewport_frame(shared_
     if (vkEndCommandBuffer(slot.command_buffer) != VK_SUCCESS)
         return surface_frame_result::failure(
             {.code = surface_frame_error_code::backend_failure, .message = "failed to record shared viewport frame"});
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.shared] first frame: command buffer recorded\n";
     VkSubmitInfo submit{};
     submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit.commandBufferCount = 1;
     submit.pCommandBuffers = &slot.command_buffer;
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.shared] first frame: queue submit begin\n";
     const auto result = vkQueueSubmit(queue_, 1, &submit, slot.fence);
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.shared] first frame: queue submit returned "
-                  << describe_vk_result(result) << "\n";
     if (result != VK_SUCCESS)
         return surface_frame_result::failure(
             {.code = result == VK_ERROR_DEVICE_LOST ? surface_frame_error_code::device_lost
