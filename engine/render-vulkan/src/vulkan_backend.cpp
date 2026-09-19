@@ -552,17 +552,15 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
     }
 
     volkLoadDevice(device);
-    const bool dynamic_rendering_available =
-        (vkCmdBeginRendering != nullptr && vkCmdEndRendering != nullptr) ||
-        (vkCmdBeginRenderingKHR != nullptr && vkCmdEndRenderingKHR != nullptr);
+    const bool dynamic_rendering_available = (vkCmdBeginRendering != nullptr && vkCmdEndRendering != nullptr) ||
+                                             (vkCmdBeginRenderingKHR != nullptr && vkCmdEndRenderingKHR != nullptr);
     if (!dynamic_rendering_available)
     {
         vkDestroyDevice(device, nullptr);
         if (surface != VK_NULL_HANDLE) vkDestroySurfaceKHR(instance, surface, nullptr);
         vkDestroyInstance(instance, nullptr);
-        return render_backend_create_result::failure(
-            {render_backend_create_error_code::device_creation_failed,
-             "Vulkan dynamic rendering entry points are unavailable"});
+        return render_backend_create_result::failure({render_backend_create_error_code::device_creation_failed,
+                                                      "Vulkan dynamic rendering entry points are unavailable"});
     }
 
     VkQueue queue = VK_NULL_HANDLE;
