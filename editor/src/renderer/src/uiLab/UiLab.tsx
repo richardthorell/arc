@@ -574,7 +574,7 @@ export function UiLab() {
           </LabCard>
           <LabCard title="Property rows" caption="UiPanelCardRow" wide>
             <div className="ui-lab-panel-card-demo">
-              <UiPanelCard title="Material">
+              <UiPanelCard expandable={false} title="Material">
                 <div className="ui-lab-panel-card-rows">
                   <UiPanelCardRow label="Render path" description="Selected from material features">
                     <UiSelect
