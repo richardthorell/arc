@@ -21,6 +21,28 @@ describe('UiToggleButton', () => {
     expect(toggle.getAttribute('aria-checked')).toBe('true');
   });
 
+  it('can expose a visible accessible label without external wrapper markup', () => {
+    const onCheckedChange = vi.fn();
+    render(<UiToggleButton checked={false} label="Realtime" onCheckedChange={onCheckedChange} />);
+
+    const toggle = screen.getByRole('switch', { name: 'Realtime' });
+    expect(toggle.classList.contains('has-label')).toBe(true);
+    fireEvent.click(toggle);
+    expect(onCheckedChange).toHaveBeenCalledWith(true);
+  });
+
+  it('resolves a mixed state to enabled on click', () => {
+    const onCheckedChange = vi.fn();
+    render(<UiToggleButton aria-label="Mixed toggle" checked={false} mixed onCheckedChange={onCheckedChange} />);
+
+    const toggle = screen.getByRole('switch', { name: 'Mixed toggle' });
+    expect(toggle.classList.contains('is-mixed')).toBe(true);
+    expect(toggle.getAttribute('data-mixed')).toBe('true');
+
+    fireEvent.click(toggle);
+    expect(onCheckedChange).toHaveBeenCalledWith(true);
+  });
+
   it('does not change state while disabled', () => {
     const onCheckedChange = vi.fn();
     render(<UiToggleButton aria-label="Disabled toggle" checked={false} disabled onCheckedChange={onCheckedChange} />);

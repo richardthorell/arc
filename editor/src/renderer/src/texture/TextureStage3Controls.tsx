@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 
 import type { AssetItem } from '../services/editorHostTypes';
-import { UiPanelSection } from '../ui';
+import { UiPanelCard } from '../ui';
 import {
   patchTextureSettings,
   type TextureChannelSource,
@@ -103,7 +103,7 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
   const normal = draft.semantic === 'normal';
   return (
     <>
-      <UiPanelSection className="texture-inspector-section" title="Adjustments">
+      <UiPanelCard className="texture-inspector-section" title="Adjustments">
         {normal && <div className="texture-stage3-note">Color adjustments are bypassed for normal-map semantics.</div>}
         <NumberControl
           disabled={normal}
@@ -185,8 +185,8 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
           value={draft.tintB}
           onChange={(tintB) => update({ tintB })}
         />
-      </UiPanelSection>
-      <UiPanelSection className="texture-inspector-section" collapsed title="Levels">
+      </UiPanelCard>
+      <UiPanelCard className="texture-inspector-section" collapsed title="Levels">
         <NumberControl
           disabled={normal}
           defaultValue={0}
@@ -227,8 +227,8 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
           value={draft.outputWhite}
           onChange={(outputWhite) => update({ outputWhite: Math.max(outputWhite, draft.outputBlack) })}
         />
-      </UiPanelSection>
-      <UiPanelSection className="texture-inspector-section" collapsed title="Channel Mapping">
+      </UiPanelCard>
+      <UiPanelCard className="texture-inspector-section" collapsed title="Channel Mapping">
         {(['R', 'G', 'B', 'A'] as const).map((channel) => {
           const sourceKey = `channel${channel}` as 'channelR' | 'channelG' | 'channelB' | 'channelA';
           const invertKey = `invert${channel}` as 'invertR' | 'invertG' | 'invertB' | 'invertA';
@@ -257,7 +257,7 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
             </div>
           );
         })}
-      </UiPanelSection>
+      </UiPanelCard>
     </>
   );
 }

@@ -1,8 +1,9 @@
-import { forwardRef, type HTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useEffect, useState, type HTMLAttributes, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
 export type UiPanelCardProps = Omit<HTMLAttributes<HTMLElement>, 'title'> & {
   title: ReactNode;
+  expandable?: boolean;
   collapsed?: boolean;
   onToggle?: () => void;
   actions?: ReactNode;
@@ -11,37 +12,52 @@ export type UiPanelCardProps = Omit<HTMLAttributes<HTMLElement>, 'title'> & {
 };
 
 export const UiPanelCard = forwardRef<HTMLElement, UiPanelCardProps>(function UiPanelCard(
-  { title, collapsed = false, onToggle, actions, children, className, contentClassName, ...props },
+  { title, expandable = true, collapsed = false, onToggle, actions, children, className, contentClassName, ...props },
   ref,
 ) {
-  const toggleLabel = typeof title === 'string' ? `${collapsed ? 'Expand' : 'Collapse'} ${title}` : undefined;
+  const [internalCollapsed, setInternalCollapsed] = useState(collapsed);
+  const controlled = onToggle !== undefined;
+  const isCollapsed = expandable && (controlled ? collapsed : internalCollapsed);
+  const toggleLabel = typeof title === 'string' ? `${isCollapsed ? 'Expand' : 'Collapse'} ${title}` : undefined;
+
+  useEffect(() => {
+    if (!controlled) setInternalCollapsed(collapsed);
+  }, [collapsed, controlled]);
+
+  const handleToggle = () => {
+    if (!expandable) return;
+    if (controlled) onToggle?.();
+    else setInternalCollapsed((value) => !value);
+  };
 
   return (
     <section
-      className={['ui-panel-section', 'ui-panel-card', collapsed ? 'is-collapsed' : '', className]
+      className={['ui-panel-section', 'ui-panel-card', isCollapsed ? 'is-collapsed' : '', className]
         .filter(Boolean)
         .join(' ')}
       ref={ref}
       {...props}
     >
       <header className="ui-panel-section-header ui-panel-card-header">
-        {onToggle ? (
+        {expandable ? (
           <button
-            aria-expanded={!collapsed}
+            aria-expanded={!isCollapsed}
             aria-label={toggleLabel}
             className="ui-panel-section-toggle ui-panel-card-toggle"
-            onClick={onToggle}
+            onClick={handleToggle}
             type="button"
           >
-            {collapsed ? <ChevronRight aria-hidden="true" size={15} /> : <ChevronDown aria-hidden="true" size={15} />}
-            <span>{title}</span>
+            {isCollapsed ? <ChevronRight aria-hidden="true" size={15} /> : <ChevronDown aria-hidden="true" size={15} />}
+            <span className="ui-panel-card-heading">{title}</span>
           </button>
         ) : (
-          <div className="ui-panel-section-title ui-panel-card-title">{title}</div>
+          <div className="ui-panel-section-title ui-panel-card-title">
+            <span className="ui-panel-card-heading">{title}</span>
+          </div>
         )}
         {actions && <div className="ui-panel-section-actions ui-panel-card-actions">{actions}</div>}
       </header>
-      {!collapsed && (
+      {!isCollapsed && (
         <div
           className={['ui-panel-section-content', 'ui-panel-card-content', contentClassName].filter(Boolean).join(' ')}
         >

@@ -3,6 +3,7 @@ import {
   Check,
   ChevronRight,
   MoreHorizontal,
+  MoreVertical,
   Play,
   Plus,
   RefreshCw,
@@ -15,7 +16,7 @@ import {
 import { AssetPicker, MaterialPicker, PrefabPicker, TexturePicker } from '../inspector/AssetPicker';
 import type { AssetPickerItem } from '../inspector/AssetPicker';
 import { ColorControl, NumberControl, Vector3Control } from '../inspector/InspectorControls';
-import { SchemaComponentCard } from '../inspector/SchemaComponents';
+import { InspectorComponentCard } from '../inspector/InspectorComponentCard';
 import type { Vec3, Vec4 } from '../inspector/inspectorTypes';
 import { setPathValue } from '../inspector/propertySchema';
 import type { PropertyComponentSchema } from '../inspector/propertySchema';
@@ -28,6 +29,8 @@ import {
   UiContextMenuItem,
   UiIconButton,
   UiPanel,
+  UiPanelCard,
+  UiPropertyCard,
   UiPanelHeader,
   UiSearchInput,
   UiSelect,
@@ -35,6 +38,7 @@ import {
   UiTab,
   UiTabs,
   UiTextInput,
+  UiToggleButton,
   UiTreeRow,
 } from '../ui';
 
@@ -173,6 +177,84 @@ const demoAssets: AssetPickerItem[] = [
   },
 ];
 
+type UiHierarchyNode = {
+  name: string;
+  relation?: string;
+  children?: readonly UiHierarchyNode[];
+};
+
+const uiHierarchy: readonly UiHierarchyNode[] = [
+  {
+    name: 'UiButton',
+    relation: 'base primitive',
+    children: [
+      { name: 'UiIconButton', relation: 'wraps' },
+      { name: 'UiSelectButton', relation: 'wraps' },
+      { name: 'UiSelect', relation: 'reuses' },
+      { name: 'UiDropdown', relation: 'reuses' },
+      { name: 'UiSplitButton', relation: 'reuses' },
+      { name: 'UiContextMenuItem', relation: 'reuses' },
+    ],
+  },
+  {
+    name: 'UiPanel',
+    relation: 'base container',
+    children: [{ name: 'UiSidebarPanel', relation: 'wraps' }],
+  },
+  {
+    name: 'UiPanelCard',
+    relation: 'base card',
+    children: [
+      {
+        name: 'UiPropertyCard',
+        relation: 'data-driven wrapper',
+        children: [
+          { name: 'InspectorComponentCard', relation: 'ECS adapter' },
+          { name: 'UiPanelCardRow', relation: 'renders fields' },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'UiTextInput',
+    relation: 'base input',
+    children: [{ name: 'UiSearchInput', relation: 'wraps' }],
+  },
+  {
+    name: 'UiTreeRow',
+    relation: 'base row',
+    children: [{ name: 'UiTreeView', relation: 'reuses' }],
+  },
+  {
+    name: 'UiFloatingSurface',
+    relation: 'base surface',
+    children: [{ name: 'UiContextMenu', relation: 'wraps' }],
+  },
+  {
+    name: 'ColorControl',
+    relation: 'inspector control',
+    children: [{ name: 'UiColorControl', relation: 'adapter' }],
+  },
+];
+
+function HierarchyBranch({ node }: { node: UiHierarchyNode }) {
+  return (
+    <li className="ui-lab-hierarchy-item">
+      <div className="ui-lab-hierarchy-node">
+        <code>{node.name}</code>
+        {node.relation && <small>{node.relation}</small>}
+      </div>
+      {node.children?.length ? (
+        <ul className="ui-lab-hierarchy-children">
+          {node.children.map((child) => (
+            <HierarchyBranch key={child.name} node={child} />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
 function LabSection({
   title,
   description,
@@ -254,6 +336,9 @@ export function UiLab() {
   const [nativeNumber, setNativeNumber] = useState(60);
   const [radioValue, setRadioValue] = useState('static');
   const [realtime, setRealtime] = useState(true);
+  const [panelCardCollapsed, setPanelCardCollapsed] = useState(false);
+  const [panelCardMode, setPanelCardMode] = useState('Deferred');
+  const [panelCardTwoSided, setPanelCardTwoSided] = useState(false);
 
   const filteredAssets = useMemo(
     () => demoAssets.filter((asset) => asset.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())),
@@ -279,6 +364,21 @@ export function UiLab() {
       </header>
 
       <div className="ui-lab-content">
+        <LabSection
+          title="Component hierarchy"
+          description="Direct wrappers and shared-control relationships. Children build on the connected parent; companion and adapter relationships are labeled."
+        >
+          <LabCard title="Shared component relationships" caption="composition map" fullWidth>
+            <div className="ui-lab-hierarchy">
+              {uiHierarchy.map((node) => (
+                <ul className="ui-lab-hierarchy-tree" key={node.name}>
+                  <HierarchyBranch node={node} />
+                </ul>
+              ))}
+            </div>
+          </LabCard>
+        </LabSection>
+
         <LabSection title="Buttons" description="Shared button primitives and their core interaction states.">
           <LabCard title="Default" caption="UiButton">
             <div className="ui-lab-row">
@@ -430,14 +530,11 @@ export function UiLab() {
               ))}
             </fieldset>
           </LabCard>
-          <LabCard title="Switch" caption="toggle pattern">
-            <label className="ui-lab-switch">
-              <input checked={realtime} onChange={(event) => setRealtime(event.target.checked)} type="checkbox" />
-              <span className="ui-lab-switch-track" aria-hidden="true">
-                <span />
-              </span>
-              <span>Realtime updates</span>
-            </label>
+          <LabCard title="Switch" caption="UiToggleButton">
+            <div className="ui-lab-toggle-stack">
+              <UiToggleButton checked={realtime} label="Realtime updates" onCheckedChange={setRealtime} />
+              <UiToggleButton checked={false} disabled label="Unavailable" onCheckedChange={() => undefined} />
+            </div>
           </LabCard>
           <LabCard title="Mixed / disabled" caption="selection states">
             <div className="ui-lab-field-stack">
@@ -455,6 +552,98 @@ export function UiLab() {
                 <input disabled type="checkbox" />
                 <span>Unavailable option</span>
               </label>
+            </div>
+          </LabCard>
+        </LabSection>
+
+        <LabSection
+          title="Panel cards and toggles"
+          description="Shared compact surfaces used by the Inspector, Material editor, and other property-oriented panels."
+        >
+          <LabCard title="Collapsible card" caption="UiPanelCard" wide>
+            <div className="ui-lab-panel-card-demo">
+              <UiPanelCard
+                actions={
+                  <UiIconButton label="Card settings">
+                    <MoreVertical size={14} />
+                  </UiIconButton>
+                }
+                collapsed={panelCardCollapsed}
+                title="Rendering"
+                onToggle={() => setPanelCardCollapsed((value) => !value)}
+              >
+                <div className="ui-lab-panel-card-copy">
+                  The card owns its header, collapse affordance, action slot, and content surface.
+                </div>
+              </UiPanelCard>
+            </div>
+          </LabCard>
+          <LabCard title="Data-driven property card" caption="UiPropertyCard / UiPanelCardRow" wide>
+            <div className="ui-lab-panel-card-demo">
+              <UiPropertyCard
+                expandable={false}
+                fields={[
+                  {
+                    id: 'renderPath',
+                    label: 'Render path',
+                    description: 'Selected from material features',
+                    control: (
+                      <UiSelect
+                        ariaLabel="Panel card render path"
+                        options={[
+                          { label: 'Deferred', value: 'Deferred' },
+                          { label: 'Forward', value: 'Forward' },
+                        ]}
+                        value={panelCardMode}
+                        onValueChange={setPanelCardMode}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'twoSided',
+                    label: 'Two sided',
+                    description: 'Render both triangle faces',
+                    control: (
+                      <UiToggleButton
+                        aria-label="Panel card two sided"
+                        checked={panelCardTwoSided}
+                        onCheckedChange={setPanelCardTwoSided}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'output',
+                    label: 'Output',
+                    description: 'Readonly derived information',
+                    align: 'start',
+                    control: (
+                      <span className="ui-lab-panel-readonly">
+                        Material Graph
+                        <small>Deferred-compatible</small>
+                      </span>
+                    ),
+                  },
+                ]}
+                title="Material"
+              />
+            </div>
+          </LabCard>
+          <LabCard title="Labeled toggles" caption="UiToggleButton">
+            <div className="ui-lab-toggle-stack">
+              <UiToggleButton checked={realtime} label="Realtime" onCheckedChange={setRealtime} />
+              <UiToggleButton
+                checked={panelCardTwoSided}
+                label="Two sided"
+                labelPosition="start"
+                onCheckedChange={setPanelCardTwoSided}
+              />
+            </div>
+          </LabCard>
+          <LabCard title="Toggle states" caption="UiToggleButton">
+            <div className="ui-lab-toggle-stack">
+              <UiToggleButton aria-label="Toggle off example" checked={false} onCheckedChange={() => undefined} />
+              <UiToggleButton aria-label="Toggle on example" checked onCheckedChange={() => undefined} />
+              <UiToggleButton aria-label="Toggle disabled example" checked disabled onCheckedChange={() => undefined} />
             </div>
           </LabCard>
         </LabSection>
@@ -600,8 +789,8 @@ export function UiLab() {
               <div className="ui-lab-demo-panel-body">Panel content region</div>
             </UiPanel>
           </LabCard>
-          <LabCard title="ECS component region" caption="SchemaComponentCard" wide>
-            <SchemaComponentCard
+          <LabCard title="ECS component region" caption="InspectorComponentCard" wide>
+            <InspectorComponentCard
               assets={demoAssets}
               collapsed={componentCollapsed}
               context={component}
@@ -629,9 +818,9 @@ export function UiLab() {
               </UiContextMenu>
             </div>
           </LabCard>
-          <LabCard title="Component actions" caption="SchemaComponentCard" wide>
+          <LabCard title="Component actions" caption="InspectorComponentCard" wide>
             <div className="ui-lab-component-menu-hint">
-              <SchemaComponentCard
+              <InspectorComponentCard
                 assets={demoAssets}
                 collapsed={false}
                 context={component}

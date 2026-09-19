@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AssetItem } from '../services/editorHostTypes';
-import { UiButton, UiCurveEditor, UiPanelSection, type UiCurveHistogram } from '../ui';
+import { UiButton, UiCurveEditor, UiPanelCard, type UiCurveHistogram } from '../ui';
 import {
   patchTextureSettings,
   type TextureCurve,
@@ -55,7 +55,7 @@ export function TextureCurveControls({
               ? histogram.r.map((v, i) => v + histogram.g[i] + histogram.b[i])
               : undefined;
   return (
-    <UiPanelSection
+    <UiPanelCard
       className="texture-inspector-section"
       collapsed={collapsed}
       onToggle={() => setCollapsed((value) => !value)}
@@ -86,6 +86,6 @@ export function TextureCurveControls({
       {draft.semantic === 'normal' && (
         <div className="texture-stage3-note">RGB curves are bypassed for normal-map semantics.</div>
       )}
-    </UiPanelSection>
+    </UiPanelCard>
   );
 }

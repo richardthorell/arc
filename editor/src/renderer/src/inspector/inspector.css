@@ -562,21 +562,22 @@
 }
 
 .inspector-component-content {
-  display: grid;
-  padding: 3px 7px 5px;
-  background:
-    linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.015) var(--inspector-row-label),
-      transparent var(--inspector-row-label)
-    ),
-    #192128;
+  background: #192128;
 }
 
 .inspector-component-empty {
   padding: 8px 2px;
   color: var(--inspector-text-dim);
   font-size: 10px;
+}
+
+.inspector-procedural-mesh-heading {
+  min-height: 28px;
+  color: var(--inspector-text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .inspector-property {
@@ -627,12 +628,36 @@
   display: contents;
 }
 
+.inspector-vector-control,
+.inspector-vector-value,
+.inspector-color-control-shell,
+.asset-reference-control,
+.inspector-number {
+  width: 100%;
+  min-width: 0;
+}
+
 .inspector-vector-value {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 20px;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 4px;
-  min-width: 0;
+}
+
+.inspector-vector-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.inspector-number-row-label {
+  display: block;
+  cursor: ew-resize;
+  user-select: none;
+}
+
+.inspector-number-row-label:hover {
+  color: var(--inspector-text);
 }
 
 .inspector-field-reset {
@@ -1469,7 +1494,9 @@ button.arc-color-preview:hover {
   white-space: nowrap;
 }
 
-.inspector-readonly-property output {
+.inspector-readonly-property output,
+.inspector-readonly-value {
+  width: 100%;
   min-width: 0;
   min-height: var(--inspector-control-height);
   display: flex;

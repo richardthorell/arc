@@ -481,6 +481,16 @@ textarea {
   transform: translateX(16px);
 }
 
+.ui-toggle-button.is-mixed .ui-toggle-button-track {
+  border-color: var(--arc-color-button-border-hover);
+  background: linear-gradient(180deg, var(--arc-color-button-field-top), var(--arc-color-button-field-bottom));
+}
+
+.ui-toggle-button.is-mixed .ui-toggle-button-thumb {
+  background: var(--arc-color-text-muted);
+  transform: translateX(8px);
+}
+
 .ui-toggle-button:focus-visible .ui-toggle-button-track {
   border-color: var(--arc-color-accent);
   box-shadow:
@@ -491,4 +501,47 @@ textarea {
 .ui-toggle-button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+.ui-toggle-button.has-label {
+  width: auto;
+  min-width: 0;
+  height: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--arc-space-3);
+  border-radius: var(--arc-radius-1);
+  color: var(--arc-color-text);
+  font: inherit;
+  font-size: var(--arc-text-sm);
+}
+
+.ui-toggle-button-label {
+  min-width: 0;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.ui-panel-card-row-description {
+  color: var(--arc-color-text-dim);
+  font-size: var(--arc-text-xxs);
+  font-weight: 400;
+  line-height: 1.25;
+}
+
+.ui-panel-card-row.is-start-aligned {
+  align-items: start;
+}
+
+.ui-panel-card-row-label {
+  display: grid;
+  gap: 2px;
+}
+
+.ui-panel-card-row-control {
+  justify-content: flex-start;
+}
+
+.ui-panel-card-row-control.is-end-aligned {
+  justify-content: flex-end;
 }

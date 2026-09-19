@@ -39,6 +39,7 @@ export type AssetPickerProps = {
   onOpen?: (asset: AssetPickerItem) => void;
   assetCompatibility?: (asset: AssetPickerItem) => string | null;
   onChange: (path: string) => void;
+  showLabel?: boolean;
 };
 
 const thumbnailCaches = new WeakMap<AssetThumbnailProvider, Map<string, Promise<string | null>>>();
@@ -197,6 +198,7 @@ export function AssetPicker({
   onOpen,
   assetCompatibility,
   onChange,
+  showLabel = true,
 }: AssetPickerProps) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
@@ -234,9 +236,8 @@ export function AssetPicker({
   const canOpen = Boolean(selected && onOpen && !mixed);
   const canClear = Boolean(allowEmpty && value && !mixed);
 
-  return (
-    <div className="inspector-property inspector-asset-property">
-      <span className="inspector-property-label">{label}</span>
+  const control = (
+    <>
       <div className="asset-reference-control" onDragOver={(event) => event.preventDefault()} onDrop={acceptDrop}>
         <button
           aria-expanded={open}
@@ -317,7 +318,16 @@ export function AssetPicker({
           }}
         />
       )}
+    </>
+  );
+
+  return showLabel ? (
+    <div className="inspector-property inspector-asset-property">
+      <span className="inspector-property-label">{label}</span>
+      {control}
     </div>
+  ) : (
+    control
   );
 }
 
@@ -349,9 +359,12 @@ export function TexturePicker({
   );
 }
 
-export function MaterialPicker(
-  props: Omit<AssetPickerProps, 'assetKinds' | 'assetTypeLabel' | 'createNewLabel' | 'onCreateNew' | 'onOpen'>,
-) {
+export function MaterialPicker({
+  showParameters = true,
+  ...props
+}: Omit<AssetPickerProps, 'assetKinds' | 'assetTypeLabel' | 'createNewLabel' | 'onCreateNew' | 'onOpen'> & {
+  showParameters?: boolean;
+}) {
   const openMaterial = (asset: AssetPickerItem) => {
     if (asset.kind !== 'material' || asset.scope === 'procedural') return;
     openAssetEditorDocument({
@@ -394,12 +407,14 @@ export function MaterialPicker(
         onCreateNew={createMaterial}
         onOpen={openMaterial}
       />
-      <MaterialParameterSubsection
-        assets={props.assets}
-        mixed={props.mixed}
-        referenceMode={props.referenceMode}
-        value={props.value}
-      />
+      {showParameters && (
+        <MaterialParameterSubsection
+          assets={props.assets}
+          mixed={props.mixed}
+          referenceMode={props.referenceMode}
+          value={props.value}
+        />
+      )}
     </>
   );
 }
