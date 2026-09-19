@@ -642,13 +642,31 @@ private:
     void render_shared_once(const shared_render_target& target)
     {
         if (!backend_) return;
+        const bool diagnose_first_frame = first_shared_frame_diagnostic_;
+        if (diagnose_first_frame)
+            std::cerr << "[debug][viewport.sharedTexture] first frame: begin\n";
+
         // Publish the completed producer frame before admitting another one.
         // Renderer submission advances temporal state, so it must only happen
         // when the shared output can execute that exact frame.
+        if (diagnose_first_frame)
+            std::cerr << "[debug][viewport.sharedTexture] first frame: initial poll begin\n";
         publish_ready_frame(target.viewport_id, target.consumer_process_id);
-        if (!backend_->can_present_viewport_output(target.viewport_id)) return;
+        if (diagnose_first_frame)
+            std::cerr << "[debug][viewport.sharedTexture] first frame: initial poll complete\n";
+
+        if (diagnose_first_frame)
+            std::cerr << "[debug][viewport.sharedTexture] first frame: can-present query begin\n";
+        const bool can_present = backend_->can_present_viewport_output(target.viewport_id);
+        if (diagnose_first_frame)
+            std::cerr << "[debug][viewport.sharedTexture] first frame: can-present=" << (can_present ? "true" : "false")
+                      << "\n";
+        if (!can_present) return;
+
         bool rendered{};
         std::string message;
+        if (diagnose_first_frame)
+            std::cerr << "[debug][viewport.sharedTexture] first frame: scene submission begin\n";
         {
             std::lock_guard lock(host_mutex_);
             host_->request_viewport(arc::editor::host_viewport_request{.viewport_id = target.viewport_id,
@@ -656,6 +674,8 @@ private:
                                                                        .width = target.width,
                                                                        .height = target.height});
         }
+        if (diagnose_first_frame)
+            std::cerr << "[debug][viewport.sharedTexture] first frame: scene submission complete\n";
         {
             std::lock_guard lock(bounds_mutex_);
             if (const auto found = shared_surfaces_.find(target.viewport_id);
@@ -663,13 +683,25 @@ private:
                 ++found->second.frame_index;
         }
         ++render_progress_sequence_;
+
+        if (diagnose_first_frame)
+            std::cerr << "[debug][viewport.sharedTexture] first frame: Vulkan present begin\n";
         auto present = backend_->present_viewport_output(target.viewport_id);
+        if (diagnose_first_frame)
+            std::cerr << "[debug][viewport.sharedTexture] first frame: Vulkan present returned\n";
         rendered = present.has_value();
         if (!rendered) message = std::move(present.error().message);
         if (rendered)
         {
             last_render_error_.clear();
+            if (diagnose_first_frame)
+                std::cerr << "[debug][viewport.sharedTexture] first frame: completed-frame poll begin\n";
             publish_ready_frame(target.viewport_id, target.consumer_process_id);
+            if (diagnose_first_frame)
+            {
+                std::cerr << "[debug][viewport.sharedTexture] first frame: completed-frame poll complete\n";
+                first_shared_frame_diagnostic_ = false;
+            }
             return;
         }
         if (message.empty()) return;
@@ -1480,10 +1512,15 @@ private:
             }
         }
         signal_setup({});
+        bool first_render_loop_iteration = true;
 
         while (running_)
         {
+            if (first_render_loop_iteration && shared_texture_)
+                std::cerr << "[debug][viewport.sharedTexture] first frame: render-thread pump begin\n";
             jobs_->pump_render_thread(32);
+            if (first_render_loop_iteration && shared_texture_)
+                std::cerr << "[debug][viewport.sharedTexture] first frame: render-thread pump complete\n";
             std::vector<arc::editor::host_viewport_pointer_command> pointer_inputs;
             std::vector<arc::editor::host_viewport_key_command> key_inputs;
             std::vector<shared_render_target> shared_targets;
@@ -1549,6 +1586,7 @@ private:
             }
             else
                 render_once(value);
+            first_render_loop_iteration = false;
             std::this_thread::sleep_for(arc::editor::defaults::native_viewport_frame_interval);
         }
 
@@ -1612,6 +1650,7 @@ private:
     bool input_control_{};
     std::uint64_t frame_index_{};
     std::uint64_t render_progress_sequence_{};
+    bool first_shared_frame_diagnostic_{true};
     std::string last_render_error_;
     std::chrono::steady_clock::time_point last_render_error_time_{};
     std::chrono::steady_clock::time_point last_backend_recovery_attempt_{};
