@@ -82,11 +82,6 @@ def parse_args():
         help="Launch the standalone editor UI control lab without building or starting the native engine host.",
     )
     parser.add_argument(
-        "--native-viewport",
-        action="store_true",
-        help="Use the native child-window viewport instead of Windows shared GPU textures.",
-    )
-    parser.add_argument(
         "--perf",
         action="store_true",
         help="Enable ARC editor performance diagnostics ([ARC PERF] startup and slow-operation timings).",
@@ -328,8 +323,6 @@ def main():
             arc_build.run([npm, "install"], editor_dir)
 
         editor_env = tool_env.copy()
-        if args.native_viewport:
-            editor_env["ARC_NATIVE_VIEWPORT"] = "1"
         if args.ui_lab:
             editor_env["VITE_ARC_UI_LAB"] = "1"
         if host is not None and project_tool is not None:
