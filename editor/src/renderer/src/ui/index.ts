@@ -14,6 +14,8 @@ export { UiPanelCard } from './UiPanelCard';
 export type { UiPanelCardProps } from './UiPanelCard';
 export { UiPanelCardRow } from './UiPanelCardRow';
 export type { UiPanelCardRowProps } from './UiPanelCardRow';
+export { UiPropertyCard } from './UiPropertyCard';
+export type { UiPropertyCardField, UiPropertyCardProps } from './UiPropertyCard';
 export { UiSidebarPanel } from './UiSidebarPanel';
 export { UiSelect } from './UiSelect';
 export { UiSelectButton } from './UiSelectButton';
