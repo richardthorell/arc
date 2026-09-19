@@ -20,6 +20,11 @@ try:
 except ImportError:
     from urllib2 import urlopen
 
+try:
+    text_input = raw_input
+except NameError:
+    text_input = input
+
 
 SLANG_VERSION = "2026.14.1"
 SLANG_RELEASE_BASE_URL = "https://github.com/shader-slang/slang/releases/download/v{}".format(SLANG_VERSION)
@@ -257,7 +262,7 @@ def print_prerequisite_report(checks, show_install_hint=True):
 
 
 def prompt_yes_no(message, input_fn=None):
-    input_fn = input_fn or input
+    input_fn = input_fn or text_input
     try:
         response = input_fn("{} [y/N] ".format(message)).strip().lower()
     except (EOFError, KeyboardInterrupt):
