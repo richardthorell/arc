@@ -44,6 +44,31 @@ describe('UiDialog', () => {
     expect(dialog).toHaveStyle('transform: translate3d(0px, 0px, 0)');
   });
 
+  it('supports a modeless positioned dialog without backdrop blur', () => {
+    render(
+      <UiDialog
+        blurBackdrop={false}
+        initialPosition={{ x: 120, y: 80 }}
+        modal={false}
+        title="Color picker"
+      >
+        Picker
+      </UiDialog>,
+    );
+
+    const dialog = screen.getByRole('dialog');
+    const backdrop = dialog.parentElement!;
+    expect(dialog).toHaveStyle('left: 120px; top: 80px');
+    expect(dialog).not.toHaveAttribute('aria-modal');
+    expect(backdrop).toHaveClass('is-modeless', 'is-no-blur');
+
+    const header = screen.getByText('Color picker').closest('header')!;
+    fireEvent.pointerDown(header, { button: 0, clientX: 120, clientY: 80 });
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 100 });
+
+    expect(dialog).toHaveStyle('left: 150px; top: 100px');
+  });
+
   it('keeps preview dialogs fixed', () => {
     render(
       <UiDialog preview title="Preview dialog">
