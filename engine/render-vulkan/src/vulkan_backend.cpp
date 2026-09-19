@@ -454,7 +454,11 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
         // Vulkan 1.3, but a 1.2 application must still enable the KHR
         // extension even when the physical device advertises Vulkan 1.3+.
         if (arc_vulkan_api_version < VK_API_VERSION_1_3)
+        {
             append_unique_extension(candidate_extensions, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+            if (capabilities.synchronization2)
+                append_unique_extension(candidate_extensions, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+        }
 
         std::string rejection;
         if (queue_family == UINT32_MAX)
@@ -527,10 +531,6 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
     enabled_features.samplerAnisotropy =
         enable_optional_features && selected_capabilities.sampler_anisotropy ? VK_TRUE : VK_FALSE;
 
-    if (synchronization2.synchronization2 == VK_TRUE && arc_vulkan_api_version < VK_API_VERSION_1_3)
-    {
-        append_unique_extension(selected_device_extensions, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
-    }
     const auto device_extension_names = make_c_strings(selected_device_extensions);
 
     VkDeviceCreateInfo device_info{};
