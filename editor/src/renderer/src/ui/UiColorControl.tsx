@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 
 import { UiColorPicker, colorToCss } from './UiColorPicker';
 import type { UiColorValue } from './UiColorPicker';
@@ -27,7 +27,6 @@ export function UiColorControl({
   onCommit,
 }: UiColorControlProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
-  const swatchRef = useRef<HTMLButtonElement>(null);
   const hdr = maxChannelValue > 1;
 
   return (
@@ -37,7 +36,6 @@ export function UiColorControl({
         aria-label={`Open ${label} color picker`}
         className="ui-color-control-swatch"
         onClick={() => setPickerOpen((open) => !open)}
-        ref={swatchRef}
         type="button"
       >
         <span
@@ -52,7 +50,6 @@ export function UiColorControl({
       </div>
       {pickerOpen && (
         <UiColorPicker
-          anchorRef={swatchRef}
           label={label}
           maxChannelValue={maxChannelValue}
           minChannelValue={minChannelValue}
