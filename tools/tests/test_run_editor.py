@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pathlib
 import sys
-import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest import mock
@@ -31,17 +30,18 @@ class EditorArgumentTests(unittest.TestCase):
             run_editor.parse_args()
 
 
-class EditorBuildCacheTests(unittest.TestCase):
-    def test_force_build_resets_native_build_tree_before_generator_check(self) -> None:
-        args = SimpleNamespace(
+class EditorNativeBuildTests(unittest.TestCase):
+    def make_args(self, force_build: bool = False) -> SimpleNamespace:
+        return SimpleNamespace(
             build_dir="out/build/editor-vulkan",
             vulkan_render=True,
             cmake="cmake",
-            force_build=True,
+            force_build=force_build,
             config="Release",
             parallel=None,
         )
 
+    def test_force_build_resets_before_configuring(self) -> None:
         calls = []
 
         with mock.patch.object(run_editor.arc_build, "find_executable", return_value="cmake"), mock.patch.object(
@@ -52,56 +52,59 @@ class EditorBuildCacheTests(unittest.TestCase):
             run_editor.arc_build,
             "resolve_visual_studio_generator",
             side_effect=lambda _: calls.append("resolve"),
-        ) as resolve_generator, mock.patch.object(
+        ), mock.patch.object(
             run_editor.arc_build, "cmake_cache_generator", return_value=None
         ), mock.patch.object(
-            run_editor, "cmake_cache_requires_configure", return_value=False
+            run_editor.arc_build,
+            "run",
+            side_effect=lambda *_args, **_kwargs: calls.append("configure"),
         ), mock.patch.object(
-            run_editor.arc_build, "build_cmake_target"
+            run_editor.arc_build,
+            "build_cmake_target",
+            side_effect=lambda _cmake, _build, target, *_args, **_kwargs: calls.append(target),
         ), mock.patch.object(
             run_editor, "find_host_executable", return_value="arc_host_process"
         ), mock.patch.object(
             run_editor, "find_project_tool_executable", return_value="arc-project"
         ):
-            run_editor.prepare_native_editor(args, str(REPO_ROOT))
+            run_editor.prepare_native_editor(self.make_args(force_build=True), str(REPO_ROOT))
 
         reset.assert_called_once_with(str(REPO_ROOT / "out" / "build" / "editor-vulkan"))
-        resolve_generator.assert_called_once_with("cmake")
-        self.assertEqual(calls[:2], ["reset", "resolve"])
+        self.assertEqual(
+            calls,
+            ["reset", "resolve", "configure", "arc_host_process", "arc-project-cli"],
+        )
 
-    def test_missing_cache_requires_configure(self) -> None:
-        with tempfile.TemporaryDirectory() as build_dir:
-            self.assertTrue(run_editor.cmake_cache_requires_configure(build_dir, True))
+    def test_existing_tree_is_always_reconfigured_before_build(self) -> None:
+        calls = []
 
-    def test_matching_editor_cache_skips_configure(self) -> None:
-        with tempfile.TemporaryDirectory() as build_dir:
-            cache = pathlib.Path(build_dir) / "CMakeCache.txt"
-            cache.write_text(
-                "\n".join(
-                    [
-                        "ARC_BUILD_EDITOR:BOOL=ON",
-                        "ARC_BUILD_RENDER_VULKAN:BOOL=ON",
-                        "FETCHCONTENT_FULLY_DISCONNECTED:BOOL=OFF",
-                    ]
-                ),
-                encoding="utf-8",
-            )
-            self.assertFalse(run_editor.cmake_cache_requires_configure(build_dir, True))
+        with mock.patch.object(run_editor.arc_build, "find_executable", return_value="cmake"), mock.patch.object(
+            run_editor.arc_build, "resolve_visual_studio_generator", return_value="Visual Studio 18 2026"
+        ), mock.patch.object(
+            run_editor.arc_build, "cmake_cache_generator", return_value="Visual Studio 18 2026"
+        ), mock.patch.object(
+            run_editor.arc_build,
+            "run",
+            side_effect=lambda command, *_args, **_kwargs: calls.append(("configure", command)),
+        ) as configure, mock.patch.object(
+            run_editor.arc_build,
+            "build_cmake_target",
+            side_effect=lambda _cmake, _build, target, *_args, **_kwargs: calls.append(("build", target)),
+        ), mock.patch.object(
+            run_editor, "find_host_executable", return_value="arc_host_process"
+        ), mock.patch.object(
+            run_editor, "find_project_tool_executable", return_value="arc-project"
+        ):
+            run_editor.prepare_native_editor(self.make_args(), str(REPO_ROOT))
 
-    def test_vulkan_change_requires_reconfigure(self) -> None:
-        with tempfile.TemporaryDirectory() as build_dir:
-            cache = pathlib.Path(build_dir) / "CMakeCache.txt"
-            cache.write_text(
-                "\n".join(
-                    [
-                        "ARC_BUILD_EDITOR:BOOL=ON",
-                        "ARC_BUILD_RENDER_VULKAN:BOOL=OFF",
-                        "FETCHCONTENT_FULLY_DISCONNECTED:BOOL=OFF",
-                    ]
-                ),
-                encoding="utf-8",
-            )
-            self.assertTrue(run_editor.cmake_cache_requires_configure(build_dir, True))
+        configure.assert_called_once()
+        configure_command = configure.call_args.args[0]
+        self.assertIn("-G", configure_command)
+        self.assertIn("Visual Studio 18 2026", configure_command)
+        self.assertEqual(
+            [entry[0] for entry in calls],
+            ["configure", "build", "build"],
+        )
 
 
 if __name__ == "__main__":
