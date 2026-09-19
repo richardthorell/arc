@@ -383,7 +383,7 @@
 }
 
 .ui-lab-panel-card-rows {
-  padding: 4px 10px 8px;
+  padding: 4px 10px 0;
 }
 
 .ui-lab-panel-readonly {
