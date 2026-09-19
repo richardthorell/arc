@@ -39,6 +39,17 @@ def cmake_cache_requires_configure(build_dir, vulkan_render):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Build and run the ARC editor.")
+    prerequisites = parser.add_mutually_exclusive_group()
+    prerequisites.add_argument(
+        "--check-prerequisites",
+        action="store_true",
+        help="Check the editor development prerequisites and exit.",
+    )
+    prerequisites.add_argument(
+        "--install-prerequisites",
+        action="store_true",
+        help="Install supported missing prerequisites, then report anything that still needs manual setup.",
+    )
     parser.add_argument("--editor-dir", default="editor", help="Electron editor directory.")
     parser.add_argument("--npm", default="npm", help="npm executable to invoke.")
     parser.add_argument("--npm-script", default="dev", help="npm script used to launch the editor.")
@@ -241,6 +252,31 @@ def dependencies_ready(editor_dir):
 def main():
     args = parse_args()
     repo_root = os.path.dirname(os.path.abspath(__file__))
+
+    if args.check_prerequisites:
+        checks = arc_build.check_editor_prerequisites(cmake=args.cmake, npm=args.npm)
+        arc_build.print_prerequisite_report(checks)
+        return 0 if arc_build.prerequisites_ready(checks) else 1
+
+    if args.install_prerequisites:
+        try:
+            checks, installed = arc_build.install_editor_prerequisites(cmake=args.cmake, npm=args.npm)
+        except (RuntimeError, OSError, subprocess.CalledProcessError) as error:
+            print("error: {}".format(error), file=sys.stderr)
+            return 1
+
+        arc_build.print_prerequisite_report(checks, show_install_hint=False)
+        if installed:
+            print("")
+            print("Supported prerequisites were installed.")
+            print("Open a new terminal so PATH updates are visible, then run:")
+            print("  python run_editor.py --check-prerequisites")
+
+        manual_missing = any(
+            not check["ok"] and not check["installable"]
+            for check in checks
+        )
+        return 1 if manual_missing else 0
     if args.clear_asset_db is not None:
         try:
             clear_asset_database(repo_root, args.clear_asset_db)
@@ -251,6 +287,15 @@ def main():
     editor_dir = os.path.abspath(os.path.join(repo_root, args.editor_dir))
     if not os.path.isdir(editor_dir):
         print("error: editor directory was not found: {}".format(editor_dir), file=sys.stderr)
+        return 1
+
+    prerequisite_checks = arc_build.check_editor_prerequisites(
+        cmake=args.cmake,
+        npm=args.npm,
+        require_native=not args.ui_lab,
+    )
+    if not arc_build.prerequisites_ready(prerequisite_checks):
+        arc_build.print_prerequisite_report(prerequisite_checks)
         return 1
 
     host = None
