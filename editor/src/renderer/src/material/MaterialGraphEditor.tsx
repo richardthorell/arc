@@ -26,6 +26,7 @@ import {
   UiIconButton,
   UiNodeCard,
   UiTextInput,
+  type UiColorValue,
 } from '../ui';
 import { materialGraphDomain } from './materialGraphDomain';
 import {
@@ -100,14 +101,14 @@ const nextNodeValue = (node: MaterialGraphNode, value: unknown): MaterialGraphNo
 });
 
 const colorChannel = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
-const colorTuple = (value: unknown): [number, number, number, number] => {
+const colorValue = (value: unknown): UiColorValue => {
   const components = Array.isArray(value) ? value : [];
-  return [
-    colorChannel(components[0] ?? 1),
-    colorChannel(components[1] ?? 1),
-    colorChannel(components[2] ?? 1),
-    colorChannel(components[3] ?? 1),
-  ];
+  return {
+    x: colorChannel(components[0] ?? 1),
+    y: colorChannel(components[1] ?? 1),
+    z: colorChannel(components[2] ?? 1),
+    w: colorChannel(components[3] ?? 1),
+  };
 };
 
 function MaterialNodeValueEditor({
@@ -160,14 +161,18 @@ function MaterialNodeValueEditor({
   }
 
   if (node.type === 'colorRgb' || node.type === 'colorRgba') {
-    const color = colorTuple(node.values.value);
+    const color = colorValue(node.values.value);
     return (
       <UiColorControl
         allowAlpha={node.type === 'colorRgba'}
         label={node.type === 'colorRgba' ? 'Color' : 'Legacy RGB color'}
         onCommit={(next) => {
           if (readOnly) return;
-          onChange(nextNodeValue(node, node.type === 'colorRgba' ? next : next.slice(0, 3)));
+          const tuple =
+            node.type === 'colorRgba'
+              ? [next.x, next.y, next.z, next.w]
+              : [next.x, next.y, next.z];
+          onChange(nextNodeValue(node, tuple));
         }}
         value={color}
       />
