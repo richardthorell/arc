@@ -30,14 +30,15 @@ export type UiColorPickerProps = {
   onPreview: (value: UiColorValue) => void;
 };
 
-const pickerWidth = 430;
-const pickerEstimatedHeight = 650;
+const pickerWidth = 860;
+const pickerEstimatedHeight = 560;
 const pickerViewportMargin = 8;
 const colorModeOptions = [
   { value: 'rgb' as const, label: 'RGB' },
   { value: 'hsv' as const, label: 'HSV' },
   { value: 'linear' as const, label: 'Linear RGB' },
 ];
+const colorPresetOptions = [{ value: 'custom' as const, label: 'Custom' }];
 
 const centeredPickerPosition = () => ({
   x: Math.max(pickerViewportMargin, (window.innerWidth - pickerWidth) / 2),
@@ -308,18 +309,64 @@ export function UiColorPicker({
   const channelSliders =
     mode === 'hsv'
       ? [
-          { label: 'H', value: hsv.h, min: 0, max: 360, step: 0.1, precision: 1, className: 'is-hue' },
-          { label: 'S', value: hsv.s * 100, min: 0, max: 100, step: 0.1, precision: 1, className: 'is-saturation' },
-          { label: 'V', value: hsv.v * 100, min: 0, max: 100, step: 0.1, precision: 1, className: 'is-value' },
           {
-            label: 'Intensity',
-            value: hdrScale,
+            label: 'H',
+            value: hsv.h,
             min: 0,
-            max: Math.max(1, maxChannelValue),
-            step: 0.01,
-            precision: 2,
-            className: 'is-intensity',
+            max: 360,
+            step: 0.1,
+            precision: 1,
+            className: 'is-hue',
+            onChange: (next: number) => setHsvChannel(0, next),
           },
+          {
+            label: 'S',
+            value: hsv.s * 100,
+            min: 0,
+            max: 100,
+            step: 0.1,
+            precision: 1,
+            className: 'is-saturation',
+            onChange: (next: number) => setHsvChannel(1, next),
+          },
+          {
+            label: 'V',
+            value: hsv.v * 100,
+            min: 0,
+            max: 100,
+            step: 0.1,
+            precision: 1,
+            className: 'is-value',
+            onChange: (next: number) => setHsvChannel(2, next),
+          },
+          ...(hdr
+            ? [
+                {
+                  label: 'Intensity',
+                  value: hdrScale,
+                  min: 1,
+                  max: Math.max(1, maxChannelValue),
+                  step: 0.01,
+                  precision: 2,
+                  className: 'is-intensity',
+                  onChange: (next: number) => setHsvChannel(3, next),
+                },
+              ]
+            : []),
+          ...(showAlpha
+            ? [
+                {
+                  label: 'A',
+                  value: draft.w,
+                  min: 0,
+                  max: 1,
+                  step: 0.001,
+                  precision: 3,
+                  className: 'is-alpha',
+                  onChange: (next: number) => emit({ ...draft, w: clamp(next) }, true),
+                },
+              ]
+            : []),
         ]
       : [
           {
@@ -330,6 +377,7 @@ export function UiColorPicker({
             step: mode === 'linear' ? 0.001 : 1,
             precision: mode === 'linear' ? 3 : 0,
             className: 'is-red',
+            onChange: (next: number) => setRgbChannel(0, next),
           },
           {
             label: 'G',
@@ -339,6 +387,7 @@ export function UiColorPicker({
             step: mode === 'linear' ? 0.001 : 1,
             precision: mode === 'linear' ? 3 : 0,
             className: 'is-green',
+            onChange: (next: number) => setRgbChannel(1, next),
           },
           {
             label: 'B',
@@ -348,6 +397,7 @@ export function UiColorPicker({
             step: mode === 'linear' ? 0.001 : 1,
             precision: mode === 'linear' ? 3 : 0,
             className: 'is-blue',
+            onChange: (next: number) => setRgbChannel(2, next),
           },
           ...(showAlpha
             ? [
@@ -359,6 +409,7 @@ export function UiColorPicker({
                   step: 0.001,
                   precision: 3,
                   className: 'is-alpha',
+                  onChange: (next: number) => setRgbChannel(3, next),
                 },
               ]
             : []),
@@ -388,119 +439,137 @@ export function UiColorPicker({
       width={pickerWidth}
       zIndex={1600}
     >
-      <div className="arc-color-picker-top">
-        <div className="arc-color-preview-stack">
-          <button
-            aria-label={`Restore original ${label}`}
-            className="arc-color-preview-row is-original"
-            onClick={() => emit(original.current, true)}
-            type="button"
-          >
-            <small>Original</small>
-            <span className="arc-color-preview-swatch">
-              <i style={swatchStyle(originalCss)} />
-            </span>
-          </button>
-          <div className="arc-color-preview-row is-current">
-            <small>Current</small>
-            <span className="arc-color-preview-swatch">
-              <i style={swatchStyle(currentCss)} />
-            </span>
-          </div>
-        </div>
-        <UiIconButton
-          className="arc-color-eyedropper"
-          disabled={!eyeDropper}
-          label="Pick color from screen"
-          onClick={() => {
-            if (!eyeDropper) return;
-            void new eyeDropper().open().then((result) => {
-              const sampled = hexToLinearColor(result.sRGBHex, draft.w);
-              if (sampled) emit(sampled, true);
-            });
-          }}
-          title={eyeDropper ? 'Pick an sRGB color from the screen' : 'Screen eyedropper is unavailable'}
-        >
-          <Pipette size={16} />
-        </UiIconButton>
-      </div>
-
-      <div className="arc-color-wheel-wrap">
-        <div
-          aria-label="Hue"
-          className="arc-color-wheel"
-          onPointerDown={(event) => huePointer(event, false)}
-          onPointerMove={(event) => huePointer(event, false)}
-          onPointerUp={(event) => huePointer(event, true)}
-        >
-          <span className="arc-color-wheel-cursor" style={hueCursorStyle} />
-          <div
-            aria-label="Saturation and value"
-            className="arc-color-wheel-square"
-            onPointerDown={(event) => spectrumPointer(event, false)}
-            onPointerMove={(event) => spectrumPointer(event, false)}
-            onPointerUp={(event) => spectrumPointer(event, true)}
-            style={{ '--arc-picker-hue': hueCss } as CSSProperties}
-          >
-            <span
-              className="arc-color-spectrum-cursor"
-              style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }}
+      <div className="arc-color-picker-layout">
+        <section className="arc-color-picker-wheel-pane">
+          <div className="arc-color-picker-preset">
+            <UiDropdown
+              ariaLabel="Color preset"
+              className="arc-color-preset-dropdown"
+              onValueChange={() => undefined}
+              options={colorPresetOptions}
+              value="custom"
             />
           </div>
-        </div>
-      </div>
 
-      <div className="arc-color-picker-mode">
-        <UiDropdown
-          ariaLabel="Color representation"
-          className="arc-color-mode-dropdown"
-          onValueChange={setMode}
-          options={colorModeOptions}
-          value={mode}
-        />
-      </div>
+          <div className="arc-color-wheel-wrap">
+            <div
+              aria-label="Hue"
+              className="arc-color-wheel"
+              onPointerDown={(event) => huePointer(event, false)}
+              onPointerMove={(event) => huePointer(event, false)}
+              onPointerUp={(event) => huePointer(event, true)}
+            >
+              <span className="arc-color-wheel-cursor" style={hueCursorStyle} />
+              <div
+                aria-label="Saturation and value"
+                className="arc-color-wheel-square"
+                onPointerDown={(event) => spectrumPointer(event, false)}
+                onPointerMove={(event) => spectrumPointer(event, false)}
+                onPointerUp={(event) => spectrumPointer(event, true)}
+                style={{ '--arc-picker-hue': hueCss } as CSSProperties}
+              >
+                <span
+                  className="arc-color-spectrum-cursor"
+                  style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </section>
 
-      <div
-        className="arc-color-channel-sliders"
-        style={
-          {
-            '--arc-picker-hue': hueCss,
-            '--arc-picker-color': colorToCss({ ...draft, w: 1 }),
-          } as CSSProperties
-        }
-      >
-        {channelSliders.map((channel, index) => (
-          <PickerChannelSlider
-            className={channel.className}
-            key={`${mode}-${channel.label}`}
-            label={channel.label}
-            max={channel.max}
-            min={channel.min}
-            precision={channel.precision}
-            step={channel.step}
-            value={channel.value}
-            onChange={(next) => (mode === 'hsv' ? setHsvChannel(index, next) : setRgbChannel(index, next))}
-          />
-        ))}
-      </div>
+        <section className="arc-color-picker-controls-pane">
+          <div className="arc-color-preview-stack">
+            <button
+              aria-label={`Restore original ${label}`}
+              className="arc-color-preview-row is-original"
+              onClick={() => emit(original.current, true)}
+              type="button"
+            >
+              <small>Original</small>
+              <span className="arc-color-preview-swatch">
+                <i style={swatchStyle(originalCss)} />
+              </span>
+            </button>
+            <div className="arc-color-preview-row is-current">
+              <small>Current</small>
+              <span className="arc-color-preview-swatch">
+                <i style={swatchStyle(currentCss)} />
+              </span>
+            </div>
+            <div className="arc-color-picker-tool-row">
+              <UiIconButton
+                className="arc-color-eyedropper"
+                disabled={!eyeDropper}
+                label="Pick color from screen"
+                onClick={() => {
+                  if (!eyeDropper) return;
+                  void new eyeDropper().open().then((result) => {
+                    const sampled = hexToLinearColor(result.sRGBHex, draft.w);
+                    if (sampled) emit(sampled, true);
+                  });
+                }}
+                title={eyeDropper ? 'Pick an sRGB color from the screen' : 'Screen eyedropper is unavailable'}
+              >
+                <Pipette size={16} />
+              </UiIconButton>
+            </div>
+          </div>
 
-      <div className="arc-color-hex-row">
-        <label htmlFor="arc-color-hex">Hex sRGB</label>
-        <PickerTextField
-          id="arc-color-hex"
-          value={colorToHex(draft, showAlpha)}
-          onCommit={(hex) => {
-            const parsed = hexToLinearColor(hex, draft.w);
-            if (parsed) emit(parsed, true);
-          }}
-        />
-        <UiIconButton
-          className="arc-color-copy"
-          label="Copy color hex"
-          onClick={() => void navigator.clipboard?.writeText(colorToHex(draft, showAlpha))}
-        >
-          <Copy size={14} />
-        </UiIconButton>
+          <div className="arc-color-controls-spacer" />
+
+          <div className="arc-color-picker-mode">
+            <UiDropdown
+              ariaLabel="Color representation"
+              className="arc-color-mode-dropdown"
+              onValueChange={setMode}
+              options={colorModeOptions}
+              value={mode}
+            />
+          </div>
+
+          <div
+            className="arc-color-channel-sliders"
+            style={
+              {
+                '--arc-picker-hue': hueCss,
+                '--arc-picker-color': colorToCss({ ...draft, w: 1 }),
+              } as CSSProperties
+            }
+          >
+            {channelSliders.map((channel) => (
+              <PickerChannelSlider
+                className={channel.className}
+                key={`${mode}-${channel.label}`}
+                label={channel.label}
+                max={channel.max}
+                min={channel.min}
+                precision={channel.precision}
+                step={channel.step}
+                value={channel.value}
+                onChange={channel.onChange}
+              />
+            ))}
+          </div>
+
+          <div className="arc-color-hex-row">
+            <label htmlFor="arc-color-hex">Hex sRGB</label>
+            <PickerTextField
+              id="arc-color-hex"
+              value={colorToHex(draft, showAlpha)}
+              onCommit={(hex) => {
+                const parsed = hexToLinearColor(hex, draft.w);
+                if (parsed) emit(parsed, true);
+              }}
+            />
+            <UiIconButton
+              className="arc-color-copy"
+              label="Copy color hex"
+              onClick={() => void navigator.clipboard?.writeText(colorToHex(draft, showAlpha))}
+            >
+              <Copy size={14} />
+            </UiIconButton>
+          </div>
+        </section>
       </div>
     </UiDialog>,
     document.body,
