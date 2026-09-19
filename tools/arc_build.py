@@ -222,7 +222,7 @@ def check_editor_prerequisites(cmake="cmake", npm="npm", require_native=True):
                         "name": "CMake generator",
                         "ok": False,
                         "detail": str(error),
-                        "installable": False,
+                        "installable": True,
                     }
                 )
 
@@ -233,7 +233,7 @@ def prerequisites_ready(checks):
     return all(check["ok"] for check in checks)
 
 
-def print_prerequisite_report(checks):
+def print_prerequisite_report(checks, show_install_hint=True):
     print("ARC editor prerequisites")
     print("")
     for check in checks:
@@ -252,7 +252,7 @@ def print_prerequisite_report(checks):
         print("  {}".format(VISUAL_STUDIO_DOWNLOAD_URL))
         print("  Select 'Desktop development with C++' and include the MSVC x64/x86 tools and Windows SDK.")
 
-    if any(check["installable"] for check in missing):
+    if show_install_hint and any(check["installable"] for check in missing):
         print("Run 'python run_editor.py --install-prerequisites' to install supported missing tools.")
 
 
@@ -282,6 +282,9 @@ def install_editor_prerequisites(cmake="cmake", npm="npm", require_native=True):
     ]
     if "cmake" in missing_keys:
         run([winget, "install", "--id", WINDOWS_CMAKE_PACKAGE] + common, os.getcwd())
+        installed = True
+    elif "generator" in missing_keys:
+        run([winget, "upgrade", "--id", WINDOWS_CMAKE_PACKAGE] + common, os.getcwd())
         installed = True
     if "node" in missing_keys:
         run([winget, "install", "--id", WINDOWS_NODE_PACKAGE] + common, os.getcwd())
