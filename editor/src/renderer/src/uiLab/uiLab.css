@@ -89,6 +89,79 @@
   margin-top: 40px;
 }
 
+
+.ui-lab-hierarchy {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  align-items: start;
+  gap: 14px;
+  width: 100%;
+}
+
+.ui-lab-hierarchy-tree,
+.ui-lab-hierarchy-children {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ui-lab-hierarchy-tree {
+  min-width: 0;
+}
+
+.ui-lab-hierarchy-item {
+  min-width: 0;
+}
+
+.ui-lab-hierarchy-node {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 30px;
+  padding: 6px 9px;
+  border: var(--arc-border-width) solid var(--arc-color-border);
+  border-radius: var(--arc-radius-1);
+  background: var(--arc-color-bg-panel-muted);
+}
+
+.ui-lab-hierarchy-node code {
+  min-width: 0;
+  color: var(--arc-color-text-strong);
+  font-family: var(--arc-font-mono);
+  font-size: var(--arc-text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-lab-hierarchy-node small {
+  flex: 0 0 auto;
+  color: var(--arc-color-text-dim);
+  font-size: var(--arc-text-xxs);
+  white-space: nowrap;
+}
+
+.ui-lab-hierarchy-children {
+  margin-left: 14px;
+  padding-left: 15px;
+  border-left: var(--arc-border-width) solid var(--arc-color-border-subtle);
+}
+
+.ui-lab-hierarchy-children > .ui-lab-hierarchy-item {
+  position: relative;
+  padding-top: 8px;
+}
+
+.ui-lab-hierarchy-children > .ui-lab-hierarchy-item::before {
+  position: absolute;
+  top: 23px;
+  left: -15px;
+  width: 15px;
+  border-top: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  content: '';
+}
+
 .ui-lab-section-header {
   display: flex;
   align-items: end;
