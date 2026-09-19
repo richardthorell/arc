@@ -168,10 +168,7 @@ function MaterialNodeValueEditor({
         label={node.type === 'colorRgba' ? 'Color' : 'Legacy RGB color'}
         onCommit={(next) => {
           if (readOnly) return;
-          const tuple =
-            node.type === 'colorRgba'
-              ? [next.x, next.y, next.z, next.w]
-              : [next.x, next.y, next.z];
+          const tuple = node.type === 'colorRgba' ? [next.x, next.y, next.z, next.w] : [next.x, next.y, next.z];
           onChange(nextNodeValue(node, tuple));
         }}
         value={color}
