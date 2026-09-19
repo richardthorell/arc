@@ -52,6 +52,18 @@ To build and run the editor through the helper script:
 python run_editor.py
 ```
 
+The runner checks editor prerequisites by default and interactively offers to
+install supported missing tools. Use these commands when setting up or
+diagnosing a machine:
+
+```bash
+python run_editor.py --check-prerequisites
+python run_editor.py --install-prerequisites
+python run_editor.py --no-install
+```
+
+`--no-install` skips the prerequisite preflight entirely.
+
 Use this to build the native host without the Vulkan viewport renderer:
 
 ```bash
