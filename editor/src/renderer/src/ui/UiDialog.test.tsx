@@ -69,6 +69,19 @@ describe('UiDialog', () => {
     expect(dialog).toHaveStyle('left: 150px; top: 100px');
   });
 
+  it('renders compact chrome without a close button', () => {
+    const onClose = vi.fn();
+    render(
+      <UiDialog compact onClose={onClose} showCloseButton={false} title="Color picker">
+        Picker
+      </UiDialog>,
+    );
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveClass('is-compact');
+    expect(screen.queryByRole('button', { name: 'Close dialog' })).toBeNull();
+  });
+
   it('keeps preview dialogs fixed', () => {
     render(
       <UiDialog preview title="Preview dialog">
