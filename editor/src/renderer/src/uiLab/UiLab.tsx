@@ -176,6 +176,78 @@ const demoAssets: AssetPickerItem[] = [
   },
 ];
 
+type UiHierarchyNode = {
+  name: string;
+  relation?: string;
+  children?: readonly UiHierarchyNode[];
+};
+
+const uiHierarchy: readonly UiHierarchyNode[] = [
+  {
+    name: 'UiButton',
+    relation: 'base primitive',
+    children: [
+      { name: 'UiIconButton', relation: 'wraps' },
+      { name: 'UiSelectButton', relation: 'wraps' },
+      { name: 'UiSelect', relation: 'reuses' },
+      { name: 'UiDropdown', relation: 'reuses' },
+      { name: 'UiSplitButton', relation: 'reuses' },
+      { name: 'UiContextMenuItem', relation: 'reuses' },
+    ],
+  },
+  {
+    name: 'UiPanel',
+    relation: 'base container',
+    children: [{ name: 'UiSidebarPanel', relation: 'wraps' }],
+  },
+  {
+    name: 'UiPanelCard',
+    relation: 'base card',
+    children: [
+      { name: 'UiPanelSection', relation: 'compat wrapper' },
+      { name: 'UiPanelCardRow', relation: 'companion row' },
+    ],
+  },
+  {
+    name: 'UiTextInput',
+    relation: 'base input',
+    children: [{ name: 'UiSearchInput', relation: 'wraps' }],
+  },
+  {
+    name: 'UiTreeRow',
+    relation: 'base row',
+    children: [{ name: 'UiTreeView', relation: 'reuses' }],
+  },
+  {
+    name: 'UiFloatingSurface',
+    relation: 'base surface',
+    children: [{ name: 'UiContextMenu', relation: 'wraps' }],
+  },
+  {
+    name: 'ColorControl',
+    relation: 'inspector control',
+    children: [{ name: 'UiColorControl', relation: 'adapter' }],
+  },
+];
+
+function HierarchyBranch({ node }: { node: UiHierarchyNode }) {
+  return (
+    <li className="ui-lab-hierarchy-item">
+      <div className="ui-lab-hierarchy-node">
+        <code>{node.name}</code>
+        {node.relation && <small>{node.relation}</small>}
+      </div>
+      {node.children?.length ? (
+        <ul className="ui-lab-hierarchy-children">
+          {node.children.map((child) => (
+            <HierarchyBranch key={child.name} node={child} />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
 function LabSection({
   title,
   description,
@@ -285,6 +357,21 @@ export function UiLab() {
       </header>
 
       <div className="ui-lab-content">
+        <LabSection
+          title="Component hierarchy"
+          description="Direct wrappers and shared-control relationships. Children build on the connected parent; companion and adapter relationships are labeled."
+        >
+          <LabCard title="Shared component relationships" caption="composition map" fullWidth>
+            <div className="ui-lab-hierarchy">
+              {uiHierarchy.map((node) => (
+                <ul className="ui-lab-hierarchy-tree" key={node.name}>
+                  <HierarchyBranch node={node} />
+                </ul>
+              ))}
+            </div>
+          </LabCard>
+        </LabSection>
+
         <LabSection title="Buttons" description="Shared button primitives and their core interaction states.">
           <LabCard title="Default" caption="UiButton">
             <div className="ui-lab-row">
