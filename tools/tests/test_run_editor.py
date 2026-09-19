@@ -15,6 +15,22 @@ if str(REPO_ROOT) not in sys.path:
 import run_editor
 
 
+class EditorArgumentTests(unittest.TestCase):
+    def test_no_install_skips_prerequisite_preflight_flag(self) -> None:
+        with mock.patch.object(sys, "argv", ["run_editor.py", "--no-install"]):
+            args = run_editor.parse_args()
+
+        self.assertTrue(args.no_install)
+
+    def test_no_install_cannot_combine_with_install_prerequisites(self) -> None:
+        with mock.patch.object(
+            sys,
+            "argv",
+            ["run_editor.py", "--no-install", "--install-prerequisites"],
+        ), self.assertRaises(SystemExit):
+            run_editor.parse_args()
+
+
 class EditorBuildCacheTests(unittest.TestCase):
     def test_force_build_resets_native_build_tree_before_generator_check(self) -> None:
         args = SimpleNamespace(

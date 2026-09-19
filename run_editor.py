@@ -39,6 +39,22 @@ def cmake_cache_requires_configure(build_dir, vulkan_render):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Build and run the ARC editor.")
+    prerequisites = parser.add_mutually_exclusive_group()
+    prerequisites.add_argument(
+        "--check-prerequisites",
+        action="store_true",
+        help="Check the editor development prerequisites and exit.",
+    )
+    prerequisites.add_argument(
+        "--install-prerequisites",
+        action="store_true",
+        help="Install supported missing prerequisites, then report anything that still needs manual setup.",
+    )
+    parser.add_argument(
+        "--no-install",
+        action="store_true",
+        help="Skip prerequisite detection and install prompts.",
+    )
     parser.add_argument("--editor-dir", default="editor", help="Electron editor directory.")
     parser.add_argument("--npm", default="npm", help="npm executable to invoke.")
     parser.add_argument("--npm-script", default="dev", help="npm script used to launch the editor.")
@@ -100,6 +116,8 @@ def parse_args():
     args = parser.parse_args()
     if args.ui_lab and args.quick_start:
         parser.error("--ui-lab and --quick-start cannot be used together")
+    if args.no_install and (args.check_prerequisites or args.install_prerequisites):
+        parser.error("--no-install cannot be combined with prerequisite check/install commands")
     if args.perf_slow_ms is not None and args.perf_slow_ms < 0:
         parser.error("--perf-slow-ms must be zero or greater")
     return args
@@ -241,6 +259,30 @@ def dependencies_ready(editor_dir):
 def main():
     args = parse_args()
     repo_root = os.path.dirname(os.path.abspath(__file__))
+
+    if args.check_prerequisites:
+        checks = arc_build.check_editor_prerequisites(cmake=args.cmake, npm=args.npm)
+        arc_build.print_prerequisite_report(checks)
+        return 0 if arc_build.prerequisites_ready(checks) else 1
+
+    if args.install_prerequisites:
+        checks = arc_build.check_editor_prerequisites(cmake=args.cmake, npm=args.npm)
+        arc_build.print_prerequisite_report(checks, show_install_hint=False)
+        if arc_build.prerequisites_ready(checks):
+            return 0
+
+        try:
+            _, installed = arc_build.install_editor_prerequisites(cmake=args.cmake, npm=args.npm)
+        except (RuntimeError, OSError, subprocess.CalledProcessError) as error:
+            print("error: {}".format(error), file=sys.stderr)
+            return 1
+
+        if installed:
+            print("")
+            print("Selected prerequisites were installed.")
+            print("Open a new terminal so PATH updates are visible, then run:")
+            print("  python run_editor.py --check-prerequisites")
+        return 1
     if args.clear_asset_db is not None:
         try:
             clear_asset_database(repo_root, args.clear_asset_db)
@@ -252,6 +294,30 @@ def main():
     if not os.path.isdir(editor_dir):
         print("error: editor directory was not found: {}".format(editor_dir), file=sys.stderr)
         return 1
+
+    if not args.no_install:
+        prerequisite_checks = arc_build.check_editor_prerequisites(
+            cmake=args.cmake,
+            npm=args.npm,
+            require_native=not args.ui_lab,
+        )
+        if not arc_build.prerequisites_ready(prerequisite_checks):
+            arc_build.print_prerequisite_report(prerequisite_checks, show_install_hint=False)
+            try:
+                _, installed = arc_build.install_editor_prerequisites(
+                    cmake=args.cmake,
+                    npm=args.npm,
+                    require_native=not args.ui_lab,
+                )
+            except (RuntimeError, OSError, subprocess.CalledProcessError) as error:
+                print("error: {}".format(error), file=sys.stderr)
+                return 1
+
+            if installed:
+                print("")
+                print("Selected prerequisites were installed.")
+                print("Open a new terminal so PATH updates are visible, then rerun the editor.")
+            return 1
 
     host = None
     project_tool = None

@@ -20,6 +20,11 @@ try:
 except ImportError:
     from urllib2 import urlopen
 
+try:
+    text_input = raw_input
+except NameError:
+    text_input = input
+
 
 SLANG_VERSION = "2026.14.1"
 SLANG_RELEASE_BASE_URL = "https://github.com/shader-slang/slang/releases/download/v{}".format(SLANG_VERSION)
@@ -27,6 +32,9 @@ VISUAL_STUDIO_GENERATORS = {
     18: "Visual Studio 18 2026",
     17: "Visual Studio 17 2022",
 }
+WINDOWS_CMAKE_PACKAGE = "Kitware.CMake"
+WINDOWS_NODE_PACKAGE = "OpenJS.NodeJS.22"
+VISUAL_STUDIO_DOWNLOAD_URL = "https://visualstudio.microsoft.com/downloads/"
 
 
 def find_executable(name):
@@ -76,18 +84,16 @@ def find_vswhere():
     return None
 
 
-def resolve_visual_studio_generator(cmake):
+def visual_studio_version():
     if platform.system() != "Windows":
         return None
 
     vswhere = find_vswhere()
     if vswhere is None:
-        raise RuntimeError(
-            "Visual Studio Installer's vswhere.exe was not found; install Visual Studio with the C++ desktop workload"
-        )
+        return None
 
     try:
-        version = subprocess.check_output(
+        return subprocess.check_output(
             [
                 vswhere,
                 "-latest",
@@ -100,12 +106,21 @@ def resolve_visual_studio_generator(cmake):
             ],
             stderr=subprocess.STDOUT,
             universal_newlines=True,
-        ).strip()
-    except (OSError, subprocess.CalledProcessError) as error:
-        raise RuntimeError("failed to query the installed Visual Studio C++ toolchain: {}".format(error))
+        ).strip() or None
+    except (OSError, subprocess.CalledProcessError):
+        return None
 
+
+def resolve_visual_studio_generator(cmake):
+    if platform.system() != "Windows":
+        return None
+
+    version = visual_studio_version()
     if not version:
-        raise RuntimeError("Visual Studio with the Desktop development with C++ workload was not found")
+        raise RuntimeError(
+            "Visual Studio with the Desktop development with C++ workload was not found; "
+            "install Visual Studio 2026 or 2022 and select the C++ desktop workload"
+        )
 
     try:
         major_version = int(version.split(".", 1)[0])
@@ -132,6 +147,189 @@ def resolve_visual_studio_generator(cmake):
         raise RuntimeError("{} does not support '{}'; install {}".format(cmake, generator, requirement))
 
     return generator
+
+
+def command_version(executable, arguments=None):
+    arguments = arguments or ["--version"]
+    try:
+        return subprocess.check_output(
+            [executable] + list(arguments),
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+        ).strip().splitlines()[0]
+    except (OSError, subprocess.CalledProcessError, IndexError):
+        return ""
+
+
+def check_editor_prerequisites(cmake="cmake", npm="npm", require_native=True):
+    checks = []
+
+    cmake_executable = None
+    if require_native:
+        cmake_executable = find_executable(cmake)
+        checks.append(
+            {
+                "key": "cmake",
+                "name": "CMake",
+                "ok": cmake_executable is not None,
+                "detail": command_version(cmake_executable) if cmake_executable else "not found on PATH",
+                "installable": platform.system() == "Windows",
+            }
+        )
+
+    node_executable = find_executable("node")
+    npm_executable = find_executable(npm)
+    node_ok = node_executable is not None and npm_executable is not None
+    node_detail = "not found on PATH"
+    if node_ok:
+        node_detail = "{} / npm {}".format(
+            command_version(node_executable),
+            command_version(npm_executable),
+        )
+    checks.append(
+        {
+            "key": "node",
+            "name": "Node.js / npm",
+            "ok": node_ok,
+            "detail": node_detail,
+            "installable": platform.system() == "Windows",
+        }
+    )
+
+    if require_native and platform.system() == "Windows":
+        version = visual_studio_version()
+        checks.append(
+            {
+                "key": "visual_studio",
+                "name": "Visual Studio C++",
+                "ok": version is not None,
+                "detail": version or "Visual Studio 2026/2022 with Desktop development with C++ was not found",
+                "installable": False,
+            }
+        )
+
+        if cmake_executable and version:
+            try:
+                generator = resolve_visual_studio_generator(cmake_executable)
+                checks.append(
+                    {
+                        "key": "generator",
+                        "name": "CMake generator",
+                        "ok": True,
+                        "detail": generator,
+                        "installable": False,
+                    }
+                )
+            except RuntimeError as error:
+                checks.append(
+                    {
+                        "key": "generator",
+                        "name": "CMake generator",
+                        "ok": False,
+                        "detail": str(error),
+                        "installable": True,
+                    }
+                )
+
+    return checks
+
+
+def prerequisites_ready(checks):
+    return all(check["ok"] for check in checks)
+
+
+def print_prerequisite_report(checks, show_install_hint=True):
+    print("ARC editor prerequisites")
+    print("")
+    for check in checks:
+        status = "OK" if check["ok"] else "MISSING"
+        print("  {:<18} {:<7} {}".format(check["name"], status, check["detail"]))
+
+    missing = [check for check in checks if not check["ok"]]
+    if not missing:
+        print("")
+        print("Ready to build the ARC editor.")
+        return
+
+    print("")
+    if any(check["key"] == "visual_studio" for check in missing):
+        print("Visual Studio must be installed manually:")
+        print("  {}".format(VISUAL_STUDIO_DOWNLOAD_URL))
+        print("  Select 'Desktop development with C++' and include the MSVC x64/x86 tools and Windows SDK.")
+
+    if show_install_hint and any(check["installable"] for check in missing):
+        print("Run 'python run_editor.py --install-prerequisites' to install supported missing tools.")
+
+
+def prompt_yes_no(message, input_fn=None):
+    input_fn = input_fn or text_input
+    try:
+        response = input_fn("{} [y/N] ".format(message)).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print("")
+        return False
+    return response in ("y", "yes")
+
+
+def prerequisite_install_action(check):
+    if check["key"] == "cmake":
+        return "install", WINDOWS_CMAKE_PACKAGE, "CMake"
+    if check["key"] == "generator":
+        return "upgrade", WINDOWS_CMAKE_PACKAGE, "CMake"
+    if check["key"] == "node":
+        return "install", WINDOWS_NODE_PACKAGE, "Node.js 22 and npm"
+    return None
+
+
+def install_editor_prerequisites(cmake="cmake", npm="npm", require_native=True, input_fn=None):
+    checks = check_editor_prerequisites(cmake=cmake, npm=npm, require_native=require_native)
+    missing = [check for check in checks if not check["ok"]]
+    installable = [check for check in missing if check["installable"]]
+
+    if not installable:
+        return checks, False
+
+    if platform.system() != "Windows":
+        raise RuntimeError("automatic prerequisite installation is currently supported on Windows only")
+
+    winget = find_executable("winget")
+    if winget is None:
+        raise RuntimeError(
+            "Windows Package Manager (winget) was not found; install CMake and Node.js/npm manually"
+        )
+
+    installed = False
+    common = [
+        "--exact",
+        "--accept-package-agreements",
+        "--accept-source-agreements",
+    ]
+
+    # Ask separately for every component. ARC never silently installs or
+    # upgrades development tools on the host.
+    handled_packages = set()
+    for check in installable:
+        action = prerequisite_install_action(check)
+        if action is None:
+            continue
+        verb, package, label = action
+        package_key = (verb, package)
+        if package_key in handled_packages:
+            continue
+        handled_packages.add(package_key)
+
+        prompt = "{} {} using Windows Package Manager?".format(
+            "Upgrade" if verb == "upgrade" else "Install",
+            label,
+        )
+        if not prompt_yes_no(prompt, input_fn=input_fn):
+            print("Skipped {}.".format(label))
+            continue
+
+        run([winget, verb, "--id", package] + common, os.getcwd())
+        installed = True
+
+    return checks, installed
 
 
 def cmake_cache_generator(build_dir):
