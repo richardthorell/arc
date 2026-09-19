@@ -103,6 +103,37 @@ class ArcBuildTests(unittest.TestCase):
         )
         retry.assert_called_once_with("locked.idx")
 
+    def test_cmake_cache_generator_platform_reads_cached_platform(self) -> None:
+        with tempfile.TemporaryDirectory() as build_dir:
+            cache = pathlib.Path(build_dir) / "CMakeCache.txt"
+            cache.write_text(
+                "CMAKE_GENERATOR:INTERNAL=Visual Studio 17 2022\n"
+                "CMAKE_GENERATOR_PLATFORM:INTERNAL=Win32\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                arc_build.cmake_cache_generator_platform(build_dir),
+                "Win32",
+            )
+
+    def test_windows_reset_prefers_cmake_owned_removal(self) -> None:
+        with mock.patch.object(arc_build.platform, "system", return_value="Windows"), mock.patch.object(
+            arc_build.os.path, "exists", side_effect=[True, False]
+        ), mock.patch.object(
+            arc_build.os.path, "isdir", return_value=True
+        ), mock.patch.object(
+            arc_build.subprocess, "check_call"
+        ) as check_call, mock.patch.object(
+            arc_build.shutil, "rmtree"
+        ) as rmtree:
+            arc_build.reset_cmake_build_directory("C:\\arc\\out\\build", cmake="cmake.exe")
+
+        check_call.assert_called_once_with(
+            ["cmake.exe", "-E", "rm", "-rf", "C:\\arc\\out\\build"]
+        )
+        rmtree.assert_not_called()
+
     def test_reset_cmake_build_directory_removes_existing_tree(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_root:
             build_dir = pathlib.Path(temporary_root) / "build"

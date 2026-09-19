@@ -168,7 +168,7 @@ def prepare_native_editor(args, repo_root, env=None):
         raise RuntimeError("could not find CMake executable '{}'".format(args.cmake))
 
     if args.force_build:
-        arc_build.reset_cmake_build_directory(build_dir)
+        arc_build.reset_cmake_build_directory(build_dir, cmake=cmake)
 
     generator = arc_build.resolve_visual_studio_generator(cmake)
     existing_generator = arc_build.cmake_cache_generator(build_dir)
@@ -178,6 +178,16 @@ def prepare_native_editor(args, repo_root, env=None):
                 build_dir, existing_generator, generator
             )
         )
+
+    if generator:
+        existing_platform = arc_build.cmake_cache_generator_platform(build_dir)
+        if existing_platform is not None and existing_platform.lower() != "x64":
+            platform_label = existing_platform or "<default>"
+            raise RuntimeError(
+                "CMake build directory '{}' uses generator platform '{}'; rerun with --force-build to discard it and reconfigure for 'x64'".format(
+                    build_dir, platform_label
+                )
+            )
 
     # Always run CMake configure before building. It is incremental for a
     # healthy tree and repairs partially generated trees (for example a cache

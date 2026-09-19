@@ -334,18 +334,27 @@ def install_editor_prerequisites(cmake="cmake", npm="npm", require_native=True, 
     return checks, installed
 
 
-def cmake_cache_generator(build_dir):
+def cmake_cache_value(build_dir, key):
     cache = os.path.join(build_dir, "CMakeCache.txt")
     if not os.path.isfile(cache):
         return None
+    prefix = "{}:INTERNAL=".format(key)
     try:
         with io.open(cache, "r", encoding="utf-8", errors="replace") as handle:
             for line in handle:
-                if line.startswith("CMAKE_GENERATOR:INTERNAL="):
+                if line.startswith(prefix):
                     return line.split("=", 1)[1].strip()
     except IOError:
         return None
     return None
+
+
+def cmake_cache_generator(build_dir):
+    return cmake_cache_value(build_dir, "CMAKE_GENERATOR")
+
+
+def cmake_cache_generator_platform(build_dir):
+    return cmake_cache_value(build_dir, "CMAKE_GENERATOR_PLATFORM")
 
 
 def remove_readonly_path(function, path, _exc_info):
@@ -363,12 +372,24 @@ def remove_readonly_path(function, path, _exc_info):
             time.sleep(0.1 * (attempt + 1))
 
 
-def reset_cmake_build_directory(build_dir):
+def reset_cmake_build_directory(build_dir, cmake=None):
     if not os.path.exists(build_dir):
         return
     if not os.path.isdir(build_dir):
         raise RuntimeError("CMake build path is not a directory: {}".format(build_dir))
     print("Removing CMake build directory: {}".format(build_dir))
+
+    # CMake owns the generated build tree and its FetchContent checkouts. On
+    # Windows, let CMake remove that tree first so Python does not have to walk
+    # dependency filenames that may be awkward for the Win32 path parser.
+    if platform.system() == "Windows" and cmake:
+        try:
+            subprocess.check_call([cmake, "-E", "rm", "-rf", build_dir])
+            if not os.path.exists(build_dir):
+                return
+        except (OSError, subprocess.CalledProcessError):
+            pass
+
     shutil.rmtree(build_dir, onerror=remove_readonly_path)
 
 
