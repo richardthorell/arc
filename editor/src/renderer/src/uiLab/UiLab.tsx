@@ -203,10 +203,7 @@ const uiHierarchy: readonly UiHierarchyNode[] = [
   {
     name: 'UiPanelCard',
     relation: 'base card',
-    children: [
-      { name: 'UiPanelSection', relation: 'compat wrapper' },
-      { name: 'UiPanelCardRow', relation: 'companion row' },
-    ],
+    children: [{ name: 'UiPanelCardRow', relation: 'contains rows' }],
   },
   {
     name: 'UiTextInput',
