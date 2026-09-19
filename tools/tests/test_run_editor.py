@@ -26,10 +26,16 @@ class EditorBuildCacheTests(unittest.TestCase):
             parallel=None,
         )
 
+        calls = []
+
         with mock.patch.object(run_editor.arc_build, "find_executable", return_value="cmake"), mock.patch.object(
-            run_editor.arc_build, "reset_cmake_build_directory"
+            run_editor.arc_build,
+            "reset_cmake_build_directory",
+            side_effect=lambda _: calls.append("reset"),
         ) as reset, mock.patch.object(
-            run_editor.arc_build, "resolve_visual_studio_generator", return_value=None
+            run_editor.arc_build,
+            "resolve_visual_studio_generator",
+            side_effect=lambda _: calls.append("resolve"),
         ) as resolve_generator, mock.patch.object(
             run_editor.arc_build, "cmake_cache_generator", return_value=None
         ), mock.patch.object(
@@ -45,6 +51,7 @@ class EditorBuildCacheTests(unittest.TestCase):
 
         reset.assert_called_once_with(str(REPO_ROOT / "out" / "build" / "editor-vulkan"))
         resolve_generator.assert_called_once_with("cmake")
+        self.assertEqual(calls[:2], ["reset", "resolve"])
 
     def test_missing_cache_requires_configure(self) -> None:
         with tempfile.TemporaryDirectory() as build_dir:
