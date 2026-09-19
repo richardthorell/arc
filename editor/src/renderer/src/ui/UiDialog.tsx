@@ -8,6 +8,7 @@ import './UiDialog.css';
 export type UiDialogPosition = { x: number; y: number };
 
 export type UiDialogProps = {
+  ariaLabel?: string;
   blurBackdrop?: boolean;
   children?: ReactNode;
   className?: string;
@@ -33,6 +34,7 @@ const interactiveDragTarget = (target: EventTarget | null): boolean =>
   target instanceof Element && Boolean(target.closest('button, a, input, textarea, select'));
 
 export function UiDialog({
+  ariaLabel,
   blurBackdrop = true,
   children,
   className,
@@ -108,7 +110,7 @@ export function UiDialog({
       }}
     >
       <section
-        aria-label={title || 'Dialog'}
+        aria-label={ariaLabel ?? title ?? 'Dialog'}
         aria-modal={!preview && modal ? true : undefined}
         className={dialogClasses}
         role="dialog"
