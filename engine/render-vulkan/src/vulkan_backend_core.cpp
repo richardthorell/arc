@@ -275,11 +275,7 @@ void vulkan_render_backend::resize_viewport(std::uint32_t width, std::uint32_t h
     output_viewport_width_ = width;
     output_viewport_height_ = height;
     if (native_swapchain_initialized_ && width > 0 && height > 0)
-        if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.native] first frame: ensure viewport begin\n";
-    ensure_viewport(scaled_dimension(width), scaled_dimension(height));
-    if (diagnose_first_frame)
-        std::cerr << "[debug][render.vulkan.native] first frame: ensure viewport complete\n";
+        ensure_viewport(scaled_dimension(width), scaled_dimension(height));
 }
 
 render_viewport_texture vulkan_render_backend::viewport_texture() const noexcept
