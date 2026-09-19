@@ -48,7 +48,7 @@
 }
 
 .arc-color-preset-dropdown {
-  width: 168px;
+  width: 220px;
 }
 
 .arc-color-preset-dropdown .ui-dropdown-trigger.ui-button {
@@ -122,9 +122,9 @@ button.arc-color-preview-row:hover small {
 }
 
 .arc-color-eyedropper.ui-icon-button {
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
 }
 
 .arc-color-wheel-wrap {
@@ -270,32 +270,32 @@ button.arc-color-preview-row:hover small {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.32);
 }
 
-.arc-color-channel-slider.is-red input {
+.arc-color-channel-slider.is-red input[type='range'] {
   background: linear-gradient(to right, #101215, #d54a4a);
 }
 
-.arc-color-channel-slider.is-green input {
+.arc-color-channel-slider.is-green input[type='range'] {
   background: linear-gradient(to right, #101215, #49b66f);
 }
 
-.arc-color-channel-slider.is-blue input {
+.arc-color-channel-slider.is-blue input[type='range'] {
   background: linear-gradient(to right, #101215, #4d7bd7);
 }
 
-.arc-color-channel-slider.is-hue input {
+.arc-color-channel-slider.is-hue input[type='range'] {
   background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
 }
 
-.arc-color-channel-slider.is-saturation input {
+.arc-color-channel-slider.is-saturation input[type='range'] {
   background: linear-gradient(to right, #858585, var(--arc-picker-hue));
 }
 
-.arc-color-channel-slider.is-value input,
-.arc-color-channel-slider.is-intensity input {
+.arc-color-channel-slider.is-value input[type='range'],
+.arc-color-channel-slider.is-intensity input[type='range'] {
   background: linear-gradient(to right, #050607, var(--arc-picker-hue));
 }
 
-.arc-color-channel-slider.is-alpha input {
+.arc-color-channel-slider.is-alpha input[type='range'] {
   background:
     linear-gradient(to right, transparent, var(--arc-picker-color)),
     linear-gradient(45deg, #596168 25%, transparent 25%, transparent 75%, #596168 75%),
@@ -312,7 +312,7 @@ button.arc-color-preview-row:hover small {
 
 .arc-color-hex-row {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) 54px 28px;
+  grid-template-columns: 64px minmax(0, 1fr) 28px;
   align-items: center;
   gap: 8px;
   margin-top: 16px;
@@ -330,7 +330,7 @@ button.arc-color-preview-row:hover small {
 }
 
 .arc-color-copy.ui-icon-button {
-  grid-column: 4;
+  grid-column: 3;
   width: 28px;
   min-width: 28px;
   height: 28px;
