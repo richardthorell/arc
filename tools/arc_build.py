@@ -9,10 +9,12 @@ import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import zipfile
 
 try:
@@ -346,13 +348,28 @@ def cmake_cache_generator(build_dir):
     return None
 
 
+def remove_readonly_path(function, path, _exc_info):
+    # Git can leave pack/index files read-only on Windows, and scanners can
+    # briefly keep them open after a failed configure. Clear the flag and retry
+    # a few times so a clean build does not require manual cleanup.
+    os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
+    for attempt in range(5):
+        try:
+            function(path)
+            return
+        except OSError:
+            if attempt == 4:
+                raise
+            time.sleep(0.1 * (attempt + 1))
+
+
 def reset_cmake_build_directory(build_dir):
     if not os.path.exists(build_dir):
         return
     if not os.path.isdir(build_dir):
         raise RuntimeError("CMake build path is not a directory: {}".format(build_dir))
     print("Removing CMake build directory: {}".format(build_dir))
-    shutil.rmtree(build_dir)
+    shutil.rmtree(build_dir, onerror=remove_readonly_path)
 
 
 def build_cmake_target(cmake, build_dir, target, config, cwd, env=None, parallel=None):

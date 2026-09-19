@@ -4,7 +4,6 @@
 from __future__ import print_function
 
 import argparse
-import io
 import os
 import platform
 import subprocess
@@ -16,25 +15,6 @@ from tools import arc_build
 DEFAULT_BUILD_DIR = "out/build/editor-vulkan"
 DEFAULT_NO_VULKAN_BUILD_DIR = "out/build/editor-no-vulkan"
 DEFAULT_QUICK_START_PROJECT = os.path.join("out", "editor-quick-start-project")
-
-
-def cmake_cache_requires_configure(build_dir, vulkan_render):
-    cache = os.path.join(build_dir, "CMakeCache.txt")
-    if not os.path.exists(cache):
-        return True
-
-    try:
-        with io.open(cache, "r", encoding="utf-8", errors="replace") as handle:
-            text = handle.read()
-    except IOError:
-        return True
-
-    expected_vulkan = "ON" if vulkan_render else "OFF"
-    return not (
-        "ARC_BUILD_EDITOR:BOOL=ON" in text
-        and "ARC_BUILD_RENDER_VULKAN:BOOL={}".format(expected_vulkan) in text
-        and "FETCHCONTENT_FULLY_DISCONNECTED:BOOL=OFF" in text
-    )
 
 
 def parse_args():
@@ -199,27 +179,25 @@ def prepare_native_editor(args, repo_root, env=None):
             )
         )
 
-    # Existing build trees created by older helpers may prohibit FetchContent
-    # during CMake's automatic regeneration. Configure once with population
-    # enabled so newly pinned dependencies can bootstrap. Subsequent launches
-    # retain the setting and go directly to the incremental build.
-    if cmake_cache_requires_configure(build_dir, args.vulkan_render):
-        configure_command = [
-            cmake,
-            "-B",
-            build_dir,
-            "-S",
-            repo_root,
-            "-DCMAKE_BUILD_TYPE={}".format(args.config),
-            "-DARC_BUILD_EDITOR=ON",
-            "-DARC_BUILD_RENDER_VULKAN={}".format("ON" if args.vulkan_render else "OFF"),
-            "-DFETCHCONTENT_FULLY_DISCONNECTED=OFF",
-        ]
-        if generator:
-            # Visual Studio generators initialize the MSVC environment themselves,
-            # so Windows builds do not depend on nmake.exe or a Developer Command Prompt.
-            configure_command.extend(["-G", generator, "-A", "x64"])
-        arc_build.run(configure_command, repo_root, env)
+    # Always run CMake configure before building. It is incremental for a
+    # healthy tree and repairs partially generated trees (for example a cache
+    # that exists while the Visual Studio project files do not).
+    configure_command = [
+        cmake,
+        "-B",
+        build_dir,
+        "-S",
+        repo_root,
+        "-DCMAKE_BUILD_TYPE={}".format(args.config),
+        "-DARC_BUILD_EDITOR=ON",
+        "-DARC_BUILD_RENDER_VULKAN={}".format("ON" if args.vulkan_render else "OFF"),
+        "-DFETCHCONTENT_FULLY_DISCONNECTED=OFF",
+    ]
+    if generator:
+        # Visual Studio generators initialize the MSVC environment themselves,
+        # so Windows builds do not depend on nmake.exe or a Developer Command Prompt.
+        configure_command.extend(["-G", generator, "-A", "x64"])
+    arc_build.run(configure_command, repo_root, env)
 
     # Always ask the build system for the host. CMake/MSBuild/Ninja perform an
     # incremental no-op when it is current, while checking timestamps prevents

@@ -46,8 +46,50 @@ let closeConfirmationPending = false;
 let closeChoiceResolve: ((choice: 'save' | 'discard' | 'cancel') => void) | null = null;
 let shutdownPending = false;
 let shutdownComplete = false;
+let fatalHostExitPending = false;
 
 const activeWindow = (): BrowserWindow | null => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null);
+
+const describeHostExit = (code: number | null, signal: NodeJS.Signals | null): string => {
+  if (process.platform === 'win32' && code !== null) {
+    const unsignedCode = code >>> 0;
+    const hexCode = `0x${unsignedCode.toString(16).toUpperCase().padStart(8, '0')}`;
+    if (unsignedCode === 0xc0000005) return `Windows exception ${hexCode} (access violation)`;
+    if (unsignedCode >= 0x80000000) return `Windows exception ${hexCode}`;
+  }
+  if (code !== null) return `exit code ${code}`;
+  if (signal) return `signal ${signal}`;
+  return 'an unknown process error';
+};
+
+const showFatalHostExit = (exitReason: string, lastError: string): void => {
+  if (isCiSmoke || shutdownPending || shutdownComplete || fatalHostExitPending) return;
+  fatalHostExitPending = true;
+
+  const detail = [
+    `The ARC native rendering host stopped unexpectedly (${exitReason}).`,
+    lastError ? `Last host error: ${lastError}` : '',
+    'The editor cannot continue safely and will close.',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  const options = {
+    type: 'error' as const,
+    title: 'ARC Native Host Crashed',
+    message: 'The ARC native rendering host crashed.',
+    detail,
+    buttons: ['Close ARC Editor'],
+    defaultId: 0,
+    noLink: true,
+  };
+  const target = activeWindow();
+  const prompt = target ? dialog.showMessageBox(target, options) : dialog.showMessageBox(options);
+  void prompt.finally(() => {
+    allowWindowClose = true;
+    app.quit();
+  });
+};
 
 const resolveProjectFile = (relativePath: string): string => {
   const project = projectService?.active();
@@ -269,7 +311,7 @@ const normalizeHostLogLevel = (level: string): HostLogLevel => {
   if (lowered === 'error' || lowered === 'fatal') {
     return 'error';
   }
-  if (lowered === 'trace' || lowered === 'debug') {
+  if (lowered === 'trace' || lowered === 'debug' || lowered === 'perf') {
     return 'debug';
   }
   return 'info';
@@ -277,7 +319,7 @@ const normalizeHostLogLevel = (level: string): HostLogLevel => {
 
 const parseHostLogLine = (line: string, stream: 'stdout' | 'stderr'): Omit<HostLogEvent, 'timestamp'> => {
   const trimmed = line.trim();
-  const match = trimmed.match(/^\[(trace|debug|info|warn|warning|error|fatal)\](?:\[([^\]]+)\])?\s*(.*)$/i);
+  const match = trimmed.match(/^\[(trace|debug|perf|info|warn|warning|error|fatal)\](?:\[([^\]]+)\])?\s*(.*)$/i);
   if (!match) {
     return {
       level: stream === 'stderr' ? 'error' : 'info',
@@ -417,7 +459,6 @@ export class ArcHostClient {
         const event = parseHostLogLine(diagnostic, 'stderr');
         if (event.level === 'error') this.lastError = event.message;
         sendHostLog(event);
-        console.warn(`[arc_host_process] ${diagnostic}`);
       }
     });
     child.on('exit', (code, signal) => {
@@ -425,21 +466,27 @@ export class ArcHostClient {
       if (!wasCurrentProcess) return;
       this.process = null;
       this.reconnectRequired = true;
-      const processExit = `arc_host_process exited${code === null ? '' : ` with code ${code}`}${
-        signal ? ` (${signal})` : ''
-      }`;
-      const exitDetail = this.lastError ? `${processExit}: ${this.lastError}` : processExit;
+
+      const hostError = this.lastError;
+      const exitReason = describeHostExit(code, signal);
+      const exitDetail = hostError
+        ? `ARC native host stopped unexpectedly (${exitReason}). ${hostError}`
+        : `ARC native host stopped unexpectedly (${exitReason}).`;
       this.lastError = exitDetail;
-      console.warn(`[arc_host_process] ${exitDetail}`);
+
       sendHostLog({
-        level: 'warning',
+        level: 'error',
         source: 'host.process',
         message: exitDetail,
       });
-      for (const pending of this.pending.values()) {
-        pending.reject(new Error(exitDetail));
+      for (const [requestId, pending] of this.pending) {
+        pending.finishTiming();
+        pending.resolve(this.failedResponse(requestId, exitDetail));
       }
       this.pending.clear();
+
+      console.error(`[arc_host_process] ${exitDetail}`);
+      showFatalHostExit(exitReason, hostError);
     });
 
     if (isCiSmoke) {
@@ -553,6 +600,19 @@ export class ArcHostClient {
     return () => this.eventListeners.delete(listener);
   }
 
+  private failedResponse(requestId: number, error: string): HostResponse {
+    return {
+      kind: 'response',
+      requestId,
+      succeeded: false,
+      error,
+      payload: null,
+      sceneRevision: 0,
+      worldEpoch: 0,
+      frameRevision: 0,
+    };
+  }
+
   private send(message: {
     kind: 'command' | 'query';
     type: string;
@@ -563,7 +623,7 @@ export class ArcHostClient {
     this.start();
     const child = this.process;
     if (!child?.stdin.writable) {
-      return Promise.reject(new Error(this.lastError || 'arc_host_process is not running'));
+      return Promise.resolve(this.failedResponse(0, this.lastError || 'ARC native host is not running'));
     }
 
     const requestId = this.requestId++;
@@ -577,7 +637,8 @@ export class ArcHostClient {
       child.stdin.write(`${JSON.stringify(envelope)}\n`, (error) => {
         if (error) {
           this.pending.delete(requestId);
-          reject(error);
+          const message = error instanceof Error ? error.message : String(error);
+          resolve(this.failedResponse(requestId, message));
         }
       });
     });
