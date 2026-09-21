@@ -1183,7 +1183,13 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
             onPointerDown={(event) => event.stopPropagation()}
             onWheel={(event) => event.stopPropagation()}
           >
-            <UiButton disabled={!preview} onClick={fitToScreen} title="Fit texture to screen" variant="toolbar">
+            <UiButton
+              aria-label="Fit texture to screen"
+              disabled={!preview}
+              onClick={fitToScreen}
+              title="Fit texture to screen"
+              variant="toolbar"
+            >
               <Scan size={13} /> Fit
             </UiButton>
             <span aria-hidden="true" className="texture-navigation-divider" />
