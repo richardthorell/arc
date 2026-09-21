@@ -38,6 +38,26 @@ describe('MaterialGraphEditor', () => {
     expect(container.querySelectorAll('[data-graph-pin-key]').length).toBeGreaterThan(0);
   });
 
+  it('applies toolbar-controlled graph view options', () => {
+    const graph = createDefaultMaterialGraph();
+    graph.nodes.push(createMaterialNode('constant', [980, 720]));
+
+    const { container } = render(
+      <MaterialGraphEditor document={document} graph={graph} showGrid={false} dimUnrelated />,
+    );
+
+    const canvas = screen.getByRole('application', { name: 'Material graph' });
+    expect(canvas).toHaveClass('hide-grid', 'dim-unrelated');
+
+    const output = screen.getByText('Material Output').closest('article');
+    expect(output).not.toBeNull();
+    fireEvent.pointerDown(output!, { button: 0 });
+
+    const isolatedConstant = screen.getByText('Constant').closest('article');
+    expect(isolatedConstant).toHaveClass('is-unrelated');
+    expect(container.querySelectorAll('.material-graph-node.is-unrelated').length).toBeGreaterThan(0);
+  });
+
   it('shows graph navigation controls with snap enabled by default', () => {
     render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
 
