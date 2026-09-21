@@ -167,7 +167,9 @@ describe('TextureEditor', () => {
 
     expect(await screen.findByText('Authored / preserved')).toBeInTheDocument();
     expect(screen.getAllByText('13')).toHaveLength(2);
-    expect(screen.getByLabelText('Texture mip policy')).toHaveValue('preserve_source');
+    const mipPolicy = screen.getByRole('combobox', { name: 'Texture mip policy' });
+    expect(mipPolicy).toHaveTextContent('Preserve Source');
+    fireEvent.click(mipPolicy);
     expect(screen.getByRole('option', { name: 'Generate' })).toBeDisabled();
     expect(
       await screen.findByText(
