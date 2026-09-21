@@ -48,6 +48,50 @@ afterEach(() => {
 });
 
 describe('ViewportPanel', () => {
+  it('pauses a hidden viewport without detaching or recreating its host surface', async () => {
+    const create = vi.fn().mockResolvedValue({ succeeded: true });
+    const detach = vi.fn().mockResolvedValue({ succeeded: true });
+    const setVisibility = vi.fn().mockResolvedValue({ succeeded: true });
+    const startupState = { appVersion: '0.1.0', engineHostConnected: true, viewportMode: 'streamed' as const };
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        host: {
+          command: vi.fn().mockResolvedValue({ succeeded: true }),
+          query: vi.fn().mockResolvedValue({ succeeded: true, payload: { submitted: true, frameIndex: 1 } }),
+        },
+        viewport: {
+          create,
+          attach: vi.fn(),
+          resize: vi.fn().mockResolvedValue({ succeeded: true }),
+          detach,
+          cameraInput: vi.fn().mockResolvedValue({ succeeded: true }),
+          registerSurface: vi.fn(),
+          unregisterSurface: vi.fn(),
+          setVisibility,
+        },
+      },
+    });
+
+    const props = {
+      project: null,
+      startupState,
+      onCommand: vi.fn(),
+      onReconnect: vi.fn().mockResolvedValue(undefined),
+    };
+    const view = render(<ViewportPanel {...props} active />);
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    view.rerender(<ViewportPanel {...props} active={false} />);
+    await waitFor(() => expect(setVisibility).toHaveBeenCalledWith('viewport-1', false));
+    expect(detach).not.toHaveBeenCalled();
+
+    view.rerender(<ViewportPanel {...props} active />);
+    await waitFor(() => expect(setVisibility).toHaveBeenLastCalledWith('viewport-1', true));
+    expect(create).toHaveBeenCalledTimes(1);
+    view.unmount();
+    expect(detach).toHaveBeenCalledTimes(1);
+  });
+
   it('uses a DOM canvas and shared viewport transport when streaming is available', async () => {
     const create = vi.fn().mockResolvedValue({ succeeded: true });
     const registerSurface = vi.fn();

@@ -13,6 +13,7 @@ import './viewport.css';
 import { toViewportPixels } from './viewportCoordinates';
 import { viewportFlyMovement, viewportFlyMovementCodes } from './viewportFlyNavigation';
 import { normalizeViewportWheel } from './viewportWheel';
+import { useEditorSurfaceActive } from '../editors/EditorSurfaceActivity';
 
 type ViewportPanelProps = {
   viewportId?: string;
@@ -161,6 +162,10 @@ export function ViewportPanel({
   active = true,
   overlay,
 }: ViewportPanelProps) {
+  const editorSurfaceActive = useEditorSurfaceActive();
+  const surfaceActive = active && editorSurfaceActive;
+  const surfaceActiveRef = useRef(surfaceActive);
+  surfaceActiveRef.current = surfaceActive;
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const surfaceId = `arc-viewport-surface-${viewportId.replaceAll(/[^a-zA-Z0-9_-]/g, '-')}`;
   const dragRef = useRef<DragState | null>(null);
@@ -193,7 +198,7 @@ export function ViewportPanel({
   const gridVisible = controlledGridVisible ?? localGridVisible;
   const viewportAvailable = (transport === 'native' || transport === 'streamed') && Boolean(window.arc?.viewport);
   const streamedAvailable = transport === 'streamed' && Boolean(window.arc?.viewport);
-  const viewportActive = active && viewportAvailable;
+  const viewportActive = surfaceActive && viewportAvailable;
   const stats = viewportActive ? viewportStats : fallbackStats(project);
 
   const viewportBounds = useCallback(() => {
@@ -239,7 +244,7 @@ export function ViewportPanel({
 
   const sendGridColor = useCallback(
     async (value: string) => {
-      if (!viewportActive || !viewportAttachedRef.current) return;
+      if (!viewportAvailable || !viewportAttachedRef.current) return;
       const [red, green, blue] = gridColorValue(value);
       const response = (await window.arc.host.command('viewport.setRenderOptions', {
         viewportId,
@@ -248,7 +253,7 @@ export function ViewportPanel({
       })) as ViewportCommandResponse;
       if (response?.succeeded === false) throw new Error(response.error || 'Could not update viewport grid color');
     },
-    [viewportActive, viewportId],
+    [viewportAvailable, viewportId],
   );
 
   useEffect(() => {
@@ -275,7 +280,7 @@ export function ViewportPanel({
   }, [sendGridColor]);
 
   const attachViewport = useCallback(async () => {
-    if (!viewportActive || (streamedAvailable && sharedFailureRef.current)) {
+    if (!viewportAvailable || (streamedAvailable && sharedFailureRef.current)) {
       return;
     }
     const bounds = viewportBounds();
@@ -296,6 +301,7 @@ export function ViewportPanel({
       }
       viewportAttachedRef.current = true;
       lastViewportBoundsRef.current = boundsKey(bounds);
+      void window.arc.viewport.setVisibility?.(viewportId, surfaceActiveRef.current);
       void sendGridColor(gridColorRef.current).catch((error) => {
         setViewportError(error instanceof Error ? error.message : String(error));
       });
@@ -312,7 +318,7 @@ export function ViewportPanel({
       }
       setViewportError(reason);
     }
-  }, [recordSharedFailure, sendGridColor, streamedAvailable, viewportActive, viewportBounds]);
+  }, [recordSharedFailure, sendGridColor, streamedAvailable, viewportAvailable, viewportBounds, viewportId]);
 
   const retrySharedViewport = useCallback(() => {
     if (!streamedAvailable) return;
@@ -341,7 +347,7 @@ export function ViewportPanel({
   }, [streamedAvailable, viewportBounds]);
 
   const resizeViewport = useCallback(() => {
-    if (!viewportActive || !viewportAttachedRef.current) {
+    if (!viewportAvailable || !viewportAttachedRef.current) {
       return;
     }
     const bounds = viewportBounds();
@@ -371,7 +377,7 @@ export function ViewportPanel({
         resizeInFlightRef.current = false;
       }
     })();
-  }, [viewportActive, viewportBounds]);
+  }, [viewportAvailable, viewportBounds]);
 
   useEffect(() => {
     void attachViewport();
@@ -379,9 +385,9 @@ export function ViewportPanel({
       viewportAttachedRef.current = false;
       pendingViewportBoundsRef.current = null;
       lastViewportBoundsRef.current = '';
-      if (viewportActive) void window.arc.viewport.detach?.(viewportId);
+      if (viewportAvailable) void window.arc.viewport.detach?.(viewportId);
     };
-  }, [attachViewport, viewportActive, viewportId]);
+  }, [attachViewport, viewportAvailable, viewportId]);
 
   useEffect(() => {
     if (!streamedAvailable) return;
@@ -391,8 +397,8 @@ export function ViewportPanel({
 
   useEffect(() => {
     if (!viewportAvailable) return;
-    void window.arc.viewport.setVisibility?.(viewportId, active);
-  }, [active, viewportAvailable, viewportId]);
+    void window.arc.viewport.setVisibility?.(viewportId, surfaceActive);
+  }, [surfaceActive, viewportAvailable, viewportId]);
 
   useEffect(() => {
     const element = bodyRef.current;
@@ -1218,7 +1224,7 @@ export function ViewportPanel({
           </div>
         )}
 
-        {!active && viewportAvailable && (
+        {!surfaceActive && viewportAvailable && editorSurfaceActive && (
           <div className="arc-viewport-inactive">
             <Camera size={22} />
             <span>Click to activate {viewportId.replace('viewport-', 'Viewport ')}</span>

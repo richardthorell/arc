@@ -56,6 +56,23 @@
   transition: grid-template-columns 140ms ease;
 }
 
+/* Keep each open document mounted so its editor state and native viewport survive
+   tab switches. Inactive workspaces retain their size but cannot receive input. */
+.editor-workspace-session {
+  grid-area: 1 / 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.editor-workspace-session.is-active {
+  z-index: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
 .workbench-shell .workbench-body-dockview.activity-expanded .workspace-dock-shell {
   grid-template-columns: var(--arc-utility-sidebar-width, var(--arc-left-panel-width)) minmax(0, 1fr);
 }

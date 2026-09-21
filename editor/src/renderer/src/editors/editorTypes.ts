@@ -23,6 +23,7 @@ export type EditorDocument = {
 export type EditorSurfaceContext = {
   instanceId?: string;
   onMaximizeToggle?: () => void;
+  active?: boolean;
 };
 
 export type EditorRegistration = {

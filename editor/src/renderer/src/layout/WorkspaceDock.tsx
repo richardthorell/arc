@@ -17,15 +17,17 @@ import {
   sidebarPanelIds,
   type SidebarPanelId,
 } from '../app/panelRegistry';
-import type { WorkbenchPanelId } from '../app/workbenchTypes';
-import { useEditorDocuments } from '../editors/editorDocuments';
-import type { EditorDocumentKind } from '../editors/editorTypes';
+import type { ActivityId, WorkbenchPanelId } from '../app/workbenchTypes';
+import type { EditorDocument, EditorDocumentKind } from '../editors/editorTypes';
 import { PanelDockTabRenderer, getPanelTabPresentation } from './PanelDockTab';
 import './WorkspaceDock.css';
 
 export type WorkspaceLayoutName = 'Level Design' | 'Materials' | 'Profiling';
 
 type WorkspaceDockProps = {
+  document: EditorDocument;
+  active: boolean;
+  activeActivity: ActivityId;
   projectKey: string;
   renderPanel: (panel: WorkbenchPanelId, instanceId?: string, onMaximizeToggle?: () => void) => React.ReactNode;
   requestedLayout?: WorkspaceLayoutName | 'Reset' | null;
@@ -211,6 +213,9 @@ const restoreEditorWorkspace = (api: DockviewApi, projectKey: string, kind: Edit
 };
 
 export function WorkspaceDock({
+  document,
+  active,
+  activeActivity,
   projectKey,
   renderPanel,
   requestedLayout,
@@ -224,15 +229,17 @@ export function WorkspaceDock({
   const host = useRef<HTMLDivElement | null>(null);
   const api = useRef<DockviewApi | null>(null);
   const renderPanelRef = useRef(renderPanel);
+  const activeRef = useRef(active);
+  const renderedActivityRef = useRef<boolean | null>(null);
   const renderers = useRef(new Set<ReactPanelRenderer>());
-  const { activeDocument } = useEditorDocuments();
-  const activeEditorKind: EditorDocumentKind = activeDocument?.kind ?? 'level';
+  const activeEditorKind = document.kind;
   const dockEditorKind = useRef<EditorDocumentKind>(activeEditorKind);
   const [activeSidebarPanel, setActiveSidebarPanel] = useState<SidebarPanelId>(initialSidebarPanel);
   const [sidebarWidth, setSidebarWidth] = useState(initialSidebarWidth);
   const sidebarWidthRef = useRef(sidebarWidth);
   const [resizingSidebar, setResizingSidebar] = useState(false);
   renderPanelRef.current = renderPanel;
+  activeRef.current = active;
 
   const updateSidebarWidth = (value: number) => {
     const next = clampSidebarWidth(value);
@@ -275,6 +282,11 @@ export function WorkspaceDock({
   };
 
   useEffect(() => {
+    const panel = activityRegistry.find((entry) => entry.id === activeActivity)?.panelId;
+    if (panel && isSidebarPanel(panel)) setActiveSidebarPanel(panel);
+  }, [activeActivity]);
+
+  useEffect(() => {
     if (!host.current) return;
     const dock = createDockview(host.current, {
       theme: themeAbyss,
@@ -302,7 +314,7 @@ export function WorkspaceDock({
     restoreEditorWorkspace(dock, projectKey, activeEditorKind);
 
     const layoutSubscription = dock.onDidLayoutChange(() => {
-      persistEditorWorkspace(dock, projectKey, dockEditorKind.current);
+      if (activeRef.current) persistEditorWorkspace(dock, projectKey, dockEditorKind.current);
     });
     const observer = new ResizeObserver(() =>
       dock.layout(host.current?.clientWidth ?? 0, host.current?.clientHeight ?? 0),
@@ -315,12 +327,17 @@ export function WorkspaceDock({
       dock.dispose();
       api.current = null;
     };
-    // Dockview is intentionally created once per project. Document changes are
-    // restored into the existing instance by the effect below.
+    // Each open document owns its Dockview instance. Hiding a document must not
+    // dispose its panels or the native viewport resources they own.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onReady, projectKey]);
 
   useEffect(() => {
+    const activityChanged = renderedActivityRef.current !== active;
+    renderedActivityRef.current = active;
+    // Publish the hide transition once, then avoid rerendering parked editors
+    // for unrelated workbench updates until their document is shown again.
+    if (!active && !activityChanged) return;
     for (const renderer of renderers.current) renderer.updateContent();
   });
 
@@ -404,7 +421,7 @@ export function WorkspaceDock({
         aria-label={`${panelRegistry[activeSidebarPanel].title} sidebar`}
         className={`primary-sidebar primary-sidebar-${activeSidebarPanel}`}
       >
-        {renderPanel(activeSidebarPanel)}
+        {active && renderPanel(activeSidebarPanel)}
         {sidebarExpanded && (
           <div
             aria-label="Resize utility sidebar"

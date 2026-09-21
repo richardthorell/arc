@@ -38,6 +38,7 @@ import { MenuBar } from '../layout/MenuBar';
 import { StatusBar } from '../layout/StatusBar';
 import { EditorDocumentTabs } from '../editors/EditorDocumentTabs';
 import { EditorHost, EditorToolbarHost } from '../editors/EditorHost';
+import { EditorWorkspaceSessions } from '../editors/EditorWorkspaceSessions';
 import { createEditorRegistry } from '../editors/editorRegistry';
 import { useEditorDocuments } from '../editors/editorDocuments';
 import type { EditorDocument } from '../editors/editorTypes';
@@ -1456,13 +1457,19 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     },
   });
 
-  const renderCenterPanel = (panel: WorkbenchPanelId, viewportId?: string, onMaximizeToggle?: () => void) => {
+  const renderCenterPanel = (
+    panel: WorkbenchPanelId,
+    document: EditorDocument,
+    active: boolean,
+    viewportId?: string,
+    onMaximizeToggle?: () => void,
+  ) => {
     if (panel === 'viewport') {
       return (
         <EditorHost
-          document={activeDocument}
+          document={document}
           registry={editorRegistry}
-          context={{ instanceId: viewportId, onMaximizeToggle }}
+          context={{ instanceId: viewportId, onMaximizeToggle, active }}
         />
       );
     }
@@ -1644,9 +1651,15 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     );
   };
 
-  const renderWorkspacePanel = (panel: WorkbenchPanelId, instanceId?: string, onMaximizeToggle?: () => void) => {
+  const renderWorkspacePanel = (
+    panel: WorkbenchPanelId,
+    document: EditorDocument,
+    active: boolean,
+    instanceId?: string,
+    onMaximizeToggle?: () => void,
+  ) => {
     if ((dockPanelIds.center as readonly WorkbenchPanelId[]).includes(panel))
-      return renderCenterPanel(panel, instanceId, onMaximizeToggle);
+      return renderCenterPanel(panel, document, active, instanceId, onMaximizeToggle);
     if ((dockPanelIds.right as readonly WorkbenchPanelId[]).includes(panel)) return renderRightPanel(panel);
     if ((dockPanelIds.bottom as readonly WorkbenchPanelId[]).includes(panel)) return renderBottomPanel(panel);
     return renderLeftPanel(panel);
@@ -1699,17 +1712,33 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         />
 
         <section className="editor-region dockview-editor-region">
-          <WorkspaceDock
-            onRequestHandled={() => {
-              setRequestedWorkspaceLayout(null);
-              setRequestedWorkspacePanel(null);
-            }}
-            projectKey={project?.root ? encodeURIComponent(project.root) : 'no-project'}
-            renderPanel={renderWorkspacePanel}
-            requestedLayout={requestedWorkspaceLayout}
-            requestedPanel={requestedWorkspacePanel}
-            requestedViewportCount={viewportCount}
-            sidebarExpanded={layout.activityExpanded}
+          <EditorWorkspaceSessions
+            documents={editorDocuments}
+            activeDocumentId={activeDocumentId}
+            projectKey={project?.root ?? 'no-project'}
+            renderDocument={(document, isActive) => (
+              <WorkspaceDock
+                document={document}
+                active={isActive}
+                activeActivity={layout.activeActivity}
+                onRequestHandled={
+                  isActive
+                    ? () => {
+                        setRequestedWorkspaceLayout(null);
+                        setRequestedWorkspacePanel(null);
+                      }
+                    : undefined
+                }
+                projectKey={project?.root ? encodeURIComponent(project.root) : 'no-project'}
+                renderPanel={(panel, instanceId, onMaximizeToggle) =>
+                  renderWorkspacePanel(panel, document, isActive, instanceId, onMaximizeToggle)
+                }
+                requestedLayout={isActive ? requestedWorkspaceLayout : null}
+                requestedPanel={isActive ? requestedWorkspacePanel : null}
+                requestedViewportCount={viewportCount}
+                sidebarExpanded={layout.activityExpanded}
+              />
+            )}
           />
         </section>
       </section>

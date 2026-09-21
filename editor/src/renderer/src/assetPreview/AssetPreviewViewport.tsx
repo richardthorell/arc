@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent, ReactNode, WheelEvent } from 'react';
 
 import { normalizeViewportWheel } from '../viewport/viewportWheel';
+import { useEditorSurfaceActive } from '../editors/EditorSurfaceActivity';
 import {
   clampMaterialPreviewOrbitY,
   clampMaterialPreviewZoom,
@@ -137,6 +138,9 @@ export function AssetPreviewViewport({
   loading = false,
   onState,
 }: AssetPreviewViewportProps) {
+  const active = useEditorSurfaceActive();
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const normalizedGuid = normalizedAssetGuid(assetGuid);
   const viewportInstanceRef = useRef<number | null>(null);
   if (viewportInstanceRef.current === null) viewportInstanceRef.current = nextAssetPreviewViewportInstance++;
@@ -318,6 +322,7 @@ export function AssetPreviewViewport({
         const response = (await serializeAssetPreviewViewportLifecycle(viewportId, async () => {
           const created = (await window.arc.viewport.create(bounds)) as ViewportCommandResponse | undefined;
           if (created?.succeeded === false) return created;
+          await window.arc.viewport.setVisibility?.(viewportId, activeRef.current);
           if (kind !== 'material') return created;
           const configured = (await window.arc.host.command('viewport.setRenderOptions', {
             viewportId,
@@ -379,7 +384,13 @@ export function AssetPreviewViewport({
   }, [currentBounds, kind, normalizedGuid, resize, streamed, traceViewportState, viewportId]);
 
   useEffect(() => {
+    if (!attached || !streamed || !viewportId) return;
+    void window.arc.viewport.setVisibility?.(viewportId, active);
+  }, [active, attached, streamed, viewportId]);
+
+  useEffect(() => {
     if (kind !== 'material') return;
+    if (!active) return;
     if (loading) {
       setPreviewReady(false);
       return;
@@ -407,19 +418,19 @@ export function AssetPreviewViewport({
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [attached, kind, loading, viewportId]);
+  }, [active, attached, kind, loading, viewportId]);
 
   const previewIsLoading = kind === 'material' && (loading || !previewReady);
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (!attachedRef.current || previewIsLoading) return;
+    if (!active || !attachedRef.current || previewIsLoading) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
   };
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
-    if (!attachedRef.current || previewIsLoading || !drag || drag.pointerId !== event.pointerId) return;
+    if (!active || !attachedRef.current || previewIsLoading || !drag || drag.pointerId !== event.pointerId) return;
     const orbitX = event.clientX - drag.x;
     let orbitY = event.clientY - drag.y;
     drag.x = event.clientX;
@@ -449,7 +460,7 @@ export function AssetPreviewViewport({
   };
 
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (!attachedRef.current || previewIsLoading) return;
+    if (!active || !attachedRef.current || previewIsLoading) return;
     event.preventDefault();
     let zoom = normalizeViewportWheel(event.deltaY, event.deltaMode);
     if (!zoom) return;

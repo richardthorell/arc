@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 
 import type { EditorDocument, EditorRegistry, EditorSurfaceContext } from './editorTypes';
 import { getEditorRegistration } from './editorRegistry';
+import { EditorSurfaceActivityProvider } from './EditorSurfaceActivity';
 
 export function EditorHost({
   document,
@@ -24,9 +25,11 @@ export function EditorHost({
   }
 
   return (
-    <div className="editor-host" data-editor-kind={document.kind}>
-      {registration.render(document, context)}
-    </div>
+    <EditorSurfaceActivityProvider active={context.active ?? true}>
+      <div className="editor-host" data-editor-kind={document.kind}>
+        {registration.render(document, context)}
+      </div>
+    </EditorSurfaceActivityProvider>
   );
 }
 
