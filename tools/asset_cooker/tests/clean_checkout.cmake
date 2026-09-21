@@ -69,14 +69,17 @@ file(WRITE "${ARC_TEST_ROOT}/CookFixture.arcproject" [=[
   "toolchain":{"compiler":"auto","minimumVersion":"","generator":"auto","architecture":"x86_64","cppStandard":20},
   "buildConfigurations":["Debug","RelWithDebInfo","Shipping"],
   "renderer":{"backend":"vulkan","api":"1.2","quality":"standard"},
-  "cookProfiles":[{"id":"windows-x64-vulkan","platform":"windows","architecture":"x86_64","renderer":"vulkan","api":"1.2","textures":{"outputs":["bc"],"quality":"balanced"},"configuration":"Shipping"}],
+  "cookProfiles":[{"id":"windows-x64-vulkan","platform":"windows","architecture":"x86_64","renderer":"vulkan","api":"1.2","textures":{"outputs":["bc","astc"],"quality":"balanced"},"configuration":"Shipping"}],
   "package":{"applicationName":"Cook Fixture","companyName":"","output":"Build/Packages","regionChunks":true},
   "settings":{"editor":"Config/Editor.json","renderer":"Config/Renderer.json","input":"Config/Input.json"}
 }
 ]=])
 
 set(output "${ARC_TEST_ROOT}/out")
-set(manifest "${output}/windows-x64-vulkan.arccookmanifest")
+set(bc_output "${output}/bc")
+set(astc_output "${output}/astc")
+set(bc_manifest "${bc_output}/windows-x64-vulkan.arccookmanifest")
+set(astc_manifest "${astc_output}/windows-x64-vulkan.arccookmanifest")
 
 message(STATUS "arc-cook-clean-checkout: starting cold cook (timeout: 180s)")
 execute_process(
@@ -92,6 +95,17 @@ if(NOT first_result EQUAL 0)
     message(FATAL_ERROR "clean checkout cook failed (${first_result}):\n${first_output}\n${first_error}")
 endif()
 message(STATUS "arc-cook-clean-checkout: cold cook completed")
+if(NOT EXISTS "${bc_manifest}" OR NOT EXISTS "${astc_manifest}")
+    message(FATAL_ERROR "multi-output cook did not publish both texture-family manifests")
+endif()
+file(READ "${bc_manifest}" bc_manifest_json)
+file(READ "${astc_manifest}" astc_manifest_json)
+if(NOT bc_manifest_json MATCHES "\\\"textures\\\"[ \t\r\n]*:[ \t\r\n]*\\\"bc\\\"")
+    message(FATAL_ERROR "BC cook manifest does not declare the BC texture family")
+endif()
+if(NOT astc_manifest_json MATCHES "\\\"textures\\\"[ \t\r\n]*:[ \t\r\n]*\\\"astc\\\"")
+    message(FATAL_ERROR "ASTC cook manifest does not declare the ASTC texture family")
+endif()
 
 message(STATUS "arc-cook-clean-checkout: starting warm cache cook (timeout: 90s)")
 execute_process(
@@ -111,7 +125,7 @@ message(STATUS "arc-cook-clean-checkout: warm cache cook completed")
 message(STATUS "arc-cook-clean-checkout: starting package (timeout: 120s)")
 execute_process(
     COMMAND "${ARC_COOK}" package --project "${ARC_TEST_ROOT}"
-        --manifest "${manifest}" --output "${output}" --json
+        --output "${output}" --json
     RESULT_VARIABLE package_result
     OUTPUT_VARIABLE package_output
     ERROR_VARIABLE package_error
@@ -121,11 +135,16 @@ if(NOT package_result EQUAL 0)
     message(FATAL_ERROR "clean checkout package failed (${package_result}):\n${package_output}\n${package_error}")
 endif()
 message(STATUS "arc-cook-clean-checkout: package completed")
+file(GLOB bc_packages "${bc_output}/*.arcpak")
+file(GLOB astc_packages "${astc_output}/*.arcpak")
+if(NOT bc_packages OR NOT astc_packages)
+    message(FATAL_ERROR "multi-output package did not publish package chunks for both texture families")
+endif()
 
 message(STATUS "arc-cook-clean-checkout: starting verification (timeout: 60s)")
 execute_process(
     COMMAND "${ARC_COOK}" verify --project "${ARC_TEST_ROOT}"
-        --manifest "${manifest}" --output "${output}" --json
+        --output "${output}" --json
     RESULT_VARIABLE verify_result
     OUTPUT_VARIABLE verify_output
     ERROR_VARIABLE verify_error
