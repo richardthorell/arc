@@ -821,7 +821,7 @@ bool refresh_asset_preview_texture(HostState& host, viewport_surface_registry::s
 
     surface.preview_asset_generation = asset->generation;
     surface.preview_material_ready = true;
-    surface.preview_ready = true;
+    surface.preview_ready = false;
     surface.preview_error.clear();
     return true;
 }
@@ -1776,8 +1776,9 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         asset_preview_scene_scope preview_scope(*state_, *viewport_surface);
         response = request_viewport_base(routed_request);
     }
-    if (viewport_surface->preview_kind == asset_preview_kind::material && viewport_surface->preview_material_ready &&
-        response.submitted)
+    if ((viewport_surface->preview_kind == asset_preview_kind::material ||
+         viewport_surface->preview_kind == asset_preview_kind::texture) &&
+        viewport_surface->preview_material_ready && response.submitted)
         viewport_surface->preview_ready = true;
 
     if (suspended_pick)
