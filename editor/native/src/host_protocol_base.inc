@@ -1855,6 +1855,7 @@ std::string to_json(const host_command_envelope& envelope)
                        ",\"texturePreviewChannelB\":" + bool_json(payload.texture_preview_channel_b) +
                        ",\"texturePreviewChannelA\":" + bool_json(payload.texture_preview_channel_a) +
                        ",\"texturePreviewExposure\":" + std::to_string(payload.texture_preview_exposure) +
+                       ",\"texturePreviewZoom\":" + std::to_string(payload.texture_preview_zoom) +
                        ",\"texturePreviewSampling\":" + quote(payload.texture_preview_sampling) + '}';
             else if constexpr (std::is_same_v<type, host_viewport_set_skeleton_joint_command>)
                 return "{\"viewportId\":" + quote(payload.viewport_id) +
@@ -3250,6 +3251,8 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         bool_value(payload, "texturePreviewChannelB", command.texture_preview_channel_b);
         bool_value(payload, "texturePreviewChannelA", command.texture_preview_channel_a);
         number_value(payload, "texturePreviewExposure", command.texture_preview_exposure);
+        number_value(payload, "texturePreviewZoom", command.texture_preview_zoom);
+        command.texture_preview_zoom = std::clamp(command.texture_preview_zoom, 0.25f, 16.0f);
         string_value(payload, "texturePreviewSampling", command.texture_preview_sampling);
         if (command.texture_preview_sampling != "linear" && command.texture_preview_sampling != "nearest")
         {
