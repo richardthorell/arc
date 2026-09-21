@@ -63,7 +63,7 @@ type PanState = {
   scrollTop: number;
 };
 
-const minZoom = 0.25;
+const minZoom = 0.05;
 const maxZoom = 16;
 const previewPadding = 28;
 const defaultInspectorWidth = 400;
@@ -1012,13 +1012,29 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     [document.id],
   );
 
-  const fitToScreen = useCallback(() => {
+  const fitZoom = useCallback(() => {
     const scroll = scrollRef.current;
-    if (!scroll || !preview) return;
+    if (!scroll || !preview) return null;
     const availableWidth = Math.max(1, scroll.clientWidth - previewPadding * 2);
     const availableHeight = Math.max(1, scroll.clientHeight - previewPadding * 2);
-    setZoom(Math.min(1, availableWidth / displayWidth, availableHeight / displayHeight));
-  }, [displayHeight, displayWidth, preview, setZoom]);
+    return clampZoom(Math.min(availableWidth / displayWidth, availableHeight / displayHeight));
+  }, [displayHeight, displayWidth, preview]);
+
+  const centerPreview = useCallback(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+    scroll.scrollLeft = Math.max(0, (scroll.scrollWidth - scroll.clientWidth) / 2);
+    scroll.scrollTop = Math.max(0, (scroll.scrollHeight - scroll.clientHeight) / 2);
+  }, []);
+
+  const fitToScreen = useCallback(() => {
+    const nextZoom = fitZoom();
+    if (nextZoom === null) return;
+    setZoom(nextZoom);
+    window.requestAnimationFrame(() => {
+      centerPreview();
+    });
+  }, [centerPreview, fitZoom, setZoom]);
 
   useEffect(() => {
     const scroll = scrollRef.current;
@@ -1034,13 +1050,14 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     };
 
     updateViewport();
-    fitToScreen();
+    const initialFitZoom = fitZoom();
+    if (initialFitZoom !== null) setZoom(Math.min(1, initialFitZoom));
 
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(updateViewport);
     observer.observe(scroll);
     return () => observer.disconnect();
-  }, [fitToScreen, preview]);
+  }, [fitZoom, preview, setZoom]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1205,7 +1222,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
                 aria-label="Texture zoom"
                 disabled={!preview}
                 max={1600}
-                min={25}
+                min={5}
                 onValueChange={(value) => setZoom(value / 100)}
                 step={5}
                 value={Math.round(zoom * 100)}
@@ -1223,36 +1240,36 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
               <RotateCcw size={13} />
             </UiIconButton>
           </div>
-          <div className="texture-preview-scroll" onScroll={onScroll} ref={scrollRef}>
-            <div className="texture-preview-analysis-bar" onPointerDown={(event) => event.stopPropagation()}>
-              <span className="texture-preview-mode-group">
-                {(['source', 'processed', 'difference'] as const).map((mode) => (
-                  <UiButton
-                    active={viewState.previewMode === mode}
-                    key={mode}
-                    onClick={() => setTextureEditorViewState(document.id, { previewMode: mode })}
-                    variant="toolbar"
-                  >
-                    {mode[0].toUpperCase() + mode.slice(1)}
-                  </UiButton>
-                ))}
+          <div className="texture-preview-analysis-bar" onPointerDown={(event) => event.stopPropagation()}>
+            <span className="texture-preview-mode-group">
+              {(['source', 'processed', 'difference'] as const).map((mode) => (
+                <UiButton
+                  active={viewState.previewMode === mode}
+                  key={mode}
+                  onClick={() => setTextureEditorViewState(document.id, { previewMode: mode })}
+                  variant="toolbar"
+                >
+                  {mode[0].toUpperCase() + mode.slice(1)}
+                </UiButton>
+              ))}
+            </span>
+            {analysis && (
+              <span className="texture-preview-histogram" title="Processed RGB histogram">
+                {Array.from({ length: 32 }, (_, index) => {
+                  const start = index * 8;
+                  const value = Math.max(
+                    ...analysis.histogram.r.slice(start, start + 8),
+                    ...analysis.histogram.g.slice(start, start + 8),
+                    ...analysis.histogram.b.slice(start, start + 8),
+                  );
+                  const peak = Math.max(1, ...analysis.histogram.r, ...analysis.histogram.g, ...analysis.histogram.b);
+                  return <i key={index} style={{ height: `${Math.max(2, (value / peak) * 20)}px` }} />;
+                })}
               </span>
-              {analysis && (
-                <span className="texture-preview-histogram" title="Processed RGB histogram">
-                  {Array.from({ length: 32 }, (_, index) => {
-                    const start = index * 8;
-                    const value = Math.max(
-                      ...analysis.histogram.r.slice(start, start + 8),
-                      ...analysis.histogram.g.slice(start, start + 8),
-                      ...analysis.histogram.b.slice(start, start + 8),
-                    );
-                    const peak = Math.max(1, ...analysis.histogram.r, ...analysis.histogram.g, ...analysis.histogram.b);
-                    return <i key={index} style={{ height: `${Math.max(2, (value / peak) * 20)}px` }} />;
-                  })}
-                </span>
-              )}
-              <span className="texture-preview-pixel-readout">{pixelReadout || 'Hover image for pixel values'}</span>
-            </div>
+            )}
+            <span className="texture-preview-pixel-readout">{pixelReadout || 'Hover image for pixel values'}</span>
+          </div>
+          <div className="texture-preview-scroll" onScroll={onScroll} ref={scrollRef}>
             {previewDataUrl && !previewFailed ? (
               <div className="texture-preview-canvas" style={{ width: canvasWidth, height: canvasHeight }}>
                 <div
