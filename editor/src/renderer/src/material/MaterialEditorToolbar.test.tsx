@@ -46,6 +46,7 @@ beforeEach(() => {
     liveUpdate: true,
     showGrid: true,
     dimUnrelated: false,
+    showStats: false,
     history: [graph],
     historyIndex: 0,
     compilation: {
@@ -64,39 +65,45 @@ describe('MaterialEditorToolbar', () => {
 
     expect(screen.getByRole('button', { name: /Save/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Compiled' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Live Update/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Stats/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Material compile actions' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Live Update' })).toBeChecked();
     expect(screen.getByRole('button', { name: /View/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /More/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Stats/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /More/ })).not.toBeInTheDocument();
 
     expect(screen.queryByText('Read-only')).not.toBeInTheDocument();
     expect(screen.queryByText('Native ready')).not.toBeInTheDocument();
     expect(screen.queryByText('Material', { selector: '.material-document-toolbar-label' })).not.toBeInTheDocument();
   });
 
-  it('controls live update and graph view options', () => {
+  it('uses a direct live update toggle and keeps stats under View', () => {
     render(<MaterialEditorToolbar document={document} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Live Update/ }));
-    const liveMenu = screen.getByRole('menu', { name: 'Live update options' });
-    fireEvent.click(within(liveMenu).getByRole('menuitem', { name: 'Paused' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Live Update' }));
     expect(materialState.setMaterialLiveUpdate).toHaveBeenCalledWith(document, false);
 
     fireEvent.click(screen.getByRole('button', { name: /View/ }));
     const viewMenu = screen.getByRole('menu', { name: 'Material graph view options' });
     fireEvent.click(within(viewMenu).getByRole('menuitem', { name: 'Show Grid' }));
     expect(materialState.setMaterialGraphView).toHaveBeenCalledWith(document, { showGrid: false });
+
+    fireEvent.click(screen.getByRole('button', { name: /View/ }));
+    const reopenedViewMenu = screen.getByRole('menu', { name: 'Material graph view options' });
+    fireEvent.click(within(reopenedViewMenu).getByRole('menuitem', { name: 'Stats Overlay' }));
+    expect(materialState.setMaterialGraphView).toHaveBeenCalledWith(document, { showStats: true });
   });
 
-  it('shows concise graph/compiler stats', () => {
+  it('keeps reload and save-and-compile under the compile dropdown', () => {
     render(<MaterialEditorToolbar document={document} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Stats/ }));
-    const stats = screen.getByRole('dialog', { name: 'Material stats' });
+    fireEvent.click(screen.getByRole('button', { name: 'Material compile actions' }));
+    let actions = screen.getByRole('menu');
+    fireEvent.click(within(actions).getByRole('menuitem', { name: 'Reload from Disk' }));
+    expect(materialState.reloadMaterialDocument).toHaveBeenCalledWith(document);
 
-    expect(within(stats).getByText('Nodes')).toBeInTheDocument();
-    expect(within(stats).getByText('Connections')).toBeInTheDocument();
-    expect(within(stats).getByText('Diagnostics')).toBeInTheDocument();
-    expect(within(stats).getByText('0 errors · 0 warnings')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Material compile actions' }));
+    actions = screen.getByRole('menu');
+    fireEvent.click(within(actions).getByRole('menuitem', { name: 'Save & Compile' }));
+    expect(materialState.saveAndPublishMaterialDocument).toHaveBeenCalledWith(document);
   });
 });
