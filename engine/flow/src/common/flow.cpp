@@ -2624,8 +2624,7 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
             return source && source->id == function.id;
         };
         const auto entry_node = std::find_if(nodes.begin(), nodes.end(), matches_function_entry);
-        if (entry_node != nodes.end())
-            function.instruction = add_self_prelude((*entry_node)->id, function.instruction);
+        if (entry_node != nodes.end()) function.instruction = add_self_prelude((*entry_node)->id, function.instruction);
     }
 
     return program;
