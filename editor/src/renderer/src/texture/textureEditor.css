@@ -310,11 +310,6 @@
   min-width: 0;
 }
 
-.texture-stage3-number-control input[type='range'] {
-  width: 100%;
-  min-width: 0;
-}
-
 .texture-stage3-number-control .ui-numeric-input {
   width: 74px;
 }
