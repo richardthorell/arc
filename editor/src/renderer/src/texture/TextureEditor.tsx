@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, UIEvent, WheelEvent } from 'react';
-import { Image, Maximize2 } from 'lucide-react';
+import { Image, Maximize2, RotateCcw, Scan, ZoomIn, ZoomOut } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
 import type { AssetItem } from '../services/editorHostTypes';
-import { UiButton, UiNumericInput, UiPanel, UiPropertyCard, UiSelect, UiToggleButton } from '../ui';
+import { UiButton, UiIconButton, UiNumericInput, UiPanel, UiPropertyCard, UiSelect, UiSlider, UiToggleButton } from '../ui';
 import { setTextureEditorViewState, useTextureEditorViewState } from './textureEditorViewState';
 import { TextureStage3Controls } from './TextureStage3Controls';
 import { TextureCurveControls } from './TextureCurveControls';
@@ -1007,6 +1007,19 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     };
   }, [preview?.dataUrl, previewSettings]);
 
+  const setZoom = useCallback(
+    (nextZoom: number) => setTextureEditorViewState(document.id, { zoom: clampZoom(nextZoom) }),
+    [document.id],
+  );
+
+  const fitToScreen = useCallback(() => {
+    const scroll = scrollRef.current;
+    if (!scroll || !preview) return;
+    const availableWidth = Math.max(1, scroll.clientWidth - previewPadding * 2);
+    const availableHeight = Math.max(1, scroll.clientHeight - previewPadding * 2);
+    setZoom(Math.min(1, availableWidth / displayWidth, availableHeight / displayHeight));
+  }, [displayHeight, displayWidth, preview, setZoom]);
+
   useEffect(() => {
     const scroll = scrollRef.current;
     if (!scroll || !preview) return;
@@ -1021,17 +1034,13 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     };
 
     updateViewport();
-    const availableWidth = Math.max(1, scroll.clientWidth - previewPadding * 2);
-    const availableHeight = Math.max(1, scroll.clientHeight - previewPadding * 2);
-    setTextureEditorViewState(document.id, {
-      zoom: clampZoom(Math.min(1, availableWidth / displayWidth, availableHeight / displayHeight)),
-    });
+    fitToScreen();
 
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(updateViewport);
     observer.observe(scroll);
     return () => observer.disconnect();
-  }, [displayHeight, displayWidth, document.id, preview]);
+  }, [fitToScreen, preview]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1059,7 +1068,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     event.preventDefault();
     event.stopPropagation();
     const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
-    setTextureEditorViewState(document.id, { zoom: clampZoom(zoom * factor) });
+    setZoom(zoom * factor);
   };
 
   const onScroll = (event: UIEvent<HTMLDivElement>) => {
@@ -1167,6 +1176,46 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
           </div>
           <div aria-hidden="true" className="texture-ruler-viewport texture-ruler-vertical-viewport">
             {preview && <VerticalRuler height={displayHeight} zoom={zoom} offset={imageTop - viewport.scrollTop} />}
+          </div>
+          <div
+            aria-label="Texture navigation controls"
+            className="texture-navigation-toolbar"
+            onPointerDown={(event) => event.stopPropagation()}
+            onWheel={(event) => event.stopPropagation()}
+          >
+            <UiButton disabled={!preview} onClick={fitToScreen} title="Fit texture to screen" variant="toolbar">
+              <Scan size={13} /> Fit
+            </UiButton>
+            <span aria-hidden="true" className="texture-navigation-divider" />
+            <UiIconButton
+              disabled={!preview || zoom <= minZoom}
+              label="Zoom out"
+              onClick={() => setZoom(zoom / 1.12)}
+            >
+              <ZoomOut size={13} />
+            </UiIconButton>
+            <label className="texture-navigation-zoom-control">
+              <UiSlider
+                aria-label="Texture zoom"
+                disabled={!preview}
+                max={1600}
+                min={25}
+                onValueChange={(value) => setZoom(value / 100)}
+                step={5}
+                value={Math.round(zoom * 100)}
+              />
+              <output>{Math.round(zoom * 100)}%</output>
+            </label>
+            <UiIconButton
+              disabled={!preview || zoom >= maxZoom}
+              label="Zoom in"
+              onClick={() => setZoom(zoom * 1.12)}
+            >
+              <ZoomIn size={13} />
+            </UiIconButton>
+            <UiIconButton disabled={!preview} label="Reset zoom to 100%" onClick={() => setZoom(1)}>
+              <RotateCcw size={13} />
+            </UiIconButton>
           </div>
           <div className="texture-preview-scroll" onScroll={onScroll} ref={scrollRef}>
             <div className="texture-preview-analysis-bar" onPointerDown={(event) => event.stopPropagation()}>
