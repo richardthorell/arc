@@ -8,10 +8,10 @@ import {
   type MaterialGraphNode,
   type MaterialGraphValueType,
 } from '../material/materialGraphTypes';
-import { UiColorControl } from '../ui';
+import { UiColorControl, UiNumericInput } from '../ui';
 import { TexturePicker } from './AssetPicker';
 import type { HostEntityId, HostResponse, Vec4 } from './inspectorTypes';
-import { NumberControl, NumericInput } from './InspectorControls';
+import { NumberControl } from './InspectorControls';
 
 import './inspectorPolish.css';
 
@@ -357,7 +357,7 @@ export function MaterialParameterSubsection({
                 </span>
                 <div className="inspector-material-parameter-values">
                   {values.map((parameterValue, index) => (
-                    <NumericInput
+                    <UiNumericInput
                       ariaLabel={`${parameter.name} ${componentLabels[index]}`}
                       key={index}
                       precision={3}
