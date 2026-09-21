@@ -49,6 +49,8 @@ export type AssetReferenceFieldSchema<TContext = object> = FieldBase<TContext> &
   type: 'asset';
   assetKind: 'texture' | 'material' | 'prefab' | 'asset';
   assetTypeId?: string;
+  assetTypeLabel?: string;
+  createAssetKind?: 'material' | 'flow';
   referenceMode?: 'path' | 'guid';
   allowedExtensions?: ReadonlyArray<string>;
   allowEmpty?: boolean;

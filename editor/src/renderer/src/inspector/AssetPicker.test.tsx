@@ -225,6 +225,41 @@ describe('AssetPicker', () => {
     expect(asset.graph.nodes.some((node: { type: string }) => node.type === 'output')).toBe(true);
     await waitFor(() => expect(onChange).toHaveBeenCalledWith('GameContent/Hero Surface.arcmat'));
   });
+  it('creates and assigns a new Flow Graph from an empty asset picker', async () => {
+    const onChange = vi.fn();
+    render(
+      <AssetPicker
+        allowedExtensions={['.arcflow']}
+        assetKinds={['scene', 'mesh', 'material', 'texture', 'shader', 'prefab', 'water', 'flow']}
+        assetTypeLabel="Flow Graph"
+        assets={[]}
+        createAssetKind="flow"
+        label="Graph"
+        value=""
+        onChange={onChange}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Choose Graph asset' }));
+
+    expect(screen.getByText('Select Flow Graph')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Create New Flow Graph…' })).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Create New Flow Graph…' }));
+    await user.clear(screen.getByLabelText('New flow graph name'));
+    await user.type(screen.getByLabelText('New flow graph name'), 'Game Startup');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText.mock.calls[0][0]).toBe('GameContent/Game Startup.arcflow');
+    const asset = JSON.parse(writeText.mock.calls[0][1]);
+    expect(asset.assetType).toBe('flow');
+    expect(asset.name).toBe('Game Startup');
+    expect(asset.graph.version).toBe(1);
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('GameContent/Game Startup.arcflow'));
+  });
+
   it('rejects cubemaps in Texture2D fields and accepts them in TextureCube fields', async () => {
     const assets = [
       {

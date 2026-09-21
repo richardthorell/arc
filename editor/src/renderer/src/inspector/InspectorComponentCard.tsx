@@ -487,10 +487,11 @@ function SchemaField<TContext extends object>({
         <AssetPicker
           allowEmpty={field.allowEmpty}
           allowedExtensions={field.allowedExtensions}
-          assetKinds={['scene', 'mesh', 'material', 'texture', 'shader', 'prefab', 'water']}
+          assetKinds={['scene', 'mesh', 'material', 'texture', 'shader', 'prefab', 'water', 'flow']}
           assetTypeIds={field.assetTypeId ? [field.assetTypeId] : undefined}
-          assetTypeLabel="Asset"
+          assetTypeLabel={field.assetTypeLabel ?? 'Asset'}
           assets={assets}
+          createAssetKind={field.createAssetKind}
           label={field.label}
           mixed={mixed}
           referenceMode={field.referenceMode}
