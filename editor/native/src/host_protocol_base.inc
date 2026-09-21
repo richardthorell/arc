@@ -1848,7 +1848,14 @@ std::string to_json(const host_command_envelope& envelope)
                        ",\"cameraSpeed\":" + std::to_string(payload.camera_speed) +
                        ",\"environment\":" + environment_json(payload.environment) +
                        ",\"materialPreviewMesh\":" + quote(payload.material_preview_mesh) +
-                       ",\"materialPreviewAutoRotate\":" + bool_json(payload.material_preview_auto_rotate) + '}';
+                       ",\"materialPreviewAutoRotate\":" + bool_json(payload.material_preview_auto_rotate) +
+                       ",\"texturePreviewMip\":" + std::to_string(payload.texture_preview_mip) +
+                       ",\"texturePreviewChannelR\":" + bool_json(payload.texture_preview_channel_r) +
+                       ",\"texturePreviewChannelG\":" + bool_json(payload.texture_preview_channel_g) +
+                       ",\"texturePreviewChannelB\":" + bool_json(payload.texture_preview_channel_b) +
+                       ",\"texturePreviewChannelA\":" + bool_json(payload.texture_preview_channel_a) +
+                       ",\"texturePreviewExposure\":" + std::to_string(payload.texture_preview_exposure) +
+                       ",\"texturePreviewSampling\":" + quote(payload.texture_preview_sampling) + '}';
             else if constexpr (std::is_same_v<type, host_viewport_set_skeleton_joint_command>)
                 return "{\"viewportId\":" + quote(payload.viewport_id) +
                        ",\"jointIndex\":" + std::to_string(payload.joint_index) + '}';
@@ -3237,6 +3244,18 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         parse_environment(payload, command.environment);
         string_value(payload, "materialPreviewMesh", command.material_preview_mesh);
         bool_value(payload, "materialPreviewAutoRotate", command.material_preview_auto_rotate);
+        number_value(payload, "texturePreviewMip", command.texture_preview_mip);
+        bool_value(payload, "texturePreviewChannelR", command.texture_preview_channel_r);
+        bool_value(payload, "texturePreviewChannelG", command.texture_preview_channel_g);
+        bool_value(payload, "texturePreviewChannelB", command.texture_preview_channel_b);
+        bool_value(payload, "texturePreviewChannelA", command.texture_preview_channel_a);
+        number_value(payload, "texturePreviewExposure", command.texture_preview_exposure);
+        string_value(payload, "texturePreviewSampling", command.texture_preview_sampling);
+        if (command.texture_preview_sampling != "linear" && command.texture_preview_sampling != "nearest")
+        {
+            error = "Texture preview sampling must be linear or nearest";
+            return false;
+        }
         envelope.payload = command;
     }
     else if (type == "viewport.setSkeletonJoint")
