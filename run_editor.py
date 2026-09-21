@@ -4,6 +4,8 @@
 from __future__ import print_function
 
 import argparse
+import io
+import json
 import os
 import platform
 import subprocess
@@ -41,7 +43,7 @@ def parse_args():
     parser.add_argument(
         "--skip-npm-install",
         action="store_true",
-        help="Do not install Electron dependencies when node_modules is missing.",
+        help="Do not install or repair Electron dependencies when node_modules is missing or stale.",
     )
     parser.add_argument("--build-dir", default=DEFAULT_BUILD_DIR, help="CMake build directory for the native host.")
     parser.add_argument("--config", default="Release", help="Native host build configuration.")
@@ -240,8 +242,65 @@ def prepare_native_editor(args, repo_root, env=None):
     return host, project_tool
 
 
+def editor_dependency_names(editor_dir):
+    package_json = os.path.join(editor_dir, "package.json")
+    try:
+        with io.open(package_json, "r", encoding="utf-8") as handle:
+            manifest = json.load(handle)
+    except (IOError, OSError, ValueError):
+        return None
+
+    names = set()
+    for section in ("dependencies", "devDependencies"):
+        dependencies = manifest.get(section, {})
+        if not isinstance(dependencies, dict):
+            return None
+        names.update(dependencies.keys())
+    return sorted(names)
+
+
+def npm_dependency_path(node_modules, dependency):
+    return os.path.join(node_modules, *dependency.split("/"))
+
+
 def dependencies_ready(editor_dir):
-    return os.path.isdir(os.path.join(editor_dir, "node_modules"))
+    node_modules = os.path.join(editor_dir, "node_modules")
+    package_json = os.path.join(editor_dir, "package.json")
+    package_lock = os.path.join(editor_dir, "package-lock.json")
+    installed_lock = os.path.join(node_modules, ".package-lock.json")
+
+    if not os.path.isdir(node_modules):
+        return False
+    if not os.path.isfile(package_json) or not os.path.isfile(package_lock) or not os.path.isfile(installed_lock):
+        return False
+
+    dependencies = editor_dependency_names(editor_dir)
+    if dependencies is None:
+        return False
+    for dependency in dependencies:
+        installed_package = npm_dependency_path(node_modules, dependency)
+        if not os.path.isfile(os.path.join(installed_package, "package.json")):
+            return False
+
+    try:
+        source_mtime = max(os.path.getmtime(package_json), os.path.getmtime(package_lock))
+        if os.path.getmtime(installed_lock) < source_mtime:
+            return False
+    except OSError:
+        return False
+
+    return True
+
+
+def install_editor_dependencies(npm, editor_dir):
+    package_lock = os.path.join(editor_dir, "package-lock.json")
+    if not os.path.isfile(package_lock):
+        raise RuntimeError("editor/package-lock.json is required for deterministic npm setup")
+
+    print("Installing ARC editor npm dependencies...")
+    arc_build.run([npm, "ci"], editor_dir)
+    if not dependencies_ready(editor_dir):
+        raise RuntimeError("npm ci completed but the ARC editor dependency tree is still incomplete")
 
 
 def main():
@@ -330,7 +389,7 @@ def main():
 
     try:
         if not args.skip_npm_install and (args.force_build or not dependencies_ready(editor_dir)):
-            arc_build.run([npm, "install"], editor_dir)
+            install_editor_dependencies(npm, editor_dir)
 
         editor_env = tool_env.copy()
         if args.ui_lab:
