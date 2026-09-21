@@ -99,11 +99,11 @@ material_preview_descriptor_result realize_texture_preview_material(std::uint32_
     json nodes = json::array();
     json connections = json::array();
     nodes.push_back(node("out", "output"));
-    nodes.push_back(node("preview", "textureSample",
-                         {{"texture", preview_texture_token}, {"dimension", "2d"}}));
-    nodes.push_back(node("mask", "vector3",
-                         {{"value", {options.red ? 1.0f : 0.0f, options.green ? 1.0f : 0.0f,
-                                     options.blue ? 1.0f : 0.0f}}}));
+    nodes.push_back(
+        node("preview", "textureSample", {{"texture", preview_texture_token}, {"dimension", "2d"}}));
+    nodes.push_back(
+        node("mask", "vector3", {{"value", {options.red ? 1.0f : 0.0f, options.green ? 1.0f : 0.0f,
+                                             options.blue ? 1.0f : 0.0f}}}));
     nodes.push_back(node("masked", "multiply"));
     nodes.push_back(node("exposure", "vector3", {{"value", {exposure_scale, exposure_scale, exposure_scale}}}));
     nodes.push_back(node("exposed", "multiply"));
@@ -116,9 +116,10 @@ material_preview_descriptor_result realize_texture_preview_material(std::uint32_
     if (options.nearest)
     {
         nodes.push_back(node("uv", "texCoord"));
-        nodes.push_back(node("dimensions", "vector2",
-                             {{"value", {static_cast<float>(std::max(1u, width)),
-                                         static_cast<float>(std::max(1u, height))}}}));
+        nodes.push_back(
+            node("dimensions", "vector2",
+                 {{"value", {static_cast<float>(std::max(1u, width)),
+                              static_cast<float>(std::max(1u, height))}}}));
         nodes.push_back(node("uv-scaled", "multiply"));
         nodes.push_back(node("uv-floor", "floor"));
         nodes.push_back(node("half", "vector2", {{"value", {0.5f, 0.5f}}}));
@@ -144,8 +145,8 @@ material_preview_descriptor_result realize_texture_preview_material(std::uint32_
     }
     else if (any_rgb && options.alpha)
     {
-        nodes.push_back(node("checker", "textureSample",
-                             {{"texture", checker_texture_token}, {"dimension", "2d"}}));
+        nodes.push_back(
+            node("checker", "textureSample", {{"texture", checker_texture_token}, {"dimension", "2d"}}));
         nodes.push_back(node("alpha-composite", "lerp"));
         connections.push_back(connection("checker-color", "checker", "rgb", "alpha-composite", "a"));
         connections.push_back(connection("preview-color", "exposed", "result", "alpha-composite", "b"));
