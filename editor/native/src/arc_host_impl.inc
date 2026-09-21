@@ -660,6 +660,169 @@ bool apply_live_asset_preview_material(HostState& host, viewport_surface_registr
 }
 
 template <class HostState>
+bool refresh_asset_preview_texture(HostState& host, viewport_surface_registry::surface_state& surface)
+{
+    if (surface.preview_kind != asset_preview_kind::texture || !surface.preview_scene) return true;
+    if (!surface.preview_guid.valid())
+    {
+        surface.preview_error = "Texture preview viewport has an invalid asset GUID";
+        return false;
+    }
+    if (!host.asset_registry || !host.renderer)
+    {
+        surface.preview_error = "Texture preview is waiting for renderer asset services";
+        return false;
+    }
+
+    const auto asset = host.asset_registry->find(surface.preview_guid);
+    if (!asset || asset->type != assets::asset_types::texture_2d)
+    {
+        surface.preview_error = "Texture preview GUID does not reference a 2D texture asset";
+        return false;
+    }
+
+    const auto resolved =
+        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, asset->source_path);
+    if (!resolved || !render::is_supported_texture_asset(resolved->path))
+    {
+        surface.preview_error =
+            "Texture preview source path could not be resolved: " + asset->source_path.generic_string();
+        return false;
+    }
+
+    auto loaded = render::load_texture_asset(resolved->path);
+    if (!loaded.succeeded() || loaded.texture.dimension != render::texture_dimension::texture_2d)
+    {
+        surface.preview_error =
+            loaded.message.empty() ? "Texture preview source could not be loaded" : std::move(loaded.message);
+        return false;
+    }
+
+    render::tools::texture_import_settings settings;
+    const auto metadata = assets::load_asset_metadata(assets::metadata_path_for(resolved->path));
+    if (metadata)
+    {
+        const auto parsed =
+            render::tools::parse_texture_import_settings(metadata.value().canonical_settings,
+                                                         metadata.value().settings_version);
+        if (parsed) settings = parsed.value();
+    }
+
+#if defined(_WIN32)
+    const auto cook_target = assets::windows_vulkan_cook_target();
+#else
+    const auto cook_target = assets::linux_vulkan_cook_target();
+#endif
+    auto processed = render::tools::preprocess_texture_for_cook(std::move(loaded.texture), settings, cook_target);
+    if (!processed)
+    {
+        surface.preview_error = "Texture preview preprocessing failed: " + processed.error();
+        return false;
+    }
+
+    const auto available_mips = static_cast<std::uint32_t>(processed.value().texture.mips.size());
+    if (available_mips == 0u)
+    {
+        surface.preview_error = "Texture preview has no mip payload";
+        return false;
+    }
+    const auto mip = std::min(surface.preview_texture_mip, available_mips - 1u);
+    auto preview_texture = select_texture_preview_mip(std::move(processed).value().texture, mip);
+    if (!preview_texture.has_pixels() && !preview_texture.has_encoded_mips())
+    {
+        surface.preview_error = "Texture preview mip payload is invalid";
+        return false;
+    }
+
+    bool texture_uploaded{};
+    if (surface.preview_texture.valid())
+        texture_uploaded = host.renderer->update_texture(surface.preview_texture, preview_texture);
+    if (!texture_uploaded)
+    {
+        surface.preview_texture = host.renderer->create_texture(std::move(preview_texture));
+        texture_uploaded = surface.preview_texture.valid();
+    }
+    if (!texture_uploaded)
+    {
+        surface.preview_error = "Renderer could not upload the texture preview mip";
+        return false;
+    }
+
+    if (!surface.preview_checker_texture.valid())
+        surface.preview_checker_texture = host.renderer->create_texture(make_texture_preview_checker());
+    if (!surface.preview_checker_texture.valid())
+    {
+        surface.preview_error = "Renderer could not create the texture preview checker";
+        return false;
+    }
+
+    const auto& selected = preview_texture.mips.empty() ? render::texture_mip_data{} : preview_texture.mips.front();
+    const auto preview_width = selected.width == 0u ? preview_texture.width : selected.width;
+    const auto preview_height = selected.height == 0u ? preview_texture.height : selected.height;
+    auto realized = realize_texture_preview_material(
+        preview_width, preview_height,
+        {.red = surface.preview_texture_channel_r,
+         .green = surface.preview_texture_channel_g,
+         .blue = surface.preview_texture_channel_b,
+         .alpha = surface.preview_texture_channel_a,
+         .exposure = surface.preview_texture_exposure,
+         .nearest = surface.preview_texture_nearest});
+    if (!realized.succeeded)
+    {
+        surface.preview_error =
+            realized.message.empty() ? "Texture preview shader realization failed" : realized.message;
+        return false;
+    }
+
+    realized.material.runtime_textures.resize(realized.texture_sources.size());
+    for (std::size_t index = 0; index < realized.texture_sources.size(); ++index)
+    {
+        if (realized.texture_sources[index] == "__arc_texture_preview_target__")
+            realized.material.runtime_textures[index] = surface.preview_texture;
+        else if (realized.texture_sources[index] == "__arc_texture_preview_checker__")
+            realized.material.runtime_textures[index] = surface.preview_checker_texture;
+    }
+
+    bool material_uploaded{};
+    if (surface.preview_material.valid())
+        material_uploaded = host.renderer->update_material(surface.preview_material, realized.material);
+    if (!material_uploaded)
+    {
+        surface.preview_material = host.renderer->create_material(std::move(realized.material));
+        material_uploaded = surface.preview_material.valid();
+    }
+    if (!material_uploaded)
+    {
+        surface.preview_error = "Renderer could not upload the texture preview material";
+        return false;
+    }
+
+    auto* mesh_renderer = surface.preview_scene->scene.try_get<scene::mesh_renderer_component>(surface.preview_entity);
+    auto* transform = surface.preview_scene->scene.try_get<scene::transform_component>(surface.preview_entity);
+    if (!mesh_renderer || !transform)
+    {
+        surface.preview_error = "Texture preview plane is missing render components";
+        return false;
+    }
+    mesh_renderer->material = surface.preview_material;
+    mesh_renderer->casts_shadows = false;
+    mesh_renderer->receives_shadows = false;
+
+    const float aspect = static_cast<float>(std::max(1u, preview_width)) /
+                         static_cast<float>(std::max(1u, preview_height));
+    if (aspect >= 1.0f)
+        transform->set_scale({1.0f, 1.0f, 1.0f / aspect});
+    else
+        transform->set_scale({aspect, 1.0f, 1.0f});
+
+    surface.preview_asset_generation = asset->generation;
+    surface.preview_material_ready = true;
+    surface.preview_ready = true;
+    surface.preview_error.clear();
+    return true;
+}
+
+template <class HostState>
 bool refresh_asset_preview_model(HostState& host, viewport_surface_registry::surface_state& surface)
 {
     if (surface.preview_kind != asset_preview_kind::model) return true;
