@@ -4,7 +4,7 @@ import { Image, Maximize2 } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
 import type { AssetItem } from '../services/editorHostTypes';
-import { UiButton, UiPanel, UiPanelCard } from '../ui';
+import { UiButton, UiNumericInput, UiPanel, UiPropertyCard, UiSelect, UiToggleButton } from '../ui';
 import { setTextureEditorViewState, useTextureEditorViewState } from './textureEditorViewState';
 import { TextureStage3Controls } from './TextureStage3Controls';
 import { TextureCurveControls } from './TextureCurveControls';
@@ -116,16 +116,115 @@ const rulerMarks = (size: number, zoom: number): RulerMark[] => {
   });
 };
 
-function TextureProperty({ label, value }: { label: string; value: string }) {
+function TextureValue({ value }: { value: string }) {
   return (
-    <div className="inspector-property texture-inspector-property">
-      <span className="inspector-property-label">{label}</span>
-      <span className="texture-inspector-value" title={value}>
-        {value}
-      </span>
-    </div>
+    <span className="texture-inspector-value" title={value}>
+      {value}
+    </span>
   );
 }
+
+function TextureSelect({
+  ariaLabel,
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  ariaLabel: string;
+  value: string;
+  options: ReadonlyArray<{ value: string; label: string; disabled?: boolean }>;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <UiSelect ariaLabel={ariaLabel} disabled={disabled} onValueChange={onChange} options={options} value={value} />
+  );
+}
+
+function TextureNumber({
+  ariaLabel,
+  value,
+  min,
+  max,
+  step,
+  precision,
+  disabled,
+  onChange,
+}: {
+  ariaLabel: string;
+  value: number;
+  min?: number;
+  max?: number;
+  step: number;
+  precision: number;
+  disabled?: boolean;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <UiNumericInput
+      ariaLabel={ariaLabel}
+      disabled={disabled}
+      max={max}
+      min={min}
+      onCommit={onChange}
+      precision={precision}
+      scrubSensitivity={step}
+      step={step}
+      value={value}
+    />
+  );
+}
+
+function TextureToggle({
+  ariaLabel,
+  checked,
+  disabled,
+  onChange,
+}: {
+  ariaLabel: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return <UiToggleButton aria-label={ariaLabel} checked={checked} disabled={disabled} onCheckedChange={onChange} />;
+}
+
+const texturePresetOptions = [
+  { value: 'custom', label: 'Custom' },
+  { value: 'color', label: 'Color' },
+  { value: 'normal_map', label: 'Normal Map' },
+  { value: 'data', label: 'Data / Mask' },
+  { value: 'hdr', label: 'HDR' },
+  { value: 'ui', label: 'UI' },
+  { value: 'environment', label: 'Environment' },
+];
+
+const textureSemanticOptions = [
+  { value: 'generic_color', label: 'Generic Color' },
+  { value: 'base_color', label: 'Base Color' },
+  { value: 'emissive', label: 'Emissive' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'metallic_roughness', label: 'Metallic / Roughness' },
+  { value: 'occlusion', label: 'Occlusion' },
+  { value: 'clear_coat', label: 'Clear Coat' },
+  { value: 'anisotropy', label: 'Anisotropy' },
+  { value: 'thickness', label: 'Thickness' },
+  { value: 'transmission', label: 'Transmission' },
+  { value: 'lightmap', label: 'Lightmap' },
+  { value: 'environment', label: 'Environment' },
+];
+
+const textureAddressOptions = [
+  { value: 'repeat', label: 'Repeat' },
+  { value: 'clamp_to_edge', label: 'Clamp' },
+  { value: 'mirrored_repeat', label: 'Mirror' },
+];
+
+const textureFilterOptions = [
+  { value: 'linear', label: 'Linear' },
+  { value: 'nearest', label: 'Nearest' },
+];
 
 function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: TexturePreviewAnalysis['histogram'] }) {
   const ddsSource = extensionOf(asset.path) === 'DDS';
@@ -184,481 +283,597 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
     }
   };
 
+  const mipProcessingDisabled =
+    !settings ||
+    settingsBusy ||
+    settings.mipPolicy === 'none' ||
+    (ddsSource && settings.mipPolicy === 'preserve_source');
+
   return (
     <UiPanel aria-label="Texture details" className="texture-inspector" role="complementary" variant="inspector">
       <div className="texture-inspector-sections">
-        <UiPanelCard
+        <UiPropertyCard
           className="texture-inspector-section"
           collapsed={collapsedSections.texture}
+          fields={[
+            { id: 'type', label: 'Type', control: <TextureValue value={textureTypeOf(asset)} /> },
+            { id: 'dimensions', label: 'Dimensions', control: <TextureValue value={dimensionsOf(asset)} /> },
+            {
+              id: 'depth',
+              label: 'Depth / Layers',
+              control: <TextureValue value={asset.depth === undefined ? '1' : String(asset.depth)} />,
+            },
+            {
+              id: 'format',
+              label: 'Format',
+              control: <TextureValue value={asset.textureFormat ?? extensionOf(asset.path)} />,
+            },
+            ...(settings
+              ? [
+                  {
+                    id: 'preset',
+                    label: 'Preset',
+                    control: (
+                      <TextureSelect
+                        ariaLabel="Texture preset"
+                        disabled={settingsBusy}
+                        options={texturePresetOptions}
+                        value={settings.preset}
+                        onChange={(preset) => void updateSettings({ preset: preset as TexturePreset })}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'semantic',
+                    label: 'Semantic',
+                    control: (
+                      <TextureSelect
+                        ariaLabel="Texture semantic"
+                        disabled={settingsBusy}
+                        options={textureSemanticOptions}
+                        value={settings.semantic}
+                        onChange={(semantic) => void updateSettings({ semantic: semantic as TextureSemantic })}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'color-space',
+                    label: 'Color Space',
+                    control: (
+                      <TextureSelect
+                        ariaLabel="Texture color space"
+                        disabled={settingsBusy}
+                        options={[
+                          { value: 'srgb', label: 'sRGB' },
+                          { value: 'linear', label: 'Linear' },
+                        ]}
+                        value={settings.colorSpace}
+                        onChange={(colorSpace) => void updateSettings({ colorSpace: colorSpace as TextureColorSpace })}
+                      />
+                    ),
+                  },
+                ]
+              : [
+                  {
+                    id: 'color-space',
+                    label: 'Color Space',
+                    control: <TextureValue value={settingsError ?? 'Loading…'} />,
+                  },
+                ]),
+            { id: 'alpha', label: 'Alpha', control: <TextureValue value="Not reported" /> },
+            {
+              id: 'source-size',
+              label: 'Source Size',
+              control: <TextureValue value={formatBytes(asset.sourceBytes)} />,
+            },
+          ]}
           onToggle={() => toggleSection('texture')}
           title="Texture"
-        >
-          <TextureProperty label="Type" value={textureTypeOf(asset)} />
-          <TextureProperty label="Dimensions" value={dimensionsOf(asset)} />
-          <TextureProperty label="Depth / Layers" value={asset.depth === undefined ? '1' : String(asset.depth)} />
-          <TextureProperty label="Format" value={asset.textureFormat ?? extensionOf(asset.path)} />
-          {settings ? (
-            <>
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Preset</span>
-                <select
-                  aria-label="Texture preset"
-                  className="texture-inspector-select"
-                  disabled={settingsBusy}
-                  onChange={(event) => void updateSettings({ preset: event.target.value as TexturePreset })}
-                  value={settings.preset}
-                >
-                  <option value="custom">Custom</option>
-                  <option value="color">Color</option>
-                  <option value="normal_map">Normal Map</option>
-                  <option value="data">Data / Mask</option>
-                  <option value="hdr">HDR</option>
-                  <option value="ui">UI</option>
-                  <option value="environment">Environment</option>
-                </select>
-              </label>
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Semantic</span>
-                <select
-                  aria-label="Texture semantic"
-                  className="texture-inspector-select"
-                  disabled={settingsBusy}
-                  onChange={(event) => void updateSettings({ semantic: event.target.value as TextureSemantic })}
-                  value={settings.semantic}
-                >
-                  <option value="generic_color">Generic Color</option>
-                  <option value="base_color">Base Color</option>
-                  <option value="emissive">Emissive</option>
-                  <option value="normal">Normal</option>
-                  <option value="metallic_roughness">Metallic / Roughness</option>
-                  <option value="occlusion">Occlusion</option>
-                  <option value="clear_coat">Clear Coat</option>
-                  <option value="anisotropy">Anisotropy</option>
-                  <option value="thickness">Thickness</option>
-                  <option value="transmission">Transmission</option>
-                  <option value="lightmap">Lightmap</option>
-                  <option value="environment">Environment</option>
-                </select>
-              </label>
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Color Space</span>
-                <select
-                  aria-label="Texture color space"
-                  className="texture-inspector-select"
-                  disabled={settingsBusy}
-                  onChange={(event) => void updateSettings({ colorSpace: event.target.value as TextureColorSpace })}
-                  value={settings.colorSpace}
-                >
-                  <option value="srgb">sRGB</option>
-                  <option value="linear">Linear</option>
-                </select>
-              </label>
-            </>
-          ) : (
-            <TextureProperty label="Color Space" value={settingsError ?? 'Loading…'} />
-          )}
-          <TextureProperty label="Alpha" value="Not reported" />
-          <TextureProperty label="Source Size" value={formatBytes(asset.sourceBytes)} />
-        </UiPanelCard>
+        />
 
         <TextureStage3Controls asset={asset} />
         <TextureCurveControls asset={asset} histogram={histogram} />
 
-        <UiPanelCard
+        <UiPropertyCard
           className="texture-inspector-section"
           collapsed={collapsedSections.sampling}
+          fields={
+            settings
+              ? [
+                  {
+                    id: 'wrap-u',
+                    label: 'Wrap U',
+                    control: (
+                      <TextureSelect
+                        ariaLabel="Wrap U"
+                        disabled={settingsBusy}
+                        options={textureAddressOptions}
+                        value={settings.wrapU}
+                        onChange={(wrapU) => void updateSettings({ wrapU: wrapU as TextureAddressMode })}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'wrap-v',
+                    label: 'Wrap V',
+                    control: (
+                      <TextureSelect
+                        ariaLabel="Wrap V"
+                        disabled={settingsBusy}
+                        options={textureAddressOptions}
+                        value={settings.wrapV}
+                        onChange={(wrapV) => void updateSettings({ wrapV: wrapV as TextureAddressMode })}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'min-filter',
+                    label: 'Min Filter',
+                    control: (
+                      <TextureSelect
+                        ariaLabel="Min Filter"
+                        disabled={settingsBusy}
+                        options={textureFilterOptions}
+                        value={settings.minFilter}
+                        onChange={(minFilter) => void updateSettings({ minFilter: minFilter as TextureFilterMode })}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'mag-filter',
+                    label: 'Mag Filter',
+                    control: (
+                      <TextureSelect
+                        ariaLabel="Mag Filter"
+                        disabled={settingsBusy}
+                        options={textureFilterOptions}
+                        value={settings.magFilter}
+                        onChange={(magFilter) => void updateSettings({ magFilter: magFilter as TextureFilterMode })}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'mip-filter',
+                    label: 'Mip Filter',
+                    control: (
+                      <TextureSelect
+                        ariaLabel="Mip Filter"
+                        disabled={settingsBusy}
+                        options={textureFilterOptions}
+                        value={settings.mipFilter}
+                        onChange={(mipFilter) => void updateSettings({ mipFilter: mipFilter as TextureMipFilterMode })}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'anisotropy',
+                    label: 'Anisotropy',
+                    control: (
+                      <TextureNumber
+                        ariaLabel="Anisotropy"
+                        disabled={settingsBusy}
+                        max={16}
+                        min={1}
+                        onChange={(anisotropy) => void updateSettings({ anisotropy })}
+                        precision={0}
+                        step={1}
+                        value={settings.anisotropy}
+                      />
+                    ),
+                  },
+                ]
+              : [
+                  {
+                    id: 'sampling-unavailable',
+                    label: 'Sampling',
+                    control: <TextureValue value={settingsError ?? 'Loading…'} />,
+                  },
+                ]
+          }
           onToggle={() => toggleSection('sampling')}
           title="Sampling"
-        >
-          {settings ? (
-            <>
-              {(['wrapU', 'wrapV'] as const).map((field) => (
-                <label className="inspector-property texture-inspector-property" key={field}>
-                  <span className="inspector-property-label">{field === 'wrapU' ? 'Wrap U' : 'Wrap V'}</span>
-                  <select
-                    className="texture-inspector-select"
-                    disabled={settingsBusy}
-                    value={settings[field]}
-                    onChange={(event) => void updateSettings({ [field]: event.target.value as TextureAddressMode })}
-                  >
-                    <option value="repeat">Repeat</option>
-                    <option value="clamp_to_edge">Clamp</option>
-                    <option value="mirrored_repeat">Mirror</option>
-                  </select>
-                </label>
-              ))}
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Min Filter</span>
-                <select
-                  className="texture-inspector-select"
-                  disabled={settingsBusy}
-                  value={settings.minFilter}
-                  onChange={(event) => void updateSettings({ minFilter: event.target.value as TextureFilterMode })}
-                >
-                  <option value="linear">Linear</option>
-                  <option value="nearest">Nearest</option>
-                </select>
-              </label>
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Mag Filter</span>
-                <select
-                  className="texture-inspector-select"
-                  disabled={settingsBusy}
-                  value={settings.magFilter}
-                  onChange={(event) => void updateSettings({ magFilter: event.target.value as TextureFilterMode })}
-                >
-                  <option value="linear">Linear</option>
-                  <option value="nearest">Nearest</option>
-                </select>
-              </label>
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Mip Filter</span>
-                <select
-                  className="texture-inspector-select"
-                  disabled={settingsBusy}
-                  value={settings.mipFilter}
-                  onChange={(event) => void updateSettings({ mipFilter: event.target.value as TextureMipFilterMode })}
-                >
-                  <option value="linear">Linear</option>
-                  <option value="nearest">Nearest</option>
-                </select>
-              </label>
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Anisotropy</span>
-                <input
-                  className="texture-inspector-input"
-                  disabled={settingsBusy}
-                  max={16}
-                  min={1}
-                  onChange={(event) => void updateSettings({ anisotropy: Number(event.target.value) })}
-                  step={1}
-                  type="number"
-                  value={settings.anisotropy}
-                />
-              </label>
-            </>
-          ) : (
-            <TextureProperty label="Sampling" value={settingsError ?? 'Loading…'} />
-          )}
-        </UiPanelCard>
+        />
 
-        <UiPanelCard
+        <UiPropertyCard
           className="texture-inspector-section"
           collapsed={collapsedSections.mipmaps}
+          fields={[
+            ...(settings
+              ? [
+                  {
+                    id: 'source-mips',
+                    label: 'Source Mips',
+                    control: (
+                      <TextureValue value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)} />
+                    ),
+                  },
+                  {
+                    id: 'mip-policy',
+                    label: 'Mip Policy',
+                    control: (
+                      <TextureSelect
+                        ariaLabel="Texture mip policy"
+                        disabled={settingsBusy}
+                        options={[
+                          { value: 'preserve_source', label: 'Preserve Source' },
+                          { value: 'generate', label: 'Generate', disabled: ddsSource },
+                          {
+                            value: 'none',
+                            label: 'None',
+                            disabled: settings.streamingMode !== 'resident',
+                          },
+                        ]}
+                        value={settings.mipPolicy}
+                        onChange={(mipPolicy) => void updateSettings({ mipPolicy: mipPolicy as TextureMipPolicy })}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'mip-source',
+                    label: 'Mip Source',
+                    control: (
+                      <TextureValue
+                        value={
+                          settings.mipPolicy === 'generate'
+                            ? 'Generated'
+                            : settings.mipPolicy === 'none'
+                              ? 'Base level only'
+                              : ddsSource
+                                ? 'Authored / preserved'
+                                : 'Generate if absent'
+                        }
+                      />
+                    ),
+                  },
+                  {
+                    id: 'generation-filter',
+                    label: 'Generation Filter',
+                    control: (
+                      <TextureSelect
+                        ariaLabel="Generation Filter"
+                        disabled={settingsBusy}
+                        options={[
+                          { value: 'kaiser', label: 'Kaiser' },
+                          { value: 'lanczos', label: 'Lanczos' },
+                          { value: 'bicubic', label: 'Bicubic' },
+                          { value: 'bilinear', label: 'Bilinear' },
+                          { value: 'box', label: 'Box' },
+                          { value: 'nearest', label: 'Nearest' },
+                        ]}
+                        value={settings.mipGenerationFilter}
+                        onChange={(mipGenerationFilter) =>
+                          void updateSettings({
+                            mipGenerationFilter: mipGenerationFilter as TextureMipGenerationFilter,
+                          })
+                        }
+                      />
+                    ),
+                  },
+                  {
+                    id: 'sharpen',
+                    label: 'Sharpen',
+                    control: (
+                      <TextureNumber
+                        ariaLabel="Sharpen"
+                        disabled={mipProcessingDisabled}
+                        max={2}
+                        min={0}
+                        onChange={(mipSharpen) => void updateSettings({ mipSharpen })}
+                        precision={2}
+                        step={0.05}
+                        value={settings.mipSharpen}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'dither',
+                    label: 'Dither',
+                    control: (
+                      <TextureToggle
+                        ariaLabel="Dither"
+                        checked={settings.ditherMips}
+                        disabled={mipProcessingDisabled}
+                        onChange={(ditherMips) => void updateSettings({ ditherMips })}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'deband',
+                    label: 'De-band',
+                    control: (
+                      <TextureToggle
+                        ariaLabel="De-band"
+                        checked={settings.debandMips}
+                        disabled={mipProcessingDisabled}
+                        onChange={(debandMips) => void updateSettings({ debandMips })}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'deband-strength',
+                    label: 'De-band Strength',
+                    control: (
+                      <TextureNumber
+                        ariaLabel="De-band Strength"
+                        disabled={mipProcessingDisabled || !settings.debandMips}
+                        max={1}
+                        min={0}
+                        onChange={(debandStrength) => void updateSettings({ debandStrength })}
+                        precision={2}
+                        step={0.05}
+                        value={settings.debandStrength}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'preserve-alpha',
+                    label: 'Preserve Alpha',
+                    control: (
+                      <TextureToggle
+                        ariaLabel="Preserve Alpha"
+                        checked={settings.preserveAlphaCoverage}
+                        disabled={settingsBusy}
+                        onChange={(preserveAlphaCoverage) => void updateSettings({ preserveAlphaCoverage })}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'alpha-threshold',
+                    label: 'Alpha Threshold',
+                    control: (
+                      <TextureNumber
+                        ariaLabel="Alpha Threshold"
+                        disabled={settingsBusy || !settings.preserveAlphaCoverage}
+                        max={1}
+                        min={0}
+                        onChange={(alphaCoverageThreshold) => void updateSettings({ alphaCoverageThreshold })}
+                        precision={2}
+                        step={0.05}
+                        value={settings.alphaCoverageThreshold}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'lod-bias',
+                    label: 'LOD Bias',
+                    control: (
+                      <TextureNumber
+                        ariaLabel="LOD Bias"
+                        disabled={settingsBusy}
+                        onChange={(lodBias) => void updateSettings({ lodBias })}
+                        precision={2}
+                        step={0.25}
+                        value={settings.lodBias}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'min-lod',
+                    label: 'Min LOD',
+                    control: (
+                      <TextureNumber
+                        ariaLabel="Min LOD"
+                        disabled={settingsBusy}
+                        min={0}
+                        onChange={(minimumLod) => void updateSettings({ minimumLod })}
+                        precision={2}
+                        step={0.25}
+                        value={settings.minimumLod}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'max-lod',
+                    label: 'Max LOD',
+                    control: (
+                      <TextureNumber
+                        ariaLabel="Max LOD"
+                        disabled={settingsBusy}
+                        min={0}
+                        onChange={(maximumLod) => void updateSettings({ maximumLod })}
+                        precision={2}
+                        step={0.25}
+                        value={settings.maximumLod}
+                      />
+                    ),
+                  },
+                ]
+              : []),
+            {
+              id: 'mip-count',
+              label: 'Mip Count',
+              control: (
+                <TextureValue value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)} />
+              ),
+            },
+          ]}
           onToggle={() => toggleSection('mipmaps')}
           title="Mipmaps"
-        >
-          {settings && (
-            <>
-              <TextureProperty
-                label="Source Mips"
-                value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)}
-              />
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Mip Policy</span>
-                <select
-                  aria-label="Texture mip policy"
-                  className="texture-inspector-select"
-                  disabled={settingsBusy}
-                  value={settings.mipPolicy}
-                  onChange={(event) => void updateSettings({ mipPolicy: event.target.value as TextureMipPolicy })}
-                >
-                  <option value="preserve_source">Preserve Source</option>
-                  <option disabled={ddsSource} value="generate">
-                    Generate
-                  </option>
-                  <option disabled={settings.streamingMode !== 'resident'} value="none">
-                    None
-                  </option>
-                </select>
-              </label>
-              <TextureProperty
-                label="Mip Source"
-                value={
-                  settings.mipPolicy === 'generate'
-                    ? 'Generated'
-                    : settings.mipPolicy === 'none'
-                      ? 'Base level only'
-                      : ddsSource
-                        ? 'Authored / preserved'
-                        : 'Generate if absent'
-                }
-              />
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Generation Filter</span>
-                <select
-                  className="texture-inspector-select"
-                  disabled={settingsBusy}
-                  value={settings.mipGenerationFilter}
-                  onChange={(event) =>
-                    void updateSettings({ mipGenerationFilter: event.target.value as TextureMipGenerationFilter })
-                  }
-                >
-                  <option value="kaiser">Kaiser</option>
-                  <option value="lanczos">Lanczos</option>
-                  <option value="bicubic">Bicubic</option>
-                  <option value="bilinear">Bilinear</option>
-                  <option value="box">Box</option>
-                  <option value="nearest">Nearest</option>
-                </select>
-              </label>
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Sharpen</span>
-                <input
-                  className="texture-inspector-input"
-                  disabled={
-                    settingsBusy ||
-                    settings.mipPolicy === 'none' ||
-                    (ddsSource && settings.mipPolicy === 'preserve_source')
-                  }
-                  max={2}
-                  min={0}
-                  step={0.05}
-                  type="number"
-                  value={settings.mipSharpen}
-                  onChange={(event) => void updateSettings({ mipSharpen: Number(event.target.value) })}
-                />
-              </label>
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Dither</span>
-                <input
-                  checked={settings.ditherMips}
-                  disabled={
-                    settingsBusy ||
-                    settings.mipPolicy === 'none' ||
-                    (ddsSource && settings.mipPolicy === 'preserve_source')
-                  }
-                  type="checkbox"
-                  onChange={(event) => void updateSettings({ ditherMips: event.target.checked })}
-                />
-              </label>
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">De-band</span>
-                <input
-                  checked={settings.debandMips}
-                  disabled={
-                    settingsBusy ||
-                    settings.mipPolicy === 'none' ||
-                    (ddsSource && settings.mipPolicy === 'preserve_source')
-                  }
-                  type="checkbox"
-                  onChange={(event) => void updateSettings({ debandMips: event.target.checked })}
-                />
-              </label>
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">De-band Strength</span>
-                <input
-                  className="texture-inspector-input"
-                  disabled={
-                    settingsBusy ||
-                    settings.mipPolicy === 'none' ||
-                    (ddsSource && settings.mipPolicy === 'preserve_source') ||
-                    !settings.debandMips
-                  }
-                  max={1}
-                  min={0}
-                  step={0.05}
-                  type="number"
-                  value={settings.debandStrength}
-                  onChange={(event) => void updateSettings({ debandStrength: Number(event.target.value) })}
-                />
-              </label>
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Preserve Alpha</span>
-                <input
-                  checked={settings.preserveAlphaCoverage}
-                  disabled={settingsBusy}
-                  onChange={(event) => void updateSettings({ preserveAlphaCoverage: event.target.checked })}
-                  type="checkbox"
-                />
-              </label>
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Alpha Threshold</span>
-                <input
-                  className="texture-inspector-input"
-                  disabled={settingsBusy || !settings.preserveAlphaCoverage}
-                  max={1}
-                  min={0}
-                  onChange={(event) => void updateSettings({ alphaCoverageThreshold: Number(event.target.value) })}
-                  step={0.05}
-                  type="number"
-                  value={settings.alphaCoverageThreshold}
-                />
-              </label>
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">LOD Bias</span>
-                <input
-                  className="texture-inspector-input"
-                  disabled={settingsBusy}
-                  onChange={(event) => void updateSettings({ lodBias: Number(event.target.value) })}
-                  step={0.25}
-                  type="number"
-                  value={settings.lodBias}
-                />
-              </label>
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Min LOD</span>
-                <input
-                  className="texture-inspector-input"
-                  disabled={settingsBusy}
-                  min={0}
-                  onChange={(event) => void updateSettings({ minimumLod: Number(event.target.value) })}
-                  step={0.25}
-                  type="number"
-                  value={settings.minimumLod}
-                />
-              </label>
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Max LOD</span>
-                <input
-                  className="texture-inspector-input"
-                  disabled={settingsBusy}
-                  min={0}
-                  onChange={(event) => void updateSettings({ maximumLod: Number(event.target.value) })}
-                  step={0.25}
-                  type="number"
-                  value={settings.maximumLod}
-                />
-              </label>
-            </>
-          )}
-          <TextureProperty
-            label="Mip Count"
-            value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)}
-          />
-        </UiPanelCard>
+        />
 
-        <UiPanelCard
+        <UiPropertyCard
           className="texture-inspector-section"
           collapsed={collapsedSections.compression}
+          fields={[
+            ...(settings
+              ? [
+                  {
+                    id: 'policy',
+                    label: 'Policy',
+                    control: (
+                      <TextureSelect
+                        ariaLabel="Compression Policy"
+                        disabled={settingsBusy}
+                        options={[
+                          { value: 'automatic', label: 'Automatic' },
+                          { value: 'color', label: 'Color' },
+                          { value: 'normal', label: 'Normal' },
+                          { value: 'mask', label: 'Mask' },
+                          { value: 'hdr', label: 'HDR' },
+                          { value: 'uncompressed', label: 'Uncompressed' },
+                        ]}
+                        value={settings.compression}
+                        onChange={(compression) =>
+                          void updateSettings({ compression: compression as TextureCompressionPolicy })
+                        }
+                      />
+                    ),
+                  },
+                ]
+              : []),
+            {
+              id: 'gpu-format',
+              label: 'GPU Format',
+              control: <TextureValue value={asset.textureFormat ?? 'Resolved at cook'} />,
+            },
+            {
+              id: 'artifact-size',
+              label: 'Artifact Size',
+              control: <TextureValue value={formatBytes(asset.artifactSize)} />,
+            },
+          ]}
           onToggle={() => toggleSection('compression')}
           title="Compression"
-        >
-          {settings && (
-            <label className="inspector-property texture-inspector-property">
-              <span className="inspector-property-label">Policy</span>
-              <select
-                className="texture-inspector-select"
-                disabled={settingsBusy}
-                value={settings.compression}
-                onChange={(event) =>
-                  void updateSettings({ compression: event.target.value as TextureCompressionPolicy })
-                }
-              >
-                <option value="automatic">Automatic</option>
-                <option value="color">Color</option>
-                <option value="normal">Normal</option>
-                <option value="mask">Mask</option>
-                <option value="hdr">HDR</option>
-                <option value="uncompressed">Uncompressed</option>
-              </select>
-            </label>
-          )}
-          <TextureProperty label="GPU Format" value={asset.textureFormat ?? 'Resolved at cook'} />
-          <TextureProperty label="Artifact Size" value={formatBytes(asset.artifactSize)} />
-        </UiPanelCard>
+        />
 
-        <UiPanelCard
+        <UiPropertyCard
           className="texture-inspector-section"
           collapsed={collapsedSections.streaming}
+          fields={[
+            {
+              id: 'mode',
+              label: 'Mode',
+              control: settings ? (
+                <TextureSelect
+                  ariaLabel="Texture streaming mode"
+                  disabled={settingsBusy}
+                  options={[
+                    { value: 'resident', label: 'Resident' },
+                    { value: 'streamed_mips', label: 'Streamed Mips' },
+                    { value: 'virtual_tiles', label: 'Virtual Tiles' },
+                  ]}
+                  value={settings.streamingMode}
+                  onChange={(streamingMode) =>
+                    void updateSettings({ streamingMode: streamingMode as TextureStreamingMode })
+                  }
+                />
+              ) : (
+                <TextureValue value={asset.streamingMode ?? 'Not reported'} />
+              ),
+            },
+            {
+              id: 'residency',
+              label: 'Residency',
+              control: <TextureValue value={asset.residency ?? 'Not reported'} />,
+            },
+            ...(asset.hasLastGood && asset.status !== 'ready'
+              ? [
+                  {
+                    id: 'runtime',
+                    label: 'Runtime',
+                    control: <TextureValue value="Using last-good cooked artifact" />,
+                  },
+                ]
+              : []),
+            {
+              id: 'tile-count',
+              label: 'Tile Count',
+              control: (
+                <TextureValue value={asset.tileCount === undefined ? 'Not reported' : String(asset.tileCount)} />
+              ),
+            },
+            { id: 'priority', label: 'Priority', control: <TextureValue value="Not configured" /> },
+            ...(asset.streamingEligibilityError
+              ? [
+                  {
+                    id: 'eligibility',
+                    label: 'Eligibility',
+                    control: <TextureValue value={asset.streamingEligibilityError} />,
+                  },
+                ]
+              : []),
+          ]}
           onToggle={() => toggleSection('streaming')}
           title="Streaming"
-        >
-          {settings ? (
-            <label className="inspector-property texture-inspector-property">
-              <span className="inspector-property-label">Mode</span>
-              <select
-                aria-label="Texture streaming mode"
-                className="texture-inspector-select"
-                disabled={settingsBusy}
-                onChange={(event) => void updateSettings({ streamingMode: event.target.value as TextureStreamingMode })}
-                value={settings.streamingMode}
-              >
-                <option value="resident">Resident</option>
-                <option value="streamed_mips">Streamed Mips</option>
-                <option value="virtual_tiles">Virtual Tiles</option>
-              </select>
-            </label>
-          ) : (
-            <TextureProperty label="Mode" value={asset.streamingMode ?? 'Not reported'} />
-          )}
-          <TextureProperty label="Residency" value={asset.residency ?? 'Not reported'} />
-          {asset.hasLastGood && asset.status !== 'ready' && (
-            <TextureProperty label="Runtime" value="Using last-good cooked artifact" />
-          )}
-          <TextureProperty
-            label="Tile Count"
-            value={asset.tileCount === undefined ? 'Not reported' : String(asset.tileCount)}
-          />
-          <TextureProperty label="Priority" value="Not configured" />
-          {asset.streamingEligibilityError && (
-            <TextureProperty label="Eligibility" value={asset.streamingEligibilityError} />
-          )}
-        </UiPanelCard>
+        />
 
-        <UiPanelCard
+        <UiPropertyCard
           className="texture-inspector-section"
           collapsed={collapsedSections.import}
+          fields={[
+            { id: 'importer', label: 'Importer', control: <TextureValue value={asset.importerId ?? 'Not reported'} /> },
+            { id: 'source-path', label: 'Source Path', control: <TextureValue value={asset.path} /> },
+            {
+              id: 'settings-version',
+              label: 'Settings Version',
+              control: (
+                <TextureValue
+                  value={
+                    settings
+                      ? String(settings.settingsVersion)
+                      : asset.settingsVersion === undefined
+                        ? 'Not reported'
+                        : String(asset.settingsVersion)
+                  }
+                />
+              ),
+            },
+            ...(settings
+              ? [
+                  {
+                    id: 'max-size',
+                    label: 'Max Size',
+                    control: (
+                      <TextureNumber
+                        ariaLabel="Max Size"
+                        disabled={settingsBusy}
+                        max={32768}
+                        min={1}
+                        onChange={(maxSize) => void updateSettings({ maxSize })}
+                        precision={0}
+                        step={1}
+                        value={settings.maxSize}
+                      />
+                    ),
+                  },
+                  {
+                    id: 'power-of-two',
+                    label: 'Power of Two',
+                    control: (
+                      <TextureSelect
+                        ariaLabel="Power of Two"
+                        disabled={settingsBusy}
+                        options={[
+                          { value: 'preserve', label: 'Preserve' },
+                          { value: 'resize_down', label: 'Resize Down' },
+                          { value: 'resize_up', label: 'Resize Up' },
+                        ]}
+                        value={settings.powerOfTwo}
+                        onChange={(powerOfTwo) =>
+                          void updateSettings({ powerOfTwo: powerOfTwo as TexturePowerOfTwoPolicy })
+                        }
+                      />
+                    ),
+                  },
+                ]
+              : []),
+          ]}
           onToggle={() => toggleSection('import')}
           title="Import"
-        >
-          <TextureProperty label="Importer" value={asset.importerId ?? 'Not reported'} />
-          <TextureProperty label="Source Path" value={asset.path} />
-          <TextureProperty
-            label="Settings Version"
-            value={
-              settings
-                ? String(settings.settingsVersion)
-                : asset.settingsVersion === undefined
-                  ? 'Not reported'
-                  : String(asset.settingsVersion)
-            }
-          />
-          {settings && (
-            <>
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Max Size</span>
-                <input
-                  className="texture-inspector-input"
-                  disabled={settingsBusy}
-                  max={32768}
-                  min={1}
-                  onChange={(event) => void updateSettings({ maxSize: Number(event.target.value) })}
-                  step={1}
-                  type="number"
-                  value={settings.maxSize}
-                />
-              </label>
-              <label className="inspector-property texture-inspector-property">
-                <span className="inspector-property-label">Power of Two</span>
-                <select
-                  className="texture-inspector-select"
-                  disabled={settingsBusy}
-                  value={settings.powerOfTwo}
-                  onChange={(event) =>
-                    void updateSettings({ powerOfTwo: event.target.value as TexturePowerOfTwoPolicy })
-                  }
-                >
-                  <option value="preserve">Preserve</option>
-                  <option value="resize_down">Resize Down</option>
-                  <option value="resize_up">Resize Up</option>
-                </select>
-              </label>
-            </>
-          )}
-        </UiPanelCard>
+        />
 
-        <UiPanelCard
+        <UiPropertyCard
           className="texture-inspector-section"
           collapsed={collapsedSections.asset}
+          fields={[
+            { id: 'status', label: 'Status', control: <TextureValue value={asset.status} /> },
+            { id: 'scope', label: 'Scope', control: <TextureValue value={asset.scope ?? 'project'} /> },
+            { id: 'path', label: 'Path', control: <TextureValue value={asset.path} /> },
+            ...(asset.guid ? [{ id: 'guid', label: 'GUID', control: <TextureValue value={asset.guid} /> }] : []),
+          ]}
           onToggle={() => toggleSection('asset')}
           title="Asset"
-        >
-          <TextureProperty label="Status" value={asset.status} />
-          <TextureProperty label="Scope" value={asset.scope ?? 'project'} />
-          <TextureProperty label="Path" value={asset.path} />
-          {asset.guid && <TextureProperty label="GUID" value={asset.guid} />}
-        </UiPanelCard>
+        />
       </div>
     </UiPanel>
   );
