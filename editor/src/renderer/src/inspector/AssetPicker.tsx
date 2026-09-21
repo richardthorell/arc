@@ -446,6 +446,35 @@ export function MaterialPicker({
   );
 }
 
+export function FlowPicker(
+  props: Omit<AssetPickerProps, 'assetKinds' | 'assetTypeLabel' | 'createAssetKind' | 'onOpen'>,
+) {
+  const openFlow = (asset: AssetPickerItem) => {
+    if (asset.kind !== 'flow' && !asset.path.toLocaleLowerCase().endsWith('.arcflow')) return;
+    openAssetEditorDocument({
+      id: asset.id,
+      guid: asset.guid,
+      typeId: asset.typeId,
+      name: asset.name,
+      path: asset.path,
+      kind: 'flow',
+      status: asset.status,
+      scope: asset.scope === 'procedural' ? undefined : asset.scope,
+      readOnly: asset.readOnly,
+    });
+  };
+
+  return (
+    <AssetPicker
+      {...props}
+      assetKinds={['flow']}
+      assetTypeLabel="Flow Graph"
+      createAssetKind="flow"
+      onOpen={openFlow}
+    />
+  );
+}
+
 export function PrefabPicker(props: Omit<AssetPickerProps, 'assetKinds'>) {
   return <AssetPicker {...props} assetKinds={['prefab']} assetTypeLabel="Prefab" />;
 }
