@@ -56,9 +56,11 @@ vec3 evaluate_light(
 vec2 environment_uv(vec3 direction)
 {
     direction = normalize(direction);
+    // Match sky_atmosphere.frag's equirectangular convention: texture V
+    // decreases as world-space latitude increases.
     return vec2(
         atan(direction.z, direction.x) / (2.0 * ARC_PI) + 0.5,
-        asin(clamp(direction.y, -1.0, 1.0)) / ARC_PI + 0.5);
+        0.5 - asin(clamp(direction.y, -1.0, 1.0)) / ARC_PI);
 }
 
 vec3 sample_environment(vec3 direction, float roughness)
