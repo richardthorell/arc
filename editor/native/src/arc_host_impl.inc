@@ -682,6 +682,10 @@ bool refresh_asset_preview_texture(HostState& host, viewport_surface_registry::s
         return false;
     }
 
+    if (surface.preview_texture.valid() && surface.preview_material.valid() &&
+        surface.preview_asset_generation == asset->generation)
+        return true;
+
     const auto resolved =
         resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, asset->source_path);
     if (!resolved || !render::is_supported_texture_asset(resolved->path))
@@ -1682,8 +1686,10 @@ host_response arc_host::query(const host_query_envelope& query) const
     {
         payload["assetPreviewKind"] = asset_preview_kind_name(viewport_surface->preview_kind);
         payload["assetPreviewGuid"] = assets::to_string(viewport_surface->preview_guid);
-        payload["assetPreviewReady"] = viewport_surface->preview_kind != asset_preview_kind::material ||
-                                       viewport_surface->preview_ready;
+        payload["assetPreviewReady"] =
+            (viewport_surface->preview_kind != asset_preview_kind::material &&
+             viewport_surface->preview_kind != asset_preview_kind::texture) ||
+            viewport_surface->preview_ready;
         if (viewport_surface->preview_kind == asset_preview_kind::material)
         {
             payload["assetPreviewMesh"] =
