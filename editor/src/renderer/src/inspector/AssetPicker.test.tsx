@@ -227,15 +227,7 @@ describe('AssetPicker', () => {
   });
   it('creates and assigns a new Flow Graph from an empty asset picker', async () => {
     const onChange = vi.fn();
-    render(
-      <FlowPicker
-        allowedExtensions={['.arcflow']}
-        assets={[]}
-        label="Graph"
-        value=""
-        onChange={onChange}
-      />,
-    );
+    render(<FlowPicker allowedExtensions={['.arcflow']} assets={[]} label="Graph" value="" onChange={onChange} />);
 
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Choose Graph asset' }));
