@@ -664,6 +664,7 @@ export function UiLab() {
               label="Position"
               precision={2}
               scrubSensitivity={0.05}
+              showActions={false}
               step={0.1}
               value={position}
               onCommit={(axis, value) => setPosition((current) => ({ ...current, [axis]: value }))}
