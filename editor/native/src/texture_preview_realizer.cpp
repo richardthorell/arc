@@ -99,7 +99,9 @@ material_preview_descriptor_result realize_texture_preview_material(std::uint32_
     json nodes = json::array();
     json connections = json::array();
     nodes.push_back(node("out", "output"));
+    nodes.push_back(node("black", "vector3", {{"value", {0.0f, 0.0f, 0.0f}}}));
     nodes.push_back(node("preview", "textureSample", {{"texture", preview_texture_token}, {"dimension", "2d"}}));
+    connections.push_back(connection("black-base-color", "black", "value", "out", "baseColor"));
     nodes.push_back(
         node("mask", "vector3",
              {{"value", {options.red ? 1.0f : 0.0f, options.green ? 1.0f : 0.0f, options.blue ? 1.0f : 0.0f}}}));
@@ -159,8 +161,9 @@ material_preview_descriptor_result realize_texture_preview_material(std::uint32_
                   {"name", "Texture Preview"},
                   {"domain", "surface"},
                   {"blendMode", "opaque"},
-                  {"shadingModel", "unlit"},
+                  {"shadingModel", "standard"},
                   {"doubleSided", true},
+                  {"castShadows", false},
                   {"graph", {{"version", 1}, {"nodes", std::move(nodes)}, {"connections", std::move(connections)}}}};
     return realize_material_preview_descriptor(authored.dump(), "Texture Preview");
 }
