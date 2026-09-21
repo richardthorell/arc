@@ -127,6 +127,7 @@ message(STATUS "arc-cook-clean-checkout: warm cache cook completed")
 message(STATUS "arc-cook-clean-checkout: starting package (timeout: 120s)")
 execute_process(
     COMMAND "${ARC_COOK}" package --project "${ARC_TEST_ROOT}"
+        --root assets/fixtures/persistence_fixture.arcscene
         --output "${output}" --json
     RESULT_VARIABLE package_result
     OUTPUT_VARIABLE package_output
