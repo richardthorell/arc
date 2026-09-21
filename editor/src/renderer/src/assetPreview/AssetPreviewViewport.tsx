@@ -591,10 +591,14 @@ export function AssetPreviewViewport({
         <div className="asset-preview-viewport-loading" role="status" aria-live="polite">
           <span className="asset-preview-viewport-loading-spinner" aria-hidden="true" />
           <strong>Loading preview</strong>
-          <span>{kind === 'texture' ? 'Preparing GPU texture preview…' : 'Preparing material and studio lighting…'}</span>
+          <span>
+            {kind === 'texture' ? 'Preparing GPU texture preview…' : 'Preparing material and studio lighting…'}
+          </span>
         </div>
       )}
-      <span className="asset-preview-viewport-hint">{kind === 'texture' ? 'Drag to pan · Scroll to zoom' : 'Drag to orbit · Scroll to zoom'}</span>
+      <span className="asset-preview-viewport-hint">
+        {kind === 'texture' ? 'Drag to pan · Scroll to zoom' : 'Drag to orbit · Scroll to zoom'}
+      </span>
     </div>
   );
 }

@@ -2427,18 +2427,18 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             if (command.preset.empty() && command.semantic.empty() && command.color_space.empty() &&
                 command.streaming_mode.empty() && command.compression.empty() && command.power_of_two.empty() &&
                 command.min_filter.empty() && command.mag_filter.empty() && command.mip_filter.empty() &&
-                command.mip_policy.empty() && command.wrap_u.empty() && command.wrap_v.empty() && command.mip_generation_filter.empty() &&
-                command.channel_r.empty() && command.channel_g.empty() && command.channel_b.empty() &&
-                command.channel_a.empty() && command.curve_master.empty() && command.curve_r.empty() &&
-                command.curve_g.empty() && command.curve_b.empty() && command.curve_a.empty() && !command.max_size &&
-                !command.anisotropy && !command.lod_bias && !command.minimum_lod && !command.maximum_lod &&
-                !command.alpha_coverage_threshold && !command.mip_sharpen && !command.deband_strength &&
-                !command.dither_mips && !command.deband_mips && !command.brightness && !command.gamma &&
-                !command.contrast && !command.saturation && !command.vibrance && !command.tint_r && !command.tint_g &&
-                !command.tint_b && !command.input_black && !command.input_white && !command.output_black &&
-                !command.output_white && !command.invert_r && !command.invert_g && !command.invert_b &&
-                !command.invert_a && !command.curves_enabled && !command.generate_mips &&
-                !command.preserve_alpha_coverage)
+                command.mip_policy.empty() && command.wrap_u.empty() && command.wrap_v.empty() &&
+                command.mip_generation_filter.empty() && command.channel_r.empty() && command.channel_g.empty() &&
+                command.channel_b.empty() && command.channel_a.empty() && command.curve_master.empty() &&
+                command.curve_r.empty() && command.curve_g.empty() && command.curve_b.empty() &&
+                command.curve_a.empty() && !command.max_size && !command.anisotropy && !command.lod_bias &&
+                !command.minimum_lod && !command.maximum_lod && !command.alpha_coverage_threshold &&
+                !command.mip_sharpen && !command.deband_strength && !command.dither_mips && !command.deband_mips &&
+                !command.brightness && !command.gamma && !command.contrast && !command.saturation &&
+                !command.vibrance && !command.tint_r && !command.tint_g && !command.tint_b && !command.input_black &&
+                !command.input_white && !command.output_black && !command.output_white && !command.invert_r &&
+                !command.invert_g && !command.invert_b && !command.invert_a && !command.curves_enabled &&
+                !command.generate_mips && !command.preserve_alpha_coverage)
             {
                 error = "Texture settings patch requires at least one setting";
                 return false;
