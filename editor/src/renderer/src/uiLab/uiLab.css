@@ -435,11 +435,6 @@
   font-size: var(--arc-text-sm);
 }
 
-.ui-lab-slider input[type='range'] {
-  width: 100%;
-  accent-color: var(--arc-color-accent);
-}
-
 .ui-lab-slider output {
   min-width: 42px;
   color: var(--arc-color-text);
