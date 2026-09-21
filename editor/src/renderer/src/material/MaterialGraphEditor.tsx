@@ -26,6 +26,7 @@ import {
   UiContextMenuItem,
   UiIconButton,
   UiNodeCard,
+  UiSlider,
   UiTextInput,
   type UiColorValue,
 } from '../ui';
@@ -782,14 +783,13 @@ export function MaterialGraphEditor({
         <span className="material-graph-toolbar-divider" />
         <label className="material-graph-zoom-control">
           <span>Zoom</span>
-          <input
+          <UiSlider
             aria-label="Material graph zoom"
-            max="180"
-            min="35"
-            step="5"
-            type="range"
+            max={180}
+            min={35}
+            step={5}
             value={Math.round(viewport.zoom * 100)}
-            onChange={(event) => setZoomAroundCenter(Number(event.target.value) / 100)}
+            onValueChange={(value) => setZoomAroundCenter(value / 100)}
           />
           <output>{Math.round(viewport.zoom * 100)}%</output>
         </label>
