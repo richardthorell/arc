@@ -1220,6 +1220,43 @@ host_response arc_host::execute(const host_command_envelope& command)
         viewport_surface->preview_auto_rotate = options->material_preview_auto_rotate;
     }
 
+    if (const auto* options = std::get_if<host_viewport_set_render_options_command>(&command.payload);
+        options && viewport_surface->preview_kind == asset_preview_kind::texture)
+    {
+        const bool nearest = options->texture_preview_sampling == "nearest";
+        const bool changed = viewport_surface->preview_texture_mip != options->texture_preview_mip ||
+                             viewport_surface->preview_texture_channel_r != options->texture_preview_channel_r ||
+                             viewport_surface->preview_texture_channel_g != options->texture_preview_channel_g ||
+                             viewport_surface->preview_texture_channel_b != options->texture_preview_channel_b ||
+                             viewport_surface->preview_texture_channel_a != options->texture_preview_channel_a ||
+                             viewport_surface->preview_texture_exposure != options->texture_preview_exposure ||
+                             viewport_surface->preview_texture_nearest != nearest;
+        viewport_surface->preview_texture_mip = options->texture_preview_mip;
+        viewport_surface->preview_texture_channel_r = options->texture_preview_channel_r;
+        viewport_surface->preview_texture_channel_g = options->texture_preview_channel_g;
+        viewport_surface->preview_texture_channel_b = options->texture_preview_channel_b;
+        viewport_surface->preview_texture_channel_a = options->texture_preview_channel_a;
+        viewport_surface->preview_texture_exposure = options->texture_preview_exposure;
+        viewport_surface->preview_texture_nearest = nearest;
+        if (changed)
+        {
+            viewport_surface->preview_asset_generation = 0;
+            viewport_surface->preview_ready = false;
+            if (!refresh_asset_preview_texture(*state_, *viewport_surface))
+            {
+                host_response response{.request_id = command.request_id,
+                                       .succeeded = false,
+                                       .error = viewport_surface->preview_error.empty()
+                                                    ? "Texture preview options could not be applied"
+                                                    : viewport_surface->preview_error};
+                response.scene_revision = state_->scene_revision;
+                response.world_epoch = state_->world_epoch;
+                response.frame_revision = state_->viewport_frame_index;
+                return response;
+            }
+        }
+    }
+
     if (const auto* pick = std::get_if<host_viewport_pick_command>(&command.payload);
         pick && viewport_surface->preview_kind == asset_preview_kind::none &&
         state_->scene.scene.alive(state_->scene.selected_entity))
