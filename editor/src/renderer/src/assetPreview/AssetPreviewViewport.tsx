@@ -137,6 +137,42 @@ export function materialPreviewRenderOptions() {
   } as const;
 }
 
+export function texturePreviewRenderOptions(options?: TexturePreviewViewportOptions) {
+  return {
+    renderMode: 'shaded',
+    visualization: 'standard',
+    overlay: 'none',
+    selectionOutline: false,
+    hoverOutline: false,
+    selectionBounds: false,
+    componentGizmos: false,
+    selectionHierarchy: false,
+    shadows: false,
+    grid: false,
+    skeletons: false,
+    realtime: true,
+    antiAliasing: 'disabled',
+    environment: {
+      sky: false,
+      fog: false,
+      terrain: false,
+      water: false,
+      vegetation: false,
+      decals: false,
+    },
+    texturePreviewMip: options?.mipLevel ?? 0,
+    texturePreviewChannels: [
+      options?.channels.r === false ? 0 : 1,
+      options?.channels.g === false ? 0 : 1,
+      options?.channels.b === false ? 0 : 1,
+      options?.channels.a === false ? 0 : 1,
+    ],
+    texturePreviewExposure: options?.exposure ?? 0,
+    texturePreviewCheckerboard: options?.checkerboard ?? true,
+    texturePreviewNearest: options?.sampling === 'nearest',
+  } as const;
+}
+
 export function AssetPreviewViewport({
   kind,
   assetGuid,
@@ -176,7 +212,7 @@ export function AssetPreviewViewport({
   const onStateRef = useRef(onState);
   const [streamed, setStreamed] = useState(false);
   const [attached, setAttached] = useState(false);
-  const [previewReady, setPreviewReady] = useState(kind !== 'material');
+  const [previewReady, setPreviewReady] = useState(kind !== 'material' && kind !== 'texture');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -203,6 +239,18 @@ export function AssetPreviewViewport({
       setError('');
     })().catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
   }, [kind, materialAutoRotate, materialMesh, viewportId]);
+
+  useEffect(() => {
+    if (kind !== 'texture' || !attached || !viewportId) return;
+    void (async () => {
+      const response = (await window.arc.host.command('viewport.setRenderOptions', {
+        viewportId,
+        ...texturePreviewRenderOptions(textureOptions),
+      })) as ViewportCommandResponse | undefined;
+      if (response?.succeeded === false) throw new Error(response.error || 'Texture preview options were rejected');
+      setError('');
+    })().catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
+  }, [attached, kind, textureOptions, viewportId]);
 
   const traceViewportState = useCallback(
     async (phase: string) => {
