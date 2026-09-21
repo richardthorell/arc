@@ -114,9 +114,8 @@
   white-space: nowrap;
 }
 
-.material-graph-zoom-control input[type='range'] {
+.material-graph-zoom-control .ui-slider {
   width: 108px;
-  accent-color: #5eacbf;
 }
 
 .material-graph-zoom-control output {
