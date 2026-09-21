@@ -133,11 +133,12 @@ describe('material toolbar session controls', () => {
   it('keeps graph view preferences in editor session state', async () => {
     await loadMaterialDocument(document, true);
 
-    setMaterialGraphView(document, { showGrid: false, dimUnrelated: true });
+    setMaterialGraphView(document, { showGrid: false, dimUnrelated: true, showStats: true });
 
     const state = getMaterialDocumentState(document);
     expect(state.showGrid).toBe(false);
     expect(state.dimUnrelated).toBe(true);
+    expect(state.showStats).toBe(true);
   });
 });
 
