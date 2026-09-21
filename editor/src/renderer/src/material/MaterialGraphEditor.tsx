@@ -218,10 +218,14 @@ export function MaterialGraphEditor({
   document,
   graph,
   loaded = true,
+  showGrid = true,
+  dimUnrelated = false,
 }: {
   document: EditorDocument;
   graph: MaterialGraph;
   loaded?: boolean;
+  showGrid?: boolean;
+  dimUnrelated?: boolean;
 }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const invalidConnectionNodeRef = useRef<HTMLElement | null>(null);
@@ -240,6 +244,26 @@ export function MaterialGraphEditor({
   const [nodeMenuSubcategory, setNodeMenuSubcategory] = useState<MaterialNodeSubcategory | null>(null);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const viewport = useMemo(() => graph.viewport ?? { x: 40, y: 40, zoom: 1 }, [graph.viewport]);
+  const relatedNodeIds = useMemo(() => {
+    if (!dimUnrelated || selectedNodes.size === 0) return null;
+    const related = new Set(selectedNodes);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const connection of graph.connections) {
+        if (!related.has(connection.from.nodeId) && !related.has(connection.to.nodeId)) continue;
+        if (!related.has(connection.from.nodeId)) {
+          related.add(connection.from.nodeId);
+          changed = true;
+        }
+        if (!related.has(connection.to.nodeId)) {
+          related.add(connection.to.nodeId);
+          changed = true;
+        }
+      }
+    }
+    return related;
+  }, [dimUnrelated, graph.connections, selectedNodes]);
 
   useEffect(() => {
     setSelectedNodes((current) => new Set([...current].filter((id) => graph.nodes.some((node) => node.id === id))));
@@ -608,7 +632,14 @@ export function MaterialGraphEditor({
   return (
     <div
       aria-label="Material graph"
-      className={`material-graph-canvas ${document.readOnly ? 'read-only' : ''}`}
+      className={[
+        'material-graph-canvas',
+        document.readOnly ? 'read-only' : '',
+        showGrid ? '' : 'hide-grid',
+        dimUnrelated ? 'dim-unrelated' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       ref={canvasRef}
       role="application"
       tabIndex={0}
@@ -729,7 +760,13 @@ export function MaterialGraphEditor({
             <UiNodeCard
               badge={node.parameter?.exposed ? 'P' : undefined}
               badgeTitle={node.parameter?.exposed ? `Parameter: ${node.parameter.name}` : undefined}
-              className={`material-graph-node material-graph-node-${node.type}`}
+              className={[
+                'material-graph-node',
+                `material-graph-node-${node.type}`,
+                relatedNodeIds && !relatedNodeIds.has(node.id) ? 'is-unrelated' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
               data-node-id={node.id}
               heading={definition.title}
               key={node.id}
