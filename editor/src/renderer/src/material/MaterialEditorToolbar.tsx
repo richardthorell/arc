@@ -120,6 +120,7 @@ export function MaterialEditorToolbar({ document }: { document: EditorDocument }
           <UiButton
             aria-expanded={openMenu === 'live'}
             aria-haspopup="menu"
+            aria-pressed={state.liveUpdate}
             className={state.liveUpdate ? 'is-active' : undefined}
             disabled={customShader}
             onClick={() => toggleMenu('live')}
@@ -171,7 +172,8 @@ export function MaterialEditorToolbar({ document }: { document: EditorDocument }
               <div>
                 <span>Diagnostics</span>
                 <strong>
-                  {errorCount} error{errorCount === 1 ? '' : 's'} · {warningCount} warning{warningCount === 1 ? '' : 's'}
+                  {errorCount} error{errorCount === 1 ? '' : 's'} · {warningCount} warning
+                  {warningCount === 1 ? '' : 's'}
                 </strong>
               </div>
             </div>
@@ -218,7 +220,11 @@ export function MaterialEditorToolbar({ document }: { document: EditorDocument }
             <Ellipsis size={15} /> More <ChevronDown size={12} />
           </UiButton>
           {openMenu === 'more' && (
-            <UiContextMenu aria-label="More material actions" className="material-toolbar-popup material-toolbar-popup-right" width={220}>
+            <UiContextMenu
+              aria-label="More material actions"
+              className="material-toolbar-popup material-toolbar-popup-right"
+              width={220}
+            >
               <UiContextMenuItem
                 disabled={busy || document.readOnly || !document.assetGuid}
                 leading={<Upload size={13} />}
