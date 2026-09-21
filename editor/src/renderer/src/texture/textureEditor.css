@@ -16,6 +16,7 @@
 }
 
 .texture-preview-stage {
+  position: relative;
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
   grid-template-rows: 22px minmax(0, 1fr);
@@ -33,6 +34,63 @@
 .texture-preview-stage.is-panning {
   cursor: grabbing;
   user-select: none;
+}
+
+.texture-navigation-toolbar {
+  position: absolute;
+  z-index: 9;
+  bottom: 10px;
+  left: 38px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 34px;
+  padding: 3px;
+  border: 1px solid rgba(109, 142, 159, 0.3);
+  border-radius: 5px;
+  background: rgba(15, 25, 31, 0.94);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(8px);
+}
+
+.texture-navigation-toolbar .ui-button {
+  min-height: 27px;
+  height: 27px;
+  padding: 0 8px;
+}
+
+.texture-navigation-toolbar .ui-icon-button {
+  width: 27px;
+  min-width: 27px;
+  padding: 0;
+}
+
+.texture-navigation-divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: rgba(112, 142, 156, 0.22);
+}
+
+.texture-navigation-zoom-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 3px;
+  color: var(--arc-color-text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.texture-navigation-zoom-control .ui-slider {
+  width: 108px;
+}
+
+.texture-navigation-zoom-control output {
+  width: 40px;
+  color: var(--arc-color-text-dim);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .texture-ruler-corner,
