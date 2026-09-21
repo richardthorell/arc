@@ -734,6 +734,8 @@ bool refresh_asset_preview_texture(HostState& host, viewport_surface_registry::s
         return false;
     }
 
+    const auto preview_width = preview_texture.width;
+    const auto preview_height = preview_texture.height;
     bool texture_uploaded{};
     if (surface.preview_texture.valid())
         texture_uploaded = host.renderer->update_texture(surface.preview_texture, preview_texture);
@@ -756,9 +758,6 @@ bool refresh_asset_preview_texture(HostState& host, viewport_surface_registry::s
         return false;
     }
 
-    const auto& selected = preview_texture.mips.empty() ? render::texture_mip_data{} : preview_texture.mips.front();
-    const auto preview_width = selected.width == 0u ? preview_texture.width : selected.width;
-    const auto preview_height = selected.height == 0u ? preview_texture.height : selected.height;
     auto realized = realize_texture_preview_material(
         preview_width, preview_height,
         {.red = surface.preview_texture_channel_r,
@@ -1005,12 +1004,20 @@ void cleanup_asset_preview_surface(viewport_surface_registry::surface_state& sur
     arc_clear_preview_imported_content(*surface.preview_scene, renderer);
     surface.preview_scene->terrain_render_proxies.clear(renderer);
     if (surface.preview_mesh.valid()) (void)renderer.destroy_mesh(surface.preview_mesh);
+    if (surface.preview_kind == asset_preview_kind::texture)
+    {
+        if (surface.preview_material.valid()) (void)renderer.destroy_material(surface.preview_material);
+        if (surface.preview_texture.valid()) (void)renderer.destroy_texture(surface.preview_texture);
+        if (surface.preview_checker_texture.valid()) (void)renderer.destroy_texture(surface.preview_checker_texture);
+    }
     if (surface.preview_scene->environment_lighting_resource.valid())
         (void)renderer.destroy_environment(surface.preview_scene->environment_lighting_resource);
     surface.preview_scene.reset();
     surface.preview_entity = {};
     surface.preview_mesh = {};
     surface.preview_material = {};
+    surface.preview_texture = {};
+    surface.preview_checker_texture = {};
     surface.preview_material_generation = 0;
     surface.preview_live_material_generation = 0;
     surface.preview_asset_generation = 0;
