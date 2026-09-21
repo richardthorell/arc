@@ -23,6 +23,7 @@ add_library(arc-editor-host STATIC
     src/terrain_rebuild.cpp
     src/terrain_heightmap_io.cpp
     src/texture_preview.cpp
+    src/texture_preview_realizer.cpp
     src/viewport_render_stats.cpp
     src/world_environment_host.cpp
 )
