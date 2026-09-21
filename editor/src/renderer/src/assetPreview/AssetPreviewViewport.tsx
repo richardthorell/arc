@@ -38,13 +38,23 @@ type ViewportStatePayload = {
   modelSkeleton?: ModelPreviewSkeleton;
 };
 
+export type TexturePreviewViewportOptions = {
+  mipLevel: number;
+  channels: { r: boolean; g: boolean; b: boolean; a: boolean };
+  exposure: number;
+  checkerboard: boolean;
+  sampling: 'linear' | 'nearest';
+};
+
 type AssetPreviewViewportProps = {
-  kind: 'material' | 'shader' | 'model';
+  kind: 'material' | 'shader' | 'model' | 'texture';
   assetGuid?: string;
   fallback: ReactNode;
   label: string;
   materialMesh?: 'sphere' | 'cube' | 'pill';
   materialAutoRotate?: boolean;
+  textureOptions?: TexturePreviewViewportOptions;
+  interactive?: boolean;
   loading?: boolean;
   onState?: (payload: ViewportStatePayload | undefined) => void;
 };
@@ -134,6 +144,8 @@ export function AssetPreviewViewport({
   label,
   materialMesh = 'sphere',
   materialAutoRotate = true,
+  textureOptions,
+  interactive = true,
   loading = false,
   onState,
 }: AssetPreviewViewportProps) {
@@ -160,6 +172,7 @@ export function AssetPreviewViewport({
   const materialCameraPitchRef = useRef(materialPreviewInitialCameraPitch);
   const materialMeshRef = useRef(materialMesh);
   const materialAutoRotateRef = useRef(materialAutoRotate);
+  const textureOptionsRef = useRef(textureOptions);
   const onStateRef = useRef(onState);
   const [streamed, setStreamed] = useState(false);
   const [attached, setAttached] = useState(false);
@@ -169,6 +182,10 @@ export function AssetPreviewViewport({
   useEffect(() => {
     onStateRef.current = onState;
   }, [onState]);
+
+  useEffect(() => {
+    textureOptionsRef.current = textureOptions;
+  }, [textureOptions]);
 
   useEffect(() => {
     materialMeshRef.current = materialMesh;
