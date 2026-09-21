@@ -209,6 +209,7 @@ export function AssetPreviewViewport({
   const materialCameraPitchRef = useRef(materialPreviewInitialCameraPitch);
   const materialMeshRef = useRef(materialMesh);
   const materialAutoRotateRef = useRef(materialAutoRotate);
+  const texturePreviewRef = useRef(texturePreview);
   const onStateRef = useRef(onState);
   const [streamed, setStreamed] = useState(false);
   const [attached, setAttached] = useState(false);
@@ -218,6 +219,10 @@ export function AssetPreviewViewport({
   useEffect(() => {
     onStateRef.current = onState;
   }, [onState]);
+
+  useEffect(() => {
+    texturePreviewRef.current = texturePreview;
+  }, [texturePreview]);
 
   useEffect(() => {
     materialMeshRef.current = materialMesh;
@@ -237,11 +242,12 @@ export function AssetPreviewViewport({
   }, [kind, materialAutoRotate, materialMesh, viewportId]);
 
   useEffect(() => {
-    if (kind !== 'texture' || !texturePreview || !attachedRef.current || !viewportId) return;
+    const preview = texturePreviewRef.current;
+    if (kind !== 'texture' || !preview || !attachedRef.current || !viewportId) return;
     void (async () => {
       const response = (await window.arc.host.command('viewport.setRenderOptions', {
         viewportId,
-        ...texturePreviewRenderOptions(texturePreview),
+        ...texturePreviewRenderOptions(preview),
       })) as ViewportCommandResponse | undefined;
       if (response?.succeeded === false) throw new Error(response.error || 'Texture preview options were rejected');
       setError('');
@@ -391,10 +397,11 @@ export function AssetPreviewViewport({
           const created = (await window.arc.viewport.create(bounds)) as ViewportCommandResponse | undefined;
           if (created?.succeeded === false) return created;
           await window.arc.viewport.setVisibility?.(viewportId, activeRef.current);
-          if (kind === 'texture' && texturePreview) {
+          const initialTexturePreview = texturePreviewRef.current;
+          if (kind === 'texture' && initialTexturePreview) {
             const configured = (await window.arc.host.command('viewport.setRenderOptions', {
               viewportId,
-              ...texturePreviewRenderOptions(texturePreview),
+              ...texturePreviewRenderOptions(initialTexturePreview),
             })) as ViewportCommandResponse | undefined;
             if (configured?.succeeded === false)
               throw new Error(configured.error || 'Texture preview render options were rejected');
