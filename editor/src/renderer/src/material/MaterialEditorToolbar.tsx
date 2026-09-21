@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, CircleAlert, Code2, Eye, LoaderCircle, RefreshCw, Save, Upload, Zap } from 'lucide-react';
+import { Check, ChevronDown, CircleAlert, Code2, Eye, LoaderCircle, RefreshCw, Save, Upload, Zap } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
 import { UiButton, UiContextMenu, UiContextMenuItem, UiSplitButton, UiToggleButton } from '../ui';
@@ -104,14 +104,14 @@ export function MaterialEditorToolbar({ document }: { document: EditorDocument }
         )}
 
         {!customShader && (
-          <span className="material-toolbar-menu">
+          <span className="material-toolbar-menu material-toolbar-view-menu">
             <UiButton
               aria-expanded={viewOpen}
               aria-haspopup="menu"
               onClick={() => setViewOpen((open) => !open)}
               variant="toolbar"
             >
-              <Eye size={13} /> View
+              <Eye size={13} /> View <ChevronDown aria-hidden="true" size={12} />
             </UiButton>
             {viewOpen && (
               <UiContextMenu aria-label="Material graph view options" className="material-toolbar-popup" width={210}>
