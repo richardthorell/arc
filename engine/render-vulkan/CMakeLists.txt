@@ -3,9 +3,16 @@ set(arc_render_vulkan_backend_sources
     src/vulkan_backend_core.cpp
     src/vulkan_backend_frame.cpp
     src/vulkan_backend_gpu_scene.cpp
+    src/vulkan_backend_deferred.cpp
+    src/vulkan_backend_material_descriptors.cpp
+    src/vulkan_backend_material_runtime.cpp
     src/vulkan_backend_materials.cpp
+    src/vulkan_backend_mesh_pipelines.cpp
+    src/vulkan_backend_pipeline_lifecycle.cpp
+    src/vulkan_backend_post_process.cpp
     src/vulkan_backend_scene.cpp
     src/vulkan_backend_shadows.cpp
+    src/vulkan_backend_sky.cpp
     src/vulkan_backend_geometry.cpp
     src/vulkan_backend_textures.cpp
     src/vulkan_backend_virtual_geometry.cpp
