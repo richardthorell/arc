@@ -44,7 +44,7 @@ TEST_CASE("texture preview mip selection preserves encoded compressed payload", 
     texture.height = 8u;
     texture.depth = 1u;
     texture.dimension = arc::render::texture_dimension::texture_2d;
-    texture.format = arc::render::texture_format::bc1_unorm;
+    texture.format = arc::render::texture_format::bc1_rgba_unorm;
     texture.compressed = true;
     texture.dds = true;
     texture.mip_levels = 2u;
