@@ -733,8 +733,7 @@ void test_compiler_executes_custom_event_and_interface()
     assert(std::get<std::int64_t>(*instance.graph_output_value("result")) == 17);
 }
 
-
-bool has_diagnostic_code(const compile_result& result, std::string_view code)
+[[maybe_unused]] bool has_diagnostic_code(const compile_result& result, std::string_view code)
 {
     for (const diagnostic& item : result.diagnostics)
         if (item.code == code) return true;
