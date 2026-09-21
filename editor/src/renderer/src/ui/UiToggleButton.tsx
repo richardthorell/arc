@@ -1,7 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
-import './UiToggleButton.css';
-
 export type UiToggleButtonProps = Omit<
   ButtonHTMLAttributes<HTMLButtonElement>,
   'aria-pressed' | 'onChange' | 'onClick' | 'role' | 'type'
