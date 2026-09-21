@@ -1014,7 +1014,6 @@ void cleanup_asset_preview_surface(viewport_surface_registry::surface_state& sur
     if (surface.preview_mesh.valid()) (void)renderer.destroy_mesh(surface.preview_mesh);
     if (surface.preview_kind == asset_preview_kind::texture)
     {
-        if (surface.preview_material.valid()) (void)renderer.destroy_material(surface.preview_material);
         if (surface.preview_texture.valid()) (void)renderer.destroy_texture(surface.preview_texture);
         if (surface.preview_checker_texture.valid()) (void)renderer.destroy_texture(surface.preview_checker_texture);
     }
