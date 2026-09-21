@@ -1073,13 +1073,13 @@ export function MaterialGraphEditor({
                                           </UiContextMenuItem>
                                         ))}
                                       </UiContextMenu>,
-                                      document.body,
+                                      globalThis.document.body,
                                     )}
                                 </div>
                               );
                             })}
                           </UiContextMenu>,
-                          document.body,
+                          globalThis.document.body,
                         )}
                     </div>
                   );
