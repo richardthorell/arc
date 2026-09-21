@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 
 import type { AssetItem } from '../services/editorHostTypes';
-import { UiIconButton, UiNumericInput, UiPropertyCard, UiSelect, UiToggleButton } from '../ui';
+import { UiIconButton, UiNumericInput, UiPropertyCard, UiSelect, UiSlider, UiToggleButton } from '../ui';
 import {
   patchTextureSettings,
   type TextureChannelSource,
@@ -42,14 +42,13 @@ function TextureSliderControl({
   const precision = step >= 1 ? 0 : step >= 0.1 ? 1 : 2;
   return (
     <div className="texture-stage3-number-control">
-      <input
+      <UiSlider
         aria-label={`${label} slider`}
         disabled={disabled}
         max={max}
         min={min}
-        onChange={(event) => onChange(Number(event.target.value))}
+        onValueChange={onChange}
         step={step}
-        type="range"
         value={value}
       />
       <UiNumericInput
