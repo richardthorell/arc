@@ -40,7 +40,7 @@ describe('MaterialGraphEditor', () => {
 
   it('applies toolbar-controlled graph view options', () => {
     const graph = createDefaultMaterialGraph();
-    graph.nodes.push(createMaterialNode('constant', [980, 720]));
+    graph.nodes.push(createMaterialNode('normalMap', [980, 720]));
 
     const { container } = render(
       <MaterialGraphEditor document={document} graph={graph} showGrid={false} dimUnrelated />,
@@ -53,8 +53,8 @@ describe('MaterialGraphEditor', () => {
     expect(output).not.toBeNull();
     fireEvent.pointerDown(output!, { button: 0 });
 
-    const isolatedConstant = screen.getByText('Constant').closest('article');
-    expect(isolatedConstant).toHaveClass('is-unrelated');
+    const isolatedNode = screen.getByText('Normal Map').closest('article');
+    expect(isolatedNode).toHaveClass('is-unrelated');
     expect(container.querySelectorAll('.material-graph-node.is-unrelated').length).toBeGreaterThan(0);
   });
 
