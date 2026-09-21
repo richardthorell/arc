@@ -233,12 +233,16 @@
   padding-bottom: 4px;
 }
 
-.texture-inspector-property {
-  min-height: 27px;
-  padding-inline: 10px;
+.texture-inspector-section .ui-property-card-rows {
+  padding: 3px 8px 0;
+}
+
+.texture-inspector-section .ui-panel-card-row-control {
+  width: 100%;
 }
 
 .texture-inspector-value {
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   color: var(--arc-color-text, #e7e9ed);
@@ -297,47 +301,60 @@
   opacity: 0.6;
 }
 
-.texture-stage3-number-fields {
+.texture-stage3-number-control {
   display: grid;
-  grid-template-columns: minmax(70px, 1fr) 68px 22px;
+  grid-template-columns: minmax(70px, 1fr) 74px 22px;
   align-items: center;
   gap: 6px;
-  min-width: 0;
-}
-
-.texture-stage3-number-fields input[type='range'] {
   width: 100%;
   min-width: 0;
 }
+
+.texture-stage3-number-control input[type='range'] {
+  width: 100%;
+  min-width: 0;
+}
+
+.texture-stage3-number-control .ui-numeric-input {
+  width: 74px;
+}
+
+.texture-stage3-reset.ui-icon-button {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+}
+
 .texture-stage3-note {
-  padding: 6px 10px;
+  width: 100%;
+  padding: 3px 2px;
   color: var(--arc-color-text-muted, #9ca3ad);
   font-size: 10px;
   line-height: 1.35;
 }
-.texture-stage3-channel {
+
+.texture-stage3-channel-control {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 8px;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 10px;
-  font-size: 11px;
-}
-.texture-stage3-channel select {
-  min-width: 0;
   width: 100%;
-  background: var(--arc-color-surface-control, #20262c);
-  color: var(--arc-color-text, #e7e9ed);
-  border: 1px solid var(--arc-color-border, #303841);
-  border-radius: 3px;
-  height: 22px;
+  min-width: 0;
 }
-.texture-stage3-channel label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--arc-color-text-muted, #9ca3ad);
+
+.texture-stage3-channel-control .ui-select {
+  width: 100%;
+}
+
+.texture-curve-editor-field {
+  width: 100%;
+  min-width: 0;
+}
+
+.texture-curve-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px 0 6px;
 }
 
 .texture-preview-analysis-bar {
@@ -387,10 +404,4 @@
     monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.texture-curve-tabs {
-  display: flex;
-  gap: 2px;
-  padding: 6px 8px 0;
 }
