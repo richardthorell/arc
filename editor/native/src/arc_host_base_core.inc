@@ -6696,6 +6696,38 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
                     return "BC7 UNorm";
                 case render::texture_format::bc7_rgba_srgb:
                     return "BC7 sRGB";
+                case render::texture_format::astc_4x4_unorm:
+                    return "ASTC 4x4 UNorm";
+                case render::texture_format::astc_4x4_srgb:
+                    return "ASTC 4x4 sRGB";
+                case render::texture_format::astc_5x5_unorm:
+                    return "ASTC 5x5 UNorm";
+                case render::texture_format::astc_5x5_srgb:
+                    return "ASTC 5x5 sRGB";
+                case render::texture_format::astc_6x6_unorm:
+                    return "ASTC 6x6 UNorm";
+                case render::texture_format::astc_6x6_srgb:
+                    return "ASTC 6x6 sRGB";
+                case render::texture_format::astc_8x8_unorm:
+                    return "ASTC 8x8 UNorm";
+                case render::texture_format::astc_8x8_srgb:
+                    return "ASTC 8x8 sRGB";
+                case render::texture_format::etc2_rgb8_unorm:
+                    return "ETC2 RGB8 UNorm";
+                case render::texture_format::etc2_rgb8_srgb:
+                    return "ETC2 RGB8 sRGB";
+                case render::texture_format::etc2_rgba8_unorm:
+                    return "ETC2 RGBA8 UNorm";
+                case render::texture_format::etc2_rgba8_srgb:
+                    return "ETC2 RGBA8 sRGB";
+                case render::texture_format::eac_r11_unorm:
+                    return "EAC R11 UNorm";
+                case render::texture_format::eac_r11_snorm:
+                    return "EAC R11 SNorm";
+                case render::texture_format::eac_rg11_unorm:
+                    return "EAC RG11 UNorm";
+                case render::texture_format::eac_rg11_snorm:
+                    return "EAC RG11 SNorm";
             }
             return "Unknown";
         };
