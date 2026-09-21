@@ -1120,6 +1120,8 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         path: 'flow.graphPath',
         type: 'asset',
         assetKind: 'asset',
+        assetTypeLabel: 'Flow Graph',
+        createAssetKind: 'flow',
         referenceMode: 'path',
         allowedExtensions: ['.arcflow'],
         allowEmpty: false,

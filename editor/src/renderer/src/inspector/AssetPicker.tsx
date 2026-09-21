@@ -34,6 +34,7 @@ export type AssetPickerProps = {
   mixed?: boolean;
   referenceMode?: 'path' | 'guid';
   thumbnailProvider?: AssetThumbnailProvider;
+  createAssetKind?: 'material' | 'flow';
   createNewLabel?: string;
   onCreateNew?: (name: string) => Promise<string>;
   onOpen?: (asset: AssetPickerItem) => void;
@@ -80,6 +81,28 @@ const projectContentRootFromAssets = (assets: ReadonlyArray<AssetPickerItem>) =>
       !asset.path.startsWith('/'),
   );
   return projectAsset?.path.replaceAll('\\', '/').split('/')[0] || 'Content';
+};
+
+const createProjectAsset = async (
+  kind: 'material' | 'flow',
+  name: string,
+  assets: ReadonlyArray<AssetPickerItem>,
+  assetTypeLabel: string,
+) => {
+  const projectSnapshot = await window.arc.projects.snapshot();
+  const activeProject = projectSnapshot?.activeProject;
+  if (activeProject && !activeProject.writable) throw new Error('The active project is read-only');
+  const contentRoot = activeProject?.descriptor.paths.content || projectContentRootFromAssets(assets);
+  const definition = buildAssetCreation(
+    { root: activeProject?.projectRoot ?? '', assetRoot: contentRoot },
+    { kind, name, folder: contentRoot },
+  );
+  if (assets.some((asset) => normalizedPath(asset.path) === normalizedPath(definition.asset.path))) {
+    throw new Error(`A ${assetTypeLabel.toLocaleLowerCase()} already exists at ${definition.asset.path}`);
+  }
+  await window.arc.projects.writeText(definition.asset.path, definition.contents);
+  openAssetEditorDocument(definition.asset);
+  return definition.asset.path;
 };
 
 type PrimitiveMeshKind = 'plane' | 'cube' | 'sphere' | 'cylinder' | 'cone' | 'capsule';
@@ -193,6 +216,7 @@ export function AssetPicker({
   mixed = false,
   referenceMode = 'path',
   thumbnailProvider,
+  createAssetKind,
   createNewLabel,
   onCreateNew,
   onOpen,
@@ -217,6 +241,9 @@ export function AssetPicker({
   );
   const valueFor = (asset: AssetPickerItem) => (referenceMode === 'guid' ? asset.guid || asset.id : asset.path);
   const selected = assets.find((asset) => valueFor(asset) === value);
+  const createNew =
+    onCreateNew ??
+    (createAssetKind ? (name: string) => createProjectAsset(createAssetKind, name, assets, assetTypeLabel) : undefined);
 
   const acceptDrop = (event: React.DragEvent) => {
     const dropped = readArcAssetDragPayload(event.dataTransfer);
@@ -302,9 +329,9 @@ export function AssetPicker({
           thumbnailProvider={thumbnailProvider}
           onClose={() => setOpen(false)}
           onCreateNew={
-            onCreateNew
+            createNew
               ? async (name) => {
-                  const next = await onCreateNew(name);
+                  const next = await createNew(name);
                   onChange(next);
                   setOpen(false);
                 }
@@ -416,6 +443,35 @@ export function MaterialPicker({
         />
       )}
     </>
+  );
+}
+
+export function FlowPicker(
+  props: Omit<AssetPickerProps, 'assetKinds' | 'assetTypeLabel' | 'createAssetKind' | 'onOpen'>,
+) {
+  const openFlow = (asset: AssetPickerItem) => {
+    if (asset.kind !== 'flow' && !asset.path.toLocaleLowerCase().endsWith('.arcflow')) return;
+    openAssetEditorDocument({
+      id: asset.id,
+      guid: asset.guid,
+      typeId: asset.typeId,
+      name: asset.name,
+      path: asset.path,
+      kind: 'flow',
+      status: asset.status,
+      scope: asset.scope === 'procedural' ? undefined : asset.scope,
+      readOnly: asset.readOnly,
+    });
+  };
+
+  return (
+    <AssetPicker
+      {...props}
+      assetKinds={['flow']}
+      assetTypeLabel="Flow Graph"
+      createAssetKind="flow"
+      onOpen={openFlow}
+    />
   );
 }
 
@@ -580,7 +636,7 @@ function AssetPickerPopover({
               padding: 12,
             }}
           >
-            <strong>{createNewLabel ?? `Create New ${assetTypeLabel}`}</strong>
+            <strong>{createNewLabel ?? `Create New ${assetTypeLabel}…`}</strong>
             <input
               aria-label={`New ${assetTypeLabel.toLocaleLowerCase()} name`}
               autoFocus
@@ -623,7 +679,7 @@ function AssetPickerPopover({
           <>
             {onCreateNew && (
               <button
-                aria-label={createNewLabel ?? `Create New ${assetTypeLabel}`}
+                aria-label={createNewLabel ?? `Create New ${assetTypeLabel}…`}
                 onClick={() => {
                   setCreateName(`New ${assetTypeLabel}`);
                   setCreateError('');
@@ -634,7 +690,7 @@ function AssetPickerPopover({
                 <span className="asset-thumbnail">
                   <Plus aria-hidden="true" size={18} />
                 </span>
-                <strong>{createNewLabel ?? `Create New ${assetTypeLabel}`}</strong>
+                <strong>{createNewLabel ?? `Create New ${assetTypeLabel}…`}</strong>
                 <small>Project asset</small>
               </button>
             )}

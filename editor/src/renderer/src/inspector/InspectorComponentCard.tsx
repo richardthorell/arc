@@ -16,7 +16,7 @@ import {
 } from '../ui';
 import type { UiPropertyCardField } from '../ui';
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
-import { AssetPicker, AssetPreview, MaterialPicker, PrefabPicker, TexturePicker } from './AssetPicker';
+import { AssetPicker, AssetPreview, FlowPicker, MaterialPicker, PrefabPicker, TexturePicker } from './AssetPicker';
 import { MaterialParameterSubsection } from './MaterialParameterSubsection';
 import { NumberControl, NumberControlLabel } from './InspectorControls';
 import type { InspectorProceduralMesh, Vec3, Vec4 } from './inspectorTypes';
@@ -490,14 +490,32 @@ function SchemaField<TContext extends object>({
   }
   if (field.type === 'asset') {
     if (field.assetKind === 'asset') {
+      if (field.createAssetKind === 'flow') {
+        return (
+          <FlowPicker
+            allowEmpty={field.allowEmpty}
+            allowedExtensions={field.allowedExtensions}
+            assetTypeIds={field.assetTypeId ? [field.assetTypeId] : undefined}
+            assets={assets}
+            label={field.label}
+            mixed={mixed}
+            referenceMode={field.referenceMode}
+            showLabel={false}
+            thumbnailProvider={thumbnailProvider}
+            value={(value as string) || ''}
+            onChange={(next) => onValue(next, true)}
+          />
+        );
+      }
       return (
         <AssetPicker
           allowEmpty={field.allowEmpty}
           allowedExtensions={field.allowedExtensions}
-          assetKinds={['scene', 'mesh', 'material', 'texture', 'shader', 'prefab', 'water']}
+          assetKinds={['scene', 'mesh', 'material', 'texture', 'shader', 'prefab', 'water', 'flow']}
           assetTypeIds={field.assetTypeId ? [field.assetTypeId] : undefined}
-          assetTypeLabel="Asset"
+          assetTypeLabel={field.assetTypeLabel ?? 'Asset'}
           assets={assets}
+          createAssetKind={field.createAssetKind}
           label={field.label}
           mixed={mixed}
           referenceMode={field.referenceMode}

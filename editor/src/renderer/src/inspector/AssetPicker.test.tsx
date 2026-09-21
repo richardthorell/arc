@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { arcAssetDragMime } from '../services/assetDragPayload';
-import { AssetPicker, MaterialPicker, TexturePicker } from './AssetPicker';
+import { AssetPicker, FlowPicker, MaterialPicker, TexturePicker } from './AssetPicker';
 
 const writeText = vi.fn().mockResolvedValue({ succeeded: true });
 const snapshot = vi.fn().mockResolvedValue({
@@ -225,6 +225,53 @@ describe('AssetPicker', () => {
     expect(asset.graph.nodes.some((node: { type: string }) => node.type === 'output')).toBe(true);
     await waitFor(() => expect(onChange).toHaveBeenCalledWith('GameContent/Hero Surface.arcmat'));
   });
+  it('creates and assigns a new Flow Graph from an empty asset picker', async () => {
+    const onChange = vi.fn();
+    render(<FlowPicker allowedExtensions={['.arcflow']} assets={[]} label="Graph" value="" onChange={onChange} />);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Choose Graph asset' }));
+
+    expect(screen.getByText('Select Flow Graph')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Create New Flow Graph…' })).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Create New Flow Graph…' }));
+    await user.clear(screen.getByLabelText('New flow graph name'));
+    await user.type(screen.getByLabelText('New flow graph name'), 'Game Startup');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText.mock.calls[0][0]).toBe('GameContent/Game Startup.arcflow');
+    const asset = JSON.parse(writeText.mock.calls[0][1]);
+    expect(asset.assetType).toBe('flow');
+    expect(asset.name).toBe('Game Startup');
+    expect(asset.graph.version).toBe(1);
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('GameContent/Game Startup.arcflow'));
+  });
+
+  it('shows an open-in-editor action for an assigned Flow Graph', () => {
+    render(
+      <FlowPicker
+        allowedExtensions={['.arcflow']}
+        assets={[
+          {
+            id: 'game-startup-flow',
+            name: 'Game Startup',
+            path: 'GameContent/Game Startup.arcflow',
+            kind: 'flow',
+            status: 'ready',
+            scope: 'project',
+          },
+        ]}
+        label="Graph"
+        value="GameContent/Game Startup.arcflow"
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Open Game Startup in Flow Graph Editor' })).toBeVisible();
+  });
+
   it('rejects cubemaps in Texture2D fields and accepts them in TextureCube fields', async () => {
     const assets = [
       {
