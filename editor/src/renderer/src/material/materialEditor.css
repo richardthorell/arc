@@ -462,16 +462,6 @@
   pointer-events: none;
 }
 
-.material-document-toolbar-label,
-.material-document-readonly,
-.material-document-compile-state {
-  color: var(--arc-color-text-muted);
-}
-
-.material-document-compile-state {
-  font-size: 10px;
-}
-
 .spinning {
   animation: arc-material-spin 900ms linear infinite;
 }
