@@ -791,7 +791,8 @@ int main(int argc, char** argv)
         std::find_if(descriptor.value().cook_profiles.begin(), descriptor.value().cook_profiles.end(),
                      [&](const auto& profile) { return profile.id == command.profile; });
     const bool requires_profile =
-        command.command == "cook" || ((command.command == "package" || command.command == "verify") && command.manifest.empty());
+        command.command == "cook" ||
+        ((command.command == "package" || command.command == "verify") && command.manifest.empty());
     if (requires_profile && selected_profile == descriptor.value().cook_profiles.end())
     {
         std::cerr << "Cook profile '" << command.profile << "' is not declared by the project\n";
@@ -1004,8 +1005,8 @@ int main(int argc, char** argv)
             if (!command.json)
             {
                 if (variants.size() > 1) std::cout << variant.texture_family << ": ";
-                std::cout << "packaged " << cooked.manifest.artifacts.size() << " artifacts into " << package.chunks.size()
-                          << " chunks\n";
+                std::cout << "packaged " << cooked.manifest.artifacts.size() << " artifacts into "
+                          << package.chunks.size() << " chunks\n";
             }
         }
         else if (command.command == "cook")
