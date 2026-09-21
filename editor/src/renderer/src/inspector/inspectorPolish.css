@@ -19,10 +19,16 @@
 .inspector-procedural-mesh-controls {
   --inspector-row-label: 140px;
   display: grid;
+  width: calc(100% - 10px);
   min-width: 0;
   margin: 3px 0 5px 10px;
   padding: 0 0 4px 10px;
+  box-sizing: border-box;
   border-left: 1px solid #303b44;
+}
+
+.inspector-material-parameters {
+  --inspector-row-label: clamp(170px, 30%, 230px);
 }
 
 .inspector-subsection-title {
@@ -66,6 +72,8 @@
 
 .inspector-material-parameter-list {
   display: grid;
+  width: 100%;
+  min-width: 0;
 }
 
 .inspector-material-parameter {
