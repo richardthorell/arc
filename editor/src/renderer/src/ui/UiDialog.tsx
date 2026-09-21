@@ -1,47 +1,82 @@
-import { useEffect, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
 import { UiIconButton } from './UiIconButton';
 
 import './UiDialog.css';
 
-type UiDialogProps = {
+export type UiDialogPosition = { x: number; y: number };
+
+export type UiDialogProps = {
+  ariaLabel?: string;
+  blurBackdrop?: boolean;
   children?: ReactNode;
   className?: string;
+  compact?: boolean;
+  draggable?: boolean;
   footer?: ReactNode;
   icon?: ReactNode;
+  initialPosition?: UiDialogPosition;
+  modal?: boolean;
   onClose?: () => void;
   preview?: boolean;
+  showCloseButton?: boolean;
   subtitle?: string;
   title?: string;
   width?: number;
+  zIndex?: CSSProperties['zIndex'];
 };
 
-type DialogPosition = { x: number; y: number };
 type DialogDrag = {
   pointer: { x: number; y: number };
-  position: DialogPosition;
+  position: UiDialogPosition;
 };
 
 const interactiveDragTarget = (target: EventTarget | null): boolean =>
   target instanceof Element && Boolean(target.closest('button, a, input, textarea, select'));
 
 export function UiDialog({
+  ariaLabel,
+  blurBackdrop = true,
   children,
   className,
+  compact = false,
+  draggable: draggableProp,
   footer,
   icon,
+  initialPosition,
+  modal = true,
   onClose,
   preview = false,
+  showCloseButton = true,
   subtitle,
   title,
   width = 520,
+  zIndex,
 }: UiDialogProps) {
-  const [position, setPosition] = useState<DialogPosition>({ x: 0, y: 0 });
+  const [position, setPosition] = useState<UiDialogPosition>(() => initialPosition ?? { x: 0, y: 0 });
   const [drag, setDrag] = useState<DialogDrag | null>(null);
-  const classes = ['ui-dialog-backdrop', preview ? 'is-preview' : ''].filter(Boolean).join(' ');
-  const dialogClasses = ['ui-dialog', drag ? 'is-dragging' : '', className].filter(Boolean).join(' ');
-  const draggable = !preview && Boolean(title || subtitle || icon || onClose);
+  const modeless = !modal && !preview;
+  const initialX = initialPosition?.x;
+  const initialY = initialPosition?.y;
+  const classes = [
+    'ui-dialog-backdrop',
+    preview ? 'is-preview' : '',
+    modeless ? 'is-modeless' : '',
+    !blurBackdrop ? 'is-no-blur' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const dialogClasses = ['ui-dialog', compact ? 'is-compact' : '', drag ? 'is-dragging' : '', className]
+    .filter(Boolean)
+    .join(' ');
+  const hasHeader = Boolean(title || subtitle || icon || onClose);
+  const draggable = draggableProp ?? (!preview && hasHeader);
+
+  useEffect(() => {
+    if (initialX === undefined || initialY === undefined) return;
+    setPosition({ x: initialX, y: initialY });
+  }, [initialX, initialY]);
 
   useEffect(() => {
     if (!drag) return;
@@ -70,21 +105,26 @@ export function UiDialog({
     setDrag({ pointer: { x: event.clientX, y: event.clientY }, position });
   };
 
+  const dialogStyle: CSSProperties = modeless
+    ? { width, left: position.x, top: position.y }
+    : { width, transform: preview ? undefined : `translate3d(${position.x}px, ${position.y}px, 0)` };
+
   return (
     <div
       className={classes}
+      style={zIndex !== undefined ? { zIndex } : undefined}
       onPointerDown={(event) => {
-        if (!preview && onClose && event.target === event.currentTarget) onClose();
+        if (!preview && modal && onClose && event.target === event.currentTarget) onClose();
       }}
     >
       <section
-        aria-label={title || 'Dialog'}
-        aria-modal={preview ? undefined : true}
+        aria-label={ariaLabel ?? title ?? 'Dialog'}
+        aria-modal={!preview && modal ? true : undefined}
         className={dialogClasses}
         role="dialog"
-        style={{ width, transform: preview ? undefined : `translate3d(${position.x}px, ${position.y}px, 0)` }}
+        style={dialogStyle}
       >
-        {(title || subtitle || icon || onClose) && (
+        {hasHeader && (
           <header
             className={draggable ? 'ui-dialog-header is-draggable' : 'ui-dialog-header'}
             onPointerDown={startDrag}
@@ -96,7 +136,7 @@ export function UiDialog({
                 {subtitle && <small>{subtitle}</small>}
               </span>
             </div>
-            {onClose && (
+            {onClose && showCloseButton && (
               <UiIconButton aria-label="Close dialog" label="Close dialog" onClick={onClose}>
                 <X size={15} />
               </UiIconButton>

@@ -32,6 +32,7 @@ describe('UiDropdown', () => {
     fireEvent.click(trigger);
     expect(screen.getByRole('option', { name: /Android/ })).toBeInTheDocument();
     expect(screen.getByTestId('android-icon')).toBeInTheDocument();
+    expect(screen.getByRole('listbox').parentElement).toBe(document.body);
 
     fireEvent.click(screen.getByRole('option', { name: /Android/ }));
     expect(onValueChange).toHaveBeenCalledWith('android');

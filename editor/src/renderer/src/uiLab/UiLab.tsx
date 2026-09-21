@@ -15,7 +15,7 @@ import {
 
 import { AssetPicker, MaterialPicker, PrefabPicker, TexturePicker } from '../inspector/AssetPicker';
 import type { AssetPickerItem } from '../inspector/AssetPicker';
-import { ColorControl, NumberControl, Vector3Control } from '../inspector/InspectorControls';
+import { NumberControl, Vector3Control } from '../inspector/InspectorControls';
 import { InspectorComponentCard } from '../inspector/InspectorComponentCard';
 import type { Vec3, Vec4 } from '../inspector/inspectorTypes';
 import { setPathValue } from '../inspector/propertySchema';
@@ -25,6 +25,7 @@ import { UiLabContentCards } from './UiLabContentCards';
 import { TerrainRange } from '../terrain/TerrainToolsPanel';
 import {
   UiButton,
+  UiColorControl,
   UiContextMenu,
   UiContextMenuItem,
   UiIconButton,
@@ -231,9 +232,9 @@ const uiHierarchy: readonly UiHierarchyNode[] = [
     children: [{ name: 'UiContextMenu', relation: 'wraps' }],
   },
   {
-    name: 'ColorControl',
-    relation: 'inspector control',
-    children: [{ name: 'UiColorControl', relation: 'adapter' }],
+    name: 'UiColorControl',
+    relation: 'shared color control',
+    children: [{ name: 'UiColorPicker', relation: 'opens popup' }],
   },
 ];
 
@@ -686,8 +687,17 @@ export function UiLab() {
               onPreview={setRoughness}
             />
           </LabCard>
-          <LabCard title="Color" caption="ColorControl">
-            <ColorControl label="Base Color" value={color} onCommit={setColor} onPreview={setColor} />
+          <LabCard title="Color" caption="UiColorControl">
+            <UiColorControl label="Base Color" value={color} onCommit={setColor} onPreview={setColor} />
+          </LabCard>
+          <LabCard title="HDR color" caption="UiColorControl">
+            <UiColorControl
+              allowAlpha={false}
+              label="Emissive"
+              maxChannelValue={16}
+              value={{ x: 3.2, y: 1.4, z: 0.35, w: 1 }}
+              onCommit={() => undefined}
+            />
           </LabCard>
           <LabCard title="Range + numeric" caption="TerrainRange">
             <TerrainRange

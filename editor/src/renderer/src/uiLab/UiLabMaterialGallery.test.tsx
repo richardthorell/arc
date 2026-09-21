@@ -26,10 +26,12 @@ describe('UI Lab material galleries', () => {
     expect(screen.queryByRole('application', { name: 'Material graph' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Material Preview')).not.toBeInTheDocument();
 
-    const red = screen.getByLabelText('Color R');
-    fireEvent.change(red, { target: { value: '0.75' } });
+    fireEvent.click(screen.getByLabelText('Open Color color picker'));
+    const red = screen.getByLabelText('Color R value');
+    fireEvent.change(red, { target: { value: '192' } });
     fireEvent.blur(red);
-    expect(red).toHaveValue('0.75');
+    expect(red).toHaveValue('192');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     const constant = screen.getByLabelText('Constant value');
     fireEvent.change(constant, { target: { value: '0.7' } });

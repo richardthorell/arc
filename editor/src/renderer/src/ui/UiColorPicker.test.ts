@@ -7,9 +7,10 @@ import {
   linearColorToHsv,
   linearToSrgb,
   srgbToLinear,
-} from './ColorPicker';
+  colorToCss,
+} from './UiColorPicker';
 
-describe('ARC color picker conversions', () => {
+describe('UiColorPicker conversions', () => {
   it('round trips scene-linear channels through sRGB', () => {
     for (const channel of [0, 0.003, 0.055, 0.18, 0.5, 1]) {
       expect(srgbToLinear(linearToSrgb(channel))).toBeCloseTo(channel, 6);
@@ -24,6 +25,12 @@ describe('ARC color picker conversions', () => {
     expect(restored.y).toBeCloseTo(original.y, 6);
     expect(restored.z).toBeCloseTo(original.z, 6);
     expect(restored.w).toBe(original.w);
+  });
+
+  it('normalizes HDR values for display without collapsing color ratios', () => {
+    const css = colorToCss({ x: 4, y: 1, z: 0.25, w: 1 });
+    expect(css).toMatch(/^rgba\(/);
+    expect(css).not.toBe('rgba(255, 255, 255, 1)');
   });
 
   it('parses and writes sRGB hexadecimal values with alpha', () => {

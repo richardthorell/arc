@@ -4,7 +4,7 @@ import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/Asse
 import type { EditorDocument } from '../editors/editorTypes';
 import { MaterialGraphEditor } from '../material/MaterialGraphEditor';
 import type { MaterialGraph } from '../material/materialGraphTypes';
-import { UiColorControl, UiNodeCard } from '../ui';
+import { UiColorControl, UiNodeCard, type UiColorValue } from '../ui';
 
 import '../material/materialEditor.css';
 import '../material/materialWorkspace.css';
@@ -86,7 +86,7 @@ function ParameterControl({
 }
 
 export function UiLabMaterialNodeCard() {
-  const [color, setColor] = useState<[number, number, number, number]>([0.42, 0.24, 0.12, 1]);
+  const [color, setColor] = useState<UiColorValue>({ x: 0.42, y: 0.24, z: 0.12, w: 1 });
   const [parameter, setParameter] = useState(true);
   const [parameterName, setParameterName] = useState('Base Color');
 
