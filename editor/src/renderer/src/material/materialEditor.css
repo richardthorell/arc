@@ -576,6 +576,15 @@
   display: inline-block;
 }
 
+.material-toolbar-compile {
+  width: 126px;
+}
+
+.material-toolbar-compile .ui-split-button-main.ui-button {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .material-toolbar-compile-success .ui-split-button-main.ui-button {
   color: var(--arc-color-success);
 }
