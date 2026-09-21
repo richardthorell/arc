@@ -95,5 +95,10 @@ TEST_CASE("native texture preview material exposes target and checker textures",
           result.texture_sources.end());
     CHECK(std::ranges::find(result.texture_sources, std::string_view{"__arc_texture_preview_checker__"}) !=
           result.texture_sources.end());
-    CHECK(result.material.shading_model == arc::render::material_shading_model::unlit);
+    CHECK(result.material.shading_model == arc::render::material_shading_model::standard);
+    CHECK(result.material.render_path == arc::render::material_render_path::deferred);
+    CHECK_FALSE(result.material.cast_shadows);
+    REQUIRE(result.material.runtime_program);
+    REQUIRE_FALSE(result.material.runtime_program->passes.empty());
+    CHECK(result.material.runtime_program->passes.front().pass == arc::render::material_pass::gbuffer);
 }
