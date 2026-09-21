@@ -566,22 +566,31 @@
   align-self: center;
 }
 
+.material-toolbar-view-menu {
+  margin-left: 8px;
+}
+
 .material-toolbar-check-placeholder {
   width: 13px;
   height: 13px;
   display: inline-block;
 }
 
-.material-toolbar-compile-success .ui-button {
+.material-toolbar-compile-success .ui-split-button-main.ui-button {
   color: var(--arc-color-success);
 }
 
-.material-toolbar-compile-error .ui-button {
+.material-toolbar-compile-error .ui-split-button-main.ui-button {
   color: var(--arc-color-danger);
 }
 
-.material-toolbar-compile-busy .ui-button {
+.material-toolbar-compile-busy .ui-split-button-main.ui-button {
   color: var(--arc-color-accent);
+}
+
+.material-toolbar-compile .ui-split-button-menu-trigger.ui-button,
+.material-toolbar-compile .ui-split-button-option.ui-button {
+  color: var(--arc-color-text);
 }
 
 .material-graph-canvas.hide-grid {
