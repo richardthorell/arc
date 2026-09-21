@@ -157,10 +157,14 @@ export function MaterialGraphWithInteractions({
   document,
   graph,
   loaded = true,
+  showGrid = true,
+  dimUnrelated = false,
 }: {
   document: EditorDocument;
   graph: MaterialGraph;
   loaded?: boolean;
+  showGrid?: boolean;
+  dimUnrelated?: boolean;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [wires, setWires] = useState<MaterialWireOverlay[]>([]);
@@ -168,8 +172,16 @@ export function MaterialGraphWithInteractions({
   const [hoveredPin, setHoveredPin] = useState<HoveredTooltip | null>(null);
 
   const editor = useMemo(
-    () => <MaterialGraphEditor document={document} graph={graph} loaded={loaded} />,
-    [document, graph, loaded],
+    () => (
+      <MaterialGraphEditor
+        document={document}
+        graph={graph}
+        loaded={loaded}
+        showGrid={showGrid}
+        dimUnrelated={dimUnrelated}
+      />
+    ),
+    [dimUnrelated, document, graph, loaded, showGrid],
   );
 
   const pinMetadata = useMemo(() => {
