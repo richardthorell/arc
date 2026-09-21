@@ -567,15 +567,15 @@
   display: inline-block;
 }
 
-.material-toolbar-compile-success {
+.material-toolbar-compile-success .ui-button {
   color: var(--arc-color-success);
 }
 
-.material-toolbar-compile-error {
+.material-toolbar-compile-error .ui-button {
   color: var(--arc-color-danger);
 }
 
-.material-toolbar-compile-busy {
+.material-toolbar-compile-busy .ui-button {
   color: var(--arc-color-accent);
 }
 
