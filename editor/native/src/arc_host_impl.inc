@@ -980,6 +980,11 @@ void cleanup_asset_preview_surface(viewport_surface_registry::surface_state& sur
     if (!surface.preview_scene) return;
     arc_clear_preview_imported_content(*surface.preview_scene, renderer);
     surface.preview_scene->terrain_render_proxies.clear(renderer);
+    if (surface.preview_kind == asset_preview_kind::texture)
+    {
+        if (surface.preview_material.valid()) (void)renderer.destroy_material(surface.preview_material);
+        if (surface.preview_texture.valid()) (void)renderer.destroy_texture(surface.preview_texture);
+    }
     if (surface.preview_mesh.valid()) (void)renderer.destroy_mesh(surface.preview_mesh);
     if (surface.preview_scene->environment_lighting_resource.valid())
         (void)renderer.destroy_environment(surface.preview_scene->environment_lighting_resource);
@@ -987,6 +992,9 @@ void cleanup_asset_preview_surface(viewport_surface_registry::surface_state& sur
     surface.preview_entity = {};
     surface.preview_mesh = {};
     surface.preview_material = {};
+    surface.preview_texture = {};
+    surface.preview_texture_material_data = {};
+    surface.preview_texture_realized_mip = std::numeric_limits<std::uint32_t>::max();
     surface.preview_material_generation = 0;
     surface.preview_live_material_generation = 0;
     surface.preview_asset_generation = 0;
