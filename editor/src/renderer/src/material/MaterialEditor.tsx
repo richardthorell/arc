@@ -113,7 +113,10 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
   );
 
   useEffect(() => {
-    if (!state.message) return;
+    if (!state.message) {
+      setToast(null);
+      return;
+    }
     toastSequenceRef.current += 1;
     const id = toastSequenceRef.current;
     setToast({ id, message: state.message });
