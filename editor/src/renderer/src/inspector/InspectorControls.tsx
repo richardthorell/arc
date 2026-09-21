@@ -3,6 +3,9 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import { UiNumericInput } from '../ui/UiNumericInput';
 import type { NumberFieldSchema } from './propertySchema';
 
+const clamp = (value: number, min?: number, max?: number) =>
+  Math.min(Math.max(value, min ?? -Infinity), max ?? Infinity);
+
 export function NumberControlLabel({
   field,
   value,
