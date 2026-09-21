@@ -1659,8 +1659,10 @@ host_response arc_host::query(const host_query_envelope& query) const
     {
         payload["assetPreviewKind"] = asset_preview_kind_name(viewport_surface->preview_kind);
         payload["assetPreviewGuid"] = assets::to_string(viewport_surface->preview_guid);
-        payload["assetPreviewReady"] = viewport_surface->preview_kind != asset_preview_kind::material ||
-                                       viewport_surface->preview_ready;
+        payload["assetPreviewReady"] =
+            (viewport_surface->preview_kind != asset_preview_kind::material &&
+             viewport_surface->preview_kind != asset_preview_kind::texture) ||
+            viewport_surface->preview_ready;
         if (viewport_surface->preview_kind == asset_preview_kind::material)
         {
             payload["assetPreviewMesh"] =
