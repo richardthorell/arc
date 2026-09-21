@@ -91,9 +91,12 @@ const materialSubmenuPosition = (anchor: MaterialSubmenuAnchor, itemCount: numbe
   const roomOnRight =
     anchor.right - materialSubmenuOverlap + materialSubmenuWidth + materialSubmenuMargin <= window.innerWidth;
   const left = roomOnRight
-    ? Math.min(
-        anchor.right - materialSubmenuOverlap,
-        window.innerWidth - materialSubmenuWidth - materialSubmenuMargin,
+    ? Math.max(
+        materialSubmenuMargin,
+        Math.min(
+          anchor.right - materialSubmenuOverlap,
+          window.innerWidth - materialSubmenuWidth - materialSubmenuMargin,
+        ),
       )
     : Math.max(materialSubmenuMargin, anchor.left - materialSubmenuWidth + materialSubmenuOverlap);
   return {
