@@ -44,6 +44,7 @@ export type MaterialDocumentState = {
   liveUpdate: boolean;
   showGrid: boolean;
   dimUnrelated: boolean;
+  showStats: boolean;
   schemaUpgradePending: boolean;
   sourceVersion: number;
   message: string;
@@ -136,6 +137,7 @@ const initialState = (document: EditorDocument): MaterialDocumentState => ({
   liveUpdate: true,
   showGrid: true,
   dimUnrelated: false,
+  showStats: false,
   schemaUpgradePending: false,
   sourceVersion: currentMaterialAuthoringVersion,
   message: '',
@@ -222,12 +224,13 @@ export const setMaterialLiveUpdate = (document: EditorDocument, enabled: boolean
 
 export const setMaterialGraphView = (
   document: EditorDocument,
-  patch: Partial<Pick<MaterialDocumentState, 'showGrid' | 'dimUnrelated'>>,
+  patch: Partial<Pick<MaterialDocumentState, 'showGrid' | 'dimUnrelated' | 'showStats'>>,
 ) => {
   const current = ensureState(document);
   setState(document.id, {
     showGrid: patch.showGrid ?? current.showGrid,
     dimUnrelated: patch.dimUnrelated ?? current.dimUnrelated,
+    showStats: patch.showStats ?? current.showStats,
   });
 };
 
