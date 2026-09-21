@@ -1481,6 +1481,7 @@ struct host_viewport_set_render_options_command
     bool texture_preview_channel_b{true};
     bool texture_preview_channel_a{true};
     float texture_preview_exposure{};
+    float texture_preview_zoom{1.0f};
     std::string texture_preview_sampling{"linear"};
 };
 
