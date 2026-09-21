@@ -493,7 +493,7 @@ describe('data-driven InspectorPanel', () => {
     vi.useFakeTimers();
     const command = vi.fn().mockResolvedValue({ succeeded: true });
     render(<InspectorPanel snapshot={cameraSnapshot()} command={command} refresh={async () => undefined} />);
-    const scrubber = document.querySelector('.inspector-number-scrub.axis-x');
+    const scrubber = document.querySelector('.ui-numeric-input-scrub.axis-x');
     expect(scrubber).not.toBeNull();
     fireEvent.pointerDown(scrubber!, { button: 0, clientX: 0 });
     fireEvent.pointerMove(window, { clientX: 10 });
