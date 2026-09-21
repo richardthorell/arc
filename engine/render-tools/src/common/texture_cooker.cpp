@@ -249,12 +249,16 @@ std::array<std::uint8_t, 64> gather_rgba_block(std::span<const std::byte> source
 std::vector<std::byte> compress_bc_mip(std::span<const std::byte> source, std::uint32_t width, std::uint32_t height,
                                        texture_format format)
 {
-    const auto blocks_x = std::max(1u, (width + 3u) / 4u);
-    const auto blocks_y = std::max(1u, (height + 3u) / 4u);
+    const auto layout = texture_format_metadata(format);
+    if (layout.family != texture_format_family::bc || layout.block_width != 4 || layout.block_height != 4 ||
+        layout.bytes_per_block == 0)
+        return {};
+    const auto blocks_x = std::max(1u, (width + layout.block_width - 1u) / layout.block_width);
+    const auto blocks_y = std::max(1u, (height + layout.block_height - 1u) / layout.block_height);
     const bool bc1 = format == texture_format::bc1_rgba_unorm || format == texture_format::bc1_rgba_srgb;
     const bool bc4 = format == texture_format::bc4_r_unorm;
     const bool bc5 = format == texture_format::bc5_rg_unorm;
-    const std::uint32_t block_bytes = bc1 || bc4 ? 8u : 16u;
+    const auto block_bytes = static_cast<std::uint32_t>(layout.bytes_per_block);
     std::vector<std::byte> result(static_cast<std::size_t>(blocks_x) * blocks_y * block_bytes);
     for (std::uint32_t block_y = 0; block_y < blocks_y; ++block_y)
         for (std::uint32_t block_x = 0; block_x < blocks_x; ++block_x)

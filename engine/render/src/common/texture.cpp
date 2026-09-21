@@ -73,6 +73,18 @@ texture_format with_srgb(texture_format format) noexcept
             return texture_format::bc3_rgba_srgb;
         case texture_format::bc7_rgba_unorm:
             return texture_format::bc7_rgba_srgb;
+        case texture_format::astc_4x4_unorm:
+            return texture_format::astc_4x4_srgb;
+        case texture_format::astc_5x5_unorm:
+            return texture_format::astc_5x5_srgb;
+        case texture_format::astc_6x6_unorm:
+            return texture_format::astc_6x6_srgb;
+        case texture_format::astc_8x8_unorm:
+            return texture_format::astc_8x8_srgb;
+        case texture_format::etc2_rgb8_unorm:
+            return texture_format::etc2_rgb8_srgb;
+        case texture_format::etc2_rgba8_unorm:
+            return texture_format::etc2_rgba8_srgb;
         default:
             return format;
     }
@@ -92,6 +104,18 @@ texture_format with_linear(texture_format format) noexcept
             return texture_format::bc3_rgba_unorm;
         case texture_format::bc7_rgba_srgb:
             return texture_format::bc7_rgba_unorm;
+        case texture_format::astc_4x4_srgb:
+            return texture_format::astc_4x4_unorm;
+        case texture_format::astc_5x5_srgb:
+            return texture_format::astc_5x5_unorm;
+        case texture_format::astc_6x6_srgb:
+            return texture_format::astc_6x6_unorm;
+        case texture_format::astc_8x8_srgb:
+            return texture_format::astc_8x8_unorm;
+        case texture_format::etc2_rgb8_srgb:
+            return texture_format::etc2_rgb8_unorm;
+        case texture_format::etc2_rgba8_srgb:
+            return texture_format::etc2_rgba8_unorm;
         default:
             return format;
     }
@@ -413,49 +437,13 @@ void store_rgba8_mip_chain(texture_data& texture, const unsigned char* decoded, 
     texture.mip_levels = static_cast<std::uint32_t>(texture.mips.size());
 }
 
-bool format_block_info(texture_format format, std::uint32_t& block_width, std::uint32_t& block_bytes) noexcept
-{
-    block_width = 4;
-    switch (format)
-    {
-        case texture_format::bc1_rgba_unorm:
-        case texture_format::bc1_rgba_srgb:
-        case texture_format::bc4_r_unorm:
-            block_bytes = 8;
-            return true;
-        case texture_format::bc2_rgba_unorm:
-        case texture_format::bc2_rgba_srgb:
-        case texture_format::bc3_rgba_unorm:
-        case texture_format::bc3_rgba_srgb:
-        case texture_format::bc5_rg_unorm:
-        case texture_format::bc6h_rgb_ufloat:
-        case texture_format::bc7_rgba_unorm:
-        case texture_format::bc7_rgba_srgb:
-            block_bytes = 16;
-            return true;
-        default:
-            block_width = 1;
-            block_bytes = 0;
-            return false;
-    }
-}
-
 std::size_t mip_payload_size(texture_format format, std::uint32_t width, std::uint32_t height)
 {
-    std::uint32_t block_width{};
-    std::uint32_t block_bytes{};
-    if (format_block_info(format, block_width, block_bytes))
-    {
-        const auto blocks_x = std::max(1u, (width + block_width - 1u) / block_width);
-        const auto blocks_y = std::max(1u, (height + block_width - 1u) / block_width);
-        return static_cast<std::size_t>(blocks_x) * blocks_y * block_bytes;
-    }
-
-    if (format == texture_format::rgba8_unorm || format == texture_format::rgba8_srgb)
-        return static_cast<std::size_t>(width) * height * 4u;
-    if (format == texture_format::rgba16f) return static_cast<std::size_t>(width) * height * 8u;
-    if (format == texture_format::rgba32f) return static_cast<std::size_t>(width) * height * 16u;
-    return 0;
+    const auto layout = texture_format_metadata(format);
+    if (layout.bytes_per_block == 0 || width == 0 || height == 0) return 0;
+    const auto blocks_x = std::max(1u, (width + layout.block_width - 1u) / layout.block_width);
+    const auto blocks_y = std::max(1u, (height + layout.block_height - 1u) / layout.block_height);
+    return static_cast<std::size_t>(blocks_x) * blocks_y * layout.bytes_per_block;
 }
 
 bool map_dxgi_format(std::uint32_t dxgi, texture_format& format, bool& compressed) noexcept
@@ -597,11 +585,8 @@ texture_load_result parse_dds_texture(const std::vector<std::byte>& bytes, std::
     texture.width = width;
     texture.height = height;
     texture.format = format;
-    texture.color_space = format == texture_format::rgba8_srgb || format == texture_format::bc1_rgba_srgb ||
-                                  format == texture_format::bc2_rgba_srgb || format == texture_format::bc3_rgba_srgb ||
-                                  format == texture_format::bc7_rgba_srgb
-                              ? texture_color_space::srgb
-                              : texture_color_space::linear;
+    texture.color_space =
+        texture_format_metadata(format).srgb ? texture_color_space::srgb : texture_color_space::linear;
     texture.mime_type = "image/vnd-ms.dds";
     texture.array_layers = array_layers;
     texture.compressed = compressed;

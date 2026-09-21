@@ -125,8 +125,119 @@ enum class texture_format : std::uint8_t
     bc5_rg_unorm,
     bc6h_rgb_ufloat,
     bc7_rgba_unorm,
-    bc7_rgba_srgb
+    bc7_rgba_srgb,
+    astc_4x4_unorm,
+    astc_4x4_srgb,
+    astc_5x5_unorm,
+    astc_5x5_srgb,
+    astc_6x6_unorm,
+    astc_6x6_srgb,
+    astc_8x8_unorm,
+    astc_8x8_srgb,
+    etc2_rgb8_unorm,
+    etc2_rgb8_srgb,
+    etc2_rgba8_unorm,
+    etc2_rgba8_srgb,
+    eac_r11_unorm,
+    eac_r11_snorm,
+    eac_rg11_unorm,
+    eac_rg11_snorm
 };
+
+/** @brief Physical compression family used by a renderer texture format. */
+enum class texture_format_family : std::uint8_t
+{
+    uncompressed,
+    bc,
+    astc,
+    etc2_eac
+};
+
+/** @brief Backend-neutral physical layout and interpretation of a texture format. */
+struct texture_format_info
+{
+    texture_format_family family{texture_format_family::uncompressed};
+    std::uint8_t block_width{1};
+    std::uint8_t block_height{1};
+    std::uint8_t bytes_per_block{};
+    std::uint8_t channels{};
+    bool compressed{};
+    bool srgb{};
+    bool hdr{};
+    bool signed_normalized{};
+};
+
+/** @brief Return the physical block layout and interpretation for a texture format. */
+[[nodiscard]] constexpr texture_format_info texture_format_metadata(texture_format format) noexcept
+{
+    switch (format)
+    {
+        case texture_format::rgba8_unorm:
+            return {.bytes_per_block = 4, .channels = 4};
+        case texture_format::rgba8_srgb:
+            return {.bytes_per_block = 4, .channels = 4, .srgb = true};
+        case texture_format::rgba16f:
+            return {.bytes_per_block = 8, .channels = 4, .hdr = true};
+        case texture_format::rgba32f:
+            return {.bytes_per_block = 16, .channels = 4, .hdr = true};
+        case texture_format::bc1_rgba_unorm:
+            return {texture_format_family::bc, 4, 4, 8, 4, true};
+        case texture_format::bc1_rgba_srgb:
+            return {texture_format_family::bc, 4, 4, 8, 4, true, true};
+        case texture_format::bc2_rgba_unorm:
+        case texture_format::bc3_rgba_unorm:
+        case texture_format::bc7_rgba_unorm:
+            return {texture_format_family::bc, 4, 4, 16, 4, true};
+        case texture_format::bc2_rgba_srgb:
+        case texture_format::bc3_rgba_srgb:
+        case texture_format::bc7_rgba_srgb:
+            return {texture_format_family::bc, 4, 4, 16, 4, true, true};
+        case texture_format::bc4_r_unorm:
+            return {texture_format_family::bc, 4, 4, 8, 1, true};
+        case texture_format::bc5_rg_unorm:
+            return {texture_format_family::bc, 4, 4, 16, 2, true};
+        case texture_format::bc6h_rgb_ufloat:
+            return {texture_format_family::bc, 4, 4, 16, 3, true, false, true};
+        case texture_format::astc_4x4_unorm:
+            return {texture_format_family::astc, 4, 4, 16, 4, true};
+        case texture_format::astc_4x4_srgb:
+            return {texture_format_family::astc, 4, 4, 16, 4, true, true};
+        case texture_format::astc_5x5_unorm:
+            return {texture_format_family::astc, 5, 5, 16, 4, true};
+        case texture_format::astc_5x5_srgb:
+            return {texture_format_family::astc, 5, 5, 16, 4, true, true};
+        case texture_format::astc_6x6_unorm:
+            return {texture_format_family::astc, 6, 6, 16, 4, true};
+        case texture_format::astc_6x6_srgb:
+            return {texture_format_family::astc, 6, 6, 16, 4, true, true};
+        case texture_format::astc_8x8_unorm:
+            return {texture_format_family::astc, 8, 8, 16, 4, true};
+        case texture_format::astc_8x8_srgb:
+            return {texture_format_family::astc, 8, 8, 16, 4, true, true};
+        case texture_format::etc2_rgb8_unorm:
+            return {texture_format_family::etc2_eac, 4, 4, 8, 3, true};
+        case texture_format::etc2_rgb8_srgb:
+            return {texture_format_family::etc2_eac, 4, 4, 8, 3, true, true};
+        case texture_format::etc2_rgba8_unorm:
+            return {texture_format_family::etc2_eac, 4, 4, 16, 4, true};
+        case texture_format::etc2_rgba8_srgb:
+            return {texture_format_family::etc2_eac, 4, 4, 16, 4, true, true};
+        case texture_format::eac_r11_unorm:
+            return {texture_format_family::etc2_eac, 4, 4, 8, 1, true};
+        case texture_format::eac_r11_snorm:
+            return {texture_format_family::etc2_eac, 4, 4, 8, 1, true, false, false, true};
+        case texture_format::eac_rg11_unorm:
+            return {texture_format_family::etc2_eac, 4, 4, 16, 2, true};
+        case texture_format::eac_rg11_snorm:
+            return {texture_format_family::etc2_eac, 4, 4, 16, 2, true, false, false, true};
+    }
+    return {};
+}
+
+[[nodiscard]] constexpr bool valid_texture_format(texture_format format) noexcept
+{
+    return texture_format_metadata(format).bytes_per_block != 0;
+}
 
 /** @brief Backend-neutral texture dimensionality. */
 enum class texture_dimension : std::uint8_t

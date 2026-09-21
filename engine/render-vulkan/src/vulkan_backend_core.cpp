@@ -1726,6 +1726,38 @@ std::optional<VkFormat> vulkan_render_backend::vulkan_texture_format(texture_for
             return VK_FORMAT_BC7_UNORM_BLOCK;
         case texture_format::bc7_rgba_srgb:
             return VK_FORMAT_BC7_SRGB_BLOCK;
+        case texture_format::astc_4x4_unorm:
+            return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
+        case texture_format::astc_4x4_srgb:
+            return VK_FORMAT_ASTC_4x4_SRGB_BLOCK;
+        case texture_format::astc_5x5_unorm:
+            return VK_FORMAT_ASTC_5x5_UNORM_BLOCK;
+        case texture_format::astc_5x5_srgb:
+            return VK_FORMAT_ASTC_5x5_SRGB_BLOCK;
+        case texture_format::astc_6x6_unorm:
+            return VK_FORMAT_ASTC_6x6_UNORM_BLOCK;
+        case texture_format::astc_6x6_srgb:
+            return VK_FORMAT_ASTC_6x6_SRGB_BLOCK;
+        case texture_format::astc_8x8_unorm:
+            return VK_FORMAT_ASTC_8x8_UNORM_BLOCK;
+        case texture_format::astc_8x8_srgb:
+            return VK_FORMAT_ASTC_8x8_SRGB_BLOCK;
+        case texture_format::etc2_rgb8_unorm:
+            return VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK;
+        case texture_format::etc2_rgb8_srgb:
+            return VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK;
+        case texture_format::etc2_rgba8_unorm:
+            return VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK;
+        case texture_format::etc2_rgba8_srgb:
+            return VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK;
+        case texture_format::eac_r11_unorm:
+            return VK_FORMAT_EAC_R11_UNORM_BLOCK;
+        case texture_format::eac_r11_snorm:
+            return VK_FORMAT_EAC_R11_SNORM_BLOCK;
+        case texture_format::eac_rg11_unorm:
+            return VK_FORMAT_EAC_R11G11_UNORM_BLOCK;
+        case texture_format::eac_rg11_snorm:
+            return VK_FORMAT_EAC_R11G11_SNORM_BLOCK;
     }
     return std::nullopt;
 }
