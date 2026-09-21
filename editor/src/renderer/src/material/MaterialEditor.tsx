@@ -445,7 +445,6 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
           )}
         </div>
       </aside>
-
     </section>
   );
 }

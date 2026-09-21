@@ -9,16 +9,7 @@ import { UiSlider } from './UiSlider';
 describe('UiSlider', () => {
   it('exposes range semantics and emits numeric values', () => {
     const onValueChange = vi.fn();
-    render(
-      <UiSlider
-        aria-label="Zoom"
-        max={180}
-        min={35}
-        step={5}
-        value={100}
-        onValueChange={onValueChange}
-      />,
-    );
+    render(<UiSlider aria-label="Zoom" max={180} min={35} step={5} value={100} onValueChange={onValueChange} />);
 
     const slider = screen.getByRole('slider', { name: 'Zoom' });
     expect(slider).toHaveAttribute('min', '35');

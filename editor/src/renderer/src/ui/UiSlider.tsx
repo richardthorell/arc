@@ -13,16 +13,7 @@ export type UiSliderProps = Omit<
   onValueChange: (value: number) => void;
 };
 
-export function UiSlider({
-  min,
-  max,
-  step = 1,
-  value,
-  onValueChange,
-  className,
-  style,
-  ...props
-}: UiSliderProps) {
+export function UiSlider({ min, max, step = 1, value, onValueChange, className, style, ...props }: UiSliderProps) {
   const range = Math.max(Number.EPSILON, max - min);
   const progress = Math.min(1, Math.max(0, (value - min) / range));
   const sliderStyle = {
