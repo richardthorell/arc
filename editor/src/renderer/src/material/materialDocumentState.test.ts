@@ -9,6 +9,8 @@ import {
   loadMaterialDocument,
   replaceMaterialGraph,
   replaceMaterialSettings,
+  setMaterialGraphView,
+  setMaterialLiveUpdate,
 } from './materialDocumentState';
 import { cloneMaterialGraph, createDefaultMaterialGraph } from './materialGraphTypes';
 
@@ -104,6 +106,38 @@ describe('material live preview compilation', () => {
 
     await vi.advanceTimersByTimeAsync(250);
     expect(command).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('material toolbar session controls', () => {
+  it('can pause and resume live graph compilation', async () => {
+    await loadMaterialDocument(document, true);
+    await vi.advanceTimersByTimeAsync(250);
+    command.mockClear();
+
+    setMaterialLiveUpdate(document, false);
+    const edited = cloneMaterialGraph(getMaterialDocumentState(document).graph);
+    const constant = edited.nodes.find((node) => node.type === 'constant');
+    expect(constant).toBeDefined();
+    constant!.values.value = 0.35;
+    replaceMaterialGraph(document, edited);
+
+    await vi.advanceTimersByTimeAsync(250);
+    expect(command).not.toHaveBeenCalled();
+
+    setMaterialLiveUpdate(document, true);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(command).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps graph view preferences in editor session state', async () => {
+    await loadMaterialDocument(document, true);
+
+    setMaterialGraphView(document, { showGrid: false, dimUnrelated: true });
+
+    const state = getMaterialDocumentState(document);
+    expect(state.showGrid).toBe(false);
+    expect(state.dimUnrelated).toBe(true);
   });
 });
 
