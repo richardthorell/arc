@@ -237,6 +237,11 @@ const uiHierarchy: readonly UiHierarchyNode[] = [
     relation: 'shared color control',
     children: [{ name: 'UiColorPicker', relation: 'opens popup' }],
   },
+  {
+    name: 'UiNumericInput',
+    relation: 'shared numeric input',
+    children: [{ name: 'UiVector3Control', relation: 'composes' }],
+  },
 ];
 
 function HierarchyBranch({ node }: { node: UiHierarchyNode }) {
