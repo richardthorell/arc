@@ -725,6 +725,158 @@ bool refresh_asset_preview_model(HostState& host, viewport_surface_registry::sur
 }
 
 template <class HostState>
+bool refresh_asset_preview_texture(HostState& host, viewport_surface_registry::surface_state& surface)
+{
+    if (surface.preview_kind != asset_preview_kind::texture || !surface.preview_scene) return true;
+    if (!surface.preview_guid.valid())
+    {
+        surface.preview_error = "Texture preview viewport has an invalid asset GUID";
+        return false;
+    }
+    if (!host.asset_registry)
+    {
+        surface.preview_error = "Texture preview is waiting for the project asset registry";
+        return false;
+    }
+    if (!host.renderer)
+    {
+        surface.preview_error = "Texture preview renderer is unavailable";
+        return false;
+    }
+
+    const auto asset = host.asset_registry->find(surface.preview_guid);
+    if (!asset)
+    {
+        surface.preview_error = "Texture preview asset is not registered";
+        return false;
+    }
+    if (asset->type != assets::asset_types::texture_2d)
+    {
+        surface.preview_error = "Texture preview GUID does not reference a Texture2D asset";
+        return false;
+    }
+
+    if (surface.preview_texture.valid() && asset->generation == surface.preview_asset_generation &&
+        surface.preview_texture_realized_mip == surface.preview_texture_mip)
+        return true;
+
+    const auto resolved =
+        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, asset->source_path);
+    if (!resolved)
+    {
+        surface.preview_error =
+            "Texture preview source path could not be resolved: " + asset->source_path.generic_string();
+        return false;
+    }
+
+    auto loaded = render::load_texture_asset(resolved->path);
+    if (!loaded.succeeded())
+    {
+        surface.preview_error = "Texture preview failed to load: " + loaded.message;
+        return false;
+    }
+    if (loaded.texture.dimension != render::texture_dimension::texture_2d)
+    {
+        surface.preview_error = "Texture Preview V1 supports Texture2D assets only";
+        return false;
+    }
+
+    const auto mip_count =
+        loaded.texture.mips.empty() ? 1u : static_cast<std::uint32_t>(loaded.texture.mips.size());
+    const auto mip = std::min(surface.preview_texture_mip, mip_count - 1u);
+    auto isolated = build_texture_preview_mip(loaded.texture, mip);
+    if (!isolated.succeeded())
+    {
+        surface.preview_error = isolated.message;
+        return false;
+    }
+
+    if (surface.preview_texture.valid())
+    {
+        if (!host.renderer->update_texture(surface.preview_texture, std::move(isolated.texture)))
+        {
+            surface.preview_error = "Renderer could not update the native texture preview resource";
+            return false;
+        }
+    }
+    else
+    {
+        surface.preview_texture = host.renderer->create_texture(std::move(isolated.texture));
+        if (!surface.preview_texture.valid())
+        {
+            surface.preview_error = "Renderer could not upload the native texture preview resource";
+            return false;
+        }
+    }
+
+    if (!surface.preview_material.valid())
+    {
+        auto realized = realize_texture_preview_material(surface.preview_texture, surface.preview_texture_options);
+        if (!realized.succeeded)
+        {
+            surface.preview_error = realized.message;
+            return false;
+        }
+        surface.preview_texture_material_data = std::move(realized.material);
+        surface.preview_material = host.renderer->create_material(surface.preview_texture_material_data);
+        if (!surface.preview_material.valid())
+        {
+            surface.preview_error = "Renderer could not create the native texture preview material";
+            return false;
+        }
+        auto* mesh_renderer =
+            surface.preview_scene->scene.template try_get<scene::mesh_renderer_component>(surface.preview_entity);
+        if (!mesh_renderer)
+        {
+            surface.preview_error = "Texture preview plane has no mesh renderer";
+            return false;
+        }
+        mesh_renderer->material = surface.preview_material;
+        mesh_renderer->casts_shadows = false;
+        mesh_renderer->receives_shadows = false;
+    }
+    else
+    {
+        surface.preview_texture_material_data.runtime_textures = {surface.preview_texture};
+        apply_texture_preview_options(surface.preview_texture_material_data, surface.preview_texture_options);
+        if (!host.renderer->update_material(surface.preview_material, surface.preview_texture_material_data))
+        {
+            surface.preview_error = "Renderer could not update the native texture preview material";
+            return false;
+        }
+    }
+
+    const float maximum =
+        static_cast<float>(std::max(1u, std::max(loaded.texture.width >> mip, loaded.texture.height >> mip)));
+    const float width = static_cast<float>(std::max(1u, loaded.texture.width >> mip)) / maximum;
+    const float height = static_cast<float>(std::max(1u, loaded.texture.height >> mip)) / maximum;
+    if (auto* transform =
+            surface.preview_scene->scene.template try_get<scene::transform_component>(surface.preview_entity))
+        transform->set_scale({width, 1.0f, height});
+
+    if (auto* camera =
+            surface.preview_scene->scene.template try_get<scene::camera_component>(surface.preview_scene->camera_entity))
+    {
+        camera->projection = scene::camera_projection::orthographic;
+        camera->orthographic_height = 1.15f;
+        camera->near_plane = 0.01f;
+        camera->far_plane = 10.0f;
+        camera->clear_color = {0.055f, 0.055f, 0.06f, 1.0f};
+        camera->exposure.mode = render::exposure_mode::manual;
+        camera->exposure.manual_ev100 = 0.0f;
+        camera->exposure.compensation_ev = 0.0f;
+        camera->anti_aliasing = render::camera_anti_aliasing_override::disabled;
+    }
+
+    surface.preview_asset_generation = asset->generation;
+    surface.preview_texture_mip = mip;
+    surface.preview_texture_realized_mip = mip;
+    surface.preview_ready = true;
+    surface.preview_error.clear();
+    return true;
+}
+
+template <class HostState>
 bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surface_state& surface)
 {
     if (surface.preview_kind == asset_preview_kind::none) return true;
