@@ -31,10 +31,10 @@ jobs:
             editor/native/src/arc_host_impl.inc \
             editor/native/src/texture_preview_realizer.cpp
           npx --prefix editor prettier --write \
-            src/assetPreview/AssetPreviewViewport.tsx \
-            src/texture/TextureEditor.tsx \
-            src/texture/TextureEditorToolbar.tsx \
-            src/texture/textureEditorViewState.ts
+            editor/src/renderer/src/assetPreview/AssetPreviewViewport.tsx \
+            editor/src/renderer/src/texture/TextureEditor.tsx \
+            editor/src/renderer/src/texture/TextureEditorToolbar.tsx \
+            editor/src/renderer/src/texture/textureEditorViewState.ts
       - name: Commit formatting
         run: |
           git config user.name "github-actions[bot]"
