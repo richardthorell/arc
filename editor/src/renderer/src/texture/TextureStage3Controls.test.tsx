@@ -68,10 +68,10 @@ describe('TextureStage3Controls', () => {
     const slider = await screen.findByLabelText('Brightness slider');
     fireEvent.change(slider, { target: { value: '0.6' } });
     expect(preview).toHaveBeenCalled();
-    expect((screen.getByRole('spinbutton', { name: 'Brightness' }) as HTMLInputElement).value).toBe('0.6');
+    expect((screen.getByLabelText('Brightness') as HTMLInputElement).value).toBe('0.60');
 
     fireEvent.click(screen.getByLabelText('Reset Brightness'));
-    expect((screen.getByRole('spinbutton', { name: 'Brightness' }) as HTMLInputElement).value).toBe('0');
+    expect((screen.getByLabelText('Brightness') as HTMLInputElement).value).toBe('0.00');
     await waitFor(() => expect(command).toHaveBeenCalled());
     window.removeEventListener('arc:texture-settings-preview', preview);
   });
