@@ -42,7 +42,7 @@ afterEach(() => {
 });
 
 describe('TextureEditor', () => {
-  it('renders texture metadata and requests a large preview from the shared asset thumbnail host', async () => {
+  it('renders texture metadata and falls back cleanly when the native preview is unavailable', async () => {
     const query = vi.fn().mockImplementation((type: string) =>
       Promise.resolve(
         type === 'texture.settings'
@@ -73,20 +73,15 @@ describe('TextureEditor', () => {
                 preserveAlphaCoverage: false,
               },
             }
-          : {
-              succeeded: true,
-              payload: {
-                path: textureDocument.path,
-                width: 1024,
-                height: 512,
-                dataUrl: 'data:image/png;base64,preview',
-              },
-            },
+          : { succeeded: false, error: `Unexpected query: ${type}` },
       ),
     );
     Object.defineProperty(window, 'arc', {
       configurable: true,
-      value: { host: { query } },
+      value: {
+        getStartupState: vi.fn().mockResolvedValue({ engineHostConnected: false, viewportMode: 'native' }),
+        host: { query },
+      },
     });
 
     render(<TextureEditor document={textureDocument} />);
@@ -107,14 +102,9 @@ describe('TextureEditor', () => {
     fireEvent.click(screen.getByLabelText('Expand Import'));
     expect(screen.getByText('texture.image')).toBeInTheDocument();
 
-    expect(await screen.findByAltText('T_Rock.png texture preview')).toHaveAttribute(
-      'src',
-      'data:image/png;base64,preview',
-    );
-    expect(query).toHaveBeenCalledWith('asset.thumbnail', {
-      path: 'Content/Textures/T_Rock.png',
-      maxSize: 2048,
-    });
+    expect(await screen.findByText('GPU preview unavailable')).toBeInTheDocument();
+    expect(query).toHaveBeenCalledWith('texture.settings', { guid: 'texture-guid' });
+    expect(query).not.toHaveBeenCalledWith('asset.thumbnail', expect.anything());
   });
   it('shows DDS authored mip policy and reports compressed preview limitations', async () => {
     const ddsDocument: EditorDocument = {
@@ -167,7 +157,13 @@ describe('TextureEditor', () => {
           : { succeeded: false, error: 'Texture thumbnail could not be generated' },
       ),
     );
-    Object.defineProperty(window, 'arc', { configurable: true, value: { host: { query } } });
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        getStartupState: vi.fn().mockResolvedValue({ engineHostConnected: false, viewportMode: 'native' }),
+        host: { query },
+      },
+    });
 
     render(<TextureEditor document={ddsDocument} />);
 
@@ -177,10 +173,7 @@ describe('TextureEditor', () => {
     expect(mipPolicy).toHaveTextContent('Preserve Source');
     fireEvent.click(mipPolicy);
     expect(screen.getByRole('option', { name: 'Generate' })).toBeDisabled();
-    expect(
-      await screen.findByText(
-        'BC-compressed DDS preview requires the block decoder; metadata and authored mip settings remain available.',
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('GPU preview unavailable')).toBeInTheDocument();
+    expect(query).not.toHaveBeenCalledWith('asset.thumbnail', expect.anything());
   });
 });
