@@ -177,6 +177,7 @@ struct viewport_surface_registry
         bool preview_texture_channel_b{true};
         bool preview_texture_channel_a{true};
         float preview_texture_exposure{};
+        float preview_texture_zoom{1.0f};
         bool preview_texture_nearest{};
         std::uint64_t preview_material_generation{};
         std::uint64_t preview_live_material_generation{};
@@ -814,6 +815,9 @@ bool refresh_asset_preview_texture(HostState& host, viewport_surface_registry::s
     else
         transform->set_scale({aspect, 1.0f, 1.0f});
 
+    if (auto* camera = surface.preview_scene->scene.try_get<scene::camera_component>(surface.preview_scene->camera_entity))
+        camera->orthographic_height = 1.2f / std::clamp(surface.preview_texture_zoom, 0.25f, 16.0f);
+
     surface.preview_asset_generation = asset->generation;
     surface.preview_material_ready = true;
     surface.preview_ready = true;
@@ -1230,6 +1234,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                              viewport_surface->preview_texture_channel_b != options->texture_preview_channel_b ||
                              viewport_surface->preview_texture_channel_a != options->texture_preview_channel_a ||
                              viewport_surface->preview_texture_exposure != options->texture_preview_exposure ||
+                             viewport_surface->preview_texture_zoom != options->texture_preview_zoom ||
                              viewport_surface->preview_texture_nearest != nearest;
         viewport_surface->preview_texture_mip = options->texture_preview_mip;
         viewport_surface->preview_texture_channel_r = options->texture_preview_channel_r;
@@ -1237,6 +1242,7 @@ host_response arc_host::execute(const host_command_envelope& command)
         viewport_surface->preview_texture_channel_b = options->texture_preview_channel_b;
         viewport_surface->preview_texture_channel_a = options->texture_preview_channel_a;
         viewport_surface->preview_texture_exposure = options->texture_preview_exposure;
+        viewport_surface->preview_texture_zoom = options->texture_preview_zoom;
         viewport_surface->preview_texture_nearest = nearest;
         if (changed)
         {
