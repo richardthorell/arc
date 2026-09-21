@@ -4,7 +4,16 @@ import { Image, Maximize2, RotateCcw, Scan, ZoomIn, ZoomOut } from 'lucide-react
 
 import type { EditorDocument } from '../editors/editorTypes';
 import type { AssetItem } from '../services/editorHostTypes';
-import { UiButton, UiIconButton, UiNumericInput, UiPanel, UiPropertyCard, UiSelect, UiSlider, UiToggleButton } from '../ui';
+import {
+  UiButton,
+  UiIconButton,
+  UiNumericInput,
+  UiPanel,
+  UiPropertyCard,
+  UiSelect,
+  UiSlider,
+  UiToggleButton,
+} from '../ui';
 import { setTextureEditorViewState, useTextureEditorViewState } from './textureEditorViewState';
 import { TextureStage3Controls } from './TextureStage3Controls';
 import { TextureCurveControls } from './TextureCurveControls';
@@ -1210,11 +1219,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
               <Scan size={13} /> Fit
             </UiButton>
             <span aria-hidden="true" className="texture-navigation-divider" />
-            <UiIconButton
-              disabled={!preview || zoom <= minZoom}
-              label="Zoom out"
-              onClick={() => setZoom(zoom / 1.12)}
-            >
+            <UiIconButton disabled={!preview || zoom <= minZoom} label="Zoom out" onClick={() => setZoom(zoom / 1.12)}>
               <ZoomOut size={13} />
             </UiIconButton>
             <label className="texture-navigation-zoom-control">
@@ -1229,11 +1234,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
               />
               <output>{Math.round(zoom * 100)}%</output>
             </label>
-            <UiIconButton
-              disabled={!preview || zoom >= maxZoom}
-              label="Zoom in"
-              onClick={() => setZoom(zoom * 1.12)}
-            >
+            <UiIconButton disabled={!preview || zoom >= maxZoom} label="Zoom in" onClick={() => setZoom(zoom * 1.12)}>
               <ZoomIn size={13} />
             </UiIconButton>
             <UiIconButton disabled={!preview} label="Reset zoom to 100%" onClick={() => setZoom(1)}>

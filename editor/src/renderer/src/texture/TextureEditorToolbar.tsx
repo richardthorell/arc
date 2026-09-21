@@ -72,7 +72,6 @@ export function TextureEditorToolbar({ document }: { document: EditorDocument })
       >
         −
       </UiButton>
-
     </div>
   );
 }
