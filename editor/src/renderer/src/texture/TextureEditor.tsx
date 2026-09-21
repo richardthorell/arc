@@ -888,48 +888,6 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
   );
 }
 
-function HorizontalRuler({ width, zoom, offset }: { width: number; zoom: number; offset: number }) {
-  const marks = rulerMarks(width, zoom);
-  return (
-    <div
-      aria-hidden="true"
-      className="texture-ruler texture-ruler-horizontal"
-      style={{ width: width * zoom, transform: `translateX(${offset}px)` }}
-    >
-      {marks.map((mark) => (
-        <span
-          className={mark.major ? 'texture-ruler-mark major' : 'texture-ruler-mark'}
-          key={`${mark.value}-${mark.position}`}
-          style={{ left: mark.position }}
-        >
-          {mark.major && <em>{Math.round(mark.value)}</em>}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function VerticalRuler({ height, zoom, offset }: { height: number; zoom: number; offset: number }) {
-  const marks = rulerMarks(height, zoom);
-  return (
-    <div
-      aria-hidden="true"
-      className="texture-ruler texture-ruler-vertical"
-      style={{ height: height * zoom, transform: `translateY(${offset}px)` }}
-    >
-      {marks.map((mark) => (
-        <span
-          className={mark.major ? 'texture-ruler-mark major' : 'texture-ruler-mark'}
-          key={`${mark.value}-${mark.position}`}
-          style={{ top: mark.position }}
-        >
-          {mark.major && <em>{Math.round(mark.value)}</em>}
-        </span>
-      ))}
-    </div>
-  );
-}
-
 export function TextureEditor({ document }: { document: EditorDocument }) {
   const asset = useMemo<AssetItem>(
     () =>
