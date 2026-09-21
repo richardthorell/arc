@@ -622,7 +622,15 @@ std::optional<command_line> parse_command_line(int argc, char** argv)
     return result;
 }
 
-cook_target target_for(const project::cook_profile_descriptor& profile)
+cook_texture_family texture_family_for(std::string_view value)
+{
+    return value == "astc"       ? cook_texture_family::astc
+           : value == "etc2"     ? cook_texture_family::etc2
+           : value == "portable" ? cook_texture_family::portable
+                                 : cook_texture_family::bc;
+}
+
+cook_target target_for(const project::cook_profile_descriptor& profile, std::string_view texture_family)
 {
     cook_target result;
     result.name = profile.id;
@@ -634,11 +642,7 @@ cook_target target_for(const project::cook_profile_descriptor& profile)
                       : profile.renderer == "direct3d12" ? cook_renderer::direct3d12
                       : profile.renderer == "metal"      ? cook_renderer::metal
                                                          : cook_renderer::vulkan;
-    const auto& texture_family = profile.textures.outputs.front();
-    result.textures = texture_family == "astc"       ? cook_texture_family::astc
-                      : texture_family == "etc2"     ? cook_texture_family::etc2
-                      : texture_family == "portable" ? cook_texture_family::portable
-                                                     : cook_texture_family::bc;
+    result.textures = texture_family_for(texture_family);
     result.configuration =
         profile.configuration == "Shipping" ? cook_configuration::shipping : cook_configuration::development;
     const auto separator = profile.api.find('.');
@@ -651,6 +655,31 @@ cook_target target_for(const project::cook_profile_descriptor& profile)
     {
         result.api_major = 0;
         result.api_minor = 0;
+    }
+    return result;
+}
+
+struct cook_variant
+{
+    std::string texture_family;
+    cook_target target;
+    std::filesystem::path output;
+    std::filesystem::path manifest;
+};
+
+std::vector<cook_variant> cook_variants_for(const project::cook_profile_descriptor& profile,
+                                            const std::filesystem::path& output)
+{
+    const bool split_outputs = profile.textures.outputs.size() > 1;
+    std::vector<cook_variant> result;
+    result.reserve(profile.textures.outputs.size());
+    for (const auto& family : profile.textures.outputs)
+    {
+        const auto variant_output = split_outputs ? output / family : output;
+        result.push_back({.texture_family = family,
+                          .target = target_for(profile, family),
+                          .output = variant_output,
+                          .manifest = variant_output / (profile.id + ".arccookmanifest")});
     }
     return result;
 }
@@ -761,13 +790,18 @@ int main(int argc, char** argv)
     const auto selected_profile =
         std::find_if(descriptor.value().cook_profiles.begin(), descriptor.value().cook_profiles.end(),
                      [&](const auto& profile) { return profile.id == command.profile; });
-    if ((command.command == "cook" || (command.command == "package" && command.manifest.empty())) &&
-        selected_profile == descriptor.value().cook_profiles.end())
+    const bool requires_profile =
+        command.command == "cook" ||
+        ((command.command == "package" || command.command == "verify") && command.manifest.empty());
+    if (requires_profile && selected_profile == descriptor.value().cook_profiles.end())
     {
         std::cerr << "Cook profile '" << command.profile << "' is not declared by the project\n";
         return 2;
     }
     if (command.output.empty()) command.output = project_context.value().build_root / "Cooked" / command.profile;
+    const auto variants = selected_profile == descriptor.value().cook_profiles.end()
+                              ? std::vector<cook_variant>{}
+                              : cook_variants_for(*selected_profile, command.output);
     const auto cache_root = project_context.value().asset_cache_root;
 
     if (command.command == "clean")
@@ -829,38 +863,46 @@ int main(int argc, char** argv)
 
     if (command.command == "verify")
     {
-        const auto manifest_path =
-            command.manifest.empty() ? command.output / (command.profile + ".arccookmanifest") : command.manifest;
-        auto loaded_manifest = load_cook_manifest(manifest_path);
-        if (!loaded_manifest)
+        std::vector<std::filesystem::path> manifests;
+        if (!command.manifest.empty())
+            manifests.push_back(command.manifest);
+        else
+            for (const auto& variant : variants)
+                manifests.push_back(variant.manifest);
+
+        for (const auto& manifest_path : manifests)
         {
-            std::cerr << loaded_manifest.error().message << '\n';
-            return 1;
-        }
-        cook_manifest manifest = std::move(loaded_manifest).value();
-        asset_package_mount mount;
-        auto mounted = mount.mount(manifest_path);
-        if (mounted)
-        {
-            for (const auto& artifact : mount.manifest().artifacts)
+            auto loaded_manifest = load_cook_manifest(manifest_path);
+            if (!loaded_manifest)
             {
-                auto read = mount.read(artifact.asset, artifact.schema);
-                if (!read)
-                {
-                    std::cerr << read.error().message << '\n';
-                    return 1;
-                }
+                std::cerr << loaded_manifest.error().message << '\n';
+                return 1;
             }
-            std::cout << "verified package " << manifest_path.generic_string() << '\n';
-            return 0;
+            cook_manifest manifest = std::move(loaded_manifest).value();
+            asset_package_mount mount;
+            auto mounted = mount.mount(manifest_path);
+            if (mounted)
+            {
+                for (const auto& artifact : mount.manifest().artifacts)
+                {
+                    auto read = mount.read(artifact.asset, artifact.schema);
+                    if (!read)
+                    {
+                        std::cerr << read.error().message << '\n';
+                        return 1;
+                    }
+                }
+                std::cout << "verified package " << manifest_path.generic_string() << '\n';
+                continue;
+            }
+            auto verified = verify_cook_manifest(manifest, cache);
+            if (!verified)
+            {
+                std::cerr << verified.error().message << '\n';
+                return 1;
+            }
+            std::cout << "verified manifest " << manifest_path.generic_string() << '\n';
         }
-        auto verified = verify_cook_manifest(manifest, cache);
-        if (!verified)
-        {
-            std::cerr << verified.error().message << '\n';
-            return 1;
-        }
-        std::cout << "verified manifest " << manifest_path.generic_string() << '\n';
         return 0;
     }
 
@@ -914,71 +956,112 @@ int main(int argc, char** argv)
         assets.on_shutdown(context);
         return 1;
     }
-    const auto cooked = cooker.cook({.roots = roots,
-                                     .target = target_for(*selected_profile),
-                                     .output = command.output,
-                                     .fail_on_warning = command.fail_on_warning});
-    if (!cooked.succeeded())
+    nlohmann::json variant_results = nlohmann::json::array();
+    std::size_t total_cooked{};
+    std::size_t total_cache_hits{};
+    std::size_t total_artifacts{};
+    std::size_t total_chunks{};
+    std::uint64_t total_source_bytes{};
+    std::uint64_t total_stored_bytes{};
+
+    for (const auto& variant : variants)
     {
-        std::cerr << cooked.error.message << '\n';
-        assets.on_shutdown(context);
-        return 1;
+        const auto cooked = cooker.cook({.roots = roots,
+                                         .target = variant.target,
+                                         .output = variant.output,
+                                         .fail_on_warning = command.fail_on_warning});
+        if (!cooked.succeeded())
+        {
+            std::cerr << cooked.error.message << '\n';
+            assets.on_shutdown(context);
+            return 1;
+        }
+
+        std::filesystem::create_directories(variant.output);
+        nlohmann::json variant_result{{"family", variant.texture_family},
+                                      {"cooked", cooked.cooked},
+                                      {"cacheHits", cooked.cache_hits},
+                                      {"artifacts", cooked.manifest.artifacts.size()}};
+        total_cooked += cooked.cooked;
+        total_cache_hits += cooked.cache_hits;
+        total_artifacts += cooked.manifest.artifacts.size();
+
+        if (command.command == "package")
+        {
+            auto package = build_asset_packages(cooked.manifest, cache, variant.output);
+            if (!package.succeeded())
+            {
+                std::cerr << package.error << '\n';
+                assets.on_shutdown(context);
+                return 1;
+            }
+            variant_result["chunks"] = package.chunks.size();
+            variant_result["sourceBytes"] = package.source_bytes;
+            variant_result["storedBytes"] = package.stored_bytes;
+            variant_result["manifest"] = package.manifest_path.generic_string();
+            total_chunks += package.chunks.size();
+            total_source_bytes += package.source_bytes;
+            total_stored_bytes += package.stored_bytes;
+            if (!command.json)
+            {
+                if (variants.size() > 1) std::cout << variant.texture_family << ": ";
+                std::cout << "packaged " << cooked.manifest.artifacts.size() << " artifacts into "
+                          << package.chunks.size() << " chunks\n";
+            }
+        }
+        else if (command.command == "cook")
+        {
+            auto saved = save_cook_manifest(variant.manifest, cooked.manifest);
+            if (!saved)
+            {
+                std::cerr << saved.error().message << '\n';
+                assets.on_shutdown(context);
+                return 1;
+            }
+            variant_result["manifest"] = variant.manifest.generic_string();
+            if (!command.json)
+            {
+                if (variants.size() > 1) std::cout << variant.texture_family << ": ";
+                std::cout << "cooked=" << cooked.cooked << " cacheHits=" << cooked.cache_hits
+                          << " artifacts=" << cooked.manifest.artifacts.size() << '\n';
+            }
+        }
+        else
+        {
+            print_usage();
+            assets.on_shutdown(context);
+            return 2;
+        }
+        variant_results.push_back(std::move(variant_result));
     }
 
-    std::string error;
-    std::filesystem::create_directories(command.output);
-    const auto manifest_path = command.output / (command.profile + ".arccookmanifest");
-    if (command.command == "package")
+    if (command.json)
     {
-        auto package = build_asset_packages(cooked.manifest, cache, command.output);
-        if (!package.succeeded())
+        if (variants.size() == 1)
         {
-            std::cerr << package.error << '\n';
-            assets.on_shutdown(context);
-            return 1;
+            auto result = variant_results.front();
+            result.erase("family");
+            result["event"] = command.command == "package" ? "package.complete" : "cook.complete";
+            std::cout << result.dump() << '\n';
         }
-        if (command.json)
-            std::cout << nlohmann::json{{"event", "package.complete"},
-                                        {"cooked", cooked.cooked},
-                                        {"cacheHits", cooked.cache_hits},
-                                        {"artifacts", cooked.manifest.artifacts.size()},
-                                        {"chunks", package.chunks.size()},
-                                        {"sourceBytes", package.source_bytes},
-                                        {"storedBytes", package.stored_bytes},
-                                        {"manifest", package.manifest_path.generic_string()}}
-                             .dump()
-                      << '\n';
         else
-            std::cout << "packaged " << cooked.manifest.artifacts.size() << " artifacts into " << package.chunks.size()
-                      << " chunks\n";
-    }
-    else if (command.command == "cook")
-    {
-        auto saved = save_cook_manifest(manifest_path, cooked.manifest);
-        if (!saved)
         {
-            std::cerr << saved.error().message << '\n';
-            assets.on_shutdown(context);
-            return 1;
+            nlohmann::json result{{"event", command.command == "package" ? "package.complete" : "cook.complete"},
+                                  {"profile", command.profile},
+                                  {"cooked", total_cooked},
+                                  {"cacheHits", total_cache_hits},
+                                  {"artifacts", total_artifacts},
+                                  {"variants", std::move(variant_results)}};
+            if (command.command == "package")
+            {
+                result["chunks"] = total_chunks;
+                result["sourceBytes"] = total_source_bytes;
+                result["storedBytes"] = total_stored_bytes;
+            }
+            std::cout << result.dump() << '\n';
         }
-        if (command.json)
-            std::cout << nlohmann::json{{"event", "cook.complete"},
-                                        {"cooked", cooked.cooked},
-                                        {"cacheHits", cooked.cache_hits},
-                                        {"artifacts", cooked.manifest.artifacts.size()},
-                                        {"manifest", manifest_path.generic_string()}}
-                             .dump()
-                      << '\n';
-        else
-            std::cout << "cooked=" << cooked.cooked << " cacheHits=" << cooked.cache_hits
-                      << " artifacts=" << cooked.manifest.artifacts.size() << '\n';
     }
-    else
-    {
-        print_usage();
-        assets.on_shutdown(context);
-        return 2;
-    }
+
     assets.on_shutdown(context);
     return 0;
 }
