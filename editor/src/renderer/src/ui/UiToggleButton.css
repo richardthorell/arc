@@ -1,0 +1,6 @@
+.ui-toggle-button .ui-toggle-button-label {
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-xs);
+  line-height: var(--arc-line-default);
+  font-weight: 400;
+}
