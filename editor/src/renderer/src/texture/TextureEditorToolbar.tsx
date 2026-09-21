@@ -9,6 +9,10 @@ import {
 
 import './textureEditorToolbar.css';
 
+const minZoom = 0.25;
+const maxZoom = 16;
+const clampZoom = (value: number) => Math.min(maxZoom, Math.max(minZoom, value));
+
 export function TextureEditorToolbar({ document }: { document: EditorDocument }) {
   const state = useTextureEditorViewState(document.id);
   const mipLevels = Math.max(1, document.assetSnapshot?.mipLevels ?? 1);
@@ -72,6 +76,61 @@ export function TextureEditorToolbar({ document }: { document: EditorDocument })
       >
         −
       </UiButton>
+      <span aria-hidden="true" className="texture-toolbar-separator" />
+
+      <UiSelect
+        ariaLabel="Texture preview sampling"
+        className="texture-sampling-select"
+        options={[
+          { value: 'linear', label: 'Linear' },
+          { value: 'nearest', label: 'Nearest' },
+        ]}
+        value={state.sampling}
+        onValueChange={(value) =>
+          setTextureEditorViewState(document.id, { sampling: value === 'nearest' ? 'nearest' : 'linear' })
+        }
+      />
+
+      <label className="texture-exposure-control">
+        <span>Exposure</span>
+        <input
+          aria-label="Texture preview exposure"
+          max={8}
+          min={-8}
+          onChange={(event) =>
+            setTextureEditorViewState(document.id, {
+              exposure: Number(event.target.value),
+            })
+          }
+          step={0.25}
+          type="range"
+          value={state.exposure}
+        />
+        <output>
+          {state.exposure > 0 ? '+' : ''}
+          {state.exposure.toFixed(2)} EV
+        </output>
+      </label>
+
+      <span aria-hidden="true" className="texture-toolbar-separator" />
+
+      <label className="texture-zoom-control">
+        <span>Zoom</span>
+        <input
+          aria-label="Texture zoom"
+          max={1600}
+          min={25}
+          onChange={(event) =>
+            setTextureEditorViewState(document.id, {
+              zoom: clampZoom(Number(event.target.value) / 100),
+            })
+          }
+          step={5}
+          type="range"
+          value={Math.round(state.zoom * 100)}
+        />
+        <output>{Math.round(state.zoom * 100)}%</output>
+      </label>
     </div>
   );
 }
