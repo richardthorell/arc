@@ -411,14 +411,14 @@
 }
 
 .texture-preview-analysis-bar {
-  position: sticky;
-  top: 8px;
-  left: 8px;
+  position: absolute;
+  top: 30px;
+  left: 36px;
   z-index: 6;
   display: flex;
   align-items: center;
   width: max-content;
-  max-width: calc(100% - 16px);
+  max-width: calc(100% - 52px);
   height: 30px;
   gap: 8px;
   padding: 3px 6px;
