@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 
 import type { AssetItem } from '../services/editorHostTypes';
-import { UiPanelCard } from '../ui';
+import { UiIconButton, UiNumericInput, UiPropertyCard, UiSelect, UiToggleButton } from '../ui';
 import {
   patchTextureSettings,
   type TextureChannelSource,
@@ -11,16 +11,16 @@ import {
 } from './textureSettings';
 import { useTextureSettings } from './useTextureSettings';
 
-const channelOptions: Array<[TextureChannelSource, string]> = [
-  ['red', 'R'],
-  ['green', 'G'],
-  ['blue', 'B'],
-  ['alpha', 'A'],
-  ['zero', '0'],
-  ['one', '1'],
+const channelOptions: Array<{ value: TextureChannelSource; label: string }> = [
+  { value: 'red', label: 'R' },
+  { value: 'green', label: 'G' },
+  { value: 'blue', label: 'B' },
+  { value: 'alpha', label: 'A' },
+  { value: 'zero', label: '0' },
+  { value: 'one', label: '1' },
 ];
 
-function NumberControl({
+function TextureSliderControl({
   label,
   value,
   min,
@@ -39,43 +39,41 @@ function NumberControl({
   defaultValue: number;
   onChange: (value: number) => void;
 }) {
+  const precision = step >= 1 ? 0 : step >= 0.1 ? 1 : 2;
   return (
-    <label className="inspector-property texture-inspector-property texture-stage3-number">
-      <span className="inspector-property-label">{label}</span>
-      <span className="texture-stage3-number-fields">
-        <input
-          aria-label={`${label} slider`}
-          disabled={disabled}
-          min={min}
-          max={max}
-          step={step}
-          type="range"
-          value={value}
-          onChange={(event) => onChange(Number(event.target.value))}
-        />
-        <input
-          aria-label={label}
-          className="texture-inspector-input"
-          disabled={disabled}
-          min={min}
-          max={max}
-          step={step}
-          type="number"
-          value={value}
-          onChange={(event) => onChange(Number(event.target.value))}
-        />
-        <button
-          aria-label={`Reset ${label}`}
-          className="inspector-field-reset"
-          disabled={disabled || Object.is(value, defaultValue)}
-          onClick={() => onChange(defaultValue)}
-          title={`Reset ${label}`}
-          type="button"
-        >
-          <RotateCcw aria-hidden="true" size={12} />
-        </button>
-      </span>
-    </label>
+    <div className="texture-stage3-number-control">
+      <input
+        aria-label={`${label} slider`}
+        disabled={disabled}
+        max={max}
+        min={min}
+        onChange={(event) => onChange(Number(event.target.value))}
+        step={step}
+        type="range"
+        value={value}
+      />
+      <UiNumericInput
+        ariaLabel={label}
+        disabled={disabled}
+        max={max}
+        min={min}
+        onCommit={onChange}
+        precision={precision}
+        scrubSensitivity={step}
+        step={step}
+        value={value}
+      />
+      <UiIconButton
+        className="texture-stage3-reset"
+        disabled={disabled || Object.is(value, defaultValue)}
+        label={`Reset ${label}`}
+        onClick={() => onChange(defaultValue)}
+        title={`Reset ${label}`}
+        type="button"
+      >
+        <RotateCcw aria-hidden="true" size={12} />
+      </UiIconButton>
+    </div>
   );
 }
 
@@ -83,6 +81,7 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
   const { settings } = useTextureSettings(asset.guid, asset.generation);
   const [draft, setDraft] = useState<TextureSettingsSnapshot | null>(settings);
   const timer = useRef<number | null>(null);
+
   useEffect(() => setDraft(settings), [settings]);
   useEffect(
     () => () => {
@@ -90,6 +89,7 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
     },
     [],
   );
+
   if (!asset.guid || !draft || asset.readOnly) return null;
 
   const update = (patch: TextureSettingsPatch) => {
@@ -100,164 +100,104 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
       void patchTextureSettings(asset.guid!, patch);
     }, 250);
   };
+
   const normal = draft.semantic === 'normal';
+  const adjustmentFields = [
+    ...(normal
+      ? [
+          {
+            id: 'normal-note',
+            fullWidth: true,
+            control: (
+              <div className="texture-stage3-note">Color adjustments are bypassed for normal-map semantics.</div>
+            ),
+          },
+        ]
+      : []),
+    ...[
+      ['brightness', 'Brightness', draft.brightness, -4, 4, 0.05, 0],
+      ['gamma', 'Gamma', draft.gamma, 0.1, 4, 0.05, 1],
+      ['contrast', 'Contrast', draft.contrast, 0, 2, 0.05, 1],
+      ['saturation', 'Saturation', draft.saturation, 0, 2, 0.05, 1],
+      ['vibrance', 'Vibrance', draft.vibrance, -1, 1, 0.05, 0],
+      ['tintR', 'Tint R', draft.tintR, 0, 2, 0.02, 1],
+      ['tintG', 'Tint G', draft.tintG, 0, 2, 0.02, 1],
+      ['tintB', 'Tint B', draft.tintB, 0, 2, 0.02, 1],
+    ].map(([key, label, value, min, max, step, defaultValue]) => ({
+      id: String(key),
+      label: String(label),
+      control: (
+        <TextureSliderControl
+          defaultValue={Number(defaultValue)}
+          disabled={normal}
+          label={String(label)}
+          max={Number(max)}
+          min={Number(min)}
+          onChange={(next) => update({ [key as keyof TextureSettingsSnapshot]: next } as TextureSettingsPatch)}
+          step={Number(step)}
+          value={Number(value)}
+        />
+      ),
+    })),
+  ];
+
+  const levelFields = [
+    ['inputBlack', 'Input Black', draft.inputBlack, 0, 0.99, 0.01, 0],
+    ['inputWhite', 'Input White', draft.inputWhite, 0.01, 1, 0.01, 1],
+    ['outputBlack', 'Output Black', draft.outputBlack, 0, 1, 0.01, 0],
+    ['outputWhite', 'Output White', draft.outputWhite, 0, 1, 0.01, 1],
+  ].map(([key, label, value, min, max, step, defaultValue]) => ({
+    id: String(key),
+    label: String(label),
+    control: (
+      <TextureSliderControl
+        defaultValue={Number(defaultValue)}
+        disabled={normal}
+        label={String(label)}
+        max={Number(max)}
+        min={Number(min)}
+        onChange={(next) => {
+          if (key === 'inputBlack') update({ inputBlack: Math.min(next, draft.inputWhite - 0.01) });
+          else if (key === 'inputWhite') update({ inputWhite: Math.max(next, draft.inputBlack + 0.01) });
+          else if (key === 'outputBlack') update({ outputBlack: Math.min(next, draft.outputWhite) });
+          else update({ outputWhite: Math.max(next, draft.outputBlack) });
+        }}
+        step={Number(step)}
+        value={Number(value)}
+      />
+    ),
+  }));
+
+  const channelFields = (['R', 'G', 'B', 'A'] as const).map((channel) => {
+    const sourceKey = `channel${channel}` as 'channelR' | 'channelG' | 'channelB' | 'channelA';
+    const invertKey = `invert${channel}` as 'invertR' | 'invertG' | 'invertB' | 'invertA';
+    return {
+      id: `channel-${channel}`,
+      label: channel,
+      control: (
+        <div className="texture-stage3-channel-control">
+          <UiSelect
+            ariaLabel={`${channel} source`}
+            onValueChange={(value) => update({ [sourceKey]: value as TextureChannelSource })}
+            options={channelOptions}
+            value={draft[sourceKey]}
+          />
+          <UiToggleButton
+            aria-label={`Invert ${channel}`}
+            checked={draft[invertKey]}
+            label="Invert"
+            onCheckedChange={(checked) => update({ [invertKey]: checked })}
+          />
+        </div>
+      ),
+    };
+  });
+
   return (
     <>
-      <UiPanelCard className="texture-inspector-section" title="Adjustments">
-        {normal && <div className="texture-stage3-note">Color adjustments are bypassed for normal-map semantics.</div>}
-        <NumberControl
-          disabled={normal}
-          defaultValue={0}
-          label="Brightness"
-          min={-4}
-          max={4}
-          step={0.05}
-          value={draft.brightness}
-          onChange={(brightness) => update({ brightness })}
-        />
-        <NumberControl
-          disabled={normal}
-          defaultValue={1}
-          label="Gamma"
-          min={0.1}
-          max={4}
-          step={0.05}
-          value={draft.gamma}
-          onChange={(gamma) => update({ gamma })}
-        />
-        <NumberControl
-          disabled={normal}
-          defaultValue={1}
-          label="Contrast"
-          min={0}
-          max={2}
-          step={0.05}
-          value={draft.contrast}
-          onChange={(contrast) => update({ contrast })}
-        />
-        <NumberControl
-          disabled={normal}
-          defaultValue={1}
-          label="Saturation"
-          min={0}
-          max={2}
-          step={0.05}
-          value={draft.saturation}
-          onChange={(saturation) => update({ saturation })}
-        />
-        <NumberControl
-          disabled={normal}
-          defaultValue={0}
-          label="Vibrance"
-          min={-1}
-          max={1}
-          step={0.05}
-          value={draft.vibrance}
-          onChange={(vibrance) => update({ vibrance })}
-        />
-        <NumberControl
-          disabled={normal}
-          defaultValue={1}
-          label="Tint R"
-          min={0}
-          max={2}
-          step={0.02}
-          value={draft.tintR}
-          onChange={(tintR) => update({ tintR })}
-        />
-        <NumberControl
-          disabled={normal}
-          defaultValue={1}
-          label="Tint G"
-          min={0}
-          max={2}
-          step={0.02}
-          value={draft.tintG}
-          onChange={(tintG) => update({ tintG })}
-        />
-        <NumberControl
-          disabled={normal}
-          defaultValue={1}
-          label="Tint B"
-          min={0}
-          max={2}
-          step={0.02}
-          value={draft.tintB}
-          onChange={(tintB) => update({ tintB })}
-        />
-      </UiPanelCard>
-      <UiPanelCard className="texture-inspector-section" collapsed title="Levels">
-        <NumberControl
-          disabled={normal}
-          defaultValue={0}
-          label="Input Black"
-          min={0}
-          max={0.99}
-          step={0.01}
-          value={draft.inputBlack}
-          onChange={(inputBlack) => update({ inputBlack: Math.min(inputBlack, draft.inputWhite - 0.01) })}
-        />
-        <NumberControl
-          disabled={normal}
-          defaultValue={1}
-          label="Input White"
-          min={0.01}
-          max={1}
-          step={0.01}
-          value={draft.inputWhite}
-          onChange={(inputWhite) => update({ inputWhite: Math.max(inputWhite, draft.inputBlack + 0.01) })}
-        />
-        <NumberControl
-          disabled={normal}
-          defaultValue={0}
-          label="Output Black"
-          min={0}
-          max={1}
-          step={0.01}
-          value={draft.outputBlack}
-          onChange={(outputBlack) => update({ outputBlack: Math.min(outputBlack, draft.outputWhite) })}
-        />
-        <NumberControl
-          disabled={normal}
-          defaultValue={1}
-          label="Output White"
-          min={0}
-          max={1}
-          step={0.01}
-          value={draft.outputWhite}
-          onChange={(outputWhite) => update({ outputWhite: Math.max(outputWhite, draft.outputBlack) })}
-        />
-      </UiPanelCard>
-      <UiPanelCard className="texture-inspector-section" collapsed title="Channel Mapping">
-        {(['R', 'G', 'B', 'A'] as const).map((channel) => {
-          const sourceKey = `channel${channel}` as 'channelR' | 'channelG' | 'channelB' | 'channelA';
-          const invertKey = `invert${channel}` as 'invertR' | 'invertG' | 'invertB' | 'invertA';
-          return (
-            <div className="texture-stage3-channel" key={channel}>
-              <span>{channel}</span>
-              <select
-                aria-label={`${channel} source`}
-                value={draft[sourceKey]}
-                onChange={(event) => update({ [sourceKey]: event.target.value as TextureChannelSource })}
-              >
-                {channelOptions.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              <label>
-                <input
-                  checked={draft[invertKey]}
-                  type="checkbox"
-                  onChange={(event) => update({ [invertKey]: event.target.checked })}
-                />{' '}
-                Invert
-              </label>
-            </div>
-          );
-        })}
-      </UiPanelCard>
+      <UiPropertyCard className="texture-inspector-section" fields={adjustmentFields} title="Adjustments" />
+      <UiPropertyCard className="texture-inspector-section" collapsed fields={levelFields} title="Levels" />
+      <UiPropertyCard className="texture-inspector-section" collapsed fields={channelFields} title="Channel Mapping" />
     </>
   );
 }
