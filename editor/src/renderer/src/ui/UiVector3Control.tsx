@@ -77,7 +77,9 @@ export function UiVector3Control({
             <span className="ui-vector3-action-slot">
               {linkable && (
                 <UiIconButton
-                  className={['ui-vector3-action', 'ui-vector3-link', linked ? 'is-linked' : ''].filter(Boolean).join(' ')}
+                  className={['ui-vector3-action', 'ui-vector3-link', linked ? 'is-linked' : '']
+                    .filter(Boolean)
+                    .join(' ')}
                   label={`${linked ? 'Unlink' : 'Link'} ${label.toLocaleLowerCase()} axes`}
                   onClick={onToggleLinked}
                   title={`${linked ? 'Unlink' : 'Link'} ${label.toLocaleLowerCase()} axes`}
