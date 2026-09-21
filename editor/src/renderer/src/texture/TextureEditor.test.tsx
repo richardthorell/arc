@@ -92,6 +92,12 @@ describe('TextureEditor', () => {
     render(<TextureEditor document={textureDocument} />);
 
     expect(screen.getByRole('complementary', { name: 'Texture details' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Texture navigation controls')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Fit texture to screen' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Zoom out' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Texture zoom')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Zoom in' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reset zoom to 100%' })).toBeInTheDocument();
     expect(screen.getByText('2048 × 1024')).toBeInTheDocument();
     expect(screen.getByText('12')).toBeInTheDocument();
 
