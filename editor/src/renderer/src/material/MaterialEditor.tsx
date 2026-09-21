@@ -92,6 +92,8 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
   const [maskingSettingsCollapsed, setMaskingSettingsCollapsed] = useState(false);
   const [translucencySettingsCollapsed, setTranslucencySettingsCollapsed] = useState(false);
   const [advancedSettingsCollapsed, setAdvancedSettingsCollapsed] = useState(true);
+  const [toast, setToast] = useState<{ id: number; message: string } | null>(null);
+  const toastSequenceRef = useRef(0);
   const previewLoading =
     state.loading ||
     (!customShader && (state.compilation.status === 'idle' || state.compilation.status === 'compiling'));
@@ -109,6 +111,20 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
       }
     />
   );
+
+  useEffect(() => {
+    if (!state.message) {
+      setToast(null);
+      return;
+    }
+    toastSequenceRef.current += 1;
+    const id = toastSequenceRef.current;
+    setToast({ id, message: state.message });
+    const timer = window.setTimeout(() => {
+      setToast((current) => (current?.id === id ? null : current));
+    }, 3600);
+    return () => window.clearTimeout(timer);
+  }, [state.message]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -161,6 +177,14 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
     resizeSidebar(sidebarWidth + (event.key === 'ArrowLeft' ? 16 : -16));
   };
 
+  const materialStats = {
+    nodes: state.graph.nodes.length,
+    connections: state.graph.connections.length,
+    parameters: state.graph.nodes.filter((node) => node.parameter?.exposed).length,
+    errors: state.compilation.diagnostics.filter((diagnostic) => diagnostic.severity === 'error').length,
+    warnings: state.compilation.diagnostics.filter((diagnostic) => diagnostic.severity === 'warning').length,
+  };
+
   return (
     <section
       ref={editorRef}
@@ -169,22 +193,59 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
         gridTemplateColumns: `minmax(${minimumMaterialGraphWidth}px, 1fr) ${materialEditorDividerWidth}px ${sidebarWidth}px`,
       }}
     >
-      {customShader ? (
-        <section className="material-custom-shader">
-          <Code2 size={30} />
-          <div>
-            <strong>Custom Material Shader</strong>
-            <p>
-              This material implements the Material ABI with handwritten Slang. ARC owns render-pass entry points and
-              composes this evaluator into the same depth, shadow, G-buffer, forward and motion passes as graph
-              materials.
-            </p>
-            <code>{customShader}</code>
+      <div className="material-editor-graph-region">
+        {customShader ? (
+          <section className="material-custom-shader">
+            <Code2 size={30} />
+            <div>
+              <strong>Custom Material Shader</strong>
+              <p>
+                This material implements the Material ABI with handwritten Slang. ARC owns render-pass entry points and
+                composes this evaluator into the same depth, shadow, G-buffer, forward and motion passes as graph
+                materials.
+              </p>
+              <code>{customShader}</code>
+            </div>
+          </section>
+        ) : (
+          <MaterialGraphWithInteractions
+            document={document}
+            graph={state.graph}
+            loaded={state.loaded}
+            showGrid={state.showGrid}
+            dimUnrelated={state.dimUnrelated}
+          />
+        )}
+
+        {!customShader && state.showStats && (
+          <div aria-label="Material graph stats" className="material-graph-stats-overlay">
+            <div>
+              <span>Nodes</span>
+              <strong>{materialStats.nodes}</strong>
+            </div>
+            <div>
+              <span>Connections</span>
+              <strong>{materialStats.connections}</strong>
+            </div>
+            <div>
+              <span>Parameters</span>
+              <strong>{materialStats.parameters}</strong>
+            </div>
+            <div>
+              <span>Diagnostics</span>
+              <strong>
+                {materialStats.errors}E · {materialStats.warnings}W
+              </strong>
+            </div>
           </div>
-        </section>
-      ) : (
-        <MaterialGraphWithInteractions document={document} graph={state.graph} loaded={state.loaded} />
-      )}
+        )}
+
+        {toast && (
+          <div className="material-editor-message" key={toast.id} role="status">
+            {toast.message}
+          </div>
+        )}
+      </div>
 
       <div
         className="material-editor-divider"
@@ -384,8 +445,6 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
           )}
         </div>
       </aside>
-
-      {state.message && <div className="material-editor-message">{state.message}</div>}
     </section>
   );
 }

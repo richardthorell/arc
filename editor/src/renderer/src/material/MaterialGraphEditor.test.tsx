@@ -38,6 +38,26 @@ describe('MaterialGraphEditor', () => {
     expect(container.querySelectorAll('[data-graph-pin-key]').length).toBeGreaterThan(0);
   });
 
+  it('applies toolbar-controlled graph view options', () => {
+    const graph = createDefaultMaterialGraph();
+    graph.nodes.push(createMaterialNode('normalMap', [980, 720]));
+
+    const { container } = render(
+      <MaterialGraphEditor document={document} graph={graph} showGrid={false} dimUnrelated />,
+    );
+
+    const canvas = screen.getByRole('application', { name: 'Material graph' });
+    expect(canvas).toHaveClass('hide-grid', 'dim-unrelated');
+
+    const output = screen.getByText('Material Output').closest('article');
+    expect(output).not.toBeNull();
+    fireEvent.pointerDown(output!, { button: 0 });
+
+    const isolatedNode = screen.getByText('Normal Map').closest('article');
+    expect(isolatedNode).toHaveClass('is-unrelated');
+    expect(container.querySelectorAll('.material-graph-node.is-unrelated').length).toBeGreaterThan(0);
+  });
+
   it('shows graph navigation controls with snap enabled by default', () => {
     render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
 
@@ -57,7 +77,8 @@ describe('MaterialGraphEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add Node' }));
     const menu = screen.getByRole('menu', { name: 'Add material node' });
     fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: /Values/ }));
-    fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: /Constants/ }));
+    const valuesMenu = screen.getByRole('menu', { name: 'Values material node categories' });
+    fireEvent.mouseEnter(within(valuesMenu).getByRole('menuitem', { name: /Constants/ }));
     const constantsMenu = screen.getByRole('menu', { name: 'Constants material nodes' });
     const item = within(constantsMenu).getByRole('menuitem', { name: 'Constant' });
 
@@ -84,6 +105,8 @@ describe('MaterialGraphEditor', () => {
     fireEvent.mouseEnter(math.closest('.material-node-menu-cascade-entry')!);
     const categoryMenu = screen.getByRole('menu', { name: 'Math material node categories' });
     expect(categoryMenu).toHaveClass('material-node-menu-submenu');
+    expect(categoryMenu).toHaveStyle({ position: 'fixed' });
+    expect(menu).not.toContainElement(categoryMenu);
     expect(within(menu).getByRole('menuitem', { name: /Values/ })).toBeInTheDocument();
     expect(within(categoryMenu).getByRole('menuitem', { name: /Arithmetic/ })).toBeInTheDocument();
     expect(within(categoryMenu).getByRole('menuitem', { name: /Trigonometry/ })).toBeInTheDocument();
@@ -93,6 +116,8 @@ describe('MaterialGraphEditor', () => {
     fireEvent.mouseEnter(arithmetic.closest('.material-node-menu-cascade-entry')!);
     const commandMenu = screen.getByRole('menu', { name: 'Arithmetic material nodes' });
     expect(commandMenu).toHaveClass('material-node-menu-submenu');
+    expect(commandMenu).toHaveStyle({ position: 'fixed' });
+    expect(categoryMenu).not.toContainElement(commandMenu);
     expect(within(commandMenu).getByRole('menuitem', { name: 'Add' })).toBeInTheDocument();
     expect(within(commandMenu).getByRole('menuitem', { name: /Fmod/ })).toBeInTheDocument();
     expect(within(commandMenu).getByRole('menuitem', { name: /One Minus/ })).toBeInTheDocument();
@@ -104,11 +129,13 @@ describe('MaterialGraphEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add Node' }));
     const menu = screen.getByRole('menu', { name: 'Add material node' });
     fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: /Values/ }));
-    fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: /Colors/ }));
+    const valuesMenu = screen.getByRole('menu', { name: 'Values material node categories' });
+    fireEvent.mouseEnter(within(valuesMenu).getByRole('menuitem', { name: /Colors/ }));
+    const colorsMenu = screen.getByRole('menu', { name: 'Colors material nodes' });
 
-    expect(within(menu).getByRole('menuitem', { name: 'Color' })).toBeInTheDocument();
-    expect(within(menu).queryByRole('menuitem', { name: 'Color (RGB)' })).not.toBeInTheDocument();
-    expect(within(menu).queryByRole('menuitem', { name: 'Color (RGBA)' })).not.toBeInTheDocument();
+    expect(within(colorsMenu).getByRole('menuitem', { name: 'Color' })).toBeInTheDocument();
+    expect(within(colorsMenu).queryByRole('menuitem', { name: 'Color (RGB)' })).not.toBeInTheDocument();
+    expect(within(colorsMenu).queryByRole('menuitem', { name: 'Color (RGBA)' })).not.toBeInTheDocument();
   });
 
   it('searches across material node subcategories', () => {

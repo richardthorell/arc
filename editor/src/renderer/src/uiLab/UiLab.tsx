@@ -36,6 +36,7 @@ import {
   UiSearchInput,
   UiSelect,
   UiSelectButton,
+  UiSlider,
   UiTab,
   UiTabs,
   UiTextInput,
@@ -241,6 +242,10 @@ const uiHierarchy: readonly UiHierarchyNode[] = [
     name: 'UiNumericInput',
     relation: 'shared numeric input',
     children: [{ name: 'UiVector3Control', relation: 'composes' }],
+  },
+  {
+    name: 'UiSlider',
+    relation: 'shared range input',
   },
 ];
 
@@ -723,16 +728,15 @@ export function UiLab() {
               onChange={setRange}
             />
           </LabCard>
-          <LabCard title="Slider" caption="native range">
+          <LabCard title="Slider" caption="UiSlider">
             <label className="ui-lab-slider">
               <span>Preview quality</span>
-              <input
+              <UiSlider
                 aria-label="Preview quality"
                 max={100}
                 min={0}
-                onChange={(event) => setPreviewQuality(Number(event.target.value))}
-                type="range"
                 value={previewQuality}
+                onValueChange={setPreviewQuality}
               />
               <output>{previewQuality}%</output>
             </label>

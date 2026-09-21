@@ -41,6 +41,10 @@ export type MaterialDocumentState = {
   compiling: boolean;
   previewLoading: boolean;
   loaded: boolean;
+  liveUpdate: boolean;
+  showGrid: boolean;
+  dimUnrelated: boolean;
+  showStats: boolean;
   schemaUpgradePending: boolean;
   sourceVersion: number;
   message: string;
@@ -130,6 +134,10 @@ const initialState = (document: EditorDocument): MaterialDocumentState => ({
   compiling: false,
   previewLoading: false,
   loaded: false,
+  liveUpdate: true,
+  showGrid: true,
+  dimUnrelated: false,
+  showStats: false,
   schemaUpgradePending: false,
   sourceVersion: currentMaterialAuthoringVersion,
   message: '',
@@ -196,6 +204,8 @@ const cancelScheduledCompile = (documentId: string) => {
 
 const scheduleNativeCompile = (document: EditorDocument) => {
   cancelScheduledCompile(document.id);
+  const current = ensureState(document);
+  if (!current.liveUpdate) return;
   const timer = setTimeout(() => {
     compileTimers.delete(document.id);
     void compileMaterialDocument(document, { quiet: true });
@@ -204,6 +214,25 @@ const scheduleNativeCompile = (document: EditorDocument) => {
 };
 
 export const getMaterialDocumentState = (document: EditorDocument) => ensureState(document);
+
+export const setMaterialLiveUpdate = (document: EditorDocument, enabled: boolean) => {
+  const current = ensureState(document);
+  if (current.liveUpdate === enabled) return;
+  setState(document.id, { liveUpdate: enabled });
+  if (enabled && current.loaded && !materialShaderPath(current.asset)) scheduleNativeCompile(document);
+};
+
+export const setMaterialGraphView = (
+  document: EditorDocument,
+  patch: Partial<Pick<MaterialDocumentState, 'showGrid' | 'dimUnrelated' | 'showStats'>>,
+) => {
+  const current = ensureState(document);
+  setState(document.id, {
+    showGrid: patch.showGrid ?? current.showGrid,
+    dimUnrelated: patch.dimUnrelated ?? current.dimUnrelated,
+    showStats: patch.showStats ?? current.showStats,
+  });
+};
 
 export const refreshMaterialPreview = async (document: EditorDocument): Promise<boolean> => {
   const current = ensureState(document);

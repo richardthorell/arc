@@ -25,6 +25,8 @@ export type { UiPropertyCardField, UiPropertyCardProps } from './UiPropertyCard'
 export { UiSidebarPanel } from './UiSidebarPanel';
 export { UiSelect } from './UiSelect';
 export { UiSelectButton } from './UiSelectButton';
+export { UiSlider } from './UiSlider';
+export type { UiSliderProps } from './UiSlider';
 export { UiSplitButton } from './UiSplitButton';
 export type { UiSplitButtonOption } from './UiSplitButton';
 export { UiTab, UiTabs } from './UiTabs';
