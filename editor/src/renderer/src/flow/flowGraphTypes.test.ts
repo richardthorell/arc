@@ -78,17 +78,41 @@ describe('Flow graph authoring schema', () => {
     expect(flowNodeDefinitions.graphOutput.inputs.map((pin) => pin.id)).toEqual(['exec', 'value']);
   });
 
+  it('creates and validates F8.2 local function declarations', () => {
+    const asset = createFlowAsset('Functions');
+    asset.graph.functions!.push({
+      id: 'identity',
+      name: 'Identity',
+      inputs: [{ id: 'value', name: 'Value', type: 'int', defaultValue: 0 }],
+      outputs: [{ id: 'result', name: 'Result', type: 'int', defaultValue: 0 }],
+    });
+    asset.graph.nodes.push(
+      createFlowNode('functionEntry', [200, 200], {
+        functionId: 'identity',
+        functionName: 'Identity',
+        functionInputs: asset.graph.functions![0].inputs,
+        functionOutputs: asset.graph.functions![0].outputs,
+      }),
+    );
+
+    expect(isFlowAssetJson(asset)).toBe(true);
+    expect(flowNodeDefinitions.callFunction.category).toBe('Functions');
+    expect(flowNodeDefinitions.functionReturn.subcategory).toBe('Local');
+  });
+
   it('normalizes legacy v1 graphs without F8.1 declaration arrays', () => {
     const asset = createFlowAsset('Legacy');
     delete asset.graph.inputs;
     delete asset.graph.outputs;
     delete asset.graph.events;
+    delete asset.graph.functions;
 
     expect(isFlowAssetJson(asset)).toBe(true);
     const graph = flowGraphFromAsset(asset);
     expect(graph.inputs).toEqual([]);
     expect(graph.outputs).toEqual([]);
     expect(graph.events).toEqual([]);
+    expect(graph.functions).toEqual([]);
   });
 
   it('rejects connections that reference missing nodes', () => {

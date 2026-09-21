@@ -733,6 +733,175 @@ void test_compiler_executes_custom_event_and_interface()
     assert(std::get<std::int64_t>(*instance.graph_output_value("result")) == 17);
 }
 
+[[maybe_unused]] bool has_diagnostic_code(const compile_result& result, std::string_view code)
+{
+    for (const diagnostic& item : result.diagnostics)
+        if (item.code == code) return true;
+    return false;
+}
+
+void test_compiler_executes_local_function()
+{
+    constexpr std::string_view source = R"json({
+        "version": 1,
+        "assetType": "flow",
+        "name": "Functions",
+        "graph": {
+            "version": 1,
+            "variables": [
+                {"id": "result", "name": "Result", "type": "int", "defaultValue": 0, "exposed": false}
+            ],
+            "inputs": [],
+            "outputs": [],
+            "events": [],
+            "functions": [
+                {
+                    "id": "identity",
+                    "name": "Identity",
+                    "inputs": [{"id": "value", "name": "Value", "type": "int", "defaultValue": 7}],
+                    "outputs": [{"id": "result", "name": "Result", "type": "int", "defaultValue": 0}]
+                }
+            ],
+            "nodes": [
+                {"id": "begin", "type": "beginPlay", "position": [0, 0], "values": {}},
+                {"id": "literal", "type": "intLiteral", "position": [0, 120], "values": {"value": 42}},
+                {"id": "call", "type": "callFunction", "position": [220, 0], "values": {"functionId": "identity"}},
+                {"id": "set", "type": "setVariable", "position": [500, 0], "values": {"variableId": "result", "variableType": "int"}},
+                {"id": "entry", "type": "functionEntry", "position": [0, 320], "values": {"functionId": "identity"}},
+                {"id": "return", "type": "functionReturn", "position": [360, 320], "values": {"functionId": "identity"}}
+            ],
+            "connections": [
+                {"id": "e0", "kind": "execution", "from": {"nodeId": "begin", "pin": "exec"}, "to": {"nodeId": "call", "pin": "exec"}},
+                {"id": "e1", "kind": "execution", "from": {"nodeId": "call", "pin": "then"}, "to": {"nodeId": "set", "pin": "exec"}},
+                {"id": "e2", "kind": "execution", "from": {"nodeId": "entry", "pin": "exec"}, "to": {"nodeId": "return", "pin": "exec"}},
+                {"id": "v0", "kind": "value", "from": {"nodeId": "literal", "pin": "value"}, "to": {"nodeId": "call", "pin": "input:value"}},
+                {"id": "v1", "kind": "value", "from": {"nodeId": "call", "pin": "output:result"}, "to": {"nodeId": "set", "pin": "value"}},
+                {"id": "v2", "kind": "value", "from": {"nodeId": "entry", "pin": "input:value"}, "to": {"nodeId": "return", "pin": "output:result"}}
+            ],
+            "viewport": {"x": 0, "y": 0, "zoom": 1}
+        }
+    })json";
+
+    const compile_result compiled = compile_asset(source);
+    assert(compiled.succeeded && compiled.bytecode);
+    assert(compiled.bytecode->functions.size() == 1);
+    assert(compiled.bytecode->function_calls.size() == 1);
+    assert(compiled.bytecode->function_returns.size() == 1);
+
+    vm_instance instance{*compiled.bytecode};
+    assert(instance.valid());
+    [[maybe_unused]] const execution_result result = instance.begin_play();
+    assert(result.succeeded());
+    assert(std::get<std::int64_t>(*instance.variable_value("result")) == 42);
+}
+
+void test_function_default_parameter()
+{
+    constexpr std::string_view source = R"json({
+        "version": 1,
+        "assetType": "flow",
+        "name": "FunctionDefaults",
+        "graph": {
+            "version": 1,
+            "variables": [
+                {"id": "result", "name": "Result", "type": "int", "defaultValue": 0, "exposed": false}
+            ],
+            "inputs": [],
+            "outputs": [],
+            "events": [],
+            "functions": [
+                {
+                    "id": "identity",
+                    "name": "Identity",
+                    "inputs": [{"id": "value", "name": "Value", "type": "int", "defaultValue": 7}],
+                    "outputs": [{"id": "result", "name": "Result", "type": "int", "defaultValue": 0}]
+                }
+            ],
+            "nodes": [
+                {"id": "begin", "type": "beginPlay", "position": [0, 0], "values": {}},
+                {"id": "call", "type": "callFunction", "position": [220, 0], "values": {"functionId": "identity"}},
+                {"id": "set", "type": "setVariable", "position": [500, 0], "values": {"variableId": "result", "variableType": "int"}},
+                {"id": "entry", "type": "functionEntry", "position": [0, 320], "values": {"functionId": "identity"}},
+                {"id": "return", "type": "functionReturn", "position": [360, 320], "values": {"functionId": "identity"}}
+            ],
+            "connections": [
+                {"id": "e0", "kind": "execution", "from": {"nodeId": "begin", "pin": "exec"}, "to": {"nodeId": "call", "pin": "exec"}},
+                {"id": "e1", "kind": "execution", "from": {"nodeId": "call", "pin": "then"}, "to": {"nodeId": "set", "pin": "exec"}},
+                {"id": "e2", "kind": "execution", "from": {"nodeId": "entry", "pin": "exec"}, "to": {"nodeId": "return", "pin": "exec"}},
+                {"id": "v0", "kind": "value", "from": {"nodeId": "call", "pin": "output:result"}, "to": {"nodeId": "set", "pin": "value"}},
+                {"id": "v1", "kind": "value", "from": {"nodeId": "entry", "pin": "input:value"}, "to": {"nodeId": "return", "pin": "output:result"}}
+            ],
+            "viewport": {"x": 0, "y": 0, "zoom": 1}
+        }
+    })json";
+
+    const compile_result compiled = compile_asset(source);
+    assert(compiled.succeeded && compiled.bytecode);
+    vm_instance instance{*compiled.bytecode};
+    [[maybe_unused]] const execution_result result = instance.begin_play();
+    assert(result.succeeded());
+    assert(std::get<std::int64_t>(*instance.variable_value("result")) == 7);
+}
+
+void test_function_validation_rejects_recursion_and_latent_nodes()
+{
+    constexpr std::string_view recursive_source = R"json({
+        "version": 1,
+        "assetType": "flow",
+        "name": "RecursiveFunction",
+        "graph": {
+            "version": 1,
+            "variables": [],
+            "inputs": [],
+            "outputs": [],
+            "events": [],
+            "functions": [{"id": "f", "name": "F", "inputs": [], "outputs": []}],
+            "nodes": [
+                {"id": "entry", "type": "functionEntry", "position": [0, 0], "values": {"functionId": "f"}},
+                {"id": "call", "type": "callFunction", "position": [200, 0], "values": {"functionId": "f"}},
+                {"id": "return", "type": "functionReturn", "position": [400, 0], "values": {"functionId": "f"}}
+            ],
+            "connections": [
+                {"id": "e0", "kind": "execution", "from": {"nodeId": "entry", "pin": "exec"}, "to": {"nodeId": "call", "pin": "exec"}},
+                {"id": "e1", "kind": "execution", "from": {"nodeId": "call", "pin": "then"}, "to": {"nodeId": "return", "pin": "exec"}}
+            ],
+            "viewport": {"x": 0, "y": 0, "zoom": 1}
+        }
+    })json";
+    const compile_result recursive = compile_asset(recursive_source);
+    assert(!recursive.succeeded);
+    assert(has_diagnostic_code(recursive, "FLOW_FUNCTION_RECURSION"));
+
+    constexpr std::string_view latent_source = R"json({
+        "version": 1,
+        "assetType": "flow",
+        "name": "LatentFunction",
+        "graph": {
+            "version": 1,
+            "variables": [],
+            "inputs": [],
+            "outputs": [],
+            "events": [],
+            "functions": [{"id": "f", "name": "F", "inputs": [], "outputs": []}],
+            "nodes": [
+                {"id": "entry", "type": "functionEntry", "position": [0, 0], "values": {"functionId": "f"}},
+                {"id": "duration", "type": "floatLiteral", "position": [0, 140], "values": {"value": 0.1}},
+                {"id": "delay", "type": "delay", "position": [200, 0], "values": {}},
+                {"id": "return", "type": "functionReturn", "position": [420, 0], "values": {"functionId": "f"}}
+            ],
+            "connections": [
+                {"id": "e0", "kind": "execution", "from": {"nodeId": "entry", "pin": "exec"}, "to": {"nodeId": "delay", "pin": "exec"}},
+                {"id": "e1", "kind": "execution", "from": {"nodeId": "delay", "pin": "completed"}, "to": {"nodeId": "return", "pin": "exec"}},
+                {"id": "v0", "kind": "value", "from": {"nodeId": "duration", "pin": "value"}, "to": {"nodeId": "delay", "pin": "duration"}}
+            ],
+            "viewport": {"x": 0, "y": 0, "zoom": 1}
+        }
+    })json";
+    const compile_result latent = compile_asset(latent_source);
+    assert(!latent.succeeded);
+    assert(has_diagnostic_code(latent, "FLOW_FUNCTION_LATENT"));
+}
+
 } // namespace
 
 void run_flow_language_tests()
@@ -751,4 +920,7 @@ void run_flow_language_tests()
     test_compiler_executes_latent_nodes();
     test_graph_interface_bytecode();
     test_compiler_executes_custom_event_and_interface();
+    test_compiler_executes_local_function();
+    test_function_default_parameter();
+    test_function_validation_rejects_recursion_and_latent_nodes();
 }
