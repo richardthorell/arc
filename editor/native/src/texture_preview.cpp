@@ -118,6 +118,79 @@ texture_preview_image build_texture_preview_image(const render::texture_data& te
     return preview;
 }
 
+render::texture_load_result build_texture_preview_mip(const render::texture_data& texture,
+                                                              std::uint32_t mip_level)
+{
+    render::texture_load_result result;
+    if (texture.dimension != render::texture_dimension::texture_2d)
+    {
+        result.message = "V1 native texture preview supports Texture2D only";
+        return result;
+    }
+
+    const bool encoded = texture.has_encoded_mips();
+    const auto& source_bytes = encoded ? texture.encoded : texture.pixels;
+    if (source_bytes.empty())
+    {
+        result.message = "Texture preview source has no uploadable pixel payload";
+        return result;
+    }
+
+    render::texture_mip_data source_mip{};
+    if (texture.mips.empty())
+    {
+        if (mip_level != 0u)
+        {
+            result.message = "Requested texture preview mip is out of range";
+            return result;
+        }
+        source_mip = {.width = texture.width, .height = texture.height, .offset = 0u, .size = source_bytes.size()};
+    }
+    else
+    {
+        if (mip_level >= texture.mips.size())
+        {
+            result.message = "Requested texture preview mip is out of range";
+            return result;
+        }
+        source_mip = texture.mips[mip_level];
+    }
+
+    if (source_mip.width == 0u || source_mip.height == 0u || source_mip.size == 0u ||
+        source_mip.offset > source_bytes.size() || source_mip.size > source_bytes.size() - source_mip.offset)
+    {
+        result.message = "Texture preview mip payload is invalid";
+        return result;
+    }
+
+    auto& preview = result.texture;
+    preview.name = texture.name + " Preview Mip " + std::to_string(mip_level);
+    preview.source_path = texture.source_path;
+    preview.width = source_mip.width;
+    preview.height = source_mip.height;
+    preview.depth = 1u;
+    preview.dimension = render::texture_dimension::texture_2d;
+    preview.format = texture.format;
+    preview.color_space = texture.color_space;
+    preview.semantic = texture.semantic;
+    preview.array_layers = 1u;
+    preview.mip_levels = 1u;
+    preview.compressed = texture.compressed;
+    preview.dds = texture.dds;
+    preview.mime_type = texture.mime_type;
+    preview.mips.push_back({.width = source_mip.width, .height = source_mip.height, .offset = 0u, .size = source_mip.size});
+
+    const auto begin = source_bytes.begin() + static_cast<std::ptrdiff_t>(source_mip.offset);
+    const auto end = begin + static_cast<std::ptrdiff_t>(source_mip.size);
+    if (encoded)
+        preview.encoded.assign(begin, end);
+    else
+        preview.pixels.assign(begin, end);
+
+    result.message = "Texture preview mip isolated";
+    return result;
+}
+
 std::vector<std::byte> encode_texture_preview_bmp(const texture_preview_image& preview)
 {
     if (!preview.valid()) return {};
