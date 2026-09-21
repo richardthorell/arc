@@ -81,22 +81,3 @@
   font-size: 16px;
   line-height: 1;
 }
-
-.texture-zoom-control {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 220px;
-  color: var(--arc-color-text-muted);
-  font-size: 12px;
-}
-
-.texture-zoom-control input {
-  width: 150px;
-}
-
-.texture-zoom-control output {
-  width: 46px;
-  color: var(--arc-color-text);
-  text-align: right;
-}
