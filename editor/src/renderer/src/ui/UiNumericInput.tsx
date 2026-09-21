@@ -15,6 +15,7 @@ export type UiNumericInputProps = {
   scrubLabel?: string;
   scrubClassName?: string;
   mixed?: boolean;
+  disabled?: boolean;
   onPreview?: (value: number) => void;
   onCommit: (value: number) => void;
 };
@@ -35,6 +36,7 @@ export function UiNumericInput({
   scrubLabel,
   scrubClassName,
   mixed = false,
+  disabled = false,
   onPreview,
   onCommit,
 }: UiNumericInputProps) {
@@ -85,7 +87,7 @@ export function UiNumericInput({
   };
 
   const startScrub = (event: ReactPointerEvent<HTMLSpanElement>) => {
-    if (event.button !== 0) return;
+    if (disabled || event.button !== 0) return;
     event.preventDefault();
 
     const startX = event.clientX;
@@ -133,6 +135,7 @@ export function UiNumericInput({
       <input
         aria-label={ariaLabel}
         className={mixed ? 'is-mixed' : undefined}
+        disabled={disabled}
         inputMode="decimal"
         onBlur={commitDraft}
         onChange={(event) => setDraft(event.target.value)}
