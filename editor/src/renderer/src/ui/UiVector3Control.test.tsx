@@ -40,6 +40,13 @@ describe('UiVector3Control', () => {
     expect(screen.getByRole('button', { name: 'Reset Scale' })).toBeTruthy();
   });
 
+  it('can remove the action column entirely for compact contexts', () => {
+    const { container } = render(<UiVector3Control {...baseProps} showActions={false} showLabel={false} />);
+
+    expect(container.querySelector('.ui-vector3-actions')).toBeNull();
+    expect(container.querySelector('.ui-vector3-value')?.classList.contains('has-no-actions')).toBe(true);
+  });
+
   it('commits an edited axis value through the shared numeric input', () => {
     const onCommit = vi.fn();
     render(<UiVector3Control {...baseProps} onCommit={onCommit} />);
