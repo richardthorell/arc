@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
+import os
 import pathlib
 import sys
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest import mock
@@ -28,6 +31,71 @@ class EditorArgumentTests(unittest.TestCase):
             ["run_editor.py", "--no-install", "--install-prerequisites"],
         ), self.assertRaises(SystemExit):
             run_editor.parse_args()
+
+
+class EditorDependencyTests(unittest.TestCase):
+    def create_editor_tree(self, root: pathlib.Path, missing: str | None = None) -> pathlib.Path:
+        editor = root / "editor"
+        node_modules = editor / "node_modules"
+        node_modules.mkdir(parents=True)
+        manifest = {
+            "dependencies": {
+                "react": "19.2.7",
+                "react-icons": "5.5.0",
+                "@scope/example": "1.0.0",
+            },
+            "devDependencies": {
+                "vite": "8.1.3",
+            },
+        }
+        (editor / "package.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (editor / "package-lock.json").write_text('{"lockfileVersion": 3}', encoding="utf-8")
+        (node_modules / ".package-lock.json").write_text('{"lockfileVersion": 3}', encoding="utf-8")
+
+        for dependency in ("react", "react-icons", "@scope/example", "vite"):
+            if dependency == missing:
+                continue
+            package_dir = node_modules.joinpath(*dependency.split("/"))
+            package_dir.mkdir(parents=True, exist_ok=True)
+            (package_dir / "package.json").write_text("{}", encoding="utf-8")
+
+        return editor
+
+    def test_dependencies_ready_requires_all_declared_direct_packages(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            editor = self.create_editor_tree(pathlib.Path(temporary), missing="react-icons")
+
+            self.assertFalse(run_editor.dependencies_ready(str(editor)))
+
+    def test_dependencies_ready_accepts_complete_current_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            editor = self.create_editor_tree(pathlib.Path(temporary))
+            source_time = max(
+                os.path.getmtime(editor / "package.json"),
+                os.path.getmtime(editor / "package-lock.json"),
+            )
+            os.utime(editor / "node_modules" / ".package-lock.json", (source_time + 1, source_time + 1))
+
+            self.assertTrue(run_editor.dependencies_ready(str(editor)))
+
+    def test_dependencies_ready_rejects_stale_hidden_lockfile(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            editor = self.create_editor_tree(pathlib.Path(temporary))
+            os.utime(editor / "node_modules" / ".package-lock.json", (1, 1))
+
+            self.assertFalse(run_editor.dependencies_ready(str(editor)))
+
+    def test_install_editor_dependencies_uses_npm_ci(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            editor = pathlib.Path(temporary)
+            (editor / "package-lock.json").write_text('{"lockfileVersion": 3}', encoding="utf-8")
+
+            with mock.patch.object(run_editor.arc_build, "run") as run, mock.patch.object(
+                run_editor, "dependencies_ready", return_value=True
+            ):
+                run_editor.install_editor_dependencies("npm", str(editor))
+
+            run.assert_called_once_with(["npm", "ci"], str(editor))
 
 
 class EditorNativeBuildTests(unittest.TestCase):
