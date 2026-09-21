@@ -381,8 +381,8 @@ const graph_interface_value* function_pin_value(const std::vector<graph_interfac
 {
     if (!pin.starts_with(prefix)) return nullptr;
     const std::string_view id = pin.substr(prefix.size());
-    const auto found = std::find_if(values.begin(), values.end(),
-                                    [id](const graph_interface_value& item) { return item.id == id; });
+    const auto found =
+        std::find_if(values.begin(), values.end(), [id](const graph_interface_value& item) { return item.id == id; });
     return found == values.end() ? nullptr : &*found;
 }
 
@@ -945,8 +945,8 @@ std::optional<source_graph> parse_source(std::string_view source, std::vector<di
                                    .exposed = variable_json["exposed"].get<bool>()});
     }
 
-    const auto parse_interface_array = [&](const json& source_values, std::vector<graph_interface_value>& destination,
-                                           std::string_view owner)
+    const auto parse_interface_array =
+        [&](const json& source_values, std::vector<graph_interface_value>& destination, std::string_view owner)
     {
         if (!source_values.is_array())
         {
@@ -1632,8 +1632,7 @@ validation_state validate_graph(const source_graph& graph, std::vector<diagnosti
 
         if (!function->outputs.empty() && !has_return)
             add_diagnostic(diagnostics, diagnostic_severity::error, "FLOW_FUNCTION_RETURN_MISSING",
-                           "Flow functions with return values require a reachable Function Return node.",
-                           function->id);
+                           "Flow functions with return values require a reachable Function Return node.", function->id);
     }
 
     visits.clear();
@@ -2345,9 +2344,9 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                     const std::string pin = std::string{"input:"} + input.id;
                     const auto incoming = validation.incoming.find(pin_key(node->id, pin));
                     if (incoming == validation.incoming.end()) continue;
-                    call.inputs.push_back(
-                        {.source_slot = value_slots.at(pin_key(incoming->second->from.node_id, incoming->second->from.pin)),
-                         .destination_slot = input.slot});
+                    const std::uint32_t source_slot =
+                        value_slots.at(pin_key(incoming->second->from.node_id, incoming->second->from.pin));
+                    call.inputs.push_back({.source_slot = source_slot, .destination_slot = input.slot});
                 }
                 for (const graph_interface_value& output : function.outputs)
                     call.outputs.push_back(
@@ -2368,9 +2367,9 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
                     const std::string pin = std::string{"output:"} + output.id;
                     const auto incoming = validation.incoming.find(pin_key(node->id, pin));
                     if (incoming == validation.incoming.end()) continue;
-                    function_return.outputs.push_back(
-                        {.source_slot = value_slots.at(pin_key(incoming->second->from.node_id, incoming->second->from.pin)),
-                         .destination_slot = output.slot});
+                    const std::uint32_t source_slot =
+                        value_slots.at(pin_key(incoming->second->from.node_id, incoming->second->from.pin));
+                    function_return.outputs.push_back({.source_slot = source_slot, .destination_slot = output.slot});
                 }
                 instruction.operand0 = static_cast<std::uint32_t>(program.function_returns.size());
                 program.function_returns.push_back(std::move(function_return));
@@ -2618,12 +2617,13 @@ ir_program build_ir(const source_graph& graph, const validation_state& validatio
 
     for (function_definition& function : program.functions)
     {
-        const auto entry_node = std::find_if(nodes.begin(), nodes.end(), [&](const source_node* node)
-                                             {
-                                                 if (node->kind != node_kind::function_entry) return false;
-                                                 const function_definition* source = function_for(graph, *node);
-                                                 return source && source->id == function.id;
-                                             });
+        const auto matches_function_entry = [&](const source_node* node)
+        {
+            if (node->kind != node_kind::function_entry) return false;
+            const function_definition* source = function_for(graph, *node);
+            return source && source->id == function.id;
+        };
+        const auto entry_node = std::find_if(nodes.begin(), nodes.end(), matches_function_entry);
         if (entry_node != nodes.end())
             function.instruction = add_self_prelude((*entry_node)->id, function.instruction);
     }
