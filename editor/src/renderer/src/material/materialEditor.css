@@ -335,24 +335,19 @@
 }
 
 .material-node-menu-cascade-entry {
-  position: relative;
+  min-width: 0;
 }
 
 .material-node-menu-submenu.ui-context-menu {
-  z-index: 22;
-  top: -4px;
+  z-index: var(--arc-z-dropdown);
   display: block;
   padding: 4px;
-  overflow-x: visible;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
-.material-node-menu-cascade-right > .material-node-menu-submenu {
-  left: calc(100% - 2px);
-}
-
-.material-node-menu-cascade-left > .material-node-menu-submenu {
-  right: calc(100% - 2px);
+.material-node-menu-submenu-level-2.ui-context-menu {
+  z-index: calc(var(--arc-z-dropdown) + 1);
 }
 
 .material-node-menu-search {
