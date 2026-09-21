@@ -12,12 +12,13 @@ import {
   UiSelect,
   UiTextInput,
   UiToggleButton,
+  UiVector3Control,
 } from '../ui';
 import type { UiPropertyCardField } from '../ui';
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
 import { AssetPicker, AssetPreview, MaterialPicker, PrefabPicker, TexturePicker } from './AssetPicker';
 import { MaterialParameterSubsection } from './MaterialParameterSubsection';
-import { NumberControl, NumberControlLabel, Vector3Control } from './InspectorControls';
+import { NumberControl, NumberControlLabel } from './InspectorControls';
 import type { InspectorProceduralMesh, Vec3, Vec4 } from './inspectorTypes';
 import { getPathValue } from './propertySchema';
 import type { PropertyComponentSchema, PropertyFieldSchema, VectorAxis } from './propertySchema';
@@ -417,11 +418,17 @@ function SchemaField<TContext extends object>({
       return { x: vector.x * ratio, y: vector.y * ratio, z: vector.z * ratio };
     };
     return (
-      <Vector3Control
-        field={field}
+      <UiVector3Control
+        label={field.label}
+        linkable={Boolean(field.linked)}
         linked={linked}
         mixed={mixed}
+        precision={field.precision}
+        scrubSensitivity={field.scrubSensitivity}
         showLabel={false}
+        step={field.step}
+        tooltip={field.tooltip}
+        unit={field.unit}
         value={vector}
         onToggleLinked={onToggleLinked}
         onReset={field.resetValue === undefined ? undefined : () => onValue(structuredClone(field.resetValue), true)}
