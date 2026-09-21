@@ -90,41 +90,6 @@ private:
     std::size_t cursor_{};
 };
 
-struct format_layout
-{
-    std::uint32_t unit_width{1};
-    std::uint32_t unit_height{1};
-    std::uint32_t unit_bytes{};
-};
-
-format_layout layout_for(texture_format format) noexcept
-{
-    switch (format)
-    {
-        case texture_format::bc1_rgba_unorm:
-        case texture_format::bc1_rgba_srgb:
-        case texture_format::bc4_r_unorm:
-            return {4, 4, 8};
-        case texture_format::bc2_rgba_unorm:
-        case texture_format::bc2_rgba_srgb:
-        case texture_format::bc3_rgba_unorm:
-        case texture_format::bc3_rgba_srgb:
-        case texture_format::bc5_rg_unorm:
-        case texture_format::bc6h_rgb_ufloat:
-        case texture_format::bc7_rgba_unorm:
-        case texture_format::bc7_rgba_srgb:
-            return {4, 4, 16};
-        case texture_format::rgba8_unorm:
-        case texture_format::rgba8_srgb:
-            return {1, 1, 4};
-        case texture_format::rgba16f:
-            return {1, 1, 8};
-        case texture_format::rgba32f:
-            return {1, 1, 16};
-    }
-    return {};
-}
-
 std::span<const std::byte> mip_payload(const texture_data& texture, const texture_mip_data& mip) noexcept
 {
     const auto& storage = texture.has_encoded_mips() ? texture.encoded : texture.pixels;
@@ -135,18 +100,18 @@ std::span<const std::byte> mip_payload(const texture_data& texture, const textur
 std::vector<std::byte> extract_tile(std::span<const std::byte> source, std::uint32_t width, std::uint32_t height,
                                     texture_format format, std::uint32_t tile_x, std::uint32_t tile_y)
 {
-    const auto layout = layout_for(format);
-    if (layout.unit_bytes == 0 || source.empty()) return {};
+    const auto layout = texture_format_metadata(format);
+    if (layout.bytes_per_block == 0 || source.empty()) return {};
 
-    const std::uint32_t source_units_x = std::max(1u, (width + layout.unit_width - 1u) / layout.unit_width);
-    const std::uint32_t source_units_y = std::max(1u, (height + layout.unit_height - 1u) / layout.unit_height);
-    const std::uint32_t interior_units = virtual_texture_tile_size / layout.unit_width;
-    const std::uint32_t border_units = virtual_texture_tile_border / layout.unit_width;
+    const std::uint32_t source_units_x = std::max(1u, (width + layout.block_width - 1u) / layout.block_width);
+    const std::uint32_t source_units_y = std::max(1u, (height + layout.block_height - 1u) / layout.block_height);
+    const std::uint32_t interior_units = virtual_texture_tile_size / layout.block_width;
+    const std::uint32_t border_units = virtual_texture_tile_border / layout.block_width;
     const std::uint32_t output_units = interior_units + border_units * 2u;
-    const auto expected_source = static_cast<std::size_t>(source_units_x) * source_units_y * layout.unit_bytes;
+    const auto expected_source = static_cast<std::size_t>(source_units_x) * source_units_y * layout.bytes_per_block;
     if (source.size() < expected_source) return {};
 
-    std::vector<std::byte> result(static_cast<std::size_t>(output_units) * output_units * layout.unit_bytes);
+    std::vector<std::byte> result(static_cast<std::size_t>(output_units) * output_units * layout.bytes_per_block);
     const std::int64_t origin_x = static_cast<std::int64_t>(tile_x * interior_units) - border_units;
     const std::int64_t origin_y = static_cast<std::int64_t>(tile_y * interior_units) - border_units;
     const auto wrap = [](std::int64_t value, std::uint32_t size)
@@ -162,9 +127,9 @@ std::vector<std::byte> extract_tile(std::span<const std::byte> source, std::uint
             const auto source_x = wrap(origin_x + x, source_units_x);
             const auto source_y = wrap(origin_y + y, source_units_y);
             const auto source_offset =
-                (static_cast<std::size_t>(source_y) * source_units_x + source_x) * layout.unit_bytes;
-            const auto destination_offset = (static_cast<std::size_t>(y) * output_units + x) * layout.unit_bytes;
-            std::memcpy(result.data() + destination_offset, source.data() + source_offset, layout.unit_bytes);
+                (static_cast<std::size_t>(source_y) * source_units_x + source_x) * layout.bytes_per_block;
+            const auto destination_offset = (static_cast<std::size_t>(y) * output_units + x) * layout.bytes_per_block;
+            std::memcpy(result.data() + destination_offset, source.data() + source_offset, layout.bytes_per_block);
         }
     return result;
 }
@@ -205,14 +170,14 @@ bool valid_texture_topology(texture_dimension dimension, std::uint32_t width, st
 
 std::uint64_t payload_bytes_2d(std::uint32_t width, std::uint32_t height, texture_format format) noexcept
 {
-    const auto layout = layout_for(format);
-    if (layout.unit_bytes == 0 || width == 0 || height == 0) return 0;
-    const auto units_x = (static_cast<std::uint64_t>(width) + layout.unit_width - 1u) / layout.unit_width;
-    const auto units_y = (static_cast<std::uint64_t>(height) + layout.unit_height - 1u) / layout.unit_height;
+    const auto layout = texture_format_metadata(format);
+    if (layout.bytes_per_block == 0 || width == 0 || height == 0) return 0;
+    const auto units_x = (static_cast<std::uint64_t>(width) + layout.block_width - 1u) / layout.block_width;
+    const auto units_y = (static_cast<std::uint64_t>(height) + layout.block_height - 1u) / layout.block_height;
     if (units_x > std::numeric_limits<std::uint64_t>::max() / units_y ||
-        units_x * units_y > std::numeric_limits<std::uint64_t>::max() / layout.unit_bytes)
+        units_x * units_y > std::numeric_limits<std::uint64_t>::max() / layout.bytes_per_block)
         return 0;
-    return units_x * units_y * layout.unit_bytes;
+    return units_x * units_y * layout.bytes_per_block;
 }
 
 std::uint64_t payload_bytes(std::uint32_t width, std::uint32_t height, std::uint32_t depth, std::uint32_t array_layers,
@@ -289,7 +254,18 @@ texture_artifact_bytes_result encode_texture_artifact(const texture_data& textur
         return texture_artifact_bytes_result::failure(
             failure(texture_artifact_error_code::unsupported_texture,
                     "virtual texture artifacts currently require one 2D layer"));
-    if (layout_for(texture.format).unit_bytes == 0)
+    if (mode == texture_streaming_mode::virtual_tiles)
+    {
+        const auto format = texture_format_metadata(texture.format);
+        if (format.bytes_per_block == 0 || virtual_texture_tile_size % format.block_width != 0 ||
+            virtual_texture_tile_size % format.block_height != 0 ||
+            virtual_texture_tile_border % format.block_width != 0 ||
+            virtual_texture_tile_border % format.block_height != 0)
+            return texture_artifact_bytes_result::failure(
+                failure(texture_artifact_error_code::unsupported_texture,
+                        "virtual texture tile geometry is not aligned to the texture format block size"));
+    }
+    if (texture_format_metadata(texture.format).bytes_per_block == 0)
         return texture_artifact_bytes_result::failure(
             failure(texture_artifact_error_code::unsupported_texture, "texture format is not pageable"));
     const auto expected_mips = complete_mip_count(texture.width, texture.height, texture.depth, texture.dimension);
@@ -554,7 +530,7 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
         return texture_artifact_index_result::failure(
             failure(texture_artifact_error_code::integrity_failure, "texture artifact header hash is invalid"));
     if (mode > static_cast<std::uint32_t>(texture_streaming_mode::virtual_tiles) ||
-        format > static_cast<std::uint32_t>(texture_format::bc7_rgba_srgb) ||
+        format > static_cast<std::uint32_t>(texture_format::eac_rg11_snorm) ||
         color_space > static_cast<std::uint32_t>(texture_color_space::srgb) ||
         semantic > static_cast<std::uint32_t>(texture_semantic::environment) ||
         dimension > static_cast<std::uint32_t>(texture_dimension::cube) ||
