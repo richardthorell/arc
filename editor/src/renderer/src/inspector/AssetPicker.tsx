@@ -243,9 +243,7 @@ export function AssetPicker({
   const selected = assets.find((asset) => valueFor(asset) === value);
   const createNew =
     onCreateNew ??
-    (createAssetKind
-      ? (name: string) => createProjectAsset(createAssetKind, name, assets, assetTypeLabel)
-      : undefined);
+    (createAssetKind ? (name: string) => createProjectAsset(createAssetKind, name, assets, assetTypeLabel) : undefined);
 
   const acceptDrop = (event: React.DragEvent) => {
     const dropped = readArcAssetDragPayload(event.dataTransfer);
