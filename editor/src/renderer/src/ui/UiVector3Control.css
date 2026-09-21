@@ -25,6 +25,10 @@
   min-width: 0;
 }
 
+.ui-vector3-value.has-no-actions {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .ui-vector3-axis-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
