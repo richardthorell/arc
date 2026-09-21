@@ -1,0 +1,71 @@
+.ui-vector3-control {
+  width: 100%;
+  min-width: 0;
+}
+
+.ui-vector3-control.is-labeled {
+  display: grid;
+  grid-template-columns: var(--inspector-row-label, 108px) minmax(0, 1fr);
+  align-items: center;
+}
+
+.ui-vector3-label {
+  min-width: 0;
+  padding-right: 7px;
+  color: var(--inspector-text-muted, #a2abb3);
+  white-space: nowrap;
+}
+
+.ui-vector3-value {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+
+.ui-vector3-axis-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  min-width: 0;
+}
+
+.ui-vector3-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 20px);
+  align-items: center;
+  gap: 2px;
+  width: 42px;
+}
+
+.ui-vector3-action-slot {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+}
+
+.ui-vector3-action.ui-icon-button {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 3px;
+  color: var(--inspector-text-dim, #707a83);
+}
+
+.ui-vector3-action.ui-icon-button:hover {
+  color: var(--inspector-text, #cbd2d8);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.ui-vector3-link.ui-icon-button {
+  color: #87919a;
+}
+
+.ui-vector3-link.ui-icon-button.is-linked {
+  color: #c8d5e0;
+  background: #344555;
+}
