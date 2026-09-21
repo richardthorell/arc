@@ -118,9 +118,7 @@ export function FlowEditor({ document }: { document: EditorDocument; context?: E
     kind: 'inputs' | 'outputs',
     interfaceId: string,
   ) => {
-    const nodeIds = new Set(
-      graph.nodes.filter((node) => node.values.functionId === functionId).map((node) => node.id),
-    );
+    const nodeIds = new Set(graph.nodes.filter((node) => node.values.functionId === functionId).map((node) => node.id));
     const pin = `${kind === 'inputs' ? 'input' : 'output'}:${interfaceId}`;
     graph.connections = graph.connections.filter(
       (connection) =>
@@ -304,8 +302,7 @@ export function FlowEditor({ document }: { document: EditorDocument; context?: E
                       );
                       graph.nodes = graph.nodes.filter((node) => !nodeIds.has(node.id));
                       graph.connections = graph.connections.filter(
-                        (connection) =>
-                          !nodeIds.has(connection.from.nodeId) && !nodeIds.has(connection.to.nodeId),
+                        (connection) => !nodeIds.has(connection.from.nodeId) && !nodeIds.has(connection.to.nodeId),
                       );
                       items.splice(functionIndex, 1);
                     })
