@@ -881,7 +881,9 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
 {
     if (surface.preview_kind == asset_preview_kind::none) return true;
     if (surface.preview_kind == asset_preview_kind::model) return refresh_asset_preview_model(host, surface);
-    if (surface.preview_scene) return refresh_asset_preview_material(host, surface);
+    if (surface.preview_scene)
+        return surface.preview_kind == asset_preview_kind::texture ? refresh_asset_preview_texture(host, surface)
+                                                                  : refresh_asset_preview_material(host, surface);
     if (!host.renderer)
     {
         surface.preview_error = "Asset preview renderer is unavailable";
@@ -894,7 +896,8 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
         host.scene.primitive_material.valid() ? host.scene.primitive_material : host.scene.default_material;
     const auto preview_type = surface.preview_kind == asset_preview_kind::material
                                   ? surface.preview_primitive_type
-                                  : editor_primitive_type::sphere;
+                                  : surface.preview_kind == asset_preview_kind::texture ? editor_primitive_type::plane
+                                                                                       : editor_primitive_type::sphere;
     const auto preview_entity =
         surface.preview_kind == asset_preview_kind::material
             ? arc_material_preview_add_primitive(*preview, *host.renderer, preview_type, host.assets)
@@ -909,7 +912,10 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
     clear_selection(preview->scene, preview->selected_entity);
 
     surface.preview_camera = {};
-    (void)surface.preview_camera.place({1.65f, 0.55f, 2.25f}, {0.0f, 0.0f, 0.0f});
+    if (surface.preview_kind == asset_preview_kind::texture)
+        (void)surface.preview_camera.place({0.0f, 2.0f, 0.0f}, {0.0f, 0.0f, 0.0f});
+    else
+        (void)surface.preview_camera.place({1.65f, 0.55f, 2.25f}, {0.0f, 0.0f, 0.0f});
     if (auto* camera_transform = preview->scene.template try_get<scene::transform_component>(preview->camera_entity))
     {
         surface.preview_camera.apply_to(*camera_transform);
@@ -935,6 +941,7 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
         }
         return true;
     }
+    if (surface.preview_kind == asset_preview_kind::texture) return refresh_asset_preview_texture(host, surface);
     return refresh_asset_preview_material(host, surface);
 }
 
