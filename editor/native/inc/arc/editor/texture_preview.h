@@ -34,6 +34,17 @@ struct texture_preview_image
 [[nodiscard]] texture_preview_image build_texture_preview_image(const render::texture_data& texture,
                                                                 std::uint32_t max_size);
 
+/**
+ * @brief Isolate one authored mip as a standalone 2D GPU preview texture.
+ *
+ * Encoded DDS/BC payloads remain encoded and byte-identical; decoded textures
+ * preserve their source pixel representation. The returned texture contains
+ * exactly one mip so normal GPU sampling deterministically inspects the
+ * requested authored mip.
+ */
+[[nodiscard]] render::texture_load_result build_texture_preview_mip(const render::texture_data& texture,
+                                                                    std::uint32_t mip_level);
+
 /** @brief Encode a preview image as a top-down 32-bit BMP. */
 [[nodiscard]] std::vector<std::byte> encode_texture_preview_bmp(const texture_preview_image& preview);
 
