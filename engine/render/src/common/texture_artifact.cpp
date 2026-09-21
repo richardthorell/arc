@@ -530,7 +530,8 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
         return texture_artifact_index_result::failure(
             failure(texture_artifact_error_code::integrity_failure, "texture artifact header hash is invalid"));
     if (mode > static_cast<std::uint32_t>(texture_streaming_mode::virtual_tiles) ||
-        format > static_cast<std::uint32_t>(texture_format::eac_rg11_snorm) ||
+        format > std::numeric_limits<std::uint8_t>::max() ||
+        !valid_texture_format(static_cast<texture_format>(format)) ||
         color_space > static_cast<std::uint32_t>(texture_color_space::srgb) ||
         semantic > static_cast<std::uint32_t>(texture_semantic::environment) ||
         dimension > static_cast<std::uint32_t>(texture_dimension::cube) ||
