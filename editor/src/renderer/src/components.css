@@ -512,8 +512,10 @@ textarea {
   gap: var(--arc-space-3);
   border-radius: var(--arc-radius-1);
   color: var(--arc-color-text);
-  font: inherit;
-  font-size: var(--arc-text-sm);
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-xs);
+  font-weight: 400;
+  line-height: var(--arc-line-default);
 }
 
 .ui-toggle-button-label {
