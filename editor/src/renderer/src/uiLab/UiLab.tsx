@@ -15,7 +15,7 @@ import {
 
 import { AssetPicker, MaterialPicker, PrefabPicker, TexturePicker } from '../inspector/AssetPicker';
 import type { AssetPickerItem } from '../inspector/AssetPicker';
-import { NumberControl, Vector3Control } from '../inspector/InspectorControls';
+import { NumberControl } from '../inspector/InspectorControls';
 import { InspectorComponentCard } from '../inspector/InspectorComponentCard';
 import type { Vec3, Vec4 } from '../inspector/inspectorTypes';
 import { setPathValue } from '../inspector/propertySchema';
@@ -40,6 +40,7 @@ import {
   UiTabs,
   UiTextInput,
   UiToggleButton,
+  UiVector3Control,
   UiTreeRow,
 } from '../ui';
 
@@ -235,6 +236,11 @@ const uiHierarchy: readonly UiHierarchyNode[] = [
     name: 'UiColorControl',
     relation: 'shared color control',
     children: [{ name: 'UiColorPicker', relation: 'opens popup' }],
+  },
+  {
+    name: 'UiNumericInput',
+    relation: 'shared numeric input',
+    children: [{ name: 'UiVector3Control', relation: 'composes' }],
   },
 ];
 
@@ -653,19 +659,26 @@ export function UiLab() {
           title="Inspector controls"
           description="The same controls used by schema-driven ECS component regions."
         >
-          <LabCard title="Vector 3" caption="Vector3Control" wide>
-            <Vector3Control
-              field={{ label: 'Position', precision: 2, step: 0.1, scrubSensitivity: 0.05 }}
-              linked={false}
+          <LabCard title="Vector 3" caption="UiVector3Control" wide>
+            <UiVector3Control
+              label="Position"
+              precision={2}
+              scrubSensitivity={0.05}
+              showActions={false}
+              step={0.1}
               value={position}
               onCommit={(axis, value) => setPosition((current) => ({ ...current, [axis]: value }))}
               onPreview={(axis, value) => setPosition((current) => ({ ...current, [axis]: value }))}
             />
           </LabCard>
-          <LabCard title="Linked vector" caption="Vector3Control" wide>
-            <Vector3Control
-              field={{ label: 'Scale', precision: 2, step: 0.1, scrubSensitivity: 0.01, linked: true }}
+          <LabCard title="Linked vector" caption="UiVector3Control" wide>
+            <UiVector3Control
+              label="Scale"
+              linkable
               linked={linkedScale}
+              precision={2}
+              scrubSensitivity={0.01}
+              step={0.1}
               value={{ x: 1, y: 1, z: 1 }}
               onToggleLinked={() => setLinkedScale((value) => !value)}
               onCommit={() => undefined}
