@@ -8,6 +8,8 @@
 #include <arc/editor/editor_state.h>
 #include <arc/editor/material_preview.h>
 #include <arc/editor/material_preview_realizer.h>
+#include <arc/editor/texture_preview.h>
+#include <arc/editor/texture_preview_realizer.h>
 #include <arc/editor/prefab_document.h>
 #include <arc/editor/procedural_mesh.h>
 #include <arc/editor/scene_document.h>
@@ -65,13 +67,15 @@ constexpr std::string_view primitive_mesh_uri_prefix = "arc://primitive/";
 constexpr std::string_view material_preview_viewport_prefix = "asset-preview-material-";
 constexpr std::string_view shader_preview_viewport_prefix = "asset-preview-shader-";
 constexpr std::string_view model_preview_viewport_prefix = "asset-preview-model-";
+constexpr std::string_view texture_preview_viewport_prefix = "asset-preview-texture-";
 
 enum class asset_preview_kind : std::uint8_t
 {
     none,
     material,
     shader,
-    model
+    model,
+    texture
 };
 
 struct asset_preview_identity
@@ -112,6 +116,11 @@ asset_preview_identity asset_preview_from_viewport_id(std::string_view viewport_
         result.kind = asset_preview_kind::model;
         guid_text = viewport_id.substr(model_preview_viewport_prefix.size());
     }
+    else if (viewport_id.starts_with(texture_preview_viewport_prefix))
+    {
+        result.kind = asset_preview_kind::texture;
+        guid_text = viewport_id.substr(texture_preview_viewport_prefix.size());
+    }
     else
     {
         return result;
@@ -133,6 +142,8 @@ const char* asset_preview_kind_name(asset_preview_kind kind) noexcept
             return "shader";
         case asset_preview_kind::model:
             return "model";
+        case asset_preview_kind::texture:
+            return "texture";
         case asset_preview_kind::none:
             break;
     }
@@ -159,6 +170,11 @@ struct viewport_surface_registry
         ecs::entity preview_entity{};
         render::mesh_handle preview_mesh{};
         render::material_handle preview_material{};
+        render::texture_handle preview_texture{};
+        render::material_descriptor preview_texture_material_data;
+        std::uint32_t preview_texture_mip{};
+        std::uint32_t preview_texture_realized_mip{std::numeric_limits<std::uint32_t>::max()};
+        texture_preview_display_options preview_texture_options;
         std::uint64_t preview_material_generation{};
         std::uint64_t preview_live_material_generation{};
         std::uint64_t preview_asset_generation{};
@@ -209,9 +225,9 @@ struct viewport_surface_registry
             {
                 surface.options.overlay = host_overlay_mode::none;
                 surface.options.grid = false;
-                surface.options.shadows = true;
+                surface.options.shadows = surface.preview_kind != asset_preview_kind::texture;
                 surface.options.realtime = true;
-                surface.options.environment.sky = true;
+                surface.options.environment.sky = surface.preview_kind != asset_preview_kind::texture;
                 surface.options.environment.fog = false;
                 surface.options.environment.terrain = false;
                 surface.options.environment.water = false;
