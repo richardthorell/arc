@@ -67,8 +67,18 @@
   background: linear-gradient(180deg, #555d66, #454c55);
 }
 
+.texture-mip-group {
+  gap: 6px;
+}
+
+.texture-mip-label {
+  color: var(--arc-color-text-muted);
+  font-size: var(--arc-text-sm);
+  white-space: nowrap;
+}
+
 .texture-mip-select {
-  width: 122px;
+  width: 54px;
 }
 
 .texture-mip-select .ui-select-trigger {
@@ -76,13 +86,9 @@
   height: 26px;
 }
 
-.texture-mip-step.ui-button {
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
-  padding: 0;
-  font-size: 16px;
-  line-height: 1;
+.texture-mip-select .ui-select-menu {
+  width: 150px;
+  min-width: 150px;
 }
 
 .texture-toolbar-view-menu {
@@ -136,6 +142,6 @@
   }
 
   .texture-mip-select {
-    width: 104px;
+    width: 50px;
   }
 }
