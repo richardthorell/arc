@@ -18,7 +18,8 @@ import {
 import { setTextureEditorViewState, useTextureEditorViewState } from './textureEditorViewState';
 import { TextureStage3Controls } from './TextureStage3Controls';
 import { TextureCurveControls } from './TextureCurveControls';
-import { analyzeTexturePreview, type TexturePreviewAnalysis } from './texturePreviewProcessing';
+import { TextureGpuPreview } from './TextureGpuPreview';
+import { analyzeTexturePreview, processTexturePixel, type TexturePreviewAnalysis } from './texturePreviewProcessing';
 import { useTextureSettings } from './useTextureSettings';
 import {
   getTextureSettings,
@@ -33,6 +34,7 @@ import {
   type TexturePowerOfTwoPolicy,
   type TexturePreset,
   type TextureSemantic,
+  type TextureSettingsPatch,
   type TextureSettingsSnapshot,
   type TextureStreamingMode,
 } from './textureSettings';
@@ -238,11 +240,34 @@ const textureFilterOptions = [
   { value: 'nearest', label: 'Nearest' },
 ];
 
-function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: TexturePreviewAnalysis['histogram'] }) {
+// Pending edits survive document tab switches. Only Apply writes an .arcasset and queues a cook.
+const pendingTexturePatches = new Map<string, TextureSettingsPatch>();
+const livePreviewFields = new Set([
+  'semantic', 'colorSpace', 'brightness', 'gamma', 'contrast', 'saturation', 'vibrance',
+  'tintR', 'tintG', 'tintB', 'inputBlack', 'inputWhite', 'outputBlack', 'outputWhite',
+  'channelR', 'channelG', 'channelB', 'channelA', 'invertR', 'invertG', 'invertB', 'invertA',
+  'curvesEnabled', 'curveMaster', 'curveR', 'curveG', 'curveB', 'curveA',
+]);
+const hasLivePreviewEdits = (patch: TextureSettingsPatch) => Object.keys(patch).some((key) => livePreviewFields.has(key));
+
+function TextureInspector({
+  asset,
+  histogram,
+  onLivePreviewChange,
+  onApplied,
+}: {
+  asset: AssetItem;
+  histogram?: TexturePreviewAnalysis['histogram'];
+  onLivePreviewChange: (active: boolean) => void;
+  onApplied: (hadLivePreview: boolean) => void;
+}) {
   const ddsSource = extensionOf(asset.path) === 'DDS';
   const [settings, setSettings] = useState<TextureSettingsSnapshot | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsBusy, setSettingsBusy] = useState(false);
+  const [pendingPatch, setPendingPatch] = useState<TextureSettingsPatch>(() => pendingTexturePatches.get(asset.guid ?? '') ?? {});
+  const pendingPatchRef = useRef<TextureSettingsPatch>(pendingPatch);
+  const savedSettingsRef = useRef<TextureSettingsSnapshot | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
     texture: false,
     sampling: false,
@@ -256,6 +281,13 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
     setCollapsedSections((current) => ({ ...current, [section]: !current[section] }));
 
   useEffect(() => {
+    const pending = pendingTexturePatches.get(asset.guid ?? '') ?? {};
+    pendingPatchRef.current = pending;
+    setPendingPatch(pending);
+    onLivePreviewChange(hasLivePreviewEdits(pending));
+  }, [asset.guid, onLivePreviewChange]);
+
+  useEffect(() => {
     let active = true;
     if (!asset.guid || asset.readOnly) {
       setSettings(null);
@@ -265,7 +297,8 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
     void getTextureSettings(asset.guid)
       .then((value) => {
         if (active) {
-          setSettings(value);
+          savedSettingsRef.current = value;
+          setSettings({ ...value, ...pendingPatchRef.current });
           setSettingsError(null);
         }
       })
@@ -277,18 +310,47 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
     };
   }, [asset.guid, asset.generation, asset.readOnly]);
 
-  const updateSettings = async (patch: Parameters<typeof patchTextureSettings>[1]) => {
+  const updateSettings = (patch: TextureSettingsPatch) => {
     if (!asset.guid || !settings || settingsBusy) return;
-    const previous = settings;
-    const optimistic = { ...settings, ...patch };
-    setSettings(optimistic);
+    const nextPatch = { ...pendingPatchRef.current, ...patch };
+    pendingPatchRef.current = nextPatch;
+    pendingTexturePatches.set(asset.guid, nextPatch);
+    setPendingPatch(nextPatch);
+    setSettings({ ...settings, ...patch });
+    onLivePreviewChange(hasLivePreviewEdits(nextPatch));
+    window.dispatchEvent(new CustomEvent('arc:texture-settings-preview', { detail: { guid: asset.guid, patch } }));
+  };
+
+  const discardSettings = () => {
+    if (asset.guid) pendingTexturePatches.delete(asset.guid);
+    pendingPatchRef.current = {};
+    setPendingPatch({});
+    setSettings(savedSettingsRef.current);
+    onLivePreviewChange(false);
+    if (asset.guid && savedSettingsRef.current)
+      window.dispatchEvent(
+        new CustomEvent('arc:texture-settings-preview', {
+          detail: { guid: asset.guid, patch: savedSettingsRef.current },
+        }),
+      );
+  };
+
+  const applySettings = async () => {
+    if (!asset.guid || !Object.keys(pendingPatchRef.current).length || settingsBusy) return;
+    const patch = pendingPatchRef.current;
     setSettingsBusy(true);
     setSettingsError(null);
     try {
       await patchTextureSettings(asset.guid, patch);
-      setSettings(await getTextureSettings(asset.guid));
+      const saved = await getTextureSettings(asset.guid);
+      savedSettingsRef.current = saved;
+      pendingTexturePatches.delete(asset.guid);
+      pendingPatchRef.current = {};
+      setPendingPatch({});
+      setSettings(saved);
+      onApplied(hasLivePreviewEdits(patch));
+      onLivePreviewChange(false);
     } catch (error) {
-      setSettings(previous);
       setSettingsError(error instanceof Error ? error.message : 'Could not update texture settings');
     } finally {
       setSettingsBusy(false);
@@ -304,6 +366,17 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
   return (
     <UiPanel aria-label="Texture details" className="texture-inspector" role="complementary" variant="inspector">
       <div className="texture-inspector-sections">
+        {settings && !asset.readOnly && (
+          <div className="texture-settings-actions">
+            <UiButton disabled={settingsBusy || !Object.keys(pendingPatch).length} onClick={() => void applySettings()}>
+              {settingsBusy ? 'Applying…' : 'Apply settings'}
+            </UiButton>
+            <UiButton disabled={settingsBusy || !Object.keys(pendingPatch).length} onClick={discardSettings}>
+              Discard
+            </UiButton>
+          </div>
+        )}
+        {settingsError && <div className="texture-stage3-note" role="alert">{settingsError}</div>}
         <UiPropertyCard
           className="texture-inspector-section"
           collapsed={collapsedSections.texture}
@@ -383,8 +456,8 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
           title="Texture"
         />
 
-        <TextureStage3Controls asset={asset} />
-        <TextureCurveControls asset={asset} histogram={histogram} />
+        {settings && <TextureStage3Controls draft={settings} update={updateSettings} />}
+        {settings && <TextureCurveControls draft={settings} histogram={histogram} update={updateSettings} />}
 
         <UiPropertyCard
           className="texture-inspector-section"
@@ -970,6 +1043,16 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
   const [analysis, setAnalysis] = useState<TexturePreviewAnalysis | null>(null);
   const [pixelReadout, setPixelReadout] = useState<string>('');
   const { settings: previewSettings } = useTextureSettings(asset.guid, asset.generation);
+  const [livePreviewActive, setLivePreviewActive] = useState(false);
+  const [awaitingNativeGeneration, setAwaitingNativeGeneration] = useState<number | null>(null);
+  const showLivePreview = livePreviewActive || awaitingNativeGeneration !== null;
+
+  useEffect(() => {
+    if (awaitingNativeGeneration === null) return;
+    const updated = asset.generation !== awaitingNativeGeneration;
+    const timeout = window.setTimeout(() => setAwaitingNativeGeneration(null), updated ? 750 : 10_000);
+    return () => window.clearTimeout(timeout);
+  }, [asset.generation, awaitingNativeGeneration]);
   const [viewport, setViewport] = useState<ViewportMetrics>({ scrollLeft: 0, scrollTop: 0, width: 0, height: 0 });
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [panning, setPanning] = useState(false);
@@ -994,9 +1077,9 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
 
   useEffect(() => {
     let active = true;
-    setPreview(null);
+    if (viewState.previewMode === 'processed' && !showLivePreview) return;
+    if (viewState.previewMode !== 'processed') setPreview(null);
     setPreviewFailed(false);
-    if (viewState.previewMode === 'processed') return;
     if (!asset.path || typeof window === 'undefined' || !window.arc?.host?.query) {
       setPreviewFailed(true);
       return;
@@ -1019,23 +1102,26 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     return () => {
       active = false;
     };
-  }, [asset.path, asset.generation, viewState.previewMode]);
+  }, [asset.path, asset.generation, showLivePreview, viewState.previewMode]);
 
   useEffect(() => {
-    let active = true;
     if (!preview?.dataUrl || !previewSettings) {
       setAnalysis(null);
       return;
     }
-    void analyzeTexturePreview(preview.dataUrl, previewSettings)
-      .then((value) => {
-        if (active) setAnalysis(value);
-      })
-      .catch(() => {
-        if (active) setAnalysis(null);
-      });
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void analyzeTexturePreview(preview.dataUrl, previewSettings, controller.signal)
+        .then((value) => {
+          if (!controller.signal.aborted) setAnalysis(value);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setAnalysis(null);
+        });
+    }, 150);
     return () => {
-      active = false;
+      window.clearTimeout(timer);
+      controller.abort();
     };
   }, [preview?.dataUrl, previewSettings]);
 
@@ -1179,8 +1265,8 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     setInspectorWidth(Math.min(maxInspectorWidth, Math.max(minInspectorWidth, width)));
   };
 
-  const inspectPixel = (event: ReactPointerEvent<HTMLImageElement>) => {
-    if (!analysis) return;
+  const inspectPixel = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!analysis || !previewSettings) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const x = Math.min(
       analysis.width - 1,
@@ -1192,19 +1278,14 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     );
     const offset = (y * analysis.width + x) * 4;
     const s = analysis.sourcePixels;
-    const p = analysis.processedPixels;
+    const p = processTexturePixel(
+      [s[offset] / 255, s[offset + 1] / 255, s[offset + 2] / 255, s[offset + 3] / 255],
+      previewSettings,
+    ).map((value) => Math.round(value * 255));
     setPixelReadout(
-      `${x}, ${y}  Source ${s[offset]}, ${s[offset + 1]}, ${s[offset + 2]}, ${s[offset + 3]}  Processed ${p[offset]}, ${p[offset + 1]}, ${p[offset + 2]}, ${p[offset + 3]}`,
+      `${x}, ${y}  Source ${s[offset]}, ${s[offset + 1]}, ${s[offset + 2]}, ${s[offset + 3]}  Processed ${p.join(', ')}`,
     );
   };
-
-  const previewDataUrl = analysis
-    ? viewState.previewMode === 'source'
-      ? analysis.sourceDataUrl
-      : viewState.previewMode === 'difference'
-        ? analysis.differenceDataUrl
-        : analysis.processedDataUrl
-    : preview?.dataUrl;
 
   const endResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     resizeRef.current = null;
@@ -1319,7 +1400,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
             )}
             <span className="texture-preview-pixel-readout">
               {viewState.previewMode === 'processed'
-                ? 'GPU texture preview'
+                ? livePreviewActive ? 'Live GPU preview · unsaved settings' : 'GPU texture preview'
                 : pixelReadout || 'Hover image for pixel values'}
             </span>
           </div>
@@ -1359,9 +1440,19 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
                       }}
                     />
                   </div>
+                  {showLivePreview && preview?.dataUrl && previewSettings && (
+                    <TextureGpuPreview
+                      channels={viewState.channels}
+                      dataUrl={preview.dataUrl}
+                      exposure={viewState.exposure}
+                      mode="processed"
+                      sampling={viewState.sampling}
+                      settings={previewSettings}
+                    />
+                  )}
                 </div>
               </div>
-            ) : previewDataUrl && !previewFailed ? (
+            ) : preview?.dataUrl && previewSettings && !previewFailed ? (
               <div className="texture-preview-canvas" style={{ width: canvasWidth, height: canvasHeight }}>
                 <div
                   className="texture-preview-image-frame"
@@ -1372,23 +1463,15 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
                     height: renderedHeight,
                   }}
                 >
-                  <svg aria-hidden="true" className="texture-channel-filter-defs">
-                    <filter id={`texture-channel-filter-${document.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`}>
-                      <feColorMatrix
-                        type="matrix"
-                        values={`${viewState.channels.r ? 1 : 0} 0 0 0 0  0 ${viewState.channels.g ? 1 : 0} 0 0 0  0 0 ${viewState.channels.b ? 1 : 0} 0 0  0 0 0 ${viewState.channels.a ? 1 : 0} ${viewState.channels.a ? 0 : 1}`}
-                      />
-                    </filter>
-                  </svg>
-                  <img
-                    alt={`${asset.name} texture preview`}
-                    draggable={false}
-                    height={renderedHeight}
+                  <TextureGpuPreview
+                    channels={viewState.channels}
+                    dataUrl={preview.dataUrl}
+                    exposure={viewState.exposure}
+                    mode={viewState.previewMode}
                     onPointerMove={inspectPixel}
                     onPointerLeave={() => setPixelReadout('')}
-                    src={previewDataUrl}
-                    style={{ filter: `url(#texture-channel-filter-${document.id.replace(/[^a-zA-Z0-9_-]/g, '-')})` }}
-                    width={renderedWidth}
+                    sampling={viewState.sampling}
+                    settings={previewSettings}
                   />
                 </div>
               </div>
@@ -1420,7 +1503,14 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
         onPointerUp={endResize}
         role="separator"
       />
-      <TextureInspector asset={asset} histogram={analysis?.histogram} />
+      <TextureInspector
+        asset={asset}
+        histogram={analysis?.histogram}
+        onApplied={(hadLivePreview) => {
+          if (hadLivePreview) setAwaitingNativeGeneration(asset.generation ?? -1);
+        }}
+        onLivePreviewChange={setLivePreviewActive}
+      />
     </section>
   );
 }
