@@ -36,6 +36,8 @@ describe('texture editor registration', () => {
 
     expect(target?.registration.kind).toBe('texture');
     expect(target?.registration.allowMultiple).toBe(true);
+    expect(target?.registration.save).toBeTypeOf('function');
+    expect(target?.registration.onClosed).toBeTypeOf('function');
     expect(target?.document).toMatchObject({
       id: 'texture:texture-guid',
       kind: 'texture',
