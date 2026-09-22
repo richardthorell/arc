@@ -15,6 +15,11 @@ import {
   UiSlider,
   UiToggleButton,
 } from '../ui';
+import {
+  hasLiveTexturePreviewEdits,
+  stageTextureSettings,
+  useTextureDocumentState,
+} from './textureDocumentState';
 import { setTextureEditorViewState, useTextureEditorViewState } from './textureEditorViewState';
 import { TextureStage3Controls } from './TextureStage3Controls';
 import { TextureCurveControls } from './TextureCurveControls';
@@ -23,7 +28,6 @@ import { analyzeTexturePreview, processTexturePixel, type TexturePreviewAnalysis
 import { useTextureSettings } from './useTextureSettings';
 import {
   getTextureSettings,
-  patchTextureSettings,
   type TextureAddressMode,
   type TextureColorSpace,
   type TextureCompressionPolicy,
@@ -240,47 +244,14 @@ const textureFilterOptions = [
   { value: 'nearest', label: 'Nearest' },
 ];
 
-// Pending edits survive document tab switches. Only Apply writes an .arcasset and queues a cook.
-const pendingTexturePatches = new Map<string, TextureSettingsPatch>();
-const livePreviewFields = new Set([
-  'semantic',
-  'colorSpace',
-  'brightness',
-  'gamma',
-  'contrast',
-  'saturation',
-  'vibrance',
-  'tintR',
-  'tintG',
-  'tintB',
-  'inputBlack',
-  'inputWhite',
-  'outputBlack',
-  'outputWhite',
-  'channelR',
-  'channelG',
-  'channelB',
-  'channelA',
-  'invertR',
-  'invertG',
-  'invertB',
-  'invertA',
-  'curvesEnabled',
-  'curveMaster',
-  'curveR',
-  'curveG',
-  'curveB',
-  'curveA',
-]);
-const hasLivePreviewEdits = (patch: TextureSettingsPatch) =>
-  Object.keys(patch).some((key) => livePreviewFields.has(key));
-
 function TextureInspector({
+  document,
   asset,
   histogram,
   onLivePreviewChange,
   onApplied,
 }: {
+  document: EditorDocument;
   asset: AssetItem;
   histogram?: TexturePreviewAnalysis['histogram'];
   onLivePreviewChange: (active: boolean) => void;
@@ -289,12 +260,10 @@ function TextureInspector({
   const ddsSource = extensionOf(asset.path) === 'DDS';
   const [settings, setSettings] = useState<TextureSettingsSnapshot | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
-  const [settingsBusy, setSettingsBusy] = useState(false);
-  const [pendingPatch, setPendingPatch] = useState<TextureSettingsPatch>(
-    () => pendingTexturePatches.get(asset.guid ?? '') ?? {},
-  );
+  const textureDocumentState = useTextureDocumentState(document.id);
+  const pendingPatch = textureDocumentState.pendingPatch;
+  const settingsBusy = textureDocumentState.saving;
   const pendingPatchRef = useRef<TextureSettingsPatch>(pendingPatch);
-  const savedSettingsRef = useRef<TextureSettingsSnapshot | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
     texture: false,
     sampling: false,
@@ -308,11 +277,9 @@ function TextureInspector({
     setCollapsedSections((current) => ({ ...current, [section]: !current[section] }));
 
   useEffect(() => {
-    const pending = pendingTexturePatches.get(asset.guid ?? '') ?? {};
-    pendingPatchRef.current = pending;
-    setPendingPatch(pending);
-    onLivePreviewChange(hasLivePreviewEdits(pending));
-  }, [asset.guid, onLivePreviewChange]);
+    pendingPatchRef.current = pendingPatch;
+    onLivePreviewChange(hasLiveTexturePreviewEdits(pendingPatch));
+  }, [onLivePreviewChange, pendingPatch]);
 
   useEffect(() => {
     let active = true;
@@ -324,7 +291,6 @@ function TextureInspector({
     void getTextureSettings(asset.guid)
       .then((value) => {
         if (active) {
-          savedSettingsRef.current = value;
           setSettings({ ...value, ...pendingPatchRef.current });
           setSettingsError(null);
         }
@@ -339,50 +305,42 @@ function TextureInspector({
 
   const updateSettings = (patch: TextureSettingsPatch) => {
     if (!asset.guid || !settings || settingsBusy) return;
-    const nextPatch = { ...pendingPatchRef.current, ...patch };
-    pendingPatchRef.current = nextPatch;
-    pendingTexturePatches.set(asset.guid, nextPatch);
-    setPendingPatch(nextPatch);
+    if (!stageTextureSettings(document, patch)) return;
+    pendingPatchRef.current = { ...pendingPatchRef.current, ...patch };
     setSettings({ ...settings, ...patch });
-    onLivePreviewChange(hasLivePreviewEdits(nextPatch));
-    window.dispatchEvent(new CustomEvent('arc:texture-settings-preview', { detail: { guid: asset.guid, patch } }));
   };
 
-  const discardSettings = () => {
-    if (asset.guid) pendingTexturePatches.delete(asset.guid);
-    pendingPatchRef.current = {};
-    setPendingPatch({});
-    setSettings(savedSettingsRef.current);
-    onLivePreviewChange(false);
-    if (asset.guid && savedSettingsRef.current)
-      window.dispatchEvent(
-        new CustomEvent('arc:texture-settings-preview', {
-          detail: { guid: asset.guid, patch: savedSettingsRef.current },
-        }),
-      );
-  };
-
-  const applySettings = async () => {
-    if (!asset.guid || !Object.keys(pendingPatchRef.current).length || settingsBusy) return;
-    const patch = pendingPatchRef.current;
-    setSettingsBusy(true);
-    setSettingsError(null);
-    try {
-      await patchTextureSettings(asset.guid, patch);
-      const saved = await getTextureSettings(asset.guid);
-      savedSettingsRef.current = saved;
-      pendingTexturePatches.delete(asset.guid);
+  useEffect(() => {
+    const syncSaved = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          guid?: string;
+          settings?: TextureSettingsSnapshot;
+          hadLivePreview?: boolean;
+        }>
+      ).detail;
+      if (detail?.guid !== asset.guid || !detail.settings) return;
       pendingPatchRef.current = {};
-      setPendingPatch({});
-      setSettings(saved);
-      onApplied(hasLivePreviewEdits(patch));
+      setSettings(detail.settings);
+      setSettingsError(null);
       onLivePreviewChange(false);
-    } catch (error) {
-      setSettingsError(error instanceof Error ? error.message : 'Could not update texture settings');
-    } finally {
-      setSettingsBusy(false);
-    }
-  };
+      if (detail.hadLivePreview) onApplied(true);
+    };
+    const syncReverted = (event: Event) => {
+      const detail = (event as CustomEvent<{ guid?: string; settings?: TextureSettingsSnapshot }>).detail;
+      if (detail?.guid !== asset.guid || !detail.settings) return;
+      pendingPatchRef.current = {};
+      setSettings(detail.settings);
+      setSettingsError(null);
+      onLivePreviewChange(false);
+    };
+    window.addEventListener('arc:texture-settings-saved', syncSaved);
+    window.addEventListener('arc:texture-settings-reverted', syncReverted);
+    return () => {
+      window.removeEventListener('arc:texture-settings-saved', syncSaved);
+      window.removeEventListener('arc:texture-settings-reverted', syncReverted);
+    };
+  }, [asset.guid, onApplied, onLivePreviewChange]);
 
   const mipProcessingDisabled =
     !settings ||
@@ -393,19 +351,9 @@ function TextureInspector({
   return (
     <UiPanel aria-label="Texture details" className="texture-inspector" role="complementary" variant="inspector">
       <div className="texture-inspector-sections">
-        {settings && !asset.readOnly && (
-          <div className="texture-settings-actions">
-            <UiButton disabled={settingsBusy || !Object.keys(pendingPatch).length} onClick={() => void applySettings()}>
-              {settingsBusy ? 'Applying…' : 'Apply settings'}
-            </UiButton>
-            <UiButton disabled={settingsBusy || !Object.keys(pendingPatch).length} onClick={discardSettings}>
-              Discard
-            </UiButton>
-          </div>
-        )}
-        {settingsError && (
+        {(textureDocumentState.error || settingsError) && (
           <div className="texture-stage3-note" role="alert">
-            {settingsError}
+            {textureDocumentState.error || settingsError}
           </div>
         )}
         <UiPropertyCard
@@ -1403,18 +1351,6 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
             </UiIconButton>
           </div>
           <div className="texture-preview-analysis-bar" onPointerDown={(event) => event.stopPropagation()}>
-            <span className="texture-preview-mode-group">
-              {(['source', 'processed', 'difference'] as const).map((mode) => (
-                <UiButton
-                  active={viewState.previewMode === mode}
-                  key={mode}
-                  onClick={() => setTextureEditorViewState(document.id, { previewMode: mode })}
-                  variant="toolbar"
-                >
-                  {mode[0].toUpperCase() + mode.slice(1)}
-                </UiButton>
-              ))}
-            </span>
             {analysis && (
               <span className="texture-preview-histogram" title="Processed RGB histogram">
                 {Array.from({ length: 32 }, (_, index) => {
@@ -1537,6 +1473,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
         role="separator"
       />
       <TextureInspector
+        document={document}
         asset={asset}
         histogram={analysis?.histogram}
         onApplied={(hadLivePreview) => {
