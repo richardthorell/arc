@@ -1,5 +1,6 @@
 #include <arc/editor/editor_interaction.h>
 #include <arc/render/renderer.h>
+#include <arc/scene/hierarchy.h>
 
 #include <algorithm>
 #include <array>
@@ -420,9 +421,14 @@ geometric::box3f transformed_bounds(const geometric::box3f& local_bounds,
     return geometric::box3f{vector_to_point(min_value), vector_to_point(max_value)};
 }
 
-bool focus_selected_entity(const ecs::world& registry, ecs::entity selected, editor_camera_controller& camera) noexcept
+bool focus_selected_entity(ecs::world& registry, ecs::entity selected, editor_camera_controller& camera) noexcept
 {
     if (!registry.alive(selected)) return false;
+
+    // Focusing is a world-space operation. A dirty child transform only carries
+    // valid local TRS; refresh the hierarchy first so parent transforms are
+    // included in the focus point and framing bounds.
+    scene::update_world_transforms(registry);
 
     const auto* transform = registry.try_get<scene::transform_component>(selected);
     if (!transform) return false;
