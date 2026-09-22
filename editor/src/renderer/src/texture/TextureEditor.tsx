@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, UIEvent, WheelEvent } from 'react';
 import { Image, Maximize2, RotateCcw, Scan, ZoomIn, ZoomOut } from 'lucide-react';
 
+import { AssetPreviewViewport } from '../assetPreview/AssetPreviewViewport';
 import type { EditorDocument } from '../editors/editorTypes';
 import type { AssetItem } from '../services/editorHostTypes';
 import {
@@ -111,11 +112,13 @@ const rulerInterval = (zoom: number) => {
   return candidates.find((candidate) => candidate * zoom >= 42) ?? candidates.at(-1)!;
 };
 
-const rulerMarks = (size: number, zoom: number): RulerMark[] => {
+const rulerMarks = (size: number, zoom: number, offset: number, viewportSize: number): RulerMark[] => {
   const majorInterval = rulerInterval(zoom);
   const minorInterval = majorInterval / 5;
-  const count = Math.ceil(size / minorInterval);
-  return Array.from({ length: count + 1 }, (_, index) => {
+  const first = Math.max(0, Math.floor(-offset / (minorInterval * zoom)));
+  const last = Math.min(Math.ceil(size / minorInterval), Math.ceil((viewportSize - offset) / (minorInterval * zoom)));
+  return Array.from({ length: Math.max(0, last - first + 1) }, (_, visibleIndex) => {
+    const index = first + visibleIndex;
     const value = Math.min(size, index * minorInterval);
     return {
       value,
@@ -888,6 +891,60 @@ function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: 
   );
 }
 
+function HorizontalRuler({
+  width,
+  zoom,
+  offset,
+  viewportSize,
+}: {
+  width: number;
+  zoom: number;
+  offset: number;
+  viewportSize: number;
+}) {
+  const marks = rulerMarks(width, zoom, offset, viewportSize);
+  return (
+    <div aria-hidden="true" className="texture-ruler texture-ruler-horizontal" style={{ width: '100%' }}>
+      {marks.map((mark) => (
+        <span
+          className={mark.major ? 'texture-ruler-mark major' : 'texture-ruler-mark'}
+          key={`${mark.value}-${mark.position}`}
+          style={{ left: offset + mark.position }}
+        >
+          {mark.major && <em>{Math.round(mark.value)}</em>}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function VerticalRuler({
+  height,
+  zoom,
+  offset,
+  viewportSize,
+}: {
+  height: number;
+  zoom: number;
+  offset: number;
+  viewportSize: number;
+}) {
+  const marks = rulerMarks(height, zoom, offset, viewportSize);
+  return (
+    <div aria-hidden="true" className="texture-ruler texture-ruler-vertical" style={{ height: '100%' }}>
+      {marks.map((mark) => (
+        <span
+          className={mark.major ? 'texture-ruler-mark major' : 'texture-ruler-mark'}
+          key={`${mark.value}-${mark.position}`}
+          style={{ top: offset + mark.position }}
+        >
+          {mark.major && <em>{Math.round(mark.value)}</em>}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function TextureEditor({ document }: { document: EditorDocument }) {
   const asset = useMemo<AssetItem>(
     () =>
@@ -906,6 +963,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const panRef = useRef<PanState | null>(null);
   const resizeRef = useRef<{ startX: number; width: number } | null>(null);
+  const fittedDocumentRef = useRef<string | null>(null);
   const ddsSource = extensionOf(asset.path) === 'DDS';
   const [preview, setPreview] = useState<HostAssetThumbnailSnapshot | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
@@ -919,10 +977,16 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
   const viewState = useTextureEditorViewState(document.id);
   const zoom = viewState.zoom;
   const mipScale = 1 / 2 ** viewState.mipLevel;
-  const displayWidth = Math.max(1, Math.round((preview?.width ?? 1) * mipScale));
-  const displayHeight = Math.max(1, Math.round((preview?.height ?? 1) * mipScale));
+  const previewWidth = viewState.previewMode === 'processed' ? asset.width : (preview?.width ?? asset.width);
+  const previewHeight = viewState.previewMode === 'processed' ? asset.height : (preview?.height ?? asset.height);
+  const displayWidth = Math.max(1, Math.round((previewWidth ?? 512) * mipScale));
+  const displayHeight = Math.max(1, Math.round((previewHeight ?? 512) * mipScale));
   const renderedWidth = displayWidth * zoom;
   const renderedHeight = displayHeight * zoom;
+  const pixelRatio = typeof window === 'undefined' ? 1 : Math.max(1, window.devicePixelRatio || 1);
+  const nativeScale = Math.min(1, 2048 / (Math.max(displayWidth, displayHeight) * pixelRatio));
+  const nativeWidth = Math.max(1, Math.round(displayWidth * nativeScale));
+  const nativeHeight = Math.max(1, Math.round(displayHeight * nativeScale));
   const canvasWidth = Math.max(viewport.width, renderedWidth + previewPadding * 2);
   const canvasHeight = Math.max(viewport.height, renderedHeight + previewPadding * 2);
   const imageLeft = Math.max(previewPadding, (canvasWidth - renderedWidth) / 2);
@@ -932,6 +996,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     let active = true;
     setPreview(null);
     setPreviewFailed(false);
+    if (viewState.previewMode === 'processed') return;
     if (!asset.path || typeof window === 'undefined' || !window.arc?.host?.query) {
       setPreviewFailed(true);
       return;
@@ -954,7 +1019,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     return () => {
       active = false;
     };
-  }, [asset.path, asset.generation]);
+  }, [asset.path, asset.generation, viewState.previewMode]);
 
   useEffect(() => {
     let active = true;
@@ -981,11 +1046,11 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
 
   const fitZoom = useCallback(() => {
     const scroll = scrollRef.current;
-    if (!scroll || !preview) return null;
+    if (!scroll || !(asset.width && asset.height)) return null;
     const availableWidth = Math.max(1, scroll.clientWidth - previewPadding * 2);
     const availableHeight = Math.max(1, scroll.clientHeight - previewPadding * 2);
     return clampZoom(Math.min(availableWidth / displayWidth, availableHeight / displayHeight));
-  }, [displayHeight, displayWidth, preview]);
+  }, [asset.height, asset.width, displayHeight, displayWidth]);
 
   const centerPreview = useCallback(() => {
     const scroll = scrollRef.current;
@@ -1005,8 +1070,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
 
   useEffect(() => {
     const scroll = scrollRef.current;
-    if (!scroll || !preview) return;
-
+    if (!scroll) return;
     const updateViewport = () => {
       setViewport({
         scrollLeft: scroll.scrollLeft,
@@ -1015,16 +1079,21 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
         height: scroll.clientHeight,
       });
     };
-
     updateViewport();
-    const initialFitZoom = fitZoom();
-    if (initialFitZoom !== null) setZoom(Math.min(1, initialFitZoom));
-
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(updateViewport);
     observer.observe(scroll);
     return () => observer.disconnect();
-  }, [fitZoom, preview, setZoom]);
+  }, [document.id]);
+
+  useEffect(() => {
+    if (fittedDocumentRef.current === document.id || !viewport.width || !viewport.height) return;
+    const nextZoom = fitZoom();
+    if (nextZoom === null) return;
+    fittedDocumentRef.current = document.id;
+    setZoom(Math.min(1, nextZoom));
+    window.requestAnimationFrame(centerPreview);
+  }, [centerPreview, document.id, fitZoom, setZoom, viewport.height, viewport.width]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1048,7 +1117,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
   }, []);
 
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (!preview) return;
+    if (!preview && viewState.previewMode !== 'processed') return;
     event.preventDefault();
     event.stopPropagation();
     const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
@@ -1156,10 +1225,24 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
         >
           <div aria-hidden="true" className="texture-ruler-corner" />
           <div aria-hidden="true" className="texture-ruler-viewport texture-ruler-horizontal-viewport">
-            {preview && <HorizontalRuler width={displayWidth} zoom={zoom} offset={imageLeft - viewport.scrollLeft} />}
+            {(viewState.previewMode === 'processed' || preview) && (
+              <HorizontalRuler
+                width={displayWidth}
+                zoom={zoom}
+                offset={imageLeft - viewport.scrollLeft}
+                viewportSize={viewport.width}
+              />
+            )}
           </div>
           <div aria-hidden="true" className="texture-ruler-viewport texture-ruler-vertical-viewport">
-            {preview && <VerticalRuler height={displayHeight} zoom={zoom} offset={imageTop - viewport.scrollTop} />}
+            {(viewState.previewMode === 'processed' || preview) && (
+              <VerticalRuler
+                height={displayHeight}
+                zoom={zoom}
+                offset={imageTop - viewport.scrollTop}
+                viewportSize={viewport.height}
+              />
+            )}
           </div>
           <div
             aria-label="Texture navigation controls"
@@ -1169,7 +1252,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
           >
             <UiButton
               aria-label="Fit texture to screen"
-              disabled={!preview}
+              disabled={!(asset.width && asset.height)}
               onClick={fitToScreen}
               title="Fit texture to screen"
               variant="toolbar"
@@ -1177,13 +1260,17 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
               <Scan size={13} /> Fit
             </UiButton>
             <span aria-hidden="true" className="texture-navigation-divider" />
-            <UiIconButton disabled={!preview || zoom <= minZoom} label="Zoom out" onClick={() => setZoom(zoom / 1.12)}>
+            <UiIconButton
+              disabled={!asset.guid || zoom <= minZoom}
+              label="Zoom out"
+              onClick={() => setZoom(zoom / 1.12)}
+            >
               <ZoomOut size={13} />
             </UiIconButton>
             <label className="texture-navigation-zoom-control">
               <UiSlider
                 aria-label="Texture zoom"
-                disabled={!preview}
+                disabled={!asset.guid}
                 max={1600}
                 min={5}
                 onValueChange={(value) => setZoom(value / 100)}
@@ -1192,10 +1279,14 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
               />
               <output>{Math.round(zoom * 100)}%</output>
             </label>
-            <UiIconButton disabled={!preview || zoom >= maxZoom} label="Zoom in" onClick={() => setZoom(zoom * 1.12)}>
+            <UiIconButton
+              disabled={!asset.guid || zoom >= maxZoom}
+              label="Zoom in"
+              onClick={() => setZoom(zoom * 1.12)}
+            >
               <ZoomIn size={13} />
             </UiIconButton>
-            <UiIconButton disabled={!preview} label="Reset zoom to 100%" onClick={() => setZoom(1)}>
+            <UiIconButton disabled={!asset.guid} label="Reset zoom to 100%" onClick={() => setZoom(1)}>
               <RotateCcw size={13} />
             </UiIconButton>
           </div>
@@ -1226,10 +1317,51 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
                 })}
               </span>
             )}
-            <span className="texture-preview-pixel-readout">{pixelReadout || 'Hover image for pixel values'}</span>
+            <span className="texture-preview-pixel-readout">
+              {viewState.previewMode === 'processed'
+                ? 'GPU texture preview'
+                : pixelReadout || 'Hover image for pixel values'}
+            </span>
           </div>
           <div className="texture-preview-scroll" onScroll={onScroll} ref={scrollRef}>
-            {previewDataUrl && !previewFailed ? (
+            {viewState.previewMode === 'processed' ? (
+              <div className="texture-preview-canvas" style={{ width: canvasWidth, height: canvasHeight }}>
+                <div
+                  className="texture-preview-image-frame texture-preview-native-frame"
+                  style={{ left: imageLeft, top: imageTop, width: renderedWidth, height: renderedHeight }}
+                >
+                  <div
+                    className="texture-native-surface"
+                    style={{
+                      width: nativeWidth,
+                      height: nativeHeight,
+                      transform: `scale(${zoom / nativeScale})`,
+                    }}
+                  >
+                    <AssetPreviewViewport
+                      assetGuid={asset.guid}
+                      fallback={
+                        <div className="texture-preview-empty">
+                          <Image aria-hidden="true" size={34} />
+                          <strong>GPU preview unavailable</strong>
+                          <span>The texture metadata remains available in the details panel.</span>
+                        </div>
+                      }
+                      interactive={false}
+                      kind="texture"
+                      label={`${asset.name} texture preview`}
+                      texturePreview={{
+                        mipLevel: viewState.mipLevel,
+                        channels: viewState.channels,
+                        exposure: viewState.exposure,
+                        sampling: viewState.sampling,
+                        zoom: 1,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : previewDataUrl && !previewFailed ? (
               <div className="texture-preview-canvas" style={{ width: canvasWidth, height: canvasHeight }}>
                 <div
                   className="texture-preview-image-frame"

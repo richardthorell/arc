@@ -85,6 +85,24 @@ TEST_CASE("native texture preview checker is a valid linear RGBA texture", "[edi
     CHECK(std::to_integer<std::uint8_t>(checker.pixels[3]) == 255u);
 }
 
+TEST_CASE("native texture preview excludes the default scene sun and sky lighting",
+          "[editor][texture][preview][native]")
+{
+    arc::ecs::world world;
+    const auto sun = world.create();
+    world.emplace<arc::scene::directional_light_component>(sun).intensity = 85000.0f;
+    const auto environment = world.create();
+    REQUIRE(arc::scene::set_world_environment_settings(world, environment, {}));
+
+    arc::editor::disable_texture_preview_scene_lighting(world, sun, environment);
+
+    CHECK(world.get<arc::scene::directional_light_component>(sun).intensity == 0.0f);
+    const auto settings = arc::scene::read_world_environment_settings(world, environment);
+    REQUIRE(settings.has_value());
+    CHECK_FALSE(settings->world.enabled);
+    CHECK_FALSE(settings->world.affect_lighting);
+}
+
 TEST_CASE("native texture preview material exposes target and checker textures", "[editor][texture][preview][native]")
 {
     const auto result = arc::editor::realize_texture_preview_material(
@@ -103,4 +121,21 @@ TEST_CASE("native texture preview material exposes target and checker textures",
         REQUIRE_FALSE(result.material.runtime_program->passes.empty());
         CHECK(result.material.runtime_program->passes.front().pass == arc::render::material_pass::gbuffer);
     }
+}
+
+TEST_CASE("native texture preview remains visible without a compiled Slang program",
+          "[editor][texture][preview][native]")
+{
+    arc::render::material_descriptor material;
+    const arc::render::texture_handle texture{.index = 3u, .generation = 1u};
+    arc::editor::apply_texture_preview_fallback(material, texture,
+                                                {.red = true, .green = false, .blue = true, .exposure = 1.0f});
+
+    CHECK(material.emissive_texture == texture);
+    CHECK(material.base_color[0] == 0.0f);
+    CHECK(material.base_color[1] == 0.0f);
+    CHECK(material.emissive_factor[0] == 1.0f);
+    CHECK(material.emissive_factor[1] == 0.0f);
+    CHECK(material.emissive_factor[2] == 1.0f);
+    CHECK(material.emissive_strength == 2.0f);
 }

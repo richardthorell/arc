@@ -3252,7 +3252,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         bool_value(payload, "texturePreviewChannelA", command.texture_preview_channel_a);
         number_value(payload, "texturePreviewExposure", command.texture_preview_exposure);
         number_value(payload, "texturePreviewZoom", command.texture_preview_zoom);
-        command.texture_preview_zoom = std::clamp(command.texture_preview_zoom, 0.25f, 16.0f);
+        command.texture_preview_zoom = std::clamp(command.texture_preview_zoom, 0.05f, 16.0f);
         string_value(payload, "texturePreviewSampling", command.texture_preview_sampling);
         if (command.texture_preview_sampling != "linear" && command.texture_preview_sampling != "nearest")
         {

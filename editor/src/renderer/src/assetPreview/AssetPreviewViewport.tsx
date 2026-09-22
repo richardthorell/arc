@@ -56,6 +56,7 @@ type AssetPreviewViewportProps = {
   materialAutoRotate?: boolean;
   texturePreview?: TexturePreviewOptions;
   onTextureZoomChange?: (zoom: number) => void;
+  interactive?: boolean;
   loading?: boolean;
   onState?: (payload: ViewportStatePayload | undefined) => void;
 };
@@ -180,6 +181,7 @@ export function AssetPreviewViewport({
   materialAutoRotate = true,
   texturePreview,
   onTextureZoomChange,
+  interactive = true,
   loading = false,
   onState,
 }: AssetPreviewViewportProps) {
@@ -321,13 +323,15 @@ export function AssetPreviewViewport({
         : 1;
     return {
       viewportId,
-      x: Math.round(rect.left),
-      y: Math.round(rect.top),
-      width: Math.round(rect.width),
-      height: Math.round(rect.height),
+      // Texture editors scroll and scale the canvas in CSS. Keep the GPU
+      // backing surface fixed while its presentation position changes.
+      x: kind === 'texture' ? 0 : Math.round(rect.left),
+      y: kind === 'texture' ? 0 : Math.round(rect.top),
+      width: Math.round(kind === 'texture' ? element.offsetWidth : rect.width),
+      height: Math.round(kind === 'texture' ? element.offsetHeight : rect.height),
       devicePixelRatio,
     };
-  }, [viewportId]);
+  }, [kind, viewportId]);
 
   const resize = useCallback(() => {
     if (!attachedRef.current) return;
@@ -507,14 +511,22 @@ export function AssetPreviewViewport({
   const previewIsLoading = (kind === 'material' || kind === 'texture') && (loading || !previewReady);
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (!active || !attachedRef.current || previewIsLoading) return;
+    if (!interactive || !active || !attachedRef.current || previewIsLoading) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
   };
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
-    if (!active || !attachedRef.current || previewIsLoading || !drag || drag.pointerId !== event.pointerId) return;
+    if (
+      !interactive ||
+      !active ||
+      !attachedRef.current ||
+      previewIsLoading ||
+      !drag ||
+      drag.pointerId !== event.pointerId
+    )
+      return;
     const orbitX = event.clientX - drag.x;
     let orbitY = event.clientY - drag.y;
     drag.x = event.clientX;
@@ -545,14 +557,14 @@ export function AssetPreviewViewport({
   };
 
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (!active || !attachedRef.current || previewIsLoading) return;
+    if (!interactive || !active || !attachedRef.current || previewIsLoading) return;
     event.preventDefault();
     let zoom = normalizeViewportWheel(event.deltaY, event.deltaMode);
     if (!zoom) return;
 
     if (kind === 'texture' && texturePreview && onTextureZoomChange) {
       const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
-      onTextureZoomChange(Math.min(16, Math.max(0.25, texturePreview.zoom * factor)));
+      onTextureZoomChange(Math.min(16, Math.max(0.05, texturePreview.zoom * factor)));
       return;
     }
 
@@ -584,7 +596,7 @@ export function AssetPreviewViewport({
   return (
     <div
       ref={rootRef}
-      className="asset-preview-viewport"
+      className={`asset-preview-viewport${interactive ? '' : ' is-passive'}`}
       aria-label={label}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

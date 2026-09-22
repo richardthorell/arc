@@ -168,4 +168,33 @@ material_preview_descriptor_result realize_texture_preview_material(std::uint32_
     return realize_material_preview_descriptor(authored.dump(), "Texture Preview");
 }
 
+void disable_texture_preview_scene_lighting(ecs::world& world, ecs::entity sun, ecs::entity environment)
+{
+    // The default scene's 85,000-lux sun and sky IBL can overwhelm the preview
+    // emission through specular reflection, even when base color is black.
+    if (auto* light = world.try_get<scene::directional_light_component>(sun)) light->intensity = 0.0f;
+    if (auto settings = scene::read_world_environment_settings(world, environment))
+    {
+        settings->world.enabled = false;
+        settings->world.affect_lighting = false;
+        (void)scene::set_world_environment_settings(world, environment, *settings);
+    }
+}
+
+void apply_texture_preview_fallback(render::material_descriptor& material, render::texture_handle texture,
+                                    const texture_preview_shader_options& options)
+{
+    if (material.runtime_program) return;
+
+    // Without the pinned Slang compiler the graph cannot sample the preview texture.
+    // The built-in G-buffer shader can still sample it through the emissive slot,
+    // keeping the preview visible and independent of scene lighting.
+    material.base_color = {0.0f, 0.0f, 0.0f, 1.0f};
+    material.emissive_texture = texture;
+    const bool any_rgb = options.red || options.green || options.blue;
+    material.emissive_factor = {options.red || !any_rgb ? 1.0f : 0.0f, options.green || !any_rgb ? 1.0f : 0.0f,
+                                options.blue || !any_rgb ? 1.0f : 0.0f};
+    material.emissive_strength = std::exp2(std::clamp(options.exposure, -16.0f, 16.0f));
+}
+
 } // namespace arc::editor

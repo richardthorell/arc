@@ -783,6 +783,14 @@ bool refresh_asset_preview_texture(HostState& host, viewport_surface_registry::s
             realized.material.runtime_textures[index] = surface.preview_checker_texture;
     }
 
+    apply_texture_preview_fallback(realized.material, surface.preview_texture,
+                                   {.red = surface.preview_texture_channel_r,
+                                    .green = surface.preview_texture_channel_g,
+                                    .blue = surface.preview_texture_channel_b,
+                                    .alpha = surface.preview_texture_channel_a,
+                                    .exposure = surface.preview_texture_exposure,
+                                    .nearest = surface.preview_texture_nearest});
+
     bool material_uploaded{};
     if (surface.preview_material.valid())
         material_uploaded = host.renderer->update_material(surface.preview_material, realized.material);
@@ -817,7 +825,7 @@ bool refresh_asset_preview_texture(HostState& host, viewport_surface_registry::s
 
     if (auto* camera =
             surface.preview_scene->scene.try_get<scene::camera_component>(surface.preview_scene->camera_entity))
-        camera->orthographic_height = 1.2f / std::clamp(surface.preview_texture_zoom, 0.25f, 16.0f);
+        camera->orthographic_height = 1.2f / std::clamp(surface.preview_texture_zoom, 0.05f, 16.0f);
 
     surface.preview_asset_generation = asset->generation;
     surface.preview_material_ready = true;
@@ -936,6 +944,7 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
     if (auto* camera_transform = preview->scene.template try_get<scene::transform_component>(preview->camera_entity))
         surface.preview_camera.apply_to(*camera_transform);
     if (surface.preview_kind == asset_preview_kind::texture)
+    {
         if (auto* camera = preview->scene.template try_get<scene::camera_component>(preview->camera_entity))
         {
             camera->projection = scene::camera_projection::orthographic;
@@ -945,6 +954,8 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
             camera->exposure.manual_ev100 = 0.0f;
             camera->anti_aliasing = render::camera_anti_aliasing_override::disabled;
         }
+        disable_texture_preview_scene_lighting(preview->scene, preview->sun_entity, preview->world_environment_entity);
+    }
 
     surface.preview_entity = preview_entity;
     if (const auto* mesh_renderer =
@@ -1226,14 +1237,15 @@ host_response arc_host::execute(const host_command_envelope& command)
         options && viewport_surface->preview_kind == asset_preview_kind::texture)
     {
         const bool nearest = options->texture_preview_sampling == "nearest";
-        const bool changed = viewport_surface->preview_texture_mip != options->texture_preview_mip ||
-                             viewport_surface->preview_texture_channel_r != options->texture_preview_channel_r ||
-                             viewport_surface->preview_texture_channel_g != options->texture_preview_channel_g ||
-                             viewport_surface->preview_texture_channel_b != options->texture_preview_channel_b ||
-                             viewport_surface->preview_texture_channel_a != options->texture_preview_channel_a ||
-                             viewport_surface->preview_texture_exposure != options->texture_preview_exposure ||
-                             viewport_surface->preview_texture_zoom != options->texture_preview_zoom ||
-                             viewport_surface->preview_texture_nearest != nearest;
+        const bool content_changed =
+            viewport_surface->preview_texture_mip != options->texture_preview_mip ||
+            viewport_surface->preview_texture_channel_r != options->texture_preview_channel_r ||
+            viewport_surface->preview_texture_channel_g != options->texture_preview_channel_g ||
+            viewport_surface->preview_texture_channel_b != options->texture_preview_channel_b ||
+            viewport_surface->preview_texture_channel_a != options->texture_preview_channel_a ||
+            viewport_surface->preview_texture_exposure != options->texture_preview_exposure ||
+            viewport_surface->preview_texture_nearest != nearest;
+        const bool zoom_changed = viewport_surface->preview_texture_zoom != options->texture_preview_zoom;
         viewport_surface->preview_texture_mip = options->texture_preview_mip;
         viewport_surface->preview_texture_channel_r = options->texture_preview_channel_r;
         viewport_surface->preview_texture_channel_g = options->texture_preview_channel_g;
@@ -1242,7 +1254,12 @@ host_response arc_host::execute(const host_command_envelope& command)
         viewport_surface->preview_texture_exposure = options->texture_preview_exposure;
         viewport_surface->preview_texture_zoom = options->texture_preview_zoom;
         viewport_surface->preview_texture_nearest = nearest;
-        if (changed)
+        // Camera-only navigation must not re-import the texture or compile its material graph.
+        if (zoom_changed && viewport_surface->preview_scene)
+            if (auto* camera = viewport_surface->preview_scene->scene.try_get<scene::camera_component>(
+                    viewport_surface->preview_scene->camera_entity))
+                camera->orthographic_height = 1.2f / std::clamp(viewport_surface->preview_texture_zoom, 0.05f, 16.0f);
+        if (content_changed)
         {
             viewport_surface->preview_asset_generation = 0;
             viewport_surface->preview_ready = false;
