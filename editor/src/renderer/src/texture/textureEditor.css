@@ -305,13 +305,6 @@
   padding: 4px;
 }
 
-.texture-settings-actions {
-  display: flex;
-  gap: 6px;
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--inspector-border);
-}
-
 .texture-inspector-section .ui-panel-section-content {
   padding-bottom: 4px;
 }
@@ -452,10 +445,6 @@
   background: rgb(20 24 29 / 92%);
   box-shadow: 0 4px 14px rgb(0 0 0 / 28%);
   backdrop-filter: blur(6px);
-}
-.texture-preview-mode-group {
-  display: inline-flex;
-  gap: 2px;
 }
 .texture-preview-histogram {
   display: flex;
