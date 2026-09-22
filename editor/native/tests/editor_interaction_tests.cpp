@@ -11,6 +11,7 @@
 #include <arc/editor/world_environment_host.h>
 #include <arc/project/project.h>
 #include <arc/render/primitives.h>
+#include <arc/scene/hierarchy.h>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -382,6 +383,47 @@ TEST_CASE("editor picking hits bounded entities")
         arc::geometric::box3f{arc::geometric::point3f{-1.0f, -1.0f, -1.0f}, arc::geometric::point3f{1.0f, 1.0f, 1.0f}},
         distance));
     REQUIRE(distance == Catch::Approx(4.0f));
+}
+
+TEST_CASE("frame selected focuses parented entities in world space and keeps the orbit pivot")
+{
+    arc::ecs::world scene;
+    const auto parent = scene.create();
+    const auto selected = scene.create();
+
+    arc::scene::transform_component parent_transform;
+    parent_transform.position = {10.0f, 4.0f, -6.0f};
+    scene.emplace<arc::scene::transform_component>(parent, parent_transform);
+
+    arc::scene::transform_component child_transform;
+    child_transform.position = {2.0f, -1.0f, 3.0f};
+    scene.emplace<arc::scene::transform_component>(selected, child_transform);
+    scene.emplace<arc::scene::bounds_component>(
+        selected,
+        arc::geometric::box3f{arc::geometric::point3f{-1.0f, -2.0f, -3.0f},
+                              arc::geometric::point3f{3.0f, 2.0f, 1.0f}});
+
+    REQUIRE(arc::scene::reparent(scene, selected, parent, {}, arc::scene::reparent_transform_policy::preserve_local));
+    REQUIRE(scene.get<arc::scene::transform_component>(selected).dirty);
+
+    arc::editor::editor_camera_controller camera;
+    REQUIRE(arc::editor::focus_selected_entity(scene, selected, camera));
+
+    const arc::math::vector3f expected_focus{13.0f, 3.0f, -4.0f};
+    REQUIRE(camera.focus_point()[0] == Catch::Approx(expected_focus[0]));
+    REQUIRE(camera.focus_point()[1] == Catch::Approx(expected_focus[1]));
+    REQUIRE(camera.focus_point()[2] == Catch::Approx(expected_focus[2]));
+    REQUIRE_FALSE(scene.get<arc::scene::transform_component>(selected).dirty);
+
+    const float orbit_radius = camera.distance();
+    camera.orbit(37.0f, -19.0f);
+
+    arc::scene::transform_component camera_transform;
+    camera.apply_to(camera_transform);
+    const auto to_focus = arc::math::sub(expected_focus, camera_transform.position);
+    REQUIRE(arc::math::length(to_focus) == Catch::Approx(orbit_radius).margin(0.0001f));
+    REQUIRE(arc::math::dot(arc::scene::forward_direction(camera_transform), arc::math::normalize(to_focus)) ==
+            Catch::Approx(1.0f).margin(0.0001f));
 }
 
 TEST_CASE("editor camera controller orbits pans and zooms")
