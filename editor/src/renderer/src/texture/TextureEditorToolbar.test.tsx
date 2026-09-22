@@ -79,9 +79,25 @@ describe('TextureEditorToolbar', () => {
     expect(screen.getByRole('button', { name: 'Source' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Difference' })).toBeInTheDocument();
     expect(screen.getByLabelText('Texture channels')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Mip level' })).toBeInTheDocument();
+    expect(screen.getByText('Mip Level:')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Mip level' })).toHaveTextContent('0');
+    expect(screen.queryByRole('button', { name: 'Decrease mip level' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Increase mip level' })).not.toBeInTheDocument();
     expect(screen.queryByText('Apply settings')).not.toBeInTheDocument();
     expect(screen.queryByText('Discard')).not.toBeInTheDocument();
+  });
+
+  it('shows mip dimensions as option subtitles without repeating the field label', () => {
+    render(<TextureEditorToolbar document={document} />);
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Mip level' }));
+    const options = screen.getAllByRole('option');
+
+    expect(options[0]).toHaveTextContent('0');
+    expect(options[0]).toHaveTextContent('2048 × 1024');
+    expect(options[1]).toHaveTextContent('1');
+    expect(options[1]).toHaveTextContent('1024 × 512');
+    expect(options[0]).not.toHaveTextContent('Mip Level');
   });
 
   it('saves directly and keeps revert under the Save dropdown', () => {
