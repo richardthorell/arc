@@ -15,11 +15,7 @@ import {
   UiSlider,
   UiToggleButton,
 } from '../ui';
-import {
-  hasLiveTexturePreviewEdits,
-  stageTextureSettings,
-  useTextureDocumentState,
-} from './textureDocumentState';
+import { hasLiveTexturePreviewEdits, stageTextureSettings, useTextureDocumentState } from './textureDocumentState';
 import { setTextureEditorViewState, useTextureEditorViewState } from './textureEditorViewState';
 import { TextureStage3Controls } from './TextureStage3Controls';
 import { TextureCurveControls } from './TextureCurveControls';

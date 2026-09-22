@@ -68,7 +68,9 @@ describe('TextureEditorToolbar', () => {
   it('uses left, center, and right toolbar groups with Save as the persistence action', () => {
     const { container } = render(<TextureEditorToolbar document={document} />);
 
-    expect(container.querySelector('.toolbar-left')).toContainElement(screen.getByRole('button', { name: 'Save texture' }));
+    expect(container.querySelector('.toolbar-left')).toContainElement(
+      screen.getByRole('button', { name: 'Save texture' }),
+    );
     expect(container.querySelector('.toolbar-center')).toContainElement(
       screen.getByRole('button', { name: 'Processed' }),
     );
