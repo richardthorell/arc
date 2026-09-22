@@ -101,7 +101,8 @@
   z-index: 1300;
   top: calc(100% + var(--arc-space-2));
   right: 0;
-  padding: var(--arc-space-3);
+  left: auto;
+  padding: 10px 12px;
 }
 
 .texture-toolbar-view-row {
