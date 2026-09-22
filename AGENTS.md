@@ -186,6 +186,16 @@ When working on a pull request, repository collaborators can use these PR commen
   - Do not invoke it preemptively on every PR when formatting checks are already passing.
   - Only works for same-repository PR branches and authorized collaborators.
 
+## GitHub Roadmap and Task Planning
+
+Before creating or reorganizing roadmap tasks, Issues, Epics, or milestones, read and follow:
+
+```text
+docs/github-roadmap-workflow.md
+```
+
+GitHub Issues are the durable task source of truth. The `ARC Roadmap` GitHub Project is the planning view over those issues. Search existing issues and inspect current code/roadmap documents before creating new work so completed or duplicate tasks are not reintroduced.
+
 ## Change Management
 
 - Keep changes scoped and module-focused.
