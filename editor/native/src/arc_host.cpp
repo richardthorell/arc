@@ -211,8 +211,7 @@ void arc_clear_preview_imported_content(editor_scene_state& state, render::rende
         (void)renderer.destroy_texture(resources.environment_texture);
 }
 
-bool arc_model_preview_focus(const ecs::world& registry, ecs::entity selected,
-                             editor_camera_controller& camera) noexcept
+bool arc_model_preview_focus(ecs::world& registry, ecs::entity selected, editor_camera_controller& camera) noexcept
 {
     math::vector3f minimum{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
                            std::numeric_limits<float>::max()};
