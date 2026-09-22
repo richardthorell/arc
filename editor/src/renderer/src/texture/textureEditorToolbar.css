@@ -91,6 +91,7 @@
 }
 
 .texture-toolbar-view-popup {
+  position: absolute;
   z-index: 1300;
   top: calc(100% + var(--arc-space-2));
   right: 0;
