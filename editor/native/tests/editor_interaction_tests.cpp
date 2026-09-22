@@ -403,7 +403,8 @@ TEST_CASE("frame selected focuses parented entities in world space and keeps the
         arc::geometric::box3f{arc::geometric::point3f{-1.0f, -2.0f, -3.0f},
                               arc::geometric::point3f{3.0f, 2.0f, 1.0f}});
 
-    REQUIRE(arc::scene::reparent(scene, selected, parent, {}, arc::scene::reparent_transform_policy::preserve_local));
+    REQUIRE(arc::scene::reparent(scene, selected, parent, {},
+                                 arc::scene::reparent_transform_policy::preserve_local));
     REQUIRE(scene.get<arc::scene::transform_component>(selected).dirty);
 
     arc::editor::editor_camera_controller camera;
