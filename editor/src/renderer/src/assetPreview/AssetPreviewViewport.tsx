@@ -211,6 +211,7 @@ export function AssetPreviewViewport({
   const materialCameraPitchRef = useRef(materialPreviewInitialCameraPitch);
   const materialMeshRef = useRef(materialMesh);
   const materialAutoRotateRef = useRef(materialAutoRotate);
+  // Keep live texture controls out of the attach effect so changing them never recreates the native viewport.
   const texturePreviewRef = useRef(texturePreview);
   const onStateRef = useRef(onState);
   const [streamed, setStreamed] = useState(false);
