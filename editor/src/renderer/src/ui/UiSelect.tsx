@@ -6,6 +6,7 @@ import { UiButton } from './UiButton';
 export type UiSelectOption = {
   value: string;
   label: string;
+  description?: string;
   disabled?: boolean;
 };
 
@@ -127,7 +128,10 @@ export function UiSelect({ value, options, onValueChange, ariaLabel, className, 
                 onMouseEnter={() => setActiveIndex(index)}
                 onClick={() => choose(option.value)}
               >
-                <span>{option.label}</span>
+                <span className="ui-select-option-copy">
+                  <span>{option.label}</span>
+                  {option.description && <small>{option.description}</small>}
+                </span>
                 <b className="menu-checkmark" aria-hidden="true">
                   {isSelected ? <Check size={13} /> : null}
                 </b>
