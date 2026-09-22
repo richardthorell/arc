@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Eye, RotateCcw, Save } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
-import { UiButton, UiContextMenu, UiSelect, UiSlider, UiSplitButton } from '../ui';
+import { UiButton, UiFloatingSurface, UiSelect, UiSlider, UiSplitButton } from '../ui';
 import {
   hasPendingTextureSettings,
   revertTextureDocument,
@@ -155,7 +155,7 @@ export function TextureEditorToolbar({ document }: { document: EditorDocument })
             <Eye size={13} /> View <ChevronDown aria-hidden="true" size={12} />
           </UiButton>
           {viewOpen && (
-            <UiContextMenu
+            <UiFloatingSurface
               aria-label="Texture preview view options"
               className="texture-toolbar-view-popup"
               role="dialog"
@@ -193,7 +193,7 @@ export function TextureEditorToolbar({ document }: { document: EditorDocument })
                   {state.exposure.toFixed(2)} EV
                 </output>
               </div>
-            </UiContextMenu>
+            </UiFloatingSurface>
           )}
         </span>
       </div>
