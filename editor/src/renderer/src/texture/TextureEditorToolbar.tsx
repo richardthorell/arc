@@ -28,10 +28,25 @@ export function TextureEditorToolbar({ document }: { document: EditorDocument })
   const viewRootRef = useRef<HTMLSpanElement | null>(null);
   const mipLevels = Math.max(1, document.assetSnapshot?.mipLevels ?? 1);
   const maxMip = mipLevels - 1;
-  const mipOptions = Array.from({ length: mipLevels }, (_, level) => ({
-    value: String(level),
-    label: `Mip Level ${level}`,
-  }));
+  const mipOptions = Array.from({ length: mipLevels }, (_, level) => {
+    const divisor = 2 ** level;
+    const width = document.assetSnapshot?.width;
+    const height = document.assetSnapshot?.height;
+    const depth = document.assetSnapshot?.depth;
+    const dimensions =
+      width !== undefined && height !== undefined
+        ? [
+            Math.max(1, Math.floor(width / divisor)),
+            Math.max(1, Math.floor(height / divisor)),
+            ...(depth !== undefined && depth > 1 ? [Math.max(1, Math.floor(depth / divisor))] : []),
+          ].join(' × ')
+        : undefined;
+    return {
+      value: String(level),
+      label: String(level),
+      description: dimensions,
+    };
+  });
   const hasPendingChanges = hasPendingTextureSettings(documentState);
   const setMipLevel = (value: number) =>
     setTextureEditorViewState(document.id, { mipLevel: Math.max(0, Math.min(maxMip, value)) });
@@ -112,16 +127,7 @@ export function TextureEditorToolbar({ document }: { document: EditorDocument })
         <span aria-hidden="true" className="toolbar-separator" />
 
         <div aria-label="Texture mip level" className="ui-toolbar-group toolbar-group texture-mip-group">
-          <UiButton
-            aria-label="Decrease mip level"
-            className="texture-mip-step"
-            disabled={state.mipLevel <= 0}
-            onClick={() => setMipLevel(state.mipLevel - 1)}
-            type="button"
-            variant="toolbar"
-          >
-            −
-          </UiButton>
+          <span className="texture-mip-label">Mip Level:</span>
           <UiSelect
             ariaLabel="Mip level"
             className="texture-mip-select"
@@ -130,16 +136,6 @@ export function TextureEditorToolbar({ document }: { document: EditorDocument })
             value={String(state.mipLevel)}
             onValueChange={(value) => setMipLevel(Number(value))}
           />
-          <UiButton
-            aria-label="Increase mip level"
-            className="texture-mip-step"
-            disabled={state.mipLevel >= maxMip}
-            onClick={() => setMipLevel(state.mipLevel + 1)}
-            type="button"
-            variant="toolbar"
-          >
-            +
-          </UiButton>
         </div>
       </div>
 
