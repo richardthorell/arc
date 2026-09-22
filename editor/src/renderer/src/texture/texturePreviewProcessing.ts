@@ -11,8 +11,6 @@ export type TexturePreviewAnalysis = {
   histogram: TextureHistogram;
 };
 
-
-
 let cachedSource: Promise<Omit<TexturePreviewAnalysis, 'histogram'>> | null = null;
 let cachedUrl: string | null = null;
 
@@ -26,7 +24,11 @@ async function decodeSource(dataUrl: string): Promise<Omit<TexturePreviewAnalysi
   const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('Canvas is unavailable');
   context.drawImage(image, 0, 0);
-  return { width: canvas.width, height: canvas.height, sourcePixels: context.getImageData(0, 0, canvas.width, canvas.height).data };
+  return {
+    width: canvas.width,
+    height: canvas.height,
+    sourcePixels: context.getImageData(0, 0, canvas.width, canvas.height).data,
+  };
 }
 
 export async function analyzeTexturePreview(

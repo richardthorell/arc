@@ -16,8 +16,7 @@ self.onmessage = (event: MessageEvent<{ samples: Uint8ClampedArray; settings: Te
       [samples[offset] / 255, samples[offset + 1] / 255, samples[offset + 2] / 255, samples[offset + 3] / 255],
       settings,
     );
-    for (let channel = 0; channel < 4; channel += 1)
-      channels[channel][Math.round(processed[channel] * 255)] += 1;
+    for (let channel = 0; channel < 4; channel += 1) channels[channel][Math.round(processed[channel] * 255)] += 1;
   }
   self.postMessage(histogram);
 };

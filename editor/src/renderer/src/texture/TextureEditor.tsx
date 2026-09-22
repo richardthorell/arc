@@ -243,12 +243,37 @@ const textureFilterOptions = [
 // Pending edits survive document tab switches. Only Apply writes an .arcasset and queues a cook.
 const pendingTexturePatches = new Map<string, TextureSettingsPatch>();
 const livePreviewFields = new Set([
-  'semantic', 'colorSpace', 'brightness', 'gamma', 'contrast', 'saturation', 'vibrance',
-  'tintR', 'tintG', 'tintB', 'inputBlack', 'inputWhite', 'outputBlack', 'outputWhite',
-  'channelR', 'channelG', 'channelB', 'channelA', 'invertR', 'invertG', 'invertB', 'invertA',
-  'curvesEnabled', 'curveMaster', 'curveR', 'curveG', 'curveB', 'curveA',
+  'semantic',
+  'colorSpace',
+  'brightness',
+  'gamma',
+  'contrast',
+  'saturation',
+  'vibrance',
+  'tintR',
+  'tintG',
+  'tintB',
+  'inputBlack',
+  'inputWhite',
+  'outputBlack',
+  'outputWhite',
+  'channelR',
+  'channelG',
+  'channelB',
+  'channelA',
+  'invertR',
+  'invertG',
+  'invertB',
+  'invertA',
+  'curvesEnabled',
+  'curveMaster',
+  'curveR',
+  'curveG',
+  'curveB',
+  'curveA',
 ]);
-const hasLivePreviewEdits = (patch: TextureSettingsPatch) => Object.keys(patch).some((key) => livePreviewFields.has(key));
+const hasLivePreviewEdits = (patch: TextureSettingsPatch) =>
+  Object.keys(patch).some((key) => livePreviewFields.has(key));
 
 function TextureInspector({
   asset,
@@ -265,7 +290,9 @@ function TextureInspector({
   const [settings, setSettings] = useState<TextureSettingsSnapshot | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsBusy, setSettingsBusy] = useState(false);
-  const [pendingPatch, setPendingPatch] = useState<TextureSettingsPatch>(() => pendingTexturePatches.get(asset.guid ?? '') ?? {});
+  const [pendingPatch, setPendingPatch] = useState<TextureSettingsPatch>(
+    () => pendingTexturePatches.get(asset.guid ?? '') ?? {},
+  );
   const pendingPatchRef = useRef<TextureSettingsPatch>(pendingPatch);
   const savedSettingsRef = useRef<TextureSettingsSnapshot | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
@@ -376,7 +403,11 @@ function TextureInspector({
             </UiButton>
           </div>
         )}
-        {settingsError && <div className="texture-stage3-note" role="alert">{settingsError}</div>}
+        {settingsError && (
+          <div className="texture-stage3-note" role="alert">
+            {settingsError}
+          </div>
+        )}
         <UiPropertyCard
           className="texture-inspector-section"
           collapsed={collapsedSections.texture}
@@ -1400,7 +1431,9 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
             )}
             <span className="texture-preview-pixel-readout">
               {viewState.previewMode === 'processed'
-                ? livePreviewActive ? 'Live GPU preview · unsaved settings' : 'GPU texture preview'
+                ? livePreviewActive
+                  ? 'Live GPU preview · unsaved settings'
+                  : 'GPU texture preview'
                 : pixelReadout || 'Hover image for pixel values'}
             </span>
           </div>

@@ -75,7 +75,6 @@ export function TextureStage3Controls({
   draft: TextureSettingsSnapshot;
   update: (patch: TextureSettingsPatch) => void;
 }) {
-
   const normal = draft.semantic === 'normal';
   const adjustmentFields = [
     ...(normal

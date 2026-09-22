@@ -92,7 +92,8 @@ function shader(gl: WebGL2RenderingContext, type: number, source: string) {
   if (!result) throw new Error('Could not create texture preview shader');
   gl.shaderSource(result, source);
   gl.compileShader(result);
-  if (!gl.getShaderParameter(result, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(result) || 'Shader failed');
+  if (!gl.getShaderParameter(result, gl.COMPILE_STATUS))
+    throw new Error(gl.getShaderInfoLog(result) || 'Shader failed');
   return result;
 }
 
@@ -120,7 +121,12 @@ export function TextureGpuPreview({
   onPointerLeave?: React.PointerEventHandler<HTMLCanvasElement>;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const gpuRef = useRef<{ gl: WebGL2RenderingContext; program: WebGLProgram; source: WebGLTexture; curves: WebGLTexture } | null>(null);
+  const gpuRef = useRef<{
+    gl: WebGL2RenderingContext;
+    program: WebGLProgram;
+    source: WebGLTexture;
+    curves: WebGLTexture;
+  } | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -137,7 +143,8 @@ export function TextureGpuPreview({
     gl.linkProgram(program);
     gl.deleteShader(vertex);
     gl.deleteShader(fragment);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) || 'Preview link failed');
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS))
+      throw new Error(gl.getProgramInfoLog(program) || 'Preview link failed');
     gpuRef.current = { gl, program, source, curves };
     return () => {
       gpuRef.current = null;
@@ -166,7 +173,9 @@ export function TextureGpuPreview({
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       canvasRef.current.dispatchEvent(new Event('texture-preview-ready'));
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [dataUrl]);
 
   useEffect(() => {
@@ -185,13 +194,15 @@ export function TextureGpuPreview({
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, sampling === 'nearest' ? gl.NEAREST : gl.LINEAR);
       gl.uniform1i(uniform('sourceTexture'), 0);
       const lookup = new Uint8Array(256 * 5 * 4);
-      [settings.curveMaster, settings.curveR, settings.curveG, settings.curveB, settings.curveA].forEach((curve, row) => {
-        for (let x = 0; x < 256; x += 1) {
-          const offset = (row * 256 + x) * 4;
-          lookup[offset] = Math.round(evaluateTextureCurve(curve, x / 255) * 255);
-          lookup[offset + 3] = 255;
-        }
-      });
+      [settings.curveMaster, settings.curveR, settings.curveG, settings.curveB, settings.curveA].forEach(
+        (curve, row) => {
+          for (let x = 0; x < 256; x += 1) {
+            const offset = (row * 256 + x) * 4;
+            lookup[offset] = Math.round(evaluateTextureCurve(curve, x / 255) * 255);
+            lookup[offset + 3] = 255;
+          }
+        },
+      );
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, curves);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 5, 0, gl.RGBA, gl.UNSIGNED_BYTE, lookup);
@@ -200,12 +211,36 @@ export function TextureGpuPreview({
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       gl.uniform1i(uniform('curveTexture'), 1);
-      gl.uniform4i(uniform('mapping'), channelIndex(settings.channelR), channelIndex(settings.channelG), channelIndex(settings.channelB), channelIndex(settings.channelA));
-      gl.uniform4f(uniform('inversion'), Number(settings.invertR), Number(settings.invertG), Number(settings.invertB), Number(settings.invertA));
-      gl.uniform4f(uniform('levels'), settings.inputBlack, settings.inputWhite, settings.outputBlack, settings.outputWhite);
+      gl.uniform4i(
+        uniform('mapping'),
+        channelIndex(settings.channelR),
+        channelIndex(settings.channelG),
+        channelIndex(settings.channelB),
+        channelIndex(settings.channelA),
+      );
+      gl.uniform4f(
+        uniform('inversion'),
+        Number(settings.invertR),
+        Number(settings.invertG),
+        Number(settings.invertB),
+        Number(settings.invertA),
+      );
+      gl.uniform4f(
+        uniform('levels'),
+        settings.inputBlack,
+        settings.inputWhite,
+        settings.outputBlack,
+        settings.outputWhite,
+      );
       gl.uniform4f(uniform('adjustment'), settings.gamma, settings.brightness, settings.contrast, settings.saturation);
       gl.uniform4f(uniform('tintAndVibrance'), settings.tintR, settings.tintG, settings.tintB, settings.vibrance);
-      gl.uniform4f(uniform('displayChannels'), Number(channels.r), Number(channels.g), Number(channels.b), Number(channels.a));
+      gl.uniform4f(
+        uniform('displayChannels'),
+        Number(channels.r),
+        Number(channels.g),
+        Number(channels.b),
+        Number(channels.a),
+      );
       gl.uniform1i(uniform('mode'), mode === 'source' ? 0 : mode === 'processed' ? 1 : 2);
       gl.uniform1i(uniform('curvesEnabled'), Number(settings.curvesEnabled));
       gl.uniform1i(uniform('normalMap'), Number(settings.semantic === 'normal'));
@@ -221,5 +256,13 @@ export function TextureGpuPreview({
     };
   }, [channels.a, channels.b, channels.g, channels.r, exposure, mode, sampling, settings]);
 
-  return <canvas aria-label="GPU texture preview" className="texture-gpu-preview" onPointerLeave={onPointerLeave} onPointerMove={onPointerMove} ref={canvasRef} />;
+  return (
+    <canvas
+      aria-label="GPU texture preview"
+      className="texture-gpu-preview"
+      onPointerLeave={onPointerLeave}
+      onPointerMove={onPointerMove}
+      ref={canvasRef}
+    />
+  );
 }
