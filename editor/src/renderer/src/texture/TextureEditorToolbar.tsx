@@ -72,6 +72,41 @@ export function TextureEditorToolbar({ document }: { document: EditorDocument })
       >
         −
       </UiButton>
+      <span aria-hidden="true" className="texture-toolbar-separator" />
+
+      <UiSelect
+        ariaLabel="Texture preview sampling"
+        className="texture-sampling-select"
+        options={[
+          { value: 'linear', label: 'Linear' },
+          { value: 'nearest', label: 'Nearest' },
+        ]}
+        value={state.sampling}
+        onValueChange={(value) =>
+          setTextureEditorViewState(document.id, { sampling: value === 'nearest' ? 'nearest' : 'linear' })
+        }
+      />
+
+      <label className="texture-exposure-control">
+        <span>Exposure</span>
+        <input
+          aria-label="Texture preview exposure"
+          max={8}
+          min={-8}
+          onChange={(event) =>
+            setTextureEditorViewState(document.id, {
+              exposure: Number(event.target.value),
+            })
+          }
+          step={0.25}
+          type="range"
+          value={state.exposure}
+        />
+        <output>
+          {state.exposure > 0 ? '+' : ''}
+          {state.exposure.toFixed(2)} EV
+        </output>
+      </label>
     </div>
   );
 }

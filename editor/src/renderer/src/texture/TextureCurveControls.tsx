@@ -1,14 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
-import type { AssetItem } from '../services/editorHostTypes';
 import { UiButton, UiCurveEditor, UiPropertyCard, UiToggleButton, type UiCurveHistogram } from '../ui';
-import {
-  patchTextureSettings,
-  type TextureCurve,
-  type TextureSettingsPatch,
-  type TextureSettingsSnapshot,
-} from './textureSettings';
-import { useTextureSettings } from './useTextureSettings';
+import type { TextureCurve, TextureSettingsPatch, TextureSettingsSnapshot } from './textureSettings';
 
 type CurveKey = 'curveMaster' | 'curveR' | 'curveG' | 'curveB' | 'curveA';
 
@@ -21,34 +14,16 @@ const channels: Array<[CurveKey, string]> = [
 ];
 
 export function TextureCurveControls({
-  asset,
+  draft,
   histogram,
+  update,
 }: {
-  asset: AssetItem;
+  draft: TextureSettingsSnapshot;
   histogram?: { r: number[]; g: number[]; b: number[]; a: number[] };
+  update: (patch: TextureSettingsPatch) => void;
 }) {
-  const { settings } = useTextureSettings(asset.guid, asset.generation);
-  const [draft, setDraft] = useState<TextureSettingsSnapshot | null>(settings);
   const [active, setActive] = useState<CurveKey>('curveMaster');
   const [collapsed, setCollapsed] = useState(true);
-  const timer = useRef<number | null>(null);
-
-  useEffect(() => setDraft(settings), [settings]);
-  useEffect(
-    () => () => {
-      if (timer.current !== null) window.clearTimeout(timer.current);
-    },
-    [],
-  );
-
-  if (!asset.guid || !draft || asset.readOnly) return null;
-
-  const update = (patch: TextureSettingsPatch) => {
-    setDraft((current) => (current ? { ...current, ...patch } : current));
-    window.dispatchEvent(new CustomEvent('arc:texture-settings-preview', { detail: { guid: asset.guid, patch } }));
-    if (timer.current !== null) window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => void patchTextureSettings(asset.guid!, patch), 250);
-  };
 
   const h: UiCurveHistogram | undefined =
     active === 'curveR'

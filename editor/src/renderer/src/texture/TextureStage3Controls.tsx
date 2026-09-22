@@ -1,15 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 
-import type { AssetItem } from '../services/editorHostTypes';
 import { UiIconButton, UiNumericInput, UiPropertyCard, UiSelect, UiSlider, UiToggleButton } from '../ui';
-import {
-  patchTextureSettings,
-  type TextureChannelSource,
-  type TextureSettingsPatch,
-  type TextureSettingsSnapshot,
-} from './textureSettings';
-import { useTextureSettings } from './useTextureSettings';
+import type { TextureChannelSource, TextureSettingsPatch, TextureSettingsSnapshot } from './textureSettings';
 
 const channelOptions: Array<{ value: TextureChannelSource; label: string }> = [
   { value: 'red', label: 'R' },
@@ -76,30 +68,13 @@ function TextureSliderControl({
   );
 }
 
-export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
-  const { settings } = useTextureSettings(asset.guid, asset.generation);
-  const [draft, setDraft] = useState<TextureSettingsSnapshot | null>(settings);
-  const timer = useRef<number | null>(null);
-
-  useEffect(() => setDraft(settings), [settings]);
-  useEffect(
-    () => () => {
-      if (timer.current !== null) window.clearTimeout(timer.current);
-    },
-    [],
-  );
-
-  if (!asset.guid || !draft || asset.readOnly) return null;
-
-  const update = (patch: TextureSettingsPatch) => {
-    setDraft((current) => (current ? { ...current, ...patch } : current));
-    window.dispatchEvent(new CustomEvent('arc:texture-settings-preview', { detail: { guid: asset.guid, patch } }));
-    if (timer.current !== null) window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => {
-      void patchTextureSettings(asset.guid!, patch);
-    }, 250);
-  };
-
+export function TextureStage3Controls({
+  draft,
+  update,
+}: {
+  draft: TextureSettingsSnapshot;
+  update: (patch: TextureSettingsPatch) => void;
+}) {
   const normal = draft.semantic === 'normal';
   const adjustmentFields = [
     ...(normal

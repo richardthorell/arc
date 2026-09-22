@@ -8,6 +8,7 @@
 #include <arc/editor/editor_state.h>
 #include <arc/editor/material_preview.h>
 #include <arc/editor/material_preview_realizer.h>
+#include <arc/editor/texture_preview_realizer.h>
 #include <arc/editor/prefab_document.h>
 #include <arc/editor/procedural_mesh.h>
 #include <arc/editor/scene_document.h>
@@ -65,13 +66,15 @@ constexpr std::string_view primitive_mesh_uri_prefix = "arc://primitive/";
 constexpr std::string_view material_preview_viewport_prefix = "asset-preview-material-";
 constexpr std::string_view shader_preview_viewport_prefix = "asset-preview-shader-";
 constexpr std::string_view model_preview_viewport_prefix = "asset-preview-model-";
+constexpr std::string_view texture_preview_viewport_prefix = "asset-preview-texture-";
 
 enum class asset_preview_kind : std::uint8_t
 {
     none,
     material,
     shader,
-    model
+    model,
+    texture
 };
 
 struct asset_preview_identity
@@ -112,6 +115,11 @@ asset_preview_identity asset_preview_from_viewport_id(std::string_view viewport_
         result.kind = asset_preview_kind::model;
         guid_text = viewport_id.substr(model_preview_viewport_prefix.size());
     }
+    else if (viewport_id.starts_with(texture_preview_viewport_prefix))
+    {
+        result.kind = asset_preview_kind::texture;
+        guid_text = viewport_id.substr(texture_preview_viewport_prefix.size());
+    }
     else
     {
         return result;
@@ -133,6 +141,8 @@ const char* asset_preview_kind_name(asset_preview_kind kind) noexcept
             return "shader";
         case asset_preview_kind::model:
             return "model";
+        case asset_preview_kind::texture:
+            return "texture";
         case asset_preview_kind::none:
             break;
     }
@@ -159,6 +169,16 @@ struct viewport_surface_registry
         ecs::entity preview_entity{};
         render::mesh_handle preview_mesh{};
         render::material_handle preview_material{};
+        render::texture_handle preview_texture{};
+        render::texture_handle preview_checker_texture{};
+        std::uint32_t preview_texture_mip{};
+        bool preview_texture_channel_r{true};
+        bool preview_texture_channel_g{true};
+        bool preview_texture_channel_b{true};
+        bool preview_texture_channel_a{true};
+        float preview_texture_exposure{};
+        float preview_texture_zoom{1.0f};
+        bool preview_texture_nearest{};
         std::uint64_t preview_material_generation{};
         std::uint64_t preview_live_material_generation{};
         std::uint64_t preview_asset_generation{};
@@ -209,9 +229,9 @@ struct viewport_surface_registry
             {
                 surface.options.overlay = host_overlay_mode::none;
                 surface.options.grid = false;
-                surface.options.shadows = true;
+                surface.options.shadows = surface.preview_kind != asset_preview_kind::texture;
                 surface.options.realtime = true;
-                surface.options.environment.sky = true;
+                surface.options.environment.sky = surface.preview_kind != asset_preview_kind::texture;
                 surface.options.environment.fog = false;
                 surface.options.environment.terrain = false;
                 surface.options.environment.water = false;
@@ -459,8 +479,7 @@ bool replace_material_preview_mesh(viewport_surface_registry::surface_state& sur
                                    editor_primitive_type type)
 {
     if (!surface.preview_scene || !surface.preview_scene->scene.alive(surface.preview_entity)) return false;
-    auto* mesh_renderer =
-        surface.preview_scene->scene.try_get<scene::mesh_renderer_component>(surface.preview_entity);
+    auto* mesh_renderer = surface.preview_scene->scene.try_get<scene::mesh_renderer_component>(surface.preview_entity);
     auto* bounds = surface.preview_scene->scene.try_get<scene::bounds_component>(surface.preview_entity);
     if (!mesh_renderer || !bounds) return false;
 
@@ -600,8 +619,8 @@ bool apply_live_asset_preview_material(HostState& host, viewport_surface_registr
             realized.message.empty() ? "Live material preview realization failed" : realized.message;
         return false;
     }
-    resolve_material_runtime_textures(host.scene.material_library, *host.renderer, resolved->asset_root,
-                                      resolved->path, realized.texture_sources, realized.material);
+    resolve_material_runtime_textures(host.scene.material_library, *host.renderer, resolved->asset_root, resolved->path,
+                                      realized.texture_sources, realized.material);
 
     bool uploaded{};
     if (surface.preview_material.valid())
@@ -631,12 +650,187 @@ bool apply_live_asset_preview_material(HostState& host, viewport_surface_registr
     surface.preview_material_ready = true;
     surface.preview_ready = false;
     surface.preview_error.clear();
-    arc::diagnostics::info(
-        "editor.materials",
-        "[material-flow] live material preview applied guid=" + assets::to_string(surface.preview_guid) +
-            " generation=" + std::to_string(asset->generation));
+    arc::diagnostics::info("editor.materials", "[material-flow] live material preview applied guid=" +
+                                                   assets::to_string(surface.preview_guid) +
+                                                   " generation=" + std::to_string(asset->generation));
     for (const auto& diagnostic : realized.diagnostics)
         arc::diagnostics::info("editor.materials", "[material-flow] live preview note: " + diagnostic);
+    return true;
+}
+
+template <class HostState>
+bool refresh_asset_preview_texture(HostState& host, viewport_surface_registry::surface_state& surface)
+{
+    if (surface.preview_kind != asset_preview_kind::texture || !surface.preview_scene) return true;
+    if (!surface.preview_guid.valid())
+    {
+        surface.preview_error = "Texture preview viewport has an invalid asset GUID";
+        return false;
+    }
+    if (!host.asset_registry || !host.renderer)
+    {
+        surface.preview_error = "Texture preview is waiting for renderer asset services";
+        return false;
+    }
+
+    const auto asset = host.asset_registry->find(surface.preview_guid);
+    if (!asset || asset->type != assets::asset_types::texture_2d)
+    {
+        surface.preview_error = "Texture preview GUID does not reference a 2D texture asset";
+        return false;
+    }
+
+    if (surface.preview_texture.valid() && surface.preview_material.valid() &&
+        surface.preview_asset_generation == asset->generation)
+        return true;
+
+    const auto resolved =
+        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, asset->source_path);
+    if (!resolved || !render::is_supported_texture_asset(resolved->path))
+    {
+        surface.preview_error =
+            "Texture preview source path could not be resolved: " + asset->source_path.generic_string();
+        return false;
+    }
+
+    auto loaded = render::load_texture_asset(resolved->path);
+    if (!loaded.succeeded() || loaded.texture.dimension != render::texture_dimension::texture_2d)
+    {
+        surface.preview_error =
+            loaded.message.empty() ? "Texture preview source could not be loaded" : std::move(loaded.message);
+        return false;
+    }
+
+    render::tools::texture_import_settings settings;
+    const auto metadata = assets::load_asset_metadata(assets::metadata_path_for(resolved->path));
+    if (metadata)
+    {
+        const auto parsed = render::tools::parse_texture_import_settings(metadata.value().canonical_settings,
+                                                                         metadata.value().settings_version);
+        if (parsed) settings = parsed.value();
+    }
+
+#if defined(_WIN32)
+    const auto cook_target = assets::windows_vulkan_cook_target();
+#else
+    const auto cook_target = assets::linux_vulkan_cook_target();
+#endif
+    auto processed = render::tools::preprocess_texture_for_cook(std::move(loaded.texture), settings, cook_target);
+    if (!processed)
+    {
+        surface.preview_error = "Texture preview preprocessing failed: " + processed.error();
+        return false;
+    }
+
+    const auto available_mips = static_cast<std::uint32_t>(processed.value().texture.mips.size());
+    if (available_mips == 0u)
+    {
+        surface.preview_error = "Texture preview has no mip payload";
+        return false;
+    }
+    const auto mip = std::min(surface.preview_texture_mip, available_mips - 1u);
+    auto preview_texture = select_texture_preview_mip(std::move(processed).value().texture, mip);
+    if (!preview_texture.has_pixels() && !preview_texture.has_encoded_mips())
+    {
+        surface.preview_error = "Texture preview mip payload is invalid";
+        return false;
+    }
+
+    const auto preview_width = preview_texture.width;
+    const auto preview_height = preview_texture.height;
+    bool texture_uploaded{};
+    if (surface.preview_texture.valid())
+        texture_uploaded = host.renderer->update_texture(surface.preview_texture, preview_texture);
+    if (!texture_uploaded)
+    {
+        surface.preview_texture = host.renderer->create_texture(std::move(preview_texture));
+        texture_uploaded = surface.preview_texture.valid();
+    }
+    if (!texture_uploaded)
+    {
+        surface.preview_error = "Renderer could not upload the texture preview mip";
+        return false;
+    }
+
+    if (!surface.preview_checker_texture.valid())
+        surface.preview_checker_texture = host.renderer->create_texture(make_texture_preview_checker());
+    if (!surface.preview_checker_texture.valid())
+    {
+        surface.preview_error = "Renderer could not create the texture preview checker";
+        return false;
+    }
+
+    auto realized = realize_texture_preview_material(preview_width, preview_height,
+                                                     {.red = surface.preview_texture_channel_r,
+                                                      .green = surface.preview_texture_channel_g,
+                                                      .blue = surface.preview_texture_channel_b,
+                                                      .alpha = surface.preview_texture_channel_a,
+                                                      .exposure = surface.preview_texture_exposure,
+                                                      .nearest = surface.preview_texture_nearest});
+    if (!realized.succeeded)
+    {
+        surface.preview_error =
+            realized.message.empty() ? "Texture preview shader realization failed" : realized.message;
+        return false;
+    }
+
+    realized.material.runtime_textures.resize(realized.texture_sources.size());
+    for (std::size_t index = 0; index < realized.texture_sources.size(); ++index)
+    {
+        if (realized.texture_sources[index] == "__arc_texture_preview_target__")
+            realized.material.runtime_textures[index] = surface.preview_texture;
+        else if (realized.texture_sources[index] == "__arc_texture_preview_checker__")
+            realized.material.runtime_textures[index] = surface.preview_checker_texture;
+    }
+
+    apply_texture_preview_fallback(realized.material, surface.preview_texture,
+                                   {.red = surface.preview_texture_channel_r,
+                                    .green = surface.preview_texture_channel_g,
+                                    .blue = surface.preview_texture_channel_b,
+                                    .alpha = surface.preview_texture_channel_a,
+                                    .exposure = surface.preview_texture_exposure,
+                                    .nearest = surface.preview_texture_nearest});
+
+    bool material_uploaded{};
+    if (surface.preview_material.valid())
+        material_uploaded = host.renderer->update_material(surface.preview_material, realized.material);
+    if (!material_uploaded)
+    {
+        surface.preview_material = host.renderer->create_material(std::move(realized.material));
+        material_uploaded = surface.preview_material.valid();
+    }
+    if (!material_uploaded)
+    {
+        surface.preview_error = "Renderer could not upload the texture preview material";
+        return false;
+    }
+
+    auto* mesh_renderer = surface.preview_scene->scene.try_get<scene::mesh_renderer_component>(surface.preview_entity);
+    auto* transform = surface.preview_scene->scene.try_get<scene::transform_component>(surface.preview_entity);
+    if (!mesh_renderer || !transform)
+    {
+        surface.preview_error = "Texture preview plane is missing render components";
+        return false;
+    }
+    mesh_renderer->material = surface.preview_material;
+    mesh_renderer->casts_shadows = false;
+    mesh_renderer->receives_shadows = false;
+
+    const float aspect =
+        static_cast<float>(std::max(1u, preview_width)) / static_cast<float>(std::max(1u, preview_height));
+    if (aspect >= 1.0f)
+        transform->set_scale({1.0f, 1.0f, 1.0f / aspect});
+    else
+        transform->set_scale({aspect, 1.0f, 1.0f});
+
+    if (auto* camera =
+            surface.preview_scene->scene.try_get<scene::camera_component>(surface.preview_scene->camera_entity))
+        camera->orthographic_height = 1.2f / std::clamp(surface.preview_texture_zoom, 0.05f, 16.0f);
+
+    surface.preview_asset_generation = asset->generation;
+    surface.preview_material_ready = true;
+    surface.preview_ready = false;
+    surface.preview_error.clear();
     return true;
 }
 
@@ -713,7 +907,9 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
 {
     if (surface.preview_kind == asset_preview_kind::none) return true;
     if (surface.preview_kind == asset_preview_kind::model) return refresh_asset_preview_model(host, surface);
-    if (surface.preview_scene) return refresh_asset_preview_material(host, surface);
+    if (surface.preview_scene)
+        return surface.preview_kind == asset_preview_kind::texture ? refresh_asset_preview_texture(host, surface)
+                                                                   : refresh_asset_preview_material(host, surface);
     if (!host.renderer)
     {
         surface.preview_error = "Asset preview renderer is unavailable";
@@ -724,9 +920,9 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
     preview->scene_name = std::string{"Asset Preview: "} + asset_preview_kind_name(surface.preview_kind);
     preview->primitive_material =
         host.scene.primitive_material.valid() ? host.scene.primitive_material : host.scene.default_material;
-    const auto preview_type = surface.preview_kind == asset_preview_kind::material
-                                  ? surface.preview_primitive_type
-                                  : editor_primitive_type::sphere;
+    const auto preview_type = surface.preview_kind == asset_preview_kind::material  ? surface.preview_primitive_type
+                              : surface.preview_kind == asset_preview_kind::texture ? editor_primitive_type::plane
+                                                                                    : editor_primitive_type::sphere;
     const auto preview_entity =
         surface.preview_kind == asset_preview_kind::material
             ? arc_material_preview_add_primitive(*preview, *host.renderer, preview_type, host.assets)
@@ -741,10 +937,24 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
     clear_selection(preview->scene, preview->selected_entity);
 
     surface.preview_camera = {};
-    (void)surface.preview_camera.place({1.65f, 0.55f, 2.25f}, {0.0f, 0.0f, 0.0f});
+    if (surface.preview_kind == asset_preview_kind::texture)
+        (void)surface.preview_camera.place({0.0f, 2.0f, 0.001f}, {0.0f, 0.0f, 0.0f});
+    else
+        (void)surface.preview_camera.place({1.65f, 0.55f, 2.25f}, {0.0f, 0.0f, 0.0f});
     if (auto* camera_transform = preview->scene.template try_get<scene::transform_component>(preview->camera_entity))
-    {
         surface.preview_camera.apply_to(*camera_transform);
+    if (surface.preview_kind == asset_preview_kind::texture)
+    {
+        if (auto* camera = preview->scene.template try_get<scene::camera_component>(preview->camera_entity))
+        {
+            camera->projection = scene::camera_projection::orthographic;
+            camera->orthographic_height = 1.2f;
+            camera->clear_color = {0.055f, 0.06f, 0.07f, 1.0f};
+            camera->exposure.mode = render::exposure_mode::manual;
+            camera->exposure.manual_ev100 = 0.0f;
+            camera->anti_aliasing = render::camera_anti_aliasing_override::disabled;
+        }
+        disable_texture_preview_scene_lighting(preview->scene, preview->sun_entity, preview->world_environment_entity);
     }
 
     surface.preview_entity = preview_entity;
@@ -752,6 +962,8 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
             std::as_const(preview->scene).template try_get<scene::mesh_renderer_component>(preview_entity))
         surface.preview_mesh = mesh_renderer->mesh;
     surface.preview_scene = std::move(preview);
+
+    if (surface.preview_kind == asset_preview_kind::texture) return refresh_asset_preview_texture(host, surface);
 
     if (surface.preview_kind == asset_preview_kind::shader)
     {
@@ -806,12 +1018,19 @@ void cleanup_asset_preview_surface(viewport_surface_registry::surface_state& sur
     arc_clear_preview_imported_content(*surface.preview_scene, renderer);
     surface.preview_scene->terrain_render_proxies.clear(renderer);
     if (surface.preview_mesh.valid()) (void)renderer.destroy_mesh(surface.preview_mesh);
+    if (surface.preview_kind == asset_preview_kind::texture)
+    {
+        if (surface.preview_texture.valid()) (void)renderer.destroy_texture(surface.preview_texture);
+        if (surface.preview_checker_texture.valid()) (void)renderer.destroy_texture(surface.preview_checker_texture);
+    }
     if (surface.preview_scene->environment_lighting_resource.valid())
         (void)renderer.destroy_environment(surface.preview_scene->environment_lighting_resource);
     surface.preview_scene.reset();
     surface.preview_entity = {};
     surface.preview_mesh = {};
     surface.preview_material = {};
+    surface.preview_texture = {};
+    surface.preview_checker_texture = {};
     surface.preview_material_generation = 0;
     surface.preview_live_material_generation = 0;
     surface.preview_asset_generation = 0;
@@ -1014,6 +1233,51 @@ host_response arc_host::execute(const host_command_envelope& command)
         viewport_surface->preview_auto_rotate = options->material_preview_auto_rotate;
     }
 
+    if (const auto* options = std::get_if<host_viewport_set_render_options_command>(&command.payload);
+        options && viewport_surface->preview_kind == asset_preview_kind::texture)
+    {
+        const bool nearest = options->texture_preview_sampling == "nearest";
+        const bool content_changed =
+            viewport_surface->preview_texture_mip != options->texture_preview_mip ||
+            viewport_surface->preview_texture_channel_r != options->texture_preview_channel_r ||
+            viewport_surface->preview_texture_channel_g != options->texture_preview_channel_g ||
+            viewport_surface->preview_texture_channel_b != options->texture_preview_channel_b ||
+            viewport_surface->preview_texture_channel_a != options->texture_preview_channel_a ||
+            viewport_surface->preview_texture_exposure != options->texture_preview_exposure ||
+            viewport_surface->preview_texture_nearest != nearest;
+        const bool zoom_changed = viewport_surface->preview_texture_zoom != options->texture_preview_zoom;
+        viewport_surface->preview_texture_mip = options->texture_preview_mip;
+        viewport_surface->preview_texture_channel_r = options->texture_preview_channel_r;
+        viewport_surface->preview_texture_channel_g = options->texture_preview_channel_g;
+        viewport_surface->preview_texture_channel_b = options->texture_preview_channel_b;
+        viewport_surface->preview_texture_channel_a = options->texture_preview_channel_a;
+        viewport_surface->preview_texture_exposure = options->texture_preview_exposure;
+        viewport_surface->preview_texture_zoom = options->texture_preview_zoom;
+        viewport_surface->preview_texture_nearest = nearest;
+        // Camera-only navigation must not re-import the texture or compile its material graph.
+        if (zoom_changed && viewport_surface->preview_scene)
+            if (auto* camera = viewport_surface->preview_scene->scene.try_get<scene::camera_component>(
+                    viewport_surface->preview_scene->camera_entity))
+                camera->orthographic_height = 1.2f / std::clamp(viewport_surface->preview_texture_zoom, 0.05f, 16.0f);
+        if (content_changed)
+        {
+            viewport_surface->preview_asset_generation = 0;
+            viewport_surface->preview_ready = false;
+            if (!refresh_asset_preview_texture(*state_, *viewport_surface))
+            {
+                host_response response{.request_id = command.request_id,
+                                       .succeeded = false,
+                                       .error = viewport_surface->preview_error.empty()
+                                                    ? "Texture preview options could not be applied"
+                                                    : viewport_surface->preview_error};
+                response.scene_revision = state_->scene_revision;
+                response.world_epoch = state_->world_epoch;
+                response.frame_revision = state_->viewport_frame_index;
+                return response;
+            }
+        }
+    }
+
     if (const auto* pick = std::get_if<host_viewport_pick_command>(&command.payload);
         pick && viewport_surface->preview_kind == asset_preview_kind::none &&
         state_->scene.scene.alive(state_->scene.selected_entity))
@@ -1075,8 +1339,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                         if (preview_surface.preview_kind != asset_preview_kind::material ||
                             preview_surface.preview_guid != *preview_guid)
                             continue;
-                        if (!preview_surface.preview_scene)
-                            (void)ensure_asset_preview_scene(*state_, preview_surface);
+                        if (!preview_surface.preview_scene) (void)ensure_asset_preview_scene(*state_, preview_surface);
                         if (apply_live_asset_preview_material(*state_, preview_surface, compile->preview_source))
                             preview_surface.preview_live_material_generation = live_generation;
                     }
@@ -1433,12 +1696,12 @@ host_response arc_host::query(const host_query_envelope& query) const
     {
         payload["assetPreviewKind"] = asset_preview_kind_name(viewport_surface->preview_kind);
         payload["assetPreviewGuid"] = assets::to_string(viewport_surface->preview_guid);
-        payload["assetPreviewReady"] = viewport_surface->preview_kind != asset_preview_kind::material ||
+        payload["assetPreviewReady"] = (viewport_surface->preview_kind != asset_preview_kind::material &&
+                                        viewport_surface->preview_kind != asset_preview_kind::texture) ||
                                        viewport_surface->preview_ready;
         if (viewport_surface->preview_kind == asset_preview_kind::material)
         {
-            payload["assetPreviewMesh"] =
-                material_preview_primitive_token(viewport_surface->preview_primitive_type);
+            payload["assetPreviewMesh"] = material_preview_primitive_token(viewport_surface->preview_primitive_type);
             payload["assetPreviewAutoRotate"] = viewport_surface->preview_auto_rotate;
         }
         if (!viewport_surface->preview_error.empty()) payload["assetPreviewError"] = viewport_surface->preview_error;
@@ -1512,8 +1775,7 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
                         std::chrono::duration<float>(request_time - viewport_surface->preview_rotation_time).count(),
                         0.0f, 0.1f);
                     viewport_surface->preview_rotation_radians =
-                        std::fmod(viewport_surface->preview_rotation_radians + delta_seconds * 0.35f,
-                                  math::tau<float>);
+                        std::fmod(viewport_surface->preview_rotation_radians + delta_seconds * 0.35f, math::tau<float>);
                     transform->set_rotation(math::from_axis_angle(math::vector3f{0.0f, 1.0f, 0.0f},
                                                                   viewport_surface->preview_rotation_radians));
                 }
@@ -1531,7 +1793,8 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         asset_preview_scene_scope preview_scope(*state_, *viewport_surface);
         response = request_viewport_base(routed_request);
     }
-    if (viewport_surface->preview_kind == asset_preview_kind::material &&
+    if ((viewport_surface->preview_kind == asset_preview_kind::material ||
+         viewport_surface->preview_kind == asset_preview_kind::texture) &&
         viewport_surface->preview_material_ready && response.submitted)
         viewport_surface->preview_ready = true;
 

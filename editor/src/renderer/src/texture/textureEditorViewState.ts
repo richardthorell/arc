@@ -5,6 +5,8 @@ export type TextureEditorViewState = {
   zoom: number;
   mipLevel: number;
   channels: TextureChannels;
+  exposure: number;
+  sampling: 'linear' | 'nearest';
   previewMode: 'source' | 'processed' | 'difference';
 };
 
@@ -12,6 +14,8 @@ const createInitialState = (): TextureEditorViewState => ({
   zoom: 1,
   mipLevel: 0,
   channels: { r: true, g: true, b: true, a: true },
+  exposure: 0,
+  sampling: 'linear',
   previewMode: 'processed',
 });
 

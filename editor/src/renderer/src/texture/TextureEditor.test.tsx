@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { EditorDocument } from '../editors/editorTypes';
 import { TextureEditor } from './TextureEditor';
+import { getTextureEditorViewState, setTextureEditorViewState } from './textureEditorViewState';
 
 const textureDocument: EditorDocument = {
   id: 'texture:texture-guid',
@@ -39,10 +40,78 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   Reflect.deleteProperty(window, 'arc');
+  setTextureEditorViewState(textureDocument.id, { zoom: 1, previewMode: 'processed' });
 });
 
 describe('TextureEditor', () => {
-  it('renders texture metadata and requests a large preview from the shared asset thumbnail host', async () => {
+  it('uses the native surface for the default processed view without requesting a thumbnail', async () => {
+    const query = vi.fn().mockResolvedValue({ succeeded: false });
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        getStartupState: vi.fn().mockResolvedValue({ engineHostConnected: true, viewportMode: 'streamed' }),
+        host: { query },
+        viewport: { registerSurface: vi.fn(), unregisterSurface: vi.fn() },
+      },
+    });
+
+    render(<TextureEditor document={textureDocument} />);
+
+    expect(await screen.findByRole('img', { name: 'T_Rock.png texture preview' })).toContainElement(
+      document.querySelector('.asset-preview-viewport-canvas'),
+    );
+    expect(query).not.toHaveBeenCalledWith('asset.thumbnail', expect.anything());
+  });
+
+  it('keeps processed rulers and scroll canvas while zooming locally', async () => {
+    const cameraInput = vi.fn();
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        getStartupState: vi.fn().mockResolvedValue({ engineHostConnected: true, viewportMode: 'streamed' }),
+        host: { query: vi.fn().mockResolvedValue({ succeeded: false }) },
+        viewport: { cameraInput, registerSurface: vi.fn(), unregisterSurface: vi.fn() },
+      },
+    });
+    const { container } = render(<TextureEditor document={textureDocument} />);
+    const native = await screen.findByRole('img', { name: 'T_Rock.png texture preview' });
+
+    expect(container.querySelector('.texture-ruler-horizontal')).toBeInTheDocument();
+    expect(container.querySelector('.texture-ruler-vertical')).toBeInTheDocument();
+    expect(native.closest('.texture-preview-canvas')).toBeInTheDocument();
+    expect(native.closest('.texture-preview-scroll')).toBeInTheDocument();
+
+    fireEvent.wheel(native, { deltaY: -100 });
+    expect(getTextureEditorViewState(textureDocument.id).zoom).toBeCloseTo(1.12);
+    expect(container.querySelector('.texture-native-surface')).toHaveStyle({ transform: 'scale(1.12)' });
+
+    const stage = container.querySelector('.texture-preview-stage') as HTMLElement;
+    const scroll = container.querySelector('.texture-preview-scroll') as HTMLElement;
+    stage.setPointerCapture = vi.fn();
+    fireEvent.pointerDown(native, { button: 1, pointerId: 7, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(stage, { pointerId: 7, clientX: 50, clientY: 80 });
+    expect(scroll.scrollLeft).toBe(50);
+    expect(scroll.scrollTop).toBe(20);
+    expect(cameraInput).not.toHaveBeenCalled();
+  });
+
+  it('fits the processed texture to the available viewport on first open', async () => {
+    vi.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(1000);
+    vi.spyOn(Element.prototype, 'clientHeight', 'get').mockReturnValue(800);
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        getStartupState: vi.fn().mockResolvedValue({ engineHostConnected: false, viewportMode: 'native' }),
+        host: { query: vi.fn().mockResolvedValue({ succeeded: false }) },
+      },
+    });
+
+    render(<TextureEditor document={textureDocument} />);
+
+    await waitFor(() => expect(getTextureEditorViewState(textureDocument.id).zoom).toBeCloseTo(944 / 2048));
+  });
+
+  it('renders texture metadata and falls back cleanly when the native preview is unavailable', async () => {
     const query = vi.fn().mockImplementation((type: string) =>
       Promise.resolve(
         type === 'texture.settings'
@@ -73,20 +142,15 @@ describe('TextureEditor', () => {
                 preserveAlphaCoverage: false,
               },
             }
-          : {
-              succeeded: true,
-              payload: {
-                path: textureDocument.path,
-                width: 1024,
-                height: 512,
-                dataUrl: 'data:image/png;base64,preview',
-              },
-            },
+          : { succeeded: false, error: `Unexpected query: ${type}` },
       ),
     );
     Object.defineProperty(window, 'arc', {
       configurable: true,
-      value: { host: { query } },
+      value: {
+        getStartupState: vi.fn().mockResolvedValue({ engineHostConnected: false, viewportMode: 'native' }),
+        host: { query },
+      },
     });
 
     render(<TextureEditor document={textureDocument} />);
@@ -107,14 +171,9 @@ describe('TextureEditor', () => {
     fireEvent.click(screen.getByLabelText('Expand Import'));
     expect(screen.getByText('texture.image')).toBeInTheDocument();
 
-    expect(await screen.findByAltText('T_Rock.png texture preview')).toHaveAttribute(
-      'src',
-      'data:image/png;base64,preview',
-    );
-    expect(query).toHaveBeenCalledWith('asset.thumbnail', {
-      path: 'Content/Textures/T_Rock.png',
-      maxSize: 2048,
-    });
+    expect(await screen.findByText('GPU preview unavailable')).toBeInTheDocument();
+    expect(query).toHaveBeenCalledWith('texture.settings', { guid: 'texture-guid' });
+    expect(query).not.toHaveBeenCalledWith('asset.thumbnail', expect.anything());
   });
   it('shows DDS authored mip policy and reports compressed preview limitations', async () => {
     const ddsDocument: EditorDocument = {
@@ -167,7 +226,13 @@ describe('TextureEditor', () => {
           : { succeeded: false, error: 'Texture thumbnail could not be generated' },
       ),
     );
-    Object.defineProperty(window, 'arc', { configurable: true, value: { host: { query } } });
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        getStartupState: vi.fn().mockResolvedValue({ engineHostConnected: false, viewportMode: 'native' }),
+        host: { query },
+      },
+    });
 
     render(<TextureEditor document={ddsDocument} />);
 
@@ -177,10 +242,7 @@ describe('TextureEditor', () => {
     expect(mipPolicy).toHaveTextContent('Preserve Source');
     fireEvent.click(mipPolicy);
     expect(screen.getByRole('option', { name: 'Generate' })).toBeDisabled();
-    expect(
-      await screen.findByText(
-        'BC-compressed DDS preview requires the block decoder; metadata and authored mip settings remain available.',
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('GPU preview unavailable')).toBeInTheDocument();
+    expect(query).not.toHaveBeenCalledWith('asset.thumbnail', expect.anything());
   });
 });

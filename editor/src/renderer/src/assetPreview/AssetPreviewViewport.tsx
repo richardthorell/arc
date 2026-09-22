@@ -39,13 +39,24 @@ type ViewportStatePayload = {
   modelSkeleton?: ModelPreviewSkeleton;
 };
 
+type TexturePreviewOptions = {
+  mipLevel: number;
+  channels: { r: boolean; g: boolean; b: boolean; a: boolean };
+  exposure: number;
+  sampling: 'linear' | 'nearest';
+  zoom: number;
+};
+
 type AssetPreviewViewportProps = {
-  kind: 'material' | 'shader' | 'model';
+  kind: 'material' | 'shader' | 'model' | 'texture';
   assetGuid?: string;
   fallback: ReactNode;
   label: string;
   materialMesh?: 'sphere' | 'cube' | 'pill';
   materialAutoRotate?: boolean;
+  texturePreview?: TexturePreviewOptions;
+  onTextureZoomChange?: (zoom: number) => void;
+  interactive?: boolean;
   loading?: boolean;
   onState?: (payload: ViewportStatePayload | undefined) => void;
 };
@@ -128,6 +139,39 @@ export function materialPreviewRenderOptions() {
   } as const;
 }
 
+export function texturePreviewRenderOptions(options: TexturePreviewOptions) {
+  return {
+    renderMode: 'shaded',
+    visualization: 'standard',
+    overlay: 'none',
+    selectionOutline: false,
+    hoverOutline: false,
+    selectionBounds: false,
+    componentGizmos: false,
+    selectionHierarchy: false,
+    shadows: false,
+    grid: false,
+    skeletons: false,
+    realtime: true,
+    environment: {
+      sky: false,
+      fog: false,
+      terrain: false,
+      water: false,
+      vegetation: false,
+      decals: false,
+    },
+    texturePreviewMip: options.mipLevel,
+    texturePreviewChannelR: options.channels.r,
+    texturePreviewChannelG: options.channels.g,
+    texturePreviewChannelB: options.channels.b,
+    texturePreviewChannelA: options.channels.a,
+    texturePreviewExposure: options.exposure,
+    texturePreviewSampling: options.sampling,
+    texturePreviewZoom: options.zoom,
+  } as const;
+}
+
 export function AssetPreviewViewport({
   kind,
   assetGuid,
@@ -135,6 +179,9 @@ export function AssetPreviewViewport({
   label,
   materialMesh = 'sphere',
   materialAutoRotate = true,
+  texturePreview,
+  onTextureZoomChange,
+  interactive = true,
   loading = false,
   onState,
 }: AssetPreviewViewportProps) {
@@ -164,15 +211,21 @@ export function AssetPreviewViewport({
   const materialCameraPitchRef = useRef(materialPreviewInitialCameraPitch);
   const materialMeshRef = useRef(materialMesh);
   const materialAutoRotateRef = useRef(materialAutoRotate);
+  // Keep live texture controls out of the attach effect so changing them never recreates the native viewport.
+  const texturePreviewRef = useRef(texturePreview);
   const onStateRef = useRef(onState);
   const [streamed, setStreamed] = useState(false);
   const [attached, setAttached] = useState(false);
-  const [previewReady, setPreviewReady] = useState(kind !== 'material');
+  const [previewReady, setPreviewReady] = useState(kind !== 'material' && kind !== 'texture');
   const [error, setError] = useState('');
 
   useEffect(() => {
     onStateRef.current = onState;
   }, [onState]);
+
+  useEffect(() => {
+    texturePreviewRef.current = texturePreview;
+  }, [texturePreview]);
 
   useEffect(() => {
     materialMeshRef.current = materialMesh;
@@ -190,6 +243,30 @@ export function AssetPreviewViewport({
       setError('');
     })().catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
   }, [kind, materialAutoRotate, materialMesh, viewportId]);
+
+  useEffect(() => {
+    const preview = texturePreviewRef.current;
+    if (kind !== 'texture' || !preview || !attachedRef.current || !viewportId) return;
+    void (async () => {
+      const response = (await window.arc.host.command('viewport.setRenderOptions', {
+        viewportId,
+        ...texturePreviewRenderOptions(preview),
+      })) as ViewportCommandResponse | undefined;
+      if (response?.succeeded === false) throw new Error(response.error || 'Texture preview options were rejected');
+      setError('');
+    })().catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
+  }, [
+    kind,
+    texturePreview?.mipLevel,
+    texturePreview?.channels.r,
+    texturePreview?.channels.g,
+    texturePreview?.channels.b,
+    texturePreview?.channels.a,
+    texturePreview?.exposure,
+    texturePreview?.sampling,
+    texturePreview?.zoom,
+    viewportId,
+  ]);
 
   const traceViewportState = useCallback(
     async (phase: string) => {
@@ -247,13 +324,15 @@ export function AssetPreviewViewport({
         : 1;
     return {
       viewportId,
-      x: Math.round(rect.left),
-      y: Math.round(rect.top),
-      width: Math.round(rect.width),
-      height: Math.round(rect.height),
+      // Texture editors scroll and scale the canvas in CSS. Keep the GPU
+      // backing surface fixed while its presentation position changes.
+      x: kind === 'texture' ? 0 : Math.round(rect.left),
+      y: kind === 'texture' ? 0 : Math.round(rect.top),
+      width: Math.round(kind === 'texture' ? element.offsetWidth : rect.width),
+      height: Math.round(kind === 'texture' ? element.offsetHeight : rect.height),
       devicePixelRatio,
     };
-  }, [viewportId]);
+  }, [kind, viewportId]);
 
   const resize = useCallback(() => {
     if (!attachedRef.current) return;
@@ -318,11 +397,21 @@ export function AssetPreviewViewport({
         return;
       }
       try {
-        if (kind === 'material') setPreviewReady(false);
+        if (kind === 'material' || kind === 'texture') setPreviewReady(false);
         const response = (await serializeAssetPreviewViewportLifecycle(viewportId, async () => {
           const created = (await window.arc.viewport.create(bounds)) as ViewportCommandResponse | undefined;
           if (created?.succeeded === false) return created;
           await window.arc.viewport.setVisibility?.(viewportId, activeRef.current);
+          const initialTexturePreview = texturePreviewRef.current;
+          if (kind === 'texture' && initialTexturePreview) {
+            const configured = (await window.arc.host.command('viewport.setRenderOptions', {
+              viewportId,
+              ...texturePreviewRenderOptions(initialTexturePreview),
+            })) as ViewportCommandResponse | undefined;
+            if (configured?.succeeded === false)
+              throw new Error(configured.error || 'Texture preview render options were rejected');
+            return created;
+          }
           if (kind !== 'material') return created;
           const configured = (await window.arc.host.command('viewport.setRenderOptions', {
             viewportId,
@@ -389,7 +478,7 @@ export function AssetPreviewViewport({
   }, [active, attached, streamed, viewportId]);
 
   useEffect(() => {
-    if (kind !== 'material') return;
+    if (kind !== 'material' && kind !== 'texture') return;
     if (!active) return;
     if (loading) {
       setPreviewReady(false);
@@ -420,17 +509,25 @@ export function AssetPreviewViewport({
     };
   }, [active, attached, kind, loading, viewportId]);
 
-  const previewIsLoading = kind === 'material' && (loading || !previewReady);
+  const previewIsLoading = (kind === 'material' || kind === 'texture') && (loading || !previewReady);
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (!active || !attachedRef.current || previewIsLoading) return;
+    if (!interactive || !active || !attachedRef.current || previewIsLoading) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
   };
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
-    if (!active || !attachedRef.current || previewIsLoading || !drag || drag.pointerId !== event.pointerId) return;
+    if (
+      !interactive ||
+      !active ||
+      !attachedRef.current ||
+      previewIsLoading ||
+      !drag ||
+      drag.pointerId !== event.pointerId
+    )
+      return;
     const orbitX = event.clientX - drag.x;
     let orbitY = event.clientY - drag.y;
     drag.x = event.clientX;
@@ -446,7 +543,8 @@ export function AssetPreviewViewport({
     }
 
     if (orbitX === 0 && orbitY === 0) return;
-    void window.arc.viewport.cameraInput({ viewportId, orbitX, orbitY }).catch((reason) => {
+    const input = kind === 'texture' ? { viewportId, panX: -orbitX, panY: orbitY } : { viewportId, orbitX, orbitY };
+    void window.arc.viewport.cameraInput(input).catch((reason) => {
       if (kind === 'material' && nextMaterialPitch === materialCameraPitchRef.current)
         materialCameraPitchRef.current = previousMaterialPitch;
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -460,10 +558,16 @@ export function AssetPreviewViewport({
   };
 
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (!active || !attachedRef.current || previewIsLoading) return;
+    if (!interactive || !active || !attachedRef.current || previewIsLoading) return;
     event.preventDefault();
     let zoom = normalizeViewportWheel(event.deltaY, event.deltaMode);
     if (!zoom) return;
+
+    if (kind === 'texture' && texturePreview && onTextureZoomChange) {
+      const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+      onTextureZoomChange(Math.min(16, Math.max(0.05, texturePreview.zoom * factor)));
+      return;
+    }
 
     const previousMaterialDistance = materialCameraDistanceRef.current;
     let nextMaterialDistance: number | undefined;
@@ -493,7 +597,7 @@ export function AssetPreviewViewport({
   return (
     <div
       ref={rootRef}
-      className="asset-preview-viewport"
+      className={`asset-preview-viewport${interactive ? '' : ' is-passive'}`}
       aria-label={label}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -507,10 +611,14 @@ export function AssetPreviewViewport({
         <div className="asset-preview-viewport-loading" role="status" aria-live="polite">
           <span className="asset-preview-viewport-loading-spinner" aria-hidden="true" />
           <strong>Loading preview</strong>
-          <span>Preparing material and studio lighting…</span>
+          <span>
+            {kind === 'texture' ? 'Preparing GPU texture preview…' : 'Preparing material and studio lighting…'}
+          </span>
         </div>
       )}
-      <span className="asset-preview-viewport-hint">Drag to orbit · Scroll to zoom</span>
+      <span className="asset-preview-viewport-hint">
+        {kind === 'texture' ? 'Drag to pan · Scroll to zoom' : 'Drag to orbit · Scroll to zoom'}
+      </span>
     </div>
   );
 }

@@ -1475,6 +1475,14 @@ struct host_viewport_set_render_options_command
     host_environment_visibility environment{};
     std::string material_preview_mesh{"sphere"};
     bool material_preview_auto_rotate{true};
+    std::uint32_t texture_preview_mip{};
+    bool texture_preview_channel_r{true};
+    bool texture_preview_channel_g{true};
+    bool texture_preview_channel_b{true};
+    bool texture_preview_channel_a{true};
+    float texture_preview_exposure{};
+    float texture_preview_zoom{1.0f};
+    std::string texture_preview_sampling{"linear"};
 };
 
 struct host_viewport_set_skeleton_joint_command

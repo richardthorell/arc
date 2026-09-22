@@ -68,4 +68,44 @@ describe('AssetPreviewViewport visibility', () => {
     view.unmount();
     await waitFor(() => expect(detach).toHaveBeenCalledTimes(1));
   });
+
+  it('uses the untransformed texture surface size when its canvas is CSS-scaled', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 200,
+      y: 100,
+      top: 100,
+      left: 200,
+      right: 1480,
+      bottom: 740,
+      width: 1280,
+      height: 640,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(320);
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(160);
+    const create = vi.fn().mockResolvedValue({ succeeded: true });
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        getStartupState: vi.fn().mockResolvedValue({ engineHostConnected: true, viewportMode: 'streamed' }),
+        host: {
+          command: vi.fn().mockResolvedValue({ succeeded: true }),
+          query: vi.fn().mockResolvedValue({ succeeded: true, payload: { assetPreviewReady: true } }),
+        },
+        viewport: {
+          create,
+          resize: vi.fn().mockResolvedValue({ succeeded: true }),
+          detach: vi.fn().mockResolvedValue({ succeeded: true }),
+          setVisibility: vi.fn().mockResolvedValue({ succeeded: true }),
+          registerSurface: vi.fn(),
+          unregisterSurface: vi.fn(),
+        },
+      },
+    });
+
+    render(<AssetPreviewViewport kind="texture" assetGuid="texture-guid" fallback="Unavailable" label="Preview" />);
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ x: 0, y: 0, width: 320, height: 160 })),
+    );
+  });
 });

@@ -19,6 +19,16 @@
   cursor: grabbing;
 }
 
+.asset-preview-viewport.is-passive,
+.asset-preview-viewport.is-passive:active {
+  cursor: inherit;
+  touch-action: auto;
+}
+
+.asset-preview-viewport.is-passive .asset-preview-viewport-hint {
+  display: none;
+}
+
 .asset-preview-viewport-canvas {
   width: 100%;
   height: 100%;

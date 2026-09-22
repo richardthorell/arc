@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TextureStage3Controls } from './TextureStage3Controls';
+import type { TextureSettingsSnapshot } from './textureSettings';
 
 const settings = {
   settingsVersion: 5,
@@ -53,26 +55,22 @@ const settings = {
 describe('TextureStage3Controls', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('previews slider changes immediately and resets controls to their neutral default', async () => {
+  it('stages slider changes without reimporting and resets controls to their neutral default', async () => {
     const command = vi.fn().mockResolvedValue({ succeeded: true });
     const query = vi.fn().mockResolvedValue({ succeeded: true, payload: settings });
     Object.defineProperty(window, 'arc', { configurable: true, value: { host: { command, query } } });
-    const preview = vi.fn();
-    window.addEventListener('arc:texture-settings-preview', preview);
 
-    render(
-      <TextureStage3Controls
-        asset={{ id: 'texture', name: 'T', path: 'T.png', kind: 'texture', status: 'ready', guid: 'guid' }}
-      />,
-    );
+    function Harness() {
+      const [draft, setDraft] = useState(settings as TextureSettingsSnapshot);
+      return <TextureStage3Controls draft={draft} update={(patch) => setDraft((value) => ({ ...value, ...patch }))} />;
+    }
+    render(<Harness />);
     const slider = await screen.findByLabelText('Brightness slider');
     fireEvent.change(slider, { target: { value: '0.6' } });
-    expect(preview).toHaveBeenCalled();
     expect((screen.getByLabelText('Brightness') as HTMLInputElement).value).toBe('0.60');
 
     fireEvent.click(screen.getByLabelText('Reset Brightness'));
     expect((screen.getByLabelText('Brightness') as HTMLInputElement).value).toBe('0.00');
-    await waitFor(() => expect(command).toHaveBeenCalled());
-    window.removeEventListener('arc:texture-settings-preview', preview);
+    expect(command).not.toHaveBeenCalled();
   });
 });
