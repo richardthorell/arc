@@ -221,7 +221,7 @@ geometric::box3f transformed_bounds(const geometric::box3f& local_bounds,
 /**
  * @brief Focus a camera controller on the selected entity.
  */
-bool focus_selected_entity(const ecs::world& registry, ecs::entity selected, editor_camera_controller& camera) noexcept;
+bool focus_selected_entity(ecs::world& registry, ecs::entity selected, editor_camera_controller& camera) noexcept;
 
 /**
  * @brief Convert Euler degrees to a quaternion.
