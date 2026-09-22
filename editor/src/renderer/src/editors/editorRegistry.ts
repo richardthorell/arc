@@ -16,6 +16,7 @@ import { ShaderSourceEditorToolbar } from '../shader/ShaderSourceEditorToolbar';
 import { disposeShaderDocument, saveShaderDocument } from '../shader/shaderDocumentState';
 import { TextureEditor } from '../texture/TextureEditor';
 import { TextureEditorToolbar } from '../texture/TextureEditorToolbar';
+import { disposeTextureDocument, saveTextureDocument } from '../texture/textureDocumentState';
 import { getActiveEditorDocument, openEditorDocumentInStore } from './editorDocuments';
 import type {
   EditorDocument,
@@ -278,6 +279,8 @@ const textureRegistration: EditorRegistration = {
   }),
   render: (document) => createElement(TextureEditor, { document }),
   renderToolbar: (document) => createElement(TextureEditorToolbar, { document }),
+  save: saveTextureDocument,
+  onClosed: (document) => disposeTextureDocument(document.id),
 };
 
 let currentRegistry: EditorRegistry | null = null;
