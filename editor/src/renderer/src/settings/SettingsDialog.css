@@ -1,39 +1,3 @@
-.settings-navigation {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  overflow: hidden;
-  padding: 12px 9px;
-}
-
-.settings-navigation > .ui-search-input {
-  width: 100%;
-  flex: 0 0 auto;
-}
-
-.settings-navigation > .ui-tree-view {
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.settings-navigation .ui-tree-view-row {
-  border-radius: 3px;
-  color: var(--arc-text-secondary);
-}
-
-.settings-navigation .ui-tree-view-row:hover {
-  background: rgba(255, 255, 255, 0.035);
-}
-
-.settings-navigation .ui-tree-view-row.is-selected {
-  color: var(--arc-text-primary);
-  background: rgba(88, 174, 233, 0.13);
-}
-
 .ui-dialog-settings .settings-fields {
   width: 100%;
   height: 100%;
@@ -75,6 +39,10 @@
   border-bottom: 1px solid var(--arc-border-subtle);
 }
 
+.ui-settings-card-content > .settings-field-row:last-child {
+  border-bottom: 0;
+}
+
 .settings-field-description {
   min-width: 0;
   display: flex;
@@ -110,8 +78,14 @@
   justify-self: end;
 }
 
-.ui-dialog-settings .settings-fields > .ui-button {
-  margin-top: 18px;
+.settings-card-actions {
+  display: flex;
+  align-items: center;
+  padding: 14px 0;
+}
+
+.settings-card-list {
+  padding: 8px 0;
 }
 
 .settings-empty-page {
