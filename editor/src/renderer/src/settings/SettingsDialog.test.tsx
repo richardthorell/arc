@@ -132,7 +132,7 @@ describe('EditorPreferencesDialog', () => {
     await waitFor(() => expect(window.arc.settings.snapshot).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole('treeitem', { name: /Viewport/ }));
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Default Grid' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Default Grid' }));
 
     await waitFor(() =>
       expect(window.arc.settings.update).toHaveBeenCalledWith('user', { 'renderer.defaultGrid': false }, 1),
