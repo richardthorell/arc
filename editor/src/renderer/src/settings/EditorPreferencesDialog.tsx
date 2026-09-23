@@ -112,7 +112,6 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
         setSnapshot(next);
         window.dispatchEvent(new CustomEvent('arc-editor-settings-changed', { detail: next }));
       }
-      setMessage(`${key} updated in user settings`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     }
