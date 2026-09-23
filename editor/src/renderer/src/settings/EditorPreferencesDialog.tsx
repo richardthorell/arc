@@ -293,14 +293,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
 
         {showEmptyPage && (
           <div className="settings-empty-page">
-            <strong>
-              {normalizedQuery ? 'No matching preferences on this page' : 'No preferences registered yet'}
-            </strong>
-            <span>
-              {normalizedQuery
-                ? 'Choose another matching category from the tree or clear the search.'
-                : 'This category is ready for preferences to be registered in a follow-up stage.'}
-            </span>
+            {normalizedQuery ? 'No matching settings' : 'No settings available'}
           </div>
         )}
       </div>
