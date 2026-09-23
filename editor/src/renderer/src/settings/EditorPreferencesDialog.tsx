@@ -8,6 +8,7 @@ import type {
 } from '../../../common/editorWorkflowTypes';
 import type { ArcExtensionSnapshot } from '../../../common/extensionTypes';
 import generalSettingsHeader from './assets/general-settings-header.webp';
+import viewportSettingsHeader from './assets/viewport-settings-header.webp';
 import {
   UiButton,
   UiDialogSettings,
@@ -209,7 +210,13 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     >
       <div className="settings-fields">
         <UiSettingsHeader
-          background={page.id === 'general' ? <img alt="" src={generalSettingsHeader} /> : undefined}
+          background={
+            page.id === 'general' ? (
+              <img alt="" src={generalSettingsHeader} />
+            ) : page.id === 'editing.viewport' ? (
+              <img alt="" src={viewportSettingsHeader} />
+            ) : undefined
+          }
           subtitle={page.description}
           title={page.label}
         />
