@@ -7,7 +7,15 @@ import type {
   RecoverySnapshot,
 } from '../../../common/editorWorkflowTypes';
 import type { ArcExtensionSnapshot } from '../../../common/extensionTypes';
-import { UiButton, UiDialogSettings, UiIconButton, UiSearchInput, UiSelect, UiTextInput, UiTreeView } from '../ui';
+import {
+  UiButton,
+  UiDialogSettings,
+  UiIconButton,
+  UiSelect,
+  UiSettingsCard,
+  UiSettingsNavigation,
+  UiTextInput,
+} from '../ui';
 import type { UiTreeNode } from '../ui';
 import { defaultExpandedSettingsNodes, editorSettingsNavigation, getEditorSettingsPage } from './settingsNavigation';
 
@@ -141,25 +149,19 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
   const showEmptyPage = entries.length === 0 && page.id !== 'system.recovery' && page.id !== 'tools.extensions';
 
   const sidebar = (
-    <div className="settings-navigation">
-      <UiSearchInput
-        aria-label="Search preferences"
-        autoFocus={false}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search preferences"
-        value={query}
-      />
-      <UiTreeView
-        ariaLabel="Preference sections"
-        defaultExpandedIds={defaultExpandedSettingsNodes}
-        nodes={navigation}
-        onSelect={(node) => {
-          if (getEditorSettingsPage(node.id)) setPageId(node.id);
-        }}
-        query={query}
-        selectedId={page.id}
-      />
-    </div>
+    <UiSettingsNavigation
+      defaultExpandedIds={defaultExpandedSettingsNodes}
+      nodes={navigation}
+      onQueryChange={setQuery}
+      onSelect={(node) => {
+        if (getEditorSettingsPage(node.id)) setPageId(node.id);
+      }}
+      query={query}
+      searchAriaLabel="Search preferences"
+      searchPlaceholder="Search preferences"
+      selectedId={page.id}
+      treeAriaLabel="Preference sections"
+    />
   );
 
   return (
@@ -176,93 +178,107 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
           <p>{page.description}</p>
         </header>
 
-        {entries.map((descriptor) => (
-          <div className="settings-field-row" key={descriptor.key}>
-            <span className="settings-field-description">
-              <strong>{descriptor.label}</strong>
-              <small>
-                {descriptor.description}
-                <br />
-                {snapshot?.sources[descriptor.key]}
-                {snapshot?.restartRequired.includes(descriptor.key) ? ' · restart required' : ''}
-              </small>
-            </span>
-            {editor(descriptor, snapshot?.values[descriptor.key])}
-            <UiIconButton label={`Reset ${descriptor.key}`} onClick={() => void update(descriptor.key, undefined)}>
-              <RotateCcw size={13} />
-            </UiIconButton>
-          </div>
-        ))}
+        {entries.length > 0 && (
+          <UiSettingsCard title={page.legacySection ?? page.label}>
+            {entries.map((descriptor) => (
+              <div className="settings-field-row" key={descriptor.key}>
+                <span className="settings-field-description">
+                  <strong>{descriptor.label}</strong>
+                  <small>
+                    {descriptor.description}
+                    <br />
+                    {snapshot?.sources[descriptor.key]}
+                    {snapshot?.restartRequired.includes(descriptor.key) ? ' · restart required' : ''}
+                  </small>
+                </span>
+                {editor(descriptor, snapshot?.values[descriptor.key])}
+                <UiIconButton label={`Reset ${descriptor.key}`} onClick={() => void update(descriptor.key, undefined)}>
+                  <RotateCcw size={13} />
+                </UiIconButton>
+              </div>
+            ))}
+          </UiSettingsCard>
+        )}
 
         {page.id === 'general' && (
-          <UiButton onClick={onResetLayout} variant="toolbar">
-            Reset workbench layout
-          </UiButton>
+          <UiSettingsCard subtitle="Restore the default editor panel arrangement." title="Workbench">
+            <div className="settings-card-actions">
+              <UiButton onClick={onResetLayout} variant="toolbar">
+                Reset workbench layout
+              </UiButton>
+            </div>
+          </UiSettingsCard>
         )}
 
         {page.id === 'system.recovery' && (
-          <div className="recovery-browser">
-            <p>
-              {recovery?.uncleanShutdown
+          <UiSettingsCard
+            subtitle={
+              recovery?.uncleanShutdown
                 ? 'ARC detected an unclean editor shutdown. Recovery generations are available below.'
-                : 'Recovery snapshots are stored outside the project and never overwrite source files.'}
-            </p>
-            {recovery?.generations.map((generation) => (
-              <article key={generation.id}>
-                <span>
-                  <strong>{generation.documentName}</strong>
-                  <small>
-                    {new Date(generation.createdAt).toLocaleString()} · {(generation.size / 1024).toFixed(1)} KiB
-                  </small>
-                </span>
-                <UiButton
-                  onClick={() =>
-                    void window.arc.recovery.restore(generation.id).then(() => setMessage('Recovery opened as dirty'))
-                  }
-                  variant="toolbar"
-                >
-                  Open
-                </UiButton>
-                <UiButton
-                  onClick={() =>
-                    void window.arc.recovery.discard(generation.id).then(async () => {
-                      setRecovery(await window.arc.recovery.snapshot());
-                    })
-                  }
-                  variant="toolbar"
-                >
-                  Discard
-                </UiButton>
-              </article>
-            ))}
-            {!recovery?.generations.length && <div className="tool-empty">No recovery generations.</div>}
-          </div>
+                : 'Recovery snapshots are stored outside the project and never overwrite source files.'
+            }
+            title="Recovery generations"
+          >
+            <div className="recovery-browser settings-card-list">
+              {recovery?.generations.map((generation) => (
+                <article key={generation.id}>
+                  <span>
+                    <strong>{generation.documentName}</strong>
+                    <small>
+                      {new Date(generation.createdAt).toLocaleString()} · {(generation.size / 1024).toFixed(1)} KiB
+                    </small>
+                  </span>
+                  <UiButton
+                    onClick={() =>
+                      void window.arc.recovery.restore(generation.id).then(() => setMessage('Recovery opened as dirty'))
+                    }
+                    variant="toolbar"
+                  >
+                    Open
+                  </UiButton>
+                  <UiButton
+                    onClick={() =>
+                      void window.arc.recovery.discard(generation.id).then(async () => {
+                        setRecovery(await window.arc.recovery.snapshot());
+                      })
+                    }
+                    variant="toolbar"
+                  >
+                    Discard
+                  </UiButton>
+                </article>
+              ))}
+              {!recovery?.generations.length && <div className="tool-empty">No recovery generations.</div>}
+            </div>
+          </UiSettingsCard>
         )}
 
         {page.id === 'tools.extensions' && (
-          <div className="recovery-browser">
-            {extensions?.extensions.map((extension) => (
-              <article key={extension.manifest.id}>
-                <span>
-                  <strong>
-                    {extension.manifest.name} {extension.manifest.version}
-                  </strong>
-                  <small>
-                    {extension.enabled ? 'Enabled' : 'Disabled'} ·{' '}
-                    {extension.manifest.capabilities.join(', ') || 'No capabilities'}
-                  </small>
-                  {extension.diagnostics.map((diagnostic) => (
-                    <small className="tool-error" key={diagnostic}>
-                      {diagnostic}
+          <UiSettingsCard subtitle="Extensions declared by the current project." title="Extensions">
+            <div className="recovery-browser settings-card-list">
+              {extensions?.extensions.map((extension) => (
+                <article key={extension.manifest.id}>
+                  <span>
+                    <strong>
+                      {extension.manifest.name} {extension.manifest.version}
+                    </strong>
+                    <small>
+                      {extension.enabled ? 'Enabled' : 'Disabled'} ·{' '}
+                      {extension.manifest.capabilities.join(', ') || 'No capabilities'}
                     </small>
-                  ))}
-                </span>
-              </article>
-            ))}
-            {!extensions?.extensions.length && (
-              <div className="tool-empty">No extensions are declared by this project.</div>
-            )}
-          </div>
+                    {extension.diagnostics.map((diagnostic) => (
+                      <small className="tool-error" key={diagnostic}>
+                        {diagnostic}
+                      </small>
+                    ))}
+                  </span>
+                </article>
+              ))}
+              {!extensions?.extensions.length && (
+                <div className="tool-empty">No extensions are declared by this project.</div>
+              )}
+            </div>
+          </UiSettingsCard>
         )}
 
         {showEmptyPage && (
