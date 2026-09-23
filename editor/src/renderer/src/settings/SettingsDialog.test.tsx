@@ -172,7 +172,7 @@ describe('EditorPreferencesDialog', () => {
 
     fireEvent.click(screen.getByRole('treeitem', { name: /Platforms/ }));
     expect(screen.getByRole('heading', { name: 'Platforms' })).toBeInTheDocument();
-    expect(screen.getByText('No preferences registered yet')).toBeInTheDocument();
+    expect(screen.getByText('No settings available')).toBeInTheDocument();
   });
 
   it('closes from the close button, Escape, and backdrop', () => {
