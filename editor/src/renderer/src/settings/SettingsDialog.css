@@ -59,7 +59,9 @@
 }
 
 .settings-field-warning svg {
+  display: block;
   flex: 0 0 auto;
+  transform: translateY(-0.5px);
 }
 
 .settings-value-control,
