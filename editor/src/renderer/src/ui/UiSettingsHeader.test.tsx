@@ -9,10 +9,20 @@ import { UiSettingsHeader } from './UiSettingsHeader';
 afterEach(cleanup);
 
 describe('UiSettingsHeader', () => {
-  it('renders a settings page title and optional subtitle', () => {
-    render(<UiSettingsHeader subtitle="Startup and editor behavior." title="General" />);
+  it('renders a settings page title and optional subtitle with default artwork', () => {
+    const { container } = render(<UiSettingsHeader subtitle="Startup and editor behavior." title="General" />);
 
     expect(screen.getByRole('heading', { name: 'General' })).toBeInTheDocument();
     expect(screen.getByText('Startup and editor behavior.')).toBeInTheDocument();
+    expect(container.querySelector('.ui-settings-header-default-artwork')).toBeInTheDocument();
+  });
+
+  it('accepts custom graphical header artwork', () => {
+    const { container } = render(
+      <UiSettingsHeader background={<svg data-testid="custom-artwork" />} title="Viewport" />,
+    );
+
+    expect(screen.getByTestId('custom-artwork')).toBeInTheDocument();
+    expect(container.querySelector('.ui-settings-header-default-artwork')).not.toBeInTheDocument();
   });
 });
