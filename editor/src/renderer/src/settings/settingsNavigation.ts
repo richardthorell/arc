@@ -25,7 +25,7 @@ export type EditorSettingsPageId =
   | 'system.diagnostics';
 
 export type EditorSettingsContentKind = 'settings' | 'workbench' | 'recovery' | 'extensions';
-export type EditorSettingsIcon = 'palette';
+export type EditorSettingsIcon = 'palette' | 'viewport' | 'openai';
 
 export type EditorSettingsPage = {
   id: EditorSettingsPageId;
@@ -75,6 +75,7 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
         legacySection: 'Renderer',
         keywords: ['renderer', 'render', 'camera', 'grid'],
         headerImage: viewportSettingsHeader,
+        card: { title: 'Viewport Rendering', icon: 'viewport' },
       },
       {
         id: 'editing.navigation',
@@ -127,7 +128,9 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
         id: 'ai.providers',
         label: 'Providers',
         description: 'AI provider accounts and available models.',
-        keywords: ['openai', 'anthropic', 'google', 'model'],
+        legacySection: 'AI Providers',
+        card: { title: 'OpenAI', icon: 'openai' },
+        keywords: ['openai', 'api key', 'model', 'reasoning', 'organization', 'project'],
       },
       {
         id: 'ai.assistant',
