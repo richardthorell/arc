@@ -47,13 +47,14 @@
   color: var(--arc-text-primary);
   font-size: 18px;
   font-weight: 600;
+  line-height: 1.2;
 }
 
 .ui-settings-header p {
   max-width: 620px;
-  margin: 5px 0 0;
+  margin: 2px 0 0;
   color: var(--arc-color-text-muted);
   font-size: 11px;
-  line-height: 1.5;
+  line-height: 1.35;
   opacity: 0.82;
 }
