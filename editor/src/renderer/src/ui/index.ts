@@ -26,6 +26,8 @@ export { UiPropertyCard } from './UiPropertyCard';
 export type { UiPropertyCardField, UiPropertyCardProps } from './UiPropertyCard';
 export { UiSettingsCard } from './UiSettingsCard';
 export type { UiSettingsCardProps } from './UiSettingsCard';
+export { UiSettingsHeader } from './UiSettingsHeader';
+export type { UiSettingsHeaderProps } from './UiSettingsHeader';
 export { UiSettingsNavigation } from './UiSettingsNavigation';
 export type { UiSettingsNavigationProps } from './UiSettingsNavigation';
 export { UiSidebarPanel } from './UiSidebarPanel';
