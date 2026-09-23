@@ -34,6 +34,11 @@ const normalize = (value: string) => value.trim().toLocaleLowerCase();
 const descriptorSearchTerms = (descriptor: EditorSettingDescriptor) =>
   [descriptor.key, descriptor.label, descriptor.description].join(' ');
 
+const enumOptionLabel = (descriptor: EditorSettingDescriptor, option: string) => {
+  if (descriptor.key === 'editor.theme' && option === 'arcDark') return 'Dark (Default)';
+  return option;
+};
+
 const enrichNavigation = (nodes: readonly UiTreeNode[], schema: readonly EditorSettingDescriptor[]): UiTreeNode[] =>
   nodes.map((node) => {
     const page = getEditorSettingsPage(node.id);
@@ -109,7 +114,10 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
           ariaLabel={descriptor.label}
           className="settings-value-control"
           onValueChange={(nextValue) => void update(key, nextValue)}
-          options={(descriptor.options ?? []).map((option) => ({ label: option, value: option }))}
+          options={(descriptor.options ?? []).map((option) => ({
+            label: enumOptionLabel(descriptor, option),
+            value: option,
+          }))}
           value={String(value)}
         />
       );
@@ -179,7 +187,6 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
         {entries.length > 0 && (
           <UiSettingsCard
             icon={page.id === 'general' ? <Palette aria-hidden="true" size={16} /> : undefined}
-            subtitle={page.id === 'general' ? 'Theme and general editor preferences.' : undefined}
             title={page.id === 'general' ? 'Appearance' : (page.legacySection ?? page.label)}
           >
             {entries.map((descriptor) => (
