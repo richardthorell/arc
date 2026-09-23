@@ -44,16 +44,18 @@ export type EditorSettingDescriptor = {
     | 'Extensions'
     | 'Source Control'
     | 'Recovery'
-    | 'Windows';
+    | 'Windows'
+    | 'AI Providers';
   label: string;
   description: string;
   type: 'boolean' | 'number' | 'string' | 'enum';
-  format?: 'color';
+  format?: 'color' | 'secret';
   defaultValue: boolean | number | string;
   minimum?: number;
   maximum?: number;
   step?: number;
   options?: string[];
+  optionLabels?: Record<string, string>;
   scopes: Array<'user' | 'project'>;
   restartRequired?: boolean;
 };
