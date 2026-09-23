@@ -7,6 +7,7 @@ import type {
   RecoverySnapshot,
 } from '../../../common/editorWorkflowTypes';
 import type { ArcExtensionSnapshot } from '../../../common/extensionTypes';
+import generalSettingsHeader from './assets/general-settings-header.webp';
 import {
   UiButton,
   UiDialogSettings,
@@ -182,7 +183,11 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
       title="Editor Preferences"
     >
       <div className="settings-fields">
-        <UiSettingsHeader subtitle={page.description} title={page.label} />
+        <UiSettingsHeader
+          background={page.id === 'general' ? <img alt="" src={generalSettingsHeader} /> : undefined}
+          subtitle={page.description}
+          title={page.label}
+        />
 
         {entries.length > 0 && (
           <UiSettingsCard
