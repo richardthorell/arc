@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import type { EditorSettingDescriptor, EditorSettingsSnapshot } from '../common/editorWorkflowTypes';
@@ -13,6 +14,70 @@ const schema: EditorSettingDescriptor[] = [
     type: 'enum',
     defaultValue: 'arcDark',
     options: ['arcDark'],
+    optionLabels: { arcDark: 'Dark (Default)' },
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.openai.apiKey',
+    section: 'AI Providers',
+    label: 'API Key',
+    description: 'OpenAI project API key. Stored encrypted on this machine and never written to project settings.',
+    type: 'string',
+    format: 'secret',
+    defaultValue: '',
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.openai.model',
+    section: 'AI Providers',
+    label: 'Model',
+    description: 'Default OpenAI model used by ARC Assistant conversations.',
+    type: 'enum',
+    defaultValue: 'gpt-6-sol',
+    options: ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'],
+    optionLabels: {
+      'gpt-6-astra': 'GPT-6 Astra',
+      'gpt-6-sol': 'GPT-6 Sol',
+      'gpt-6-luna': 'GPT-6 Luna',
+    },
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.openai.reasoningEffort',
+    section: 'AI Providers',
+    label: 'Reasoning Effort',
+    description: 'Default reasoning effort for OpenAI model responses.',
+    type: 'enum',
+    defaultValue: 'medium',
+    options: ['low', 'medium', 'high', 'xhigh', 'max'],
+    optionLabels: { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra High', max: 'Maximum' },
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.openai.organizationId',
+    section: 'AI Providers',
+    label: 'Organization ID',
+    description: 'Optional OpenAI organization override for accounts that belong to multiple organizations.',
+    type: 'string',
+    defaultValue: '',
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.openai.projectId',
+    section: 'AI Providers',
+    label: 'Project ID',
+    description: 'Optional OpenAI project override. Project API keys normally select this automatically.',
+    type: 'string',
+    defaultValue: '',
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.openai.storeResponses',
+    section: 'AI Providers',
+    label: 'Store Responses',
+    description: 'Allow OpenAI to retain Responses API objects. ARC keeps this disabled by default.',
+    type: 'boolean',
+    defaultValue: false,
     scopes: ['user'],
   },
   {
@@ -312,6 +377,33 @@ const schema: EditorSettingDescriptor[] = [
 
 const descriptors = new Map(schema.map((descriptor) => [descriptor.key, descriptor]));
 const defaults = Object.fromEntries(schema.map((descriptor) => [descriptor.key, descriptor.defaultValue]));
+const secretSettingKeys = new Set(['ai.openai.apiKey']);
+
+export type SettingsSecretCodec = {
+  encrypt(value: string): string;
+  decrypt(value: string): string;
+};
+
+type ElectronSafeStorage = {
+  isEncryptionAvailable(): boolean;
+  encryptString(value: string): Buffer;
+  decryptString(value: Buffer): string;
+};
+
+const electronSecretCodec: SettingsSecretCodec = {
+  encrypt(value) {
+    const electron = createRequire(import.meta.url)('electron') as { safeStorage?: ElectronSafeStorage };
+    const storage = electron.safeStorage;
+    if (!storage?.isEncryptionAvailable()) throw new Error('Secure credential storage is unavailable on this machine');
+    return storage.encryptString(value).toString('base64');
+  },
+  decrypt(value) {
+    const electron = createRequire(import.meta.url)('electron') as { safeStorage?: ElectronSafeStorage };
+    const storage = electron.safeStorage;
+    if (!storage?.isEncryptionAvailable()) throw new Error('Secure credential storage is unavailable on this machine');
+    return storage.decryptString(Buffer.from(value, 'base64'));
+  },
+};
 
 const readObject = (filePath: string): Record<string, unknown> => {
   try {
@@ -355,6 +447,7 @@ export class SettingsService {
   constructor(
     private readonly userSettingsPath: string,
     private readonly activeProject: () => ArcProjectCandidate | null,
+    private readonly secretCodec: SettingsSecretCodec = electronSecretCodec,
   ) {}
 
   snapshot(): EditorSettingsSnapshot {
@@ -364,6 +457,14 @@ export class SettingsService {
     const sources: EditorSettingsSnapshot['sources'] = {};
     for (const key of Object.keys(values))
       sources[key] = Object.hasOwn(project, key) ? 'project' : Object.hasOwn(user, key) ? 'user' : 'default';
+
+    const secrets = readObject(this.secretSettingsPath());
+    for (const key of secretSettingKeys) {
+      if (typeof secrets[key] !== 'string') continue;
+      values[key] = 'configured';
+      sources[key] = 'user';
+    }
+
     return {
       revision: this.revision,
       values,
@@ -387,8 +488,18 @@ export class SettingsService {
       if (!descriptor.scopes.includes(scope)) throw new Error(`${key} cannot be stored in ${scope} settings`);
       if (value !== undefined) validateValue(descriptor, value);
     }
+
     const updates = new Map<string, Record<string, unknown>>();
+    let secrets: Record<string, unknown> | null = null;
     for (const [key, value] of Object.entries(changes)) {
+      if (secretSettingKeys.has(key)) {
+        if (scope !== 'user') throw new Error(`${key} cannot be stored in ${scope} settings`);
+        secrets ??= { ...readObject(this.secretSettingsPath()) };
+        if (value === undefined || value === '') delete secrets[key];
+        else secrets[key] = this.secretCodec.encrypt(String(value).trim());
+        continue;
+      }
+
       const target = scope === 'user' ? this.resolvedUserSettingsPath() : this.projectSettingsPathForKey(key);
       if (!target) throw new Error('No writable project settings file is available');
       const next = updates.get(target) ?? { ...readObject(target) };
@@ -397,13 +508,22 @@ export class SettingsService {
       updates.set(target, next);
     }
     for (const [target, values] of updates) writeAtomic(target, values);
+    if (secrets) writeAtomic(this.secretSettingsPath(), secrets);
     ++this.revision;
     return this.snapshot();
+  }
+
+  secretValue(key: string): string | null {
+    if (!secretSettingKeys.has(key)) throw new Error(`'${key}' is not a secret setting`);
+    const encrypted = readObject(this.secretSettingsPath())[key];
+    if (typeof encrypted !== 'string') return null;
+    return this.secretCodec.decrypt(encrypted);
   }
 
   private validEntries(values: Record<string, unknown>): Record<string, unknown> {
     const result: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(values)) {
+      if (secretSettingKeys.has(key)) continue;
       const descriptor = descriptors.get(key);
       if (!descriptor) continue;
       try {
@@ -432,6 +552,10 @@ export class SettingsService {
     return project
       ? path.join(project.projectRoot, project.descriptor.paths.saved, 'Editor', 'settings.v1.json')
       : this.userSettingsPath;
+  }
+
+  private secretSettingsPath(): string {
+    return `${this.userSettingsPath}.secrets`;
   }
 
   private readProjectSettings(): Record<string, unknown> {
