@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Palette, RotateCcw, TriangleAlert } from 'lucide-react';
+import { FolderOpen, Palette, RefreshCw, RotateCcw, TriangleAlert } from 'lucide-react';
 
 import type {
   EditorSettingDescriptor,
@@ -38,6 +38,18 @@ const descriptorSearchTerms = (descriptor: EditorSettingDescriptor) =>
 const enumOptionLabel = (descriptor: EditorSettingDescriptor, option: string) => {
   if (descriptor.key === 'editor.theme' && option === 'arcDark') return 'Dark (Default)';
   return option;
+};
+
+const visibleDescription = (descriptor: EditorSettingDescriptor) =>
+  descriptor.description.replace(/\s+Leave empty\b.*$/i, '').trim();
+
+const isWindowsPathSetting = (descriptor: EditorSettingDescriptor) =>
+  descriptor.section === 'Windows' && descriptor.type === 'string';
+
+const windowsExecutableName = (key: string) => {
+  if (key === 'platform.windows.cmakePath') return 'cmake.exe';
+  if (key === 'platform.windows.ninjaPath') return 'ninja.exe';
+  return null;
 };
 
 const enrichNavigation = (nodes: readonly UiTreeNode[], schema: readonly EditorSettingDescriptor[]): UiTreeNode[] =>
@@ -95,6 +107,19 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     }
+  };
+
+  const browseWindowsPath = async (descriptor: EditorSettingDescriptor) => {
+    const selectedFolder = await window.arc.dialog.projectDestination(`Select ${descriptor.label}`);
+    if (!selectedFolder) return;
+    const executableName = windowsExecutableName(descriptor.key);
+    if (!executableName) {
+      await update(descriptor.key, selectedFolder);
+      return;
+    }
+    const separator = selectedFolder.includes('\\') ? '\\' : '/';
+    const folder = selectedFolder.replace(/[\\/]+$/, '');
+    await update(descriptor.key, `${folder}${separator}${executableName}`);
   };
 
   const editor = (descriptor: EditorSettingDescriptor, value: unknown) => {
@@ -194,24 +219,41 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
             icon={page.id === 'general' ? <Palette aria-hidden="true" size={16} /> : undefined}
             title={page.id === 'general' ? 'Appearance' : (page.legacySection ?? page.label)}
           >
-            {entries.map((descriptor) => (
-              <div className="settings-field-row" key={descriptor.key}>
-                <span className="settings-field-description">
-                  <strong>{descriptor.label}</strong>
-                  <small>{descriptor.description}</small>
-                  {snapshot?.restartRequired.includes(descriptor.key) && (
-                    <span className="settings-field-warning">
-                      <TriangleAlert aria-hidden="true" size={9} />
-                      Restart required
-                    </span>
+            {entries.map((descriptor) => {
+              const pathSetting = isWindowsPathSetting(descriptor);
+              return (
+                <div className="settings-field-row" key={descriptor.key}>
+                  <span className="settings-field-description">
+                    <strong>{descriptor.label}</strong>
+                    <small>{visibleDescription(descriptor)}</small>
+                    {snapshot?.restartRequired.includes(descriptor.key) && (
+                      <span className="settings-field-warning">
+                        <TriangleAlert aria-hidden="true" size={9} />
+                        Restart required
+                      </span>
+                    )}
+                  </span>
+                  {editor(descriptor, snapshot?.values[descriptor.key])}
+                  {pathSetting ? (
+                    <div className="settings-field-actions">
+                      <UiIconButton
+                        label={`Auto-detect ${descriptor.label}`}
+                        onClick={() => void update(descriptor.key, undefined)}
+                      >
+                        <RefreshCw size={13} />
+                      </UiIconButton>
+                      <UiIconButton label={`Browse for ${descriptor.label}`} onClick={() => void browseWindowsPath(descriptor)}>
+                        <FolderOpen size={13} />
+                      </UiIconButton>
+                    </div>
+                  ) : (
+                    <UiIconButton label={`Reset ${descriptor.key}`} onClick={() => void update(descriptor.key, undefined)}>
+                      <RotateCcw size={13} />
+                    </UiIconButton>
                   )}
-                </span>
-                {editor(descriptor, snapshot?.values[descriptor.key])}
-                <UiIconButton label={`Reset ${descriptor.key}`} onClick={() => void update(descriptor.key, undefined)}>
-                  <RotateCcw size={13} />
-                </UiIconButton>
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </UiSettingsCard>
         )}
 
