@@ -35,7 +35,16 @@ export type EditorSettingsSnapshot = {
 
 export type EditorSettingDescriptor = {
   key: string;
-  section: 'Editor' | 'Renderer' | 'Input' | 'Cache' | 'Paths & Tools' | 'Extensions' | 'Source Control' | 'Recovery';
+  section:
+    | 'Editor'
+    | 'Renderer'
+    | 'Input'
+    | 'Cache'
+    | 'Paths & Tools'
+    | 'Extensions'
+    | 'Source Control'
+    | 'Recovery'
+    | 'Windows';
   label: string;
   description: string;
   type: 'boolean' | 'number' | 'string' | 'enum';
