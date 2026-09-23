@@ -32,12 +32,12 @@ const config: ForgeConfig = {
     new VitePlugin({
       build: [
         {
-          entry: 'src/main/main.ts',
+          entry: 'src/main/mainWithAiProviders.ts',
           config: 'vite.main.config.ts',
           target: 'main',
         },
         {
-          entry: 'src/preload/preload.ts',
+          entry: 'src/preload/preloadWithAiProviders.ts',
           config: 'vite.preload.config.ts',
           target: 'preload',
         },
