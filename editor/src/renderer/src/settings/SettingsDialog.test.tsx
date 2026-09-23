@@ -68,7 +68,7 @@ beforeEach(() => {
           'renderer.temporalHistoryWeight': 'default',
           'renderer.projectOnly': 'default',
         },
-        restartRequired: [],
+        restartRequired: ['renderer.qualityTier'],
       }),
       update: vi.fn(),
     },
@@ -137,6 +137,16 @@ describe('EditorPreferencesDialog', () => {
     await waitFor(() =>
       expect(window.arc.settings.update).toHaveBeenCalledWith('user', { 'renderer.defaultGrid': false }, 1),
     );
+  });
+
+  it('shows restart requirements as separate warning metadata', async () => {
+    render(<EditorPreferencesDialog onClose={vi.fn()} onResetLayout={vi.fn()} />);
+    await waitFor(() => expect(window.arc.settings.snapshot).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('treeitem', { name: /Viewport/ }));
+
+    expect(screen.getByText('Restart required')).toBeInTheDocument();
+    expect(screen.getByText('Renderer quality profile used by editor viewports.')).toBeInTheDocument();
   });
 
   it('uses shared controls without stealing focus when callback props change', async () => {
