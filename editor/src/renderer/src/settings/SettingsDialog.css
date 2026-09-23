@@ -7,10 +7,7 @@
   min-width: 0;
   min-height: 0;
   overflow-y: scroll;
-  padding:
-    var(--ui-settings-content-padding-top)
-    var(--ui-settings-content-padding-x)
-    32px;
+  padding: var(--ui-settings-content-padding-top) var(--ui-settings-content-padding-x) 32px;
 }
 
 .settings-field-row {
@@ -136,10 +133,7 @@
   .ui-dialog-settings .settings-fields {
     --ui-settings-content-padding-x: 18px;
     --ui-settings-content-padding-top: 18px;
-    padding:
-      var(--ui-settings-content-padding-top)
-      var(--ui-settings-content-padding-x)
-      18px;
+    padding: var(--ui-settings-content-padding-top) var(--ui-settings-content-padding-x) 18px;
   }
 
   .settings-field-row {

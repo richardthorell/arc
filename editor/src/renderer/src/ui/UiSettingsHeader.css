@@ -2,10 +2,8 @@
   position: relative;
   min-height: 122px;
   overflow: hidden;
-  margin:
-    calc(0px - var(--ui-settings-content-padding-top, 22px))
-    calc(0px - var(--ui-settings-content-padding-x, 28px))
-    18px;
+  margin: calc(0px - var(--ui-settings-content-padding-top, 22px))
+    calc(0px - var(--ui-settings-content-padding-x, 28px)) 18px;
   padding: 28px var(--ui-settings-content-padding-x, 28px) 42px;
 }
 

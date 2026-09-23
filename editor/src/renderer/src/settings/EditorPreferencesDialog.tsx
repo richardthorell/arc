@@ -230,7 +230,9 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
               const pathSetting = isWindowsPathSetting(descriptor);
               return (
                 <div
-                  className={['settings-field-row', pathSetting ? 'settings-field-row-path' : ''].filter(Boolean).join(' ')}
+                  className={['settings-field-row', pathSetting ? 'settings-field-row-path' : '']
+                    .filter(Boolean)
+                    .join(' ')}
                   key={descriptor.key}
                 >
                   <span className="settings-field-description">
@@ -252,12 +254,18 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                       >
                         <RefreshCw size={13} />
                       </UiIconButton>
-                      <UiIconButton label={`Browse for ${descriptor.label}`} onClick={() => void browseWindowsPath(descriptor)}>
+                      <UiIconButton
+                        label={`Browse for ${descriptor.label}`}
+                        onClick={() => void browseWindowsPath(descriptor)}
+                      >
                         <FolderOpen size={13} />
                       </UiIconButton>
                     </div>
                   ) : (
-                    <UiIconButton label={`Reset ${descriptor.key}`} onClick={() => void update(descriptor.key, undefined)}>
+                    <UiIconButton
+                      label={`Reset ${descriptor.key}`}
+                      onClick={() => void update(descriptor.key, undefined)}
+                    >
                       <RotateCcw size={13} />
                     </UiIconButton>
                   )}

@@ -207,7 +207,8 @@ const schema: EditorSettingDescriptor[] = [
     key: 'platform.windows.msvcToolchainPath',
     section: 'Windows',
     label: 'MSVC Toolchain',
-    description: 'Optional MSVC toolchain root (VC/Tools/MSVC/<version>). Leave empty to use the detected installation.',
+    description:
+      'Optional MSVC toolchain root (VC/Tools/MSVC/<version>). Leave empty to use the detected installation.',
     type: 'string',
     defaultValue: '',
     scopes: ['user'],
