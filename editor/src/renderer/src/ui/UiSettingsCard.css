@@ -1,8 +1,9 @@
 .ui-settings-card {
   overflow: hidden;
-  border: 1px solid var(--arc-border-subtle);
+  border: 1px solid var(--arc-color-border);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.015);
+  background: rgba(255, 255, 255, 0.026);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
 .ui-settings-card + .ui-settings-card {
@@ -16,6 +17,7 @@
   gap: 10px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--arc-border-subtle);
+  background: rgba(255, 255, 255, 0.012);
 }
 
 .ui-settings-card-icon {
@@ -23,7 +25,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--arc-text-muted);
+  color: var(--arc-text-secondary);
 }
 
 .ui-settings-card-heading {
@@ -41,9 +43,10 @@
 }
 
 .ui-settings-card-heading small {
-  color: var(--arc-text-muted);
+  color: var(--arc-color-text-muted);
   font-size: 11px;
   line-height: 1.4;
+  opacity: 0.7;
 }
 
 .ui-settings-card-content {
