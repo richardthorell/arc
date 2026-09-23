@@ -127,7 +127,7 @@ describe('EditorPreferencesDialog', () => {
     expect(screen.queryByRole('treeitem', { name: /Platforms & SDKs/ })).not.toBeInTheDocument();
   });
 
-  it('writes preference edits only to user settings', async () => {
+  it('writes preference edits only to user settings without showing success status', async () => {
     window.arc.settings.update = vi.fn().mockResolvedValue(null);
     render(<EditorPreferencesDialog onClose={vi.fn()} onResetLayout={vi.fn()} />);
     await waitFor(() => expect(window.arc.settings.snapshot).toHaveBeenCalledTimes(1));
@@ -138,6 +138,7 @@ describe('EditorPreferencesDialog', () => {
     await waitFor(() =>
       expect(window.arc.settings.update).toHaveBeenCalledWith('user', { 'renderer.defaultGrid': false }, 1),
     );
+    expect(screen.queryByText(/updated in user settings/)).not.toBeInTheDocument();
   });
 
   it('shows restart requirements as separate warning metadata', async () => {
