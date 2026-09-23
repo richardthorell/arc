@@ -4,6 +4,7 @@ import { Settings } from 'lucide-react';
 
 import { activityRegistry } from '../app/panelRegistry';
 import type { ActivityId, ActivityRegistration } from '../app/workbenchTypes';
+import { requestSettingsDialog } from '../settings/settingsDialogRoute';
 import { UiButton } from '../ui';
 
 import './ActivityBar.css';
@@ -115,10 +116,13 @@ export function ActivityBar({
       <div className="activity-items">{utilityActivities.map(renderActivity)}</div>
       <div className="activity-footer">
         <ActivityBarButton
-          aria-label="Settings"
+          aria-label="Editor Preferences"
           aria-haspopup="dialog"
-          onClick={onSettings}
-          title="Settings"
+          onClick={() => {
+            requestSettingsDialog('editorPreferences');
+            onSettings();
+          }}
+          title="Editor Preferences"
           variant="ghost"
         >
           <Settings size={20} />

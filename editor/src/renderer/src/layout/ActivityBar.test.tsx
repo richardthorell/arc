@@ -4,9 +4,13 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { requestedSettingsDialogKind, resetSettingsDialogRequest } from '../settings/settingsDialogRoute';
 import { ActivityBar, ActivityBarButton } from './ActivityBar';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetSettingsDialogRequest();
+});
 
 describe('ActivityBarButton', () => {
   it('does not show a counter when the value is zero', () => {
@@ -38,7 +42,7 @@ describe('ActivityBar', () => {
     expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'AI Gateway' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Version Control' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Editor Preferences' })).toBeInTheDocument();
   });
 
   it('opens a utility and collapses it when clicked again', () => {
@@ -71,7 +75,7 @@ describe('ActivityBar', () => {
     expect(onExpandedChange).toHaveBeenLastCalledWith(false);
   });
 
-  it('opens settings without treating it as an expandable activity panel', () => {
+  it('opens editor preferences without treating it as an expandable activity panel', () => {
     const onExpandedChange = vi.fn();
     const onSelectActivity = vi.fn();
     const onSettings = vi.fn();
@@ -85,10 +89,11 @@ describe('ActivityBar', () => {
       />,
     );
 
-    const settings = screen.getByRole('button', { name: 'Settings' });
+    const settings = screen.getByRole('button', { name: 'Editor Preferences' });
     expect(settings).toHaveAttribute('aria-haspopup', 'dialog');
     fireEvent.click(settings);
 
+    expect(requestedSettingsDialogKind()).toBe('editorPreferences');
     expect(onSettings).toHaveBeenCalledTimes(1);
     expect(onSelectActivity).not.toHaveBeenCalled();
     expect(onExpandedChange).not.toHaveBeenCalled();

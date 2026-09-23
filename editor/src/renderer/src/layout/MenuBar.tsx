@@ -28,6 +28,7 @@ import type { LucideIcon } from 'lucide-react';
 import type { CommandId, WorkbenchPanelId } from '../app/workbenchTypes';
 import { panelRegistry } from '../app/panelRegistry';
 import { saveActiveEditorDocument } from '../editors/editorRegistry';
+import { requestSettingsDialog, type SettingsDialogKind } from '../settings/settingsDialogRoute';
 import { UiButton } from '../ui';
 import { WindowControls } from './WindowControls';
 
@@ -82,7 +83,6 @@ const baseMenuCommands: Partial<Record<MenuItem, MenuEntry[]>> = {
     separator(),
     { label: 'Import Scene Into Current...', command: 'file.importScene' },
     separator(),
-    placeholder('Project Settings...', { icon: Settings }),
     { label: 'Close Project', command: 'project.close' },
     placeholder('Exit ARC', { shortcut: 'Alt+F4' }),
   ],
@@ -231,6 +231,11 @@ export function MenuBar({
     return () => window.removeEventListener('pointerdown', close);
   }, []);
 
+  const openSettings = (kind: SettingsDialogKind) => {
+    requestSettingsDialog(kind);
+    onCommand('settings.open');
+  };
+
   const runMenuCommand = (entry: MenuCommand) => {
     setOpenMenu(null);
     if (entry.action) entry.action();
@@ -270,7 +275,13 @@ export function MenuBar({
       { label: 'Delete', command: 'entity.delete', shortcut: 'Delete', icon: Trash2 },
       placeholder('Select All', { shortcut: 'Ctrl+A' }),
       separator(),
-      { label: 'Preferences...', command: 'settings.open', shortcut: 'Ctrl+,', icon: Settings },
+      {
+        label: 'Editor Preferences...',
+        action: () => openSettings('editorPreferences'),
+        shortcut: 'Ctrl+,',
+        icon: Settings,
+      },
+      { label: 'Project Settings...', action: () => openSettings('projectSettings'), icon: Settings },
     ],
     View: [
       { label: 'Frame Selected', command: 'viewport.frameSelected', shortcut: 'F', icon: Focus },

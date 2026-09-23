@@ -1,95 +1,6 @@
-.settings-dialog-backdrop {
-  position: fixed;
-  z-index: 1000;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 32px;
-  background: rgba(5, 9, 12, 0.58);
-  backdrop-filter: blur(2px);
-}
-
-.settings-dialog {
-  width: min(1040px, calc(100vw - 64px));
-  height: min(760px, calc(100vh - 64px));
-  min-width: min(720px, calc(100vw - 32px));
-  min-height: min(480px, calc(100vh - 32px));
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  overflow: hidden;
-  border: 1px solid var(--arc-color-border-strong);
-  border-radius: var(--arc-radius-3);
-  color: var(--arc-text-secondary);
-  background: #151f26;
-  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.52);
-}
-
-.settings-dialog-titlebar {
-  min-height: 48px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto var(--arc-icon-button-size);
-  align-items: center;
-  gap: 12px;
-  padding: 6px 9px 6px 14px;
-  border-bottom: 1px solid var(--arc-border-subtle);
-  background: #1c2830;
-}
-
-.settings-dialog-title {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.settings-dialog-title > svg {
-  flex: 0 0 auto;
-  color: var(--arc-color-text-muted);
-}
-
-.settings-dialog-title > div {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.settings-dialog-title strong {
-  color: var(--arc-text-primary);
-  font-size: 13px;
-}
-
-.settings-dialog-title small,
-.settings-dialog-scope > span {
-  color: var(--arc-text-muted);
-  font-size: 10px;
-}
-
-.settings-dialog-scope {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.settings-dialog-scope .ui-select {
-  min-width: 148px;
-}
-
-.settings-dialog-body {
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.settings-dialog .settings-layout {
+.settings-navigation {
   width: 100%;
   height: 100%;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 244px minmax(0, 1fr);
-}
-
-.settings-navigation {
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -97,8 +8,6 @@
   gap: 10px;
   overflow: hidden;
   padding: 12px 9px;
-  border-right: 1px solid var(--arc-border-subtle);
-  background: #111a20;
 }
 
 .settings-navigation > .ui-search-input {
@@ -125,8 +34,9 @@
   background: rgba(88, 174, 233, 0.13);
 }
 
-.settings-dialog .settings-fields {
+.ui-dialog-settings .settings-fields {
   width: 100%;
+  height: 100%;
   max-width: none;
   min-width: 0;
   min-height: 0;
@@ -200,7 +110,7 @@
   justify-self: end;
 }
 
-.settings-dialog .settings-fields > .ui-button {
+.ui-dialog-settings .settings-fields > .ui-button {
   margin-top: 18px;
 }
 
@@ -226,36 +136,27 @@
   line-height: 1.5;
 }
 
-.settings-dialog-message {
+.settings-color-control {
+  width: 44px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid var(--arc-color-border);
+  border-radius: var(--arc-radius-sm);
+  background: var(--arc-color-bg-control);
+  cursor: pointer;
+}
+
+.settings-color-control:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.ui-dialog-settings-message > .tool-message {
   min-height: 34px;
-  border-top: 1px solid var(--arc-border-subtle);
 }
 
 @media (max-width: 760px) {
-  .settings-dialog-backdrop {
-    padding: 16px;
-  }
-
-  .settings-dialog {
-    width: calc(100vw - 32px);
-    height: calc(100vh - 32px);
-    min-width: 0;
-    min-height: 0;
-  }
-
-  .settings-dialog-titlebar {
-    grid-template-columns: minmax(0, 1fr) var(--arc-icon-button-size);
-  }
-
-  .settings-dialog-scope {
-    display: none;
-  }
-
-  .settings-dialog .settings-layout {
-    grid-template-columns: 190px minmax(0, 1fr);
-  }
-
-  .settings-dialog .settings-fields {
+  .ui-dialog-settings .settings-fields {
     padding: 18px;
   }
 
@@ -273,19 +174,4 @@
   .settings-value-control.ui-select {
     grid-column: 1;
   }
-}
-
-.settings-color-control {
-  width: 44px;
-  height: 28px;
-  padding: 2px;
-  border: 1px solid var(--arc-color-border);
-  border-radius: var(--arc-radius-sm);
-  background: var(--arc-color-bg-control);
-  cursor: pointer;
-}
-
-.settings-color-control:disabled {
-  cursor: default;
-  opacity: 0.55;
 }

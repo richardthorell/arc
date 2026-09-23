@@ -3,9 +3,13 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { requestedSettingsDialogKind, resetSettingsDialogRequest } from '../settings/settingsDialogRoute';
 import { MenuBar } from './MenuBar';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetSettingsDialogRequest();
+});
 
 describe('MenuBar', () => {
   it('exposes the editor menu hierarchy', () => {
@@ -31,6 +35,21 @@ describe('MenuBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /Command Palette/ }));
     expect(onCommand).toHaveBeenLastCalledWith('view.commandPalette');
+  });
+
+  it('routes editor preferences and project settings through the settings modal host', () => {
+    const onCommand = vi.fn();
+    render(<MenuBar projectTitle="Scene" onCommand={onCommand} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Editor Preferences/ }));
+    expect(requestedSettingsDialogKind()).toBe('editorPreferences');
+    expect(onCommand).toHaveBeenLastCalledWith('settings.open');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Project Settings...' }));
+    expect(requestedSettingsDialogKind()).toBe('projectSettings');
+    expect(onCommand).toHaveBeenLastCalledWith('settings.open');
   });
 
   it('shows unimplemented menu items disabled', () => {
