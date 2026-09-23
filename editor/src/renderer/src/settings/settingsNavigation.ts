@@ -3,7 +3,6 @@ import type { UiTreeNode } from '../ui';
 
 export type EditorSettingsPageId =
   | 'general'
-  | 'appearance'
   | 'editing.viewport'
   | 'editing.navigation'
   | 'editing.gizmos'
@@ -37,13 +36,7 @@ export const editorSettingsPages: readonly EditorSettingsPage[] = [
     label: 'General',
     description: 'Startup, project and general editor behavior.',
     legacySection: 'Editor',
-    keywords: ['editor', 'startup', 'layout', 'project'],
-  },
-  {
-    id: 'appearance',
-    label: 'Appearance',
-    description: 'Theme, scale and editor presentation.',
-    keywords: ['theme', 'ui', 'scale'],
+    keywords: ['editor', 'startup', 'layout', 'project', 'appearance', 'theme', 'ui', 'scale'],
   },
   {
     id: 'editing.viewport',
@@ -176,7 +169,6 @@ const pageNode = (id: EditorSettingsPageId): UiTreeNode => {
 
 export const editorSettingsNavigation: readonly UiTreeNode[] = [
   pageNode('general'),
-  pageNode('appearance'),
   {
     id: 'editing',
     label: 'Editing',
