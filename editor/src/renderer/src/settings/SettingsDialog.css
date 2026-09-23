@@ -35,8 +35,9 @@
 }
 
 .settings-field-description small {
-  color: var(--arc-text-muted);
+  color: var(--arc-color-text-muted);
   line-height: 1.45;
+  opacity: 0.7;
 }
 
 .settings-value-control,
