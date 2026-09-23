@@ -5,9 +5,14 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { ArcProjectCandidate } from '../common/projectTypes';
-import { SettingsService } from './settingsService';
+import { SettingsService, type SettingsSecretCodec } from './settingsService';
 
 const roots: string[] = [];
+
+const testSecretCodec: SettingsSecretCodec = {
+  encrypt: (value) => Buffer.from(`test:${value}`, 'utf8').toString('base64'),
+  decrypt: (value) => Buffer.from(value, 'base64').toString('utf8').replace(/^test:/, ''),
+};
 
 afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
@@ -82,6 +87,36 @@ describe('SettingsService', () => {
     expect(snapshot.values['renderer.gridColor']).toBe('#4A5058');
     expect(snapshot.sources['renderer.gridColor']).toBe('user');
     expect(() => service.update('user', { 'renderer.gridColor': 'white' }, snapshot.revision)).toThrow('#RRGGBB');
+  });
+
+  it('provides OpenAI defaults and keeps API keys out of normal settings files', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-settings-'));
+    roots.push(root);
+    const userPath = path.join(root, 'user.json');
+    const service = new SettingsService(userPath, () => project(root), testSecretCodec);
+    let snapshot = service.snapshot();
+
+    expect(snapshot.values['ai.openai.model']).toBe('gpt-6-sol');
+    expect(snapshot.values['ai.openai.reasoningEffort']).toBe('medium');
+    expect(snapshot.values['ai.openai.storeResponses']).toBe(false);
+    expect(snapshot.values['ai.openai.apiKey']).toBe('');
+
+    snapshot = service.update('user', { 'ai.openai.apiKey': 'sk-project-secret' }, snapshot.revision);
+    expect(snapshot.values['ai.openai.apiKey']).toBe('configured');
+    expect(snapshot.sources['ai.openai.apiKey']).toBe('user');
+    expect(service.secretValue('ai.openai.apiKey')).toBe('sk-project-secret');
+
+    const secretFile = fs.readFileSync(`${userPath}.secrets`, 'utf8');
+    expect(secretFile).not.toContain('sk-project-secret');
+    const projectUserSettings = path.join(root, 'Saved', 'Editor', 'settings.v1.json');
+    expect(fs.existsSync(projectUserSettings) ? fs.readFileSync(projectUserSettings, 'utf8') : '').not.toContain(
+      'sk-project-secret',
+    );
+
+    snapshot = service.update('user', { 'ai.openai.apiKey': undefined }, snapshot.revision);
+    expect(snapshot.values['ai.openai.apiKey']).toBe('');
+    expect(snapshot.sources['ai.openai.apiKey']).toBe('default');
+    expect(service.secretValue('ai.openai.apiKey')).toBeNull();
   });
 
   it('rejects unknown, out-of-range, machine-only, stale, and read-only changes', () => {
