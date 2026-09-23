@@ -42,7 +42,7 @@ describe('AiProviderSettingsPage', () => {
     const connectButtons = screen.getAllByRole('button', { name: 'Connect' });
     fireEvent.click(connectButtons[0]);
 
-    const key = screen.getByRole('textbox', { name: 'OpenAI API key' });
+    const key = screen.getByLabelText('OpenAI API key');
     fireEvent.change(key, { target: { value: 'sk-test-secret' } });
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
