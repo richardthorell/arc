@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { FolderOpen, Palette, RefreshCw, RotateCcw, TriangleAlert } from 'lucide-react';
+import { FolderOpen, Monitor, Palette, RefreshCw, RotateCcw, TriangleAlert, Unplug } from 'lucide-react';
+import { SiOpenai } from 'react-icons/si';
 
 import type {
   EditorSettingDescriptor,
@@ -40,10 +41,7 @@ const normalize = (value: string) => value.trim().toLocaleLowerCase();
 const descriptorSearchTerms = (descriptor: EditorSettingDescriptor) =>
   [descriptor.key, descriptor.label, descriptor.description].join(' ');
 
-const enumOptionLabel = (descriptor: EditorSettingDescriptor, option: string) => {
-  if (descriptor.key === 'editor.theme' && option === 'arcDark') return 'Dark (Default)';
-  return option;
-};
+const enumOptionLabel = (descriptor: EditorSettingDescriptor, option: string) => descriptor.optionLabels?.[option] ?? option;
 
 const visibleDescription = (descriptor: EditorSettingDescriptor) =>
   descriptor.description.replace(/\s+Leave empty\b.*$/i, '').trim();
@@ -59,6 +57,8 @@ const windowsExecutableName = (key: string) => {
 
 const settingsIcons: Record<EditorSettingsIcon, ReactNode> = {
   palette: <Palette aria-hidden="true" size={16} />,
+  viewport: <Monitor aria-hidden="true" size={16} />,
+  openai: <SiOpenai aria-hidden="true" size={16} />,
 };
 
 const enrichNavigation = (nodes: readonly UiTreeNode[], schema: readonly EditorSettingDescriptor[]): UiTreeNode[] =>
@@ -142,6 +142,24 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
           value={value}
         />
       );
+    if (descriptor.format === 'secret')
+      return (
+        <UiTextInput
+          aria-label={descriptor.label}
+          autoComplete="off"
+          className="settings-value-control"
+          defaultValue=""
+          key={`${key}-${String(Boolean(value))}`}
+          placeholder={value ? 'Configured — enter a new key to replace' : 'Enter API key'}
+          type="password"
+          onBlur={(event) => {
+            const nextValue = event.target.value.trim();
+            if (!nextValue) return;
+            event.target.value = '';
+            void update(key, nextValue);
+          }}
+        />
+      );
     if (descriptor.type === 'enum')
       return (
         <UiSelect
@@ -213,6 +231,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
       >
         {entries.map((descriptor) => {
           const pathSetting = isWindowsPathSetting(descriptor);
+          const secretSetting = descriptor.format === 'secret';
           return (
             <div
               className={['settings-field-row', pathSetting ? 'settings-field-row-path' : ''].filter(Boolean).join(' ')}
@@ -244,6 +263,14 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                     <FolderOpen size={13} />
                   </UiIconButton>
                 </div>
+              ) : secretSetting ? (
+                <UiIconButton
+                  disabled={!snapshot?.values[descriptor.key]}
+                  label="Remove API key from ARC"
+                  onClick={() => void update(descriptor.key, undefined)}
+                >
+                  <Unplug size={13} />
+                </UiIconButton>
               ) : (
                 <UiIconButton
                   label={`Reset ${descriptor.key}`}
