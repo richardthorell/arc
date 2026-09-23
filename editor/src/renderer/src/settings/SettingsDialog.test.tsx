@@ -169,6 +169,109 @@ describe('EditorPreferencesDialog', () => {
     expect(historyWeight).toHaveFocus();
   });
 
+  it('renders OpenAI provider configuration without exposing a configured API key', async () => {
+    window.arc.settings.snapshot = vi.fn().mockResolvedValue({
+      revision: 4,
+      schema: [
+        {
+          key: 'ai.openai.apiKey',
+          section: 'AI Providers',
+          label: 'API Key',
+          description: 'OpenAI project API key.',
+          type: 'string',
+          format: 'secret',
+          defaultValue: '',
+          scopes: ['user'],
+        },
+        {
+          key: 'ai.openai.model',
+          section: 'AI Providers',
+          label: 'Model',
+          description: 'Default OpenAI model.',
+          type: 'enum',
+          defaultValue: 'gpt-6-sol',
+          options: ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'],
+          optionLabels: {
+            'gpt-6-astra': 'GPT-6 Astra',
+            'gpt-6-sol': 'GPT-6 Sol',
+            'gpt-6-luna': 'GPT-6 Luna',
+          },
+          scopes: ['user'],
+        },
+        {
+          key: 'ai.openai.reasoningEffort',
+          section: 'AI Providers',
+          label: 'Reasoning Effort',
+          description: 'Default reasoning effort.',
+          type: 'enum',
+          defaultValue: 'medium',
+          options: ['low', 'medium', 'high', 'xhigh', 'max'],
+          scopes: ['user'],
+        },
+        {
+          key: 'ai.openai.organizationId',
+          section: 'AI Providers',
+          label: 'Organization ID',
+          description: 'Optional organization override.',
+          type: 'string',
+          defaultValue: '',
+          scopes: ['user'],
+        },
+        {
+          key: 'ai.openai.projectId',
+          section: 'AI Providers',
+          label: 'Project ID',
+          description: 'Optional project override.',
+          type: 'string',
+          defaultValue: '',
+          scopes: ['user'],
+        },
+        {
+          key: 'ai.openai.storeResponses',
+          section: 'AI Providers',
+          label: 'Store Responses',
+          description: 'Allow response retention.',
+          type: 'boolean',
+          defaultValue: false,
+          scopes: ['user'],
+        },
+      ],
+      values: {
+        'ai.openai.apiKey': 'configured',
+        'ai.openai.model': 'gpt-6-sol',
+        'ai.openai.reasoningEffort': 'medium',
+        'ai.openai.organizationId': '',
+        'ai.openai.projectId': '',
+        'ai.openai.storeResponses': false,
+      },
+      sources: {
+        'ai.openai.apiKey': 'user',
+        'ai.openai.model': 'default',
+        'ai.openai.reasoningEffort': 'default',
+        'ai.openai.organizationId': 'default',
+        'ai.openai.projectId': 'default',
+        'ai.openai.storeResponses': 'default',
+      },
+      restartRequired: [],
+    });
+
+    render(<EditorPreferencesDialog onClose={vi.fn()} onResetLayout={vi.fn()} />);
+    await waitFor(() => expect(window.arc.settings.snapshot).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('treeitem', { name: /Providers/ }));
+
+    expect(screen.getByText('OpenAI')).toBeInTheDocument();
+    const apiKey = screen.getByLabelText('API Key');
+    expect(apiKey).toHaveAttribute('type', 'password');
+    expect(apiKey).toHaveAttribute('placeholder', 'Configured — enter a new key to replace');
+    expect(apiKey).toHaveValue('');
+    expect(screen.getByRole('combobox', { name: 'Model' })).toHaveTextContent('GPT-6 Sol');
+    expect(screen.getByRole('combobox', { name: 'Reasoning Effort' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Organization ID' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Project ID' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Store Responses' })).not.toBeChecked();
+    expect(screen.getByRole('button', { name: 'Remove API key from ARC' })).toBeEnabled();
+  });
+
   it('shows framework pages that do not have registered preferences yet', () => {
     render(<EditorPreferencesDialog onClose={vi.fn()} onResetLayout={vi.fn()} />);
 
