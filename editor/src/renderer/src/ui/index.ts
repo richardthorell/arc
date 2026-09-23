@@ -8,6 +8,8 @@ export type { UiCurvePoint, UiCurveInterpolation, UiCurveHistogram } from './UiC
 export { UiContextMenu, UiContextMenuItem } from './UiContextMenu';
 export { UiDialog } from './UiDialog';
 export type { UiDialogPosition, UiDialogProps } from './UiDialog';
+export { UiDialogSettings } from './UiDialogSettings';
+export type { UiDialogSettingsProps } from './UiDialogSettings';
 export { UiDropdown } from './UiDropdown';
 export type { UiDropdownOption } from './UiDropdown';
 export { UiFloatingSurface } from './UiFloatingSurface';
