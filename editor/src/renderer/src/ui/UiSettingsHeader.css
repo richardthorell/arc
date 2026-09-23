@@ -46,9 +46,7 @@
 }
 
 .ui-settings-header-background > img {
-  height: calc(100% + 12px);
   object-position: center top;
-  transform: translateY(10px);
 }
 
 .ui-settings-header-default-artwork {
@@ -64,7 +62,8 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 2px;
+  padding-top: 14px;
 }
 
 .ui-settings-header h2 {
