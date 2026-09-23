@@ -196,7 +196,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                   <small>{descriptor.description}</small>
                   {snapshot?.restartRequired.includes(descriptor.key) && (
                     <span className="settings-field-warning">
-                      <TriangleAlert aria-hidden="true" size={11} />
+                      <TriangleAlert aria-hidden="true" size={9} />
                       Restart required
                     </span>
                   )}
