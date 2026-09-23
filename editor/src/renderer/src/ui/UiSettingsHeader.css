@@ -1,0 +1,20 @@
+.ui-settings-header {
+  margin-bottom: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--arc-border-subtle);
+}
+
+.ui-settings-header h2 {
+  margin: 0;
+  color: var(--arc-text-primary);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.ui-settings-header p {
+  max-width: 620px;
+  margin: 5px 0 0;
+  color: var(--arc-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
