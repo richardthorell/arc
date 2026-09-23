@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { FolderOpen, Palette, RefreshCw, RotateCcw, TriangleAlert } from 'lucide-react';
 
 import type {
@@ -7,8 +7,6 @@ import type {
   RecoverySnapshot,
 } from '../../../common/editorWorkflowTypes';
 import type { ArcExtensionSnapshot } from '../../../common/extensionTypes';
-import generalSettingsHeader from './assets/general-settings-header.webp';
-import viewportSettingsHeader from './assets/viewport-settings-header.webp';
 import {
   UiButton,
   UiDialogSettings,
@@ -21,7 +19,13 @@ import {
   UiToggleButton,
 } from '../ui';
 import type { UiTreeNode } from '../ui';
-import { defaultExpandedSettingsNodes, editorSettingsNavigation, getEditorSettingsPage } from './settingsNavigation';
+import {
+  defaultExpandedSettingsNodes,
+  editorSettingsNavigation,
+  getEditorSettingsPage,
+  type EditorSettingsContentKind,
+  type EditorSettingsIcon,
+} from './settingsNavigation';
 
 import '../tools/tools.css';
 import './SettingsDialog.css';
@@ -51,6 +55,10 @@ const windowsExecutableName = (key: string) => {
   if (key === 'platform.windows.cmakePath') return 'cmake.exe';
   if (key === 'platform.windows.ninjaPath') return 'ninja.exe';
   return null;
+};
+
+const settingsIcons: Record<EditorSettingsIcon, ReactNode> = {
+  palette: <Palette aria-hidden="true" size={16} />,
 };
 
 const enrichNavigation = (nodes: readonly UiTreeNode[], schema: readonly EditorSettingDescriptor[]): UiTreeNode[] =>
@@ -182,8 +190,6 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     );
   };
 
-  const showEmptyPage = entries.length === 0 && page.id !== 'system.recovery' && page.id !== 'tools.extensions';
-
   const sidebar = (
     <UiSettingsNavigation
       defaultExpandedIds={defaultExpandedSettingsNodes}
@@ -200,6 +206,144 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     />
   );
 
+  const settingsContent =
+    entries.length > 0 ? (
+      <UiSettingsCard
+        icon={page.card?.icon ? settingsIcons[page.card.icon] : undefined}
+        title={page.card?.title ?? page.legacySection ?? page.label}
+      >
+        {entries.map((descriptor) => {
+          const pathSetting = isWindowsPathSetting(descriptor);
+          return (
+            <div
+              className={['settings-field-row', pathSetting ? 'settings-field-row-path' : ''].filter(Boolean).join(' ')}
+              key={descriptor.key}
+            >
+              <span className="settings-field-description">
+                <strong>{descriptor.label}</strong>
+                <small>{visibleDescription(descriptor)}</small>
+                {snapshot?.restartRequired.includes(descriptor.key) && (
+                  <span className="settings-field-warning">
+                    <TriangleAlert aria-hidden="true" size={9} />
+                    Restart required
+                  </span>
+                )}
+              </span>
+              {editor(descriptor, snapshot?.values[descriptor.key])}
+              {pathSetting ? (
+                <div className="settings-field-actions">
+                  <UiIconButton
+                    label={`Auto-detect ${descriptor.label}`}
+                    onClick={() => void update(descriptor.key, undefined)}
+                  >
+                    <RefreshCw size={13} />
+                  </UiIconButton>
+                  <UiIconButton
+                    label={`Browse for ${descriptor.label}`}
+                    onClick={() => void browseWindowsPath(descriptor)}
+                  >
+                    <FolderOpen size={13} />
+                  </UiIconButton>
+                </div>
+              ) : (
+                <UiIconButton
+                  label={`Reset ${descriptor.key}`}
+                  onClick={() => void update(descriptor.key, undefined)}
+                >
+                  <RotateCcw size={13} />
+                </UiIconButton>
+              )}
+            </div>
+          );
+        })}
+      </UiSettingsCard>
+    ) : null;
+
+  const contentByKind: Record<EditorSettingsContentKind, ReactNode> = {
+    settings: settingsContent,
+    workbench: (
+      <UiSettingsCard subtitle="Restore the default editor panel arrangement." title="Workbench">
+        <div className="settings-card-actions">
+          <UiButton onClick={onResetLayout} variant="toolbar">
+            Reset workbench layout
+          </UiButton>
+        </div>
+      </UiSettingsCard>
+    ),
+    recovery: (
+      <UiSettingsCard
+        subtitle={
+          recovery?.uncleanShutdown
+            ? 'ARC detected an unclean editor shutdown. Recovery generations are available below.'
+            : 'Recovery snapshots are stored outside the project and never overwrite source files.'
+        }
+        title="Recovery generations"
+      >
+        <div className="recovery-browser settings-card-list">
+          {recovery?.generations.map((generation) => (
+            <article key={generation.id}>
+              <span>
+                <strong>{generation.documentName}</strong>
+                <small>
+                  {new Date(generation.createdAt).toLocaleString()} · {(generation.size / 1024).toFixed(1)} KiB
+                </small>
+              </span>
+              <UiButton
+                onClick={() =>
+                  void window.arc.recovery.restore(generation.id).then(() => setMessage('Recovery opened as dirty'))
+                }
+                variant="toolbar"
+              >
+                Open
+              </UiButton>
+              <UiButton
+                onClick={() =>
+                  void window.arc.recovery.discard(generation.id).then(async () => {
+                    setRecovery(await window.arc.recovery.snapshot());
+                  })
+                }
+                variant="toolbar"
+              >
+                Discard
+              </UiButton>
+            </article>
+          ))}
+          {!recovery?.generations.length && <div className="tool-empty">No recovery generations.</div>}
+        </div>
+      </UiSettingsCard>
+    ),
+    extensions: (
+      <UiSettingsCard subtitle="Extensions declared by the current project." title="Extensions">
+        <div className="recovery-browser settings-card-list">
+          {extensions?.extensions.map((extension) => (
+            <article key={extension.manifest.id}>
+              <span>
+                <strong>
+                  {extension.manifest.name} {extension.manifest.version}
+                </strong>
+                <small>
+                  {extension.enabled ? 'Enabled' : 'Disabled'} ·{' '}
+                  {extension.manifest.capabilities.join(', ') || 'No capabilities'}
+                </small>
+                {extension.diagnostics.map((diagnostic) => (
+                  <small className="tool-error" key={diagnostic}>
+                    {diagnostic}
+                  </small>
+                ))}
+              </span>
+            </article>
+          ))}
+          {!extensions?.extensions.length && (
+            <div className="tool-empty">No extensions are declared by this project.</div>
+          )}
+        </div>
+      </UiSettingsCard>
+    ),
+  };
+
+  const contentKinds = page.content ?? (['settings'] as const);
+  const hasVisibleContent = contentKinds.some((kind) => contentByKind[kind] !== null);
+
   return (
     <UiDialogSettings
       message={message ? <div className="tool-message">{message}</div> : undefined}
@@ -210,153 +354,16 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     >
       <div className="settings-fields">
         <UiSettingsHeader
-          background={
-            page.id === 'general' ? (
-              <img alt="" src={generalSettingsHeader} />
-            ) : page.id === 'editing.viewport' ? (
-              <img alt="" src={viewportSettingsHeader} />
-            ) : undefined
-          }
+          background={page.headerImage ? <img alt="" src={page.headerImage} /> : undefined}
           subtitle={page.description}
           title={page.label}
         />
 
-        {entries.length > 0 && (
-          <UiSettingsCard
-            icon={page.id === 'general' ? <Palette aria-hidden="true" size={16} /> : undefined}
-            title={page.id === 'general' ? 'Appearance' : (page.legacySection ?? page.label)}
-          >
-            {entries.map((descriptor) => {
-              const pathSetting = isWindowsPathSetting(descriptor);
-              return (
-                <div
-                  className={['settings-field-row', pathSetting ? 'settings-field-row-path' : '']
-                    .filter(Boolean)
-                    .join(' ')}
-                  key={descriptor.key}
-                >
-                  <span className="settings-field-description">
-                    <strong>{descriptor.label}</strong>
-                    <small>{visibleDescription(descriptor)}</small>
-                    {snapshot?.restartRequired.includes(descriptor.key) && (
-                      <span className="settings-field-warning">
-                        <TriangleAlert aria-hidden="true" size={9} />
-                        Restart required
-                      </span>
-                    )}
-                  </span>
-                  {editor(descriptor, snapshot?.values[descriptor.key])}
-                  {pathSetting ? (
-                    <div className="settings-field-actions">
-                      <UiIconButton
-                        label={`Auto-detect ${descriptor.label}`}
-                        onClick={() => void update(descriptor.key, undefined)}
-                      >
-                        <RefreshCw size={13} />
-                      </UiIconButton>
-                      <UiIconButton
-                        label={`Browse for ${descriptor.label}`}
-                        onClick={() => void browseWindowsPath(descriptor)}
-                      >
-                        <FolderOpen size={13} />
-                      </UiIconButton>
-                    </div>
-                  ) : (
-                    <UiIconButton
-                      label={`Reset ${descriptor.key}`}
-                      onClick={() => void update(descriptor.key, undefined)}
-                    >
-                      <RotateCcw size={13} />
-                    </UiIconButton>
-                  )}
-                </div>
-              );
-            })}
-          </UiSettingsCard>
-        )}
+        {contentKinds.map((kind) => (
+          <Fragment key={kind}>{contentByKind[kind]}</Fragment>
+        ))}
 
-        {page.id === 'general' && (
-          <UiSettingsCard subtitle="Restore the default editor panel arrangement." title="Workbench">
-            <div className="settings-card-actions">
-              <UiButton onClick={onResetLayout} variant="toolbar">
-                Reset workbench layout
-              </UiButton>
-            </div>
-          </UiSettingsCard>
-        )}
-
-        {page.id === 'system.recovery' && (
-          <UiSettingsCard
-            subtitle={
-              recovery?.uncleanShutdown
-                ? 'ARC detected an unclean editor shutdown. Recovery generations are available below.'
-                : 'Recovery snapshots are stored outside the project and never overwrite source files.'
-            }
-            title="Recovery generations"
-          >
-            <div className="recovery-browser settings-card-list">
-              {recovery?.generations.map((generation) => (
-                <article key={generation.id}>
-                  <span>
-                    <strong>{generation.documentName}</strong>
-                    <small>
-                      {new Date(generation.createdAt).toLocaleString()} · {(generation.size / 1024).toFixed(1)} KiB
-                    </small>
-                  </span>
-                  <UiButton
-                    onClick={() =>
-                      void window.arc.recovery.restore(generation.id).then(() => setMessage('Recovery opened as dirty'))
-                    }
-                    variant="toolbar"
-                  >
-                    Open
-                  </UiButton>
-                  <UiButton
-                    onClick={() =>
-                      void window.arc.recovery.discard(generation.id).then(async () => {
-                        setRecovery(await window.arc.recovery.snapshot());
-                      })
-                    }
-                    variant="toolbar"
-                  >
-                    Discard
-                  </UiButton>
-                </article>
-              ))}
-              {!recovery?.generations.length && <div className="tool-empty">No recovery generations.</div>}
-            </div>
-          </UiSettingsCard>
-        )}
-
-        {page.id === 'tools.extensions' && (
-          <UiSettingsCard subtitle="Extensions declared by the current project." title="Extensions">
-            <div className="recovery-browser settings-card-list">
-              {extensions?.extensions.map((extension) => (
-                <article key={extension.manifest.id}>
-                  <span>
-                    <strong>
-                      {extension.manifest.name} {extension.manifest.version}
-                    </strong>
-                    <small>
-                      {extension.enabled ? 'Enabled' : 'Disabled'} ·{' '}
-                      {extension.manifest.capabilities.join(', ') || 'No capabilities'}
-                    </small>
-                    {extension.diagnostics.map((diagnostic) => (
-                      <small className="tool-error" key={diagnostic}>
-                        {diagnostic}
-                      </small>
-                    ))}
-                  </span>
-                </article>
-              ))}
-              {!extensions?.extensions.length && (
-                <div className="tool-empty">No extensions are declared by this project.</div>
-              )}
-            </div>
-          </UiSettingsCard>
-        )}
-
-        {showEmptyPage && (
+        {!hasVisibleContent && (
           <div className="settings-empty-page">
             {normalizedQuery ? 'No matching settings' : 'No settings available'}
           </div>
