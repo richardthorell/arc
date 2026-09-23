@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Palette, RotateCcw } from 'lucide-react';
+import { Palette, RotateCcw, TriangleAlert } from 'lucide-react';
 
 import type {
   EditorSettingDescriptor,
@@ -193,10 +193,13 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
               <div className="settings-field-row" key={descriptor.key}>
                 <span className="settings-field-description">
                   <strong>{descriptor.label}</strong>
-                  <small>
-                    {descriptor.description}
-                    {snapshot?.restartRequired.includes(descriptor.key) ? ' · restart required' : ''}
-                  </small>
+                  <small>{descriptor.description}</small>
+                  {snapshot?.restartRequired.includes(descriptor.key) && (
+                    <span className="settings-field-warning">
+                      <TriangleAlert aria-hidden="true" size={11} />
+                      Restart required
+                    </span>
+                  )}
                 </span>
                 {editor(descriptor, snapshot?.values[descriptor.key])}
                 <UiIconButton label={`Reset ${descriptor.key}`} onClick={() => void update(descriptor.key, undefined)}>
