@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { Palette, RotateCcw } from 'lucide-react';
 
 import type {
   EditorSettingDescriptor,
@@ -177,7 +177,11 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
         <UiSettingsHeader subtitle={page.description} title={page.label} />
 
         {entries.length > 0 && (
-          <UiSettingsCard title={page.legacySection ?? page.label}>
+          <UiSettingsCard
+            icon={page.id === 'general' ? <Palette aria-hidden="true" size={16} /> : undefined}
+            subtitle={page.id === 'general' ? 'Theme and general editor preferences.' : undefined}
+            title={page.id === 'general' ? 'Appearance' : (page.legacySection ?? page.label)}
+          >
             {entries.map((descriptor) => (
               <div className="settings-field-row" key={descriptor.key}>
                 <span className="settings-field-description">
