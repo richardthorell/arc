@@ -9,6 +9,7 @@ import type {
 import type { ArcExtensionSnapshot } from '../../../common/extensionTypes';
 import { UiButton, UiDialogSettings, UiIconButton, UiSearchInput, UiSelect, UiTextInput, UiTreeView } from '../ui';
 import type { UiTreeNode } from '../ui';
+import { AiProviderSettingsPage } from './AiProviderSettingsPage';
 import { defaultExpandedSettingsNodes, editorSettingsNavigation, getEditorSettingsPage } from './settingsNavigation';
 
 import '../tools/tools.css';
@@ -138,7 +139,11 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     );
   };
 
-  const showEmptyPage = entries.length === 0 && page.id !== 'system.recovery' && page.id !== 'tools.extensions';
+  const showEmptyPage =
+    entries.length === 0 &&
+    page.id !== 'ai.providers' &&
+    page.id !== 'system.recovery' &&
+    page.id !== 'tools.extensions';
 
   const sidebar = (
     <div className="settings-navigation">
@@ -199,6 +204,8 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
             Reset workbench layout
           </UiButton>
         )}
+
+        {page.id === 'ai.providers' && <AiProviderSettingsPage onMessage={setMessage} />}
 
         {page.id === 'system.recovery' && (
           <div className="recovery-browser">
