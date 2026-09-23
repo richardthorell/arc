@@ -222,7 +222,10 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
             {entries.map((descriptor) => {
               const pathSetting = isWindowsPathSetting(descriptor);
               return (
-                <div className="settings-field-row" key={descriptor.key}>
+                <div
+                  className={['settings-field-row', pathSetting ? 'settings-field-row-path' : ''].filter(Boolean).join(' ')}
+                  key={descriptor.key}
+                >
                   <span className="settings-field-description">
                     <strong>{descriptor.label}</strong>
                     <small>{visibleDescription(descriptor)}</small>
