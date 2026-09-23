@@ -100,7 +100,8 @@ describe('EditorPreferencesDialog', () => {
     expect(screen.getByRole('treeitem', { name: /Viewport/ })).toBeInTheDocument();
     expect(screen.getByRole('treeitem', { name: /AI/ })).toBeInTheDocument();
     expect(screen.getByRole('treeitem', { name: /Source Control/ })).toBeInTheDocument();
-    expect(screen.getByRole('treeitem', { name: /Platforms/ })).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: /Platforms & SDKs/ })).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: /Windows/ })).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Settings scope' })).not.toBeInTheDocument();
     expect(screen.getByRole('searchbox', { name: 'Search preferences' })).toBeInTheDocument();
 
@@ -123,7 +124,7 @@ describe('EditorPreferencesDialog', () => {
     expect(screen.getByRole('heading', { name: 'Viewport' })).toBeInTheDocument();
     expect(screen.getByText('Default Grid')).toBeInTheDocument();
     expect(screen.queryByText('Project Only Setting')).not.toBeInTheDocument();
-    expect(screen.queryByRole('treeitem', { name: /Platforms/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('treeitem', { name: /Platforms & SDKs/ })).not.toBeInTheDocument();
   });
 
   it('writes preference edits only to user settings', async () => {
@@ -170,8 +171,8 @@ describe('EditorPreferencesDialog', () => {
   it('shows framework pages that do not have registered preferences yet', () => {
     render(<EditorPreferencesDialog onClose={vi.fn()} onResetLayout={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole('treeitem', { name: /Platforms/ }));
-    expect(screen.getByRole('heading', { name: 'Platforms' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('treeitem', { name: /Scene/ }));
+    expect(screen.getByRole('heading', { name: 'Scene' })).toBeInTheDocument();
     expect(screen.getByText('No settings available')).toBeInTheDocument();
   });
 
