@@ -13,8 +13,10 @@ import {
   UiIconButton,
   UiSelect,
   UiSettingsCard,
+  UiSettingsHeader,
   UiSettingsNavigation,
   UiTextInput,
+  UiToggleButton,
 } from '../ui';
 import type { UiTreeNode } from '../ui';
 import { defaultExpandedSettingsNodes, editorSettingsNavigation, getEditorSettingsPage } from './settingsNavigation';
@@ -113,12 +115,11 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
       );
     if (typeof value === 'boolean')
       return (
-        <input
+        <UiToggleButton
           aria-label={descriptor.label}
           checked={value}
-          className="settings-checkbox"
-          onChange={(event) => void update(key, event.target.checked)}
-          type="checkbox"
+          className="settings-toggle-control"
+          onCheckedChange={(checked) => void update(key, checked)}
         />
       );
     if (typeof value === 'number')
@@ -173,10 +174,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
       title="Editor Preferences"
     >
       <div className="settings-fields">
-        <header className="settings-page-header">
-          <h2>{page.label}</h2>
-          <p>{page.description}</p>
-        </header>
+        <UiSettingsHeader subtitle={page.description} title={page.label} />
 
         {entries.length > 0 && (
           <UiSettingsCard title={page.legacySection ?? page.label}>
@@ -186,8 +184,6 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                   <strong>{descriptor.label}</strong>
                   <small>
                     {descriptor.description}
-                    <br />
-                    {snapshot?.sources[descriptor.key]}
                     {snapshot?.restartRequired.includes(descriptor.key) ? ' · restart required' : ''}
                   </small>
                 </span>
