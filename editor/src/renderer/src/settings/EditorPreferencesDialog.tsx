@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { FolderOpen, Palette, RefreshCw, RotateCcw, TriangleAlert } from 'lucide-react';
 
 import type {
   EditorSettingDescriptor,
@@ -7,7 +7,19 @@ import type {
   RecoverySnapshot,
 } from '../../../common/editorWorkflowTypes';
 import type { ArcExtensionSnapshot } from '../../../common/extensionTypes';
-import { UiButton, UiDialogSettings, UiIconButton, UiSearchInput, UiSelect, UiTextInput, UiTreeView } from '../ui';
+import generalSettingsHeader from './assets/general-settings-header.webp';
+import viewportSettingsHeader from './assets/viewport-settings-header.webp';
+import {
+  UiButton,
+  UiDialogSettings,
+  UiIconButton,
+  UiSelect,
+  UiSettingsCard,
+  UiSettingsHeader,
+  UiSettingsNavigation,
+  UiTextInput,
+  UiToggleButton,
+} from '../ui';
 import type { UiTreeNode } from '../ui';
 import { defaultExpandedSettingsNodes, editorSettingsNavigation, getEditorSettingsPage } from './settingsNavigation';
 
@@ -23,6 +35,23 @@ const normalize = (value: string) => value.trim().toLocaleLowerCase();
 
 const descriptorSearchTerms = (descriptor: EditorSettingDescriptor) =>
   [descriptor.key, descriptor.label, descriptor.description].join(' ');
+
+const enumOptionLabel = (descriptor: EditorSettingDescriptor, option: string) => {
+  if (descriptor.key === 'editor.theme' && option === 'arcDark') return 'Dark (Default)';
+  return option;
+};
+
+const visibleDescription = (descriptor: EditorSettingDescriptor) =>
+  descriptor.description.replace(/\s+Leave empty\b.*$/i, '').trim();
+
+const isWindowsPathSetting = (descriptor: EditorSettingDescriptor) =>
+  descriptor.section === 'Windows' && descriptor.type === 'string';
+
+const windowsExecutableName = (key: string) => {
+  if (key === 'platform.windows.cmakePath') return 'cmake.exe';
+  if (key === 'platform.windows.ninjaPath') return 'ninja.exe';
+  return null;
+};
 
 const enrichNavigation = (nodes: readonly UiTreeNode[], schema: readonly EditorSettingDescriptor[]): UiTreeNode[] =>
   nodes.map((node) => {
@@ -81,6 +110,19 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     }
   };
 
+  const browseWindowsPath = async (descriptor: EditorSettingDescriptor) => {
+    const selectedFolder = await window.arc.dialog.projectDestination(`Select ${descriptor.label}`);
+    if (!selectedFolder) return;
+    const executableName = windowsExecutableName(descriptor.key);
+    if (!executableName) {
+      await update(descriptor.key, selectedFolder);
+      return;
+    }
+    const separator = selectedFolder.includes('\\') ? '\\' : '/';
+    const folder = selectedFolder.replace(/[\\/]+$/, '');
+    await update(descriptor.key, `${folder}${separator}${executableName}`);
+  };
+
   const editor = (descriptor: EditorSettingDescriptor, value: unknown) => {
     const { key } = descriptor;
     if (descriptor.format === 'color' && typeof value === 'string')
@@ -99,18 +141,20 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
           ariaLabel={descriptor.label}
           className="settings-value-control"
           onValueChange={(nextValue) => void update(key, nextValue)}
-          options={(descriptor.options ?? []).map((option) => ({ label: option, value: option }))}
+          options={(descriptor.options ?? []).map((option) => ({
+            label: enumOptionLabel(descriptor, option),
+            value: option,
+          }))}
           value={String(value)}
         />
       );
     if (typeof value === 'boolean')
       return (
-        <input
+        <UiToggleButton
           aria-label={descriptor.label}
           checked={value}
-          className="settings-checkbox"
-          onChange={(event) => void update(key, event.target.checked)}
-          type="checkbox"
+          className="settings-toggle-control"
+          onCheckedChange={(checked) => void update(key, checked)}
         />
       );
     if (typeof value === 'number')
@@ -141,25 +185,19 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
   const showEmptyPage = entries.length === 0 && page.id !== 'system.recovery' && page.id !== 'tools.extensions';
 
   const sidebar = (
-    <div className="settings-navigation">
-      <UiSearchInput
-        aria-label="Search preferences"
-        autoFocus={false}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search preferences"
-        value={query}
-      />
-      <UiTreeView
-        ariaLabel="Preference sections"
-        defaultExpandedIds={defaultExpandedSettingsNodes}
-        nodes={navigation}
-        onSelect={(node) => {
-          if (getEditorSettingsPage(node.id)) setPageId(node.id);
-        }}
-        query={query}
-        selectedId={page.id}
-      />
-    </div>
+    <UiSettingsNavigation
+      defaultExpandedIds={defaultExpandedSettingsNodes}
+      nodes={navigation}
+      onQueryChange={setQuery}
+      onSelect={(node) => {
+        if (getEditorSettingsPage(node.id)) setPageId(node.id);
+      }}
+      query={query}
+      searchAriaLabel="Search preferences"
+      searchPlaceholder="Search preferences"
+      selectedId={page.id}
+      treeAriaLabel="Preference sections"
+    />
   );
 
   return (
@@ -171,110 +209,156 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
       title="Editor Preferences"
     >
       <div className="settings-fields">
-        <header className="settings-page-header">
-          <h2>{page.label}</h2>
-          <p>{page.description}</p>
-        </header>
+        <UiSettingsHeader
+          background={
+            page.id === 'general' ? (
+              <img alt="" src={generalSettingsHeader} />
+            ) : page.id === 'editing.viewport' ? (
+              <img alt="" src={viewportSettingsHeader} />
+            ) : undefined
+          }
+          subtitle={page.description}
+          title={page.label}
+        />
 
-        {entries.map((descriptor) => (
-          <div className="settings-field-row" key={descriptor.key}>
-            <span className="settings-field-description">
-              <strong>{descriptor.label}</strong>
-              <small>
-                {descriptor.description}
-                <br />
-                {snapshot?.sources[descriptor.key]}
-                {snapshot?.restartRequired.includes(descriptor.key) ? ' · restart required' : ''}
-              </small>
-            </span>
-            {editor(descriptor, snapshot?.values[descriptor.key])}
-            <UiIconButton label={`Reset ${descriptor.key}`} onClick={() => void update(descriptor.key, undefined)}>
-              <RotateCcw size={13} />
-            </UiIconButton>
-          </div>
-        ))}
+        {entries.length > 0 && (
+          <UiSettingsCard
+            icon={page.id === 'general' ? <Palette aria-hidden="true" size={16} /> : undefined}
+            title={page.id === 'general' ? 'Appearance' : (page.legacySection ?? page.label)}
+          >
+            {entries.map((descriptor) => {
+              const pathSetting = isWindowsPathSetting(descriptor);
+              return (
+                <div
+                  className={['settings-field-row', pathSetting ? 'settings-field-row-path' : '']
+                    .filter(Boolean)
+                    .join(' ')}
+                  key={descriptor.key}
+                >
+                  <span className="settings-field-description">
+                    <strong>{descriptor.label}</strong>
+                    <small>{visibleDescription(descriptor)}</small>
+                    {snapshot?.restartRequired.includes(descriptor.key) && (
+                      <span className="settings-field-warning">
+                        <TriangleAlert aria-hidden="true" size={9} />
+                        Restart required
+                      </span>
+                    )}
+                  </span>
+                  {editor(descriptor, snapshot?.values[descriptor.key])}
+                  {pathSetting ? (
+                    <div className="settings-field-actions">
+                      <UiIconButton
+                        label={`Auto-detect ${descriptor.label}`}
+                        onClick={() => void update(descriptor.key, undefined)}
+                      >
+                        <RefreshCw size={13} />
+                      </UiIconButton>
+                      <UiIconButton
+                        label={`Browse for ${descriptor.label}`}
+                        onClick={() => void browseWindowsPath(descriptor)}
+                      >
+                        <FolderOpen size={13} />
+                      </UiIconButton>
+                    </div>
+                  ) : (
+                    <UiIconButton
+                      label={`Reset ${descriptor.key}`}
+                      onClick={() => void update(descriptor.key, undefined)}
+                    >
+                      <RotateCcw size={13} />
+                    </UiIconButton>
+                  )}
+                </div>
+              );
+            })}
+          </UiSettingsCard>
+        )}
 
         {page.id === 'general' && (
-          <UiButton onClick={onResetLayout} variant="toolbar">
-            Reset workbench layout
-          </UiButton>
+          <UiSettingsCard subtitle="Restore the default editor panel arrangement." title="Workbench">
+            <div className="settings-card-actions">
+              <UiButton onClick={onResetLayout} variant="toolbar">
+                Reset workbench layout
+              </UiButton>
+            </div>
+          </UiSettingsCard>
         )}
 
         {page.id === 'system.recovery' && (
-          <div className="recovery-browser">
-            <p>
-              {recovery?.uncleanShutdown
+          <UiSettingsCard
+            subtitle={
+              recovery?.uncleanShutdown
                 ? 'ARC detected an unclean editor shutdown. Recovery generations are available below.'
-                : 'Recovery snapshots are stored outside the project and never overwrite source files.'}
-            </p>
-            {recovery?.generations.map((generation) => (
-              <article key={generation.id}>
-                <span>
-                  <strong>{generation.documentName}</strong>
-                  <small>
-                    {new Date(generation.createdAt).toLocaleString()} · {(generation.size / 1024).toFixed(1)} KiB
-                  </small>
-                </span>
-                <UiButton
-                  onClick={() =>
-                    void window.arc.recovery.restore(generation.id).then(() => setMessage('Recovery opened as dirty'))
-                  }
-                  variant="toolbar"
-                >
-                  Open
-                </UiButton>
-                <UiButton
-                  onClick={() =>
-                    void window.arc.recovery.discard(generation.id).then(async () => {
-                      setRecovery(await window.arc.recovery.snapshot());
-                    })
-                  }
-                  variant="toolbar"
-                >
-                  Discard
-                </UiButton>
-              </article>
-            ))}
-            {!recovery?.generations.length && <div className="tool-empty">No recovery generations.</div>}
-          </div>
+                : 'Recovery snapshots are stored outside the project and never overwrite source files.'
+            }
+            title="Recovery generations"
+          >
+            <div className="recovery-browser settings-card-list">
+              {recovery?.generations.map((generation) => (
+                <article key={generation.id}>
+                  <span>
+                    <strong>{generation.documentName}</strong>
+                    <small>
+                      {new Date(generation.createdAt).toLocaleString()} · {(generation.size / 1024).toFixed(1)} KiB
+                    </small>
+                  </span>
+                  <UiButton
+                    onClick={() =>
+                      void window.arc.recovery.restore(generation.id).then(() => setMessage('Recovery opened as dirty'))
+                    }
+                    variant="toolbar"
+                  >
+                    Open
+                  </UiButton>
+                  <UiButton
+                    onClick={() =>
+                      void window.arc.recovery.discard(generation.id).then(async () => {
+                        setRecovery(await window.arc.recovery.snapshot());
+                      })
+                    }
+                    variant="toolbar"
+                  >
+                    Discard
+                  </UiButton>
+                </article>
+              ))}
+              {!recovery?.generations.length && <div className="tool-empty">No recovery generations.</div>}
+            </div>
+          </UiSettingsCard>
         )}
 
         {page.id === 'tools.extensions' && (
-          <div className="recovery-browser">
-            {extensions?.extensions.map((extension) => (
-              <article key={extension.manifest.id}>
-                <span>
-                  <strong>
-                    {extension.manifest.name} {extension.manifest.version}
-                  </strong>
-                  <small>
-                    {extension.enabled ? 'Enabled' : 'Disabled'} ·{' '}
-                    {extension.manifest.capabilities.join(', ') || 'No capabilities'}
-                  </small>
-                  {extension.diagnostics.map((diagnostic) => (
-                    <small className="tool-error" key={diagnostic}>
-                      {diagnostic}
+          <UiSettingsCard subtitle="Extensions declared by the current project." title="Extensions">
+            <div className="recovery-browser settings-card-list">
+              {extensions?.extensions.map((extension) => (
+                <article key={extension.manifest.id}>
+                  <span>
+                    <strong>
+                      {extension.manifest.name} {extension.manifest.version}
+                    </strong>
+                    <small>
+                      {extension.enabled ? 'Enabled' : 'Disabled'} ·{' '}
+                      {extension.manifest.capabilities.join(', ') || 'No capabilities'}
                     </small>
-                  ))}
-                </span>
-              </article>
-            ))}
-            {!extensions?.extensions.length && (
-              <div className="tool-empty">No extensions are declared by this project.</div>
-            )}
-          </div>
+                    {extension.diagnostics.map((diagnostic) => (
+                      <small className="tool-error" key={diagnostic}>
+                        {diagnostic}
+                      </small>
+                    ))}
+                  </span>
+                </article>
+              ))}
+              {!extensions?.extensions.length && (
+                <div className="tool-empty">No extensions are declared by this project.</div>
+              )}
+            </div>
+          </UiSettingsCard>
         )}
 
         {showEmptyPage && (
           <div className="settings-empty-page">
-            <strong>
-              {normalizedQuery ? 'No matching preferences on this page' : 'No preferences registered yet'}
-            </strong>
-            <span>
-              {normalizedQuery
-                ? 'Choose another matching category from the tree or clear the search.'
-                : 'This category is ready for preferences to be registered in a follow-up stage.'}
-            </span>
+            {normalizedQuery ? 'No matching settings' : 'No settings available'}
           </div>
         )}
       </div>

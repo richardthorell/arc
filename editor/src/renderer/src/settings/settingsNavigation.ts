@@ -3,7 +3,6 @@ import type { UiTreeNode } from '../ui';
 
 export type EditorSettingsPageId =
   | 'general'
-  | 'appearance'
   | 'editing.viewport'
   | 'editing.navigation'
   | 'editing.gizmos'
@@ -14,7 +13,7 @@ export type EditorSettingsPageId =
   | 'ai.assistant'
   | 'ai.remote'
   | 'source-control'
-  | 'platforms'
+  | 'platforms.windows'
   | 'tools.external'
   | 'tools.shortcuts'
   | 'tools.extensions'
@@ -35,15 +34,9 @@ export const editorSettingsPages: readonly EditorSettingsPage[] = [
   {
     id: 'general',
     label: 'General',
-    description: 'Startup, project and general editor behavior.',
+    description: 'Appearance, startup and general editor behavior.',
     legacySection: 'Editor',
-    keywords: ['editor', 'startup', 'layout', 'project'],
-  },
-  {
-    id: 'appearance',
-    label: 'Appearance',
-    description: 'Theme, scale and editor presentation.',
-    keywords: ['theme', 'ui', 'scale'],
+    keywords: ['editor', 'startup', 'layout', 'project', 'appearance', 'theme', 'ui', 'scale'],
   },
   {
     id: 'editing.viewport',
@@ -56,14 +49,14 @@ export const editorSettingsPages: readonly EditorSettingsPage[] = [
     id: 'editing.navigation',
     label: 'Navigation',
     description: 'Mouse, keyboard and viewport navigation behavior.',
-    legacySection: 'Input',
     keywords: ['input', 'mouse', 'keyboard', 'camera'],
   },
   {
     id: 'editing.gizmos',
     label: 'Gizmos & Snapping',
     description: 'Transform gizmos and snapping defaults.',
-    keywords: ['transform', 'snap'],
+    legacySection: 'Input',
+    keywords: ['transform', 'snap', 'translation', 'rotation', 'scale'],
   },
   {
     id: 'editing.scene',
@@ -97,7 +90,7 @@ export const editorSettingsPages: readonly EditorSettingsPage[] = [
   },
   {
     id: 'ai.remote',
-    label: 'Remote Access',
+    label: 'Remote Agent Access',
     description: 'Remote agent gateway access and permissions.',
     keywords: ['gateway', 'remote', 'agent'],
   },
@@ -109,10 +102,11 @@ export const editorSettingsPages: readonly EditorSettingsPage[] = [
     keywords: ['git', 'perforce', 'version control'],
   },
   {
-    id: 'platforms',
-    label: 'Platforms',
-    description: 'Installed SDKs and platform toolchains.',
-    keywords: ['android', 'windows', 'linux', 'apple', 'sdk'],
+    id: 'platforms.windows',
+    label: 'Windows',
+    description: 'Windows SDK and native build toolchain locations.',
+    legacySection: 'Windows',
+    keywords: ['windows', 'msvc', 'visual studio', 'sdk', 'cmake', 'ninja', 'compiler', 'toolchain'],
   },
   {
     id: 'tools.external',
@@ -156,9 +150,9 @@ export const editorSettingsPages: readonly EditorSettingsPage[] = [
   },
   {
     id: 'system.diagnostics',
-    label: 'Diagnostics',
+    label: 'Diagnostics & Logging',
     description: 'Logging, crash reporting and developer diagnostics.',
-    keywords: ['log', 'crash', 'diagnostic'],
+    keywords: ['log', 'logging', 'crash', 'diagnostic'],
   },
 ] as const;
 
@@ -176,7 +170,6 @@ const pageNode = (id: EditorSettingsPageId): UiTreeNode => {
 
 export const editorSettingsNavigation: readonly UiTreeNode[] = [
   pageNode('general'),
-  pageNode('appearance'),
   {
     id: 'editing',
     label: 'Editing',
@@ -201,7 +194,12 @@ export const editorSettingsNavigation: readonly UiTreeNode[] = [
     children: [pageNode('ai.providers'), pageNode('ai.assistant'), pageNode('ai.remote')],
   },
   pageNode('source-control'),
-  pageNode('platforms'),
+  {
+    id: 'platforms',
+    label: 'Platforms & SDKs',
+    keywords: ['windows', 'android', 'linux', 'apple', 'sdk', 'toolchain'],
+    children: [pageNode('platforms.windows')],
+  },
   {
     id: 'tools',
     label: 'Tools',
@@ -211,7 +209,7 @@ export const editorSettingsNavigation: readonly UiTreeNode[] = [
   {
     id: 'system',
     label: 'System',
-    keywords: ['recovery', 'performance', 'cache', 'diagnostics'],
+    keywords: ['recovery', 'performance', 'cache', 'diagnostics', 'logging'],
     children: [
       pageNode('system.recovery'),
       pageNode('system.performance'),
@@ -221,4 +219,4 @@ export const editorSettingsNavigation: readonly UiTreeNode[] = [
   },
 ] as const;
 
-export const defaultExpandedSettingsNodes = ['editing', 'content', 'ai', 'tools', 'system'] as const;
+export const defaultExpandedSettingsNodes = ['editing', 'content', 'ai', 'platforms', 'tools', 'system'] as const;

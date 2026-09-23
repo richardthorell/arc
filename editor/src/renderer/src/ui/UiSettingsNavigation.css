@@ -1,0 +1,35 @@
+.ui-settings-navigation {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+  padding: 12px 9px;
+}
+
+.ui-settings-navigation > .ui-search-input {
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+.ui-settings-navigation > .ui-tree-view {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.ui-settings-navigation .ui-tree-view-row {
+  border-radius: 3px;
+  color: var(--arc-text-secondary);
+}
+
+.ui-settings-navigation .ui-tree-view-row:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.ui-settings-navigation .ui-tree-view-row.is-selected {
+  color: var(--arc-text-primary);
+  background: rgba(88, 174, 233, 0.13);
+}

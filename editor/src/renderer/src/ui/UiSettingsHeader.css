@@ -1,0 +1,88 @@
+.ui-settings-header {
+  position: relative;
+  min-height: 122px;
+  overflow: hidden;
+  margin: calc(0px - var(--ui-settings-content-padding-top, 22px))
+    calc(0px - var(--ui-settings-content-padding-x, 28px)) 18px;
+  padding: 28px var(--ui-settings-content-padding-x, 28px) 42px;
+}
+
+.ui-settings-header-background {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.025) 48%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 42%,
+    rgba(0, 0, 0, 0.92) 56%,
+    rgba(0, 0, 0, 0.72) 70%,
+    rgba(0, 0, 0, 0.42) 84%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 42%,
+    rgba(0, 0, 0, 0.92) 56%,
+    rgba(0, 0, 0, 0.72) 70%,
+    rgba(0, 0, 0, 0.42) 84%,
+    transparent 100%
+  );
+}
+
+.ui-settings-header-background > img,
+.ui-settings-header-background > svg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ui-settings-header-background > img {
+  object-position: center top;
+}
+
+.ui-settings-header-default-artwork {
+  color: rgba(184, 194, 203, 0.16);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.25;
+  vector-effect: non-scaling-stroke;
+}
+
+.ui-settings-header-copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  align-content: start;
+  row-gap: 2px;
+  padding-top: 14px;
+}
+
+.ui-settings-header-copy > h2 {
+  min-height: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: var(--arc-text-primary);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.05;
+}
+
+.ui-settings-header-copy > p {
+  max-width: 620px;
+  min-height: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: var(--arc-color-text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+  opacity: 0.82;
+}
