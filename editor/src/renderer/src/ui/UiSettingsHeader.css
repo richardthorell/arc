@@ -1,13 +1,45 @@
 .ui-settings-header {
-  margin: -6px -10px 12px;
-  padding: 16px 10px 24px;
-  border-radius: 6px 6px 0 0;
+  position: relative;
+  min-height: 122px;
+  overflow: hidden;
+  margin:
+    calc(0px - var(--ui-settings-content-padding-top, 22px))
+    calc(0px - var(--ui-settings-content-padding-x, 28px))
+    18px;
+  padding: 28px var(--ui-settings-content-padding-x, 28px) 42px;
+}
+
+.ui-settings-header-background {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.038) 0%,
-    rgba(255, 255, 255, 0.018) 48%,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.025) 48%,
     rgba(255, 255, 255, 0) 100%
   );
+}
+
+.ui-settings-header-background > img,
+.ui-settings-header-background > svg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ui-settings-header-default-artwork {
+  color: rgba(184, 194, 203, 0.16);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.25;
+  vector-effect: non-scaling-stroke;
+}
+
+.ui-settings-header-copy {
+  position: relative;
+  z-index: 1;
 }
 
 .ui-settings-header h2 {
