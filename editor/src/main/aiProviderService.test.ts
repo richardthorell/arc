@@ -56,9 +56,13 @@ describe('AiProviderService', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-ai-providers-'));
     roots.push(root);
     const storagePath = path.join(root, 'providers.json');
-    const service = new AiProviderService(storagePath, () => secureStorage(), async () => {
-      throw new Error('Provider rejected this API key');
-    });
+    const service = new AiProviderService(
+      storagePath,
+      () => secureStorage(),
+      async () => {
+        throw new Error('Provider rejected this API key');
+      },
+    );
 
     await expect(service.connect('openai', 'bad-key')).rejects.toThrow('Provider rejected this API key');
     expect(service.snapshot().providers.find((provider) => provider.id === 'openai')?.connected).toBe(false);
