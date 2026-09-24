@@ -22,7 +22,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
-    "format:check": "prettier --write src/main/aiProviderService.test.ts src/main/settingsService.test.ts && git diff -- src/main/aiProviderService.test.ts src/main/settingsService.test.ts && false"
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
