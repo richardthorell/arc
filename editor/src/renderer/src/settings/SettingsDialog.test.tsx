@@ -69,6 +69,13 @@ beforeEach(() => {
           'renderer.projectOnly': 'default',
         },
         restartRequired: ['renderer.qualityTier'],
+        aiProviders: {
+          secureStorageAvailable: true,
+          providers: [
+            { id: 'openai', label: 'OpenAI', connected: false },
+            { id: 'anthropic', label: 'Anthropic', connected: false },
+          ],
+        },
       }),
       update: vi.fn(),
     },
@@ -169,48 +176,49 @@ describe('EditorPreferencesDialog', () => {
     expect(historyWeight).toHaveFocus();
   });
 
-  it('renders OpenAI provider configuration without exposing a configured API key', async () => {
+  it('renders OpenAI and Anthropic provider cards without exposing configured API keys', async () => {
     window.arc.settings.snapshot = vi.fn().mockResolvedValue({
       revision: 4,
       schema: [
         {
           key: 'ai.openai.apiKey',
-          section: 'AI Providers',
+          section: 'OpenAI',
           label: 'API Key',
-          description: 'OpenAI project API key.',
+          description: 'OpenAI API key.',
           type: 'string',
           format: 'secret',
+          secretProvider: 'openai',
           defaultValue: '',
           scopes: ['user'],
         },
         {
           key: 'ai.openai.model',
-          section: 'AI Providers',
+          section: 'OpenAI',
           label: 'Model',
           description: 'Default OpenAI model.',
           type: 'enum',
-          defaultValue: 'gpt-6-sol',
-          options: ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'],
+          defaultValue: 'gpt-5.6-sol',
+          options: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
           optionLabels: {
-            'gpt-6-astra': 'GPT-6 Astra',
-            'gpt-6-sol': 'GPT-6 Sol',
-            'gpt-6-luna': 'GPT-6 Luna',
+            'gpt-5.6-sol': 'GPT-5.6 Sol',
+            'gpt-5.6-terra': 'GPT-5.6 Terra',
+            'gpt-5.6-luna': 'GPT-5.6 Luna',
           },
           scopes: ['user'],
         },
         {
           key: 'ai.openai.reasoningEffort',
-          section: 'AI Providers',
+          section: 'OpenAI',
           label: 'Reasoning Effort',
           description: 'Default reasoning effort.',
           type: 'enum',
           defaultValue: 'medium',
-          options: ['low', 'medium', 'high', 'xhigh', 'max'],
+          options: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
           scopes: ['user'],
         },
         {
           key: 'ai.openai.organizationId',
-          section: 'AI Providers',
+          section: 'OpenAI',
           label: 'Organization ID',
           description: 'Optional organization override.',
           type: 'string',
@@ -219,7 +227,7 @@ describe('EditorPreferencesDialog', () => {
         },
         {
           key: 'ai.openai.projectId',
-          section: 'AI Providers',
+          section: 'OpenAI',
           label: 'Project ID',
           description: 'Optional project override.',
           type: 'string',
@@ -228,21 +236,72 @@ describe('EditorPreferencesDialog', () => {
         },
         {
           key: 'ai.openai.storeResponses',
-          section: 'AI Providers',
+          section: 'OpenAI',
           label: 'Store Responses',
           description: 'Allow response retention.',
           type: 'boolean',
           defaultValue: false,
           scopes: ['user'],
         },
+        {
+          key: 'ai.anthropic.apiKey',
+          section: 'Anthropic',
+          label: 'API Key',
+          description: 'Anthropic API key.',
+          type: 'string',
+          format: 'secret',
+          secretProvider: 'anthropic',
+          defaultValue: '',
+          scopes: ['user'],
+        },
+        {
+          key: 'ai.anthropic.model',
+          section: 'Anthropic',
+          label: 'Model',
+          description: 'Default Claude model.',
+          type: 'enum',
+          defaultValue: 'claude-sonnet-5',
+          options: ['claude-sonnet-5', 'claude-opus-5'],
+          optionLabels: {
+            'claude-sonnet-5': 'Claude Sonnet 5',
+            'claude-opus-5': 'Claude Opus 5',
+          },
+          scopes: ['user'],
+        },
+        {
+          key: 'ai.anthropic.effort',
+          section: 'Anthropic',
+          label: 'Effort',
+          description: 'Adaptive thinking effort.',
+          type: 'enum',
+          defaultValue: 'high',
+          options: ['low', 'medium', 'high', 'xhigh', 'max'],
+          scopes: ['user'],
+        },
+        {
+          key: 'ai.anthropic.maxOutputTokens',
+          section: 'Anthropic',
+          label: 'Max Output Tokens',
+          description: 'Maximum output budget.',
+          type: 'number',
+          defaultValue: 16384,
+          minimum: 1024,
+          maximum: 131072,
+          step: 1024,
+          scopes: ['user'],
+        },
       ],
       values: {
         'ai.openai.apiKey': 'configured',
-        'ai.openai.model': 'gpt-6-sol',
+        'ai.openai.model': 'gpt-5.6-sol',
         'ai.openai.reasoningEffort': 'medium',
         'ai.openai.organizationId': '',
         'ai.openai.projectId': '',
         'ai.openai.storeResponses': false,
+        'ai.anthropic.apiKey': '',
+        'ai.anthropic.model': 'claude-sonnet-5',
+        'ai.anthropic.effort': 'high',
+        'ai.anthropic.maxOutputTokens': 16384,
       },
       sources: {
         'ai.openai.apiKey': 'user',
@@ -251,25 +310,45 @@ describe('EditorPreferencesDialog', () => {
         'ai.openai.organizationId': 'default',
         'ai.openai.projectId': 'default',
         'ai.openai.storeResponses': 'default',
+        'ai.anthropic.apiKey': 'default',
+        'ai.anthropic.model': 'default',
+        'ai.anthropic.effort': 'default',
+        'ai.anthropic.maxOutputTokens': 'default',
       },
       restartRequired: [],
+      aiProviders: {
+        secureStorageAvailable: true,
+        providers: [
+          { id: 'openai', label: 'OpenAI', connected: true },
+          { id: 'anthropic', label: 'Anthropic', connected: false },
+        ],
+      },
     });
 
     render(<EditorPreferencesDialog onClose={vi.fn()} onResetLayout={vi.fn()} />);
     await waitFor(() => expect(window.arc.settings.snapshot).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole('treeitem', { name: /Providers/ }));
 
-    expect(screen.getByText('OpenAI')).toBeInTheDocument();
-    const apiKey = screen.getByLabelText('API Key');
-    expect(apiKey).toHaveAttribute('type', 'password');
-    expect(apiKey).toHaveAttribute('placeholder', 'Configured — enter a new key to replace');
-    expect(apiKey).toHaveValue('');
-    expect(screen.getByRole('combobox', { name: 'Model' })).toHaveTextContent('GPT-6 Sol');
+    expect(screen.getByText('Connected — API key validated and stored securely on this machine.')).toBeInTheDocument();
+    expect(screen.getByText('Not connected — enter an API key below to connect.')).toBeInTheDocument();
+
+    const openAiKey = screen.getByLabelText('OpenAI API Key');
+    expect(openAiKey).toHaveAttribute('type', 'password');
+    expect(openAiKey).toHaveAttribute('placeholder', 'Configured — enter a new key to replace');
+    expect(openAiKey).toHaveValue('');
+    expect(screen.getByLabelText('Anthropic API Key')).toHaveAttribute('placeholder', 'Enter API key');
+
+    const models = screen.getAllByRole('combobox', { name: 'Model' });
+    expect(models[0]).toHaveTextContent('GPT-5.6 Sol');
+    expect(models[1]).toHaveTextContent('Claude Sonnet 5');
     expect(screen.getByRole('combobox', { name: 'Reasoning Effort' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Effort' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Organization ID' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Project ID' })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Store Responses' })).not.toBeChecked();
-    expect(screen.getByRole('button', { name: 'Remove API key from ARC' })).toBeEnabled();
+    expect(screen.getByRole('spinbutton', { name: 'Max Output Tokens' })).toHaveValue(16384);
+    expect(screen.getByRole('button', { name: 'Remove OpenAI API key from ARC' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Remove Anthropic API key from ARC' })).toBeDisabled();
   });
 
   it('shows framework pages that do not have registered preferences yet', () => {
