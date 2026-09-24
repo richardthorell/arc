@@ -1,3 +1,4 @@
+import type { AiProviderId } from '../../../common/aiProviderTypes';
 import type { EditorSettingDescriptor } from '../../../common/editorWorkflowTypes';
 import type { UiTreeNode } from '../ui';
 import generalSettingsHeader from './assets/general-settings-header.webp';
@@ -25,19 +26,22 @@ export type EditorSettingsPageId =
   | 'system.diagnostics';
 
 export type EditorSettingsContentKind = 'settings' | 'workbench' | 'recovery' | 'extensions';
-export type EditorSettingsIcon = 'palette' | 'viewport' | 'openai';
+export type EditorSettingsIcon = 'palette' | 'viewport' | 'openai' | 'anthropic';
+
+export type EditorSettingsCardDefinition = {
+  section: EditorSettingDescriptor['section'];
+  title?: string;
+  icon?: EditorSettingsIcon;
+  provider?: AiProviderId;
+};
 
 export type EditorSettingsPage = {
   id: EditorSettingsPageId;
   label: string;
   description: string;
-  legacySection?: EditorSettingDescriptor['section'];
   keywords?: readonly string[];
   headerImage?: string;
-  card?: {
-    title?: string;
-    icon?: EditorSettingsIcon;
-  };
+  cards?: readonly EditorSettingsCardDefinition[];
   content?: readonly EditorSettingsContentKind[];
 };
 
@@ -56,10 +60,9 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
     id: 'general',
     label: 'General',
     description: 'Appearance, startup and general editor behavior.',
-    legacySection: 'Editor',
     keywords: ['editor', 'startup', 'layout', 'project', 'appearance', 'theme', 'ui', 'scale'],
     headerImage: generalSettingsHeader,
-    card: { title: 'Appearance', icon: 'palette' },
+    cards: [{ section: 'Editor', title: 'Appearance', icon: 'palette' }],
     content: ['settings', 'workbench'],
   },
   {
@@ -72,10 +75,9 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
         id: 'editing.viewport',
         label: 'Viewport',
         description: 'Default viewport rendering and camera presentation.',
-        legacySection: 'Renderer',
         keywords: ['renderer', 'render', 'camera', 'grid'],
         headerImage: viewportSettingsHeader,
-        card: { title: 'Viewport Rendering', icon: 'viewport' },
+        cards: [{ section: 'Renderer', title: 'Viewport Rendering', icon: 'viewport' }],
       },
       {
         id: 'editing.navigation',
@@ -87,8 +89,8 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
         id: 'editing.gizmos',
         label: 'Gizmos & Snapping',
         description: 'Transform gizmos and snapping defaults.',
-        legacySection: 'Input',
         keywords: ['transform', 'snap', 'translation', 'rotation', 'scale'],
+        cards: [{ section: 'Input' }],
       },
       {
         id: 'editing.scene',
@@ -128,9 +130,11 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
         id: 'ai.providers',
         label: 'Providers',
         description: 'AI provider accounts and available models.',
-        legacySection: 'AI Providers',
-        card: { title: 'OpenAI', icon: 'openai' },
-        keywords: ['openai', 'api key', 'model', 'reasoning', 'organization', 'project'],
+        cards: [
+          { section: 'OpenAI', title: 'OpenAI', icon: 'openai', provider: 'openai' },
+          { section: 'Anthropic', title: 'Anthropic', icon: 'anthropic', provider: 'anthropic' },
+        ],
+        keywords: ['openai', 'anthropic', 'claude', 'api key', 'model', 'reasoning', 'effort'],
       },
       {
         id: 'ai.assistant',
@@ -150,8 +154,8 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
     id: 'source-control',
     label: 'Source Control',
     description: 'Version control provider and editor integration.',
-    legacySection: 'Source Control',
     keywords: ['git', 'perforce', 'version control'],
+    cards: [{ section: 'Source Control' }],
   },
   {
     id: 'platforms',
@@ -163,8 +167,8 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
         id: 'platforms.windows',
         label: 'Windows',
         description: 'Windows SDK and native build toolchain locations.',
-        legacySection: 'Windows',
         keywords: ['windows', 'msvc', 'visual studio', 'sdk', 'cmake', 'ninja', 'compiler', 'toolchain'],
+        cards: [{ section: 'Windows' }],
       },
     ],
   },
@@ -178,8 +182,8 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
         id: 'tools.external',
         label: 'External Tools',
         description: 'External editors, terminals and tool paths.',
-        legacySection: 'Paths & Tools',
         keywords: ['path', 'ide', 'terminal', 'diff'],
+        cards: [{ section: 'Paths & Tools' }],
       },
       {
         id: 'tools.shortcuts',
@@ -191,8 +195,8 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
         id: 'tools.extensions',
         label: 'Extensions',
         description: 'Project-declared editor extensions.',
-        legacySection: 'Extensions',
         keywords: ['plugin', 'extension'],
+        cards: [{ section: 'Extensions' }],
         content: ['settings', 'extensions'],
       },
     ],
@@ -207,8 +211,8 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
         id: 'system.recovery',
         label: 'Auto Save & Recovery',
         description: 'Recovery generations and editor autosave behavior.',
-        legacySection: 'Recovery',
         keywords: ['recovery', 'autosave', 'snapshot'],
+        cards: [{ section: 'Recovery' }],
         content: ['settings', 'recovery'],
       },
       {
@@ -221,8 +225,8 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
         id: 'system.cache',
         label: 'Cache',
         description: 'Editor cache locations and behavior.',
-        legacySection: 'Cache',
         keywords: ['derived data', 'disk', 'cache'],
+        cards: [{ section: 'Cache' }],
       },
       {
         id: 'system.diagnostics',
