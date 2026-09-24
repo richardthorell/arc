@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 
 import { allCommands } from '../app/commandRegistry';
-import type { CommandContext, CommandId } from '../app/workbenchTypes';
-import type { AssetItem } from '../services/editorHostTypes';
+import { dispatchWorkbenchCommand } from '../app/commandDispatcher';
+import type { AssetItem, SceneEntity } from '../services/editorHostTypes';
 import { UiDrawerPanel, UiSearchHeader, UiSearchList } from '../ui';
 import { AssetSearchEntity, CommandSearchEntity, type SearchEntity } from './SearchEntity';
 
@@ -14,23 +14,18 @@ const resultLimit = 200;
 
 export function SearchPanel({
   assets,
-  commandContext,
   onSelectAsset,
-  onCommand,
 }: {
+  entities: SceneEntity[];
   assets: AssetItem[];
-  commandContext: CommandContext;
+  onSelectEntity: (id: string) => void;
   onSelectAsset: (id: string) => void;
-  onCommand: (command: CommandId) => void;
 }) {
   const [mode, setMode] = useState<SearchMode>('assets');
   const [query, setQuery] = useState('');
 
   const assetEntities = useMemo(() => assets.map((asset) => new AssetSearchEntity(asset)), [assets]);
-  const commandEntities = useMemo(
-    () => allCommands.map((command) => new CommandSearchEntity(command, commandContext)),
-    [commandContext],
-  );
+  const commandEntities = useMemo(() => allCommands.map((command) => new CommandSearchEntity(command)), []);
   const activeEntities = mode === 'assets' ? assetEntities : commandEntities;
   const results = useMemo(() => activeEntities.filter((entity) => entity.matches(query)), [activeEntities, query]);
   const visibleResults = results.slice(0, resultLimit);
@@ -40,7 +35,7 @@ export function SearchPanel({
       onSelectAsset(entity.asset.id);
       return;
     }
-    if (entity instanceof CommandSearchEntity) onCommand(entity.command.id);
+    if (entity instanceof CommandSearchEntity) dispatchWorkbenchCommand(entity.command.id);
   };
 
   return (
