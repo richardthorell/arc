@@ -30,6 +30,9 @@ except NameError:
 
 SLANG_VERSION = "2026.14.1"
 SLANG_RELEASE_BASE_URL = "https://github.com/shader-slang/slang/releases/download/v{}".format(SLANG_VERSION)
+EDITOR_NODE_VERSION = "22.12.0"
+EDITOR_NODE_VERSION_PREFIX = (22, 12)
+EDITOR_NPM_MAJOR = 10
 VISUAL_STUDIO_GENERATORS = {
     18: "Visual Studio 18 2026",
     17: "Visual Studio 17 2022",
@@ -163,6 +166,24 @@ def command_version(executable, arguments=None):
         return ""
 
 
+def semantic_version_parts(value):
+    match = re.match(r"^v?(\d+)\.(\d+)(?:\.(\d+))?", (value or "").strip())
+    if not match:
+        return None
+    return tuple(int(part) if part is not None else 0 for part in match.groups())
+
+
+def editor_node_toolchain_supported(node_version, npm_version):
+    node_parts = semantic_version_parts(node_version)
+    npm_parts = semantic_version_parts(npm_version)
+    return bool(
+        node_parts
+        and npm_parts
+        and node_parts[:2] == EDITOR_NODE_VERSION_PREFIX
+        and npm_parts[0] == EDITOR_NPM_MAJOR
+    )
+
+
 def check_editor_prerequisites(cmake="cmake", npm="npm", require_native=True):
     checks = []
 
@@ -181,13 +202,16 @@ def check_editor_prerequisites(cmake="cmake", npm="npm", require_native=True):
 
     node_executable = find_executable("node")
     npm_executable = find_executable(npm)
-    node_ok = node_executable is not None and npm_executable is not None
+    node_present = node_executable is not None and npm_executable is not None
+    node_ok = False
     node_detail = "not found on PATH"
-    if node_ok:
-        node_detail = "{} / npm {}".format(
-            command_version(node_executable),
-            command_version(npm_executable),
-        )
+    if node_present:
+        node_version = command_version(node_executable)
+        npm_version = command_version(npm_executable)
+        node_ok = editor_node_toolchain_supported(node_version, npm_version)
+        node_detail = "{} / npm {}".format(node_version, npm_version)
+        if not node_ok:
+            node_detail += " (requires Node.js 22.12.x / npm 10.x)"
     checks.append(
         {
             "key": "node",
@@ -279,7 +303,7 @@ def prerequisite_install_action(check):
     if check["key"] == "generator":
         return "upgrade", WINDOWS_CMAKE_PACKAGE, "CMake"
     if check["key"] == "node":
-        return "install", WINDOWS_NODE_PACKAGE, "Node.js 22 and npm"
+        return "install", WINDOWS_NODE_PACKAGE, "Node.js 22.12 and npm 10"
     return None
 
 
@@ -328,7 +352,10 @@ def install_editor_prerequisites(cmake="cmake", npm="npm", require_native=True, 
             print("Skipped {}.".format(label))
             continue
 
-        run([winget, verb, "--id", package] + common, os.getcwd())
+        command = [winget, verb, "--id", package]
+        if package == WINDOWS_NODE_PACKAGE:
+            command.extend(["--version", EDITOR_NODE_VERSION])
+        run(command + common, os.getcwd())
         installed = True
 
     return checks, installed
