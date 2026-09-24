@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { FolderOpen, Monitor, Palette, RefreshCw, RotateCcw, TriangleAlert, Unplug } from 'lucide-react';
-import { SiOpenai } from 'react-icons/si';
+import { SiAnthropic, SiOpenai } from 'react-icons/si';
 
+import type { AiProviderId } from '../../../common/aiProviderTypes';
 import type {
   EditorSettingDescriptor,
   EditorSettingsSnapshot,
@@ -24,6 +25,7 @@ import {
   defaultExpandedSettingsNodes,
   editorSettingsNavigation,
   getEditorSettingsPage,
+  type EditorSettingsCardDefinition,
   type EditorSettingsContentKind,
   type EditorSettingsIcon,
 } from './settingsNavigation';
@@ -60,14 +62,15 @@ const settingsIcons: Record<EditorSettingsIcon, ReactNode> = {
   palette: <Palette aria-hidden="true" size={16} />,
   viewport: <Monitor aria-hidden="true" size={16} />,
   openai: <SiOpenai aria-hidden="true" size={16} />,
+  anthropic: <SiAnthropic aria-hidden="true" size={16} />,
 };
 
 const enrichNavigation = (nodes: readonly UiTreeNode[], schema: readonly EditorSettingDescriptor[]): UiTreeNode[] =>
   nodes.map((node) => {
     const page = getEditorSettingsPage(node.id);
-    const descriptorKeywords = page?.legacySection
-      ? schema.filter((descriptor) => descriptor.section === page.legacySection).map(descriptorSearchTerms)
-      : [];
+    const descriptorKeywords = (page?.cards ?? []).flatMap((card) =>
+      schema.filter((descriptor) => descriptor.section === card.section).map(descriptorSearchTerms),
+    );
     return {
       ...node,
       keywords: [...(node.keywords ?? []), ...descriptorKeywords],
@@ -96,17 +99,22 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     [snapshot?.schema],
   );
   const navigation = useMemo(() => enrichNavigation(editorSettingsNavigation, userSchema), [userSchema]);
-  const entries = useMemo(() => {
-    if (!page.legacySection) return [];
-    return userSchema.filter((descriptor) => {
-      if (descriptor.section !== page.legacySection) return false;
-      if (!normalizedQuery) return true;
-      return normalize(descriptorSearchTerms(descriptor)).includes(normalizedQuery);
-    });
-  }, [normalizedQuery, page.legacySection, userSchema]);
+  const cardEntries = useMemo(
+    () =>
+      (page.cards ?? []).map((card) => ({
+        card,
+        entries: userSchema.filter((descriptor) => {
+          if (descriptor.section !== card.section) return false;
+          if (!normalizedQuery) return true;
+          return normalize(descriptorSearchTerms(descriptor)).includes(normalizedQuery);
+        }),
+      })),
+    [normalizedQuery, page.cards, userSchema],
+  );
 
   const update = async (key: string, value: unknown) => {
     if (!snapshot) return;
+    setMessage('');
     try {
       const next = await window.arc.settings.update('user', { [key]: value }, snapshot.revision);
       if (next) {
@@ -131,6 +139,20 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     await update(descriptor.key, `${folder}${separator}${executableName}`);
   };
 
+  const providerLabel = (providerId: AiProviderId) =>
+    snapshot?.aiProviders?.providers.find((provider) => provider.id === providerId)?.label ??
+    (providerId === 'openai' ? 'OpenAI' : 'Anthropic');
+
+  const providerSubtitle = (card: EditorSettingsCardDefinition) => {
+    if (!card.provider) return undefined;
+    const provider = snapshot?.aiProviders?.providers.find((candidate) => candidate.id === card.provider);
+    if (snapshot?.aiProviders && !snapshot.aiProviders.secureStorageAvailable)
+      return snapshot.aiProviders.secureStorageDetail ?? 'Secure credential storage is unavailable on this machine.';
+    return provider?.connected
+      ? 'Connected — API key validated and stored securely on this machine.'
+      : 'Not connected — enter an API key below to connect.';
+  };
+
   const editor = (descriptor: EditorSettingDescriptor, value: unknown) => {
     const { key } = descriptor;
     if (descriptor.format === 'color' && typeof value === 'string')
@@ -143,13 +165,15 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
           value={value}
         />
       );
-    if (descriptor.format === 'secret')
+    if (descriptor.format === 'secret') {
+      const storageAvailable = snapshot?.aiProviders?.secureStorageAvailable ?? true;
       return (
         <UiTextInput
-          aria-label={descriptor.label}
+          aria-label={`${providerLabel(descriptor.secretProvider ?? 'openai')} ${descriptor.label}`}
           autoComplete="off"
           className="settings-value-control"
           defaultValue=""
+          disabled={!storageAvailable}
           key={`${key}-${String(Boolean(value))}`}
           placeholder={value ? 'Configured — enter a new key to replace' : 'Enter API key'}
           type="password"
@@ -159,8 +183,13 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
             event.target.value = '';
             void update(key, nextValue);
           }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+            if (event.key === 'Escape') event.currentTarget.value = '';
+          }}
         />
       );
+    }
     if (descriptor.type === 'enum')
       return (
         <UiSelect
@@ -224,63 +253,75 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     />
   );
 
+  const visibleCards = cardEntries.filter(({ entries }) => entries.length > 0);
   const settingsContent =
-    entries.length > 0 ? (
-      <UiSettingsCard
-        icon={page.card?.icon ? settingsIcons[page.card.icon] : undefined}
-        title={page.card?.title ?? page.legacySection ?? page.label}
-      >
-        {entries.map((descriptor) => {
-          const pathSetting = isWindowsPathSetting(descriptor);
-          const secretSetting = descriptor.format === 'secret';
-          return (
-            <div
-              className={['settings-field-row', pathSetting ? 'settings-field-row-path' : ''].filter(Boolean).join(' ')}
-              key={descriptor.key}
-            >
-              <span className="settings-field-description">
-                <strong>{descriptor.label}</strong>
-                <small>{visibleDescription(descriptor)}</small>
-                {snapshot?.restartRequired.includes(descriptor.key) && (
-                  <span className="settings-field-warning">
-                    <TriangleAlert aria-hidden="true" size={9} />
-                    Restart required
-                  </span>
-                )}
-              </span>
-              {editor(descriptor, snapshot?.values[descriptor.key])}
-              {pathSetting ? (
-                <div className="settings-field-actions">
-                  <UiIconButton
-                    label={`Auto-detect ${descriptor.label}`}
-                    onClick={() => void update(descriptor.key, undefined)}
-                  >
-                    <RefreshCw size={13} />
-                  </UiIconButton>
-                  <UiIconButton
-                    label={`Browse for ${descriptor.label}`}
-                    onClick={() => void browseWindowsPath(descriptor)}
-                  >
-                    <FolderOpen size={13} />
-                  </UiIconButton>
-                </div>
-              ) : secretSetting ? (
-                <UiIconButton
-                  disabled={!snapshot?.values[descriptor.key]}
-                  label="Remove API key from ARC"
-                  onClick={() => void update(descriptor.key, undefined)}
+    visibleCards.length > 0 ? (
+      <>
+        {visibleCards.map(({ card, entries }) => (
+          <UiSettingsCard
+            icon={card.icon ? settingsIcons[card.icon] : undefined}
+            key={card.section}
+            subtitle={providerSubtitle(card)}
+            title={card.title ?? card.section}
+          >
+            {entries.map((descriptor) => {
+              const pathSetting = isWindowsPathSetting(descriptor);
+              const secretSetting = descriptor.format === 'secret';
+              return (
+                <div
+                  className={['settings-field-row', pathSetting ? 'settings-field-row-path' : '']
+                    .filter(Boolean)
+                    .join(' ')}
+                  key={descriptor.key}
                 >
-                  <Unplug size={13} />
-                </UiIconButton>
-              ) : (
-                <UiIconButton label={`Reset ${descriptor.key}`} onClick={() => void update(descriptor.key, undefined)}>
-                  <RotateCcw size={13} />
-                </UiIconButton>
-              )}
-            </div>
-          );
-        })}
-      </UiSettingsCard>
+                  <span className="settings-field-description">
+                    <strong>{descriptor.label}</strong>
+                    <small>{visibleDescription(descriptor)}</small>
+                    {snapshot?.restartRequired.includes(descriptor.key) && (
+                      <span className="settings-field-warning">
+                        <TriangleAlert aria-hidden="true" size={9} />
+                        Restart required
+                      </span>
+                    )}
+                  </span>
+                  {editor(descriptor, snapshot?.values[descriptor.key])}
+                  {pathSetting ? (
+                    <div className="settings-field-actions">
+                      <UiIconButton
+                        label={`Auto-detect ${descriptor.label}`}
+                        onClick={() => void update(descriptor.key, undefined)}
+                      >
+                        <RefreshCw size={13} />
+                      </UiIconButton>
+                      <UiIconButton
+                        label={`Browse for ${descriptor.label}`}
+                        onClick={() => void browseWindowsPath(descriptor)}
+                      >
+                        <FolderOpen size={13} />
+                      </UiIconButton>
+                    </div>
+                  ) : secretSetting ? (
+                    <UiIconButton
+                      disabled={!snapshot?.values[descriptor.key]}
+                      label={`Remove ${providerLabel(descriptor.secretProvider ?? 'openai')} API key from ARC`}
+                      onClick={() => void update(descriptor.key, undefined)}
+                    >
+                      <Unplug size={13} />
+                    </UiIconButton>
+                  ) : (
+                    <UiIconButton
+                      label={`Reset ${descriptor.key}`}
+                      onClick={() => void update(descriptor.key, undefined)}
+                    >
+                      <RotateCcw size={13} />
+                    </UiIconButton>
+                  )}
+                </div>
+              );
+            })}
+          </UiSettingsCard>
+        ))}
+      </>
     ) : null;
 
   const contentByKind: Record<EditorSettingsContentKind, ReactNode> = {
