@@ -25,10 +25,16 @@ export function UiSidebarPanelButton({
   const showCounter = Number.isFinite(counter) && counter > 0;
 
   return (
-    <UiButton className={['ui-sidebar-panel-button', 'activity-button', className].filter(Boolean).join(' ')} {...props}>
+    <UiButton
+      className={['ui-sidebar-panel-button', 'activity-button', className].filter(Boolean).join(' ')}
+      {...props}
+    >
       {children}
       {showCounter && (
-        <span aria-label={counterLabel ?? `${counter} unread`} className="ui-sidebar-panel-counter activity-button-counter">
+        <span
+          aria-label={counterLabel ?? `${counter} unread`}
+          className="ui-sidebar-panel-counter activity-button-counter"
+        >
           {counter}
         </span>
       )}
