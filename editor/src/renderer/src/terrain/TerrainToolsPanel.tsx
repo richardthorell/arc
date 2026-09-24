@@ -4,6 +4,7 @@ import { AssetThumbnail } from '../inspector/AssetPicker';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import type { HostResponse, InspectorTerrain } from '../inspector/inspectorTypes';
 import type { AssetItem } from '../services/editorHostTypes';
+import { UiButton, UiNumericInput, UiPanelCard, UiPropertyCard, UiSlider } from '../ui';
 
 export type TerrainToolState = {
   entity: { index: number; generation: number };
@@ -79,32 +80,34 @@ export function TerrainToolsPanel({
       </header>
 
       <div className="terrain-mode-tabs" role="tablist" aria-label="Terrain editing mode">
-        <button
+        <UiButton
+          active={!paintMode}
           aria-selected={!paintMode}
-          className={!paintMode ? 'active' : ''}
           onClick={() => void update({ tool: 'sculpt' })}
           role="tab"
           type="button"
+          variant="toolbar"
         >
           <Mountain size={15} /> Sculpt
-        </button>
-        <button
+        </UiButton>
+        <UiButton
+          active={paintMode}
           aria-selected={paintMode}
-          className={paintMode ? 'active' : ''}
           onClick={() => void update({ tool: 'paint' })}
           role="tab"
           type="button"
+          variant="toolbar"
         >
           <Paintbrush size={15} /> Paint
-        </button>
+        </UiButton>
       </div>
 
       {!paintMode && (
         <div className="terrain-tool-grid" aria-label="Sculpt tools">
           {tools.map(({ id, label, icon: Icon, hint }) => (
-            <button
+            <UiButton
+              active={state.tool === id}
               aria-pressed={state.tool === id}
-              className={state.tool === id ? 'active' : ''}
               key={id}
               onClick={() => void update({ tool: id })}
               title={hint}
@@ -112,69 +115,91 @@ export function TerrainToolsPanel({
             >
               <Icon size={18} />
               <span>{label}</span>
-            </button>
+            </UiButton>
           ))}
         </div>
       )}
 
-      <div className="terrain-tool-section">
-        <h3>Brush</h3>
-        <TerrainRange
-          label="Radius"
-          max={128}
-          min={0.25}
-          step={0.25}
-          suffix="m"
-          value={state.radius}
-          onChange={(radius) => void update({ radius })}
-        />
-        <TerrainRange
-          label="Strength"
-          max={1}
-          min={0.001}
-          step={0.01}
-          value={state.strength}
-          onChange={(strength) => void update({ strength })}
-        />
-        <TerrainRange
-          label="Falloff"
-          max={1}
-          min={0}
-          step={0.01}
-          value={state.falloff}
-          onChange={(falloff) => void update({ falloff })}
-        />
-        <p className="terrain-tool-hint">Use [ and ] to change radius. Alt + left-drag orbits the focused view.</p>
-      </div>
+      <UiPropertyCard
+        className="terrain-tool-section"
+        expandable={false}
+        fields={[
+          {
+            id: 'radius',
+            label: 'Radius',
+            control: (
+              <TerrainRangeControl
+                label="Radius"
+                max={128}
+                min={0.25}
+                step={0.25}
+                suffix="m"
+                value={state.radius}
+                onChange={(radius) => void update({ radius })}
+              />
+            ),
+          },
+          {
+            id: 'strength',
+            label: 'Strength',
+            control: (
+              <TerrainRangeControl
+                label="Strength"
+                max={1}
+                min={0.001}
+                step={0.01}
+                value={state.strength}
+                onChange={(strength) => void update({ strength })}
+              />
+            ),
+          },
+          {
+            id: 'falloff',
+            label: 'Falloff',
+            control: (
+              <TerrainRangeControl
+                label="Falloff"
+                max={1}
+                min={0}
+                step={0.01}
+                value={state.falloff}
+                onChange={(falloff) => void update({ falloff })}
+              />
+            ),
+          },
+        ]}
+        title="Brush"
+      />
+      <p className="terrain-tool-hint">Use [ and ] to change radius. Alt + left-drag orbits the focused view.</p>
 
       {paintMode && (
-        <div className="terrain-tool-section">
-          <h3>Layers</h3>
+        <UiPanelCard className="terrain-tool-section" expandable={false} title="Layers">
           <div className="terrain-layer-grid">
             {terrain.layers.map((layer, index) => {
               const asset = assets.find((candidate) => candidate.path === layer.baseColorPath);
               return (
-                <button
+                <UiButton
+                  active={state.activeLayer === index}
                   aria-label={`Paint ${layer.name}`}
                   aria-pressed={state.activeLayer === index}
-                  className={state.activeLayer === index ? 'active' : ''}
                   key={layer.name}
                   onClick={() => void update({ activeLayer: index, tool: 'paint' })}
                   type="button"
+                  variant="ghost"
                 >
                   <AssetThumbnail asset={asset} path={layer.baseColorPath} provider={thumbnailProvider} />
                   <span>{layer.name}</span>
-                </button>
+                </UiButton>
               );
             })}
           </div>
-        </div>
+        </UiPanelCard>
       )}
     </section>
   );
 }
 
-export function TerrainRange({
+export function TerrainRangeControl({
   label,
   min,
   max,
@@ -191,30 +216,21 @@ export function TerrainRange({
   value: number;
   onChange: (value: number) => void;
 }) {
+  const precision = Math.max(0, `${step}`.split('.')[1]?.length ?? 0);
   return (
-    <label className="terrain-range">
-      <span>{label}</span>
-      <input
-        aria-label={label}
+    <span className="terrain-range-control">
+      <UiSlider aria-label={label} max={max} min={min} step={step} value={value} onValueChange={onChange} />
+      <UiNumericInput
+        ariaLabel={`${label} numeric value`}
         max={max}
         min={min}
-        onChange={(event) => onChange(Number(event.target.value))}
+        onCommit={onChange}
+        precision={precision}
+        scrubSensitivity={step}
         step={step}
-        type="range"
+        unit={suffix}
         value={value}
       />
-      <label className="terrain-range-number">
-        <input
-          aria-label={`${label} numeric value`}
-          max={max}
-          min={min}
-          onChange={(event) => onChange(Number(event.target.value))}
-          step={step}
-          type="number"
-          value={value}
-        />
-        {suffix && <span>{suffix}</span>}
-      </label>
-    </label>
+    </span>
   );
 }
