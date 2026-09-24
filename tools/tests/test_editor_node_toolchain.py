@@ -14,15 +14,18 @@ from tools import arc_build
 
 
 class EditorNodeToolchainTests(unittest.TestCase):
-    def test_accepts_the_pinned_node_and_npm_versions(self) -> None:
+    def test_accepts_pinned_node_with_supported_npm_versions(self) -> None:
         self.assertTrue(arc_build.editor_node_toolchain_supported("v22.23.2", "10.9.8"))
+        self.assertTrue(arc_build.editor_node_toolchain_supported("v22.23.2", "10.9.9"))
+        self.assertTrue(arc_build.editor_node_toolchain_supported("v22.23.2", "11.0.0"))
+        self.assertTrue(arc_build.editor_node_toolchain_supported("v22.23.2", "11.12.1"))
 
-    def test_rejects_any_node_or_npm_drift(self) -> None:
+    def test_rejects_node_drift_or_unsupported_npm(self) -> None:
         self.assertFalse(arc_build.editor_node_toolchain_supported("v24.13.0", "11.2.1"))
-        self.assertFalse(arc_build.editor_node_toolchain_supported("v22.23.2", "11.0.0"))
         self.assertFalse(arc_build.editor_node_toolchain_supported("v22.12.0", "10.9.8"))
         self.assertFalse(arc_build.editor_node_toolchain_supported("v22.23.3", "10.9.8"))
-        self.assertFalse(arc_build.editor_node_toolchain_supported("v22.23.2", "10.9.9"))
+        self.assertFalse(arc_build.editor_node_toolchain_supported("v22.23.2", "10.9.7"))
+        self.assertFalse(arc_build.editor_node_toolchain_supported("v22.23.2", "not-a-version"))
 
     def test_prerequisite_check_reports_version_mismatch(self) -> None:
         def find_executable(name: str):
@@ -40,7 +43,7 @@ class EditorNodeToolchainTests(unittest.TestCase):
         self.assertFalse(checks[0]["ok"])
         self.assertTrue(checks[0]["installable"])
         self.assertIn("v24.13.0 / npm 11.2.1", checks[0]["detail"])
-        self.assertIn("requires Node.js 22.23.2 / npm 10.9.8", checks[0]["detail"])
+        self.assertIn("requires Node.js 22.23.2 / npm >= 10.9.8", checks[0]["detail"])
 
     def test_windows_installer_requests_the_pinned_node_version(self) -> None:
         checks = [
