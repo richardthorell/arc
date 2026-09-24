@@ -1,107 +1,75 @@
 import { useMemo, useState } from 'react';
-import { Box, Database, Search } from 'lucide-react';
 
-import type { AssetItem, SceneEntity } from '../services/editorHostTypes';
-import { UiDrawerPanel } from '../ui';
+import { allCommands } from '../app/commandRegistry';
+import type { CommandContext, CommandId } from '../app/workbenchTypes';
+import type { AssetItem } from '../services/editorHostTypes';
+import { UiDrawerPanel, UiSearchHeader, UiSearchList } from '../ui';
+import { AssetSearchEntity, CommandSearchEntity, type SearchEntity } from './SearchEntity';
 
-import '../tools/tools.css';
+import './SearchPanel.css';
 
-type SearchToken = { key: string; value: string };
+type SearchMode = 'assets' | 'commands';
 
-const parseQuery = (query: string): { text: string; tokens: SearchToken[] } => {
-  const tokens: SearchToken[] = [];
-  const text: string[] = [];
-  for (const part of query.trim().split(/\s+/).filter(Boolean)) {
-    const separator = part.indexOf(':');
-    if (separator > 0)
-      tokens.push({ key: part.slice(0, separator).toLocaleLowerCase(), value: part.slice(separator + 1) });
-    else text.push(part);
-  }
-  return { text: text.join(' ').toLocaleLowerCase(), tokens };
-};
+const resultLimit = 200;
 
 export function SearchPanel({
-  entities,
   assets,
-  onSelectEntity,
+  commandContext,
   onSelectAsset,
+  onCommand,
 }: {
-  entities: SceneEntity[];
   assets: AssetItem[];
-  onSelectEntity: (id: string) => void;
+  commandContext: CommandContext;
   onSelectAsset: (id: string) => void;
+  onCommand: (command: CommandId) => void;
 }) {
+  const [mode, setMode] = useState<SearchMode>('assets');
   const [query, setQuery] = useState('');
-  const parsed = useMemo(() => parseQuery(query), [query]);
-  const flatEntities = useMemo(() => {
-    const visit = (values: SceneEntity[], parentPath = ''): Array<{ entity: SceneEntity; path: string }> =>
-      values.flatMap((entity) => {
-        const currentPath = parentPath ? `${parentPath} / ${entity.name}` : entity.name;
-        return [{ entity, path: currentPath }, ...visit(entity.children ?? [], currentPath)];
-      });
-    return visit(entities);
-  }, [entities]);
-  const entityResults = flatEntities.filter(({ entity, path }) => {
-    if (parsed.text && !`${entity.name} ${path} ${entity.kind}`.toLocaleLowerCase().includes(parsed.text)) return false;
-    return parsed.tokens.every((token) => {
-      if (token.key === 'type') return entity.kind.toLocaleLowerCase().includes(token.value.toLocaleLowerCase());
-      if (token.key === 'tag' || token.key === 'component')
-        return (entity.components ?? []).some((component) =>
-          component.toLocaleLowerCase().includes(token.value.toLocaleLowerCase()),
-        );
-      return token.key !== 'status' && token.key !== 'ref';
-    });
-  });
-  const assetResults = assets.filter((asset) => {
-    if (parsed.text && !`${asset.name} ${asset.path} ${asset.kind}`.toLocaleLowerCase().includes(parsed.text))
-      return false;
-    return parsed.tokens.every((token) => {
-      if (token.key === 'type') return asset.kind.toLocaleLowerCase().includes(token.value.toLocaleLowerCase());
-      if (token.key === 'status') return asset.status.toLocaleLowerCase().includes(token.value.toLocaleLowerCase());
-      return token.key !== 'tag' && token.key !== 'component';
-    });
-  });
+
+  const assetEntities = useMemo(() => assets.map((asset) => new AssetSearchEntity(asset)), [assets]);
+  const commandEntities = useMemo(
+    () => allCommands.map((command) => new CommandSearchEntity(command, commandContext)),
+    [commandContext],
+  );
+  const activeEntities = mode === 'assets' ? assetEntities : commandEntities;
+  const results = useMemo(() => activeEntities.filter((entity) => entity.matches(query)), [activeEntities, query]);
+  const visibleResults = results.slice(0, resultLimit);
+
+  const activate = (entity: SearchEntity) => {
+    if (entity instanceof AssetSearchEntity) {
+      onSelectAsset(entity.asset.id);
+      return;
+    }
+    if (entity instanceof CommandSearchEntity) onCommand(entity.command.id);
+  };
 
   return (
-    <UiDrawerPanel className="production-tool-panel search-production-panel">
-      <label className="tool-search search-hero">
-        <Search size={16} />
-        <input
-          aria-label="Search project"
-          placeholder="Search entities and assets · type:mesh status:failed component:camera"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-      </label>
-      <div className="search-result-summary">
-        {entityResults.length} entities · {assetResults.length} assets
-      </div>
-      <section className="search-result-section">
-        <h3>Entities</h3>
-        {entityResults.slice(0, 100).map(({ entity, path }) => (
-          <button key={entity.guid ?? entity.id} onClick={() => onSelectEntity(entity.id)} type="button">
-            <Box size={14} />
-            <span>
-              <strong>{entity.name}</strong>
-              <small>{path}</small>
-            </span>
-            <em>{entity.kind}</em>
-          </button>
-        ))}
-      </section>
-      <section className="search-result-section">
-        <h3>Assets</h3>
-        {assetResults.slice(0, 100).map((asset) => (
-          <button key={asset.id} onClick={() => onSelectAsset(asset.id)} type="button">
-            <Database size={14} />
-            <span>
-              <strong>{asset.name}</strong>
-              <small>{asset.path}</small>
-            </span>
-            <em>{asset.status}</em>
-          </button>
-        ))}
-      </section>
+    <UiDrawerPanel className="search-panel">
+      <UiSearchHeader
+        mode={mode}
+        modes={[
+          { id: 'assets', label: 'Assets', count: assetEntities.length },
+          { id: 'commands', label: 'Commands', count: commandEntities.length },
+        ]}
+        placeholder={mode === 'assets' ? 'Search assets…' : 'Search commands…'}
+        query={query}
+        resultCount={results.length}
+        searchLabel={mode === 'assets' ? 'Search assets' : 'Search commands'}
+        title="Search"
+        onModeChange={(nextMode) => setMode(nextMode as SearchMode)}
+        onQueryChange={setQuery}
+      />
+      <UiSearchList
+        ariaLabel={mode === 'assets' ? 'Asset search results' : 'Command search results'}
+        emptyMessage={mode === 'assets' ? 'No matching assets' : 'No matching commands'}
+        items={visibleResults}
+        onActivate={activate}
+      />
+      {results.length > visibleResults.length && (
+        <footer className="search-panel-limit">
+          Showing the first {visibleResults.length} of {results.length} results
+        </footer>
+      )}
     </UiDrawerPanel>
   );
 }
