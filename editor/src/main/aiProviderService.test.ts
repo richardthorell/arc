@@ -21,7 +21,7 @@ const secureStorage = (available = true): AiProviderSecureStorage => ({
 });
 
 describe('AiProviderService', () => {
-  it('validates, encrypts, tests, and disconnects provider credentials without exposing them in snapshots', async () => {
+  it('stores validated provider credentials securely without exposing them in snapshots', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-ai-providers-'));
     roots.push(root);
     const storagePath = path.join(root, 'providers.json');
