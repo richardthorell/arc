@@ -68,7 +68,11 @@ describe('AiProviderService', () => {
   it('refuses to save credentials when operating-system encryption is unavailable', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-ai-providers-'));
     roots.push(root);
-    const service = new AiProviderService(path.join(root, 'providers.json'), () => secureStorage(false), async () => undefined);
+    const service = new AiProviderService(
+      path.join(root, 'providers.json'),
+      () => secureStorage(false),
+      async () => undefined,
+    );
 
     expect(service.snapshot().secureStorageAvailable).toBe(false);
     await expect(service.connect('anthropic', 'secret')).rejects.toThrow('credential encryption is unavailable');
