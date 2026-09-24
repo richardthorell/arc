@@ -1,3 +1,5 @@
+import type { AiProviderAccountsSnapshot, AiProviderId } from './aiProviderTypes';
+
 export type SourceControlFileState =
   'modified' | 'added' | 'deleted' | 'renamed' | 'copied' | 'untracked' | 'conflicted';
 
@@ -31,6 +33,7 @@ export type EditorSettingsSnapshot = {
   sources: Record<string, 'default' | 'user' | 'project'>;
   restartRequired: string[];
   schema: EditorSettingDescriptor[];
+  aiProviders?: AiProviderAccountsSnapshot;
 };
 
 export type EditorSettingDescriptor = {
@@ -44,16 +47,20 @@ export type EditorSettingDescriptor = {
     | 'Extensions'
     | 'Source Control'
     | 'Recovery'
-    | 'Windows';
+    | 'Windows'
+    | 'OpenAI'
+    | 'Anthropic';
   label: string;
   description: string;
   type: 'boolean' | 'number' | 'string' | 'enum';
-  format?: 'color';
+  format?: 'color' | 'secret';
+  secretProvider?: AiProviderId;
   defaultValue: boolean | number | string;
   minimum?: number;
   maximum?: number;
   step?: number;
   options?: string[];
+  optionLabels?: Record<string, string>;
   scopes: Array<'user' | 'project'>;
   restartRequired?: boolean;
 };

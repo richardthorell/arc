@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
-import { FolderOpen, Palette, RefreshCw, RotateCcw, TriangleAlert } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { FolderOpen, Monitor, Palette, RefreshCw, RotateCcw, TriangleAlert, Unplug } from 'lucide-react';
+import { SiAnthropic, SiOpenai } from 'react-icons/si';
 
+import type { AiProviderId } from '../../../common/aiProviderTypes';
 import type {
   EditorSettingDescriptor,
   EditorSettingsSnapshot,
   RecoverySnapshot,
 } from '../../../common/editorWorkflowTypes';
 import type { ArcExtensionSnapshot } from '../../../common/extensionTypes';
-import generalSettingsHeader from './assets/general-settings-header.webp';
-import viewportSettingsHeader from './assets/viewport-settings-header.webp';
 import {
   UiButton,
   UiDialogSettings,
@@ -21,7 +21,14 @@ import {
   UiToggleButton,
 } from '../ui';
 import type { UiTreeNode } from '../ui';
-import { defaultExpandedSettingsNodes, editorSettingsNavigation, getEditorSettingsPage } from './settingsNavigation';
+import {
+  defaultExpandedSettingsNodes,
+  editorSettingsNavigation,
+  getEditorSettingsPage,
+  type EditorSettingsCardDefinition,
+  type EditorSettingsContentKind,
+  type EditorSettingsIcon,
+} from './settingsNavigation';
 
 import '../tools/tools.css';
 import './SettingsDialog.css';
@@ -36,10 +43,8 @@ const normalize = (value: string) => value.trim().toLocaleLowerCase();
 const descriptorSearchTerms = (descriptor: EditorSettingDescriptor) =>
   [descriptor.key, descriptor.label, descriptor.description].join(' ');
 
-const enumOptionLabel = (descriptor: EditorSettingDescriptor, option: string) => {
-  if (descriptor.key === 'editor.theme' && option === 'arcDark') return 'Dark (Default)';
-  return option;
-};
+const enumOptionLabel = (descriptor: EditorSettingDescriptor, option: string) =>
+  descriptor.optionLabels?.[option] ?? option;
 
 const visibleDescription = (descriptor: EditorSettingDescriptor) =>
   descriptor.description.replace(/\s+Leave empty\b.*$/i, '').trim();
@@ -53,12 +58,19 @@ const windowsExecutableName = (key: string) => {
   return null;
 };
 
+const settingsIcons: Record<EditorSettingsIcon, ReactNode> = {
+  palette: <Palette aria-hidden="true" size={16} />,
+  viewport: <Monitor aria-hidden="true" size={16} />,
+  openai: <SiOpenai aria-hidden="true" size={16} />,
+  anthropic: <SiAnthropic aria-hidden="true" size={16} />,
+};
+
 const enrichNavigation = (nodes: readonly UiTreeNode[], schema: readonly EditorSettingDescriptor[]): UiTreeNode[] =>
   nodes.map((node) => {
     const page = getEditorSettingsPage(node.id);
-    const descriptorKeywords = page?.legacySection
-      ? schema.filter((descriptor) => descriptor.section === page.legacySection).map(descriptorSearchTerms)
-      : [];
+    const descriptorKeywords = (page?.cards ?? []).flatMap((card) =>
+      schema.filter((descriptor) => descriptor.section === card.section).map(descriptorSearchTerms),
+    );
     return {
       ...node,
       keywords: [...(node.keywords ?? []), ...descriptorKeywords],
@@ -87,24 +99,28 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     [snapshot?.schema],
   );
   const navigation = useMemo(() => enrichNavigation(editorSettingsNavigation, userSchema), [userSchema]);
-  const entries = useMemo(() => {
-    if (!page.legacySection) return [];
-    return userSchema.filter((descriptor) => {
-      if (descriptor.section !== page.legacySection) return false;
-      if (!normalizedQuery) return true;
-      return normalize(descriptorSearchTerms(descriptor)).includes(normalizedQuery);
-    });
-  }, [normalizedQuery, page.legacySection, userSchema]);
+  const cardEntries = useMemo(
+    () =>
+      (page.cards ?? []).map((card) => ({
+        card,
+        entries: userSchema.filter((descriptor) => {
+          if (descriptor.section !== card.section) return false;
+          if (!normalizedQuery) return true;
+          return normalize(descriptorSearchTerms(descriptor)).includes(normalizedQuery);
+        }),
+      })),
+    [normalizedQuery, page.cards, userSchema],
+  );
 
   const update = async (key: string, value: unknown) => {
     if (!snapshot) return;
+    setMessage('');
     try {
       const next = await window.arc.settings.update('user', { [key]: value }, snapshot.revision);
       if (next) {
         setSnapshot(next);
         window.dispatchEvent(new CustomEvent('arc-editor-settings-changed', { detail: next }));
       }
-      setMessage(`${key} updated in user settings`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     }
@@ -123,6 +139,20 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     await update(descriptor.key, `${folder}${separator}${executableName}`);
   };
 
+  const providerLabel = (providerId: AiProviderId) =>
+    snapshot?.aiProviders?.providers.find((provider) => provider.id === providerId)?.label ??
+    (providerId === 'openai' ? 'OpenAI' : 'Anthropic');
+
+  const providerSubtitle = (card: EditorSettingsCardDefinition) => {
+    if (!card.provider) return undefined;
+    const provider = snapshot?.aiProviders?.providers.find((candidate) => candidate.id === card.provider);
+    if (snapshot?.aiProviders && !snapshot.aiProviders.secureStorageAvailable)
+      return 'Secure credential storage is unavailable on this machine.';
+    return provider?.connected
+      ? 'Connected — API key validated and stored securely on this machine.'
+      : 'Not connected — enter an API key below to connect.';
+  };
+
   const editor = (descriptor: EditorSettingDescriptor, value: unknown) => {
     const { key } = descriptor;
     if (descriptor.format === 'color' && typeof value === 'string')
@@ -135,6 +165,31 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
           value={value}
         />
       );
+    if (descriptor.format === 'secret') {
+      const storageAvailable = snapshot?.aiProviders?.secureStorageAvailable ?? true;
+      return (
+        <UiTextInput
+          aria-label={`${providerLabel(descriptor.secretProvider ?? 'openai')} ${descriptor.label}`}
+          autoComplete="off"
+          className="settings-value-control"
+          defaultValue=""
+          disabled={!storageAvailable}
+          key={`${key}-${String(Boolean(value))}`}
+          placeholder={value ? 'Configured — enter a new key to replace' : 'Enter API key'}
+          type="password"
+          onBlur={(event) => {
+            const nextValue = event.target.value.trim();
+            if (!nextValue) return;
+            event.target.value = '';
+            void update(key, nextValue);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+            if (event.key === 'Escape') event.currentTarget.value = '';
+          }}
+        />
+      );
+    }
     if (descriptor.type === 'enum')
       return (
         <UiSelect
@@ -182,8 +237,6 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     );
   };
 
-  const showEmptyPage = entries.length === 0 && page.id !== 'system.recovery' && page.id !== 'tools.extensions';
-
   const sidebar = (
     <UiSettingsNavigation
       defaultExpandedIds={defaultExpandedSettingsNodes}
@@ -200,34 +253,20 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     />
   );
 
-  return (
-    <UiDialogSettings
-      message={message ? <div className="tool-message">{message}</div> : undefined}
-      onClose={onClose}
-      sidebar={sidebar}
-      subtitle="Personal editor and machine preferences"
-      title="Editor Preferences"
-    >
-      <div className="settings-fields">
-        <UiSettingsHeader
-          background={
-            page.id === 'general' ? (
-              <img alt="" src={generalSettingsHeader} />
-            ) : page.id === 'editing.viewport' ? (
-              <img alt="" src={viewportSettingsHeader} />
-            ) : undefined
-          }
-          subtitle={page.description}
-          title={page.label}
-        />
-
-        {entries.length > 0 && (
+  const visibleCards = cardEntries.filter(({ entries }) => entries.length > 0);
+  const settingsContent =
+    visibleCards.length > 0 ? (
+      <>
+        {visibleCards.map(({ card, entries }) => (
           <UiSettingsCard
-            icon={page.id === 'general' ? <Palette aria-hidden="true" size={16} /> : undefined}
-            title={page.id === 'general' ? 'Appearance' : (page.legacySection ?? page.label)}
+            icon={card.icon ? settingsIcons[card.icon] : undefined}
+            key={card.section}
+            subtitle={providerSubtitle(card)}
+            title={card.title ?? card.section}
           >
             {entries.map((descriptor) => {
               const pathSetting = isWindowsPathSetting(descriptor);
+              const secretSetting = descriptor.format === 'secret';
               return (
                 <div
                   className={['settings-field-row', pathSetting ? 'settings-field-row-path' : '']
@@ -237,7 +276,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                 >
                   <span className="settings-field-description">
                     <strong>{descriptor.label}</strong>
-                    <small>{visibleDescription(descriptor)}</small>
+                    {!secretSetting && <small>{visibleDescription(descriptor)}</small>}
                     {snapshot?.restartRequired.includes(descriptor.key) && (
                       <span className="settings-field-warning">
                         <TriangleAlert aria-hidden="true" size={9} />
@@ -261,6 +300,14 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                         <FolderOpen size={13} />
                       </UiIconButton>
                     </div>
+                  ) : secretSetting ? (
+                    <UiIconButton
+                      disabled={!snapshot?.values[descriptor.key]}
+                      label={`Remove ${providerLabel(descriptor.secretProvider ?? 'openai')} API key from ARC`}
+                      onClick={() => void update(descriptor.key, undefined)}
+                    >
+                      <Unplug size={13} />
+                    </UiIconButton>
                   ) : (
                     <UiIconButton
                       label={`Reset ${descriptor.key}`}
@@ -273,90 +320,115 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
               );
             })}
           </UiSettingsCard>
-        )}
+        ))}
+      </>
+    ) : null;
 
-        {page.id === 'general' && (
-          <UiSettingsCard subtitle="Restore the default editor panel arrangement." title="Workbench">
-            <div className="settings-card-actions">
-              <UiButton onClick={onResetLayout} variant="toolbar">
-                Reset workbench layout
+  const contentByKind: Record<EditorSettingsContentKind, ReactNode> = {
+    settings: settingsContent,
+    workbench: (
+      <UiSettingsCard subtitle="Restore the default editor panel arrangement." title="Workbench">
+        <div className="settings-card-actions">
+          <UiButton onClick={onResetLayout} variant="toolbar">
+            Reset workbench layout
+          </UiButton>
+        </div>
+      </UiSettingsCard>
+    ),
+    recovery: (
+      <UiSettingsCard
+        subtitle={
+          recovery?.uncleanShutdown
+            ? 'ARC detected an unclean editor shutdown. Recovery generations are available below.'
+            : 'Recovery snapshots are stored outside the project and never overwrite source files.'
+        }
+        title="Recovery generations"
+      >
+        <div className="recovery-browser settings-card-list">
+          {recovery?.generations.map((generation) => (
+            <article key={generation.id}>
+              <span>
+                <strong>{generation.documentName}</strong>
+                <small>
+                  {new Date(generation.createdAt).toLocaleString()} · {(generation.size / 1024).toFixed(1)} KiB
+                </small>
+              </span>
+              <UiButton
+                onClick={() =>
+                  void window.arc.recovery.restore(generation.id).then(() => setMessage('Recovery opened as dirty'))
+                }
+                variant="toolbar"
+              >
+                Open
               </UiButton>
-            </div>
-          </UiSettingsCard>
-        )}
+              <UiButton
+                onClick={() =>
+                  void window.arc.recovery.discard(generation.id).then(async () => {
+                    setRecovery(await window.arc.recovery.snapshot());
+                  })
+                }
+                variant="toolbar"
+              >
+                Discard
+              </UiButton>
+            </article>
+          ))}
+          {!recovery?.generations.length && <div className="tool-empty">No recovery generations.</div>}
+        </div>
+      </UiSettingsCard>
+    ),
+    extensions: (
+      <UiSettingsCard subtitle="Extensions declared by the current project." title="Extensions">
+        <div className="recovery-browser settings-card-list">
+          {extensions?.extensions.map((extension) => (
+            <article key={extension.manifest.id}>
+              <span>
+                <strong>
+                  {extension.manifest.name} {extension.manifest.version}
+                </strong>
+                <small>
+                  {extension.enabled ? 'Enabled' : 'Disabled'} ·{' '}
+                  {extension.manifest.capabilities.join(', ') || 'No capabilities'}
+                </small>
+                {extension.diagnostics.map((diagnostic) => (
+                  <small className="tool-error" key={diagnostic}>
+                    {diagnostic}
+                  </small>
+                ))}
+              </span>
+            </article>
+          ))}
+          {!extensions?.extensions.length && (
+            <div className="tool-empty">No extensions are declared by this project.</div>
+          )}
+        </div>
+      </UiSettingsCard>
+    ),
+  };
 
-        {page.id === 'system.recovery' && (
-          <UiSettingsCard
-            subtitle={
-              recovery?.uncleanShutdown
-                ? 'ARC detected an unclean editor shutdown. Recovery generations are available below.'
-                : 'Recovery snapshots are stored outside the project and never overwrite source files.'
-            }
-            title="Recovery generations"
-          >
-            <div className="recovery-browser settings-card-list">
-              {recovery?.generations.map((generation) => (
-                <article key={generation.id}>
-                  <span>
-                    <strong>{generation.documentName}</strong>
-                    <small>
-                      {new Date(generation.createdAt).toLocaleString()} · {(generation.size / 1024).toFixed(1)} KiB
-                    </small>
-                  </span>
-                  <UiButton
-                    onClick={() =>
-                      void window.arc.recovery.restore(generation.id).then(() => setMessage('Recovery opened as dirty'))
-                    }
-                    variant="toolbar"
-                  >
-                    Open
-                  </UiButton>
-                  <UiButton
-                    onClick={() =>
-                      void window.arc.recovery.discard(generation.id).then(async () => {
-                        setRecovery(await window.arc.recovery.snapshot());
-                      })
-                    }
-                    variant="toolbar"
-                  >
-                    Discard
-                  </UiButton>
-                </article>
-              ))}
-              {!recovery?.generations.length && <div className="tool-empty">No recovery generations.</div>}
-            </div>
-          </UiSettingsCard>
-        )}
+  const contentKinds = page.content ?? (['settings'] as const);
+  const hasVisibleContent = contentKinds.some((kind) => contentByKind[kind] !== null);
 
-        {page.id === 'tools.extensions' && (
-          <UiSettingsCard subtitle="Extensions declared by the current project." title="Extensions">
-            <div className="recovery-browser settings-card-list">
-              {extensions?.extensions.map((extension) => (
-                <article key={extension.manifest.id}>
-                  <span>
-                    <strong>
-                      {extension.manifest.name} {extension.manifest.version}
-                    </strong>
-                    <small>
-                      {extension.enabled ? 'Enabled' : 'Disabled'} ·{' '}
-                      {extension.manifest.capabilities.join(', ') || 'No capabilities'}
-                    </small>
-                    {extension.diagnostics.map((diagnostic) => (
-                      <small className="tool-error" key={diagnostic}>
-                        {diagnostic}
-                      </small>
-                    ))}
-                  </span>
-                </article>
-              ))}
-              {!extensions?.extensions.length && (
-                <div className="tool-empty">No extensions are declared by this project.</div>
-              )}
-            </div>
-          </UiSettingsCard>
-        )}
+  return (
+    <UiDialogSettings
+      message={message ? <div className="tool-message">{message}</div> : undefined}
+      onClose={onClose}
+      sidebar={sidebar}
+      subtitle="Personal editor and machine preferences"
+      title="Editor Preferences"
+    >
+      <div className="settings-fields">
+        <UiSettingsHeader
+          background={page.headerImage ? <img alt="" src={page.headerImage} /> : undefined}
+          subtitle={page.description}
+          title={page.label}
+        />
 
-        {showEmptyPage && (
+        {contentKinds.map((kind) => (
+          <Fragment key={kind}>{contentByKind[kind]}</Fragment>
+        ))}
+
+        {!hasVisibleContent && (
           <div className="settings-empty-page">
             {normalizedQuery ? 'No matching settings' : 'No settings available'}
           </div>

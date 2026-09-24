@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import type { AiProviderAccountsSnapshot, AiProviderId } from '../common/aiProviderTypes';
 import type { EditorSettingDescriptor, EditorSettingsSnapshot } from '../common/editorWorkflowTypes';
 import type { ArcProjectCandidate } from '../common/projectTypes';
+import { AiProviderService } from './aiProviderService';
 
 const schema: EditorSettingDescriptor[] = [
   {
@@ -13,6 +15,134 @@ const schema: EditorSettingDescriptor[] = [
     type: 'enum',
     defaultValue: 'arcDark',
     options: ['arcDark'],
+    optionLabels: { arcDark: 'Dark (Default)' },
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.openai.apiKey',
+    section: 'OpenAI',
+    label: 'API Key',
+    description: 'OpenAI API key. ARC validates it before storing it with operating-system credential protection.',
+    type: 'string',
+    format: 'secret',
+    secretProvider: 'openai',
+    defaultValue: '',
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.openai.model',
+    section: 'OpenAI',
+    label: 'Model',
+    description: 'Default OpenAI model used by ARC Assistant conversations.',
+    type: 'enum',
+    defaultValue: 'gpt-5.6-sol',
+    options: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
+    optionLabels: {
+      'gpt-5.6-sol': 'GPT-5.6 Sol',
+      'gpt-5.6-terra': 'GPT-5.6 Terra',
+      'gpt-5.6-luna': 'GPT-5.6 Luna',
+    },
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.openai.reasoningEffort',
+    section: 'OpenAI',
+    label: 'Reasoning Effort',
+    description: 'Default reasoning effort for OpenAI model responses.',
+    type: 'enum',
+    defaultValue: 'medium',
+    options: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+    optionLabels: {
+      none: 'None',
+      low: 'Low',
+      medium: 'Medium',
+      high: 'High',
+      xhigh: 'Extra High',
+      max: 'Maximum',
+    },
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.openai.organizationId',
+    section: 'OpenAI',
+    label: 'Organization ID',
+    description: 'Optional organization override for accounts that belong to multiple OpenAI organizations.',
+    type: 'string',
+    defaultValue: '',
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.openai.projectId',
+    section: 'OpenAI',
+    label: 'Project ID',
+    description: 'Optional OpenAI project override. Project API keys normally select this automatically.',
+    type: 'string',
+    defaultValue: '',
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.openai.storeResponses',
+    section: 'OpenAI',
+    label: 'Store Responses',
+    description: 'Allow OpenAI to retain Responses API objects. ARC keeps this disabled by default.',
+    type: 'boolean',
+    defaultValue: false,
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.anthropic.apiKey',
+    section: 'Anthropic',
+    label: 'API Key',
+    description: 'Anthropic API key. ARC validates it before storing it with operating-system credential protection.',
+    type: 'string',
+    format: 'secret',
+    secretProvider: 'anthropic',
+    defaultValue: '',
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.anthropic.model',
+    section: 'Anthropic',
+    label: 'Model',
+    description: 'Default Claude model used by ARC Assistant conversations.',
+    type: 'enum',
+    defaultValue: 'claude-sonnet-5',
+    options: ['claude-sonnet-5', 'claude-opus-5', 'claude-fable-5', 'claude-haiku-4-5-20251001'],
+    optionLabels: {
+      'claude-sonnet-5': 'Claude Sonnet 5',
+      'claude-opus-5': 'Claude Opus 5',
+      'claude-fable-5': 'Claude Fable 5',
+      'claude-haiku-4-5-20251001': 'Claude Haiku 4.5',
+    },
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.anthropic.effort',
+    section: 'Anthropic',
+    label: 'Effort',
+    description: 'Default adaptive-thinking effort for supported Claude models.',
+    type: 'enum',
+    defaultValue: 'high',
+    options: ['low', 'medium', 'high', 'xhigh', 'max'],
+    optionLabels: {
+      low: 'Low',
+      medium: 'Medium',
+      high: 'High',
+      xhigh: 'Extra High',
+      max: 'Maximum',
+    },
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.anthropic.maxOutputTokens',
+    section: 'Anthropic',
+    label: 'Max Output Tokens',
+    description: 'Maximum output budget sent with Claude Messages API requests.',
+    type: 'number',
+    defaultValue: 16384,
+    minimum: 1024,
+    maximum: 131072,
+    step: 1024,
     scopes: ['user'],
   },
   {
@@ -312,6 +442,17 @@ const schema: EditorSettingDescriptor[] = [
 
 const descriptors = new Map(schema.map((descriptor) => [descriptor.key, descriptor]));
 const defaults = Object.fromEntries(schema.map((descriptor) => [descriptor.key, descriptor.defaultValue]));
+const secretDescriptors = schema.filter(
+  (descriptor): descriptor is EditorSettingDescriptor & { secretProvider: AiProviderId } =>
+    descriptor.format === 'secret' && descriptor.secretProvider !== undefined,
+);
+
+export type SettingsAiProviderService = {
+  snapshot(): AiProviderAccountsSnapshot;
+  connect(providerId: AiProviderId, credential: string): Promise<AiProviderAccountsSnapshot>;
+  disconnect(providerId: AiProviderId): AiProviderAccountsSnapshot;
+  credential(providerId: AiProviderId): string | null;
+};
 
 const readObject = (filePath: string): Record<string, unknown> => {
   try {
@@ -351,11 +492,17 @@ const validateValue = (descriptor: EditorSettingDescriptor, value: unknown): voi
 
 export class SettingsService {
   private revision = 1;
+  private readonly aiProviderService: SettingsAiProviderService;
 
   constructor(
     private readonly userSettingsPath: string,
     private readonly activeProject: () => ArcProjectCandidate | null,
-  ) {}
+    aiProviderService?: SettingsAiProviderService,
+  ) {
+    this.aiProviderService =
+      aiProviderService ??
+      new AiProviderService(path.join(path.dirname(userSettingsPath), 'ai-provider-credentials.v1.json'));
+  }
 
   snapshot(): EditorSettingsSnapshot {
     const user = this.validEntries(readObject(this.resolvedUserSettingsPath()));
@@ -364,20 +511,30 @@ export class SettingsService {
     const sources: EditorSettingsSnapshot['sources'] = {};
     for (const key of Object.keys(values))
       sources[key] = Object.hasOwn(project, key) ? 'project' : Object.hasOwn(user, key) ? 'user' : 'default';
+
+    const aiProviders = this.aiProviderService.snapshot();
+    for (const descriptor of secretDescriptors) {
+      const connected =
+        aiProviders.providers.find((provider) => provider.id === descriptor.secretProvider)?.connected ?? false;
+      values[descriptor.key] = connected ? 'configured' : '';
+      sources[descriptor.key] = connected ? 'user' : 'default';
+    }
+
     return {
       revision: this.revision,
       values,
       sources,
       restartRequired: schema.filter((entry) => entry.restartRequired).map((entry) => entry.key),
       schema,
+      aiProviders,
     };
   }
 
-  update(
+  async update(
     scope: 'user' | 'project',
     changes: Record<string, unknown>,
     expectedRevision: number,
-  ): EditorSettingsSnapshot {
+  ): Promise<EditorSettingsSnapshot> {
     if (expectedRevision !== this.revision) throw new Error('Settings changed; refresh before applying edits');
     const project = this.activeProject();
     if (scope === 'project' && !project?.writable) throw new Error('The active project is not writable');
@@ -387,8 +544,19 @@ export class SettingsService {
       if (!descriptor.scopes.includes(scope)) throw new Error(`${key} cannot be stored in ${scope} settings`);
       if (value !== undefined) validateValue(descriptor, value);
     }
+
+    for (const [key, value] of Object.entries(changes)) {
+      const descriptor = descriptors.get(key)!;
+      if (!descriptor.secretProvider) continue;
+      if (scope !== 'user') throw new Error(`${key} cannot be stored in ${scope} settings`);
+      if (value === undefined || value === '') this.aiProviderService.disconnect(descriptor.secretProvider);
+      else await this.aiProviderService.connect(descriptor.secretProvider, String(value));
+    }
+
     const updates = new Map<string, Record<string, unknown>>();
     for (const [key, value] of Object.entries(changes)) {
+      const descriptor = descriptors.get(key)!;
+      if (descriptor.secretProvider) continue;
       const target = scope === 'user' ? this.resolvedUserSettingsPath() : this.projectSettingsPathForKey(key);
       if (!target) throw new Error('No writable project settings file is available');
       const next = updates.get(target) ?? { ...readObject(target) };
@@ -401,11 +569,15 @@ export class SettingsService {
     return this.snapshot();
   }
 
+  providerCredential(providerId: AiProviderId): string | null {
+    return this.aiProviderService.credential(providerId);
+  }
+
   private validEntries(values: Record<string, unknown>): Record<string, unknown> {
     const result: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(values)) {
       const descriptor = descriptors.get(key);
-      if (!descriptor) continue;
+      if (!descriptor || descriptor.secretProvider) continue;
       try {
         validateValue(descriptor, value);
         result[key] = value;
