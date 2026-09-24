@@ -107,9 +107,8 @@ describe('SettingsService', () => {
     snapshot = await service.update('user', { 'renderer.gridColor': '#4A5058' }, snapshot.revision);
     expect(snapshot.values['renderer.gridColor']).toBe('#4A5058');
     expect(snapshot.sources['renderer.gridColor']).toBe('user');
-    await expect(service.update('user', { 'renderer.gridColor': 'white' }, snapshot.revision)).rejects.toThrow(
-      '#RRGGBB',
-    );
+    const invalidGridColor = service.update('user', { 'renderer.gridColor': 'white' }, snapshot.revision);
+    await expect(invalidGridColor).rejects.toThrow('#RRGGBB');
   });
 
   it('provides current OpenAI and Anthropic defaults while keeping credentials outside settings files', async () => {
