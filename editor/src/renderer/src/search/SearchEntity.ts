@@ -53,11 +53,7 @@ export abstract class SearchEntity {
   }
 
   matches(query: string): boolean {
-    const terms = query
-      .trim()
-      .toLocaleLowerCase()
-      .split(/\s+/)
-      .filter(Boolean);
+    const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
     return terms.every((term) => this.searchText.includes(term));
   }
 }

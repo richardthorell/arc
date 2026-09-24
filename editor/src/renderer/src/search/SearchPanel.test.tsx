@@ -37,12 +37,7 @@ describe('SearchPanel', () => {
   it('starts in asset mode and filters asset results', () => {
     const onSelectAsset = vi.fn();
     render(
-      <SearchPanel
-        assets={assets}
-        entities={[]}
-        onSelectAsset={onSelectAsset}
-        onSelectEntity={() => undefined}
-      />,
+      <SearchPanel assets={assets} entities={[]} onSelectAsset={onSelectAsset} onSelectEntity={() => undefined} />,
     );
 
     expect(screen.getByRole('tab', { name: /Assets/ })).toHaveAttribute('aria-selected', 'true');

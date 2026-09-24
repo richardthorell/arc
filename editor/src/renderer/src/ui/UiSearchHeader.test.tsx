@@ -36,13 +36,7 @@ describe('UiSearchHeader', () => {
     const onModeChange = vi.fn();
     const onQueryChange = vi.fn();
     render(
-      <UiSearchHeader
-        mode="assets"
-        modes={modes}
-        query=""
-        onModeChange={onModeChange}
-        onQueryChange={onQueryChange}
-      />,
+      <UiSearchHeader mode="assets" modes={modes} query="" onModeChange={onModeChange} onQueryChange={onQueryChange} />,
     );
 
     fireEvent.click(screen.getByRole('tab', { name: /Commands/ }));
