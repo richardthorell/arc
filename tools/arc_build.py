@@ -30,8 +30,8 @@ except NameError:
 
 SLANG_VERSION = "2026.14.1"
 SLANG_RELEASE_BASE_URL = "https://github.com/shader-slang/slang/releases/download/v{}".format(SLANG_VERSION)
-EDITOR_NODE_VERSION = "22.23.3"
-EDITOR_NPM_VERSION = "10.9.9"
+EDITOR_NODE_VERSION = "22.23.2"
+EDITOR_NPM_VERSION = "10.9.8"
 VISUAL_STUDIO_GENERATORS = {
     18: "Visual Studio 18 2026",
     17: "Visual Studio 17 2022",
