@@ -214,3 +214,65 @@ TEST_CASE("Flow bindings reconcile while Play is running")
 
     host.shutdown();
 }
+
+TEST_CASE("Flow source changes hot reload bound Play instances")
+{
+    temporary_flow_content content;
+    content.write("Lifecycle.arcflow", lifecycle_graph);
+
+    flow_test_application app;
+    arc::framework::runtime host(app);
+    auto& world = host.worlds().create({.name = "flow-source-hot-reload", .install_placeholder_systems = false});
+    const auto install = arc::editor::install_flow_play_runtime(world, content.root());
+    REQUIRE(install.succeeded);
+    host.start();
+
+    const auto entity = world.entities().create();
+    world.entities().emplace<arc::scene::name_component>(entity, arc::scene::name_component{"idle"});
+    world.entities().emplace<arc::scene::flow_component>(entity,
+                                                        arc::scene::flow_component{"Lifecycle.arcflow", true});
+    REQUIRE(host.advance(1.0 / 60.0).completed_ticks == 1);
+    CHECK(std::as_const(world.entities()).get<arc::scene::name_component>(entity).value == "running");
+
+    content.write("Lifecycle.arcflow", alternate_graph);
+    REQUIRE(host.advance(1.0 / 60.0).completed_ticks == 1);
+    CHECK(std::as_const(world.entities()).get<arc::scene::name_component>(entity).value == "alternate");
+
+    world.entities().get<arc::scene::flow_component>(entity).enabled = false;
+    REQUIRE(host.advance(1.0 / 60.0).completed_ticks == 1);
+    CHECK(std::as_const(world.entities()).get<arc::scene::name_component>(entity).value == "alternate-stopped");
+
+    host.shutdown();
+}
+
+TEST_CASE("Flow hot reload keeps the last good generation and recovers after a compile failure")
+{
+    temporary_flow_content content;
+    content.write("Lifecycle.arcflow", lifecycle_graph);
+
+    flow_test_application app;
+    arc::framework::runtime host(app);
+    auto& world = host.worlds().create({.name = "flow-source-hot-reload-recovery", .install_placeholder_systems = false});
+    const auto install = arc::editor::install_flow_play_runtime(world, content.root());
+    REQUIRE(install.succeeded);
+    host.start();
+
+    const auto entity = world.entities().create();
+    world.entities().emplace<arc::scene::name_component>(entity, arc::scene::name_component{"idle"});
+    world.entities().emplace<arc::scene::flow_component>(entity,
+                                                        arc::scene::flow_component{"Lifecycle.arcflow", true});
+    REQUIRE(host.advance(1.0 / 60.0).completed_ticks == 1);
+    CHECK(std::as_const(world.entities()).get<arc::scene::name_component>(entity).value == "running");
+
+    content.write("Lifecycle.arcflow", "{\"version\":1");
+    REQUIRE(host.advance(1.0 / 60.0).completed_ticks == 1);
+    CHECK(world.state() == arc::framework::runtime_world_state::running);
+    CHECK(std::as_const(world.entities()).get<arc::scene::name_component>(entity).value == "running");
+
+    content.write("Lifecycle.arcflow", alternate_graph);
+    REQUIRE(host.advance(1.0 / 60.0).completed_ticks == 1);
+    CHECK(world.state() == arc::framework::runtime_world_state::running);
+    CHECK(std::as_const(world.entities()).get<arc::scene::name_component>(entity).value == "alternate");
+
+    host.shutdown();
+}
