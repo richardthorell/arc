@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import pathlib
 import sys
 import unittest
@@ -26,6 +27,11 @@ class EditorNodeToolchainTests(unittest.TestCase):
         self.assertFalse(arc_build.editor_node_toolchain_supported("v22.23.3", "10.9.8"))
         self.assertFalse(arc_build.editor_node_toolchain_supported("v22.23.2", "10.9.7"))
         self.assertFalse(arc_build.editor_node_toolchain_supported("v22.23.2", "not-a-version"))
+
+    def test_editor_package_engines_match_prerequisite_policy(self) -> None:
+        package = json.loads((REPO_ROOT / "editor" / "package.json").read_text(encoding="utf-8"))
+        self.assertEqual(package["engines"]["node"], arc_build.EDITOR_NODE_VERSION)
+        self.assertEqual(package["engines"]["npm"], ">={}".format(arc_build.EDITOR_NPM_VERSION))
 
     def test_prerequisite_check_reports_version_mismatch(self) -> None:
         def find_executable(name: str):
