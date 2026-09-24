@@ -11,7 +11,10 @@ const roots: string[] = [];
 
 const testSecretCodec: SettingsSecretCodec = {
   encrypt: (value) => Buffer.from(`test:${value}`, 'utf8').toString('base64'),
-  decrypt: (value) => Buffer.from(value, 'base64').toString('utf8').replace(/^test:/, ''),
+  decrypt: (value) =>
+    Buffer.from(value, 'base64')
+      .toString('utf8')
+      .replace(/^test:/, ''),
 };
 
 afterEach(() => {

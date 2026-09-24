@@ -41,7 +41,8 @@ const normalize = (value: string) => value.trim().toLocaleLowerCase();
 const descriptorSearchTerms = (descriptor: EditorSettingDescriptor) =>
   [descriptor.key, descriptor.label, descriptor.description].join(' ');
 
-const enumOptionLabel = (descriptor: EditorSettingDescriptor, option: string) => descriptor.optionLabels?.[option] ?? option;
+const enumOptionLabel = (descriptor: EditorSettingDescriptor, option: string) =>
+  descriptor.optionLabels?.[option] ?? option;
 
 const visibleDescription = (descriptor: EditorSettingDescriptor) =>
   descriptor.description.replace(/\s+Leave empty\b.*$/i, '').trim();
@@ -272,10 +273,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                   <Unplug size={13} />
                 </UiIconButton>
               ) : (
-                <UiIconButton
-                  label={`Reset ${descriptor.key}`}
-                  onClick={() => void update(descriptor.key, undefined)}
-                >
+                <UiIconButton label={`Reset ${descriptor.key}`} onClick={() => void update(descriptor.key, undefined)}>
                   <RotateCcw size={13} />
                 </UiIconButton>
               )}
