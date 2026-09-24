@@ -481,10 +481,12 @@ private:
                     throw std::runtime_error(execution_error(result, instance.graph_path, instance.entity));
             }
 
-            ::arc::diagnostics::info(
-                "Flow", "Reloaded Flow graph '" + graph_path + "' as generation " +
-                            std::to_string(artifact.generation) + "; restarted " + std::to_string(indices.size()) +
-                            " bound instance(s) from defaults");
+            std::string reload_message = "Reloaded Flow graph '" + graph_path + "' as generation ";
+            reload_message += std::to_string(artifact.generation);
+            reload_message += "; restarted ";
+            reload_message += std::to_string(indices.size());
+            reload_message += " bound instance(s) from defaults";
+            ::arc::diagnostics::info("Flow", reload_message);
         }
     }
 
