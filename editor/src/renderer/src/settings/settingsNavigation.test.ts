@@ -41,21 +41,20 @@ describe('settingsNavigation', () => {
     ]);
   });
 
-  it('keeps page presentation and supplemental content in page metadata', () => {
+  it('keeps card presentation and supplemental content in page metadata', () => {
     expect(getEditorSettingsPage('general')).toMatchObject({
-      card: { title: 'Appearance', icon: 'palette' },
+      cards: [{ section: 'Editor', title: 'Appearance', icon: 'palette' }],
       content: ['settings', 'workbench'],
     });
     expect(getEditorSettingsPage('general')?.headerImage).toContain('general-settings-header');
     expect(getEditorSettingsPage('editing.viewport')).toMatchObject({
-      legacySection: 'Renderer',
-      card: { title: 'Viewport Rendering', icon: 'viewport' },
+      cards: [{ section: 'Renderer', title: 'Viewport Rendering', icon: 'viewport' }],
     });
     expect(getEditorSettingsPage('editing.viewport')?.headerImage).toContain('viewport-settings-header');
-    expect(getEditorSettingsPage('ai.providers')).toMatchObject({
-      legacySection: 'AI Providers',
-      card: { title: 'OpenAI', icon: 'openai' },
-    });
+    expect(getEditorSettingsPage('ai.providers')?.cards).toEqual([
+      { section: 'OpenAI', title: 'OpenAI', icon: 'openai', provider: 'openai' },
+      { section: 'Anthropic', title: 'Anthropic', icon: 'anthropic', provider: 'anthropic' },
+    ]);
     expect(getEditorSettingsPage('system.recovery')?.content).toEqual(['settings', 'recovery']);
     expect(getEditorSettingsPage('tools.extensions')?.content).toEqual(['settings', 'extensions']);
   });
