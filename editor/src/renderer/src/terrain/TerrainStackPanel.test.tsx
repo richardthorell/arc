@@ -67,6 +67,7 @@ describe('TerrainStackPanel', () => {
     expect(await screen.findByText('Large Forms')).toBeInTheDocument();
     expect(screen.getByText('Ground')).toBeInTheDocument();
     expect(screen.getByText('Base Source')).toBeInTheDocument();
+    expect(screen.getByLabelText('Modifier name')).toHaveClass('ui-text-input');
     expect(command).toHaveBeenCalledWith('terrain.modifierStack', { entity, operation: 'inspect' });
 
     await userEvent.click(screen.getByRole('button', { name: /Sculpt/ }));
