@@ -156,9 +156,9 @@ describe('SettingsService', () => {
     const revision = service.snapshot().revision;
 
     await expect(service.update('user', { unknown: true }, revision)).rejects.toThrow('Unknown setting');
-    await expect(
-      service.update('user', { 'renderer.targetFrameMilliseconds': Number.NaN }, revision),
-    ).rejects.toThrow('finite');
+    await expect(service.update('user', { 'renderer.targetFrameMilliseconds': Number.NaN }, revision)).rejects.toThrow(
+      'finite',
+    );
     await expect(service.update('project', { 'paths.externalShaderCompiler': 'tool' }, revision)).rejects.toThrow(
       'cannot be stored',
     );
