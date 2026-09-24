@@ -33,7 +33,7 @@ export type EditorSettingsSnapshot = {
   sources: Record<string, 'default' | 'user' | 'project'>;
   restartRequired: string[];
   schema: EditorSettingDescriptor[];
-  aiProviders: AiProviderAccountsSnapshot;
+  aiProviders?: AiProviderAccountsSnapshot;
 };
 
 export type EditorSettingDescriptor = {
