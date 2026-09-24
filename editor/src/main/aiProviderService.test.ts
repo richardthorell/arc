@@ -21,7 +21,7 @@ const secureStorage = (available = true): AiProviderSecureStorage => ({
 });
 
 describe('AiProviderService', () => {
-  it('stores validated provider credentials securely without exposing them in snapshots', async () => {
+  it('stores validated provider credentials securely and caches successful validation', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-ai-providers-'));
     roots.push(root);
     const storagePath = path.join(root, 'providers.json');
@@ -29,13 +29,16 @@ describe('AiProviderService', () => {
     const service = new AiProviderService(storagePath, () => secureStorage(), validate);
 
     expect(service.snapshot().providers).toEqual([
-      { id: 'openai', label: 'OpenAI', connected: false },
-      { id: 'anthropic', label: 'Anthropic', connected: false },
+      { id: 'openai', label: 'OpenAI', connected: false, connectionStatus: 'disconnected' },
+      { id: 'anthropic', label: 'Anthropic', connected: false, connectionStatus: 'disconnected' },
     ]);
 
     let snapshot = await service.connect('openai', 'sk-openai-secret');
     expect(validate).toHaveBeenCalledWith('openai', 'sk-openai-secret');
-    expect(snapshot.providers.find((provider) => provider.id === 'openai')?.connected).toBe(true);
+    expect(snapshot.providers.find((provider) => provider.id === 'openai')).toMatchObject({
+      connected: true,
+      connectionStatus: 'connected',
+    });
     expect(JSON.stringify(snapshot)).not.toContain('sk-openai-secret');
     expect(fs.readFileSync(storagePath, 'utf8')).not.toContain('sk-openai-secret');
     expect(service.credential('openai')).toBe('sk-openai-secret');
@@ -44,12 +47,57 @@ describe('AiProviderService', () => {
     expect(validate).toHaveBeenCalledWith('anthropic', 'sk-ant-secret');
     expect(service.credential('anthropic')).toBe('sk-ant-secret');
 
-    await service.test('openai');
+    snapshot = await service.test('openai');
     expect(validate).toHaveBeenLastCalledWith('openai', 'sk-openai-secret');
+    expect(snapshot.providers.find((provider) => provider.id === 'openai')?.connectionStatus).toBe('connected');
 
     snapshot = service.disconnect('openai');
-    expect(snapshot.providers.find((provider) => provider.id === 'openai')?.connected).toBe(false);
+    expect(snapshot.providers.find((provider) => provider.id === 'openai')).toMatchObject({
+      connected: false,
+      connectionStatus: 'disconnected',
+    });
     expect(service.credential('openai')).toBeNull();
+  });
+
+  it('marks persisted credentials cold until they are tested in the current session', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-ai-providers-'));
+    roots.push(root);
+    const storagePath = path.join(root, 'providers.json');
+    const validate = vi.fn(async () => undefined);
+    const first = new AiProviderService(storagePath, () => secureStorage(), validate);
+    await first.connect('openai', 'sk-openai-secret');
+
+    const restarted = new AiProviderService(storagePath, () => secureStorage(), validate);
+    expect(restarted.snapshot().providers.find((provider) => provider.id === 'openai')).toMatchObject({
+      connected: true,
+      connectionStatus: 'cold',
+    });
+
+    const snapshot = await restarted.test('openai');
+    expect(snapshot.providers.find((provider) => provider.id === 'openai')?.connectionStatus).toBe('connected');
+  });
+
+  it('caches a failed connection test without deleting the configured credential', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-ai-providers-'));
+    roots.push(root);
+    const storagePath = path.join(root, 'providers.json');
+    let valid = true;
+    const service = new AiProviderService(
+      storagePath,
+      () => secureStorage(),
+      async () => {
+        if (!valid) throw new Error('Provider rejected this API key');
+      },
+    );
+    await service.connect('openai', 'sk-openai-secret');
+    valid = false;
+
+    const snapshot = await service.test('openai');
+    expect(snapshot.providers.find((provider) => provider.id === 'openai')).toMatchObject({
+      connected: true,
+      connectionStatus: 'invalid',
+    });
+    expect(service.credential('openai')).toBe('sk-openai-secret');
   });
 
   it('does not persist a credential when provider validation fails', async () => {
@@ -65,7 +113,10 @@ describe('AiProviderService', () => {
     );
 
     await expect(service.connect('openai', 'bad-key')).rejects.toThrow('Provider rejected this API key');
-    expect(service.snapshot().providers.find((provider) => provider.id === 'openai')?.connected).toBe(false);
+    expect(service.snapshot().providers.find((provider) => provider.id === 'openai')).toMatchObject({
+      connected: false,
+      connectionStatus: 'disconnected',
+    });
     expect(fs.existsSync(storagePath)).toBe(false);
   });
 

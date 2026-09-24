@@ -72,8 +72,8 @@ beforeEach(() => {
         aiProviders: {
           secureStorageAvailable: true,
           providers: [
-            { id: 'openai', label: 'OpenAI', connected: false },
-            { id: 'anthropic', label: 'Anthropic', connected: false },
+            { id: 'openai', label: 'OpenAI', connected: false, connectionStatus: 'disconnected' },
+            { id: 'anthropic', label: 'Anthropic', connected: false, connectionStatus: 'disconnected' },
           ],
         },
       }),
@@ -176,7 +176,7 @@ describe('EditorPreferencesDialog', () => {
     expect(historyWeight).toHaveFocus();
   });
 
-  it('renders OpenAI and Anthropic provider cards without exposing configured API keys', async () => {
+  it('renders OpenAI and Anthropic provider cards with connection status and test actions', async () => {
     window.arc.settings.snapshot = vi.fn().mockResolvedValue({
       revision: 4,
       schema: [
@@ -220,7 +220,7 @@ describe('EditorPreferencesDialog', () => {
           key: 'ai.openai.organizationId',
           section: 'OpenAI',
           label: 'Organization ID',
-          description: 'Optional organization override.',
+          description: 'Optional OpenAI organization override.',
           type: 'string',
           defaultValue: '',
           scopes: ['user'],
@@ -229,7 +229,7 @@ describe('EditorPreferencesDialog', () => {
           key: 'ai.openai.projectId',
           section: 'OpenAI',
           label: 'Project ID',
-          description: 'Optional project override.',
+          description: 'Optional OpenAI project override.',
           type: 'string',
           defaultValue: '',
           scopes: ['user'],
@@ -238,7 +238,7 @@ describe('EditorPreferencesDialog', () => {
           key: 'ai.openai.storeResponses',
           section: 'OpenAI',
           label: 'Store Responses',
-          description: 'Allow response retention.',
+          description: 'Allow OpenAI to retain Responses API objects.',
           type: 'boolean',
           defaultValue: false,
           scopes: ['user'],
@@ -319,8 +319,8 @@ describe('EditorPreferencesDialog', () => {
       aiProviders: {
         secureStorageAvailable: true,
         providers: [
-          { id: 'openai', label: 'OpenAI', connected: true },
-          { id: 'anthropic', label: 'Anthropic', connected: false },
+          { id: 'openai', label: 'OpenAI', connected: true, connectionStatus: 'connected' },
+          { id: 'anthropic', label: 'Anthropic', connected: false, connectionStatus: 'disconnected' },
         ],
       },
     });
@@ -329,8 +329,10 @@ describe('EditorPreferencesDialog', () => {
     await waitFor(() => expect(window.arc.settings.snapshot).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole('treeitem', { name: /Providers/ }));
 
-    expect(screen.getByText('Connected — API key validated and stored securely on this machine.')).toBeInTheDocument();
-    expect(screen.getByText('Not connected — enter an API key below to connect.')).toBeInTheDocument();
+    expect(screen.getByText('Connected')).toBeInTheDocument();
+    expect(screen.getByText('Not connected')).toBeInTheDocument();
+    expect(screen.queryByText('OpenAI API key.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Anthropic API key.')).not.toBeInTheDocument();
 
     const openAiKey = screen.getByLabelText('OpenAI API Key');
     expect(openAiKey).toHaveAttribute('type', 'password');
@@ -349,6 +351,64 @@ describe('EditorPreferencesDialog', () => {
     expect(screen.getByRole('spinbutton', { name: 'Max Output Tokens' })).toHaveValue(16384);
     expect(screen.getByRole('button', { name: 'Remove OpenAI API key from ARC' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Remove Anthropic API key from ARC' })).toBeDisabled();
+
+    const testButtons = screen.getAllByRole('button', { name: 'Test connection' });
+    expect(testButtons[0]).toBeEnabled();
+    expect(testButtons[1]).toBeDisabled();
+    fireEvent.click(testButtons[0]);
+    await waitFor(() =>
+      expect(window.arc.settings.update).toHaveBeenCalledWith('user', { 'ai.openai.apiKey': { action: 'test' } }, 4),
+    );
+  });
+
+  it('refreshes a cold provider connection when entering the Providers page', async () => {
+    const coldSnapshot = {
+      revision: 7,
+      schema: [
+        {
+          key: 'ai.openai.apiKey',
+          section: 'OpenAI',
+          label: 'API Key',
+          description: 'OpenAI API key.',
+          type: 'string',
+          format: 'secret',
+          secretProvider: 'openai',
+          defaultValue: '',
+          scopes: ['user'],
+        },
+      ],
+      values: { 'ai.openai.apiKey': 'configured' },
+      sources: { 'ai.openai.apiKey': 'user' },
+      restartRequired: [],
+      aiProviders: {
+        secureStorageAvailable: true,
+        providers: [
+          { id: 'openai', label: 'OpenAI', connected: true, connectionStatus: 'cold' },
+          { id: 'anthropic', label: 'Anthropic', connected: false, connectionStatus: 'disconnected' },
+        ],
+      },
+    };
+    const connectedSnapshot = {
+      ...coldSnapshot,
+      aiProviders: {
+        ...coldSnapshot.aiProviders,
+        providers: [
+          { id: 'openai', label: 'OpenAI', connected: true, connectionStatus: 'connected' },
+          { id: 'anthropic', label: 'Anthropic', connected: false, connectionStatus: 'disconnected' },
+        ],
+      },
+    };
+    window.arc.settings.snapshot = vi.fn().mockResolvedValue(coldSnapshot);
+    window.arc.settings.update = vi.fn().mockResolvedValue(connectedSnapshot);
+
+    render(<EditorPreferencesDialog onClose={vi.fn()} onResetLayout={vi.fn()} />);
+    await waitFor(() => expect(window.arc.settings.snapshot).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('treeitem', { name: /Providers/ }));
+
+    await waitFor(() =>
+      expect(window.arc.settings.update).toHaveBeenCalledWith('user', { 'ai.openai.apiKey': { action: 'test' } }, 7),
+    );
+    await waitFor(() => expect(screen.getByText('Connected')).toBeInTheDocument());
   });
 
   it('shows framework pages that do not have registered preferences yet', () => {

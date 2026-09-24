@@ -96,6 +96,43 @@
   padding: 14px 0;
 }
 
+.settings-provider-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-provider-status-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.45;
+}
+
+.settings-provider-status-connected .settings-provider-status-dot {
+  background: var(--arc-color-success, #5eaf78);
+  opacity: 1;
+}
+
+.settings-provider-status-testing .settings-provider-status-dot {
+  background: var(--arc-color-warning, #d8a84e);
+  opacity: 1;
+}
+
+.settings-provider-status-invalid .settings-provider-status-dot {
+  background: var(--arc-color-danger, #d66f6f);
+  opacity: 1;
+}
+
+.settings-provider-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 12px 0 4px;
+}
+
 .settings-card-list {
   padding: 8px 0;
 }

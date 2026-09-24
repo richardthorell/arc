@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { FolderOpen, Monitor, Palette, RefreshCw, RotateCcw, TriangleAlert, Unplug } from 'lucide-react';
 import { SiAnthropic, SiOpenai } from 'react-icons/si';
 
@@ -85,6 +85,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
   const [message, setMessage] = useState('');
   const [recovery, setRecovery] = useState<RecoverySnapshot | null>(null);
   const [extensions, setExtensions] = useState<ArcExtensionSnapshot | null>(null);
+  const [testingProviders, setTestingProviders] = useState<ReadonlySet<AiProviderId>>(() => new Set());
 
   useEffect(() => {
     void window.arc.settings.snapshot().then(setSnapshot);
@@ -126,6 +127,45 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     }
   };
 
+  const runProviderTest = useCallback(
+    async (providerId: AiProviderId) => {
+      if (!snapshot || testingProviders.has(providerId)) return;
+      const descriptor = snapshot.schema.find(
+        (candidate) => candidate.format === 'secret' && candidate.secretProvider === providerId,
+      );
+      if (!descriptor || !snapshot.values[descriptor.key]) return;
+
+      setTestingProviders((current) => new Set(current).add(providerId));
+      setMessage('');
+      try {
+        const next = await window.arc.settings.update(
+          'user',
+          { [descriptor.key]: { action: 'test' } },
+          snapshot.revision,
+        );
+        if (next) setSnapshot(next);
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : String(error));
+        const refreshed = await window.arc.settings.snapshot();
+        if (refreshed) setSnapshot(refreshed);
+      } finally {
+        setTestingProviders((current) => {
+          const next = new Set(current);
+          next.delete(providerId);
+          return next;
+        });
+      }
+    },
+    [snapshot, testingProviders],
+  );
+
+  useEffect(() => {
+    if (page.id !== 'ai.providers') return;
+    for (const provider of snapshot?.aiProviders?.providers ?? []) {
+      if (provider.connectionStatus === 'cold' && !testingProviders.has(provider.id)) void runProviderTest(provider.id);
+    }
+  }, [page.id, runProviderTest, snapshot?.aiProviders?.providers, testingProviders]);
+
   const browseWindowsPath = async (descriptor: EditorSettingDescriptor) => {
     const selectedFolder = await window.arc.dialog.projectDestination(`Select ${descriptor.label}`);
     if (!selectedFolder) return;
@@ -146,11 +186,21 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
   const providerSubtitle = (card: EditorSettingsCardDefinition) => {
     if (!card.provider) return undefined;
     const provider = snapshot?.aiProviders?.providers.find((candidate) => candidate.id === card.provider);
-    if (snapshot?.aiProviders && !snapshot.aiProviders.secureStorageAvailable)
-      return 'Secure credential storage is unavailable on this machine.';
-    return provider?.connected
-      ? 'Connected — API key validated and stored securely on this machine.'
-      : 'Not connected — enter an API key below to connect.';
+    const testing = testingProviders.has(card.provider);
+    const connected = provider?.connectionStatus === 'connected';
+    const state = testing
+      ? 'testing'
+      : connected
+        ? 'connected'
+        : provider?.connectionStatus === 'invalid'
+          ? 'invalid'
+          : 'idle';
+    return (
+      <span className={`settings-provider-status settings-provider-status-${state}`}>
+        <span aria-hidden="true" className="settings-provider-status-dot" />
+        {connected ? 'Connected' : 'Not connected'}
+      </span>
+    );
   };
 
   const editor = (descriptor: EditorSettingDescriptor, value: unknown) => {
@@ -257,70 +307,87 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
   const settingsContent =
     visibleCards.length > 0 ? (
       <>
-        {visibleCards.map(({ card, entries }) => (
-          <UiSettingsCard
-            icon={card.icon ? settingsIcons[card.icon] : undefined}
-            key={card.section}
-            subtitle={providerSubtitle(card)}
-            title={card.title ?? card.section}
-          >
-            {entries.map((descriptor) => {
-              const pathSetting = isWindowsPathSetting(descriptor);
-              const secretSetting = descriptor.format === 'secret';
-              return (
-                <div
-                  className={['settings-field-row', pathSetting ? 'settings-field-row-path' : '']
-                    .filter(Boolean)
-                    .join(' ')}
-                  key={descriptor.key}
-                >
-                  <span className="settings-field-description">
-                    <strong>{descriptor.label}</strong>
-                    {!secretSetting && <small>{visibleDescription(descriptor)}</small>}
-                    {snapshot?.restartRequired.includes(descriptor.key) && (
-                      <span className="settings-field-warning">
-                        <TriangleAlert aria-hidden="true" size={9} />
-                        Restart required
-                      </span>
-                    )}
-                  </span>
-                  {editor(descriptor, snapshot?.values[descriptor.key])}
-                  {pathSetting ? (
-                    <div className="settings-field-actions">
+        {visibleCards.map(({ card, entries }) => {
+          const provider = card.provider
+            ? snapshot?.aiProviders?.providers.find((candidate) => candidate.id === card.provider)
+            : undefined;
+          const testing = card.provider ? testingProviders.has(card.provider) : false;
+          return (
+            <UiSettingsCard
+              icon={card.icon ? settingsIcons[card.icon] : undefined}
+              key={card.section}
+              subtitle={providerSubtitle(card)}
+              title={card.title ?? card.section}
+            >
+              {entries.map((descriptor) => {
+                const pathSetting = isWindowsPathSetting(descriptor);
+                const secretSetting = descriptor.format === 'secret';
+                return (
+                  <div
+                    className={['settings-field-row', pathSetting ? 'settings-field-row-path' : '']
+                      .filter(Boolean)
+                      .join(' ')}
+                    key={descriptor.key}
+                  >
+                    <span className="settings-field-description">
+                      <strong>{descriptor.label}</strong>
+                      {!secretSetting && <small>{visibleDescription(descriptor)}</small>}
+                      {snapshot?.restartRequired.includes(descriptor.key) && (
+                        <span className="settings-field-warning">
+                          <TriangleAlert aria-hidden="true" size={9} />
+                          Restart required
+                        </span>
+                      )}
+                    </span>
+                    {editor(descriptor, snapshot?.values[descriptor.key])}
+                    {pathSetting ? (
+                      <div className="settings-field-actions">
+                        <UiIconButton
+                          label={`Auto-detect ${descriptor.label}`}
+                          onClick={() => void update(descriptor.key, undefined)}
+                        >
+                          <RefreshCw size={13} />
+                        </UiIconButton>
+                        <UiIconButton
+                          label={`Browse for ${descriptor.label}`}
+                          onClick={() => void browseWindowsPath(descriptor)}
+                        >
+                          <FolderOpen size={13} />
+                        </UiIconButton>
+                      </div>
+                    ) : secretSetting ? (
                       <UiIconButton
-                        label={`Auto-detect ${descriptor.label}`}
+                        disabled={!snapshot?.values[descriptor.key]}
+                        label={`Remove ${providerLabel(descriptor.secretProvider ?? 'openai')} API key from ARC`}
                         onClick={() => void update(descriptor.key, undefined)}
                       >
-                        <RefreshCw size={13} />
+                        <Unplug size={13} />
                       </UiIconButton>
+                    ) : (
                       <UiIconButton
-                        label={`Browse for ${descriptor.label}`}
-                        onClick={() => void browseWindowsPath(descriptor)}
+                        label={`Reset ${descriptor.key}`}
+                        onClick={() => void update(descriptor.key, undefined)}
                       >
-                        <FolderOpen size={13} />
+                        <RotateCcw size={13} />
                       </UiIconButton>
-                    </div>
-                  ) : secretSetting ? (
-                    <UiIconButton
-                      disabled={!snapshot?.values[descriptor.key]}
-                      label={`Remove ${providerLabel(descriptor.secretProvider ?? 'openai')} API key from ARC`}
-                      onClick={() => void update(descriptor.key, undefined)}
-                    >
-                      <Unplug size={13} />
-                    </UiIconButton>
-                  ) : (
-                    <UiIconButton
-                      label={`Reset ${descriptor.key}`}
-                      onClick={() => void update(descriptor.key, undefined)}
-                    >
-                      <RotateCcw size={13} />
-                    </UiIconButton>
-                  )}
+                    )}
+                  </div>
+                );
+              })}
+              {card.provider && (
+                <div className="settings-provider-actions">
+                  <UiButton
+                    disabled={!provider?.connected || testing}
+                    onClick={() => void runProviderTest(card.provider!)}
+                    variant="toolbar"
+                  >
+                    {testing ? 'Testing…' : 'Test connection'}
+                  </UiButton>
                 </div>
-              );
-            })}
-          </UiSettingsCard>
-        ))}
+              )}
+            </UiSettingsCard>
+          );
+        })}
       </>
     ) : null;
 
