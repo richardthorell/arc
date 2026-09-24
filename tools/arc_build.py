@@ -173,9 +173,12 @@ def semantic_version_parts(value):
 
 
 def editor_node_toolchain_supported(node_version, npm_version):
+    node_parts = semantic_version_parts(node_version)
+    npm_parts = semantic_version_parts(npm_version)
     return (
-        semantic_version_parts(node_version) == semantic_version_parts(EDITOR_NODE_VERSION)
-        and semantic_version_parts(npm_version) == semantic_version_parts(EDITOR_NPM_VERSION)
+        node_parts == semantic_version_parts(EDITOR_NODE_VERSION)
+        and npm_parts is not None
+        and npm_parts >= semantic_version_parts(EDITOR_NPM_VERSION)
     )
 
 
@@ -206,7 +209,7 @@ def check_editor_prerequisites(cmake="cmake", npm="npm", require_native=True):
         node_ok = editor_node_toolchain_supported(node_version, npm_version)
         node_detail = "{} / npm {}".format(node_version, npm_version)
         if not node_ok:
-            node_detail += " (requires Node.js {} / npm {})".format(EDITOR_NODE_VERSION, EDITOR_NPM_VERSION)
+            node_detail += " (requires Node.js {} / npm >= {})".format(EDITOR_NODE_VERSION, EDITOR_NPM_VERSION)
     checks.append(
         {
             "key": "node",
@@ -298,7 +301,7 @@ def prerequisite_install_action(check):
     if check["key"] == "generator":
         return "upgrade", WINDOWS_CMAKE_PACKAGE, "CMake"
     if check["key"] == "node":
-        return "install", WINDOWS_NODE_PACKAGE, "Node.js {} / npm {}".format(EDITOR_NODE_VERSION, EDITOR_NPM_VERSION)
+        return "install", WINDOWS_NODE_PACKAGE, "Node.js {} / npm >= {}".format(EDITOR_NODE_VERSION, EDITOR_NPM_VERSION)
     return None
 
 
