@@ -46,9 +46,7 @@ describe('AiProviderSettingsPage', () => {
     fireEvent.change(key, { target: { value: 'sk-test-secret' } });
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
-    await waitFor(() =>
-      expect(window.arcAiProviders.connect).toHaveBeenCalledWith('openai', 'sk-test-secret'),
-    );
+    await waitFor(() => expect(window.arcAiProviders.connect).toHaveBeenCalledWith('openai', 'sk-test-secret'));
     expect(await screen.findByText('Connected')).toBeInTheDocument();
     expect(screen.queryByDisplayValue('sk-test-secret')).not.toBeInTheDocument();
   });

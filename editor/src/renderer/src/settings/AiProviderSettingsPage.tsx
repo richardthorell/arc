@@ -14,9 +14,12 @@ export function AiProviderSettingsPage({ onMessage }: AiProviderSettingsPageProp
   const [busyProvider, setBusyProvider] = useState<AiProviderId | null>(null);
 
   useEffect(() => {
-    void window.arcAiProviders.snapshot().then(setSnapshot).catch((error) => {
-      onMessage(error instanceof Error ? error.message : String(error));
-    });
+    void window.arcAiProviders
+      .snapshot()
+      .then(setSnapshot)
+      .catch((error) => {
+        onMessage(error instanceof Error ? error.message : String(error));
+      });
   }, [onMessage]);
 
   const connect = async (providerId: AiProviderId) => {
@@ -72,11 +75,7 @@ export function AiProviderSettingsPage({ onMessage }: AiProviderSettingsPageProp
           </span>
 
           {provider.connected ? (
-            <UiButton
-              disabled={busyProvider !== null}
-              onClick={() => void disconnect(provider.id)}
-              variant="toolbar"
-            >
+            <UiButton disabled={busyProvider !== null} onClick={() => void disconnect(provider.id)} variant="toolbar">
               {busyProvider === provider.id ? 'Disconnecting...' : 'Disconnect'}
             </UiButton>
           ) : editingProvider === provider.id ? (
