@@ -5,6 +5,7 @@ import { AssetThumbnail } from '../inspector/AssetPicker';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import type { HostResponse, InspectorTerrain } from '../inspector/inspectorTypes';
 import type { AssetItem } from '../services/editorHostTypes';
+import { UiButton, UiSlider } from '../ui';
 
 import './terrainEditor.css';
 
@@ -89,41 +90,44 @@ export function TerrainViewportOverlay({
       </div>
 
       <div className="terrain-mode-tabs terrain-overlay-tabs" role="tablist" aria-label="Terrain editing mode">
-        <button
+        <UiButton
+          active={!paintMode}
           aria-selected={!paintMode}
-          className={!paintMode ? 'active' : ''}
           onClick={() => void update({ tool: 'sculpt' })}
           role="tab"
           type="button"
+          variant="toolbar"
         >
           <Mountain size={14} /> Sculpt
-        </button>
-        <button
+        </UiButton>
+        <UiButton
+          active={paintMode}
           aria-selected={paintMode}
-          className={paintMode ? 'active' : ''}
           onClick={() => void update({ tool: 'paint' })}
           role="tab"
           type="button"
+          variant="toolbar"
         >
           <Paintbrush size={14} /> Paint
-        </button>
+        </UiButton>
       </div>
 
       {!paintMode && (
         <div className="terrain-overlay-tool-row" aria-label="Sculpt tools">
           {sculptTools.map(({ id, label, icon: Icon, hint }) => (
-            <button
+            <UiButton
+              active={state.tool === id}
               aria-label={label}
               aria-pressed={state.tool === id}
-              className={state.tool === id ? 'active' : ''}
               key={id}
               onClick={() => void update({ tool: id })}
               title={hint}
               type="button"
+              variant="toolbar"
             >
               <Icon size={15} />
               <span>{label}</span>
-            </button>
+            </UiButton>
           ))}
         </div>
       )}
@@ -163,17 +167,18 @@ export function TerrainViewportOverlay({
             {terrain.layers.map((layer, index) => {
               const asset = assets.find((candidate) => candidate.path === layer.baseColorPath);
               return (
-                <button
+                <UiButton
+                  active={state.activeLayer === index}
                   aria-label={`Paint ${layer.name}`}
                   aria-pressed={state.activeLayer === index}
-                  className={state.activeLayer === index ? 'active' : ''}
                   key={layer.name}
                   onClick={() => void update({ activeLayer: index, tool: 'paint' })}
                   type="button"
+                  variant="ghost"
                 >
                   <AssetThumbnail asset={asset} path={layer.baseColorPath} provider={thumbnailProvider} />
                   <span>{layer.name}</span>
-                </button>
+                </UiButton>
               );
             })}
           </div>
@@ -205,15 +210,7 @@ function TerrainOverlayRange({
   return (
     <label className="terrain-overlay-range">
       <span>{label}</span>
-      <input
-        aria-label={label}
-        max={max}
-        min={min}
-        onChange={(event) => onChange(Number(event.target.value))}
-        step={step}
-        type="range"
-        value={value}
-      />
+      <UiSlider aria-label={label} max={max} min={min} step={step} value={value} onValueChange={onChange} />
       <output>
         {Number.isInteger(value) ? value : value.toFixed(2)}
         {suffix}
