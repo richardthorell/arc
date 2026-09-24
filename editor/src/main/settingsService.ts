@@ -1,9 +1,10 @@
 import fs from 'node:fs';
-import { createRequire } from 'node:module';
 import path from 'node:path';
 
+import type { AiProviderAccountsSnapshot, AiProviderId } from '../common/aiProviderTypes';
 import type { EditorSettingDescriptor, EditorSettingsSnapshot } from '../common/editorWorkflowTypes';
 import type { ArcProjectCandidate } from '../common/projectTypes';
+import { AiProviderService } from './aiProviderService';
 
 const schema: EditorSettingDescriptor[] = [
   {
@@ -19,52 +20,60 @@ const schema: EditorSettingDescriptor[] = [
   },
   {
     key: 'ai.openai.apiKey',
-    section: 'AI Providers',
+    section: 'OpenAI',
     label: 'API Key',
-    description: 'OpenAI project API key. Stored encrypted on this machine and never written to project settings.',
+    description: 'OpenAI API key. ARC validates it before storing it with operating-system credential protection.',
     type: 'string',
     format: 'secret',
+    secretProvider: 'openai',
     defaultValue: '',
     scopes: ['user'],
   },
   {
     key: 'ai.openai.model',
-    section: 'AI Providers',
+    section: 'OpenAI',
     label: 'Model',
     description: 'Default OpenAI model used by ARC Assistant conversations.',
     type: 'enum',
-    defaultValue: 'gpt-6-sol',
-    options: ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'],
+    defaultValue: 'gpt-5.6-sol',
+    options: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
     optionLabels: {
-      'gpt-6-astra': 'GPT-6 Astra',
-      'gpt-6-sol': 'GPT-6 Sol',
-      'gpt-6-luna': 'GPT-6 Luna',
+      'gpt-5.6-sol': 'GPT-5.6 Sol',
+      'gpt-5.6-terra': 'GPT-5.6 Terra',
+      'gpt-5.6-luna': 'GPT-5.6 Luna',
     },
     scopes: ['user'],
   },
   {
     key: 'ai.openai.reasoningEffort',
-    section: 'AI Providers',
+    section: 'OpenAI',
     label: 'Reasoning Effort',
     description: 'Default reasoning effort for OpenAI model responses.',
     type: 'enum',
     defaultValue: 'medium',
-    options: ['low', 'medium', 'high', 'xhigh', 'max'],
-    optionLabels: { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra High', max: 'Maximum' },
+    options: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+    optionLabels: {
+      none: 'None',
+      low: 'Low',
+      medium: 'Medium',
+      high: 'High',
+      xhigh: 'Extra High',
+      max: 'Maximum',
+    },
     scopes: ['user'],
   },
   {
     key: 'ai.openai.organizationId',
-    section: 'AI Providers',
+    section: 'OpenAI',
     label: 'Organization ID',
-    description: 'Optional OpenAI organization override for accounts that belong to multiple organizations.',
+    description: 'Optional organization override for accounts that belong to multiple OpenAI organizations.',
     type: 'string',
     defaultValue: '',
     scopes: ['user'],
   },
   {
     key: 'ai.openai.projectId',
-    section: 'AI Providers',
+    section: 'OpenAI',
     label: 'Project ID',
     description: 'Optional OpenAI project override. Project API keys normally select this automatically.',
     type: 'string',
@@ -73,11 +82,67 @@ const schema: EditorSettingDescriptor[] = [
   },
   {
     key: 'ai.openai.storeResponses',
-    section: 'AI Providers',
+    section: 'OpenAI',
     label: 'Store Responses',
     description: 'Allow OpenAI to retain Responses API objects. ARC keeps this disabled by default.',
     type: 'boolean',
     defaultValue: false,
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.anthropic.apiKey',
+    section: 'Anthropic',
+    label: 'API Key',
+    description: 'Anthropic API key. ARC validates it before storing it with operating-system credential protection.',
+    type: 'string',
+    format: 'secret',
+    secretProvider: 'anthropic',
+    defaultValue: '',
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.anthropic.model',
+    section: 'Anthropic',
+    label: 'Model',
+    description: 'Default Claude model used by ARC Assistant conversations.',
+    type: 'enum',
+    defaultValue: 'claude-sonnet-5',
+    options: ['claude-sonnet-5', 'claude-opus-5', 'claude-fable-5', 'claude-haiku-4-5-20251001'],
+    optionLabels: {
+      'claude-sonnet-5': 'Claude Sonnet 5',
+      'claude-opus-5': 'Claude Opus 5',
+      'claude-fable-5': 'Claude Fable 5',
+      'claude-haiku-4-5-20251001': 'Claude Haiku 4.5',
+    },
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.anthropic.effort',
+    section: 'Anthropic',
+    label: 'Effort',
+    description: 'Default adaptive-thinking effort for supported Claude models.',
+    type: 'enum',
+    defaultValue: 'high',
+    options: ['low', 'medium', 'high', 'xhigh', 'max'],
+    optionLabels: {
+      low: 'Low',
+      medium: 'Medium',
+      high: 'High',
+      xhigh: 'Extra High',
+      max: 'Maximum',
+    },
+    scopes: ['user'],
+  },
+  {
+    key: 'ai.anthropic.maxOutputTokens',
+    section: 'Anthropic',
+    label: 'Max Output Tokens',
+    description: 'Maximum output budget sent with Claude Messages API requests.',
+    type: 'number',
+    defaultValue: 16384,
+    minimum: 1024,
+    maximum: 131072,
+    step: 1024,
     scopes: ['user'],
   },
   {
@@ -377,32 +442,16 @@ const schema: EditorSettingDescriptor[] = [
 
 const descriptors = new Map(schema.map((descriptor) => [descriptor.key, descriptor]));
 const defaults = Object.fromEntries(schema.map((descriptor) => [descriptor.key, descriptor.defaultValue]));
-const secretSettingKeys = new Set(['ai.openai.apiKey']);
+const secretDescriptors = schema.filter(
+  (descriptor): descriptor is EditorSettingDescriptor & { secretProvider: AiProviderId } =>
+    descriptor.format === 'secret' && descriptor.secretProvider !== undefined,
+);
 
-export type SettingsSecretCodec = {
-  encrypt(value: string): string;
-  decrypt(value: string): string;
-};
-
-type ElectronSafeStorage = {
-  isEncryptionAvailable(): boolean;
-  encryptString(value: string): Buffer;
-  decryptString(value: Buffer): string;
-};
-
-const electronSecretCodec: SettingsSecretCodec = {
-  encrypt(value) {
-    const electron = createRequire(import.meta.url)('electron') as { safeStorage?: ElectronSafeStorage };
-    const storage = electron.safeStorage;
-    if (!storage?.isEncryptionAvailable()) throw new Error('Secure credential storage is unavailable on this machine');
-    return storage.encryptString(value).toString('base64');
-  },
-  decrypt(value) {
-    const electron = createRequire(import.meta.url)('electron') as { safeStorage?: ElectronSafeStorage };
-    const storage = electron.safeStorage;
-    if (!storage?.isEncryptionAvailable()) throw new Error('Secure credential storage is unavailable on this machine');
-    return storage.decryptString(Buffer.from(value, 'base64'));
-  },
+export type SettingsAiProviderService = {
+  snapshot(): AiProviderAccountsSnapshot;
+  connect(providerId: AiProviderId, credential: string): Promise<AiProviderAccountsSnapshot>;
+  disconnect(providerId: AiProviderId): AiProviderAccountsSnapshot;
+  credential(providerId: AiProviderId): string | null;
 };
 
 const readObject = (filePath: string): Record<string, unknown> => {
@@ -443,12 +492,17 @@ const validateValue = (descriptor: EditorSettingDescriptor, value: unknown): voi
 
 export class SettingsService {
   private revision = 1;
+  private readonly aiProviderService: SettingsAiProviderService;
 
   constructor(
     private readonly userSettingsPath: string,
     private readonly activeProject: () => ArcProjectCandidate | null,
-    private readonly secretCodec: SettingsSecretCodec = electronSecretCodec,
-  ) {}
+    aiProviderService?: SettingsAiProviderService,
+  ) {
+    this.aiProviderService =
+      aiProviderService ??
+      new AiProviderService(path.join(path.dirname(userSettingsPath), 'ai-provider-credentials.v1.json'));
+  }
 
   snapshot(): EditorSettingsSnapshot {
     const user = this.validEntries(readObject(this.resolvedUserSettingsPath()));
@@ -458,11 +512,11 @@ export class SettingsService {
     for (const key of Object.keys(values))
       sources[key] = Object.hasOwn(project, key) ? 'project' : Object.hasOwn(user, key) ? 'user' : 'default';
 
-    const secrets = readObject(this.secretSettingsPath());
-    for (const key of secretSettingKeys) {
-      if (typeof secrets[key] !== 'string') continue;
-      values[key] = 'configured';
-      sources[key] = 'user';
+    const aiProviders = this.aiProviderService.snapshot();
+    for (const descriptor of secretDescriptors) {
+      const connected = aiProviders.providers.find((provider) => provider.id === descriptor.secretProvider)?.connected ?? false;
+      values[descriptor.key] = connected ? 'configured' : '';
+      sources[descriptor.key] = connected ? 'user' : 'default';
     }
 
     return {
@@ -471,14 +525,15 @@ export class SettingsService {
       sources,
       restartRequired: schema.filter((entry) => entry.restartRequired).map((entry) => entry.key),
       schema,
+      aiProviders,
     };
   }
 
-  update(
+  async update(
     scope: 'user' | 'project',
     changes: Record<string, unknown>,
     expectedRevision: number,
-  ): EditorSettingsSnapshot {
+  ): Promise<EditorSettingsSnapshot> {
     if (expectedRevision !== this.revision) throw new Error('Settings changed; refresh before applying edits');
     const project = this.activeProject();
     if (scope === 'project' && !project?.writable) throw new Error('The active project is not writable');
@@ -489,17 +544,18 @@ export class SettingsService {
       if (value !== undefined) validateValue(descriptor, value);
     }
 
-    const updates = new Map<string, Record<string, unknown>>();
-    let secrets: Record<string, unknown> | null = null;
     for (const [key, value] of Object.entries(changes)) {
-      if (secretSettingKeys.has(key)) {
-        if (scope !== 'user') throw new Error(`${key} cannot be stored in ${scope} settings`);
-        secrets ??= { ...readObject(this.secretSettingsPath()) };
-        if (value === undefined || value === '') delete secrets[key];
-        else secrets[key] = this.secretCodec.encrypt(String(value).trim());
-        continue;
-      }
+      const descriptor = descriptors.get(key)!;
+      if (!descriptor.secretProvider) continue;
+      if (scope !== 'user') throw new Error(`${key} cannot be stored in ${scope} settings`);
+      if (value === undefined || value === '') this.aiProviderService.disconnect(descriptor.secretProvider);
+      else await this.aiProviderService.connect(descriptor.secretProvider, String(value));
+    }
 
+    const updates = new Map<string, Record<string, unknown>>();
+    for (const [key, value] of Object.entries(changes)) {
+      const descriptor = descriptors.get(key)!;
+      if (descriptor.secretProvider) continue;
       const target = scope === 'user' ? this.resolvedUserSettingsPath() : this.projectSettingsPathForKey(key);
       if (!target) throw new Error('No writable project settings file is available');
       const next = updates.get(target) ?? { ...readObject(target) };
@@ -508,24 +564,19 @@ export class SettingsService {
       updates.set(target, next);
     }
     for (const [target, values] of updates) writeAtomic(target, values);
-    if (secrets) writeAtomic(this.secretSettingsPath(), secrets);
     ++this.revision;
     return this.snapshot();
   }
 
-  secretValue(key: string): string | null {
-    if (!secretSettingKeys.has(key)) throw new Error(`'${key}' is not a secret setting`);
-    const encrypted = readObject(this.secretSettingsPath())[key];
-    if (typeof encrypted !== 'string') return null;
-    return this.secretCodec.decrypt(encrypted);
+  providerCredential(providerId: AiProviderId): string | null {
+    return this.aiProviderService.credential(providerId);
   }
 
   private validEntries(values: Record<string, unknown>): Record<string, unknown> {
     const result: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(values)) {
-      if (secretSettingKeys.has(key)) continue;
       const descriptor = descriptors.get(key);
-      if (!descriptor) continue;
+      if (!descriptor || descriptor.secretProvider) continue;
       try {
         validateValue(descriptor, value);
         result[key] = value;
@@ -552,10 +603,6 @@ export class SettingsService {
     return project
       ? path.join(project.projectRoot, project.descriptor.paths.saved, 'Editor', 'settings.v1.json')
       : this.userSettingsPath;
-  }
-
-  private secretSettingsPath(): string {
-    return `${this.userSettingsPath}.secrets`;
   }
 
   private readProjectSettings(): Record<string, unknown> {
