@@ -1,9 +1,63 @@
 .ui-sidebar-panel {
-  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  width: var(--arc-activity-collapsed-width);
   height: 100%;
-  min-width: 0;
-  min-height: 0;
+  padding: var(--arc-space-4);
   overflow: hidden;
+  border-right: var(--arc-border-width) solid var(--arc-color-border-subtle);
   color: var(--arc-color-text);
   background: var(--arc-color-bg-panel-muted);
+}
+
+.ui-sidebar-panel-items,
+.ui-sidebar-panel-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.ui-sidebar-panel-button {
+  position: relative;
+  box-sizing: border-box;
+  flex: 0 0 40px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  margin: 0 0 var(--arc-space-3);
+  padding: 0;
+  border-radius: var(--arc-radius-2);
+}
+
+.ui-sidebar-panel-button.is-active {
+  color: var(--arc-color-text-strong);
+  background: var(--arc-color-bg-hover);
+  box-shadow: inset 2px 0 0 var(--arc-color-accent);
+}
+
+.ui-sidebar-panel-counter {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  overflow: visible;
+  border: 2px solid var(--arc-color-bg-chrome);
+  border-radius: 999px;
+  color: var(--arc-color-text-inverse);
+  background: var(--arc-color-accent);
+  font-size: var(--arc-text-xxs);
+  font-weight: 700;
+  line-height: 13px;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
 }

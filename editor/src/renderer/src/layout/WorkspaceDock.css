@@ -1,6 +1,6 @@
 .workbench-shell .workbench-body-dockview.activity-expanded {
   /* The global utility rail always stays icon-only. Expansion controls the
-     drawer inside WorkspaceDock rather than changing the rail width. */
+     overlay drawer inside WorkspaceDock rather than changing the rail width. */
   grid-template-columns: var(--arc-activity-collapsed-width) minmax(0, 1fr);
 }
 
@@ -45,15 +45,13 @@
 }
 
 .workspace-dock-shell {
-  display: grid;
-  grid-template-columns: 0 minmax(0, 1fr);
+  position: relative;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   background: var(--arc-color-bg-panel);
-  transition: grid-template-columns 140ms ease;
 }
 
 /* Keep each open document mounted so its editor state and native viewport survive
@@ -73,22 +71,32 @@
   pointer-events: auto;
 }
 
-.workbench-shell .workbench-body-dockview.activity-expanded .workspace-dock-shell {
-  grid-template-columns: var(--arc-utility-sidebar-width, var(--arc-left-panel-width)) minmax(0, 1fr);
-}
-
 .primary-sidebar {
-  position: relative;
+  position: absolute;
+  z-index: 12;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--arc-utility-sidebar-width, var(--arc-left-panel-width));
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-right: 0;
+  border-right: var(--arc-border-width) solid var(--arc-color-border-subtle);
   color: var(--arc-color-text);
   background: var(--arc-color-bg-panel-muted);
+  box-shadow: none;
+  pointer-events: none;
+  transform: translateX(calc(-100% - 8px));
+  transition:
+    transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 160ms ease;
+  will-change: transform;
 }
 
 .workbench-shell .workbench-body-dockview.activity-expanded .primary-sidebar {
-  border-right: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  box-shadow: 12px 0 28px rgba(0, 0, 0, 0.34);
+  pointer-events: auto;
+  transform: translateX(0);
 }
 
 .primary-sidebar-resize-handle {
@@ -123,16 +131,17 @@
   outline: none;
 }
 
-.primary-sidebar > * {
+/* Drawer content fills the surface. Keep the resize separator at its explicit
+   6px width so it cannot cover the drawer and intercept its pointer events. */
+.primary-sidebar > :not(.primary-sidebar-resize-handle) {
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
 }
 
-/* Hierarchy still uses the legacy Panel wrapper internally. The primary
-   sidebar itself is the container now, so suppress that duplicate tab strip
-   and let the panel body occupy the entire sidebar height. */
+/* Utility content can still contain legacy workbench-panel wrappers. The drawer
+   is the chrome now, so suppress any duplicate tab strip inside it. */
 .workbench-shell .primary-sidebar .workbench-panel {
   grid-template-rows: minmax(0, 1fr);
 }
@@ -142,6 +151,9 @@
 }
 
 .workbench-shell .workspace-dock {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
   min-width: 0;
   min-height: 0;
   width: 100%;
@@ -341,4 +353,10 @@
 
 .workspace-dock-panel .workbench-panel > .panel-tabs {
   display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primary-sidebar {
+    transition: none;
+  }
 }

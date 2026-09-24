@@ -5,19 +5,19 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { requestedSettingsDialogKind, resetSettingsDialogRequest } from '../settings/settingsDialogRoute';
-import { ActivityBar, ActivityBarButton } from './ActivityBar';
+import { UiSidebarPanel, UiSidebarPanelButton } from './UiSidebarPanel';
 
 afterEach(() => {
   cleanup();
   resetSettingsDialogRequest();
 });
 
-describe('ActivityBarButton', () => {
+describe('UiSidebarPanelButton', () => {
   it('does not show a counter when the value is zero', () => {
     render(
-      <ActivityBarButton aria-label="Repository" counter={0} variant="ghost">
+      <UiSidebarPanelButton aria-label="Repository" counter={0} variant="ghost">
         Repository
-      </ActivityBarButton>,
+      </UiSidebarPanelButton>,
     );
 
     expect(screen.queryByLabelText('0 unread')).not.toBeInTheDocument();
@@ -25,19 +25,20 @@ describe('ActivityBarButton', () => {
 
   it('shows a positive counter with its accessible label', () => {
     render(
-      <ActivityBarButton aria-label="Repository" counter={7} counterLabel="7 changed files" variant="ghost">
+      <UiSidebarPanelButton aria-label="Repository" counter={7} counterLabel="7 changed files" variant="ghost">
         Repository
-      </ActivityBarButton>,
+      </UiSidebarPanelButton>,
     );
 
     expect(screen.getByLabelText('7 changed files')).toHaveTextContent('7');
   });
 });
 
-describe('ActivityBar', () => {
+describe('UiSidebarPanel', () => {
   it('shows global utilities without hierarchy', () => {
-    render(<ActivityBar activeActivity="scene" onSelectActivity={vi.fn()} onSettings={vi.fn()} />);
+    render(<UiSidebarPanel activeActivity="scene" onSelectActivity={vi.fn()} onSettings={vi.fn()} />);
 
+    expect(screen.getByRole('complementary', { name: 'Global utilities' })).toHaveClass('ui-sidebar-panel');
     expect(screen.queryByRole('button', { name: 'Hierarchy' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'AI Gateway' })).toBeInTheDocument();
@@ -45,11 +46,11 @@ describe('ActivityBar', () => {
     expect(screen.getByRole('button', { name: 'Editor Preferences' })).toBeInTheDocument();
   });
 
-  it('opens a utility and collapses it when clicked again', () => {
+  it('opens a utility drawer and collapses it when clicked again', () => {
     const onSelectActivity = vi.fn();
     const onExpandedChange = vi.fn();
     const { rerender } = render(
-      <ActivityBar
+      <UiSidebarPanel
         activeActivity="scene"
         expanded={false}
         onExpandedChange={onExpandedChange}
@@ -63,7 +64,7 @@ describe('ActivityBar', () => {
     expect(onExpandedChange).toHaveBeenCalledWith(true);
 
     rerender(
-      <ActivityBar
+      <UiSidebarPanel
         activeActivity="search"
         expanded
         onExpandedChange={onExpandedChange}
@@ -75,12 +76,12 @@ describe('ActivityBar', () => {
     expect(onExpandedChange).toHaveBeenLastCalledWith(false);
   });
 
-  it('opens editor preferences without treating it as an expandable activity panel', () => {
+  it('opens editor preferences without treating it as a drawer activity', () => {
     const onExpandedChange = vi.fn();
     const onSelectActivity = vi.fn();
     const onSettings = vi.fn();
     render(
-      <ActivityBar
+      <UiSidebarPanel
         activeActivity="scene"
         expanded={false}
         onExpandedChange={onExpandedChange}
