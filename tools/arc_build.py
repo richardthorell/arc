@@ -31,8 +31,7 @@ except NameError:
 SLANG_VERSION = "2026.14.1"
 SLANG_RELEASE_BASE_URL = "https://github.com/shader-slang/slang/releases/download/v{}".format(SLANG_VERSION)
 EDITOR_NODE_VERSION = "22.23.3"
-EDITOR_NODE_VERSION_PREFIX = (22, 23)
-EDITOR_NPM_MAJOR = 10
+EDITOR_NPM_VERSION = "10.9.9"
 VISUAL_STUDIO_GENERATORS = {
     18: "Visual Studio 18 2026",
     17: "Visual Studio 17 2022",
@@ -174,13 +173,9 @@ def semantic_version_parts(value):
 
 
 def editor_node_toolchain_supported(node_version, npm_version):
-    node_parts = semantic_version_parts(node_version)
-    npm_parts = semantic_version_parts(npm_version)
-    return bool(
-        node_parts
-        and npm_parts
-        and node_parts[:2] == EDITOR_NODE_VERSION_PREFIX
-        and npm_parts[0] == EDITOR_NPM_MAJOR
+    return (
+        semantic_version_parts(node_version) == semantic_version_parts(EDITOR_NODE_VERSION)
+        and semantic_version_parts(npm_version) == semantic_version_parts(EDITOR_NPM_VERSION)
     )
 
 
@@ -211,7 +206,7 @@ def check_editor_prerequisites(cmake="cmake", npm="npm", require_native=True):
         node_ok = editor_node_toolchain_supported(node_version, npm_version)
         node_detail = "{} / npm {}".format(node_version, npm_version)
         if not node_ok:
-            node_detail += " (requires Node.js 22.23.x / npm 10.x)"
+            node_detail += " (requires Node.js {} / npm {})".format(EDITOR_NODE_VERSION, EDITOR_NPM_VERSION)
     checks.append(
         {
             "key": "node",
@@ -303,7 +298,7 @@ def prerequisite_install_action(check):
     if check["key"] == "generator":
         return "upgrade", WINDOWS_CMAKE_PACKAGE, "CMake"
     if check["key"] == "node":
-        return "install", WINDOWS_NODE_PACKAGE, "Node.js 22.23 and npm 10"
+        return "install", WINDOWS_NODE_PACKAGE, "Node.js {} / npm {}".format(EDITOR_NODE_VERSION, EDITOR_NPM_VERSION)
     return None
 
 
