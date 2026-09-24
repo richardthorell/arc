@@ -147,7 +147,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     if (!card.provider) return undefined;
     const provider = snapshot?.aiProviders?.providers.find((candidate) => candidate.id === card.provider);
     if (snapshot?.aiProviders && !snapshot.aiProviders.secureStorageAvailable)
-      return snapshot.aiProviders.secureStorageDetail ?? 'Secure credential storage is unavailable on this machine.';
+      return 'Secure credential storage is unavailable on this machine.';
     return provider?.connected
       ? 'Connected — API key validated and stored securely on this machine.'
       : 'Not connected — enter an API key below to connect.';
@@ -276,7 +276,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                 >
                   <span className="settings-field-description">
                     <strong>{descriptor.label}</strong>
-                    <small>{visibleDescription(descriptor)}</small>
+                    {!secretSetting && <small>{visibleDescription(descriptor)}</small>}
                     {snapshot?.restartRequired.includes(descriptor.key) && (
                       <span className="settings-field-warning">
                         <TriangleAlert aria-hidden="true" size={9} />
