@@ -2,12 +2,14 @@
 
 #include "project_runtime_world_bridge.h"
 
+#include <arc/diagnostics/log.h>
 #include <arc/flow/flow.h>
 #include <arc/input/input.h>
 #include <arc/project/input_config.h>
 #include <arc/scene/components.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <fstream>
 #include <memory>
 #include <optional>
@@ -34,6 +36,18 @@ std::string execution_error(const flow::execution_result& result, std::string_vi
                           ':' + std::to_string(entity.generation) + " (status " +
                           std::to_string(static_cast<unsigned>(result.status)) + ')';
     if (!result.node_id.empty()) message += " at node '" + result.node_id + '\'';
+    return message;
+}
+
+std::string compile_error(std::string_view graph, const flow::compile_result& result)
+{
+    std::string message = "Flow graph '" + std::string(graph) + "' failed to compile";
+    if (result.diagnostics.empty()) return message;
+
+    const auto& diagnostic = result.diagnostics.front();
+    if (!diagnostic.code.empty()) message += " [" + diagnostic.code + ']';
+    if (!diagnostic.message.empty()) message += ": " + diagnostic.message;
+    if (!diagnostic.node_id.empty()) message += " at node '" + diagnostic.node_id + '\'';
     return message;
 }
 
@@ -120,15 +134,27 @@ std::optional<input::mouse_button> simulation_mouse_button(std::int32_t code) no
     }
 }
 
+struct compiled_flow_artifact
+{
+    std::string source;
+    std::shared_ptr<const flow::bytecode_program> program;
+    std::uint64_t generation{1};
+    std::optional<std::string> rejected_source;
+    std::string reload_error;
+};
+
 struct bound_flow_instance
 {
     ecs::entity entity{};
     std::string graph_path;
     std::shared_ptr<const flow::bytecode_program> program;
+    std::uint64_t artifact_generation{};
     flow::vm_instance vm;
 
-    bound_flow_instance(ecs::entity value, std::string path, std::shared_ptr<const flow::bytecode_program> bytecode)
-        : entity(value), graph_path(std::move(path)), program(std::move(bytecode)), vm(*program)
+    bound_flow_instance(ecs::entity value, std::string path, std::shared_ptr<const flow::bytecode_program> bytecode,
+                        std::uint64_t generation)
+        : entity(value), graph_path(std::move(path)), program(std::move(bytecode)), artifact_generation(generation),
+          vm(*program)
     {
     }
 };
@@ -140,6 +166,13 @@ std::optional<std::string> read_text_file(const std::filesystem::path& path)
     std::ostringstream stream;
     stream << input_file.rdbuf();
     return stream.str();
+}
+
+void report_reload_error(compiled_flow_artifact& artifact, std::string message)
+{
+    if (artifact.reload_error == message) return;
+    artifact.reload_error = std::move(message);
+    ::arc::diagnostics::error("Flow", artifact.reload_error);
 }
 
 class flow_play_session
@@ -240,6 +273,7 @@ public:
 
     void run_fixed(ecs::system_context& context)
     {
+        reload_changed_programs(context);
         sample_input(context.input());
 
         runtime_world_bridge_context bridge{
@@ -363,7 +397,98 @@ private:
         return binding && binding->graph_path == instance.graph_path;
     }
 
-    [[nodiscard]] shared_program program_for(std::string_view graph_path, std::string& error)
+    void reload_changed_programs(ecs::system_context& context)
+    {
+        for (auto& [graph_path, artifact] : programs_)
+        {
+            const auto source = read_text_file(content_root_ / std::filesystem::path{graph_path});
+            if (!source)
+            {
+                report_reload_error(artifact, "Flow graph '" + graph_path +
+                                                  "' hot reload could not read the source; keeping generation " +
+                                                  std::to_string(artifact.generation));
+                continue;
+            }
+
+            if (*source == artifact.source)
+            {
+                artifact.rejected_source.reset();
+                artifact.reload_error.clear();
+                continue;
+            }
+            if (artifact.rejected_source && *artifact.rejected_source == *source) continue;
+
+            auto compiled = flow::compile_asset(*source);
+            if (!compiled.succeeded || !compiled.bytecode)
+            {
+                artifact.rejected_source = *source;
+                report_reload_error(artifact, compile_error(graph_path, compiled) + "; keeping generation " +
+                                                  std::to_string(artifact.generation));
+                continue;
+            }
+
+            auto next_program = std::make_shared<const flow::bytecode_program>(std::move(*compiled.bytecode));
+            const std::uint64_t next_generation = artifact.generation + 1;
+            std::vector<std::size_t> indices;
+            std::vector<bound_flow_instance> replacements;
+            indices.reserve(instances_.size());
+            replacements.reserve(instances_.size());
+
+            bool replacement_valid = true;
+            for (std::size_t index = 0; index < instances_.size(); ++index)
+            {
+                const auto& instance = instances_[index];
+                if (instance.graph_path != graph_path || instance.artifact_generation != artifact.generation) continue;
+
+                indices.push_back(index);
+                replacements.emplace_back(instance.entity, instance.graph_path, next_program, next_generation);
+                if (!replacements.back().vm.valid())
+                {
+                    replacement_valid = false;
+                    break;
+                }
+            }
+
+            if (!replacement_valid)
+            {
+                artifact.rejected_source = *source;
+                report_reload_error(artifact, "Flow graph '" + graph_path +
+                                                  "' hot reload produced an invalid VM; keeping generation " +
+                                                  std::to_string(artifact.generation));
+                continue;
+            }
+
+            for (const auto index : indices)
+            {
+                const auto result = end_instance(instances_[index], &context);
+                if (!result.succeeded())
+                    throw std::runtime_error(
+                        execution_error(result, instances_[index].graph_path, instances_[index].entity));
+            }
+
+            artifact.source = *source;
+            artifact.program = next_program;
+            artifact.generation = next_generation;
+            artifact.rejected_source.reset();
+            artifact.reload_error.clear();
+
+            for (std::size_t replacement_index = 0; replacement_index < indices.size(); ++replacement_index)
+            {
+                auto& instance = instances_[indices[replacement_index]];
+                instance = std::move(replacements[replacement_index]);
+                const auto result = begin_instance(instance, &context);
+                if (!result.succeeded())
+                    throw std::runtime_error(execution_error(result, instance.graph_path, instance.entity));
+            }
+
+            ::arc::diagnostics::info(
+                "Flow", "Reloaded Flow graph '" + graph_path + "' as generation " +
+                            std::to_string(artifact.generation) + "; restarted " + std::to_string(indices.size()) +
+                            " bound instance(s) from defaults");
+        }
+    }
+
+    [[nodiscard]] shared_program program_for(std::string_view graph_path, std::uint64_t& generation, std::string& error)
     {
         if (!valid_flow_graph_path(graph_path))
         {
@@ -372,7 +497,11 @@ private:
         }
 
         const auto found = programs_.find(std::string(graph_path));
-        if (found != programs_.end()) return found->second;
+        if (found != programs_.end())
+        {
+            generation = found->second.generation;
+            return found->second.program;
+        }
 
         const auto source = read_text_file(content_root_ / std::filesystem::path{graph_path});
         if (!source)
@@ -384,22 +513,26 @@ private:
         auto compiled = flow::compile_asset(*source);
         if (!compiled.succeeded || !compiled.bytecode)
         {
-            error = "Flow graph failed to compile: " + std::string(graph_path);
-            if (!compiled.diagnostics.empty()) error += ": " + compiled.diagnostics.front().message;
+            error = compile_error(graph_path, compiled);
             return {};
         }
 
         auto program = std::make_shared<const flow::bytecode_program>(std::move(*compiled.bytecode));
-        programs_.emplace(std::string(graph_path), program);
-        return program;
+        compiled_flow_artifact artifact;
+        artifact.source = *source;
+        artifact.program = program;
+        auto inserted = programs_.emplace(std::string(graph_path), std::move(artifact));
+        generation = inserted.first->second.generation;
+        return inserted.first->second.program;
     }
 
     [[nodiscard]] std::string append_instance(ecs::entity entity, std::string_view graph_path)
     {
         std::string error;
-        auto program = program_for(graph_path, error);
+        std::uint64_t generation{};
+        auto program = program_for(graph_path, generation, error);
         if (!program) return error;
-        instances_.emplace_back(entity, std::string(graph_path), std::move(program));
+        instances_.emplace_back(entity, std::string(graph_path), std::move(program), generation);
         return {};
     }
 
@@ -477,7 +610,7 @@ private:
     input::input_device_id mouse_{};
     std::vector<std::string> input_actions_;
     ecs::change_cursor cursor_{};
-    std::unordered_map<std::string, std::shared_ptr<const flow::bytecode_program>> programs_;
+    std::unordered_map<std::string, compiled_flow_artifact> programs_;
     std::vector<bound_flow_instance> instances_;
 };
 
