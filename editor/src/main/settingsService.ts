@@ -514,7 +514,8 @@ export class SettingsService {
 
     const aiProviders = this.aiProviderService.snapshot();
     for (const descriptor of secretDescriptors) {
-      const connected = aiProviders.providers.find((provider) => provider.id === descriptor.secretProvider)?.connected ?? false;
+      const connected =
+        aiProviders.providers.find((provider) => provider.id === descriptor.secretProvider)?.connected ?? false;
       values[descriptor.key] = connected ? 'configured' : '';
       sources[descriptor.key] = connected ? 'user' : 'default';
     }
