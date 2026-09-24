@@ -1,0 +1,22 @@
+.search-panel.ui-drawer-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background: var(--arc-color-bg-panel-muted);
+}
+
+.search-panel > .ui-search-list {
+  min-height: 0;
+}
+
+.search-panel-limit {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--arc-space-5);
+  border-top: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  color: var(--arc-color-text-dim);
+  background: var(--arc-color-bg-panel-muted);
+  font-size: var(--arc-text-xxs);
+}
