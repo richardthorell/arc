@@ -32,7 +32,13 @@ type ElectronModule = {
 };
 
 const electronSecureStorage = (): AiProviderSecureStorage => {
-  const electron = createRequire(import.meta.url)('electron') as ElectronModule;
+  // Forge's Vite main-process bundle is CommonJS, where import.meta.url is undefined.
+  // Anchor createRequire to the emitted bundle filename instead so Electron's built-in
+  // module can be resolved reliably in both development and packaged builds.
+  const requireFromMain = createRequire(
+    typeof __filename === 'string' ? __filename : path.join(process.cwd(), 'arc-electron-main.cjs'),
+  );
+  const electron = requireFromMain('electron') as ElectronModule;
   if (!electron.safeStorage) throw new Error('Electron secure credential storage is unavailable');
   return electron.safeStorage;
 };
