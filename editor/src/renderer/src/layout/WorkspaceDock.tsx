@@ -42,13 +42,15 @@ type WorkspaceDockProps = {
 // dock and a narrower Inspector. The new key makes existing v6 snapshots pick
 // up these defaults instead of restoring the older split sizes.
 const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v7.${projectKey}.${name}`;
-const editorWorkspaceStorageKey = (projectKey: string, kind: EditorDocumentKind) => {
+export const editorWorkspaceStorageKey = (projectKey: string, kind: EditorDocumentKind) => {
   const versionedKind =
     kind === 'texture'
       ? 'editor-texture-v2'
-      : kind === 'model' || kind === 'skeleton'
-        ? `editor-${kind}-v2`
-        : `editor-${kind}`;
+      : kind === 'flow'
+        ? 'editor-flow-v2'
+        : kind === 'model' || kind === 'skeleton'
+          ? `editor-${kind}-v2`
+          : `editor-${kind}`;
   return storageKey(projectKey, versionedKind);
 };
 const workbenchLayoutStorageKey = 'arc.editor.workbench.layout.v2';
@@ -59,6 +61,20 @@ const sidebarWidthStorageKey = 'arc.editor.utility-sidebar.width.v1';
 export const defaultSidebarWidth = 320;
 export const minimumSidebarWidth = 240;
 export const maximumSidebarWidth = 640;
+
+const documentOwnedWorkspaceKinds = new Set<EditorDocumentKind>([
+  'shader',
+  'material',
+  'flow',
+  'texture',
+  'model',
+  'skeleton',
+]);
+
+export const usesDocumentOwnedWorkspace = (kind: EditorDocumentKind) => documentOwnedWorkspaceKinds.has(kind);
+
+export const supportsRequestedWorkspacePanel = (kind: EditorDocumentKind, panel: WorkbenchPanelId) =>
+  kind === 'level' || panel === 'viewport' || isSidebarPanel(panel);
 
 export const clampSidebarWidth = (value: number) =>
   Math.min(maximumSidebarWidth, Math.max(minimumSidebarWidth, Math.round(value)));
@@ -172,8 +188,8 @@ const createLayout = (api: DockviewApi, name: WorkspaceLayoutName) => {
 };
 
 const createEditorWorkspace = (api: DockviewApi, kind: EditorDocumentKind) => {
-  if (kind === 'shader' || kind === 'material' || kind === 'texture' || kind === 'model' || kind === 'skeleton') {
-    // Asset editors own the complete document workspace. Shader, Material, Texture,
+  if (usesDocumentOwnedWorkspace(kind)) {
+    // Document editors own the complete workspace. Shader, Material, Flow, Texture,
     // Model, and Skeleton compose their document-specific supporting regions internally,
     // so Dockview only needs the primary EditorHost surface. The global utility
     // rail/drawer lives outside this layout and remains available.
@@ -374,6 +390,10 @@ export function WorkspaceDock({
 
   useEffect(() => {
     if (!requestedPanel) return;
+    if (!supportsRequestedWorkspacePanel(dockEditorKind.current, requestedPanel)) {
+      onRequestHandled?.();
+      return;
+    }
     if (isSidebarPanel(requestedPanel)) {
       setActiveSidebarPanel(requestedPanel);
       onRequestHandled?.();
