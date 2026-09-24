@@ -27,8 +27,10 @@ struct flow_play_install_result
  * Compiled programs are shared by path; VM state remains per entity. Initial bindings receive Begin Play before this
  * returns. Runtime Flow/Active component and entity lifecycle changes are then reconciled at fixed-tick phase
  * boundaries so newly eligible bindings receive Begin Play and bindings that become ineligible receive End Play.
- * Input Action nodes consume semantic actions resolved through ARC's input player/context mapping system. When an
- * explicit input config path is not supplied, Config/Input.json beside the Content directory is used when present.
+ * Source edits publish a new immutable program generation after successful compilation. Bound VMs restart from graph
+ * defaults across the generation transition; rejected edits keep the last-good generation active. Input Action nodes
+ * consume semantic actions resolved through ARC's input player/context mapping system. When an explicit input config
+ * path is not supplied, Config/Input.json beside the Content directory is used when present.
  */
 [[nodiscard]] flow_play_install_result install_flow_play_runtime(framework::runtime_world& world,
                                                                  const std::filesystem::path& content_root,
