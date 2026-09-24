@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
-import type { AiProviderAccountsSnapshot, AiProviderId } from '../common/aiProviderTypes';
+import type { AiProviderAccountsSnapshot, AiProviderConnectionStatus, AiProviderId } from '../common/aiProviderTypes';
 
 type StoredCredentials = Partial<Record<AiProviderId, string>>;
 
@@ -66,6 +66,12 @@ const validateProviderCredential: AiProviderCredentialValidator = async (provide
 };
 
 export class AiProviderService {
+  private readonly connectionStatus = new Map<
+    AiProviderId,
+    Exclude<AiProviderConnectionStatus, 'disconnected' | 'cold'>
+  >();
+  private readonly credentialGeneration = new Map<AiProviderId, number>();
+
   constructor(
     private readonly storagePath: string,
     private readonly secureStorage: () => AiProviderSecureStorage = electronSecureStorage,
@@ -78,11 +84,15 @@ export class AiProviderService {
     return {
       secureStorageAvailable: storage.available,
       secureStorageDetail: storage.detail,
-      providers: providerDefinitions.map((provider) => ({
-        id: provider.id,
-        label: provider.label,
-        connected: Boolean(stored[provider.id]),
-      })),
+      providers: providerDefinitions.map((provider) => {
+        const connected = Boolean(stored[provider.id]);
+        return {
+          id: provider.id,
+          label: provider.label,
+          connected,
+          connectionStatus: connected ? (this.connectionStatus.get(provider.id) ?? 'cold') : 'disconnected',
+        };
+      }),
     };
   }
 
@@ -100,6 +110,8 @@ export class AiProviderService {
     const stored = this.readStoredCredentials();
     stored[providerId] = encrypted;
     this.writeStoredCredentials(stored);
+    this.bumpCredentialGeneration(providerId);
+    this.connectionStatus.set(providerId, 'connected');
     return this.snapshot();
   }
 
@@ -108,15 +120,27 @@ export class AiProviderService {
     const stored = this.readStoredCredentials();
     delete stored[providerId];
     this.writeStoredCredentials(stored);
+    this.bumpCredentialGeneration(providerId);
+    this.connectionStatus.delete(providerId);
     return this.snapshot();
   }
 
   async test(providerId: AiProviderId): Promise<AiProviderAccountsSnapshot> {
-    const provider = providerById.get(providerId);
-    if (!provider) throw new Error(`Unknown AI provider '${providerId}'`);
-    const credential = this.credential(providerId);
-    if (!credential) throw new Error(`${provider.label} is not connected`);
-    await this.validateCredential(providerId, credential);
+    if (!providerById.has(providerId)) throw new Error(`Unknown AI provider '${providerId}'`);
+    const generation = this.credentialGeneration.get(providerId) ?? 0;
+    try {
+      const credential = this.credential(providerId);
+      if (!credential) {
+        if ((this.credentialGeneration.get(providerId) ?? 0) === generation) this.connectionStatus.delete(providerId);
+        return this.snapshot();
+      }
+      await this.validateCredential(providerId, credential);
+      if ((this.credentialGeneration.get(providerId) ?? 0) === generation)
+        this.connectionStatus.set(providerId, 'connected');
+    } catch {
+      if ((this.credentialGeneration.get(providerId) ?? 0) === generation)
+        this.connectionStatus.set(providerId, 'invalid');
+    }
     return this.snapshot();
   }
 
@@ -127,6 +151,10 @@ export class AiProviderService {
     const storage = this.secureStorageStatus();
     if (!storage.available) throw new Error(storage.detail || 'Secure credential storage is unavailable');
     return this.secureStorage().decryptString(Buffer.from(encoded, 'base64'));
+  }
+
+  private bumpCredentialGeneration(providerId: AiProviderId): void {
+    this.credentialGeneration.set(providerId, (this.credentialGeneration.get(providerId) ?? 0) + 1);
   }
 
   private secureStorageStatus(): { available: boolean; detail?: string } {

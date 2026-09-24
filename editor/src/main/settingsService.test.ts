@@ -56,21 +56,42 @@ const project = (root: string, writable = true): ArcProjectCandidate => ({
 
 const testAiProviders = (): SettingsAiProviderService => {
   const credentials = new Map<AiProviderId, string>();
+  const validated = new Set<AiProviderId>();
   const snapshot = (): AiProviderAccountsSnapshot => ({
     secureStorageAvailable: true,
     providers: [
-      { id: 'openai', label: 'OpenAI', connected: credentials.has('openai') },
-      { id: 'anthropic', label: 'Anthropic', connected: credentials.has('anthropic') },
+      {
+        id: 'openai',
+        label: 'OpenAI',
+        connected: credentials.has('openai'),
+        connectionStatus: credentials.has('openai') ? (validated.has('openai') ? 'connected' : 'cold') : 'disconnected',
+      },
+      {
+        id: 'anthropic',
+        label: 'Anthropic',
+        connected: credentials.has('anthropic'),
+        connectionStatus: credentials.has('anthropic')
+          ? validated.has('anthropic')
+            ? 'connected'
+            : 'cold'
+          : 'disconnected',
+      },
     ],
   });
   return {
     snapshot,
     async connect(providerId, credential) {
       credentials.set(providerId, credential);
+      validated.add(providerId);
       return snapshot();
     },
     disconnect(providerId) {
       credentials.delete(providerId);
+      validated.delete(providerId);
+      return snapshot();
+    },
+    async test(providerId) {
+      if (credentials.has(providerId)) validated.add(providerId);
       return snapshot();
     },
     credential(providerId) {
@@ -130,7 +151,17 @@ describe('SettingsService', () => {
     snapshot = await service.update('user', { 'ai.openai.apiKey': 'sk-project-secret' }, snapshot.revision);
     expect(snapshot.values['ai.openai.apiKey']).toBe('configured');
     expect(snapshot.sources['ai.openai.apiKey']).toBe('user');
+    expect(snapshot.aiProviders?.providers.find((provider) => provider.id === 'openai')?.connectionStatus).toBe(
+      'connected',
+    );
     expect(service.providerCredential('openai')).toBe('sk-project-secret');
+
+    const revisionAfterConnect = snapshot.revision;
+    snapshot = await service.update('user', { 'ai.openai.apiKey': { action: 'test' } }, snapshot.revision);
+    expect(snapshot.revision).toBe(revisionAfterConnect);
+    expect(snapshot.aiProviders?.providers.find((provider) => provider.id === 'openai')?.connectionStatus).toBe(
+      'connected',
+    );
 
     snapshot = await service.update('user', { 'ai.anthropic.apiKey': 'sk-ant-secret' }, snapshot.revision);
     expect(snapshot.values['ai.anthropic.apiKey']).toBe('configured');

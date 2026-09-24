@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { AiProviderAccountsSnapshot, AiProviderId } from '../common/aiProviderTypes';
+import type { AiProviderAccountsSnapshot, AiProviderId, AiProviderTestAction } from '../common/aiProviderTypes';
 import type { EditorSettingDescriptor, EditorSettingsSnapshot } from '../common/editorWorkflowTypes';
 import type { ArcProjectCandidate } from '../common/projectTypes';
 import { AiProviderService } from './aiProviderService';
@@ -66,7 +66,7 @@ const schema: EditorSettingDescriptor[] = [
     key: 'ai.openai.organizationId',
     section: 'OpenAI',
     label: 'Organization ID',
-    description: 'Optional organization override for accounts that belong to multiple OpenAI organizations.',
+    description: 'Optional OpenAI organization override.',
     type: 'string',
     defaultValue: '',
     scopes: ['user'],
@@ -75,7 +75,7 @@ const schema: EditorSettingDescriptor[] = [
     key: 'ai.openai.projectId',
     section: 'OpenAI',
     label: 'Project ID',
-    description: 'Optional OpenAI project override. Project API keys normally select this automatically.',
+    description: 'Optional OpenAI project override.',
     type: 'string',
     defaultValue: '',
     scopes: ['user'],
@@ -84,7 +84,7 @@ const schema: EditorSettingDescriptor[] = [
     key: 'ai.openai.storeResponses',
     section: 'OpenAI',
     label: 'Store Responses',
-    description: 'Allow OpenAI to retain Responses API objects. ARC keeps this disabled by default.',
+    description: 'Allow OpenAI to retain Responses API objects.',
     type: 'boolean',
     defaultValue: false,
     scopes: ['user'],
@@ -451,7 +451,13 @@ export type SettingsAiProviderService = {
   snapshot(): AiProviderAccountsSnapshot;
   connect(providerId: AiProviderId, credential: string): Promise<AiProviderAccountsSnapshot>;
   disconnect(providerId: AiProviderId): AiProviderAccountsSnapshot;
+  test(providerId: AiProviderId): Promise<AiProviderAccountsSnapshot>;
   credential(providerId: AiProviderId): string | null;
+};
+
+const isProviderTestAction = (value: unknown): value is AiProviderTestAction => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return (value as { action?: unknown }).action === 'test';
 };
 
 const readObject = (filePath: string): Record<string, unknown> => {
@@ -542,13 +548,20 @@ export class SettingsService {
       const descriptor = descriptors.get(key);
       if (!descriptor) throw new Error(`Unknown setting '${key}'`);
       if (!descriptor.scopes.includes(scope)) throw new Error(`${key} cannot be stored in ${scope} settings`);
+      if (descriptor.secretProvider && isProviderTestAction(value)) continue;
       if (value !== undefined) validateValue(descriptor, value);
     }
 
+    let changed = false;
     for (const [key, value] of Object.entries(changes)) {
       const descriptor = descriptors.get(key)!;
       if (!descriptor.secretProvider) continue;
       if (scope !== 'user') throw new Error(`${key} cannot be stored in ${scope} settings`);
+      if (isProviderTestAction(value)) {
+        await this.aiProviderService.test(descriptor.secretProvider);
+        continue;
+      }
+      changed = true;
       if (value === undefined || value === '') this.aiProviderService.disconnect(descriptor.secretProvider);
       else await this.aiProviderService.connect(descriptor.secretProvider, String(value));
     }
@@ -557,6 +570,7 @@ export class SettingsService {
     for (const [key, value] of Object.entries(changes)) {
       const descriptor = descriptors.get(key)!;
       if (descriptor.secretProvider) continue;
+      changed = true;
       const target = scope === 'user' ? this.resolvedUserSettingsPath() : this.projectSettingsPathForKey(key);
       if (!target) throw new Error('No writable project settings file is available');
       const next = updates.get(target) ?? { ...readObject(target) };
@@ -565,7 +579,7 @@ export class SettingsService {
       updates.set(target, next);
     }
     for (const [target, values] of updates) writeAtomic(target, values);
-    ++this.revision;
+    if (changed) ++this.revision;
     return this.snapshot();
   }
 
