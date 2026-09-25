@@ -38,6 +38,19 @@ describe('UiSearchList', () => {
     expect(screen.getByText('Ctrl+S')).toBeInTheDocument();
   });
 
+  it('uses an available asset preview as the result icon', () => {
+    const preview = 'data:image/png;base64,cached-preview';
+    const { container } = render(
+      <UiSearchList
+        items={items}
+        previewUrlForItem={(item) => (item.id === 'asset:wood' ? preview : undefined)}
+        onActivate={() => undefined}
+      />,
+    );
+
+    expect(container.querySelector('.ui-search-list-icon.has-preview img')).toHaveAttribute('src', preview);
+  });
+
   it('activates enabled results and leaves disabled commands inert', () => {
     const onActivate = vi.fn();
     const disabled = {
