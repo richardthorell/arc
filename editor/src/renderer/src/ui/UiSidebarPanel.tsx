@@ -92,13 +92,7 @@ export function UiSidebarPanel({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.repeat ||
-        !event.ctrlKey ||
-        event.altKey ||
-        event.metaKey ||
-        event.key.toLocaleLowerCase() !== 'p'
-      ) {
+      if (event.repeat || !event.ctrlKey || event.altKey || event.metaKey || event.key.toLocaleLowerCase() !== 'p') {
         return;
       }
 
