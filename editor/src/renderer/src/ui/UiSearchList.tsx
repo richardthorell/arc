@@ -19,6 +19,7 @@ export type UiSearchListProps<T extends UiSearchListItem = UiSearchListItem> = {
   onActivate: (item: T) => void;
   emptyMessage?: string;
   ariaLabel?: string;
+  previewUrlForItem?: (item: T) => string | undefined;
 };
 
 const stateToken = (value: string) => value.toLocaleLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -28,6 +29,7 @@ export function UiSearchList<T extends UiSearchListItem>({
   onActivate,
   emptyMessage = 'No matching results',
   ariaLabel = 'Search results',
+  previewUrlForItem,
 }: UiSearchListProps<T>) {
   if (items.length === 0) {
     return (
@@ -43,6 +45,7 @@ export function UiSearchList<T extends UiSearchListItem>({
       {items.map((item) => {
         const unavailable = item.disabled ?? false;
         const state = unavailable && item.variant === 'command' ? 'Unavailable' : item.state;
+        const previewUrl = item.variant === 'asset' ? previewUrlForItem?.(item) : undefined;
         return (
           <div className="ui-search-list-item" key={item.id} role="listitem">
             <button
@@ -53,8 +56,23 @@ export function UiSearchList<T extends UiSearchListItem>({
               type="button"
               onClick={() => onActivate(item)}
             >
-              <span aria-hidden="true" className={`ui-search-list-icon is-${item.variant}`}>
-                {item.variant === 'asset' ? <Database size={16} /> : <CommandIcon size={16} />}
+              <span
+                aria-hidden="true"
+                className={[
+                  'ui-search-list-icon',
+                  `is-${item.variant}`,
+                  previewUrl ? 'has-preview' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                {previewUrl ? (
+                  <img alt="" draggable={false} src={previewUrl} />
+                ) : item.variant === 'asset' ? (
+                  <Database size={16} />
+                ) : (
+                  <CommandIcon size={16} />
+                )}
               </span>
               <span className="ui-search-list-copy">
                 <strong>{item.title}</strong>
