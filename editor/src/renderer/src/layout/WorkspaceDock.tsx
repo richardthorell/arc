@@ -38,10 +38,10 @@ type WorkspaceDockProps = {
   sidebarExpanded?: boolean;
 };
 
-// v7 adopts more viewport-focused Level Design proportions: a shorter utility
-// dock and a narrower Inspector. The new key makes existing v6 snapshots pick
-// up these defaults instead of restoring the older split sizes.
-const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v7.${projectKey}.${name}`;
+// v8 groups scene structure and details into one wider right column: Hierarchy
+// above Inspector, with the viewport and utility dock kept together on the left.
+// The new key makes existing v7 snapshots pick up the new scene defaults.
+const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v8.${projectKey}.${name}`;
 export const editorWorkspaceStorageKey = (projectKey: string, kind: EditorDocumentKind) => {
   const versionedKind =
     kind === 'texture'
@@ -56,7 +56,8 @@ export const editorWorkspaceStorageKey = (projectKey: string, kind: EditorDocume
 const workbenchLayoutStorageKey = 'arc.editor.workbench.layout.v2';
 const panelTabComponent = 'arc-panel-tab';
 const defaultBottomPanelHeight = 220;
-const defaultInspectorPanelWidth = 360;
+export const defaultSceneRightColumnWidth = 560;
+export const defaultHierarchyPanelHeight = 360;
 const sidebarWidthStorageKey = 'arc.editor.utility-sidebar.width.v1';
 export const defaultSidebarWidth = 320;
 export const minimumSidebarWidth = 240;
@@ -174,17 +175,16 @@ const createLayout = (api: DockviewApi, name: WorkspaceLayoutName) => {
     return;
   }
 
-  // Build the right column first so Inspector remains full-height. The bottom
-  // group is then split from the viewport column, and Hierarchy is attached to
-  // the remaining upper viewport region. That makes the bottom group span both
-  // Hierarchy and Viewport while leaving Inspector independent on the right.
-  addPanel(api, 'inspector', 'viewport', 'right', undefined, defaultInspectorPanelWidth);
-  addPanel(api, 'lighting', 'inspector', 'within');
-  addPanel(api, 'worldSettings', 'inspector', 'within');
+  // Keep scene structure and details together in a shared right column. Hierarchy
+  // sits above Inspector, while Lighting and World Settings share the Hierarchy
+  // group as tabs. The content/console/build group remains below the viewport only.
+  addPanel(api, 'inspector', 'viewport', 'right', undefined, defaultSceneRightColumnWidth);
+  addPanel(api, 'hierarchy', 'inspector', 'above', defaultHierarchyPanelHeight);
+  addPanel(api, 'lighting', 'hierarchy', 'within');
+  addPanel(api, 'worldSettings', 'hierarchy', 'within');
   addPanel(api, 'contentBrowser', 'viewport', 'below', defaultBottomPanelHeight);
   addPanel(api, 'console', 'contentBrowser', 'within');
   addPanel(api, 'buildOutput', 'contentBrowser', 'within');
-  addPanel(api, 'hierarchy', 'viewport', 'left');
 };
 
 const createEditorWorkspace = (api: DockviewApi, kind: EditorDocumentKind) => {
