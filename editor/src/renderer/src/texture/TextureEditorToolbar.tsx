@@ -2,7 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Eye, RotateCcw, Save } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
-import { UiButton, UiFloatingSurface, UiSelect, UiSlider, UiSplitButton } from '../ui';
+import {
+  UiButton,
+  UiEditorToolbar,
+  UiFloatingSurface,
+  UiSelect,
+  UiSlider,
+  UiSplitButton,
+  UiToolbarGroup,
+  UiToolbarSeparator,
+} from '../ui';
 import {
   hasPendingTextureSettings,
   revertTextureDocument,
@@ -16,7 +25,6 @@ import {
   useTextureEditorViewState,
 } from './textureEditorViewState';
 
-import '../layout/toolbar.css';
 import './textureEditorToolbar.css';
 
 const previewModes = ['source', 'processed', 'difference'] as const;
@@ -41,11 +49,7 @@ export function TextureEditorToolbar({ document }: { document: EditorDocument })
             ...(depth !== undefined && depth > 1 ? [Math.max(1, Math.floor(depth / divisor))] : []),
           ].join(' × ')
         : undefined;
-    return {
-      value: String(level),
-      label: String(level),
-      description: dimensions,
-    };
+    return { value: String(level), label: String(level), description: dimensions };
   });
   const hasPendingChanges = hasPendingTextureSettings(documentState);
   const setMipLevel = (value: number) =>
@@ -65,8 +69,10 @@ export function TextureEditorToolbar({ document }: { document: EditorDocument })
   }, [viewOpen]);
 
   return (
-    <div aria-label="Texture editor toolbar" className="main-toolbar texture-document-toolbar">
-      <div className="toolbar-left">
+    <UiEditorToolbar
+      aria-label="Texture editor toolbar"
+      className="texture-document-toolbar"
+      left={
         <UiSplitButton
           ariaLabel={documentState.saving ? 'Saving texture' : 'Save texture'}
           className="texture-toolbar-save"
@@ -88,58 +94,58 @@ export function TextureEditorToolbar({ document }: { document: EditorDocument })
           ]}
           variant="toolbar"
         />
-      </div>
+      }
+      center={
+        <>
+          <UiToolbarGroup aria-label="Texture preview mode" className="texture-toolbar-preview-modes">
+            {previewModes.map((mode) => (
+              <UiButton
+                active={state.previewMode === mode}
+                aria-pressed={state.previewMode === mode}
+                key={mode}
+                onClick={() => setTextureEditorViewState(document.id, { previewMode: mode })}
+                type="button"
+                variant="toolbar"
+              >
+                {mode[0].toUpperCase() + mode.slice(1)}
+              </UiButton>
+            ))}
+          </UiToolbarGroup>
 
-      <div className="toolbar-center">
-        <div aria-label="Texture preview mode" className="ui-toolbar-group toolbar-group texture-toolbar-preview-modes">
-          {previewModes.map((mode) => (
-            <UiButton
-              active={state.previewMode === mode}
-              aria-pressed={state.previewMode === mode}
-              key={mode}
-              onClick={() => setTextureEditorViewState(document.id, { previewMode: mode })}
-              type="button"
-              variant="toolbar"
-            >
-              {mode[0].toUpperCase() + mode.slice(1)}
-            </UiButton>
-          ))}
-        </div>
+          <UiToolbarSeparator />
 
-        <span aria-hidden="true" className="toolbar-separator" />
+          <UiToolbarGroup aria-label="Texture channels" className="texture-channel-group">
+            {(['r', 'g', 'b', 'a'] as const).map((channel) => (
+              <UiButton
+                active={state.channels[channel]}
+                aria-pressed={state.channels[channel]}
+                className={`texture-channel texture-channel-${channel}`}
+                key={channel}
+                onClick={() => toggleChannel(channel)}
+                type="button"
+                variant="toolbar"
+              >
+                {channel.toUpperCase()}
+              </UiButton>
+            ))}
+          </UiToolbarGroup>
 
-        <div aria-label="Texture channels" className="ui-toolbar-group toolbar-group texture-channel-group">
-          {(['r', 'g', 'b', 'a'] as const).map((channel) => (
-            <UiButton
-              active={state.channels[channel]}
-              aria-pressed={state.channels[channel]}
-              className={`texture-channel texture-channel-${channel}`}
-              key={channel}
-              onClick={() => toggleChannel(channel)}
-              type="button"
-              variant="toolbar"
-            >
-              {channel.toUpperCase()}
-            </UiButton>
-          ))}
-        </div>
+          <UiToolbarSeparator />
 
-        <span aria-hidden="true" className="toolbar-separator" />
-
-        <div aria-label="Texture mip level" className="ui-toolbar-group toolbar-group texture-mip-group">
-          <span className="texture-mip-label">Mip Level:</span>
-          <UiSelect
-            ariaLabel="Mip level"
-            className="texture-mip-select"
-            disabled={mipLevels <= 1}
-            options={mipOptions}
-            value={String(state.mipLevel)}
-            onValueChange={(value) => setMipLevel(Number(value))}
-          />
-        </div>
-      </div>
-
-      <div className="toolbar-right">
+          <UiToolbarGroup aria-label="Texture mip level" className="texture-mip-group">
+            <span className="texture-mip-label">Mip Level:</span>
+            <UiSelect
+              ariaLabel="Mip level"
+              className="texture-mip-select"
+              disabled={mipLevels <= 1}
+              options={mipOptions}
+              value={String(state.mipLevel)}
+              onValueChange={(value) => setMipLevel(Number(value))}
+            />
+          </UiToolbarGroup>
+        </>
+      }
+      right={
         <span className="texture-toolbar-view-menu" ref={viewRootRef}>
           <UiButton
             aria-expanded={viewOpen}
@@ -192,7 +198,7 @@ export function TextureEditorToolbar({ document }: { document: EditorDocument })
             </UiFloatingSurface>
           )}
         </span>
-      </div>
-    </div>
+      }
+    />
   );
 }
