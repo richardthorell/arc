@@ -1,0 +1,11 @@
+name: Temporary World Refactor
+on:
+  push:
+    branches: [ui/world-settings-in-inspector]
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo ready
