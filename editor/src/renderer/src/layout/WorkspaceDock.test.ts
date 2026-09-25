@@ -15,9 +15,9 @@ describe('WorkspaceDock document workspaces', () => {
     expect(usesDocumentOwnedWorkspace('level')).toBe(false);
   });
 
-  it('uses a new workspace key so existing scene layouts pick up the new defaults', () => {
-    expect(editorWorkspaceStorageKey('project', 'level')).toBe('arc.editor.workspace.v8.project.editor-level');
-    expect(editorWorkspaceStorageKey('project', 'flow')).toBe('arc.editor.workspace.v8.project.editor-flow-v2');
+  it('uses a new workspace key so v8 scene layouts do not restore retired world tabs', () => {
+    expect(editorWorkspaceStorageKey('project', 'level')).toBe('arc.editor.workspace.v9.project.editor-level');
+    expect(editorWorkspaceStorageKey('project', 'flow')).toBe('arc.editor.workspace.v9.project.editor-flow-v2');
   });
 
   it('uses the wider stacked scene-details proportions by default', () => {
