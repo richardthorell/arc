@@ -38,10 +38,10 @@ type WorkspaceDockProps = {
   sidebarExpanded?: boolean;
 };
 
-// v8 groups scene structure and details into one wider right column: Hierarchy
-// above Inspector, with the viewport and utility dock kept together on the left.
-// The new key makes existing v7 snapshots pick up the new scene defaults.
-const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v8.${projectKey}.${name}`;
+// v9 retires the standalone Lighting and World Settings dock tabs. World is
+// now inspected through the normal Inspector, so existing v8 snapshots must
+// not restore those obsolete panels.
+const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v9.${projectKey}.${name}`;
 export const editorWorkspaceStorageKey = (projectKey: string, kind: EditorDocumentKind) => {
   const versionedKind =
     kind === 'texture'
@@ -175,13 +175,10 @@ const createLayout = (api: DockviewApi, name: WorkspaceLayoutName) => {
     return;
   }
 
-  // Keep scene structure and details together in a shared right column. Hierarchy
-  // sits above Inspector, while Lighting and World Settings share the Hierarchy
-  // group as tabs. The content/console/build group remains below the viewport only.
+  // Keep scene structure and details together in a shared right column. World
+  // settings now use Inspector selection instead of separate dock tabs.
   addPanel(api, 'inspector', 'viewport', 'right', undefined, defaultSceneRightColumnWidth);
   addPanel(api, 'hierarchy', 'inspector', 'above', defaultHierarchyPanelHeight);
-  addPanel(api, 'lighting', 'hierarchy', 'within');
-  addPanel(api, 'worldSettings', 'hierarchy', 'within');
   addPanel(api, 'contentBrowser', 'viewport', 'below', defaultBottomPanelHeight);
   addPanel(api, 'console', 'contentBrowser', 'within');
   addPanel(api, 'buildOutput', 'contentBrowser', 'within');
