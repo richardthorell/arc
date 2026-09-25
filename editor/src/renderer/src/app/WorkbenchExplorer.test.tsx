@@ -15,8 +15,10 @@ describe('ExplorerPanel', () => {
     const view = render(
       <ExplorerPanel
         project={project}
+        worldSelected={false}
         selectedEntityId=""
         selectedEntityIds={new Set()}
+        onSelectWorld={vi.fn()}
         onSelectEntity={vi.fn()}
         onRenameEntity={vi.fn()}
         onSetEntityActive={vi.fn()}
@@ -47,8 +49,10 @@ describe('ExplorerPanel', () => {
     render(
       <ExplorerPanel
         project={{ scene: [] } as unknown as ProjectSnapshot}
+        worldSelected={false}
         selectedEntityId=""
         selectedEntityIds={new Set()}
+        onSelectWorld={vi.fn()}
         onSelectEntity={vi.fn()}
         onRenameEntity={vi.fn()}
         onSetEntityActive={vi.fn()}
@@ -64,5 +68,32 @@ describe('ExplorerPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add entity' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Terrain...' }));
     expect(onCreateEntity).toHaveBeenCalledWith('terrain');
+  });
+
+  it('exposes World as an inspectable hierarchy target', () => {
+    const onSelectWorld = vi.fn();
+    render(
+      <ExplorerPanel
+        project={{ scene: [] } as unknown as ProjectSnapshot}
+        worldSelected
+        selectedEntityId=""
+        selectedEntityIds={new Set()}
+        onSelectWorld={onSelectWorld}
+        onSelectEntity={vi.fn()}
+        onRenameEntity={vi.fn()}
+        onSetEntityActive={vi.fn()}
+        onMoveEntity={vi.fn()}
+        onCreateEntity={vi.fn()}
+        onDuplicate={vi.fn()}
+        onCreatePrefab={vi.fn()}
+        onInstantiatePrefab={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    const world = screen.getByRole('treeitem', { name: /World/ });
+    expect(world).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(world);
+    expect(onSelectWorld).toHaveBeenCalledOnce();
   });
 });
