@@ -17,8 +17,6 @@ export type WorkbenchPanelId =
   | 'renderGraph'
   | 'shaderEditor'
   | 'inspector'
-  | 'lighting'
-  | 'worldSettings'
   | 'contentBrowser'
   | 'console'
   | 'buildOutput'
