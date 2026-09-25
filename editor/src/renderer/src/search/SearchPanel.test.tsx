@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { registerWorkbenchCommandHandler } from '../app/commandDispatcher';
@@ -23,14 +23,17 @@ const assets: AssetItem[] = [
     path: 'Content/Textures/T_Rock_Albedo.png',
     kind: 'texture',
     status: 'stale',
+    generation: 4,
   },
 ];
 
+const originalArc = window.arc;
 let unregister: (() => void) | undefined;
 
 afterEach(() => {
   unregister?.();
   unregister = undefined;
+  Object.defineProperty(window, 'arc', { configurable: true, value: originalArc });
   cleanup();
 });
 
@@ -48,6 +51,29 @@ describe('SearchPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'M_Warm_Wood.arcmat' }));
     expect(onSelectAsset).toHaveBeenCalledWith('material-wood');
+  });
+
+  it('uses a cached preview for an asset result without requesting generation', async () => {
+    const preview = 'data:image/png;base64,rock-preview';
+    const query = vi.fn().mockImplementation(async (_type: string, payload: { path: string; maxSize: number }) => ({
+      succeeded: payload.path === 'Content/Textures/T_Rock_Albedo.png' && payload.maxSize === 0,
+      payload:
+        payload.path === 'Content/Textures/T_Rock_Albedo.png' && payload.maxSize === 0 ? { dataUrl: preview } : undefined,
+    }));
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: { host: { query } },
+    });
+
+    const { container } = render(
+      <SearchPanel assets={assets} entities={[]} onSelectAsset={() => undefined} onSelectEntity={() => undefined} />,
+    );
+
+    await waitFor(() =>
+      expect(container.querySelector('.ui-search-list-icon.has-preview img')).toHaveAttribute('src', preview),
+    );
+    expect(query).toHaveBeenCalled();
+    for (const [, payload] of query.mock.calls) expect(payload.maxSize).toBe(0);
   });
 
   it('switches to commands and runs a matching workbench command', () => {
