@@ -52,4 +52,41 @@ describe('UiTreeView', () => {
     fireEvent.keyDown(editing, { key: 'ArrowDown' });
     await waitFor(() => expect(screen.getByRole('treeitem', { name: /Viewport/ })).toHaveFocus());
   });
+
+  it('supports additive multi-selection', () => {
+    const onSelectionChange = vi.fn();
+    const selectedIds = new Set(['viewport']);
+    render(
+      <UiTreeView
+        ariaLabel="Scene hierarchy"
+        defaultExpandedIds={['editing']}
+        nodes={nodes}
+        onSelectionChange={onSelectionChange}
+        selectedIds={selectedIds}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('treeitem', { name: /Navigation/ }), { ctrlKey: true });
+    const [next] = onSelectionChange.mock.calls.at(-1) ?? [];
+    expect([...next]).toEqual(['viewport', 'navigation']);
+    expect(screen.getByRole('tree')).toHaveAttribute('aria-multiselectable', 'true');
+  });
+
+  it('supports contiguous range selection across visible hierarchy rows', () => {
+    const onSelectionChange = vi.fn();
+    render(
+      <UiTreeView
+        ariaLabel="Scene hierarchy"
+        defaultExpandedIds={['editing']}
+        nodes={nodes}
+        onSelectionChange={onSelectionChange}
+        selectedIds={new Set()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('treeitem', { name: /Viewport/ }));
+    fireEvent.click(screen.getByRole('treeitem', { name: /System/ }), { shiftKey: true });
+    const [next] = onSelectionChange.mock.calls.at(-1) ?? [];
+    expect([...next]).toEqual(['viewport', 'navigation', 'system']);
+  });
 });
