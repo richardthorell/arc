@@ -49,12 +49,12 @@ describe('UiSearchList', () => {
     };
     render(<UiSearchList items={[items[0], disabled]} onActivate={onActivate} />);
 
-    fireEvent.click(screen.getByRole('listitem', { name: /M_Wood/ }));
-    fireEvent.click(screen.getByRole('listitem', { name: /Undo/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'M_Wood' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
 
     expect(onActivate).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('listitem', { name: /Undo/ })).toBeDisabled();
-    expect(screen.getByRole('listitem', { name: /Undo/ })).toHaveAttribute('title', 'There is nothing to undo');
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Undo' })).toHaveAttribute('title', 'There is nothing to undo');
   });
 
   it('shows an explicit empty state', () => {

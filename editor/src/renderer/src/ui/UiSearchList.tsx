@@ -44,35 +44,35 @@ export function UiSearchList<T extends UiSearchListItem>({
         const unavailable = item.disabled ?? false;
         const state = unavailable && item.variant === 'command' ? 'Unavailable' : item.state;
         return (
-          <button
-            aria-disabled={unavailable || undefined}
-            className={['ui-search-list-row', unavailable ? 'is-disabled' : ''].filter(Boolean).join(' ')}
-            disabled={unavailable}
-            key={item.id}
-            role="listitem"
-            title={unavailable ? item.disabledReason : undefined}
-            type="button"
-            onClick={() => onActivate(item)}
-          >
-            <span aria-hidden="true" className={`ui-search-list-icon is-${item.variant}`}>
-              {item.variant === 'asset' ? <Database size={16} /> : <CommandIcon size={16} />}
-            </span>
-            <span className="ui-search-list-copy">
-              <strong>{item.title}</strong>
-              {item.subtitle && <small>{item.subtitle}</small>}
-            </span>
-            <span className="ui-search-list-trailing">
-              <span className="ui-search-list-badges">
-                {item.meta && <span className="ui-search-list-meta">{item.meta}</span>}
-                {state && (
-                  <span className="ui-search-list-state" data-state={stateToken(state)}>
-                    {state}
-                  </span>
-                )}
+          <div className="ui-search-list-item" key={item.id} role="listitem">
+            <button
+              aria-label={item.title}
+              className={['ui-search-list-row', unavailable ? 'is-disabled' : ''].filter(Boolean).join(' ')}
+              disabled={unavailable}
+              title={unavailable ? item.disabledReason : undefined}
+              type="button"
+              onClick={() => onActivate(item)}
+            >
+              <span aria-hidden="true" className={`ui-search-list-icon is-${item.variant}`}>
+                {item.variant === 'asset' ? <Database size={16} /> : <CommandIcon size={16} />}
               </span>
-              {item.shortcut && <kbd>{item.shortcut}</kbd>}
-            </span>
-          </button>
+              <span className="ui-search-list-copy">
+                <strong>{item.title}</strong>
+                {item.subtitle && <small>{item.subtitle}</small>}
+              </span>
+              <span className="ui-search-list-trailing">
+                <span className="ui-search-list-badges">
+                  {item.meta && <span className="ui-search-list-meta">{item.meta}</span>}
+                  {state && (
+                    <span className="ui-search-list-state" data-state={stateToken(state)}>
+                      {state}
+                    </span>
+                  )}
+                </span>
+                {item.shortcut && <kbd>{item.shortcut}</kbd>}
+              </span>
+            </button>
+          </div>
         );
       })}
     </div>

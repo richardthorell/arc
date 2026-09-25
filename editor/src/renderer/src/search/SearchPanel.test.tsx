@@ -45,7 +45,7 @@ describe('SearchPanel', () => {
     expect(screen.getByText('M_Warm_Wood.arcmat')).toBeInTheDocument();
     expect(screen.queryByText('T_Rock_Albedo.png')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('listitem', { name: /M_Warm_Wood/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'M_Warm_Wood.arcmat' }));
     expect(onSelectAsset).toHaveBeenCalledWith('material-wood');
   });
 
@@ -58,7 +58,7 @@ describe('SearchPanel', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: /Commands/ }));
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search commands' }), { target: { value: 'save scene' } });
-    fireEvent.click(screen.getByRole('listitem', { name: /Save Scene/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Scene' }));
 
     expect(handler).toHaveBeenCalledWith('file.save');
   });
