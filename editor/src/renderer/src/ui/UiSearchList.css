@@ -44,10 +44,18 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   border: var(--arc-border-width) solid var(--arc-color-border-subtle);
   border-radius: var(--arc-radius-2);
   color: var(--arc-color-text-muted);
   background: var(--arc-color-bg-field);
+}
+
+.ui-search-list-icon.has-preview img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 .ui-search-list-icon.is-command {
