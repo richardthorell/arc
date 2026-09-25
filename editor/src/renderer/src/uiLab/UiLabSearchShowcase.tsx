@@ -3,6 +3,9 @@ import { useMemo, useState } from 'react';
 import { UiSearchHeader, UiSearchList } from '../ui';
 import type { UiSearchListItem } from '../ui';
 
+const demoAssetPreview =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23364b59'/%3E%3Ccircle cx='16' cy='16' r='9' fill='%239fc4b0'/%3E%3Ccircle cx='13' cy='13' r='3' fill='%23d8ebe1'/%3E%3C/svg%3E";
+
 const assetResults: readonly UiSearchListItem[] = [
   {
     id: 'asset:wood',
@@ -88,7 +91,11 @@ export function UiLabSearchShowcase() {
         onModeChange={(nextMode) => setMode(nextMode as typeof mode)}
         onQueryChange={setQuery}
       />
-      <UiSearchList items={results} onActivate={() => undefined} />
+      <UiSearchList
+        items={results}
+        previewUrlForItem={(item) => (item.id === 'asset:wood' ? demoAssetPreview : undefined)}
+        onActivate={() => undefined}
+      />
     </div>
   );
 }
