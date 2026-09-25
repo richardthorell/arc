@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
+import { registerWorkbenchCommandHandler } from '../app/commandDispatcher';
 import type { CommandId, WorkbenchPanelId } from '../app/workbenchTypes';
 import { panelRegistry } from '../app/panelRegistry';
 import { saveActiveEditorDocument } from '../editors/editorRegistry';
@@ -219,6 +220,8 @@ export function MenuBar({
 }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<MenuItem | null>(null);
   const menuRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => registerWorkbenchCommandHandler(onCommand), [onCommand]);
 
   useEffect(() => {
     const close = (event: PointerEvent) => {

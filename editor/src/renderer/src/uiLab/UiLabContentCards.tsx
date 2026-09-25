@@ -6,6 +6,7 @@ import '../content/contentBrowser.css';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import { ActivityBarButton } from '../layout/ActivityBar';
 import type { AssetItem } from '../services/editorHostTypes';
+import { UiLabSearchShowcase } from './UiLabSearchShowcase';
 
 import './uiLabContentCards.css';
 
@@ -124,6 +125,10 @@ export function UiLabContentCards() {
 
   return (
     <div className="ui-lab-content-card-showcase content-browser-v2">
+      <section className="ui-lab-activity-buttons" aria-label="Search component examples">
+        <strong>Search header + result list</strong>
+        <UiLabSearchShowcase />
+      </section>
       <section className="ui-lab-activity-buttons" aria-label="Side-bar button examples">
         <strong>Side-bar buttons</strong>
         <div className="ui-lab-activity-button-row">

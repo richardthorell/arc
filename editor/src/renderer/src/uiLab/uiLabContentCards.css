@@ -12,6 +12,23 @@
   margin-bottom: var(--arc-space-8);
 }
 
+.ui-lab-search-showcase {
+  width: min(620px, 100%);
+  height: 330px;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: var(--arc-border-width) solid var(--arc-color-border);
+  border-radius: var(--arc-radius-2);
+  background: var(--arc-color-bg-panel-muted);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+.ui-lab-search-showcase .ui-search-list {
+  min-height: 0;
+}
+
 .ui-lab-activity-button-row {
   display: flex;
   align-items: flex-start;

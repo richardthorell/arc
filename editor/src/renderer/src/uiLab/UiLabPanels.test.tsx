@@ -69,7 +69,7 @@ describe('UiLabPanels', () => {
     expect(container.querySelector('[data-panel-id="inspector"] .data-inspector')).toBeInTheDocument();
     expect(container.querySelector('[data-panel-id="contentBrowser"] .content-browser-v2')).toBeInTheDocument();
     expect(screen.getByLabelText('Search hierarchy')).toBeInTheDocument();
-    expect(screen.getByLabelText('Search assets')).toBeInTheDocument();
+    expect(screen.getAllByLabelText('Search assets').length).toBeGreaterThan(0);
   });
 
   it('does not invent an Asset Explorer clone while it is still private to Workbench', () => {

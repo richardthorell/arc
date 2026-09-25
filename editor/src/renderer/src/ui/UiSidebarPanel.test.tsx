@@ -4,12 +4,18 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { subscribeSearchDrawerRequests } from '../search/searchDrawerRoute';
 import { requestedSettingsDialogKind, resetSettingsDialogRequest } from '../settings/settingsDialogRoute';
 import { UiSidebarPanel, UiSidebarPanelButton } from './UiSidebarPanel';
 
+let unsubscribeSearchRequest: (() => void) | undefined;
+
 afterEach(() => {
+  unsubscribeSearchRequest?.();
+  unsubscribeSearchRequest = undefined;
   cleanup();
   resetSettingsDialogRequest();
+  vi.useRealTimers();
 });
 
 describe('UiSidebarPanelButton', () => {
@@ -74,6 +80,35 @@ describe('UiSidebarPanel', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     expect(onExpandedChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('opens asset search with Ctrl+P and command search with Ctrl+Shift+P', () => {
+    vi.useFakeTimers();
+    const onSelectActivity = vi.fn();
+    const onExpandedChange = vi.fn();
+    const requestedModes: string[] = [];
+    unsubscribeSearchRequest = subscribeSearchDrawerRequests((mode) => requestedModes.push(mode));
+    render(
+      <UiSidebarPanel
+        activeActivity="scene"
+        expanded={false}
+        onExpandedChange={onExpandedChange}
+        onSelectActivity={onSelectActivity}
+        onSettings={vi.fn()}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: 'p', ctrlKey: true });
+    expect(onSelectActivity).toHaveBeenLastCalledWith('search');
+    expect(onExpandedChange).toHaveBeenLastCalledWith(true);
+    vi.advanceTimersByTime(0);
+    expect(requestedModes).toEqual(['assets']);
+
+    fireEvent.keyDown(window, { key: 'P', ctrlKey: true, shiftKey: true });
+    expect(onSelectActivity).toHaveBeenLastCalledWith('search');
+    expect(onExpandedChange).toHaveBeenLastCalledWith(true);
+    vi.advanceTimersByTime(0);
+    expect(requestedModes).toEqual(['assets', 'commands']);
   });
 
   it('opens editor preferences without treating it as a drawer activity', () => {

@@ -1,0 +1,97 @@
+.ui-search-header {
+  display: grid;
+  gap: var(--arc-space-5);
+  padding: var(--arc-space-6);
+  border-bottom: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  background: var(--arc-color-bg-panel-muted);
+}
+
+.ui-search-header-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--arc-space-5);
+  min-width: 0;
+}
+
+.ui-search-header-title {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--arc-space-3);
+}
+
+.ui-search-header-title strong {
+  color: var(--arc-color-text-strong);
+  font-size: var(--arc-text-md);
+  font-weight: 650;
+}
+
+.ui-search-header-title small {
+  color: var(--arc-color-text-dim);
+  font-size: var(--arc-text-xxs);
+  white-space: nowrap;
+}
+
+.ui-search-header-modes {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  border: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  border-radius: var(--arc-radius-2);
+  background: var(--arc-color-bg-field);
+}
+
+.ui-search-header-mode.ui-button {
+  gap: var(--arc-space-2);
+  height: 24px;
+  padding-inline: var(--arc-space-4);
+  border: 0;
+  border-radius: var(--arc-radius-1);
+  box-shadow: none;
+  font-size: var(--arc-text-xs);
+  font-weight: 550;
+}
+
+.ui-search-header-mode.ui-button small {
+  color: var(--arc-color-text-dim);
+  font-size: var(--arc-text-xxs);
+  font-weight: 500;
+}
+
+.ui-search-header-mode.ui-button.is-active {
+  color: var(--arc-color-text-strong);
+  background: var(--arc-color-bg-selected-strong);
+}
+
+.ui-search-header-mode.ui-button.is-active small {
+  color: var(--arc-color-text-muted);
+}
+
+.ui-search-header-field {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.ui-search-header-field > svg {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: var(--arc-space-5);
+  color: var(--arc-color-text-dim);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.ui-search-header-field .ui-search-input {
+  height: 32px;
+  padding-left: 34px;
+  padding-right: var(--arc-space-5);
+}
+
+.ui-search-header-field:focus-within > svg {
+  color: var(--arc-color-accent-hover);
+}

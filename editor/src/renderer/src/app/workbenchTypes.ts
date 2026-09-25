@@ -53,6 +53,7 @@ export type CommandId =
   | 'layout.levelDesign'
   | 'layout.materials'
   | 'layout.profiling'
+  | 'view.assetSearch'
   | 'view.commandPalette'
   | 'assets.import'
   | 'assets.saveAll'
