@@ -55,15 +55,13 @@ describe('SearchPanel', () => {
 
   it('uses a cached preview for an asset result without requesting generation', async () => {
     const preview = 'data:image/png;base64,rock-preview';
-    const query = vi.fn().mockImplementation(
-      async (_type: string, payload: { path: string; maxSize: number }) => ({
-        succeeded: payload.path === 'Content/Textures/T_Rock_Albedo.png' && payload.maxSize === 0,
-        payload:
-          payload.path === 'Content/Textures/T_Rock_Albedo.png' && payload.maxSize === 0
-            ? { dataUrl: preview }
-            : undefined,
-      }),
-    );
+    const query = vi.fn().mockImplementation(async (_type: string, payload: { path: string; maxSize: number }) => ({
+      succeeded: payload.path === 'Content/Textures/T_Rock_Albedo.png' && payload.maxSize === 0,
+      payload:
+        payload.path === 'Content/Textures/T_Rock_Albedo.png' && payload.maxSize === 0
+          ? { dataUrl: preview }
+          : undefined,
+    }));
     Object.defineProperty(window, 'arc', {
       configurable: true,
       value: { host: { query } },
