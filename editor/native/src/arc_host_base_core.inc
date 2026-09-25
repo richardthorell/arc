@@ -4151,6 +4151,41 @@ host_response arc_host::execute(const host_command_envelope& command)
                     json["readOnly"] = read_only;
                     json["assetPath"] = asset_path;
                     json["authoringRevision"] = asset ? asset->authoring_revision : 0u;
+                    nlohmann::json rebuild{{"state", "idle"},
+                                           {"authoringRevision", asset ? asset->authoring_revision : 0u},
+                                           {"dirtyRegions", 0u},
+                                           {"geometryRegions", 0u},
+                                           {"attributeRegions", 0u},
+                                           {"error", ""}};
+                    if (const auto session = state_->terrain_rebuilds.find(entity_guid);
+                        session != state_->terrain_rebuilds.end())
+                    {
+                        const auto status = session->second.status();
+                        const auto phase = [&]
+                        {
+                            switch (status.phase)
+                            {
+                                case terrain_rebuild_phase::queued:
+                                    return "queued";
+                                case terrain_rebuild_phase::building:
+                                    return "building";
+                                case terrain_rebuild_phase::publishing:
+                                    return "publishing";
+                                case terrain_rebuild_phase::failed:
+                                    return "failed";
+                                case terrain_rebuild_phase::idle:
+                                    return "idle";
+                            }
+                            return "idle";
+                        }();
+                        rebuild = {{"state", phase},
+                                   {"authoringRevision", status.authoring_revision},
+                                   {"dirtyRegions", status.dirty_regions.size()},
+                                   {"geometryRegions", status.geometry_regions},
+                                   {"attributeRegions", status.attribute_regions},
+                                   {"error", status.error}};
+                    }
+                    json["rebuild"] = std::move(rebuild);
                     const auto active = active_modifier(asset);
                     json["activeModifier"] = active.valid() ? scene::to_string(active) : std::string{};
                     json["modifiers"] = nlohmann::json::array();
@@ -7150,6 +7185,61 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
                                                .end = math::transform_point(world, point1),
                                                .color = {0.95f, 0.68f, 0.16f, 1.0f},
                                                .depth = render::debug_overlay_depth_mode::tested});
+            }
+        }
+    }
+    if (state_->preview_stopped && state_->viewport_tool.tool == host_viewport_tool::terrain &&
+        state_->scene.scene.alive(state_->scene.terrain_entity))
+    {
+        const auto terrain_guid = entity_guid_of(state_->scene, state_->scene.terrain_entity);
+        const auto rebuild = state_->terrain_rebuilds.find(terrain_guid);
+        const auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(state_->scene.terrain_entity);
+        const auto* transform =
+            state_->scene.scene.try_get<scene::transform_component>(state_->scene.terrain_entity);
+        if (rebuild != state_->terrain_rebuilds.end() && terrain && transform)
+        {
+            const auto status = rebuild->second.status();
+            const auto& authored = rebuild->second.asset();
+            const auto world = transform->dirty ? scene::local_matrix(*transform) : transform->world;
+            constexpr std::uint32_t edge_segments = 8u;
+            for (const auto& region : status.dirty_regions)
+            {
+                const bool geometry =
+                    (region.domains & (scene::terrain_domain::geometry | scene::terrain_domain::topology)) !=
+                    scene::terrain_domain::none;
+                const bool attributes =
+                    (region.domains & scene::terrain_domain::attributes) != scene::terrain_domain::none;
+                const auto color = status.phase == terrain_rebuild_phase::failed
+                                       ? math::vector4f{1.0f, 0.18f, 0.12f, 1.0f}
+                                   : geometry && attributes ? math::vector4f{0.95f, 0.35f, 0.9f, 1.0f}
+                                   : geometry               ? math::vector4f{1.0f, 0.58f, 0.08f, 1.0f}
+                                                            : math::vector4f{0.1f, 0.78f, 1.0f, 1.0f};
+                const float min_x = static_cast<float>(region.bounds.min_x - authored.coordinates.origin_x);
+                const float max_x = static_cast<float>(region.bounds.max_x - authored.coordinates.origin_x);
+                const float min_z = static_cast<float>(region.bounds.min_z - authored.coordinates.origin_z);
+                const float max_z = static_cast<float>(region.bounds.max_z - authored.coordinates.origin_z);
+                const auto point = [&](float x, float z)
+                {
+                    return math::transform_point(
+                        world, math::vector3f{x, scene::sample_terrain_height(*terrain, x, z) + 0.08f, z});
+                };
+                const auto append_edge = [&](float x0, float z0, float x1, float z1)
+                {
+                    for (std::uint32_t segment = 0u; segment < edge_segments; ++segment)
+                    {
+                        const float t0 = static_cast<float>(segment) / edge_segments;
+                        const float t1 = static_cast<float>(segment + 1u) / edge_segments;
+                        debug_overlay.lines.push_back(
+                            {.start = point(std::lerp(x0, x1, t0), std::lerp(z0, z1, t0)),
+                             .end = point(std::lerp(x0, x1, t1), std::lerp(z0, z1, t1)),
+                             .color = color,
+                             .depth = render::debug_overlay_depth_mode::tested});
+                    }
+                };
+                append_edge(min_x, min_z, max_x, min_z);
+                append_edge(max_x, min_z, max_x, max_z);
+                append_edge(max_x, max_z, min_x, max_z);
+                append_edge(min_x, max_z, min_x, min_z);
             }
         }
     }

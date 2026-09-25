@@ -36,6 +36,14 @@ export type TerrainModifierStackSnapshot = {
   authoringRevision: number;
   activeModifier: string;
   modifiers: TerrainModifierSnapshot[];
+  rebuild: {
+    state: 'idle' | 'queued' | 'building' | 'publishing' | 'failed';
+    authoringRevision: number;
+    dirtyRegions: number;
+    geometryRegions: number;
+    attributeRegions: number;
+    error: string;
+  };
 };
 
 type TerrainStackPanelProps = {
@@ -50,20 +58,29 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
   const [renameValue, setRenameValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [draggedId, setDraggedId] = useState('');
+  const [requestError, setRequestError] = useState('');
 
   const execute = useCallback(
-    async (operation: string, extra: Record<string, unknown> = {}) => {
-      setLoading(true);
+    async (operation: string, extra: Record<string, unknown> = {}, silent = false) => {
+      if (!silent) setLoading(true);
       try {
         const response = await command('terrain.modifierStack', { entity, operation, ...extra });
         if (!response.succeeded || !response.payload) {
-          onStatus?.(response.error || 'Terrain modifier operation failed');
+          const message = response.error || 'Terrain modifier operation failed';
+          setRequestError(message);
+          onStatus?.(message);
           return null;
         }
+        setRequestError('');
         setStack(response.payload);
         return response.payload;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Terrain modifier operation failed';
+        setRequestError(message);
+        onStatus?.(message);
+        return null;
       } finally {
-        setLoading(false);
+        if (!silent) setLoading(false);
       }
     },
     [command, entity, onStatus],
@@ -72,6 +89,12 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
   useEffect(() => {
     void execute('inspect');
   }, [execute]);
+
+  useEffect(() => {
+    if (!stack || stack.rebuild.state === 'idle' || stack.rebuild.state === 'failed') return;
+    const timer = window.setTimeout(() => void execute('inspect', {}, true), 250);
+    return () => window.clearTimeout(timer);
+  }, [execute, stack]);
 
   useEffect(() => {
     if (!stack) return;
@@ -119,6 +142,7 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
         <div className="terrain-stack-loading">
           <RefreshCw className={loading ? 'spin' : ''} size={16} /> Loading terrain stack…
         </div>
+        {requestError && <small role="alert">{requestError}</small>}
       </section>
     );
   }
@@ -156,6 +180,31 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
         </div>
       ) : (
         <>
+          <div
+            aria-live="polite"
+            className={`terrain-rebuild-status ${stack.rebuild.state}`}
+            role={stack.rebuild.state === 'failed' ? 'alert' : 'status'}
+          >
+            <RefreshCw
+              className={['queued', 'building', 'publishing'].includes(stack.rebuild.state) ? 'spin' : ''}
+              size={14}
+            />
+            <span>
+              <strong>
+                {stack.rebuild.state === 'idle'
+                  ? 'Terrain is up to date'
+                  : stack.rebuild.state === 'failed'
+                    ? 'Terrain rebuild failed'
+                    : `${stack.rebuild.state[0].toUpperCase()}${stack.rebuild.state.slice(1)} ${stack.rebuild.dirtyRegions} region${stack.rebuild.dirtyRegions === 1 ? '' : 's'}`}
+              </strong>
+              {stack.rebuild.dirtyRegions > 0 && (
+                <small>
+                  {stack.rebuild.geometryRegions} geometry · {stack.rebuild.attributeRegions} attribute
+                </small>
+              )}
+              {(stack.rebuild.error || requestError) && <small>{stack.rebuild.error || requestError}</small>}
+            </span>
+          </div>
           <div className="terrain-stack-toolbar">
             <UiButton disabled={stack.readOnly || loading} onClick={() => void add('sculpt')} type="button">
               <Plus size={13} /> <Mountain size={13} /> Sculpt

@@ -217,6 +217,36 @@ void terrain_rebuild_session::update(scene::terrain_asset asset, bool invalidate
     error_.clear();
 }
 
+terrain_rebuild_status terrain_rebuild_session::status() const
+{
+    terrain_rebuild_status result;
+    result.authoring_revision = asset_.authoring_revision;
+    result.error = error_;
+    for (const auto& region : asset_.regions)
+    {
+        const auto domains = region.dirty_domains &
+                             (scene::terrain_domain::geometry | scene::terrain_domain::topology |
+                              scene::terrain_domain::attributes);
+        if (domains == scene::terrain_domain::none) continue;
+        result.dirty_regions.push_back({region.id, region.authoring_bounds, domains});
+        if ((domains & (scene::terrain_domain::geometry | scene::terrain_domain::topology)) !=
+            scene::terrain_domain::none)
+            ++result.geometry_regions;
+        if ((domains & scene::terrain_domain::attributes) != scene::terrain_domain::none)
+            ++result.attribute_regions;
+    }
+
+    if (failed_revision_ == asset_.authoring_revision && !error_.empty())
+        result.phase = terrain_rebuild_phase::failed;
+    else if (ready_)
+        result.phase = terrain_rebuild_phase::publishing;
+    else if (queue_.pending())
+        result.phase = terrain_rebuild_phase::building;
+    else if (!result.dirty_regions.empty())
+        result.phase = terrain_rebuild_phase::queued;
+    return result;
+}
+
 bool terrain_rebuild_session::pump(jobs::job_system& jobs, scene::terrain_render_proxy_cache& proxies,
                                    ecs::entity_guid guid, scene::terrain_component& terrain, render::renderer& renderer)
 {

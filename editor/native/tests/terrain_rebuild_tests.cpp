@@ -35,7 +35,15 @@ TEST_CASE("M3.4 sculpt preview transitions to asset-owned regions and preserves 
     scene::terrain_render_proxy_cache cache;
     const auto guid = ecs::generate_entity_guid();
     editor::terrain_rebuild_session session(asset, terrain);
+    const auto queued = session.status();
+    CHECK(queued.phase == editor::terrain_rebuild_phase::queued);
+    CHECK(queued.dirty_regions.size() == 16u);
+    CHECK(queued.geometry_regions == 16u);
+    CHECK(queued.attribute_regions == 0u);
     REQUIRE(rebuild(session, cache, guid, terrain, renderer));
+    const auto idle = session.status();
+    CHECK(idle.phase == editor::terrain_rebuild_phase::idle);
+    CHECK(idle.dirty_regions.empty());
     REQUIRE(cache.find(guid)->asset_owned);
     REQUIRE(cache.find(guid)->regions.size() == 16u);
     std::vector<render::geometry_resource_handle> original_geometry;
@@ -65,6 +73,11 @@ TEST_CASE("M3.4 sculpt preview transitions to asset-owned regions and preserves 
     CHECK(local_region_changed);
     CHECK(renderer.mesh_alive(distant.conventional));
     session.update(asset);
+    const auto queued_update = session.status();
+    CHECK(queued_update.phase == editor::terrain_rebuild_phase::queued);
+    CHECK_FALSE(queued_update.dirty_regions.empty());
+    CHECK(queued_update.geometry_regions > 0u);
+    CHECK(queued_update.attribute_regions == 0u);
     REQUIRE(rebuild(session, cache, guid, terrain, renderer));
     CHECK(cache.find(guid)->asset_owned);
     CHECK(cache.find(guid)->generation == generation + 1u);
@@ -97,6 +110,11 @@ TEST_CASE("M3.4 obsolete builds cannot overwrite newer sculpt edits")
             asset, layer, std::array{scene::terrain_sculpt_sample_edit{address.region, {address.x, address.z, 7.0f}}})
             .revision != 0u);
     session.update(asset);
+    const auto building = session.status();
+    CHECK(building.phase == editor::terrain_rebuild_phase::building);
+    CHECK_FALSE(building.dirty_regions.empty());
+    CHECK(building.geometry_regions > 0u);
+    CHECK(building.attribute_regions == 0u);
     REQUIRE(rebuild(session, cache, guid, terrain, renderer));
     CHECK(terrain.heights[144u] == Catch::Approx(7.0f));
     REQUIRE(cache.find(guid)->regions.size() == 16u);
@@ -151,6 +169,11 @@ TEST_CASE("M3.5 paint rebuild publishes attribute regions without replacing geom
                 .revision != 0u);
 
     session.update(asset);
+    const auto queued = session.status();
+    CHECK(queued.phase == editor::terrain_rebuild_phase::queued);
+    CHECK_FALSE(queued.dirty_regions.empty());
+    CHECK(queued.geometry_regions == 0u);
+    CHECK(queued.attribute_regions > 0u);
     REQUIRE(rebuild(session, cache, guid, terrain, renderer));
     const auto* published = cache.find(guid);
     REQUIRE(published != nullptr);

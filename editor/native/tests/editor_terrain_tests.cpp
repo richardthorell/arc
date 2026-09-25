@@ -154,6 +154,11 @@ TEST_CASE("M3.5 newly created terrain persists paint into its asset without leav
         if (!asset_owned) std::this_thread::sleep_for(std::chrono::milliseconds{2});
     }
     REQUIRE(asset_owned);
+    const auto rebuild_status = host->execute(arc::editor::host_terrain_modifier_stack_command{
+        .entity = {terrain_entity.index, terrain_entity.generation}, .operation = "inspect"});
+    REQUIRE(rebuild_status.succeeded);
+    CHECK(rebuild_status.payload_json.find("\"rebuild\"") != std::string::npos);
+    CHECK(rebuild_status.payload_json.find("\"state\":\"idle\"") != std::string::npos);
     CHECK(terrain.heights.front() == Catch::Approx(-12.0f));
     const auto* initial_proxy = host->scene_state().terrain_render_proxies.find(guid);
     REQUIRE(initial_proxy != nullptr);
