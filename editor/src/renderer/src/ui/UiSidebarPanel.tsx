@@ -4,6 +4,7 @@ import { Settings } from 'lucide-react';
 
 import { activityRegistry } from '../app/panelRegistry';
 import type { ActivityId, ActivityRegistration } from '../app/workbenchTypes';
+import { requestSearchDrawer } from '../search/searchDrawerRoute';
 import { requestSettingsDialog } from '../settings/settingsDialogRoute';
 import { UiButton } from './UiButton';
 
@@ -88,6 +89,30 @@ export function UiSidebarPanel({
       window.removeEventListener('focus', refreshVersionControlCount);
     };
   }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.repeat ||
+        !event.ctrlKey ||
+        event.altKey ||
+        event.metaKey ||
+        event.key.toLocaleLowerCase() !== 'p'
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const mode = event.shiftKey ? 'commands' : 'assets';
+      onSelectActivity('search');
+      onExpandedChange?.(true);
+      window.setTimeout(() => requestSearchDrawer(mode), 0);
+    };
+
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [onExpandedChange, onSelectActivity]);
 
   const renderActivity = (activity: ActivityRegistration) => {
     const Icon = activity.icon;

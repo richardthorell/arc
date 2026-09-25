@@ -199,12 +199,19 @@ export const commandRegistry: Record<CommandId, CommandRegistration> = {
     description: 'Switch to the Profiling workspace.',
     category: 'Layout',
   },
+  'view.assetSearch': {
+    id: 'view.assetSearch',
+    label: 'Search Assets',
+    description: 'Open the asset search drawer.',
+    category: 'Assets',
+    defaultKeybindings: ['Ctrl+P'],
+  },
   'view.commandPalette': {
     id: 'view.commandPalette',
     label: 'Show Command Palette',
     description: 'Search and run editor commands.',
     category: 'Tools',
-    defaultKeybindings: ['Ctrl+Shift+P', 'Ctrl+K'],
+    defaultKeybindings: ['Ctrl+Shift+P'],
   },
   'assets.import': {
     id: 'assets.import',

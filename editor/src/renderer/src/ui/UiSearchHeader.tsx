@@ -1,3 +1,4 @@
+import type { Ref } from 'react';
 import { Search } from 'lucide-react';
 
 import { UiButton } from './UiButton';
@@ -19,6 +20,7 @@ export type UiSearchHeaderProps = {
   resultCount?: number;
   placeholder?: string;
   searchLabel?: string;
+  inputRef?: Ref<HTMLInputElement>;
   onQueryChange: (query: string) => void;
   onModeChange: (mode: string) => void;
 };
@@ -31,6 +33,7 @@ export function UiSearchHeader({
   resultCount,
   placeholder = 'Search…',
   searchLabel = 'Search',
+  inputRef,
   onQueryChange,
   onModeChange,
 }: UiSearchHeaderProps) {
@@ -65,6 +68,7 @@ export function UiSearchHeader({
       <label className="ui-search-header-field">
         <Search aria-hidden="true" size={15} />
         <UiSearchInput
+          ref={inputRef}
           aria-label={searchLabel}
           placeholder={placeholder}
           value={query}
