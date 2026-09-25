@@ -10,6 +10,7 @@ import {
   FileText,
   Folder,
   FolderTree,
+  Globe2,
   Lightbulb,
   Mountain,
   Lock,
@@ -20,7 +21,6 @@ import {
   MoreVertical,
   Plus,
   Search,
-  Settings,
   Trash2,
   Waves,
   X,
@@ -73,7 +73,6 @@ import { AiGatewayApprovalPrompt, AiGatewayPanel } from '../ai/AiGatewayPanel';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
 import { RenderGraphPanel } from '../renderGraph/RenderGraphPanel';
 import { ShaderEditorPanel } from '../shader/ShaderEditorPanel';
-import { LightingPanel } from '../lighting/LightingPanel';
 import { SearchPanel } from '../search/SearchPanel';
 import { SettingsDialog } from '../settings/SettingsDialog';
 import { VersionControlPanel } from '../versionControl/VersionControlPanel';
@@ -385,6 +384,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const hostEventRefreshTimer = useRef<number | null>(null);
   const hostEventRefreshMode = useRef<'none' | 'selected' | 'hierarchy' | 'all'>('none');
   const [worldEnvironment, setWorldEnvironment] = useState<HostWorldEnvironment | null>(null);
+  const [inspectorTarget, setInspectorTarget] = useState<'entity' | 'world'>('entity');
   const [documentState, setDocumentState] = useState<SceneDocumentState>({
     sceneGuid: '',
     sceneName: 'Untitled',
@@ -559,6 +559,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           setLastCommand(event.message || event.type);
           return;
         }
+        if (event.type === 'entity.selected' && validHostEntity(event.entity)) setInspectorTarget('entity');
         setLastCommand(event.message || event.type);
         if (event.payload && typeof event.payload === 'object' && 'tool' in event.payload) {
           const payload = event.payload as {
@@ -619,7 +620,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
 
   useEffect(() => {
     if (activeTool !== 'terrain') return;
-    if (selectedSnapshot && !selectedSnapshot.terrain) {
+    if (inspectorTarget === 'world' || (selectedSnapshot && !selectedSnapshot.terrain)) {
       setActiveTool('select');
       if (startupState?.engineHostConnected)
         void window.arc.host.command('viewport.setTool', {
@@ -636,6 +637,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   }, [
     activeTool,
     coordinateSpace,
+    inspectorTarget,
     refreshTerrainToolState,
     rotationSnap,
     scaleSnap,
@@ -651,7 +653,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     textInputFocused: false,
     modalOpen: commandPaletteOpen || settingsOpen || createTerrainOpen,
     playing: runtimeState.state === 'running' || runtimeState.state === 'paused',
-    hasSelection: Boolean(selectedEntityId),
+    hasSelection: inspectorTarget === 'entity' && Boolean(selectedEntityId),
     canUndo: documentState.canUndo,
     canRedo: documentState.canRedo,
     projectOpen: Boolean(project),
@@ -827,11 +829,11 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           response = (await window.arc.host.command('history.undo')) as HostResponse;
         } else if (command === 'edit.redo') {
           response = (await window.arc.host.command('history.redo')) as HostResponse;
-        } else if (command === 'entity.duplicate' && selectedSnapshot) {
+        } else if (command === 'entity.duplicate' && inspectorTarget === 'entity' && selectedSnapshot) {
           response = (await window.arc.host.command('entity.duplicate', {
             entity: selectedSnapshot.entity,
           })) as HostResponse;
-        } else if (command === 'entity.delete' && selectedSnapshot) {
+        } else if (command === 'entity.delete' && inspectorTarget === 'entity' && selectedSnapshot) {
           response = (await window.arc.host.command('entity.delete', {
             entity: selectedSnapshot.entity,
           })) as HostResponse;
@@ -844,7 +846,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         } else if (command === 'scene.step') {
           response = (await window.arc.host.command('runtime.step', { ticks: 1 })) as HostResponse<HostRuntimeSnapshot>;
         } else if (command.startsWith('viewport.')) {
-          if (command === 'viewport.snapToFloor' && selectedSnapshot) {
+          if (command === 'viewport.snapToFloor' && inspectorTarget === 'entity' && selectedSnapshot) {
             response = (await window.arc.host.command('entity.snapToFloor', {
               entity: selectedSnapshot.entity,
             })) as HostResponse;
@@ -1065,6 +1067,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   }, [acceptRuntimeSnapshot]);
 
   const selectEntity = async (entityId: string, additive = false) => {
+    setInspectorTarget('entity');
     if (!additive && entityId === selectedEntityIdRef.current && selectedEntityIds.size === 1) return;
     const hostEntity = parseHostEntityId(entityId);
     if (startupState?.engineHostConnected && hostEntity) {
@@ -1073,6 +1076,11 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       await window.arc.host.command('entity.select', { entity: hostEntity, additive, toggle: additive });
       await refreshProjectFromHost(undefined, true);
     }
+  };
+
+  const selectWorld = () => {
+    setInspectorTarget('world');
+    if (activeTool === 'terrain') setActiveTool('select');
   };
 
   const mutateHierarchyEntity = async (type: string, payload: Record<string, unknown>) => {
@@ -1098,7 +1106,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       setCreateTerrainOpen(true);
       return;
     }
-    const parent = selectedSnapshot?.entity;
+    const parent = inspectorTarget === 'entity' ? selectedSnapshot?.entity : undefined;
     void mutateHierarchyEntity('entity.create', { kind, ...(parent ? { parent } : {}) });
   };
 
@@ -1123,7 +1131,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   };
 
   const createPrefabFromSelection = async () => {
-    if (!selectedSnapshot || !window.arc?.dialog?.createPrefab) {
+    if (inspectorTarget !== 'entity' || !selectedSnapshot || !window.arc?.dialog?.createPrefab) {
       setLastCommand('Select an entity before creating a prefab');
       return;
     }
@@ -1280,8 +1288,10 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       return (
         <ExplorerPanel
           project={project}
-          selectedEntityId={selectedEntityId}
-          selectedEntityIds={selectedEntityIds}
+          worldSelected={inspectorTarget === 'world'}
+          selectedEntityId={inspectorTarget === 'entity' ? selectedEntityId : ''}
+          selectedEntityIds={inspectorTarget === 'entity' ? selectedEntityIds : new Set()}
+          onSelectWorld={selectWorld}
           onSelectEntity={selectEntity}
           onRenameEntity={renameHierarchyEntity}
           onSetEntityActive={setHierarchyEntityActive}
@@ -1351,7 +1361,8 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   });
 
   const renderTerrainViewportOverlay = () => {
-    if (activeTool !== 'terrain' || !selectedSnapshot?.terrain || !project) return undefined;
+    if (inspectorTarget !== 'entity' || activeTool !== 'terrain' || !selectedSnapshot?.terrain || !project)
+      return undefined;
     const selectedKey = hostEntityKey(selectedSnapshot.entity);
     const visibleTerrainState =
       terrainToolState && hostEntityKey(terrainToolState.entity) === selectedKey
@@ -1409,7 +1420,9 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           activeTool={activeTool}
           coordinateSpace={coordinateSpace}
           snapping={snapping}
-          terrainEnabled={selectedSnapshot?.terrain !== null && selectedSnapshot?.terrain !== undefined}
+          terrainEnabled={
+            inspectorTarget === 'entity' && selectedSnapshot?.terrain !== null && selectedSnapshot?.terrain !== undefined
+          }
           translationSnap={translationSnap}
           rotationSnap={rotationSnap}
           scaleSnap={scaleSnap}
@@ -1482,6 +1495,18 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
 
   const renderRightPanel = (panel: WorkbenchPanelId) => {
     if (panel === 'inspector') {
+      if (inspectorTarget === 'world') {
+        return (
+          <WorldInspectorPanel
+            environment={worldEnvironment}
+            onEnvironmentChange={updateWorldEnvironment}
+            assets={project?.assets ?? []}
+            thumbnailProvider={loadAssetThumbnail}
+            onEnvironmentPreset={applyWorldEnvironmentPreset}
+            onEnvironmentHdri={applyWorldEnvironmentHdri}
+          />
+        );
+      }
       if (activeTool === 'terrain' && selectedSnapshot?.terrain) {
         return (
           <TerrainStackPanel
@@ -1519,19 +1544,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         />
       );
     }
-    if (panel === 'worldSettings') {
-      return (
-        <WorldSettingsPanel
-          environment={worldEnvironment}
-          onEnvironmentChange={updateWorldEnvironment}
-          assets={project?.assets ?? []}
-          thumbnailProvider={loadAssetThumbnail}
-          onEnvironmentPreset={applyWorldEnvironmentPreset}
-          onEnvironmentHdri={applyWorldEnvironmentHdri}
-        />
-      );
-    }
-    return <LightingPanel entities={project?.scene ?? []} onSelect={(id) => void selectEntity(id)} />;
+    return <div className="tool-empty">Panel unavailable.</div>;
   };
 
   const renderBottomPanel = (panel: WorkbenchPanelId) => {
@@ -1766,7 +1779,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       )}
       {createTerrainOpen && (
         <CreateTerrainDialog
-          parent={selectedSnapshot?.entity}
+          parent={inspectorTarget === 'entity' ? selectedSnapshot?.entity : undefined}
           command={(type, payload) => window.arc.host.command(type, payload) as Promise<HostResponse>}
           onClose={() => setCreateTerrainOpen(false)}
           onCreated={() => void refreshProjectFromHost()}
@@ -1832,8 +1845,10 @@ function PrimitivePreview({ kind }: { kind: Exclude<BasicEntityKind, 'empty' | '
 
 export function ExplorerPanel({
   project,
+  worldSelected,
   selectedEntityId,
   selectedEntityIds,
+  onSelectWorld,
   onSelectEntity,
   onRenameEntity,
   onSetEntityActive,
@@ -1845,8 +1860,10 @@ export function ExplorerPanel({
   onDelete,
 }: {
   project: ProjectSnapshot;
+  worldSelected: boolean;
   selectedEntityId: string;
   selectedEntityIds: ReadonlySet<string>;
+  onSelectWorld: () => void;
   onSelectEntity: (entityId: string, additive?: boolean) => void;
   onRenameEntity: (entityId: string, name: string) => void;
   onSetEntityActive: (entityId: string, active: boolean) => void;
@@ -1862,7 +1879,7 @@ export function ExplorerPanel({
   const filteredScene = useMemo(() => filterSceneTree(sceneTree, filter), [sceneTree, filter]);
   const allEntities = useMemo(() => flattenScene(project.scene), [project.scene]);
   const actorCount = allEntities.length;
-  const selectedCount = selectedEntityIds.size;
+  const selectedCount = worldSelected ? 0 : selectedEntityIds.size;
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [kindFilter, setKindFilter] = useState<'all' | SceneEntity['kind']>('all');
   const [onlyVisible, setOnlyVisible] = useState(false);
@@ -1905,16 +1922,16 @@ export function ExplorerPanel({
               <Plus size={13} />
             </UiIconButton>
           </div>
-          <UiIconButton label="Duplicate selected entity" onClick={onDuplicate}>
+          <UiIconButton disabled={worldSelected || selectedCount === 0} label="Duplicate selected entity" onClick={onDuplicate}>
             <Copy size={13} />
           </UiIconButton>
-          <UiIconButton label="Create prefab from selection" onClick={onCreatePrefab}>
+          <UiIconButton disabled={worldSelected || selectedCount === 0} label="Create prefab from selection" onClick={onCreatePrefab}>
             <Box size={13} />
           </UiIconButton>
           <UiIconButton label="Instantiate prefab" onClick={onInstantiatePrefab}>
             <Database size={13} />
           </UiIconButton>
-          <UiIconButton label="Delete selected entity" onClick={onDelete}>
+          <UiIconButton disabled={worldSelected || selectedCount === 0} label="Delete selected entity" onClick={onDelete}>
             <Trash2 size={13} />
           </UiIconButton>
         </div>
@@ -2026,6 +2043,27 @@ export function ExplorerPanel({
           </details>
         </div>
         <div className="hierarchy-tree">
+          <UiTreeRow
+            as="div"
+            role="treeitem"
+            tabIndex={0}
+            className="tree-row entity-row hierarchy-world-row"
+            depth={0}
+            selected={worldSelected}
+            onClick={onSelectWorld}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onSelectWorld();
+              }
+            }}
+          >
+            <span className="hierarchy-expand">
+              <ChevronRight size={13} className="ghost" />
+            </span>
+            <Globe2 className="entity-icon entity-icon-world" size={14} />
+            <span>World</span>
+          </UiTreeRow>
           {visibleScene.map((entity) => (
             <SceneTreeItem
               key={entity.guid ?? entity.id}
@@ -2123,7 +2161,7 @@ function AssetExplorerPanel({
   );
 }
 
-function WorldSettingsPanel({
+function WorldInspectorPanel({
   environment,
   assets,
   thumbnailProvider,
@@ -2151,8 +2189,8 @@ function WorldSettingsPanel({
         />
       ) : (
         <PlaceholderPanel
-          icon={<Settings />}
-          title="World Settings"
+          icon={<Globe2 />}
+          title="World"
           text="No world environment is available in this scene."
         />
       )}
