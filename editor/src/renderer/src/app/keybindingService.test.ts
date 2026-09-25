@@ -35,6 +35,17 @@ describe('KeybindingService', () => {
     expect(service.match(keyboardEvent('d', { ctrlKey: true }), context({ hasSelection: false }))).toBeNull();
   });
 
+  it('uses Ctrl+P for asset search and Ctrl+Shift+P for command search', () => {
+    const service = new KeybindingService();
+
+    expect(service.primaryBinding('view.assetSearch')).toBe('Ctrl+P');
+    expect(service.primaryBinding('view.commandPalette')).toBe('Ctrl+Shift+P');
+    expect(service.match(keyboardEvent('p', { ctrlKey: true }), context())?.command).toBe('view.assetSearch');
+    expect(service.match(keyboardEvent('p', { ctrlKey: true, shiftKey: true }), context())?.command).toBe(
+      'view.commandPalette',
+    );
+  });
+
   it('supports overrides and multi-stroke chords', () => {
     const service = new KeybindingService({ 'settings.open': ['Ctrl+J Ctrl+S'] });
     const first = service.match(keyboardEvent('j', { ctrlKey: true }), context(), 100);

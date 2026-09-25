@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { registerWorkbenchCommandHandler } from '../app/commandDispatcher';
 import type { AssetItem } from '../services/editorHostTypes';
 import { SearchPanel } from './SearchPanel';
+import { requestSearchDrawer } from './searchDrawerRoute';
 
 const assets: AssetItem[] = [
   {
@@ -61,5 +62,19 @@ describe('SearchPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save Scene' }));
 
     expect(handler).toHaveBeenCalledWith('file.save');
+  });
+
+  it('switches drawer mode and focuses the search field when quick open is requested', () => {
+    render(
+      <SearchPanel assets={assets} entities={[]} onSelectAsset={() => undefined} onSelectEntity={() => undefined} />,
+    );
+
+    act(() => requestSearchDrawer('commands'));
+    expect(screen.getByRole('tab', { name: /Commands/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('searchbox', { name: 'Search commands' })).toHaveFocus();
+
+    act(() => requestSearchDrawer('assets'));
+    expect(screen.getByRole('tab', { name: /Assets/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('searchbox', { name: 'Search assets' })).toHaveFocus();
   });
 });
