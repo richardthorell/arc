@@ -4,6 +4,8 @@ import type { WorkbenchLayoutState } from './workbenchTypes';
 
 const layoutStorageKey = 'arc.editor.workbench.layout.v2';
 
+type PersistedWorkbenchLayout = Omit<WorkbenchLayoutState, 'activityExpanded'>;
+
 export const defaultWorkbenchLayout: WorkbenchLayoutState = {
   activeActivity: 'scene',
   activeCenterPanel: 'viewport',
@@ -18,6 +20,19 @@ export const defaultWorkbenchLayout: WorkbenchLayoutState = {
   bottomVisible: true,
 };
 
+const persistedLayout = (layout: WorkbenchLayoutState): PersistedWorkbenchLayout => ({
+  activeActivity: layout.activeActivity,
+  activeCenterPanel: layout.activeCenterPanel,
+  activeRightPanel: layout.activeRightPanel,
+  activeBottomPanel: layout.activeBottomPanel,
+  leftPanelWidth: layout.leftPanelWidth,
+  rightPanelWidth: layout.rightPanelWidth,
+  bottomPanelHeight: layout.bottomPanelHeight,
+  leftVisible: layout.leftVisible,
+  rightVisible: layout.rightVisible,
+  bottomVisible: layout.bottomVisible,
+});
+
 const readLayout = (): WorkbenchLayoutState => {
   try {
     const saved = window.localStorage.getItem(layoutStorageKey);
@@ -27,7 +42,8 @@ const readLayout = (): WorkbenchLayoutState => {
 
     return {
       ...defaultWorkbenchLayout,
-      ...JSON.parse(saved),
+      ...(JSON.parse(saved) as Partial<PersistedWorkbenchLayout>),
+      activityExpanded: false,
     };
   } catch {
     return defaultWorkbenchLayout;
@@ -38,7 +54,7 @@ export const useWorkbenchLayout = () => {
   const [layout, setLayout] = useState<WorkbenchLayoutState>(() => readLayout());
 
   useEffect(() => {
-    window.localStorage.setItem(layoutStorageKey, JSON.stringify(layout));
+    window.localStorage.setItem(layoutStorageKey, JSON.stringify(persistedLayout(layout)));
   }, [layout]);
 
   const resetLayout = () => setLayout(defaultWorkbenchLayout);
