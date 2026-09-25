@@ -58,11 +58,7 @@ export function UiSearchList<T extends UiSearchListItem>({
             >
               <span
                 aria-hidden="true"
-                className={[
-                  'ui-search-list-icon',
-                  `is-${item.variant}`,
-                  previewUrl ? 'has-preview' : '',
-                ]
+                className={['ui-search-list-icon', `is-${item.variant}`, previewUrl ? 'has-preview' : '']
                   .filter(Boolean)
                   .join(' ')}
               >
