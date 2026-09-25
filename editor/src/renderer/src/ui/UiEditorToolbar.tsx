@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import type { HTMLAttributes, ReactNode } from 'react';
 
 import '../layout/toolbar.css';
@@ -8,16 +9,19 @@ export type UiEditorToolbarProps = Omit<HTMLAttributes<HTMLDivElement>, 'childre
   right?: ReactNode;
 };
 
-export function UiEditorToolbar({ className, left, center, right, ...props }: UiEditorToolbarProps) {
+export const UiEditorToolbar = forwardRef<HTMLDivElement, UiEditorToolbarProps>(function UiEditorToolbar(
+  { className, left, center, right, ...props },
+  ref,
+) {
   const classes = ['main-toolbar', 'ui-editor-toolbar', className].filter(Boolean).join(' ');
   return (
-    <div className={classes} {...props}>
+    <div className={classes} ref={ref} {...props}>
       <div className="toolbar-left">{left}</div>
       <div className="toolbar-center">{center}</div>
       <div className="toolbar-right">{right}</div>
     </div>
   );
-}
+});
 
 export function UiToolbarGroup({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   const classes = ['ui-toolbar-group', 'toolbar-group', className].filter(Boolean).join(' ');
