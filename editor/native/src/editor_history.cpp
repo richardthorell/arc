@@ -29,6 +29,31 @@ std::size_t editor_history::estimate(const editor_scene_state& scene) noexcept
     return result;
 }
 
+std::size_t editor_history::estimate(const scene::terrain_asset& asset) noexcept
+{
+    std::size_t result = sizeof(asset) + asset.source.asset.path_hint.size() + asset.source.generator_id.size() +
+                         asset.runtime.damage_profile.path_hint.size();
+    for (const auto& modifier : asset.modifiers)
+    {
+        result +=
+            sizeof(modifier) + modifier.type_id.size() + modifier.name.size() + modifier.canonical_parameters.size();
+        for (const auto& payload : modifier.region_payloads)
+        {
+            result += sizeof(payload);
+            std::visit([&](const auto& data) { result += data.samples.size() * sizeof(data.samples.front()); },
+                       payload.data);
+        }
+    }
+    for (const auto& attribute : asset.attributes)
+    {
+        result += sizeof(attribute) + attribute.name.size();
+        if (const auto* value = std::get_if<std::string>(&attribute.default_value)) result += value->size();
+    }
+    for (const auto& region : asset.regions)
+        result += sizeof(region) + region.dependencies.size() * sizeof(scene::terrain_region_dependency);
+    return result;
+}
+
 void editor_history::clear(const editor_scene_state&, bool mark_as_saved)
 {
     entries_.clear();
@@ -38,6 +63,7 @@ void editor_history::clear(const editor_scene_state&, bool mark_as_saved)
     saved_revision_ = mark_as_saved ? revision_ : static_cast<std::uint64_t>(-1);
     transaction_.reset();
     last_terrain_change_.reset();
+    last_terrain_asset_change_.reset();
 }
 
 void editor_history::record(std::string label, editor_scene_state before, const editor_scene_state& after)
@@ -75,6 +101,7 @@ void editor_history::enforce_limits()
 bool editor_history::undo(editor_scene_state& scene)
 {
     last_terrain_change_.reset();
+    last_terrain_asset_change_.reset();
     if (transaction_ || cursor_ == 0) return false;
     const auto& value = entries_[cursor_ - 1];
     if (value.terrain)
@@ -90,6 +117,12 @@ bool editor_history::undo(editor_scene_state& scene)
     {
         scene = value.before;
     }
+    if (value.terrain_asset)
+        last_terrain_asset_change_ =
+            editor_terrain_asset_history_change{.entity = value.terrain_asset->entity,
+                                                .asset_guid = value.terrain_asset->asset_guid,
+                                                .source_path = value.terrain_asset->source_path,
+                                                .asset = value.terrain_asset->before};
     revision_ = value.before_revision;
     --cursor_;
     return true;
@@ -98,6 +131,7 @@ bool editor_history::undo(editor_scene_state& scene)
 bool editor_history::redo(editor_scene_state& scene)
 {
     last_terrain_change_.reset();
+    last_terrain_asset_change_.reset();
     if (transaction_ || cursor_ >= entries_.size()) return false;
     const auto& value = entries_[cursor_];
     if (value.terrain)
@@ -113,6 +147,12 @@ bool editor_history::redo(editor_scene_state& scene)
     {
         scene = value.after;
     }
+    if (value.terrain_asset)
+        last_terrain_asset_change_ =
+            editor_terrain_asset_history_change{.entity = value.terrain_asset->entity,
+                                                .asset_guid = value.terrain_asset->asset_guid,
+                                                .source_path = value.terrain_asset->source_path,
+                                                .asset = value.terrain_asset->after};
     revision_ = value.after_revision;
     ++cursor_;
     return true;
@@ -222,6 +262,29 @@ bool editor_history::commit_terrain(std::uint64_t transaction_id, const editor_s
     return true;
 }
 
+bool editor_history::attach_terrain_asset_change(std::uint64_t before_revision, ecs::entity_guid terrain_guid,
+                                                 assets::asset_guid asset_guid, std::string source_path,
+                                                 scene::terrain_asset before, scene::terrain_asset after)
+{
+    if (cursor_ == 0u || cursor_ != entries_.size() || !terrain_guid.valid() || source_path.empty()) return false;
+    auto& value = entries_[cursor_ - 1u];
+    if (value.before_revision != before_revision || value.after_revision != revision_ || value.terrain_asset)
+        return false;
+    const auto additional_bytes =
+        sizeof(entry::terrain_asset_delta) + source_path.size() + estimate(before) + estimate(after);
+    value.terrain_asset.emplace();
+    auto& delta = *value.terrain_asset;
+    delta.entity = terrain_guid;
+    delta.asset_guid = asset_guid;
+    delta.source_path = std::move(source_path);
+    delta.before = std::move(before);
+    delta.after = std::move(after);
+    value.estimated_bytes += additional_bytes;
+    bytes_ += additional_bytes;
+    enforce_limits();
+    return true;
+}
+
 bool editor_history::apply_terrain_delta(editor_scene_state& scene_state, const entry::terrain_delta& delta, bool after)
 {
     const auto entity = find_entity_by_guid(scene_state, delta.entity);
@@ -283,6 +346,11 @@ editor_history_snapshot editor_history::snapshot() const
 const std::optional<editor_terrain_history_change>& editor_history::last_terrain_change() const noexcept
 {
     return last_terrain_change_;
+}
+
+const std::optional<editor_terrain_asset_history_change>& editor_history::last_terrain_asset_change() const noexcept
+{
+    return last_terrain_asset_change_;
 }
 
 } // namespace arc::editor

@@ -2052,6 +2052,38 @@ struct arc_host::state
             found->second.update(asset, invalidate_all);
     }
 
+    bool restore_terrain_asset(const editor_terrain_asset_history_change& change, std::string& error)
+    {
+        const auto entity = find_entity_by_guid(scene, change.entity);
+        auto* terrain = scene.scene.try_get<scene::terrain_component>(entity);
+        if (!terrain)
+        {
+            error = "Terrain history target no longer exists";
+            return false;
+        }
+        const auto encoded = scene::write_terrain_asset_json(change.asset, true);
+        if (!encoded)
+        {
+            error = "Terrain history state could not be serialized";
+            return false;
+        }
+        if (!write_text_file_atomic(std::filesystem::path(change.source_path), encoded.value(), error)) return false;
+
+        terrain->asset_authoring_revision = change.asset.authoring_revision;
+        terrain_preview_dirty.erase(change.entity);
+        rebuild_terrain(entity, change.asset, true);
+        if (const auto active = terrain_active_modifiers.find(change.entity);
+            active != terrain_active_modifiers.end() && !scene::find_terrain_modifier(change.asset, active->second))
+            terrain_active_modifiers.erase(active);
+        if (asset_registry && change.asset_guid.valid())
+        {
+            asset_registry->mark_stale(change.asset_guid, "Terrain history restored");
+            [[maybe_unused]] const auto reimport =
+                asset_registry->reimport(change.asset_guid, assets::asset_streaming_priority::high);
+        }
+        return true;
+    }
+
     void queue_terrain_preview(ecs::entity_guid guid, const scene::terrain_dirty_region& dirty)
     {
         if (!guid.valid() || !dirty.valid) return;
@@ -2300,10 +2332,19 @@ host_response arc_host::execute(host_command_payload command)
 
 host_response arc_host::execute(const host_command_envelope& command)
 {
-    const bool authoring = std::visit(
-        [](const auto& payload) { return is_authoring_command<std::decay_t<decltype(payload)>>(); }, command.payload);
-    const bool project_mutation = std::visit(
-        [](const auto& payload) { return is_project_mutation<std::decay_t<decltype(payload)>>(); }, command.payload);
+    const bool transient_terrain_stack_operation = [&]
+    {
+        const auto* terrain_stack = std::get_if<host_terrain_modifier_stack_command>(&command.payload);
+        return terrain_stack && (terrain_stack->operation == "inspect" || terrain_stack->operation == "select");
+    }();
+    const bool authoring =
+        !transient_terrain_stack_operation &&
+        std::visit([](const auto& payload) { return is_authoring_command<std::decay_t<decltype(payload)>>(); },
+                   command.payload);
+    const bool project_mutation =
+        !transient_terrain_stack_operation &&
+        std::visit([](const auto& payload) { return is_project_mutation<std::decay_t<decltype(payload)>>(); },
+                   command.payload);
     const bool replaces_authoring_world = std::holds_alternative<host_open_scene_command>(command.payload) ||
                                           std::holds_alternative<host_new_scene_command>(command.payload) ||
                                           std::holds_alternative<host_close_project_command>(command.payload);
@@ -2385,9 +2426,19 @@ host_response arc_host::execute(const host_command_envelope& command)
                 .error = "Edit transaction does not match the active transaction"};
     std::optional<editor_scene_state> before;
     if (authoring && !command.edit) before = state_->scene;
+    struct pending_terrain_asset_history_change
+    {
+        ecs::entity_guid entity;
+        assets::asset_guid asset_guid;
+        std::string source_path;
+        scene::terrain_asset before;
+        scene::terrain_asset after;
+    };
+    std::optional<pending_terrain_asset_history_change> terrain_asset_history_change;
+    const auto history_revision_before = state_->history.snapshot().revision;
 
     auto response = std::visit(
-        [this, request_id = command.request_id](const auto& payload) -> host_response
+        [this, request_id = command.request_id, &terrain_asset_history_change](const auto& payload) -> host_response
         {
             using command_type = std::decay_t<decltype(payload)>;
             const auto fail = [this, request_id](std::string message, ecs::entity entity = {})
@@ -4151,12 +4202,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                     json["readOnly"] = read_only;
                     json["assetPath"] = asset_path;
                     json["authoringRevision"] = asset ? asset->authoring_revision : 0u;
-                    nlohmann::json rebuild{{"state", "idle"},
-                                           {"authoringRevision", asset ? asset->authoring_revision : 0u},
-                                           {"dirtyRegions", 0u},
-                                           {"geometryRegions", 0u},
-                                           {"attributeRegions", 0u},
-                                           {"error", ""}};
+                    nlohmann::json rebuild{
+                        {"state", "idle"},        {"authoringRevision", asset ? asset->authoring_revision : 0u},
+                        {"dirtyRegions", 0u},     {"geometryRegions", 0u},
+                        {"attributeRegions", 0u}, {"error", ""}};
                     if (const auto session = state_->terrain_rebuilds.find(entity_guid);
                         session != state_->terrain_rebuilds.end())
                     {
@@ -4251,6 +4300,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     return success(stack_json(&authored, true, read_only, source_reference.generic_string()));
                 }
                 if (read_only) return fail("Terrain asset is read only", entity);
+                const auto before_asset = authored;
 
                 const auto bump_revision = [&]
                 {
@@ -4339,6 +4389,13 @@ host_response arc_host::execute(const host_command_envelope& command)
                 std::string write_error;
                 if (!write_text_file_atomic(resolved->path, encoded.value(), write_error))
                     return fail(write_error, entity);
+
+                terrain_asset_history_change =
+                    pending_terrain_asset_history_change{.entity = entity_guid,
+                                                         .asset_guid = loaded.asset.resolved_guid(),
+                                                         .source_path = resolved->path.generic_string(),
+                                                         .before = before_asset,
+                                                         .after = authored};
 
                 terrain->asset.guid = loaded.asset.requested_guid();
                 terrain->asset.expected_type = assets::asset_types::terrain;
@@ -4497,6 +4554,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                             return fail("Terrain asset transaction is missing", entity);
                         auto session = std::move(*state_->terrain_asset_stroke);
                         state_->terrain_asset_stroke.reset();
+                        const auto before_asset = session.asset;
                         const auto update = session.tool == scene::terrain_brush_tool::paint
                                                 ? scene::accumulate_terrain_paint_samples(
                                                       session.asset, session.modifier, session.paint_edits)
@@ -4509,6 +4567,12 @@ host_response arc_host::execute(const host_command_envelope& command)
                             std::string write_error;
                             if (!write_text_file_atomic(session.source_path, encoded.value(), write_error))
                                 return fail(write_error, entity);
+                            terrain_asset_history_change = pending_terrain_asset_history_change{
+                                .entity = session.entity,
+                                .asset_guid = session.asset_guid,
+                                .source_path = session.source_path.generic_string(),
+                                .before = before_asset,
+                                .after = session.asset};
                             terrain->asset_authoring_revision = session.asset.authoring_revision;
                             state_->rebuild_terrain(entity, session.asset);
                             if (state_->asset_registry)
@@ -5157,15 +5221,28 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (!state_->history.undo(state_->scene)) return fail("Nothing to undo");
                 state_->terrain_rebuilds.clear();
                 state_->terrain_preview_dirty.clear();
+                if (const auto& asset_change = state_->history.last_terrain_asset_change(); asset_change)
+                {
+                    std::string restore_error;
+                    if (!state_->restore_terrain_asset(*asset_change, restore_error))
+                    {
+                        (void)state_->history.redo(state_->scene);
+                        synchronize_all_terrain_resources(state_->scene, *state_->renderer);
+                        return fail("Undo could not restore the terrain asset: " + restore_error);
+                    }
+                }
                 if (auto* camera_transform =
                         state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
                     state_->camera_controller.synchronize_from(*camera_transform);
-                if (const auto& changed = state_->history.last_terrain_change(); changed)
-                    synchronize_terrain_render_resource(state_->scene, *state_->renderer,
-                                                        find_entity_by_guid(state_->scene, changed->entity),
-                                                        &changed->region);
-                else
-                    synchronize_all_terrain_resources(state_->scene, *state_->renderer);
+                if (!state_->history.last_terrain_asset_change())
+                {
+                    if (const auto& changed = state_->history.last_terrain_change(); changed)
+                        synchronize_terrain_render_resource(state_->scene, *state_->renderer,
+                                                            find_entity_by_guid(state_->scene, changed->entity),
+                                                            &changed->region);
+                    else
+                        synchronize_all_terrain_resources(state_->scene, *state_->renderer);
+                }
                 push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Undo completed",
                            state_->scene.selected_entity);
                 return success();
@@ -5175,15 +5252,28 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (!state_->history.redo(state_->scene)) return fail("Nothing to redo");
                 state_->terrain_rebuilds.clear();
                 state_->terrain_preview_dirty.clear();
+                if (const auto& asset_change = state_->history.last_terrain_asset_change(); asset_change)
+                {
+                    std::string restore_error;
+                    if (!state_->restore_terrain_asset(*asset_change, restore_error))
+                    {
+                        (void)state_->history.undo(state_->scene);
+                        synchronize_all_terrain_resources(state_->scene, *state_->renderer);
+                        return fail("Redo could not restore the terrain asset: " + restore_error);
+                    }
+                }
                 if (auto* camera_transform =
                         state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
                     state_->camera_controller.synchronize_from(*camera_transform);
-                if (const auto& changed = state_->history.last_terrain_change(); changed)
-                    synchronize_terrain_render_resource(state_->scene, *state_->renderer,
-                                                        find_entity_by_guid(state_->scene, changed->entity),
-                                                        &changed->region);
-                else
-                    synchronize_all_terrain_resources(state_->scene, *state_->renderer);
+                if (!state_->history.last_terrain_asset_change())
+                {
+                    if (const auto& changed = state_->history.last_terrain_change(); changed)
+                        synchronize_terrain_render_resource(state_->scene, *state_->renderer,
+                                                            find_entity_by_guid(state_->scene, changed->entity),
+                                                            &changed->region);
+                    else
+                        synchronize_all_terrain_resources(state_->scene, *state_->renderer);
+                }
                 push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Redo completed",
                            state_->scene.selected_entity);
                 return success();
@@ -5360,6 +5450,12 @@ host_response arc_host::execute(const host_command_envelope& command)
         {
             state_->history.record(edit_label, std::move(*before), state_->scene);
         }
+        if (terrain_asset_history_change &&
+            !state_->history.attach_terrain_asset_change(
+                history_revision_before, terrain_asset_history_change->entity, terrain_asset_history_change->asset_guid,
+                std::move(terrain_asset_history_change->source_path), std::move(terrain_asset_history_change->before),
+                std::move(terrain_asset_history_change->after)))
+            diagnostics::warn("editor.terrain", "Terrain asset edit could not be attached to undo history");
     }
     if (response.succeeded && std::holds_alternative<host_open_scene_command>(command.payload)) ++state_->world_epoch;
     if (response.succeeded && std::holds_alternative<host_new_scene_command>(command.payload)) ++state_->world_epoch;
@@ -7194,8 +7290,7 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         const auto terrain_guid = entity_guid_of(state_->scene, state_->scene.terrain_entity);
         const auto rebuild = state_->terrain_rebuilds.find(terrain_guid);
         const auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(state_->scene.terrain_entity);
-        const auto* transform =
-            state_->scene.scene.try_get<scene::transform_component>(state_->scene.terrain_entity);
+        const auto* transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.terrain_entity);
         if (rebuild != state_->terrain_rebuilds.end() && terrain && transform)
         {
             const auto status = rebuild->second.status();
@@ -7229,11 +7324,10 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
                     {
                         const float t0 = static_cast<float>(segment) / edge_segments;
                         const float t1 = static_cast<float>(segment + 1u) / edge_segments;
-                        debug_overlay.lines.push_back(
-                            {.start = point(std::lerp(x0, x1, t0), std::lerp(z0, z1, t0)),
-                             .end = point(std::lerp(x0, x1, t1), std::lerp(z0, z1, t1)),
-                             .color = color,
-                             .depth = render::debug_overlay_depth_mode::tested});
+                        debug_overlay.lines.push_back({.start = point(std::lerp(x0, x1, t0), std::lerp(z0, z1, t0)),
+                                                       .end = point(std::lerp(x0, x1, t1), std::lerp(z0, z1, t1)),
+                                                       .color = color,
+                                                       .depth = render::debug_overlay_depth_mode::tested});
                     }
                 };
                 append_edge(min_x, min_z, max_x, min_z);

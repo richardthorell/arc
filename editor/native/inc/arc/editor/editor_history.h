@@ -37,6 +37,14 @@ struct editor_terrain_history_change
     scene::terrain_dirty_region region;
 };
 
+struct editor_terrain_asset_history_change
+{
+    ecs::entity_guid entity;
+    assets::asset_guid asset_guid;
+    std::string source_path;
+    scene::terrain_asset asset;
+};
+
 class editor_history
 {
 public:
@@ -48,11 +56,15 @@ public:
     bool commit(std::uint64_t transaction_id, const editor_scene_state& scene);
     bool commit_terrain(std::uint64_t transaction_id, const editor_scene_state& current_scene,
                         ecs::entity_guid terrain_guid);
+    bool attach_terrain_asset_change(std::uint64_t before_revision, ecs::entity_guid terrain_guid,
+                                     assets::asset_guid asset_guid, std::string source_path,
+                                     scene::terrain_asset before, scene::terrain_asset after);
     bool cancel(std::uint64_t transaction_id, editor_scene_state& scene);
     bool transaction_matches(std::uint64_t transaction_id) const noexcept;
     void mark_saved() noexcept;
     editor_history_snapshot snapshot() const;
     const std::optional<editor_terrain_history_change>& last_terrain_change() const noexcept;
+    const std::optional<editor_terrain_asset_history_change>& last_terrain_asset_change() const noexcept;
 
 private:
     struct entry
@@ -74,10 +86,22 @@ private:
             std::vector<std::uint8_t> after_weights;
         };
 
+        struct terrain_asset_delta
+        {
+            terrain_asset_delta() noexcept : entity{}, asset_guid{} {}
+
+            ecs::entity_guid entity;
+            assets::asset_guid asset_guid;
+            std::string source_path;
+            scene::terrain_asset before;
+            scene::terrain_asset after;
+        };
+
         std::string label;
         editor_scene_state before;
         editor_scene_state after;
         std::optional<terrain_delta> terrain;
+        std::optional<terrain_asset_delta> terrain_asset;
         std::uint64_t before_revision{};
         std::uint64_t after_revision{};
         std::size_t estimated_bytes{};
@@ -91,6 +115,7 @@ private:
 
     void enforce_limits();
     static std::size_t estimate(const editor_scene_state& scene) noexcept;
+    static std::size_t estimate(const scene::terrain_asset& asset) noexcept;
     static bool apply_terrain_delta(editor_scene_state& scene, const entry::terrain_delta& delta, bool after);
 
     std::vector<entry> entries_;
@@ -101,6 +126,7 @@ private:
     std::uint64_t saved_revision_{static_cast<std::uint64_t>(-1)};
     std::optional<transaction> transaction_;
     std::optional<editor_terrain_history_change> last_terrain_change_;
+    std::optional<editor_terrain_asset_history_change> last_terrain_asset_change_;
 };
 
 } // namespace arc::editor
