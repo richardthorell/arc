@@ -5,7 +5,21 @@ on:
 permissions:
   contents: write
 jobs:
-  test:
+  refactor:
     runs-on: ubuntu-24.04
     steps:
-      - run: echo ready
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ui/world-settings-in-inspector
+      - run: python3 tools/tmp_world_refactor.py
+      - name: Commit Workbench refactor
+        run: |
+          if git diff --quiet -- editor/src/renderer/src/app/Workbench.tsx; then
+            echo "No Workbench changes"
+            exit 0
+          fi
+          git config user.name "arc-task-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add editor/src/renderer/src/app/Workbench.tsx
+          git commit -m "ui: inspect world through hierarchy"
+          git push origin HEAD:ui/world-settings-in-inspector
