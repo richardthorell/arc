@@ -234,3 +234,5 @@ export function TerrainRangeControl({
     </span>
   );
 }
+
+export const TerrainRange = TerrainRangeControl;
