@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { activityRegistry, isSidebarPanel, panelRegistry, sidebarPanelIds } from './panelRegistry';
+import { activityRegistry, dockPanelIds, isSidebarPanel, panelRegistry, sidebarPanelIds } from './panelRegistry';
 
 describe('primary sidebar registry', () => {
   it('retains the hierarchy activity for layout compatibility and exposes three panel utilities', () => {
@@ -23,5 +23,11 @@ describe('primary sidebar registry', () => {
     expect(isSidebarPanel('inspector')).toBe(false);
     expect(isSidebarPanel('contentBrowser')).toBe(false);
     expect(isSidebarPanel('profiler')).toBe(false);
+  });
+
+  it('uses Inspector as the only right-side details panel', () => {
+    expect(dockPanelIds.right).toEqual(['inspector']);
+    expect('lighting' in panelRegistry).toBe(false);
+    expect('worldSettings' in panelRegistry).toBe(false);
   });
 });
