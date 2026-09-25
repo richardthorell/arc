@@ -26,6 +26,7 @@ export function SearchPanel({
   const [focusRequest, setFocusRequest] = useState(0);
   const [cachedPreviews, setCachedPreviews] = useState<ReadonlyMap<string, string>>(() => new Map());
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const requestedPreviewKeys = useRef(new Set<string>());
 
   const assetEntities = useMemo(() => assets.map((asset) => new AssetSearchEntity(asset)), [assets]);
   const commandEntities = useMemo(() => allCommands.map((command) => new CommandSearchEntity(command)), []);
@@ -55,7 +56,8 @@ export function SearchPanel({
     for (const entity of visibleResults) {
       if (!(entity instanceof AssetSearchEntity)) continue;
       const previewKey = cachedAssetPreviewKey(entity.asset.path, entity.asset.generation);
-      if (cachedPreviews.has(previewKey)) continue;
+      if (requestedPreviewKeys.current.has(previewKey)) continue;
+      requestedPreviewKeys.current.add(previewKey);
 
       void loadCachedAssetPreview(entity.asset.path, entity.asset.generation).then((preview) => {
         if (!active || !preview) return;
@@ -71,7 +73,7 @@ export function SearchPanel({
     return () => {
       active = false;
     };
-  }, [cachedPreviews, mode, visibleResults]);
+  }, [mode, visibleResults]);
 
   const focusMode = (nextMode: SearchDrawerMode) => {
     setMode(nextMode);
