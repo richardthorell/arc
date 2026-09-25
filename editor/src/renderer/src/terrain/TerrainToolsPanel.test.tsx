@@ -58,6 +58,9 @@ describe('TerrainToolsPanel', () => {
       />,
     );
 
+    expect(screen.getByLabelText('Radius')).toHaveClass('ui-slider');
+    expect(screen.getByLabelText('Radius numeric value')).toBeInTheDocument();
+
     await userEvent.click(screen.getByRole('tab', { name: /Paint/ }));
     await waitFor(() =>
       expect(command).toHaveBeenCalledWith(

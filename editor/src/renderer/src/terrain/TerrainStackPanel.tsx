@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, Eye, EyeOff, Layers3, Mountain, Paintbrush, Plus, R
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { HostEntityId, HostResponse } from '../inspector/inspectorTypes';
+import { UiButton, UiIconButton, UiPropertyCard, UiTextInput } from '../ui';
 
 import './terrainEditor.css';
 
@@ -120,14 +121,14 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
             <small>{stack.assetBacked ? stack.assetPath || 'Terrain Asset' : 'Legacy inline terrain'}</small>
           </span>
         </div>
-        <button
-          aria-label="Refresh terrain stack"
+        <UiIconButton
           disabled={loading}
+          label="Refresh terrain stack"
           onClick={() => void execute('inspect')}
           type="button"
         >
           <RefreshCw className={loading ? 'spin' : ''} size={14} />
-        </button>
+        </UiIconButton>
       </header>
 
       {!stack.assetBacked ? (
@@ -142,12 +143,12 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
       ) : (
         <>
           <div className="terrain-stack-toolbar">
-            <button disabled={stack.readOnly || loading} onClick={() => void add('sculpt')} type="button">
+            <UiButton disabled={stack.readOnly || loading} onClick={() => void add('sculpt')} type="button">
               <Plus size={13} /> <Mountain size={13} /> Sculpt
-            </button>
-            <button disabled={stack.readOnly || loading} onClick={() => void add('paint')} type="button">
+            </UiButton>
+            <UiButton disabled={stack.readOnly || loading} onClick={() => void add('paint')} type="button">
               <Plus size={13} /> <Paintbrush size={13} /> Paint
-            </button>
+            </UiButton>
           </div>
 
           <div className="terrain-stack-list" role="listbox" aria-label="Terrain modifiers">
@@ -162,9 +163,9 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
                   role="option"
                   tabIndex={0}
                 >
-                  <button
-                    aria-label={`${modifier.enabled ? 'Disable' : 'Enable'} ${modifier.name}`}
+                  <UiIconButton
                     disabled={stack.readOnly || loading}
+                    label={`${modifier.enabled ? 'Disable' : 'Enable'} ${modifier.name}`}
                     onClick={(event) => {
                       event.stopPropagation();
                       void mutate('set_enabled', { modifier: modifier.id, enabled: !modifier.enabled });
@@ -172,7 +173,7 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
                     type="button"
                   >
                     {modifier.enabled ? <Eye size={14} /> : <EyeOff size={14} />}
-                  </button>
+                  </UiIconButton>
                   <Icon size={14} />
                   <span className="terrain-stack-row-copy">
                     <strong>{modifier.name}</strong>
@@ -188,9 +189,9 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
                     </small>
                   </span>
                   <span className="terrain-stack-row-actions">
-                    <button
-                      aria-label={`Move ${modifier.name} up`}
+                    <UiIconButton
                       disabled={stack.readOnly || loading || index === 0}
+                      label={`Move ${modifier.name} up`}
                       onClick={(event) => {
                         event.stopPropagation();
                         void mutate('move', { modifier: modifier.id, index: index - 1 });
@@ -198,10 +199,10 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
                       type="button"
                     >
                       <ArrowUp size={13} />
-                    </button>
-                    <button
-                      aria-label={`Move ${modifier.name} down`}
+                    </UiIconButton>
+                    <UiIconButton
                       disabled={stack.readOnly || loading || index === stack.modifiers.length - 1}
+                      label={`Move ${modifier.name} down`}
                       onClick={(event) => {
                         event.stopPropagation();
                         void mutate('move', { modifier: modifier.id, index: index + 1 });
@@ -209,7 +210,7 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
                       type="button"
                     >
                       <ArrowDown size={13} />
-                    </button>
+                    </UiIconButton>
                   </span>
                 </div>
               );
@@ -225,44 +226,62 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
           </div>
 
           {selected && (
-            <div className="terrain-stack-properties">
-              <h3>Selected Modifier</h3>
-              <label>
-                <span>Name</span>
-                <input
-                  aria-label="Modifier name"
-                  disabled={stack.readOnly || loading}
-                  onBlur={() => void commitRename()}
-                  onChange={(event) => setRenameValue(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') void commitRename();
-                  }}
-                  value={renameValue}
-                />
-              </label>
-              <div className="terrain-stack-property">
-                <span>Type</span>
-                <strong>
-                  {selected.type === 'paint'
-                    ? 'Paint Layer'
-                    : selected.type === 'sculpt'
-                      ? 'Sculpt Layer'
-                      : selected.typeId}
-                </strong>
-              </div>
-              <div className="terrain-stack-property">
-                <span>Stable ID</span>
-                <code title={selected.id}>{selected.id.slice(0, 12)}…</code>
-              </div>
-              <button
-                className="terrain-stack-delete"
-                disabled={stack.readOnly || loading}
-                onClick={() => void mutate('erase', { modifier: selected.id })}
-                type="button"
-              >
-                <Trash2 size={13} /> Delete Modifier
-              </button>
-            </div>
+            <UiPropertyCard
+              className="terrain-stack-properties"
+              expandable={false}
+              fields={[
+                {
+                  id: 'name',
+                  label: 'Name',
+                  control: (
+                    <UiTextInput
+                      aria-label="Modifier name"
+                      disabled={stack.readOnly || loading}
+                      onBlur={() => void commitRename()}
+                      onChange={(event) => setRenameValue(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') void commitRename();
+                      }}
+                      value={renameValue}
+                    />
+                  ),
+                },
+                {
+                  id: 'type',
+                  label: 'Type',
+                  control: (
+                    <strong>
+                      {selected.type === 'paint'
+                        ? 'Paint Layer'
+                        : selected.type === 'sculpt'
+                          ? 'Sculpt Layer'
+                          : selected.typeId}
+                    </strong>
+                  ),
+                },
+                {
+                  id: 'stable-id',
+                  label: 'Stable ID',
+                  control: <code title={selected.id}>{selected.id.slice(0, 12)}…</code>,
+                },
+                {
+                  id: 'delete',
+                  fullWidth: true,
+                  control: (
+                    <UiButton
+                      className="terrain-stack-delete"
+                      disabled={stack.readOnly || loading}
+                      onClick={() => void mutate('erase', { modifier: selected.id })}
+                      type="button"
+                      variant="danger"
+                    >
+                      <Trash2 size={13} /> Delete Modifier
+                    </UiButton>
+                  ),
+                },
+              ]}
+              title="Selected Modifier"
+            />
           )}
 
           <footer className="terrain-stack-footer">

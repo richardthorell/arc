@@ -58,6 +58,8 @@ describe('TerrainViewportOverlay', () => {
       />,
     );
 
+    expect(screen.getByLabelText('Radius')).toHaveClass('ui-slider');
+
     await userEvent.click(screen.getByRole('tab', { name: /Paint/ }));
     await waitFor(() =>
       expect(command).toHaveBeenCalledWith(
