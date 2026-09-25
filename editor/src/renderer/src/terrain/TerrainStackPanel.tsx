@@ -1,4 +1,17 @@
-import { ArrowDown, ArrowUp, Eye, EyeOff, Layers3, Mountain, Paintbrush, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  Copy,
+  Eye,
+  EyeOff,
+  GripVertical,
+  Layers3,
+  Mountain,
+  Paintbrush,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { HostEntityId, HostResponse } from '../inspector/inspectorTypes';
@@ -36,6 +49,7 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
   const [selectedId, setSelectedId] = useState<string>('');
   const [renameValue, setRenameValue] = useState('');
   const [loading, setLoading] = useState(false);
+  const [draggedId, setDraggedId] = useState('');
 
   const execute = useCallback(
     async (operation: string, extra: Record<string, unknown> = {}) => {
@@ -157,12 +171,29 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
               return (
                 <div
                   aria-selected={modifier.id === selectedId}
-                  className={`terrain-stack-row${modifier.id === selectedId ? ' selected' : ''}`}
+                  className={`terrain-stack-row${modifier.id === selectedId ? ' selected' : ''}${draggedId === modifier.id ? ' dragging' : ''}`}
+                  draggable={!stack.readOnly && !loading}
                   key={modifier.id}
                   onClick={() => void selectModifier(modifier)}
+                  onDragEnd={() => setDraggedId('')}
+                  onDragOver={(event) => {
+                    if (draggedId && draggedId !== modifier.id) event.preventDefault();
+                  }}
+                  onDragStart={(event) => {
+                    setDraggedId(modifier.id);
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', modifier.id);
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const source = draggedId || event.dataTransfer.getData('text/plain');
+                    setDraggedId('');
+                    if (source && source !== modifier.id) void mutate('move', { modifier: source, index });
+                  }}
                   role="option"
                   tabIndex={0}
                 >
+                  <GripVertical aria-hidden="true" className="terrain-stack-drag-handle" size={13} />
                   <UiIconButton
                     disabled={stack.readOnly || loading}
                     label={`${modifier.enabled ? 'Disable' : 'Enable'} ${modifier.name}`}
@@ -263,6 +294,22 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
                   id: 'stable-id',
                   label: 'Stable ID',
                   control: <code title={selected.id}>{selected.id.slice(0, 12)}…</code>,
+                },
+                {
+                  id: 'duplicate',
+                  fullWidth: true,
+                  control: (
+                    <UiButton
+                      disabled={stack.readOnly || loading}
+                      onClick={async () => {
+                        const next = await mutate('duplicate', { modifier: selected.id });
+                        if (next?.activeModifier) setSelectedId(next.activeModifier);
+                      }}
+                      type="button"
+                    >
+                      <Copy size={13} /> Duplicate Modifier
+                    </UiButton>
+                  ),
                 },
                 {
                   id: 'delete',

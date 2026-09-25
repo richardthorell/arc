@@ -4233,6 +4233,13 @@ host_response arc_host::execute(const host_command_envelope& command)
                     auto& added = scene::add_terrain_paint_layer(authored);
                     state_->terrain_active_modifiers[entity_guid] = added.id;
                 }
+                else if (payload.operation == "duplicate")
+                {
+                    if (!parsed_id) return fail("Terrain modifier was not found", entity);
+                    auto* duplicate = scene::duplicate_terrain_modifier(authored, *parsed_id);
+                    if (!duplicate) return fail("Terrain modifier was not found", entity);
+                    state_->terrain_active_modifiers[entity_guid] = duplicate->id;
+                }
                 else if (payload.operation == "rename")
                 {
                     auto* modifier = find_modifier();

@@ -420,6 +420,10 @@ struct [[nodiscard]] terrain_asset_validation_result
 terrain_modifier_descriptor& add_terrain_sculpt_layer(terrain_asset& asset, std::string name = "Sculpt Layer");
 terrain_modifier_descriptor& add_terrain_paint_layer(terrain_asset& asset, std::string name = "Paint Layer");
 
+/** Copy a modifier immediately after its source with a new stable identity and dirty its affected domains. */
+[[nodiscard]] terrain_modifier_descriptor* duplicate_terrain_modifier(terrain_asset& asset,
+                                                                      terrain_stable_id source);
+
 [[nodiscard]] terrain_modifier_descriptor* find_terrain_modifier(terrain_asset& asset, terrain_stable_id id) noexcept;
 [[nodiscard]] const terrain_modifier_descriptor* find_terrain_modifier(const terrain_asset& asset,
                                                                        terrain_stable_id id) noexcept;

@@ -114,6 +114,38 @@ TEST_CASE("M3.1 sparse edit payloads survive terrain asset save and reload")
           terrain_paint_sample_delta{12u, 2u, std::array<std::int16_t, 4>{-16, 16, 0, 0}});
 }
 
+TEST_CASE("M3 production workflow duplicates modifier payloads with a new stable identity")
+{
+    using namespace arc::scene;
+
+    auto asset = make_asset();
+    const auto source_id = add_terrain_sculpt_layer(asset, "Cliff Detail").id;
+    REQUIRE(set_terrain_sculpt_region_samples(asset, source_id, {2, -1}, {{7u, 3u, 1.25f}}).revision != 0u);
+    for (auto& region : asset.regions)
+    {
+        region.compiled_revision = region.dirty_revision;
+        region.dirty_domains = terrain_domain::none;
+    }
+    const auto revision = asset.authoring_revision;
+
+    const auto* duplicate = duplicate_terrain_modifier(asset, source_id);
+    REQUIRE(duplicate != nullptr);
+    CHECK(duplicate->id != source_id);
+    CHECK(duplicate->name == "Cliff Detail Copy");
+    CHECK(duplicate->type_id == terrain_builtin_modifier_types::sculpt_layer);
+    CHECK(duplicate->region_payloads.size() == 1u);
+    CHECK(asset.authoring_revision == revision + 1u);
+    REQUIRE(asset.modifiers.size() == 2u);
+    CHECK(asset.modifiers[0].id == source_id);
+    CHECK(asset.modifiers[1].id == duplicate->id);
+
+    const auto region = std::ranges::find_if(asset.regions, [](const auto& value)
+                                             { return value.id == terrain_region_id{2, -1}; });
+    REQUIRE(region != asset.regions.end());
+    CHECK(terrain_domain_contains(region->dirty_domains, terrain_domain::geometry));
+    CHECK(validate_terrain_asset(asset).valid());
+}
+
 TEST_CASE("M3.1 clearing the last sparse sample removes the region payload")
 {
     using namespace arc::scene;

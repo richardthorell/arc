@@ -141,6 +141,26 @@ terrain_modifier_descriptor& add_terrain_paint_layer(terrain_asset& asset, std::
                              terrain_domain::attributes);
 }
 
+terrain_modifier_descriptor* duplicate_terrain_modifier(terrain_asset& asset, terrain_stable_id source)
+{
+    const auto found = std::find_if(asset.modifiers.begin(), asset.modifiers.end(),
+                                    [source](const auto& value) { return value.id == source; });
+    if (found == asset.modifiers.end()) return nullptr;
+
+    terrain_modifier_descriptor duplicate = *found;
+    duplicate.id = generate_terrain_stable_id();
+    duplicate.name += " Copy";
+    const auto insert_index = static_cast<std::size_t>(std::distance(asset.modifiers.begin(), found)) + 1u;
+    asset.modifiers.insert(asset.modifiers.begin() + static_cast<std::ptrdiff_t>(insert_index), std::move(duplicate));
+    auto& inserted = asset.modifiers[insert_index];
+
+    if (inserted.affected_bounds)
+        (void)mark_terrain_dirty(asset, *inserted.affected_bounds, inserted.domains);
+    else if (asset.authoring_revision != std::numeric_limits<std::uint64_t>::max())
+        ++asset.authoring_revision;
+    return &inserted;
+}
+
 terrain_modifier_region_payload* find_terrain_modifier_payload(terrain_modifier_descriptor& modifier,
                                                                terrain_region_id region) noexcept
 {

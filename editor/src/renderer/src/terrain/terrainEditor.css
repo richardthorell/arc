@@ -273,6 +273,16 @@
   background: var(--arc-color-bg-selected);
 }
 
+.terrain-stack-row.dragging {
+  opacity: 0.45;
+}
+
+.terrain-stack-drag-handle {
+  flex: 0 0 auto;
+  color: var(--arc-color-text-muted);
+  cursor: grab;
+}
+
 .terrain-stack-row.base {
   opacity: 0.7;
   border-top: 1px solid var(--arc-color-border-subtle);
