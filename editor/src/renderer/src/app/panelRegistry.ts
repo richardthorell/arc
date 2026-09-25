@@ -8,10 +8,8 @@ import {
   Gauge,
   GitBranch,
   Layers3,
-  Lightbulb,
   Search,
   SlidersHorizontal,
-  Globe2,
 } from 'lucide-react';
 
 import type { ActivityRegistration, PanelRegistration, WorkbenchPanelId } from './workbenchTypes';
@@ -57,8 +55,6 @@ export const panelRegistry: Record<WorkbenchPanelId, PanelRegistration> = {
     minimumWidth: 320,
     closeable: true,
   },
-  lighting: { id: 'lighting', title: 'Lighting', icon: Lightbulb, defaultRegion: 'right' },
-  worldSettings: { id: 'worldSettings', title: 'World Settings', icon: Globe2, defaultRegion: 'right' },
   contentBrowser: {
     id: 'contentBrowser',
     title: 'Content Browser',
@@ -104,7 +100,7 @@ export const activityRegistry: ActivityRegistration[] = [
 
 export const dockPanelIds = {
   center: ['viewport', 'renderGraph', 'shaderEditor'] satisfies WorkbenchPanelId[],
-  right: ['inspector', 'lighting', 'worldSettings'] satisfies WorkbenchPanelId[],
+  right: ['inspector'] satisfies WorkbenchPanelId[],
   bottom: [
     'contentBrowser',
     'console',
