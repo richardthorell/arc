@@ -14,6 +14,8 @@ export { UiDrawerPanel } from './UiDrawerPanel';
 export type { UiDrawerPanelProps } from './UiDrawerPanel';
 export { UiDropdown } from './UiDropdown';
 export type { UiDropdownOption } from './UiDropdown';
+export { UiEditorToolbar, UiToolbarGroup, UiToolbarSeparator } from './UiEditorToolbar';
+export type { UiEditorToolbarProps } from './UiEditorToolbar';
 export { UiFloatingSurface } from './UiFloatingSurface';
 export { UiIconButton } from './UiIconButton';
 export { UiNodeCard } from './UiNodeCard';
