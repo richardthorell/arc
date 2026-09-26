@@ -2,8 +2,17 @@ import { useMemo, useState } from 'react';
 import { Mountain, X } from 'lucide-react';
 
 import type { HostEntityId, HostResponse } from '../inspector/inspectorTypes';
+import { UiButton } from '../ui/UiButton';
+import { UiNumericInput } from '../ui/UiNumericInput';
+import { UiSelect } from '../ui/UiSelect';
 
 const resolutions = [257, 513, 1025, 2049, 4097] as const;
+const sourceOptions = [
+  { value: 'flat', label: 'Flat' },
+  { value: 'procedural', label: 'Domain Warped' },
+] as const;
+const resolutionOptions = resolutions.map((value) => ({ value: String(value), label: `${value} x ${value}` }));
+const patchOptions = [16, 32, 64].map((value) => ({ value: String(value), label: `${value} quads` }));
 
 export function CreateTerrainDialog({
   parent,
@@ -60,71 +69,85 @@ export function CreateTerrainDialog({
           <span>
             <Mountain size={18} /> Create Terrain
           </span>
-          <button aria-label="Close" onClick={onClose}>
+          <UiButton aria-label="Close" variant="icon" onClick={onClose}>
             <X size={16} />
-          </button>
+          </UiButton>
         </header>
         <div className="terrain-create-fields">
           <label>
             Source
-            <select value={source} onChange={(event) => setSource(event.target.value as typeof source)}>
-              <option value="flat">Flat</option>
-              <option value="procedural">Domain Warped</option>
-            </select>
+            <UiSelect
+              ariaLabel="Source"
+              options={sourceOptions}
+              value={source}
+              onValueChange={(value) => setSource(value as typeof source)}
+            />
           </label>
           <label>
             Physical Size (m)
-            <input
-              type="number"
-              min={1}
+            <UiNumericInput
+              ariaLabel="Physical Size (m)"
               max={262144}
+              min={1}
+              precision={0}
+              scrubSensitivity={1}
+              step={1}
               value={size}
-              onChange={(event) => setSize(Number(event.target.value))}
+              onCommit={setSize}
             />
           </label>
           <label>
             Minimum Elevation (m)
-            <input
-              type="number"
+            <UiNumericInput
+              ariaLabel="Minimum Elevation (m)"
+              precision={1}
+              scrubSensitivity={0.5}
+              step={1}
               value={minimumElevation}
-              onChange={(event) => setMinimumElevation(Number(event.target.value))}
+              onCommit={setMinimumElevation}
             />
           </label>
           <label>
             Maximum Elevation (m)
-            <input
-              type="number"
+            <UiNumericInput
+              ariaLabel="Maximum Elevation (m)"
+              precision={1}
+              scrubSensitivity={0.5}
+              step={1}
               value={maximumElevation}
-              onChange={(event) => setMaximumElevation(Number(event.target.value))}
+              onCommit={setMaximumElevation}
             />
           </label>
           <label>
             Resolution
-            <select
-              value={resolution}
-              onChange={(event) => setResolution(Number(event.target.value) as typeof resolution)}
-            >
-              {resolutions.map((value) => (
-                <option key={value} value={value}>
-                  {value} x {value}
-                </option>
-              ))}
-            </select>
+            <UiSelect
+              ariaLabel="Resolution"
+              options={resolutionOptions}
+              value={String(resolution)}
+              onValueChange={(value) => setResolution(Number(value) as typeof resolution)}
+            />
           </label>
           <label>
             Patch Topology
-            <select value={patchQuads} onChange={(event) => setPatchQuads(Number(event.target.value))}>
-              {[16, 32, 64].map((value) => (
-                <option key={value} value={value}>
-                  {value} quads
-                </option>
-              ))}
-            </select>
+            <UiSelect
+              ariaLabel="Patch Topology"
+              options={patchOptions}
+              value={String(patchQuads)}
+              onValueChange={(value) => setPatchQuads(Number(value))}
+            />
           </label>
           {source === 'procedural' && (
             <label>
               Seed
-              <input type="number" min={0} value={seed} onChange={(event) => setSeed(Number(event.target.value))} />
+              <UiNumericInput
+                ariaLabel="Seed"
+                min={0}
+                precision={0}
+                scrubSensitivity={1}
+                step={1}
+                value={seed}
+                onCommit={setSeed}
+              />
             </label>
           )}
         </div>
@@ -138,10 +161,10 @@ export function CreateTerrainDialog({
         )}
         {error && <p className="command-error">{error}</p>}
         <footer>
-          <button onClick={onClose}>Cancel</button>
-          <button disabled={busy || estimate.history > 64} onClick={() => void create()}>
+          <UiButton onClick={onClose}>Cancel</UiButton>
+          <UiButton variant="primary" disabled={busy || estimate.history > 64} onClick={() => void create()}>
             {busy ? 'Creating...' : 'Create Terrain'}
-          </button>
+          </UiButton>
         </footer>
       </section>
     </div>
