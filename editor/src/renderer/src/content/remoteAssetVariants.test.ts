@@ -32,4 +32,14 @@ describe('remote asset variants', () => {
     const files = selectManifestFiles(manifest, '2k', 'gltf');
     expect(files.map((file) => file.logicalPath)).toEqual(['gltf/2k/gltf', 'gltf/2k/gltf/include/0']);
   });
+
+  it('normalizes user-facing variant tokens before matching', () => {
+    const files = selectManifestFiles(manifest, ' 2K ', '.GLTF');
+    expect(files.map((file) => file.logicalPath)).toEqual(['gltf/2k/gltf', 'gltf/2k/gltf/include/0']);
+  });
+
+  it('preserves the provider spelling when choosing a preferred variant', () => {
+    expect(preferredResolution(['4K', '2K'])).toBe('2K');
+    expect(preferredFormat(['BLEND', 'GLTF'], 'model')).toBe('GLTF');
+  });
 });
