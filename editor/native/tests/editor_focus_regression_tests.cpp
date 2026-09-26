@@ -14,8 +14,7 @@ TEST_CASE("focused selection remains the orbit pivot across repeated focus comma
     registry.emplace<arc::scene::transform_component>(selected, transform);
     registry.emplace<arc::scene::bounds_component>(
         selected,
-        arc::geometric::box3f{arc::geometric::point3f{-1.0f, -2.0f, -0.5f},
-                              arc::geometric::point3f{1.0f, 2.0f, 0.5f}});
+        arc::geometric::box3f{arc::geometric::point3f{-1.0f, -2.0f, -0.5f}, arc::geometric::point3f{1.0f, 2.0f, 0.5f}});
 
     arc::editor::editor_camera_controller camera;
     REQUIRE(arc::editor::focus_selected_entity(registry, selected, camera));
@@ -57,11 +56,10 @@ TEST_CASE("focus selection refreshes dirty parent transforms before choosing the
     registry.emplace<arc::scene::transform_component>(selected, child_transform);
     registry.emplace<arc::scene::bounds_component>(
         selected,
-        arc::geometric::box3f{arc::geometric::point3f{-0.5f, -0.5f, -0.5f},
-                              arc::geometric::point3f{0.5f, 0.5f, 0.5f}});
+        arc::geometric::box3f{arc::geometric::point3f{-0.5f, -0.5f, -0.5f}, arc::geometric::point3f{0.5f, 0.5f, 0.5f}});
 
-    REQUIRE(arc::scene::reparent(registry, selected, parent, {},
-                                 arc::scene::reparent_transform_policy::preserve_local));
+    REQUIRE(
+        arc::scene::reparent(registry, selected, parent, {}, arc::scene::reparent_transform_policy::preserve_local));
     REQUIRE(registry.get<arc::scene::transform_component>(selected).dirty);
 
     arc::editor::editor_camera_controller camera;
