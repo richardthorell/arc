@@ -89,4 +89,61 @@ describe('UiTreeView', () => {
     const [next] = onSelectionChange.mock.calls.at(-1) ?? [];
     expect([...next]).toEqual(['viewport', 'navigation', 'system']);
   });
+
+  it('reparents the full selection when a selected row is dragged', () => {
+    const onReparent = vi.fn();
+    render(
+      <UiTreeView
+        ariaLabel="Scene hierarchy"
+        defaultExpandedIds={['editing']}
+        nodes={nodes}
+        onReparent={onReparent}
+        selectedIds={new Set(['viewport', 'navigation'])}
+      />,
+    );
+
+    const dataTransfer = {
+      dropEffect: 'none',
+      effectAllowed: 'none',
+      setData: vi.fn(),
+    };
+    const viewport = screen.getByRole('treeitem', { name: /Viewport/ });
+    const system = screen.getByRole('treeitem', { name: /System/ });
+    fireEvent.dragStart(viewport, { dataTransfer });
+    fireEvent.dragOver(system, { dataTransfer });
+    expect(system).toHaveClass('is-drop-target');
+    fireEvent.drop(system, { dataTransfer });
+
+    expect(onReparent).toHaveBeenCalledWith(['viewport', 'navigation'], expect.objectContaining({ id: 'system' }));
+    expect(dataTransfer.setData).toHaveBeenCalledWith(
+      'application/x-arc-tree-nodes',
+      JSON.stringify(['viewport', 'navigation']),
+    );
+  });
+
+  it('rejects reparenting a node beneath its own descendant', () => {
+    const onReparent = vi.fn();
+    render(
+      <UiTreeView
+        ariaLabel="Scene hierarchy"
+        defaultExpandedIds={['editing']}
+        nodes={nodes}
+        onReparent={onReparent}
+      />,
+    );
+
+    const dataTransfer = {
+      dropEffect: 'none',
+      effectAllowed: 'none',
+      setData: vi.fn(),
+    };
+    const editing = screen.getByRole('treeitem', { name: /Editing/ });
+    const viewport = screen.getByRole('treeitem', { name: /Viewport/ });
+    fireEvent.dragStart(editing, { dataTransfer });
+    fireEvent.dragOver(viewport, { dataTransfer });
+    fireEvent.drop(viewport, { dataTransfer });
+
+    expect(viewport).not.toHaveClass('is-drop-target');
+    expect(onReparent).not.toHaveBeenCalled();
+  });
 });
