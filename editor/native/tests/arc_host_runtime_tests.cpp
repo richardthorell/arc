@@ -185,12 +185,11 @@ TEST_CASE("runtime protocol commands and state query round trip")
     REQUIRE(std::holds_alternative<arc::editor::host_runtime_state_query>(query.payload));
 
     REQUIRE(arc::editor::from_json(
-        "{\"kind\":\"query\",\"requestId\":13,\"type\":\"runtime.hierarchy\",\"payload\":{}}", query,
-        error));
+        "{\"kind\":\"query\",\"requestId\":13,\"type\":\"runtime.hierarchy\",\"payload\":{}}", query, error));
     REQUIRE(std::holds_alternative<arc::editor::host_runtime_hierarchy_query>(query.payload));
-    REQUIRE(arc::editor::from_json(
-        "{\"kind\":\"query\",\"requestId\":14,\"type\":\"runtime.entity\",\"payload\":{\"entity\":{\"index\":7,\"generation\":2}}}",
-        query, error));
+    REQUIRE(arc::editor::from_json("{\"kind\":\"query\",\"requestId\":14,\"type\":\"runtime.entity\",\"payload\":{"
+                                   "\"entity\":{\"index\":7,\"generation\":2}}}",
+                                   query, error));
     const auto parsed_runtime_entity = std::get<arc::editor::host_runtime_entity_query>(query.payload).entity;
     REQUIRE(parsed_runtime_entity.index == 7);
     REQUIRE(parsed_runtime_entity.generation == 2);
@@ -214,32 +213,28 @@ TEST_CASE("active play worlds expose read-only hierarchy and entity inspection q
     auto renderer = std::make_unique<arc::render::renderer>();
     arc::editor::arc_host_manager manager;
     auto host = manager.acquire(std::move(renderer));
-    REQUIRE(host->open_project(
-                    {.name = "Runtime Inspection", .root = std::filesystem::temp_directory_path()}, {})
+    REQUIRE(host->open_project({.name = "Runtime Inspection", .root = std::filesystem::temp_directory_path()}, {})
                 .succeeded);
-    REQUIRE(host->execute(arc::editor::host_create_entity_command{
-                              .kind = arc::editor::host_create_entity_kind::cube})
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::cube})
                 .succeeded);
     const auto authored = host->selected_entity_snapshot().entity;
 
     REQUIRE_FALSE(host->query({.request_id = 20, .payload = arc::editor::host_runtime_hierarchy_query{}}).succeeded);
     REQUIRE(host->execute(arc::editor::host_runtime_resume_command{}).succeeded);
 
-    const auto hierarchy =
-        host->query({.request_id = 21, .payload = arc::editor::host_runtime_hierarchy_query{}});
+    const auto hierarchy = host->query({.request_id = 21, .payload = arc::editor::host_runtime_hierarchy_query{}});
     REQUIRE(hierarchy.succeeded);
     CHECK(hierarchy.payload_json.find("(Play World)") != std::string::npos);
     CHECK(hierarchy.payload_json.find("Cube 1") != std::string::npos);
 
-    const auto inspected = host->query(
-        {.request_id = 22, .payload = arc::editor::host_runtime_entity_query{.entity = authored}});
+    const auto inspected =
+        host->query({.request_id = 22, .payload = arc::editor::host_runtime_entity_query{.entity = authored}});
     REQUIRE(inspected.succeeded);
     CHECK(inspected.payload_json.find("\"name\":\"Cube 1\"") != std::string::npos);
     CHECK(inspected.payload_json.find("\"transform\":{") != std::string::npos);
 
     REQUIRE(host->execute(arc::editor::host_runtime_stop_command{}).succeeded);
-    REQUIRE_FALSE(host->query({.request_id = 23,
-                               .payload = arc::editor::host_runtime_entity_query{.entity = authored}})
+    REQUIRE_FALSE(host->query({.request_id = 23, .payload = arc::editor::host_runtime_entity_query{.entity = authored}})
                       .succeeded);
 }
 
