@@ -139,8 +139,8 @@ TEST_CASE("M3 production workflow duplicates modifier payloads with a new stable
     CHECK(asset.modifiers[0].id == source_id);
     CHECK(asset.modifiers[1].id == duplicate->id);
 
-    const auto region = std::ranges::find_if(asset.regions, [](const auto& value)
-                                             { return value.id == terrain_region_id{2, -1}; });
+    const auto region =
+        std::ranges::find_if(asset.regions, [](const auto& value) { return value.id == terrain_region_id{2, -1}; });
     REQUIRE(region != asset.regions.end());
     CHECK(terrain_domain_contains(region->dirty_domains, terrain_domain::geometry));
     CHECK(validate_terrain_asset(asset).valid());

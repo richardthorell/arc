@@ -224,16 +224,14 @@ terrain_rebuild_status terrain_rebuild_session::status() const
     result.error = error_;
     for (const auto& region : asset_.regions)
     {
-        const auto domains = region.dirty_domains &
-                             (scene::terrain_domain::geometry | scene::terrain_domain::topology |
-                              scene::terrain_domain::attributes);
+        const auto domains = region.dirty_domains & (scene::terrain_domain::geometry | scene::terrain_domain::topology |
+                                                     scene::terrain_domain::attributes);
         if (domains == scene::terrain_domain::none) continue;
         result.dirty_regions.push_back({region.id, region.authoring_bounds, domains});
         if ((domains & (scene::terrain_domain::geometry | scene::terrain_domain::topology)) !=
             scene::terrain_domain::none)
             ++result.geometry_regions;
-        if ((domains & scene::terrain_domain::attributes) != scene::terrain_domain::none)
-            ++result.attribute_regions;
+        if ((domains & scene::terrain_domain::attributes) != scene::terrain_domain::none) ++result.attribute_regions;
     }
 
     if (failed_revision_ == asset_.authoring_revision && !error_.empty())
