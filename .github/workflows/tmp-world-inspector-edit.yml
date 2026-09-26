@@ -1,0 +1,127 @@
+name: Temporary World Inspector Edit
+
+on:
+  push:
+    branches:
+      - ui/world-inspector-lighting
+
+permissions:
+  contents: write
+
+jobs:
+  edit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/world-inspector-lighting
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.2
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Apply focused editor changes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str, count: int = 1) -> None:
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'pattern not found in {path}: {old[:120]!r}')
+              updated = text.replace(old, new, count)
+              p.write_text(updated, encoding='utf-8')
+
+          # Workbench: make World a first-class hierarchy selection and reuse the
+          # existing world environment/lighting inspector inside the normal Inspector.
+          workbench = 'editor/src/renderer/src/app/Workbench.tsx'
+          replace(workbench, "  FolderTree,\n  Lightbulb,", "  FolderTree,\n  Globe2,\n  Lightbulb,")
+          replace(workbench, "const sceneRootId = 'scene-root';", "const sceneRootId = 'scene-root';\nexport const worldSelectionId = 'world';")
+          replace(
+              workbench,
+              "  const selectEntity = async (entityId: string, additive = false) => {\n    if (!additive && entityId === selectedEntityIdRef.current && selectedEntityIds.size === 1) return;",
+              "  const selectEntity = async (entityId: string, additive = false) => {\n    if (entityId === worldSelectionId) {\n      selectedEntityIdRef.current = worldSelectionId;\n      setSelectedEntityId(worldSelectionId);\n      setSelectedEntityIds(new Set());\n      ++selectedSnapshotRevision.current;\n      setSelectedSnapshot(null);\n      setTerrainToolState(null);\n      return;\n    }\n    if (!additive && entityId === selectedEntityIdRef.current && selectedEntityIds.size === 1) return;",
+          )
+          replace(workbench, "    hasSelection: Boolean(selectedEntityId),", "    hasSelection: Boolean(selectedEntityId && selectedEntityId !== worldSelectionId),")
+          replace(
+              workbench,
+              "    if (panel === 'inspector') {\n      if (activeTool === 'terrain' && selectedSnapshot?.terrain) {",
+              "    if (panel === 'inspector') {\n      if (selectedEntityId === worldSelectionId) {\n        return (\n          <WorldSettingsPanel\n            environment={worldEnvironment}\n            onEnvironmentChange={updateWorldEnvironment}\n            assets={project?.assets ?? []}\n            thumbnailProvider={loadAssetThumbnail}\n            onEnvironmentPreset={applyWorldEnvironmentPreset}\n            onEnvironmentHdri={applyWorldEnvironmentHdri}\n          />\n        );\n      }\n      if (activeTool === 'terrain' && selectedSnapshot?.terrain) {",
+          )
+          replace(
+              workbench,
+              "        <div className=\"hierarchy-tree\">\n          {visibleScene.map((entity) => (",
+              "        <div className=\"hierarchy-tree\">\n          <UiTreeRow\n            as=\"div\"\n            role=\"treeitem\"\n            tabIndex={0}\n            className=\"tree-row entity-row entity-world\"\n            depth={0}\n            selected={selectedEntityId === worldSelectionId}\n            onClick={() => onSelectEntity(worldSelectionId)}\n            onKeyDown={(event) => {\n              if (event.key === 'Enter' || event.key === ' ') {\n                event.preventDefault();\n                onSelectEntity(worldSelectionId);\n              }\n            }}\n          >\n            <span className=\"hierarchy-expand\">\n              <ChevronRight size={13} className=\"ghost\" />\n            </span>\n            <Globe2 className=\"entity-icon entity-icon-world\" size={14} />\n            <span>World</span>\n          </UiTreeRow>\n          {visibleScene.map((entity) => (",
+          )
+          replace(workbench, "          title=\"World Settings\"", "          title=\"World\"")
+
+          # Remove the obsolete default Lighting / World Settings tabs and bump
+          # workspace persistence so existing v8 layouts do not restore them.
+          dock = 'editor/src/renderer/src/layout/WorkspaceDock.tsx'
+          replace(
+              dock,
+              "// v8 groups scene structure and details into one wider right column: Hierarchy\n// above Inspector, with the viewport and utility dock kept together on the left.\n// The new key makes existing v7 snapshots pick up the new scene defaults.\nconst storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v8.${projectKey}.${name}`;",
+              "// v9 keeps scene structure and details in one right column while moving\n// world/environment/lighting authoring into the Inspector. The new key prevents\n// existing v8 snapshots from restoring the obsolete Lighting / World Settings tabs.\nconst storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v9.${projectKey}.${name}`;",
+          )
+          replace(
+              dock,
+              "  // Keep scene structure and details together in a shared right column. Hierarchy\n  // sits above Inspector, while Lighting and World Settings share the Hierarchy\n  // group as tabs. The content/console/build group remains below the viewport only.\n  addPanel(api, 'inspector', 'viewport', 'right', undefined, defaultSceneRightColumnWidth);\n  addPanel(api, 'hierarchy', 'inspector', 'above', defaultHierarchyPanelHeight);\n  addPanel(api, 'lighting', 'hierarchy', 'within');\n  addPanel(api, 'worldSettings', 'hierarchy', 'within');",
+              "  // Keep scene structure and details together in a shared right column. Hierarchy\n  // sits above Inspector. World, environment, and lighting settings are inspected\n  // through the World hierarchy target instead of separate dock panels.\n  addPanel(api, 'inspector', 'viewport', 'right', undefined, defaultSceneRightColumnWidth);\n  addPanel(api, 'hierarchy', 'inspector', 'above', defaultHierarchyPanelHeight);",
+          )
+
+          dock_test = 'editor/src/renderer/src/layout/WorkspaceDock.test.ts'
+          p = Path(dock_test)
+          text = p.read_text(encoding='utf-8').replace('arc.editor.workspace.v8.', 'arc.editor.workspace.v9.')
+          p.write_text(text, encoding='utf-8')
+
+          # Keep the old IDs readable for compatibility, but don't expose them as
+          # user-facing Window menu panels anymore.
+          types = 'editor/src/renderer/src/app/workbenchTypes.ts'
+          replace(types, "  closeable?: boolean;\n};", "  closeable?: boolean;\n  showInWindowMenu?: boolean;\n};")
+
+          registry = 'editor/src/renderer/src/app/panelRegistry.ts'
+          replace(
+              registry,
+              "  lighting: { id: 'lighting', title: 'Lighting', icon: Lightbulb, defaultRegion: 'right' },\n  worldSettings: { id: 'worldSettings', title: 'World Settings', icon: Globe2, defaultRegion: 'right' },",
+              "  // Legacy panel IDs remain registered so stale external requests fail gracefully.\n  // World/environment/lighting authoring now lives in the normal Inspector.\n  lighting: {\n    id: 'lighting',\n    title: 'Lighting',\n    icon: Lightbulb,\n    defaultRegion: 'right',\n    showInWindowMenu: false,\n  },\n  worldSettings: {\n    id: 'worldSettings',\n    title: 'World Settings',\n    icon: Globe2,\n    defaultRegion: 'right',\n    showInWindowMenu: false,\n  },",
+          )
+
+          menu = 'editor/src/renderer/src/layout/MenuBar.tsx'
+          replace(
+              menu,
+              "      ...(Object.values(panelRegistry) as Array<(typeof panelRegistry)[WorkbenchPanelId]>).map((panel) => ({\n        label: panel.id === 'viewport' ? 'Viewport' : panel.title,\n        panel: panel.id,\n      })),",
+              "      ...(Object.values(panelRegistry) as Array<(typeof panelRegistry)[WorkbenchPanelId]>)\n        .filter((panel) => panel.showInWindowMenu !== false)\n        .map((panel) => ({\n          label: panel.id === 'viewport' ? 'Viewport' : panel.title,\n          panel: panel.id,\n        })),",
+          )
+
+          # Regression coverage for the first-class World hierarchy target.
+          explorer_test = 'editor/src/renderer/src/app/WorkbenchExplorer.test.tsx'
+          p = Path(explorer_test)
+          text = p.read_text(encoding='utf-8')
+          marker = "  it('routes Terrain through the dedicated authoring workflow', () => {"
+          test = """  it('exposes World as a first-class hierarchy inspection target', () => {\n    const onSelectEntity = vi.fn();\n    render(\n      <ExplorerPanel\n        project={{ scene: [] } as unknown as ProjectSnapshot}\n        selectedEntityId=\"\"\n        selectedEntityIds={new Set()}\n        onSelectEntity={onSelectEntity}\n        onRenameEntity={vi.fn()}\n        onSetEntityActive={vi.fn()}\n        onMoveEntity={vi.fn()}\n        onCreateEntity={vi.fn()}\n        onDuplicate={vi.fn()}\n        onCreatePrefab={vi.fn()}\n        onInstantiatePrefab={vi.fn()}\n        onDelete={vi.fn()}\n      />,\n    );\n\n    fireEvent.click(screen.getByRole('treeitem', { name: 'World' }));\n    expect(onSelectEntity).toHaveBeenCalledWith('world');\n  });\n\n"""
+          if marker not in text:
+              raise SystemExit('Explorer test insertion marker not found')
+          p.write_text(text.replace(marker, test + marker, 1), encoding='utf-8')
+
+      - name: Format touched editor files
+        run: |
+          npm ci --prefix editor
+          cd editor
+          npx prettier --write \
+            src/renderer/src/app/Workbench.tsx \
+            src/renderer/src/app/WorkbenchExplorer.test.tsx \
+            src/renderer/src/app/panelRegistry.ts \
+            src/renderer/src/app/workbenchTypes.ts \
+            src/renderer/src/layout/MenuBar.tsx \
+            src/renderer/src/layout/WorkspaceDock.tsx \
+            src/renderer/src/layout/WorkspaceDock.test.ts
+      - name: Commit final change and remove temporary workflow
+        run: |
+          rm .github/workflows/tmp-world-inspector-edit.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Move world and lighting settings into Inspector"
+          git push origin HEAD:ui/world-inspector-lighting
