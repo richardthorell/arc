@@ -2,7 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, CircleAlert, Code2, Eye, LoaderCircle, RefreshCw, Save, Upload, Zap } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
-import { UiButton, UiContextMenu, UiContextMenuItem, UiSplitButton, UiToggleButton } from '../ui';
+import {
+  UiButton,
+  UiContextMenu,
+  UiContextMenuItem,
+  UiEditorToolbar,
+  UiSplitButton,
+  UiToggleButton,
+  UiToolbarSeparator,
+} from '../ui';
 import {
   compileMaterialDocument,
   reloadMaterialDocument,
@@ -50,103 +58,108 @@ export function MaterialEditorToolbar({ document }: { document: EditorDocument }
           : { label: 'Compile', icon: <Zap size={13} />, tone: 'idle' };
 
   return (
-    <div aria-label="Material editor toolbar" className="main-toolbar material-document-toolbar" ref={toolbarRef}>
-      <div className="toolbar-left">
-        <UiButton
-          disabled={busy || document.readOnly || !document.dirty}
-          onClick={() => void saveMaterialDocument(document)}
-          variant="toolbar"
-        >
-          <Save size={13} /> Save
-        </UiButton>
+    <UiEditorToolbar
+      aria-label="Material editor toolbar"
+      className="material-document-toolbar"
+      ref={toolbarRef}
+      left={
+        <>
+          <UiButton
+            disabled={busy || document.readOnly || !document.dirty}
+            onClick={() => void saveMaterialDocument(document)}
+            variant="toolbar"
+          >
+            <Save size={13} /> Save
+          </UiButton>
 
-        <UiSplitButton
-          ariaLabel={compilePresentation.label}
-          className={`material-toolbar-compile material-toolbar-compile-${compilePresentation.tone}`}
-          disabled={state.loading || state.compiling}
-          icon={compilePresentation.icon}
-          label={compilePresentation.label}
-          menuAriaLabel="Material compile actions"
-          onClick={() =>
-            void (customShader ? saveAndPublishMaterialDocument(document) : compileMaterialDocument(document))
-          }
-          onOptionSelect={(value) => {
-            if (value === 'publish') void saveAndPublishMaterialDocument(document);
-            else void reloadMaterialDocument(document);
-          }}
-          options={[
-            {
-              value: 'publish',
-              label: customShader ? 'Save & Reimport' : 'Save & Compile',
-              icon: <Upload size={13} />,
-              disabled: busy || document.readOnly || !document.assetGuid,
-            },
-            {
-              value: 'reload',
-              label: 'Reload from Disk',
-              icon: <RefreshCw size={13} />,
-              disabled: busy,
-            },
-          ]}
-          variant="toolbar"
-        />
-
-        <span className="toolbar-separator" />
-
-        {!customShader && (
-          <UiToggleButton
-            aria-label="Live Update"
-            checked={state.liveUpdate}
-            className="material-toolbar-live-toggle"
-            label="Live Update"
-            onCheckedChange={(enabled) => setMaterialLiveUpdate(document, enabled)}
+          <UiSplitButton
+            ariaLabel={compilePresentation.label}
+            className={`material-toolbar-compile material-toolbar-compile-${compilePresentation.tone}`}
+            disabled={state.loading || state.compiling}
+            icon={compilePresentation.icon}
+            label={compilePresentation.label}
+            menuAriaLabel="Material compile actions"
+            onClick={() =>
+              void (customShader ? saveAndPublishMaterialDocument(document) : compileMaterialDocument(document))
+            }
+            onOptionSelect={(value) => {
+              if (value === 'publish') void saveAndPublishMaterialDocument(document);
+              else void reloadMaterialDocument(document);
+            }}
+            options={[
+              {
+                value: 'publish',
+                label: customShader ? 'Save & Reimport' : 'Save & Compile',
+                icon: <Upload size={13} />,
+                disabled: busy || document.readOnly || !document.assetGuid,
+              },
+              {
+                value: 'reload',
+                label: 'Reload from Disk',
+                icon: <RefreshCw size={13} />,
+                disabled: busy,
+              },
+            ]}
+            variant="toolbar"
           />
-        )}
 
-        {!customShader && (
-          <span className="material-toolbar-menu material-toolbar-view-menu">
-            <UiButton
-              aria-expanded={viewOpen}
-              aria-haspopup="menu"
-              onClick={() => setViewOpen((open) => !open)}
-              variant="toolbar"
-            >
-              <Eye size={13} /> View <ChevronDown aria-hidden="true" size={12} />
-            </UiButton>
-            {viewOpen && (
-              <UiContextMenu aria-label="Material graph view options" className="material-toolbar-popup" width={210}>
-                <UiContextMenuItem
-                  leading={menuCheck(state.showGrid)}
-                  onClick={() => {
-                    setViewOpen(false);
-                    setMaterialGraphView(document, { showGrid: !state.showGrid });
-                  }}
-                >
-                  Show Grid
-                </UiContextMenuItem>
-                <UiContextMenuItem
-                  leading={menuCheck(state.dimUnrelated)}
-                  onClick={() => {
-                    setViewOpen(false);
-                    setMaterialGraphView(document, { dimUnrelated: !state.dimUnrelated });
-                  }}
-                >
-                  Dim Unrelated
-                </UiContextMenuItem>
-                <UiContextMenuItem
-                  leading={menuCheck(state.showStats)}
-                  onClick={() => {
-                    setViewOpen(false);
-                    setMaterialGraphView(document, { showStats: !state.showStats });
-                  }}
-                >
-                  Stats Overlay
-                </UiContextMenuItem>
-              </UiContextMenu>
-            )}
-          </span>
-        )}
-      </div>
-    </div>
+          <UiToolbarSeparator />
+
+          {!customShader && (
+            <UiToggleButton
+              aria-label="Live Update"
+              checked={state.liveUpdate}
+              className="material-toolbar-live-toggle"
+              label="Live Update"
+              onCheckedChange={(enabled) => setMaterialLiveUpdate(document, enabled)}
+            />
+          )}
+
+          {!customShader && (
+            <span className="material-toolbar-menu material-toolbar-view-menu">
+              <UiButton
+                aria-expanded={viewOpen}
+                aria-haspopup="menu"
+                onClick={() => setViewOpen((open) => !open)}
+                variant="toolbar"
+              >
+                <Eye size={13} /> View <ChevronDown aria-hidden="true" size={12} />
+              </UiButton>
+              {viewOpen && (
+                <UiContextMenu aria-label="Material graph view options" className="material-toolbar-popup" width={210}>
+                  <UiContextMenuItem
+                    leading={menuCheck(state.showGrid)}
+                    onClick={() => {
+                      setViewOpen(false);
+                      setMaterialGraphView(document, { showGrid: !state.showGrid });
+                    }}
+                  >
+                    Show Grid
+                  </UiContextMenuItem>
+                  <UiContextMenuItem
+                    leading={menuCheck(state.dimUnrelated)}
+                    onClick={() => {
+                      setViewOpen(false);
+                      setMaterialGraphView(document, { dimUnrelated: !state.dimUnrelated });
+                    }}
+                  >
+                    Dim Unrelated
+                  </UiContextMenuItem>
+                  <UiContextMenuItem
+                    leading={menuCheck(state.showStats)}
+                    onClick={() => {
+                      setViewOpen(false);
+                      setMaterialGraphView(document, { showStats: !state.showStats });
+                    }}
+                  >
+                    Stats Overlay
+                  </UiContextMenuItem>
+                </UiContextMenu>
+              )}
+            </span>
+          )}
+        </>
+      }
+    />
   );
 }
