@@ -205,7 +205,12 @@ export function UiTreeView({
   if (visibleNodes.length === 0) return <div className="ui-tree-view-empty">No matching items</div>;
 
   return (
-    <div aria-label={ariaLabel} aria-multiselectable={selectedIds ? true : undefined} className="ui-tree-view" role="tree">
+    <div
+      aria-label={ariaLabel}
+      aria-multiselectable={selectedIds ? true : undefined}
+      className="ui-tree-view"
+      role="tree"
+    >
       {visibleNodes.map((entry) => {
         const hasChildren = Boolean(entry.node.children?.length);
         const expanded = hasChildren && (Boolean(normalizedQuery) || expandedIds.has(entry.node.id));
