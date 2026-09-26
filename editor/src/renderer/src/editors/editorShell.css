@@ -1,11 +1,23 @@
 .workbench-shell {
   --arc-document-tabs-height: 30px;
+  --arc-play-session-height: 0px;
   grid-template-rows:
     var(--arc-titlebar-height)
     var(--arc-document-tabs-height)
     var(--arc-toolbar-height)
+    var(--arc-play-session-height)
     minmax(0, 1fr)
     var(--arc-statusbar-height);
+}
+
+.workbench-shell.has-detached-play-bar {
+  --arc-play-session-height: 28px;
+}
+
+.play-session-host {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .editor-document-tabs {

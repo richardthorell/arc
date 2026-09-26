@@ -1,6 +1,6 @@
-import { Circle, GitBranch } from 'lucide-react';
+import { AlertTriangle, Circle, GitBranch } from 'lucide-react';
 
-import type { StartupState } from '../app/workbenchTypes';
+import type { EditorRuntimeState, StartupState } from '../app/workbenchTypes';
 import { useEditorActivityProgress } from '../jobs/editorActivityProgress';
 import type { EditorJobProgress } from '../jobs/editorJobProgress';
 import { useEditorJobProgress } from '../jobs/editorJobProgress';
@@ -13,9 +13,18 @@ type UiStatusBarProps = {
   lastCommand: string;
   aiControl?: string;
   jobProgress?: EditorJobProgress | null;
+  runtimeState?: EditorRuntimeState;
+  runtimeError?: string;
 };
 
-export function UiStatusBar({ startupState, activeScene, aiControl, jobProgress }: UiStatusBarProps) {
+export function UiStatusBar({
+  startupState,
+  activeScene,
+  aiControl,
+  jobProgress,
+  runtimeState = 'stopped',
+  runtimeError,
+}: UiStatusBarProps) {
   useEditorActivityProgress(startupState, activeScene, jobProgress === undefined);
   const trackedJobs = useEditorJobProgress();
   const jobs = jobProgress === undefined ? trackedJobs : jobProgress;
@@ -34,6 +43,12 @@ export function UiStatusBar({ startupState, activeScene, aiControl, jobProgress 
       </span>
       <span>
         <Circle size={10} /> {startupState?.engineHostConnected ? 'host connected' : 'host unavailable'}
+      </span>
+      <span className={`status-runtime is-${runtimeState}`} title={runtimeError}>
+        {runtimeState === 'faulted' ? <AlertTriangle size={11} /> : <Circle size={9} />}
+        {runtimeState === 'stopped'
+          ? 'Authoring World'
+          : `Play World · ${runtimeState[0].toUpperCase()}${runtimeState.slice(1)}`}
       </span>
       {aiControl && <span className="status-ai-control">{aiControl}</span>}
       <span className="status-spacer" />

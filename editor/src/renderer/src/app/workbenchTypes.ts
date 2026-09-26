@@ -5,6 +5,8 @@ export type StartupState = {
   hostError?: string;
 };
 
+export type EditorRuntimeState = 'stopped' | 'running' | 'paused' | 'faulted';
+
 export type ActivityId = 'scene' | 'assets' | 'search' | 'versionControl' | 'aiAssistant' | 'profiler' | 'renderGraph';
 
 export type DockRegion = 'left' | 'center' | 'right' | 'bottom';

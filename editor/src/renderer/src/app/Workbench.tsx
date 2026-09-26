@@ -32,11 +32,19 @@ import { CommandPalette } from './CommandPalette';
 import { commandRegistry } from './commandRegistry';
 import { KeybindingService } from './keybindingService';
 import { defaultWorkbenchLayout, useWorkbenchLayout } from './workbenchStore';
-import type { ActivityId, CommandContext, CommandId, StartupState, WorkbenchPanelId } from './workbenchTypes';
+import type {
+  ActivityId,
+  CommandContext,
+  CommandId,
+  EditorRuntimeState,
+  StartupState,
+  WorkbenchPanelId,
+} from './workbenchTypes';
 import { ActivityBar } from '../layout/ActivityBar';
 import { WorkspaceDock, type WorkspaceLayoutName } from '../layout/WorkspaceDock';
 import { MenuBar } from '../layout/MenuBar';
 import { StatusBar } from '../layout/StatusBar';
+import { PlaySessionBar } from '../layout/PlaySessionBar';
 import { EditorDocumentTabs } from '../editors/EditorDocumentTabs';
 import { EditorHost, EditorToolbarHost } from '../editors/EditorHost';
 import { EditorWorkspaceSessions } from '../editors/EditorWorkspaceSessions';
@@ -142,13 +150,14 @@ type WorkspaceDocumentsSnapshot = {
 };
 
 type HostRuntimeSnapshot = {
-  state: 'stopped' | 'running' | 'paused' | 'faulted';
+  state: EditorRuntimeState;
   tickId: number;
   revision: number;
   discardedTicks: number;
   timeScale: number;
   interpolationAlpha: number;
   worldCount: number;
+  error: string;
 };
 
 type HostAssetSnapshot = {
@@ -241,6 +250,21 @@ const timestamp = () => new Date().toLocaleTimeString([], { hour12: false });
 
 const sceneRootId = 'scene-root';
 export const worldSelectionId = 'world';
+
+const playWorldBlockedCommands = new Set<CommandId>([
+  'file.new',
+  'file.open',
+  'file.importScene',
+  'edit.undo',
+  'edit.redo',
+  'entity.duplicate',
+  'entity.delete',
+  'viewport.translate',
+  'viewport.rotate',
+  'viewport.scale',
+  'viewport.terrain',
+  'viewport.snapToFloor',
+]);
 
 const isEditorOnlyHostEntity = (entity: HostSceneEntity) => entity.name.toLocaleLowerCase() === 'editor camera';
 
@@ -380,6 +404,10 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [assetCache, setAssetCache] = useState<HostProjectAssetsSnapshot | null>(null);
   const [selectedSnapshot, setSelectedSnapshot] = useState<InspectorEntitySnapshot | null>(null);
+  const [runtimeScene, setRuntimeScene] = useState<SceneEntity[]>([]);
+  const [runtimeSelectedSnapshot, setRuntimeSelectedSnapshot] = useState<InspectorEntitySnapshot | null>(null);
+  const [runtimeInspectionLoading, setRuntimeInspectionLoading] = useState(false);
+  const runtimeInspectionRevision = useRef(0);
   const [projectComponentSchemas, setProjectComponentSchemas] = useState<HostProjectComponentSchema[]>([]);
   const [buildSnapshot, setBuildSnapshot] = useState<ArcBuildSnapshot | null>(null);
   const [selectedSnapshotLoading, setSelectedSnapshotLoading] = useState(false);
@@ -433,8 +461,10 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     timeScale: 1,
     interpolationAlpha: 0,
     worldCount: 0,
+    error: '',
   });
   const runtimeRevision = useRef(0);
+  const runtimeWorldActive = runtimeState.state !== 'stopped';
 
   useEffect(() => {
     const workspaceDocument =
@@ -476,6 +506,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       timeScale: Number(candidate.timeScale ?? 1),
       interpolationAlpha: Number(candidate.interpolationAlpha ?? 0),
       worldCount: Number(candidate.worldCount ?? 0),
+      error: String(candidate.error ?? ''),
     });
   }, []);
 
@@ -652,10 +683,10 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     viewportFocused,
     textInputFocused: false,
     modalOpen: commandPaletteOpen || settingsOpen || createTerrainOpen,
-    playing: runtimeState.state === 'running' || runtimeState.state === 'paused',
+    playing: runtimeWorldActive,
     hasSelection: Boolean(selectedEntityId && selectedEntityId !== worldSelectionId),
-    canUndo: documentState.canUndo,
-    canRedo: documentState.canRedo,
+    canUndo: !runtimeWorldActive && documentState.canUndo,
+    canRedo: !runtimeWorldActive && documentState.canRedo,
     projectOpen: Boolean(project),
   };
 
@@ -740,6 +771,11 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     const registration = commandRegistry[command];
     if (registration.enabled && !registration.enabled(commandContext)) {
       setLastCommand(registration.disabledReason?.(commandContext) ?? `${registration.label} is unavailable`);
+      return;
+    }
+
+    if (runtimeWorldActive && playWorldBlockedCommands.has(command)) {
+      setLastCommand(`${registration.label} is unavailable while inspecting the Play World`);
       return;
     }
 
@@ -874,7 +910,10 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           }
         }
         if (response) {
-          if (command.startsWith('scene.') && response.succeeded) acceptRuntimeSnapshot(response.payload);
+          if (command.startsWith('scene.') && response.succeeded) {
+            acceptRuntimeSnapshot(response.payload);
+            if (command !== 'scene.stop') void refreshRuntimeInspection();
+          }
           setLastCommand(response.succeeded ? `${command} completed` : response.error || `${command} failed`);
           const responsePath =
             response.payload && typeof response.payload === 'object' && 'path' in response.payload
@@ -1021,6 +1060,63 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     }));
   };
 
+  const refreshRuntimeInspection = useCallback(
+    async (entityId = selectedEntityIdRef.current) => {
+      if (!startupState?.engineHostConnected || !window.arc?.host) return;
+      const requestRevision = ++runtimeInspectionRevision.current;
+      const entity = entityId === worldSelectionId ? null : parseHostEntityId(entityId);
+      if (entity) setRuntimeInspectionLoading(true);
+      try {
+        const [hierarchyResponse, entityResponse] = await Promise.all([
+          window.arc.host.query('runtime.hierarchy') as Promise<HostResponse<HostSceneSnapshot>>,
+          entity
+            ? (window.arc.host.query('runtime.entity', { entity }) as Promise<HostResponse<unknown>>)
+            : Promise.resolve(null),
+        ]);
+        if (requestRevision !== runtimeInspectionRevision.current) return;
+        if (hierarchyResponse.succeeded && hierarchyResponse.payload) {
+          setRuntimeScene(
+            buildSceneTree(hierarchyResponse.payload.entities.filter((entry) => !isEditorOnlyHostEntity(entry))),
+          );
+        }
+        if (!entity) {
+          setRuntimeSelectedSnapshot(null);
+        } else if (entityResponse?.succeeded && entityResponse.payload) {
+          setRuntimeSelectedSnapshot(parseSelectedEntitySnapshot(entityResponse.payload));
+        } else {
+          setRuntimeSelectedSnapshot(null);
+        }
+      } catch (error) {
+        if (requestRevision !== runtimeInspectionRevision.current) return;
+        setLastCommand(error instanceof Error ? error.message : String(error));
+      } finally {
+        if (requestRevision === runtimeInspectionRevision.current) setRuntimeInspectionLoading(false);
+      }
+    },
+    [startupState?.engineHostConnected],
+  );
+
+  const previousRuntimeState = useRef<EditorRuntimeState>('stopped');
+  useEffect(() => {
+    const previous = previousRuntimeState.current;
+    previousRuntimeState.current = runtimeState.state;
+    if (runtimeState.state === 'stopped') {
+      ++runtimeInspectionRevision.current;
+      setRuntimeScene([]);
+      setRuntimeSelectedSnapshot(null);
+      setRuntimeInspectionLoading(false);
+      if (previous !== 'stopped') void refreshProjectFromHost();
+      return;
+    }
+
+    void refreshRuntimeInspection();
+    if (runtimeState.state !== 'running') return;
+    const timer = window.setInterval(() => void refreshRuntimeInspection(), 250);
+    return () => window.clearInterval(timer);
+    // Runtime transitions are authoritative. The authoring refresh intentionally runs only when a session stops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshRuntimeInspection, runtimeState.state]);
+
   const reconnectHost = async () => {
     setLastCommand('Reconnecting native editor host...');
     try {
@@ -1074,9 +1170,22 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       ++selectedSnapshotRevision.current;
       setSelectedSnapshot(null);
       setTerrainToolState(null);
+      if (runtimeWorldActive) setRuntimeSelectedSnapshot(null);
       return;
     }
     if (!additive && entityId === selectedEntityIdRef.current && selectedEntityIds.size === 1) return;
+    if (runtimeWorldActive) {
+      selectedEntityIdRef.current = entityId;
+      setSelectedEntityId(entityId);
+      setSelectedEntityIds((current) => {
+        if (!additive) return new Set([entityId]);
+        const next = new Set(current);
+        next.add(entityId);
+        return next;
+      });
+      await refreshRuntimeInspection(entityId);
+      return;
+    }
     const hostEntity = parseHostEntityId(entityId);
     if (startupState?.engineHostConnected && hostEntity) {
       selectedEntityIdRef.current = entityId;
@@ -1087,6 +1196,10 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   };
 
   const mutateHierarchyEntity = async (type: string, payload: Record<string, unknown>) => {
+    if (runtimeWorldActive) {
+      setLastCommand('Play World inspection is read-only');
+      return false;
+    }
     if (!startupState?.engineHostConnected) return false;
     const response = (await window.arc.host.command(type, payload)) as HostResponse;
     setLastCommand(response.succeeded ? `${type} completed` : response.error || `${type} failed`);
@@ -1282,15 +1395,18 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     setScaleSnap(nextScaleSnap);
   };
 
+  const inspectedProject = runtimeWorldActive && project ? { ...project, scene: runtimeScene } : project;
+  const inspectedSnapshot = runtimeWorldActive ? runtimeSelectedSnapshot : selectedSnapshot;
+
   const renderLeftPanel = (requestedPanel?: WorkbenchPanelId) => {
-    if (!project) {
+    if (!inspectedProject) {
       return <div className="side-loading">Loading workbench data...</div>;
     }
 
     if (requestedPanel === 'hierarchy' || (!requestedPanel && layout.activeActivity === 'scene')) {
       return (
         <ExplorerPanel
-          project={project}
+          project={inspectedProject}
           selectedEntityId={selectedEntityId}
           selectedEntityIds={selectedEntityIds}
           onSelectEntity={selectEntity}
@@ -1302,25 +1418,31 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           onCreatePrefab={() => void createPrefabFromSelection()}
           onInstantiatePrefab={() => void instantiatePrefab()}
           onDelete={() => void runCommand('entity.delete')}
+          readOnly={runtimeWorldActive}
+          worldLabel={runtimeWorldActive ? 'Play World' : 'World'}
         />
       );
     }
 
     if (requestedPanel === 'assetExplorer' || (!requestedPanel && layout.activeActivity === 'assets')) {
       return (
-        <AssetExplorerPanel project={project} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId} />
+        <AssetExplorerPanel
+          project={inspectedProject}
+          selectedAssetId={selectedAssetId}
+          onSelectAsset={setSelectedAssetId}
+        />
       );
     }
 
     if (requestedPanel === 'search' || (!requestedPanel && layout.activeActivity === 'search')) {
       return (
         <SearchPanel
-          entities={project.scene}
-          assets={project.assets}
+          entities={inspectedProject.scene}
+          assets={inspectedProject.assets}
           onSelectEntity={(entityId) => void selectEntity(entityId)}
           onSelectAsset={(assetId) => {
             setSelectedAssetId(assetId);
-            if (project.assets.find((asset) => asset.id === assetId)?.kind === 'shader')
+            if (inspectedProject.assets.find((asset) => asset.id === assetId)?.kind === 'shader')
               setLayout((current) => ({ ...current, activeCenterPanel: 'shaderEditor' }));
           }}
         />
@@ -1362,7 +1484,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   });
 
   const renderTerrainViewportOverlay = () => {
-    if (activeTool !== 'terrain' || !selectedSnapshot?.terrain || !project) return undefined;
+    if (runtimeWorldActive || activeTool !== 'terrain' || !selectedSnapshot?.terrain || !project) return undefined;
     const selectedKey = hostEntityKey(selectedSnapshot.entity);
     const visibleTerrainState =
       terrainToolState && hostEntityKey(terrainToolState.entity) === selectedKey
@@ -1420,7 +1542,9 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           activeTool={activeTool}
           coordinateSpace={coordinateSpace}
           snapping={snapping}
-          terrainEnabled={selectedSnapshot?.terrain !== null && selectedSnapshot?.terrain !== undefined}
+          terrainEnabled={
+            !runtimeWorldActive && selectedSnapshot?.terrain !== null && selectedSnapshot?.terrain !== undefined
+          }
           translationSnap={translationSnap}
           rotationSnap={rotationSnap}
           scaleSnap={scaleSnap}
@@ -1440,6 +1564,8 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
               });
           }}
           runtimeState={runtimeState.state}
+          runtimeError={runtimeState.error}
+          authoringDisabled={runtimeWorldActive}
           timeScale={runtimeState.timeScale}
           onTimeScaleChange={(value) => {
             if (!startupState?.engineHostConnected) {
@@ -1494,6 +1620,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const renderRightPanel = (panel: WorkbenchPanelId) => {
     if (panel === 'inspector') {
       if (selectedEntityId === worldSelectionId) {
+        if (runtimeWorldActive) return <RuntimeWorldPanel runtime={runtimeState} />;
         return (
           <WorldSettingsPanel
             environment={worldEnvironment}
@@ -1505,7 +1632,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           />
         );
       }
-      if (activeTool === 'terrain' && selectedSnapshot?.terrain) {
+      if (!runtimeWorldActive && activeTool === 'terrain' && selectedSnapshot?.terrain) {
         return (
           <TerrainStackPanel
             entity={selectedSnapshot.entity}
@@ -1525,24 +1652,30 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           command={async (type, payload, edit) => {
             if (!startupState?.engineHostConnected)
               return { succeeded: false, error: 'Native editor host is unavailable' };
+            if (runtimeWorldActive) return { succeeded: false, error: 'Play World inspection is read-only' };
             return window.arc.host.command(type, payload, edit) as Promise<HostResponse>;
           }}
-          loading={selectedSnapshotLoading}
-          snapshot={selectedSnapshot}
+          loading={runtimeWorldActive ? runtimeInspectionLoading : selectedSnapshotLoading}
+          snapshot={inspectedSnapshot}
           coordinateSpace={coordinateSpace}
           onCoordinateSpaceChange={(space) => void updateViewportToolOptions(space, snapping)}
-          scene={project?.scene ?? []}
+          scene={inspectedProject?.scene ?? []}
           assets={project?.assets ?? []}
           thumbnailProvider={loadAssetThumbnail}
           projectSchemas={projectComponentSchemas}
           onStatus={setLastCommand}
           refresh={async () => {
-            if (startupState?.engineHostConnected) await refreshSelectedEntity(selectedEntityId, true);
+            if (!startupState?.engineHostConnected) return;
+            if (runtimeWorldActive) await refreshRuntimeInspection(selectedEntityId);
+            else await refreshSelectedEntity(selectedEntityId, true);
           }}
+          readOnly={runtimeWorldActive}
+          contextLabel={runtimeWorldActive ? 'Play World' : undefined}
         />
       );
     }
     if (panel === 'worldSettings') {
+      if (runtimeWorldActive) return <RuntimeWorldPanel runtime={runtimeState} />;
       return (
         <WorldSettingsPanel
           environment={worldEnvironment}
@@ -1554,7 +1687,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         />
       );
     }
-    return <LightingPanel entities={project?.scene ?? []} onSelect={(id) => void selectEntity(id)} />;
+    return <LightingPanel entities={inspectedProject?.scene ?? []} onSelect={(id) => void selectEntity(id)} />;
   };
 
   const renderBottomPanel = (panel: WorkbenchPanelId) => {
@@ -1688,8 +1821,10 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     return renderLeftPanel(panel);
   };
 
+  const showDetachedPlayBar = runtimeWorldActive && activeDocument?.kind !== 'level';
+
   return (
-    <main className="workbench-shell">
+    <main className={`workbench-shell${showDetachedPlayBar ? ' has-detached-play-bar' : ''}`}>
       <MenuBar
         projectTitle={`${documentState.sceneName || 'Untitled'}${documentState.dirty ? '*' : ''}`}
         canUndo={documentState.canUndo}
@@ -1708,6 +1843,16 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         onActivate={activateDocument}
       />
       <EditorToolbarHost document={activeDocument} registry={editorRegistry} />
+      <div className="play-session-host">
+        {showDetachedPlayBar && (
+          <PlaySessionBar
+            state={runtimeState.state as Exclude<EditorRuntimeState, 'stopped'>}
+            error={runtimeState.error}
+            tickId={runtimeState.tickId}
+            onCommand={runCommand}
+          />
+        )}
+      </div>
       <AiGatewayApprovalPrompt
         status={aiGatewayStatus}
         onApprove={(requestId) => void window.arc.aiGateway.approve(requestId)}
@@ -1777,6 +1922,8 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
               ? `AI viewport: ${aiGatewayStatus.viewportLease.clientId}`
               : undefined
         }
+        runtimeState={runtimeState.state}
+        runtimeError={runtimeState.error}
       />
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} onResetLayout={resetLayout} />}
       {commandPaletteOpen && (
@@ -1866,6 +2013,8 @@ export function ExplorerPanel({
   onCreatePrefab,
   onInstantiatePrefab,
   onDelete,
+  readOnly = false,
+  worldLabel = 'World',
 }: {
   project: ProjectSnapshot;
   selectedEntityId: string;
@@ -1879,6 +2028,8 @@ export function ExplorerPanel({
   onCreatePrefab: () => void;
   onInstantiatePrefab: () => void;
   onDelete: () => void;
+  readOnly?: boolean;
+  worldLabel?: string;
 }) {
   const [filter, setFilter] = useState('');
   const sceneTree = useMemo(() => [sceneRootEntity(project.scene)], [project.scene]);
@@ -1915,6 +2066,10 @@ export function ExplorerPanel({
     };
   }, [createMenuOpen]);
 
+  useEffect(() => {
+    if (readOnly) setCreateMenuOpen(false);
+  }, [readOnly]);
+
   return (
     <div className="explorer-view">
       <Panel icon={<FolderTree size={14} />} title="Hierarchy">
@@ -1922,22 +2077,23 @@ export function ExplorerPanel({
           <div className="hierarchy-create-menu">
             <UiIconButton
               active={createMenuOpen}
+              disabled={readOnly}
               label={createMenuOpen ? 'Close add entity drawer' : 'Add entity'}
               onClick={() => setCreateMenuOpen((open) => !open)}
             >
               <Plus size={13} />
             </UiIconButton>
           </div>
-          <UiIconButton label="Duplicate selected entity" onClick={onDuplicate}>
+          <UiIconButton disabled={readOnly} label="Duplicate selected entity" onClick={onDuplicate}>
             <Copy size={13} />
           </UiIconButton>
-          <UiIconButton label="Create prefab from selection" onClick={onCreatePrefab}>
+          <UiIconButton disabled={readOnly} label="Create prefab from selection" onClick={onCreatePrefab}>
             <Box size={13} />
           </UiIconButton>
-          <UiIconButton label="Instantiate prefab" onClick={onInstantiatePrefab}>
+          <UiIconButton disabled={readOnly} label="Instantiate prefab" onClick={onInstantiatePrefab}>
             <Database size={13} />
           </UiIconButton>
-          <UiIconButton label="Delete selected entity" onClick={onDelete}>
+          <UiIconButton disabled={readOnly} label="Delete selected entity" onClick={onDelete}>
             <Trash2 size={13} />
           </UiIconButton>
         </div>
@@ -2068,7 +2224,7 @@ export function ExplorerPanel({
               <ChevronRight size={13} className="ghost" />
             </span>
             <Globe2 className="entity-icon entity-icon-world" size={14} />
-            <span>World</span>
+            <span>{worldLabel}</span>
           </UiTreeRow>
           {visibleScene.map((entity) => (
             <SceneTreeItem
@@ -2082,12 +2238,13 @@ export function ExplorerPanel({
               onSetEntityActive={onSetEntityActive}
               onMoveEntity={onMoveEntity}
               forceExpanded={Boolean(filter)}
+              readOnly={readOnly}
             />
           ))}
           {filteredScene.length === 0 && <div className="hierarchy-empty">No matching entities</div>}
         </div>
         <footer className="hierarchy-footer">
-          {actorCount.toLocaleString()} actors ({selectedCount} selected)
+          {actorCount.toLocaleString()} {readOnly ? 'runtime ' : ''}actors ({selectedCount} selected)
         </footer>
       </Panel>
     </div>
@@ -2167,6 +2324,44 @@ function AssetExplorerPanel({
   );
 }
 
+function RuntimeWorldPanel({ runtime }: { runtime: HostRuntimeSnapshot }) {
+  return (
+    <UiPanel className="runtime-world-panel" variant="inspector">
+      <header>
+        <Globe2 size={16} />
+        <div>
+          <strong>Play World</strong>
+          <span>Isolated runtime session</span>
+        </div>
+      </header>
+      {runtime.error && (
+        <div className="runtime-world-error" role="alert">
+          {runtime.error}
+        </div>
+      )}
+      <dl>
+        <div>
+          <dt>State</dt>
+          <dd>{`${runtime.state[0].toUpperCase()}${runtime.state.slice(1)}`}</dd>
+        </div>
+        <div>
+          <dt>Tick</dt>
+          <dd>{runtime.tickId.toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt>Time Scale</dt>
+          <dd>{runtime.timeScale}×</dd>
+        </div>
+        <div>
+          <dt>Runtime Worlds</dt>
+          <dd>{runtime.worldCount}</dd>
+        </div>
+      </dl>
+      <p>Runtime entities are inspectable but read-only. Stopping Play returns to the Authoring World.</p>
+    </UiPanel>
+  );
+}
+
 function WorldSettingsPanel({
   environment,
   assets,
@@ -2241,6 +2436,7 @@ function SceneTreeItem({
   onSetEntityActive,
   onMoveEntity,
   forceExpanded,
+  readOnly = false,
 }: {
   entity: SceneEntity;
   depth: number;
@@ -2251,6 +2447,7 @@ function SceneTreeItem({
   onSetEntityActive: (entityId: string, active: boolean) => void;
   onMoveEntity: (entityId: string, target: SceneEntity, mode: 'before' | 'inside' | 'after') => void;
   forceExpanded?: boolean;
+  readOnly?: boolean;
 }) {
   const hasChildren = Boolean(entity.children?.length);
   const selectable = entity.id !== sceneRootId;
@@ -2267,7 +2464,7 @@ function SceneTreeItem({
         tabIndex={0}
         className={`tree-row entity-row entity-${entity.kind}`}
         depth={depth}
-        draggable={selectable}
+        draggable={selectable && !readOnly}
         selected={selectable && selectedEntityIds.has(entity.id)}
         meta={
           selectable && (
@@ -2278,12 +2475,17 @@ function SceneTreeItem({
                 </b>
               ) : null}
               {entity.layer && <small>{entity.layer}</small>}
-              <button className="hierarchy-lock-toggle" title={entity.locked ? 'Unlock entity' : 'Lock entity'}>
+              <button
+                className="hierarchy-lock-toggle"
+                disabled={readOnly}
+                title={readOnly ? 'Play World entities are read-only' : entity.locked ? 'Unlock entity' : 'Lock entity'}
+              >
                 {entity.locked ? <Lock size={11} /> : <Unlock size={11} />}
               </button>
               <button
                 aria-label={entity.active ? 'Disable entity' : 'Enable entity'}
                 className="hierarchy-active-toggle"
+                disabled={readOnly}
                 type="button"
                 aria-pressed={entity.active}
                 onClick={(event) => {
@@ -2303,13 +2505,17 @@ function SceneTreeItem({
             onSelectEntity(entity.id);
           }
         }}
-        onDoubleClick={() => selectable && setRenaming(true)}
-        onDragStart={(event) => event.dataTransfer.setData('application/x-arc-entity', entity.id)}
+        onDoubleClick={() => selectable && !readOnly && setRenaming(true)}
+        onDragStart={(event) => {
+          if (!readOnly) event.dataTransfer.setData('application/x-arc-entity', entity.id);
+        }}
         onDragOver={(event) => {
+          if (readOnly) return;
           event.preventDefault();
           event.dataTransfer.dropEffect = 'move';
         }}
         onDrop={(event) => {
+          if (readOnly) return;
           event.preventDefault();
           event.stopPropagation();
           const dragged = event.dataTransfer.getData('application/x-arc-entity');
@@ -2368,6 +2574,7 @@ function SceneTreeItem({
             onSetEntityActive={onSetEntityActive}
             onMoveEntity={onMoveEntity}
             forceExpanded={forceExpanded}
+            readOnly={readOnly}
           />
         ))}
     </div>

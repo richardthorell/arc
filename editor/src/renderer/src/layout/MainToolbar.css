@@ -197,3 +197,32 @@
   min-height: 26px;
   max-height: 26px;
 }
+
+.toolbar-runtime-state {
+  min-width: 96px;
+  padding: 4px 8px;
+  border: 1px solid var(--arc-color-border);
+  border-radius: 999px;
+  color: var(--arc-color-text-muted);
+  background: color-mix(in srgb, var(--arc-color-bg-panel-raised) 88%, transparent);
+  font-size: var(--arc-text-xs);
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.toolbar-runtime-state.is-running {
+  border-color: color-mix(in srgb, var(--arc-color-success) 60%, var(--arc-color-border));
+  color: var(--arc-color-success);
+}
+
+.toolbar-runtime-state.is-paused {
+  border-color: #b18a46;
+  color: #e1bd72;
+}
+
+.toolbar-runtime-state.is-faulted {
+  border-color: var(--arc-color-danger);
+  color: var(--arc-color-danger);
+}
