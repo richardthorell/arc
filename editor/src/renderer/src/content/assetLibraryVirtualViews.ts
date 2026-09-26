@@ -23,7 +23,7 @@ export const assetLibraryVirtualViews = (): readonly AssetLibraryVirtualView[] =
 
 export const assetLibraryVirtualView = (id: AssetLibraryVirtualViewId): AssetLibraryVirtualView => {
   const view = virtualViews.find((candidate) => candidate.id === id);
-  if (!view) throw new Error(`Unknown asset library virtual view: ${id satisfies never}`);
+  if (!view) throw new Error(`Unknown asset library virtual view: ${id}`);
   return view;
 };
 
