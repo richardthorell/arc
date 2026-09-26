@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  assetIdsForVirtualView,
-  assetLibraryVirtualView,
-  assetLibraryVirtualViews,
-} from './assetLibraryVirtualViews';
+import { assetIdsForVirtualView, assetLibraryVirtualView, assetLibraryVirtualViews } from './assetLibraryVirtualViews';
 
 describe('asset library virtual views', () => {
   it('keeps virtual collections distinct from storage semantics', () => {
