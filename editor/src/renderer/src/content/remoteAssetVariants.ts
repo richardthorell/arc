@@ -14,11 +14,7 @@ const formatFamilies: Partial<Record<ArcRemoteAssetKind, ReadonlySet<string>>> =
 const normalizeVariantToken = (value: string): string => value.trim().replace(/^\./, '').toLocaleLowerCase();
 
 const segments = (file: ArcAssetDownloadFile): string[] =>
-  file.logicalPath
-    .replaceAll('\\', '/')
-    .split('/')
-    .filter(Boolean)
-    .map(normalizeVariantToken);
+  file.logicalPath.replaceAll('\\', '/').split('/').filter(Boolean).map(normalizeVariantToken);
 
 const extension = (file: ArcAssetDownloadFile): string => {
   try {
