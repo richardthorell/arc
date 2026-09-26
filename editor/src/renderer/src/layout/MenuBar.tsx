@@ -307,10 +307,12 @@ export function MenuBar({
       placeholder('Maximize Active Panel', { shortcut: 'Shift+Space' }),
     ],
     Window: [
-      ...(Object.values(panelRegistry) as Array<(typeof panelRegistry)[WorkbenchPanelId]>).map((panel) => ({
-        label: panel.id === 'viewport' ? 'Viewport' : panel.title,
-        panel: panel.id,
-      })),
+      ...(Object.values(panelRegistry) as Array<(typeof panelRegistry)[WorkbenchPanelId]>)
+        .filter((panel) => panel.showInWindowMenu !== false)
+        .map((panel) => ({
+          label: panel.id === 'viewport' ? 'Viewport' : panel.title,
+          panel: panel.id,
+        })),
       separator(),
       {
         label: 'Layout',

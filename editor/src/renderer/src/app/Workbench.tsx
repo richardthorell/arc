@@ -10,6 +10,7 @@ import {
   FileText,
   Folder,
   FolderTree,
+  Globe2,
   Lightbulb,
   Mountain,
   Lock,
@@ -239,6 +240,7 @@ const assetNameFromPath = (value: string) => value.split(/[\\/]/).pop() || value
 const timestamp = () => new Date().toLocaleTimeString([], { hour12: false });
 
 const sceneRootId = 'scene-root';
+export const worldSelectionId = 'world';
 
 const isEditorOnlyHostEntity = (entity: HostSceneEntity) => entity.name.toLocaleLowerCase() === 'editor camera';
 
@@ -651,7 +653,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     textInputFocused: false,
     modalOpen: commandPaletteOpen || settingsOpen || createTerrainOpen,
     playing: runtimeState.state === 'running' || runtimeState.state === 'paused',
-    hasSelection: Boolean(selectedEntityId),
+    hasSelection: Boolean(selectedEntityId && selectedEntityId !== worldSelectionId),
     canUndo: documentState.canUndo,
     canRedo: documentState.canRedo,
     projectOpen: Boolean(project),
@@ -1065,6 +1067,15 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   }, [acceptRuntimeSnapshot]);
 
   const selectEntity = async (entityId: string, additive = false) => {
+    if (entityId === worldSelectionId) {
+      selectedEntityIdRef.current = worldSelectionId;
+      setSelectedEntityId(worldSelectionId);
+      setSelectedEntityIds(new Set());
+      ++selectedSnapshotRevision.current;
+      setSelectedSnapshot(null);
+      setTerrainToolState(null);
+      return;
+    }
     if (!additive && entityId === selectedEntityIdRef.current && selectedEntityIds.size === 1) return;
     const hostEntity = parseHostEntityId(entityId);
     if (startupState?.engineHostConnected && hostEntity) {
@@ -1482,6 +1493,18 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
 
   const renderRightPanel = (panel: WorkbenchPanelId) => {
     if (panel === 'inspector') {
+      if (selectedEntityId === worldSelectionId) {
+        return (
+          <WorldSettingsPanel
+            environment={worldEnvironment}
+            onEnvironmentChange={updateWorldEnvironment}
+            assets={project?.assets ?? []}
+            thumbnailProvider={loadAssetThumbnail}
+            onEnvironmentPreset={applyWorldEnvironmentPreset}
+            onEnvironmentHdri={applyWorldEnvironmentHdri}
+          />
+        );
+      }
       if (activeTool === 'terrain' && selectedSnapshot?.terrain) {
         return (
           <TerrainStackPanel
@@ -2026,6 +2049,27 @@ export function ExplorerPanel({
           </details>
         </div>
         <div className="hierarchy-tree">
+          <UiTreeRow
+            as="div"
+            role="treeitem"
+            tabIndex={0}
+            className="tree-row entity-row entity-world"
+            depth={0}
+            selected={selectedEntityId === worldSelectionId}
+            onClick={() => onSelectEntity(worldSelectionId)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onSelectEntity(worldSelectionId);
+              }
+            }}
+          >
+            <span className="hierarchy-expand">
+              <ChevronRight size={13} className="ghost" />
+            </span>
+            <Globe2 className="entity-icon entity-icon-world" size={14} />
+            <span>World</span>
+          </UiTreeRow>
           {visibleScene.map((entity) => (
             <SceneTreeItem
               key={entity.guid ?? entity.id}
@@ -2150,11 +2194,7 @@ function WorldSettingsPanel({
           onHdri={onEnvironmentHdri}
         />
       ) : (
-        <PlaceholderPanel
-          icon={<Settings />}
-          title="World Settings"
-          text="No world environment is available in this scene."
-        />
+        <PlaceholderPanel icon={<Settings />} title="World" text="No world environment is available in this scene." />
       )}
     </section>
   );

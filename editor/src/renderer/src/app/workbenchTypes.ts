@@ -77,6 +77,7 @@ export type PanelRegistration = {
   minimumWidth?: number;
   minimumHeight?: number;
   closeable?: boolean;
+  showInWindowMenu?: boolean;
 };
 
 export type CommandContext = {
