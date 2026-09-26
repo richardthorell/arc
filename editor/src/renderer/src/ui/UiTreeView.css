@@ -22,6 +22,12 @@
   outline-offset: -1px;
 }
 
+.ui-tree-view-row.is-drop-target {
+  outline: 1px solid var(--arc-color-focus, #58aee9);
+  outline-offset: -1px;
+  background: color-mix(in srgb, var(--arc-color-focus, #58aee9) 14%, transparent);
+}
+
 .ui-tree-view-disclosure {
   width: 14px;
   height: 20px;
