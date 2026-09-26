@@ -1,0 +1,126 @@
+name: PR Rebase Main
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  rebase-main:
+    name: Rebase Main
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.comment.body == '/rebase main' &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Resolve Pull Request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pr_json=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")
+          head_repo=$(jq -r '.head.repo.full_name' <<< "$pr_json")
+          head_ref=$(jq -r '.head.ref' <<< "$pr_json")
+          head_sha=$(jq -r '.head.sha' <<< "$pr_json")
+          base_ref=$(jq -r '.base.ref' <<< "$pr_json")
+          state=$(jq -r '.state' <<< "$pr_json")
+
+          if [[ "$state" != 'open' ]]; then
+            echo 'This command only works on open pull requests.'
+            exit 1
+          fi
+
+          if [[ "$head_repo" != "$GITHUB_REPOSITORY" ]]; then
+            echo "This command can only rebase branches in ${GITHUB_REPOSITORY}."
+            exit 1
+          fi
+
+          if [[ "$base_ref" != 'main' ]]; then
+            echo "This command only supports pull requests targeting main; this PR targets ${base_ref}."
+            exit 1
+          fi
+
+          if [[ "$head_ref" == 'main' ]]; then
+            echo 'Refusing to rebase main onto itself.'
+            exit 1
+          fi
+
+          echo "head_ref=$head_ref" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Pull Request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.pr.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Rebase Onto Latest Main
+        id: rebase
+        env:
+          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+
+          main_sha=$(git rev-parse origin/main)
+          echo "main_sha=$main_sha" >> "$GITHUB_OUTPUT"
+          echo 'conflict=false' >> "$GITHUB_OUTPUT"
+
+          if git merge-base --is-ancestor origin/main HEAD; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'PR branch is already based on the latest main.'
+            exit 0
+          fi
+
+          if ! git rebase origin/main; then
+            echo 'conflict=true' >> "$GITHUB_OUTPUT"
+            git rebase --abort || true
+            echo 'Rebase failed because of conflicts.'
+            exit 1
+          fi
+
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+
+          # Refuse to overwrite a branch that moved after the command was issued.
+          git push \
+            --force-with-lease="refs/heads/${HEAD_REF}:${HEAD_SHA}" \
+            origin "HEAD:${HEAD_REF}"
+
+      - name: Report Result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          CHANGED: ${{ steps.rebase.outputs.changed }}
+          CONFLICT: ${{ steps.rebase.outputs.conflict }}
+          MAIN_SHA: ${{ steps.rebase.outputs.main_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ job.status }}" != 'success' ]]; then
+            if [[ "$CONFLICT" == 'true' ]]; then
+              gh pr comment "$PR_NUMBER" --body '❌ `/rebase main` hit merge conflicts. The branch was left unchanged; resolve the conflicts manually and retry.'
+            else
+              gh pr comment "$PR_NUMBER" --body '❌ `/rebase main` failed. The branch was left unchanged. Check the **PR Rebase Main** workflow run for details.'
+            fi
+          elif [[ "$CHANGED" == 'true' ]]; then
+            short_sha=${MAIN_SHA:0:8}
+            gh pr comment "$PR_NUMBER" --body "✅ \`/rebase main\` rebased this PR onto the latest \`main\` (\`${short_sha}\`) and force-pushed with lease protection."
+          else
+            gh pr comment "$PR_NUMBER" --body '✅ `/rebase main` found this PR already up to date with `main`.'
+          fi
