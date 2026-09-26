@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -33,6 +33,14 @@ const snapshot: TerrainModifierStackSnapshot = {
   authoringRevision: 4,
   activeModifier: sculpt.id,
   modifiers: [sculpt, paint],
+  rebuild: {
+    state: 'idle',
+    authoringRevision: 4,
+    dirtyRegions: 0,
+    geometryRegions: 0,
+    attributeRegions: 0,
+    error: '',
+  },
 };
 
 afterEach(cleanup);
@@ -110,5 +118,72 @@ describe('TerrainStackPanel', () => {
         enabled: false,
       }),
     );
+  });
+
+  it('duplicates the selected modifier and supports direct drag reordering', async () => {
+    const duplicated = { ...sculpt, id: '33333333-3333-4333-8333-333333333333', name: 'Large Forms Copy' };
+    const command = vi.fn(async (_type: string, payload: unknown) => {
+      const operation = (payload as { operation: string }).operation;
+      return {
+        succeeded: true,
+        payload:
+          operation === 'duplicate'
+            ? { ...snapshot, activeModifier: duplicated.id, modifiers: [sculpt, duplicated, paint] }
+            : snapshot,
+      };
+    });
+    render(<TerrainStackPanel command={command} entity={entity} />);
+
+    await screen.findByText('Large Forms');
+    await userEvent.click(await screen.findByRole('button', { name: 'Duplicate Modifier' }));
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith('terrain.modifierStack', {
+        entity,
+        operation: 'duplicate',
+        modifier: sculpt.id,
+      }),
+    );
+
+    const source = screen.getByRole('option', { name: /Large Forms Copy/ });
+    const target = screen.getByRole('option', { name: /Ground/ });
+    const data = new Map<string, string>();
+    const dataTransfer = {
+      effectAllowed: 'none',
+      setData: (type: string, value: string) => data.set(type, value),
+      getData: (type: string) => data.get(type) ?? '',
+    };
+    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.dragOver(target, { dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith('terrain.modifierStack', {
+        entity,
+        operation: 'move',
+        modifier: duplicated.id,
+        index: 2,
+      }),
+    );
+  });
+
+  it('reports incremental rebuild domains and persistent failures', async () => {
+    const command = vi.fn().mockResolvedValue({
+      succeeded: true,
+      payload: {
+        ...snapshot,
+        rebuild: {
+          state: 'failed',
+          authoringRevision: 7,
+          dirtyRegions: 3,
+          geometryRegions: 2,
+          attributeRegions: 1,
+          error: 'Heightmap source is unavailable',
+        },
+      },
+    });
+    render(<TerrainStackPanel command={command} entity={entity} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Terrain rebuild failed');
+    expect(screen.getByRole('alert')).toHaveTextContent('2 geometry · 1 attribute');
+    expect(screen.getByRole('alert')).toHaveTextContent('Heightmap source is unavailable');
   });
 });

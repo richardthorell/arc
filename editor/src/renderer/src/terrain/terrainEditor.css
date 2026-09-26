@@ -237,6 +237,44 @@
   border-bottom: 1px solid var(--arc-color-border-subtle);
 }
 
+.terrain-rebuild-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--arc-color-border-subtle);
+  color: var(--arc-color-text-muted);
+}
+
+.terrain-rebuild-status > span {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.terrain-rebuild-status strong,
+.terrain-rebuild-status small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terrain-rebuild-status strong {
+  color: var(--arc-color-text);
+  font-size: 11px;
+}
+
+.terrain-rebuild-status.failed,
+.terrain-rebuild-status.failed strong {
+  color: var(--arc-color-danger, #ff6b64);
+}
+
+.terrain-rebuild-status.building,
+.terrain-rebuild-status.publishing,
+.terrain-rebuild-status.queued {
+  color: var(--arc-color-accent, #4da3ff);
+}
+
 .terrain-stack-toolbar button {
   min-height: 27px;
   padding: 0 8px;
@@ -271,6 +309,16 @@
 .terrain-stack-row.selected {
   border-color: rgba(85, 168, 221, 0.34);
   background: var(--arc-color-bg-selected);
+}
+
+.terrain-stack-row.dragging {
+  opacity: 0.45;
+}
+
+.terrain-stack-drag-handle {
+  flex: 0 0 auto;
+  color: var(--arc-color-text-muted);
+  cursor: grab;
 }
 
 .terrain-stack-row.base {

@@ -297,6 +297,13 @@ Use at least a synthetic 16 km x 16 km stress world and verify:
 
 ## Milestone 3 - Unified Terrain Editor and Non-Destructive Sculpting
 
+**Status: complete.** The editor now creates asset-backed terrain, owns sculpt and paint edits in ordered modifier
+layers, previews strokes interactively, rebuilds affected authoring regions asynchronously, and publishes immutable
+render generations. The production workflow includes naming, visibility, duplication, direct drag reorder,
+authoritative asset undo/redo, rebuild status and errors, and terrain-following dirty-region visualization. Legacy
+inline heightfields remain a scene-loading compatibility path rather than the authority for new terrain edits. See
+[Terrain M3 production workflow](m3-production-workflow.md).
+
 Introduce the final user-facing terrain workflow before adding exotic topology features.
 
 The Terrain Editor should expose one asset with one ordered stack:

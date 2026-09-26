@@ -3,10 +3,39 @@
 #include <arc/scene/terrain.h>
 #include <arc/scene/terrain_region_build.h>
 
+#include <cstdint>
 #include <filesystem>
+#include <string>
+#include <vector>
 
 namespace arc::editor
 {
+
+enum class terrain_rebuild_phase : std::uint8_t
+{
+    idle,
+    queued,
+    building,
+    publishing,
+    failed
+};
+
+struct terrain_rebuild_region_status
+{
+    scene::terrain_region_id id{};
+    scene::terrain_world_bounds bounds{};
+    scene::terrain_domain domains{scene::terrain_domain::none};
+};
+
+struct terrain_rebuild_status
+{
+    terrain_rebuild_phase phase{terrain_rebuild_phase::idle};
+    std::uint64_t authoring_revision{};
+    std::uint32_t geometry_regions{};
+    std::uint32_t attribute_regions{};
+    std::vector<terrain_rebuild_region_status> dirty_regions;
+    std::string error;
+};
 
 /** Editor-owned build state, discarded with its world/asset binding. No worker captures this object. */
 class terrain_rebuild_session
@@ -26,6 +55,7 @@ public:
     {
         return asset_;
     }
+    [[nodiscard]] terrain_rebuild_status status() const;
 
 private:
     scene::terrain_asset asset_;

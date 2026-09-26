@@ -1,4 +1,17 @@
-import { ArrowDown, ArrowUp, Eye, EyeOff, Layers3, Mountain, Paintbrush, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  Copy,
+  Eye,
+  EyeOff,
+  GripVertical,
+  Layers3,
+  Mountain,
+  Paintbrush,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { HostEntityId, HostResponse } from '../inspector/inspectorTypes';
@@ -23,6 +36,14 @@ export type TerrainModifierStackSnapshot = {
   authoringRevision: number;
   activeModifier: string;
   modifiers: TerrainModifierSnapshot[];
+  rebuild: {
+    state: 'idle' | 'queued' | 'building' | 'publishing' | 'failed';
+    authoringRevision: number;
+    dirtyRegions: number;
+    geometryRegions: number;
+    attributeRegions: number;
+    error: string;
+  };
 };
 
 type TerrainStackPanelProps = {
@@ -36,20 +57,30 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
   const [selectedId, setSelectedId] = useState<string>('');
   const [renameValue, setRenameValue] = useState('');
   const [loading, setLoading] = useState(false);
+  const [draggedId, setDraggedId] = useState('');
+  const [requestError, setRequestError] = useState('');
 
   const execute = useCallback(
-    async (operation: string, extra: Record<string, unknown> = {}) => {
-      setLoading(true);
+    async (operation: string, extra: Record<string, unknown> = {}, silent = false) => {
+      if (!silent) setLoading(true);
       try {
         const response = await command('terrain.modifierStack', { entity, operation, ...extra });
         if (!response.succeeded || !response.payload) {
-          onStatus?.(response.error || 'Terrain modifier operation failed');
+          const message = response.error || 'Terrain modifier operation failed';
+          setRequestError(message);
+          onStatus?.(message);
           return null;
         }
+        setRequestError('');
         setStack(response.payload);
         return response.payload;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Terrain modifier operation failed';
+        setRequestError(message);
+        onStatus?.(message);
+        return null;
       } finally {
-        setLoading(false);
+        if (!silent) setLoading(false);
       }
     },
     [command, entity, onStatus],
@@ -58,6 +89,12 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
   useEffect(() => {
     void execute('inspect');
   }, [execute]);
+
+  useEffect(() => {
+    if (!stack || stack.rebuild.state === 'idle' || stack.rebuild.state === 'failed') return;
+    const timer = window.setTimeout(() => void execute('inspect', {}, true), 250);
+    return () => window.clearTimeout(timer);
+  }, [execute, stack]);
 
   useEffect(() => {
     if (!stack) return;
@@ -105,6 +142,7 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
         <div className="terrain-stack-loading">
           <RefreshCw className={loading ? 'spin' : ''} size={16} /> Loading terrain stack…
         </div>
+        {requestError && <small role="alert">{requestError}</small>}
       </section>
     );
   }
@@ -142,6 +180,31 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
         </div>
       ) : (
         <>
+          <div
+            aria-live="polite"
+            className={`terrain-rebuild-status ${stack.rebuild.state}`}
+            role={stack.rebuild.state === 'failed' ? 'alert' : 'status'}
+          >
+            <RefreshCw
+              className={['queued', 'building', 'publishing'].includes(stack.rebuild.state) ? 'spin' : ''}
+              size={14}
+            />
+            <span>
+              <strong>
+                {stack.rebuild.state === 'idle'
+                  ? 'Terrain is up to date'
+                  : stack.rebuild.state === 'failed'
+                    ? 'Terrain rebuild failed'
+                    : `${stack.rebuild.state[0].toUpperCase()}${stack.rebuild.state.slice(1)} ${stack.rebuild.dirtyRegions} region${stack.rebuild.dirtyRegions === 1 ? '' : 's'}`}
+              </strong>
+              {stack.rebuild.dirtyRegions > 0 && (
+                <small>
+                  {stack.rebuild.geometryRegions} geometry · {stack.rebuild.attributeRegions} attribute
+                </small>
+              )}
+              {(stack.rebuild.error || requestError) && <small>{stack.rebuild.error || requestError}</small>}
+            </span>
+          </div>
           <div className="terrain-stack-toolbar">
             <UiButton disabled={stack.readOnly || loading} onClick={() => void add('sculpt')} type="button">
               <Plus size={13} /> <Mountain size={13} /> Sculpt
@@ -157,12 +220,29 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
               return (
                 <div
                   aria-selected={modifier.id === selectedId}
-                  className={`terrain-stack-row${modifier.id === selectedId ? ' selected' : ''}`}
+                  className={`terrain-stack-row${modifier.id === selectedId ? ' selected' : ''}${draggedId === modifier.id ? ' dragging' : ''}`}
+                  draggable={!stack.readOnly && !loading}
                   key={modifier.id}
                   onClick={() => void selectModifier(modifier)}
+                  onDragEnd={() => setDraggedId('')}
+                  onDragOver={(event) => {
+                    if (draggedId && draggedId !== modifier.id) event.preventDefault();
+                  }}
+                  onDragStart={(event) => {
+                    setDraggedId(modifier.id);
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', modifier.id);
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const source = draggedId || event.dataTransfer.getData('text/plain');
+                    setDraggedId('');
+                    if (source && source !== modifier.id) void mutate('move', { modifier: source, index });
+                  }}
                   role="option"
                   tabIndex={0}
                 >
+                  <GripVertical aria-hidden="true" className="terrain-stack-drag-handle" size={13} />
                   <UiIconButton
                     disabled={stack.readOnly || loading}
                     label={`${modifier.enabled ? 'Disable' : 'Enable'} ${modifier.name}`}
@@ -263,6 +343,22 @@ export function TerrainStackPanel({ entity, command, onStatus }: TerrainStackPan
                   id: 'stable-id',
                   label: 'Stable ID',
                   control: <code title={selected.id}>{selected.id.slice(0, 12)}…</code>,
+                },
+                {
+                  id: 'duplicate',
+                  fullWidth: true,
+                  control: (
+                    <UiButton
+                      disabled={stack.readOnly || loading}
+                      onClick={async () => {
+                        const next = await mutate('duplicate', { modifier: selected.id });
+                        if (next?.activeModifier) setSelectedId(next.activeModifier);
+                      }}
+                      type="button"
+                    >
+                      <Copy size={13} /> Duplicate Modifier
+                    </UiButton>
+                  ),
                 },
                 {
                   id: 'delete',

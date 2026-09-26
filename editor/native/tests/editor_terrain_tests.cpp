@@ -154,6 +154,12 @@ TEST_CASE("M3.5 newly created terrain persists paint into its asset without leav
         if (!asset_owned) std::this_thread::sleep_for(std::chrono::milliseconds{2});
     }
     REQUIRE(asset_owned);
+    const auto rebuild_status = host->execute(arc::editor::host_terrain_modifier_stack_command{
+        .entity = {terrain_entity.index, terrain_entity.generation}, .operation = "inspect"});
+    REQUIRE(rebuild_status.succeeded);
+    CHECK(rebuild_status.payload_json.find("\"rebuild\"") != std::string::npos);
+    CHECK(rebuild_status.payload_json.find("\"state\":\"idle\"") != std::string::npos);
+    CHECK(host->scene_snapshot().undo_label == "Create Terrain");
     CHECK(terrain.heights.front() == Catch::Approx(-12.0f));
     const auto* initial_proxy = host->scene_state().terrain_render_proxies.find(guid);
     REQUIRE(initial_proxy != nullptr);
@@ -200,10 +206,14 @@ TEST_CASE("M3.5 newly created terrain persists paint into its asset without leav
                     .edit = arc::editor::host_edit_transaction{935u, arc::editor::host_edit_phase::commit,
                                                                "Terrain Paint"}})
                 .succeeded);
-    std::ifstream terrain_document(terrain_path, std::ios::binary);
-    const std::string terrain_json((std::istreambuf_iterator<char>(terrain_document)),
-                                   std::istreambuf_iterator<char>());
-    const auto decoded = arc::scene::read_terrain_asset_json(terrain_json);
+    const auto read_authored_asset = [&]
+    {
+        std::ifstream terrain_document(terrain_path, std::ios::binary);
+        const std::string terrain_json((std::istreambuf_iterator<char>(terrain_document)),
+                                       std::istreambuf_iterator<char>());
+        return arc::scene::read_terrain_asset_json(terrain_json);
+    };
+    const auto decoded = read_authored_asset();
     REQUIRE(decoded.has_value());
     const auto paint =
         std::ranges::find_if(decoded.value().modifiers, [](const auto& modifier)
@@ -212,6 +222,39 @@ TEST_CASE("M3.5 newly created terrain persists paint into its asset without leav
     CHECK_FALSE(paint->region_payloads.empty());
 
     const auto committed_weights = terrain.layer_weights;
+    REQUIRE(host->execute(arc::editor::host_history_undo_command{}).succeeded);
+    CHECK(host->scene_state().scene.get<arc::scene::terrain_component>(terrain_entity).layer_weights == before);
+    const auto undone_asset = read_authored_asset();
+    REQUIRE(undone_asset.has_value());
+    const auto undone_paint =
+        std::ranges::find_if(undone_asset.value().modifiers, [](const auto& modifier)
+                             { return modifier.type_id == arc::scene::terrain_builtin_modifier_types::paint_layer; });
+    REQUIRE(undone_paint != undone_asset.value().modifiers.end());
+    CHECK(undone_paint->region_payloads.empty());
+
+    REQUIRE(host->execute(arc::editor::host_history_redo_command{}).succeeded);
+    CHECK(host->scene_state().scene.get<arc::scene::terrain_component>(terrain_entity).layer_weights ==
+          committed_weights);
+    const auto redone_asset = read_authored_asset();
+    REQUIRE(redone_asset.has_value());
+    const auto redone_paint =
+        std::ranges::find_if(redone_asset.value().modifiers, [](const auto& modifier)
+                             { return modifier.type_id == arc::scene::terrain_builtin_modifier_types::paint_layer; });
+    REQUIRE(redone_paint != redone_asset.value().modifiers.end());
+    CHECK_FALSE(redone_paint->region_payloads.empty());
+
+    const auto original_modifier_count = redone_asset.value().modifiers.size();
+    REQUIRE(
+        host
+            ->execute(arc::editor::host_terrain_modifier_stack_command{
+                .entity = terrain_id, .operation = "duplicate", .modifier = arc::scene::to_string(redone_paint->id)})
+            .succeeded);
+    REQUIRE(read_authored_asset().value().modifiers.size() == original_modifier_count + 1u);
+    REQUIRE(host->execute(arc::editor::host_history_undo_command{}).succeeded);
+    REQUIRE(read_authored_asset().value().modifiers.size() == original_modifier_count);
+    REQUIRE(host->execute(arc::editor::host_history_redo_command{}).succeeded);
+    REQUIRE(read_authored_asset().value().modifiers.size() == original_modifier_count + 1u);
+
     REQUIRE(
         host
             ->execute(arc::editor::host_command_envelope{
