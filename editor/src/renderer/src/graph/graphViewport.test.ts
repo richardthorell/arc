@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  normalizeGraphViewport,
-  panGraphViewport,
-  serializeGraphViewport,
-  zoomGraphViewportAt,
-} from './graphViewport';
+import { normalizeGraphViewport, panGraphViewport, serializeGraphViewport, zoomGraphViewportAt } from './graphViewport';
 
 describe('graphViewport', () => {
   it('normalizes invalid persisted values and clamps zoom', () => {
