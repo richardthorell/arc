@@ -11,16 +11,18 @@ const formatFamilies: Partial<Record<ArcRemoteAssetKind, ReadonlySet<string>>> =
   texture: new Set(['jpg', 'jpeg', 'png', 'exr']),
 };
 
+const normalizeVariantToken = (value: string): string => value.trim().replace(/^\./, '').toLocaleLowerCase();
+
 const segments = (file: ArcAssetDownloadFile): string[] =>
   file.logicalPath
     .replaceAll('\\', '/')
     .split('/')
     .filter(Boolean)
-    .map((segment) => segment.toLocaleLowerCase());
+    .map(normalizeVariantToken);
 
 const extension = (file: ArcAssetDownloadFile): string => {
   try {
-    return new URL(file.url).pathname.split('.').at(-1)?.toLocaleLowerCase() ?? '';
+    return normalizeVariantToken(new URL(file.url).pathname.split('.').at(-1) ?? '');
   } catch {
     return '';
   }
@@ -49,8 +51,11 @@ export const manifestFormats = (manifest: ArcAssetDownloadManifest, kind?: ArcRe
 };
 
 export const preferredResolution = (resolutions: string[]): string => {
-  if (resolutions.includes('2k')) return '2k';
-  if (resolutions.includes('4k')) return '4k';
+  const normalized = resolutions.map(normalizeVariantToken);
+  const twoK = normalized.indexOf('2k');
+  if (twoK >= 0) return resolutions[twoK];
+  const fourK = normalized.indexOf('4k');
+  if (fourK >= 0) return resolutions[fourK];
   return resolutions[0] ?? '';
 };
 
@@ -61,7 +66,12 @@ export const preferredFormat = (formats: string[], kind: ArcRemoteAssetKind): st
       : kind === 'model'
         ? ['gltf', 'glb', 'fbx', 'usd', 'usdz', 'blend']
         : ['jpg', 'png', 'exr'];
-  return preferences.find((format) => formats.includes(format)) ?? formats[0] ?? '';
+  const normalized = formats.map(normalizeVariantToken);
+  for (const preference of preferences) {
+    const index = normalized.indexOf(preference);
+    if (index >= 0) return formats[index];
+  }
+  return formats[0] ?? '';
 };
 
 export const selectManifestFiles = (
@@ -69,8 +79,8 @@ export const selectManifestFiles = (
   resolution: string,
   format: string,
 ): ArcAssetDownloadFile[] => {
-  const normalizedResolution = resolution.toLocaleLowerCase();
-  const normalizedFormat = format.toLocaleLowerCase();
+  const normalizedResolution = normalizeVariantToken(resolution);
+  const normalizedFormat = normalizeVariantToken(format);
   return manifest.files.filter((file) => {
     const fileSegments = segments(file);
     const resolutionMatches = !normalizedResolution || fileSegments.includes(normalizedResolution);
