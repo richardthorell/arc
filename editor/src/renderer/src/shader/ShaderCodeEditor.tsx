@@ -11,12 +11,19 @@ type MonacoEnvironment = {
   getWorker: (_moduleId: string, _label: string) => Worker;
 };
 
+export type ShaderSourceLocation = {
+  line: number;
+  column?: number;
+  requestId: number;
+};
+
 type ShaderCodeEditorProps = {
   documentId: string;
   path: string;
   value: string;
   readOnly: boolean;
   loading: boolean;
+  revealLocation?: ShaderSourceLocation;
   onChange: (value: string) => void;
   onSave: () => void;
 };
@@ -57,6 +64,7 @@ export function ShaderCodeEditor({
   value,
   readOnly,
   loading,
+  revealLocation,
   onChange,
   onSave,
 }: ShaderCodeEditorProps) {
@@ -150,6 +158,21 @@ export function ShaderCodeEditor({
   useEffect(() => {
     editorRef.current?.updateOptions({ readOnly: readOnly || loading });
   }, [loading, readOnly]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    const model = modelRef.current;
+    if (!editor || !model || !revealLocation) return;
+
+    const lineNumber = Math.min(Math.max(1, revealLocation.line), model.getLineCount());
+    const column = Math.min(
+      Math.max(1, revealLocation.column ?? 1),
+      model.getLineMaxColumn(lineNumber),
+    );
+    editor.setPosition({ lineNumber, column });
+    editor.revealPositionInCenter({ lineNumber, column });
+    editor.focus();
+  }, [revealLocation]);
 
   return <div ref={containerRef} className={`shader-code-editor${loading ? ' is-loading' : ''}`} />;
 }
