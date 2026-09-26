@@ -38,7 +38,10 @@ describe('graphSelection', () => {
 
   it('requires pasted nodes to receive unique stable ids', () => {
     const snapshot = createGraphClipboardSnapshot(
-      [{ id: 'a', value: 1 }, { id: 'b', value: 2 }],
+      [
+        { id: 'a', value: 1 },
+        { id: 'b', value: 2 },
+      ],
       createGraphSelection(['a', 'b']),
     );
     expect(remapGraphClipboardSnapshot(snapshot, (id) => `copy-${id}`).nodes.map((node) => node.id)).toEqual([
