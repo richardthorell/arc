@@ -29,6 +29,8 @@ export const assetLibraryVirtualView = (id: AssetLibraryVirtualViewId): AssetLib
 
 export type AssetLibraryVirtualMembership = Readonly<Record<string, readonly string[]>>;
 
+const uniqueAssetIds = (ids: readonly string[]): string[] => [...new Set(ids.filter((id) => id.length > 0))];
+
 /**
  * Resolve stable asset IDs for a virtual view without cloning or rewriting the
  * underlying asset records. Search results are supplied per query and remain
@@ -40,5 +42,51 @@ export const assetIdsForVirtualView = (
   searchResults: readonly string[] = [],
 ): readonly string[] => {
   const ids = id === 'search-results' ? searchResults : (membership[id] ?? []);
-  return [...new Set(ids)];
+  return uniqueAssetIds(ids);
+};
+
+/**
+ * Toggle explicit Favorites membership. Derived views intentionally cannot be
+ * changed through this helper so callers cannot accidentally persist search or
+ * recency state as user-authored collection membership.
+ */
+export const setAssetFavorite = (
+  membership: AssetLibraryVirtualMembership,
+  assetId: string,
+  favorite: boolean,
+): AssetLibraryVirtualMembership => {
+  if (!assetId) return membership;
+  const favorites = uniqueAssetIds(membership.favorites ?? []);
+  const nextFavorites = favorite
+    ? uniqueAssetIds([...favorites, assetId])
+    : favorites.filter((candidate) => candidate !== assetId);
+  return { ...membership, favorites: nextFavorites };
+};
+
+/**
+ * Record an asset as most-recently used while keeping the view bounded. The
+ * same stable asset ID moves to the front instead of being duplicated.
+ */
+export const recordRecentAsset = (
+  membership: AssetLibraryVirtualMembership,
+  assetId: string,
+  limit = 50,
+): AssetLibraryVirtualMembership => {
+  if (!assetId || limit <= 0) return { ...membership, recent: [] };
+  const recent = uniqueAssetIds(membership.recent ?? []).filter((candidate) => candidate !== assetId);
+  return { ...membership, recent: [assetId, ...recent].slice(0, limit) };
+};
+
+/**
+ * Record a completed remote/import download in deterministic newest-first
+ * order. Download membership is derived from completed work rather than being
+ * directly user editable.
+ */
+export const recordDownloadedAsset = (
+  membership: AssetLibraryVirtualMembership,
+  assetId: string,
+): AssetLibraryVirtualMembership => {
+  if (!assetId) return membership;
+  const downloads = uniqueAssetIds(membership.downloads ?? []).filter((candidate) => candidate !== assetId);
+  return { ...membership, downloads: [assetId, ...downloads] };
 };
