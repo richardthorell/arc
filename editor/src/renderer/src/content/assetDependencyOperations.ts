@@ -27,9 +27,7 @@ const byReferenceIdentity = (left: AssetReference, right: AssetReference) => {
   return (left.kind ?? '').localeCompare(right.kind ?? '');
 };
 
-export const buildAssetDependencyIndex = (
-  references: readonly AssetReference[],
-): AssetDependencyIndex => {
+export const buildAssetDependencyIndex = (references: readonly AssetReference[]): AssetDependencyIndex => {
   const index = new Map<string, AssetReference[]>();
 
   for (const reference of references) {
@@ -42,24 +40,15 @@ export const buildAssetDependencyIndex = (
   return index;
 };
 
-export const findAssetUsages = (
-  index: AssetDependencyIndex,
-  assetId: string,
-): readonly AssetReference[] => index.get(assetId) ?? [];
+export const findAssetUsages = (index: AssetDependencyIndex, assetId: string): readonly AssetReference[] =>
+  index.get(assetId) ?? [];
 
-export const planAssetDelete = (
-  index: AssetDependencyIndex,
-  assetId: string,
-): AssetDeletePlan => {
+export const planAssetDelete = (index: AssetDependencyIndex, assetId: string): AssetDeletePlan => {
   const dependents = findAssetUsages(index, assetId);
   return { assetId, dependents, safe: dependents.length === 0 };
 };
 
-export const planAssetRelocation = (
-  assetId: string,
-  fromPath: string,
-  toPath: string,
-): AssetRelocationPlan => {
+export const planAssetRelocation = (assetId: string, fromPath: string, toPath: string): AssetRelocationPlan => {
   if (fromPath === toPath) throw new Error('Asset relocation requires a different destination path');
   return { assetId, fromPath, toPath, preserveIdentity: true };
 };
