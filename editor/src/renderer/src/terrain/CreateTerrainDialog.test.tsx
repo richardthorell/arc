@@ -15,6 +15,8 @@ describe('CreateTerrainDialog', () => {
     render(<CreateTerrainDialog command={command} onClose={vi.fn()} onCreated={created} />);
 
     expect(screen.getByLabelText('Create terrain')).toHaveTextContent('CPU 0.5 MiB');
+    expect(screen.getByLabelText('Source')).toHaveClass('ui-button');
+    expect(screen.getByLabelText('Physical Size (m)')).toHaveValue('180');
     fireEvent.click(screen.getByRole('button', { name: 'Create Terrain' }));
 
     await waitFor(() =>
@@ -33,9 +35,13 @@ describe('CreateTerrainDialog', () => {
 
   it('shows procedural seed controls and prevents operations over the undo budget', () => {
     render(<CreateTerrainDialog command={vi.fn()} onClose={vi.fn()} onCreated={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'procedural' } });
+
+    fireEvent.click(screen.getByLabelText('Source'));
+    fireEvent.click(screen.getByRole('option', { name: 'Domain Warped' }));
     expect(screen.getByLabelText('Seed')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Resolution'), { target: { value: '4097' } });
+
+    fireEvent.click(screen.getByLabelText('Resolution'));
+    fireEvent.click(screen.getByRole('option', { name: '4097 x 4097' }));
     expect(screen.getByText(/exceeds the 64 MiB undo budget/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create Terrain' })).toBeDisabled();
   });
