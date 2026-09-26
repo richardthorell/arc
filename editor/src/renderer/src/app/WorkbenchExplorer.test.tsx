@@ -42,6 +42,29 @@ describe('ExplorerPanel', () => {
     expect(screen.queryByRole('menu', { name: 'Add entity' })).not.toBeInTheDocument();
   });
 
+  it('exposes World as a first-class hierarchy inspection target', () => {
+    const onSelectEntity = vi.fn();
+    render(
+      <ExplorerPanel
+        project={{ scene: [] } as unknown as ProjectSnapshot}
+        selectedEntityId=""
+        selectedEntityIds={new Set()}
+        onSelectEntity={onSelectEntity}
+        onRenameEntity={vi.fn()}
+        onSetEntityActive={vi.fn()}
+        onMoveEntity={vi.fn()}
+        onCreateEntity={vi.fn()}
+        onDuplicate={vi.fn()}
+        onCreatePrefab={vi.fn()}
+        onInstantiatePrefab={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('treeitem', { name: 'World' }));
+    expect(onSelectEntity).toHaveBeenCalledWith('world');
+  });
+
   it('routes Terrain through the dedicated authoring workflow', () => {
     const onCreateEntity = vi.fn();
     render(

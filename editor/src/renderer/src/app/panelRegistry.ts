@@ -57,8 +57,22 @@ export const panelRegistry: Record<WorkbenchPanelId, PanelRegistration> = {
     minimumWidth: 320,
     closeable: true,
   },
-  lighting: { id: 'lighting', title: 'Lighting', icon: Lightbulb, defaultRegion: 'right' },
-  worldSettings: { id: 'worldSettings', title: 'World Settings', icon: Globe2, defaultRegion: 'right' },
+  // Legacy panel IDs remain registered so stale external requests fail gracefully.
+  // World/environment/lighting authoring now lives in the normal Inspector.
+  lighting: {
+    id: 'lighting',
+    title: 'Lighting',
+    icon: Lightbulb,
+    defaultRegion: 'right',
+    showInWindowMenu: false,
+  },
+  worldSettings: {
+    id: 'worldSettings',
+    title: 'World Settings',
+    icon: Globe2,
+    defaultRegion: 'right',
+    showInWindowMenu: false,
+  },
   contentBrowser: {
     id: 'contentBrowser',
     title: 'Content Browser',
