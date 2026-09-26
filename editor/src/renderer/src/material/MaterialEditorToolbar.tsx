@@ -2,7 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, CircleAlert, Code2, Eye, LoaderCircle, RefreshCw, Save, Upload, Zap } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
-import { UiButton, UiContextMenu, UiContextMenuItem, UiEditorToolbar, UiSplitButton, UiToggleButton, UiToolbarSeparator } from '../ui';
+import {
+  UiButton,
+  UiContextMenu,
+  UiContextMenuItem,
+  UiEditorToolbar,
+  UiSplitButton,
+  UiToggleButton,
+  UiToolbarSeparator,
+} from '../ui';
 import {
   compileMaterialDocument,
   reloadMaterialDocument,
