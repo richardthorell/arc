@@ -10,10 +10,20 @@ export type AssetLibraryScope = {
 };
 
 export const assetLibraryScopes: readonly AssetLibraryScope[] = [
-  { id: 'builtin', label: 'Built-in', writable: false, description: 'Engine-provided assets available to every project.' },
+  {
+    id: 'builtin',
+    label: 'Built-in',
+    writable: false,
+    description: 'Engine-provided assets available to every project.',
+  },
   { id: 'project', label: 'Project', writable: true, description: 'Assets owned by the current project.' },
   { id: 'user', label: 'User', writable: true, description: 'Assets available to the current user across projects.' },
-  { id: 'organization', label: 'Organization', writable: false, description: 'Shared organization assets provided by configured library mounts.' },
+  {
+    id: 'organization',
+    label: 'Organization',
+    writable: false,
+    description: 'Shared organization assets provided by configured library mounts.',
+  },
 ] as const;
 
 const scopeById = new Map(assetLibraryScopes.map((scope) => [scope.id, scope]));
@@ -26,7 +36,10 @@ export function assetScopeId(asset: Pick<AssetItem, 'scope'>): AssetLibraryScope
   return assetLibraryScope(asset.scope).id;
 }
 
-export function assetsInScope<T extends Pick<AssetItem, 'scope'>>(assets: readonly T[], scope: AssetLibraryScopeId): T[] {
+export function assetsInScope<T extends Pick<AssetItem, 'scope'>>(
+  assets: readonly T[],
+  scope: AssetLibraryScopeId,
+): T[] {
   return assets.filter((asset) => assetScopeId(asset) === scope);
 }
 
