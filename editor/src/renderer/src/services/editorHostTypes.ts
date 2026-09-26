@@ -35,6 +35,7 @@ export type AssetItem = {
   name: string;
   title?: string;
   description?: string;
+  tags?: string[];
   path: string;
   scope?: 'builtin' | 'project' | 'user' | 'organization';
   readOnly?: boolean;
