@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import type { KeyboardEvent, ReactNode } from 'react';
+import type { KeyboardEvent, MouseEvent, ReactNode } from 'react';
 
 import { UiTreeRow } from './UiTreeRow';
 import './UiTreeView.css';
@@ -23,12 +23,14 @@ type VisibleTreeNode = {
 type UiTreeViewProps = {
   nodes: readonly UiTreeNode[];
   selectedId?: string | null;
+  selectedIds?: ReadonlySet<string>;
   defaultExpandedIds?: readonly string[];
   expandedIds?: ReadonlySet<string>;
   query?: string;
   ariaLabel?: string;
   onExpandedChange?: (expandedIds: ReadonlySet<string>) => void;
   onSelect?: (node: UiTreeNode) => void;
+  onSelectionChange?: (selectedIds: ReadonlySet<string>, primaryNode: UiTreeNode) => void;
 };
 
 const normalize = (value: string) => value.trim().toLocaleLowerCase();
@@ -70,19 +72,23 @@ const flattenVisibleNodes = (
 export function UiTreeView({
   nodes,
   selectedId = null,
+  selectedIds,
   defaultExpandedIds = [],
   expandedIds: controlledExpandedIds,
   query = '',
   ariaLabel = 'Tree',
   onExpandedChange,
   onSelect,
+  onSelectionChange,
 }: UiTreeViewProps) {
   const [uncontrolledExpandedIds, setUncontrolledExpandedIds] = useState<ReadonlySet<string>>(
     () => new Set(defaultExpandedIds),
   );
   const [focusedId, setFocusedId] = useState<string | null>(selectedId);
+  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(selectedId);
   const expandedIds = controlledExpandedIds ?? uncontrolledExpandedIds;
   const normalizedQuery = normalize(query);
+  const effectiveSelectedIds = selectedIds ?? (selectedId ? new Set([selectedId]) : new Set<string>());
 
   const filteredNodes = useMemo(() => filterTree(nodes, normalizedQuery), [nodes, normalizedQuery]);
   const visibleNodes = useMemo(
@@ -120,6 +126,33 @@ export function UiTreeView({
       const element = document.querySelector<HTMLButtonElement>(`[data-ui-tree-node-id="${CSS.escape(id)}"]`);
       element?.focus();
     });
+  };
+
+  const selectNode = (node: UiTreeNode, options?: { additive?: boolean; range?: boolean }) => {
+    if (node.disabled) return;
+    const next = new Set<string>();
+    if (options?.range && selectionAnchorId) {
+      const anchorIndex = visibleNodes.findIndex(({ node: candidate }) => candidate.id === selectionAnchorId);
+      const targetIndex = visibleNodes.findIndex(({ node: candidate }) => candidate.id === node.id);
+      if (anchorIndex >= 0 && targetIndex >= 0) {
+        const [start, end] = anchorIndex <= targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex];
+        if (options.additive) effectiveSelectedIds.forEach((id) => next.add(id));
+        visibleNodes.slice(start, end + 1).forEach(({ node: candidate }) => {
+          if (!candidate.disabled) next.add(candidate.id);
+        });
+      }
+    } else if (options?.additive) {
+      effectiveSelectedIds.forEach((id) => next.add(id));
+      if (next.has(node.id)) next.delete(node.id);
+      else next.add(node.id);
+      setSelectionAnchorId(node.id);
+    } else {
+      next.add(node.id);
+      setSelectionAnchorId(node.id);
+    }
+    if (next.size === 0 && !options?.additive) next.add(node.id);
+    onSelectionChange?.(next, node);
+    onSelect?.(node);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, entry: VisibleTreeNode) => {
@@ -160,36 +193,44 @@ export function UiTreeView({
     }
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      if (!entry.node.disabled) onSelect?.(entry.node);
+      selectNode(entry.node, { additive: event.ctrlKey || event.metaKey, range: event.shiftKey });
     }
+  };
+
+  const handleClick = (event: MouseEvent<HTMLButtonElement>, entry: VisibleTreeNode) => {
+    setFocusedId(entry.node.id);
+    selectNode(entry.node, { additive: event.ctrlKey || event.metaKey, range: event.shiftKey });
   };
 
   if (visibleNodes.length === 0) return <div className="ui-tree-view-empty">No matching items</div>;
 
   return (
-    <div aria-label={ariaLabel} className="ui-tree-view" role="tree">
+    <div
+      aria-label={ariaLabel}
+      aria-multiselectable={selectedIds ? true : undefined}
+      className="ui-tree-view"
+      role="tree"
+    >
       {visibleNodes.map((entry) => {
         const hasChildren = Boolean(entry.node.children?.length);
         const expanded = hasChildren && (Boolean(normalizedQuery) || expandedIds.has(entry.node.id));
+        const selected = effectiveSelectedIds.has(entry.node.id);
         return (
           <UiTreeRow
             aria-disabled={entry.node.disabled || undefined}
             aria-expanded={hasChildren ? expanded : undefined}
             aria-level={entry.depth + 1}
-            aria-selected={entry.node.id === selectedId}
+            aria-selected={selected}
             className="ui-tree-view-row"
             data-ui-tree-node-id={entry.node.id}
             depth={entry.depth}
             disabled={entry.node.disabled}
             key={entry.node.id}
-            onClick={() => {
-              setFocusedId(entry.node.id);
-              if (!entry.node.disabled) onSelect?.(entry.node);
-            }}
+            onClick={(event) => handleClick(event, entry)}
             onDoubleClick={() => toggle(entry.node)}
             onKeyDown={(event) => handleKeyDown(event, entry)}
             role="treeitem"
-            selected={entry.node.id === selectedId}
+            selected={selected}
             tabIndex={entry.node.id === focusedId ? 0 : -1}
           >
             <span
