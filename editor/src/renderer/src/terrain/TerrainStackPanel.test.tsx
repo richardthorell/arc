@@ -135,7 +135,7 @@ describe('TerrainStackPanel', () => {
     render(<TerrainStackPanel command={command} entity={entity} />);
 
     await screen.findByText('Large Forms');
-    await userEvent.click(screen.getByRole('button', { name: 'Duplicate Modifier' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Duplicate Modifier' }));
     await waitFor(() =>
       expect(command).toHaveBeenCalledWith('terrain.modifierStack', {
         entity,
