@@ -47,7 +47,9 @@ export class EditorCommandRegistry {
       .sort((a, b) => b.score - a.score || a.command.title.localeCompare(b.command.title));
   }
 
-  shortcutConflicts(shortcuts: Readonly<Record<EditorCommandId, string | undefined>> = {}): Map<string, EditorCommandId[]> {
+  shortcutConflicts(
+    shortcuts: Readonly<Record<EditorCommandId, string | undefined>> = {},
+  ): Map<string, EditorCommandId[]> {
     const byShortcut = new Map<string, EditorCommandId[]>();
     for (const command of this.commands.values()) {
       const shortcut = shortcuts[command.id] ?? command.defaultShortcut;

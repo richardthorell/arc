@@ -16,7 +16,12 @@ describe('editor command registry', () => {
   it('searches title, category, keywords, and stable ids', () => {
     const registry = new EditorCommandRegistry();
     registry.register({ id: 'editor.save', title: 'Save', category: 'File', keywords: ['write'] });
-    registry.register({ id: 'viewport.frame-selection', title: 'Frame Selection', category: 'Viewport', keywords: ['focus'] });
+    registry.register({
+      id: 'viewport.frame-selection',
+      title: 'Frame Selection',
+      category: 'Viewport',
+      keywords: ['focus'],
+    });
 
     expect(registry.search('frame')[0].command.id).toBe('viewport.frame-selection');
     expect(registry.search('viewport')[0].command.id).toBe('viewport.frame-selection');
