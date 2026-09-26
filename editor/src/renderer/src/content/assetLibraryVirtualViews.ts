@@ -72,7 +72,8 @@ export const recordRecentAsset = (
   assetId: string,
   limit = 50,
 ): AssetLibraryVirtualMembership => {
-  if (!assetId || limit <= 0) return { ...membership, recent: [] };
+  if (!assetId) return membership;
+  if (limit <= 0) return { ...membership, recent: [] };
   const recent = uniqueAssetIds(membership.recent ?? []).filter((candidate) => candidate !== assetId);
   return { ...membership, recent: [assetId, ...recent].slice(0, limit) };
 };
