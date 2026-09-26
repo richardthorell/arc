@@ -32,4 +32,10 @@ prefab_document_result revert_prefab_instance(editor_scene_state& state, render:
 
 bool unpack_prefab_instance(editor_scene_state& state, ecs::entity root);
 
+// Lightweight prefab state queries for hierarchy/inspector UI. Keeping these here avoids coupling editor UI code
+// to the storage details of scene::prefab_instance_component.
+[[nodiscard]] bool is_prefab_instance(const editor_scene_state& state, ecs::entity root);
+[[nodiscard]] std::size_t prefab_override_count(const editor_scene_state& state, ecs::entity root);
+[[nodiscard]] bool prefab_has_overrides(const editor_scene_state& state, ecs::entity root);
+
 } // namespace arc::editor
