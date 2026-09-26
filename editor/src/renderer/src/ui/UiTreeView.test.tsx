@@ -124,12 +124,7 @@ describe('UiTreeView', () => {
   it('rejects reparenting a node beneath its own descendant', () => {
     const onReparent = vi.fn();
     render(
-      <UiTreeView
-        ariaLabel="Scene hierarchy"
-        defaultExpandedIds={['editing']}
-        nodes={nodes}
-        onReparent={onReparent}
-      />,
+      <UiTreeView ariaLabel="Scene hierarchy" defaultExpandedIds={['editing']} nodes={nodes} onReparent={onReparent} />,
     );
 
     const dataTransfer = {

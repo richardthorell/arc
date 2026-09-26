@@ -220,8 +220,7 @@ export function UiTreeView({
     selectNode(entry.node, { additive: event.ctrlKey || event.metaKey, range: event.shiftKey });
   };
 
-  const sourceIdsFor = (id: string) =>
-    effectiveSelectedIds.has(id) ? [...effectiveSelectedIds] : [id];
+  const sourceIdsFor = (id: string) => (effectiveSelectedIds.has(id) ? [...effectiveSelectedIds] : [id]);
 
   const canDropOn = (sourceIds: readonly string[], target: UiTreeNode) => {
     if (target.disabled || sourceIds.includes(target.id)) return false;
