@@ -8,6 +8,18 @@
   white-space: nowrap;
 }
 
+.status-runtime.is-running {
+  color: var(--arc-color-success);
+}
+
+.status-runtime.is-paused {
+  color: #e1bd72;
+}
+
+.status-runtime.is-faulted {
+  color: var(--arc-color-danger);
+}
+
 .status-job-label {
   min-width: 0;
   max-width: 250px;

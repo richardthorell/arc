@@ -35,6 +35,8 @@ export type InspectorPanelProps = {
   scene?: ReadonlyArray<SceneEntity>;
   coordinateSpace?: 'local' | 'world';
   onCoordinateSpaceChange?: (space: 'local' | 'world') => void;
+  readOnly?: boolean;
+  contextLabel?: string;
 };
 
 const knownTags = ['Untagged', 'Camera', 'Light', 'Mesh', 'Environment'];
@@ -110,6 +112,8 @@ export function InspectorPanel({
   scene = [],
   coordinateSpace = 'local',
   onCoordinateSpaceChange,
+  readOnly = false,
+  contextLabel,
 }: InspectorPanelProps) {
   const [draft, setDraft] = useState(snapshot);
   const [filter, setFilter] = useState('');
@@ -135,6 +139,12 @@ export function InspectorPanel({
     transactionKey?: string,
     transactionLabel?: string,
   ) => {
+    if (readOnly) {
+      const message = `${contextLabel || 'This context'} is read-only`;
+      setError(message);
+      onStatus?.(message);
+      return;
+    }
     const requestRevision = ++revision.current;
     setDraft(next);
     setError(null);
@@ -465,235 +475,243 @@ export function InspectorPanel({
 
   return (
     <UiPanel className="data-inspector" variant="inspector">
-      <header className="inspector-entity-card">
-        <div className="inspector-entity-title-row">
-          <input
-            aria-label="Entity active"
-            checked={activeMixed ? false : draft.active}
-            ref={(input) => {
-              if (input) input.indeterminate = activeMixed;
-            }}
-            onChange={(event) =>
-              updateHeader({ ...draft, active: event.target.checked }, 'entity.setActive', {
-                active: event.target.checked,
-              })
-            }
-            type="checkbox"
-          />
-          <TextCommitInput
-            ariaLabel="Entity name"
-            disabled={(draft.selectionCount ?? 1) > 1}
-            value={(draft.selectionCount ?? 1) > 1 ? `${draft.selectionCount} entities selected` : draft.name}
-            onCommit={(name) => updateHeader({ ...draft, name }, 'entity.rename', { name })}
-          />
-          <label className="inspector-static" title={`Mobility: ${draft.mobility ?? 'movable'}`}>
+      {readOnly && (
+        <div className="inspector-read-only-notice" role="status">
+          <strong>{contextLabel || 'Read-only inspection'}</strong>
+          <span>Runtime values can be inspected, but authoring edits are disabled and discarded when Play stops.</span>
+        </div>
+      )}
+      <fieldset className="inspector-read-only-scope" disabled={readOnly}>
+        <header className="inspector-entity-card">
+          <div className="inspector-entity-title-row">
             <input
-              aria-label="Static"
-              checked={draft.mobility === 'static'}
+              aria-label="Entity active"
+              checked={activeMixed ? false : draft.active}
               ref={(input) => {
-                if (input) input.indeterminate = mobilityMixed || draft.mobility === 'stationary';
+                if (input) input.indeterminate = activeMixed;
               }}
-              onChange={(event) => {
-                const mobility = event.target.checked ? 'static' : 'movable';
-                updateHeader({ ...draft, mobility }, 'entity.setMobility', { mobility });
-              }}
+              onChange={(event) =>
+                updateHeader({ ...draft, active: event.target.checked }, 'entity.setActive', {
+                  active: event.target.checked,
+                })
+              }
               type="checkbox"
             />
-            <span>Static</span>
+            <TextCommitInput
+              ariaLabel="Entity name"
+              disabled={(draft.selectionCount ?? 1) > 1}
+              value={(draft.selectionCount ?? 1) > 1 ? `${draft.selectionCount} entities selected` : draft.name}
+              onCommit={(name) => updateHeader({ ...draft, name }, 'entity.rename', { name })}
+            />
+            <label className="inspector-static" title={`Mobility: ${draft.mobility ?? 'movable'}`}>
+              <input
+                aria-label="Static"
+                checked={draft.mobility === 'static'}
+                ref={(input) => {
+                  if (input) input.indeterminate = mobilityMixed || draft.mobility === 'stationary';
+                }}
+                onChange={(event) => {
+                  const mobility = event.target.checked ? 'static' : 'movable';
+                  updateHeader({ ...draft, mobility }, 'entity.setMobility', { mobility });
+                }}
+                type="checkbox"
+              />
+              <span>Static</span>
+            </label>
+            <button aria-label="Entity actions" className="inspector-menu-button" type="button">
+              <MoreVertical size={15} />
+            </button>
+          </div>
+          <div className="inspector-entity-meta-row">
+            <label>
+              <span>Tag</span>
+              <TextCommitInput
+                ariaLabel="Tag"
+                list="arc-inspector-tags"
+                placeholder={tagMixed ? 'Mixed' : undefined}
+                value={tagMixed ? '' : draft.tag || 'Untagged'}
+                onCommit={(value) => {
+                  const tag = value === 'Untagged' ? '' : value;
+                  updateHeader({ ...draft, tag }, 'entity.setTag', { tag });
+                }}
+              />
+              <datalist id="arc-inspector-tags">
+                {tagOptions.map((tag) => (
+                  <option key={tag} value={tag} />
+                ))}
+              </datalist>
+            </label>
+            <label>
+              <span>Layer</span>
+              <select
+                aria-label="Layer"
+                value={layerValue}
+                onChange={(event) => {
+                  if (event.target.value === 'mixed' || event.target.value.startsWith('custom:')) return;
+                  const renderLayerMask = Number(event.target.value);
+                  updateHeader({ ...draft, renderLayerMask }, 'entity.setRenderLayer', { renderLayerMask });
+                }}
+              >
+                {layerValue === 'mixed' && <option value="mixed">Mixed</option>}
+                <option value={String(defaultLayerMask)}>Default</option>
+                <option value={String(environmentLayerMask)}>Environment</option>
+                {layerValue.startsWith('custom:') && (
+                  <option value={layerValue}>{`Custom (0x${draft.renderLayerMask.toString(16).toUpperCase()})`}</option>
+                )}
+              </select>
+            </label>
+          </div>
+        </header>
+
+        <div className="inspector-search-row">
+          <label>
+            <Search size={17} />
+            <input
+              aria-label="Search components"
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder="Search components…"
+              value={filter}
+            />
           </label>
-          <button aria-label="Entity actions" className="inspector-menu-button" type="button">
-            <MoreVertical size={15} />
+          <button aria-label="Component filter options" type="button">
+            <Filter size={17} />
           </button>
         </div>
-        <div className="inspector-entity-meta-row">
-          <label>
-            <span>Tag</span>
-            <TextCommitInput
-              ariaLabel="Tag"
-              list="arc-inspector-tags"
-              placeholder={tagMixed ? 'Mixed' : undefined}
-              value={tagMixed ? '' : draft.tag || 'Untagged'}
-              onCommit={(value) => {
-                const tag = value === 'Untagged' ? '' : value;
-                updateHeader({ ...draft, tag }, 'entity.setTag', { tag });
+
+        {error && (
+          <div className="inspector-error" role="alert">
+            {error}
+          </div>
+        )}
+        {(draft.aggregate?.partialComponents.length ?? 0) > 0 && (
+          <div className="inspector-mixed-components">
+            Partial components: {draft.aggregate?.partialComponents.join(', ')}. Add or remove them to edit together.
+          </div>
+        )}
+        <div className="inspector-component-list">
+          {draft.skeleton && <SkeletonInspector skeleton={draft.skeleton} command={command} onStatus={onStatus} />}
+          {draft.prefab && (
+            <section className="prefab-override-strip">
+              <div>
+                <strong>Prefab Instance</strong>
+                <span>
+                  {draft.prefab.overrideCount} override{draft.prefab.overrideCount === 1 ? '' : 's'}
+                </span>
+              </div>
+              {draft.prefab.sourceMissing && <b>Source missing</b>}
+              <details>
+                <summary>Overrides</summary>
+                <div className="prefab-override-list">
+                  {draft.prefab.overrides.map((override) => (
+                    <div key={`${override.sourceEntity}:${override.componentId}:${override.fieldId}:${override.kind}`}>
+                      <span>
+                        <b>{override.kind}</b>
+                        <code>{override.componentId}</code>
+                        <small>Field {override.fieldId}</small>
+                      </span>
+                      <button
+                        onClick={() =>
+                          void command('prefab.revertOverride', { entity: draft.entity, ...override }).then(refresh)
+                        }
+                      >
+                        Revert
+                      </button>
+                    </div>
+                  ))}
+                  {!draft.prefab.overrides.length && <small>No authored overrides.</small>}
+                </div>
+              </details>
+              <button
+                aria-label="Apply all prefab overrides"
+                onClick={() => void command('prefab.apply', { entity: draft.entity }).then(refresh)}
+              >
+                Apply All
+              </button>
+              <button
+                aria-label="Revert all prefab overrides"
+                onClick={() => void command('prefab.revert', { entity: draft.entity }).then(refresh)}
+              >
+                Revert All
+              </button>
+              <button
+                aria-label="Unpack prefab from override strip"
+                onClick={() => void command('prefab.unpack', { entity: draft.entity }).then(refresh)}
+              >
+                Unpack
+              </button>
+            </section>
+          )}
+          {schemas.map((schema) => (
+            <InspectorComponentCard
+              key={schema.id}
+              collapsed={collapsed[schema.id] ?? false}
+              context={displayDraft ?? draft}
+              schema={schema}
+              assets={assets}
+              headerAccessory={
+                schema.id === 'transform' ? (
+                  <label
+                    className="inspector-coordinate-space"
+                    title="Choose whether Transform values are edited relative to the parent or in world space."
+                  >
+                    <Globe2 aria-hidden="true" size={12} />
+                    <select
+                      aria-label="Inspector transform coordinate space"
+                      disabled={(draft.selectionCount ?? 1) > 1}
+                      onChange={(event) => onCoordinateSpaceChange?.(event.target.value as 'local' | 'world')}
+                      value={coordinateSpace}
+                    >
+                      <option value="local">Local</option>
+                      <option value="world">World</option>
+                    </select>
+                  </label>
+                ) : undefined
+              }
+              thumbnailProvider={thumbnailProvider}
+              onToggle={() => setCollapsed((value) => ({ ...value, [schema.id]: !(value[schema.id] ?? false) }))}
+              onAction={(action) => runComponentAction(schema.id, action)}
+              onValue={(path, value, settled) => {
+                if (path === 'terrain.activeLayer') value = Number(value);
+                let next: InspectorEntitySnapshot;
+                if (
+                  schema.id === 'transform' &&
+                  coordinateSpace === 'world' &&
+                  displayDraft?.transform &&
+                  draft.transform &&
+                  (draft.selectionCount ?? 1) === 1
+                ) {
+                  const nextDisplay = setPathValue(displayDraft, path, value);
+                  next = {
+                    ...draft,
+                    transform: inspectorWorldToLocal(scene, hostEntityKey(draft.entity), nextDisplay.transform!),
+                  };
+                } else {
+                  next = setPathValue(draft, path, value);
+                }
+                if (path === 'transform.rotationDegrees' && next.transform && coordinateSpace !== 'world') {
+                  next = { ...next, transform: { ...next.transform, rotationDegrees: value as Vec3 } };
+                }
+                updateComponent(schema.id, path, next, settled);
               }}
             />
-            <datalist id="arc-inspector-tags">
-              {tagOptions.map((tag) => (
-                <option key={tag} value={tag} />
-              ))}
-            </datalist>
-          </label>
-          <label>
-            <span>Layer</span>
-            <select
-              aria-label="Layer"
-              value={layerValue}
-              onChange={(event) => {
-                if (event.target.value === 'mixed' || event.target.value.startsWith('custom:')) return;
-                const renderLayerMask = Number(event.target.value);
-                updateHeader({ ...draft, renderLayerMask }, 'entity.setRenderLayer', { renderLayerMask });
-              }}
-            >
-              {layerValue === 'mixed' && <option value="mixed">Mixed</option>}
-              <option value={String(defaultLayerMask)}>Default</option>
-              <option value={String(environmentLayerMask)}>Environment</option>
-              {layerValue.startsWith('custom:') && (
-                <option value={layerValue}>{`Custom (0x${draft.renderLayerMask.toString(16).toUpperCase()})`}</option>
-              )}
-            </select>
-          </label>
-        </div>
-      </header>
-
-      <div className="inspector-search-row">
-        <label>
-          <Search size={17} />
-          <input
-            aria-label="Search components"
-            onChange={(event) => setFilter(event.target.value)}
-            placeholder="Search components…"
-            value={filter}
-          />
-        </label>
-        <button aria-label="Component filter options" type="button">
-          <Filter size={17} />
-        </button>
-      </div>
-
-      {error && (
-        <div className="inspector-error" role="alert">
-          {error}
-        </div>
-      )}
-      {(draft.aggregate?.partialComponents.length ?? 0) > 0 && (
-        <div className="inspector-mixed-components">
-          Partial components: {draft.aggregate?.partialComponents.join(', ')}. Add or remove them to edit together.
-        </div>
-      )}
-      <div className="inspector-component-list">
-        {draft.skeleton && <SkeletonInspector skeleton={draft.skeleton} command={command} onStatus={onStatus} />}
-        {draft.prefab && (
-          <section className="prefab-override-strip">
-            <div>
-              <strong>Prefab Instance</strong>
-              <span>
-                {draft.prefab.overrideCount} override{draft.prefab.overrideCount === 1 ? '' : 's'}
-              </span>
-            </div>
-            {draft.prefab.sourceMissing && <b>Source missing</b>}
-            <details>
-              <summary>Overrides</summary>
-              <div className="prefab-override-list">
-                {draft.prefab.overrides.map((override) => (
-                  <div key={`${override.sourceEntity}:${override.componentId}:${override.fieldId}:${override.kind}`}>
-                    <span>
-                      <b>{override.kind}</b>
-                      <code>{override.componentId}</code>
-                      <small>Field {override.fieldId}</small>
-                    </span>
-                    <button
-                      onClick={() =>
-                        void command('prefab.revertOverride', { entity: draft.entity, ...override }).then(refresh)
-                      }
-                    >
-                      Revert
-                    </button>
-                  </div>
-                ))}
-                {!draft.prefab.overrides.length && <small>No authored overrides.</small>}
-              </div>
-            </details>
-            <button
-              aria-label="Apply all prefab overrides"
-              onClick={() => void command('prefab.apply', { entity: draft.entity }).then(refresh)}
-            >
-              Apply All
-            </button>
-            <button
-              aria-label="Revert all prefab overrides"
-              onClick={() => void command('prefab.revert', { entity: draft.entity }).then(refresh)}
-            >
-              Revert All
-            </button>
-            <button
-              aria-label="Unpack prefab from override strip"
-              onClick={() => void command('prefab.unpack', { entity: draft.entity }).then(refresh)}
-            >
-              Unpack
-            </button>
-          </section>
-        )}
-        {schemas.map((schema) => (
-          <InspectorComponentCard
-            key={schema.id}
-            collapsed={collapsed[schema.id] ?? false}
-            context={displayDraft ?? draft}
-            schema={schema}
-            assets={assets}
-            headerAccessory={
-              schema.id === 'transform' ? (
-                <label
-                  className="inspector-coordinate-space"
-                  title="Choose whether Transform values are edited relative to the parent or in world space."
-                >
-                  <Globe2 aria-hidden="true" size={12} />
-                  <select
-                    aria-label="Inspector transform coordinate space"
-                    disabled={(draft.selectionCount ?? 1) > 1}
-                    onChange={(event) => onCoordinateSpaceChange?.(event.target.value as 'local' | 'world')}
-                    value={coordinateSpace}
-                  >
-                    <option value="local">Local</option>
-                    <option value="world">World</option>
-                  </select>
-                </label>
-              ) : undefined
-            }
-            thumbnailProvider={thumbnailProvider}
-            onToggle={() => setCollapsed((value) => ({ ...value, [schema.id]: !(value[schema.id] ?? false) }))}
-            onAction={(action) => runComponentAction(schema.id, action)}
-            onValue={(path, value, settled) => {
-              if (path === 'terrain.activeLayer') value = Number(value);
-              let next: InspectorEntitySnapshot;
-              if (
-                schema.id === 'transform' &&
-                coordinateSpace === 'world' &&
-                displayDraft?.transform &&
-                draft.transform &&
-                (draft.selectionCount ?? 1) === 1
-              ) {
-                const nextDisplay = setPathValue(displayDraft, path, value);
-                next = {
-                  ...draft,
-                  transform: inspectorWorldToLocal(scene, hostEntityKey(draft.entity), nextDisplay.transform!),
-                };
-              } else {
-                next = setPathValue(draft, path, value);
+          ))}
+          {!schemas.length && <div className="inspector-state compact">No components match “{filter}”.</div>}
+          <AddComponentPicker
+            snapshot={draft}
+            projectSchemas={projectSchemas}
+            onAdd={async (component, label) => {
+              const response = await command('component.add', { component });
+              if (!response.succeeded) {
+                setError(response.error || `Could not add ${label}`);
+                return false;
               }
-              if (path === 'transform.rotationDegrees' && next.transform && coordinateSpace !== 'world') {
-                next = { ...next, transform: { ...next.transform, rotationDegrees: value as Vec3 } };
-              }
-              updateComponent(schema.id, path, next, settled);
+              onStatus?.(`${label} added`);
+              await refresh();
+              return true;
             }}
           />
-        ))}
-        {!schemas.length && <div className="inspector-state compact">No components match “{filter}”.</div>}
-        <AddComponentPicker
-          snapshot={draft}
-          projectSchemas={projectSchemas}
-          onAdd={async (component, label) => {
-            const response = await command('component.add', { component });
-            if (!response.succeeded) {
-              setError(response.error || `Could not add ${label}`);
-              return false;
-            }
-            onStatus?.(`${label} added`);
-            await refresh();
-            return true;
-          }}
-        />
-      </div>
+        </div>
+      </fieldset>
     </UiPanel>
   );
 }

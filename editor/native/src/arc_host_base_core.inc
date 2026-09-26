@@ -1261,7 +1261,7 @@ void push_event(std::vector<host_event>& events, std::uint64_t& sequence, host_e
 template <class Component>
 void add_component_snapshot(const ecs::world& world, ecs::entity entity,
                             std::vector<host_component_snapshot>& components, host_component_kind kind,
-                            const char* label)
+                            const char* label, bool editable = true)
 {
     const auto type = ecs::component_type<Component>();
     const auto change = world.component_change_for(entity, type);
@@ -1270,7 +1270,7 @@ void add_component_snapshot(const ecs::world& world, ecs::entity entity,
                           .label = label,
                           .revision = change.revision,
                           .dirty_fields = change.fields,
-                          .editable = true});
+                          .editable = editable});
 }
 
 std::string asset_relative_path(const std::filesystem::path& root, const std::filesystem::path& path)
@@ -2447,7 +2447,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 push_event(state_->events, state_->event_sequence, host_event_type::command_failed, message, entity);
                 return host_response{.request_id = request_id, .succeeded = false, .error = std::move(message)};
             };
-            const auto success = [request_id](std::string payload_json = "{}") {
+            const auto success = [request_id](std::string payload_json = "{}")
+            {
                 return host_response{
                     .request_id = request_id, .succeeded = true, .payload_json = std::move(payload_json)};
             };
@@ -2472,7 +2473,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                     {
                         const auto editor_module =
                             std::find_if(descriptor.value().modules.begin(), descriptor.value().modules.end(),
-                                         [&](const auto& module) {
+                                         [&](const auto& module)
+                                         {
                                              return module.enabled && module.kind == project::module_kind::editor &&
                                                     module.id == payload.editor_module_id;
                                          });
@@ -2694,7 +2696,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                         !parse_curve_patch(payload.curve_b, settings.curve_b) ||
                         !parse_curve_patch(payload.curve_a, settings.curve_a))
                         return fail("Texture curve payload is invalid");
-                    if (!payload.mip_policy.empty()) settings.generate_mips = settings.mip_policy != render::texture_mip_policy::none;
+                    if (!payload.mip_policy.empty())
+                        settings.generate_mips = settings.mip_policy != render::texture_mip_policy::none;
                     if (payload.generate_mips)
                     {
                         settings.generate_mips = *payload.generate_mips;
@@ -3159,9 +3162,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                            created);
                 push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Scene changed",
                            created);
-                return success("{\"entity\":" + to_json(to_host_entity(created)) +
-                               ",\"guid\":" + to_json_string(ecs::to_string(entity_guid_of(state_->scene, created))) +
-                               '}');
+                return success("{\"entity\":" + to_json(to_host_entity(created)) + ",\"guid\":" +
+                               to_json_string(ecs::to_string(entity_guid_of(state_->scene, created))) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_delete_entity_command>)
             {
@@ -3230,10 +3232,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                            duplicate);
                 push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Scene changed",
                            duplicate);
-                return success(
-                    "{\"entity\":" + to_json(to_host_entity(duplicate)) +
-                    ",\"guid\":" + to_json_string(ecs::to_string(entity_guid_of(state_->scene, duplicate))) +
-                    '}');
+                return success("{\"entity\":" + to_json(to_host_entity(duplicate)) + ",\"guid\":" +
+                               to_json_string(ecs::to_string(entity_guid_of(state_->scene, duplicate))) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_create_prefab_command>)
             {
@@ -6297,6 +6297,21 @@ host_response arc_host::query(const host_query_envelope& query) const
             {
                 return {.request_id = request_id, .succeeded = true, .payload_json = to_json(runtime_snapshot())};
             }
+            else if constexpr (std::is_same_v<query_type, host_runtime_hierarchy_query>)
+            {
+                if (!state_->play_world)
+                    return {.request_id = request_id, .succeeded = false, .error = "No play session is active"};
+                return {.request_id = request_id, .succeeded = true, .payload_json = to_json(runtime_scene_snapshot())};
+            }
+            else if constexpr (std::is_same_v<query_type, host_runtime_entity_query>)
+            {
+                if (!state_->play_world)
+                    return {.request_id = request_id, .succeeded = false, .error = "No play session is active"};
+                const auto snapshot = runtime_entity_snapshot(payload.entity);
+                if (!snapshot.entity.valid())
+                    return {.request_id = request_id, .succeeded = false, .error = "Runtime entity was not found"};
+                return {.request_id = request_id, .succeeded = true, .payload_json = to_json(snapshot)};
+            }
             else if constexpr (std::is_same_v<query_type, host_terrain_tool_state_query>)
             {
                 return {.request_id = request_id, .succeeded = true, .payload_json = to_json(terrain_tool_snapshot())};
@@ -6325,6 +6340,7 @@ host_runtime_snapshot arc_host::runtime_snapshot() const
         if (world && world->state() == framework::runtime_world_state::faulted)
         {
             snapshot.state = host_runtime_state::faulted;
+            snapshot.error = world->fault_message();
             break;
         }
     }
@@ -6333,6 +6349,210 @@ host_runtime_snapshot arc_host::runtime_snapshot() const
     snapshot.discarded_ticks = state_->simulation.discarded_ticks();
     snapshot.time_scale = state_->simulation.time_scale();
     snapshot.world_count = static_cast<std::uint32_t>(state_->simulation.worlds().size());
+    return snapshot;
+}
+
+host_scene_snapshot arc_host::runtime_scene_snapshot() const
+{
+    host_scene_snapshot snapshot;
+    if (!state_->play_world) return snapshot;
+
+    const auto& world = *state_->play_world;
+    const auto runtime_identity = [&](ecs::entity entity)
+    {
+        if (const auto* id = world.try_get<scene::persistent_id_component>(entity); id && id->value.valid())
+            return ecs::to_string(id->value);
+        return std::string{"runtime:"} + std::to_string(entity.index) + ':' + std::to_string(entity.generation);
+    };
+    const auto entity_kind = [&](ecs::entity entity)
+    {
+        if (world.has<scene::world_environment_component>(entity) || world.has<scene::terrain_component>(entity) ||
+            world.has<scene::water_component>(entity) || world.has<scene::vegetation_component>(entity) ||
+            world.has<scene::decal_component>(entity))
+            return host_entity_kind::environment;
+        if (world.has<scene::directional_light_component>(entity) || world.has<scene::point_light_component>(entity) ||
+            world.has<scene::spot_light_component>(entity) || world.has<scene::area_light_component>(entity))
+            return host_entity_kind::light;
+        if (world.has<scene::camera_component>(entity)) return host_entity_kind::camera;
+        if (world.has<scene::mesh_renderer_component>(entity)) return host_entity_kind::mesh;
+        return host_entity_kind::unknown;
+    };
+
+    snapshot.scene_guid = ecs::to_string(state_->scene.scene_guid);
+    snapshot.scene_name = state_->scene.scene_name + " (Play World)";
+    snapshot.active_scene_path = state_->scene.active_scene_path.generic_string();
+    snapshot.scene_revision = state_->play_source_scene_revision;
+    snapshot.world_epoch = state_->world_epoch;
+    snapshot.frame_revision = state_->viewport_frame_index;
+
+    const auto root_entities = scene::roots(world);
+    std::uint32_t maximum_root_index{};
+    for (const auto root : root_entities)
+        maximum_root_index = std::max(maximum_root_index, root.index);
+    std::vector<std::uint32_t> root_orders(static_cast<std::size_t>(maximum_root_index) + 1u, 0u);
+    std::uint32_t root_order{};
+    for (const auto root : root_entities)
+        root_orders[root.index] = root_order++;
+
+    for (const auto entity : world.entities())
+    {
+        std::string parent_guid;
+        std::uint32_t sibling_order{};
+        if (const auto* hierarchy = world.try_get<scene::hierarchy_component>(entity))
+        {
+            if (world.alive(hierarchy->parent))
+            {
+                parent_guid = runtime_identity(hierarchy->parent);
+                auto sibling = hierarchy->previous_sibling;
+                std::unordered_set<ecs::entity, ecs::entity_hash> visited_siblings;
+                while (world.alive(sibling) && visited_siblings.insert(sibling).second)
+                {
+                    ++sibling_order;
+                    sibling = world.get<scene::hierarchy_component>(sibling).previous_sibling;
+                }
+            }
+            else if (entity.index < root_orders.size())
+            {
+                sibling_order = root_orders[entity.index];
+            }
+        }
+        const auto* active = world.try_get<scene::active_component>(entity);
+        const bool is_active = !active || active->active;
+        snapshot.entities.push_back({.entity = to_host_entity(entity),
+                                     .guid = runtime_identity(entity),
+                                     .parent_guid = std::move(parent_guid),
+                                     .sibling_order = sibling_order,
+                                     .name =
+                                         [&]
+                                     {
+                                         const auto* name = world.try_get<scene::name_component>(entity);
+                                         return name ? name->value : std::string{"Runtime Entity"};
+                                     }(),
+                                     .kind = entity_kind(entity),
+                                     .document_guid = snapshot.scene_guid,
+                                     .layer =
+                                         [&]
+                                     {
+                                         const auto* layer = world.try_get<scene::render_layer_component>(entity);
+                                         return layer && layer->mask == host_environment_render_layer
+                                                    ? std::string{"Environment"}
+                                                    : std::string{"Default"};
+                                     }(),
+                                     .active = is_active,
+                                     .locked = true,
+                                     .visible = is_active,
+                                     .pickable = false,
+                                     .transform = [&]() -> std::optional<host_transform>
+                                     {
+                                         if (const auto* transform = world.try_get<scene::transform_component>(entity))
+                                             return to_host_transform(*transform);
+                                         return std::nullopt;
+                                     }(),
+                                     .prefab_override_count =
+                                         [&]
+                                     {
+                                         const auto* prefab = world.try_get<ecs::prefab_instance_component>(entity);
+                                         return prefab ? prefab->overrides.size() : std::size_t{};
+                                     }(),
+                                     .selected = false});
+    }
+    snapshot.total_entity_count = snapshot.entities.size();
+    return snapshot;
+}
+
+host_selected_entity_snapshot arc_host::runtime_entity_snapshot(host_entity_id host_entity) const
+{
+    host_selected_entity_snapshot snapshot;
+    if (!state_->play_world) return snapshot;
+    const auto& world = *state_->play_world;
+    const auto entity = to_scene_entity(host_entity);
+    if (!world.alive(entity)) return snapshot;
+
+    const auto* persistent_id = world.try_get<scene::persistent_id_component>(entity);
+    snapshot.entity = host_entity;
+    snapshot.selection_count = 1;
+    snapshot.guid =
+        persistent_id && persistent_id->value.valid()
+            ? ecs::to_string(persistent_id->value)
+            : std::string{"runtime:"} + std::to_string(entity.index) + ':' + std::to_string(entity.generation);
+    snapshot.selected_guids.push_back(snapshot.guid);
+    if (const auto* name = world.try_get<scene::name_component>(entity)) snapshot.name = name->value;
+    if (snapshot.name.empty()) snapshot.name = "Runtime Entity";
+    if (const auto* tag = world.try_get<scene::tag_component>(entity)) snapshot.tag = tag->value;
+    if (const auto* active = world.try_get<scene::active_component>(entity)) snapshot.active = active->active;
+    if (const auto* mobility = world.try_get<scene::mobility_component>(entity))
+        snapshot.mobility = to_host_mobility(mobility->value);
+    if (const auto* layer = world.try_get<scene::render_layer_component>(entity))
+        snapshot.render_layer_mask = layer->mask;
+    if (const auto* transform = world.try_get<scene::transform_component>(entity))
+    {
+        snapshot.transform = to_host_transform(*transform);
+        add_component_snapshot<scene::transform_component>(world, entity, snapshot.components,
+                                                           host_component_kind::transform, "Transform", false);
+    }
+    if (const auto* bounds = world.try_get<scene::bounds_component>(entity))
+        snapshot.bounds = host_bounds_snapshot{
+            .minimum = {bounds->world_bounds.min[0], bounds->world_bounds.min[1], bounds->world_bounds.min[2]},
+            .maximum = {bounds->world_bounds.max[0], bounds->world_bounds.max[1], bounds->world_bounds.max[2]}};
+    if (const auto* camera = world.try_get<scene::camera_component>(entity))
+    {
+        snapshot.camera = to_host_camera(*camera);
+        add_component_snapshot<scene::camera_component>(world, entity, snapshot.components, host_component_kind::camera,
+                                                        "Camera", false);
+    }
+    if (const auto* mesh_renderer = world.try_get<scene::mesh_renderer_component>(entity))
+    {
+        snapshot.mesh_renderer =
+            mesh_renderer_snapshot(state_->scene, state_->assets, state_->project.root, entity, *mesh_renderer);
+        add_component_snapshot<scene::mesh_renderer_component>(
+            world, entity, snapshot.components, host_component_kind::mesh_renderer, "Mesh Renderer", false);
+    }
+    if (const auto* light = world.try_get<scene::directional_light_component>(entity))
+    {
+        snapshot.light = to_host_light(*light);
+        add_component_snapshot<scene::directional_light_component>(
+            world, entity, snapshot.components, host_component_kind::directional_light, "Directional Light", false);
+    }
+    if (const auto* light = world.try_get<scene::point_light_component>(entity))
+    {
+        snapshot.light = to_host_light(*light);
+        add_component_snapshot<scene::point_light_component>(world, entity, snapshot.components,
+                                                             host_component_kind::point_light, "Point Light", false);
+    }
+    if (const auto* light = world.try_get<scene::spot_light_component>(entity))
+    {
+        snapshot.light = to_host_light(*light);
+        add_component_snapshot<scene::spot_light_component>(world, entity, snapshot.components,
+                                                            host_component_kind::spot_light, "Spot Light", false);
+    }
+    if (const auto* light = world.try_get<scene::area_light_component>(entity))
+    {
+        snapshot.light = to_host_light(*light);
+        add_component_snapshot<scene::area_light_component>(world, entity, snapshot.components,
+                                                            host_component_kind::area_light, "Area Light", false);
+    }
+    if (const auto* flow = world.try_get<scene::flow_component>(entity))
+    {
+        snapshot.flow = host_flow_snapshot{flow->graph_path, flow->enabled};
+        snapshot.components.push_back(
+            {host_component_kind::flow, "arc::scene.flow_component", "Flow", state_->runtime_revision, 0, false});
+    }
+    if (const auto* runtime_components = world.try_get<project_runtime_component_set>(entity))
+    {
+        for (const auto& component : runtime_components->values)
+        {
+            const auto schema = std::find_if(
+                state_->project_module.component_schemas().begin(), state_->project_module.component_schemas().end(),
+                [&](const project_component_schema& candidate) { return candidate.stable_id == component.stable_id; });
+            snapshot.project_components.push_back(
+                {.type_id = component.stable_id,
+                 .canonical_name = component.canonical_name,
+                 .display_name = schema == state_->project_module.component_schemas().end() ? component.canonical_name
+                                                                                            : schema->display_name,
+                 .schema_version = component.schema_version,
+                 .values_json = component.json});
+        }
+    }
     return snapshot;
 }
 
