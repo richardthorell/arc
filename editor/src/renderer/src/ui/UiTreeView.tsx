@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import type { KeyboardEvent, MouseEvent, ReactNode } from 'react';
+import type { DragEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react';
 
 import { UiTreeRow } from './UiTreeRow';
 import './UiTreeView.css';
@@ -31,6 +31,8 @@ type UiTreeViewProps = {
   onExpandedChange?: (expandedIds: ReadonlySet<string>) => void;
   onSelect?: (node: UiTreeNode) => void;
   onSelectionChange?: (selectedIds: ReadonlySet<string>, primaryNode: UiTreeNode) => void;
+  canReparent?: (sourceIds: readonly string[], target: UiTreeNode) => boolean;
+  onReparent?: (sourceIds: readonly string[], target: UiTreeNode) => void;
 };
 
 const normalize = (value: string) => value.trim().toLocaleLowerCase();
@@ -69,6 +71,18 @@ const flattenVisibleNodes = (
   return result;
 };
 
+const findNode = (nodes: readonly UiTreeNode[], id: string): UiTreeNode | null => {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    const child = node.children ? findNode(node.children, id) : null;
+    if (child) return child;
+  }
+  return null;
+};
+
+const containsNode = (node: UiTreeNode, id: string): boolean =>
+  node.children?.some((child) => child.id === id || containsNode(child, id)) ?? false;
+
 export function UiTreeView({
   nodes,
   selectedId = null,
@@ -80,12 +94,16 @@ export function UiTreeView({
   onExpandedChange,
   onSelect,
   onSelectionChange,
+  canReparent,
+  onReparent,
 }: UiTreeViewProps) {
   const [uncontrolledExpandedIds, setUncontrolledExpandedIds] = useState<ReadonlySet<string>>(
     () => new Set(defaultExpandedIds),
   );
   const [focusedId, setFocusedId] = useState<string | null>(selectedId);
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(selectedId);
+  const [draggingIds, setDraggingIds] = useState<readonly string[]>([]);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const expandedIds = controlledExpandedIds ?? uncontrolledExpandedIds;
   const normalizedQuery = normalize(query);
   const effectiveSelectedIds = selectedIds ?? (selectedId ? new Set([selectedId]) : new Set<string>());
@@ -202,6 +220,44 @@ export function UiTreeView({
     selectNode(entry.node, { additive: event.ctrlKey || event.metaKey, range: event.shiftKey });
   };
 
+  const sourceIdsFor = (id: string) =>
+    effectiveSelectedIds.has(id) ? [...effectiveSelectedIds] : [id];
+
+  const canDropOn = (sourceIds: readonly string[], target: UiTreeNode) => {
+    if (target.disabled || sourceIds.includes(target.id)) return false;
+    for (const sourceId of sourceIds) {
+      const source = findNode(nodes, sourceId);
+      if (!source || containsNode(source, target.id)) return false;
+    }
+    return canReparent?.(sourceIds, target) ?? true;
+  };
+
+  const handleDragStart = (event: DragEvent<HTMLButtonElement>, node: UiTreeNode) => {
+    const sourceIds = sourceIdsFor(node.id);
+    setDraggingIds(sourceIds);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('application/x-arc-tree-nodes', JSON.stringify(sourceIds));
+  };
+
+  const handleDragOver = (event: DragEvent<HTMLButtonElement>, target: UiTreeNode) => {
+    if (!draggingIds.length || !canDropOn(draggingIds, target)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setDropTargetId(target.id);
+  };
+
+  const handleDrop = (event: DragEvent<HTMLButtonElement>, target: UiTreeNode) => {
+    event.preventDefault();
+    if (draggingIds.length && canDropOn(draggingIds, target)) onReparent?.(draggingIds, target);
+    setDraggingIds([]);
+    setDropTargetId(null);
+  };
+
+  const endDrag = () => {
+    setDraggingIds([]);
+    setDropTargetId(null);
+  };
+
   if (visibleNodes.length === 0) return <div className="ui-tree-view-empty">No matching items</div>;
 
   return (
@@ -221,13 +277,21 @@ export function UiTreeView({
             aria-expanded={hasChildren ? expanded : undefined}
             aria-level={entry.depth + 1}
             aria-selected={selected}
-            className="ui-tree-view-row"
+            className={`ui-tree-view-row${dropTargetId === entry.node.id ? ' is-drop-target' : ''}`}
             data-ui-tree-node-id={entry.node.id}
             depth={entry.depth}
             disabled={entry.node.disabled}
+            draggable={Boolean(onReparent) && !entry.node.disabled}
             key={entry.node.id}
             onClick={(event) => handleClick(event, entry)}
             onDoubleClick={() => toggle(entry.node)}
+            onDragEnd={endDrag}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTargetId(null);
+            }}
+            onDragOver={(event) => handleDragOver(event, entry.node)}
+            onDragStart={(event) => handleDragStart(event, entry.node)}
+            onDrop={(event) => handleDrop(event, entry.node)}
             onKeyDown={(event) => handleKeyDown(event, entry)}
             role="treeitem"
             selected={selected}
