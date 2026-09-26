@@ -106,6 +106,7 @@ struct host_runtime_snapshot
     double time_scale{1.0};
     double interpolation_alpha{};
     std::uint32_t world_count{};
+    std::string error;
 };
 
 enum class host_entity_kind : std::uint8_t
@@ -1723,6 +1724,13 @@ struct host_history_state_query
 struct host_runtime_state_query
 {
 };
+struct host_runtime_hierarchy_query
+{
+};
+struct host_runtime_entity_query
+{
+    host_entity_id entity{};
+};
 struct host_terrain_tool_state_query
 {
 };
@@ -1733,7 +1741,8 @@ using host_query_payload =
                  host_workspace_documents_query, host_gateway_diagnostics_query, host_viewport_capture_query,
                  host_project_assets_query, host_asset_thumbnail_query, host_texture_settings_query,
                  host_viewport_state_query, host_world_environment_query, host_history_state_query,
-                 host_runtime_state_query, host_terrain_tool_state_query>;
+                 host_runtime_state_query, host_runtime_hierarchy_query, host_runtime_entity_query,
+                 host_terrain_tool_state_query>;
 
 struct host_query_envelope
 {
