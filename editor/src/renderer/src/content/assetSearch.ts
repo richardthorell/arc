@@ -31,14 +31,14 @@ export const matchesAssetSearch = (asset: AssetSearchMetadata, query: string) =>
 export const matchesAssetFacet = (asset: AssetSearchMetadata, facet: AssetSearchFacet) => {
   if (facet.kind && assetPresentationKind(asset) !== facet.kind) return false;
   const tags = new Set(normalizedTags(asset));
-  return (facet.tags ?? []).map(normalize).filter(Boolean).every((tag) => tags.has(tag));
+  return (facet.tags ?? [])
+    .map(normalize)
+    .filter(Boolean)
+    .every((tag) => tags.has(tag));
 };
 
-export const filterAssets = (
-  assets: readonly AssetSearchMetadata[],
-  query = '',
-  facet: AssetSearchFacet = {},
-) => assets.filter((asset) => matchesAssetSearch(asset, query) && matchesAssetFacet(asset, facet));
+export const filterAssets = (assets: readonly AssetSearchMetadata[], query = '', facet: AssetSearchFacet = {}) =>
+  assets.filter((asset) => matchesAssetSearch(asset, query) && matchesAssetFacet(asset, facet));
 
 export const collectAssetFacets = (assets: readonly AssetSearchMetadata[]) => {
   const kinds = new Set<ReturnType<typeof assetPresentationKind>>();

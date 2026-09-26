@@ -36,10 +36,7 @@ describe('asset search', () => {
   });
 
   it('collects stable sorted facet values without duplicate tags', () => {
-    const facets = collectAssetFacets([
-      ...assets,
-      { ...assets[0], id: 'stone-2', tags: ['rock', 'Architecture'] },
-    ]);
+    const facets = collectAssetFacets([...assets, { ...assets[0], id: 'stone-2', tags: ['rock', 'Architecture'] }]);
     expect(facets.kinds).toEqual(['material', 'model']);
     expect(facets.tags).toEqual(['architecture', 'character', 'environment', 'rock']);
   });
