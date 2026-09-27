@@ -577,7 +577,8 @@ export class SettingsService {
 
     for (const key of [...Object.values(windowsToolchainSettingKeys), ...Object.values(androidToolchainSettingKeys)]) {
       const validation = pathValidation[key];
-      if (sources[key] === 'default' && validation?.valid && validation.resolvedPath) values[key] = validation.resolvedPath;
+      if (sources[key] === 'default' && validation?.valid && validation.resolvedPath)
+        values[key] = validation.resolvedPath;
     }
 
     return {
