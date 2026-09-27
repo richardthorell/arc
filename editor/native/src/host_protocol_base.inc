@@ -1316,6 +1316,10 @@ std::string query_type(const host_query_payload& payload)
                 return "history.state";
             else if constexpr (std::is_same_v<type, host_runtime_state_query>)
                 return "runtime.state";
+            else if constexpr (std::is_same_v<type, host_runtime_hierarchy_query>)
+                return "runtime.hierarchy";
+            else if constexpr (std::is_same_v<type, host_runtime_entity_query>)
+                return "runtime.entity";
             else if constexpr (std::is_same_v<type, host_terrain_tool_state_query>)
                 return "terrain.toolState";
             else
@@ -1330,7 +1334,7 @@ std::string to_json(const host_runtime_snapshot& snapshot)
     stream << "{\"state\":" << quote(to_string(snapshot.state)) << ",\"tickId\":" << snapshot.tick_id
            << ",\"revision\":" << snapshot.revision << ",\"discardedTicks\":" << snapshot.discarded_ticks
            << ",\"timeScale\":" << snapshot.time_scale << ",\"interpolationAlpha\":" << snapshot.interpolation_alpha
-           << ",\"worldCount\":" << snapshot.world_count << '}';
+           << ",\"worldCount\":" << snapshot.world_count << ",\"error\":" << quote(snapshot.error) << '}';
     return stream.str();
 }
 
@@ -1946,6 +1950,8 @@ std::string to_json(const host_query_envelope& envelope)
         {
             using query = std::decay_t<decltype(value)>;
             if constexpr (std::is_same_v<query, host_world_environment_query>)
+                return "{\"entity\":" + to_json(value.entity) + '}';
+            else if constexpr (std::is_same_v<query, host_runtime_entity_query>)
                 return "{\"entity\":" + to_json(value.entity) + '}';
             else if constexpr (std::is_same_v<query, host_asset_thumbnail_query>)
                 return "{\"path\":" + quote(value.path) + ",\"maxSize\":" + std::to_string(value.max_size) + '}';
@@ -3553,6 +3559,18 @@ bool from_json(std::string_view json, host_query_envelope& envelope, std::string
         envelope.payload = host_history_state_query{};
     else if (type == "runtime.state")
         envelope.payload = host_runtime_state_query{};
+    else if (type == "runtime.hierarchy")
+        envelope.payload = host_runtime_hierarchy_query{};
+    else if (type == "runtime.entity")
+    {
+        host_entity_id entity;
+        if (!entity_field_value(json, "entity", entity))
+        {
+            error = "Runtime entity query requires entity";
+            return false;
+        }
+        envelope.payload = host_runtime_entity_query{.entity = entity};
+    }
     else if (type == "terrain.toolState")
         envelope.payload = host_terrain_tool_state_query{};
     else

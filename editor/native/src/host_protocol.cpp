@@ -1,5 +1,7 @@
 #include <arc/editor/host_protocol.h>
 
+// Keep the protocol implementation in one translation unit so additions to the
+// command/query variants produce one authoritative set of JSON entry points.
 // Extend the existing mesh-renderer JSON object at its unique material-backed
 // field without carrying a second copy of the protocol implementation.
 #define asset_backed_material                                                                                          \

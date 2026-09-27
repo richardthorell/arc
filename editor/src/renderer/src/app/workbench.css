@@ -1849,6 +1849,62 @@
   background: linear-gradient(180deg, rgba(44, 57, 70, 0.28), rgba(24, 32, 40, 0.92) 84px), var(--arc-color-bg-panel);
 }
 
+.runtime-world-panel {
+  min-height: 100%;
+  padding: 12px;
+  color: var(--arc-color-text-muted);
+}
+
+.runtime-world-panel > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--arc-color-border-subtle);
+  color: var(--arc-color-accent);
+}
+
+.runtime-world-panel > header div {
+  display: grid;
+  gap: 2px;
+}
+
+.runtime-world-panel > header span,
+.runtime-world-panel p {
+  color: var(--arc-color-text-muted);
+  font-size: var(--arc-text-xs);
+}
+
+.runtime-world-panel dl {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0;
+}
+
+.runtime-world-panel dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.runtime-world-panel dt,
+.runtime-world-panel dd {
+  margin: 0;
+}
+
+.runtime-world-panel dd {
+  color: var(--arc-color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.runtime-world-error {
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--arc-color-danger) 50%, var(--arc-color-border));
+  color: var(--arc-color-danger);
+  background: color-mix(in srgb, var(--arc-color-danger) 8%, transparent);
+}
+
 .workbench-titlebar {
   background: linear-gradient(180deg, var(--arc-color-bg-chrome-raised), var(--arc-color-bg-chrome));
 }

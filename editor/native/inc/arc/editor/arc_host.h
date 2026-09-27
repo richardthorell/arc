@@ -45,6 +45,8 @@ public:
     host_selected_entity_snapshot entity_snapshot(std::string_view guid) const;
     host_project_assets_snapshot project_assets_snapshot() const;
     host_runtime_snapshot runtime_snapshot() const;
+    host_scene_snapshot runtime_scene_snapshot() const;
+    host_selected_entity_snapshot runtime_entity_snapshot(host_entity_id entity) const;
     host_terrain_tool_snapshot terrain_tool_snapshot() const;
     std::optional<host_asset_thumbnail_snapshot> asset_thumbnail(std::string_view path,
                                                                  std::uint32_t max_size = 96) const;

@@ -22,7 +22,7 @@ import {
   Trash2,
 } from 'lucide-react';
 
-import type { CommandId } from '../app/workbenchTypes';
+import type { CommandId, EditorRuntimeState } from '../app/workbenchTypes';
 import {
   UiButton,
   UiDropdown,
@@ -146,6 +146,7 @@ type ToolbarSnapMenuProps = {
   onTranslationSnapChange?: (value: number) => void;
   onRotationSnapChange?: (value: number) => void;
   onScaleSnapChange?: (value: number) => void;
+  disabled?: boolean;
 };
 
 function ToolbarSnapMenu({
@@ -157,6 +158,7 @@ function ToolbarSnapMenu({
   onTranslationSnapChange,
   onRotationSnapChange,
   onScaleSnapChange,
+  disabled = false,
 }: ToolbarSnapMenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement | null>(null);
@@ -170,6 +172,10 @@ function ToolbarSnapMenu({
     return () => window.removeEventListener('pointerdown', close);
   }, [open]);
 
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+
   return (
     <span className="toolbar-snap-menu" ref={rootRef}>
       <UiButton
@@ -177,6 +183,7 @@ function ToolbarSnapMenu({
         aria-haspopup="menu"
         aria-label="Snap settings"
         className={`toolbar-snap-trigger${snapping ? ' is-active' : ''}`}
+        disabled={disabled}
         onClick={() => setOpen((current) => !current)}
         type="button"
         variant="toolbar"
@@ -250,7 +257,9 @@ export type MainToolbarProps = {
   onTranslationSnapChange?: (value: number) => void;
   onRotationSnapChange?: (value: number) => void;
   onScaleSnapChange?: (value: number) => void;
-  runtimeState?: 'stopped' | 'running' | 'paused' | 'faulted';
+  runtimeState?: EditorRuntimeState;
+  runtimeError?: string;
+  authoringDisabled?: boolean;
   timeScale?: number;
   onTimeScaleChange?: (value: number) => void;
   targetPlatform?: EditorTargetPlatform;
@@ -273,6 +282,8 @@ export function MainToolbar({
   onScaleSnapChange,
   terrainEnabled = false,
   runtimeState = 'stopped',
+  runtimeError = '',
+  authoringDisabled = false,
   timeScale = 1,
   onTimeScaleChange,
   targetPlatform = 'windows',
@@ -280,6 +291,11 @@ export function MainToolbar({
   onBuildAction,
 }: MainToolbarProps) {
   const [transformOrigin, setTransformOrigin] = useState<ToolbarTransformOrigin>('pivot');
+  const playLabel = runtimeState === 'paused' ? 'Resume' : 'Play';
+  const runtimeLabel =
+    runtimeState === 'stopped'
+      ? 'Authoring World'
+      : `Play World: ${runtimeState[0].toUpperCase()}${runtimeState.slice(1)}`;
 
   return (
     <section className="main-toolbar" aria-label="Editor toolbar">
@@ -288,7 +304,8 @@ export function MainToolbar({
           <UiIconButton
             active={runtimeState === 'running'}
             className="toolbar-button play"
-            label="Play"
+            disabled={runtimeState === 'running' || runtimeState === 'faulted'}
+            label={playLabel}
             onClick={() => onCommand('scene.play')}
           >
             <Play fill="currentColor" strokeWidth={0} size={14} />
@@ -319,6 +336,13 @@ export function MainToolbar({
             <StepForward size={14} />
           </UiIconButton>
           <ToolbarPlaybackOptions timeScale={timeScale} onTimeScaleChange={onTimeScaleChange} />
+          <span
+            className={`toolbar-runtime-state is-${runtimeState}`}
+            data-testid="toolbar-runtime-state"
+            title={runtimeError || runtimeLabel}
+          >
+            {runtimeLabel}
+          </span>
         </div>
       </div>
 
@@ -327,6 +351,7 @@ export function MainToolbar({
           <UiDropdown
             ariaLabel="Transform origin"
             className="toolbar-origin-dropdown"
+            disabled={authoringDisabled}
             onValueChange={setTransformOrigin}
             options={transformOriginOptions}
             value={transformOrigin}
@@ -342,6 +367,7 @@ export function MainToolbar({
           <UiIconButton
             active={activeTool === 'translate'}
             className="toolbar-button"
+            disabled={authoringDisabled}
             label="Move (W)"
             onClick={() => onCommand('viewport.translate')}
           >
@@ -350,6 +376,7 @@ export function MainToolbar({
           <UiIconButton
             active={activeTool === 'rotate'}
             className="toolbar-button"
+            disabled={authoringDisabled}
             label="Rotate (E)"
             onClick={() => onCommand('viewport.rotate')}
           >
@@ -358,6 +385,7 @@ export function MainToolbar({
           <UiIconButton
             active={activeTool === 'scale'}
             className="toolbar-button"
+            disabled={authoringDisabled}
             label="Scale (R)"
             onClick={() => onCommand('viewport.scale')}
           >
@@ -366,7 +394,7 @@ export function MainToolbar({
           <UiIconButton
             active={activeTool === 'terrain'}
             className="toolbar-button"
-            disabled={!terrainEnabled}
+            disabled={authoringDisabled || !terrainEnabled}
             label={terrainEnabled ? 'Terrain sculpt and paint' : 'Select a terrain to enable Terrain mode'}
             onClick={() => onCommand('viewport.terrain')}
           >
@@ -375,6 +403,7 @@ export function MainToolbar({
           <UiDropdown
             ariaLabel="Coordinate space"
             className="toolbar-coordinate-dropdown"
+            disabled={authoringDisabled}
             onValueChange={(space) => onCoordinateSpaceChange?.(space)}
             options={coordinateSpaceOptions}
             value={coordinateSpace}
@@ -385,6 +414,7 @@ export function MainToolbar({
 
         <div className="ui-toolbar-group toolbar-group" aria-label="Snapping controls">
           <ToolbarSnapMenu
+            disabled={authoringDisabled}
             snapping={snapping}
             translationSnap={translationSnap}
             rotationSnap={rotationSnap}

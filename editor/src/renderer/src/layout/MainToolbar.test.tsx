@@ -15,14 +15,18 @@ describe('MainToolbar runtime controls', () => {
     expect(screen.getByRole('button', { name: 'Pause' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Stop' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Step' })).toBeDisabled();
+    expect(screen.getByTestId('toolbar-runtime-state')).toHaveTextContent('Authoring World');
 
     rerender(<MainToolbar onCommand={vi.fn()} runtimeState="running" timeScale={2} />);
     expect(screen.getByRole('button', { name: 'Play' })).toHaveClass('is-active');
+    expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Step' })).toBeDisabled();
+    expect(screen.getByTestId('toolbar-runtime-state')).toHaveTextContent('Play World: Running');
 
     rerender(<MainToolbar onCommand={vi.fn()} runtimeState="paused" timeScale={2} />);
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Pause' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Step' })).toBeEnabled();
   });
@@ -34,7 +38,7 @@ describe('MainToolbar runtime controls', () => {
       <MainToolbar onCommand={onCommand} runtimeState="paused" timeScale={0.5} onTimeScaleChange={onTimeScaleChange} />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
     fireEvent.click(screen.getByRole('button', { name: 'Step' }));
     expect(onCommand).toHaveBeenNthCalledWith(1, 'scene.play');
     expect(onCommand).toHaveBeenNthCalledWith(2, 'scene.step');

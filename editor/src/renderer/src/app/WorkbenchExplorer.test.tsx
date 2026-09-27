@@ -88,4 +88,35 @@ describe('ExplorerPanel', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Terrain...' }));
     expect(onCreateEntity).toHaveBeenCalledWith('terrain');
   });
+
+  it('labels Play World hierarchy data and disables authoring actions', () => {
+    const onSelectEntity = vi.fn();
+    const project = {
+      scene: [{ id: '7:2', guid: 'runtime-guid', name: 'Spawned Actor', kind: 'mesh', active: true, children: [] }],
+    } as unknown as ProjectSnapshot;
+    render(
+      <ExplorerPanel
+        project={project}
+        selectedEntityId=""
+        selectedEntityIds={new Set()}
+        onSelectEntity={onSelectEntity}
+        onRenameEntity={vi.fn()}
+        onSetEntityActive={vi.fn()}
+        onMoveEntity={vi.fn()}
+        onCreateEntity={vi.fn()}
+        onDuplicate={vi.fn()}
+        onCreatePrefab={vi.fn()}
+        onInstantiatePrefab={vi.fn()}
+        onDelete={vi.fn()}
+        readOnly
+        worldLabel="Play World"
+      />,
+    );
+
+    expect(screen.getByText('Play World')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add entity' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Delete selected entity' })).toBeDisabled();
+    fireEvent.click(screen.getByText('Spawned Actor'));
+    expect(onSelectEntity).toHaveBeenCalledWith('7:2', false);
+  });
 });

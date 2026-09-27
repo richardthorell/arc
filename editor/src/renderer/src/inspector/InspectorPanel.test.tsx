@@ -237,6 +237,25 @@ describe('data-driven InspectorPanel', () => {
     vi.useRealTimers();
   });
 
+  it('presents Play World snapshots as read-only runtime inspection', () => {
+    const command = vi.fn().mockResolvedValue({ succeeded: true });
+    const view = render(
+      <InspectorPanel
+        snapshot={cameraSnapshot()}
+        command={command}
+        refresh={async () => undefined}
+        readOnly
+        contextLabel="Play World"
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('Play World');
+    expect(screen.getByLabelText('Entity name')).toBeDisabled();
+    expect(screen.getByLabelText('Entity active')).toBeDisabled();
+    expect(view.container.querySelector('fieldset')).toBeDisabled();
+    expect(command).not.toHaveBeenCalled();
+  });
+
   it('renders schemas and switches projection-dependent camera fields', async () => {
     const command = vi.fn().mockResolvedValue({ succeeded: true });
     render(<InspectorPanel snapshot={cameraSnapshot()} command={command} refresh={async () => undefined} />);
