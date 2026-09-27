@@ -15,8 +15,12 @@ namespace
 
 constexpr std::array<std::byte, 8> artifact_magic{
     static_cast<std::byte>('A'), static_cast<std::byte>('R'), static_cast<std::byte>('C'), static_cast<std::byte>('V'),
+    static_cast<std::byte>('G'), static_cast<std::byte>('0'), static_cast<std::byte>('0'), static_cast<std::byte>('4')};
+constexpr std::array<std::byte, 8> schema_v3_magic{
+    static_cast<std::byte>('A'), static_cast<std::byte>('R'), static_cast<std::byte>('C'), static_cast<std::byte>('V'),
     static_cast<std::byte>('G'), static_cast<std::byte>('0'), static_cast<std::byte>('0'), static_cast<std::byte>('3')};
 constexpr std::uint32_t header_bytes = 48;
+constexpr std::uint8_t root_page_flag = 1u << 0u;
 
 template <typename T, bool = std::is_enum_v<T>> struct stored_type_for
 {
@@ -394,7 +398,9 @@ encode_virtual_geometry_artifact(std::span<const virtual_geometry_artifact_sourc
             table.value(page.compressed_size);
             table.value(page.uncompressed_size);
             table.value(page.content_hash);
-            table.value(static_cast<std::uint32_t>(page.root ? 1u : 0u));
+            table.value(virtual_geometry_artifact_page_payload_version);
+            table.value(virtual_geometry_artifact_page_codec::cluster_page);
+            table.value(static_cast<std::uint8_t>(page.root ? root_page_flag : 0u));
         }
     }
     if (table.size() != table_size)
@@ -414,6 +420,13 @@ encode_virtual_geometry_artifact(std::span<const virtual_geometry_artifact_sourc
 
 virtual_geometry_artifact_index_result inspect_virtual_geometry_artifact(std::span<const std::byte> bytes)
 {
+    if (bytes.size() < artifact_magic.size())
+        return virtual_geometry_artifact_index_result::failure(
+            failure(virtual_geometry_artifact_error_code::invalid_data, "truncated virtual-geometry artifact magic"));
+    if (std::equal(schema_v3_magic.begin(), schema_v3_magic.end(), bytes.begin()))
+        return virtual_geometry_artifact_index_result::failure(failure(
+            virtual_geometry_artifact_error_code::unsupported_version,
+            "virtual-geometry artifact schema v3 is obsolete; deterministically recook the derived artifact as v4"));
     if (bytes.size() < header_bytes || !std::equal(artifact_magic.begin(), artifact_magic.end(), bytes.begin()))
         return virtual_geometry_artifact_index_result::failure(
             failure(virtual_geometry_artifact_error_code::invalid_data, "invalid virtual-geometry artifact magic"));
@@ -452,12 +465,21 @@ virtual_geometry_artifact_index_result inspect_virtual_geometry_artifact(std::sp
         for (std::uint32_t page_index = 0; page_index < page_count; ++page_index)
         {
             virtual_geometry_artifact_page_range page;
-            std::uint32_t root{};
+            std::uint8_t flags{};
             if (!table.value(page.offset) || !table.value(page.stored_size) || !table.value(page.decoded_size) ||
-                !table.value(page.content_hash) || !table.value(root))
+                !table.value(page.content_hash) || !table.value(page.payload_version) || !table.value(page.codec) ||
+                !table.value(flags))
                 return virtual_geometry_artifact_index_result::failure(failure(
                     virtual_geometry_artifact_error_code::invalid_data, "truncated virtual-geometry page table"));
-            page.root = root != 0;
+            if (page.payload_version != virtual_geometry_artifact_page_payload_version ||
+                page.codec != virtual_geometry_artifact_page_codec::cluster_page)
+                return virtual_geometry_artifact_index_result::failure(
+                    failure(virtual_geometry_artifact_error_code::unsupported_version,
+                            "unsupported virtual-geometry page payload; recook the derived artifact"));
+            if ((flags & ~root_page_flag) != 0u)
+                return virtual_geometry_artifact_index_result::failure(
+                    failure(virtual_geometry_artifact_error_code::invalid_data, "invalid virtual-geometry page flags"));
+            page.root = (flags & root_page_flag) != 0u;
             if (page.offset % virtual_geometry_artifact_page_alignment != 0 || page.offset > bytes.size() ||
                 page.stored_size > bytes.size() - page.offset)
                 return virtual_geometry_artifact_index_result::failure(failure(

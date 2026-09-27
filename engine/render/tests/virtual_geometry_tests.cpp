@@ -178,6 +178,7 @@ TEST_CASE("virtual geometry artifact is deterministic page aligned and integrity
     const auto inspected = inspect_virtual_geometry_artifact(first.value());
     REQUIRE(inspected);
     REQUIRE(inspected.value().schema_version == virtual_geometry_artifact_schema_version);
+    REQUIRE(inspected.value().schema_version == 4u);
     REQUIRE(inspected.value().conventional_artifact_hash == 0x12345678u);
     REQUIRE(inspected.value().meshes.size() == 1);
     REQUIRE(inspected.value().meshes[0].name == source.name);
@@ -185,8 +186,20 @@ TEST_CASE("virtual geometry artifact is deterministic page aligned and integrity
     REQUIRE(inspected.value().meshes[0].pages.size() == geometry.pages.size());
     REQUIRE(std::all_of(inspected.value().meshes[0].pages.begin(), inspected.value().meshes[0].pages.end(),
                         [](const auto& page) { return page.offset % virtual_geometry_artifact_page_alignment == 0; }));
+    REQUIRE(std::all_of(inspected.value().meshes[0].pages.begin(), inspected.value().meshes[0].pages.end(),
+                        [](const auto& page)
+                        {
+                            return page.payload_version == virtual_geometry_artifact_page_payload_version &&
+                                   page.codec == virtual_geometry_artifact_page_codec::cluster_page;
+                        }));
     REQUIRE(std::any_of(inspected.value().meshes[0].pages.begin(), inspected.value().meshes[0].pages.end(),
                         [](const auto& page) { return page.root; }));
+
+    const auto encoded_page = read_virtual_geometry_artifact_page(first.value(), inspected.value(), 0u, 0u);
+    REQUIRE(encoded_page);
+    std::vector<std::byte> decoded_page;
+    REQUIRE(decode_virtual_geometry_page(geometry.pages[0], encoded_page.value(), decoded_page));
+    REQUIRE(decoded_page.size() == inspected.value().meshes[0].pages[0].decoded_size);
 
     auto corrupt = first.value();
     const auto page_offset = inspected.value().meshes[0].pages[0].offset;
@@ -196,6 +209,30 @@ TEST_CASE("virtual geometry artifact is deterministic page aligned and integrity
     const auto rejected = read_virtual_geometry_artifact_page(corrupt, corrupt_index.value(), 0, 0);
     REQUIRE_FALSE(rejected);
     REQUIRE(rejected.error().code == virtual_geometry_artifact_error_code::integrity_failure);
+
+    auto schema_v3 = first.value();
+    schema_v3[7] = static_cast<std::byte>('3');
+    const auto obsolete = inspect_virtual_geometry_artifact(schema_v3);
+    REQUIRE_FALSE(obsolete);
+    REQUIRE(obsolete.error().code == virtual_geometry_artifact_error_code::unsupported_version);
+    REQUIRE(obsolete.error().message.find("recook") != std::string::npos);
+
+    auto unsupported_codec = first.value();
+    constexpr std::size_t artifact_header_size = 48u;
+    const auto first_page_table_offset = artifact_header_size + sizeof(std::uint32_t) + source.name.size() +
+                                         sizeof(std::uint64_t) * 3u + sizeof(std::uint32_t) * 2u;
+    constexpr std::size_t page_codec_offset =
+        sizeof(std::uint64_t) + sizeof(std::uint32_t) * 2u + sizeof(std::uint64_t) + sizeof(std::uint16_t);
+    unsupported_codec[first_page_table_offset + page_codec_offset] = std::byte{0xff};
+    const auto codec_rejected = inspect_virtual_geometry_artifact(unsupported_codec);
+    REQUIRE_FALSE(codec_rejected);
+    REQUIRE(codec_rejected.error().code == virtual_geometry_artifact_error_code::unsupported_version);
+
+    auto truncated = first.value();
+    truncated.resize(truncated.size() - 1u);
+    const auto truncated_index = inspect_virtual_geometry_artifact(truncated);
+    REQUIRE_FALSE(truncated_index);
+    REQUIRE(truncated_index.error().code == virtual_geometry_artifact_error_code::out_of_bounds);
 }
 
 TEST_CASE("virtual mesh builder honors custom cluster size and skips invalid triangles")

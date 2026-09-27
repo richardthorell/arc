@@ -64,13 +64,15 @@ void filesystem_virtual_geometry_artifact_source::register_package_range(
         unregister(resource);
         return;
     }
-    const bool valid_ranges = std::all_of(pages.begin(), pages.end(),
-                                          [artifact_size](const auto& page)
-                                          {
-                                              return page.stored_size != 0u && page.decoded_size != 0u &&
-                                                     page.offset <= artifact_size &&
-                                                     page.stored_size <= artifact_size - page.offset;
-                                          });
+    const bool valid_ranges =
+        std::all_of(pages.begin(), pages.end(),
+                    [artifact_size](const auto& page)
+                    {
+                        return page.payload_version == virtual_geometry_artifact_page_payload_version &&
+                               page.codec == virtual_geometry_artifact_page_codec::cluster_page &&
+                               page.stored_size != 0u && page.decoded_size != 0u && page.offset <= artifact_size &&
+                               page.stored_size <= artifact_size - page.offset;
+                    });
     if (!valid_ranges)
     {
         unregister(resource);
