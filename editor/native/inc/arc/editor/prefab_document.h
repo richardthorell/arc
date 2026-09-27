@@ -14,6 +14,13 @@ struct prefab_document_result
     std::vector<std::string> diagnostics;
 };
 
+struct prefab_instance_summary
+{
+    std::string prefab_path;
+    std::size_t override_count{};
+    bool nested{};
+};
+
 prefab_document_result save_prefab_document(editor_scene_state& state, const std::filesystem::path& project_root,
                                             ecs::entity root, const std::filesystem::path& path,
                                             assets::asset_manager* asset_registry = nullptr);
@@ -37,5 +44,7 @@ bool unpack_prefab_instance(editor_scene_state& state, ecs::entity root);
 [[nodiscard]] bool is_prefab_instance(const editor_scene_state& state, ecs::entity root);
 [[nodiscard]] std::size_t prefab_override_count(const editor_scene_state& state, ecs::entity root);
 [[nodiscard]] bool prefab_has_overrides(const editor_scene_state& state, ecs::entity root);
+[[nodiscard]] std::optional<prefab_instance_summary> inspect_prefab_instance(const editor_scene_state& state,
+                                                                            ecs::entity root);
 
 } // namespace arc::editor
