@@ -27,6 +27,13 @@ export type SourceControlResult = {
   error: string;
 };
 
+export type EditorPathValidation = {
+  valid: boolean;
+  resolvedPath: string;
+  message: string;
+  source: 'configured' | 'environment' | 'default' | 'derived' | 'unresolved';
+};
+
 export type EditorSettingsSnapshot = {
   revision: number;
   values: Record<string, unknown>;
@@ -34,6 +41,7 @@ export type EditorSettingsSnapshot = {
   restartRequired: string[];
   schema: EditorSettingDescriptor[];
   aiProviders?: AiProviderAccountsSnapshot;
+  pathValidation?: Record<string, EditorPathValidation>;
 };
 
 export type EditorSettingDescriptor = {
@@ -48,6 +56,7 @@ export type EditorSettingDescriptor = {
     | 'Source Control'
     | 'Recovery'
     | 'Windows'
+    | 'Android'
     | 'OpenAI'
     | 'Anthropic';
   label: string;

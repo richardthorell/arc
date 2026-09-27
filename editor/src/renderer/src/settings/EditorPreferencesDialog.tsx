@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { FolderOpen, Monitor, Palette, RefreshCw, RotateCcw, TriangleAlert, Unplug } from 'lucide-react';
+import { CircleCheck, FolderOpen, Monitor, Palette, RefreshCw, RotateCcw, TriangleAlert, Unplug } from 'lucide-react';
 import { SiAnthropic, SiOpenai } from 'react-icons/si';
 
 import type { AiProviderId } from '../../../common/aiProviderTypes';
@@ -49,8 +49,11 @@ const enumOptionLabel = (descriptor: EditorSettingDescriptor, option: string) =>
 const visibleDescription = (descriptor: EditorSettingDescriptor) =>
   descriptor.description.replace(/\s+Leave empty\b.*$/i, '').trim();
 
-const isWindowsPathSetting = (descriptor: EditorSettingDescriptor) =>
-  descriptor.section === 'Windows' && descriptor.type === 'string';
+const isPlatformPathSetting = (descriptor: EditorSettingDescriptor) =>
+  (descriptor.section === 'Windows' || descriptor.section === 'Android') && descriptor.type === 'string';
+
+const isAndroidPathSetting = (descriptor: EditorSettingDescriptor) =>
+  descriptor.section === 'Android' && descriptor.type === 'string';
 
 const windowsExecutableName = (key: string) => {
   if (key === 'platform.windows.cmakePath') return 'cmake.exe';
@@ -166,7 +169,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     }
   }, [page.id, runProviderTest, snapshot?.aiProviders?.providers, testingProviders]);
 
-  const browseWindowsPath = async (descriptor: EditorSettingDescriptor) => {
+  const browsePlatformPath = async (descriptor: EditorSettingDescriptor) => {
     const selectedFolder = await window.arc.dialog.projectDestination(`Select ${descriptor.label}`);
     if (!selectedFolder) return;
     const executableName = windowsExecutableName(descriptor.key);
@@ -283,6 +286,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
         onBlur={(event) => void update(key, event.target.value)}
         defaultValue={String(value)}
         key={`${key}-${String(value)}`}
+        placeholder={isPlatformPathSetting(descriptor) ? 'Auto-detect' : undefined}
       />
     );
   };
@@ -320,7 +324,9 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
               title={card.title ?? card.section}
             >
               {entries.map((descriptor) => {
-                const pathSetting = isWindowsPathSetting(descriptor);
+                const pathSetting = isPlatformPathSetting(descriptor);
+                const androidPathSetting = isAndroidPathSetting(descriptor);
+                const pathValidation = androidPathSetting ? snapshot?.pathValidation?.[descriptor.key] : undefined;
                 const secretSetting = descriptor.format === 'secret';
                 return (
                   <div
@@ -332,6 +338,20 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                     <span className="settings-field-description">
                       <strong>{descriptor.label}</strong>
                       {!secretSetting && <small>{visibleDescription(descriptor)}</small>}
+                      {pathValidation && (
+                        <span
+                          className={`settings-field-validation settings-field-validation-${pathValidation.valid ? 'valid' : 'invalid'}`}
+                          title={pathValidation.resolvedPath || undefined}
+                        >
+                          {pathValidation.valid ? (
+                            <CircleCheck aria-hidden="true" size={10} />
+                          ) : (
+                            <TriangleAlert aria-hidden="true" size={10} />
+                          )}
+                          {pathValidation.message}
+                          {pathValidation.resolvedPath ? ` · ${pathValidation.resolvedPath}` : ''}
+                        </span>
+                      )}
                       {snapshot?.restartRequired.includes(descriptor.key) && (
                         <span className="settings-field-warning">
                           <TriangleAlert aria-hidden="true" size={9} />
@@ -350,7 +370,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                         </UiIconButton>
                         <UiIconButton
                           label={`Browse for ${descriptor.label}`}
-                          onClick={() => void browseWindowsPath(descriptor)}
+                          onClick={() => void browsePlatformPath(descriptor)}
                         >
                           <FolderOpen size={13} />
                         </UiIconButton>

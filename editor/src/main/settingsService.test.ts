@@ -6,9 +6,17 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import type { AiProviderAccountsSnapshot, AiProviderId } from '../common/aiProviderTypes';
 import type { ArcProjectCandidate } from '../common/projectTypes';
+import { androidToolchainSettingKeys } from './androidToolchain';
 import { SettingsService, type SettingsAiProviderService } from './settingsService';
 
 const roots: string[] = [];
+
+const executableName = (name: string): string => (process.platform === 'win32' ? `${name}.exe` : name);
+
+const touch = (filePath: string, contents = ''): void => {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, contents, 'utf8');
+};
 
 afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
@@ -130,6 +138,45 @@ describe('SettingsService', () => {
     expect(snapshot.sources['renderer.gridColor']).toBe('user');
     const invalidGridColor = service.update('user', { 'renderer.gridColor': 'white' }, snapshot.revision);
     await expect(invalidGridColor).rejects.toThrow('#RRGGBB');
+  });
+
+  it('persists Android toolchain overrides and exposes validated resolved paths', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-settings-'));
+    roots.push(root);
+    const javaHome = path.join(root, 'jdk');
+    const sdkPath = path.join(root, 'android-sdk');
+    const ndkPath = path.join(sdkPath, 'ndk', '28.0.13004108');
+    touch(path.join(javaHome, 'bin', executableName('java')));
+    touch(path.join(javaHome, 'bin', executableName('javac')));
+    touch(path.join(javaHome, 'release'), 'JAVA_VERSION="21"\n');
+    touch(path.join(sdkPath, 'platform-tools', executableName('adb')));
+    touch(path.join(ndkPath, 'source.properties'), 'Pkg.Revision = 28.0.13004108\n');
+    touch(path.join(ndkPath, 'build', 'cmake', 'android.toolchain.cmake'));
+
+    const service = new SettingsService(path.join(root, 'user.json'), () => project(root), testAiProviders());
+    let snapshot = service.snapshot();
+    expect(snapshot.schema.filter((descriptor) => descriptor.section === 'Android')).toHaveLength(3);
+
+    snapshot = await service.update(
+      'user',
+      {
+        [androidToolchainSettingKeys.javaHome]: javaHome,
+        [androidToolchainSettingKeys.sdkPath]: sdkPath,
+        [androidToolchainSettingKeys.ndkPath]: ndkPath,
+      },
+      snapshot.revision,
+    );
+
+    expect(snapshot.values[androidToolchainSettingKeys.javaHome]).toBe(javaHome);
+    expect(snapshot.values[androidToolchainSettingKeys.sdkPath]).toBe(sdkPath);
+    expect(snapshot.values[androidToolchainSettingKeys.ndkPath]).toBe(ndkPath);
+    expect(snapshot.pathValidation?.[androidToolchainSettingKeys.javaHome]).toMatchObject({
+      valid: true,
+      resolvedPath: javaHome,
+      source: 'configured',
+    });
+    expect(snapshot.pathValidation?.[androidToolchainSettingKeys.sdkPath]?.valid).toBe(true);
+    expect(snapshot.pathValidation?.[androidToolchainSettingKeys.ndkPath]?.valid).toBe(true);
   });
 
   it('provides current OpenAI and Anthropic defaults while keeping credentials outside settings files', async () => {
