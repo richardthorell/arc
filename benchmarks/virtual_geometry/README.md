@@ -36,3 +36,6 @@ real-world topology and material boundaries rather than replacing it.
 
 `baseline-main.json` freezes deterministic structural and selection results from `main` before the VG2.1 hierarchy
 upgrade. Timing remains per-run telemetry because CPU and GPU duration is not portable across machines.
+`vg2.1-comparison.json` records the deterministic before/after result for the adjacency builder: identical near/far
+visible-triangle selections, half as many root-only parent fallbacks, a 0.35% stored-page increase, and effectively
+unchanged artifact size.
