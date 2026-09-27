@@ -23,12 +23,7 @@ function normalize(value: string): string {
 }
 
 function searchableText(descriptor: GraphNodePaletteDescriptor): string {
-  return [
-    descriptor.name,
-    descriptor.category ?? '',
-    descriptor.description ?? '',
-    ...(descriptor.keywords ?? []),
-  ]
+  return [descriptor.name, descriptor.category ?? '', descriptor.description ?? '', ...(descriptor.keywords ?? [])]
     .map(normalize)
     .join(' ');
 }
