@@ -44,7 +44,8 @@ validation_error validate(const body_desc& desc) noexcept
 
 validation_error validate(const ray_query& query) noexcept
 {
-    const float direction_length_squared = query.direction[0] * query.direction[0] + query.direction[1] * query.direction[1] +
+    const float direction_length_squared = query.direction[0] * query.direction[0] +
+                                           query.direction[1] * query.direction[1] +
                                            query.direction[2] * query.direction[2];
     if (!std::isfinite(direction_length_squared) || direction_length_squared <= 0.0F ||
         std::isnan(query.max_distance) || query.max_distance <= 0.0F)
