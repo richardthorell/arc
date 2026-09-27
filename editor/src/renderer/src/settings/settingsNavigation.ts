@@ -17,6 +17,7 @@ export type EditorSettingsPageId =
   | 'ai.remote'
   | 'source-control'
   | 'platforms.windows'
+  | 'platforms.android'
   | 'tools.external'
   | 'tools.shortcuts'
   | 'tools.extensions'
@@ -169,6 +170,13 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
         description: 'Windows SDK and native build toolchain locations.',
         keywords: ['windows', 'msvc', 'visual studio', 'sdk', 'cmake', 'ninja', 'compiler', 'toolchain'],
         cards: [{ section: 'Windows' }],
+      },
+      {
+        id: 'platforms.android',
+        label: 'Android',
+        description: 'Java, Android SDK and NDK locations used by Android builds.',
+        keywords: ['android', 'java', 'jdk', 'sdk', 'ndk', 'adb', 'toolchain'],
+        cards: [{ section: 'Android', title: 'Android Toolchain' }],
       },
     ],
   },
