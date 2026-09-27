@@ -6,6 +6,7 @@ import type { EditorSettingDescriptor, EditorSettingsSnapshot } from '../common/
 import type { ArcProjectCandidate } from '../common/projectTypes';
 import { AiProviderService } from './aiProviderService';
 import { androidToolchainSettingKeys, resolveAndroidToolchainValidation } from './androidToolchain';
+import { resolveWindowsToolchainValidation, windowsToolchainSettingKeys } from './windowsToolchain';
 
 const schema: EditorSettingDescriptor[] = [
   {
@@ -557,11 +558,28 @@ export class SettingsService {
       sources[descriptor.key] = connected ? 'user' : 'default';
     }
 
-    const pathValidation = resolveAndroidToolchainValidation({
+    const androidValidation = resolveAndroidToolchainValidation({
       javaHome: stringValue(values, androidToolchainSettingKeys.javaHome),
       sdkPath: stringValue(values, androidToolchainSettingKeys.sdkPath),
       ndkPath: stringValue(values, androidToolchainSettingKeys.ndkPath),
     });
+    const windowsValidation =
+      process.platform === 'win32'
+        ? resolveWindowsToolchainValidation({
+            visualStudioPath: stringValue(values, windowsToolchainSettingKeys.visualStudioPath),
+            msvcToolchainPath: stringValue(values, windowsToolchainSettingKeys.msvcToolchainPath),
+            sdkPath: stringValue(values, windowsToolchainSettingKeys.sdkPath),
+            cmakePath: stringValue(values, windowsToolchainSettingKeys.cmakePath),
+            ninjaPath: stringValue(values, windowsToolchainSettingKeys.ninjaPath),
+          })
+        : {};
+    const pathValidation = { ...windowsValidation, ...androidValidation };
+
+    for (const key of [...Object.values(windowsToolchainSettingKeys), ...Object.values(androidToolchainSettingKeys)]) {
+      const validation = pathValidation[key];
+      if (sources[key] === 'default' && validation?.valid && validation.resolvedPath)
+        values[key] = validation.resolvedPath;
+    }
 
     return {
       revision: this.revision,
