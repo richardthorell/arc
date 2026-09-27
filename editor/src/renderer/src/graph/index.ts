@@ -5,3 +5,4 @@ export * from './graphMeasurement';
 export * from './graphNodePalette';
 export * from './graphSelection';
 export * from './graphTypes';
+export * from './graphViewport';
