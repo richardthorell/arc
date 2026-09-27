@@ -1,0 +1,20 @@
+{
+  "format": "arc-virtual-geometry-external-corpus",
+  "version": 1,
+  "assets": [
+    {
+      "name": "replace-with-local-source-detail-asset",
+      "sourceUrl": "https://example.invalid/source-detail-asset.glb",
+      "sourceRevision": "sha256:replace-with-verified-content-hash",
+      "license": "SPDX-or-LicenseRef-required",
+      "licenseUrl": "https://example.invalid/license",
+      "localPath": "outside-checkout/source-detail-asset.glb",
+      "importRecipe": {
+        "coordinateSystem": "source",
+        "scale": 1.0,
+        "generateTangents": false,
+        "preserveMaterialSections": true
+      }
+    }
+  ]
+}
