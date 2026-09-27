@@ -4,6 +4,7 @@ import { Mountain, X } from 'lucide-react';
 import type { HostEntityId, HostResponse } from '../inspector/inspectorTypes';
 import { UiButton } from '../ui/UiButton';
 import { UiNumericInput } from '../ui/UiNumericInput';
+import { UiPropertyCard } from '../ui/UiPropertyCard';
 import { UiSelect } from '../ui/UiSelect';
 
 const resolutions = [257, 513, 1025, 2049, 4097] as const;
@@ -62,6 +63,108 @@ export function CreateTerrainDialog({
     onClose();
   };
 
+  const fields = [
+    {
+      id: 'source',
+      label: 'Source',
+      control: (
+        <UiSelect
+          ariaLabel="Source"
+          options={sourceOptions}
+          value={source}
+          onValueChange={(value) => setSource(value as typeof source)}
+        />
+      ),
+    },
+    {
+      id: 'size',
+      label: 'Physical Size (m)',
+      control: (
+        <UiNumericInput
+          ariaLabel="Physical Size (m)"
+          max={262144}
+          min={1}
+          precision={0}
+          scrubSensitivity={1}
+          step={1}
+          value={size}
+          onCommit={setSize}
+        />
+      ),
+    },
+    {
+      id: 'minimumElevation',
+      label: 'Minimum Elevation (m)',
+      control: (
+        <UiNumericInput
+          ariaLabel="Minimum Elevation (m)"
+          precision={1}
+          scrubSensitivity={0.5}
+          step={1}
+          value={minimumElevation}
+          onCommit={setMinimumElevation}
+        />
+      ),
+    },
+    {
+      id: 'maximumElevation',
+      label: 'Maximum Elevation (m)',
+      control: (
+        <UiNumericInput
+          ariaLabel="Maximum Elevation (m)"
+          precision={1}
+          scrubSensitivity={0.5}
+          step={1}
+          value={maximumElevation}
+          onCommit={setMaximumElevation}
+        />
+      ),
+    },
+    {
+      id: 'resolution',
+      label: 'Resolution',
+      control: (
+        <UiSelect
+          ariaLabel="Resolution"
+          options={resolutionOptions}
+          value={String(resolution)}
+          onValueChange={(value) => setResolution(Number(value) as typeof resolution)}
+        />
+      ),
+    },
+    {
+      id: 'patchQuads',
+      label: 'Patch Topology',
+      control: (
+        <UiSelect
+          ariaLabel="Patch Topology"
+          options={patchOptions}
+          value={String(patchQuads)}
+          onValueChange={(value) => setPatchQuads(Number(value))}
+        />
+      ),
+    },
+    ...(source === 'procedural'
+      ? [
+          {
+            id: 'seed',
+            label: 'Seed',
+            control: (
+              <UiNumericInput
+                ariaLabel="Seed"
+                min={0}
+                precision={0}
+                scrubSensitivity={1}
+                step={1}
+                value={seed}
+                onCommit={setSeed}
+              />
+            ),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <div className="modal-backdrop" role="presentation">
       <section aria-label="Create terrain" aria-modal="true" className="terrain-create-dialog" role="dialog">
@@ -73,84 +176,7 @@ export function CreateTerrainDialog({
             <X size={16} />
           </UiButton>
         </header>
-        <div className="terrain-create-fields">
-          <label>
-            Source
-            <UiSelect
-              ariaLabel="Source"
-              options={sourceOptions}
-              value={source}
-              onValueChange={(value) => setSource(value as typeof source)}
-            />
-          </label>
-          <label>
-            Physical Size (m)
-            <UiNumericInput
-              ariaLabel="Physical Size (m)"
-              max={262144}
-              min={1}
-              precision={0}
-              scrubSensitivity={1}
-              step={1}
-              value={size}
-              onCommit={setSize}
-            />
-          </label>
-          <label>
-            Minimum Elevation (m)
-            <UiNumericInput
-              ariaLabel="Minimum Elevation (m)"
-              precision={1}
-              scrubSensitivity={0.5}
-              step={1}
-              value={minimumElevation}
-              onCommit={setMinimumElevation}
-            />
-          </label>
-          <label>
-            Maximum Elevation (m)
-            <UiNumericInput
-              ariaLabel="Maximum Elevation (m)"
-              precision={1}
-              scrubSensitivity={0.5}
-              step={1}
-              value={maximumElevation}
-              onCommit={setMaximumElevation}
-            />
-          </label>
-          <label>
-            Resolution
-            <UiSelect
-              ariaLabel="Resolution"
-              options={resolutionOptions}
-              value={String(resolution)}
-              onValueChange={(value) => setResolution(Number(value) as typeof resolution)}
-            />
-          </label>
-          <label>
-            Patch Topology
-            <UiSelect
-              ariaLabel="Patch Topology"
-              options={patchOptions}
-              value={String(patchQuads)}
-              onValueChange={(value) => setPatchQuads(Number(value))}
-            />
-          </label>
-          {source === 'procedural' && (
-            <label>
-              Seed
-              <UiNumericInput
-                ariaLabel="Seed"
-                min={0}
-                precision={0}
-                scrubSensitivity={1}
-                step={1}
-                value={seed}
-                onCommit={setSeed}
-              />
-            </label>
-          )}
-        </div>
+        <UiPropertyCard className="terrain-create-fields" expandable={false} fields={fields} title="Terrain" />
         <div className="terrain-memory-estimate">
           <span>CPU {estimate.cpu.toFixed(1)} MiB</span>
           <span>GPU {estimate.gpu.toFixed(1)} MiB</span>
