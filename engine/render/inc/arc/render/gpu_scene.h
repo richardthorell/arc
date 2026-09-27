@@ -136,6 +136,8 @@ enum class gpu_scene_submission_source : std::uint8_t
  */
 struct gpu_scene_submission
 {
+    /** Stable GPU Scene slot assigned during synchronization. */
+    gpu_scene_instance_handle handle{};
     gpu_scene_instance instance{};
     std::uint64_t instance_id{};
     std::uint32_t source_index{};

@@ -209,26 +209,28 @@ void vulkan_render_backend::append_render_world(const render_world_event& event)
     if (!event.packet) return;
 
     const auto& packet = *event.packet;
-    const auto make_draw = [&](const render_item& item, bool selected_for_overlay)
+    const auto make_draw = [&](const gpu_scene_submission& submission, const auto& item, resource_handle mesh,
+                               bool selected_for_overlay)
     {
-        return draw_mesh_event{.gpu_scene_instance = item.gpu_scene_instance,
-                               .mesh = item.mesh,
-                               .material = item.material,
-                               .material_attribute_texture = item.material_attribute_texture,
-                               .model = item.model,
-                               .previous_model = item.previous_model,
+        const auto& instance = submission.instance;
+        return draw_mesh_event{.gpu_scene_instance = submission.handle,
+                               .mesh = mesh,
+                               .material = instance.material,
+                               .material_attribute_texture = instance.material_attribute_texture,
+                               .model = instance.model,
+                               .previous_model = instance.previous_model,
                                .view_projection = packet.camera.view_projection,
                                .previous_view_projection = packet.camera.previous_view_projection,
-                               .world_bounds = item.world_bounds,
+                               .world_bounds = instance.world_bounds,
                                .mode = packet.mode,
                                .visualization = packet.visualization,
-                               .object_id = item.object_id,
-                               .skin_palette = item.skin_matrices,
-                               .skin_joint_count = item.skin_joint_count,
+                               .object_id = instance.object_id,
+                               .skin_palette = instance.skin_palette,
+                               .skin_joint_count = instance.skin_joint_count,
                                .selected = selected_for_overlay,
                                .selection_state = item.selection_state,
-                               .casts_shadows = item.casts_shadows,
-                               .receives_shadows = item.receives_shadows,
+                               .casts_shadows = contains(instance.flags, gpu_scene_instance_flag::casts_shadows),
+                               .receives_shadows = contains(instance.flags, gpu_scene_instance_flag::receives_shadows),
                                .mobility = item.mobility,
                                .shadow_lod_bias = item.shadow_lod_bias,
                                .maximum_shadow_distance = item.maximum_shadow_distance,
@@ -236,43 +238,28 @@ void vulkan_render_backend::append_render_world(const render_world_event& event)
                                .wire_color = math::vector4f{1.0f, 0.48f, 0.04f, 1.0f},
                                .label = item.label};
     };
-    const auto make_virtual_draw = [&](const virtual_render_item& item, bool selected_for_overlay)
+    const auto make_virtual_draw = [&](const gpu_scene_submission& submission, const virtual_render_item& item,
+                                       bool selected_for_overlay)
     {
         auto tint = item.base_color_tint;
-        auto material = item.material;
+        auto material = submission.instance.material;
         if (packet.visualization == mesh_visualization_mode::cluster_debug)
         {
-            tint = cluster_debug_color(item.root_node);
+            tint = cluster_debug_color(submission.instance.submesh_or_cluster);
             material = {};
         }
         const auto visualization = packet.visualization == mesh_visualization_mode::cluster_debug
                                        ? mesh_visualization_mode::albedo
                                        : packet.visualization;
-        return virtual_cluster_draw{
-            .draw = draw_mesh_event{.gpu_scene_instance = item.gpu_scene_instance,
-                                    .mesh = item.mesh,
-                                    .material = material,
-                                    .material_attribute_texture = item.material_attribute_texture,
-                                    .model = item.model,
-                                    .previous_model = item.previous_model,
-                                    .view_projection = packet.camera.view_projection,
-                                    .previous_view_projection = packet.camera.previous_view_projection,
-                                    .world_bounds = item.world_bounds,
-                                    .mode = packet.mode,
-                                    .visualization = visualization,
-                                    .object_id = item.object_id,
-                                    .selected = selected_for_overlay,
-                                    .selection_state = item.selection_state,
-                                    .casts_shadows = item.casts_shadows,
-                                    .receives_shadows = item.receives_shadows,
-                                    .mobility = item.mobility,
-                                    .shadow_lod_bias = item.shadow_lod_bias,
-                                    .maximum_shadow_distance = item.maximum_shadow_distance,
-                                    .base_color_tint = tint,
-                                    .wire_color = math::vector4f{1.0f, 0.48f, 0.04f, 1.0f},
-                                    .label = item.label},
-            .mesh = item.mesh,
-            .cluster_index = item.root_node};
+        virtual_cluster_draw result{
+            .draw = make_draw(submission, item, submission.instance.virtual_mesh, selected_for_overlay),
+            .mesh = submission.instance.virtual_mesh,
+            .cluster_index = submission.instance.submesh_or_cluster};
+        auto& draw = result.draw;
+        draw.material = material;
+        draw.visualization = visualization;
+        draw.base_color_tint = tint;
+        return result;
     };
 
     frame_directional_lights_.insert(frame_directional_lights_.end(), packet.directional_lights.begin(),
@@ -281,55 +268,56 @@ void vulkan_render_backend::append_render_world(const render_world_event& event)
     frame_spot_lights_.insert(frame_spot_lights_.end(), packet.spot_lights.begin(), packet.spot_lights.end());
     frame_area_lights_.insert(frame_area_lights_.end(), packet.area_lights.begin(), packet.area_lights.end());
 
-    if (resolved_config_.features.gpu_driven_rendering)
+    const bool gpu_driven = resolved_config_.features.gpu_driven_rendering;
+    std::vector<std::uint8_t> visible_conventional;
+    std::vector<std::uint8_t> visible_virtual;
+    if (!gpu_driven)
     {
-        for (const auto& item : packet.items)
-        {
-            if (!item.visible || !item.mesh.valid()) continue;
-            frame_draws_.push_back(
-                make_draw(item, packet.overlay == editor_overlay_mode::all_wireframe ||
-                                    (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected)));
-        }
-    }
-    else
+        visible_conventional.resize(packet.items.size());
+        visible_virtual.resize(packet.virtual_items.size());
         for (const auto index : packet.visible_items)
-        {
-            if (index >= packet.items.size()) continue;
-            const auto& item = packet.items[index];
-            frame_draws_.push_back(
-                make_draw(item, packet.overlay == editor_overlay_mode::all_wireframe ||
-                                    (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected)));
-        }
-
-    if (resolved_config_.features.gpu_driven_rendering)
-    {
-        for (const auto& item : packet.virtual_items)
-        {
-            if (!item.visible || !item.mesh.valid()) continue;
-            frame_virtual_draws_.push_back(make_virtual_draw(
-                item, packet.overlay == editor_overlay_mode::all_wireframe ||
-                          (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected)));
-        }
-    }
-    else
+            if (index < visible_conventional.size()) visible_conventional[index] = 1u;
         for (const auto index : packet.visible_virtual_items)
-        {
-            if (index >= packet.virtual_items.size()) continue;
-            const auto& item = packet.virtual_items[index];
-            frame_virtual_draws_.push_back(make_virtual_draw(
-                item, packet.overlay == editor_overlay_mode::all_wireframe ||
-                          (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected)));
-        }
-
-    for (const auto& item : packet.items)
-    {
-        if (!item.visible || !item.casts_shadows || !item.mesh.valid()) continue;
-        frame_shadow_draws_.push_back(make_draw(item, item.selected));
+            if (index < visible_virtual.size()) visible_virtual[index] = 1u;
     }
-    for (const auto& item : packet.virtual_items)
+
+    for (const auto& submission : packet.gpu_scene_submissions)
     {
-        if (!item.visible || !item.casts_shadows || !item.mesh.valid()) continue;
-        frame_virtual_shadow_draws_.push_back(make_virtual_draw(item, item.selected));
+        const auto& instance = submission.instance;
+        if (!contains(instance.flags, gpu_scene_instance_flag::visible)) continue;
+        const bool casts_shadows = contains(instance.flags, gpu_scene_instance_flag::casts_shadows);
+
+        if (submission.source == gpu_scene_submission_source::conventional)
+        {
+            if (submission.source_index >= packet.items.size() || !instance.mesh.valid()) continue;
+            const auto& item = packet.items[submission.source_index];
+            const bool main_visible = gpu_driven || visible_conventional[submission.source_index] != 0u;
+            auto draw = make_draw(
+                submission, item, instance.mesh,
+                packet.overlay == editor_overlay_mode::all_wireframe ||
+                    (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected));
+            if (main_visible) frame_draws_.push_back(draw);
+            if (casts_shadows)
+            {
+                draw.selected = item.selected;
+                frame_shadow_draws_.push_back(std::move(draw));
+            }
+        }
+        else
+        {
+            if (submission.source_index >= packet.virtual_items.size() || !instance.virtual_mesh.valid()) continue;
+            const auto& item = packet.virtual_items[submission.source_index];
+            const bool main_visible = gpu_driven || visible_virtual[submission.source_index] != 0u;
+            auto draw = make_virtual_draw(
+                submission, item, packet.overlay == editor_overlay_mode::all_wireframe ||
+                                      (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected));
+            if (main_visible) frame_virtual_draws_.push_back(draw);
+            if (casts_shadows)
+            {
+                draw.draw.selected = item.selected;
+                frame_virtual_shadow_draws_.push_back(std::move(draw));
+            }
+        }
     }
 
     if (!frame_camera_valid_ ||
@@ -357,13 +345,12 @@ void vulkan_render_backend::append_render_world(const render_world_event& event)
         profile.enabled = true;
         profile.hzb_occlusion = resolved_config_.features.hzb_occlusion;
         profile.history_valid = packet.camera.history_valid;
-        profile.visible_instances =
-            static_cast<std::uint32_t>(packet.visible_items.size() + packet.visible_virtual_items.size());
+        profile.visible_instances = static_cast<std::uint32_t>(packet.gpu_scene_submissions.size());
         profile.frustum_rejected =
             static_cast<std::uint32_t>(packet.culled_item_count + packet.culled_virtual_cluster_count);
-        profile.indirect_commands = static_cast<std::uint32_t>(packet.items.size() + packet.virtual_items.size());
+        profile.indirect_commands = static_cast<std::uint32_t>(packet.gpu_scene_submissions.size());
         if (resolved_config_.features.gpu_binding_model == gpu_resource_binding_model::classic)
-            profile.cpu_submissions += static_cast<std::uint32_t>(packet.items.size() + packet.virtual_items.size());
+            profile.cpu_submissions += static_cast<std::uint32_t>(frame_draws_.size() + frame_virtual_draws_.size());
     }
 }
 
