@@ -32,12 +32,13 @@ bool valid_shape(const collision_shape& shape) noexcept
 
 } // namespace
 
-validation_error validate(const body_desc& desc) noexcept
+validation_error validate(const body_definition& definition) noexcept
 {
-    if (!valid_shape(desc.shape)) return validation_error::invalid_shape;
-    if (desc.motion == body_motion::dynamic && !finite_positive(desc.mass)) return validation_error::invalid_mass;
-    if (!std::isfinite(desc.linear_damping) || desc.linear_damping < 0.0F || !std::isfinite(desc.angular_damping) ||
-        desc.angular_damping < 0.0F)
+    if (!valid_shape(definition.shape)) return validation_error::invalid_shape;
+    if (definition.motion == body_motion::dynamic && !finite_positive(definition.mass))
+        return validation_error::invalid_mass;
+    if (!std::isfinite(definition.linear_damping) || definition.linear_damping < 0.0F ||
+        !std::isfinite(definition.angular_damping) || definition.angular_damping < 0.0F)
         return validation_error::invalid_damping;
     return validation_error::none;
 }
