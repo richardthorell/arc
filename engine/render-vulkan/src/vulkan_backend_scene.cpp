@@ -209,8 +209,8 @@ void vulkan_render_backend::append_render_world(const render_world_event& event)
     if (!event.packet) return;
 
     const auto& packet = *event.packet;
-    const auto make_draw = [&](const gpu_scene_submission& submission, const auto& item, resource_handle mesh,
-                               bool selected_for_overlay)
+    const auto make_draw =
+        [&](const gpu_scene_submission& submission, const auto& item, resource_handle mesh, bool selected_for_overlay)
     {
         const auto& instance = submission.instance;
         return draw_mesh_event{.gpu_scene_instance = submission.handle,
@@ -238,8 +238,8 @@ void vulkan_render_backend::append_render_world(const render_world_event& event)
                                .wire_color = math::vector4f{1.0f, 0.48f, 0.04f, 1.0f},
                                .label = item.label};
     };
-    const auto make_virtual_draw = [&](const gpu_scene_submission& submission, const virtual_render_item& item,
-                                       bool selected_for_overlay)
+    const auto make_virtual_draw =
+        [&](const gpu_scene_submission& submission, const virtual_render_item& item, bool selected_for_overlay)
     {
         auto tint = item.base_color_tint;
         auto material = submission.instance.material;
@@ -292,10 +292,9 @@ void vulkan_render_backend::append_render_world(const render_world_event& event)
             if (submission.source_index >= packet.items.size() || !instance.mesh.valid()) continue;
             const auto& item = packet.items[submission.source_index];
             const bool main_visible = gpu_driven || visible_conventional[submission.source_index] != 0u;
-            auto draw = make_draw(
-                submission, item, instance.mesh,
-                packet.overlay == editor_overlay_mode::all_wireframe ||
-                    (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected));
+            auto draw = make_draw(submission, item, instance.mesh,
+                                  packet.overlay == editor_overlay_mode::all_wireframe ||
+                                      (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected));
             if (main_visible) frame_draws_.push_back(draw);
             if (casts_shadows)
             {
@@ -308,8 +307,9 @@ void vulkan_render_backend::append_render_world(const render_world_event& event)
             if (submission.source_index >= packet.virtual_items.size() || !instance.virtual_mesh.valid()) continue;
             const auto& item = packet.virtual_items[submission.source_index];
             const bool main_visible = gpu_driven || visible_virtual[submission.source_index] != 0u;
-            auto draw = make_virtual_draw(
-                submission, item, packet.overlay == editor_overlay_mode::all_wireframe ||
+            auto draw =
+                make_virtual_draw(submission, item,
+                                  packet.overlay == editor_overlay_mode::all_wireframe ||
                                       (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected));
             if (main_visible) frame_virtual_draws_.push_back(draw);
             if (casts_shadows)
