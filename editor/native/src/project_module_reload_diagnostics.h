@@ -60,8 +60,9 @@ analyze_project_module_reload(const std::vector<project_component_schema>& previ
 
         for (const auto& old_field : old_component.fields)
         {
-            const auto field = std::find_if(component->fields.begin(), component->fields.end(), [&](const auto& candidate)
-                                            { return candidate.stable_id == old_field.stable_id; });
+            const auto field =
+                std::find_if(component->fields.begin(), component->fields.end(),
+                             [&](const auto& candidate) { return candidate.stable_id == old_field.stable_id; });
             if (field != component->fields.end() && field->kind != old_field.kind)
                 return {.classification = module_reload_classification::play_session_restart_required,
                         .reason = module_reload_reason::field_kind_changed,
