@@ -131,6 +131,6 @@ describe('RemoteAssetBrowser', () => {
     await waitFor(() => expect(manifest).toHaveBeenCalledTimes(2));
     expect(view.getByLabelText('Remote asset resolution')).toHaveValue('4k');
     expect(view.getByLabelText('Remote asset format')).toHaveValue('fbx');
-    expect(view.getByText('Pine Tree')).toBeInTheDocument();
+    expect(view.getByRole('button', { name: /Pine Tree/ })).toHaveClass('selected');
   });
 });
