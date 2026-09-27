@@ -211,33 +211,48 @@ const firstValidOrFirst = (
   return candidates[0] ?? null;
 };
 
+const configuredOrDetected = (
+  configured: Candidate | null,
+  detected: Candidate[],
+  validate: (value: Candidate | null) => EditorPathValidation,
+): Candidate | null => configured ?? firstValidOrFirst(detected, validate);
+
 export const resolveAndroidToolchainValidation = (
   preferences: AndroidToolchainPreferences,
   environment: Environment = process.env,
 ): Record<string, EditorPathValidation> => {
-  const javaCandidates = uniqueCandidates([
-    candidate(preferences.javaHome, 'configured'),
-    candidate(environment.JAVA_HOME, 'environment'),
-    candidate(javaHomeFromPath(environment), 'environment'),
-    ...defaultJavaHomes(environment).map((value) => candidate(value, 'default')),
-  ]);
-  const sdkCandidates = uniqueCandidates([
-    candidate(preferences.sdkPath, 'configured'),
-    candidate(environment.ANDROID_SDK_ROOT, 'environment'),
-    candidate(environment.ANDROID_HOME, 'environment'),
-    ...defaultSdkRoots(environment).map((value) => candidate(value, 'default')),
-  ]);
+  const configuredJava = candidate(preferences.javaHome, 'configured');
+  const configuredSdk = candidate(preferences.sdkPath, 'configured');
+  const javaCandidate = configuredOrDetected(
+    configuredJava,
+    uniqueCandidates([
+      candidate(environment.JAVA_HOME, 'environment'),
+      candidate(javaHomeFromPath(environment), 'environment'),
+      ...defaultJavaHomes(environment).map((value) => candidate(value, 'default')),
+    ]),
+    validateJavaHome,
+  );
+  const sdkCandidate = configuredOrDetected(
+    configuredSdk,
+    uniqueCandidates([
+      candidate(environment.ANDROID_SDK_ROOT, 'environment'),
+      candidate(environment.ANDROID_HOME, 'environment'),
+      ...defaultSdkRoots(environment).map((value) => candidate(value, 'default')),
+    ]),
+    validateSdkRoot,
+  );
 
-  const javaCandidate = firstValidOrFirst(javaCandidates, validateJavaHome);
-  const sdkCandidate = firstValidOrFirst(sdkCandidates, validateSdkRoot);
-  const ndkFromSdk = sdkCandidate ? newestNdkUnderSdk(sdkCandidate.path) : null;
-  const ndkCandidates = uniqueCandidates([
-    candidate(preferences.ndkPath, 'configured'),
-    candidate(environment.ANDROID_NDK_HOME, 'environment'),
-    candidate(environment.ANDROID_NDK_ROOT, 'environment'),
-    candidate(ndkFromSdk, 'derived'),
-  ]);
-  const ndkCandidate = firstValidOrFirst(ndkCandidates, validateNdkRoot);
+  const ndkFromSdk = sdkCandidate && validateSdkRoot(sdkCandidate).valid ? newestNdkUnderSdk(sdkCandidate.path) : null;
+  const configuredNdk = candidate(preferences.ndkPath, 'configured');
+  const ndkCandidate = configuredOrDetected(
+    configuredNdk,
+    uniqueCandidates([
+      candidate(environment.ANDROID_NDK_HOME, 'environment'),
+      candidate(environment.ANDROID_NDK_ROOT, 'environment'),
+      candidate(ndkFromSdk, 'derived'),
+    ]),
+    validateNdkRoot,
+  );
 
   return {
     [androidToolchainSettingKeys.javaHome]: validateJavaHome(javaCandidate),
