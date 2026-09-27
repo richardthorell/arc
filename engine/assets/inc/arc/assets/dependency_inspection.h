@@ -35,10 +35,10 @@ struct asset_delete_plan
 namespace detail
 {
 [[nodiscard]] inline const asset_snapshot* find_asset_snapshot(std::span<const asset_snapshot> assets,
-                                                                asset_guid guid) noexcept
+                                                               asset_guid guid) noexcept
 {
-    const auto it = std::find_if(assets.begin(), assets.end(),
-                                 [guid](const asset_snapshot& asset) { return asset.guid == guid; });
+    const auto it =
+        std::find_if(assets.begin(), assets.end(), [guid](const asset_snapshot& asset) { return asset.guid == guid; });
     return it == assets.end() ? nullptr : &*it;
 }
 } // namespace detail
@@ -70,10 +70,13 @@ namespace detail
         });
     }
 
-    std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs) {
-        if (lhs.owner_path != rhs.owner_path) return lhs.owner_path.generic_string() < rhs.owner_path.generic_string();
-        return to_string(lhs.owner) < to_string(rhs.owner);
-    });
+    std::sort(result.begin(), result.end(),
+              [](const auto& lhs, const auto& rhs)
+              {
+                  if (lhs.owner_path != rhs.owner_path)
+                      return lhs.owner_path.generic_string() < rhs.owner_path.generic_string();
+                  return to_string(lhs.owner) < to_string(rhs.owner);
+              });
     result.erase(std::unique(result.begin(), result.end(),
                              [](const auto& lhs, const auto& rhs) { return lhs.owner == rhs.owner; }),
                  result.end());
