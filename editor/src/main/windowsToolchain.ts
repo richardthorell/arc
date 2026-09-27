@@ -103,8 +103,7 @@ const newestVersionDirectory = (root: string): string | null => {
 };
 
 const validateVisualStudioRoot = (value: Candidate | null): EditorPathValidation => {
-  if (!value)
-    return { valid: false, resolvedPath: '', message: 'Visual Studio not detected', source: 'unresolved' };
+  if (!value) return { valid: false, resolvedPath: '', message: 'Visual Studio not detected', source: 'unresolved' };
   const vcvars = path.join(value.path, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat');
   if (!directoryExists(value.path) || !fileExists(vcvars)) {
     return {
@@ -123,8 +122,7 @@ const validateVisualStudioRoot = (value: Candidate | null): EditorPathValidation
 };
 
 const validateMsvcToolchainRoot = (value: Candidate | null): EditorPathValidation => {
-  if (!value)
-    return { valid: false, resolvedPath: '', message: 'MSVC toolchain not detected', source: 'unresolved' };
+  if (!value) return { valid: false, resolvedPath: '', message: 'MSVC toolchain not detected', source: 'unresolved' };
   const compiler = path.join(value.path, 'bin', 'Hostx64', 'x64', 'cl.exe');
   if (!directoryExists(value.path) || !fileExists(compiler)) {
     return {
@@ -143,8 +141,7 @@ const validateMsvcToolchainRoot = (value: Candidate | null): EditorPathValidatio
 };
 
 const validateWindowsSdkRoot = (value: Candidate | null): EditorPathValidation => {
-  if (!value)
-    return { valid: false, resolvedPath: '', message: 'Windows SDK not detected', source: 'unresolved' };
+  if (!value) return { valid: false, resolvedPath: '', message: 'Windows SDK not detected', source: 'unresolved' };
   const versionRoot = newestVersionDirectory(path.join(value.path, 'Include'));
   const hasHeaders = Boolean(versionRoot && fileExists(path.join(versionRoot, 'um', 'Windows.h')));
   if (!directoryExists(value.path) || !hasHeaders) {
