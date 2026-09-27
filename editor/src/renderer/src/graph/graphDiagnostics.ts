@@ -42,7 +42,5 @@ export const sortGraphDiagnostics = (diagnostics: readonly GraphDiagnostic[]): G
     return left.id.localeCompare(right.id);
   });
 
-export const graphDiagnosticsForNode = (
-  diagnostics: readonly GraphDiagnostic[],
-  nodeId: string,
-): GraphDiagnostic[] => sortGraphDiagnostics(diagnostics.filter((diagnostic) => graphDiagnosticNodeId(diagnostic) === nodeId));
+export const graphDiagnosticsForNode = (diagnostics: readonly GraphDiagnostic[], nodeId: string): GraphDiagnostic[] =>
+  sortGraphDiagnostics(diagnostics.filter((diagnostic) => graphDiagnosticNodeId(diagnostic) === nodeId));
