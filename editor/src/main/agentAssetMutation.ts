@@ -43,7 +43,12 @@ export const parseEditableAgentAsset = (
   const graph = asObject(definition.graph);
   if (kind === 'material') {
     if (!path.toLowerCase().endsWith('.arcmat')) throw new Error('Material assets must use the .arcmat extension');
-    if (definition.version !== 4 || graph.version !== 1 || !Array.isArray(graph.nodes) || !Array.isArray(graph.connections))
+    if (
+      definition.version !== 4 ||
+      graph.version !== 1 ||
+      !Array.isArray(graph.nodes) ||
+      !Array.isArray(graph.connections)
+    )
       throw new Error('Material definition must contain a version-4 asset and version-1 graph');
   } else {
     if (!path.toLowerCase().endsWith('.arcflow')) throw new Error('Flow assets must use the .arcflow extension');
@@ -66,7 +71,9 @@ export const prepareAgentAssetMutation = (
 ): AgentAssetMutationResult => {
   const current = parseEditableAgentAsset(request.kind, request.path, currentContents);
   if (!request.expectedRevision || request.expectedRevision !== current.revision) {
-    throw new Error(`Asset revision conflict for ${request.path}: expected ${request.expectedRevision || '(missing)'}, current ${current.revision}`);
+    throw new Error(
+      `Asset revision conflict for ${request.path}: expected ${request.expectedRevision || '(missing)'}, current ${current.revision}`,
+    );
   }
 
   const candidate = `${JSON.stringify(request.definition, null, 2)}\n`;
