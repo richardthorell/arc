@@ -8,8 +8,7 @@ namespace arc::animation
 namespace
 {
 
-template <typename T, std::size_t N>
-bool finite_vector(const math::vector<T, N>& value) noexcept
+template <typename T, std::size_t N> bool finite_vector(const math::vector<T, N>& value) noexcept
 {
     for (std::size_t i = 0; i < N; ++i)
         if (!std::isfinite(value[i])) return false;
@@ -31,7 +30,8 @@ bool valid_transform(const joint_transform& transform) noexcept
 }
 
 template <typename T, typename ValueValidator>
-validation_error validate_keys(const std::vector<keyframe<T>>& keys, float duration, ValueValidator valid_value) noexcept
+validation_error validate_keys(const std::vector<keyframe<T>>& keys, float duration,
+                               ValueValidator valid_value) noexcept
 {
     float previous = -1.0F;
     for (const auto& key : keys)
@@ -83,9 +83,9 @@ validation_error validate(const animation_clip_definition& clip, const skeleton_
         error = validate_keys(track.rotations, clip.duration_seconds,
                               [](const auto& value) { return finite_quaternion(value); });
         if (error != validation_error::none) return error;
-        error = validate_keys(track.scales, clip.duration_seconds, [](const auto& value) {
-            return finite_vector(value) && value[0] > 0.0F && value[1] > 0.0F && value[2] > 0.0F;
-        });
+        error =
+            validate_keys(track.scales, clip.duration_seconds, [](const auto& value)
+                          { return finite_vector(value) && value[0] > 0.0F && value[1] > 0.0F && value[2] > 0.0F; });
         if (error != validation_error::none) return error;
     }
     return validation_error::none;

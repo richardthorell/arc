@@ -32,8 +32,7 @@ struct skeleton_definition
     std::vector<skeleton_joint> joints;
 };
 
-template <typename T>
-struct keyframe
+template <typename T> struct keyframe
 {
     float time_seconds = 0.0F;
     T value{};
