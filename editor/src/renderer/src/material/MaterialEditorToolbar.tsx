@@ -9,7 +9,7 @@ import {
   UiEditorToolbar,
   UiSplitButton,
   UiToggleButton,
-  UiToolbarSeparator,
+  UiToolbarGroup,
 } from '../ui';
 import {
   compileMaterialDocument,
@@ -63,7 +63,7 @@ export function MaterialEditorToolbar({ document }: { document: EditorDocument }
       className="material-document-toolbar"
       ref={toolbarRef}
       left={
-        <>
+        <UiToolbarGroup aria-label="Material document actions">
           <UiButton
             disabled={busy || document.readOnly || !document.dirty}
             onClick={() => void saveMaterialDocument(document)}
@@ -102,10 +102,11 @@ export function MaterialEditorToolbar({ document }: { document: EditorDocument }
             ]}
             variant="toolbar"
           />
-
-          <UiToolbarSeparator />
-
-          {!customShader && (
+        </UiToolbarGroup>
+      }
+      center={
+        !customShader ? (
+          <UiToolbarGroup aria-label="Material preview controls">
             <UiToggleButton
               aria-label="Live Update"
               checked={state.liveUpdate}
@@ -113,9 +114,12 @@ export function MaterialEditorToolbar({ document }: { document: EditorDocument }
               label="Live Update"
               onCheckedChange={(enabled) => setMaterialLiveUpdate(document, enabled)}
             />
-          )}
-
-          {!customShader && (
+          </UiToolbarGroup>
+        ) : undefined
+      }
+      right={
+        !customShader ? (
+          <UiToolbarGroup aria-label="Material view controls">
             <span className="material-toolbar-menu material-toolbar-view-menu">
               <UiButton
                 aria-expanded={viewOpen}
@@ -157,8 +161,8 @@ export function MaterialEditorToolbar({ document }: { document: EditorDocument }
                 </UiContextMenu>
               )}
             </span>
-          )}
-        </>
+          </UiToolbarGroup>
+        ) : undefined
       }
     />
   );
