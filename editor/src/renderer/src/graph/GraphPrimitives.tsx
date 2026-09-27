@@ -92,6 +92,7 @@ export function GraphPin({
   direction,
   disabled,
   highlighted,
+  invalidDrop,
   label,
   onPointerDown,
   pinKey,
@@ -105,6 +106,7 @@ export function GraphPin({
   direction: GraphPinDirection;
   disabled?: boolean;
   highlighted?: boolean;
+  invalidDrop?: boolean;
   label: string;
   onPointerDown?: PointerEventHandler<HTMLButtonElement>;
   pinKey: string;
@@ -119,6 +121,7 @@ export function GraphPin({
     highlighted ? 'is-highlighted' : null,
     compatibility === 'compatible' ? 'is-compatible-target' : null,
     compatibility === 'incompatible' ? 'is-incompatible-target' : null,
+    invalidDrop ? 'is-invalid-drop' : null,
   ]
     .filter(Boolean)
     .join(' ');
@@ -139,6 +142,7 @@ export function GraphPin({
       data-graph-pin-compatibility={compatibility ?? undefined}
       data-graph-pin-direction={direction}
       data-graph-pin-highlighted={highlighted || undefined}
+      data-graph-pin-invalid-drop={invalidDrop || undefined}
       data-graph-pin-key={pinKey}
       disabled={disabled}
       onPointerDown={onPointerDown}

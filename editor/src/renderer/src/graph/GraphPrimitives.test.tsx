@@ -75,6 +75,24 @@ describe('shared graph primitives', () => {
     expect(pin).toHaveAttribute('title', 'Input · Vector3 • Base Color — surface albedo');
   });
 
+  it('exposes deterministic invalid-drop feedback independently from compatibility', () => {
+    render(
+      <GraphPin
+        compatibility="incompatible"
+        direction="input"
+        invalidDrop
+        label="Roughness"
+        pinKey="surface:input:roughness"
+        typeLabel="Float"
+      />,
+    );
+
+    const pin = screen.getByRole('button', { name: 'Roughness' });
+    expect(pin).toHaveClass('is-incompatible-target', 'is-invalid-drop');
+    expect(pin).toHaveAttribute('data-graph-pin-compatibility', 'incompatible');
+    expect(pin).toHaveAttribute('data-graph-pin-invalid-drop', 'true');
+  });
+
   it('renders a reusable selection rectangle', () => {
     const { container } = render(<GraphSelectionBox rect={{ left: 10, top: 20, width: 30, height: 40 }} />);
     expect(container.querySelector('[data-graph-selection-box]')).toHaveStyle({
