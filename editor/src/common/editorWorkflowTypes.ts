@@ -1,7 +1,7 @@
 import type { AiProviderAccountsSnapshot, AiProviderId } from './aiProviderTypes';
 
 export type SourceControlFileState =
-  | 'modified' | 'added' | 'deleted' | 'renamed' | 'copied' | 'untracked' | 'conflicted';
+  'modified' | 'added' | 'deleted' | 'renamed' | 'copied' | 'untracked' | 'conflicted';
 
 export type SourceControlFile = {
   path: string;
