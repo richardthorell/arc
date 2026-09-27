@@ -1,35 +1,62 @@
 import { Ban, ExternalLink, Hammer, Play, RefreshCw, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 import type { ArcBuildDiagnostic, ArcBuildRequest, ArcBuildSnapshot } from '../../../common/buildTypes';
+import { UiSelect, type UiSelectOption } from '../ui/UiSelect';
 
 import './buildOutput.css';
+
+const DEFAULT_BUILD_CONFIGURATIONS: ReadonlyArray<UiSelectOption> = [
+  { value: 'Debug', label: 'Debug' },
+  { value: 'RelWithDebInfo', label: 'RelWithDebInfo' },
+  { value: 'Release', label: 'Release' },
+];
 
 export function BuildOutputPanel({
   snapshot,
   onExecute,
   onOpenDiagnostic,
+  configurations = DEFAULT_BUILD_CONFIGURATIONS,
 }: {
   snapshot: ArcBuildSnapshot | null;
   onExecute: (request: ArcBuildRequest) => void;
   onOpenDiagnostic: (diagnostic: ArcBuildDiagnostic) => void;
+  configurations?: ReadonlyArray<UiSelectOption>;
 }) {
   const busy = snapshot ? ['configuring', 'building', 'cleaning'].includes(snapshot.state) : false;
+  const fallbackConfiguration = configurations[0]?.value ?? 'Debug';
+  const [configuration, setConfiguration] = useState(snapshot?.configuration ?? fallbackConfiguration);
+
+  useEffect(() => {
+    if (snapshot?.configuration) setConfiguration(snapshot.configuration);
+  }, [snapshot?.configuration]);
+
+  const executeForConfiguration = (action: 'configure' | 'build' | 'rebuild' | 'clean') =>
+    onExecute({ action, configuration });
+
   return (
     <section className="build-output-panel" aria-label="Build Output">
       <header className="build-output-toolbar">
-        <button disabled={busy} onClick={() => onExecute({ action: 'configure' })} type="button">
+        <UiSelect
+          ariaLabel="Build configuration"
+          disabled={busy}
+          onValueChange={setConfiguration}
+          options={configurations}
+          value={configuration}
+        />
+        <button disabled={busy} onClick={() => executeForConfiguration('configure')} type="button">
           <Play size={13} />
           Configure
         </button>
-        <button disabled={busy} onClick={() => onExecute({ action: 'build' })} type="button">
+        <button disabled={busy} onClick={() => executeForConfiguration('build')} type="button">
           <Hammer size={13} />
           Build
         </button>
-        <button disabled={busy} onClick={() => onExecute({ action: 'rebuild' })} type="button">
+        <button disabled={busy} onClick={() => executeForConfiguration('rebuild')} type="button">
           <RefreshCw size={13} />
           Rebuild
         </button>
-        <button disabled={busy} onClick={() => onExecute({ action: 'clean' })} type="button">
+        <button disabled={busy} onClick={() => executeForConfiguration('clean')} type="button">
           <Trash2 size={13} />
           Clean
         </button>
