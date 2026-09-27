@@ -38,7 +38,7 @@ struct capsule_shape
 
 using collision_shape = std::variant<sphere_shape, box_shape, capsule_shape>;
 
-struct body_desc
+struct body_definition
 {
     body_motion motion = body_motion::static_body;
     collision_shape shape = box_shape{};
@@ -75,7 +75,7 @@ enum class validation_error : std::uint8_t
     invalid_query
 };
 
-[[nodiscard]] validation_error validate(const body_desc& desc) noexcept;
+[[nodiscard]] validation_error validate(const body_definition& definition) noexcept;
 [[nodiscard]] validation_error validate(const ray_query& query) noexcept;
 
 } // namespace arc::physics
