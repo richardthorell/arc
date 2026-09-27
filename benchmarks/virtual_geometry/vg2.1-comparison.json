@@ -1,0 +1,32 @@
+{
+  "format": "arc-virtual-geometry-comparison",
+  "version": 1,
+  "corpus": "generated-wave-grid-ci",
+  "before": {
+    "builder": "legacy_seed",
+    "clusterCount": 164,
+    "hierarchyNodes": 99,
+    "storedPageBytes": 111770,
+    "artifactBytes": 143274,
+    "nearVisibleTriangles": 8192,
+    "farVisibleTriangles": 4086,
+    "rootOnlyParentFallbacks": 4
+  },
+  "after": {
+    "builder": "adjacency",
+    "clusterCount": 165,
+    "hierarchyNodes": 99,
+    "storedPageBytes": 112165,
+    "artifactBytes": 143306,
+    "nearVisibleTriangles": 8192,
+    "farVisibleTriangles": 4086,
+    "rootOnlyParentFallbacks": 2
+  },
+  "assessment": {
+    "visibleTriangleParity": true,
+    "storedPageByteDeltaFraction": 0.00353404312427217,
+    "artifactByteDeltaFraction": 0.00022334825312520066,
+    "parentFallbackDelta": -2,
+    "timingPolicy": "Timing is retained in per-run output and is not compared across machines."
+  }
+}

@@ -2,6 +2,7 @@
 
 #include <arc/render/exposure.h>
 #include <arc/render/events.h>
+#include <arc/render/gpu_scene.h>
 #include <arc/render/handles.h>
 #include <arc/render/material.h>
 #include <arc/render/render_backend.h>
@@ -494,6 +495,10 @@ struct render_world_packet
     std::vector<std::uint32_t> visible_items;
     std::vector<virtual_render_item> virtual_items;
     std::vector<std::uint32_t> visible_virtual_items;
+    /** Authoritative representation-neutral instance stream consumed by GPU Scene synchronization. */
+    std::vector<gpu_scene_submission> gpu_scene_submissions;
+    /** True after @ref prepare_gpu_scene_submissions has rebuilt the authoritative instance stream. */
+    bool gpu_scene_submissions_prepared{};
     std::vector<render_instance_batch> instance_batches;
     std::vector<indirect_draw_command> indirect_draws;
     debug_overlay_stream debug_overlay;
@@ -516,6 +521,9 @@ struct render_world_prepare_options
     bool retain_cpu_reference{};
     std::uint32_t render_layer_mask{0xffffffffu};
 };
+
+/** @brief Rebuild the authoritative mixed conventional/virtual GPU Scene instance stream. */
+void prepare_gpu_scene_submissions(render_world_packet& packet);
 
 /**
  * @brief Build a stable object id from an index/generation pair.

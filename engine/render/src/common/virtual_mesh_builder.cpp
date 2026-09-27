@@ -48,6 +48,7 @@ struct hierarchy_work_node
     std::vector<std::uint32_t> unique_vertices;
     math::vector3f center{};
     float error{};
+    std::size_t material_index{std::numeric_limits<std::size_t>::max()};
 };
 
 math::vector3f vertex_position(const mesh_vertex& vertex) noexcept
@@ -274,7 +275,8 @@ std::vector<hierarchy_work_node> build_clusters(virtual_mesh_data& result, const
                           .source_indices = std::move(cluster_indices),
                           .unique_vertices = {},
                           .center = result.clusters[cluster_index].sphere_center,
-                          .error = error});
+                          .error = error,
+                          .material_index = result.clusters[cluster_index].material_index});
         output.back().unique_vertices = unique_vertices(output.back().source_indices);
     }
     return output;
@@ -293,8 +295,34 @@ float source_extent(const mesh_data& source) noexcept
     return math::length(math::sub(bounds_max, bounds_min));
 }
 
+float indexed_extent(const mesh_data& source, std::span<const std::uint32_t> indices) noexcept
+{
+    if (indices.empty()) return 0.0f;
+    bool initialized{};
+    math::vector3f bounds_min{};
+    math::vector3f bounds_max{};
+    for (const auto index : indices)
+    {
+        if (index >= source.vertices.size()) continue;
+        const auto position = vertex_position(source.vertices[index]);
+        if (!initialized)
+        {
+            bounds_min = position;
+            bounds_max = position;
+            initialized = true;
+        }
+        else
+        {
+            bounds_min = minimum(bounds_min, position);
+            bounds_max = maximum(bounds_max, position);
+        }
+    }
+    return initialized ? math::length(math::sub(bounds_max, bounds_min)) : 0.0f;
+}
+
 std::vector<std::uint32_t> simplify(const mesh_data& source, std::span<const std::uint32_t> indices,
-                                    std::size_t target_index_count, float& absolute_error, bool lock_boundaries)
+                                    std::size_t target_index_count, float& absolute_error, bool lock_boundaries,
+                                    float error_extent)
 {
     std::vector<std::uint32_t> result(indices.size());
     float relative_error{};
@@ -304,12 +332,12 @@ std::vector<std::uint32_t> simplify(const mesh_data& source, std::span<const std
         lock_boundaries ? static_cast<unsigned int>(meshopt_SimplifyLockBorder) : 0u, &relative_error);
     result.resize(count >= 3 ? count : indices.size());
     if (count < 3) std::copy(indices.begin(), indices.end(), result.begin());
-    absolute_error = relative_error * source_extent(source);
+    absolute_error = relative_error * error_extent;
     return result;
 }
 
-std::vector<std::vector<std::size_t>> make_groups(const std::vector<hierarchy_work_node>& nodes,
-                                                  const virtual_mesh_build_options& options)
+std::vector<std::vector<std::size_t>> make_legacy_groups(const std::vector<hierarchy_work_node>& nodes,
+                                                         const virtual_mesh_build_options& options)
 {
     std::vector<std::vector<std::size_t>> groups;
     std::vector<bool> used(nodes.size());
@@ -344,6 +372,139 @@ std::vector<std::vector<std::size_t>> make_groups(const std::vector<hierarchy_wo
     return groups;
 }
 
+std::vector<std::vector<std::size_t>> make_adjacency_groups(const std::vector<hierarchy_work_node>& nodes,
+                                                            const virtual_mesh_build_options& options)
+{
+    std::vector<std::vector<std::size_t>> groups;
+    if (nodes.empty()) return groups;
+    const auto minimum_size = std::max(1u, options.minimum_group_size);
+    const auto maximum_size = std::max(minimum_size, options.maximum_group_size);
+
+    std::unordered_map<std::uint32_t, std::vector<std::size_t>> vertex_owners;
+    vertex_owners.reserve(nodes.size() * 8u);
+    for (std::size_t node_index = 0; node_index < nodes.size(); ++node_index)
+        for (const auto vertex : nodes[node_index].unique_vertices)
+            vertex_owners[vertex].push_back(node_index);
+
+    std::vector<std::size_t> spatial_order(nodes.size());
+    std::iota(spatial_order.begin(), spatial_order.end(), 0u);
+    std::stable_sort(spatial_order.begin(), spatial_order.end(),
+                     [&](std::size_t lhs, std::size_t rhs)
+                     {
+                         const auto& left = nodes[lhs];
+                         const auto& right = nodes[rhs];
+                         if (left.material_index != right.material_index)
+                             return left.material_index < right.material_index;
+                         for (std::size_t component = 0; component < 3u; ++component)
+                             if (left.center[component] != right.center[component])
+                                 return left.center[component] < right.center[component];
+                         return lhs < rhs;
+                     });
+
+    std::vector<bool> used(nodes.size());
+    std::vector<std::uint32_t> shared_scores(nodes.size());
+    std::vector<std::size_t> touched;
+    touched.reserve(nodes.size());
+    const auto reset_scores = [&]()
+    {
+        for (const auto candidate : touched)
+            shared_scores[candidate] = 0u;
+        touched.clear();
+    };
+
+    for (const auto seed : spatial_order)
+    {
+        if (used[seed]) continue;
+        auto& group = groups.emplace_back();
+        math::vector3f center_sum{};
+        const auto add_to_group = [&](std::size_t candidate)
+        {
+            group.push_back(candidate);
+            used[candidate] = true;
+            center_sum = math::add(center_sum, nodes[candidate].center);
+            for (const auto vertex : nodes[candidate].unique_vertices)
+            {
+                const auto owners = vertex_owners.find(vertex);
+                if (owners == vertex_owners.end()) continue;
+                for (const auto neighbor : owners->second)
+                {
+                    if (used[neighbor] || nodes[neighbor].material_index != nodes[seed].material_index) continue;
+                    if (shared_scores[neighbor]++ == 0u) touched.push_back(neighbor);
+                }
+            }
+        };
+        add_to_group(seed);
+
+        while (group.size() < maximum_size)
+        {
+            const auto group_center = math::mul(center_sum, 1.0f / static_cast<float>(group.size()));
+            auto best = nodes.size();
+            std::uint32_t best_score{};
+            float best_distance = std::numeric_limits<float>::max();
+            for (const auto candidate : touched)
+            {
+                if (used[candidate]) continue;
+                const auto score = shared_scores[candidate];
+                const auto distance = squared_distance(group_center, nodes[candidate].center);
+                if (score > best_score || (score == best_score && (distance < best_distance ||
+                                                                   (distance == best_distance && candidate < best))))
+                {
+                    best = candidate;
+                    best_score = score;
+                    best_distance = distance;
+                }
+            }
+            if (best == nodes.size())
+            {
+                const auto fallback = std::find_if(
+                    spatial_order.begin(), spatial_order.end(), [&](std::size_t candidate)
+                    { return !used[candidate] && nodes[candidate].material_index == nodes[seed].material_index; });
+                if (fallback == spatial_order.end()) break;
+                best = *fallback;
+            }
+            add_to_group(best);
+        }
+        reset_scores();
+    }
+
+    if (groups.size() > 1u && groups.back().size() < minimum_size)
+    {
+        auto& last = groups.back();
+        for (std::size_t group_index = groups.size() - 1u; group_index > 0u && last.size() < minimum_size;
+             --group_index)
+        {
+            auto& donor = groups[group_index - 1u];
+            while (donor.size() > minimum_size && last.size() < minimum_size)
+            {
+                auto best = donor.begin();
+                std::size_t best_shared{};
+                float best_distance = std::numeric_limits<float>::max();
+                for (auto candidate = donor.begin(); candidate != donor.end(); ++candidate)
+                {
+                    std::size_t shared{};
+                    float distance = std::numeric_limits<float>::max();
+                    for (const auto member : last)
+                    {
+                        shared += shared_vertex_count(nodes[*candidate], nodes[member]);
+                        distance = std::min(distance, squared_distance(nodes[*candidate].center, nodes[member].center));
+                    }
+                    if (shared > best_shared ||
+                        (shared == best_shared &&
+                         (distance < best_distance || (distance == best_distance && *candidate < *best))))
+                    {
+                        best = candidate;
+                        best_shared = shared;
+                        best_distance = distance;
+                    }
+                }
+                last.push_back(*best);
+                donor.erase(best);
+            }
+        }
+    }
+    return groups;
+}
+
 void build_hierarchy(virtual_mesh_data& result, const mesh_data& source, std::vector<hierarchy_work_node> current,
                      const virtual_mesh_build_options& options)
 {
@@ -351,7 +512,10 @@ void build_hierarchy(virtual_mesh_data& result, const mesh_data& source, std::ve
     while (current.size() > std::max(1u, options.maximum_root_clusters))
     {
         std::vector<hierarchy_work_node> parents;
-        for (const auto& group : make_groups(current, options))
+        const auto groups = options.hierarchy_builder == virtual_mesh_hierarchy_builder::legacy_seed
+                                ? make_legacy_groups(current, options)
+                                : make_adjacency_groups(current, options);
+        for (const auto& group : groups)
         {
             std::vector<std::uint32_t> combined;
             float child_error{};
@@ -362,11 +526,16 @@ void build_hierarchy(virtual_mesh_data& result, const mesh_data& source, std::ve
                 child_error = std::max(child_error, current[child].error);
             }
             float simplify_error{};
+            const auto error_extent = options.hierarchy_builder == virtual_mesh_hierarchy_builder::legacy_seed
+                                          ? source_extent(source)
+                                          : indexed_extent(source, combined);
             auto simplified = simplify(source, combined,
                                        static_cast<std::size_t>(static_cast<float>(combined.size()) *
                                                                 std::clamp(options.parent_triangle_ratio, 0.1f, 0.9f)),
-                                       simplify_error, true);
-            const auto parent_error = std::max(child_error, simplify_error);
+                                       simplify_error, true, error_extent);
+            const auto parent_error = options.hierarchy_builder == virtual_mesh_hierarchy_builder::legacy_seed
+                                          ? std::max(child_error, simplify_error)
+                                          : child_error + simplify_error;
             const auto first_cluster = static_cast<std::uint32_t>(result.clusters.size());
             auto parent_clusters = build_clusters(result, source, simplified, options, parent_error, level, false);
             if (parent_clusters.empty()) continue;
@@ -420,7 +589,8 @@ void build_hierarchy(virtual_mesh_data& result, const mesh_data& source, std::ve
                                .source_indices = std::move(simplified),
                                .unique_vertices = unique_vertices(combined),
                                .center = parent.sphere_center,
-                               .error = parent_error});
+                               .error = parent_error,
+                               .material_index = source.material_index});
         }
         if (parents.empty() || parents.size() >= current.size()) break;
         current = std::move(parents);
@@ -611,7 +781,7 @@ void build_conventional_lods(virtual_mesh_data& result, const mesh_data& source,
         else
         {
             const auto target = std::max<std::size_t>(3u, static_cast<std::size_t>(valid_indices.size() * ratio));
-            lod.indices = simplify(source, valid_indices, target, lod.geometric_error, false);
+            lod.indices = simplify(source, valid_indices, target, lod.geometric_error, false, source_extent(source));
         }
         std::vector<std::uint32_t> cache_optimized(lod.indices.size());
         meshopt_optimizeVertexCache(cache_optimized.data(), lod.indices.data(), lod.indices.size(),

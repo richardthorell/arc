@@ -13,8 +13,19 @@
 namespace arc::render
 {
 
-inline constexpr std::uint32_t virtual_geometry_artifact_schema_version = 3;
+inline constexpr std::uint32_t virtual_geometry_artifact_schema_version = 4;
 inline constexpr std::uint32_t virtual_geometry_artifact_page_alignment = 4096;
+inline constexpr std::uint16_t virtual_geometry_artifact_page_payload_version = 1;
+
+// `.arcvg` files are derived data. Runtime readers intentionally accept only the current schema so older artifacts
+// are deterministically recooked instead of carrying a permanent dual-format decode path.
+
+/** @brief Codec contract for one independently decodable virtual-geometry page payload. */
+enum class virtual_geometry_artifact_page_codec : std::uint8_t
+{
+    /** Quantized cluster records with meshoptimizer-compressed vertex blocks and packed triangle indices. */
+    cluster_page = 1
+};
 
 /** @brief Failure categories produced while reading or writing a cooked virtual-geometry artifact. */
 enum class virtual_geometry_artifact_error_code : std::uint8_t
@@ -48,6 +59,9 @@ struct virtual_geometry_artifact_page_range
     std::uint32_t stored_size{};
     std::uint32_t decoded_size{};
     std::uint64_t content_hash{};
+    std::uint16_t payload_version{virtual_geometry_artifact_page_payload_version};
+    virtual_geometry_artifact_page_codec codec{virtual_geometry_artifact_page_codec::cluster_page};
+    /** Root pages are protected residency fallback data and must not be evicted. */
     bool root{};
 };
 
@@ -87,7 +101,7 @@ using virtual_geometry_artifact_index_result =
     core::result<virtual_geometry_artifact_index, virtual_geometry_artifact_error>;
 
 /**
- * @brief Encode an indexed, page-aligned `.arcvg` schema-v3 artifact.
+ * @brief Encode an indexed, page-aligned `.arcvg` schema-v4 artifact.
  * @param meshes Source mesh records; geometry pointers must remain valid for the duration of the call.
  * @param conventional_artifact_hash Hash linking the artifact to its conventional LOD companion.
  * @return Deterministic little-endian artifact bytes or a structured validation failure.

@@ -1,5 +1,6 @@
 add_executable(arc-benchmarks
     main.cpp
+    virtual_geometry_benchmark.cpp
 )
 arc_configure_first_party_target(arc-benchmarks)
 target_compile_features(arc-benchmarks PRIVATE cxx_std_20)
@@ -14,6 +15,9 @@ target_link_libraries(arc-benchmarks PRIVATE
     arc-render
     arc-scene
 )
+if(WIN32)
+    target_link_libraries(arc-benchmarks PRIVATE Psapi)
+endif()
 
 add_custom_target(arc-benchmarks-check
     COMMAND arc-benchmarks
@@ -23,5 +27,6 @@ add_custom_target(arc-benchmarks-check
         --warmups 2
         --samples 7
         --threshold 0.20
+        --virtual-geometry-scale ci
     DEPENDS arc-benchmarks
     VERBATIM)

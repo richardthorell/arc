@@ -37,7 +37,8 @@ jobs:
             --minimum-sample-ms 250 \
             --warmups 2 \
             --samples 7 \
-            --threshold 0.20
+            --threshold 0.20 \
+            --virtual-geometry-scale ci
           status=$?
           set -e
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"

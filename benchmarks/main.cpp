@@ -9,6 +9,8 @@
 #include <arc/render/render.h>
 #include <arc/scene/scene.h>
 
+#include "virtual_geometry_benchmark.h"
+
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -113,6 +115,8 @@ struct options
     std::size_t warmups{2};
     std::size_t samples{7};
     double threshold{0.20};
+    arc::benchmarks::virtual_geometry_corpus_scale virtual_geometry_scale{
+        arc::benchmarks::virtual_geometry_corpus_scale::disabled};
 };
 
 struct measurement
@@ -175,6 +179,11 @@ bool parse_options(int argc, char** argv, options& result)
         else if (argument == "--threshold")
         {
             if (!parse_number(next(), result.threshold)) return false;
+        }
+        else if (argument == "--virtual-geometry-scale")
+        {
+            if (!arc::benchmarks::parse_virtual_geometry_corpus_scale(next(), result.virtual_geometry_scale))
+                return false;
         }
         else
             return false;
@@ -289,7 +298,8 @@ int main(int argc, char** argv)
     if (!parse_options(argc, argv, config))
     {
         std::cerr << "Usage: arc-benchmarks --baseline FILE [--output FILE] "
-                     "[--minimum-sample-ms MS] [--warmups N] [--samples N] [--threshold FRACTION]\n";
+                     "[--minimum-sample-ms MS] [--warmups N] [--samples N] [--threshold FRACTION] "
+                     "[--virtual-geometry-scale off|ci|developer|massive]\n";
         return 2;
     }
     const auto baselines = read_baselines(config.baseline);
@@ -530,12 +540,28 @@ int main(int argc, char** argv)
         results.push_back(std::move(value));
     }
 
+    arc::benchmarks::virtual_geometry_corpus_result virtual_geometry;
+    const bool run_virtual_geometry =
+        config.virtual_geometry_scale != arc::benchmarks::virtual_geometry_corpus_scale::disabled;
+    if (run_virtual_geometry)
+    {
+        std::cerr << "Running virtual geometry corpus (" << arc::benchmarks::to_string(config.virtual_geometry_scale)
+                  << ")\n";
+        virtual_geometry = arc::benchmarks::run_virtual_geometry_corpus(config.virtual_geometry_scale);
+        if (virtual_geometry.cluster_count == 0u || virtual_geometry.page_count == 0u ||
+            virtual_geometry.captures.empty())
+        {
+            std::cerr << "Virtual geometry corpus produced an invalid empty result\n";
+            failed = true;
+        }
+    }
+
     assets.on_shutdown(service_context);
     std::error_code cleanup_error;
     std::filesystem::remove_all(temporary_root, cleanup_error);
 
     std::ofstream output(config.output, std::ios::binary | std::ios::trunc);
-    output << "{\n  \"format\": \"arc-benchmark-results\",\n  \"version\": 1,\n"
+    output << "{\n  \"format\": \"arc-benchmark-results\",\n  \"version\": 2,\n"
               "  \"calibrationNanoseconds\": "
            << calibration_ns << ",\n  \"observer\": " << observable_sink << ",\n  \"results\": [\n";
     for (std::size_t index = 0; index < results.size(); ++index)
@@ -552,6 +578,12 @@ int main(int argc, char** argv)
         output << "]}";
         output << (index + 1 == results.size() ? "\n" : ",\n");
     }
-    output << "  ]\n}\n";
+    output << "  ]";
+    if (run_virtual_geometry)
+    {
+        output << ",\n  \"virtualGeometry\": ";
+        arc::benchmarks::write_virtual_geometry_corpus_json(output, virtual_geometry, "  ");
+    }
+    output << "\n}\n";
     return failed ? 1 : 0;
 }

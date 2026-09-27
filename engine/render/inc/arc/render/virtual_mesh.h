@@ -183,6 +183,15 @@ struct virtual_mesh_build_stats
     std::uint32_t boundary_edge_count{};
 };
 
+/** @brief Internal hierarchy construction path retained while VG2.1 parity is validated. */
+enum class virtual_mesh_hierarchy_builder : std::uint8_t
+{
+    /** Deterministic adjacency-aware grouping with group-local conservative error. */
+    adjacency,
+    /** First-generation seed grouping retained for benchmark and regression comparison. */
+    legacy_seed
+};
+
 /**
  * @brief Options controlling the first fixed-size virtual mesh builder.
  */
@@ -195,6 +204,7 @@ struct virtual_mesh_build_options
     float parent_triangle_ratio{0.5f};
     std::uint32_t maximum_root_clusters{4};
     bool build_conventional_lods{true};
+    virtual_mesh_hierarchy_builder hierarchy_builder{virtual_mesh_hierarchy_builder::adjacency};
 };
 
 /**

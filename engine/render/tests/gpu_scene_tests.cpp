@@ -78,6 +78,7 @@ TEST_CASE("GPU Scene keeps stable slots and emits precise incremental updates")
     auto moved = packet.items[0].model;
     moved(0, 3) = 4.0f;
     packet.items[0].model = moved;
+    prepare_gpu_scene_submissions(packet);
     const auto update = scene.synchronize(packet, 2);
     REQUIRE(update.updates.size() == 1);
     REQUIRE(update.updates[0].handle == handle);
@@ -93,6 +94,7 @@ TEST_CASE("GPU Scene keeps stable slots and emits precise incremental updates")
     REQUIRE_FALSE(contains(settled.updates[0].instance.flags, gpu_scene_instance_flag::recently_changed));
 
     packet.items.clear();
+    prepare_gpu_scene_submissions(packet);
     const auto removed = scene.synchronize(packet, 4);
     REQUIRE(removed.active_instance_count == 0);
     REQUIRE(removed.updates.size() == 1);
@@ -101,12 +103,15 @@ TEST_CASE("GPU Scene keeps stable slots and emits precise incremental updates")
     REQUIRE(scene.find(handle) == nullptr);
 
     packet.items.push_back({.mesh = {.index = 1, .generation = 1}, .object_id = {.index = 42, .generation = 1}});
+    prepare_gpu_scene_submissions(packet);
     const auto before_retirement = scene.synchronize(packet, 5);
     const auto temporary_handle = before_retirement.updates.back().handle;
     REQUIRE(temporary_handle.index != handle.index);
     packet.items.clear();
+    prepare_gpu_scene_submissions(packet);
     static_cast<void>(scene.synchronize(packet, 6));
     packet.items.push_back({.mesh = {.index = 1, .generation = 1}, .object_id = {.index = 43, .generation = 1}});
+    prepare_gpu_scene_submissions(packet);
     const auto after_retirement = scene.synchronize(packet, 8);
     const auto recycled_handle = after_retirement.updates.back().handle;
     REQUIRE(recycled_handle.index == handle.index);
@@ -138,10 +143,35 @@ TEST_CASE("GPU Scene preserves virtual material attribute references")
     // Let the one-frame recently-changed flag settle before checking a pure material update.
     (void)scene.synchronize(packet, 2);
     packet.virtual_items.front().material_attribute_texture = {.index = 9, .generation = 6};
+    prepare_gpu_scene_submissions(packet);
     const auto updated = scene.synchronize(packet, 3);
     REQUIRE(updated.updates.size() == 1u);
     CHECK(updated.updates.front().dirty == gpu_scene_dirty::material);
     CHECK(updated.updates.front().instance.material_attribute_texture == texture_handle{.index = 9, .generation = 6});
+}
+
+TEST_CASE("GPU Scene preparation consolidates conventional and virtual instances")
+{
+    using namespace arc::render;
+    render_world_packet packet;
+    packet.items.push_back({.mesh = {.index = 1u, .generation = 2u}, .object_id = {.index = 3u, .generation = 4u}});
+    packet.virtual_items.push_back(
+        {.mesh = {.index = 5u, .generation = 6u}, .root_node = 7u, .object_id = {.index = 8u, .generation = 9u}});
+
+    prepare_render_world(packet, {.gpu_driven = true});
+
+    REQUIRE(packet.gpu_scene_submissions_prepared);
+    REQUIRE(packet.gpu_scene_submissions.size() == 2u);
+    CHECK(packet.gpu_scene_submissions[0].source == gpu_scene_submission_source::conventional);
+    CHECK(packet.gpu_scene_submissions[0].instance.geometry_kind == gpu_scene_geometry_kind::mesh);
+    CHECK(packet.gpu_scene_submissions[1].source == gpu_scene_submission_source::virtual_geometry);
+    CHECK(packet.gpu_scene_submissions[1].instance.geometry_kind == gpu_scene_geometry_kind::virtual_mesh);
+
+    gpu_scene scene;
+    const auto update = scene.synchronize(packet, 1u);
+    CHECK(update.active_instance_count == 2u);
+    CHECK(packet.items.front().gpu_scene_instance.valid());
+    CHECK(packet.virtual_items.front().gpu_scene_instance.valid());
 }
 
 TEST_CASE("GPU-driven preparation skips allocating CPU visibility unless validation requests it")

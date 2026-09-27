@@ -62,18 +62,6 @@ gpu_scene_dirty changed_fields(const gpu_scene_instance& previous, const gpu_sce
     return dirty;
 }
 
-gpu_scene_instance_flag instance_flags(bool visible, bool selected, bool transparent, bool casts_shadows,
-                                       bool receives_shadows) noexcept
-{
-    auto result = gpu_scene_instance_flag::none;
-    if (visible) result = result | gpu_scene_instance_flag::visible;
-    if (selected) result = result | gpu_scene_instance_flag::selected;
-    if (transparent) result = result | gpu_scene_instance_flag::transparent;
-    if (casts_shadows) result = result | gpu_scene_instance_flag::casts_shadows;
-    if (receives_shadows) result = result | gpu_scene_instance_flag::receives_shadows;
-    return result;
-}
-
 } // namespace
 
 std::size_t gpu_scene::instance_key_hash::operator()(const instance_key& value) const noexcept
@@ -82,8 +70,6 @@ std::size_t gpu_scene::instance_key_hash::operator()(const instance_key& value) 
     hash_combine(seed, value.world_id);
     hash_combine(seed, value.object_id.index);
     hash_combine(seed, value.object_id.generation);
-    hash_combine(seed, static_cast<std::uint8_t>(value.geometry_kind));
-    hash_combine(seed, value.submesh_or_cluster);
     hash_combine(seed, value.instance_id);
     return seed;
 }
@@ -135,6 +121,7 @@ void gpu_scene::release_retired_slots(std::uint64_t frame_index)
 
 gpu_scene_update_batch gpu_scene::synchronize(render_world_packet& packet, std::uint64_t frame_index)
 {
+    if (!packet.gpu_scene_submissions_prepared) prepare_gpu_scene_submissions(packet);
     gpu_scene_update_batch batch{
         .frame_index = frame_index, .world_id = packet.gpu_scene_world_id, .world_epoch = packet.world_epoch};
     release_retired_slots(frame_index);
@@ -196,58 +183,22 @@ gpu_scene_update_batch gpu_scene::synchronize(render_world_packet& packet, std::
             batch.updates.push_back(
                 {.kind = gpu_scene_update_kind::upsert, .handle = handle, .dirty = dirty, .instance = instance});
         }
+        return handle;
     };
 
-    for (auto& item : packet.items)
-    {
-        const auto geometry_kind =
-            item.skin_matrices.valid() ? gpu_scene_geometry_kind::skinned_mesh : gpu_scene_geometry_kind::mesh;
-        const instance_key key{.world_id = packet.gpu_scene_world_id,
-                               .object_id = item.object_id,
-                               .geometry_kind = geometry_kind,
-                               .submesh_or_cluster = item.submesh,
-                               .instance_id = item.instance_id};
-        upsert(key, {.model = item.model,
-                     .previous_model = item.previous_model,
-                     .world_bounds = item.world_bounds,
-                     .mesh = item.mesh,
-                     .material = item.material,
-                     .material_attribute_texture = item.material_attribute_texture,
-                     .skin_palette = item.skin_matrices,
-                     .skin_joint_count = item.skin_joint_count,
-                     .object_id = item.object_id,
-                     .submesh_or_cluster = item.submesh,
-                     .render_layer_mask = item.render_layer_mask,
-                     .flags = instance_flags(item.visible, item.selected, item.transparent, item.casts_shadows,
-                                             item.receives_shadows),
-                     .maximum_draw_distance = item.maximum_draw_distance,
-                     .geometry_error_scale = item.geometry_error_scale,
-                     .geometry_kind = geometry_kind});
-        item.gpu_scene_instance = {.index = lookup_.at(key), .generation = slots_[lookup_.at(key)].generation};
-    }
-
-    for (auto& item : packet.virtual_items)
+    for (const auto& submission : packet.gpu_scene_submissions)
     {
         const instance_key key{.world_id = packet.gpu_scene_world_id,
-                               .object_id = item.object_id,
-                               .geometry_kind = gpu_scene_geometry_kind::virtual_mesh,
-                               .submesh_or_cluster = item.root_node,
-                               .instance_id = item.instance_id};
-        upsert(key,
-               {.model = item.model,
-                .previous_model = item.previous_model,
-                .world_bounds = item.world_bounds,
-                .virtual_mesh = item.mesh,
-                .material = item.material,
-                .material_attribute_texture = item.material_attribute_texture,
-                .object_id = item.object_id,
-                .submesh_or_cluster = item.root_node,
-                .render_layer_mask = item.render_layer_mask,
-                .flags = instance_flags(item.visible, item.selected, false, item.casts_shadows, item.receives_shadows),
-                .maximum_draw_distance = item.maximum_draw_distance,
-                .geometry_error_scale = item.geometry_error_scale,
-                .geometry_kind = gpu_scene_geometry_kind::virtual_mesh});
-        item.gpu_scene_instance = {.index = lookup_.at(key), .generation = slots_[lookup_.at(key)].generation};
+                               .object_id = submission.instance.object_id,
+                               .instance_id = submission.instance_id};
+        const auto handle = upsert(key, submission.instance);
+        if (submission.source == gpu_scene_submission_source::conventional)
+        {
+            if (submission.source_index < packet.items.size())
+                packet.items[submission.source_index].gpu_scene_instance = handle;
+        }
+        else if (submission.source_index < packet.virtual_items.size())
+            packet.virtual_items[submission.source_index].gpu_scene_instance = handle;
     }
 
     for (std::uint32_t index = 0; index < slots_.size(); ++index)
