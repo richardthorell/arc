@@ -34,6 +34,7 @@ add_subdirectory(framework)
 add_subdirectory(assets)
 add_subdirectory(water)
 add_subdirectory(physics)
+add_subdirectory(audio)
 add_subdirectory(ecs)
 add_subdirectory(persistence)
 add_subdirectory(project)
@@ -57,6 +58,7 @@ target_link_libraries(arc
         arc-assets
         arc-water
         arc-physics
+        arc-audio
         arc-persistence
         arc-flow
         arc-project
@@ -72,14 +74,14 @@ install(TARGETS arc EXPORT ARCTargets COMPONENT sdk)
 
 add_library(arc-runtime INTERFACE)
 target_link_libraries(arc-runtime INTERFACE
-    arc-framework arc-assets arc-water arc-physics arc-persistence arc-input arc-ecs arc-flow)
+    arc-framework arc-assets arc-water arc-physics arc-audio arc-persistence arc-input arc-ecs arc-flow)
 set_target_properties(arc-runtime PROPERTIES EXPORT_NAME Runtime)
 install(TARGETS arc-runtime EXPORT ARCTargets COMPONENT sdk)
 add_library(arc::runtime ALIAS arc-runtime)
 
 add_library(arc-server INTERFACE)
 target_link_libraries(arc-server INTERFACE
-    arc-framework arc-assets arc-water arc-physics arc-persistence arc-ecs arc-flow)
+    arc-framework arc-assets arc-water arc-physics arc-audio arc-persistence arc-ecs arc-flow)
 set_target_properties(arc-server PROPERTIES EXPORT_NAME Server)
 install(TARGETS arc-server EXPORT ARCTargets COMPONENT sdk)
 add_library(arc::server ALIAS arc-server)
