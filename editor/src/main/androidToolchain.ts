@@ -51,10 +51,8 @@ const uniqueCandidates = (candidates: Array<Candidate | null>): Candidate[] => {
   });
 };
 
-const candidate = (
-  value: string | null | undefined,
-  source: EditorPathValidation['source'],
-): Candidate | null => (value?.trim() ? { path: value.trim(), source } : null);
+const candidate = (value: string | null | undefined, source: EditorPathValidation['source']): Candidate | null =>
+  value?.trim() ? { path: value.trim(), source } : null;
 
 const executableName = (name: string): string => (process.platform === 'win32' ? `${name}.exe` : name);
 
@@ -109,8 +107,7 @@ const readJavaVersion = (javaHome: string): string | null => {
 };
 
 const validateJavaHome = (candidatePath: Candidate | null): EditorPathValidation => {
-  if (!candidatePath)
-    return { valid: false, resolvedPath: '', message: 'Java/JDK not detected', source: 'unresolved' };
+  if (!candidatePath) return { valid: false, resolvedPath: '', message: 'Java/JDK not detected', source: 'unresolved' };
   const java = path.join(candidatePath.path, 'bin', executableName('java'));
   const javac = path.join(candidatePath.path, 'bin', executableName('javac'));
   if (!fileExists(java) || !fileExists(javac)) {
