@@ -5,6 +5,7 @@ import type { AiProviderAccountsSnapshot, AiProviderId, AiProviderTestAction } f
 import type { EditorSettingDescriptor, EditorSettingsSnapshot } from '../common/editorWorkflowTypes';
 import type { ArcProjectCandidate } from '../common/projectTypes';
 import { AiProviderService } from './aiProviderService';
+import { androidToolchainSettingKeys, resolveAndroidToolchainValidation } from './androidToolchain';
 
 const schema: EditorSettingDescriptor[] = [
   {
@@ -371,6 +372,33 @@ const schema: EditorSettingDescriptor[] = [
     scopes: ['user'],
   },
   {
+    key: androidToolchainSettingKeys.javaHome,
+    section: 'Android',
+    label: 'Java / JDK',
+    description: 'JDK root used by Android builds. Leave empty to auto-detect JAVA_HOME or Android Studio.',
+    type: 'string',
+    defaultValue: '',
+    scopes: ['user'],
+  },
+  {
+    key: androidToolchainSettingKeys.sdkPath,
+    section: 'Android',
+    label: 'Android SDK',
+    description: 'Android SDK root. Leave empty to auto-detect ANDROID_SDK_ROOT, ANDROID_HOME, or the default SDK.',
+    type: 'string',
+    defaultValue: '',
+    scopes: ['user'],
+  },
+  {
+    key: androidToolchainSettingKeys.ndkPath,
+    section: 'Android',
+    label: 'Android NDK',
+    description: 'Android NDK root. Leave empty to auto-detect an installed NDK from the Android SDK.',
+    type: 'string',
+    defaultValue: '',
+    scopes: ['user'],
+  },
+  {
     key: 'extensions.allowProjectExtensions',
     section: 'Extensions',
     label: 'Allow Project Extensions',
@@ -496,6 +524,9 @@ const validateValue = (descriptor: EditorSettingDescriptor, value: unknown): voi
   }
 };
 
+const stringValue = (values: Record<string, unknown>, key: string): string =>
+  typeof values[key] === 'string' ? values[key] : '';
+
 export class SettingsService {
   private revision = 1;
   private readonly aiProviderService: SettingsAiProviderService;
@@ -526,6 +557,12 @@ export class SettingsService {
       sources[descriptor.key] = connected ? 'user' : 'default';
     }
 
+    const pathValidation = resolveAndroidToolchainValidation({
+      javaHome: stringValue(values, androidToolchainSettingKeys.javaHome),
+      sdkPath: stringValue(values, androidToolchainSettingKeys.sdkPath),
+      ndkPath: stringValue(values, androidToolchainSettingKeys.ndkPath),
+    });
+
     return {
       revision: this.revision,
       values,
@@ -533,6 +570,7 @@ export class SettingsService {
       restartRequired: schema.filter((entry) => entry.restartRequired).map((entry) => entry.key),
       schema,
       aiProviders,
+      pathValidation,
     };
   }
 
