@@ -34,10 +34,7 @@ describe('resolveAndroidToolchainValidation', () => {
     touch(path.join(ndkPath, 'source.properties'), 'Pkg.Revision = 27.2.12479018\n');
     touch(path.join(ndkPath, 'build', 'cmake', 'android.toolchain.cmake'));
 
-    const validation = resolveAndroidToolchainValidation(
-      { javaHome, sdkPath, ndkPath },
-      { PATH: '' },
-    );
+    const validation = resolveAndroidToolchainValidation({ javaHome, sdkPath, ndkPath }, { PATH: '' });
 
     expect(validation[androidToolchainSettingKeys.javaHome]).toMatchObject({
       valid: true,
