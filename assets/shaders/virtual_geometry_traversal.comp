@@ -76,6 +76,14 @@ struct page_request
     uint flags;
 };
 
+struct fallback_record
+{
+    uint instance_index;
+    uint resource_index;
+    uint hierarchy_node;
+    uint reason;
+};
+
 layout(std430, set = 0, binding = 0) readonly buffer gpu_scene_buffer { gpu_scene_instance instances[]; } scene;
 layout(std430, set = 0, binding = 1) readonly buffer transform_buffer { gpu_scene_transform transforms[]; } transform_table;
 layout(std430, set = 0, binding = 2) readonly buffer resource_buffer { virtual_resource resources[]; } resource_table;
@@ -98,9 +106,13 @@ layout(std430, set = 0, binding = 9) buffer counter_buffer
     uint fallback_instances;
     uint parent_fallbacks;
     uint traversal_overflow;
-    uint reserved;
+    uint fallback_overflow;
 } counters;
-layout(set = 0, binding = 10) uniform sampler2D hzb_generations[2];
+layout(std430, set = 0, binding = 10) writeonly buffer fallback_buffer
+{
+    fallback_record instances[];
+} output_fallbacks;
+layout(set = 0, binding = 11) uniform sampler2D hzb_generations[2];
 
 layout(push_constant) uniform traversal_constants
 {
@@ -110,7 +122,13 @@ layout(push_constant) uniform traversal_constants
     vec4 viewport_hzb;
     uint hzb_generation;
     uint camera_cut;
+    uint fallback_capacity;
+    uint traversal_stack_capacity;
 } constants;
+
+const uint fallback_traversal_overflow = 1u;
+const uint fallback_visible_overflow = 2u;
+const uint fallback_unavailable_parent = 4u;
 
 bool sphere_in_frustum(vec3 center, float radius)
 {
@@ -146,6 +164,24 @@ void request_page(uint resource_index, uint handle_generation, uint generation, 
     output_requests.requests[request_index].flags = flags;
 }
 
+void queue_fallback(uint instance_index, uint resource_index, uint hierarchy_node, uint reason,
+                    inout bool fallback_queued)
+{
+    if (fallback_queued)
+        return;
+    fallback_queued = true;
+    uint fallback_index = atomicAdd(counters.fallback_instances, 1u);
+    if (fallback_index >= constants.fallback_capacity)
+    {
+        atomicAdd(counters.fallback_overflow, 1u);
+        return;
+    }
+    output_fallbacks.instances[fallback_index].instance_index = instance_index;
+    output_fallbacks.instances[fallback_index].resource_index = resource_index;
+    output_fallbacks.instances[fallback_index].hierarchy_node = hierarchy_node;
+    output_fallbacks.instances[fallback_index].reason = reason;
+}
+
 void main()
 {
     uint instance_index = gl_GlobalInvocationID.x;
@@ -163,12 +199,16 @@ void main()
 
     uint stack[64];
     uint stack_count = 0u;
+    uint stack_capacity = clamp(constants.traversal_stack_capacity, 1u, 64u);
+    bool fallback_queued = false;
     for (uint root = 0u; root < resource_record.roots_generation.y; ++root)
     {
-        if (stack_count == 64u)
+        if (stack_count == stack_capacity)
         {
             atomicAdd(counters.traversal_overflow, 1u);
-            atomicAdd(counters.fallback_instances, 1u);
+            queue_fallback(instance_index, instance.geometry.x,
+                           root_table.roots[resource_record.roots_generation.x + root],
+                           fallback_traversal_overflow, fallback_queued);
             return;
         }
         stack[stack_count++] = root_table.roots[resource_record.roots_generation.x + root];
@@ -176,10 +216,10 @@ void main()
 
     mat4 model = transform_table.transforms[instance_index].model;
     float scale = max(length(model[0].xyz), max(length(model[1].xyz), length(model[2].xyz)));
-    bool instance_fallback = false;
     while (stack_count != 0u)
     {
-        virtual_node node = node_table.nodes[stack[--stack_count]];
+        uint node_index = stack[--stack_count];
+        virtual_node node = node_table.nodes[node_index];
         vec3 center = (model * vec4(node.sphere.xyz, 1.0)).xyz;
         float radius = node.sphere.w * scale;
         if (!sphere_in_frustum(center, radius))
@@ -241,15 +281,19 @@ void main()
         }
         if (descend)
         {
-            if (stack_count + node.child_count > 64u)
+            if (stack_count + node.child_count > stack_capacity)
             {
                 atomicAdd(counters.traversal_overflow, 1u);
-                instance_fallback = true;
-                break;
+                queue_fallback(instance_index, instance.geometry.x, node_index, fallback_traversal_overflow,
+                               fallback_queued);
+                descend = false;
             }
-            for (uint child_offset = node.child_count; child_offset != 0u; --child_offset)
-                stack[stack_count++] = child_table.children[node.first_child + child_offset - 1u];
-            continue;
+            if (descend)
+            {
+                for (uint child_offset = node.child_count; child_offset != 0u; --child_offset)
+                    stack[stack_count++] = child_table.children[node.first_child + child_offset - 1u];
+                continue;
+            }
         }
         if (node.child_count != 0u && projected_error > constants.camera_position_and_error.w)
             atomicAdd(counters.parent_fallbacks, 1u);
@@ -257,7 +301,8 @@ void main()
         {
             request_page(instance.geometry.x, instance.geometry.y, resource_generation, node.page_index,
                          projected_error, distance_to_node, 1u);
-            instance_fallback = true;
+            queue_fallback(instance_index, instance.geometry.x, node_index, fallback_unavailable_parent,
+                           fallback_queued);
             continue;
         }
         for (uint cluster = 0u; cluster < node.cluster_count; ++cluster)
@@ -266,7 +311,8 @@ void main()
             if (visible_index >= constants.capacities.z)
             {
                 atomicAdd(counters.visible_overflow, 1u);
-                instance_fallback = true;
+                queue_fallback(instance_index, instance.geometry.x, node_index, fallback_visible_overflow,
+                               fallback_queued);
                 break;
             }
             output_clusters.visible[visible_index].instance_index = instance_index;
@@ -279,6 +325,4 @@ void main()
             output_clusters.visible[visible_index].view_depth = distance_to_node;
         }
     }
-    if (instance_fallback)
-        atomicAdd(counters.fallback_instances, 1u);
 }

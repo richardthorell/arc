@@ -416,6 +416,30 @@ TEST_CASE("virtual geometry reference traversal selects resident children or a h
     REQUIRE(overflow.visible_clusters.empty());
     REQUIRE(overflow.feedback.overflow.visible_cluster_overflow == 1);
     REQUIRE(overflow.feedback.overflow.fallback_instance_count == 1);
+    REQUIRE(overflow.feedback.fallback_instances.size() == 1u);
+    CHECK(overflow.feedback.fallback_instances.front().instance_index == 23u);
+    CHECK(overflow.feedback.fallback_instances.front().resource_index == 7u);
+    CHECK(overflow.feedback.fallback_instances.front().hierarchy_node == 2u);
+    CHECK(overflow.feedback.fallback_instances.front().reason ==
+          virtual_geometry_fallback_reason::visible_cluster_overflow);
+
+    const auto saturated_fallback = traverse_virtual_geometry_gpu_reference(
+        {7, 3}, 11, 23, 5, geometry, all_resident, view,
+        {.maximum_visible_clusters = 1, .maximum_page_requests = 8, .maximum_fallback_instances = 0});
+    CHECK(saturated_fallback.feedback.fallback_instances.empty());
+    CHECK(saturated_fallback.feedback.overflow.fallback_queue_overflow == 1u);
+
+    const auto traversal_overflow =
+        traverse_virtual_geometry_gpu_reference({7, 3}, 11, 23, 5, geometry, all_resident, view,
+                                                {.maximum_visible_clusters = 8,
+                                                 .maximum_page_requests = 8,
+                                                 .maximum_fallback_instances = 1,
+                                                 .maximum_traversal_stack = 1});
+    CHECK(traversal_overflow.visible_clusters.empty());
+    CHECK(traversal_overflow.feedback.overflow.traversal_overflow == 1u);
+    REQUIRE(traversal_overflow.feedback.fallback_instances.size() == 1u);
+    CHECK(traversal_overflow.feedback.fallback_instances.front().reason ==
+          virtual_geometry_fallback_reason::traversal_queue_overflow);
 }
 
 TEST_CASE("virtual geometry software visibility resolves depth before stable primitive identity")

@@ -513,12 +513,18 @@ bool vulkan_render_backend::ensure_virtual_geometry_traversal_resources()
         std::clamp(std::bit_ceil(std::max(1u, static_cast<std::uint32_t>(virtual_geometry_cluster_mirror_.size()))),
                    256u, 1u << 20u);
     constexpr std::uint32_t requested_page_capacity = 4096u;
+    constexpr std::uint32_t maximum_fallback_capacity = 4096u;
+    const auto requested_fallback_capacity =
+        std::clamp(std::bit_ceil(std::max(1u, std::min(gpu_scene_capacity_, maximum_fallback_capacity))), 256u,
+                   maximum_fallback_capacity);
     if (virtual_geometry_visible_capacity_ < requested_visible_capacity ||
         virtual_geometry_request_capacity_ < requested_page_capacity ||
+        virtual_geometry_fallback_capacity_ < requested_fallback_capacity ||
         virtual_geometry_visible_buffer_.buffer == VK_NULL_HANDLE)
     {
         gpu_buffer visible{};
         gpu_buffer requests{};
+        gpu_buffer fallbacks{};
         gpu_buffer counters{};
         if (!create_buffer(buffer_size(requested_visible_capacity, sizeof(virtual_geometry_visible_cluster_record)),
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -526,6 +532,9 @@ bool vulkan_render_backend::ensure_virtual_geometry_traversal_resources()
             !create_buffer(buffer_size(requested_page_capacity, sizeof(virtual_geometry_gpu_page_request)),
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                            VMA_MEMORY_USAGE_GPU_ONLY, requests) ||
+            !create_buffer(buffer_size(requested_fallback_capacity, sizeof(virtual_geometry_fallback_record)),
+                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                           VMA_MEMORY_USAGE_GPU_ONLY, fallbacks) ||
             !create_buffer(sizeof(virtual_geometry_traversal_counter_data),
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -533,37 +542,43 @@ bool vulkan_render_backend::ensure_virtual_geometry_traversal_resources()
         {
             destroy_buffer(visible);
             destroy_buffer(requests);
+            destroy_buffer(fallbacks);
             destroy_buffer(counters);
             return false;
         }
         auto retired_visible = virtual_geometry_visible_buffer_;
         auto retired_requests = virtual_geometry_request_buffer_;
+        auto retired_fallbacks = virtual_geometry_fallback_buffer_;
         auto retired_counters = virtual_geometry_counter_buffer_;
         virtual_geometry_visible_buffer_ = visible;
         virtual_geometry_request_buffer_ = requests;
+        virtual_geometry_fallback_buffer_ = fallbacks;
         virtual_geometry_counter_buffer_ = counters;
         virtual_geometry_visible_capacity_ = requested_visible_capacity;
         virtual_geometry_request_capacity_ = requested_page_capacity;
+        virtual_geometry_fallback_capacity_ = requested_fallback_capacity;
         virtual_geometry_traversal_descriptors_dirty_ = true;
         virtual_geometry_raster_descriptors_dirty_ = true;
         virtual_geometry_material_descriptors_dirty_ = true;
         if (retired_visible.buffer != VK_NULL_HANDLE || retired_requests.buffer != VK_NULL_HANDLE ||
-            retired_counters.buffer != VK_NULL_HANDLE)
-            deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
-                                     [this, retired_visible, retired_requests, retired_counters]() mutable
-                                     {
-                                         destroy_buffer(retired_visible);
-                                         destroy_buffer(retired_requests);
-                                         destroy_buffer(retired_counters);
-                                     });
+            retired_fallbacks.buffer != VK_NULL_HANDLE || retired_counters.buffer != VK_NULL_HANDLE)
+            deferred_releases_.defer(
+                last_profile_.frame_index + frame_resource_count(),
+                [this, retired_visible, retired_requests, retired_fallbacks, retired_counters]() mutable
+                {
+                    destroy_buffer(retired_visible);
+                    destroy_buffer(retired_requests);
+                    destroy_buffer(retired_fallbacks);
+                    destroy_buffer(retired_counters);
+                });
     }
 
     if (virtual_geometry_traversal_descriptor_set_layout_ == VK_NULL_HANDLE)
     {
-        std::array<VkDescriptorSetLayoutBinding, 11> bindings{};
-        for (std::uint32_t binding = 0; binding < 10u; ++binding)
+        std::array<VkDescriptorSetLayoutBinding, 12> bindings{};
+        for (std::uint32_t binding = 0; binding < 11u; ++binding)
             bindings[binding] = {binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
-        bindings[10] = {10u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+        bindings[11] = {11u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
         VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
         layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
         layout.pBindings = bindings.data();
@@ -577,7 +592,7 @@ bool vulkan_render_backend::ensure_virtual_geometry_traversal_resources()
     {
         VkDescriptorPool replacement_pool{};
         VkDescriptorSet replacement_set{};
-        const std::array pool_sizes{VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10u},
+        const std::array pool_sizes{VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 11u},
                                     VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2u}};
         VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
         pool.maxSets = 1u;
@@ -604,8 +619,9 @@ bool vulkan_render_backend::ensure_virtual_geometry_traversal_resources()
             VkDescriptorBufferInfo{virtual_geometry_visible_buffer_.buffer, 0, VK_WHOLE_SIZE},
             VkDescriptorBufferInfo{virtual_geometry_request_buffer_.buffer, 0, VK_WHOLE_SIZE},
             VkDescriptorBufferInfo{virtual_geometry_counter_buffer_.buffer, 0, VK_WHOLE_SIZE},
+            VkDescriptorBufferInfo{virtual_geometry_fallback_buffer_.buffer, 0, VK_WHOLE_SIZE},
         };
-        std::array<VkWriteDescriptorSet, 10> writes{};
+        std::array<VkWriteDescriptorSet, 11> writes{};
         for (std::uint32_t binding = 0; binding < writes.size(); ++binding)
         {
             writes[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -623,7 +639,7 @@ bool vulkan_render_backend::ensure_virtual_geometry_traversal_resources()
                 hzb_images[index] = {hzb_sampler_, hzb_history_[index].view, VK_IMAGE_LAYOUT_GENERAL};
         VkWriteDescriptorSet image_write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         image_write.dstSet = replacement_set;
-        image_write.dstBinding = 10u;
+        image_write.dstBinding = 11u;
         image_write.descriptorCount = static_cast<std::uint32_t>(hzb_images.size());
         image_write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         image_write.pImageInfo = hzb_images.data();
@@ -670,10 +686,26 @@ bool vulkan_render_backend::ensure_virtual_geometry_traversal_resources()
 
 bool vulkan_render_backend::ensure_virtual_geometry_feedback_frame(virtual_geometry_feedback_frame& frame)
 {
-    if (frame.requests.buffer == VK_NULL_HANDLE &&
-        !create_buffer(buffer_size(virtual_geometry_request_capacity_, sizeof(virtual_geometry_gpu_page_request)),
-                       VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU, frame.requests))
-        return false;
+    if (frame.request_capacity < virtual_geometry_request_capacity_)
+    {
+        gpu_buffer replacement{};
+        if (!create_buffer(buffer_size(virtual_geometry_request_capacity_, sizeof(virtual_geometry_gpu_page_request)),
+                           VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU, replacement))
+            return false;
+        destroy_buffer(frame.requests);
+        frame.requests = replacement;
+        frame.request_capacity = virtual_geometry_request_capacity_;
+    }
+    if (frame.fallback_capacity < virtual_geometry_fallback_capacity_)
+    {
+        gpu_buffer replacement{};
+        if (!create_buffer(buffer_size(virtual_geometry_fallback_capacity_, sizeof(virtual_geometry_fallback_record)),
+                           VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU, replacement))
+            return false;
+        destroy_buffer(frame.fallbacks);
+        frame.fallbacks = replacement;
+        frame.fallback_capacity = virtual_geometry_fallback_capacity_;
+    }
     return frame.counters.buffer != VK_NULL_HANDLE ||
            create_buffer(sizeof(virtual_geometry_traversal_counter_data), VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                          VMA_MEMORY_USAGE_GPU_TO_CPU, frame.counters);
@@ -710,6 +742,8 @@ void vulkan_render_backend::dispatch_virtual_geometry_traversal(VkCommandBuffer 
     constants.hzb_generation =
         static_cast<std::uint32_t>((last_profile_.frame_index + hzb_history_.size() - 1u) % hzb_history_.size());
     constants.camera_cut = frame_camera_.camera_cut ? 1u : 0u;
+    constants.fallback_capacity = virtual_geometry_fallback_capacity_;
+    constants.traversal_stack_capacity = 64u;
     vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, virtual_geometry_traversal_pipeline_);
     vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, virtual_geometry_traversal_pipeline_layout_,
                             0u, 1u, &virtual_geometry_traversal_descriptor_set_, 0u, nullptr);
@@ -719,8 +753,9 @@ void vulkan_render_backend::dispatch_virtual_geometry_traversal(VkCommandBuffer 
 
     dispatch_virtual_geometry_raster(command_buffer);
 
-    std::array<VkBufferMemoryBarrier, 2> outputs{};
-    const std::array output_buffers{virtual_geometry_request_buffer_.buffer, virtual_geometry_counter_buffer_.buffer};
+    std::array<VkBufferMemoryBarrier, 3> outputs{};
+    const std::array output_buffers{virtual_geometry_request_buffer_.buffer, virtual_geometry_fallback_buffer_.buffer,
+                                    virtual_geometry_counter_buffer_.buffer};
     for (std::size_t index = 0; index < outputs.size(); ++index)
     {
         outputs[index].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -740,13 +775,17 @@ void vulkan_render_backend::dispatch_virtual_geometry_traversal(VkCommandBuffer 
     {
         VkBufferCopy request_copy{
             .size = buffer_size(virtual_geometry_request_capacity_, sizeof(virtual_geometry_gpu_page_request))};
+        VkBufferCopy fallback_copy{
+            .size = buffer_size(virtual_geometry_fallback_capacity_, sizeof(virtual_geometry_fallback_record))};
         VkBufferCopy counter_copy{.size = sizeof(virtual_geometry_traversal_counter_data)};
         vkCmdCopyBuffer(command_buffer, virtual_geometry_request_buffer_.buffer, feedback.requests.buffer, 1u,
                         &request_copy);
+        vkCmdCopyBuffer(command_buffer, virtual_geometry_fallback_buffer_.buffer, feedback.fallbacks.buffer, 1u,
+                        &fallback_copy);
         vkCmdCopyBuffer(command_buffer, virtual_geometry_counter_buffer_.buffer, feedback.counters.buffer, 1u,
                         &counter_copy);
-        std::array<VkBufferMemoryBarrier, 2> host_barriers{};
-        const std::array host_buffers{feedback.requests.buffer, feedback.counters.buffer};
+        std::array<VkBufferMemoryBarrier, 3> host_barriers{};
+        const std::array host_buffers{feedback.requests.buffer, feedback.fallbacks.buffer, feedback.counters.buffer};
         for (std::size_t index = 0; index < host_barriers.size(); ++index)
         {
             host_barriers[index].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -776,12 +815,14 @@ void vulkan_render_backend::collect_virtual_geometry_feedback(std::uint32_t fram
     std::memcpy(&counters, counters_mapped, sizeof(counters));
     vmaUnmapMemory(allocator_, frame.counters.allocation);
     const auto request_count = std::min(counters.request_count, virtual_geometry_request_capacity_);
+    const auto fallback_count = std::min(counters.fallback_instances, virtual_geometry_fallback_capacity_);
     completed_virtual_geometry_feedback_ = {.frame_index = frame.submitted_frame,
                                             .overflow = {.visible_cluster_overflow = counters.visible_overflow,
                                                          .page_request_overflow = counters.request_overflow,
                                                          .fallback_instance_count = counters.fallback_instances,
                                                          .parent_fallback_count = counters.parent_fallbacks,
-                                                         .traversal_overflow = counters.traversal_overflow}};
+                                                         .traversal_overflow = counters.traversal_overflow,
+                                                         .fallback_queue_overflow = counters.fallback_overflow}};
     if (request_count != 0u)
     {
         void* requests_mapped{};
@@ -792,6 +833,18 @@ void vulkan_render_backend::collect_virtual_geometry_feedback(std::uint32_t fram
             const auto* requests = static_cast<const virtual_geometry_gpu_page_request*>(requests_mapped);
             completed_virtual_geometry_feedback_.page_requests.assign(requests, requests + request_count);
             vmaUnmapMemory(allocator_, frame.requests.allocation);
+        }
+    }
+    if (fallback_count != 0u)
+    {
+        void* fallbacks_mapped{};
+        if (vmaMapMemory(allocator_, frame.fallbacks.allocation, &fallbacks_mapped) == VK_SUCCESS)
+        {
+            const auto bytes = buffer_size(fallback_count, sizeof(virtual_geometry_fallback_record));
+            vmaInvalidateAllocation(allocator_, frame.fallbacks.allocation, 0u, bytes);
+            const auto* fallbacks = static_cast<const virtual_geometry_fallback_record*>(fallbacks_mapped);
+            completed_virtual_geometry_feedback_.fallback_instances.assign(fallbacks, fallbacks + fallback_count);
+            vmaUnmapMemory(allocator_, frame.fallbacks.allocation);
         }
     }
     auto& profile = last_profile_.virtual_geometry;
@@ -806,6 +859,12 @@ void vulkan_render_backend::collect_virtual_geometry_feedback(std::uint32_t fram
     profile.traversal_overflow = counters.traversal_overflow;
     profile.overflowed_clusters = counters.visible_overflow + counters.traversal_overflow;
     profile.fallback_instances = counters.fallback_instances;
+    profile.fallback_queue_overflow = counters.fallback_overflow;
+    profile.traversal_stack_capacity = 64u;
+    profile.visible_cluster_capacity = virtual_geometry_visible_capacity_;
+    profile.page_request_capacity = virtual_geometry_request_capacity_;
+    profile.fallback_queue_capacity = virtual_geometry_fallback_capacity_;
+    profile.cpu_submissions = fallback_count;
     frame.submitted_frame = 0u;
 }
 
