@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { AssetPickerItem, AssetThumbnailProvider } from '../inspector/AssetPicker';
 import { InspectorComponentCard } from '../inspector/InspectorComponentCard';
 import { setPathValue } from '../inspector/propertySchema';
+import { UiButton } from '../ui/UiButton';
+import { UiSearchInput } from '../ui/UiTextInput';
 import type { HostWorldEnvironment } from './environmentTypes';
 import { worldEnvironmentSchemas } from './worldEnvironmentSchemas';
 
@@ -67,24 +69,29 @@ export function WorldEnvironmentInspector({
     <section className="environment-inspector data-inspector">
       <div className="environment-preset-strip" aria-label="World environment presets">
         {environmentPresets.map(([id, label]) => (
-          <button key={id} onClick={() => onPreset(id)} type="button">
+          <UiButton key={id} onClick={() => onPreset(id)} type="button">
             {label}
-          </button>
+          </UiButton>
         ))}
       </div>
       <div className="inspector-search-row environment-search-row">
         <label>
           <Search size={15} />
-          <input
+          <UiSearchInput
             aria-label="Search world settings"
             onChange={(event) => setFilter(event.target.value)}
             placeholder="Search world settings…"
             value={filter}
           />
         </label>
-        <button aria-label="World settings filter options" title="Filter virtual components" type="button">
+        <UiButton
+          aria-label="World settings filter options"
+          title="Filter virtual components"
+          type="button"
+          variant="icon"
+        >
           <SlidersHorizontal size={15} />
-        </button>
+        </UiButton>
       </div>
       <div className="inspector-component-list environment-component-list">
         {schemas.map((schema) => (
