@@ -11,12 +11,7 @@ export type EditorCommandMatch = {
   score: number;
 };
 
-const normalizedTerms = (value: string): string[] =>
-  value
-    .trim()
-    .toLocaleLowerCase()
-    .split(/\s+/)
-    .filter(Boolean);
+const normalizedTerms = (value: string): string[] => value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
 
 const searchableText = (command: EditorCommand): string[] => [
   command.title,

@@ -13,9 +13,26 @@ describe('EditorCommandRegistry', () => {
 
   it('searches title, category, ID, and keywords deterministically', () => {
     const registry = new EditorCommandRegistry();
-    registry.register({ id: 'edit.undo', title: 'Undo', category: 'Edit', keywords: ['history'], defaultShortcut: 'Ctrl+Z' });
-    registry.register({ id: 'scene.focus-selection', title: 'Focus Selection', category: 'Viewport', keywords: ['frame'] });
-    registry.register({ id: 'edit.redo', title: 'Redo', category: 'Edit', keywords: ['history'], defaultShortcut: 'Ctrl+Shift+Z' });
+    registry.register({
+      id: 'edit.undo',
+      title: 'Undo',
+      category: 'Edit',
+      keywords: ['history'],
+      defaultShortcut: 'Ctrl+Z',
+    });
+    registry.register({
+      id: 'scene.focus-selection',
+      title: 'Focus Selection',
+      category: 'Viewport',
+      keywords: ['frame'],
+    });
+    registry.register({
+      id: 'edit.redo',
+      title: 'Redo',
+      category: 'Edit',
+      keywords: ['history'],
+      defaultShortcut: 'Ctrl+Shift+Z',
+    });
 
     expect(registry.search('focus').map((match) => match.command.id)).toEqual(['scene.focus-selection']);
     expect(registry.search('history').map((match) => match.command.id)).toEqual(['edit.redo', 'edit.undo']);
