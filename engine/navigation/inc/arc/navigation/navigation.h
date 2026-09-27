@@ -51,7 +51,7 @@ enum class path_status : std::uint8_t
     unreachable
 };
 
-struct path_result
+struct [[nodiscard]] path_result
 {
     path_status status = path_status::unreachable;
     std::vector<math::vector<float, 3>> points{};
