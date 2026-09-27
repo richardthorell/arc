@@ -52,7 +52,7 @@ const uniqueCandidates = (candidates: Array<Candidate | null>): Candidate[] => {
 };
 
 const candidate = (
-  value: string | undefined,
+  value: string | null | undefined,
   source: EditorPathValidation['source'],
 ): Candidate | null => (value?.trim() ? { path: value.trim(), source } : null);
 
@@ -235,7 +235,7 @@ export const resolveAndroidToolchainValidation = (
     candidate(preferences.ndkPath, 'configured'),
     candidate(environment.ANDROID_NDK_HOME, 'environment'),
     candidate(environment.ANDROID_NDK_ROOT, 'environment'),
-    candidate(ndkFromSdk ?? undefined, 'derived'),
+    candidate(ndkFromSdk, 'derived'),
   ]);
   const ndkCandidate = firstValidOrFirst(ndkCandidates, validateNdkRoot);
 
