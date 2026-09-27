@@ -1,0 +1,46 @@
+{
+  "format": "arc-virtual-geometry-baseline",
+  "version": 1,
+  "sourceCommit": "7f222131b647888ebc793025619c2c339798f056",
+  "corpus": {
+    "name": "generated-wave-grid-ci",
+    "generatorVersion": 1,
+    "side": 65,
+    "sourceVertices": 4225,
+    "sourceTriangles": 8192
+  },
+  "builder": {
+    "clusterCount": 164,
+    "hierarchyNodes": 99,
+    "hierarchyLevels": 4,
+    "pageCount": 2,
+    "rootPageCount": 1,
+    "decodedPageBytes": 282552,
+    "storedPageBytes": 111770,
+    "artifactBytes": 143274,
+    "hierarchyFingerprint": "0x433d3c2a324f0544"
+  },
+  "captures": [
+    {
+      "name": "flythrough-near",
+      "visibleClusterFingerprint": "0x53cf2aad052f8cf2",
+      "visibleTriangles": 8192,
+      "visibleClusters": 86
+    },
+    {
+      "name": "flythrough-far",
+      "visibleClusterFingerprint": "0x9ee0699352e911e2",
+      "visibleTriangles": 4086,
+      "visibleClusters": 54
+    },
+    {
+      "name": "root-only-pressure",
+      "visibleClusterFingerprint": "0xa917b76e721e88fe",
+      "visibleTriangles": 2554,
+      "visibleClusters": 31,
+      "requestedPages": 1,
+      "parentFallbacks": 4
+    }
+  ],
+  "timingPolicy": "Informational timings are emitted per run and are not stored as cross-machine pass/fail values."
+}

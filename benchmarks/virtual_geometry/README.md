@@ -33,3 +33,6 @@ recipe. External assets are intentionally opt-in until the asset-library provena
 
 The generated 10M-triangle case is the authoritative reproducible stress input; external assets supplement it with
 real-world topology and material boundaries rather than replacing it.
+
+`baseline-main.json` freezes deterministic structural and selection results from `main` before the VG2.1 hierarchy
+upgrade. Timing remains per-run telemetry because CPU and GPU duration is not portable across machines.
