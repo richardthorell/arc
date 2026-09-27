@@ -165,10 +165,7 @@ export function ShaderCodeEditor({
     if (!editor || !model || !revealLocation) return;
 
     const lineNumber = Math.min(Math.max(1, revealLocation.line), model.getLineCount());
-    const column = Math.min(
-      Math.max(1, revealLocation.column ?? 1),
-      model.getLineMaxColumn(lineNumber),
-    );
+    const column = Math.min(Math.max(1, revealLocation.column ?? 1), model.getLineMaxColumn(lineNumber));
     editor.setPosition({ lineNumber, column });
     editor.revealPositionInCenter({ lineNumber, column });
     editor.focus();
