@@ -23,7 +23,10 @@ export const DEFAULT_GRAPH_VIEWPORT_LIMITS: GraphViewportLimits = {
 const finiteOr = (value: unknown, fallback: number): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 
-export function clampGraphZoom(zoom: number, limits: GraphViewportLimits = DEFAULT_GRAPH_VIEWPORT_LIMITS): number {
+export function clampGraphViewportZoom(
+  zoom: number,
+  limits: GraphViewportLimits = DEFAULT_GRAPH_VIEWPORT_LIMITS,
+): number {
   const minZoom = Math.min(limits.minZoom, limits.maxZoom);
   const maxZoom = Math.max(limits.minZoom, limits.maxZoom);
   return Math.min(maxZoom, Math.max(minZoom, finiteOr(zoom, DEFAULT_GRAPH_VIEWPORT.zoom)));
@@ -42,7 +45,7 @@ export function normalizeGraphViewport(
   return {
     x: finiteOr(value?.x, fallback.x),
     y: finiteOr(value?.y, fallback.y),
-    zoom: clampGraphZoom(finiteOr(value?.zoom, fallback.zoom), limits),
+    zoom: clampGraphViewportZoom(finiteOr(value?.zoom, fallback.zoom), limits),
   };
 }
 
@@ -65,7 +68,7 @@ export function zoomGraphViewportAt(
   limits: GraphViewportLimits = DEFAULT_GRAPH_VIEWPORT_LIMITS,
 ): GraphViewportState {
   const current = normalizeGraphViewport(viewport, DEFAULT_GRAPH_VIEWPORT, limits);
-  const zoom = clampGraphZoom(requestedZoom, limits);
+  const zoom = clampGraphViewportZoom(requestedZoom, limits);
   if (zoom === current.zoom) return current;
 
   const graphX = (anchor.x - current.x) / current.zoom;
