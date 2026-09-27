@@ -54,6 +54,7 @@ export function RemoteAssetBrowser({ source }: Props) {
   const [importProgress, setImportProgress] = useState<ArcAssetImportProgress | null>(null);
   const [importMessage, setImportMessage] = useState('');
   const searchRevision = useRef(0);
+  const manifestRevision = useRef(0);
 
   useEffect(() => {
     const revision = ++searchRevision.current;
@@ -80,12 +81,15 @@ export function RemoteAssetBrowser({ source }: Props) {
   }, [kind, search, source.id]);
 
   useEffect(() => {
+    ++manifestRevision.current;
     setSelected(null);
     setManifest(null);
+    setManifestLoading(false);
     setImportMessage('');
   }, [source.id]);
 
   const selectAsset = (asset: ArcRemoteAsset) => {
+    const revision = ++manifestRevision.current;
     setSelected(asset);
     setManifest(null);
     setResolution('');
@@ -96,14 +100,20 @@ export function RemoteAssetBrowser({ source }: Props) {
     void window.arc.assetSources
       .manifest(source.id, asset.id)
       .then((next) => {
+        if (revision !== manifestRevision.current) return;
         setManifest(next);
         const resolutions = manifestResolutions(next);
         const formats = manifestFormats(next, asset.kind);
         setResolution(preferredResolution(resolutions));
         setFormat(preferredFormat(formats, asset.kind));
       })
-      .catch((reason) => setImportMessage(reason instanceof Error ? reason.message : String(reason)))
-      .finally(() => setManifestLoading(false));
+      .catch((reason) => {
+        if (revision === manifestRevision.current)
+          setImportMessage(reason instanceof Error ? reason.message : String(reason));
+      })
+      .finally(() => {
+        if (revision === manifestRevision.current) setManifestLoading(false);
+      });
   };
 
   const resolutions = useMemo(() => (manifest ? manifestResolutions(manifest) : []), [manifest]);

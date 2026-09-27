@@ -15,30 +15,26 @@ const source: ArcAssetSourceDescriptor = {
   capabilities: { search: true, downloadManifest: true },
 };
 
+const rock = {
+  id: 'rock',
+  sourceId: 'polyhaven',
+  name: 'Granite Rock',
+  description: 'A scanned rock.',
+  kind: 'model' as const,
+  category: 'Nature/Rocks',
+  tags: ['rock'],
+  thumbnailUrl: 'https://cdn.example/rock.jpg',
+  license: 'CC0',
+  attribution: 'Powered by Poly Haven',
+  metadata: {},
+};
+
 const search = vi.fn();
 const manifest = vi.fn();
 const importToProject = vi.fn();
 
 beforeEach(() => {
-  search.mockReset().mockResolvedValue({
-    source,
-    total: 1,
-    assets: [
-      {
-        id: 'rock',
-        sourceId: 'polyhaven',
-        name: 'Granite Rock',
-        description: 'A scanned rock.',
-        kind: 'model',
-        category: 'Nature/Rocks',
-        tags: ['rock'],
-        thumbnailUrl: 'https://cdn.example/rock.jpg',
-        license: 'CC0',
-        attribution: 'Powered by Poly Haven',
-        metadata: {},
-      },
-    ],
-  });
+  search.mockReset().mockResolvedValue({ source, total: 1, assets: [rock] });
   manifest.mockReset().mockResolvedValue({
     sourceId: 'polyhaven',
     assetId: 'rock',
@@ -93,5 +89,48 @@ describe('RemoteAssetBrowser', () => {
       destinationScope: 'project',
     });
     expect(await view.findByText('Imported 2 files · 0 cache hits · 2 downloaded')).toBeInTheDocument();
+  });
+
+  it('ignores a stale manifest when a newer asset selection resolves first', async () => {
+    const tree = {
+      ...rock,
+      id: 'tree',
+      name: 'Pine Tree',
+      category: 'Nature/Trees',
+      tags: ['tree'],
+      thumbnailUrl: 'https://cdn.example/tree.jpg',
+    };
+    search.mockResolvedValue({ source, total: 2, assets: [rock, tree] });
+
+    let resolveRock!: (value: unknown) => void;
+    const rockManifest = new Promise((resolve) => {
+      resolveRock = resolve;
+    });
+    manifest.mockImplementation((_sourceId, assetId) => {
+      if (assetId === 'rock') return rockManifest;
+      return Promise.resolve({
+        sourceId: 'polyhaven',
+        assetId: 'tree',
+        files: [{ logicalPath: 'fbx/4k/fbx', url: 'https://cdn.example/tree.fbx', sizeBytes: 64 }],
+      });
+    });
+
+    const view = render(<RemoteAssetBrowser source={source} />);
+    fireEvent.click(await view.findByRole('button', { name: /Granite Rock/ }));
+    fireEvent.click(await view.findByRole('button', { name: /Pine Tree/ }));
+
+    await waitFor(() => expect(view.getByLabelText('Remote asset resolution')).toHaveValue('4k'));
+    expect(view.getByLabelText('Remote asset format')).toHaveValue('fbx');
+
+    resolveRock({
+      sourceId: 'polyhaven',
+      assetId: 'rock',
+      files: [{ logicalPath: 'gltf/2k/gltf', url: 'https://cdn.example/rock.gltf', sizeBytes: 10 }],
+    });
+
+    await waitFor(() => expect(manifest).toHaveBeenCalledTimes(2));
+    expect(view.getByLabelText('Remote asset resolution')).toHaveValue('4k');
+    expect(view.getByLabelText('Remote asset format')).toHaveValue('fbx');
+    expect(view.getByRole('button', { name: /Pine Tree/ })).toHaveClass('selected');
   });
 });

@@ -1,10 +1,11 @@
+import { useState } from 'react';
 import { AlertCircle, FileCode2, Play, RefreshCw, Save } from 'lucide-react';
 
 import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/AssetPreviewPanel';
 import { AssetPreviewViewport } from '../assetPreview/AssetPreviewViewport';
 import type { EditorDocument } from '../editors/editorTypes';
 import { UiButton } from '../ui';
-import { ShaderCodeEditor } from './ShaderCodeEditor';
+import { ShaderCodeEditor, type ShaderSourceLocation } from './ShaderCodeEditor';
 import {
   compileShaderDocument,
   reloadShaderDocument,
@@ -65,6 +66,7 @@ export function ShaderSourceEditor({
   embeddedToolbar?: boolean;
 }) {
   const state = useShaderDocumentState(document);
+  const [revealLocation, setRevealLocation] = useState<ShaderSourceLocation>();
   const includes = [...state.source.matchAll(includePattern)].map((match) => match[1]);
   const dirty = state.source !== state.confirmed;
 
@@ -96,6 +98,7 @@ export function ShaderSourceEditor({
             value={state.source}
             readOnly={document.readOnly}
             loading={state.loading}
+            revealLocation={revealLocation}
             onChange={(source) => setShaderDocumentSource(document, source)}
             onSave={() => void saveShaderDocument(document)}
           />
@@ -176,18 +179,36 @@ export function ShaderSourceEditor({
       )}
       {state.diagnostics.length > 0 && (
         <section className="shader-diagnostics" aria-label="Shader compiler diagnostics">
-          {state.diagnostics.map((diagnostic, index) => (
-            <button
-              key={`${diagnostic.path}:${diagnostic.line}:${diagnostic.column}:${index}`}
-              type="button"
-              className={`shader-diagnostic ${diagnostic.severity}`}
-              title={diagnostic.graphNode ? `Material graph node ${diagnostic.graphNode}` : undefined}
-            >
-              <strong>{diagnostic.severity}</strong>{' '}
-              {diagnostic.path ? `${diagnostic.path}:${diagnostic.line ?? 0}:${diagnostic.column ?? 0}: ` : ''}
-              {diagnostic.message}
-            </button>
-          ))}
+          {state.diagnostics.map((diagnostic, index) => {
+            const navigable = typeof diagnostic.line === 'number' && diagnostic.line > 0;
+            return (
+              <button
+                key={`${diagnostic.path}:${diagnostic.line}:${diagnostic.column}:${index}`}
+                type="button"
+                className={`shader-diagnostic ${diagnostic.severity}`}
+                disabled={!navigable}
+                onClick={() => {
+                  if (!navigable) return;
+                  setRevealLocation({
+                    line: diagnostic.line!,
+                    column: diagnostic.column,
+                    requestId: Date.now(),
+                  });
+                }}
+                title={
+                  navigable
+                    ? `Go to ${diagnostic.path || document.path || document.title}:${diagnostic.line}:${diagnostic.column ?? 1}`
+                    : diagnostic.graphNode
+                      ? `Material graph node ${diagnostic.graphNode}`
+                      : undefined
+                }
+              >
+                <strong>{diagnostic.severity}</strong>{' '}
+                {diagnostic.path ? `${diagnostic.path}:${diagnostic.line ?? 0}:${diagnostic.column ?? 0}: ` : ''}
+                {diagnostic.message}
+              </button>
+            );
+          })}
         </section>
       )}
     </section>
