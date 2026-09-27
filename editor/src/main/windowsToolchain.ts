@@ -1,4 +1,4 @@
-import childProcess from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -6,14 +6,16 @@ import type { EditorPathValidation } from '../common/editorWorkflowTypes';
 
 export const windowsToolchainSettingKeys = {
   visualStudioPath: 'platform.windows.visualStudioPath',
-  windowsSdkPath: 'platform.windows.windowsSdkPath',
+  msvcToolchainPath: 'platform.windows.msvcToolchainPath',
+  sdkPath: 'platform.windows.sdkPath',
   cmakePath: 'platform.windows.cmakePath',
   ninjaPath: 'platform.windows.ninjaPath',
 } as const;
 
 type WindowsToolchainPreferences = {
   visualStudioPath?: string;
-  windowsSdkPath?: string;
+  msvcToolchainPath?: string;
+  sdkPath?: string;
   cmakePath?: string;
   ninjaPath?: string;
 };
@@ -73,13 +75,39 @@ const findExecutableOnPath = (name: string, environment: Environment): string | 
   return null;
 };
 
+const versionParts = (value: string): number[] => value.split(/[.-]/).map((part) => Number.parseInt(part, 10) || 0);
+
+const compareVersionsDescending = (left: string, right: string): number => {
+  const a = versionParts(left);
+  const b = versionParts(right);
+  const count = Math.max(a.length, b.length);
+  for (let index = 0; index < count; ++index) {
+    const delta = (b[index] ?? 0) - (a[index] ?? 0);
+    if (delta !== 0) return delta;
+  }
+  return right.localeCompare(left);
+};
+
+const newestVersionDirectory = (root: string): string | null => {
+  if (!directoryExists(root)) return null;
+  try {
+    const versions = fs
+      .readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && /^\d+(?:\.\d+)+/.test(entry.name))
+      .map((entry) => entry.name)
+      .sort(compareVersionsDescending);
+    return versions[0] ? path.join(root, versions[0]) : null;
+  } catch {
+    return null;
+  }
+};
+
 const validateVisualStudioRoot = (value: Candidate | null): EditorPathValidation => {
   if (!value)
     return { valid: false, resolvedPath: '', message: 'Visual Studio not detected', source: 'unresolved' };
   const markers = [
     path.join(value.path, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat'),
     path.join(value.path, 'Common7', 'Tools', 'VsDevCmd.bat'),
-    path.join(value.path, 'MSBuild', 'Current', 'Bin', 'MSBuild.exe'),
   ];
   if (!directoryExists(value.path) || !markers.some(fileExists)) {
     return {
@@ -97,30 +125,32 @@ const validateVisualStudioRoot = (value: Candidate | null): EditorPathValidation
   };
 };
 
-const newestVersionDirectory = (root: string): string | null => {
-  if (!directoryExists(root)) return null;
-  try {
-    const versions = fs
-      .readdirSync(root, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && /^\d+(?:\.\d+)+/.test(entry.name))
-      .map((entry) => entry.name)
-      .sort((left, right) => right.localeCompare(left, undefined, { numeric: true }));
-    return versions[0] ? path.join(root, versions[0]) : null;
-  } catch {
-    return null;
+const validateMsvcToolchainRoot = (value: Candidate | null): EditorPathValidation => {
+  if (!value)
+    return { valid: false, resolvedPath: '', message: 'MSVC toolchain not detected', source: 'unresolved' };
+  const compiler = path.join(value.path, 'bin', 'Hostx64', 'x64', 'cl.exe');
+  if (!directoryExists(value.path) || !fileExists(compiler)) {
+    return {
+      valid: false,
+      resolvedPath: value.path,
+      message: 'Path is not a valid MSVC toolchain',
+      source: value.source,
+    };
   }
+  return {
+    valid: true,
+    resolvedPath: value.path,
+    message: `Validated · MSVC ${path.basename(value.path)}`,
+    source: value.source,
+  };
 };
 
 const validateWindowsSdkRoot = (value: Candidate | null): EditorPathValidation => {
   if (!value)
     return { valid: false, resolvedPath: '', message: 'Windows SDK not detected', source: 'unresolved' };
-  const includeRoot = path.join(value.path, 'Include');
-  const versionRoot = newestVersionDirectory(includeRoot);
-  const hasHeaders = Boolean(
-    versionRoot &&
-      (fileExists(path.join(versionRoot, 'um', 'Windows.h')) || directoryExists(path.join(versionRoot, 'um'))),
-  );
-  if (!directoryExists(value.path) || !directoryExists(includeRoot) || !hasHeaders) {
+  const versionRoot = newestVersionDirectory(path.join(value.path, 'Include'));
+  const hasHeaders = Boolean(versionRoot && fileExists(path.join(versionRoot, 'um', 'Windows.h')));
+  if (!directoryExists(value.path) || !hasHeaders) {
     return {
       valid: false,
       resolvedPath: value.path,
@@ -156,9 +186,7 @@ const validateExecutable = (label: string, value: Candidate | null): EditorPathV
 
 const visualStudioFromVcInstallDir = (environment: Environment): string | null => {
   const vcInstallDir = environment.VCINSTALLDIR?.trim();
-  if (!vcInstallDir) return null;
-  const normalized = path.resolve(vcInstallDir);
-  return path.basename(normalized).toLocaleLowerCase() === 'vc' ? path.dirname(normalized) : path.dirname(normalized);
+  return vcInstallDir ? path.dirname(path.resolve(vcInstallDir)) : null;
 };
 
 const findVswhere = (environment: Environment): string | null => {
@@ -177,21 +205,19 @@ const visualStudioFromVswhere = (environment: Environment): string | null => {
   if (!vswhere) return null;
   try {
     return (
-      childProcess
-        .execFileSync(
-          vswhere,
-          [
-            '-latest',
-            '-products',
-            '*',
-            '-requires',
-            'Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
-            '-property',
-            'installationPath',
-          ],
-          { encoding: 'utf8', windowsHide: true },
-        )
-        .trim() || null
+      execFileSync(
+        vswhere,
+        [
+          '-latest',
+          '-products',
+          '*',
+          '-requires',
+          'Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
+          '-property',
+          'installationPath',
+        ],
+        { encoding: 'utf8', windowsHide: true },
+      ).trim() || null
     );
   } catch {
     return null;
@@ -213,7 +239,7 @@ const defaultVisualStudioRoots = (environment: Environment): string[] => {
         }
       }
     } catch {
-      // Keep the successfully enumerated candidates.
+      // Keep successfully enumerated candidates.
     }
   }
   return roots;
@@ -224,15 +250,33 @@ const defaultWindowsSdkRoots = (environment: Environment): string[] =>
     .filter((value): value is string => Boolean(value))
     .map((value) => path.join(value, 'Windows Kits', '10'));
 
+const msvcUnderVisualStudio = (visualStudioPath: string | null): string | null =>
+  visualStudioPath ? newestVersionDirectory(path.join(visualStudioPath, 'VC', 'Tools', 'MSVC')) : null;
+
 const bundledCmake = (visualStudioPath: string | null): string | null =>
   visualStudioPath
-    ? path.join(visualStudioPath, 'Common7', 'IDE', 'CommonExtensions', 'Microsoft', 'CMake', 'CMake', 'bin', 'cmake.exe')
+    ? path.join(
+        visualStudioPath,
+        'Common7',
+        'IDE',
+        'CommonExtensions',
+        'Microsoft',
+        'CMake',
+        'CMake',
+        'bin',
+        'cmake.exe',
+      )
     : null;
 
 const bundledNinja = (visualStudioPath: string | null): string | null =>
   visualStudioPath
     ? path.join(visualStudioPath, 'Common7', 'IDE', 'CommonExtensions', 'Microsoft', 'CMake', 'Ninja', 'ninja.exe')
     : null;
+
+const defaultCmakePaths = (environment: Environment): string[] =>
+  [environment.ProgramFiles, environment['ProgramFiles(x86)']]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => path.join(value, 'CMake', 'bin', 'cmake.exe'));
 
 const firstValidOrFirst = (
   candidates: Candidate[],
@@ -264,11 +308,20 @@ export const resolveWindowsToolchainValidation = (
     ]),
     validateVisualStudioRoot,
   );
-  const visualStudioPath = visualStudioCandidate && validateVisualStudioRoot(visualStudioCandidate).valid
-    ? visualStudioCandidate.path
-    : null;
+  const visualStudioPath =
+    visualStudioCandidate && validateVisualStudioRoot(visualStudioCandidate).valid ? visualStudioCandidate.path : null;
 
-  const configuredSdk = candidate(preferences.windowsSdkPath, 'configured');
+  const configuredMsvc = candidate(preferences.msvcToolchainPath, 'configured');
+  const msvcCandidate = configuredOrDetected(
+    configuredMsvc,
+    uniqueCandidates([
+      candidate(environment.VCToolsInstallDir, 'environment'),
+      candidate(msvcUnderVisualStudio(visualStudioPath), 'derived'),
+    ]),
+    validateMsvcToolchainRoot,
+  );
+
+  const configuredSdk = candidate(preferences.sdkPath, 'configured');
   const sdkCandidate = configuredOrDetected(
     configuredSdk,
     uniqueCandidates([
@@ -285,6 +338,7 @@ export const resolveWindowsToolchainValidation = (
       candidate(environment.CMAKE_COMMAND, 'environment'),
       candidate(findExecutableOnPath('cmake', environment), 'environment'),
       candidate(bundledCmake(visualStudioPath), 'derived'),
+      ...defaultCmakePaths(environment).map((value) => candidate(value, 'default')),
     ]),
     (value) => validateExecutable('CMake', value),
   );
@@ -302,7 +356,8 @@ export const resolveWindowsToolchainValidation = (
 
   return {
     [windowsToolchainSettingKeys.visualStudioPath]: validateVisualStudioRoot(visualStudioCandidate),
-    [windowsToolchainSettingKeys.windowsSdkPath]: validateWindowsSdkRoot(sdkCandidate),
+    [windowsToolchainSettingKeys.msvcToolchainPath]: validateMsvcToolchainRoot(msvcCandidate),
+    [windowsToolchainSettingKeys.sdkPath]: validateWindowsSdkRoot(sdkCandidate),
     [windowsToolchainSettingKeys.cmakePath]: validateExecutable('CMake', cmakeCandidate),
     [windowsToolchainSettingKeys.ninjaPath]: validateExecutable('Ninja', ninjaCandidate),
   };
