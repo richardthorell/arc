@@ -24,6 +24,7 @@ describe('settingsNavigation', () => {
       'ai.remote',
       'source-control',
       'platforms.windows',
+      'platforms.android',
       'tools.external',
       'tools.shortcuts',
       'tools.extensions',
