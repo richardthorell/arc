@@ -20,7 +20,7 @@ enum class sdk_compatibility : std::uint8_t
 };
 
 /** @brief Result of comparing a project engine version with an installed SDK version. */
-struct sdk_compatibility_result
+struct [[nodiscard]] sdk_compatibility_result
 {
     sdk_compatibility status{sdk_compatibility::invalid_version};
     bool writable{};
@@ -122,7 +122,8 @@ struct semantic_version
     {
         return {.status = sdk_compatibility::upgrade_available,
                 .upgrade_required = true,
-                .message = "Project was authored with an older ARC SDK and requires an explicit upgrade before mutation."};
+                .message =
+                    "Project was authored with an older ARC SDK and requires an explicit upgrade before mutation."};
     }
 
     return {.status = sdk_compatibility::incompatible,
