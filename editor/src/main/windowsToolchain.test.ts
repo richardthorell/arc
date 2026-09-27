@@ -19,6 +19,10 @@ const makeVisualStudio = (root: string): void => {
   touch(path.join(root, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat'));
 };
 
+const makeMsvcToolchain = (root: string): void => {
+  touch(path.join(root, 'bin', 'Hostx64', 'x64', 'cl.exe'));
+};
+
 const makeWindowsSdk = (root: string, version = '10.0.26100.0'): void => {
   touch(path.join(root, 'Include', version, 'um', 'Windows.h'));
 };
@@ -28,20 +32,22 @@ afterEach(() => {
 });
 
 describe('resolveWindowsToolchainValidation', () => {
-  it('validates configured Visual Studio, Windows SDK, CMake, and Ninja paths', () => {
+  it('validates configured Visual Studio, MSVC, Windows SDK, CMake, and Ninja paths', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-windows-toolchain-'));
     roots.push(root);
     const visualStudioPath = path.join(root, 'VisualStudio');
-    const windowsSdkPath = path.join(root, 'WindowsSdk');
+    const msvcToolchainPath = path.join(root, 'msvc', '14.44.35207');
+    const sdkPath = path.join(root, 'WindowsSdk');
     const cmakePath = path.join(root, 'bin', executableName('cmake'));
     const ninjaPath = path.join(root, 'bin', executableName('ninja'));
     makeVisualStudio(visualStudioPath);
-    makeWindowsSdk(windowsSdkPath);
+    makeMsvcToolchain(msvcToolchainPath);
+    makeWindowsSdk(sdkPath);
     touch(cmakePath);
     touch(ninjaPath);
 
     const validation = resolveWindowsToolchainValidation(
-      { visualStudioPath, windowsSdkPath, cmakePath, ninjaPath },
+      { visualStudioPath, msvcToolchainPath, sdkPath, cmakePath, ninjaPath },
       { PATH: '' },
     );
 
@@ -50,9 +56,14 @@ describe('resolveWindowsToolchainValidation', () => {
       resolvedPath: visualStudioPath,
       source: 'configured',
     });
-    expect(validation[windowsToolchainSettingKeys.windowsSdkPath]).toMatchObject({
+    expect(validation[windowsToolchainSettingKeys.msvcToolchainPath]).toMatchObject({
       valid: true,
-      resolvedPath: windowsSdkPath,
+      resolvedPath: msvcToolchainPath,
+      source: 'configured',
+    });
+    expect(validation[windowsToolchainSettingKeys.sdkPath]).toMatchObject({
+      valid: true,
+      resolvedPath: sdkPath,
       source: 'configured',
     });
     expect(validation[windowsToolchainSettingKeys.cmakePath]).toMatchObject({
@@ -67,22 +78,24 @@ describe('resolveWindowsToolchainValidation', () => {
     });
   });
 
-  it('auto-detects environment and PATH toolchain locations', () => {
+  it('auto-detects environment, derived MSVC, and PATH toolchain locations', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-windows-toolchain-'));
     roots.push(root);
     const visualStudioPath = path.join(root, 'VisualStudio');
-    const windowsSdkPath = path.join(root, 'WindowsSdk');
+    const msvcToolchainPath = path.join(visualStudioPath, 'VC', 'Tools', 'MSVC', '14.44.35207');
+    const sdkPath = path.join(root, 'WindowsSdk');
     const binPath = path.join(root, 'bin');
     const cmakePath = path.join(binPath, executableName('cmake'));
     const ninjaPath = path.join(binPath, executableName('ninja'));
     makeVisualStudio(visualStudioPath);
-    makeWindowsSdk(windowsSdkPath, '10.0.22621.0');
+    makeMsvcToolchain(msvcToolchainPath);
+    makeWindowsSdk(sdkPath, '10.0.22621.0');
     touch(cmakePath);
     touch(ninjaPath);
 
     const validation = resolveWindowsToolchainValidation(
       {},
-      { VSINSTALLDIR: visualStudioPath, WindowsSdkDir: windowsSdkPath, PATH: binPath },
+      { VSINSTALLDIR: visualStudioPath, WindowsSdkDir: sdkPath, PATH: binPath },
     );
 
     expect(validation[windowsToolchainSettingKeys.visualStudioPath]).toMatchObject({
@@ -90,7 +103,12 @@ describe('resolveWindowsToolchainValidation', () => {
       resolvedPath: visualStudioPath,
       source: 'environment',
     });
-    expect(validation[windowsToolchainSettingKeys.windowsSdkPath].message).toContain('10.0.22621.0');
+    expect(validation[windowsToolchainSettingKeys.msvcToolchainPath]).toMatchObject({
+      valid: true,
+      resolvedPath: msvcToolchainPath,
+      source: 'derived',
+    });
+    expect(validation[windowsToolchainSettingKeys.sdkPath].message).toContain('10.0.22621.0');
     expect(validation[windowsToolchainSettingKeys.cmakePath]).toMatchObject({
       valid: true,
       resolvedPath: cmakePath,
@@ -112,25 +130,18 @@ describe('resolveWindowsToolchainValidation', () => {
     touch(path.join(binPath, executableName('ninja')));
 
     const validation = resolveWindowsToolchainValidation(
-      { visualStudioPath: missing, windowsSdkPath: missing, cmakePath: missing, ninjaPath: missing },
+      {
+        visualStudioPath: missing,
+        msvcToolchainPath: missing,
+        sdkPath: missing,
+        cmakePath: missing,
+        ninjaPath: missing,
+      },
       { PATH: binPath },
     );
 
-    expect(validation[windowsToolchainSettingKeys.visualStudioPath]).toMatchObject({
-      valid: false,
-      source: 'configured',
-    });
-    expect(validation[windowsToolchainSettingKeys.windowsSdkPath]).toMatchObject({
-      valid: false,
-      source: 'configured',
-    });
-    expect(validation[windowsToolchainSettingKeys.cmakePath]).toMatchObject({
-      valid: false,
-      source: 'configured',
-    });
-    expect(validation[windowsToolchainSettingKeys.ninjaPath]).toMatchObject({
-      valid: false,
-      source: 'configured',
-    });
+    for (const key of Object.values(windowsToolchainSettingKeys)) {
+      expect(validation[key]).toMatchObject({ valid: false, source: 'configured' });
+    }
   });
 });
