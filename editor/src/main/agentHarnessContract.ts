@@ -51,8 +51,6 @@ export const agentEditActions = [
   'reparent',
   'patchComponent',
   'createAsset',
-  'createPrefab',
-  'instantiatePrefab',
 ] as const;
 
 export type AgentEditAction = (typeof agentEditActions)[number];
