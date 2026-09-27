@@ -17,8 +17,7 @@ export type AgentAssetRollbackPlan =
   | { ok: true; action: 'restore'; path: string; expectedRevision?: string; content: string }
   | { ok: false; reason: string };
 
-const isNonEmpty = (value: string | undefined): value is string =>
-  typeof value === 'string' && value.trim().length > 0;
+const isNonEmpty = (value: string | undefined): value is string => typeof value === 'string' && value.trim().length > 0;
 
 export const validateAgentAssetRollbackRecord = (record: AgentAssetRollbackRecord): string | undefined => {
   if (!isNonEmpty(record.operationId)) return 'Rollback record requires a stable operation ID.';
