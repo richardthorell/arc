@@ -73,6 +73,12 @@ jobs:
       - name: Build Project Test Authority
         if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
         run: cmake --build out/build/analysis --target arc-project-cli --parallel 2
+      - name: Show Windows Toolchain Prettier Diff
+        if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
+        working-directory: editor
+        run: |
+          npx prettier --write src/main/windowsToolchain.ts
+          git diff -- src/main/windowsToolchain.ts
       - name: Electron Formatting, Lint, Typecheck, and Tests
         if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
         working-directory: editor
