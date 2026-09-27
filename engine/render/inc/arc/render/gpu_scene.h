@@ -122,6 +122,26 @@ struct gpu_scene_instance
     gpu_scene_geometry_kind geometry_kind{gpu_scene_geometry_kind::mesh};
 };
 
+/** @brief Draw-payload collection that owns one prepared GPU Scene submission. */
+enum class gpu_scene_submission_source : std::uint8_t
+{
+    conventional,
+    virtual_geometry
+};
+
+/**
+ * @brief Representation-neutral instance record prepared once during scene extraction.
+ * @details Conventional and virtual draw payloads reference the stable handle assigned to this record. The source
+ * metadata is used only to publish that handle back to the backend execution payload.
+ */
+struct gpu_scene_submission
+{
+    gpu_scene_instance instance{};
+    std::uint64_t instance_id{};
+    std::uint32_t source_index{};
+    gpu_scene_submission_source source{gpu_scene_submission_source::conventional};
+};
+
 /** @brief Dirty fields carried by an incremental GPU Scene update. */
 enum class gpu_scene_dirty : std::uint32_t
 {
@@ -195,8 +215,6 @@ private:
     {
         std::uint64_t world_id{};
         render_object_id object_id{};
-        gpu_scene_geometry_kind geometry_kind{gpu_scene_geometry_kind::mesh};
-        std::uint32_t submesh_or_cluster{};
         std::uint64_t instance_id{};
 
         friend bool operator==(const instance_key&, const instance_key&) noexcept = default;

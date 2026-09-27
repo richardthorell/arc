@@ -45,7 +45,78 @@ std::uint64_t batch_key(const render_item& item)
            static_cast<std::uint64_t>(item.mesh.index & 0xffffu);
 }
 
+gpu_scene_instance_flag instance_flags(bool visible, bool selected, bool transparent, bool casts_shadows,
+                                       bool receives_shadows) noexcept
+{
+    auto result = gpu_scene_instance_flag::none;
+    if (visible) result = result | gpu_scene_instance_flag::visible;
+    if (selected) result = result | gpu_scene_instance_flag::selected;
+    if (transparent) result = result | gpu_scene_instance_flag::transparent;
+    if (casts_shadows) result = result | gpu_scene_instance_flag::casts_shadows;
+    if (receives_shadows) result = result | gpu_scene_instance_flag::receives_shadows;
+    return result;
+}
+
 } // namespace
+
+void prepare_gpu_scene_submissions(render_world_packet& packet)
+{
+    packet.gpu_scene_submissions.clear();
+    packet.gpu_scene_submissions.reserve(packet.items.size() + packet.virtual_items.size());
+
+    for (std::uint32_t index = 0; index < packet.items.size(); ++index)
+    {
+        auto& item = packet.items[index];
+        item.gpu_scene_instance = {};
+        const auto geometry_kind =
+            item.skin_matrices.valid() ? gpu_scene_geometry_kind::skinned_mesh : gpu_scene_geometry_kind::mesh;
+        packet.gpu_scene_submissions.push_back(
+            {.instance = {.model = item.model,
+                          .previous_model = item.previous_model,
+                          .world_bounds = item.world_bounds,
+                          .mesh = item.mesh,
+                          .material = item.material,
+                          .material_attribute_texture = item.material_attribute_texture,
+                          .skin_palette = item.skin_matrices,
+                          .skin_joint_count = item.skin_joint_count,
+                          .object_id = item.object_id,
+                          .submesh_or_cluster = item.submesh,
+                          .render_layer_mask = item.render_layer_mask,
+                          .flags = instance_flags(item.visible, item.selected, item.transparent, item.casts_shadows,
+                                                  item.receives_shadows),
+                          .maximum_draw_distance = item.maximum_draw_distance,
+                          .geometry_error_scale = item.geometry_error_scale,
+                          .geometry_kind = geometry_kind},
+             .instance_id = item.instance_id,
+             .source_index = index,
+             .source = gpu_scene_submission_source::conventional});
+    }
+
+    for (std::uint32_t index = 0; index < packet.virtual_items.size(); ++index)
+    {
+        auto& item = packet.virtual_items[index];
+        item.gpu_scene_instance = {};
+        packet.gpu_scene_submissions.push_back(
+            {.instance = {.model = item.model,
+                          .previous_model = item.previous_model,
+                          .world_bounds = item.world_bounds,
+                          .virtual_mesh = item.mesh,
+                          .material = item.material,
+                          .material_attribute_texture = item.material_attribute_texture,
+                          .object_id = item.object_id,
+                          .submesh_or_cluster = item.root_node,
+                          .render_layer_mask = item.render_layer_mask,
+                          .flags = instance_flags(item.visible, item.selected, false, item.casts_shadows,
+                                                  item.receives_shadows),
+                          .maximum_draw_distance = item.maximum_draw_distance,
+                          .geometry_error_scale = item.geometry_error_scale,
+                          .geometry_kind = gpu_scene_geometry_kind::virtual_mesh},
+             .instance_id = item.instance_id,
+             .source_index = index,
+             .source = gpu_scene_submission_source::virtual_geometry});
+    }
+    packet.gpu_scene_submissions_prepared = true;
+}
 
 view_frustum make_view_frustum(const math::matrix4f& m)
 {
@@ -82,6 +153,7 @@ std::uint64_t make_render_sort_key(scene_render_pass pass, material_handle mater
 
 void prepare_render_world(render_world_packet& packet, const render_world_prepare_options& options)
 {
+    prepare_gpu_scene_submissions(packet);
     packet.visible_items.clear();
     packet.visible_virtual_items.clear();
     packet.instance_batches.clear();
