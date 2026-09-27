@@ -7,7 +7,7 @@ int main()
 {
     using namespace arc::physics;
 
-    body_desc body{};
+    body_definition body{};
     assert(validate(body) == validation_error::none);
 
     body.motion = body_motion::dynamic;
