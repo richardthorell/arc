@@ -208,6 +208,7 @@ const firstValidOrFirst = (
   return candidates[0] ?? null;
 };
 
+// Explicit overrides are authoritative so invalid configured paths are surfaced instead of silently bypassed.
 const configuredOrDetected = (
   configured: Candidate | null,
   detected: Candidate[],
