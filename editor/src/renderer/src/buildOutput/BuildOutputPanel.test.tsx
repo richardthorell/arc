@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { BuildOutputPanel } from './BuildOutputPanel';
+
+afterEach(cleanup);
 
 describe('BuildOutputPanel', () => {
   it('launches build actions for the active configuration and opens source diagnostics', () => {
