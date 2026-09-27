@@ -105,11 +105,8 @@ const newestVersionDirectory = (root: string): string | null => {
 const validateVisualStudioRoot = (value: Candidate | null): EditorPathValidation => {
   if (!value)
     return { valid: false, resolvedPath: '', message: 'Visual Studio not detected', source: 'unresolved' };
-  const markers = [
-    path.join(value.path, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat'),
-    path.join(value.path, 'Common7', 'Tools', 'VsDevCmd.bat'),
-  ];
-  if (!directoryExists(value.path) || !markers.some(fileExists)) {
+  const vcvars = path.join(value.path, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat');
+  if (!directoryExists(value.path) || !fileExists(vcvars)) {
     return {
       valid: false,
       resolvedPath: value.path,
