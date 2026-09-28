@@ -108,6 +108,17 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             }
             return 0;
 
+        case WM_DPICHANGED:
+        {
+            const auto* suggested = reinterpret_cast<const RECT*>(lparam);
+            if (suggested)
+            {
+                SetWindowPos(window, nullptr, suggested->left, suggested->top, suggested->right - suggested->left,
+                             suggested->bottom - suggested->top, SWP_NOACTIVATE | SWP_NOZORDER);
+            }
+            return 0;
+        }
+
         case WM_SETFOCUS:
         case WM_KILLFOCUS:
             if (runtime)
@@ -196,6 +207,8 @@ DWORD window_style(const arc::framework::application_config& config)
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
 {
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
     std::unique_ptr<arc::framework::application> app = arc::framework::create_application();
     if (!app) return -1;
 
@@ -221,7 +234,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
     rect.right = static_cast<LONG>(config.initial_width);
     rect.bottom = static_cast<LONG>(config.initial_height);
     const DWORD style = window_style(config);
-    AdjustWindowRect(&rect, style, FALSE);
+    AdjustWindowRectExForDpi(&rect, style, FALSE, 0, GetDpiForSystem());
 
     HWND window = CreateWindowExW(0, class_name.c_str(), title.c_str(), style, CW_USEDEFAULT, CW_USEDEFAULT,
                                   rect.right - rect.left, rect.bottom - rect.top, nullptr, nullptr, instance, &state);
