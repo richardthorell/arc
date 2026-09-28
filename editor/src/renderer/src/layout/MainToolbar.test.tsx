@@ -4,9 +4,13 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { MainToolbar } from './MainToolbar';
+import { requestedSettingsDialogKind, resetSettingsDialogRequest } from '../settings/settingsDialogRoute';
+import { configuredTargetPlatformsForProject, MainToolbar } from './MainToolbar';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetSettingsDialogRequest();
+});
 
 describe('MainToolbar runtime controls', () => {
   it('renders host-authoritative playback state and enables only valid controls', () => {
@@ -104,35 +108,84 @@ describe('MainToolbar runtime controls', () => {
     expect(onScaleSnapChange).toHaveBeenCalledWith(0.5);
   });
 
-  it('uses platform and split-build controls instead of layout and windows buttons', () => {
+  it('derives enabled editor platforms from project targets and falls back to the host', () => {
+    expect(
+      configuredTargetPlatformsForProject(
+        {
+          targetPlatforms: [
+            { id: 'windows-x64-vulkan', enabled: true },
+            { id: 'android-arm64-vulkan', enabled: true },
+            { id: 'linux-x64-vulkan', enabled: false },
+          ],
+          cookProfiles: [
+            {
+              id: 'windows-x64-vulkan',
+              platform: 'windows',
+              architecture: 'x86_64',
+              renderer: 'vulkan',
+              api: '1.2',
+              textures: { outputs: ['bc'], quality: 'balanced' },
+              configuration: 'Shipping',
+            },
+            {
+              id: 'android-arm64-vulkan',
+              platform: 'android',
+              architecture: 'arm64',
+              renderer: 'vulkan',
+              api: '1.2',
+              textures: { outputs: ['astc'], quality: 'balanced' },
+              configuration: 'Shipping',
+            },
+          ],
+        },
+        'windows',
+      ),
+    ).toEqual(['windows', 'android']);
+    expect(configuredTargetPlatformsForProject({ targetPlatforms: [], cookProfiles: [] }, 'macos')).toEqual(['macos']);
+  });
+
+  it('shows only project platforms, opens platform settings, and exposes the target device next to it', () => {
+    const onCommand = vi.fn();
     const onTargetPlatformChange = vi.fn();
+    const onTargetDeviceChange = vi.fn();
     const onBuildAction = vi.fn();
     render(
       <MainToolbar
-        onCommand={vi.fn()}
+        configuredTargetPlatforms={['windows', 'android']}
+        onCommand={onCommand}
         onBuildAction={onBuildAction}
+        onTargetDeviceChange={onTargetDeviceChange}
         onTargetPlatformChange={onTargetPlatformChange}
-        targetPlatform="linux"
+        targetDevice="pixel-9"
+        targetDevices={[
+          { id: 'pixel-9', label: 'Pixel 9', platform: 'android' },
+          { id: 'local-windows', label: 'This Computer', platform: 'windows' },
+        ]}
+        targetPlatform="android"
       />,
     );
 
-    expect(screen.queryByText('Layouts')).not.toBeInTheDocument();
-    expect(screen.queryByText('Windows', { selector: 'summary' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Target platform' })).toHaveTextContent('Linux');
-    expect(
-      screen.getByRole('button', { name: 'Target platform' }).querySelector('[data-platform-icon="linux"]'),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Target platform' })).toHaveTextContent('Android');
+    expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent('Pixel 9');
 
     fireEvent.click(screen.getByRole('button', { name: 'Target platform' }));
-    for (const platform of ['Windows', 'Linux', 'macOS', 'iOS', 'Android', 'Xbox', 'PlayStation', 'Nintendo Switch']) {
-      expect(screen.getByRole('option', { name: new RegExp(platform) })).toBeInTheDocument();
-    }
-    for (const platform of ['windows', 'linux', 'macos', 'ios', 'android', 'xbox', 'playstation', 'switch']) {
-      expect(document.querySelector(`[data-platform-icon="${platform}"]`)).toBeInTheDocument();
-    }
+    expect(screen.getByRole('option', { name: /Windows/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Android/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Linux/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Xbox/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('separator')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('option', { name: /Xbox/ }));
-    expect(onTargetPlatformChange).toHaveBeenCalledWith('xbox');
+    fireEvent.click(screen.getByRole('option', { name: /Platform Settings/ }));
+    expect(requestedSettingsDialogKind()).toBe('projectSettings');
+    expect(onCommand).toHaveBeenCalledWith('settings.open');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Target platform' }));
+    fireEvent.click(screen.getByRole('option', { name: /Windows/ }));
+    expect(onTargetPlatformChange).toHaveBeenCalledWith('windows');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Target device' }));
+    fireEvent.click(screen.getByRole('option', { name: /Pixel 9/ }));
+    expect(onTargetDeviceChange).toHaveBeenCalledWith('pixel-9');
 
     fireEvent.click(screen.getByRole('button', { name: 'Build' }));
     expect(onBuildAction).toHaveBeenCalledWith('build');
