@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arc/assets/cook.h>
+#include <arc/io/virtual_file_system.h>
 
 #include <atomic>
 #include <cstdint>
@@ -24,18 +25,21 @@ struct cooked_artifact_address
     {
         return asset.valid() && schema.valid() && !name.empty();
     }
+
+    friend bool operator==(const cooked_artifact_address&, const cooked_artifact_address&) = default;
 };
 
 /** @brief Validated physical package location for one named cooked artifact. */
 struct cooked_artifact_location
 {
+    io::resolved_virtual_file file;
     std::filesystem::path path;
     std::uint64_t offset{};
     std::uint64_t size{};
 
     [[nodiscard]] bool valid() const noexcept
     {
-        return !path.empty() && size != 0u;
+        return (file.valid() || !path.empty()) && size != 0u;
     }
 };
 
