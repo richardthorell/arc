@@ -2,7 +2,7 @@
 import '@testing-library/jest-dom/vitest';
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { Monitor, Smartphone } from 'lucide-react';
+import { Monitor, Settings2, Smartphone } from 'lucide-react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { UiDropdown } from './UiDropdown';
@@ -36,5 +36,35 @@ describe('UiDropdown', () => {
 
     fireEvent.click(screen.getByRole('option', { name: /Android/ }));
     expect(onValueChange).toHaveBeenCalledWith('android');
+  });
+
+  it('supports separated action entries without changing the selected value', () => {
+    const onValueChange = vi.fn();
+    const onSettings = vi.fn();
+    render(
+      <UiDropdown
+        ariaLabel="Target platform"
+        onValueChange={onValueChange}
+        options={[
+          { value: 'windows', label: 'Windows', icon: <Monitor /> },
+          {
+            value: 'settings',
+            label: 'Platform Settings…',
+            icon: <Settings2 />,
+            separatorBefore: true,
+            onSelect: onSettings,
+          },
+        ]}
+        value="windows"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Target platform' }));
+    expect(screen.getByRole('separator')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: /Platform Settings/ }));
+
+    expect(onSettings).toHaveBeenCalledOnce();
+    expect(onValueChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Target platform' })).toHaveTextContent('Windows');
   });
 });

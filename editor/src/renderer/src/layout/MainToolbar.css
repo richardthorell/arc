@@ -47,7 +47,8 @@
 
 .toolbar-origin-dropdown .ui-dropdown-trigger.ui-button,
 .toolbar-coordinate-dropdown .ui-dropdown-trigger.ui-button,
-.toolbar-platform-dropdown .ui-dropdown-trigger.ui-button {
+.toolbar-platform-dropdown .ui-dropdown-trigger.ui-button,
+.toolbar-device-dropdown .ui-dropdown-trigger.ui-button {
   width: 100%;
   min-width: 0;
   height: var(--arc-control-height);
@@ -134,6 +135,12 @@
 .toolbar-platform-dropdown {
   width: 150px;
   flex: 0 0 150px;
+  height: var(--arc-control-height);
+}
+
+.toolbar-device-dropdown {
+  width: 164px;
+  flex: 0 0 164px;
   height: var(--arc-control-height);
 }
 
