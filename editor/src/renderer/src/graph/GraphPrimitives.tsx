@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type PointerEventHandler, type ReactNode } from 'react';
+import { useId, useState, type CSSProperties, type PointerEventHandler, type ReactNode } from 'react';
 
 import type { GraphPinDirection, GraphPoint, GraphViewport } from './graphTypes';
 
@@ -54,6 +54,7 @@ export function GraphWireLayer({
   wires: readonly GraphWire[];
 }) {
   const [hoveredWireId, setHoveredWireId] = useState<string | null>(null);
+  const directionPathPrefix = useId().replace(/:/g, '');
 
   const setHoveredWire = (wire: GraphWire | null) => {
     setHoveredWireId(wire?.id ?? null);
@@ -62,22 +63,32 @@ export function GraphWireLayer({
 
   return (
     <svg aria-hidden="true" className={className} data-graph-wires height={size} width={size}>
-      {wires.map((wire) => {
+      {wires.map((wire, index) => {
         const hovered = hoveredWireId === wire.id;
+        const directionPathId = `${directionPathPrefix}-wire-${index}`;
         return (
-          <path
-            className={hovered ? 'is-hovered' : undefined}
-            d={wire.path}
-            data-destination-pin-key={wire.destinationPinKey}
-            data-graph-wire-id={wire.id}
-            data-hovered={hovered || undefined}
-            data-source-pin-key={wire.sourcePinKey}
-            key={wire.id}
-            onPointerEnter={() => setHoveredWire(wire)}
-            onPointerLeave={() => setHoveredWire(null)}
-          >
-            {wire.tooltip ? <title>{wire.tooltip}</title> : null}
-          </path>
+          <g key={wire.id}>
+            <path
+              className={hovered ? 'is-hovered' : undefined}
+              d={wire.path}
+              data-destination-pin-key={wire.destinationPinKey}
+              data-graph-wire-id={wire.id}
+              data-hovered={hovered || undefined}
+              data-source-pin-key={wire.sourcePinKey}
+              id={directionPathId}
+              onPointerEnter={() => setHoveredWire(wire)}
+              onPointerLeave={() => setHoveredWire(null)}
+            >
+              {wire.tooltip ? <title>{wire.tooltip}</title> : null}
+            </path>
+            {hovered ? (
+              <text aria-hidden="true" className="graph-wire-direction" data-graph-wire-direction={wire.id}>
+                <textPath href={`#${directionPathId}`} startOffset="38%">
+                  › › ›
+                </textPath>
+              </text>
+            ) : null}
+          </g>
         );
       })}
       {pendingPath && <path className="pending" d={pendingPath} />}
