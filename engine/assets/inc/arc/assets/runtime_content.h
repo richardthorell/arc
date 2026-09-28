@@ -22,8 +22,7 @@ namespace arc::assets
 {
 
 [[nodiscard]] io::file_result<io::virtual_path>
-cooked_artifact_virtual_path(const cooked_artifact_address& address,
-                             std::string_view mount = "artifact://game");
+cooked_artifact_virtual_path(const cooked_artifact_address& address, std::string_view mount = "artifact://game");
 [[nodiscard]] std::optional<cooked_artifact_address> parse_cooked_artifact_virtual_path(const io::virtual_path& path);
 
 class package_artifact_provider final : public io::virtual_file_provider
@@ -31,8 +30,7 @@ class package_artifact_provider final : public io::virtual_file_provider
 public:
     using create_result = core::result<std::shared_ptr<package_artifact_provider>, asset_error>;
 
-    [[nodiscard]] static create_result create(io::virtual_file_system& files,
-                                              const io::virtual_path& manifest_file);
+    [[nodiscard]] static create_result create(io::virtual_file_system& files, const io::virtual_path& manifest_file);
     ~package_artifact_provider() override;
 
     package_artifact_provider(const package_artifact_provider&) = delete;
@@ -90,15 +88,13 @@ struct cooked_asset_catalog_telemetry
 class cooked_asset_catalog
 {
 public:
-    explicit cooked_asset_catalog(io::virtual_file_system& files,
-                                  io::virtual_path artifact_root);
+    explicit cooked_asset_catalog(io::virtual_file_system& files, io::virtual_path artifact_root);
+    ~cooked_asset_catalog();
 
-    [[nodiscard]] asset_status mount_package(const io::virtual_path& manifest_file,
-                                             std::int32_t priority = 0);
+    [[nodiscard]] asset_status mount_package(const io::virtual_path& manifest_file, std::int32_t priority = 0);
     [[nodiscard]] asset_status mount_provider(std::shared_ptr<io::virtual_file_provider> provider,
                                               std::int32_t priority, std::string debug_name);
-    [[nodiscard]] io::file_result<io::resolved_virtual_file>
-    resolve(const cooked_artifact_address& address);
+    [[nodiscard]] io::file_result<io::resolved_virtual_file> resolve(const cooked_artifact_address& address);
     [[nodiscard]] cooked_artifact_change_batch poll_changes();
     [[nodiscard]] cooked_asset_catalog_telemetry telemetry() const noexcept;
 
@@ -157,8 +153,7 @@ public:
     cas_overlay_provider(const cas_overlay_provider&) = delete;
     cas_overlay_provider& operator=(const cas_overlay_provider&) = delete;
 
-    [[nodiscard]] asset_status load(std::string_view expected_target_profile,
-                                    std::string_view expected_base_build_id);
+    [[nodiscard]] asset_status load(std::string_view expected_target_profile, std::string_view expected_base_build_id);
     [[nodiscard]] asset_status activate(const runtime_update_manifest& manifest);
 
     [[nodiscard]] io::provider_capabilities capabilities() const noexcept override;
@@ -183,8 +178,7 @@ private:
 class runtime_update_receiver
 {
 public:
-    runtime_update_receiver(std::shared_ptr<cas_overlay_provider> overlay,
-                            runtime_update_receiver_config config);
+    runtime_update_receiver(std::shared_ptr<cas_overlay_provider> overlay, runtime_update_receiver_config config);
     ~runtime_update_receiver();
 
     runtime_update_receiver(const runtime_update_receiver&) = delete;

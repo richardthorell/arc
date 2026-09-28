@@ -156,8 +156,8 @@ package_artifact_provider::create_result package_artifact_provider::create(io::v
 {
     auto resolved_manifest = files.resolve(manifest_file);
     if (!resolved_manifest)
-        return create_result::failure(asset_failure(asset_error_code::not_found,
-                                                    "Cook manifest is unavailable through the VFS"));
+        return create_result::failure(
+            asset_failure(asset_error_code::not_found, "Cook manifest is unavailable through the VFS"));
     auto bytes = files.read_all(resolved_manifest.value()).get();
     if (!bytes)
         return create_result::failure(
@@ -170,43 +170,44 @@ package_artifact_provider::create_result package_artifact_provider::create(io::v
     state->manifest = std::move(parsed).value();
     const auto manifest_relative = manifest_file.relative_path();
     const auto separator = manifest_relative.find_last_of('/');
-    const auto directory = separator == std::string_view::npos ? std::string_view{}
-                                                                : manifest_relative.substr(0, separator);
+    const auto directory =
+        separator == std::string_view::npos ? std::string_view{} : manifest_relative.substr(0, separator);
     for (const auto& artifact : state->manifest.artifacts)
     {
         if (artifact.name.empty() || artifact.stored_size == 0 || artifact.compressed)
-            return create_result::failure(asset_failure(
-                asset_error_code::invalid_metadata,
-                artifact.compressed ? "Package VFS provider does not support compressed package records"
-                                    : "Cooked package artifact record is incomplete",
-                artifact.asset));
+            return create_result::failure(
+                asset_failure(asset_error_code::invalid_metadata,
+                              artifact.compressed ? "Package VFS provider does not support compressed package records"
+                                                  : "Cooked package artifact record is incomplete",
+                              artifact.asset));
         std::string chunk_relative(directory);
         if (!chunk_relative.empty()) chunk_relative.push_back('/');
         chunk_relative += artifact.chunk;
-        auto chunk_path = io::virtual_path::from_parts(manifest_file.scheme(), manifest_file.authority(), chunk_relative);
+        auto chunk_path =
+            io::virtual_path::from_parts(manifest_file.scheme(), manifest_file.authority(), chunk_relative);
         if (!chunk_path)
-            return create_result::failure(
-                asset_failure(asset_error_code::invalid_metadata, "Cooked package chunk path is invalid", artifact.asset));
+            return create_result::failure(asset_failure(asset_error_code::invalid_metadata,
+                                                        "Cooked package chunk path is invalid", artifact.asset));
         auto chunk = files.resolve(chunk_path.value());
         if (!chunk || artifact.offset > chunk.value().size() ||
             artifact.stored_size > chunk.value().size() - artifact.offset)
             return create_result::failure(asset_failure(asset_error_code::invalid_metadata,
                                                         "Cooked package artifact range is missing or invalid",
                                                         artifact.asset));
-        auto logical = cooked_artifact_virtual_path(
-            {.asset = artifact.asset, .schema = artifact.schema, .name = artifact.name});
-        if (!logical) return create_result::failure(asset_failure(asset_error_code::invalid_metadata,
-                                                                  "Cooked artifact logical path is invalid",
-                                                                  artifact.asset));
+        auto logical =
+            cooked_artifact_virtual_path({.asset = artifact.asset, .schema = artifact.schema, .name = artifact.name});
+        if (!logical)
+            return create_result::failure(asset_failure(asset_error_code::invalid_metadata,
+                                                        "Cooked artifact logical path is invalid", artifact.asset));
         const auto key = std::string(logical.value().relative_path());
         if (state->records.contains(key))
             return create_result::failure(asset_failure(asset_error_code::invalid_metadata,
                                                         "Cooked package contains a duplicate artifact address",
                                                         artifact.asset));
         const auto generation = artifact_generation(artifact, chunk.value());
-        state->records.emplace(key, implementation::record{.artifact = artifact,
-                                                           .chunk = std::move(chunk.value()),
-                                                           .generation = generation});
+        state->records.emplace(
+            key,
+            implementation::record{.artifact = artifact, .chunk = std::move(chunk.value()), .generation = generation});
     }
     return create_result::success(
         std::shared_ptr<package_artifact_provider>(new package_artifact_provider(std::move(state))));
@@ -242,9 +243,9 @@ package_artifact_provider::read_range(const io::provider_file& file, std::uint64
         return implementation_->files->read_range({}, 0, 0, cancellation);
     if (offset > found->second.artifact.stored_size || bytes > found->second.artifact.stored_size - offset)
         return implementation_->files->read_range(found->second.chunk, found->second.chunk.size() + 1u, bytes,
-                                                   cancellation);
+                                                  cancellation);
     return implementation_->files->read_range(found->second.chunk, found->second.artifact.offset + offset, bytes,
-                                               cancellation);
+                                              cancellation);
 }
 
 io::file_result<std::vector<io::provider_directory_entry>>
@@ -254,12 +255,11 @@ package_artifact_provider::enumerate(std::string_view relative_prefix)
     for (const auto& [path, record] : implementation_->records)
     {
         if (!relative_prefix.empty() && !path.starts_with(relative_prefix)) continue;
-        result.push_back({.relative_path = path,
-                          .size = record.artifact.stored_size,
-                          .content_generation = record.generation});
+        result.push_back(
+            {.relative_path = path, .size = record.artifact.stored_size, .content_generation = record.generation});
     }
-    std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs)
-              { return lhs.relative_path < rhs.relative_path; });
+    std::sort(result.begin(), result.end(),
+              [](const auto& lhs, const auto& rhs) { return lhs.relative_path < rhs.relative_path; });
     return io::file_result<std::vector<io::provider_directory_entry>>::success(std::move(result));
 }
 
@@ -271,6 +271,12 @@ const cook_manifest& package_artifact_provider::manifest() const noexcept
 cooked_asset_catalog::cooked_asset_catalog(io::virtual_file_system& files, io::virtual_path artifact_root)
     : files_(&files), artifact_root_(std::move(artifact_root))
 {
+}
+
+cooked_asset_catalog::~cooked_asset_catalog()
+{
+    for (const auto mount : mounts_)
+        static_cast<void>(files_->unmount(mount));
 }
 
 asset_status cooked_asset_catalog::mount_package(const io::virtual_path& manifest_file, std::int32_t priority)
@@ -288,14 +294,12 @@ asset_status cooked_asset_catalog::mount_provider(std::shared_ptr<io::virtual_fi
                                   .provider = std::move(provider),
                                   .debug_name = std::move(debug_name)});
     if (!mounted)
-        return asset_status::failure(
-            asset_failure(asset_error_code::invalid_request, mounted.error().message));
+        return asset_status::failure(asset_failure(asset_error_code::invalid_request, mounted.error().message));
     mounts_.push_back(mounted.value());
     return asset_status::success();
 }
 
-io::file_result<io::resolved_virtual_file>
-cooked_asset_catalog::resolve(const cooked_artifact_address& address)
+io::file_result<io::resolved_virtual_file> cooked_asset_catalog::resolve(const cooked_artifact_address& address)
 {
     ++telemetry_.resolves;
     auto path = cooked_artifact_virtual_path(address, artifact_root_.string());
@@ -318,8 +322,7 @@ cooked_artifact_change_batch cooked_asset_catalog::poll_changes()
     for (const auto& change : changes.events)
     {
         last_vfs_sequence_ = std::max(last_vfs_sequence_, change.sequence);
-        if (change.path.scheme() != artifact_root_.scheme() ||
-            change.path.authority() != artifact_root_.authority())
+        if (change.path.scheme() != artifact_root_.scheme() || change.path.authority() != artifact_root_.authority())
             continue;
         if (change.kind == io::virtual_change_kind::reset || change.kind == io::virtual_change_kind::mount_changed)
         {

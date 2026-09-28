@@ -99,7 +99,8 @@ const cook_manifest_artifact* package_artifact_reader::find(const cooked_artifac
 {
     if (!address.valid()) return nullptr;
     const auto found = std::find_if(manifest_.artifacts.begin(), manifest_.artifacts.end(),
-                                    [&](const auto& artifact) {
+                                    [&](const auto& artifact)
+                                    {
                                         return artifact.asset == address.asset && artifact.schema == address.schema &&
                                                artifact.name == address.name;
                                     });
@@ -117,9 +118,8 @@ package_artifact_reader::locate(const cooked_artifact_address& address) const no
         if (!logical) return std::nullopt;
         auto resolved = virtual_files_->resolve(logical.value());
         if (!resolved) return std::nullopt;
-        return cooked_artifact_location{.file = std::move(resolved).value(),
-                                        .offset = 0,
-                                        .size = artifact->stored_size};
+        return cooked_artifact_location{
+            .file = std::move(resolved).value(), .offset = 0, .size = artifact->stored_size};
     }
     return cooked_artifact_location{
         .path = root_ / artifact->chunk, .offset = artifact->offset, .size = artifact->stored_size};
@@ -156,8 +156,10 @@ package_artifact_reader::read_range(const cooked_artifact_address& address, std:
 
     if (location->file.valid())
     {
-        auto loaded = virtual_files_->read_range(location->file, location->offset + relative_offset,
-                                                 static_cast<std::size_t>(size)).get();
+        auto loaded =
+            virtual_files_
+                ->read_range(location->file, location->offset + relative_offset, static_cast<std::size_t>(size))
+                .get();
         if (!loaded)
             return read_failure(loaded.error().code == io::file_error_code::stale_handle
                                     ? asset_error_code::invalid_request

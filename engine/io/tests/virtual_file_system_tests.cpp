@@ -19,7 +19,8 @@ arc::io::virtual_path path(std::string_view value)
 arc::io::file_buffer bytes(std::initializer_list<unsigned char> values)
 {
     arc::io::file_buffer result;
-    for (const auto value : values) result.push_back(static_cast<std::byte>(value));
+    for (const auto value : values)
+        result.push_back(static_cast<std::byte>(value));
     return result;
 }
 
@@ -56,16 +57,14 @@ TEST_CASE("virtual filesystem resolves overlays tombstones and immutable generat
     REQUIRE(original.succeeded());
     CHECK(vfs.read_all(original.value()).get().value() == bytes({1, 2, 3}));
 
-    const std::array overlay_files{
-        arc::io::memory_provider_update{.relative_path = "mesh.bin", .bytes = bytes({9, 8})},
-        arc::io::memory_provider_update{.relative_path = "gone.bin", .tombstone = true}};
+    const std::array overlay_files{arc::io::memory_provider_update{.relative_path = "mesh.bin", .bytes = bytes({9, 8})},
+                                   arc::io::memory_provider_update{.relative_path = "gone.bin", .tombstone = true}};
     REQUIRE(overlay->publish(overlay_files).succeeded());
     auto replacement = vfs.resolve("artifact://game/mesh.bin");
     REQUIRE(replacement.succeeded());
     CHECK(vfs.read_all(replacement.value()).get().value() == bytes({9, 8}));
     CHECK(vfs.read_all(original.value()).get().value() == bytes({1, 2, 3}));
-    const std::array changed_base{
-        arc::io::memory_provider_update{.relative_path = "mesh.bin", .bytes = bytes({7})}};
+    const std::array changed_base{arc::io::memory_provider_update{.relative_path = "mesh.bin", .bytes = bytes({7})}};
     REQUIRE(base->publish(changed_base).succeeded());
     const auto stale = vfs.read_all(original.value()).get();
     REQUIRE_FALSE(stale.succeeded());
@@ -83,12 +82,11 @@ TEST_CASE("virtual filesystem change history is ordered bounded and caller-polle
     auto provider = std::make_shared<arc::io::memory_file_provider>(jobs);
     REQUIRE(vfs.mount({.root = path("package://base"), .provider = provider}).succeeded());
     std::size_t callback_count{};
-    const auto subscription = vfs.subscribe([&](const arc::io::virtual_change_batch& batch)
-                                            { callback_count += batch.events.size(); });
-    const std::array updates{
-        arc::io::memory_provider_update{.relative_path = "z.bin", .bytes = bytes({1})},
-        arc::io::memory_provider_update{.relative_path = "a.bin", .bytes = bytes({2})},
-        arc::io::memory_provider_update{.relative_path = "m.bin", .bytes = bytes({3})}};
+    const auto subscription =
+        vfs.subscribe([&](const arc::io::virtual_change_batch& batch) { callback_count += batch.events.size(); });
+    const std::array updates{arc::io::memory_provider_update{.relative_path = "z.bin", .bytes = bytes({1})},
+                             arc::io::memory_provider_update{.relative_path = "a.bin", .bytes = bytes({2})},
+                             arc::io::memory_provider_update{.relative_path = "m.bin", .bytes = bytes({3})}};
     REQUIRE(provider->publish(updates).succeeded());
     CHECK(callback_count == 0);
     const auto batch = vfs.poll_changes();
@@ -104,6 +102,23 @@ TEST_CASE("virtual filesystem change history is ordered bounded and caller-polle
     vfs.unsubscribe(subscription);
 }
 
+TEST_CASE("virtual filesystem rejects ambiguous priorities and unmounts exact providers")
+{
+    arc::jobs::job_system jobs(
+        {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
+    arc::io::virtual_file_system vfs(jobs);
+    auto first = std::make_shared<arc::io::memory_file_provider>(jobs);
+    auto second = std::make_shared<arc::io::memory_file_provider>(jobs);
+    const std::array update{arc::io::memory_provider_update{.relative_path = "data.bin", .bytes = bytes({1})}};
+    REQUIRE(first->publish(update).succeeded());
+    const auto mounted = vfs.mount({.root = path("package://base"), .priority = 5, .provider = first});
+    REQUIRE(mounted.succeeded());
+    CHECK_FALSE(vfs.mount({.root = path("package://base"), .priority = 5, .provider = second}).succeeded());
+    REQUIRE(vfs.resolve("package://base/data.bin").succeeded());
+    REQUIRE(vfs.unmount(mounted.value()).succeeded());
+    CHECK_FALSE(vfs.resolve("package://base/data.bin").succeeded());
+}
+
 TEST_CASE("filesystem provider enforces its root and reports changes")
 {
     arc::jobs::job_system jobs(
@@ -116,7 +131,8 @@ TEST_CASE("filesystem provider enforces its root and reports changes")
         std::ofstream output(root / "data.bin", std::ios::binary);
         output << "abcd";
     }
-    auto provider = std::make_shared<arc::io::filesystem_file_provider>(files, root);
+    auto provider = std::make_shared<arc::io::filesystem_file_provider>(
+        files, root, arc::io::filesystem_provider_config{.debounce = std::chrono::milliseconds{0}});
     arc::io::virtual_file_system vfs(jobs);
     REQUIRE(vfs.mount({.root = path("package://base"), .provider = provider}).succeeded());
     auto resolved = vfs.resolve("package://base/data.bin");

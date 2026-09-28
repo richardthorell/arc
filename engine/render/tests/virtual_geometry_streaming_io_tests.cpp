@@ -211,8 +211,7 @@ TEST_CASE("virtual geometry page sources read artifact-relative ranges through V
     jobs::job_system jobs({.worker_count = 1u, .io_worker_count = 1u, .enable_render_thread = false});
     io::virtual_file_system vfs(jobs);
     auto provider = std::make_shared<io::memory_file_provider>(jobs);
-    const std::array updates{
-        io::memory_provider_update{.relative_path = "mesh.arcvg", .bytes = std::move(artifact)}};
+    const std::array updates{io::memory_provider_update{.relative_path = "mesh.arcvg", .bytes = std::move(artifact)}};
     REQUIRE(provider->publish(updates).succeeded());
     auto root = io::virtual_path::parse("artifact://game");
     REQUIRE(root.succeeded());

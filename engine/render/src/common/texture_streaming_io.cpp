@@ -88,16 +88,16 @@ filesystem_texture_artifact_source::read_range(texture_stream_source_id source, 
     {
         if (implementation_->files)
             return implementation_->files->scheduler().submit_future(
-            {.name = "render.texture_range.invalid",
-             .priority = jobs::job_priority::normal,
-             .affinity = jobs::job_affinity::io_thread,
-             .cancellation = cancellation},
-            []
-            {
-                return io::file_result<io::file_buffer>::failure(
-                    {.code = io::file_error_code::invalid_range,
-                     .message = "texture artifact source or range is invalid"});
-            });
+                {.name = "render.texture_range.invalid",
+                 .priority = jobs::job_priority::normal,
+                 .affinity = jobs::job_affinity::io_thread,
+                 .cancellation = cancellation},
+                []
+                {
+                    return io::file_result<io::file_buffer>::failure(
+                        {.code = io::file_error_code::invalid_range,
+                         .message = "texture artifact source or range is invalid"});
+                });
         return implementation_->virtual_files->read_range({}, 0, 0, cancellation);
     }
     if (found->second.file.valid())

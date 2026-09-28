@@ -50,8 +50,7 @@ filesystem_virtual_geometry_artifact_source::filesystem_virtual_geometry_artifac
     implementation_->files = &files;
 }
 
-filesystem_virtual_geometry_artifact_source::filesystem_virtual_geometry_artifact_source(
-    io::virtual_file_system& files)
+filesystem_virtual_geometry_artifact_source::filesystem_virtual_geometry_artifact_source(io::virtual_file_system& files)
     : implementation_(std::make_unique<implementation>())
 {
     implementation_->virtual_files = &files;
@@ -141,11 +140,11 @@ filesystem_virtual_geometry_artifact_source::read_page(const virtual_geometry_pa
     {
         if (implementation_->files)
             return implementation_->files->scheduler().submit_future(
-            {.name = "render.virtual_geometry_page.invalid_source",
-             .priority = jobs::job_priority::normal,
-             .affinity = jobs::job_affinity::io_thread,
-             .cancellation = cancellation},
-            [] { return invalid_page_read("virtual-geometry artifact source or generation is invalid"); });
+                {.name = "render.virtual_geometry_page.invalid_source",
+                 .priority = jobs::job_priority::normal,
+                 .affinity = jobs::job_affinity::io_thread,
+                 .cancellation = cancellation},
+                [] { return invalid_page_read("virtual-geometry artifact source or generation is invalid"); });
         return implementation_->virtual_files->read_range({}, 0, 0, cancellation);
     }
 
@@ -157,11 +156,11 @@ filesystem_virtual_geometry_artifact_source::read_page(const virtual_geometry_pa
     {
         if (implementation_->files)
             return implementation_->files->scheduler().submit_future(
-            {.name = "render.virtual_geometry_page.invalid_range",
-             .priority = jobs::job_priority::normal,
-             .affinity = jobs::job_affinity::io_thread,
-             .cancellation = cancellation},
-            [] { return invalid_page_read("virtual-geometry cooked page range is invalid"); });
+                {.name = "render.virtual_geometry_page.invalid_range",
+                 .priority = jobs::job_priority::normal,
+                 .affinity = jobs::job_affinity::io_thread,
+                 .cancellation = cancellation},
+                [] { return invalid_page_read("virtual-geometry cooked page range is invalid"); });
         return implementation_->virtual_files->read_range({}, 0, 0, cancellation);
     }
 

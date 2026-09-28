@@ -137,17 +137,15 @@ io::file_result<io::file_buffer> read_blob_range(const std::filesystem::path& pa
         const auto count = std::min(chunk_size, result.size() - completed);
         stream.read(reinterpret_cast<char*>(result.data() + completed), static_cast<std::streamsize>(count));
         if (stream.gcount() != static_cast<std::streamsize>(count))
-            return io::file_result<io::file_buffer>::failure(
-                {.code = io::file_error_code::corrupt_content,
-                 .path = path,
-                 .message = "CAS blob ended before the requested range"});
+            return io::file_result<io::file_buffer>::failure({.code = io::file_error_code::corrupt_content,
+                                                              .path = path,
+                                                              .message = "CAS blob ended before the requested range"});
         completed += count;
     }
     if (offset == 0 && bytes == expected_size && hash_bytes(result) != expected_hash)
-        return io::file_result<io::file_buffer>::failure(
-            {.code = io::file_error_code::corrupt_content,
-             .path = path,
-             .message = "CAS blob failed SHA-256 verification"});
+        return io::file_result<io::file_buffer>::failure({.code = io::file_error_code::corrupt_content,
+                                                          .path = path,
+                                                          .message = "CAS blob failed SHA-256 verification"});
     return io::file_result<io::file_buffer>::success(std::move(result));
 }
 
@@ -195,8 +193,8 @@ asset_status cas_overlay_provider::load(std::string_view expected_target_profile
     if (!parsed) return asset_status::failure(std::move(parsed).error());
     if (parsed.value().target_profile != expected_target_profile ||
         parsed.value().base_build_id != expected_base_build_id)
-        return failed(asset_error_code::invalid_metadata,
-                      "Persisted overlay targets a different profile or base build", path);
+        return failed(asset_error_code::invalid_metadata, "Persisted overlay targets a different profile or base build",
+                      path);
     for (const auto& artifact : parsed.value().artifacts)
     {
         if (artifact.tombstone) continue;
@@ -223,10 +221,10 @@ asset_status cas_overlay_provider::activate(const runtime_update_manifest& manif
         if (staged.contains(key))
             return failed(asset_error_code::invalid_metadata, "Runtime update contains duplicate artifact addresses");
         staged.emplace(key, implementation::record{.artifact = artifact,
-                                                    .blob = artifact.tombstone
-                                                                ? std::filesystem::path{}
-                                                                : blob_path(implementation_->root, artifact.hash),
-                                                    .generation = content_generation(artifact)});
+                                                   .blob = artifact.tombstone
+                                                               ? std::filesystem::path{}
+                                                               : blob_path(implementation_->root, artifact.hash),
+                                                   .generation = content_generation(artifact)});
     }
 
     std::unique_lock lock(implementation_->mutex);
@@ -250,15 +248,15 @@ asset_status cas_overlay_provider::activate(const runtime_update_manifest& manif
     for (const auto& [path, record] : implementation_->records)
     {
         static_cast<void>(record);
-        if (!staged.contains(path)) changes.push_back({.kind = io::provider_change_kind::removed, .relative_path = path});
+        if (!staged.contains(path))
+            changes.push_back({.kind = io::provider_change_kind::removed, .relative_path = path});
     }
-    std::sort(changes.begin(), changes.end(), [](const auto& lhs, const auto& rhs)
-              { return lhs.relative_path < rhs.relative_path; });
+    std::sort(changes.begin(), changes.end(),
+              [](const auto& lhs, const auto& rhs) { return lhs.relative_path < rhs.relative_path; });
     implementation_->records = std::move(staged);
     implementation_->active = manifest;
     ++implementation_->generation;
-    implementation_->changes.insert(implementation_->changes.end(),
-                                    std::make_move_iterator(changes.begin()),
+    implementation_->changes.insert(implementation_->changes.end(), std::make_move_iterator(changes.begin()),
                                     std::make_move_iterator(changes.end()));
     return asset_status::success();
 }
@@ -307,10 +305,9 @@ cas_overlay_provider::read_range(const io::provider_file& file, std::uint64_t of
                 const auto found = state->records.find(file.key);
                 if (found == state->records.end() || found->second.artifact.tombstone ||
                     found->second.generation != file.content_generation)
-                    return io::file_result<io::file_buffer>::failure(
-                        {.code = io::file_error_code::stale_handle,
-                         .message = "CAS overlay handle was superseded",
-                         .logical_path = file.key});
+                    return io::file_result<io::file_buffer>::failure({.code = io::file_error_code::stale_handle,
+                                                                      .message = "CAS overlay handle was superseded",
+                                                                      .logical_path = file.key});
                 artifact = found->second.artifact;
                 blob = found->second.blob;
             }
@@ -342,8 +339,8 @@ cas_overlay_provider::enumerate(std::string_view relative_prefix)
                           .content_generation = record.generation,
                           .tombstone = record.artifact.tombstone});
     }
-    std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs)
-              { return lhs.relative_path < rhs.relative_path; });
+    std::sort(result.begin(), result.end(),
+              [](const auto& lhs, const auto& rhs) { return lhs.relative_path < rhs.relative_path; });
     return io::file_result<std::vector<io::provider_directory_entry>>::success(std::move(result));
 }
 
@@ -421,8 +418,8 @@ asset_status runtime_update_receiver::begin(runtime_update_manifest manifest)
         if (!artifact.tombstone && (artifact.hash.empty() || artifact.size == 0))
             return reject("Runtime update contains an incomplete artifact record");
     }
-    implementation_->staging_root = implementation_->config.cache_root / "staging" /
-                                    std::to_string(manifest.update_sequence);
+    implementation_->staging_root =
+        implementation_->config.cache_root / "staging" / std::to_string(manifest.update_sequence);
     std::error_code error;
     std::filesystem::create_directories(implementation_->staging_root, error);
     if (error) return reject("Runtime update staging directory could not be created");
@@ -435,10 +432,9 @@ asset_status runtime_update_receiver::begin_blob(content_hash hash, std::uint64_
 {
     if (!implementation_->pending || implementation_->blob_stream.is_open())
         return failed(asset_error_code::invalid_request, "No update is ready for a new blob");
-    const auto expected = std::find_if(implementation_->pending->artifacts.begin(),
-                                       implementation_->pending->artifacts.end(),
-                                       [&](const auto& artifact)
-                                       { return !artifact.tombstone && artifact.hash == hash && artifact.size == size; });
+    const auto expected = std::find_if(
+        implementation_->pending->artifacts.begin(), implementation_->pending->artifacts.end(),
+        [&](const auto& artifact) { return !artifact.tombstone && artifact.hash == hash && artifact.size == size; });
     if (expected == implementation_->pending->artifacts.end())
         return failed(asset_error_code::invalid_request, "Blob is not declared by the pending update");
     const auto text = to_string(hash);
@@ -469,8 +465,7 @@ asset_status runtime_update_receiver::begin_blob(content_hash hash, std::uint64_
 
 asset_status runtime_update_receiver::stage_blob(std::span<const std::byte> bytes)
 {
-    if (!implementation_->blob_hash)
-        return failed(asset_error_code::invalid_request, "No update blob is active");
+    if (!implementation_->blob_hash) return failed(asset_error_code::invalid_request, "No update blob is active");
     if (!implementation_->blob_stream.is_open())
         return bytes.empty() ? asset_status::success()
                              : failed(asset_error_code::invalid_request, "Existing CAS blob requires no payload");
@@ -478,8 +473,7 @@ asset_status runtime_update_receiver::stage_blob(std::span<const std::byte> byte
         return failed(asset_error_code::invalid_request, "Staged blob exceeds its declared size");
     implementation_->blob_stream.write(reinterpret_cast<const char*>(bytes.data()),
                                        static_cast<std::streamsize>(bytes.size()));
-    if (!implementation_->blob_stream)
-        return failed(asset_error_code::io_failed, "Could not write staged update blob");
+    if (!implementation_->blob_stream) return failed(asset_error_code::io_failed, "Could not write staged update blob");
     implementation_->blob_written += bytes.size();
     implementation_->telemetry.staged_bytes += bytes.size();
     return asset_status::success();
@@ -487,8 +481,7 @@ asset_status runtime_update_receiver::stage_blob(std::span<const std::byte> byte
 
 asset_status runtime_update_receiver::finish_blob()
 {
-    if (!implementation_->blob_hash)
-        return failed(asset_error_code::invalid_request, "No update blob is active");
+    if (!implementation_->blob_hash) return failed(asset_error_code::invalid_request, "No update blob is active");
     const auto hash = *implementation_->blob_hash;
     const auto text = to_string(hash);
     if (implementation_->blob_stream.is_open())
@@ -550,7 +543,8 @@ asset_status runtime_update_receiver::commit()
     if (!written)
     {
         ++implementation_->telemetry.rejected_updates;
-        return failed(asset_error_code::io_failed, "Could not atomically publish runtime update manifest", manifest_path);
+        return failed(asset_error_code::io_failed, "Could not atomically publish runtime update manifest",
+                      manifest_path);
     }
     auto activated = implementation_->overlay->activate(*implementation_->pending);
     if (!activated)
@@ -583,9 +577,8 @@ void runtime_update_receiver::abort() noexcept
     implementation_->verification_complete = false;
 }
 
-asset_status runtime_update_receiver::ingest(
-    const runtime_update_manifest& manifest,
-    std::span<const std::pair<content_hash, io::file_buffer>> blobs)
+asset_status runtime_update_receiver::ingest(const runtime_update_manifest& manifest,
+                                             std::span<const std::pair<content_hash, io::file_buffer>> blobs)
 {
     auto started = begin(manifest);
     if (!started) return started;

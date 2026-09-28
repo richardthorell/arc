@@ -445,7 +445,8 @@ cook_result asset_cooker::cook(const cook_request& request)
 
 asset_status save_cook_manifest(const std::filesystem::path& path, const cook_manifest& manifest)
 {
-    const auto failure = [&](std::string message) {
+    const auto failure = [&](std::string message)
+    {
         return asset_status::failure(
             {.code = asset_error_code::io_failed, .path = path, .message = std::move(message)});
     };
@@ -597,8 +598,7 @@ cook_manifest_result parse_cook_manifest(std::span<const std::byte> bytes, std::
         }
         return true;
     };
-    if (!parse_guids("roots", manifest.roots) ||
-        !parse_guids("dependencyClosure", manifest.dependency_closure) ||
+    if (!parse_guids("roots", manifest.roots) || !parse_guids("dependencyClosure", manifest.dependency_closure) ||
         !document.contains("artifacts") || !document["artifacts"].is_array())
         return failure("Cook manifest contains invalid asset identities");
 
@@ -613,8 +613,7 @@ cook_manifest_result parse_cook_manifest(std::span<const std::byte> bytes, std::
                                                              {"schemaVersion", value.value("schemaVersion", 0u)},
                                                              {"hash", value.value("hash", "")},
                                                              {"size", value.value("size", 0ull)}});
-        if (!asset || !type || !hash || !schema_value)
-            return failure("Cook manifest contains an invalid artifact");
+        if (!asset || !type || !hash || !schema_value) return failure("Cook manifest contains an invalid artifact");
         manifest.artifacts.push_back({.asset = *asset,
                                       .type = *type,
                                       .name = value.value("name", ""),

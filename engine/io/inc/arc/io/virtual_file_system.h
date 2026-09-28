@@ -30,7 +30,7 @@ public:
 
     [[nodiscard]] static file_result<virtual_path> parse(std::string_view value);
     [[nodiscard]] static file_result<virtual_path> from_parts(std::string_view scheme, std::string_view authority,
-                                                               std::string_view relative_path = {});
+                                                              std::string_view relative_path = {});
 
     [[nodiscard]] bool empty() const noexcept;
     [[nodiscard]] std::string_view string() const noexcept;
@@ -90,7 +90,7 @@ enum class provider_lookup_status : std::uint8_t
     failure
 };
 
-struct provider_lookup_result
+struct [[nodiscard]] provider_lookup_result
 {
     provider_lookup_status status{provider_lookup_status::not_found};
     provider_file file;
@@ -223,13 +223,13 @@ public:
 
     [[nodiscard]] file_result<resolved_virtual_file> resolve(const virtual_path& path);
     [[nodiscard]] file_result<resolved_virtual_file> resolve(std::string_view path);
-    [[nodiscard]] jobs::job_future<file_result<file_buffer>>
-    read_all(const resolved_virtual_file& file, jobs::cancellation_token cancellation = {});
-    [[nodiscard]] jobs::job_future<file_result<file_buffer>>
-    read_range(const resolved_virtual_file& file, std::uint64_t offset, std::size_t bytes,
-               jobs::cancellation_token cancellation = {});
-    [[nodiscard]] jobs::job_future<file_result<file_buffer>>
-    read_all(const virtual_path& path, jobs::cancellation_token cancellation = {});
+    [[nodiscard]] jobs::job_future<file_result<file_buffer>> read_all(const resolved_virtual_file& file,
+                                                                      jobs::cancellation_token cancellation = {});
+    [[nodiscard]] jobs::job_future<file_result<file_buffer>> read_range(const resolved_virtual_file& file,
+                                                                        std::uint64_t offset, std::size_t bytes,
+                                                                        jobs::cancellation_token cancellation = {});
+    [[nodiscard]] jobs::job_future<file_result<file_buffer>> read_all(const virtual_path& path,
+                                                                      jobs::cancellation_token cancellation = {});
     [[nodiscard]] file_result<std::vector<provider_directory_entry>> enumerate(const virtual_path& prefix);
 
     [[nodiscard]] virtual_change_batch poll_changes();
@@ -305,6 +305,9 @@ private:
     std::uint64_t generation_{1};
     bool snapshot_initialized_{};
     std::unordered_map<std::string, snapshot_entry> snapshot_;
+    std::unordered_map<std::string, snapshot_entry> pending_snapshot_;
+    std::chrono::steady_clock::time_point pending_since_{};
+    bool pending_snapshot_valid_{};
 };
 
 struct memory_provider_update

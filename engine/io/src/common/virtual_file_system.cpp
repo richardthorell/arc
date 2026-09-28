@@ -19,9 +19,12 @@ file_error logical_error(file_error_code code, std::string_view path, std::strin
 bool valid_uri_token(std::string_view value) noexcept
 {
     if (value.empty()) return false;
-    return std::all_of(value.begin(), value.end(), [](char character)
-                       { return std::isalnum(static_cast<unsigned char>(character)) || character == '-' ||
-                                character == '_' || character == '.'; });
+    return std::all_of(value.begin(), value.end(),
+                       [](char character)
+                       {
+                           return std::isalnum(static_cast<unsigned char>(character)) || character == '-' ||
+                                  character == '_' || character == '.';
+                       });
 }
 
 std::string lowercase_ascii(std::string_view value)
@@ -38,7 +41,8 @@ file_result<std::string> normalize_relative(std::string_view input)
     std::size_t cursor{};
     while (cursor < input.size())
     {
-        while (cursor < input.size() && input[cursor] == '/') ++cursor;
+        while (cursor < input.size() && input[cursor] == '/')
+            ++cursor;
         const auto begin = cursor;
         while (cursor < input.size() && input[cursor] != '/')
         {
@@ -67,8 +71,8 @@ std::uint64_t fingerprint(std::uint64_t size, std::filesystem::file_time_type mo
     return result == 0 ? 1 : result;
 }
 
-file_result<file_buffer> read_physical_range(const std::filesystem::path& path, std::uint64_t offset,
-                                             std::size_t bytes, std::uint64_t expected_generation,
+file_result<file_buffer> read_physical_range(const std::filesystem::path& path, std::uint64_t offset, std::size_t bytes,
+                                             std::uint64_t expected_generation,
                                              const jobs::cancellation_token& cancellation)
 {
     std::error_code error;
@@ -146,7 +150,8 @@ file_result<virtual_path> virtual_path::parse(std::string_view value)
         return file_result<virtual_path>::failure(
             logical_error(file_error_code::invalid_request, value, "Virtual path scheme or authority is invalid"));
 
-    auto relative = normalize_relative(path_begin == std::string_view::npos ? std::string_view{} : value.substr(path_begin + 1));
+    auto relative =
+        normalize_relative(path_begin == std::string_view::npos ? std::string_view{} : value.substr(path_begin + 1));
     if (!relative) return file_result<virtual_path>::failure(relative.error());
     return from_parts(scheme, authority, relative.value());
 }
@@ -171,8 +176,7 @@ file_result<virtual_path> virtual_path::from_parts(std::string_view scheme, std:
         value.push_back('/');
         value.append(relative.value());
     }
-    return file_result<virtual_path>::success(
-        virtual_path(std::move(value), authority_offset, path_offset));
+    return file_result<virtual_path>::success(virtual_path(std::move(value), authority_offset, path_offset));
 }
 
 bool virtual_path::empty() const noexcept
@@ -260,15 +264,16 @@ file_result<mount_id> virtual_file_system::mount(mount_descriptor descriptor)
     const auto root = descriptor.root;
     {
         std::unique_lock lock(mount_mutex_);
-        const auto duplicate = std::find_if(mounts_.begin(), mounts_.end(), [&](const mount_record& record)
-                                            { return record.descriptor.root == descriptor.root &&
-                                                     record.descriptor.priority == descriptor.priority; });
+        const auto duplicate = std::find_if(
+            mounts_.begin(), mounts_.end(), [&](const mount_record& record)
+            { return record.descriptor.root == descriptor.root && record.descriptor.priority == descriptor.priority; });
         if (duplicate != mounts_.end())
             return file_result<mount_id>::failure(logical_error(
                 file_error_code::invalid_request, descriptor.root.string(), "Mount priority is already occupied"));
         id = next_mount_id_++;
         mounts_.push_back({.id = id, .descriptor = std::move(descriptor)});
-        std::sort(mounts_.begin(), mounts_.end(), [](const mount_record& lhs, const mount_record& rhs)
+        std::sort(mounts_.begin(), mounts_.end(),
+                  [](const mount_record& lhs, const mount_record& rhs)
                   {
                       if (lhs.descriptor.priority != rhs.descriptor.priority)
                           return lhs.descriptor.priority > rhs.descriptor.priority;
@@ -289,8 +294,8 @@ file_result<void> virtual_file_system::unmount(mount_id id)
     virtual_path root;
     {
         std::unique_lock lock(mount_mutex_);
-        const auto found = std::find_if(mounts_.begin(), mounts_.end(),
-                                        [id](const mount_record& record) { return record.id == id; });
+        const auto found =
+            std::find_if(mounts_.begin(), mounts_.end(), [id](const mount_record& record) { return record.id == id; });
         if (found == mounts_.end())
             return file_result<void>::failure(
                 logical_error(file_error_code::not_found, {}, "Virtual filesystem mount was not found"));
@@ -366,8 +371,8 @@ jobs::job_future<file_result<file_buffer>> virtual_file_system::failed_read(file
                                 { return file_result<file_buffer>::failure(std::move(error)); });
 }
 
-jobs::job_future<file_result<file_buffer>>
-virtual_file_system::read_all(const resolved_virtual_file& file, jobs::cancellation_token cancellation)
+jobs::job_future<file_result<file_buffer>> virtual_file_system::read_all(const resolved_virtual_file& file,
+                                                                         jobs::cancellation_token cancellation)
 {
     if (file.size() > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()))
         return failed_read(logical_error(file_error_code::invalid_range, file.path().string(),
@@ -420,8 +425,8 @@ file_result<std::vector<provider_directory_entry>> virtual_file_system::enumerat
             if (!entry.tombstone) result.push_back(std::move(entry));
         }
     }
-    std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs)
-              { return lhs.relative_path < rhs.relative_path; });
+    std::sort(result.begin(), result.end(),
+              [](const auto& lhs, const auto& rhs) { return lhs.relative_path < rhs.relative_path; });
     return file_result<std::vector<provider_directory_entry>>::success(std::move(result));
 }
 
@@ -453,7 +458,8 @@ virtual_change_batch virtual_file_system::publish(std::vector<virtual_change_eve
             callbacks.push_back(callback);
         }
     }
-    for (const auto& callback : callbacks) callback(batch);
+    for (const auto& callback : callbacks)
+        callback(batch);
     return batch;
 }
 
@@ -475,18 +481,18 @@ virtual_change_batch virtual_file_system::poll_changes()
             auto kind = virtual_change_kind::modified;
             switch (change.kind)
             {
-            case provider_change_kind::added:
-                kind = virtual_change_kind::added;
-                break;
-            case provider_change_kind::modified:
-                kind = virtual_change_kind::modified;
-                break;
-            case provider_change_kind::removed:
-                kind = virtual_change_kind::removed;
-                break;
-            case provider_change_kind::reset:
-                kind = virtual_change_kind::reset;
-                break;
+                case provider_change_kind::added:
+                    kind = virtual_change_kind::added;
+                    break;
+                case provider_change_kind::modified:
+                    kind = virtual_change_kind::modified;
+                    break;
+                case provider_change_kind::removed:
+                    kind = virtual_change_kind::removed;
+                    break;
+                case provider_change_kind::reset:
+                    kind = virtual_change_kind::reset;
+                    break;
             }
             events.push_back({.kind = kind,
                               .path = std::move(path.value()),
@@ -494,7 +500,8 @@ virtual_change_batch virtual_file_system::poll_changes()
                               .content_generation = change.content_generation});
         }
     }
-    std::sort(events.begin(), events.end(), [](const auto& lhs, const auto& rhs)
+    std::sort(events.begin(), events.end(),
+              [](const auto& lhs, const auto& rhs)
               {
                   if (lhs.path != rhs.path) return lhs.path < rhs.path;
                   if (lhs.mount != rhs.mount) return lhs.mount < rhs.mount;
@@ -584,19 +591,19 @@ provider_lookup_result filesystem_file_provider::resolve(std::string_view relati
                                             .message = error.message()}
                                : file_error{}};
     const auto size = std::filesystem::file_size(path.value(), error);
-    const auto modified = error ? std::filesystem::file_time_type{} : std::filesystem::last_write_time(path.value(), error);
+    const auto modified =
+        error ? std::filesystem::file_time_type{} : std::filesystem::last_write_time(path.value(), error);
     if (error)
         return {.status = provider_lookup_status::failure,
                 .error = {.code = file_error_code::read_failed, .path = path.value(), .message = error.message()}};
     return {.status = provider_lookup_status::found,
-            .file = {.key = path.value().generic_string(),
-                     .size = size,
-                     .content_generation = fingerprint(size, modified)}};
+            .file = {
+                .key = path.value().generic_string(), .size = size, .content_generation = fingerprint(size, modified)}};
 }
 
-jobs::job_future<file_result<file_buffer>>
-filesystem_file_provider::read_range(const provider_file& file, std::uint64_t offset, std::size_t bytes,
-                                     jobs::cancellation_token cancellation)
+jobs::job_future<file_result<file_buffer>> filesystem_file_provider::read_range(const provider_file& file,
+                                                                                std::uint64_t offset, std::size_t bytes,
+                                                                                jobs::cancellation_token cancellation)
 {
     const auto path = std::filesystem::path(file.key);
     return files_->scheduler().submit_future(
@@ -629,20 +636,18 @@ std::unordered_map<std::string, filesystem_file_provider::snapshot_entry> filesy
     return result;
 }
 
-file_result<std::vector<provider_directory_entry>>
-filesystem_file_provider::enumerate(std::string_view relative_prefix)
+file_result<std::vector<provider_directory_entry>> filesystem_file_provider::enumerate(std::string_view relative_prefix)
 {
     const auto files = scan();
     std::vector<provider_directory_entry> result;
     for (const auto& [path, entry] : files)
     {
         if (!relative_prefix.empty() && !path.starts_with(relative_prefix)) continue;
-        result.push_back({.relative_path = path,
-                          .size = entry.size,
-                          .content_generation = fingerprint(entry.size, entry.modified)});
+        result.push_back(
+            {.relative_path = path, .size = entry.size, .content_generation = fingerprint(entry.size, entry.modified)});
     }
-    std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs)
-              { return lhs.relative_path < rhs.relative_path; });
+    std::sort(result.begin(), result.end(),
+              [](const auto& lhs, const auto& rhs) { return lhs.relative_path < rhs.relative_path; });
     return file_result<std::vector<provider_directory_entry>>::success(std::move(result));
 }
 
@@ -657,6 +662,27 @@ std::vector<provider_change> filesystem_file_provider::poll_changes()
         snapshot_initialized_ = true;
         return changes;
     }
+    if (current == snapshot_)
+    {
+        pending_snapshot_.clear();
+        pending_snapshot_valid_ = false;
+        return changes;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (config_.debounce.count() > 0)
+    {
+        if (!pending_snapshot_valid_ || current != pending_snapshot_)
+        {
+            pending_snapshot_ = std::move(current);
+            pending_since_ = now;
+            pending_snapshot_valid_ = true;
+            return changes;
+        }
+        if (now - pending_since_ < config_.debounce) return changes;
+        current = std::move(pending_snapshot_);
+    }
+    pending_snapshot_.clear();
+    pending_snapshot_valid_ = false;
     for (const auto& [path, entry] : current)
     {
         const auto previous = snapshot_.find(path);
@@ -672,13 +698,12 @@ std::vector<provider_change> filesystem_file_provider::poll_changes()
     for (const auto& [path, entry] : snapshot_)
     {
         static_cast<void>(entry);
-        if (!current.contains(path))
-            changes.push_back({.kind = provider_change_kind::removed, .relative_path = path});
+        if (!current.contains(path)) changes.push_back({.kind = provider_change_kind::removed, .relative_path = path});
     }
     if (!changes.empty()) ++generation_;
     snapshot_ = std::move(current);
-    std::sort(changes.begin(), changes.end(), [](const auto& lhs, const auto& rhs)
-              { return lhs.relative_path < rhs.relative_path; });
+    std::sort(changes.begin(), changes.end(),
+              [](const auto& lhs, const auto& rhs) { return lhs.relative_path < rhs.relative_path; });
     return changes;
 }
 
@@ -715,9 +740,9 @@ provider_lookup_result memory_file_provider::resolve(std::string_view relative_p
                      .content_generation = found->second.generation}};
 }
 
-jobs::job_future<file_result<file_buffer>>
-memory_file_provider::read_range(const provider_file& file, std::uint64_t offset, std::size_t bytes,
-                                 jobs::cancellation_token cancellation)
+jobs::job_future<file_result<file_buffer>> memory_file_provider::read_range(const provider_file& file,
+                                                                            std::uint64_t offset, std::size_t bytes,
+                                                                            jobs::cancellation_token cancellation)
 {
     return jobs_->submit_future(
         {.name = "vfs.memory.read",
@@ -743,8 +768,9 @@ memory_file_provider::read_range(const provider_file& file, std::uint64_t offset
             if (offset > source->size() || bytes > source->size() - offset)
                 return file_result<file_buffer>::failure(
                     logical_error(file_error_code::invalid_range, file.key, "Read range is outside the file"));
-            return file_result<file_buffer>::success(file_buffer(source->begin() + static_cast<std::ptrdiff_t>(offset),
-                                                                 source->begin() + static_cast<std::ptrdiff_t>(offset + bytes)));
+            return file_result<file_buffer>::success(
+                file_buffer(source->begin() + static_cast<std::ptrdiff_t>(offset),
+                            source->begin() + static_cast<std::ptrdiff_t>(offset + bytes)));
         });
 }
 
@@ -760,8 +786,8 @@ file_result<std::vector<provider_directory_entry>> memory_file_provider::enumera
                           .content_generation = value.generation,
                           .tombstone = value.tombstone});
     }
-    std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs)
-              { return lhs.relative_path < rhs.relative_path; });
+    std::sort(result.begin(), result.end(),
+              [](const auto& lhs, const auto& rhs) { return lhs.relative_path < rhs.relative_path; });
     return file_result<std::vector<provider_directory_entry>>::success(std::move(result));
 }
 
@@ -787,10 +813,10 @@ file_result<void> memory_file_provider::publish(std::span<const memory_provider_
     {
         auto normalized = normalize_relative(update.relative_path);
         if (!normalized || normalized.value().empty())
-            return file_result<void>::failure(normalized ? logical_error(file_error_code::invalid_request,
-                                                                         update.relative_path,
-                                                                         "Memory provider path is empty")
-                                                         : normalized.error());
+            return file_result<void>::failure(normalized
+                                                  ? logical_error(file_error_code::invalid_request,
+                                                                  update.relative_path, "Memory provider path is empty")
+                                                  : normalized.error());
         prepared.push_back({.path = std::move(normalized.value()),
                             .bytes = std::make_shared<const file_buffer>(update.bytes),
                             .tombstone = update.tombstone});
@@ -802,13 +828,11 @@ file_result<void> memory_file_provider::publish(std::span<const memory_provider_
     {
         const auto found = entries_.find(update.path);
         const auto kind = found == entries_.end() ? provider_change_kind::added : provider_change_kind::modified;
-        entries_[update.path] = {.bytes = std::move(update.bytes),
-                                 .generation = generation,
-                                 .tombstone = update.tombstone};
-        pending_changes_.push_back(
-            {.kind = update.tombstone ? provider_change_kind::removed : kind,
-             .relative_path = update.path,
-             .content_generation = generation});
+        entries_[update.path] = {
+            .bytes = std::move(update.bytes), .generation = generation, .tombstone = update.tombstone};
+        pending_changes_.push_back({.kind = update.tombstone ? provider_change_kind::removed : kind,
+                                    .relative_path = update.path,
+                                    .content_generation = generation});
     }
     return file_result<void>::success();
 }

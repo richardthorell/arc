@@ -343,8 +343,8 @@ TEST_CASE("texture artifact sources stream immutable VFS ranges and reject super
     REQUIRE(payload.succeeded());
     CHECK(payload.value() == io::file_buffer{std::byte{'A'}, std::byte{'R'}, std::byte{'C'}});
 
-    const std::array replacement{io::memory_provider_update{
-        .relative_path = "texture.arcimg", .bytes = {std::byte{'n'}, std::byte{'e'}, std::byte{'w'}}}};
+    const std::array replacement{io::memory_provider_update{.relative_path = "texture.arcimg",
+                                                            .bytes = {std::byte{'n'}, std::byte{'e'}, std::byte{'w'}}}};
     REQUIRE(provider->publish(replacement).succeeded());
     const auto stale = source.read_range(91, 0, 3).get();
     REQUIRE_FALSE(stale.succeeded());
