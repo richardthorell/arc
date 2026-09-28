@@ -17,7 +17,7 @@ enum class material_instance_validation_error : std::uint8_t
     duplicate_parameter_id
 };
 
-struct material_instance_validation_result
+struct [[nodiscard]] material_instance_validation_result
 {
     material_instance_validation_error error{material_instance_validation_error::none};
     shader_parameter_id parameter_id{};
