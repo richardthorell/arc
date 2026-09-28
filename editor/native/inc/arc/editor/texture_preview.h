@@ -2,6 +2,7 @@
 
 #include <arc/render/texture.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -22,6 +23,28 @@ struct texture_preview_image
                rgba.size() == static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u;
     }
 };
+
+/** @brief Exact source texel returned by native Texture Editor inspection. */
+struct texture_texel_sample
+{
+    std::uint32_t x{};
+    std::uint32_t y{};
+    std::uint32_t mip{};
+    std::array<float, 4> rgba{};
+    bool valid{};
+};
+
+/**
+ * @brief Inspect one decoded 2D source texel without going through preview rendering.
+ *
+ * Byte formats are returned normalized to [0, 1]. Float/HDR formats preserve
+ * their source values, including values outside the displayable range. The
+ * selected mip's own dimensions and byte range are used when mip metadata is
+ * available. Cube/3D coordinates intentionally remain reserved for their
+ * dedicated preview milestones.
+ */
+[[nodiscard]] texture_texel_sample inspect_texture_texel(const render::texture_data& texture, std::uint32_t x,
+                                                         std::uint32_t y, std::uint32_t mip = 0u);
 
 /**
  * @brief Build a display-ready preview from decoded texture data.

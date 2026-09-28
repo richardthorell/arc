@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -39,6 +40,35 @@ void write_u32(std::vector<std::byte>& bytes, std::size_t offset, std::uint32_t 
         bytes[offset + index] = static_cast<std::byte>((value >> (index * 8u)) & 0xffu);
 }
 
+float half_to_float(std::uint16_t value)
+{
+    const std::uint32_t sign = static_cast<std::uint32_t>(value & 0x8000u) << 16u;
+    std::uint32_t exponent = (value >> 10u) & 0x1fu;
+    std::uint32_t mantissa = value & 0x03ffu;
+    std::uint32_t bits{};
+    if (exponent == 0u)
+    {
+        if (mantissa == 0u)
+            bits = sign;
+        else
+        {
+            exponent = 113u;
+            while ((mantissa & 0x0400u) == 0u)
+            {
+                mantissa <<= 1u;
+                --exponent;
+            }
+            mantissa &= 0x03ffu;
+            bits = sign | (exponent << 23u) | (mantissa << 13u);
+        }
+    }
+    else if (exponent == 0x1fu)
+        bits = sign | 0x7f800000u | (mantissa << 13u);
+    else
+        bits = sign | ((exponent + 112u) << 23u) | (mantissa << 13u);
+    return std::bit_cast<float>(bits);
+}
+
 std::array<std::uint8_t, 4> source_pixel(const render::texture_data& texture, std::size_t source_offset,
                                          bool float_pixels)
 {
@@ -55,6 +85,77 @@ std::array<std::uint8_t, 4> source_pixel(const render::texture_data& texture, st
             std::to_integer<std::uint8_t>(texture.pixels[source_offset + 3u])};
 }
 } // namespace
+
+texture_texel_sample inspect_texture_texel(const render::texture_data& texture, std::uint32_t x, std::uint32_t y,
+                                           std::uint32_t mip)
+{
+    texture_texel_sample sample{.x = x, .y = y, .mip = mip};
+    if (!texture.has_pixels() || texture.dimension != render::texture_dimension::texture_2d) return sample;
+
+    std::uint32_t width = texture.width;
+    std::uint32_t height = texture.height;
+    std::size_t base_offset{};
+    std::size_t mip_size = texture.pixels.size();
+    if (!texture.mips.empty())
+    {
+        if (mip >= texture.mips.size()) return sample;
+        const auto& selected = texture.mips[mip];
+        width = selected.width;
+        height = selected.height;
+        base_offset = selected.offset;
+        mip_size = selected.size;
+    }
+    else if (mip != 0u)
+        return sample;
+
+    if (width == 0u || height == 0u || x >= width || y >= height) return sample;
+
+    std::size_t bytes_per_pixel{};
+    switch (texture.format)
+    {
+        case render::texture_format::rgba8_unorm:
+        case render::texture_format::rgba8_srgb:
+            bytes_per_pixel = 4u;
+            break;
+        case render::texture_format::rgba16f:
+            bytes_per_pixel = sizeof(std::uint16_t) * 4u;
+            break;
+        case render::texture_format::rgba32f:
+            bytes_per_pixel = sizeof(float) * 4u;
+            break;
+        default:
+            return sample;
+    }
+
+    const std::uint64_t pixel_index = static_cast<std::uint64_t>(y) * width + x;
+    const std::uint64_t relative_offset = pixel_index * bytes_per_pixel;
+    if (relative_offset > std::numeric_limits<std::size_t>::max()) return sample;
+    const auto offset = static_cast<std::size_t>(relative_offset);
+    if (offset > mip_size || bytes_per_pixel > mip_size - offset) return sample;
+    if (base_offset > texture.pixels.size() || offset > texture.pixels.size() - base_offset ||
+        bytes_per_pixel > texture.pixels.size() - base_offset - offset)
+        return sample;
+
+    const auto* source = texture.pixels.data() + base_offset + offset;
+    if (texture.format == render::texture_format::rgba32f)
+        std::memcpy(sample.rgba.data(), source, sizeof(float) * sample.rgba.size());
+    else if (texture.format == render::texture_format::rgba16f)
+    {
+        for (std::size_t channel = 0; channel < sample.rgba.size(); ++channel)
+        {
+            std::uint16_t half{};
+            std::memcpy(&half, source + channel * sizeof(half), sizeof(half));
+            sample.rgba[channel] = half_to_float(half);
+        }
+    }
+    else
+    {
+        for (std::size_t channel = 0; channel < sample.rgba.size(); ++channel)
+            sample.rgba[channel] = static_cast<float>(std::to_integer<std::uint8_t>(source[channel])) / 255.0f;
+    }
+    sample.valid = true;
+    return sample;
+}
 
 texture_preview_image build_texture_preview_image(const render::texture_data& texture, std::uint32_t max_size)
 {
