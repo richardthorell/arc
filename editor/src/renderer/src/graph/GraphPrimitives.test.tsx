@@ -24,7 +24,7 @@ describe('shared graph primitives', () => {
     expect(screen.getByRole('button', { name: 'Then' })).toHaveClass('output', 'connected');
   });
 
-  it('exposes shared wire hover metadata and endpoint identity', () => {
+  it('exposes shared wire hover metadata, direction feedback, and endpoint identity', () => {
     const onHoveredWireChange = vi.fn();
     const { container } = render(
       <GraphWireLayer
@@ -45,13 +45,18 @@ describe('shared graph primitives', () => {
     expect(wire).toHaveAttribute('data-source-pin-key', 'color:output:rgb');
     expect(wire).toHaveAttribute('data-destination-pin-key', 'surface:input:baseColor');
     expect(wire?.querySelector('title')).toHaveTextContent('Vector3 • Color.rgb → Base Color');
+    expect(container.querySelector('[data-graph-wire-direction="color-wire"]')).not.toBeInTheDocument();
 
     fireEvent.pointerEnter(wire!);
     expect(wire).toHaveClass('is-hovered');
     expect(wire).toHaveAttribute('data-hovered', 'true');
     expect(onHoveredWireChange).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'color-wire' }));
+    const direction = container.querySelector('[data-graph-wire-direction="color-wire"]');
+    expect(direction).toHaveTextContent('› › ›');
+    expect(direction?.querySelector('textPath')).toHaveAttribute('startOffset', '38%');
 
     fireEvent.pointerLeave(wire!);
+    expect(container.querySelector('[data-graph-wire-direction="color-wire"]')).not.toBeInTheDocument();
     expect(onHoveredWireChange).toHaveBeenLastCalledWith(null);
   });
 
