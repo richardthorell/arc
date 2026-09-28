@@ -40,7 +40,8 @@ validate_material_instance(const material_instance_descriptor& instance)
 {
     if (!instance.parent.valid())
     {
-        return {material_instance_validation_error::missing_parent, {},
+        return {material_instance_validation_error::missing_parent,
+                {},
                 "material instance requires a valid parent material"};
     }
 
