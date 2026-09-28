@@ -1,7 +1,7 @@
 import { FileImage, Upload } from 'lucide-react';
 import { useState } from 'react';
 
-import { UiButton, UiDialog } from '../ui';
+import { UiButton, UiDialog, UiSelect, UiTextInput, UiToggleButton } from '../ui';
 
 import './ImportDialog.css';
 
@@ -10,6 +10,12 @@ type ImportDialogProps = {
   onImport?: () => void;
   preview?: boolean;
 };
+
+const compressionOptions = [
+  { value: 'Default (BC7)', label: 'Default (BC7)' },
+  { value: 'High Quality', label: 'High Quality' },
+  { value: 'Uncompressed', label: 'Uncompressed' },
+] as const;
 
 export function ImportDialog({ onClose, onImport, preview = false }: ImportDialogProps) {
   const [destination, setDestination] = useState('Content/Textures');
@@ -69,7 +75,7 @@ export function ImportDialog({ onClose, onImport, preview = false }: ImportDialo
       <div className="import-dialog-section">
         <label className="import-dialog-field">
           <span>Destination</span>
-          <input value={destination} onChange={(event) => setDestination(event.target.value)} />
+          <UiTextInput value={destination} onChange={(event) => setDestination(event.target.value)} />
         </label>
       </div>
 
@@ -78,32 +84,33 @@ export function ImportDialog({ onClose, onImport, preview = false }: ImportDialo
           <strong>Texture options</strong>
           <span>Applied to compatible files</span>
         </header>
-        <label>
-          <input
+        <div className="import-dialog-toggle-row">
+          <UiToggleButton
+            aria-label="Generate mipmaps"
             checked={generateMipmaps}
-            type="checkbox"
-            onChange={(event) => setGenerateMipmaps(event.target.checked)}
+            onCheckedChange={setGenerateMipmaps}
           />
           <span>
             <strong>Generate mipmaps</strong>
             <small>Create lower-resolution levels for runtime sampling.</small>
           </span>
-        </label>
-        <label>
-          <input checked={srgb} type="checkbox" onChange={(event) => setSrgb(event.target.checked)} />
+        </div>
+        <div className="import-dialog-toggle-row">
+          <UiToggleButton aria-label="sRGB color" checked={srgb} onCheckedChange={setSrgb} />
           <span>
             <strong>sRGB color</strong>
             <small>Treat color textures as gamma encoded.</small>
           </span>
-        </label>
-        <label className="import-dialog-field">
+        </div>
+        <div className="import-dialog-field">
           <span>Compression</span>
-          <select value={compression} onChange={(event) => setCompression(event.target.value)}>
-            <option>Default (BC7)</option>
-            <option>High Quality</option>
-            <option>Uncompressed</option>
-          </select>
-        </label>
+          <UiSelect
+            ariaLabel="Compression"
+            options={compressionOptions}
+            value={compression}
+            onValueChange={setCompression}
+          />
+        </div>
       </div>
     </UiDialog>
   );
