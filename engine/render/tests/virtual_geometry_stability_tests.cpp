@@ -15,6 +15,13 @@ TEST_CASE("virtual geometry invalidates previous HZB history for discontinuous v
     CHECK_FALSE(virtual_geometry_history_valid(virtual_geometry_history_invalidation::viewport_resize));
     CHECK_FALSE(virtual_geometry_history_valid(virtual_geometry_history_invalidation::projection_change));
     CHECK_FALSE(virtual_geometry_history_valid(virtual_geometry_history_invalidation::newly_visible_instance));
+
+    const auto combined = virtual_geometry_history_invalidation::teleport |
+                          virtual_geometry_history_invalidation::projection_change;
+    CHECK(contains(combined, virtual_geometry_history_invalidation::teleport));
+    CHECK(contains(combined, virtual_geometry_history_invalidation::projection_change));
+    CHECK_FALSE(contains(combined, virtual_geometry_history_invalidation::viewport_resize));
+    CHECK_FALSE(virtual_geometry_history_valid(combined));
 }
 
 TEST_CASE("virtual geometry projected error uses hysteresis around refinement threshold")
@@ -35,4 +42,14 @@ TEST_CASE("virtual geometry refinement policy rejects invalid inputs determinist
     CHECK_FALSE(should_refine_virtual_geometry(std::numeric_limits<float>::infinity(), 1.0f, false));
     CHECK_FALSE(should_refine_virtual_geometry(2.0f, 0.0f, false));
     CHECK_FALSE(should_refine_virtual_geometry(2.0f, -1.0f, true));
+}
+
+TEST_CASE("virtual geometry uses the nominal threshold when refinement history is invalid")
+{
+    using arc::render::should_refine_virtual_geometry;
+
+    CHECK(should_refine_virtual_geometry(1.05f, 1.0f, false, false));
+    CHECK_FALSE(should_refine_virtual_geometry(0.95f, 1.0f, true, false));
+    CHECK_FALSE(should_refine_virtual_geometry(1.05f, 1.0f, false, true));
+    CHECK(should_refine_virtual_geometry(0.95f, 1.0f, true, true));
 }

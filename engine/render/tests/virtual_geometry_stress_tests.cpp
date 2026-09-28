@@ -67,6 +67,12 @@ bool always_occluded(const arc::math::vector3f&, float, void*)
     return true;
 }
 
+bool node_was_refined(std::uint32_t node, void* user_data)
+{
+    const auto& history = *static_cast<const std::vector<std::uint8_t>*>(user_data);
+    return node < history.size() && history[node] != 0u;
+}
+
 arc::render::mesh_data make_terrain_grid(std::uint32_t side)
 {
     arc::render::mesh_data mesh;
@@ -133,6 +139,56 @@ TEST_CASE("virtual geometry skips HZB rejection on camera cuts")
     const auto cut = arc::render::traverse_virtual_geometry_reference(geometry, resident, view);
     REQUIRE(cut.hzb_rejected == 0u);
     REQUIRE_FALSE(cut.visible_clusters.empty());
+    REQUIRE(cut.previous_hzb_tested == 0u);
+}
+
+TEST_CASE("virtual geometry reference traversal applies stable per-node refinement history")
+{
+    using namespace arc::render;
+    const auto geometry = make_two_level_geometry();
+    const std::vector<std::uint8_t> resident{1u, 1u};
+    std::vector<std::uint8_t> history(geometry.lod_nodes.size());
+    auto view = open_view();
+    view.projection_scale = 9.45f;
+    view.refined_last_frame = &node_was_refined;
+    view.refinement_history_user_data = &history;
+
+    const auto delayed_refinement = traverse_virtual_geometry_reference(geometry, resident, view);
+    CHECK(delayed_refinement.visible_clusters == std::vector<std::uint32_t>{0u});
+    CHECK(delayed_refinement.hysteresis_refine_suppressed == 1u);
+
+    history[0] = 1u;
+    view.projection_scale = 8.55f;
+    const auto retained_refinement = traverse_virtual_geometry_reference(geometry, resident, view);
+    CHECK(retained_refinement.visible_clusters == std::vector<std::uint32_t>{1u});
+    CHECK(retained_refinement.hysteresis_coarsen_suppressed == 1u);
+    CHECK(retained_refinement.refined_nodes == std::vector<std::uint32_t>{0u});
+
+    view.history_invalidation = virtual_geometry_history_invalidation::projection_change;
+    const auto invalidated = traverse_virtual_geometry_reference(geometry, resident, view);
+    CHECK(invalidated.visible_clusters == std::vector<std::uint32_t>{0u});
+    CHECK(invalidated.hysteresis_coarsen_suppressed == 0u);
+}
+
+TEST_CASE("virtual geometry reference traversal distinguishes previous and current HZB phases")
+{
+    using namespace arc::render;
+    const auto geometry = make_two_level_geometry();
+    const std::vector<std::uint8_t> resident{1u, 1u};
+    auto view = open_view();
+    view.occluded = &always_occluded;
+    view.history_invalidation = virtual_geometry_history_invalidation::camera_cut;
+    view.traversal_phase = virtual_geometry_traversal_phase::previous_hzb;
+
+    const auto previous = traverse_virtual_geometry_reference(geometry, resident, view);
+    CHECK(previous.previous_hzb_tested == 0u);
+    CHECK(previous.hzb_rejected == 0u);
+
+    view.traversal_phase = virtual_geometry_traversal_phase::current_hzb;
+    const auto current = traverse_virtual_geometry_reference(geometry, resident, view);
+    CHECK(current.current_hzb_tested == 1u);
+    CHECK(current.current_hzb_rejected == 1u);
+    CHECK(current.hzb_rejected == 1u);
 }
 
 TEST_CASE("virtual geometry residency emits backend evictions and protects roots")

@@ -7,6 +7,7 @@
 #include <arc/render/material.h>
 #include <arc/render/render_backend.h>
 #include <arc/render/render_graph.h>
+#include <arc/render/virtual_geometry_stability.h>
 #include <arc/geometric/box.h>
 #include <arc/math/matrix.h>
 #include <arc/math/vector.h>
@@ -58,6 +59,8 @@ struct render_camera
     std::uint32_t output_height{};
     bool history_valid{};
     bool camera_cut{true};
+    virtual_geometry_history_invalidation virtual_geometry_history_reset{
+        virtual_geometry_history_invalidation::camera_cut};
 };
 
 /**
