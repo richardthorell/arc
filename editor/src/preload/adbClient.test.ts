@@ -36,9 +36,10 @@ describe('AdbClient', () => {
 
     expect(devices).toEqual([
       expect.objectContaining({ serial: 'SERIAL1', model: 'Pixel 8 Pro', apiLevel: 35, state: 'online' }),
-      expect.objectContaining({ serial: 'SERIAL2', state: 'unauthorized', apiLevel: undefined }),
+      expect.objectContaining({ serial: 'SERIAL2', state: 'unauthorized' }),
       expect.objectContaining({ serial: 'SERIAL3', model: 'Pixel 9 Pro', apiLevel: 36, state: 'online' }),
     ]);
+    expect(devices[1]).not.toHaveProperty('apiLevel');
   });
 
   it('keeps arbitrary ADB execution internal but provides a device-scoped primitive for later deploy tooling', async () => {
