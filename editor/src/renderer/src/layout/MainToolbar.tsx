@@ -8,6 +8,7 @@ import {
   Globe,
   Grid3X3,
   Hammer,
+  Monitor,
   Mountain,
   MousePointer2,
   Move,
@@ -17,12 +18,15 @@ import {
   Rotate3D,
   Scaling,
   Settings2,
+  Smartphone,
   Square,
   StepForward,
   Trash2,
 } from 'lucide-react';
 
+import type { ArcProjectDescriptor } from '../../../common/projectTypes';
 import type { CommandId, EditorRuntimeState } from '../app/workbenchTypes';
+import { requestSettingsDialog } from '../settings/settingsDialogRoute';
 import {
   UiButton,
   UiDropdown,
@@ -41,6 +45,15 @@ export type ToolbarBuildAction = 'build' | 'rebuild' | 'configure' | 'clean';
 export type ToolbarCoordinateSpace = 'world' | 'local';
 export type ToolbarTransformOrigin = 'pivot' | 'center';
 
+export type EditorTargetDevice = {
+  id: string;
+  label: string;
+  platform: EditorTargetPlatform;
+  disabled?: boolean;
+};
+
+type PlatformMenuValue = EditorTargetPlatform | '__platform-settings__';
+
 const platformOptions: ReadonlyArray<UiDropdownOption<EditorTargetPlatform>> = [
   { value: 'windows', label: 'Windows', icon: <PlatformBrandIcon platform="windows" /> },
   { value: 'linux', label: 'Linux', icon: <PlatformBrandIcon platform="linux" /> },
@@ -51,6 +64,58 @@ const platformOptions: ReadonlyArray<UiDropdownOption<EditorTargetPlatform>> = [
   { value: 'playstation', label: 'PlayStation', icon: <PlatformBrandIcon platform="playstation" /> },
   { value: 'switch', label: 'Nintendo Switch', icon: <PlatformBrandIcon platform="switch" /> },
 ];
+
+const editorTargetPlatforms = new Set<EditorTargetPlatform>(platformOptions.map((option) => option.value));
+
+const normalizeTargetPlatform = (value: string): EditorTargetPlatform | null => {
+  const normalized = value.trim().toLocaleLowerCase();
+  if (editorTargetPlatforms.has(normalized as EditorTargetPlatform)) return normalized as EditorTargetPlatform;
+  if (normalized === 'darwin' || normalized === 'mac') return 'macos';
+  if (normalized === 'ps5' || normalized === 'ps4') return 'playstation';
+  if (normalized === 'nintendo') return 'switch';
+  return null;
+};
+
+const platformFromTargetId = (value: string): EditorTargetPlatform | null => {
+  const normalized = value.trim().toLocaleLowerCase();
+  for (const platform of editorTargetPlatforms) {
+    if (normalized === platform || normalized.startsWith(`${platform}-`)) return platform;
+  }
+  if (normalized.startsWith('darwin-') || normalized.startsWith('mac-')) return 'macos';
+  if (normalized.startsWith('ps5-') || normalized.startsWith('ps4-')) return 'playstation';
+  if (normalized.startsWith('nintendo-')) return 'switch';
+  return null;
+};
+
+export const detectHostTargetPlatform = (): EditorTargetPlatform => {
+  const hostPlatform = navigator.platform.toLocaleLowerCase();
+  if (hostPlatform.includes('mac')) return 'macos';
+  if (hostPlatform.includes('linux')) return 'linux';
+  return 'windows';
+};
+
+export const configuredTargetPlatformsForProject = (
+  descriptor: Pick<ArcProjectDescriptor, 'targetPlatforms' | 'cookProfiles'> | null | undefined,
+  hostPlatform: EditorTargetPlatform,
+): EditorTargetPlatform[] => {
+  if (!descriptor) return [hostPlatform];
+
+  const enabledTargets = descriptor.targetPlatforms.filter((target) => target.enabled && target.id.trim());
+  if (!enabledTargets.length) return [hostPlatform];
+
+  const enabledIds = new Set(enabledTargets.map((target) => target.id));
+  const configured: EditorTargetPlatform[] = [];
+  const append = (platform: EditorTargetPlatform | null) => {
+    if (platform && !configured.includes(platform)) configured.push(platform);
+  };
+
+  for (const profile of descriptor.cookProfiles) {
+    if (enabledIds.has(profile.id)) append(normalizeTargetPlatform(profile.platform));
+  }
+  for (const target of enabledTargets) append(platformFromTargetId(target.id));
+
+  return configured.length ? configured : [hostPlatform];
+};
 
 const transformOriginOptions: ReadonlyArray<UiDropdownOption<ToolbarTransformOrigin>> = [
   { value: 'pivot', label: 'Pivot', icon: <Crosshair size={12} /> },
@@ -263,7 +328,11 @@ export type MainToolbarProps = {
   timeScale?: number;
   onTimeScaleChange?: (value: number) => void;
   targetPlatform?: EditorTargetPlatform;
+  configuredTargetPlatforms?: ReadonlyArray<EditorTargetPlatform>;
   onTargetPlatformChange?: (platform: EditorTargetPlatform) => void;
+  targetDevices?: ReadonlyArray<EditorTargetDevice>;
+  targetDevice?: string;
+  onTargetDeviceChange?: (deviceId: string) => void;
   onBuildAction?: (action: ToolbarBuildAction) => void;
 };
 
@@ -286,16 +355,91 @@ export function MainToolbar({
   authoringDisabled = false,
   timeScale = 1,
   onTimeScaleChange,
-  targetPlatform = 'windows',
+  targetPlatform,
+  configuredTargetPlatforms,
   onTargetPlatformChange,
+  targetDevices,
+  targetDevice,
+  onTargetDeviceChange,
   onBuildAction,
 }: MainToolbarProps) {
   const [transformOrigin, setTransformOrigin] = useState<ToolbarTransformOrigin>('pivot');
+  const hostPlatform = detectHostTargetPlatform();
+  const [projectTargetPlatforms, setProjectTargetPlatforms] = useState<EditorTargetPlatform[]>(() => [hostPlatform]);
+  const [localTargetDevice, setLocalTargetDevice] = useState('local');
   const playLabel = runtimeState === 'paused' ? 'Resume' : 'Play';
   const runtimeLabel =
     runtimeState === 'stopped'
       ? 'Authoring World'
       : `Play World: ${runtimeState[0].toUpperCase()}${runtimeState.slice(1)}`;
+
+  useEffect(() => {
+    if (configuredTargetPlatforms) {
+      const configured = Array.from(new Set(configuredTargetPlatforms));
+      setProjectTargetPlatforms(configured.length ? configured : [hostPlatform]);
+      return;
+    }
+
+    let disposed = false;
+    void window.arc?.projects
+      ?.snapshot()
+      .then((snapshot) => {
+        if (disposed) return;
+        setProjectTargetPlatforms(configuredTargetPlatformsForProject(snapshot?.activeProject?.descriptor, hostPlatform));
+      })
+      .catch(() => {
+        if (!disposed) setProjectTargetPlatforms([hostPlatform]);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [configuredTargetPlatforms, hostPlatform]);
+
+  const requestedTargetPlatform = targetPlatform ?? hostPlatform;
+  const effectiveTargetPlatform = projectTargetPlatforms.includes(requestedTargetPlatform)
+    ? requestedTargetPlatform
+    : (projectTargetPlatforms[0] ?? hostPlatform);
+
+  useEffect(() => {
+    if (targetPlatform && targetPlatform !== effectiveTargetPlatform) onTargetPlatformChange?.(effectiveTargetPlatform);
+  }, [effectiveTargetPlatform, onTargetPlatformChange, targetPlatform]);
+
+  const availableTargetDevices: EditorTargetDevice[] = targetDevices
+    ? targetDevices.filter((device) => device.platform === effectiveTargetPlatform)
+    : effectiveTargetPlatform === hostPlatform
+      ? [{ id: 'local', label: 'This Computer', platform: hostPlatform }]
+      : [];
+  const requestedTargetDevice = targetDevice ?? localTargetDevice;
+  const effectiveTargetDevice =
+    availableTargetDevices.find((device) => device.id === requestedTargetDevice)?.id ??
+    availableTargetDevices[0]?.id ??
+    '__no-device__';
+  const deviceOptions: ReadonlyArray<UiDropdownOption<string>> = availableTargetDevices.length
+    ? availableTargetDevices.map((device) => ({
+        value: device.id,
+        label: device.label,
+        icon:
+          device.platform === hostPlatform ? <Monitor size={14} /> : <Smartphone size={14} />,
+        disabled: device.disabled,
+      }))
+    : [{ value: '__no-device__', label: 'No devices available', icon: <Smartphone size={14} />, disabled: true }];
+
+  const targetPlatformOptions: ReadonlyArray<UiDropdownOption<PlatformMenuValue>> = [
+    ...projectTargetPlatforms.flatMap((platform) => {
+      const option = platformOptions.find((candidate) => candidate.value === platform);
+      return option ? [{ ...option, value: option.value as PlatformMenuValue }] : [];
+    }),
+    {
+      value: '__platform-settings__',
+      label: 'Platform Settings…',
+      icon: <Settings2 size={14} />,
+      separatorBefore: true,
+      onSelect: () => {
+        requestSettingsDialog('projectSettings');
+        onCommand('settings.open');
+      },
+    },
+  ];
 
   return (
     <section className="main-toolbar" aria-label="Editor toolbar">
@@ -431,9 +575,21 @@ export function MainToolbar({
         <UiDropdown
           ariaLabel="Target platform"
           className="toolbar-platform-dropdown"
-          onValueChange={(platform) => onTargetPlatformChange?.(platform)}
-          options={platformOptions}
-          value={targetPlatform}
+          onValueChange={(platform) => {
+            if (platform !== '__platform-settings__') onTargetPlatformChange?.(platform);
+          }}
+          options={targetPlatformOptions}
+          value={effectiveTargetPlatform}
+        />
+        <UiDropdown
+          ariaLabel="Target device"
+          className="toolbar-device-dropdown"
+          onValueChange={(deviceId) => {
+            setLocalTargetDevice(deviceId);
+            onTargetDeviceChange?.(deviceId);
+          }}
+          options={deviceOptions}
+          value={effectiveTargetDevice}
         />
         <UiSplitButton
           ariaLabel="Build"
