@@ -78,7 +78,10 @@ export function LevelEditorToolbar(props: LevelEditorToolbarProps) {
     } else {
       discoveredTargetDevices = androidDevices.devices
         .map(targetDeviceFromAndroid)
-        .sort((left, right) => Number(Boolean(left.disabled)) - Number(Boolean(right.disabled)) || left.label.localeCompare(right.label));
+        .sort(
+          (left, right) =>
+            Number(Boolean(left.disabled)) - Number(Boolean(right.disabled)) || left.label.localeCompare(right.label),
+        );
     }
   }
 
