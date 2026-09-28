@@ -411,6 +411,77 @@ describe('EditorPreferencesDialog', () => {
     await waitFor(() => expect(screen.getByText('Connected')).toBeInTheDocument());
   });
 
+  it('shows concise validation status for Android and Windows toolchains', async () => {
+    window.arc.settings.snapshot = vi.fn().mockResolvedValue({
+      revision: 9,
+      schema: [
+        {
+          key: 'platform.windows.visualStudioPath',
+          section: 'Windows',
+          label: 'Visual Studio',
+          description: 'Visual Studio installation root.',
+          type: 'string',
+          defaultValue: '',
+          scopes: ['user'],
+        },
+        {
+          key: 'platform.android.javaHome',
+          section: 'Android',
+          label: 'Java / JDK',
+          description: 'JDK root used by Android builds.',
+          type: 'string',
+          defaultValue: '',
+          scopes: ['user'],
+        },
+      ],
+      values: {
+        'platform.windows.visualStudioPath': 'C:\\Program Files\\Microsoft Visual Studio',
+        'platform.android.javaHome': 'C:\\Program Files\\Java\\jdk-26',
+      },
+      sources: {
+        'platform.windows.visualStudioPath': 'default',
+        'platform.android.javaHome': 'default',
+      },
+      restartRequired: [],
+      pathValidation: {
+        'platform.windows.visualStudioPath': {
+          valid: true,
+          resolvedPath: 'C:\\Program Files\\Microsoft Visual Studio',
+          message: 'Validated · Visual Studio C++',
+          source: 'default',
+        },
+        'platform.android.javaHome': {
+          valid: true,
+          resolvedPath: 'C:\\Program Files\\Java\\jdk-26',
+          message: 'Validated · Java 26',
+          source: 'default',
+        },
+      },
+      aiProviders: {
+        secureStorageAvailable: true,
+        providers: [
+          { id: 'openai', label: 'OpenAI', connected: false, connectionStatus: 'disconnected' },
+          { id: 'anthropic', label: 'Anthropic', connected: false, connectionStatus: 'disconnected' },
+        ],
+      },
+    });
+
+    render(<EditorPreferencesDialog onClose={vi.fn()} onResetLayout={vi.fn()} />);
+    await waitFor(() => expect(window.arc.settings.snapshot).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('treeitem', { name: /Windows/ }));
+    const windowsStatus = screen.getByText('Validated');
+    expect(windowsStatus).toHaveClass('settings-field-validation-valid');
+    expect(windowsStatus).toHaveAttribute('title', 'C:\\Program Files\\Microsoft Visual Studio');
+    expect(screen.queryByText('Validated · Visual Studio C++')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('treeitem', { name: /Android/ }));
+    const androidStatus = screen.getByText('Validated');
+    expect(androidStatus).toHaveClass('settings-field-validation-valid');
+    expect(androidStatus).toHaveAttribute('title', 'C:\\Program Files\\Java\\jdk-26');
+    expect(screen.queryByText('Validated · Java 26')).not.toBeInTheDocument();
+  });
+
   it('shows framework pages that do not have registered preferences yet', () => {
     render(<EditorPreferencesDialog onClose={vi.fn()} onResetLayout={vi.fn()} />);
 
