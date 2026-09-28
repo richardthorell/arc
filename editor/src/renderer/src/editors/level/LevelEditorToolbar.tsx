@@ -76,7 +76,9 @@ export function LevelEditorToolbar(props: LevelEditorToolbarProps) {
         { id: '__adb-unavailable__', label: 'ADB unavailable', platform: 'android', disabled: true },
       ];
     } else {
-      discoveredTargetDevices = androidDevices.devices.map(targetDeviceFromAndroid);
+      discoveredTargetDevices = androidDevices.devices
+        .map(targetDeviceFromAndroid)
+        .sort((left, right) => Number(Boolean(left.disabled)) - Number(Boolean(right.disabled)) || left.label.localeCompare(right.label));
     }
   }
 
