@@ -93,6 +93,78 @@ TEST_CASE("project input config drives ARC semantic action contexts")
     CHECK(player.down("Jump"));
 }
 
+TEST_CASE("project input config drives scalar and 2D axes")
+{
+    temporary_input_config temporary;
+    const auto path = temporary.write(R"json({
+      "version": 1,
+      "contexts": [{
+        "name": "Gameplay",
+        "axes": [{
+          "name": "MoveForward",
+          "bindings": [
+            {"device": "keyboard", "control": "W", "contribution": 1.0},
+            {"device": "keyboard", "control": "S", "contribution": -1.0}
+          ]
+        }, {
+          "name": "LookX",
+          "bindings": [{"device": "mouse", "control": "DeltaX", "processors": [{"type": "scale", "value": 0.5}] }]
+        }],
+        "axes2d": [{
+          "name": "Move",
+          "bindings": [
+            {"device": "keyboard", "control": "W", "contribution": [0.0, 1.0]},
+            {"device": "keyboard", "control": "D", "contribution": [1.0, 0.0]}
+          ]
+        }]
+      }]
+    })json");
+
+    const auto loaded = arc::project::load_input_config(path);
+    REQUIRE(loaded.succeeded);
+    REQUIRE(loaded.config.contexts.size() == 1);
+    CHECK(loaded.config.contexts[0].axes.size() == 2);
+    CHECK(loaded.config.contexts[0].axes2d.size() == 1);
+
+    arc::input::input_system input;
+    const auto keyboard = input.connect_device(
+        {.type = arc::input::input_device_type::keyboard, .name = "Keyboard", .capabilities = {.buttons = true}});
+    const auto mouse = input.connect_device({.type = arc::input::input_device_type::mouse,
+                                             .name = "Mouse",
+                                             .capabilities = {.axes = true, .pointer = true}});
+    REQUIRE(input.assign_device(0, keyboard));
+    REQUIRE(input.assign_device(0, mouse));
+    REQUIRE(arc::project::apply_input_config(loaded.config, input, 0).succeeded);
+
+    auto& player = input.player(0);
+    input.begin_frame();
+    REQUIRE(input.submit_button(keyboard, arc::input::make_key_control(arc::input::key::w), true));
+    REQUIRE(input.submit_button(keyboard, arc::input::make_key_control(arc::input::key::d), true));
+    REQUIRE(input.submit_axis(mouse, arc::input::make_mouse_axis_control(arc::input::mouse_axis::delta_x), 0.8f));
+
+    CHECK(player.axis("MoveForward") == 1.0f);
+    CHECK(player.axis("LookX") == 0.4f);
+    const auto move = player.axis2d("Move");
+    CHECK(move[0] == 1.0f);
+    CHECK(move[1] == 1.0f);
+}
+
+TEST_CASE("project input config rejects malformed axis contributions")
+{
+    temporary_input_config temporary;
+    const auto path = temporary.write(R"json({
+      "version": 1,
+      "contexts": [{
+        "name": "Gameplay",
+        "axes2d": [{"name": "Move", "bindings": [{"device": "keyboard", "control": "W", "contribution": [1.0]}]}]
+      }]
+    })json");
+
+    const auto loaded = arc::project::load_input_config(path);
+    CHECK_FALSE(loaded.succeeded);
+    CHECK(loaded.error.find("contribution") != std::string::npos);
+}
+
 TEST_CASE("project input config rejects unknown physical controls")
 {
     temporary_input_config temporary;

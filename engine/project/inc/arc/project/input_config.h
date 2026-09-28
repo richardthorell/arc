@@ -18,12 +18,38 @@ struct input_action_config
     std::vector<input::input_binding> bindings;
 };
 
+struct input_axis_binding_config
+{
+    input::input_binding binding;
+    float contribution{1.0f};
+};
+
+struct input_axis_config
+{
+    std::string name;
+    std::vector<input_axis_binding_config> bindings;
+};
+
+struct input_axis2d_binding_config
+{
+    input::input_binding binding;
+    math::vector2f contribution{};
+};
+
+struct input_axis2d_config
+{
+    std::string name;
+    std::vector<input_axis2d_binding_config> bindings;
+};
+
 struct input_context_config
 {
     std::string name;
     int priority{};
     bool enabled{true};
     std::vector<input_action_config> actions;
+    std::vector<input_axis_config> axes;
+    std::vector<input_axis2d_config> axes2d;
 };
 
 struct input_config
