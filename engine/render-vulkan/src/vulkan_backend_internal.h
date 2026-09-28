@@ -194,8 +194,22 @@ struct alignas(16) virtual_geometry_traversal_counter_data
     std::uint32_t parent_fallbacks{};
     std::uint32_t traversal_overflow{};
     std::uint32_t fallback_overflow{};
+    std::uint32_t bin_count{};
+    std::uint32_t previous_hzb_tested{};
+    std::uint32_t previous_hzb_rejected{};
+    std::uint32_t current_hzb_tested{};
+    std::uint32_t current_hzb_rejected{};
+    std::uint32_t refinement_candidates{};
+    std::uint32_t hysteresis_refine_suppressed{};
+    std::uint32_t hysteresis_coarsen_suppressed{};
+    std::uint32_t refinement_history_overflow{};
+    std::uint32_t pressure_suppressed_requests{};
+    std::uint32_t refinement_frontier_count{};
+    std::uint32_t refinement_frontier_overflow{};
+    std::uint32_t traversed_nodes{};
+    std::uint32_t reserved[3]{};
 };
-static_assert(sizeof(virtual_geometry_traversal_counter_data) == 48);
+static_assert(sizeof(virtual_geometry_traversal_counter_data) == 112);
 
 struct virtual_geometry_traversal_push_constants
 {
@@ -204,7 +218,7 @@ struct virtual_geometry_traversal_push_constants
     std::uint32_t capacities[4]{};
     float viewport_hzb[4]{};
     std::uint32_t hzb_generation{};
-    std::uint32_t camera_cut{};
+    std::uint32_t history_invalidation_mask{};
     std::uint32_t fallback_capacity{};
     std::uint32_t traversal_stack_capacity{};
 };
@@ -554,6 +568,7 @@ private:
         gpu_buffer counters;
         std::uint32_t request_capacity{};
         std::uint32_t fallback_capacity{};
+        virtual_geometry_history_invalidation history_invalidation{virtual_geometry_history_invalidation::none};
         std::uint64_t submitted_frame{};
     };
 
@@ -1014,7 +1029,8 @@ private:
 
     void update_environment_profile(const environment_descriptor* lighting_environment);
 
-    packed_gpu_scene_instance pack_gpu_scene_instance(const gpu_scene_instance& source) const;
+    packed_gpu_scene_instance pack_gpu_scene_instance(const gpu_scene_instance& source,
+                                                      gpu_scene_instance_handle handle) const;
 
     static std::size_t gpu_table_offset(gpu_resource_table_kind table) noexcept;
 
@@ -1100,6 +1116,13 @@ private:
     bool ensure_virtual_geometry_feedback_frame(virtual_geometry_feedback_frame& frame);
 
     void dispatch_virtual_geometry_traversal(VkCommandBuffer command_buffer);
+
+    void dispatch_virtual_geometry_refinement(VkCommandBuffer command_buffer);
+
+    void dispatch_virtual_geometry_traversal_phase(VkCommandBuffer command_buffer,
+                                                   virtual_geometry_traversal_phase phase);
+
+    void copy_virtual_geometry_feedback(VkCommandBuffer command_buffer);
 
     void collect_virtual_geometry_feedback(std::uint32_t frame_index);
 
@@ -1490,6 +1513,8 @@ private:
     gpu_buffer virtual_geometry_request_buffer_;
     gpu_buffer virtual_geometry_fallback_buffer_;
     gpu_buffer virtual_geometry_counter_buffer_;
+    std::array<gpu_buffer, 2> virtual_geometry_refinement_history_buffers_{};
+    gpu_buffer virtual_geometry_refinement_frontier_buffer_;
     gpu_buffer virtual_geometry_raster_bin_buffer_;
     gpu_buffer virtual_geometry_material_frame_buffer_;
     graph_image virtual_geometry_encoded_depth_;
@@ -1497,6 +1522,8 @@ private:
     std::uint32_t virtual_geometry_visible_capacity_{};
     std::uint32_t virtual_geometry_request_capacity_{};
     std::uint32_t virtual_geometry_fallback_capacity_{};
+    std::uint32_t virtual_geometry_refinement_history_capacity_{};
+    std::uint32_t virtual_geometry_refinement_frontier_capacity_{};
     std::uint32_t virtual_geometry_raster_bin_capacity_{};
     std::vector<virtual_geometry_feedback_frame> virtual_geometry_feedback_frames_;
     VkDescriptorSetLayout virtual_geometry_traversal_descriptor_set_layout_{};
@@ -1518,6 +1545,7 @@ private:
     bool virtual_geometry_traversal_descriptors_dirty_{true};
     bool virtual_geometry_raster_descriptors_dirty_{true};
     bool virtual_geometry_material_descriptors_dirty_{true};
+    bool virtual_geometry_refinement_pending_{};
     std::vector<gpu_buffer> shadow_uniform_buffers_;
     std::vector<debug_overlay_frame_buffer> debug_overlay_buffers_;
     std::uint32_t active_frame_index_{};

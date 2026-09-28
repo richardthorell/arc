@@ -761,6 +761,16 @@ void vulkan_render_backend::execute_compiled_graph(VkCommandBuffer command_buffe
             case builtin_render_pass::depth_pyramid:
                 dispatch_hzb(command_buffer);
                 break;
+            case builtin_render_pass::virtual_geometry_current_refinement:
+                dispatch_virtual_geometry_refinement(command_buffer);
+                break;
+            case builtin_render_pass::virtual_geometry_final_visibility_resolve:
+                // The provisional scene is never presented. Re-record the scene
+                // after current-HZB refinement so depth, identity, and materials
+                // consume only the final virtual-cluster list.
+                render_viewport(command_buffer, true, false);
+                scene_executed = true;
+                break;
             case builtin_render_pass::velocity_dilation:
                 dispatch_velocity_dilation(command_buffer);
                 break;

@@ -282,6 +282,7 @@ struct [[nodiscard]] virtual_geometry_gpu_reference_result
     std::uint32_t frustum_rejected{};
     std::uint32_t cone_rejected{};
     std::uint32_t hzb_rejected{};
+    std::uint32_t traversed_nodes{};
     std::uint32_t previous_hzb_tested{};
     std::uint32_t previous_hzb_rejected{};
     std::uint32_t current_hzb_tested{};
@@ -380,6 +381,7 @@ struct virtual_geometry_reference_view
     virtual_geometry_history_invalidation history_invalidation{virtual_geometry_history_invalidation::none};
     virtual_geometry_traversal_phase traversal_phase{virtual_geometry_traversal_phase::single_phase};
     virtual_geometry_traversal_stability stability{};
+    bool refinement_history_available{true};
     /** Optional conservative previous-frame HZB callback. */
     bool (*occluded)(const math::vector3f& center, float radius, void* user_data){};
     void* occlusion_user_data{};
@@ -396,6 +398,7 @@ struct [[nodiscard]] virtual_geometry_reference_result
     std::uint32_t frustum_rejected{};
     std::uint32_t cone_rejected{};
     std::uint32_t hzb_rejected{};
+    std::uint32_t traversed_nodes{};
     std::uint32_t previous_hzb_tested{};
     std::uint32_t previous_hzb_rejected{};
     std::uint32_t current_hzb_tested{};

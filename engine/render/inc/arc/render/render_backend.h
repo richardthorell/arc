@@ -894,6 +894,7 @@ struct render_virtual_geometry_profile
     bool history_valid{};
     virtual_geometry_raster_path raster_path{virtual_geometry_raster_path::unavailable};
     std::uint32_t history_invalidation_mask{};
+    std::uint32_t traversed_nodes{};
     std::uint32_t visible_clusters{};
     std::uint64_t visible_triangles{};
     std::uint32_t frustum_rejected{};
@@ -905,6 +906,7 @@ struct render_virtual_geometry_profile
     std::uint32_t current_hzb_rejected{};
     std::uint32_t conservative_survivors_rejected{};
     std::uint32_t refinement_candidates{};
+    std::uint32_t refinement_frontier_overflow{};
     std::uint32_t hysteresis_refine_suppressed{};
     std::uint32_t hysteresis_coarsen_suppressed{};
     std::uint32_t refinement_history_overflow{};

@@ -107,12 +107,37 @@ layout(std430, set = 0, binding = 9) buffer counter_buffer
     uint parent_fallbacks;
     uint traversal_overflow;
     uint fallback_overflow;
+    uint bin_count;
+    uint previous_hzb_tested;
+    uint previous_hzb_rejected;
+    uint current_hzb_tested;
+    uint current_hzb_rejected;
+    uint refinement_candidates;
+    uint hysteresis_refine_suppressed;
+    uint hysteresis_coarsen_suppressed;
+    uint refinement_history_overflow;
+    uint pressure_suppressed_requests;
+    uint refinement_frontier_count;
+    uint refinement_frontier_overflow;
+    uint traversed_nodes;
 } counters;
 layout(std430, set = 0, binding = 10) writeonly buffer fallback_buffer
 {
     fallback_record instances[];
 } output_fallbacks;
 layout(set = 0, binding = 11) uniform sampler2D hzb_generations[2];
+layout(std430, set = 0, binding = 12) buffer refinement_history_a_buffer
+{
+    uint keys[];
+} refinement_history_a;
+layout(std430, set = 0, binding = 13) buffer refinement_history_b_buffer
+{
+    uint keys[];
+} refinement_history_b;
+layout(std430, set = 0, binding = 14) buffer refinement_frontier_buffer
+{
+    uint instance_indices[];
+} refinement_frontier;
 
 layout(push_constant) uniform traversal_constants
 {
@@ -121,7 +146,7 @@ layout(push_constant) uniform traversal_constants
     uvec4 capacities;
     vec4 viewport_hzb;
     uint hzb_generation;
-    uint camera_cut;
+    uint history_invalidation_mask;
     uint fallback_capacity;
     uint traversal_stack_capacity;
 } constants;
@@ -129,6 +154,82 @@ layout(push_constant) uniform traversal_constants
 const uint fallback_traversal_overflow = 1u;
 const uint fallback_visible_overflow = 2u;
 const uint fallback_unavailable_parent = 4u;
+const uint instance_recently_changed = 1u << 5u;
+const uint request_visible_child = 1u;
+const uint request_speculative = 1u << 2u;
+const uint request_current_frame = 1u << 3u;
+const uint traversal_phase_previous_hzb = 1u;
+const uint traversal_phase_current_hzb = 2u;
+const uint history_probe_count = 8u;
+
+uint traversal_phase()
+{
+    return (constants.hzb_generation >> 2u) & 3u;
+}
+
+uint history_capacity()
+{
+    return 1u << ((constants.hzb_generation >> 8u) & 31u);
+}
+
+uint refinement_key(uint instance_index, gpu_scene_instance instance, uint resource_generation, uint node_index)
+{
+    uint value = instance_index * 0x9e3779b9u;
+    value ^= instance.draw_metadata.z * 0x85ebca6bu;
+    value ^= resource_generation * 0xc2b2ae35u;
+    value ^= node_index * 0x27d4eb2fu;
+    value ^= value >> 16u;
+    value *= 0x7feb352du;
+    value ^= value >> 15u;
+    return value | 1u;
+}
+
+uint load_history_key(uint generation, uint slot)
+{
+    return generation == 0u ? refinement_history_a.keys[slot] : refinement_history_b.keys[slot];
+}
+
+bool refinement_history_overflowed(uint generation)
+{
+    return load_history_key(generation, 0u) != 0u;
+}
+
+bool was_refined_last_frame(uint key, uint generation)
+{
+    uint capacity = history_capacity();
+    uint slots = max(capacity - 1u, 1u);
+    uint start = 1u + key % slots;
+    for (uint probe = 0u; probe < history_probe_count; ++probe)
+    {
+        uint slot = 1u + (start - 1u + probe) % slots;
+        uint stored = load_history_key(generation, slot);
+        if (stored == key)
+            return true;
+        if (stored == 0u)
+            return false;
+    }
+    return false;
+}
+
+void record_refinement(uint key, uint generation)
+{
+    uint capacity = history_capacity();
+    uint slots = max(capacity - 1u, 1u);
+    uint start = 1u + key % slots;
+    for (uint probe = 0u; probe < history_probe_count; ++probe)
+    {
+        uint slot = 1u + (start - 1u + probe) % slots;
+        uint stored = generation == 0u ? atomicCompSwap(refinement_history_a.keys[slot], 0u, key)
+                                       : atomicCompSwap(refinement_history_b.keys[slot], 0u, key);
+        if (stored == 0u || stored == key)
+            return;
+    }
+    if (generation == 0u)
+        atomicOr(refinement_history_a.keys[0], 1u);
+    else
+        atomicOr(refinement_history_b.keys[0], 1u);
+    atomicAdd(counters.refinement_history_overflow, 1u);
+}
 
 bool sphere_in_frustum(vec3 center, float radius)
 {
@@ -147,10 +248,22 @@ bool page_resident(uint page_index, uint generation)
 void request_page(uint resource_index, uint handle_generation, uint generation, uint page_index,
                   float projected_error, float distance_to_node, uint flags)
 {
-    uint request_index = atomicAdd(counters.request_count, 1u);
-    if (request_index >= constants.capacities.w)
+    bool speculative = (flags & request_speculative) != 0u;
+    uint limit = speculative ? max(constants.capacities.w * 3u / 4u, 1u) : constants.capacities.w;
+    uint request_index = atomicAdd(counters.request_count, 0u);
+    while (request_index < limit)
     {
-        atomicAdd(counters.request_overflow, 1u);
+        uint observed = atomicCompSwap(counters.request_count, request_index, request_index + 1u);
+        if (observed == request_index)
+            break;
+        request_index = observed;
+    }
+    if (request_index >= limit)
+    {
+        if (speculative)
+            atomicAdd(counters.pressure_suppressed_requests, 1u);
+        else
+            atomicAdd(counters.request_overflow, 1u);
         return;
     }
     output_requests.requests[request_index].resource_index = resource_index;
@@ -184,7 +297,15 @@ void queue_fallback(uint instance_index, uint resource_index, uint hierarchy_nod
 
 void main()
 {
-    uint instance_index = gl_GlobalInvocationID.x;
+    uint phase = traversal_phase();
+    uint work_index = gl_GlobalInvocationID.x;
+    uint instance_index = work_index;
+    if (phase == traversal_phase_current_hzb)
+    {
+        if (work_index >= min(counters.refinement_frontier_count, constants.capacities.x))
+            return;
+        instance_index = refinement_frontier.instance_indices[work_index];
+    }
     if (instance_index >= constants.capacities.x)
         return;
     gpu_scene_instance instance = scene.instances[instance_index];
@@ -201,6 +322,7 @@ void main()
     uint stack_count = 0u;
     uint stack_capacity = clamp(constants.traversal_stack_capacity, 1u, 64u);
     bool fallback_queued = false;
+    bool refinement_survivor = false;
     for (uint root = 0u; root < resource_record.roots_generation.y; ++root)
     {
         if (stack_count == stack_capacity)
@@ -219,6 +341,7 @@ void main()
     while (stack_count != 0u)
     {
         uint node_index = stack[--stack_count];
+        atomicAdd(counters.traversed_nodes, 1u);
         virtual_node node = node_table.nodes[node_index];
         vec3 center = (model * vec4(node.sphere.xyz, 1.0)).xyz;
         float radius = node.sphere.w * scale;
@@ -246,8 +369,16 @@ void main()
             atomicAdd(counters.projected_size_rejected, 1u);
             continue;
         }
-        if (constants.camera_cut == 0u && constants.viewport_hzb.w > 0.5)
+        bool recently_changed = (instance.material_flags.w & instance_recently_changed) != 0u;
+        bool previous_history_valid = constants.history_invalidation_mask == 0u && !recently_changed;
+        bool can_test_hzb = constants.viewport_hzb.w > 0.5 &&
+                            (phase == traversal_phase_current_hzb || previous_history_valid);
+        if (can_test_hzb)
         {
+            if (phase == traversal_phase_current_hzb)
+                atomicAdd(counters.current_hzb_tested, 1u);
+            else
+                atomicAdd(counters.previous_hzb_tested, 1u);
             vec4 clip = constants.view_projection * vec4(center, 1.0);
             vec2 uv = clip.xy / max(clip.w, 1.0e-5) * 0.5 + 0.5;
             float depth = clip.z / max(clip.w, 1.0e-5);
@@ -258,13 +389,35 @@ void main()
                 depth - radius / max(abs(clip.w), 1.0e-4) > farthest + 1.0e-4)
             {
                 atomicAdd(counters.hzb_rejected, 1u);
+                if (phase == traversal_phase_current_hzb)
+                    atomicAdd(counters.current_hzb_rejected, 1u);
+                else
+                    atomicAdd(counters.previous_hzb_rejected, 1u);
                 continue;
             }
         }
 
         float projected_error = node.geometric_error * instance.distance_error.y * constants.viewport_hzb.y /
                                 nearest_distance;
-        bool descend = node.child_count != 0u && projected_error > constants.camera_position_and_error.w;
+        if (node.child_count != 0u)
+            atomicAdd(counters.refinement_candidates, 1u);
+        float threshold = constants.camera_position_and_error.w;
+        bool nominal_refinement = node.child_count != 0u && projected_error > threshold;
+        uint current_history = (constants.hzb_generation >> 1u) & 1u;
+        uint previous_history = current_history ^ 1u;
+        bool refinement_history_valid = previous_history_valid && !refinement_history_overflowed(previous_history);
+        bool refined_last_frame = refinement_history_valid &&
+                                  was_refined_last_frame(refinement_key(instance_index, instance, resource_generation,
+                                                                       node_index),
+                                                         previous_history);
+        float stable_threshold = threshold;
+        if (refinement_history_valid)
+            stable_threshold = refined_last_frame ? threshold * 0.9 : threshold * 1.1;
+        bool descend = node.child_count != 0u && projected_error > stable_threshold;
+        if (nominal_refinement && !descend)
+            atomicAdd(counters.hysteresis_refine_suppressed, 1u);
+        else if (!nominal_refinement && descend)
+            atomicAdd(counters.hysteresis_coarsen_suppressed, 1u);
         if (descend)
         {
             for (uint child_offset = 0u; child_offset < node.child_count; ++child_offset)
@@ -274,8 +427,13 @@ void main()
                 if (!page_resident(child.page_index, resource_generation))
                 {
                     descend = false;
+                    uint request_flags = request_visible_child;
+                    if (phase == traversal_phase_previous_hzb)
+                        request_flags |= request_speculative;
+                    else if (phase == traversal_phase_current_hzb)
+                        request_flags |= request_current_frame;
                     request_page(instance.geometry.x, instance.geometry.y, resource_generation, child.page_index,
-                                 projected_error, distance_to_node, 1u);
+                                 projected_error, distance_to_node, request_flags);
                 }
             }
         }
@@ -290,17 +448,25 @@ void main()
             }
             if (descend)
             {
+                if (phase != traversal_phase_previous_hzb)
+                    record_refinement(refinement_key(instance_index, instance, resource_generation, node_index),
+                                      current_history);
                 for (uint child_offset = node.child_count; child_offset != 0u; --child_offset)
                     stack[stack_count++] = child_table.children[node.first_child + child_offset - 1u];
                 continue;
             }
         }
-        if (node.child_count != 0u && projected_error > constants.camera_position_and_error.w)
+        if (nominal_refinement)
             atomicAdd(counters.parent_fallbacks, 1u);
         if (!page_resident(node.page_index, resource_generation))
         {
+            uint request_flags = request_visible_child;
+            if (phase == traversal_phase_previous_hzb)
+                request_flags |= request_speculative;
+            else if (phase == traversal_phase_current_hzb)
+                request_flags |= request_current_frame;
             request_page(instance.geometry.x, instance.geometry.y, resource_generation, node.page_index,
-                         projected_error, distance_to_node, 1u);
+                         projected_error, distance_to_node, request_flags);
             queue_fallback(instance_index, instance.geometry.x, node_index, fallback_unavailable_parent,
                            fallback_queued);
             continue;
@@ -323,6 +489,15 @@ void main()
             output_clusters.visible[visible_index].hierarchy_level = node.level;
             output_clusters.visible[visible_index].flags = node.flags;
             output_clusters.visible[visible_index].view_depth = distance_to_node;
+            refinement_survivor = true;
         }
+    }
+    if (phase == traversal_phase_previous_hzb && refinement_survivor)
+    {
+        uint frontier_index = atomicAdd(counters.refinement_frontier_count, 1u);
+        if (frontier_index < constants.capacities.x)
+            refinement_frontier.instance_indices[frontier_index] = instance_index;
+        else
+            atomicAdd(counters.refinement_frontier_overflow, 1u);
     }
 }

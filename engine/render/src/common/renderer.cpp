@@ -1469,7 +1469,7 @@ render_backend_frame_profile renderer::last_frame_profile() const
     result.virtual_geometry.evicted_pages = residency.evictions;
     result.virtual_geometry.deduplicated_page_requests = residency.deduplicated_requests;
     result.virtual_geometry.stale_page_requests = residency.stale_requests;
-    result.virtual_geometry.pressure_suppressed_page_requests = residency.pressure_suppressed_requests;
+    result.virtual_geometry.pressure_suppressed_page_requests += residency.pressure_suppressed_requests;
     result.virtual_geometry.parent_fallbacks = residency.parent_fallbacks;
     result.virtual_geometry.resident_bytes = residency.gpu_resident_bytes;
     result.virtual_geometry.residency_budget_bytes = residency.gpu_budget_bytes;
@@ -1621,12 +1621,14 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
         const bool teleported = math::length_squared(camera_delta) > 100.0f;
         const bool rotated = previous.valid && math::dot(prepared->camera.forward, previous.forward) < 0.5f;
         const bool projection_changed = previous.valid && matrices_differ(previous.projection, prepared->camera.projection);
+        const auto stable_projection = prepared->camera.projection;
         prepared->camera.camera_cut = !previous.valid || extent_changed || render_extent_changed || epoch_changed ||
                                       teleported || rotated || projection_changed;
         prepared->camera.history_valid = !prepared->camera.camera_cut;
         auto virtual_geometry_invalidation = virtual_geometry_history_invalidation::none;
-        if (!previous.valid || epoch_changed || rotated)
+        if (!previous.valid || rotated)
             virtual_geometry_invalidation |= virtual_geometry_history_invalidation::camera_cut;
+        if (epoch_changed) virtual_geometry_invalidation |= virtual_geometry_history_invalidation::world_reset;
         if (teleported) virtual_geometry_invalidation |= virtual_geometry_history_invalidation::teleport;
         if (extent_changed || render_extent_changed)
             virtual_geometry_invalidation |= virtual_geometry_history_invalidation::viewport_resize;
@@ -1662,11 +1664,16 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
             prepared->camera.projection(1, 2) -= prepared->camera.jitter[1] * 2.0f;
             prepared->camera.view_projection = math::matmul(prepared->camera.projection, prepared->camera.view);
             if (!math::try_inverse(prepared->camera.view_projection, prepared->camera.inverse_view_projection))
+            {
                 prepared->camera.camera_cut = true;
+                prepared->camera.history_valid = false;
+                prepared->camera.virtual_geometry_history_reset |=
+                    virtual_geometry_history_invalidation::projection_change;
+            }
         }
 
         previous = {.view_projection = prepared->camera.view_projection,
-                    .projection = prepared->camera.projection,
+                    .projection = stable_projection,
                     .position = prepared->camera.position,
                     .forward = prepared->camera.forward,
                     .world_epoch = prepared->world_epoch,

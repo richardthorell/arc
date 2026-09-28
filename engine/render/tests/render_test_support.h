@@ -41,7 +41,16 @@ public:
         last_event_count = packet.events.size();
         last_event_types.clear();
         for (const auto& event : packet.events)
+        {
             last_event_types.push_back(event.type());
+            if (const auto* world = std::get_if<arc::render::render_world_event>(&event.payload);
+                world && world->packet)
+            {
+                last_camera = world->packet->camera;
+                last_world_epoch = world->packet->world_epoch;
+                saw_render_world = true;
+            }
+        }
         last_pass_count = graph.passes.size();
         profile.frame_index = packet.frame_index;
         profile.graph = graph;
@@ -115,11 +124,14 @@ public:
     std::size_t last_event_count{};
     std::size_t last_pass_count{};
     std::vector<arc::render::render_event_type> last_event_types;
+    arc::render::render_camera last_camera{};
+    std::uint64_t last_world_epoch{};
     std::uint64_t texture_id{99};
     std::uint32_t viewport_width{};
     std::uint32_t viewport_height{};
     bool pick_requested{};
     bool capture_requested{};
+    bool saw_render_world{};
 };
 
 class recording_command_encoder final : public arc::render::command_encoder

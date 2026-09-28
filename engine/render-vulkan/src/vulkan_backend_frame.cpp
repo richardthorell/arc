@@ -342,6 +342,7 @@ bool vulkan_render_backend::ensure_hzb_resources(std::uint32_t width, std::uint3
     hzb_mip_count_ = mip_count;
     hzb_history_valid_ = false;
     gpu_visibility_descriptors_dirty_ = true;
+    virtual_geometry_traversal_descriptors_dirty_ = true;
     return true;
 }
 
@@ -392,7 +393,10 @@ void vulkan_render_backend::dispatch_hzb(VkCommandBuffer command_buffer)
                                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
         }
     }
-    hzb_history_valid_ = !frame_camera_.camera_cut;
+    // The image just produced belongs to the current, fully submitted view and
+    // is safe to consume next frame. Invalidation only blocks the stale image
+    // at the beginning of this frame.
+    hzb_history_valid_ = true;
     last_profile_.gpu_scene.history_valid = hzb_history_valid_;
     last_profile_.temporal.hzb_mip_count = hzb_mip_count_;
 }

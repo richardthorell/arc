@@ -44,6 +44,66 @@ TEST_CASE("renderer submits committed packets to attached backend")
     REQUIRE(backend_ptr->last_pass_count == 2);
 }
 
+TEST_CASE("renderer reports deterministic virtual geometry history invalidation reasons")
+{
+    using namespace arc::render;
+    const auto detect = [](auto&& mutate)
+    {
+        auto backend = std::make_unique<recording_backend>();
+        auto* backend_ptr = backend.get();
+        renderer service;
+        service.set_backend(std::move(backend));
+
+        render_world_packet world;
+        world.render_view_id = 71u;
+        world.world_epoch = 4u;
+        world.camera.output_width = 1280u;
+        world.camera.output_height = 720u;
+        world.camera.render_width = 1280u;
+        world.camera.render_height = 720u;
+        world.camera.projection = arc::math::identity<float, 4>();
+        world.camera.view = arc::math::identity<float, 4>();
+        world.camera.view_projection = arc::math::identity<float, 4>();
+
+        render_event_buffer initial_buffer;
+        render_event_writer(initial_buffer).render_world(std::make_shared<const render_world_packet>(world));
+        service.frame_queue().submit(std::move(initial_buffer));
+        REQUIRE(service.render_frame(1u, make_clear_present_graph("history")));
+
+        mutate(world);
+        render_event_buffer changed_buffer;
+        render_event_writer(changed_buffer).render_world(std::make_shared<const render_world_packet>(world));
+        service.frame_queue().submit(std::move(changed_buffer));
+        REQUIRE(service.render_frame(2u, make_clear_present_graph("history")));
+        REQUIRE(backend_ptr->saw_render_world);
+        return backend_ptr->last_camera.virtual_geometry_history_reset;
+    };
+
+    CHECK(detect([](render_world_packet& world) { world.camera.position[0] = 11.0f; }) ==
+          virtual_geometry_history_invalidation::teleport);
+    CHECK(detect([](render_world_packet& world) { world.camera.output_width = 1920u; }) ==
+          virtual_geometry_history_invalidation::viewport_resize);
+    CHECK(detect([](render_world_packet& world) { world.camera.projection(0, 0) = 2.0f; }) ==
+          virtual_geometry_history_invalidation::projection_change);
+    CHECK(detect([](render_world_packet& world) { ++world.world_epoch; }) ==
+          virtual_geometry_history_invalidation::world_reset);
+    CHECK(detect([](render_world_packet& world) { world.camera.forward = {0.0f, 0.0f, 1.0f}; }) ==
+          virtual_geometry_history_invalidation::camera_cut);
+
+    const auto combined = detect(
+        [](render_world_packet& world)
+        {
+            world.camera.position[0] = 11.0f;
+            world.camera.output_width = 1920u;
+            world.camera.projection(0, 0) = 2.0f;
+            ++world.world_epoch;
+        });
+    CHECK(contains(combined, virtual_geometry_history_invalidation::teleport));
+    CHECK(contains(combined, virtual_geometry_history_invalidation::viewport_resize));
+    CHECK(contains(combined, virtual_geometry_history_invalidation::projection_change));
+    CHECK(contains(combined, virtual_geometry_history_invalidation::world_reset));
+}
+
 TEST_CASE("renderer resolves low quality policy and optional feature overrides")
 {
     arc::render::render_capabilities capabilities{};

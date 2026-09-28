@@ -4,7 +4,8 @@
 
 namespace arc::render::vulkan::backend_detail
 {
-packed_gpu_scene_instance vulkan_render_backend::pack_gpu_scene_instance(const gpu_scene_instance& source) const
+packed_gpu_scene_instance vulkan_render_backend::pack_gpu_scene_instance(const gpu_scene_instance& source,
+                                                                         gpu_scene_instance_handle handle) const
 {
     packed_gpu_scene_instance result{};
     std::copy(source.model.data(), source.model.data() + 16, result.transform.model);
@@ -71,6 +72,7 @@ packed_gpu_scene_instance vulkan_render_backend::pack_gpu_scene_instance(const g
     }
     else if (source.geometry_kind == gpu_scene_geometry_kind::virtual_mesh)
     {
+        result.visibility.draw_metadata[2] = handle.generation;
         const auto found = virtual_meshes_.find(resource_key(source.virtual_mesh));
         if (found != virtual_meshes_.end() && source.submesh_or_cluster < found->second.clusters.size())
         {
@@ -362,7 +364,7 @@ void vulkan_render_backend::apply_gpu_scene_update(const gpu_scene_update_event&
         {
             if (update.kind == gpu_scene_update_kind::upsert)
             {
-                const auto packed = pack_gpu_scene_instance(update.instance);
+                const auto packed = pack_gpu_scene_instance(update.instance, update.handle);
                 gpu_scene_visibility_mirror_[update.handle.index] = packed.visibility;
                 gpu_scene_transform_mirror_[update.handle.index] = packed.transform;
                 ++profile.uploaded_instances;
@@ -881,6 +883,9 @@ void vulkan_render_backend::destroy_virtual_geometry_traversal_resources()
     destroy_buffer(virtual_geometry_request_buffer_);
     destroy_buffer(virtual_geometry_fallback_buffer_);
     destroy_buffer(virtual_geometry_counter_buffer_);
+    for (auto& history : virtual_geometry_refinement_history_buffers_)
+        destroy_buffer(history);
+    destroy_buffer(virtual_geometry_refinement_frontier_buffer_);
     destroy_buffer(virtual_geometry_raster_bin_buffer_);
     destroy_buffer(virtual_geometry_material_frame_buffer_);
     destroy_graph_image(virtual_geometry_encoded_depth_);
@@ -934,7 +939,10 @@ void vulkan_render_backend::destroy_virtual_geometry_traversal_resources()
     virtual_geometry_visible_capacity_ = 0u;
     virtual_geometry_request_capacity_ = 0u;
     virtual_geometry_fallback_capacity_ = 0u;
+    virtual_geometry_refinement_history_capacity_ = 0u;
+    virtual_geometry_refinement_frontier_capacity_ = 0u;
     virtual_geometry_raster_bin_capacity_ = 0u;
+    virtual_geometry_refinement_pending_ = false;
 }
 
 bool vulkan_render_backend::ensure_gpu_visibility_resources()

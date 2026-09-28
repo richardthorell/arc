@@ -401,10 +401,12 @@ TEST_CASE("GPU-driven scene graph declares visibility indirect and temporal hist
     REQUIRE(contains(builtin_render_pass::gpu_indirect_command_generation));
     REQUIRE(contains(builtin_render_pass::gpu_visibility_overflow));
     REQUIRE(contains(builtin_render_pass::virtual_geometry_hierarchy_traversal));
+    REQUIRE(contains(builtin_render_pass::virtual_geometry_current_refinement));
     REQUIRE(contains(builtin_render_pass::virtual_geometry_page_requests));
     REQUIRE(contains(builtin_render_pass::virtual_geometry_cluster_binning));
     REQUIRE(contains(builtin_render_pass::virtual_geometry_software_depth));
     REQUIRE(contains(builtin_render_pass::virtual_geometry_visibility_resolve));
+    REQUIRE(contains(builtin_render_pass::virtual_geometry_final_visibility_resolve));
     REQUIRE(contains(builtin_render_pass::virtual_geometry_material_resolve));
     REQUIRE(contains(builtin_render_pass::virtual_geometry_shadow_traversal));
     REQUIRE_FALSE(contains(builtin_render_pass::virtual_geometry_mesh_shader_visibility));
@@ -419,6 +421,29 @@ TEST_CASE("GPU-driven scene graph declares visibility indirect and temporal hist
                         [](const auto& history) { return history.persistent_key == "view.temporal_color"; }));
     REQUIRE(std::any_of(compiled.history_rotations.begin(), compiled.history_rotations.end(),
                         [](const auto& history) { return history.persistent_key == "view.depth_hzb"; }));
+
+    const auto pass_index = [&](std::string_view name)
+    {
+        const auto found = std::find_if(compiled.passes.begin(), compiled.passes.end(),
+                                        [name](const auto& pass) { return pass.name == name; });
+        REQUIRE(found != compiled.passes.end());
+        return static_cast<std::size_t>(std::distance(compiled.passes.begin(), found));
+    };
+    const auto provisional_traversal = pass_index("virtual geometry hierarchy traversal");
+    const auto provisional_depth = pass_index("virtual geometry software depth");
+    const auto refinement_hzb = pass_index("visibility depth pyramid");
+    const auto current_refinement = pass_index("virtual geometry current HZB refinement");
+    const auto page_requests = pass_index("virtual geometry page requests");
+    const auto final_depth = pass_index("virtual geometry final software depth");
+    const auto final_resolve = pass_index("virtual geometry final visibility resolve");
+    const auto final_hzb = pass_index("final visibility depth pyramid");
+    CHECK(provisional_traversal < provisional_depth);
+    CHECK(provisional_depth < refinement_hzb);
+    CHECK(refinement_hzb < current_refinement);
+    CHECK(current_refinement < page_requests);
+    CHECK(current_refinement < final_depth);
+    CHECK(final_depth < final_resolve);
+    CHECK(final_resolve < final_hzb);
 }
 
 TEST_CASE("Ultra virtual shadow graph declares page feedback cache and lighting dependencies")

@@ -140,6 +140,13 @@ TEST_CASE("virtual geometry skips HZB rejection on camera cuts")
     REQUIRE(cut.hzb_rejected == 0u);
     REQUIRE_FALSE(cut.visible_clusters.empty());
     REQUIRE(cut.previous_hzb_tested == 0u);
+
+    view.camera_cut = false;
+    view.history_invalidation = arc::render::virtual_geometry_history_invalidation::newly_visible_instance;
+    view.traversal_phase = arc::render::virtual_geometry_traversal_phase::previous_hzb;
+    const auto newly_visible = arc::render::traverse_virtual_geometry_reference(geometry, resident, view);
+    CHECK(newly_visible.previous_hzb_tested == 0u);
+    CHECK_FALSE(newly_visible.visible_clusters.empty());
 }
 
 TEST_CASE("virtual geometry reference traversal applies stable per-node refinement history")
@@ -168,6 +175,12 @@ TEST_CASE("virtual geometry reference traversal applies stable per-node refineme
     const auto invalidated = traverse_virtual_geometry_reference(geometry, resident, view);
     CHECK(invalidated.visible_clusters == std::vector<std::uint32_t>{0u});
     CHECK(invalidated.hysteresis_coarsen_suppressed == 0u);
+
+    view.history_invalidation = virtual_geometry_history_invalidation::none;
+    view.refinement_history_available = false;
+    const auto overflowed = traverse_virtual_geometry_reference(geometry, resident, view);
+    CHECK(overflowed.visible_clusters == std::vector<std::uint32_t>{0u});
+    CHECK(overflowed.parent_fallbacks == 0u);
 }
 
 TEST_CASE("virtual geometry reference traversal distinguishes previous and current HZB phases")
