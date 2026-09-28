@@ -89,6 +89,7 @@ layout(std430, set = 0, binding = 5) buffer traversal_counter_buffer
     uint fallback_instances;
     uint parent_fallbacks;
     uint traversal_overflow;
+    uint fallback_overflow;
     uint bin_count;
 } counters;
 layout(std430, set = 0, binding = 6) buffer bin_buffer

@@ -891,12 +891,25 @@ struct render_gpu_scene_profile
 struct render_virtual_geometry_profile
 {
     bool enabled{};
+    bool history_valid{};
     virtual_geometry_raster_path raster_path{virtual_geometry_raster_path::unavailable};
+    std::uint32_t history_invalidation_mask{};
+    std::uint32_t traversed_nodes{};
     std::uint32_t visible_clusters{};
     std::uint64_t visible_triangles{};
     std::uint32_t frustum_rejected{};
     std::uint32_t cone_rejected{};
     std::uint32_t hzb_rejected{};
+    std::uint32_t previous_hzb_tested{};
+    std::uint32_t previous_hzb_rejected{};
+    std::uint32_t current_hzb_tested{};
+    std::uint32_t current_hzb_rejected{};
+    std::uint32_t conservative_survivors_rejected{};
+    std::uint32_t refinement_candidates{};
+    std::uint32_t refinement_frontier_overflow{};
+    std::uint32_t hysteresis_refine_suppressed{};
+    std::uint32_t hysteresis_coarsen_suppressed{};
+    std::uint32_t refinement_history_overflow{};
     std::uint32_t projected_size_rejected{};
     std::uint32_t resource_count{};
     std::uint32_t page_count{};
@@ -910,6 +923,7 @@ struct render_virtual_geometry_profile
     std::uint32_t stale_page_requests{};
     std::uint32_t parent_fallbacks{};
     std::uint32_t page_request_overflow{};
+    std::uint32_t pressure_suppressed_page_requests{};
     std::uint32_t traversal_overflow{};
     std::uint32_t overflowed_clusters{};
     std::uint32_t fallback_instances{};

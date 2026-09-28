@@ -32,6 +32,13 @@ float halton(std::uint64_t index, std::uint32_t base) noexcept
     return result;
 }
 
+bool matrices_differ(const math::matrix4f& lhs, const math::matrix4f& rhs, float tolerance = 1.0e-5f) noexcept
+{
+    for (std::size_t index = 0; index < 16u; ++index)
+        if (std::abs(lhs.data()[index] - rhs.data()[index]) > tolerance) return true;
+    return false;
+}
+
 std::uint64_t renderer_resource_key(resource_handle handle) noexcept
 {
     return (static_cast<std::uint64_t>(handle.generation) << 32u) | handle.index;
@@ -1462,6 +1469,7 @@ render_backend_frame_profile renderer::last_frame_profile() const
     result.virtual_geometry.evicted_pages = residency.evictions;
     result.virtual_geometry.deduplicated_page_requests = residency.deduplicated_requests;
     result.virtual_geometry.stale_page_requests = residency.stale_requests;
+    result.virtual_geometry.pressure_suppressed_page_requests += residency.pressure_suppressed_requests;
     result.virtual_geometry.parent_fallbacks = residency.parent_fallbacks;
     result.virtual_geometry.resident_bytes = residency.gpu_resident_bytes;
     result.virtual_geometry.residency_budget_bytes = residency.gpu_budget_bytes;
@@ -1606,12 +1614,28 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
         auto& previous = temporal_views_[prepared->render_view_id];
         const bool extent_changed =
             previous.width != prepared->camera.output_width || previous.height != prepared->camera.output_height;
+        const bool render_extent_changed = previous.render_width != prepared->camera.render_width ||
+                                           previous.render_height != prepared->camera.render_height;
         const bool epoch_changed = previous.world_epoch != prepared->world_epoch;
         const auto camera_delta = math::sub(prepared->camera.position, previous.position);
         const bool teleported = math::length_squared(camera_delta) > 100.0f;
         const bool rotated = previous.valid && math::dot(prepared->camera.forward, previous.forward) < 0.5f;
-        prepared->camera.camera_cut = !previous.valid || extent_changed || epoch_changed || teleported || rotated;
+        const bool projection_changed =
+            previous.valid && matrices_differ(previous.projection, prepared->camera.projection);
+        const auto stable_projection = prepared->camera.projection;
+        prepared->camera.camera_cut = !previous.valid || extent_changed || render_extent_changed || epoch_changed ||
+                                      teleported || rotated || projection_changed;
         prepared->camera.history_valid = !prepared->camera.camera_cut;
+        auto virtual_geometry_invalidation = virtual_geometry_history_invalidation::none;
+        if (!previous.valid || rotated)
+            virtual_geometry_invalidation |= virtual_geometry_history_invalidation::camera_cut;
+        if (epoch_changed) virtual_geometry_invalidation |= virtual_geometry_history_invalidation::world_reset;
+        if (teleported) virtual_geometry_invalidation |= virtual_geometry_history_invalidation::teleport;
+        if (extent_changed || render_extent_changed)
+            virtual_geometry_invalidation |= virtual_geometry_history_invalidation::viewport_resize;
+        if (projection_changed)
+            virtual_geometry_invalidation |= virtual_geometry_history_invalidation::projection_change;
+        prepared->camera.virtual_geometry_history_reset = virtual_geometry_invalidation;
         prepared->camera.previous_view_projection =
             prepared->camera.history_valid ? previous.view_projection : prepared->camera.view_projection;
 
@@ -1641,15 +1665,23 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
             prepared->camera.projection(1, 2) -= prepared->camera.jitter[1] * 2.0f;
             prepared->camera.view_projection = math::matmul(prepared->camera.projection, prepared->camera.view);
             if (!math::try_inverse(prepared->camera.view_projection, prepared->camera.inverse_view_projection))
+            {
                 prepared->camera.camera_cut = true;
+                prepared->camera.history_valid = false;
+                prepared->camera.virtual_geometry_history_reset |=
+                    virtual_geometry_history_invalidation::projection_change;
+            }
         }
 
         previous = {.view_projection = prepared->camera.view_projection,
+                    .projection = stable_projection,
                     .position = prepared->camera.position,
                     .forward = prepared->camera.forward,
                     .world_epoch = prepared->world_epoch,
                     .width = prepared->camera.output_width,
                     .height = prepared->camera.output_height,
+                    .render_width = prepared->camera.render_width,
+                    .render_height = prepared->camera.render_height,
                     .valid = true};
         if (resolved_config_.features.gpu_driven_rendering)
             gpu_scene_updates.push_back(

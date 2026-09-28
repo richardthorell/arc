@@ -1,5 +1,6 @@
 #pragma once
 
+#include <arc/render/virtual_geometry_stability.h>
 #include <arc/render/virtual_mesh.h>
 
 #include <array>
@@ -107,6 +108,29 @@ struct virtual_geometry_gpu_page_request
     float distance{};
     std::uint32_t flags{};
 };
+
+/** @brief Meaning of bits stored in virtual-geometry page-request records. */
+enum class virtual_geometry_page_request_flag : std::uint32_t
+{
+    none = 0u,
+    visible_child = 1u << 0u,
+    shadow_view = 1u << 1u,
+    speculative = 1u << 2u,
+    current_frame = 1u << 3u
+};
+
+[[nodiscard]] constexpr virtual_geometry_page_request_flag operator|(virtual_geometry_page_request_flag lhs,
+                                                                     virtual_geometry_page_request_flag rhs) noexcept
+{
+    return static_cast<virtual_geometry_page_request_flag>(static_cast<std::uint32_t>(lhs) |
+                                                           static_cast<std::uint32_t>(rhs));
+}
+
+[[nodiscard]] constexpr bool contains(virtual_geometry_page_request_flag value,
+                                      virtual_geometry_page_request_flag requested) noexcept
+{
+    return (static_cast<std::uint32_t>(value) & static_cast<std::uint32_t>(requested)) != 0u;
+}
 
 /** @brief One resident cluster selected by GPU traversal for visibility or shadow rasterization. */
 struct virtual_geometry_visible_cluster_record
@@ -258,6 +282,14 @@ struct [[nodiscard]] virtual_geometry_gpu_reference_result
     std::uint32_t frustum_rejected{};
     std::uint32_t cone_rejected{};
     std::uint32_t hzb_rejected{};
+    std::uint32_t traversed_nodes{};
+    std::uint32_t previous_hzb_tested{};
+    std::uint32_t previous_hzb_rejected{};
+    std::uint32_t current_hzb_tested{};
+    std::uint32_t current_hzb_rejected{};
+    std::uint32_t refinement_candidates{};
+    std::uint32_t hysteresis_refine_suppressed{};
+    std::uint32_t hysteresis_coarsen_suppressed{};
     std::uint32_t projected_size_rejected{};
 };
 
@@ -284,6 +316,7 @@ struct virtual_geometry_page_request
     float distance{};
     bool visible_child{};
     bool shadow_view{};
+    bool speculative{};
 };
 
 /** @brief Page request selected for asynchronous range IO and decompression. */
@@ -295,6 +328,7 @@ struct virtual_geometry_page_load
     std::uint32_t byte_offset{};
     std::uint32_t byte_size{};
     float priority{};
+    bool speculative{};
 };
 
 /** @brief Aggregate residency diagnostics for editor and telemetry consumers. */
@@ -327,6 +361,8 @@ struct virtual_geometry_residency_snapshot
     std::uint32_t request_budget_overflow{};
     /** Requests targeting a page again while it is still inside the post-eviction cooldown window. */
     std::uint32_t reload_pressure_requests{};
+    /** Speculative requests deferred because required work exhausted the per-frame issue budget. */
+    std::uint32_t pressure_suppressed_requests{};
     std::uint32_t protected_pages{};
 };
 
@@ -342,9 +378,16 @@ struct virtual_geometry_reference_view
     float minimum_projected_radius{0.5f};
     bool camera_cut{};
     bool double_sided{};
+    virtual_geometry_history_invalidation history_invalidation{virtual_geometry_history_invalidation::none};
+    virtual_geometry_traversal_phase traversal_phase{virtual_geometry_traversal_phase::single_phase};
+    virtual_geometry_traversal_stability stability{};
+    bool refinement_history_available{true};
     /** Optional conservative previous-frame HZB callback. */
     bool (*occluded)(const math::vector3f& center, float radius, void* user_data){};
     void* occlusion_user_data{};
+    /** Optional generation-safe refinement history callback addressed by hierarchy node. */
+    bool (*refined_last_frame)(std::uint32_t node_index, void* user_data){};
+    void* refinement_history_user_data{};
 };
 
 /** @brief Deterministic reference result for validating GPU hierarchy traversal. */
@@ -355,8 +398,17 @@ struct [[nodiscard]] virtual_geometry_reference_result
     std::uint32_t frustum_rejected{};
     std::uint32_t cone_rejected{};
     std::uint32_t hzb_rejected{};
+    std::uint32_t traversed_nodes{};
+    std::uint32_t previous_hzb_tested{};
+    std::uint32_t previous_hzb_rejected{};
+    std::uint32_t current_hzb_tested{};
+    std::uint32_t current_hzb_rejected{};
+    std::uint32_t refinement_candidates{};
+    std::uint32_t hysteresis_refine_suppressed{};
+    std::uint32_t hysteresis_coarsen_suppressed{};
     std::uint32_t projected_size_rejected{};
     std::uint32_t parent_fallbacks{};
+    std::vector<std::uint32_t> refined_nodes;
 };
 
 /**

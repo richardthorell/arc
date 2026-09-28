@@ -176,6 +176,106 @@ virtual_geometry_view_capture capture_view(std::string name, const arc::render::
             .parent_fallbacks = traversal.parent_fallbacks};
 }
 
+bool sequence_occluded(const arc::math::vector3f&, float, void* user_data)
+{
+    return *static_cast<const bool*>(user_data);
+}
+
+bool sequence_refined(std::uint32_t node_index, void* user_data)
+{
+    const auto& history = *static_cast<const std::vector<std::uint8_t>*>(user_data);
+    return node_index < history.size() && history[node_index] != 0u;
+}
+
+double reduction(std::uint64_t baseline, std::uint64_t measured) noexcept
+{
+    if (baseline == 0u) return 0.0;
+    return 1.0 - static_cast<double>(measured) / static_cast<double>(baseline);
+}
+
+virtual_geometry_sequence_capture capture_occlusion_sequence(const arc::render::virtual_mesh_data& geometry,
+                                                             std::span<const std::uint8_t> resident,
+                                                             arc::render::virtual_geometry_reference_view view)
+{
+    virtual_geometry_sequence_capture capture{.name = "deterministic-occluder", .frames = 8u};
+    for (std::uint32_t frame = 0u; frame < capture.frames; ++frame)
+    {
+        const auto baseline = arc::render::traverse_virtual_geometry_reference(geometry, resident, view);
+        capture.baseline_traversed_nodes += baseline.traversed_nodes;
+        capture.baseline_rasterized_clusters += baseline.visible_clusters.size();
+
+        bool previous_occluded = frame < capture.frames - 2u;
+        bool current_occluded = frame == capture.frames - 2u;
+        auto previous_view = view;
+        previous_view.traversal_phase = arc::render::virtual_geometry_traversal_phase::previous_hzb;
+        previous_view.occluded = &sequence_occluded;
+        previous_view.occlusion_user_data = &previous_occluded;
+        const auto previous = arc::render::traverse_virtual_geometry_reference(geometry, resident, previous_view);
+        capture.two_phase_traversed_nodes += previous.traversed_nodes;
+        capture.two_phase_rasterized_clusters += previous.visible_clusters.size();
+        capture.previous_hzb_rejections += previous.previous_hzb_rejected;
+
+        if (!previous.visible_clusters.empty())
+        {
+            auto current_view = view;
+            current_view.traversal_phase = arc::render::virtual_geometry_traversal_phase::current_hzb;
+            current_view.occluded = &sequence_occluded;
+            current_view.occlusion_user_data = &current_occluded;
+            const auto current = arc::render::traverse_virtual_geometry_reference(geometry, resident, current_view);
+            capture.two_phase_traversed_nodes += current.traversed_nodes;
+            capture.two_phase_rasterized_clusters += current.visible_clusters.size();
+            capture.current_hzb_rejections += current.current_hzb_rejected;
+            const bool expected_visible = !current_occluded;
+            capture.visible_geometry_preserved =
+                capture.visible_geometry_preserved &&
+                (expected_visible ? current.visible_clusters == baseline.visible_clusters
+                                  : current.visible_clusters.empty());
+        }
+        else if (!previous_occluded)
+            capture.visible_geometry_preserved = false;
+    }
+    capture.traversal_work_reduction = reduction(capture.baseline_traversed_nodes, capture.two_phase_traversed_nodes);
+    capture.raster_work_reduction =
+        reduction(capture.baseline_rasterized_clusters, capture.two_phase_rasterized_clusters);
+    return capture;
+}
+
+virtual_geometry_sequence_capture capture_threshold_sequence(const arc::render::virtual_mesh_data& geometry,
+                                                             std::span<const std::uint8_t> resident,
+                                                             arc::render::virtual_geometry_reference_view view)
+{
+    virtual_geometry_sequence_capture capture{.name = "slow-threshold", .frames = 10u};
+    if (geometry.root_nodes.empty()) return capture;
+    const auto root_index = geometry.root_nodes.front();
+    if (root_index >= geometry.lod_nodes.size()) return capture;
+    const auto& root = geometry.lod_nodes[root_index];
+    const auto distance = std::sqrt(
+        (std::max)(arc::math::length_squared(arc::math::sub(view.camera_position, root.sphere_center)), 1.0e-12f));
+    const auto nearest_distance = (std::max)(distance - root.sphere_radius, 1.0e-4f);
+    const auto unit_scale = root.error > 0.0f ? nearest_distance / root.error : view.projection_scale;
+    constexpr std::array multipliers{0.95f, 1.05f, 0.98f, 1.02f, 1.09f, 1.11f, 1.05f, 0.95f, 0.91f, 0.89f};
+    std::vector<std::uint8_t> history(geometry.lod_nodes.size());
+    bool refined{};
+    for (const auto multiplier : multipliers)
+    {
+        view.projection_scale = unit_scale * multiplier;
+        view.refined_last_frame = &sequence_refined;
+        view.refinement_history_user_data = &history;
+        const auto frame = arc::render::traverse_virtual_geometry_reference(geometry, resident, view);
+        capture.two_phase_traversed_nodes += frame.traversed_nodes;
+        capture.two_phase_rasterized_clusters += frame.visible_clusters.size();
+        capture.hysteresis_decisions += frame.hysteresis_refine_suppressed + frame.hysteresis_coarsen_suppressed;
+        const bool now_refined =
+            std::find(frame.refined_nodes.begin(), frame.refined_nodes.end(), root_index) != frame.refined_nodes.end();
+        if (now_refined != refined) ++capture.refinement_transitions;
+        refined = now_refined;
+        std::fill(history.begin(), history.end(), std::uint8_t{0});
+        for (const auto node : frame.refined_nodes)
+            if (node < history.size()) history[node] = 1u;
+    }
+    return capture;
+}
+
 void write_capture(std::ostream& output, const virtual_geometry_view_capture& capture, std::string_view indent)
 {
     output << indent << "{\"name\":\"" << capture.name << "\",\"visibleClusterFingerprint\":\"0x" << std::hex
@@ -183,6 +283,22 @@ void write_capture(std::ostream& output, const virtual_geometry_view_capture& ca
            << ",\"visibleClusters\":" << capture.visible_clusters << ",\"requestedPages\":" << capture.requested_pages
            << ",\"parentFallbacks\":" << capture.parent_fallbacks
            << ",\"traversalOverflow\":" << capture.traversal_overflow << '}';
+}
+
+void write_sequence(std::ostream& output, const virtual_geometry_sequence_capture& capture, std::string_view indent)
+{
+    output << indent << "{\"name\":\"" << capture.name << "\",\"frames\":" << capture.frames
+           << ",\"baselineTraversedNodes\":" << capture.baseline_traversed_nodes
+           << ",\"twoPhaseTraversedNodes\":" << capture.two_phase_traversed_nodes
+           << ",\"baselineRasterizedClusters\":" << capture.baseline_rasterized_clusters
+           << ",\"twoPhaseRasterizedClusters\":" << capture.two_phase_rasterized_clusters
+           << ",\"previousHzbRejections\":" << capture.previous_hzb_rejections
+           << ",\"currentHzbRejections\":" << capture.current_hzb_rejections
+           << ",\"hysteresisDecisions\":" << capture.hysteresis_decisions
+           << ",\"refinementTransitions\":" << capture.refinement_transitions
+           << ",\"traversalWorkReduction\":" << capture.traversal_work_reduction
+           << ",\"rasterWorkReduction\":" << capture.raster_work_reduction
+           << ",\"visibleGeometryPreserved\":" << (capture.visible_geometry_preserved ? "true" : "false") << '}';
 }
 } // namespace
 
@@ -274,6 +390,10 @@ virtual_geometry_corpus_result run_virtual_geometry_corpus(virtual_geometry_corp
     result.captures.push_back(capture_view("camera-cut", geometry, all_resident, view));
     view.camera_cut = false;
     result.captures.push_back(capture_view("root-only-pressure", geometry, root_resident, view));
+    view.camera_cut = false;
+    view.camera_position = {0.0f, 160.0f, 300.0f};
+    result.sequences.push_back(capture_occlusion_sequence(geometry, all_resident, view));
+    result.sequences.push_back(capture_threshold_sequence(geometry, all_resident, view));
     result.reference_traversal_milliseconds =
         std::chrono::duration<double, std::milli>(clock_type::now() - traversal_begin).count();
     result.process_peak_resident_bytes = peak_resident_bytes();
@@ -312,6 +432,12 @@ void write_virtual_geometry_corpus_json(std::ostream& output, const virtual_geom
     {
         write_capture(output, result.captures[index], std::string(nested.size() + 2u, ' '));
         output << (index + 1u == result.captures.size() ? "\n" : ",\n");
+    }
+    output << nested << "],\n" << nested << "\"sequences\":[\n";
+    for (std::size_t index = 0; index < result.sequences.size(); ++index)
+    {
+        write_sequence(output, result.sequences[index], std::string(nested.size() + 2u, ' '));
+        output << (index + 1u == result.sequences.size() ? "\n" : ",\n");
     }
     output << nested << "]\n" << indent << '}';
 }

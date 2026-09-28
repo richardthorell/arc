@@ -517,15 +517,22 @@ bool vulkan_render_backend::ensure_virtual_geometry_traversal_resources()
     const auto requested_fallback_capacity =
         std::clamp(std::bit_ceil(std::max(1u, std::min(gpu_scene_capacity_, maximum_fallback_capacity))), 256u,
                    maximum_fallback_capacity);
+    const auto requested_history_capacity =
+        std::clamp(std::bit_ceil(std::max(2u, requested_visible_capacity * 2u)), 1024u, 1u << 22u);
+    const auto requested_frontier_capacity = std::max(gpu_scene_capacity_, 1u);
     if (virtual_geometry_visible_capacity_ < requested_visible_capacity ||
         virtual_geometry_request_capacity_ < requested_page_capacity ||
         virtual_geometry_fallback_capacity_ < requested_fallback_capacity ||
+        virtual_geometry_refinement_history_capacity_ < requested_history_capacity ||
+        virtual_geometry_refinement_frontier_capacity_ < requested_frontier_capacity ||
         virtual_geometry_visible_buffer_.buffer == VK_NULL_HANDLE)
     {
         gpu_buffer visible{};
         gpu_buffer requests{};
         gpu_buffer fallbacks{};
         gpu_buffer counters{};
+        std::array<gpu_buffer, 2> refinement_history{};
+        gpu_buffer refinement_frontier{};
         if (!create_buffer(buffer_size(requested_visible_capacity, sizeof(virtual_geometry_visible_cluster_record)),
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                            VMA_MEMORY_USAGE_GPU_ONLY, visible) ||
@@ -538,47 +545,72 @@ bool vulkan_render_backend::ensure_virtual_geometry_traversal_resources()
             !create_buffer(sizeof(virtual_geometry_traversal_counter_data),
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                           VMA_MEMORY_USAGE_GPU_ONLY, counters))
+                           VMA_MEMORY_USAGE_GPU_ONLY, counters) ||
+            !create_buffer(buffer_size(requested_history_capacity, sizeof(std::uint32_t)),
+                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                           VMA_MEMORY_USAGE_GPU_ONLY, refinement_history[0]) ||
+            !create_buffer(buffer_size(requested_history_capacity, sizeof(std::uint32_t)),
+                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                           VMA_MEMORY_USAGE_GPU_ONLY, refinement_history[1]) ||
+            !create_buffer(buffer_size(requested_frontier_capacity, sizeof(std::uint32_t)),
+                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY, refinement_frontier))
         {
             destroy_buffer(visible);
             destroy_buffer(requests);
             destroy_buffer(fallbacks);
             destroy_buffer(counters);
+            for (auto& history : refinement_history)
+                destroy_buffer(history);
+            destroy_buffer(refinement_frontier);
             return false;
         }
         auto retired_visible = virtual_geometry_visible_buffer_;
         auto retired_requests = virtual_geometry_request_buffer_;
         auto retired_fallbacks = virtual_geometry_fallback_buffer_;
         auto retired_counters = virtual_geometry_counter_buffer_;
+        auto retired_history = virtual_geometry_refinement_history_buffers_;
+        auto retired_frontier = virtual_geometry_refinement_frontier_buffer_;
         virtual_geometry_visible_buffer_ = visible;
         virtual_geometry_request_buffer_ = requests;
         virtual_geometry_fallback_buffer_ = fallbacks;
         virtual_geometry_counter_buffer_ = counters;
+        virtual_geometry_refinement_history_buffers_ = refinement_history;
+        virtual_geometry_refinement_frontier_buffer_ = refinement_frontier;
         virtual_geometry_visible_capacity_ = requested_visible_capacity;
         virtual_geometry_request_capacity_ = requested_page_capacity;
         virtual_geometry_fallback_capacity_ = requested_fallback_capacity;
+        virtual_geometry_refinement_history_capacity_ = requested_history_capacity;
+        virtual_geometry_refinement_frontier_capacity_ = requested_frontier_capacity;
         virtual_geometry_traversal_descriptors_dirty_ = true;
         virtual_geometry_raster_descriptors_dirty_ = true;
         virtual_geometry_material_descriptors_dirty_ = true;
         if (retired_visible.buffer != VK_NULL_HANDLE || retired_requests.buffer != VK_NULL_HANDLE ||
-            retired_fallbacks.buffer != VK_NULL_HANDLE || retired_counters.buffer != VK_NULL_HANDLE)
-            deferred_releases_.defer(
-                last_profile_.frame_index + frame_resource_count(),
-                [this, retired_visible, retired_requests, retired_fallbacks, retired_counters]() mutable
-                {
-                    destroy_buffer(retired_visible);
-                    destroy_buffer(retired_requests);
-                    destroy_buffer(retired_fallbacks);
-                    destroy_buffer(retired_counters);
-                });
+            retired_fallbacks.buffer != VK_NULL_HANDLE || retired_counters.buffer != VK_NULL_HANDLE ||
+            retired_history[0].buffer != VK_NULL_HANDLE || retired_history[1].buffer != VK_NULL_HANDLE ||
+            retired_frontier.buffer != VK_NULL_HANDLE)
+            deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
+                                     [this, retired_visible, retired_requests, retired_fallbacks, retired_counters,
+                                      retired_history, retired_frontier]() mutable
+                                     {
+                                         destroy_buffer(retired_visible);
+                                         destroy_buffer(retired_requests);
+                                         destroy_buffer(retired_fallbacks);
+                                         destroy_buffer(retired_counters);
+                                         for (auto& history : retired_history)
+                                             destroy_buffer(history);
+                                         destroy_buffer(retired_frontier);
+                                     });
     }
 
     if (virtual_geometry_traversal_descriptor_set_layout_ == VK_NULL_HANDLE)
     {
-        std::array<VkDescriptorSetLayoutBinding, 12> bindings{};
+        std::array<VkDescriptorSetLayoutBinding, 15> bindings{};
         for (std::uint32_t binding = 0; binding < 11u; ++binding)
             bindings[binding] = {binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
         bindings[11] = {11u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+        bindings[12] = {12u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+        bindings[13] = {13u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+        bindings[14] = {14u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
         VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
         layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
         layout.pBindings = bindings.data();
@@ -592,7 +624,7 @@ bool vulkan_render_backend::ensure_virtual_geometry_traversal_resources()
     {
         VkDescriptorPool replacement_pool{};
         VkDescriptorSet replacement_set{};
-        const std::array pool_sizes{VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 11u},
+        const std::array pool_sizes{VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 14u},
                                     VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2u}};
         VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
         pool.maxSets = 1u;
@@ -620,13 +652,16 @@ bool vulkan_render_backend::ensure_virtual_geometry_traversal_resources()
             VkDescriptorBufferInfo{virtual_geometry_request_buffer_.buffer, 0, VK_WHOLE_SIZE},
             VkDescriptorBufferInfo{virtual_geometry_counter_buffer_.buffer, 0, VK_WHOLE_SIZE},
             VkDescriptorBufferInfo{virtual_geometry_fallback_buffer_.buffer, 0, VK_WHOLE_SIZE},
+            VkDescriptorBufferInfo{virtual_geometry_refinement_history_buffers_[0].buffer, 0, VK_WHOLE_SIZE},
+            VkDescriptorBufferInfo{virtual_geometry_refinement_history_buffers_[1].buffer, 0, VK_WHOLE_SIZE},
+            VkDescriptorBufferInfo{virtual_geometry_refinement_frontier_buffer_.buffer, 0, VK_WHOLE_SIZE},
         };
-        std::array<VkWriteDescriptorSet, 11> writes{};
+        std::array<VkWriteDescriptorSet, 14> writes{};
         for (std::uint32_t binding = 0; binding < writes.size(); ++binding)
         {
             writes[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             writes[binding].dstSet = replacement_set;
-            writes[binding].dstBinding = binding;
+            writes[binding].dstBinding = binding < 11u ? binding : binding + 1u;
             writes[binding].descriptorCount = 1u;
             writes[binding].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             writes[binding].pBufferInfo = &buffers[binding];
@@ -711,20 +746,9 @@ bool vulkan_render_backend::ensure_virtual_geometry_feedback_frame(virtual_geome
                          VMA_MEMORY_USAGE_GPU_TO_CPU, frame.counters);
 }
 
-void vulkan_render_backend::dispatch_virtual_geometry_traversal(VkCommandBuffer command_buffer)
+void vulkan_render_backend::dispatch_virtual_geometry_traversal_phase(VkCommandBuffer command_buffer,
+                                                                      virtual_geometry_traversal_phase phase)
 {
-    if (!ensure_virtual_geometry_traversal_resources()) return;
-    vkCmdFillBuffer(command_buffer, virtual_geometry_counter_buffer_.buffer, 0u, VK_WHOLE_SIZE, 0u);
-    VkBufferMemoryBarrier counter_input{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-    counter_input.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    counter_input.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    counter_input.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    counter_input.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    counter_input.buffer = virtual_geometry_counter_buffer_.buffer;
-    counter_input.size = VK_WHOLE_SIZE;
-    vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u,
-                         nullptr, 1u, &counter_input, 0u, nullptr);
-
     virtual_geometry_traversal_push_constants constants{};
     std::copy_n(frame_camera_.view_projection.data(), 16u, constants.view_projection);
     constants.camera_position_and_error[0] = frame_camera_.position[0];
@@ -738,20 +762,106 @@ void vulkan_render_backend::dispatch_virtual_geometry_traversal(VkCommandBuffer 
     constants.viewport_hzb[0] = static_cast<float>(viewport_width_);
     constants.viewport_hzb[1] = static_cast<float>(viewport_height_);
     constants.viewport_hzb[2] = static_cast<float>(hzb_mip_count_);
-    constants.viewport_hzb[3] = hzb_history_valid_ && !frame_camera_.camera_cut ? 1.0f : 0.0f;
-    constants.hzb_generation =
-        static_cast<std::uint32_t>((last_profile_.frame_index + hzb_history_.size() - 1u) % hzb_history_.size());
-    constants.camera_cut = frame_camera_.camera_cut ? 1u : 0u;
+    const bool current_hzb = phase == virtual_geometry_traversal_phase::current_hzb;
+    const bool previous_history_valid = virtual_geometry_history_valid(frame_camera_.virtual_geometry_history_reset);
+    const bool hzb_available = current_hzb || (hzb_history_valid_ && previous_history_valid);
+    constants.viewport_hzb[3] = hzb_available ? 1.0f : 0.0f;
+    const auto hzb_generation =
+        current_hzb
+            ? static_cast<std::uint32_t>(last_profile_.frame_index % hzb_history_.size())
+            : static_cast<std::uint32_t>((last_profile_.frame_index + hzb_history_.size() - 1u) % hzb_history_.size());
+    const auto current_history = static_cast<std::uint32_t>(last_profile_.frame_index & 1u);
+    const auto history_capacity_log2 = std::countr_zero(virtual_geometry_refinement_history_capacity_);
+    constants.hzb_generation = (hzb_generation & 1u) | (current_history << 1u) |
+                               (static_cast<std::uint32_t>(phase) << 2u) | (history_capacity_log2 << 8u);
+    constants.history_invalidation_mask = static_cast<std::uint32_t>(frame_camera_.virtual_geometry_history_reset);
     constants.fallback_capacity = virtual_geometry_fallback_capacity_;
     constants.traversal_stack_capacity = 64u;
+    if (hzb_available) transition_graph_image(command_buffer, hzb_history_[hzb_generation], VK_IMAGE_LAYOUT_GENERAL);
     vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, virtual_geometry_traversal_pipeline_);
     vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, virtual_geometry_traversal_pipeline_layout_,
                             0u, 1u, &virtual_geometry_traversal_descriptor_set_, 0u, nullptr);
     vkCmdPushConstants(command_buffer, virtual_geometry_traversal_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0u,
                        sizeof(constants), &constants);
     vkCmdDispatch(command_buffer, (gpu_scene_capacity_ + 63u) / 64u, 1u, 1u);
+}
+
+void vulkan_render_backend::dispatch_virtual_geometry_traversal(VkCommandBuffer command_buffer)
+{
+    virtual_geometry_refinement_pending_ = false;
+    if (!ensure_virtual_geometry_traversal_resources()) return;
+
+    const auto current_history = static_cast<std::uint32_t>(last_profile_.frame_index & 1u);
+    vkCmdFillBuffer(command_buffer, virtual_geometry_counter_buffer_.buffer, 0u, VK_WHOLE_SIZE, 0u);
+    vkCmdFillBuffer(command_buffer, virtual_geometry_refinement_history_buffers_[current_history].buffer, 0u,
+                    VK_WHOLE_SIZE, 0u);
+    std::array<VkBufferMemoryBarrier, 2> inputs{};
+    const std::array input_buffers{virtual_geometry_counter_buffer_.buffer,
+                                   virtual_geometry_refinement_history_buffers_[current_history].buffer};
+    for (std::size_t index = 0; index < inputs.size(); ++index)
+    {
+        inputs[index].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        inputs[index].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        inputs[index].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        inputs[index].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        inputs[index].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        inputs[index].buffer = input_buffers[index];
+        inputs[index].size = VK_WHOLE_SIZE;
+    }
+    vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u,
+                         nullptr, static_cast<std::uint32_t>(inputs.size()), inputs.data(), 0u, nullptr);
+
+    const bool two_phase =
+        resolved_config_.features.hzb_occlusion && capabilities_.hzb_occlusion && hzb_mip_count_ != 0u;
+    dispatch_virtual_geometry_traversal_phase(command_buffer, two_phase
+                                                                  ? virtual_geometry_traversal_phase::previous_hzb
+                                                                  : virtual_geometry_traversal_phase::single_phase);
 
     dispatch_virtual_geometry_raster(command_buffer);
+    virtual_geometry_refinement_pending_ = two_phase;
+    if (!two_phase) copy_virtual_geometry_feedback(command_buffer);
+}
+
+void vulkan_render_backend::dispatch_virtual_geometry_refinement(VkCommandBuffer command_buffer)
+{
+    if (!virtual_geometry_refinement_pending_ || !ensure_virtual_geometry_traversal_resources()) return;
+
+    VkBufferMemoryBarrier counter_output{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    counter_output.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    counter_output.dstAccessMask =
+        VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    counter_output.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    counter_output.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    counter_output.buffer = virtual_geometry_counter_buffer_.buffer;
+    counter_output.size = VK_WHOLE_SIZE;
+    vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, nullptr, 1u,
+                         &counter_output, 0u, nullptr);
+    vkCmdFillBuffer(command_buffer, virtual_geometry_counter_buffer_.buffer, 0u, sizeof(std::uint32_t), 0u);
+    vkCmdFillBuffer(command_buffer, virtual_geometry_counter_buffer_.buffer,
+                    offsetof(virtual_geometry_traversal_counter_data, bin_count), sizeof(std::uint32_t), 0u);
+    counter_output.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    counter_output.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u,
+                         nullptr, 1u, &counter_output, 0u, nullptr);
+    VkBufferMemoryBarrier frontier_input{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    frontier_input.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    frontier_input.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    frontier_input.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    frontier_input.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    frontier_input.buffer = virtual_geometry_refinement_frontier_buffer_.buffer;
+    frontier_input.size = VK_WHOLE_SIZE;
+    vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u,
+                         0u, nullptr, 1u, &frontier_input, 0u, nullptr);
+
+    dispatch_virtual_geometry_traversal_phase(command_buffer, virtual_geometry_traversal_phase::current_hzb);
+    dispatch_virtual_geometry_raster(command_buffer);
+    virtual_geometry_refinement_pending_ = false;
+    copy_virtual_geometry_feedback(command_buffer);
+}
+
+void vulkan_render_backend::copy_virtual_geometry_feedback(VkCommandBuffer command_buffer)
+{
 
     std::array<VkBufferMemoryBarrier, 3> outputs{};
     const std::array output_buffers{virtual_geometry_request_buffer_.buffer, virtual_geometry_fallback_buffer_.buffer,
@@ -800,6 +910,7 @@ void vulkan_render_backend::dispatch_virtual_geometry_traversal(VkCommandBuffer 
                              nullptr, static_cast<std::uint32_t>(host_barriers.size()), host_barriers.data(), 0u,
                              nullptr);
         feedback.submitted_frame = last_profile_.frame_index;
+        feedback.history_invalidation = frame_camera_.virtual_geometry_history_reset;
     }
 }
 
@@ -848,10 +959,24 @@ void vulkan_render_backend::collect_virtual_geometry_feedback(std::uint32_t fram
         }
     }
     auto& profile = last_profile_.virtual_geometry;
+    profile.history_valid = virtual_geometry_history_valid(frame.history_invalidation);
+    profile.history_invalidation_mask = static_cast<std::uint32_t>(frame.history_invalidation);
+    profile.traversed_nodes = counters.traversed_nodes;
     profile.visible_clusters = std::min(counters.visible_count, virtual_geometry_visible_capacity_);
     profile.frustum_rejected = counters.frustum_rejected;
     profile.cone_rejected = counters.cone_rejected;
     profile.hzb_rejected = counters.hzb_rejected;
+    profile.previous_hzb_tested = counters.previous_hzb_tested;
+    profile.previous_hzb_rejected = counters.previous_hzb_rejected;
+    profile.current_hzb_tested = counters.current_hzb_tested;
+    profile.current_hzb_rejected = counters.current_hzb_rejected;
+    profile.conservative_survivors_rejected = counters.current_hzb_rejected;
+    profile.refinement_candidates = counters.refinement_candidates;
+    profile.refinement_frontier_overflow = counters.refinement_frontier_overflow;
+    profile.hysteresis_refine_suppressed = counters.hysteresis_refine_suppressed;
+    profile.hysteresis_coarsen_suppressed = counters.hysteresis_coarsen_suppressed;
+    profile.refinement_history_overflow = counters.refinement_history_overflow;
+    profile.pressure_suppressed_page_requests = counters.pressure_suppressed_requests;
     profile.projected_size_rejected = counters.projected_size_rejected;
     profile.requested_pages = request_count;
     profile.parent_fallbacks = counters.parent_fallbacks;

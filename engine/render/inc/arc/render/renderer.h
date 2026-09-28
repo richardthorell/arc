@@ -376,11 +376,14 @@ private:
     struct temporal_view_state
     {
         math::matrix4f view_projection{math::identity<float, 4>()};
+        math::matrix4f projection{math::identity<float, 4>()};
         math::vector3f position{};
         math::vector3f forward{0.0f, 0.0f, -1.0f};
         std::uint64_t world_epoch{};
         std::uint32_t width{};
         std::uint32_t height{};
+        std::uint32_t render_width{};
+        std::uint32_t render_height{};
         bool valid{};
     };
 

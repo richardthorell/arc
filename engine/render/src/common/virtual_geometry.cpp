@@ -19,8 +19,9 @@ std::uint64_t resource_key(virtual_mesh_handle handle) noexcept
 float request_priority(const virtual_geometry_page_request& request) noexcept
 {
     float result = request.projected_error * 8.0f + request.screen_coverage * 4.0f;
-    if (request.visible_child) result += 1000.0f;
+    if (request.visible_child && !request.speculative) result += 1000.0f;
     if (request.shadow_view) result += 100.0f;
+    if (request.speculative) result -= 100.0f;
     return result - request.distance * 0.001f;
 }
 
@@ -111,11 +112,18 @@ virtual_geometry_reference_result traverse_virtual_geometry_reference(const virt
     virtual_geometry_reference_result result;
     std::vector<std::uint32_t> stack(geometry.root_nodes.rbegin(), geometry.root_nodes.rend());
     std::vector<std::uint8_t> requested(geometry.pages.size());
+    auto invalidation = view.history_invalidation;
+    if (view.camera_cut) invalidation |= virtual_geometry_history_invalidation::camera_cut;
+    const bool previous_history_valid = virtual_geometry_history_valid(invalidation);
+    const bool current_hzb = view.traversal_phase == virtual_geometry_traversal_phase::current_hzb;
+    const bool refinement_history_valid =
+        previous_history_valid && view.refinement_history_available && view.refined_last_frame != nullptr;
     while (!stack.empty())
     {
         const auto node_index = stack.back();
         stack.pop_back();
         if (node_index >= geometry.lod_nodes.size()) continue;
+        ++result.traversed_nodes;
         const auto& node = geometry.lod_nodes[node_index];
         if (!sphere_inside_frustum(node.sphere_center, node.sphere_radius, view.frustum_planes))
         {
@@ -135,11 +143,17 @@ virtual_geometry_reference_result traverse_virtual_geometry_reference(const virt
                 continue;
             }
         }
-        if (!view.camera_cut && view.occluded &&
-            view.occluded(node.sphere_center, node.sphere_radius, view.occlusion_user_data))
+        if (view.occluded && (current_hzb || previous_history_valid))
         {
-            ++result.hzb_rejected;
-            continue;
+            auto& tested = current_hzb ? result.current_hzb_tested : result.previous_hzb_tested;
+            auto& rejected = current_hzb ? result.current_hzb_rejected : result.previous_hzb_rejected;
+            ++tested;
+            if (view.occluded(node.sphere_center, node.sphere_radius, view.occlusion_user_data))
+            {
+                ++rejected;
+                ++result.hzb_rejected;
+                continue;
+            }
         }
 
         const auto nearest_distance = std::max(distance - node.sphere_radius, 1.0e-4f);
@@ -151,7 +165,18 @@ virtual_geometry_reference_result traverse_virtual_geometry_reference(const virt
         }
         const auto projected_error = node.error * view.projection_scale / nearest_distance;
 
-        const bool wants_refinement = node.child_count > 0 && projected_error > view.geometric_error_threshold;
+        const bool has_children = node.child_count > 0;
+        if (has_children) ++result.refinement_candidates;
+        const bool refined_last_frame =
+            refinement_history_valid && view.refined_last_frame(node_index, view.refinement_history_user_data);
+        const bool nominal_refinement = has_children && projected_error > view.geometric_error_threshold;
+        const bool wants_refinement = has_children && should_refine_virtual_geometry(
+                                                          projected_error, view.geometric_error_threshold,
+                                                          refined_last_frame, refinement_history_valid, view.stability);
+        if (nominal_refinement && !wants_refinement)
+            ++result.hysteresis_refine_suppressed;
+        else if (!nominal_refinement && wants_refinement)
+            ++result.hysteresis_coarsen_suppressed;
         bool children_resident = wants_refinement;
         if (wants_refinement)
         {
@@ -183,6 +208,7 @@ virtual_geometry_reference_result traverse_virtual_geometry_reference(const virt
 
         if (wants_refinement && children_resident)
         {
+            result.refined_nodes.push_back(node_index);
             for (std::uint32_t child_offset = node.child_count; child_offset > 0; --child_offset)
                 stack.push_back(geometry.hierarchy_children[node.first_child + child_offset - 1]);
             continue;
@@ -290,6 +316,14 @@ virtual_geometry_gpu_reference_result traverse_virtual_geometry_gpu_reference(
     result.frustum_rejected = reference.frustum_rejected;
     result.cone_rejected = reference.cone_rejected;
     result.hzb_rejected = reference.hzb_rejected;
+    result.traversed_nodes = reference.traversed_nodes;
+    result.previous_hzb_tested = reference.previous_hzb_tested;
+    result.previous_hzb_rejected = reference.previous_hzb_rejected;
+    result.current_hzb_tested = reference.current_hzb_tested;
+    result.current_hzb_rejected = reference.current_hzb_rejected;
+    result.refinement_candidates = reference.refinement_candidates;
+    result.hysteresis_refine_suppressed = reference.hysteresis_refine_suppressed;
+    result.hysteresis_coarsen_suppressed = reference.hysteresis_coarsen_suppressed;
     result.projected_size_rejected = reference.projected_size_rejected;
     const auto visible_count =
         std::min<std::size_t>(reference.visible_clusters.size(), limits.maximum_visible_clusters);
@@ -316,12 +350,17 @@ virtual_geometry_gpu_reference_result traverse_virtual_geometry_gpu_reference(
 
     const auto request_count = std::min<std::size_t>(reference.requested_pages.size(), limits.maximum_page_requests);
     result.feedback.page_requests.reserve(request_count);
+    auto request_flags = virtual_geometry_page_request_flag::visible_child;
+    if (view.traversal_phase == virtual_geometry_traversal_phase::previous_hzb)
+        request_flags = request_flags | virtual_geometry_page_request_flag::speculative;
+    if (view.traversal_phase == virtual_geometry_traversal_phase::current_hzb)
+        request_flags = request_flags | virtual_geometry_page_request_flag::current_frame;
     for (std::size_t index = 0; index < request_count; ++index)
         result.feedback.page_requests.push_back({.resource_index = resource.index,
                                                  .handle_generation = resource.generation,
                                                  .resource_generation = resource_generation,
                                                  .page_index = reference.requested_pages[index],
-                                                 .flags = 1u});
+                                                 .flags = static_cast<std::uint32_t>(request_flags)});
     if (request_count != reference.requested_pages.size())
         result.feedback.overflow.page_request_overflow =
             static_cast<std::uint32_t>(reference.requested_pages.size() - request_count);
@@ -340,6 +379,7 @@ struct virtual_geometry_residency_manager::implementation
         std::uint32_t cpu_bytes{};
         float priority{};
         bool was_evicted{};
+        bool speculative{};
     };
 
     struct resource_entry
@@ -362,6 +402,7 @@ struct virtual_geometry_residency_manager::implementation
     std::uint32_t cooldown_suppressed_requests{};
     std::uint32_t request_budget_overflow{};
     std::uint32_t reload_pressure_requests{};
+    std::uint32_t pressure_suppressed_requests{};
     std::vector<virtual_geometry_page_eviction> pending_evictions;
 
     page_entry* find(virtual_mesh_handle handle, std::uint32_t generation, std::uint32_t page_index) noexcept
@@ -418,6 +459,7 @@ struct virtual_geometry_residency_manager::implementation
             victim->gpu_bytes = 0;
             victim->cpu_bytes = 0;
             victim->priority = 0.0f;
+            victim->speculative = false;
             victim->state = virtual_geometry_page_state::nonresident;
             victim->last_evicted_frame = frame_index;
             victim->was_evicted = true;
@@ -491,6 +533,7 @@ void virtual_geometry_residency_manager::begin_frame(std::uint64_t frame_index)
     implementation_->cooldown_suppressed_requests = 0;
     implementation_->request_budget_overflow = 0;
     implementation_->reload_pressure_requests = 0;
+    implementation_->pressure_suppressed_requests = 0;
 }
 
 void virtual_geometry_residency_manager::request(std::span<const virtual_geometry_page_request> requests)
@@ -510,12 +553,13 @@ void virtual_geometry_residency_manager::request(std::span<const virtual_geometr
             page->state == virtual_geometry_page_state::loading)
         {
             page->priority = std::max(page->priority, priority);
+            page->speculative = page->speculative && request.speculative;
             ++implementation_->deduplicated_requests;
             continue;
         }
         const auto since_eviction =
             implementation_->frame_index - std::min(implementation_->frame_index, page->last_evicted_frame);
-        const bool correctness_demand = request.visible_child || request.shadow_view;
+        const bool correctness_demand = (request.visible_child || request.shadow_view) && !request.speculative;
         const bool inside_reload_window =
             page->was_evicted && since_eviction <= implementation_->config.reload_cooldown_frames;
         if (inside_reload_window) ++implementation_->reload_pressure_requests;
@@ -526,6 +570,7 @@ void virtual_geometry_residency_manager::request(std::span<const virtual_geometr
         }
         page->state = virtual_geometry_page_state::requested;
         page->priority = priority;
+        page->speculative = request.speculative;
     }
 }
 
@@ -539,8 +584,10 @@ void virtual_geometry_residency_manager::request_gpu(std::span<const virtual_geo
             ++implementation_->stale_requests;
             continue;
         }
-        const bool visible_child = (request.flags & 1u) != 0;
-        const bool shadow_view = (request.flags & 2u) != 0;
+        const auto flags = static_cast<virtual_geometry_page_request_flag>(request.flags);
+        const bool visible_child = contains(flags, virtual_geometry_page_request_flag::visible_child);
+        const bool shadow_view = contains(flags, virtual_geometry_page_request_flag::shadow_view);
+        const bool speculative = contains(flags, virtual_geometry_page_request_flag::speculative);
         const virtual_geometry_page_request translated{.resource = handle,
                                                        .resource_generation = request.resource_generation,
                                                        .page_index = request.page_index,
@@ -548,7 +595,8 @@ void virtual_geometry_residency_manager::request_gpu(std::span<const virtual_geo
                                                        .screen_coverage = request.screen_coverage,
                                                        .distance = request.distance,
                                                        .visible_child = visible_child,
-                                                       .shadow_view = shadow_view};
+                                                       .shadow_view = shadow_view,
+                                                       .speculative = speculative};
         this->request(std::span(&translated, 1));
     }
 }
@@ -566,7 +614,8 @@ std::vector<virtual_geometry_page_load> virtual_geometry_residency_manager::take
                               .page_index = index,
                               .byte_offset = page.descriptor.compressed_offset,
                               .byte_size = page.descriptor.compressed_size,
-                              .priority = page.priority});
+                              .priority = page.priority,
+                              .speculative = page.speculative});
         }
     std::stable_sort(result.begin(), result.end(),
                      [](const auto& lhs, const auto& rhs)
@@ -577,6 +626,8 @@ std::vector<virtual_geometry_page_load> virtual_geometry_residency_manager::take
                      });
     if (result.size() > implementation_->config.maximum_requests_per_frame)
     {
+        for (std::size_t index = implementation_->config.maximum_requests_per_frame; index < result.size(); ++index)
+            if (result[index].speculative) ++implementation_->pressure_suppressed_requests;
         implementation_->request_budget_overflow =
             std::max(implementation_->request_budget_overflow,
                      static_cast<std::uint32_t>(result.size() - implementation_->config.maximum_requests_per_frame));
@@ -612,6 +663,7 @@ void virtual_geometry_residency_manager::publish(virtual_mesh_handle resource, s
     page->gpu_bytes = gpu_bytes;
     page->cpu_bytes = compressed_cpu_bytes;
     page->last_used_frame = implementation_->frame_index;
+    page->speculative = false;
     implementation_->gpu_bytes += gpu_bytes;
     implementation_->cpu_bytes += compressed_cpu_bytes;
     implementation_->trim();
@@ -621,7 +673,10 @@ void virtual_geometry_residency_manager::fail(virtual_mesh_handle resource, std:
                                               std::uint32_t page_index)
 {
     if (auto* page = implementation_->find(resource, generation, page_index); page && !page->descriptor.root)
+    {
         page->state = virtual_geometry_page_state::failed;
+        page->speculative = false;
+    }
 }
 
 void virtual_geometry_residency_manager::touch(virtual_mesh_handle resource, std::uint32_t generation,
@@ -660,7 +715,8 @@ virtual_geometry_residency_snapshot virtual_geometry_residency_manager::snapshot
         .stale_requests = implementation_->stale_requests,
         .cooldown_suppressed_requests = implementation_->cooldown_suppressed_requests,
         .request_budget_overflow = implementation_->request_budget_overflow,
-        .reload_pressure_requests = implementation_->reload_pressure_requests};
+        .reload_pressure_requests = implementation_->reload_pressure_requests,
+        .pressure_suppressed_requests = implementation_->pressure_suppressed_requests};
     for (const auto& [_, resource] : implementation_->resources)
         for (const auto& page : resource.pages)
         {

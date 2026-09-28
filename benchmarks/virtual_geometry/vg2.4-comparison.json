@@ -1,0 +1,36 @@
+{
+  "format": "arc-virtual-geometry-comparison",
+  "version": 1,
+  "corpus": "generated-wave-grid-ci",
+  "sequence": "deterministic-occluder",
+  "afterWarmupFrames": 8,
+  "before": {
+    "mode": "hzb_disabled",
+    "traversedNodes": 792,
+    "rasterizedClusters": 688
+  },
+  "after": {
+    "mode": "two_phase_hzb",
+    "traversedNodes": 311,
+    "rasterizedClusters": 258,
+    "previousHzbRejections": 12,
+    "currentHzbRejections": 2
+  },
+  "slowThresholdSequence": {
+    "frames": 10,
+    "hysteresisDecisions": 5,
+    "refinementTransitions": 2
+  },
+  "assessment": {
+    "traversalWorkReduction": 0.607323,
+    "rasterWorkReduction": 0.625,
+    "minimumRequiredReduction": 0.25,
+    "visibleGeometryPreserved": true,
+    "timingPolicy": "GPU timings remain informational and are not an absolute CI pass/fail condition."
+  },
+  "informationalLocalTimings": {
+    "cookMilliseconds": 38.3845,
+    "artifactEncodeMilliseconds": 0.5411,
+    "referenceTraversalMilliseconds": 0.1905
+  }
+}

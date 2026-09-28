@@ -7,6 +7,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -154,6 +155,37 @@ TEST_CASE("M2.5 reports the non evictable root budget floor")
     CHECK(snapshot.root_compressed_cpu_resident_bytes == 4u);
     CHECK(snapshot.gpu_budget_overflow_bytes == 4u);
     CHECK(snapshot.compressed_cpu_budget_overflow_bytes == 2u);
+}
+
+TEST_CASE("VG2.4 request pressure issues required detail before speculative detail")
+{
+    using namespace arc::render;
+    const virtual_mesh_handle resource{12u, 4u};
+    const auto geometry = make_budget_geometry();
+    virtual_geometry_residency_manager residency({.maximum_requests_per_frame = 1u});
+    residency.register_resource(resource, geometry, 7u);
+    residency.begin_frame(1u);
+
+    const std::array requests{virtual_geometry_page_request{.resource = resource,
+                                                            .resource_generation = 7u,
+                                                            .page_index = 1u,
+                                                            .projected_error = 100.0f,
+                                                            .screen_coverage = 1.0f,
+                                                            .visible_child = true,
+                                                            .speculative = true},
+                              virtual_geometry_page_request{.resource = resource,
+                                                            .resource_generation = 7u,
+                                                            .page_index = 2u,
+                                                            .projected_error = 1.0f,
+                                                            .screen_coverage = 0.1f,
+                                                            .visible_child = true}};
+    residency.request(requests);
+
+    const auto loads = residency.take_load_requests();
+    REQUIRE(loads.size() == 1u);
+    CHECK(loads.front().page_index == 2u);
+    CHECK_FALSE(loads.front().speculative);
+    CHECK(residency.snapshot().pressure_suppressed_requests == 1u);
 }
 
 TEST_CASE("M2.5 async streaming caps compressed plus decoded in flight bytes")

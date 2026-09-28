@@ -554,6 +554,22 @@ int main(int argc, char** argv)
             std::cerr << "Virtual geometry corpus produced an invalid empty result\n";
             failed = true;
         }
+        const auto occlusion =
+            std::find_if(virtual_geometry.sequences.begin(), virtual_geometry.sequences.end(),
+                         [](const auto& sequence) { return sequence.name == "deterministic-occluder"; });
+        if (occlusion == virtual_geometry.sequences.end() || occlusion->traversal_work_reduction < 0.25 ||
+            occlusion->raster_work_reduction < 0.25 || !occlusion->visible_geometry_preserved)
+        {
+            std::cerr << "Virtual geometry two-phase HZB did not reduce deterministic occluder work by 25%\n";
+            failed = true;
+        }
+        const auto threshold = std::find_if(virtual_geometry.sequences.begin(), virtual_geometry.sequences.end(),
+                                            [](const auto& sequence) { return sequence.name == "slow-threshold"; });
+        if (threshold == virtual_geometry.sequences.end() || threshold->refinement_transitions != 2u)
+        {
+            std::cerr << "Virtual geometry slow-threshold sequence did not produce two stable transitions\n";
+            failed = true;
+        }
     }
 
     assets.on_shutdown(service_context);
