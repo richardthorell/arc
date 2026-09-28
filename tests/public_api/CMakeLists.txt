@@ -27,6 +27,7 @@ endforeach()
 set(ARC_PUBLIC_UMBRELLA_HEADERS
     arc/scene/scene.h
     arc/render/render.h
+    arc/network/network.h
     arc/audio/audio.h
     arc/vfx/vfx.h
     arc/animation/animation.h
@@ -74,7 +75,7 @@ arc_configure_first_party_target(arc-public-header-tests)
 target_compile_features(arc-public-header-tests PRIVATE cxx_std_20)
 foreach(target
     arc-core arc-simd arc-math arc-geometric arc-diagnostics arc-jobs arc-memory
-    arc-io arc-framework arc-assets arc-input arc-ecs arc-persistence arc-flow arc-project arc-physics arc-audio arc-animation arc-navigation arc-vfx arc-render
+    arc-io arc-framework arc-assets arc-input arc-ecs arc-persistence arc-flow arc-project arc-physics arc-network arc-audio arc-animation arc-navigation arc-vfx arc-render
     arc-render-tools arc-render-vulkan arc-scene)
     if(TARGET ${target})
         target_link_libraries(arc-public-header-tests PRIVATE ${target})
