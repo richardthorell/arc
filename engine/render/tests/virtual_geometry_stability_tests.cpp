@@ -17,8 +17,8 @@ TEST_CASE("virtual geometry invalidates previous HZB history for discontinuous v
     CHECK_FALSE(virtual_geometry_history_valid(virtual_geometry_history_invalidation::newly_visible_instance));
     CHECK_FALSE(virtual_geometry_history_valid(virtual_geometry_history_invalidation::world_reset));
 
-    const auto combined = virtual_geometry_history_invalidation::teleport |
-                          virtual_geometry_history_invalidation::projection_change;
+    const auto combined =
+        virtual_geometry_history_invalidation::teleport | virtual_geometry_history_invalidation::projection_change;
     CHECK(contains(combined, virtual_geometry_history_invalidation::teleport));
     CHECK(contains(combined, virtual_geometry_history_invalidation::projection_change));
     CHECK_FALSE(contains(combined, virtual_geometry_history_invalidation::viewport_resize));
@@ -58,10 +58,8 @@ TEST_CASE("virtual geometry uses the nominal threshold when refinement history i
 TEST_CASE("virtual geometry refinement history is bounded double buffered and generation safe")
 {
     using namespace arc::render;
-    const virtual_geometry_refinement_key first{.instance_index = 3u,
-                                                 .instance_generation = 7u,
-                                                 .resource_generation = 11u,
-                                                 .hierarchy_node = 5u};
+    const virtual_geometry_refinement_key first{
+        .instance_index = 3u, .instance_generation = 7u, .resource_generation = 11u, .hierarchy_node = 5u};
     auto replaced = first;
     ++replaced.resource_generation;
 

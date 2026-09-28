@@ -123,7 +123,7 @@ enum class virtual_geometry_page_request_flag : std::uint32_t
                                                                      virtual_geometry_page_request_flag rhs) noexcept
 {
     return static_cast<virtual_geometry_page_request_flag>(static_cast<std::uint32_t>(lhs) |
-                                                            static_cast<std::uint32_t>(rhs));
+                                                           static_cast<std::uint32_t>(rhs));
 }
 
 [[nodiscard]] constexpr bool contains(virtual_geometry_page_request_flag value,

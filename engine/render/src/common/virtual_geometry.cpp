@@ -116,8 +116,8 @@ virtual_geometry_reference_result traverse_virtual_geometry_reference(const virt
     if (view.camera_cut) invalidation |= virtual_geometry_history_invalidation::camera_cut;
     const bool previous_history_valid = virtual_geometry_history_valid(invalidation);
     const bool current_hzb = view.traversal_phase == virtual_geometry_traversal_phase::current_hzb;
-    const bool refinement_history_valid = previous_history_valid && view.refinement_history_available &&
-                                          view.refined_last_frame != nullptr;
+    const bool refinement_history_valid =
+        previous_history_valid && view.refinement_history_available && view.refined_last_frame != nullptr;
     while (!stack.empty())
     {
         const auto node_index = stack.back();
@@ -170,9 +170,9 @@ virtual_geometry_reference_result traverse_virtual_geometry_reference(const virt
         const bool refined_last_frame =
             refinement_history_valid && view.refined_last_frame(node_index, view.refinement_history_user_data);
         const bool nominal_refinement = has_children && projected_error > view.geometric_error_threshold;
-        const bool wants_refinement =
-            has_children && should_refine_virtual_geometry(projected_error, view.geometric_error_threshold,
-                                                           refined_last_frame, refinement_history_valid, view.stability);
+        const bool wants_refinement = has_children && should_refine_virtual_geometry(
+                                                          projected_error, view.geometric_error_threshold,
+                                                          refined_last_frame, refinement_history_valid, view.stability);
         if (nominal_refinement && !wants_refinement)
             ++result.hysteresis_refine_suppressed;
         else if (!nominal_refinement && wants_refinement)

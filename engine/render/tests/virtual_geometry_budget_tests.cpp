@@ -166,20 +166,19 @@ TEST_CASE("VG2.4 request pressure issues required detail before speculative deta
     residency.register_resource(resource, geometry, 7u);
     residency.begin_frame(1u);
 
-    const std::array requests{
-        virtual_geometry_page_request{.resource = resource,
-                                      .resource_generation = 7u,
-                                      .page_index = 1u,
-                                      .projected_error = 100.0f,
-                                      .screen_coverage = 1.0f,
-                                      .visible_child = true,
-                                      .speculative = true},
-        virtual_geometry_page_request{.resource = resource,
-                                      .resource_generation = 7u,
-                                      .page_index = 2u,
-                                      .projected_error = 1.0f,
-                                      .screen_coverage = 0.1f,
-                                      .visible_child = true}};
+    const std::array requests{virtual_geometry_page_request{.resource = resource,
+                                                            .resource_generation = 7u,
+                                                            .page_index = 1u,
+                                                            .projected_error = 100.0f,
+                                                            .screen_coverage = 1.0f,
+                                                            .visible_child = true,
+                                                            .speculative = true},
+                              virtual_geometry_page_request{.resource = resource,
+                                                            .resource_generation = 7u,
+                                                            .page_index = 2u,
+                                                            .projected_error = 1.0f,
+                                                            .screen_coverage = 0.1f,
+                                                            .visible_child = true}};
     residency.request(requests);
 
     const auto loads = residency.take_load_requests();

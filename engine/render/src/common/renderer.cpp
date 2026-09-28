@@ -1620,7 +1620,8 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
         const auto camera_delta = math::sub(prepared->camera.position, previous.position);
         const bool teleported = math::length_squared(camera_delta) > 100.0f;
         const bool rotated = previous.valid && math::dot(prepared->camera.forward, previous.forward) < 0.5f;
-        const bool projection_changed = previous.valid && matrices_differ(previous.projection, prepared->camera.projection);
+        const bool projection_changed =
+            previous.valid && matrices_differ(previous.projection, prepared->camera.projection);
         const auto stable_projection = prepared->camera.projection;
         prepared->camera.camera_cut = !previous.valid || extent_changed || render_extent_changed || epoch_changed ||
                                       teleported || rotated || projection_changed;

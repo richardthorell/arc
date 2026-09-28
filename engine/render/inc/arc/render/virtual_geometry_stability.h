@@ -23,11 +23,11 @@ enum class virtual_geometry_history_invalidation : std::uint32_t
 operator|(virtual_geometry_history_invalidation lhs, virtual_geometry_history_invalidation rhs) noexcept
 {
     return static_cast<virtual_geometry_history_invalidation>(static_cast<std::uint32_t>(lhs) |
-                                                               static_cast<std::uint32_t>(rhs));
+                                                              static_cast<std::uint32_t>(rhs));
 }
 
-constexpr virtual_geometry_history_invalidation&
-operator|=(virtual_geometry_history_invalidation& lhs, virtual_geometry_history_invalidation rhs) noexcept
+constexpr virtual_geometry_history_invalidation& operator|=(virtual_geometry_history_invalidation& lhs,
+                                                            virtual_geometry_history_invalidation rhs) noexcept
 {
     lhs = lhs | rhs;
     return lhs;
@@ -66,8 +66,7 @@ struct virtual_geometry_refinement_key
 };
 
 /** @brief Hash mirrored by GPU refinement-history lookup. */
-[[nodiscard]] std::uint32_t
-virtual_geometry_refinement_key_hash(virtual_geometry_refinement_key key) noexcept;
+[[nodiscard]] std::uint32_t virtual_geometry_refinement_key_hash(virtual_geometry_refinement_key key) noexcept;
 
 /** @brief Bounded double-buffered CPU reference for temporal refinement history. */
 class virtual_geometry_refinement_history

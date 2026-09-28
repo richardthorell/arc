@@ -194,8 +194,8 @@ double reduction(std::uint64_t baseline, std::uint64_t measured) noexcept
 }
 
 virtual_geometry_sequence_capture capture_occlusion_sequence(const arc::render::virtual_mesh_data& geometry,
-                                                              std::span<const std::uint8_t> resident,
-                                                              arc::render::virtual_geometry_reference_view view)
+                                                             std::span<const std::uint8_t> resident,
+                                                             arc::render::virtual_geometry_reference_view view)
 {
     virtual_geometry_sequence_capture capture{.name = "deterministic-occluder", .frames = 8u};
     for (std::uint32_t frame = 0u; frame < capture.frames; ++frame)
@@ -234,29 +234,26 @@ virtual_geometry_sequence_capture capture_occlusion_sequence(const arc::render::
         else if (!previous_occluded)
             capture.visible_geometry_preserved = false;
     }
-    capture.traversal_work_reduction =
-        reduction(capture.baseline_traversed_nodes, capture.two_phase_traversed_nodes);
+    capture.traversal_work_reduction = reduction(capture.baseline_traversed_nodes, capture.two_phase_traversed_nodes);
     capture.raster_work_reduction =
         reduction(capture.baseline_rasterized_clusters, capture.two_phase_rasterized_clusters);
     return capture;
 }
 
 virtual_geometry_sequence_capture capture_threshold_sequence(const arc::render::virtual_mesh_data& geometry,
-                                                              std::span<const std::uint8_t> resident,
-                                                              arc::render::virtual_geometry_reference_view view)
+                                                             std::span<const std::uint8_t> resident,
+                                                             arc::render::virtual_geometry_reference_view view)
 {
     virtual_geometry_sequence_capture capture{.name = "slow-threshold", .frames = 10u};
     if (geometry.root_nodes.empty()) return capture;
     const auto root_index = geometry.root_nodes.front();
     if (root_index >= geometry.lod_nodes.size()) return capture;
     const auto& root = geometry.lod_nodes[root_index];
-    const auto distance = std::sqrt((std::max)(arc::math::length_squared(
-                                                  arc::math::sub(view.camera_position, root.sphere_center)),
-                                              1.0e-12f));
+    const auto distance = std::sqrt(
+        (std::max)(arc::math::length_squared(arc::math::sub(view.camera_position, root.sphere_center)), 1.0e-12f));
     const auto nearest_distance = (std::max)(distance - root.sphere_radius, 1.0e-4f);
     const auto unit_scale = root.error > 0.0f ? nearest_distance / root.error : view.projection_scale;
-    constexpr std::array multipliers{0.95f, 1.05f, 0.98f, 1.02f, 1.09f,
-                                     1.11f, 1.05f, 0.95f, 0.91f, 0.89f};
+    constexpr std::array multipliers{0.95f, 1.05f, 0.98f, 1.02f, 1.09f, 1.11f, 1.05f, 0.95f, 0.91f, 0.89f};
     std::vector<std::uint8_t> history(geometry.lod_nodes.size());
     bool refined{};
     for (const auto multiplier : multipliers)
@@ -267,10 +264,9 @@ virtual_geometry_sequence_capture capture_threshold_sequence(const arc::render::
         const auto frame = arc::render::traverse_virtual_geometry_reference(geometry, resident, view);
         capture.two_phase_traversed_nodes += frame.traversed_nodes;
         capture.two_phase_rasterized_clusters += frame.visible_clusters.size();
-        capture.hysteresis_decisions +=
-            frame.hysteresis_refine_suppressed + frame.hysteresis_coarsen_suppressed;
-        const bool now_refined = std::find(frame.refined_nodes.begin(), frame.refined_nodes.end(), root_index) !=
-                                 frame.refined_nodes.end();
+        capture.hysteresis_decisions += frame.hysteresis_refine_suppressed + frame.hysteresis_coarsen_suppressed;
+        const bool now_refined =
+            std::find(frame.refined_nodes.begin(), frame.refined_nodes.end(), root_index) != frame.refined_nodes.end();
         if (now_refined != refined) ++capture.refinement_transitions;
         refined = now_refined;
         std::fill(history.begin(), history.end(), std::uint8_t{0});

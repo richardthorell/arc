@@ -588,19 +588,18 @@ bool vulkan_render_backend::ensure_virtual_geometry_traversal_resources()
             retired_fallbacks.buffer != VK_NULL_HANDLE || retired_counters.buffer != VK_NULL_HANDLE ||
             retired_history[0].buffer != VK_NULL_HANDLE || retired_history[1].buffer != VK_NULL_HANDLE ||
             retired_frontier.buffer != VK_NULL_HANDLE)
-            deferred_releases_.defer(
-                last_profile_.frame_index + frame_resource_count(),
-                [this, retired_visible, retired_requests, retired_fallbacks, retired_counters,
-                 retired_history, retired_frontier]() mutable
-                {
-                    destroy_buffer(retired_visible);
-                    destroy_buffer(retired_requests);
-                    destroy_buffer(retired_fallbacks);
-                    destroy_buffer(retired_counters);
-                    for (auto& history : retired_history)
-                        destroy_buffer(history);
-                    destroy_buffer(retired_frontier);
-                });
+            deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
+                                     [this, retired_visible, retired_requests, retired_fallbacks, retired_counters,
+                                      retired_history, retired_frontier]() mutable
+                                     {
+                                         destroy_buffer(retired_visible);
+                                         destroy_buffer(retired_requests);
+                                         destroy_buffer(retired_fallbacks);
+                                         destroy_buffer(retired_counters);
+                                         for (auto& history : retired_history)
+                                             destroy_buffer(history);
+                                         destroy_buffer(retired_frontier);
+                                     });
     }
 
     if (virtual_geometry_traversal_descriptor_set_layout_ == VK_NULL_HANDLE)
@@ -764,20 +763,18 @@ void vulkan_render_backend::dispatch_virtual_geometry_traversal_phase(VkCommandB
     constants.viewport_hzb[1] = static_cast<float>(viewport_height_);
     constants.viewport_hzb[2] = static_cast<float>(hzb_mip_count_);
     const bool current_hzb = phase == virtual_geometry_traversal_phase::current_hzb;
-    const bool previous_history_valid =
-        virtual_geometry_history_valid(frame_camera_.virtual_geometry_history_reset);
+    const bool previous_history_valid = virtual_geometry_history_valid(frame_camera_.virtual_geometry_history_reset);
     const bool hzb_available = current_hzb || (hzb_history_valid_ && previous_history_valid);
     constants.viewport_hzb[3] = hzb_available ? 1.0f : 0.0f;
-    const auto hzb_generation = current_hzb
-                                    ? static_cast<std::uint32_t>(last_profile_.frame_index % hzb_history_.size())
-                                    : static_cast<std::uint32_t>((last_profile_.frame_index + hzb_history_.size() - 1u) %
-                                                                 hzb_history_.size());
+    const auto hzb_generation =
+        current_hzb
+            ? static_cast<std::uint32_t>(last_profile_.frame_index % hzb_history_.size())
+            : static_cast<std::uint32_t>((last_profile_.frame_index + hzb_history_.size() - 1u) % hzb_history_.size());
     const auto current_history = static_cast<std::uint32_t>(last_profile_.frame_index & 1u);
     const auto history_capacity_log2 = std::countr_zero(virtual_geometry_refinement_history_capacity_);
     constants.hzb_generation = (hzb_generation & 1u) | (current_history << 1u) |
                                (static_cast<std::uint32_t>(phase) << 2u) | (history_capacity_log2 << 8u);
-    constants.history_invalidation_mask =
-        static_cast<std::uint32_t>(frame_camera_.virtual_geometry_history_reset);
+    constants.history_invalidation_mask = static_cast<std::uint32_t>(frame_camera_.virtual_geometry_history_reset);
     constants.fallback_capacity = virtual_geometry_fallback_capacity_;
     constants.traversal_stack_capacity = 64u;
     if (hzb_available) transition_graph_image(command_buffer, hzb_history_[hzb_generation], VK_IMAGE_LAYOUT_GENERAL);
@@ -814,11 +811,11 @@ void vulkan_render_backend::dispatch_virtual_geometry_traversal(VkCommandBuffer 
     vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u,
                          nullptr, static_cast<std::uint32_t>(inputs.size()), inputs.data(), 0u, nullptr);
 
-    const bool two_phase = resolved_config_.features.hzb_occlusion && capabilities_.hzb_occlusion &&
-                           hzb_mip_count_ != 0u;
-    dispatch_virtual_geometry_traversal_phase(
-        command_buffer,
-        two_phase ? virtual_geometry_traversal_phase::previous_hzb : virtual_geometry_traversal_phase::single_phase);
+    const bool two_phase =
+        resolved_config_.features.hzb_occlusion && capabilities_.hzb_occlusion && hzb_mip_count_ != 0u;
+    dispatch_virtual_geometry_traversal_phase(command_buffer, two_phase
+                                                                  ? virtual_geometry_traversal_phase::previous_hzb
+                                                                  : virtual_geometry_traversal_phase::single_phase);
 
     dispatch_virtual_geometry_raster(command_buffer);
     virtual_geometry_refinement_pending_ = two_phase;
@@ -854,8 +851,8 @@ void vulkan_render_backend::dispatch_virtual_geometry_refinement(VkCommandBuffer
     frontier_input.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     frontier_input.buffer = virtual_geometry_refinement_frontier_buffer_.buffer;
     frontier_input.size = VK_WHOLE_SIZE;
-    vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, nullptr, 1u, &frontier_input, 0u, nullptr);
+    vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u,
+                         0u, nullptr, 1u, &frontier_input, 0u, nullptr);
 
     dispatch_virtual_geometry_traversal_phase(command_buffer, virtual_geometry_traversal_phase::current_hzb);
     dispatch_virtual_geometry_raster(command_buffer);

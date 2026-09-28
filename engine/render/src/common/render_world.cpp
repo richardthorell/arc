@@ -803,14 +803,14 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                                         .kind = render_resource_kind::buffer,
                                                         .byte_size = 4096ull * 16ull,
                                                         .element_stride = 16});
-            virtual_page_request_readback = graph.add_resource({.name = "virtual_geometry_page_request_readback",
-                                                                .kind = render_resource_kind::buffer,
-                                                                .byte_size = 4096ull * 16ull,
-                                                                .element_stride = 16,
-                                                                .persistent_key =
-                                                                    "virtual_geometry.page_request_readback",
-                                                                .exported = true,
-                                                                .persistent = true});
+            virtual_page_request_readback =
+                graph.add_resource({.name = "virtual_geometry_page_request_readback",
+                                    .kind = render_resource_kind::buffer,
+                                    .byte_size = 4096ull * 16ull,
+                                    .element_stride = 16,
+                                    .persistent_key = "virtual_geometry.page_request_readback",
+                                    .exported = true,
+                                    .persistent = true});
             virtual_cluster_bins = graph.add_resource({.name = "virtual_geometry_cluster_bins",
                                                        .kind = render_resource_kind::buffer,
                                                        .byte_size = 8ull * 1024ull * 1024ull,

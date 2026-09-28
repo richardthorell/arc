@@ -554,9 +554,9 @@ int main(int argc, char** argv)
             std::cerr << "Virtual geometry corpus produced an invalid empty result\n";
             failed = true;
         }
-        const auto occlusion = std::find_if(virtual_geometry.sequences.begin(), virtual_geometry.sequences.end(),
-                                            [](const auto& sequence)
-                                            { return sequence.name == "deterministic-occluder"; });
+        const auto occlusion =
+            std::find_if(virtual_geometry.sequences.begin(), virtual_geometry.sequences.end(),
+                         [](const auto& sequence) { return sequence.name == "deterministic-occluder"; });
         if (occlusion == virtual_geometry.sequences.end() || occlusion->traversal_work_reduction < 0.25 ||
             occlusion->raster_work_reduction < 0.25 || !occlusion->visible_geometry_preserved)
         {
