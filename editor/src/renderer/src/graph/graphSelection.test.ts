@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createGraphClipboardSnapshot,
   createGraphSelection,
+  navigateGraphSelection,
   remapGraphClipboardSnapshot,
   selectGraphNode,
   selectGraphRange,
@@ -24,6 +25,39 @@ describe('graphSelection', () => {
     const selection = selectGraphRange(initial, ['a', 'b', 'c', 'd'], 'd');
     expect([...selection.ids]).toEqual(['b', 'c', 'd']);
     expect(selection.anchor).toBe('b');
+  });
+
+  it('navigates selection deterministically in domain-provided order', () => {
+    const orderedIds = ['a', 'b', 'c'];
+    let selection = navigateGraphSelection(createGraphSelection(), orderedIds, 'next');
+    expect([...selection.ids]).toEqual(['a']);
+
+    selection = navigateGraphSelection(selection, orderedIds, 'next');
+    expect([...selection.ids]).toEqual(['b']);
+    expect(navigateGraphSelection(selection, orderedIds, 'previous').anchor).toBe('a');
+    expect(navigateGraphSelection(selection, orderedIds, 'last').anchor).toBe('c');
+    expect(navigateGraphSelection(selection, orderedIds, 'first').anchor).toBe('a');
+  });
+
+  it('extends keyboard navigation as one contiguous selection from a stable anchor', () => {
+    const orderedIds = ['a', 'b', 'c', 'd'];
+    const initial = createGraphSelection(['b'], 'b');
+    const extended = navigateGraphSelection(initial, orderedIds, 'last', true);
+    expect([...extended.ids]).toEqual(['b', 'c', 'd']);
+    expect(extended.anchor).toBe('b');
+
+    const contracted = navigateGraphSelection(extended, orderedIds, 'next', true);
+    expect([...contracted.ids]).toEqual(['b', 'c']);
+    expect(contracted.anchor).toBe('b');
+  });
+
+  it('handles empty and stale selection anchors without wrapping unexpectedly', () => {
+    const empty = createGraphSelection();
+    expect(navigateGraphSelection(empty, [], 'next')).toBe(empty);
+    expect(navigateGraphSelection(empty, ['a', 'b'], 'previous').anchor).toBe('b');
+
+    const stale = createGraphSelection(['removed'], 'removed');
+    expect(navigateGraphSelection(stale, ['a', 'b'], 'next').anchor).toBe('a');
   });
 
   it('copies only selected nodes while preserving source order', () => {
