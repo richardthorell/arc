@@ -23,9 +23,9 @@ export const UiEditorToolbar = forwardRef<HTMLDivElement, UiEditorToolbarProps>(
   );
 });
 
-export function UiToolbarGroup({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+export function UiToolbarGroup({ className, role = 'group', ...props }: HTMLAttributes<HTMLDivElement>) {
   const classes = ['ui-toolbar-group', 'toolbar-group', className].filter(Boolean).join(' ');
-  return <div className={classes} {...props} />;
+  return <div className={classes} role={role} {...props} />;
 }
 
 export function UiToolbarSeparator(props: HTMLAttributes<HTMLSpanElement>) {

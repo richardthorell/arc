@@ -76,6 +76,20 @@ describe('MaterialEditorToolbar', () => {
     expect(screen.queryByText('Material', { selector: '.material-document-toolbar-label' })).not.toBeInTheDocument();
   });
 
+  it('uses the shared left, center, and right toolbar grouping vocabulary', () => {
+    render(<MaterialEditorToolbar document={document} />);
+
+    const documentActions = screen.getByRole('group', { name: 'Material document actions' });
+    expect(within(documentActions).getByRole('button', { name: /Save/ })).toBeInTheDocument();
+    expect(within(documentActions).getByRole('button', { name: 'Compiled' })).toBeInTheDocument();
+
+    const previewControls = screen.getByRole('group', { name: 'Material preview controls' });
+    expect(within(previewControls).getByRole('switch', { name: 'Live Update' })).toBeInTheDocument();
+
+    const viewControls = screen.getByRole('group', { name: 'Material view controls' });
+    expect(within(viewControls).getByRole('button', { name: /View/ })).toBeInTheDocument();
+  });
+
   it('uses a direct live update toggle and keeps stats under View', () => {
     render(<MaterialEditorToolbar document={document} />);
 
