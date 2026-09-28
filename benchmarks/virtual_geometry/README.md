@@ -24,6 +24,11 @@ reference-traversal timing, deterministic hierarchy/selection fingerprints, page
 timings use the same traversal/raster/material fields as `render_virtual_geometry_profile`; they remain marked
 unavailable in the headless CPU runner and must never be used as an absolute CI pass/fail condition.
 
+The CI and developer scales also run deterministic VG2.4 sequences. `deterministic-occluder` compares HZB-disabled
+work with previous-HZB rejection plus current-HZB refinement after history warm-up; both traversed-node and rasterized
+cluster counts must fall by at least 25%. `slow-threshold` moves projected error through the ±10% hysteresis band and
+requires exactly one refine and one coarsen transition.
+
 ## External corpus
 
 `external-corpus.example.json` is the required provenance manifest for locally acquired source assets. Copy it to an
@@ -39,3 +44,5 @@ upgrade. Timing remains per-run telemetry because CPU and GPU duration is not po
 `vg2.1-comparison.json` records the deterministic before/after result for the adjacency builder: identical near/far
 visible-triangle selections, half as many root-only parent fallbacks, a 0.35% stored-page increase, and effectively
 unchanged artifact size.
+`vg2.4-comparison.json` records the two-phase HZB before/after counters and the slow-threshold transition result.
+Local CPU timings are included only as informational context; GPU timings remain per-run telemetry.

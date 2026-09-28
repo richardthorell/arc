@@ -29,6 +29,23 @@ struct virtual_geometry_view_capture
     std::uint32_t traversal_overflow{};
 };
 
+struct virtual_geometry_sequence_capture
+{
+    std::string name;
+    std::uint32_t frames{};
+    std::uint64_t baseline_traversed_nodes{};
+    std::uint64_t two_phase_traversed_nodes{};
+    std::uint64_t baseline_rasterized_clusters{};
+    std::uint64_t two_phase_rasterized_clusters{};
+    std::uint32_t previous_hzb_rejections{};
+    std::uint32_t current_hzb_rejections{};
+    std::uint32_t hysteresis_decisions{};
+    std::uint32_t refinement_transitions{};
+    double traversal_work_reduction{};
+    double raster_work_reduction{};
+    bool visible_geometry_preserved{true};
+};
+
 struct virtual_geometry_corpus_result
 {
     std::string name;
@@ -53,6 +70,7 @@ struct virtual_geometry_corpus_result
     double gpu_raster_milliseconds{};
     double gpu_material_milliseconds{};
     std::vector<virtual_geometry_view_capture> captures;
+    std::vector<virtual_geometry_sequence_capture> sequences;
 };
 
 [[nodiscard]] bool parse_virtual_geometry_corpus_scale(std::string_view text,
