@@ -84,7 +84,7 @@ export function GraphWireLayer({
             {hovered ? (
               <text aria-hidden="true" className="graph-wire-direction" data-graph-wire-direction={wire.id}>
                 <textPath href={`#${directionPathId}`} startOffset="38%">
-                  ›   ›   ›
+                  › › ›
                 </textPath>
               </text>
             ) : null}
