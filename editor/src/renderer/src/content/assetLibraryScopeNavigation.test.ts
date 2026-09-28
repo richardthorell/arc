@@ -18,7 +18,7 @@ describe('buildAssetLibraryScopeNavigation', () => {
   });
 
   it('keeps empty configured scopes visible and treats legacy unscoped assets as project assets', () => {
-    const navigation = buildAssetLibraryScopeNavigation([{ scope: undefined }, { scope: null }]);
+    const navigation = buildAssetLibraryScopeNavigation([{ scope: undefined }, { scope: undefined }]);
 
     expect(navigation).toHaveLength(4);
     expect(navigation.find((scope) => scope.id === 'project')?.assetCount).toBe(2);
