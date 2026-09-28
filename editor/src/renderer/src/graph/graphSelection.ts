@@ -14,6 +14,8 @@ export interface GraphClipboardSnapshot<T> {
   readonly nodes: readonly GraphClipboardNode<T>[];
 }
 
+export type GraphSelectionNavigationDirection = 'previous' | 'next' | 'first' | 'last';
+
 export function createGraphSelection(
   ids: Iterable<GraphSelectionId> = [],
   anchor: GraphSelectionId | null = null,
@@ -48,6 +50,43 @@ export function selectGraphRange(
   const ids = additive ? new Set(selection.ids) : new Set<GraphSelectionId>();
   const start = Math.min(from, to);
   const end = Math.max(from, to);
+  for (let index = start; index <= end; index += 1) ids.add(orderedIds[index]);
+  return { ids, anchor };
+}
+
+export function navigateGraphSelection(
+  selection: GraphSelectionState,
+  orderedIds: readonly GraphSelectionId[],
+  direction: GraphSelectionNavigationDirection,
+  extend = false,
+): GraphSelectionState {
+  if (orderedIds.length === 0) return selection;
+
+  const current = selection.anchor === null ? -1 : orderedIds.indexOf(selection.anchor);
+  let targetIndex: number;
+  switch (direction) {
+    case 'first':
+      targetIndex = 0;
+      break;
+    case 'last':
+      targetIndex = orderedIds.length - 1;
+      break;
+    case 'previous':
+      targetIndex = current < 0 ? orderedIds.length - 1 : Math.max(0, current - 1);
+      break;
+    case 'next':
+      targetIndex = current < 0 ? 0 : Math.min(orderedIds.length - 1, current + 1);
+      break;
+  }
+
+  const target = orderedIds[targetIndex];
+  if (!extend) return createGraphSelection([target], target);
+
+  const anchor = selection.anchor !== null && current >= 0 ? selection.anchor : target;
+  const anchorIndex = orderedIds.indexOf(anchor);
+  const ids = new Set<GraphSelectionId>();
+  const start = Math.min(anchorIndex, targetIndex);
+  const end = Math.max(anchorIndex, targetIndex);
   for (let index = start; index <= end; index += 1) ids.add(orderedIds[index]);
   return { ids, anchor };
 }
