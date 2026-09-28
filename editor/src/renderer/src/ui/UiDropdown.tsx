@@ -1,5 +1,6 @@
 import { Check, ChevronDown } from 'lucide-react';
 import {
+  Fragment,
   useCallback,
   useEffect,
   useId,
@@ -20,6 +21,8 @@ export type UiDropdownOption<Value extends string = string> = {
   label: string;
   icon?: ReactNode;
   disabled?: boolean;
+  separatorBefore?: boolean;
+  onSelect?: () => void;
 };
 
 type UiDropdownProps<Value extends string = string> = {
@@ -56,7 +59,7 @@ export function UiDropdown<Value extends string = string>({
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuId = useId();
-  const selected = options.find((option) => option.value === value) ?? options[0];
+  const selected = options.find((option) => option.value === value && !option.onSelect) ?? options[0];
 
   const updateMenuPosition = useCallback(() => {
     const trigger = triggerRef.current;
@@ -101,7 +104,8 @@ export function UiDropdown<Value extends string = string>({
 
   const choose = (option: UiDropdownOption<Value>) => {
     if (option.disabled) return;
-    onValueChange(option.value);
+    if (option.onSelect) option.onSelect();
+    else onValueChange(option.value);
     setOpen(false);
     triggerRef.current?.focus();
   };
@@ -151,26 +155,28 @@ export function UiDropdown<Value extends string = string>({
         createPortal(
           <div className="ui-dropdown-menu" id={menuId} ref={menuRef} role="listbox" style={menuStyle}>
             {options.map((option) => {
-              const isSelected = option.value === value;
+              const isSelected = !option.onSelect && option.value === value;
               return (
-                <UiButton
-                  aria-selected={isSelected}
-                  className="ui-dropdown-option"
-                  disabled={option.disabled}
-                  key={option.value}
-                  role="option"
-                  type="button"
-                  variant="ghost"
-                  onClick={() => choose(option)}
-                >
-                  <span className="ui-dropdown-option-content">
-                    {option.icon && <span className="ui-dropdown-icon">{option.icon}</span>}
-                    <span>{option.label}</span>
-                  </span>
-                  <span className="ui-dropdown-check" aria-hidden="true">
-                    {isSelected ? <Check size={13} /> : null}
-                  </span>
-                </UiButton>
+                <Fragment key={option.value}>
+                  {option.separatorBefore && <div className="ui-dropdown-separator" role="separator" />}
+                  <UiButton
+                    aria-selected={option.onSelect ? undefined : isSelected}
+                    className={`ui-dropdown-option${option.onSelect ? ' is-action' : ''}`}
+                    disabled={option.disabled}
+                    role="option"
+                    type="button"
+                    variant="ghost"
+                    onClick={() => choose(option)}
+                  >
+                    <span className="ui-dropdown-option-content">
+                      {option.icon && <span className="ui-dropdown-icon">{option.icon}</span>}
+                      <span>{option.label}</span>
+                    </span>
+                    <span className="ui-dropdown-check" aria-hidden="true">
+                      {isSelected ? <Check size={13} /> : null}
+                    </span>
+                  </UiButton>
+                </Fragment>
               );
             })}
           </div>,
