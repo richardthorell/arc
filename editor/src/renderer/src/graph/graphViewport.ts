@@ -9,6 +9,18 @@ export interface GraphViewportLimits {
   maxZoom: number;
 }
 
+export interface GraphBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface GraphViewportSize {
+  width: number;
+  height: number;
+}
+
 export const DEFAULT_GRAPH_VIEWPORT: GraphViewportState = {
   x: 0,
   y: 0,
@@ -55,6 +67,41 @@ export function serializeGraphViewport(
   limits: GraphViewportLimits = DEFAULT_GRAPH_VIEWPORT_LIMITS,
 ): GraphViewportState {
   return normalizeGraphViewport(value, DEFAULT_GRAPH_VIEWPORT, limits);
+}
+
+/**
+ * Computes the shared viewport transform used by Fit Selection and Fit All.
+ * Bounds are graph-space values and viewport dimensions/padding are screen-space pixels.
+ */
+export function fitGraphViewport(
+  bounds: GraphBounds,
+  viewport: GraphViewportSize,
+  padding = 32,
+  limits: GraphViewportLimits = DEFAULT_GRAPH_VIEWPORT_LIMITS,
+): GraphViewportState {
+  const viewportWidth = Math.max(0, finiteOr(viewport.width, 0));
+  const viewportHeight = Math.max(0, finiteOr(viewport.height, 0));
+  const width = Math.max(0, finiteOr(bounds.width, 0));
+  const height = Math.max(0, finiteOr(bounds.height, 0));
+  const safePadding = Math.max(0, finiteOr(padding, 0));
+  const availableWidth = Math.max(0, viewportWidth - safePadding * 2);
+  const availableHeight = Math.max(0, viewportHeight - safePadding * 2);
+
+  const widthZoom = width > 0 ? availableWidth / width : Number.POSITIVE_INFINITY;
+  const heightZoom = height > 0 ? availableHeight / height : Number.POSITIVE_INFINITY;
+  const requestedZoom = Math.min(widthZoom, heightZoom);
+  const zoom = clampGraphViewportZoom(
+    Number.isFinite(requestedZoom) ? requestedZoom : limits.maxZoom,
+    limits,
+  );
+  const centerX = finiteOr(bounds.x, 0) + width * 0.5;
+  const centerY = finiteOr(bounds.y, 0) + height * 0.5;
+
+  return {
+    x: viewportWidth * 0.5 - centerX * zoom,
+    y: viewportHeight * 0.5 - centerY * zoom,
+    zoom,
+  };
 }
 
 /**
