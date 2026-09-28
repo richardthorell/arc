@@ -385,7 +385,9 @@ export function MainToolbar({
       ?.snapshot()
       .then((snapshot) => {
         if (disposed) return;
-        setProjectTargetPlatforms(configuredTargetPlatformsForProject(snapshot?.activeProject?.descriptor, hostPlatform));
+        setProjectTargetPlatforms(
+          configuredTargetPlatformsForProject(snapshot?.activeProject?.descriptor, hostPlatform),
+        );
       })
       .catch(() => {
         if (!disposed) setProjectTargetPlatforms([hostPlatform]);
@@ -418,8 +420,7 @@ export function MainToolbar({
     ? availableTargetDevices.map((device) => ({
         value: device.id,
         label: device.label,
-        icon:
-          device.platform === hostPlatform ? <Monitor size={14} /> : <Smartphone size={14} />,
+        icon: device.platform === hostPlatform ? <Monitor size={14} /> : <Smartphone size={14} />,
         disabled: device.disabled,
       }))
     : [{ value: '__no-device__', label: 'No devices available', icon: <Smartphone size={14} />, disabled: true }];
