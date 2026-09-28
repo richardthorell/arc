@@ -20,4 +20,16 @@ bool prefab_has_overrides(const editor_scene_state& state, ecs::entity root)
     return prefab_override_count(state, root) != 0;
 }
 
+std::optional<prefab_instance_summary> inspect_prefab_instance(const editor_scene_state& state, ecs::entity root)
+{
+    if (!state.scene.alive(root)) return std::nullopt;
+    const auto* instance = state.scene.try_get<scene::prefab_instance_component>(root);
+    if (!instance) return std::nullopt;
+    return prefab_instance_summary{
+        .prefab_path = instance->prefab_path,
+        .override_count = instance->overrides.size(),
+        .nested = instance->nested,
+    };
+}
+
 } // namespace arc::editor
