@@ -128,6 +128,7 @@ export class AdbClient {
     return this.executor(this.executable, arguments_, timeoutMs);
   }
 
+  // Install/launch tooling can build on this without exposing arbitrary ADB execution to the renderer.
   executeForDevice(serial: string, arguments_: string[], timeoutMs = 5000): Promise<AdbCommandResult> {
     return this.execute(['-s', serial, ...arguments_], timeoutMs);
   }
