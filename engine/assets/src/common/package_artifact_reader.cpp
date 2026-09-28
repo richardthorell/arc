@@ -99,8 +99,7 @@ const cook_manifest_artifact* package_artifact_reader::find(const cooked_artifac
 {
     if (!address.valid()) return nullptr;
     const auto found = std::find_if(manifest_.artifacts.begin(), manifest_.artifacts.end(),
-                                    [&](const auto& artifact)
-                                    {
+                                    [&](const auto& artifact) {
                                         return artifact.asset == address.asset && artifact.schema == address.schema &&
                                                artifact.name == address.name;
                                     });

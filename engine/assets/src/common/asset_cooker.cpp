@@ -445,8 +445,7 @@ cook_result asset_cooker::cook(const cook_request& request)
 
 asset_status save_cook_manifest(const std::filesystem::path& path, const cook_manifest& manifest)
 {
-    const auto failure = [&](std::string message)
-    {
+    const auto failure = [&](std::string message) {
         return asset_status::failure(
             {.code = asset_error_code::io_failed, .path = path, .message = std::move(message)});
     };
