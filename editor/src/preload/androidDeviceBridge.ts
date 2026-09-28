@@ -37,7 +37,8 @@ const listDevices = async (): Promise<AndroidDeviceSnapshot> => {
   const settings = (await ipcRenderer.invoke('settings:snapshot')) as EditorSettingsSnapshot | null;
   const adbPath = resolveAndroidAdbPath(settings);
   if (!adbPath) return unavailableSnapshot('', 'Android SDK / ADB is not configured');
-  if (!fs.existsSync(adbPath)) return unavailableSnapshot(adbPath, 'ADB executable was not found in the configured Android SDK');
+  if (!fs.existsSync(adbPath))
+    return unavailableSnapshot(adbPath, 'ADB executable was not found in the configured Android SDK');
 
   if (!cachedClient || cachedClient.executable !== adbPath) cachedClient = new AdbClient(adbPath);
 

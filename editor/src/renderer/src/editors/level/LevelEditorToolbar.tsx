@@ -68,9 +68,13 @@ export function LevelEditorToolbar(props: LevelEditorToolbarProps) {
   let discoveredTargetDevices: EditorTargetDevice[] | undefined;
   if (discoverAndroidDevices) {
     if (!androidDevices) {
-      discoveredTargetDevices = [{ id: '__discovering__', label: 'Looking for devices…', platform: 'android', disabled: true }];
+      discoveredTargetDevices = [
+        { id: '__discovering__', label: 'Looking for devices…', platform: 'android', disabled: true },
+      ];
     } else if (!androidDevices.available) {
-      discoveredTargetDevices = [{ id: '__adb-unavailable__', label: 'ADB unavailable', platform: 'android', disabled: true }];
+      discoveredTargetDevices = [
+        { id: '__adb-unavailable__', label: 'ADB unavailable', platform: 'android', disabled: true },
+      ];
     } else {
       discoveredTargetDevices = androidDevices.devices.map(targetDeviceFromAndroid);
     }

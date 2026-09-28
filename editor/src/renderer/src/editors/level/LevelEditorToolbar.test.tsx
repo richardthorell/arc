@@ -46,13 +46,7 @@ describe('LevelEditorToolbar Android targets', () => {
     });
     window.arcAndroid = { listDevices };
 
-    render(
-      <LevelEditorToolbar
-        configuredTargetPlatforms={['android']}
-        onCommand={vi.fn()}
-        targetPlatform="android"
-      />,
-    );
+    render(<LevelEditorToolbar configuredTargetPlatforms={['android']} onCommand={vi.fn()} targetPlatform="android" />);
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent('Pixel 9 Pro'));
     expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent('API 36');
@@ -75,15 +69,11 @@ describe('LevelEditorToolbar Android targets', () => {
       }),
     };
 
-    render(
-      <LevelEditorToolbar
-        configuredTargetPlatforms={['android']}
-        onCommand={vi.fn()}
-        targetPlatform="android"
-      />,
-    );
+    render(<LevelEditorToolbar configuredTargetPlatforms={['android']} onCommand={vi.fn()} targetPlatform="android" />);
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent('ADB unavailable'));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent('ADB unavailable'),
+    );
     expect(screen.getByRole('button', { name: 'Target device' })).toBeEnabled();
   });
 });

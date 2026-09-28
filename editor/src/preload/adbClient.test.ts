@@ -4,7 +4,9 @@ import { AdbClient, parseAdbDevices, type AdbCommandExecutor } from './adbClient
 
 describe('AdbClient', () => {
   it('parses connected, unauthorized, offline, and permission-denied devices', () => {
-    const devices = parseAdbDevices(`List of devices attached\nR58M123\tdevice product:panther model:Pixel_7 device:panther transport_id:1\nemulator-5554 offline transport_id:2\nABC unauthorized transport_id:3\nXYZ no permissions (user in plugdev group)\n`);
+    const devices = parseAdbDevices(
+      `List of devices attached\nR58M123\tdevice product:panther model:Pixel_7 device:panther transport_id:1\nemulator-5554 offline transport_id:2\nABC unauthorized transport_id:3\nXYZ no permissions (user in plugdev group)\n`,
+    );
 
     expect(devices).toEqual([
       expect.objectContaining({ serial: 'R58M123', state: 'online', model: 'Pixel 7', product: 'panther' }),
