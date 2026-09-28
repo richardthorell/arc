@@ -52,9 +52,6 @@ const visibleDescription = (descriptor: EditorSettingDescriptor) =>
 const isPlatformPathSetting = (descriptor: EditorSettingDescriptor) =>
   (descriptor.section === 'Windows' || descriptor.section === 'Android') && descriptor.type === 'string';
 
-const isAndroidPathSetting = (descriptor: EditorSettingDescriptor) =>
-  descriptor.section === 'Android' && descriptor.type === 'string';
-
 const windowsExecutableName = (key: string) => {
   if (key === 'platform.windows.cmakePath') return 'cmake.exe';
   if (key === 'platform.windows.ninjaPath') return 'ninja.exe';
@@ -325,8 +322,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
             >
               {entries.map((descriptor) => {
                 const pathSetting = isPlatformPathSetting(descriptor);
-                const androidPathSetting = isAndroidPathSetting(descriptor);
-                const pathValidation = androidPathSetting ? snapshot?.pathValidation?.[descriptor.key] : undefined;
+                const pathValidation = pathSetting ? snapshot?.pathValidation?.[descriptor.key] : undefined;
                 const secretSetting = descriptor.format === 'secret';
                 return (
                   <div
@@ -348,8 +344,10 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                           ) : (
                             <TriangleAlert aria-hidden="true" size={10} />
                           )}
-                          {pathValidation.message}
-                          {pathValidation.resolvedPath ? ` · ${pathValidation.resolvedPath}` : ''}
+                          {pathValidation.valid ? 'Validated' : pathValidation.message}
+                          {!pathValidation.valid && pathValidation.resolvedPath
+                            ? ` · ${pathValidation.resolvedPath}`
+                            : ''}
                         </span>
                       )}
                       {snapshot?.restartRequired.includes(descriptor.key) && (
