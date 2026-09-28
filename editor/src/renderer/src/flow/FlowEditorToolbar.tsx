@@ -1,7 +1,7 @@
-import { Lock, RefreshCw, RotateCcw, RotateCw, Save, Workflow } from 'lucide-react';
+import { Lock, RefreshCw, RotateCcw, RotateCw, Save } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
-import { UiButton, UiEditorToolbar, UiToolbarGroup, UiToolbarSeparator } from '../ui';
+import { UiButton, UiEditorToolbar, UiToolbarGroup } from '../ui';
 import {
   redoFlowGraph,
   reloadFlowDocument,
@@ -22,34 +22,28 @@ export function FlowEditorToolbar({ document }: { document: EditorDocument }) {
     <UiEditorToolbar
       className="flow-document-toolbar"
       left={
-        <>
-          <UiToolbarGroup className="flow-document-toolbar-label">
-            <Workflow size={15} />
-            <span>Flow</span>
-          </UiToolbarGroup>
-          <UiToolbarSeparator />
-          <UiToolbarGroup>
-            <UiButton
-              disabled={busy || document.readOnly || !document.dirty}
-              onClick={() => void saveFlowDocument(document)}
-              variant="toolbar"
-            >
-              <Save size={13} /> Save
-            </UiButton>
-            <UiButton disabled={busy} onClick={() => void reloadFlowDocument(document)} variant="toolbar">
-              <RefreshCw size={13} /> Reload
-            </UiButton>
-          </UiToolbarGroup>
-          <UiToolbarSeparator />
-          <UiToolbarGroup>
-            <UiButton disabled={!canUndo} onClick={() => undoFlowGraph(document)} variant="toolbar">
-              <RotateCcw size={13} /> Undo
-            </UiButton>
-            <UiButton disabled={!canRedo} onClick={() => redoFlowGraph(document)} variant="toolbar">
-              <RotateCw size={13} /> Redo
-            </UiButton>
-          </UiToolbarGroup>
-        </>
+        <UiToolbarGroup>
+          <UiButton
+            disabled={busy || document.readOnly || !document.dirty}
+            onClick={() => void saveFlowDocument(document)}
+            variant="toolbar"
+          >
+            <Save size={13} /> Save
+          </UiButton>
+          <UiButton disabled={busy} onClick={() => void reloadFlowDocument(document)} variant="toolbar">
+            <RefreshCw size={13} /> Reload
+          </UiButton>
+        </UiToolbarGroup>
+      }
+      center={
+        <UiToolbarGroup>
+          <UiButton disabled={!canUndo} onClick={() => undoFlowGraph(document)} variant="toolbar">
+            <RotateCcw size={13} /> Undo
+          </UiButton>
+          <UiButton disabled={!canRedo} onClick={() => redoFlowGraph(document)} variant="toolbar">
+            <RotateCw size={13} /> Redo
+          </UiButton>
+        </UiToolbarGroup>
       }
       right={
         <>
