@@ -345,7 +345,9 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                             <TriangleAlert aria-hidden="true" size={10} />
                           )}
                           {pathValidation.valid ? 'Validated' : pathValidation.message}
-                          {!pathValidation.valid && pathValidation.resolvedPath ? ` · ${pathValidation.resolvedPath}` : ''}
+                          {!pathValidation.valid && pathValidation.resolvedPath
+                            ? ` · ${pathValidation.resolvedPath}`
+                            : ''}
                         </span>
                       )}
                       {snapshot?.restartRequired.includes(descriptor.key) && (
