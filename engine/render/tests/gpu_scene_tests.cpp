@@ -172,6 +172,8 @@ TEST_CASE("GPU Scene preparation consolidates conventional and virtual instances
     CHECK(update.active_instance_count == 2u);
     CHECK(packet.items.front().gpu_scene_instance.valid());
     CHECK(packet.virtual_items.front().gpu_scene_instance.valid());
+    CHECK(packet.gpu_scene_submissions[0].handle == packet.items.front().gpu_scene_instance);
+    CHECK(packet.gpu_scene_submissions[1].handle == packet.virtual_items.front().gpu_scene_instance);
 }
 
 TEST_CASE("GPU-driven preparation skips allocating CPU visibility unless validation requests it")

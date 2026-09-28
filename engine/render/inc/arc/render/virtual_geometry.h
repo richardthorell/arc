@@ -145,6 +145,25 @@ struct virtual_geometry_visibility_sample
     std::uint32_t identity{std::numeric_limits<std::uint32_t>::max()};
 };
 
+/** @brief Reason an instance was routed to the correctness fallback queue. */
+enum class virtual_geometry_fallback_reason : std::uint32_t
+{
+    none = 0u,
+    traversal_queue_overflow = 1u << 0u,
+    visible_cluster_overflow = 1u << 1u,
+    unavailable_resident_parent = 1u << 2u
+};
+
+/** @brief One bounded correctness-fallback work item emitted by hierarchy traversal. */
+struct virtual_geometry_fallback_record
+{
+    std::uint32_t instance_index{};
+    std::uint32_t resource_index{};
+    std::uint32_t hierarchy_node{invalid_virtual_geometry_index};
+    virtual_geometry_fallback_reason reason{virtual_geometry_fallback_reason::none};
+};
+static_assert(sizeof(virtual_geometry_fallback_record) == 16u);
+
 /** @brief Encode a normalized depth for unsigned atomic-min rasterization. */
 [[nodiscard]] std::uint32_t encode_virtual_geometry_depth(float depth) noexcept;
 /** @brief Pack the visible-cluster and local triangle identity used by material resolve. */
@@ -167,6 +186,7 @@ struct virtual_geometry_overflow_record
     std::uint32_t fallback_instance_count{};
     std::uint32_t parent_fallback_count{};
     std::uint32_t traversal_overflow{};
+    std::uint32_t fallback_queue_overflow{};
 };
 
 /** @brief Sparse renderer update for virtual-geometry GPU metadata or page residency. */
@@ -217,6 +237,7 @@ struct virtual_geometry_feedback_readback
 {
     std::uint64_t frame_index{};
     std::vector<virtual_geometry_gpu_page_request> page_requests;
+    std::vector<virtual_geometry_fallback_record> fallback_instances;
     virtual_geometry_overflow_record overflow{};
 };
 
@@ -225,6 +246,8 @@ struct virtual_geometry_traversal_limits
 {
     std::uint32_t maximum_visible_clusters{1u << 20u};
     std::uint32_t maximum_page_requests{4096u};
+    std::uint32_t maximum_fallback_instances{4096u};
+    std::uint32_t maximum_traversal_stack{64u};
 };
 
 /** @brief Generation-stamped validation output matching the GPU traversal buffers. */

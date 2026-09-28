@@ -186,12 +186,13 @@ gpu_scene_update_batch gpu_scene::synchronize(render_world_packet& packet, std::
         return handle;
     };
 
-    for (const auto& submission : packet.gpu_scene_submissions)
+    for (auto& submission : packet.gpu_scene_submissions)
     {
         const instance_key key{.world_id = packet.gpu_scene_world_id,
                                .object_id = submission.instance.object_id,
                                .instance_id = submission.instance_id};
         const auto handle = upsert(key, submission.instance);
+        submission.handle = handle;
         if (submission.source == gpu_scene_submission_source::conventional)
         {
             if (submission.source_index < packet.items.size())

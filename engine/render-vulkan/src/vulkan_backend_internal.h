@@ -193,7 +193,7 @@ struct alignas(16) virtual_geometry_traversal_counter_data
     std::uint32_t fallback_instances{};
     std::uint32_t parent_fallbacks{};
     std::uint32_t traversal_overflow{};
-    std::uint32_t reserved{};
+    std::uint32_t fallback_overflow{};
 };
 static_assert(sizeof(virtual_geometry_traversal_counter_data) == 48);
 
@@ -205,8 +205,10 @@ struct virtual_geometry_traversal_push_constants
     float viewport_hzb[4]{};
     std::uint32_t hzb_generation{};
     std::uint32_t camera_cut{};
+    std::uint32_t fallback_capacity{};
+    std::uint32_t traversal_stack_capacity{};
 };
-static_assert(sizeof(virtual_geometry_traversal_push_constants) == 120);
+static_assert(sizeof(virtual_geometry_traversal_push_constants) == 128);
 
 struct alignas(16) virtual_geometry_gpu_raster_bin
 {
@@ -548,8 +550,10 @@ private:
     struct virtual_geometry_feedback_frame
     {
         gpu_buffer requests;
+        gpu_buffer fallbacks;
         gpu_buffer counters;
-        std::uint32_t submitted_request_count{};
+        std::uint32_t request_capacity{};
+        std::uint32_t fallback_capacity{};
         std::uint64_t submitted_frame{};
     };
 
@@ -1484,6 +1488,7 @@ private:
     gpu_buffer virtual_geometry_page_heap_buffer_;
     gpu_buffer virtual_geometry_visible_buffer_;
     gpu_buffer virtual_geometry_request_buffer_;
+    gpu_buffer virtual_geometry_fallback_buffer_;
     gpu_buffer virtual_geometry_counter_buffer_;
     gpu_buffer virtual_geometry_raster_bin_buffer_;
     gpu_buffer virtual_geometry_material_frame_buffer_;
@@ -1491,6 +1496,7 @@ private:
     graph_image virtual_geometry_visibility_ids_;
     std::uint32_t virtual_geometry_visible_capacity_{};
     std::uint32_t virtual_geometry_request_capacity_{};
+    std::uint32_t virtual_geometry_fallback_capacity_{};
     std::uint32_t virtual_geometry_raster_bin_capacity_{};
     std::vector<virtual_geometry_feedback_frame> virtual_geometry_feedback_frames_;
     VkDescriptorSetLayout virtual_geometry_traversal_descriptor_set_layout_{};

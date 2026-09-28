@@ -913,6 +913,11 @@ struct render_virtual_geometry_profile
     std::uint32_t traversal_overflow{};
     std::uint32_t overflowed_clusters{};
     std::uint32_t fallback_instances{};
+    std::uint32_t fallback_queue_overflow{};
+    std::uint32_t traversal_stack_capacity{};
+    std::uint32_t visible_cluster_capacity{};
+    std::uint32_t page_request_capacity{};
+    std::uint32_t fallback_queue_capacity{};
     std::uint32_t cpu_submissions{};
     std::uint64_t resident_bytes{};
     std::uint64_t residency_budget_bytes{};

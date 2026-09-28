@@ -37,6 +37,29 @@ bool page_resident(std::span<const std::uint8_t> pages, std::uint32_t page) noex
     return page != invalid_virtual_geometry_index && page < pages.size() && pages[page] != 0;
 }
 
+std::uint32_t traversal_stack_requirement(const virtual_mesh_data& geometry)
+{
+    std::vector<std::uint32_t> stack(geometry.root_nodes.begin(), geometry.root_nodes.end());
+    std::vector<std::uint8_t> expanded(geometry.lod_nodes.size());
+    auto maximum = static_cast<std::uint32_t>(stack.size());
+    while (!stack.empty())
+    {
+        const auto node_index = stack.back();
+        stack.pop_back();
+        if (node_index >= geometry.lod_nodes.size() || expanded[node_index] != 0u) continue;
+        expanded[node_index] = 1u;
+        const auto& node = geometry.lod_nodes[node_index];
+        for (std::uint32_t child_offset = 0; child_offset < node.child_count; ++child_offset)
+        {
+            const auto child_index = node.first_child + child_offset;
+            if (child_index < geometry.hierarchy_children.size())
+                stack.push_back(geometry.hierarchy_children[child_index]);
+        }
+        maximum = std::max(maximum, static_cast<std::uint32_t>(stack.size()));
+    }
+    return maximum;
+}
+
 } // namespace
 
 std::uint32_t encode_virtual_geometry_depth(float depth) noexcept
@@ -244,12 +267,30 @@ virtual_geometry_gpu_reference_result traverse_virtual_geometry_gpu_reference(
     const virtual_geometry_reference_view& view, virtual_geometry_traversal_limits limits)
 {
     virtual_geometry_gpu_reference_result result;
+    const auto queue_fallback = [&](virtual_geometry_fallback_reason reason, std::uint32_t hierarchy_node)
+    {
+        ++result.feedback.overflow.fallback_instance_count;
+        if (result.feedback.fallback_instances.size() < limits.maximum_fallback_instances)
+            result.feedback.fallback_instances.push_back({.instance_index = instance_index,
+                                                          .resource_index = resource.index,
+                                                          .hierarchy_node = hierarchy_node,
+                                                          .reason = reason});
+        else
+            ++result.feedback.overflow.fallback_queue_overflow;
+    };
+    const auto traversal_stack_capacity = std::clamp(limits.maximum_traversal_stack, 1u, 64u);
+    if (traversal_stack_requirement(geometry) > traversal_stack_capacity)
+    {
+        result.feedback.overflow.traversal_overflow = 1u;
+        queue_fallback(virtual_geometry_fallback_reason::traversal_queue_overflow,
+                       geometry.root_nodes.empty() ? invalid_virtual_geometry_index : geometry.root_nodes.front());
+        return result;
+    }
     const auto reference = traverse_virtual_geometry_reference(geometry, resident_pages, view);
     result.frustum_rejected = reference.frustum_rejected;
     result.cone_rejected = reference.cone_rejected;
     result.hzb_rejected = reference.hzb_rejected;
     result.projected_size_rejected = reference.projected_size_rejected;
-    result.feedback.overflow.fallback_instance_count = 0;
     const auto visible_count =
         std::min<std::size_t>(reference.visible_clusters.size(), limits.maximum_visible_clusters);
     result.visible_clusters.reserve(visible_count);
@@ -268,8 +309,9 @@ virtual_geometry_gpu_reference_result traverse_virtual_geometry_gpu_reference(
     {
         result.feedback.overflow.visible_cluster_overflow =
             static_cast<std::uint32_t>(reference.visible_clusters.size() - visible_count);
-        result.feedback.overflow.fallback_instance_count = 1;
         result.visible_clusters.clear();
+        queue_fallback(virtual_geometry_fallback_reason::visible_cluster_overflow,
+                       geometry.root_nodes.empty() ? invalid_virtual_geometry_index : geometry.root_nodes.front());
     }
 
     const auto request_count = std::min<std::size_t>(reference.requested_pages.size(), limits.maximum_page_requests);

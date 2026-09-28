@@ -71,6 +71,8 @@ TEST_CASE("gpu scene preserves identity across geometry representation changes")
 
     REQUIRE(virtualized.active_instance_count == 1u);
     CHECK(packet.virtual_items.front().gpu_scene_instance == handle);
+    REQUIRE(packet.gpu_scene_submissions.size() == 1u);
+    CHECK(packet.gpu_scene_submissions.front().handle == handle);
     REQUIRE(virtualized.updates.size() == 1u);
     CHECK(virtualized.updates.front().kind == gpu_scene_update_kind::upsert);
     CHECK(virtualized.updates.front().dirty == gpu_scene_dirty::geometry);

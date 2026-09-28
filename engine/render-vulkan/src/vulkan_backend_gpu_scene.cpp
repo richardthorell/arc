@@ -879,6 +879,7 @@ void vulkan_render_backend::destroy_virtual_geometry_traversal_resources()
     destroy_buffer(virtual_geometry_page_heap_buffer_);
     destroy_buffer(virtual_geometry_visible_buffer_);
     destroy_buffer(virtual_geometry_request_buffer_);
+    destroy_buffer(virtual_geometry_fallback_buffer_);
     destroy_buffer(virtual_geometry_counter_buffer_);
     destroy_buffer(virtual_geometry_raster_bin_buffer_);
     destroy_buffer(virtual_geometry_material_frame_buffer_);
@@ -887,6 +888,7 @@ void vulkan_render_backend::destroy_virtual_geometry_traversal_resources()
     for (auto& frame : virtual_geometry_feedback_frames_)
     {
         destroy_buffer(frame.requests);
+        destroy_buffer(frame.fallbacks);
         destroy_buffer(frame.counters);
     }
     virtual_geometry_feedback_frames_.clear();
@@ -931,6 +933,7 @@ void vulkan_render_backend::destroy_virtual_geometry_traversal_resources()
     virtual_geometry_material_descriptor_set_ = VK_NULL_HANDLE;
     virtual_geometry_visible_capacity_ = 0u;
     virtual_geometry_request_capacity_ = 0u;
+    virtual_geometry_fallback_capacity_ = 0u;
     virtual_geometry_raster_bin_capacity_ = 0u;
 }
 
