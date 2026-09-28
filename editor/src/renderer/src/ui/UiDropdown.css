@@ -90,6 +90,16 @@
   text-align: left;
 }
 
+.ui-dropdown-option.is-action {
+  color: var(--arc-color-text-muted);
+}
+
+.ui-dropdown-separator {
+  height: 1px;
+  margin: var(--arc-space-2);
+  background: var(--arc-color-border-subtle);
+}
+
 .ui-dropdown-check {
   width: 14px;
   height: 14px;
