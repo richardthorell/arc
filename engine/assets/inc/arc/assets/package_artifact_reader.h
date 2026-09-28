@@ -53,7 +53,11 @@ struct cooked_artifact_location
 class package_artifact_reader
 {
 public:
+    ~package_artifact_reader();
+
     [[nodiscard]] asset_status mount(const std::filesystem::path& manifest_path);
+    [[nodiscard]] asset_status mount(io::virtual_file_system& files, const io::virtual_path& manifest_path,
+                                     io::virtual_path artifact_root, std::int32_t priority = 0);
 
     [[nodiscard]] const cook_manifest_artifact* find(const cooked_artifact_address& address) const noexcept;
     [[nodiscard]] std::optional<cooked_artifact_location> locate(const cooked_artifact_address& address) const noexcept;
@@ -66,8 +70,14 @@ public:
     void reset_statistics() noexcept;
 
 private:
+    void release_virtual_mount() noexcept;
+
     std::filesystem::path root_;
     cook_manifest manifest_;
+    io::virtual_file_system* virtual_files_{};
+    io::virtual_path artifact_root_;
+    io::mount_id virtual_mount_{};
+    std::shared_ptr<io::virtual_file_provider> virtual_provider_;
     mutable std::atomic<std::uint64_t> bytes_read_{};
 };
 

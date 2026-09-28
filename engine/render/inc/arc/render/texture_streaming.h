@@ -269,6 +269,7 @@ struct texture_streaming_io_snapshot
     std::uint64_t failed_bytes{};
     std::uint32_t completed_reads{};
     std::uint32_t failed_reads{};
+    std::uint32_t stale_completions{};
     std::uint32_t in_flight_reads{};
     double total_read_latency_milliseconds{};
 };

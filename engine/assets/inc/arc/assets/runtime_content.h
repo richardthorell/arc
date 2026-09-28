@@ -143,6 +143,7 @@ struct runtime_update_telemetry
     std::uint64_t rejected_updates{};
     std::uint64_t staged_blobs{};
     std::uint64_t staged_bytes{};
+    std::uint64_t reused_blobs{};
     std::uint64_t active_sequence{};
     std::uint64_t active_artifacts{};
 };

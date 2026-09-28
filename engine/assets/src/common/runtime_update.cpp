@@ -453,6 +453,7 @@ asset_status runtime_update_receiver::begin_blob(content_hash hash, std::uint64_
             implementation_->blob_hash = hash;
             implementation_->blob_expected_size = size;
             implementation_->blob_written = size;
+            ++implementation_->telemetry.reused_blobs;
             return asset_status::success();
         }
     }

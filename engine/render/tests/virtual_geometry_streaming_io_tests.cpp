@@ -7,11 +7,13 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <span>
 #include <thread>
 #include <vector>
@@ -184,6 +186,52 @@ TEST_CASE("virtual geometry page IO and decode complete asynchronously from an e
     REQUIRE(snapshot.stale_completions == 0u);
     REQUIRE(snapshot.read_bytes == geometry.pages[requested_page].compressed_size);
     REQUIRE(snapshot.decoded_bytes == geometry.pages[requested_page].uncompressed_size);
+}
+
+TEST_CASE("virtual geometry page sources read artifact-relative ranges through VFS handles")
+{
+    using namespace arc;
+    using namespace arc::render;
+    const auto geometry = build_virtual_mesh(make_streaming_grid(17u), {.build_conventional_lods = false});
+    REQUIRE_FALSE(geometry.pages.empty());
+    std::vector<virtual_geometry_artifact_page_range> ranges(geometry.pages.size());
+    io::file_buffer artifact(64u, std::byte{});
+    for (std::size_t index = 0; index < geometry.pages.size(); ++index)
+    {
+        const auto offset = artifact.size();
+        const auto encoded = page_bytes(geometry, static_cast<std::uint32_t>(index));
+        artifact.insert(artifact.end(), encoded.begin(), encoded.end());
+        ranges[index] = {.offset = offset,
+                         .stored_size = geometry.pages[index].compressed_size,
+                         .decoded_size = geometry.pages[index].uncompressed_size,
+                         .content_hash = geometry.pages[index].content_hash,
+                         .root = geometry.pages[index].root};
+    }
+
+    jobs::job_system jobs({.worker_count = 1u, .io_worker_count = 1u, .enable_render_thread = false});
+    io::virtual_file_system vfs(jobs);
+    auto provider = std::make_shared<io::memory_file_provider>(jobs);
+    const std::array updates{
+        io::memory_provider_update{.relative_path = "mesh.arcvg", .bytes = std::move(artifact)}};
+    REQUIRE(provider->publish(updates).succeeded());
+    auto root = io::virtual_path::parse("artifact://game");
+    REQUIRE(root.succeeded());
+    REQUIRE(vfs.mount({.root = root.value(), .provider = provider}).succeeded());
+    auto file = vfs.resolve("artifact://game/mesh.arcvg");
+    REQUIRE(file.succeeded());
+
+    renderer target;
+    const auto resource = target.create_virtual_mesh(geometry);
+    const auto generation = target.virtual_mesh_content_generation(resource);
+    filesystem_virtual_geometry_artifact_source source(vfs);
+    source.register_package_range(resource, generation, file.value(), 0, file.value().size(), ranges);
+    const virtual_geometry_page_load load{.resource = resource,
+                                          .resource_generation = generation,
+                                          .page_index = 0,
+                                          .byte_size = ranges.front().stored_size};
+    const auto page = source.read_page(load).get();
+    REQUIRE(page.succeeded());
+    CHECK(page.value() == page_bytes(geometry, 0));
 }
 
 TEST_CASE("virtual geometry streaming discards stale asynchronous completions after generation replacement")

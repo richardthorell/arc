@@ -13,6 +13,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 
 namespace
 {
@@ -79,8 +80,19 @@ TEST_CASE("M2.3 binds cooked terrain regions to exact asynchronous package page 
     const auto package = assets::build_asset_packages(std::move(package_manifest), cache, root / "package");
     REQUIRE(package.succeeded());
 
+    jobs::job_system jobs({.worker_count = 1u, .io_worker_count = 1u, .enable_render_thread = false});
+    io::async_file_service files(jobs);
+    io::virtual_file_system vfs(jobs);
+    auto package_files = std::make_shared<io::filesystem_file_provider>(files, root / "package");
+    auto package_root = io::virtual_path::parse("package://base");
+    auto artifact_root = io::virtual_path::parse("artifact://game");
+    REQUIRE(package_root.succeeded());
+    REQUIRE(artifact_root.succeeded());
+    REQUIRE(vfs.mount({.root = package_root.value(), .provider = package_files}).succeeded());
+    auto manifest_path = io::virtual_path::parse("package://base/" + package.manifest_path.filename().string());
+    REQUIRE(manifest_path.succeeded());
     assets::package_artifact_reader reader;
-    REQUIRE(reader.mount(package.manifest_path));
+    REQUIRE(reader.mount(vfs, manifest_path.value(), artifact_root.value()));
     REQUIRE(reader.bytes_read() == 0u);
 
     render::renderer renderer;
@@ -107,9 +119,7 @@ TEST_CASE("M2.3 binds cooked terrain regions to exact asynchronous package page 
         proxy.regions.push_back(region);
     }
 
-    jobs::job_system jobs({.worker_count = 1u, .io_worker_count = 1u, .enable_render_thread = false});
-    io::async_file_service files(jobs);
-    render::filesystem_virtual_geometry_artifact_source source(files);
+    render::filesystem_virtual_geometry_artifact_source source(vfs);
     scene::terrain_virtual_geometry_streaming_binding binding;
     const auto bound = binding.synchronize(cooked.value().manifest, reader, proxy, renderer, source);
     REQUIRE(bound.succeeded);

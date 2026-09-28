@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arc/io/io.h>
+#include <arc/io/virtual_file_system.h>
 #include <arc/render/texture_streaming.h>
 
 #include <cstdint>
@@ -32,13 +33,17 @@ class filesystem_texture_artifact_source final : public texture_artifact_source
 {
 public:
     explicit filesystem_texture_artifact_source(io::async_file_service& files);
+    explicit filesystem_texture_artifact_source(io::virtual_file_system& files);
     ~filesystem_texture_artifact_source();
     filesystem_texture_artifact_source(filesystem_texture_artifact_source&&) noexcept;
     filesystem_texture_artifact_source& operator=(filesystem_texture_artifact_source&&) noexcept;
     filesystem_texture_artifact_source(const filesystem_texture_artifact_source&) = delete;
     filesystem_texture_artifact_source& operator=(const filesystem_texture_artifact_source&) = delete;
     void register_file(texture_stream_source_id source, std::filesystem::path path, std::uint64_t size);
+    void register_file(texture_stream_source_id source, io::resolved_virtual_file file);
     void register_package_range(texture_stream_source_id source, std::filesystem::path package,
+                                std::uint64_t base_offset, std::uint64_t size);
+    void register_package_range(texture_stream_source_id source, io::resolved_virtual_file file,
                                 std::uint64_t base_offset, std::uint64_t size);
     void unregister(texture_stream_source_id source);
     [[nodiscard]] jobs::job_future<io::file_result<io::file_buffer>>

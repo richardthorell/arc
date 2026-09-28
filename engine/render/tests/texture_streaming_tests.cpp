@@ -321,6 +321,36 @@ TEST_CASE("texture artifact sources constrain loose and package-relative ranges"
     std::filesystem::remove(path);
 }
 
+TEST_CASE("texture artifact sources stream immutable VFS ranges and reject superseded handles")
+{
+    using namespace arc;
+    jobs::job_system jobs({.worker_count = 1, .run_inline = false, .io_worker_count = 1});
+    io::virtual_file_system vfs(jobs);
+    auto provider = std::make_shared<io::memory_file_provider>(jobs);
+    const std::array initial{io::memory_provider_update{
+        .relative_path = "texture.arcimg",
+        .bytes = {std::byte{'p'}, std::byte{'r'}, std::byte{'e'}, std::byte{'A'}, std::byte{'R'}, std::byte{'C'}}}};
+    REQUIRE(provider->publish(initial).succeeded());
+    auto root = io::virtual_path::parse("artifact://game");
+    REQUIRE(root.succeeded());
+    REQUIRE(vfs.mount({.root = root.value(), .provider = provider}).succeeded());
+    auto file = vfs.resolve("artifact://game/texture.arcimg");
+    REQUIRE(file.succeeded());
+
+    render::filesystem_texture_artifact_source source(vfs);
+    source.register_package_range(91, file.value(), 3, 3);
+    const auto payload = source.read_range(91, 0, 3).get();
+    REQUIRE(payload.succeeded());
+    CHECK(payload.value() == io::file_buffer{std::byte{'A'}, std::byte{'R'}, std::byte{'C'}});
+
+    const std::array replacement{io::memory_provider_update{
+        .relative_path = "texture.arcimg", .bytes = {std::byte{'n'}, std::byte{'e'}, std::byte{'w'}}}};
+    REQUIRE(provider->publish(replacement).succeeded());
+    const auto stale = source.read_range(91, 0, 3).get();
+    REQUIRE_FALSE(stale.succeeded());
+    CHECK(stale.error().code == io::file_error_code::stale_handle);
+}
+
 TEST_CASE("texture residency deduplicates demand rejects stale work and evicts unprotected fine mips")
 {
     using namespace arc::render;

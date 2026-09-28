@@ -92,8 +92,14 @@ terrain_streaming_bind_result terrain_virtual_geometry_streaming_binding::synchr
     resources_.reserve(staged.size());
     for (auto& binding : staged)
     {
-        source.register_package_range(binding.resource, binding.resource_generation, std::move(binding.location.path),
-                                      binding.location.offset, binding.artifact_size, std::move(binding.pages));
+        if (binding.location.file.valid())
+            source.register_package_range(binding.resource, binding.resource_generation,
+                                          std::move(binding.location.file), binding.location.offset,
+                                          binding.artifact_size, std::move(binding.pages));
+        else
+            source.register_package_range(binding.resource, binding.resource_generation,
+                                          std::move(binding.location.path), binding.location.offset,
+                                          binding.artifact_size, std::move(binding.pages));
         resources_.push_back(binding.resource);
         ++result.bound_regions;
     }

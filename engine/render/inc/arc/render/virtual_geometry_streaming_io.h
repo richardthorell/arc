@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arc/io/io.h>
+#include <arc/io/virtual_file_system.h>
 #include <arc/render/virtual_geometry.h>
 #include <arc/render/virtual_geometry_artifact.h>
 
@@ -64,6 +65,7 @@ class filesystem_virtual_geometry_artifact_source final : public virtual_geometr
 {
 public:
     explicit filesystem_virtual_geometry_artifact_source(io::async_file_service& files);
+    explicit filesystem_virtual_geometry_artifact_source(io::virtual_file_system& files);
     ~filesystem_virtual_geometry_artifact_source();
     filesystem_virtual_geometry_artifact_source(filesystem_virtual_geometry_artifact_source&&) noexcept;
     filesystem_virtual_geometry_artifact_source& operator=(filesystem_virtual_geometry_artifact_source&&) noexcept;
@@ -72,6 +74,9 @@ public:
 
     void register_package_range(virtual_mesh_handle resource, std::uint32_t resource_generation,
                                 std::filesystem::path package, std::uint64_t artifact_base_offset,
+                                std::uint64_t artifact_size, std::vector<virtual_geometry_artifact_page_range> pages);
+    void register_package_range(virtual_mesh_handle resource, std::uint32_t resource_generation,
+                                io::resolved_virtual_file file, std::uint64_t artifact_base_offset,
                                 std::uint64_t artifact_size, std::vector<virtual_geometry_artifact_page_range> pages);
     void unregister(virtual_mesh_handle resource);
 
