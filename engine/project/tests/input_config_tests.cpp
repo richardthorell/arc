@@ -180,3 +180,45 @@ TEST_CASE("project input config rejects unknown physical controls")
     CHECK_FALSE(loaded.succeeded);
     CHECK(loaded.error.find("HyperSpace") != std::string::npos);
 }
+
+TEST_CASE("project input config maps motion sensor axes")
+{
+    temporary_input_config temporary;
+    const auto path = temporary.write(R"json({
+      "version": 1,
+      "contexts": [{
+        "name": "Gameplay",
+        "axes": [
+          {"name": "Turn", "bindings": [{"device": "motion", "control": "GyroZ"}]},
+          {"name": "Tilt", "bindings": [{"device": "sensor", "control": "AccelerometerX"}]}
+        ]
+      }]
+    })json");
+
+    const auto loaded = arc::project::load_input_config(path);
+    REQUIRE(loaded.succeeded);
+    REQUIRE(loaded.config.contexts.size() == 1);
+    REQUIRE(loaded.config.contexts[0].axes.size() == 2);
+    CHECK(loaded.config.contexts[0].axes[0].bindings[0].binding.device ==
+          arc::input::input_device_type::motion_controller);
+    CHECK(loaded.config.contexts[0].axes[0].bindings[0].binding.control ==
+          arc::input::make_sensor_axis_control(arc::input::sensor_axis::gyroscope_z));
+    CHECK(loaded.config.contexts[0].axes[1].bindings[0].binding.control ==
+          arc::input::make_sensor_axis_control(arc::input::sensor_axis::accelerometer_x));
+}
+
+TEST_CASE("project input config rejects unknown motion sensor controls")
+{
+    temporary_input_config temporary;
+    const auto path = temporary.write(R"json({
+      "version": 1,
+      "contexts": [{
+        "name": "Gameplay",
+        "axes": [{"name": "Tilt", "bindings": [{"device": "motion", "control": "CompassX"}]}]
+      }]
+    })json");
+
+    const auto loaded = arc::project::load_input_config(path);
+    CHECK_FALSE(loaded.succeeded);
+    CHECK(loaded.error.find("CompassX") != std::string::npos);
+}
