@@ -100,6 +100,18 @@ std::optional<input::mouse_button> mouse_button_from_token(std::string token)
     return std::nullopt;
 }
 
+std::optional<input::mouse_axis> mouse_axis_from_token(std::string token)
+{
+    token = normalized_token(std::move(token));
+    if (token == "positionx") return input::mouse_axis::position_x;
+    if (token == "positiony") return input::mouse_axis::position_y;
+    if (token == "deltax") return input::mouse_axis::delta_x;
+    if (token == "deltay") return input::mouse_axis::delta_y;
+    if (token == "wheelx") return input::mouse_axis::wheel_x;
+    if (token == "wheely" || token == "wheel") return input::mouse_axis::wheel_y;
+    return std::nullopt;
+}
+
 bool parse_processors(const nlohmann::json& source, input::input_binding& binding, std::string& error)
 {
     if (!source.contains("processors")) return true;
@@ -133,6 +145,11 @@ bool parse_processors(const nlohmann::json& source, input::input_binding& bindin
             processor.type = input::input_processor_type::clamp;
             processor.value = value.value("minimum", -1.0f);
             processor.secondary = value.value("maximum", 1.0f);
+            if (processor.value > processor.secondary)
+            {
+                error = "input clamp processor minimum cannot exceed maximum";
+                return false;
+            }
         }
         else
         {
@@ -169,18 +186,25 @@ std::optional<input::input_binding> parse_binding(const nlohmann::json& source, 
     }
     else if (device == "mouse")
     {
-        const auto button = mouse_button_from_token(control);
-        if (!button)
+        if (const auto button = mouse_button_from_token(control))
         {
-            error = "unknown mouse button control '" + control + "'";
+            result.device = input::input_device_type::mouse;
+            result.control = input::make_mouse_button_control(*button);
+        }
+        else if (const auto axis = mouse_axis_from_token(control))
+        {
+            result.device = input::input_device_type::mouse;
+            result.control = input::make_mouse_axis_control(*axis);
+        }
+        else
+        {
+            error = "unknown mouse control '" + control + "'";
             return std::nullopt;
         }
-        result.device = input::input_device_type::mouse;
-        result.control = input::make_mouse_button_control(*button);
     }
     else
     {
-        error = "unsupported action binding device '" + source.at("device").get<std::string>() + "'";
+        error = "unsupported input binding device '" + source.at("device").get<std::string>() + "'";
         return std::nullopt;
     }
 
@@ -231,7 +255,6 @@ input_config_load_result load_input_config(const std::filesystem::path& path)
                     if (!action_json.is_object() || !action_json.contains("name") ||
                         !action_json.at("name").is_string())
                         return {.error = "input action requires a string name"};
-
                     input_action_config action;
                     action.name = action_json.at("name").get<std::string>();
                     if (action.name.empty()) return {.error = "input action name cannot be empty"};
@@ -241,7 +264,6 @@ input_config_load_result load_input_config(const std::filesystem::path& path)
                     if (!action_json.contains("bindings") || !action_json.at("bindings").is_array() ||
                         action_json.at("bindings").empty())
                         return {.error = "input action '" + action.name + "' requires at least one binding"};
-
                     for (const auto& binding_json : action_json.at("bindings"))
                     {
                         std::string error;
@@ -250,6 +272,66 @@ input_config_load_result load_input_config(const std::filesystem::path& path)
                         action.bindings.push_back(std::move(*binding));
                     }
                     context.actions.push_back(std::move(action));
+                }
+            }
+
+            if (context_json.contains("axes"))
+            {
+                if (!context_json.at("axes").is_array()) return {.error = "input context axes must be an array"};
+                std::unordered_set<std::string> names;
+                for (const auto& axis_json : context_json.at("axes"))
+                {
+                    if (!axis_json.is_object() || !axis_json.contains("name") || !axis_json.at("name").is_string())
+                        return {.error = "input axis requires a string name"};
+                    input_axis_config axis;
+                    axis.name = axis_json.at("name").get<std::string>();
+                    if (axis.name.empty()) return {.error = "input axis name cannot be empty"};
+                    if (!names.emplace(axis.name).second) return {.error = "duplicate input axis '" + axis.name + "'"};
+                    if (!axis_json.contains("bindings") || !axis_json.at("bindings").is_array() ||
+                        axis_json.at("bindings").empty())
+                        return {.error = "input axis '" + axis.name + "' requires at least one binding"};
+                    for (const auto& binding_json : axis_json.at("bindings"))
+                    {
+                        std::string error;
+                        auto binding = parse_binding(binding_json, error);
+                        if (!binding) return {.error = "input axis '" + axis.name + "': " + std::move(error)};
+                        axis.bindings.push_back(
+                            {.binding = std::move(*binding), .contribution = binding_json.value("contribution", 1.0f)});
+                    }
+                    context.axes.push_back(std::move(axis));
+                }
+            }
+
+            if (context_json.contains("axes2d"))
+            {
+                if (!context_json.at("axes2d").is_array()) return {.error = "input context axes2d must be an array"};
+                std::unordered_set<std::string> names;
+                for (const auto& axis_json : context_json.at("axes2d"))
+                {
+                    if (!axis_json.is_object() || !axis_json.contains("name") || !axis_json.at("name").is_string())
+                        return {.error = "input 2D axis requires a string name"};
+                    input_axis2d_config axis;
+                    axis.name = axis_json.at("name").get<std::string>();
+                    if (axis.name.empty()) return {.error = "input 2D axis name cannot be empty"};
+                    if (!names.emplace(axis.name).second)
+                        return {.error = "duplicate input 2D axis '" + axis.name + "'"};
+                    if (!axis_json.contains("bindings") || !axis_json.at("bindings").is_array() ||
+                        axis_json.at("bindings").empty())
+                        return {.error = "input 2D axis '" + axis.name + "' requires at least one binding"};
+                    for (const auto& binding_json : axis_json.at("bindings"))
+                    {
+                        std::string error;
+                        auto binding = parse_binding(binding_json, error);
+                        if (!binding) return {.error = "input 2D axis '" + axis.name + "': " + std::move(error)};
+                        if (!binding_json.contains("contribution") || !binding_json.at("contribution").is_array() ||
+                            binding_json.at("contribution").size() != 2)
+                            return {.error = "input 2D axis '" + axis.name + "' binding contribution must be [x, y]"};
+                        const auto& contribution = binding_json.at("contribution");
+                        axis.bindings.push_back(
+                            {.binding = std::move(*binding),
+                             .contribution = {contribution.at(0).get<float>(), contribution.at(1).get<float>()}});
+                    }
+                    context.axes2d.push_back(std::move(axis));
                 }
             }
             config.contexts.push_back(std::move(context));
@@ -279,6 +361,20 @@ input_config_apply_result apply_input_config(const input_config& config, input::
                 return {.error = "input action requires a name and at least one binding"};
             for (const auto& binding : action.bindings)
                 player.bind_action(context.name, action.name, binding);
+        }
+        for (const auto& axis : context.axes)
+        {
+            if (axis.name.empty() || axis.bindings.empty())
+                return {.error = "input axis requires a name and at least one binding"};
+            for (const auto& binding : axis.bindings)
+                player.bind_axis(context.name, axis.name, binding.binding, binding.contribution);
+        }
+        for (const auto& axis : context.axes2d)
+        {
+            if (axis.name.empty() || axis.bindings.empty())
+                return {.error = "input 2D axis requires a name and at least one binding"};
+            for (const auto& binding : axis.bindings)
+                player.bind_axis2d(context.name, axis.name, binding.binding, binding.contribution);
         }
     }
     return {.succeeded = true};
