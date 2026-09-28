@@ -173,7 +173,8 @@ cas_overlay_provider::cas_overlay_provider(io::async_file_service& files, std::f
     : implementation_(std::make_unique<implementation>())
 {
     implementation_->files = &files;
-    implementation_->root = std::filesystem::absolute(std::move(cache_root)).lexically_normal();
+    cache_root = std::filesystem::absolute(cache_root).lexically_normal();
+    implementation_->root = std::move(cache_root);
 }
 
 cas_overlay_provider::~cas_overlay_provider() = default;

@@ -125,7 +125,7 @@ std::optional<cooked_artifact_address> parse_cooked_artifact_virtual_path(const 
         return std::nullopt;
     const auto asset = parse_asset_guid(relative.substr(0, first));
     const auto schema = parse_schema(relative.substr(first + 1, second - first - 1));
-    const auto name = decode_component(relative.substr(second + 1));
+    auto name = decode_component(relative.substr(second + 1));
     if (!asset || !schema || !name || name->empty()) return std::nullopt;
     return cooked_artifact_address{.asset = *asset, .schema = *schema, .name = std::move(*name)};
 }

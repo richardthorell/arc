@@ -377,7 +377,7 @@ jobs::job_future<file_result<file_buffer>> virtual_file_system::read_all(const r
     if (file.size() > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()))
         return failed_read(logical_error(file_error_code::invalid_range, file.path().string(),
                                          "Virtual file is too large for this process"));
-    return read_range(file, 0, static_cast<std::size_t>(file.size()), cancellation);
+    return read_range(file, 0, static_cast<std::size_t>(file.size()), std::move(cancellation));
 }
 
 jobs::job_future<file_result<file_buffer>> virtual_file_system::read_range(const resolved_virtual_file& file,
@@ -394,7 +394,7 @@ jobs::job_future<file_result<file_buffer>> virtual_file_system::read_range(const
         telemetry_.read_operations++;
         telemetry_.read_bytes += bytes;
     }
-    return file.provider_->read_range(file.provider_file_, offset, bytes, cancellation);
+    return file.provider_->read_range(file.provider_file_, offset, bytes, std::move(cancellation));
 }
 
 jobs::job_future<file_result<file_buffer>> virtual_file_system::read_all(const virtual_path& path,
@@ -402,7 +402,7 @@ jobs::job_future<file_result<file_buffer>> virtual_file_system::read_all(const v
 {
     auto file = resolve(path);
     if (!file) return failed_read(file.error());
-    return read_all(file.value(), cancellation);
+    return read_all(file.value(), std::move(cancellation));
 }
 
 file_result<std::vector<provider_directory_entry>> virtual_file_system::enumerate(const virtual_path& prefix)
@@ -547,8 +547,10 @@ virtual_file_system_telemetry virtual_file_system::telemetry() const noexcept
 
 filesystem_file_provider::filesystem_file_provider(async_file_service& files, std::filesystem::path root,
                                                    filesystem_provider_config config)
-    : files_(&files), root_(std::filesystem::absolute(std::move(root)).lexically_normal()), config_(config)
+    : files_(&files), config_(config)
 {
+    root = std::filesystem::absolute(root).lexically_normal();
+    root_ = std::move(root);
 }
 
 provider_capabilities filesystem_file_provider::capabilities() const noexcept
