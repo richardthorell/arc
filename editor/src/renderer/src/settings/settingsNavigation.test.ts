@@ -84,7 +84,14 @@ describe('settingsNavigation', () => {
       icon: 'hammer',
       keys: ['platform.windows.cmakePath', 'platform.windows.ninjaPath'],
     });
-    expect(getEditorSettingsPage('platforms.apple.ios')?.cards).toEqual([{ section: 'iOS' }]);
+    expect(getEditorSettingsPage('platforms.windows')?.cards?.[0]).toMatchObject({ icon: 'windows' });
+    expect(getEditorSettingsPage('platforms.android')?.cards?.[0]).toMatchObject({ icon: 'android' });
+    expect(getEditorSettingsPage('platforms.linux')?.cards?.[0]).toMatchObject({ icon: 'linux' });
+    expect(getEditorSettingsPage('platforms.apple.ios')?.cards).toEqual([{ section: 'iOS', icon: 'apple' }]);
+    expect(getEditorSettingsPage('platforms.web')?.cards?.[0]).toMatchObject({ icon: 'web' });
+    expect(getEditorSettingsPage('platforms.xbox')?.cards?.[0]).toMatchObject({ icon: 'xbox' });
+    expect(getEditorSettingsPage('platforms.playstation')?.cards?.[0]).toMatchObject({ icon: 'playstation' });
+    expect(getEditorSettingsPage('platforms.switch')?.cards?.[0]).toMatchObject({ icon: 'switch' });
     expect(getEditorSettingsPage('system.recovery')?.content).toEqual(['settings', 'recovery']);
     expect(getEditorSettingsPage('tools.extensions')?.content).toEqual(['settings', 'extensions']);
   });
