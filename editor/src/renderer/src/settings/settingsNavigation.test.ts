@@ -60,6 +60,12 @@ describe('settingsNavigation', () => {
     expect(getEditorSettingsPage('tools.extensions')?.content).toEqual(['settings', 'extensions']);
   });
 
+  it('inherits group header images into child pages without replacing explicit page headers', () => {
+    expect(getEditorSettingsPage('platforms.windows')?.headerImage).toContain('platforms-settings-header');
+    expect(getEditorSettingsPage('platforms.android')?.headerImage).toContain('platforms-settings-header');
+    expect(getEditorSettingsPage('editing.viewport')?.headerImage).toContain('viewport-settings-header');
+  });
+
   it('derives default-expanded groups from the hierarchy', () => {
     expect(defaultExpandedSettingsNodes).toEqual(['editing', 'content', 'ai', 'platforms', 'tools', 'system']);
     expect(getEditorSettingsPage('editing')).toBeNull();

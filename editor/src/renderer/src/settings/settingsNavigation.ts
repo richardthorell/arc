@@ -2,6 +2,7 @@ import type { AiProviderId } from '../../../common/aiProviderTypes';
 import type { EditorSettingDescriptor } from '../../../common/editorWorkflowTypes';
 import type { UiTreeNode } from '../ui';
 import generalSettingsHeader from './assets/general-settings-header.webp';
+import platformsSettingsHeader from './assets/platforms-settings-header.webp';
 import viewportSettingsHeader from './assets/viewport-settings-header.webp';
 
 export type EditorSettingsPageId =
@@ -50,6 +51,7 @@ type EditorSettingsGroup = {
   id: string;
   label: string;
   keywords?: readonly string[];
+  headerImage?: string;
   defaultExpanded?: boolean;
   children: readonly EditorSettingsDefinitionNode[];
 };
@@ -162,6 +164,7 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
     id: 'platforms',
     label: 'Platforms & SDKs',
     keywords: ['windows', 'android', 'linux', 'apple', 'sdk', 'toolchain'],
+    headerImage: platformsSettingsHeader,
     defaultExpanded: true,
     children: [
       {
@@ -248,8 +251,15 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
 
 const isGroup = (node: EditorSettingsDefinitionNode): node is EditorSettingsGroup => 'children' in node;
 
-const flattenPages = (nodes: readonly EditorSettingsDefinitionNode[]): EditorSettingsPage[] =>
-  nodes.flatMap((node) => (isGroup(node) ? flattenPages(node.children) : [node]));
+const flattenPages = (
+  nodes: readonly EditorSettingsDefinitionNode[],
+  inheritedHeaderImage?: string,
+): EditorSettingsPage[] =>
+  nodes.flatMap((node) => {
+    if (isGroup(node)) return flattenPages(node.children, node.headerImage ?? inheritedHeaderImage);
+    if (node.headerImage || !inheritedHeaderImage) return [node];
+    return [{ ...node, headerImage: inheritedHeaderImage }];
+  });
 
 const toNavigationNode = (node: EditorSettingsDefinitionNode): UiTreeNode => ({
   id: node.id,
