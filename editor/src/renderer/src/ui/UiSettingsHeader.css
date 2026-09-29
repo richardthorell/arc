@@ -7,6 +7,21 @@
   padding: 28px var(--ui-settings-content-padding-x, 28px) 42px;
 }
 
+.ui-settings-header::after {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  content: '';
+  background: linear-gradient(
+    90deg,
+    rgba(5, 10, 14, 0.64) 0%,
+    rgba(5, 10, 14, 0.48) 30%,
+    rgba(5, 10, 14, 0.2) 52%,
+    transparent 72%
+  );
+}
+
 .ui-settings-header-background {
   position: absolute;
   inset: 0;
