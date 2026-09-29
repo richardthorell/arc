@@ -65,6 +65,12 @@ struct [[nodiscard]] input_config_load_result
     std::string error;
 };
 
+struct [[nodiscard]] input_config_save_result
+{
+    bool succeeded{};
+    std::string error;
+};
+
 struct [[nodiscard]] input_config_apply_result
 {
     bool succeeded{};
@@ -73,6 +79,9 @@ struct [[nodiscard]] input_config_apply_result
 
 /** Load the project semantic input mapping stored in Config/Input.json. */
 [[nodiscard]] input_config_load_result load_input_config(const std::filesystem::path& path);
+
+/** Save the project mapping using ARC's deterministic canonical JSON schema. */
+[[nodiscard]] input_config_save_result save_input_config(const input_config& config, const std::filesystem::path& path);
 
 /** Apply one project mapping to a player in ARC's runtime-owned input system. */
 [[nodiscard]] input_config_apply_result apply_input_config(const input_config& config, input::input_system& system,

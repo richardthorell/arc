@@ -1,4 +1,4 @@
-#include <arc/input/input.h>
+#include <arc/input/touch.h>
 
 #include <algorithm>
 #include <cmath>
@@ -23,8 +23,15 @@ bool input_system::submit_touch_contacts(input_device_id id, std::vector<input_t
     if (device_it == devices_.end()) return false;
     if (!device_it->second.connected_ && !contacts.empty()) return false;
 
+    auto set_control = [&](touch_control control, float value)
+    { device_it->second.current_values_[control_key(make_touch_control(control))] = value; };
+
     if (contacts.empty())
     {
+        set_control(touch_control::primary_down, 0.0f);
+        set_control(touch_control::primary_x, 0.0f);
+        set_control(touch_control::primary_y, 0.0f);
+        set_control(touch_control::primary_pressure, 0.0f);
         touch_contacts_.erase(id.value);
         return true;
     }
@@ -44,6 +51,13 @@ bool input_system::submit_touch_contacts(input_device_id id, std::vector<input_t
             contact.pressure = normalize_touch_value(contact.pressure);
         }
     }
+
+    const auto primary = std::min_element(contacts.begin(), contacts.end(),
+                                          [](const auto& lhs, const auto& rhs) { return lhs.id < rhs.id; });
+    set_control(touch_control::primary_down, 1.0f);
+    set_control(touch_control::primary_x, primary->position[0]);
+    set_control(touch_control::primary_y, primary->position[1]);
+    set_control(touch_control::primary_pressure, primary->pressure_available ? primary->pressure : 0.0f);
 
     touch_contacts_.insert_or_assign(id.value, std::move(contacts));
     return true;

@@ -1,8 +1,12 @@
+#include <arc/input/gamepad.h>
+#include <arc/input/touch.h>
 #include <arc/project/input_config.h>
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <fstream>
+#include <limits>
 #include <optional>
 #include <unordered_set>
 #include <utility>
@@ -21,6 +25,60 @@ std::string normalized_token(std::string value)
     value.erase(std::remove_if(value.begin(), value.end(), [](unsigned char ch) { return ch == '_' || ch == '-'; }),
                 value.end());
     return value;
+}
+
+std::optional<std::uint32_t> parse_version_value(const nlohmann::json& value)
+{
+    if (value.is_number_unsigned())
+    {
+        const auto raw = value.get<std::uint64_t>();
+        if (raw <= std::numeric_limits<std::uint32_t>::max()) return static_cast<std::uint32_t>(raw);
+        return std::nullopt;
+    }
+    if (value.is_number_integer())
+    {
+        const auto raw = value.get<std::int64_t>();
+        if (raw >= 0 && static_cast<std::uint64_t>(raw) <= std::numeric_limits<std::uint32_t>::max())
+            return static_cast<std::uint32_t>(raw);
+    }
+    return std::nullopt;
+}
+
+std::optional<std::uint32_t> config_version_from_json(const nlohmann::json& root, std::string& error)
+{
+    std::optional<std::uint32_t> version;
+    std::optional<std::uint32_t> legacy_version;
+    if (root.contains("version"))
+    {
+        version = parse_version_value(root.at("version"));
+        if (!version)
+        {
+            error = "input config version must be an unsigned integer";
+            return std::nullopt;
+        }
+    }
+    if (root.contains("formatVersion"))
+    {
+        legacy_version = parse_version_value(root.at("formatVersion"));
+        if (!legacy_version)
+        {
+            error = "input config formatVersion must be an unsigned integer";
+            return std::nullopt;
+        }
+    }
+    if (version && legacy_version && *version != *legacy_version)
+    {
+        error = "input config version and legacy formatVersion disagree";
+        return std::nullopt;
+    }
+    return version.value_or(legacy_version.value_or(input_config_version));
+}
+
+bool finite_number(const nlohmann::json& value, float& result)
+{
+    if (!value.is_number()) return false;
+    result = value.get<float>();
+    return std::isfinite(result);
 }
 
 std::optional<input::key> key_from_token(std::string token)
@@ -112,6 +170,60 @@ std::optional<input::mouse_axis> mouse_axis_from_token(std::string token)
     return std::nullopt;
 }
 
+std::optional<input::gamepad_button> gamepad_button_from_token(std::string token)
+{
+    token = normalized_token(std::move(token));
+    const std::pair<std::string_view, input::gamepad_button> named[] = {
+        {"south", input::gamepad_button::south},
+        {"east", input::gamepad_button::east},
+        {"west", input::gamepad_button::west},
+        {"north", input::gamepad_button::north},
+        {"auxiliary1", input::gamepad_button::auxiliary_1},
+        {"auxiliary2", input::gamepad_button::auxiliary_2},
+        {"dpadup", input::gamepad_button::dpad_up},
+        {"dpaddown", input::gamepad_button::dpad_down},
+        {"dpadleft", input::gamepad_button::dpad_left},
+        {"dpadright", input::gamepad_button::dpad_right},
+        {"leftshoulder", input::gamepad_button::left_shoulder},
+        {"rightshoulder", input::gamepad_button::right_shoulder},
+        {"lefttriggerbutton", input::gamepad_button::left_trigger_button},
+        {"righttriggerbutton", input::gamepad_button::right_trigger_button},
+        {"leftstick", input::gamepad_button::left_stick},
+        {"rightstick", input::gamepad_button::right_stick},
+        {"leftstickup", input::gamepad_button::left_stick_up},
+        {"leftstickdown", input::gamepad_button::left_stick_down},
+        {"leftstickleft", input::gamepad_button::left_stick_left},
+        {"leftstickright", input::gamepad_button::left_stick_right},
+        {"rightstickup", input::gamepad_button::right_stick_up},
+        {"rightstickdown", input::gamepad_button::right_stick_down},
+        {"rightstickleft", input::gamepad_button::right_stick_left},
+        {"rightstickright", input::gamepad_button::right_stick_right},
+        {"paddleleft1", input::gamepad_button::paddle_left_1},
+        {"paddleleft2", input::gamepad_button::paddle_left_2},
+        {"paddleright1", input::gamepad_button::paddle_right_1},
+        {"paddleright2", input::gamepad_button::paddle_right_2},
+        {"view", input::gamepad_button::view},
+        {"menu", input::gamepad_button::menu},
+        {"guide", input::gamepad_button::guide},
+        {"share", input::gamepad_button::share},
+    };
+    const auto found =
+        std::find_if(std::begin(named), std::end(named), [&token](const auto& entry) { return entry.first == token; });
+    return found == std::end(named) ? std::nullopt : std::optional<input::gamepad_button>{found->second};
+}
+
+std::optional<input::gamepad_axis> gamepad_axis_from_token(std::string token)
+{
+    token = normalized_token(std::move(token));
+    if (token == "leftx" || token == "leftstickx") return input::gamepad_axis::left_x;
+    if (token == "lefty" || token == "leftsticky") return input::gamepad_axis::left_y;
+    if (token == "rightx" || token == "rightstickx") return input::gamepad_axis::right_x;
+    if (token == "righty" || token == "rightsticky") return input::gamepad_axis::right_y;
+    if (token == "lefttrigger") return input::gamepad_axis::left_trigger;
+    if (token == "righttrigger") return input::gamepad_axis::right_trigger;
+    return std::nullopt;
+}
+
 std::optional<input::sensor_axis> sensor_axis_from_token(std::string token)
 {
     token = normalized_token(std::move(token));
@@ -121,6 +233,16 @@ std::optional<input::sensor_axis> sensor_axis_from_token(std::string token)
     if (token == "accelerometerx" || token == "accelx") return input::sensor_axis::accelerometer_x;
     if (token == "accelerometery" || token == "accely") return input::sensor_axis::accelerometer_y;
     if (token == "accelerometerz" || token == "accelz") return input::sensor_axis::accelerometer_z;
+    return std::nullopt;
+}
+
+std::optional<input::touch_control> touch_control_from_token(std::string token)
+{
+    token = normalized_token(std::move(token));
+    if (token == "primarydown" || token == "touchprimarydown") return input::touch_control::primary_down;
+    if (token == "primaryx" || token == "touchprimaryx") return input::touch_control::primary_x;
+    if (token == "primaryy" || token == "touchprimaryy") return input::touch_control::primary_y;
+    if (token == "primarypressure" || token == "touchprimarypressure") return input::touch_control::primary_pressure;
     return std::nullopt;
 }
 
@@ -145,7 +267,11 @@ bool parse_processors(const nlohmann::json& source, input::input_binding& bindin
         if (type == "scale")
         {
             processor.type = input::input_processor_type::scale;
-            processor.value = value.value("value", 1.0f);
+            if (value.contains("value") && !finite_number(value.at("value"), processor.value))
+            {
+                error = "input scale processor value must be a finite number";
+                return false;
+            }
         }
         else if (type == "invert")
         {
@@ -154,8 +280,18 @@ bool parse_processors(const nlohmann::json& source, input::input_binding& bindin
         else if (type == "clamp")
         {
             processor.type = input::input_processor_type::clamp;
-            processor.value = value.value("minimum", -1.0f);
-            processor.secondary = value.value("maximum", 1.0f);
+            processor.value = -1.0f;
+            processor.secondary = 1.0f;
+            if (value.contains("minimum") && !finite_number(value.at("minimum"), processor.value))
+            {
+                error = "input clamp processor minimum must be a finite number";
+                return false;
+            }
+            if (value.contains("maximum") && !finite_number(value.at("maximum"), processor.secondary))
+            {
+                error = "input clamp processor maximum must be a finite number";
+                return false;
+            }
             if (processor.value > processor.secondary)
             {
                 error = "input clamp processor minimum cannot exceed maximum";
@@ -213,7 +349,24 @@ std::optional<input::input_binding> parse_binding(const nlohmann::json& source, 
             return std::nullopt;
         }
     }
-    else if (device == "motion" || device == "sensor")
+    else if (device == "gamepad" || device == "controller")
+    {
+        result.device = input::input_device_type::gamepad;
+        if (const auto button = gamepad_button_from_token(control))
+            result.control = input::make_gamepad_button_control(*button);
+        else if (const auto axis = gamepad_axis_from_token(control))
+            result.control = input::make_gamepad_axis_control(*axis);
+        else if (const auto sensor = sensor_axis_from_token(control))
+            result.control = input::make_sensor_axis_control(*sensor);
+        else if (const auto touch = touch_control_from_token(control))
+            result.control = input::make_touch_control(*touch);
+        else
+        {
+            error = "unknown gamepad control '" + control + "'";
+            return std::nullopt;
+        }
+    }
+    else if (device == "motion" || device == "sensor" || device == "motioncontroller")
     {
         const auto axis = sensor_axis_from_token(control);
         if (!axis)
@@ -224,6 +377,17 @@ std::optional<input::input_binding> parse_binding(const nlohmann::json& source, 
         result.device = input::input_device_type::motion_controller;
         result.control = input::make_sensor_axis_control(*axis);
     }
+    else if (device == "touch" || device == "touchscreen")
+    {
+        const auto touch = touch_control_from_token(control);
+        if (!touch)
+        {
+            error = "unknown touch control '" + control + "'";
+            return std::nullopt;
+        }
+        result.device = input::input_device_type::touch;
+        result.control = input::make_touch_control(*touch);
+    }
     else
     {
         error = "unsupported input binding device '" + source.at("device").get<std::string>() + "'";
@@ -232,6 +396,55 @@ std::optional<input::input_binding> parse_binding(const nlohmann::json& source, 
 
     if (!parse_processors(source, result, error)) return std::nullopt;
     return result;
+}
+
+bool parse_priority(const nlohmann::json& source, int& priority, std::string& error)
+{
+    if (!source.contains("priority")) return true;
+    const auto& value = source.at("priority");
+    if (!value.is_number_integer())
+    {
+        error = "input context priority must be an integer";
+        return false;
+    }
+    const auto raw = value.get<std::int64_t>();
+    if (raw < std::numeric_limits<int>::min() || raw > std::numeric_limits<int>::max())
+    {
+        error = "input context priority is out of range";
+        return false;
+    }
+    priority = static_cast<int>(raw);
+    return true;
+}
+
+bool parse_scalar_contribution(const nlohmann::json& source, float& contribution, std::string& error)
+{
+    if (!source.contains("contribution")) return true;
+    if (!finite_number(source.at("contribution"), contribution))
+    {
+        error = "input axis binding contribution must be a finite number";
+        return false;
+    }
+    return true;
+}
+
+bool parse_axis2d_contribution(const nlohmann::json& source, math::vector2f& contribution, std::string& error)
+{
+    if (!source.contains("contribution") || !source.at("contribution").is_array() ||
+        source.at("contribution").size() != 2)
+    {
+        error = "input 2D axis binding contribution must be [x, y]";
+        return false;
+    }
+    float x{};
+    float y{};
+    if (!finite_number(source.at("contribution").at(0), x) || !finite_number(source.at("contribution").at(1), y))
+    {
+        error = "input 2D axis binding contribution values must be finite numbers";
+        return false;
+    }
+    contribution = {x, y};
+    return true;
 }
 
 } // namespace
@@ -245,10 +458,15 @@ input_config_load_result load_input_config(const std::filesystem::path& path)
         nlohmann::json root;
         stream >> root;
         if (!root.is_object()) return {.error = "input config root must be an object"};
+
+        std::string version_error;
+        const auto version = config_version_from_json(root, version_error);
+        if (!version) return {.error = std::move(version_error)};
+        if (*version != input_config_version)
+            return {.error = "unsupported input config version " + std::to_string(*version)};
+
         input_config config;
-        config.version = root.value("version", input_config_version);
-        if (config.version != input_config_version)
-            return {.error = "unsupported input config version " + std::to_string(config.version)};
+        config.version = *version;
         if (!root.contains("contexts")) return {.succeeded = true, .config = std::move(config)};
         if (!root.at("contexts").is_array()) return {.error = "input config contexts must be an array"};
 
@@ -262,8 +480,15 @@ input_config_load_result load_input_config(const std::filesystem::path& path)
             if (context.name.empty()) return {.error = "input context name cannot be empty"};
             if (!context_names.emplace(context.name).second)
                 return {.error = "duplicate input context '" + context.name + "'"};
-            context.priority = context_json.value("priority", 0);
-            context.enabled = context_json.value("enabled", true);
+            std::string priority_error;
+            if (!parse_priority(context_json, context.priority, priority_error))
+                return {.error = std::move(priority_error)};
+            if (context_json.contains("enabled"))
+            {
+                if (!context_json.at("enabled").is_boolean())
+                    return {.error = "input context enabled must be a boolean"};
+                context.enabled = context_json.at("enabled").get<bool>();
+            }
 
             if (context_json.contains("actions"))
             {
@@ -313,8 +538,10 @@ input_config_load_result load_input_config(const std::filesystem::path& path)
                         std::string error;
                         auto binding = parse_binding(binding_json, error);
                         if (!binding) return {.error = "input axis '" + axis.name + "': " + std::move(error)};
-                        axis.bindings.push_back(
-                            {.binding = std::move(*binding), .contribution = binding_json.value("contribution", 1.0f)});
+                        float contribution = 1.0f;
+                        if (!parse_scalar_contribution(binding_json, contribution, error))
+                            return {.error = "input axis '" + axis.name + "': " + std::move(error)};
+                        axis.bindings.push_back({.binding = std::move(*binding), .contribution = contribution});
                     }
                     context.axes.push_back(std::move(axis));
                 }
@@ -340,13 +567,10 @@ input_config_load_result load_input_config(const std::filesystem::path& path)
                         std::string error;
                         auto binding = parse_binding(binding_json, error);
                         if (!binding) return {.error = "input 2D axis '" + axis.name + "': " + std::move(error)};
-                        if (!binding_json.contains("contribution") || !binding_json.at("contribution").is_array() ||
-                            binding_json.at("contribution").size() != 2)
-                            return {.error = "input 2D axis '" + axis.name + "' binding contribution must be [x, y]"};
-                        const auto& contribution = binding_json.at("contribution");
-                        axis.bindings.push_back(
-                            {.binding = std::move(*binding),
-                             .contribution = {contribution.at(0).get<float>(), contribution.at(1).get<float>()}});
+                        math::vector2f contribution{};
+                        if (!parse_axis2d_contribution(binding_json, contribution, error))
+                            return {.error = "input 2D axis '" + axis.name + "': " + std::move(error)};
+                        axis.bindings.push_back({.binding = std::move(*binding), .contribution = contribution});
                     }
                     context.axes2d.push_back(std::move(axis));
                 }
