@@ -26,8 +26,8 @@ describe('graphViewport', () => {
   it('fits graph bounds into the viewport with screen-space padding', () => {
     expect(fitGraphViewport({ x: 100, y: 50, width: 200, height: 100 }, { width: 800, height: 600 }, 50)).toEqual({
       x: -300,
-      y: 0,
-      zoom: 4,
+      y: -50,
+      zoom: 3.5,
     });
   });
 
