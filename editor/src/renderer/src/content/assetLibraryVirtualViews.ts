@@ -16,6 +16,8 @@ const virtualViews: readonly AssetLibraryVirtualView[] = [
   { id: 'search-results', label: 'Search Results', persistent: false, acceptsMembershipChanges: false },
 ];
 
+const persistentVirtualViewIds = virtualViews.filter((view) => view.persistent).map((view) => view.id);
+
 /**
  * Virtual views are projections over assets, not storage scopes. Keeping the
  * descriptor separate from paths/mounts prevents a view from becoming part of
@@ -32,6 +34,40 @@ export const assetLibraryVirtualView = (id: AssetLibraryVirtualViewId): AssetLib
 export type AssetLibraryVirtualMembership = Readonly<Record<string, readonly string[]>>;
 
 const uniqueAssetIds = (ids: readonly string[]): string[] => [...new Set(ids.filter((id) => id.length > 0))];
+
+/**
+ * Normalize the persistent part of virtual-view state before it crosses an
+ * editor-state persistence boundary. Transient views and unknown future keys
+ * are intentionally excluded so Search Results can never leak into saved state.
+ */
+export const persistentVirtualMembership = (
+  membership: AssetLibraryVirtualMembership,
+): AssetLibraryVirtualMembership => {
+  const persistent: Record<string, readonly string[]> = {};
+  for (const id of persistentVirtualViewIds) {
+    persistent[id] = uniqueAssetIds(membership[id] ?? []);
+  }
+  return persistent;
+};
+
+/**
+ * Restore persisted membership defensively. Malformed values are ignored and
+ * all known persistent views are present in the result, which gives settings
+ * owners a deterministic shape across upgrades.
+ */
+export const restorePersistentVirtualMembership = (value: unknown): AssetLibraryVirtualMembership => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return persistentVirtualMembership({});
+
+  const record = value as Record<string, unknown>;
+  const membership: Record<string, readonly string[]> = {};
+  for (const id of persistentVirtualViewIds) {
+    const ids = record[id];
+    membership[id] = Array.isArray(ids)
+      ? uniqueAssetIds(ids.filter((candidate): candidate is string => typeof candidate === 'string'))
+      : [];
+  }
+  return membership;
+};
 
 /**
  * Resolve stable asset IDs for a virtual view without cloning or rewriting the
