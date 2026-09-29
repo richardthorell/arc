@@ -67,8 +67,8 @@
   font-size: 12px;
 }
 
-.import-dialog-field input,
-.import-dialog-field select {
+.import-dialog-field .ui-text-input,
+.import-dialog-field .ui-select {
   width: 100%;
   min-width: 0;
 }
@@ -82,19 +82,19 @@
   margin: -12px -12px 2px;
 }
 
-.import-dialog-options > label:not(.import-dialog-field) {
+.import-dialog-toggle-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
   gap: 9px;
 }
 
-.import-dialog-options > label > span {
+.import-dialog-toggle-row > span {
   display: grid;
   gap: 2px;
 }
 
-.import-dialog-options > label small {
+.import-dialog-toggle-row small {
   color: var(--arc-color-text-muted);
   font-size: 11px;
   font-weight: 400;
