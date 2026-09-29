@@ -565,6 +565,69 @@ cook_manifest_result load_cook_manifest(const std::filesystem::path& path)
     return cook_manifest_result::success(std::move(manifest));
 }
 
+cook_manifest_result parse_cook_manifest(std::span<const std::byte> bytes, std::string_view source_name)
+{
+    const auto failure = [&](std::string message)
+    {
+        if (!source_name.empty()) message += " (" + std::string(source_name) + ")";
+        return cook_manifest_result::failure(
+            {.code = asset_error_code::invalid_metadata, .message = std::move(message)});
+    };
+    const auto* begin = reinterpret_cast<const char*>(bytes.data());
+    const auto document = json::parse(begin, begin + bytes.size(), nullptr, false);
+    cook_manifest manifest;
+    if (!document.is_object() || document.value("format", "") != "arc.cook-manifest" ||
+        document.value("version", 0u) != cook_manifest::current_version ||
+        !parse_target(document.value("target", json{}), manifest.target))
+        return failure("Cook manifest is invalid or unsupported");
+
+    manifest = {};
+    manifest.version = document.value("version", 0u);
+    manifest.build_id = document.value("buildId", "");
+    parse_target(document["target"], manifest.target);
+    const auto parse_guids = [&](std::string_view field, std::vector<asset_guid>& output)
+    {
+        const std::string key(field);
+        if (!document.contains(key) || !document[key].is_array()) return false;
+        for (const auto& value : document[key])
+        {
+            const auto guid = value.is_string() ? parse_asset_guid(value.get<std::string>()) : std::nullopt;
+            if (!guid) return false;
+            output.push_back(*guid);
+        }
+        return true;
+    };
+    if (!parse_guids("roots", manifest.roots) || !parse_guids("dependencyClosure", manifest.dependency_closure) ||
+        !document.contains("artifacts") || !document["artifacts"].is_array())
+        return failure("Cook manifest contains invalid asset identities");
+
+    for (const auto& value : document["artifacts"])
+    {
+        const auto asset = parse_asset_guid(value.value("asset", ""));
+        const auto type = parse_asset_type_id(value.value("type", ""));
+        const auto hash = parse_asset_hash(value.value("hash", ""));
+        const auto schema_value = parse_cached_artifact(json{{"name", value.value("name", "")},
+                                                             {"extension", ""},
+                                                             {"schema", value.value("schema", "")},
+                                                             {"schemaVersion", value.value("schemaVersion", 0u)},
+                                                             {"hash", value.value("hash", "")},
+                                                             {"size", value.value("size", 0ull)}});
+        if (!asset || !type || !hash || !schema_value) return failure("Cook manifest contains an invalid artifact");
+        manifest.artifacts.push_back({.asset = *asset,
+                                      .type = *type,
+                                      .name = value.value("name", ""),
+                                      .schema = schema_value->schema,
+                                      .schema_version = value.value("schemaVersion", 0u),
+                                      .hash = *hash,
+                                      .size = value.value("size", 0ull),
+                                      .chunk = value.value("chunk", "startup"),
+                                      .offset = value.value("offset", 0ull),
+                                      .stored_size = value.value("storedSize", 0ull),
+                                      .compressed = value.value("compressed", false)});
+    }
+    return cook_manifest_result::success(std::move(manifest));
+}
+
 asset_status verify_cook_manifest(const cook_manifest& manifest, derived_data_cache& cache)
 {
     for (const auto& artifact : manifest.artifacts)

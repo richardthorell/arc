@@ -17,10 +17,12 @@ struct filesystem_texture_artifact_source::implementation
     struct range
     {
         std::filesystem::path path;
+        io::resolved_virtual_file file;
         std::uint64_t base{};
         std::uint64_t size{};
     };
     io::async_file_service* files{};
+    io::virtual_file_system* virtual_files{};
     std::unordered_map<texture_stream_source_id, range> sources;
 };
 
@@ -28,6 +30,12 @@ filesystem_texture_artifact_source::filesystem_texture_artifact_source(io::async
     : implementation_(std::make_unique<implementation>())
 {
     implementation_->files = &files;
+}
+
+filesystem_texture_artifact_source::filesystem_texture_artifact_source(io::virtual_file_system& files)
+    : implementation_(std::make_unique<implementation>())
+{
+    implementation_->virtual_files = &files;
 }
 
 filesystem_texture_artifact_source::~filesystem_texture_artifact_source() = default;
@@ -42,12 +50,27 @@ void filesystem_texture_artifact_source::register_file(texture_stream_source_id 
     register_package_range(source, std::move(path), 0, size);
 }
 
+void filesystem_texture_artifact_source::register_file(texture_stream_source_id source, io::resolved_virtual_file file)
+{
+    const auto size = file.size();
+    register_package_range(source, std::move(file), 0, size);
+}
+
 void filesystem_texture_artifact_source::register_package_range(texture_stream_source_id source,
                                                                 std::filesystem::path package,
                                                                 std::uint64_t base_offset, std::uint64_t size)
 {
     if (source == 0 || package.empty() || size == 0) return;
     implementation_->sources[source] = {.path = std::move(package), .base = base_offset, .size = size};
+}
+
+void filesystem_texture_artifact_source::register_package_range(texture_stream_source_id source,
+                                                                io::resolved_virtual_file file,
+                                                                std::uint64_t base_offset, std::uint64_t size)
+{
+    if (source == 0 || !file.valid() || size == 0 || base_offset > file.size() || size > file.size() - base_offset)
+        return;
+    implementation_->sources[source] = {.file = std::move(file), .base = base_offset, .size = size};
 }
 
 void filesystem_texture_artifact_source::unregister(texture_stream_source_id source)
@@ -63,18 +86,23 @@ filesystem_texture_artifact_source::read_range(texture_stream_source_id source, 
     if (found == implementation_->sources.end() || bytes == 0 || offset > found->second.size ||
         bytes > found->second.size - offset || found->second.base > std::numeric_limits<std::uint64_t>::max() - offset)
     {
-        return implementation_->files->scheduler().submit_future(
-            {.name = "render.texture_range.invalid",
-             .priority = jobs::job_priority::normal,
-             .affinity = jobs::job_affinity::io_thread,
-             .cancellation = cancellation},
-            []
-            {
-                return io::file_result<io::file_buffer>::failure(
-                    {.code = io::file_error_code::invalid_range,
-                     .message = "texture artifact source or range is invalid"});
-            });
+        if (implementation_->files)
+            return implementation_->files->scheduler().submit_future(
+                {.name = "render.texture_range.invalid",
+                 .priority = jobs::job_priority::normal,
+                 .affinity = jobs::job_affinity::io_thread,
+                 .cancellation = cancellation},
+                []
+                {
+                    return io::file_result<io::file_buffer>::failure(
+                        {.code = io::file_error_code::invalid_range,
+                         .message = "texture artifact source or range is invalid"});
+                });
+        return implementation_->virtual_files->read_range({}, 0, 0, cancellation);
     }
+    if (found->second.file.valid())
+        return implementation_->virtual_files->read_range(found->second.file, found->second.base + offset, bytes,
+                                                          cancellation);
     return implementation_->files->read_range(found->second.path, found->second.base + offset, bytes, cancellation);
 }
 
@@ -143,6 +171,7 @@ void texture_streaming_controller::update(const jobs::cancellation_token& cancel
         }
         else
         {
+            if (result.error().code == io::file_error_code::stale_handle) ++state.statistics.stale_completions;
             ++state.statistics.failed_reads;
             state.statistics.failed_bytes += pending.load.byte_size;
             state.target->fail_texture_subresource(pending.load);

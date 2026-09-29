@@ -28,7 +28,12 @@ enum class file_error_code : std::uint8_t
     read_failed,
     write_failed,
     replace_failed,
-    invalid_request
+    invalid_request,
+    stale_handle,
+    corrupt_content,
+    provider_unavailable,
+    read_only,
+    tombstoned
 };
 
 struct file_error
@@ -36,6 +41,7 @@ struct file_error
     file_error_code code{file_error_code::none};
     std::filesystem::path path;
     std::string message;
+    std::string logical_path;
 };
 
 template <class T> class [[nodiscard]] file_result

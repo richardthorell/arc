@@ -1,5 +1,11 @@
 # ARC Assets
 
+Runtime cooked content is resolved through the provider-based VFS described in
+[`docs/virtual-filesystem.md`](../../docs/virtual-filesystem.md). Asset GUIDs remain authoritative; logical VFS paths
+are storage locators and are not persisted as asset identity. Packaged artifacts, the persistent verified CAS live
+overlay, typed catalog changes, and the transport-neutral update receiver are declared in
+`<arc/assets/runtime_content.h>`.
+
 `arc-assets` owns durable asset identity and runtime asset state. Public consumers include
 `<arc/assets/assets.h>` and use `asset_reference` in persisted data. References are
 GUID-authoritative; their normalized project-relative path hint exists for diagnostics and

@@ -32,6 +32,7 @@ struct filesystem_virtual_geometry_artifact_source::implementation
     struct artifact_range
     {
         std::filesystem::path path;
+        io::resolved_virtual_file file;
         std::uint64_t base{};
         std::uint64_t size{};
         std::uint32_t resource_generation{};
@@ -39,6 +40,7 @@ struct filesystem_virtual_geometry_artifact_source::implementation
     };
 
     io::async_file_service* files{};
+    io::virtual_file_system* virtual_files{};
     std::unordered_map<std::uint64_t, artifact_range> sources;
 };
 
@@ -46,6 +48,12 @@ filesystem_virtual_geometry_artifact_source::filesystem_virtual_geometry_artifac
     : implementation_(std::make_unique<implementation>())
 {
     implementation_->files = &files;
+}
+
+filesystem_virtual_geometry_artifact_source::filesystem_virtual_geometry_artifact_source(io::virtual_file_system& files)
+    : implementation_(std::make_unique<implementation>())
+{
+    implementation_->virtual_files = &files;
 }
 
 filesystem_virtual_geometry_artifact_source::~filesystem_virtual_geometry_artifact_source() = default;
@@ -85,6 +93,38 @@ void filesystem_virtual_geometry_artifact_source::register_package_range(
                                                                   .pages = std::move(pages)};
 }
 
+void filesystem_virtual_geometry_artifact_source::register_package_range(
+    virtual_mesh_handle resource, std::uint32_t resource_generation, io::resolved_virtual_file file,
+    std::uint64_t artifact_base_offset, std::uint64_t artifact_size,
+    std::vector<virtual_geometry_artifact_page_range> pages)
+{
+    if (!resource.valid() || resource_generation == 0u || !file.valid() || artifact_size == 0u || pages.empty() ||
+        artifact_base_offset > file.size() || artifact_size > file.size() - artifact_base_offset)
+    {
+        unregister(resource);
+        return;
+    }
+    const bool valid_ranges =
+        std::all_of(pages.begin(), pages.end(),
+                    [artifact_size](const auto& page)
+                    {
+                        return page.payload_version == virtual_geometry_artifact_page_payload_version &&
+                               page.codec == virtual_geometry_artifact_page_codec::cluster_page &&
+                               page.stored_size != 0u && page.decoded_size != 0u && page.offset <= artifact_size &&
+                               page.stored_size <= artifact_size - page.offset;
+                    });
+    if (!valid_ranges)
+    {
+        unregister(resource);
+        return;
+    }
+    implementation_->sources[streaming_resource_key(resource)] = {.file = std::move(file),
+                                                                  .base = artifact_base_offset,
+                                                                  .size = artifact_size,
+                                                                  .resource_generation = resource_generation,
+                                                                  .pages = std::move(pages)};
+}
+
 void filesystem_virtual_geometry_artifact_source::unregister(virtual_mesh_handle resource)
 {
     implementation_->sources.erase(streaming_resource_key(resource));
@@ -98,12 +138,14 @@ filesystem_virtual_geometry_artifact_source::read_page(const virtual_geometry_pa
     if (found == implementation_->sources.end() || found->second.resource_generation != load.resource_generation ||
         load.page_index >= found->second.pages.size())
     {
-        return implementation_->files->scheduler().submit_future(
-            {.name = "render.virtual_geometry_page.invalid_source",
-             .priority = jobs::job_priority::normal,
-             .affinity = jobs::job_affinity::io_thread,
-             .cancellation = cancellation},
-            [] { return invalid_page_read("virtual-geometry artifact source or generation is invalid"); });
+        if (implementation_->files)
+            return implementation_->files->scheduler().submit_future(
+                {.name = "render.virtual_geometry_page.invalid_source",
+                 .priority = jobs::job_priority::normal,
+                 .affinity = jobs::job_affinity::io_thread,
+                 .cancellation = cancellation},
+                [] { return invalid_page_read("virtual-geometry artifact source or generation is invalid"); });
+        return implementation_->virtual_files->read_range({}, 0, 0, cancellation);
     }
 
     const auto& source = found->second;
@@ -112,14 +154,19 @@ filesystem_virtual_geometry_artifact_source::read_page(const virtual_geometry_pa
         page.stored_size > source.size - page.offset ||
         source.base > std::numeric_limits<std::uint64_t>::max() - page.offset)
     {
-        return implementation_->files->scheduler().submit_future(
-            {.name = "render.virtual_geometry_page.invalid_range",
-             .priority = jobs::job_priority::normal,
-             .affinity = jobs::job_affinity::io_thread,
-             .cancellation = cancellation},
-            [] { return invalid_page_read("virtual-geometry cooked page range is invalid"); });
+        if (implementation_->files)
+            return implementation_->files->scheduler().submit_future(
+                {.name = "render.virtual_geometry_page.invalid_range",
+                 .priority = jobs::job_priority::normal,
+                 .affinity = jobs::job_affinity::io_thread,
+                 .cancellation = cancellation},
+                [] { return invalid_page_read("virtual-geometry cooked page range is invalid"); });
+        return implementation_->virtual_files->read_range({}, 0, 0, cancellation);
     }
 
+    if (source.file.valid())
+        return implementation_->virtual_files->read_range(source.file, source.base + page.offset, page.stored_size,
+                                                          cancellation);
     return implementation_->files->read_range(source.path, source.base + page.offset, page.stored_size, cancellation);
 }
 

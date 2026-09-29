@@ -439,6 +439,8 @@ private:
 [[nodiscard]] asset_status save_cook_manifest(const std::filesystem::path& path, const cook_manifest& manifest);
 using cook_manifest_result = core::result<cook_manifest, asset_error>;
 [[nodiscard]] cook_manifest_result load_cook_manifest(const std::filesystem::path& path);
+[[nodiscard]] cook_manifest_result parse_cook_manifest(std::span<const std::byte> bytes,
+                                                       std::string_view source_name = {});
 [[nodiscard]] asset_status verify_cook_manifest(const cook_manifest& manifest, derived_data_cache& cache);
 
 struct [[nodiscard]] package_build_result
