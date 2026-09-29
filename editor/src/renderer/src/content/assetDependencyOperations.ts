@@ -49,10 +49,7 @@ export const buildAssetDependencyIndex = (references: readonly AssetReference[])
 export const findAssetUsages = (index: AssetDependencyIndex, assetId: string): readonly AssetReference[] =>
   index.get(assetId) ?? [];
 
-export const findTransitiveDependentAssetIds = (
-  index: AssetDependencyIndex,
-  assetId: string,
-): readonly string[] => {
+export const findTransitiveDependentAssetIds = (index: AssetDependencyIndex, assetId: string): readonly string[] => {
   const visited = new Set<string>([assetId]);
   const pending = [...findAssetUsages(index, assetId).map((reference) => reference.sourceAssetId)].sort();
   const dependents: string[] = [];
@@ -73,10 +70,7 @@ export const findTransitiveDependentAssetIds = (
   return dependents;
 };
 
-export const describeAssetDependencyImpact = (
-  index: AssetDependencyIndex,
-  assetId: string,
-): AssetDependencyImpact => ({
+export const describeAssetDependencyImpact = (index: AssetDependencyIndex, assetId: string): AssetDependencyImpact => ({
   assetId,
   directDependents: findAssetUsages(index, assetId),
   transitiveDependentAssetIds: findTransitiveDependentAssetIds(index, assetId),
