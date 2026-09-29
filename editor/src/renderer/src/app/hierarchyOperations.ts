@@ -15,8 +15,61 @@ export interface HierarchyMovePlan {
   siblings: HierarchyMove[];
 }
 
+export interface HierarchySearchEntity extends HierarchyMoveEntity {
+  label: string;
+  searchTerms?: readonly string[];
+}
+
+export interface HierarchySearchResult {
+  visibleGuids: string[];
+  matchedGuids: string[];
+}
+
 const bySiblingOrder = (a: HierarchyMoveEntity, b: HierarchyMoveEntity) =>
   a.siblingOrder - b.siblingOrder || a.guid.localeCompare(b.guid);
+
+const normalizeSearch = (value: string) => value.trim().toLocaleLowerCase();
+
+export const filterHierarchy = (
+  entities: readonly HierarchySearchEntity[],
+  query: string,
+): HierarchySearchResult => {
+  const normalizedQuery = normalizeSearch(query);
+  if (!normalizedQuery) {
+    return {
+      visibleGuids: entities.map((entity) => entity.guid),
+      matchedGuids: entities.map((entity) => entity.guid),
+    };
+  }
+
+  const terms = normalizedQuery.split(/\s+/).filter(Boolean);
+  const byGuid = new Map(entities.map((entity) => [entity.guid, entity]));
+  const matched = new Set<string>();
+  const visible = new Set<string>();
+
+  for (const entity of entities) {
+    const haystack = [entity.label, ...(entity.searchTerms ?? [])]
+      .map(normalizeSearch)
+      .filter(Boolean);
+    if (!terms.every((term) => haystack.some((candidate) => candidate.includes(term)))) continue;
+
+    matched.add(entity.guid);
+    visible.add(entity.guid);
+
+    let parentGuid = entity.parentGuid;
+    const visited = new Set<string>();
+    while (parentGuid && !visited.has(parentGuid)) {
+      visited.add(parentGuid);
+      visible.add(parentGuid);
+      parentGuid = byGuid.get(parentGuid)?.parentGuid ?? '';
+    }
+  }
+
+  return {
+    visibleGuids: entities.filter((entity) => visible.has(entity.guid)).map((entity) => entity.guid),
+    matchedGuids: entities.filter((entity) => matched.has(entity.guid)).map((entity) => entity.guid),
+  };
+};
 
 export const planHierarchyMove = (
   entities: readonly HierarchyMoveEntity[],
