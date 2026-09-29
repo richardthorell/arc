@@ -28,8 +28,14 @@ describe('Play From Here override', () => {
   });
 
   it.each([
-    { position: [Number.NaN, 0, 0] as [number, number, number], rotation: [0, 0, 0, 1] as [number, number, number, number] },
-    { position: [0, 0, 0] as [number, number, number], rotation: [0, Number.POSITIVE_INFINITY, 0, 1] as [number, number, number, number] },
+    {
+      position: [Number.NaN, 0, 0] as [number, number, number],
+      rotation: [0, 0, 0, 1] as [number, number, number, number],
+    },
+    {
+      position: [0, 0, 0] as [number, number, number],
+      rotation: [0, Number.POSITIVE_INFINITY, 0, 1] as [number, number, number, number],
+    },
   ])('rejects non-finite spawn transforms', ({ position, rotation }) => {
     expect(() => createPlayFromHereOverride('camera', { position, rotation })).toThrow(/finite values/);
   });
