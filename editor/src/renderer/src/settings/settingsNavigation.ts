@@ -1,9 +1,9 @@
 import type { AiProviderId } from '../../../common/aiProviderTypes';
 import type { EditorSettingDescriptor } from '../../../common/editorWorkflowTypes';
 import type { UiTreeNode } from '../ui';
+import editingSettingsHeader from './assets/editing-settings-header.webp';
 import generalSettingsHeader from './assets/general-settings-header.webp';
 import platformsSettingsHeader from './assets/platforms-settings-header.webp';
-import viewportSettingsHeader from './assets/viewport-settings-header.webp';
 
 export type EditorSettingsPageId =
   | 'general'
@@ -84,6 +84,7 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
     id: 'editing',
     label: 'Editing',
     keywords: ['viewport', 'navigation', 'gizmo', 'scene'],
+    headerImage: editingSettingsHeader,
     defaultExpanded: true,
     children: [
       {
@@ -91,7 +92,6 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
         label: 'Viewport',
         description: 'Default viewport rendering and camera presentation.',
         keywords: ['renderer', 'render', 'camera', 'grid'],
-        headerImage: viewportSettingsHeader,
         cards: [{ section: 'Renderer', title: 'Viewport Rendering', icon: 'viewport' }],
       },
       {

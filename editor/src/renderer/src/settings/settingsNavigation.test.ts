@@ -73,7 +73,6 @@ describe('settingsNavigation', () => {
     expect(getEditorSettingsPage('editing.viewport')).toMatchObject({
       cards: [{ section: 'Renderer', title: 'Viewport Rendering', icon: 'viewport' }],
     });
-    expect(getEditorSettingsPage('editing.viewport')?.headerImage).toContain('viewport-settings-header');
     expect(getEditorSettingsPage('ai.providers')?.cards).toEqual([
       { section: 'OpenAI', title: 'OpenAI', icon: 'openai', provider: 'openai' },
       { section: 'Anthropic', title: 'Anthropic', icon: 'anthropic', provider: 'anthropic' },
@@ -88,10 +87,12 @@ describe('settingsNavigation', () => {
     expect(getEditorSettingsPage('tools.extensions')?.content).toEqual(['settings', 'extensions']);
   });
 
-  it('inherits group header images into child pages without replacing explicit page headers', () => {
+  it('inherits group header images into child pages', () => {
+    for (const pageId of ['editing.viewport', 'editing.navigation', 'editing.gizmos', 'editing.scene']) {
+      expect(getEditorSettingsPage(pageId)?.headerImage).toContain('editing-settings-header');
+    }
     expect(getEditorSettingsPage('platforms.windows')?.headerImage).toContain('platforms-settings-header');
     expect(getEditorSettingsPage('platforms.android')?.headerImage).toContain('platforms-settings-header');
-    expect(getEditorSettingsPage('editing.viewport')?.headerImage).toContain('viewport-settings-header');
   });
 
   it('derives default-expanded groups from the hierarchy', () => {
