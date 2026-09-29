@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -81,6 +82,38 @@ inline bool reset_material_instance_override(material_instance_descriptor& insta
 
     instance.overrides.erase(it);
     return true;
+}
+
+/**
+ * @brief Reset a set of parameters to their parent values in one deterministic edit.
+ *
+ * Duplicate or unknown ids are harmless. Unrelated authored overrides retain their relative order so editor
+ * multi-selection/reset actions do not perturb instance serialization or stable parameter identity.
+ *
+ * @return Number of authored overrides removed.
+ */
+inline std::size_t reset_material_instance_overrides(material_instance_descriptor& instance,
+                                                     std::span<const shader_parameter_id> parameter_ids)
+{
+    if (parameter_ids.empty() || instance.overrides.empty())
+    {
+        return 0;
+    }
+
+    std::unordered_set<std::uint64_t> reset_ids;
+    reset_ids.reserve(parameter_ids.size());
+    for (const auto parameter_id : parameter_ids)
+    {
+        if (parameter_id.valid())
+        {
+            reset_ids.insert(parameter_id.value);
+        }
+    }
+
+    const auto original_size = instance.overrides.size();
+    std::erase_if(instance.overrides, [&reset_ids](const material_parameter_override& override_value)
+                  { return reset_ids.contains(override_value.id.value); });
+    return original_size - instance.overrides.size();
 }
 
 /**
