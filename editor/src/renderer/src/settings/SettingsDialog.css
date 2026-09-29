@@ -24,6 +24,10 @@
   grid-template-columns: minmax(220px, 1fr) minmax(190px, 286px) 64px;
 }
 
+.settings-field-row-path:has(.settings-field-actions > :only-child) {
+  grid-template-columns: minmax(220px, 1fr) minmax(190px, 286px) 28px;
+}
+
 .ui-settings-card-content > .settings-field-row:last-child {
   border-bottom: 0;
 }
@@ -200,6 +204,10 @@
 
   .settings-field-row-path {
     grid-template-columns: minmax(0, 1fr) 64px;
+  }
+
+  .settings-field-row-path:has(.settings-field-actions > :only-child) {
+    grid-template-columns: minmax(0, 1fr) 28px;
   }
 
   .settings-field-description {
