@@ -57,6 +57,12 @@ export type ArcAssetDownloadManifest = {
   files: ArcAssetDownloadFile[];
 };
 
+export type ArcAssetImportRecipe = {
+  version: 1;
+  logicalPaths: string[];
+  options?: Record<string, string | number | boolean | null>;
+};
+
 export type ArcImportedAssetProvenance = {
   sourceId: string;
   sourceAssetId: string;
@@ -64,6 +70,8 @@ export type ArcImportedAssetProvenance = {
   license: string;
   sourceUrl?: string;
   sourceRevision?: string;
+  sourceHash?: string;
+  recipe?: ArcAssetImportRecipe;
 };
 
 export type ArcAssetImportRequest = {
