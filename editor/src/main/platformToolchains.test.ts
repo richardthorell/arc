@@ -75,6 +75,18 @@ describe('platform toolchains', () => {
     expect(validation[linuxToolchainSettingKeys.sysrootPath]).toMatchObject({ valid: true, resolvedPath: '/' });
   });
 
+  it('uses a concise warning when WSL has no configured distribution', () => {
+    const validation = resolveLinuxToolchainValidation(
+      { buildEnvironment: 'wsl' },
+      { SystemRoot: 'C:\\Windows', PATH: '' },
+      'win32',
+      () => '',
+    );
+
+    expect(validation[linuxToolchainSettingKeys.compilerPath].message).toBe('WSL is not configured');
+    expect(validation[linuxToolchainSettingKeys.sysrootPath].message).toBe('WSL is not configured');
+  });
+
   it('explains that Apple SDK discovery requires a macOS host', () => {
     const validation = resolveAppleToolchainValidation({}, {}, 'win32');
 

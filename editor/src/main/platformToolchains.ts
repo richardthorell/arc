@@ -210,7 +210,7 @@ export const resolveLinuxToolchainValidation = (
       .find(Boolean) ||
     '';
   if (!distribution) {
-    const unavailable = unsupported('WSL is not configured; install a Linux distribution to enable Linux builds');
+    const unavailable = unsupported('WSL is not configured');
     return {
       [linuxToolchainSettingKeys.compilerPath]: unavailable,
       [linuxToolchainSettingKeys.sysrootPath]: unavailable,

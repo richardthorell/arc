@@ -24,8 +24,6 @@ export type EditorSettingsPageId =
   | 'platforms.apple.xcode'
   | 'platforms.apple.macos'
   | 'platforms.apple.ios'
-  | 'platforms.apple.tvos'
-  | 'platforms.apple.visionos'
   | 'platforms.web'
   | 'platforms.xbox'
   | 'platforms.playstation'
@@ -240,7 +238,7 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
       {
         id: 'platforms.apple',
         label: 'Apple',
-        keywords: ['apple', 'xcode', 'macos', 'ios', 'tvos', 'visionos'],
+        keywords: ['apple', 'xcode', 'macos', 'ios'],
         defaultExpanded: true,
         children: [
           {
@@ -263,20 +261,6 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
             description: 'iOS device and Simulator SDKs derived from Xcode.',
             keywords: ['ios', 'iphone', 'simulator', 'sdk'],
             cards: [{ section: 'iOS', icon: 'apple' }],
-          },
-          {
-            id: 'platforms.apple.tvos',
-            label: 'tvOS',
-            description: 'tvOS device and Simulator SDKs derived from Xcode.',
-            keywords: ['tvos', 'apple tv', 'simulator', 'sdk'],
-            cards: [{ section: 'tvOS', icon: 'apple' }],
-          },
-          {
-            id: 'platforms.apple.visionos',
-            label: 'visionOS',
-            description: 'visionOS device and Simulator SDKs derived from Xcode.',
-            keywords: ['visionos', 'vision pro', 'simulator', 'sdk'],
-            cards: [{ section: 'visionOS', icon: 'apple' }],
           },
         ],
       },
@@ -388,11 +372,19 @@ const flattenPages = (
     return [{ ...node, headerImage: inheritedHeaderImage }];
   });
 
+const appleHostOnlyNavigationPageIds = new Set(['platforms.apple.macos', 'platforms.apple.ios']);
+
+const isAppleHost = (): boolean =>
+  typeof navigator === 'undefined' || navigator.platform.toLocaleLowerCase().includes('mac');
+
+const shouldIncludeNavigationNode = (node: EditorSettingsDefinitionNode): boolean =>
+  isAppleHost() || !appleHostOnlyNavigationPageIds.has(node.id);
+
 const toNavigationNode = (node: EditorSettingsDefinitionNode): UiTreeNode => ({
   id: node.id,
   label: node.label,
   keywords: node.keywords,
-  children: isGroup(node) ? node.children.map(toNavigationNode) : undefined,
+  children: isGroup(node) ? node.children.filter(shouldIncludeNavigationNode).map(toNavigationNode) : undefined,
 });
 
 const collectDefaultExpandedIds = (nodes: readonly EditorSettingsDefinitionNode[]): string[] =>

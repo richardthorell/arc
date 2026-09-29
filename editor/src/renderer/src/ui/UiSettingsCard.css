@@ -32,6 +32,11 @@
   align-items: center;
   justify-content: center;
   color: var(--arc-text-secondary);
+  transform: translateY(-1px);
+}
+
+.ui-settings-card-header:has(.ui-settings-card-heading small) .ui-settings-card-icon {
+  transform: translateY(-8px);
 }
 
 .ui-settings-card-heading {

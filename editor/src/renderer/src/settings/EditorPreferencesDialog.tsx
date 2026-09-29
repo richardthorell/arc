@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } f
 import {
   CircleCheck,
   FolderOpen,
-  Gamepad2,
+  Globe2,
   Hammer,
   Monitor,
   Palette,
@@ -11,16 +11,8 @@ import {
   TriangleAlert,
   Unplug,
 } from 'lucide-react';
-import {
-  SiAndroid,
-  SiAnthropic,
-  SiApple,
-  SiLinux,
-  SiNintendoswitch,
-  SiOpenai,
-  SiPlaystation,
-  SiWebassembly,
-} from 'react-icons/si';
+import { FaWindows, FaXbox } from 'react-icons/fa';
+import { SiAndroid, SiAnthropic, SiApple, SiLinux, SiNintendoswitch, SiOpenai, SiPlaystation } from 'react-icons/si';
 
 import type { AiProviderId } from '../../../common/aiProviderTypes';
 import type {
@@ -88,12 +80,12 @@ const settingsIcons: Record<EditorSettingsIcon, ReactNode> = {
   palette: <Palette aria-hidden="true" size={16} />,
   viewport: <Monitor aria-hidden="true" size={16} />,
   hammer: <Hammer aria-hidden="true" size={16} />,
-  windows: <Monitor aria-hidden="true" size={16} />,
+  windows: <FaWindows aria-hidden="true" size={16} />,
   android: <SiAndroid aria-hidden="true" size={16} />,
   linux: <SiLinux aria-hidden="true" size={16} />,
   apple: <SiApple aria-hidden="true" size={16} />,
-  web: <SiWebassembly aria-hidden="true" size={16} />,
-  xbox: <Gamepad2 aria-hidden="true" size={16} />,
+  web: <Globe2 aria-hidden="true" size={16} />,
+  xbox: <FaXbox aria-hidden="true" size={16} />,
   playstation: <SiPlaystation aria-hidden="true" size={16} />,
   switch: <SiNintendoswitch aria-hidden="true" size={16} />,
   openai: <SiOpenai aria-hidden="true" size={16} />,
