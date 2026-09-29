@@ -10,15 +10,21 @@ export type UiEditorToolbarProps = Omit<HTMLAttributes<HTMLDivElement>, 'childre
 };
 
 export const UiEditorToolbar = forwardRef<HTMLDivElement, UiEditorToolbarProps>(function UiEditorToolbar(
-  { className, left, center, right, ...props },
+  { className, left, center, right, role = 'toolbar', ...props },
   ref,
 ) {
   const classes = ['main-toolbar', 'ui-editor-toolbar', className].filter(Boolean).join(' ');
   return (
-    <div className={classes} ref={ref} {...props}>
-      <div className="toolbar-left">{left}</div>
-      <div className="toolbar-center">{center}</div>
-      <div className="toolbar-right">{right}</div>
+    <div className={classes} ref={ref} role={role} {...props}>
+      <div className="toolbar-left" data-toolbar-region="left">
+        {left}
+      </div>
+      <div className="toolbar-center" data-toolbar-region="center">
+        {center}
+      </div>
+      <div className="toolbar-right" data-toolbar-region="right">
+        {right}
+      </div>
     </div>
   );
 });
