@@ -27,6 +27,8 @@ export type SourceControlResult = {
   error: string;
 };
 
+export type EditorHostPlatform = 'windows' | 'macos' | 'linux' | 'other';
+
 export type EditorPathValidation = {
   valid: boolean;
   resolvedPath: string;
@@ -40,6 +42,7 @@ export type EditorSettingsSnapshot = {
   sources: Record<string, 'default' | 'user' | 'project'>;
   restartRequired: string[];
   schema: EditorSettingDescriptor[];
+  hostPlatform?: EditorHostPlatform;
   aiProviders?: AiProviderAccountsSnapshot;
   pathValidation?: Record<string, EditorPathValidation>;
 };
@@ -55,14 +58,25 @@ export type EditorSettingDescriptor = {
     | 'Extensions'
     | 'Source Control'
     | 'Recovery'
+    | 'Build Tools'
     | 'Windows'
     | 'Android'
+    | 'Linux'
+    | 'Apple'
+    | 'macOS'
+    | 'iOS'
+    | 'tvOS'
+    | 'visionOS'
+    | 'Web'
+    | 'Xbox'
+    | 'PlayStation'
+    | 'Nintendo Switch'
     | 'OpenAI'
     | 'Anthropic';
   label: string;
   description: string;
   type: 'boolean' | 'number' | 'string' | 'enum';
-  format?: 'color' | 'secret';
+  format?: 'color' | 'secret' | 'path';
   secretProvider?: AiProviderId;
   defaultValue: boolean | number | string;
   minimum?: number;
@@ -72,6 +86,9 @@ export type EditorSettingDescriptor = {
   optionLabels?: Record<string, string>;
   scopes: Array<'user' | 'project'>;
   restartRequired?: boolean;
+  readOnly?: boolean;
+  hostPlatforms?: EditorHostPlatform[];
+  browsePath?: boolean;
 };
 
 export type ProjectTextFile = {

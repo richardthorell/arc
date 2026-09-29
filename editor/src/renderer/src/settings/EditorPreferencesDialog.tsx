@@ -4,6 +4,7 @@ import { SiAnthropic, SiOpenai } from 'react-icons/si';
 
 import type { AiProviderId } from '../../../common/aiProviderTypes';
 import type {
+  EditorHostPlatform,
   EditorSettingDescriptor,
   EditorSettingsSnapshot,
   RecoverySnapshot,
@@ -49,14 +50,19 @@ const enumOptionLabel = (descriptor: EditorSettingDescriptor, option: string) =>
 const visibleDescription = (descriptor: EditorSettingDescriptor) =>
   descriptor.description.replace(/\s+Leave empty\b.*$/i, '').trim();
 
-const isPlatformPathSetting = (descriptor: EditorSettingDescriptor) =>
-  (descriptor.section === 'Windows' || descriptor.section === 'Android') && descriptor.type === 'string';
+const isPlatformPathSetting = (descriptor: EditorSettingDescriptor) => descriptor.format === 'path';
 
-const windowsExecutableName = (key: string) => {
-  if (key === 'platform.windows.cmakePath') return 'cmake.exe';
-  if (key === 'platform.windows.ninjaPath') return 'ninja.exe';
+const buildToolExecutableName = (key: string, hostPlatform: EditorHostPlatform | undefined) => {
+  const suffix = hostPlatform === 'windows' || !hostPlatform ? '.exe' : '';
+  if (key === 'platform.windows.cmakePath') return `cmake${suffix}`;
+  if (key === 'platform.windows.ninjaPath') return `ninja${suffix}`;
   return null;
 };
+
+const settingAvailableOnHost = (descriptor: EditorSettingDescriptor, hostPlatform: EditorHostPlatform | undefined) =>
+  !descriptor.hostPlatforms?.length || !hostPlatform || descriptor.hostPlatforms.includes(hostPlatform);
+
+const validationSourceLabel = (source: string) => (source === 'configured' ? 'Configured' : 'Auto-detected');
 
 const settingsIcons: Record<EditorSettingsIcon, ReactNode> = {
   palette: <Palette aria-hidden="true" size={16} />,
@@ -65,11 +71,14 @@ const settingsIcons: Record<EditorSettingsIcon, ReactNode> = {
   anthropic: <SiAnthropic aria-hidden="true" size={16} />,
 };
 
+const descriptorMatchesCard = (descriptor: EditorSettingDescriptor, card: EditorSettingsCardDefinition) =>
+  descriptor.section === card.section && (!card.keys || card.keys.includes(descriptor.key));
+
 const enrichNavigation = (nodes: readonly UiTreeNode[], schema: readonly EditorSettingDescriptor[]): UiTreeNode[] =>
   nodes.map((node) => {
     const page = getEditorSettingsPage(node.id);
     const descriptorKeywords = (page?.cards ?? []).flatMap((card) =>
-      schema.filter((descriptor) => descriptor.section === card.section).map(descriptorSearchTerms),
+      schema.filter((descriptor) => descriptorMatchesCard(descriptor, card)).map(descriptorSearchTerms),
     );
     return {
       ...node,
@@ -105,7 +114,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
       (page.cards ?? []).map((card) => ({
         card,
         entries: userSchema.filter((descriptor) => {
-          if (descriptor.section !== card.section) return false;
+          if (!descriptorMatchesCard(descriptor, card)) return false;
           if (!normalizedQuery) return true;
           return normalize(descriptorSearchTerms(descriptor)).includes(normalizedQuery);
         }),
@@ -169,7 +178,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
   const browsePlatformPath = async (descriptor: EditorSettingDescriptor) => {
     const selectedFolder = await window.arc.dialog.projectDestination(`Select ${descriptor.label}`);
     if (!selectedFolder) return;
-    const executableName = windowsExecutableName(descriptor.key);
+    const executableName = buildToolExecutableName(descriptor.key, snapshot?.hostPlatform);
     if (!executableName) {
       await update(descriptor.key, selectedFolder);
       return;
@@ -215,6 +224,8 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
 
   const editor = (descriptor: EditorSettingDescriptor, value: unknown) => {
     const { key } = descriptor;
+    const unavailable = !settingAvailableOnHost(descriptor, snapshot?.hostPlatform);
+    const disabled = descriptor.readOnly || unavailable;
     if (descriptor.format === 'color' && typeof value === 'string')
       return (
         <input
@@ -290,7 +301,10 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
       <UiTextInput
         aria-label={descriptor.label}
         className="settings-value-control"
-        onBlur={(event) => void update(key, event.target.value)}
+        disabled={disabled}
+        onBlur={(event) => {
+          if (!disabled) void update(key, event.target.value);
+        }}
         defaultValue={String(value)}
         key={`${key}-${String(value)}`}
         placeholder={isPlatformPathSetting(descriptor) ? 'Auto-detect' : undefined}
@@ -328,7 +342,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
           return (
             <UiSettingsCard
               icon={card.icon ? settingsIcons[card.icon] : undefined}
-              key={card.section}
+              key={`${card.section}-${card.title ?? ''}`}
               subtitle={providerSubtitle(card)}
               title={card.title ?? card.section}
             >
@@ -336,6 +350,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                 const pathSetting = isPlatformPathSetting(descriptor);
                 const pathValidation = pathSetting ? snapshot?.pathValidation?.[descriptor.key] : undefined;
                 const secretSetting = descriptor.format === 'secret';
+                const availableOnHost = settingAvailableOnHost(descriptor, snapshot?.hostPlatform);
                 return (
                   <div
                     className={['settings-field-row', pathSetting ? 'settings-field-row-path' : '']
@@ -349,14 +364,20 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                       {pathValidation && (
                         <span
                           className={`settings-field-validation settings-field-validation-${pathValidation.valid ? 'valid' : 'invalid'}`}
-                          title={pathValidation.resolvedPath || undefined}
+                          title={pathValidation.resolvedPath || pathValidation.message || undefined}
                         >
                           {pathValidation.valid ? (
                             <CircleCheck aria-hidden="true" size={10} />
                           ) : (
                             <TriangleAlert aria-hidden="true" size={10} />
                           )}
-                          {pathValidation.valid ? 'Validated' : pathValidation.message}
+                          {pathValidation.valid ? (
+                            <>
+                              <span>Validated</span> · {validationSourceLabel(pathValidation.source)}
+                            </>
+                          ) : (
+                            pathValidation.message
+                          )}
                           {!pathValidation.valid && pathValidation.resolvedPath
                             ? ` · ${pathValidation.resolvedPath}`
                             : ''}
@@ -370,7 +391,7 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                       )}
                     </span>
                     {editor(descriptor, snapshot?.values[descriptor.key])}
-                    {pathSetting ? (
+                    {pathSetting && !descriptor.readOnly && availableOnHost ? (
                       <div className="settings-field-actions">
                         <UiIconButton
                           label={`Auto-detect ${descriptor.label}`}
@@ -378,12 +399,14 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                         >
                           <RefreshCw size={13} />
                         </UiIconButton>
-                        <UiIconButton
-                          label={`Browse for ${descriptor.label}`}
-                          onClick={() => void browsePlatformPath(descriptor)}
-                        >
-                          <FolderOpen size={13} />
-                        </UiIconButton>
+                        {descriptor.browsePath !== false && (
+                          <UiIconButton
+                            label={`Browse for ${descriptor.label}`}
+                            onClick={() => void browsePlatformPath(descriptor)}
+                          >
+                            <FolderOpen size={13} />
+                          </UiIconButton>
+                        )}
                       </div>
                     ) : secretSetting ? (
                       <UiIconButton
@@ -393,14 +416,14 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                       >
                         <Unplug size={13} />
                       </UiIconButton>
-                    ) : (
+                    ) : !descriptor.readOnly && availableOnHost ? (
                       <UiIconButton
                         label={`Reset ${descriptor.key}`}
                         onClick={() => void update(descriptor.key, undefined)}
                       >
                         <RotateCcw size={13} />
                       </UiIconButton>
-                    )}
+                    ) : null}
                   </div>
                 );
               })}
