@@ -4,6 +4,7 @@ import {
   assignMaterialParameterGroup,
   DEFAULT_MATERIAL_PARAMETER_GROUP_ID,
   groupMaterialParameters,
+  renameMaterialParameterGroup,
   reorderMaterialParameter,
 } from './materialParameterGroups';
 
@@ -70,6 +71,46 @@ describe('material parameter metadata editing', () => {
     const updated = assignMaterialParameterGroup([{ id: 'tint', name: 'Tint', group: 'Surface' }], 'tint', '   ');
 
     expect(groupMaterialParameters(updated)[0]?.id).toBe(DEFAULT_MATERIAL_PARAMETER_GROUP_ID);
+  });
+
+  it('renames a whole group without changing stable parameter ids', () => {
+    const parameters = [
+      { id: 'roughness', name: 'Roughness', group: 'Surface', order: 1 },
+      { id: 'tint', name: 'Tint', group: 'Surface', order: 0 },
+      { id: 'emissive', name: 'Emissive', group: 'Advanced', order: 3 },
+    ];
+
+    const updated = renameMaterialParameterGroup(parameters, ' surface ', 'Appearance');
+
+    expect(updated.map((parameter) => parameter.id)).toEqual(['roughness', 'tint', 'emissive']);
+    expect(updated.filter((parameter) => parameter.group === 'Appearance')).toHaveLength(2);
+    expect(updated.find((parameter) => parameter.id === 'emissive')).toBe(parameters[2]);
+  });
+
+  it('merges renamed groups deterministically and compacts order', () => {
+    const parameters = [
+      { id: 'a', name: 'Alpha', group: 'Surface', order: 5 },
+      { id: 'b', name: 'Beta', group: 'Advanced', order: 0 },
+      { id: 'c', name: 'Gamma', group: 'Surface', order: 1 },
+    ];
+
+    const updated = renameMaterialParameterGroup(parameters, 'Surface', 'Advanced');
+    const group = groupMaterialParameters(updated)[0];
+
+    expect(group?.parameters.map((parameter) => parameter.id)).toEqual(['a', 'b', 'c']);
+    expect(group?.parameters.map((parameter) => parameter.order)).toEqual([0, 1, 2]);
+  });
+
+  it('can move a named group into General and leaves unknown groups unchanged', () => {
+    const parameters = [
+      { id: 'a', name: 'Alpha', group: 'Surface' },
+      { id: 'b', name: 'Beta' },
+    ];
+
+    const updated = renameMaterialParameterGroup(parameters, 'Surface', '   ');
+    expect(groupMaterialParameters(updated)).toHaveLength(1);
+    expect(groupMaterialParameters(updated)[0]?.id).toBe(DEFAULT_MATERIAL_PARAMETER_GROUP_ID);
+    expect(renameMaterialParameterGroup(parameters, 'Missing', 'Other')).toEqual(parameters);
   });
 
   it('reorders only the current group and compacts authored order', () => {

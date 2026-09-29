@@ -89,6 +89,39 @@ export function assignMaterialParameterGroup<T extends MaterialParameterDescript
 }
 
 /**
+ * Renames an authoring group without changing parameter identity. Renaming to a
+ * blank label moves the group into General. If the destination group already
+ * exists, authored order is compacted across the merged group deterministically.
+ */
+export function renameMaterialParameterGroup<T extends MaterialParameterDescriptor>(
+  parameters: readonly T[],
+  sourceGroup: string | undefined,
+  destinationGroup: string | undefined,
+): T[] {
+  const source = normalizeGroup(sourceGroup);
+  const destination = normalizeGroup(destinationGroup);
+  if (source.id === destination.id) return [...parameters];
+
+  const sourceIds = new Set(
+    groupMaterialParameters(parameters)
+      .find((group) => group.id === source.id)
+      ?.parameters.map((parameter) => parameter.id) ?? [],
+  );
+  if (sourceIds.size === 0) return [...parameters];
+
+  const destinationLabel = destination.id === DEFAULT_MATERIAL_PARAMETER_GROUP_ID ? undefined : destination.label;
+  const moved = parameters.map((parameter) =>
+    sourceIds.has(parameter.id) ? { ...parameter, group: destinationLabel, order: undefined } : parameter,
+  );
+
+  const mergedGroup = groupMaterialParameters(moved).find((group) => group.id === destination.id);
+  const orderById = new Map(mergedGroup?.parameters.map((parameter, index) => [parameter.id, index]) ?? []);
+  return moved.map((parameter) =>
+    sameGroup(parameter.group, destinationLabel) ? { ...parameter, order: orderById.get(parameter.id) } : parameter,
+  );
+}
+
+/**
  * Reorders a parameter within its current group. Orders are compacted to stable
  * zero-based values so repeated drag/reorder operations cannot accumulate gaps.
  */
