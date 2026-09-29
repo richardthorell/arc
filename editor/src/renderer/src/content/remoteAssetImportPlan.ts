@@ -1,4 +1,8 @@
-import type { ArcAssetDownloadFile, ArcAssetDownloadManifest, ArcAssetImportRequest } from '../../../common/assetSourceTypes';
+import type {
+  ArcAssetDownloadFile,
+  ArcAssetDownloadManifest,
+  ArcAssetImportRequest,
+} from '../../../common/assetSourceTypes';
 
 export type RemoteAssetImportPlan = {
   request: ArcAssetImportRequest;

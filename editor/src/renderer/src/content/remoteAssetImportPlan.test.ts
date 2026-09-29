@@ -30,7 +30,9 @@ describe('createRemoteAssetImportPlan', () => {
   });
 
   it('rejects files that were not offered by the fetched manifest', () => {
-    expect(() => createRemoteAssetImportPlan(manifest(), ['textures/other.exr'])).toThrow(/not present in the manifest/);
+    expect(() => createRemoteAssetImportPlan(manifest(), ['textures/other.exr'])).toThrow(
+      /not present in the manifest/,
+    );
   });
 
   it('rejects unsafe provider paths before import', () => {
