@@ -95,10 +95,9 @@ describe('material parameter metadata editing', () => {
       { id: 'b', name: 'Beta' },
     ];
 
-    expect(groupMaterialParameters(reorderMaterialParameter(parameters, 'a', 99))[0]?.parameters.map((p) => p.id)).toEqual([
-      'b',
-      'a',
-    ]);
+    expect(
+      groupMaterialParameters(reorderMaterialParameter(parameters, 'a', 99))[0]?.parameters.map((p) => p.id),
+    ).toEqual(['b', 'a']);
     expect(reorderMaterialParameter(parameters, 'missing', 0)).toEqual(parameters);
   });
 });
