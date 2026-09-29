@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { assetLibraryScope, assetLibraryScopes, assetsInScope, isAssetScopeWritable } from './assetLibraryScopes';
+import {
+  assetLibraryScope,
+  assetLibraryScopes,
+  assetMutationScope,
+  assetsInScope,
+  isAssetScopeWritable,
+} from './assetLibraryScopes';
 
 describe('assetLibraryScopes', () => {
   it('defines the logical library mounts independently from asset identity', () => {
@@ -25,5 +31,18 @@ describe('assetLibraryScopes', () => {
 
   it('falls back safely when an older host reports an unknown scope', () => {
     expect(assetLibraryScope('legacy').id).toBe('project');
+  });
+
+  it('routes mutations only to writable logical scopes', () => {
+    expect(assetMutationScope('project')).toBe('project');
+    expect(assetMutationScope('user')).toBe('user');
+    expect(assetMutationScope('builtin')).toBe('project');
+    expect(assetMutationScope('organization')).toBe('project');
+  });
+
+  it('preserves legacy project mutation behavior for missing or unknown scopes', () => {
+    expect(assetMutationScope(undefined)).toBe('project');
+    expect(assetMutationScope(null)).toBe('project');
+    expect(assetMutationScope('legacy')).toBe('project');
   });
 });

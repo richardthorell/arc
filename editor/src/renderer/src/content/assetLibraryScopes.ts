@@ -46,3 +46,17 @@ export function assetsInScope<T extends Pick<AssetItem, 'scope'>>(
 export function isAssetScopeWritable(scope: AssetLibraryScopeId): boolean {
   return assetLibraryScope(scope).writable;
 }
+
+/**
+ * Resolves the logical scope that should own a Content Browser mutation.
+ *
+ * Browsing a read-only mount must never make that mount a write target. In
+ * those cases ARC keeps mutations project-owned, matching legacy behavior.
+ * Writable logical mounts, such as User, remain explicit mutation targets so
+ * the UI can route create/import operations without coupling scope to asset
+ * identity or physical storage paths.
+ */
+export function assetMutationScope(scope: AssetLibraryScopeId | string | null | undefined): AssetLibraryScopeId {
+  const selected = assetLibraryScope(scope);
+  return selected.writable ? selected.id : 'project';
+}
