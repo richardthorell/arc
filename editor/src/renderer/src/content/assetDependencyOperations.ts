@@ -6,6 +6,12 @@ export type AssetReference = {
 
 export type AssetDependencyIndex = ReadonlyMap<string, readonly AssetReference[]>;
 
+export type AssetDependencyImpact = {
+  assetId: string;
+  directDependents: readonly AssetReference[];
+  transitiveDependentAssetIds: readonly string[];
+};
+
 export type AssetDeletePlan = {
   assetId: string;
   dependents: readonly AssetReference[];
@@ -42,6 +48,33 @@ export const buildAssetDependencyIndex = (references: readonly AssetReference[])
 
 export const findAssetUsages = (index: AssetDependencyIndex, assetId: string): readonly AssetReference[] =>
   index.get(assetId) ?? [];
+
+export const findTransitiveDependentAssetIds = (index: AssetDependencyIndex, assetId: string): readonly string[] => {
+  const visited = new Set<string>([assetId]);
+  const pending = [...findAssetUsages(index, assetId).map((reference) => reference.sourceAssetId)].sort();
+  const dependents: string[] = [];
+
+  while (pending.length > 0) {
+    const current = pending.shift()!;
+    if (visited.has(current)) continue;
+
+    visited.add(current);
+    dependents.push(current);
+
+    for (const reference of findAssetUsages(index, current)) {
+      if (!visited.has(reference.sourceAssetId)) pending.push(reference.sourceAssetId);
+    }
+    pending.sort();
+  }
+
+  return dependents;
+};
+
+export const describeAssetDependencyImpact = (index: AssetDependencyIndex, assetId: string): AssetDependencyImpact => ({
+  assetId,
+  directDependents: findAssetUsages(index, assetId),
+  transitiveDependentAssetIds: findTransitiveDependentAssetIds(index, assetId),
+});
 
 export const planAssetDelete = (index: AssetDependencyIndex, assetId: string): AssetDeletePlan => {
   const dependents = findAssetUsages(index, assetId);
