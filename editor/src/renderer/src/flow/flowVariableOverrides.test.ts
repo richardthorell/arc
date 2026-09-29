@@ -46,10 +46,7 @@ describe('flow variable overrides', () => {
       { variableId: 'speed', value: 9 },
       { variableId: 'title', value: 'One' },
     ]);
-    expect(setFlowVariableOverride(existing, 'new', true)).toEqual([
-      ...existing,
-      { variableId: 'new', value: true },
-    ]);
+    expect(setFlowVariableOverride(existing, 'new', true)).toEqual([...existing, { variableId: 'new', value: true }]);
   });
 
   it('resets one override back to the graph default', () => {
