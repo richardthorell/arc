@@ -14,11 +14,13 @@ export type GraphClipboardPayload<Node extends GraphClipboardNode, Edge extends 
   edges: Edge[];
 };
 
-export type GraphClipboardPasteResult<Node extends GraphClipboardNode, Edge extends GraphClipboardEdge> =
-  GraphClipboardPayload<Node, Edge> & {
-    nodeIdMap: ReadonlyMap<string, string>;
-    selectedNodeIds: ReadonlySet<string>;
-  };
+export type GraphClipboardPasteResult<
+  Node extends GraphClipboardNode,
+  Edge extends GraphClipboardEdge,
+> = GraphClipboardPayload<Node, Edge> & {
+  nodeIdMap: ReadonlyMap<string, string>;
+  selectedNodeIds: ReadonlySet<string>;
+};
 
 export type GraphIdFactory = (kind: 'node' | 'edge', previousId: string) => string;
 

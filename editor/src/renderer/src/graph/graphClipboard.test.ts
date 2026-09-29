@@ -44,9 +44,7 @@ describe('graph clipboard operations', () => {
       { id: 'node-1', position: { x: 34, y: 44 }, label: 'A' },
       { id: 'node-2', position: { x: 74, y: 104 }, label: 'B' },
     ]);
-    expect(pasted.edges).toEqual([
-      { id: 'edge-1', sourceNodeId: 'node-1', targetNodeId: 'node-2', pin: 'value' },
-    ]);
+    expect(pasted.edges).toEqual([{ id: 'edge-1', sourceNodeId: 'node-1', targetNodeId: 'node-2', pin: 'value' }]);
     expect([...pasted.selectedNodeIds]).toEqual(['node-1', 'node-2']);
     expect(pasted.nodeIdMap.get('a')).toBe('node-1');
     expect(pasted.nodeIdMap.get('b')).toBe('node-2');
