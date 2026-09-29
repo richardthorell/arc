@@ -81,6 +81,7 @@ describe('settingsNavigation', () => {
     expect(getEditorSettingsPage('platforms.build-tools')?.cards?.[0]).toMatchObject({
       section: 'Windows',
       title: 'Build Tools',
+      icon: 'hammer',
       keys: ['platform.windows.cmakePath', 'platform.windows.ninjaPath'],
     });
     expect(getEditorSettingsPage('platforms.apple.ios')?.cards).toEqual([{ section: 'iOS' }]);
