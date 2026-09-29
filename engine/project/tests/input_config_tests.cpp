@@ -272,12 +272,10 @@ TEST_CASE("project input config drives gamepad sensors and touch controls")
     REQUIRE(loaded.succeeded);
 
     arc::input::input_system input;
-    const auto gamepad = input.connect_device({.type = arc::input::input_device_type::gamepad,
-                                               .name = "Gamepad",
-                                               .capabilities = {.buttons = true,
-                                                                .axes = true,
-                                                                .gyroscope = true,
-                                                                .touchpad = true}});
+    const auto gamepad =
+        input.connect_device({.type = arc::input::input_device_type::gamepad,
+                              .name = "Gamepad",
+                              .capabilities = {.buttons = true, .axes = true, .gyroscope = true, .touchpad = true}});
     const auto touch = input.connect_device({.type = arc::input::input_device_type::touch,
                                              .name = "Touchscreen",
                                              .capabilities = {.pointer = true, .touchpad = true}});
@@ -287,21 +285,17 @@ TEST_CASE("project input config drives gamepad sensors and touch controls")
 
     auto& player = input.player(0);
     input.begin_frame();
-    REQUIRE(input.submit_button(gamepad,
-                                arc::input::make_gamepad_button_control(arc::input::gamepad_button::south), true));
-    REQUIRE(input.submit_axis(gamepad, arc::input::make_gamepad_axis_control(arc::input::gamepad_axis::left_x),
-                              0.75f));
-    REQUIRE(input.submit_axis(gamepad, arc::input::make_gamepad_axis_control(arc::input::gamepad_axis::left_y),
-                              -0.25f));
-    REQUIRE(input.submit_axis(gamepad,
-                              arc::input::make_gamepad_axis_control(arc::input::gamepad_axis::left_trigger), 0.6f));
-    REQUIRE(input.submit_axis(gamepad, arc::input::make_sensor_axis_control(arc::input::sensor_axis::gyroscope_z),
-                              1.5f));
-    REQUIRE(input.submit_touch_contacts(gamepad, {{.id = 4,
-                                                   .surface = 0,
-                                                   .position = {0.25f, 0.75f},
-                                                   .pressure = 0.8f,
-                                                   .pressure_available = true}}));
+    REQUIRE(
+        input.submit_button(gamepad, arc::input::make_gamepad_button_control(arc::input::gamepad_button::south), true));
+    REQUIRE(input.submit_axis(gamepad, arc::input::make_gamepad_axis_control(arc::input::gamepad_axis::left_x), 0.75f));
+    REQUIRE(
+        input.submit_axis(gamepad, arc::input::make_gamepad_axis_control(arc::input::gamepad_axis::left_y), -0.25f));
+    REQUIRE(input.submit_axis(gamepad, arc::input::make_gamepad_axis_control(arc::input::gamepad_axis::left_trigger),
+                              0.6f));
+    REQUIRE(
+        input.submit_axis(gamepad, arc::input::make_sensor_axis_control(arc::input::sensor_axis::gyroscope_z), 1.5f));
+    REQUIRE(input.submit_touch_contacts(
+        gamepad, {{.id = 4, .surface = 0, .position = {0.25f, 0.75f}, .pressure = 0.8f, .pressure_available = true}}));
     REQUIRE(input.submit_touch_contacts(touch, {{.id = 2, .surface = 0, .position = {0.4f, 0.9f}}}));
 
     CHECK(player.pressed("Accept"));

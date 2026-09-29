@@ -242,8 +242,7 @@ std::optional<input::touch_control> touch_control_from_token(std::string token)
     if (token == "primarydown" || token == "touchprimarydown") return input::touch_control::primary_down;
     if (token == "primaryx" || token == "touchprimaryx") return input::touch_control::primary_x;
     if (token == "primaryy" || token == "touchprimaryy") return input::touch_control::primary_y;
-    if (token == "primarypressure" || token == "touchprimarypressure")
-        return input::touch_control::primary_pressure;
+    if (token == "primarypressure" || token == "touchprimarypressure") return input::touch_control::primary_pressure;
     return std::nullopt;
 }
 
@@ -482,7 +481,8 @@ input_config_load_result load_input_config(const std::filesystem::path& path)
             if (!context_names.emplace(context.name).second)
                 return {.error = "duplicate input context '" + context.name + "'"};
             std::string priority_error;
-            if (!parse_priority(context_json, context.priority, priority_error)) return {.error = std::move(priority_error)};
+            if (!parse_priority(context_json, context.priority, priority_error))
+                return {.error = std::move(priority_error)};
             if (context_json.contains("enabled"))
             {
                 if (!context_json.at("enabled").is_boolean())

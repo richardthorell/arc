@@ -23,9 +23,8 @@ bool input_system::submit_touch_contacts(input_device_id id, std::vector<input_t
     if (device_it == devices_.end()) return false;
     if (!device_it->second.connected_ && !contacts.empty()) return false;
 
-    auto set_control = [&](touch_control control, float value) {
-        device_it->second.current_values_[control_key(make_touch_control(control))] = value;
-    };
+    auto set_control = [&](touch_control control, float value)
+    { device_it->second.current_values_[control_key(make_touch_control(control))] = value; };
 
     if (contacts.empty())
     {
@@ -53,9 +52,8 @@ bool input_system::submit_touch_contacts(input_device_id id, std::vector<input_t
         }
     }
 
-    const auto primary = std::min_element(contacts.begin(), contacts.end(), [](const auto& lhs, const auto& rhs) {
-        return lhs.id < rhs.id;
-    });
+    const auto primary = std::min_element(contacts.begin(), contacts.end(),
+                                          [](const auto& lhs, const auto& rhs) { return lhs.id < rhs.id; });
     set_control(touch_control::primary_down, 1.0f);
     set_control(touch_control::primary_x, primary->position[0]);
     set_control(touch_control::primary_y, primary->position[1]);

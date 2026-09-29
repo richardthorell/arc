@@ -368,8 +368,7 @@ std::optional<ordered_json> binding_to_json(const input::input_binding& binding,
             return std::nullopt;
     }
 
-    if (owned_control)
-        control = *owned_control;
+    if (owned_control) control = *owned_control;
     if (!control)
     {
         error = "input binding contains an unknown control value";
@@ -462,7 +461,8 @@ input_config_save_result save_input_config(const input_config& config, const std
             for (const auto& axis : context.axes)
             {
                 if (!validate_name("axis", axis.name, names, error)) return {.error = std::move(error)};
-                if (axis.bindings.empty()) return {.error = "input axis '" + axis.name + "' requires at least one binding"};
+                if (axis.bindings.empty())
+                    return {.error = "input axis '" + axis.name + "' requires at least one binding"};
                 ordered_json axis_json = ordered_json::object();
                 axis_json["name"] = axis.name;
                 ordered_json bindings = ordered_json::array();
