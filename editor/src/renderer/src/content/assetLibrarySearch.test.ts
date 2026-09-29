@@ -12,9 +12,31 @@ const asset = (overrides: Partial<AssetItem>): AssetItem => ({
 });
 
 const assets: AssetItem[] = [
-  asset({ id: 'm1', name: 'Rock', title: 'Cliff Rock', description: 'Granite scan', tags: ['Environment', 'Stone'], path: 'Assets/Rocks/Rock', kind: 'mesh' }),
-  asset({ id: 't1', name: 'RockNormal', title: 'Rock Normal', tags: ['stone', 'PBR'], path: 'Assets/Rocks/RockNormal', kind: 'texture' }),
-  asset({ id: 'm2', name: 'Tree', description: 'Forest oak', tags: ['Environment'], path: 'Assets/Trees/Tree', kind: 'mesh' }),
+  asset({
+    id: 'm1',
+    name: 'Rock',
+    title: 'Cliff Rock',
+    description: 'Granite scan',
+    tags: ['Environment', 'Stone'],
+    path: 'Assets/Rocks/Rock',
+    kind: 'mesh',
+  }),
+  asset({
+    id: 't1',
+    name: 'RockNormal',
+    title: 'Rock Normal',
+    tags: ['stone', 'PBR'],
+    path: 'Assets/Rocks/RockNormal',
+    kind: 'texture',
+  }),
+  asset({
+    id: 'm2',
+    name: 'Tree',
+    description: 'Forest oak',
+    tags: ['Environment'],
+    path: 'Assets/Trees/Tree',
+    kind: 'mesh',
+  }),
 ];
 
 describe('searchAssetLibrary', () => {
@@ -24,7 +46,9 @@ describe('searchAssetLibrary', () => {
   });
 
   it('requires all selected tags while normalizing case and whitespace', () => {
-    expect(searchAssetLibrary(assets, { tags: [' stone ', 'ENVIRONMENT'] }).assets.map((item) => item.id)).toEqual(['m1']);
+    expect(searchAssetLibrary(assets, { tags: [' stone ', 'ENVIRONMENT'] }).assets.map((item) => item.id)).toEqual([
+      'm1',
+    ]);
   });
 
   it('filters by kind without hiding useful kind facet counts', () => {

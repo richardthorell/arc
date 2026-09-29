@@ -36,7 +36,10 @@ const matchesText = (asset: AssetItem, text: string): boolean => {
 const matchesTags = (asset: AssetItem, tags: readonly string[]): boolean => {
   if (tags.length === 0) return true;
   const assetTags = new Set((asset.tags ?? []).map(normalize));
-  return tags.map(normalize).filter(Boolean).every((tag) => assetTags.has(tag));
+  return tags
+    .map(normalize)
+    .filter(Boolean)
+    .every((tag) => assetTags.has(tag));
 };
 
 /**
@@ -45,10 +48,7 @@ const matchesTags = (asset: AssetItem, tags: readonly string[]): boolean => {
  * identical search output. Facets describe the text/tag-matched population before
  * a kind filter is applied, allowing the UI to show useful alternative kinds.
  */
-export function searchAssetLibrary(
-  assets: readonly AssetItem[],
-  query: AssetSearchQuery,
-): AssetSearchResult {
+export function searchAssetLibrary(assets: readonly AssetItem[], query: AssetSearchQuery): AssetSearchResult {
   const metadataMatches = assets.filter(
     (asset) => matchesText(asset, query.text ?? '') && matchesTags(asset, query.tags ?? []),
   );
@@ -59,9 +59,7 @@ export function searchAssetLibrary(
   }
 
   const kinds = new Set(query.kinds ?? []);
-  const filtered = kinds.size === 0
-    ? metadataMatches
-    : metadataMatches.filter((asset) => kinds.has(asset.kind));
+  const filtered = kinds.size === 0 ? metadataMatches : metadataMatches.filter((asset) => kinds.has(asset.kind));
 
   const facets = [...facetCounts.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
