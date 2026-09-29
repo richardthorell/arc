@@ -1,1 +1,41 @@
-{"formatVersion":1}
+{
+  "version": 1,
+  "contexts": [
+    {
+      "name": "Gameplay",
+      "priority": 0,
+      "enabled": true,
+      "actions": [
+        {
+          "name": "Jump",
+          "bindings": [
+            { "device": "keyboard", "control": "Space" },
+            { "device": "gamepad", "control": "South" }
+          ]
+        }
+      ],
+      "axes2d": [
+        {
+          "name": "Move",
+          "bindings": [
+            { "device": "keyboard", "control": "W", "contribution": [0.0, 1.0] },
+            { "device": "keyboard", "control": "S", "contribution": [0.0, -1.0] },
+            { "device": "keyboard", "control": "A", "contribution": [-1.0, 0.0] },
+            { "device": "keyboard", "control": "D", "contribution": [1.0, 0.0] },
+            { "device": "gamepad", "control": "LeftX", "contribution": [1.0, 0.0] },
+            { "device": "gamepad", "control": "LeftY", "contribution": [0.0, 1.0] }
+          ]
+        },
+        {
+          "name": "Look",
+          "bindings": [
+            { "device": "mouse", "control": "DeltaX", "contribution": [1.0, 0.0] },
+            { "device": "mouse", "control": "DeltaY", "contribution": [0.0, 1.0] },
+            { "device": "gamepad", "control": "RightX", "contribution": [1.0, 0.0] },
+            { "device": "gamepad", "control": "RightY", "contribution": [0.0, 1.0] }
+          ]
+        }
+      ]
+    }
+  ]
+}
