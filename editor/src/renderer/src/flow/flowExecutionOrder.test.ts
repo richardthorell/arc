@@ -47,7 +47,8 @@ describe('Flow execution order', () => {
 
   it('uses stable connection ids as the deterministic same-pin fallback', () => {
     const connections = [execution('z', 'then0', 'later'), execution('a', 'then0', 'earlier')];
-    expect(resolveFlowExecutionOrder({ id: 'sequence', type: 'sequence' }, connections).map((step) => step.connectionId))
-      .toEqual(['a', 'z']);
+    expect(
+      resolveFlowExecutionOrder({ id: 'sequence', type: 'sequence' }, connections).map((step) => step.connectionId),
+    ).toEqual(['a', 'z']);
   });
 });
