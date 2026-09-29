@@ -1,9 +1,5 @@
 import type { AssetItem } from '../services/editorHostTypes';
-import {
-  assetLibraryScopes,
-  assetScopeId,
-  type AssetLibraryScopeId,
-} from './assetLibraryScopes';
+import { assetLibraryScopes, assetScopeId, type AssetLibraryScopeId } from './assetLibraryScopes';
 
 export type AssetLibraryScopeNavigationItem = {
   id: AssetLibraryScopeId;
