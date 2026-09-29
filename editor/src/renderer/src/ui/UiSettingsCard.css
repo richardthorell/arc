@@ -18,7 +18,7 @@
 .ui-settings-card-header {
   min-height: 52px;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--arc-border-subtle);
@@ -28,15 +28,15 @@
 
 .ui-settings-card-icon {
   flex: 0 0 auto;
-  height: 15px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--arc-text-secondary);
+  transform: translateY(-1px);
 }
 
-.ui-settings-card-icon > svg {
-  display: block;
+.ui-settings-card-header:has(.ui-settings-card-heading small) .ui-settings-card-icon {
+  transform: translateY(-8px);
 }
 
 .ui-settings-card-heading {
