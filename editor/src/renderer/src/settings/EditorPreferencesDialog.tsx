@@ -12,15 +12,7 @@ import {
   Unplug,
 } from 'lucide-react';
 import { FaWindows, FaXbox } from 'react-icons/fa';
-import {
-  SiAndroid,
-  SiAnthropic,
-  SiApple,
-  SiLinux,
-  SiNintendoswitch,
-  SiOpenai,
-  SiPlaystation,
-} from 'react-icons/si';
+import { SiAndroid, SiAnthropic, SiApple, SiLinux, SiNintendoswitch, SiOpenai, SiPlaystation } from 'react-icons/si';
 
 import type { AiProviderId } from '../../../common/aiProviderTypes';
 import type {
