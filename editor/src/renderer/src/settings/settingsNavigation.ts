@@ -39,7 +39,7 @@ export type EditorSettingsPageId =
   | 'system.diagnostics';
 
 export type EditorSettingsContentKind = 'settings' | 'workbench' | 'recovery' | 'extensions';
-export type EditorSettingsIcon = 'palette' | 'viewport' | 'openai' | 'anthropic';
+export type EditorSettingsIcon = 'palette' | 'viewport' | 'hammer' | 'openai' | 'anthropic';
 
 export type EditorSettingsCardDefinition = {
   section: EditorSettingDescriptor['section'];
@@ -188,6 +188,7 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
           {
             section: 'Windows',
             title: 'Build Tools',
+            icon: 'hammer',
             keys: ['platform.windows.cmakePath', 'platform.windows.ninjaPath'],
           },
         ],
