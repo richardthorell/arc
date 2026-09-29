@@ -179,6 +179,16 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
     await update(descriptor.key, `${folder}${separator}${executableName}`);
   };
 
+  const openAndroidSdkManager = async () => {
+    setMessage('');
+    try {
+      const result = await window.arc.settings.openAndroidSdkManager();
+      if (!result.succeeded) setMessage(result.error || 'Could not open Android SDK Manager');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const providerLabel = (providerId: AiProviderId) =>
     snapshot?.aiProviders?.providers.find((provider) => provider.id === providerId)?.label ??
     (providerId === 'openai' ? 'OpenAI' : 'Anthropic');
@@ -313,6 +323,8 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
             ? snapshot?.aiProviders?.providers.find((candidate) => candidate.id === card.provider)
             : undefined;
           const testing = card.provider ? testingProviders.has(card.provider) : false;
+          const androidSdkValidation =
+            card.section === 'Android' ? snapshot?.pathValidation?.['platform.android.sdkPath'] : undefined;
           return (
             <UiSettingsCard
               icon={card.icon ? settingsIcons[card.icon] : undefined}
@@ -392,6 +404,17 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                   </div>
                 );
               })}
+              {card.section === 'Android' && (
+                <div className="settings-card-actions">
+                  <UiButton
+                    disabled={!androidSdkValidation?.valid}
+                    onClick={() => void openAndroidSdkManager()}
+                    variant="toolbar"
+                  >
+                    Open SDK Manager
+                  </UiButton>
+                </div>
+              )}
               {card.provider && (
                 <div className="settings-provider-actions">
                   <UiButton

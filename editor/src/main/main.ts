@@ -16,6 +16,8 @@ import { BuildService } from './buildService';
 import type { ArcBuildRequest } from '../common/buildTypes';
 import type { ArcCloneProjectRequest, ArcCreateProjectRequest } from '../common/projectTypes';
 import { PerformanceDiagnostics } from './performanceDiagnostics';
+import { androidToolchainSettingKeys } from './androidToolchain';
+import { resolveAndroidSdkManagerLauncher } from './androidSdkManager';
 
 const isDevelopment = !app.isPackaged;
 const performanceDiagnostics = new PerformanceDiagnostics({
@@ -1109,6 +1111,44 @@ void app.whenReady().then(async () => {
       throw new Error('Build diagnostic path escapes the active project');
     if (!fs.statSync(candidate).isFile()) throw new Error('Build diagnostic file does not exist');
     return shell.openPath(candidate);
+  });
+  ipcMain.handle('settings:openAndroidSdkManager', async () => {
+    const sdkValidation = settingsService?.snapshot().pathValidation?.[androidToolchainSettingKeys.sdkPath];
+    if (!sdkValidation?.valid || !sdkValidation.resolvedPath)
+      return { succeeded: false, error: 'Android SDK is not validated' };
+
+    const launcher = resolveAndroidSdkManagerLauncher(sdkValidation.resolvedPath);
+    if (!launcher)
+      return {
+        succeeded: false,
+        error: 'Android SDK Manager was not found. Install Android SDK Command-line Tools or Android Studio.',
+      };
+
+    if (launcher.kind === 'gui') {
+      const error = await shell.openPath(launcher.command);
+      return error ? { succeeded: false, error } : { succeeded: true, error: '' };
+    }
+
+    if (process.platform !== 'win32')
+      return {
+        succeeded: false,
+        error: 'Opening the command-line Android SDK Manager is currently supported on Windows hosts.',
+      };
+
+    try {
+      const quote = (value: string) => `"${value.replaceAll('"', '""')}"`;
+      const commandLine = `call ${[launcher.command, ...launcher.args].map(quote).join(' ')}`;
+      const terminal = spawn(process.env.ComSpec ?? 'cmd.exe', ['/D', '/K', commandLine], {
+        cwd: launcher.cwd,
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: false,
+      });
+      terminal.unref();
+      return { succeeded: true, error: '' };
+    } catch (error) {
+      return { succeeded: false, error: error instanceof Error ? error.message : String(error) };
+    }
   });
   ipcMain.handle('settings:snapshot', () => settingsService?.snapshot() ?? null);
   ipcMain.handle(
