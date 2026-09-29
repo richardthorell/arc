@@ -2,6 +2,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
+
 namespace
 {
 using namespace arc::render;
@@ -73,4 +75,23 @@ TEST_CASE("material instance override editing preserves stable parameter identit
     REQUIRE(instance.overrides[0].id == shader_parameter_id{101});
     REQUIRE(instance.overrides[1].id == shader_parameter_id{303});
     REQUIRE(validate_material_instance(instance).valid());
+}
+
+TEST_CASE("material instance can reset multiple overrides without reordering survivors", "[render][material-instance]")
+{
+    material_instance_descriptor instance;
+    instance.parent = material_handle{19};
+    instance.overrides = {make_override(101, 0.1f), make_override(202, 0.2f), make_override(303, 0.3f),
+                          make_override(404, 0.4f)};
+
+    const std::array reset_ids{shader_parameter_id{303}, shader_parameter_id{101}, shader_parameter_id{303},
+                               shader_parameter_id{999}, shader_parameter_id{}};
+    REQUIRE(reset_material_instance_overrides(instance, reset_ids) == 2);
+    REQUIRE(instance.overrides.size() == 2);
+    REQUIRE(instance.overrides[0].id == shader_parameter_id{202});
+    REQUIRE(instance.overrides[1].id == shader_parameter_id{404});
+    REQUIRE(validate_material_instance(instance).valid());
+
+    REQUIRE(reset_material_instance_overrides(instance, std::span<const shader_parameter_id>{}) == 0);
+    REQUIRE(instance.overrides.size() == 2);
 }
