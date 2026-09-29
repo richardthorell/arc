@@ -1,5 +1,15 @@
 import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { CircleCheck, FolderOpen, Hammer, Monitor, Palette, RefreshCw, RotateCcw, TriangleAlert, Unplug } from 'lucide-react';
+import {
+  CircleCheck,
+  FolderOpen,
+  Hammer,
+  Monitor,
+  Palette,
+  RefreshCw,
+  RotateCcw,
+  TriangleAlert,
+  Unplug,
+} from 'lucide-react';
 import { SiAnthropic, SiOpenai } from 'react-icons/si';
 
 import type { AiProviderId } from '../../../common/aiProviderTypes';
