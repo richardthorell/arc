@@ -20,23 +20,31 @@ describe('simulation lifecycle', () => {
   });
 
   it('switches between Play and Simulate without returning to authoring', () => {
-    expect(transitionRuntimeSession({ phase: 'running', mode: 'simulate' }, { type: 'switch-mode', mode: 'play' })).toEqual({
+    expect(
+      transitionRuntimeSession({ phase: 'running', mode: 'simulate' }, { type: 'switch-mode', mode: 'play' }),
+    ).toEqual({
       phase: 'running',
       mode: 'play',
     });
-    expect(transitionRuntimeSession({ phase: 'paused', mode: 'play' }, { type: 'switch-mode', mode: 'simulate' })).toEqual({
+    expect(
+      transitionRuntimeSession({ phase: 'paused', mode: 'play' }, { type: 'switch-mode', mode: 'simulate' }),
+    ).toEqual({
       phase: 'paused',
       mode: 'simulate',
     });
   });
 
   it('returns to authoring only when the runtime session stops', () => {
-    expect(transitionRuntimeSession({ phase: 'running', mode: 'simulate' }, { type: 'stop' })).toEqual({ phase: 'authoring' });
+    expect(transitionRuntimeSession({ phase: 'running', mode: 'simulate' }, { type: 'stop' })).toEqual({
+      phase: 'authoring',
+    });
   });
 
   it('rejects invalid lifecycle transitions', () => {
     expect(() => transitionRuntimeSession({ phase: 'authoring' }, { type: 'pause' })).toThrow();
     expect(() => transitionRuntimeSession({ phase: 'authoring' }, { type: 'switch-mode', mode: 'simulate' })).toThrow();
-    expect(() => transitionRuntimeSession({ phase: 'running', mode: 'play' }, { type: 'start', mode: 'simulate' })).toThrow();
+    expect(() =>
+      transitionRuntimeSession({ phase: 'running', mode: 'play' }, { type: 'start', mode: 'simulate' }),
+    ).toThrow();
   });
 });
