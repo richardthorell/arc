@@ -79,9 +79,9 @@ struct texture_histogram
             {
                 const float range = result.maximum[channel] - result.minimum[channel];
                 const float normalized = range > 0.0f ? (sample.rgba[channel] - result.minimum[channel]) / range : 0.0f;
-                const auto bin = static_cast<std::size_t>(std::clamp(
-                    std::floor(normalized * static_cast<float>(texture_histogram_bin_count - 1u)), 0.0f,
-                    static_cast<float>(texture_histogram_bin_count - 1u)));
+                const auto bin = static_cast<std::size_t>(
+                    std::clamp(std::floor(normalized * static_cast<float>(texture_histogram_bin_count - 1u)), 0.0f,
+                               static_cast<float>(texture_histogram_bin_count - 1u)));
                 ++result.bins[channel][bin];
             }
         }
