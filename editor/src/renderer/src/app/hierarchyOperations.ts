@@ -36,7 +36,9 @@ export const planHierarchyMove = (
     ancestorGuid = byGuid.get(ancestorGuid)?.parentGuid ?? '';
   }
 
-  const destination = entities.filter((entity) => entity.guid !== guid && entity.parentGuid === parentGuid).sort(bySiblingOrder);
+  const destination = entities
+    .filter((entity) => entity.guid !== guid && entity.parentGuid === parentGuid)
+    .sort(bySiblingOrder);
   const insertionIndex = Math.max(0, Math.min(Math.trunc(siblingOrder), destination.length));
   destination.splice(insertionIndex, 0, moved);
 
