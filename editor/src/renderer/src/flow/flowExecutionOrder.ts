@@ -31,15 +31,15 @@ export const resolveFlowExecutionOrder = (
   const pinOrder = new Map(getFlowExecutionOutputOrder(node.type).map((pinId, ordinal) => [pinId, ordinal]));
 
   return connections
-    .filter((connection) => connection.kind === 'execution' && connection.fromNodeId === node.id)
+    .filter((connection) => connection.kind === 'execution' && connection.from.nodeId === node.id)
     .flatMap((connection) => {
-      const ordinal = pinOrder.get(connection.fromPinId);
+      const ordinal = pinOrder.get(connection.from.pin);
       if (ordinal === undefined) return [];
       return [{
         connectionId: connection.id,
-        outputPinId: connection.fromPinId,
-        targetNodeId: connection.toNodeId,
-        targetPinId: connection.toPinId,
+        outputPinId: connection.from.pin,
+        targetNodeId: connection.to.nodeId,
+        targetPinId: connection.to.pin,
         ordinal,
       }];
     })
