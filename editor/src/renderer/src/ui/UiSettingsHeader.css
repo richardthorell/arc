@@ -7,6 +7,7 @@
   padding: 28px var(--ui-settings-content-padding-x, 28px) 42px;
 }
 
+/* Keep the settings title readable over bright banner artwork without hiding the image. */
 .ui-settings-header::after {
   position: absolute;
   inset: 0;
