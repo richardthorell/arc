@@ -62,3 +62,31 @@ export const createReimportRequest = (provenance: ArcImportedAssetProvenance): A
     destinationScope: 'project',
   };
 };
+
+export type ArcAssetProvenanceMetadata = {
+  provider: string;
+  providerAssetId: string;
+  importedAt: string;
+  licenseAtImport: string;
+  sourceUrl?: string;
+  sourceRevision?: string;
+  sourceHash?: string;
+  recipeVersion?: number;
+  selectedFiles: string[];
+  importOptions: ReadonlyArray<{ key: string; value: string | number | boolean | null }>;
+};
+
+export const createAssetProvenanceMetadata = (provenance: ArcImportedAssetProvenance): ArcAssetProvenanceMetadata => ({
+  provider: provenance.sourceId,
+  providerAssetId: provenance.sourceAssetId,
+  importedAt: provenance.importedAt,
+  licenseAtImport: provenance.license,
+  sourceUrl: provenance.sourceUrl,
+  sourceRevision: provenance.sourceRevision,
+  sourceHash: provenance.sourceHash,
+  recipeVersion: provenance.recipe?.version,
+  selectedFiles: provenance.recipe ? [...provenance.recipe.logicalPaths] : [],
+  importOptions: Object.entries(provenance.recipe?.options ?? {})
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => ({ key, value })),
+});
