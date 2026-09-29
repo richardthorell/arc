@@ -63,9 +63,9 @@ describe('searchAssetLibrary', () => {
     expect(searchAssetLibrary(assets, { excludeTags: [' pbr ', 'environment'] }).assets.map((item) => item.id)).toEqual(
       [],
     );
-    expect(searchAssetLibrary(assets, { tags: ['stone'], excludeTags: ['PBR'] }).assets.map((item) => item.id)).toEqual([
-      'm1',
-    ]);
+    expect(searchAssetLibrary(assets, { tags: ['stone'], excludeTags: ['PBR'] }).assets.map((item) => item.id)).toEqual(
+      ['m1'],
+    );
   });
 
   it('filters by kind without hiding useful kind facet counts', () => {
