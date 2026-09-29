@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { planHierarchyMove } from './hierarchyOperations';
+import { filterHierarchy, planHierarchyMove } from './hierarchyOperations';
 
 const entities = [
   { guid: 'root', parentGuid: '', siblingOrder: 0 },
@@ -30,5 +30,40 @@ describe('hierarchy move planning', () => {
     expect(planHierarchyMove(entities, 'a', 'a', 0)).toBeNull();
     expect(planHierarchyMove(entities, 'missing', '', 0)).toBeNull();
     expect(planHierarchyMove(entities, 'a', 'missing', 0)).toBeNull();
+  });
+});
+
+describe('hierarchy filtering', () => {
+  const searchable = [
+    { guid: 'root', parentGuid: '', siblingOrder: 0, label: 'World' },
+    { guid: 'player', parentGuid: 'root', siblingOrder: 0, label: 'Player', searchTerms: ['Character', 'Camera'] },
+    { guid: 'weapon', parentGuid: 'player', siblingOrder: 0, label: 'Sword', searchTerms: ['Mesh Renderer'] },
+    { guid: 'light', parentGuid: 'root', siblingOrder: 1, label: 'Sun', searchTerms: ['Directional Light'] },
+  ];
+
+  it('matches labels and metadata case-insensitively while preserving source order', () => {
+    expect(filterHierarchy(searchable, 'directional LIGHT')).toEqual({
+      visibleGuids: ['root', 'light'],
+      matchedGuids: ['light'],
+    });
+  });
+
+  it('keeps ancestors visible so filtered matches retain hierarchy context', () => {
+    expect(filterHierarchy(searchable, 'mesh renderer')).toEqual({
+      visibleGuids: ['root', 'player', 'weapon'],
+      matchedGuids: ['weapon'],
+    });
+  });
+
+  it('supports multi-term matching across label and metadata fields', () => {
+    expect(filterHierarchy(searchable, 'player camera')).toEqual({
+      visibleGuids: ['root', 'player'],
+      matchedGuids: ['player'],
+    });
+  });
+
+  it('returns the complete hierarchy for an empty query and no rows for no match', () => {
+    expect(filterHierarchy(searchable, '   ').visibleGuids).toEqual(['root', 'player', 'weapon', 'light']);
+    expect(filterHierarchy(searchable, 'missing')).toEqual({ visibleGuids: [], matchedGuids: [] });
   });
 });
