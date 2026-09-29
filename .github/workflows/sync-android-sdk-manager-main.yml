@@ -1,0 +1,41 @@
+name: Sync Android SDK Manager PR with main
+
+on:
+  push:
+    branches:
+      - ui/android-sdk-manager-action
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/android-sdk-manager-action
+          fetch-depth: 0
+      - name: Merge current main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge origin/main --no-edit
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Install editor dependencies
+        working-directory: editor
+        run: npm ci
+      - name: Run focused tests
+        working-directory: editor
+        run: npx vitest run src/main/androidSdkManager.test.ts src/renderer/src/settings/SettingsDialog.test.tsx
+      - name: Remove temporary workflow and push
+        run: |
+          git rm .github/workflows/sync-android-sdk-manager-main.yml
+          git commit -m "chore: remove temporary sync workflow"
+          git push origin HEAD:ui/android-sdk-manager-action
