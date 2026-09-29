@@ -10,7 +10,18 @@ import {
   TriangleAlert,
   Unplug,
 } from 'lucide-react';
-import { SiAnthropic, SiOpenai } from 'react-icons/si';
+import {
+  SiAndroid,
+  SiAnthropic,
+  SiApple,
+  SiLinux,
+  SiNintendoswitch,
+  SiOpenai,
+  SiPlaystation,
+  SiWebassembly,
+  SiWindows11,
+  SiXbox,
+} from 'react-icons/si';
 
 import type { AiProviderId } from '../../../common/aiProviderTypes';
 import type {
@@ -78,6 +89,14 @@ const settingsIcons: Record<EditorSettingsIcon, ReactNode> = {
   palette: <Palette aria-hidden="true" size={16} />,
   viewport: <Monitor aria-hidden="true" size={16} />,
   hammer: <Hammer aria-hidden="true" size={16} />,
+  windows: <SiWindows11 aria-hidden="true" size={16} />,
+  android: <SiAndroid aria-hidden="true" size={16} />,
+  linux: <SiLinux aria-hidden="true" size={16} />,
+  apple: <SiApple aria-hidden="true" size={16} />,
+  web: <SiWebassembly aria-hidden="true" size={16} />,
+  xbox: <SiXbox aria-hidden="true" size={16} />,
+  playstation: <SiPlaystation aria-hidden="true" size={16} />,
+  switch: <SiNintendoswitch aria-hidden="true" size={16} />,
   openai: <SiOpenai aria-hidden="true" size={16} />,
   anthropic: <SiAnthropic aria-hidden="true" size={16} />,
 };
