@@ -364,6 +364,8 @@ const arcApi = {
   },
   settings: {
     snapshot: (): Promise<EditorSettingsSnapshot | null> => ipcRenderer.invoke('settings:snapshot'),
+    openAndroidSdkManager: (): Promise<{ succeeded: boolean; error: string }> =>
+      ipcRenderer.invoke('settings:openAndroidSdkManager'),
     update: (
       scope: 'user' | 'project',
       changes: Record<string, unknown>,

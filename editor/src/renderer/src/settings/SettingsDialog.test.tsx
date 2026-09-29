@@ -78,6 +78,7 @@ beforeEach(() => {
         },
       }),
       update: vi.fn(),
+      openAndroidSdkManager: vi.fn().mockResolvedValue({ succeeded: true, error: '' }),
     },
     recovery: {
       snapshot: vi.fn().mockResolvedValue({ uncleanShutdown: false, generations: [] }),
@@ -480,6 +481,51 @@ describe('EditorPreferencesDialog', () => {
     expect(androidStatus).toHaveClass('settings-field-validation-valid');
     expect(androidStatus).toHaveAttribute('title', 'C:\\Program Files\\Java\\jdk-26');
     expect(screen.queryByText('Validated · Java 26')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open SDK Manager' })).toBeDisabled();
+  });
+
+  it('opens the Android SDK Manager only after the SDK validates', async () => {
+    window.arc.settings.snapshot = vi.fn().mockResolvedValue({
+      revision: 10,
+      schema: [
+        {
+          key: 'platform.android.sdkPath',
+          section: 'Android',
+          label: 'Android SDK',
+          description: 'Android SDK root.',
+          type: 'string',
+          defaultValue: '',
+          scopes: ['user'],
+        },
+      ],
+      values: { 'platform.android.sdkPath': 'C:\\Android\\Sdk' },
+      sources: { 'platform.android.sdkPath': 'default' },
+      restartRequired: [],
+      pathValidation: {
+        'platform.android.sdkPath': {
+          valid: true,
+          resolvedPath: 'C:\\Android\\Sdk',
+          message: 'Validated · Android SDK / ADB',
+          source: 'default',
+        },
+      },
+      aiProviders: {
+        secureStorageAvailable: true,
+        providers: [
+          { id: 'openai', label: 'OpenAI', connected: false, connectionStatus: 'disconnected' },
+          { id: 'anthropic', label: 'Anthropic', connected: false, connectionStatus: 'disconnected' },
+        ],
+      },
+    });
+
+    render(<EditorPreferencesDialog onClose={vi.fn()} onResetLayout={vi.fn()} />);
+    await waitFor(() => expect(window.arc.settings.snapshot).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('treeitem', { name: /Android/ }));
+
+    const openSdkManager = screen.getByRole('button', { name: 'Open SDK Manager' });
+    expect(openSdkManager).toBeEnabled();
+    fireEvent.click(openSdkManager);
+    await waitFor(() => expect(window.arc.settings.openAndroidSdkManager).toHaveBeenCalledTimes(1));
   });
 
   it('shows framework pages that do not have registered preferences yet', () => {
