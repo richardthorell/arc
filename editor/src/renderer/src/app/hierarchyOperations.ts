@@ -30,10 +30,7 @@ const bySiblingOrder = (a: HierarchyMoveEntity, b: HierarchyMoveEntity) =>
 
 const normalizeSearch = (value: string) => value.trim().toLocaleLowerCase();
 
-export const filterHierarchy = (
-  entities: readonly HierarchySearchEntity[],
-  query: string,
-): HierarchySearchResult => {
+export const filterHierarchy = (entities: readonly HierarchySearchEntity[], query: string): HierarchySearchResult => {
   const normalizedQuery = normalizeSearch(query);
   if (!normalizedQuery) {
     return {
@@ -48,9 +45,7 @@ export const filterHierarchy = (
   const visible = new Set<string>();
 
   for (const entity of entities) {
-    const haystack = [entity.label, ...(entity.searchTerms ?? [])]
-      .map(normalizeSearch)
-      .filter(Boolean);
+    const haystack = [entity.label, ...(entity.searchTerms ?? [])].map(normalizeSearch).filter(Boolean);
     if (!terms.every((term) => haystack.some((candidate) => candidate.includes(term)))) continue;
 
     matched.add(entity.guid);
