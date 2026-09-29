@@ -1,3 +1,5 @@
+import type { AssetItem } from '../services/editorHostTypes';
+
 export type AssetLibraryVirtualViewId = 'favorites' | 'recent' | 'downloads' | 'search-results';
 
 export type AssetLibraryVirtualView = {
@@ -43,6 +45,25 @@ export const assetIdsForVirtualView = (
 ): readonly string[] => {
   const ids = id === 'search-results' ? searchResults : (membership[id] ?? []);
   return uniqueAssetIds(ids);
+};
+
+/**
+ * Project a virtual view onto the current asset snapshot. Stale membership IDs
+ * are ignored and ordering follows the view's stable ID list, so the same
+ * AssetItem can safely appear in several views without being copied or having
+ * its storage scope rewritten.
+ */
+export const assetsForVirtualView = <T extends Pick<AssetItem, 'id'>>(
+  assets: readonly T[],
+  id: AssetLibraryVirtualViewId,
+  membership: AssetLibraryVirtualMembership,
+  searchResults: readonly string[] = [],
+): readonly T[] => {
+  const assetsById = new Map(assets.map((asset) => [asset.id, asset] as const));
+  return assetIdsForVirtualView(id, membership, searchResults).flatMap((assetId) => {
+    const asset = assetsById.get(assetId);
+    return asset ? [asset] : [];
+  });
 };
 
 /**
