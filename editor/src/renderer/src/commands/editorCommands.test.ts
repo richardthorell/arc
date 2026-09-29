@@ -70,10 +70,12 @@ describe('resolveEditorKeybindings', () => {
   });
 
   it('reports stale and empty persisted overrides', () => {
-    expect(validateEditorKeybindingOverrides(commands, { stale: 'Q', 'edit.undo': '   ', 'view.frame': null })).toEqual([
-      { commandId: 'edit.undo', kind: 'empty-shortcut' },
-      { commandId: 'stale', kind: 'unknown-command' },
-    ]);
+    expect(validateEditorKeybindingOverrides(commands, { stale: 'Q', 'edit.undo': '   ', 'view.frame': null })).toEqual(
+      [
+        { commandId: 'edit.undo', kind: 'empty-shortcut' },
+        { commandId: 'stale', kind: 'unknown-command' },
+      ],
+    );
   });
 });
 
