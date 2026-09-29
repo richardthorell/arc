@@ -3,10 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-const materialCompilerSource = readFileSync(
-  fileURLToPath(new URL('./materialCompiler.ts', import.meta.url)),
-  'utf8',
-);
+const materialCompilerSource = readFileSync(fileURLToPath(new URL('./materialCompiler.ts', import.meta.url)), 'utf8');
 
 /**
  * The renderer may adapt native diagnostics and derive authoring-only presentation metadata,
