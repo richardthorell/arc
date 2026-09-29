@@ -76,9 +76,7 @@ export type ArcAssetProvenanceMetadata = {
   importOptions: ReadonlyArray<{ key: string; value: string | number | boolean | null }>;
 };
 
-export const createAssetProvenanceMetadata = (
-  provenance: ArcImportedAssetProvenance,
-): ArcAssetProvenanceMetadata => ({
+export const createAssetProvenanceMetadata = (provenance: ArcImportedAssetProvenance): ArcAssetProvenanceMetadata => ({
   provider: provenance.sourceId,
   providerAssetId: provenance.sourceAssetId,
   importedAt: provenance.importedAt,
