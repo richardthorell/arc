@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { CircleCheck, FolderOpen, Monitor, Palette, RefreshCw, RotateCcw, TriangleAlert, Unplug } from 'lucide-react';
+import { CircleCheck, FolderOpen, Hammer, Monitor, Palette, RefreshCw, RotateCcw, TriangleAlert, Unplug } from 'lucide-react';
 import { SiAnthropic, SiOpenai } from 'react-icons/si';
 
 import type { AiProviderId } from '../../../common/aiProviderTypes';
@@ -67,6 +67,7 @@ const validationSourceLabel = (source: string) => (source === 'configured' ? 'Co
 const settingsIcons: Record<EditorSettingsIcon, ReactNode> = {
   palette: <Palette aria-hidden="true" size={16} />,
   viewport: <Monitor aria-hidden="true" size={16} />,
+  hammer: <Hammer aria-hidden="true" size={16} />,
   openai: <SiOpenai aria-hidden="true" size={16} />,
   anthropic: <SiAnthropic aria-hidden="true" size={16} />,
 };
@@ -359,8 +360,10 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                     key={descriptor.key}
                   >
                     <span className="settings-field-description">
-                      <strong>{descriptor.label}</strong>
-                      {!secretSetting && <small>{visibleDescription(descriptor)}</small>}
+                      <strong title={descriptor.label}>{descriptor.label}</strong>
+                      {!secretSetting && (
+                        <small title={visibleDescription(descriptor)}>{visibleDescription(descriptor)}</small>
+                      )}
                       {pathValidation && (
                         <span
                           className={`settings-field-validation settings-field-validation-${pathValidation.valid ? 'valid' : 'invalid'}`}
