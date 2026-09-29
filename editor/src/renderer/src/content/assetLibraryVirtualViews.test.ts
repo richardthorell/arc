@@ -5,8 +5,10 @@ import {
   assetLibraryVirtualView,
   assetLibraryVirtualViews,
   assetsForVirtualView,
+  persistentVirtualMembership,
   recordDownloadedAsset,
   recordRecentAsset,
+  restorePersistentVirtualMembership,
   setAssetFavorite,
 } from './assetLibraryVirtualViews';
 
@@ -65,6 +67,38 @@ describe('asset library virtual views', () => {
       assets[1],
       assets[0],
     ]);
+  });
+
+  it('normalizes only persistent virtual views at the persistence boundary', () => {
+    expect(
+      persistentVirtualMembership({
+        favorites: ['asset-a', '', 'asset-a'],
+        recent: ['asset-b'],
+        downloads: ['asset-c'],
+        'search-results': ['asset-d'],
+        unknown: ['asset-e'],
+      }),
+    ).toEqual({
+      favorites: ['asset-a'],
+      recent: ['asset-b'],
+      downloads: ['asset-c'],
+    });
+  });
+
+  it('restores persistent membership defensively from stored state', () => {
+    expect(
+      restorePersistentVirtualMembership({
+        favorites: ['asset-a', 42, 'asset-a', ''],
+        recent: 'invalid',
+        downloads: ['asset-b'],
+        'search-results': ['asset-c'],
+      }),
+    ).toEqual({
+      favorites: ['asset-a'],
+      recent: [],
+      downloads: ['asset-b'],
+    });
+    expect(restorePersistentVirtualMembership(null)).toEqual({ favorites: [], recent: [], downloads: [] });
   });
 
   it('toggles favorites without mutating other virtual views', () => {
