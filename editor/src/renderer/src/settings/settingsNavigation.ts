@@ -39,7 +39,20 @@ export type EditorSettingsPageId =
   | 'system.diagnostics';
 
 export type EditorSettingsContentKind = 'settings' | 'workbench' | 'recovery' | 'extensions';
-export type EditorSettingsIcon = 'palette' | 'viewport' | 'openai' | 'anthropic';
+export type EditorSettingsIcon =
+  | 'palette'
+  | 'viewport'
+  | 'hammer'
+  | 'windows'
+  | 'android'
+  | 'linux'
+  | 'apple'
+  | 'web'
+  | 'xbox'
+  | 'playstation'
+  | 'switch'
+  | 'openai'
+  | 'anthropic';
 
 export type EditorSettingsCardDefinition = {
   section: EditorSettingDescriptor['section'];
@@ -188,6 +201,7 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
           {
             section: 'Windows',
             title: 'Build Tools',
+            icon: 'hammer',
             keys: ['platform.windows.cmakePath', 'platform.windows.ninjaPath'],
           },
         ],
@@ -200,6 +214,7 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
         cards: [
           {
             section: 'Windows',
+            icon: 'windows',
             keys: [
               'platform.windows.visualStudioPath',
               'platform.windows.msvcToolchainPath',
@@ -213,14 +228,14 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
         label: 'Android',
         description: 'Java, Android SDK and NDK locations used by Android builds and device tooling.',
         keywords: ['android', 'java', 'jdk', 'sdk', 'ndk', 'adb', 'toolchain'],
-        cards: [{ section: 'Android', title: 'Android Toolchain' }],
+        cards: [{ section: 'Android', title: 'Android Toolchain', icon: 'android' }],
       },
       {
         id: 'platforms.linux',
         label: 'Linux',
         description: 'Build Linux locally on Linux or through WSL when ARC runs on Windows.',
         keywords: ['linux', 'wsl', 'clang', 'gcc', 'sysroot', 'compiler'],
-        cards: [{ section: 'Linux', title: 'Linux Build Environment' }],
+        cards: [{ section: 'Linux', title: 'Linux Build Environment', icon: 'linux' }],
       },
       {
         id: 'platforms.apple',
@@ -233,35 +248,35 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
             label: 'Xcode',
             description: 'Xcode developer tools used for all local Apple platform builds.',
             keywords: ['xcode', 'developer dir'],
-            cards: [{ section: 'Apple', title: 'Apple Toolchain' }],
+            cards: [{ section: 'Apple', title: 'Apple Toolchain', icon: 'apple' }],
           },
           {
             id: 'platforms.apple.macos',
             label: 'macOS',
             description: 'macOS SDK derived from the selected Xcode installation.',
             keywords: ['macos', 'sdk'],
-            cards: [{ section: 'macOS' }],
+            cards: [{ section: 'macOS', icon: 'apple' }],
           },
           {
             id: 'platforms.apple.ios',
             label: 'iOS',
             description: 'iOS device and Simulator SDKs derived from Xcode.',
             keywords: ['ios', 'iphone', 'simulator', 'sdk'],
-            cards: [{ section: 'iOS' }],
+            cards: [{ section: 'iOS', icon: 'apple' }],
           },
           {
             id: 'platforms.apple.tvos',
             label: 'tvOS',
             description: 'tvOS device and Simulator SDKs derived from Xcode.',
             keywords: ['tvos', 'apple tv', 'simulator', 'sdk'],
-            cards: [{ section: 'tvOS' }],
+            cards: [{ section: 'tvOS', icon: 'apple' }],
           },
           {
             id: 'platforms.apple.visionos',
             label: 'visionOS',
             description: 'visionOS device and Simulator SDKs derived from Xcode.',
             keywords: ['visionos', 'vision pro', 'simulator', 'sdk'],
-            cards: [{ section: 'visionOS' }],
+            cards: [{ section: 'visionOS', icon: 'apple' }],
           },
         ],
       },
@@ -270,28 +285,28 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
         label: 'Web',
         description: 'Emscripten SDK used for WebAssembly builds.',
         keywords: ['web', 'webassembly', 'wasm', 'emscripten', 'emsdk'],
-        cards: [{ section: 'Web' }],
+        cards: [{ section: 'Web', icon: 'web' }],
       },
       {
         id: 'platforms.xbox',
         label: 'Xbox',
         description: 'Licensed Microsoft GDK root for Xbox development.',
         keywords: ['xbox', 'gdk', 'console'],
-        cards: [{ section: 'Xbox' }],
+        cards: [{ section: 'Xbox', icon: 'xbox' }],
       },
       {
         id: 'platforms.playstation',
         label: 'PlayStation',
         description: 'Licensed PlayStation SDK root for console development.',
         keywords: ['playstation', 'ps5', 'sdk', 'console'],
-        cards: [{ section: 'PlayStation' }],
+        cards: [{ section: 'PlayStation', icon: 'playstation' }],
       },
       {
         id: 'platforms.switch',
         label: 'Nintendo Switch',
         description: 'Licensed Nintendo SDK root for Switch development.',
         keywords: ['nintendo', 'switch', 'sdk', 'console'],
-        cards: [{ section: 'Nintendo Switch' }],
+        cards: [{ section: 'Nintendo Switch', icon: 'switch' }],
       },
     ],
   },

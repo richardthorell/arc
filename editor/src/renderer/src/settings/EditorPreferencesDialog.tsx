@@ -1,6 +1,26 @@
 import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { CircleCheck, FolderOpen, Monitor, Palette, RefreshCw, RotateCcw, TriangleAlert, Unplug } from 'lucide-react';
-import { SiAnthropic, SiOpenai } from 'react-icons/si';
+import {
+  CircleCheck,
+  FolderOpen,
+  Gamepad2,
+  Hammer,
+  Monitor,
+  Palette,
+  RefreshCw,
+  RotateCcw,
+  TriangleAlert,
+  Unplug,
+} from 'lucide-react';
+import {
+  SiAndroid,
+  SiAnthropic,
+  SiApple,
+  SiLinux,
+  SiNintendoswitch,
+  SiOpenai,
+  SiPlaystation,
+  SiWebassembly,
+} from 'react-icons/si';
 
 import type { AiProviderId } from '../../../common/aiProviderTypes';
 import type {
@@ -67,6 +87,15 @@ const validationSourceLabel = (source: string) => (source === 'configured' ? 'Co
 const settingsIcons: Record<EditorSettingsIcon, ReactNode> = {
   palette: <Palette aria-hidden="true" size={16} />,
   viewport: <Monitor aria-hidden="true" size={16} />,
+  hammer: <Hammer aria-hidden="true" size={16} />,
+  windows: <Monitor aria-hidden="true" size={16} />,
+  android: <SiAndroid aria-hidden="true" size={16} />,
+  linux: <SiLinux aria-hidden="true" size={16} />,
+  apple: <SiApple aria-hidden="true" size={16} />,
+  web: <SiWebassembly aria-hidden="true" size={16} />,
+  xbox: <Gamepad2 aria-hidden="true" size={16} />,
+  playstation: <SiPlaystation aria-hidden="true" size={16} />,
+  switch: <SiNintendoswitch aria-hidden="true" size={16} />,
   openai: <SiOpenai aria-hidden="true" size={16} />,
   anthropic: <SiAnthropic aria-hidden="true" size={16} />,
 };
@@ -359,8 +388,10 @@ export function EditorPreferencesDialog({ onClose, onResetLayout }: EditorPrefer
                     key={descriptor.key}
                   >
                     <span className="settings-field-description">
-                      <strong>{descriptor.label}</strong>
-                      {!secretSetting && <small>{visibleDescription(descriptor)}</small>}
+                      <strong title={descriptor.label}>{descriptor.label}</strong>
+                      {!secretSetting && (
+                        <small title={visibleDescription(descriptor)}>{visibleDescription(descriptor)}</small>
+                      )}
                       {pathValidation && (
                         <span
                           className={`settings-field-validation settings-field-validation-${pathValidation.valid ? 'valid' : 'invalid'}`}

@@ -13,7 +13,7 @@
 .settings-field-row {
   min-height: 68px;
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(190px, 260px) 28px;
+  grid-template-columns: minmax(220px, 1fr) minmax(190px, 286px) 28px;
   align-items: center;
   gap: 14px;
   padding: 11px 0;
@@ -21,7 +21,7 @@
 }
 
 .settings-field-row-path {
-  grid-template-columns: minmax(220px, 1fr) minmax(190px, 260px) 64px;
+  grid-template-columns: minmax(220px, 1fr) minmax(190px, 286px) 64px;
 }
 
 .ui-settings-card-content > .settings-field-row:last-child {
@@ -30,6 +30,7 @@
 
 .settings-field-description {
   min-width: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -44,6 +45,14 @@
   color: var(--arc-color-text-muted);
   line-height: 1.45;
   opacity: 0.7;
+}
+
+.settings-field-description strong,
+.settings-field-description small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .settings-field-warning,
