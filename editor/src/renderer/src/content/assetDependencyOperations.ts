@@ -18,6 +18,13 @@ export type AssetDeletePlan = {
   safe: boolean;
 };
 
+export type AssetBulkDeletePlan = {
+  assetIds: readonly string[];
+  internalReferences: readonly AssetReference[];
+  blockingReferences: readonly AssetReference[];
+  safe: boolean;
+};
+
 export type AssetRelocationPlan = {
   assetId: string;
   fromPath: string;
@@ -79,6 +86,30 @@ export const describeAssetDependencyImpact = (index: AssetDependencyIndex, asset
 export const planAssetDelete = (index: AssetDependencyIndex, assetId: string): AssetDeletePlan => {
   const dependents = findAssetUsages(index, assetId);
   return { assetId, dependents, safe: dependents.length === 0 };
+};
+
+export const planAssetBulkDelete = (index: AssetDependencyIndex, assetIds: readonly string[]): AssetBulkDeletePlan => {
+  const uniqueAssetIds = [...new Set(assetIds)].sort();
+  const selected = new Set(uniqueAssetIds);
+  const internalReferences: AssetReference[] = [];
+  const blockingReferences: AssetReference[] = [];
+
+  for (const assetId of uniqueAssetIds) {
+    for (const reference of findAssetUsages(index, assetId)) {
+      if (selected.has(reference.sourceAssetId)) internalReferences.push(reference);
+      else blockingReferences.push(reference);
+    }
+  }
+
+  internalReferences.sort(byReferenceIdentity);
+  blockingReferences.sort(byReferenceIdentity);
+
+  return {
+    assetIds: uniqueAssetIds,
+    internalReferences,
+    blockingReferences,
+    safe: blockingReferences.length === 0,
+  };
 };
 
 export const planAssetRelocation = (assetId: string, fromPath: string, toPath: string): AssetRelocationPlan => {
