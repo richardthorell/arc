@@ -4,6 +4,7 @@ import {
   describeAssetDependencyImpact,
   findAssetUsages,
   findTransitiveDependentAssetIds,
+  planAssetBulkDelete,
   planAssetDelete,
   planAssetRelocation,
 } from './assetDependencyOperations';
@@ -67,6 +68,30 @@ describe('asset dependency operations', () => {
     expect(planAssetDelete(index, 'unused')).toEqual({
       assetId: 'unused',
       dependents: [],
+      safe: true,
+    });
+  });
+
+  it('allows bulk deletion when all dependents are selected together', () => {
+    const index = buildAssetDependencyIndex([
+      { sourceAssetId: 'material-a', targetAssetId: 'texture-a', kind: 'texture' },
+      { sourceAssetId: 'scene-a', targetAssetId: 'material-a', kind: 'material' },
+    ]);
+
+    expect(planAssetBulkDelete(index, ['material-a', 'texture-a', 'material-a'])).toEqual({
+      assetIds: ['material-a', 'texture-a'],
+      internalReferences: [{ sourceAssetId: 'material-a', targetAssetId: 'texture-a', kind: 'texture' }],
+      blockingReferences: [{ sourceAssetId: 'scene-a', targetAssetId: 'material-a', kind: 'material' }],
+      safe: false,
+    });
+
+    expect(planAssetBulkDelete(index, ['scene-a', 'texture-a', 'material-a'])).toEqual({
+      assetIds: ['material-a', 'scene-a', 'texture-a'],
+      internalReferences: [
+        { sourceAssetId: 'material-a', targetAssetId: 'texture-a', kind: 'texture' },
+        { sourceAssetId: 'scene-a', targetAssetId: 'material-a', kind: 'material' },
+      ],
+      blockingReferences: [],
       safe: true,
     });
   });
