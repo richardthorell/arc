@@ -240,7 +240,7 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
       {
         id: 'platforms.apple',
         label: 'Apple',
-        keywords: ['apple', 'xcode', 'macos', 'ios', 'tvos', 'visionos'],
+        keywords: ['apple', 'xcode', 'macos', 'ios'],
         defaultExpanded: true,
         children: [
           {
@@ -388,11 +388,20 @@ const flattenPages = (
     return [{ ...node, headerImage: inheritedHeaderImage }];
   });
 
+const hiddenNavigationPageIds = new Set(['platforms.apple.tvos', 'platforms.apple.visionos']);
+const appleHostOnlyNavigationPageIds = new Set(['platforms.apple.macos', 'platforms.apple.ios']);
+
+const isAppleHost = (): boolean =>
+  typeof navigator === 'undefined' || navigator.platform.toLocaleLowerCase().includes('mac');
+
+const shouldIncludeNavigationNode = (node: EditorSettingsDefinitionNode): boolean =>
+  !hiddenNavigationPageIds.has(node.id) && (isAppleHost() || !appleHostOnlyNavigationPageIds.has(node.id));
+
 const toNavigationNode = (node: EditorSettingsDefinitionNode): UiTreeNode => ({
   id: node.id,
   label: node.label,
   keywords: node.keywords,
-  children: isGroup(node) ? node.children.map(toNavigationNode) : undefined,
+  children: isGroup(node) ? node.children.filter(shouldIncludeNavigationNode).map(toNavigationNode) : undefined,
 });
 
 const collectDefaultExpandedIds = (nodes: readonly EditorSettingsDefinitionNode[]): string[] =>
