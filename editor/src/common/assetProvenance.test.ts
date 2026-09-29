@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  createAssetImportRecipe,
-  createImportedAssetProvenance,
-  createReimportRequest,
-} from './assetProvenance';
+import { createAssetImportRecipe, createImportedAssetProvenance, createReimportRequest } from './assetProvenance';
 
 describe('asset provenance', () => {
   it('normalizes recipes deterministically without changing selected files', () => {

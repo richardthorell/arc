@@ -53,9 +53,7 @@ export const createImportedAssetProvenance = (
   },
 });
 
-export const createReimportRequest = (
-  provenance: ArcImportedAssetProvenance,
-): ArcAssetImportRequest | null => {
+export const createReimportRequest = (provenance: ArcImportedAssetProvenance): ArcAssetImportRequest | null => {
   if (!provenance.recipe) return null;
   return {
     sourceId: provenance.sourceId,
