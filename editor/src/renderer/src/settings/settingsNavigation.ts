@@ -24,8 +24,6 @@ export type EditorSettingsPageId =
   | 'platforms.apple.xcode'
   | 'platforms.apple.macos'
   | 'platforms.apple.ios'
-  | 'platforms.apple.tvos'
-  | 'platforms.apple.visionos'
   | 'platforms.web'
   | 'platforms.xbox'
   | 'platforms.playstation'
@@ -264,20 +262,6 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
             keywords: ['ios', 'iphone', 'simulator', 'sdk'],
             cards: [{ section: 'iOS', icon: 'apple' }],
           },
-          {
-            id: 'platforms.apple.tvos',
-            label: 'tvOS',
-            description: 'tvOS device and Simulator SDKs derived from Xcode.',
-            keywords: ['tvos', 'apple tv', 'simulator', 'sdk'],
-            cards: [{ section: 'tvOS', icon: 'apple' }],
-          },
-          {
-            id: 'platforms.apple.visionos',
-            label: 'visionOS',
-            description: 'visionOS device and Simulator SDKs derived from Xcode.',
-            keywords: ['visionos', 'vision pro', 'simulator', 'sdk'],
-            cards: [{ section: 'visionOS', icon: 'apple' }],
-          },
         ],
       },
       {
@@ -388,14 +372,13 @@ const flattenPages = (
     return [{ ...node, headerImage: inheritedHeaderImage }];
   });
 
-const hiddenNavigationPageIds = new Set(['platforms.apple.tvos', 'platforms.apple.visionos']);
 const appleHostOnlyNavigationPageIds = new Set(['platforms.apple.macos', 'platforms.apple.ios']);
 
 const isAppleHost = (): boolean =>
   typeof navigator === 'undefined' || navigator.platform.toLocaleLowerCase().includes('mac');
 
 const shouldIncludeNavigationNode = (node: EditorSettingsDefinitionNode): boolean =>
-  !hiddenNavigationPageIds.has(node.id) && (isAppleHost() || !appleHostOnlyNavigationPageIds.has(node.id));
+  isAppleHost() || !appleHostOnlyNavigationPageIds.has(node.id);
 
 const toNavigationNode = (node: EditorSettingsDefinitionNode): UiTreeNode => ({
   id: node.id,
