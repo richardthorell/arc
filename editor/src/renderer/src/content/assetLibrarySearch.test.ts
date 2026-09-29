@@ -51,6 +51,23 @@ describe('searchAssetLibrary', () => {
     ]);
   });
 
+  it('supports deterministic path-prefix filtering at folder boundaries', () => {
+    expect(searchAssetLibrary(assets, { pathPrefix: ' assets\\rocks/ ' }).assets.map((item) => item.id)).toEqual([
+      'm1',
+      't1',
+    ]);
+    expect(searchAssetLibrary(assets, { pathPrefix: 'Assets/Rock' }).assets).toEqual([]);
+  });
+
+  it('excludes assets carrying any excluded tag', () => {
+    expect(searchAssetLibrary(assets, { excludeTags: [' pbr ', 'environment'] }).assets.map((item) => item.id)).toEqual(
+      [],
+    );
+    expect(searchAssetLibrary(assets, { tags: ['stone'], excludeTags: ['PBR'] }).assets.map((item) => item.id)).toEqual([
+      'm1',
+    ]);
+  });
+
   it('filters by kind without hiding useful kind facet counts', () => {
     const result = searchAssetLibrary(assets, { text: 'rock', kinds: ['mesh'] });
     expect(result.assets.map((item) => item.id)).toEqual(['m1']);
@@ -58,6 +75,12 @@ describe('searchAssetLibrary', () => {
       { kind: 'mesh', count: 1 },
       { kind: 'texture', count: 1 },
     ]);
+  });
+
+  it('computes facets after metadata predicates and before kind filtering', () => {
+    const result = searchAssetLibrary(assets, { pathPrefix: 'Assets/Rocks', excludeTags: ['PBR'], kinds: ['texture'] });
+    expect(result.assets).toEqual([]);
+    expect(result.facets).toEqual([{ kind: 'mesh', count: 1 }]);
   });
 
   it('preserves stable source ordering and does not mutate assets', () => {
