@@ -36,9 +36,8 @@ struct [[nodiscard]] material_instance_validation_result
 find_material_instance_override(const material_instance_descriptor& instance, shader_parameter_id parameter_id) noexcept
 {
     const auto it = std::find_if(instance.overrides.begin(), instance.overrides.end(),
-                                 [parameter_id](const material_parameter_override& override_value) {
-                                     return override_value.id == parameter_id;
-                                 });
+                                 [parameter_id](const material_parameter_override& override_value)
+                                 { return override_value.id == parameter_id; });
     return it == instance.overrides.end() ? nullptr : &*it;
 }
 
@@ -57,8 +56,9 @@ find_material_instance_override(const material_instance_descriptor& instance, sh
  */
 inline void set_material_instance_override(material_instance_descriptor& instance, material_parameter_override value)
 {
-    const auto it = std::find_if(instance.overrides.begin(), instance.overrides.end(),
-                                 [&value](const material_parameter_override& existing) { return existing.id == value.id; });
+    const auto it =
+        std::find_if(instance.overrides.begin(), instance.overrides.end(),
+                     [&value](const material_parameter_override& existing) { return existing.id == value.id; });
     if (it != instance.overrides.end())
     {
         *it = std::move(value);
@@ -72,9 +72,8 @@ inline void set_material_instance_override(material_instance_descriptor& instanc
 inline bool reset_material_instance_override(material_instance_descriptor& instance, shader_parameter_id parameter_id)
 {
     const auto it = std::find_if(instance.overrides.begin(), instance.overrides.end(),
-                                 [parameter_id](const material_parameter_override& override_value) {
-                                     return override_value.id == parameter_id;
-                                 });
+                                 [parameter_id](const material_parameter_override& override_value)
+                                 { return override_value.id == parameter_id; });
     if (it == instance.overrides.end())
     {
         return false;
