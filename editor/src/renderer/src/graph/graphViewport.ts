@@ -90,10 +90,7 @@ export function fitGraphViewport(
   const widthZoom = width > 0 ? availableWidth / width : Number.POSITIVE_INFINITY;
   const heightZoom = height > 0 ? availableHeight / height : Number.POSITIVE_INFINITY;
   const requestedZoom = Math.min(widthZoom, heightZoom);
-  const zoom = clampGraphViewportZoom(
-    Number.isFinite(requestedZoom) ? requestedZoom : limits.maxZoom,
-    limits,
-  );
+  const zoom = clampGraphViewportZoom(Number.isFinite(requestedZoom) ? requestedZoom : limits.maxZoom, limits);
   const centerX = finiteOr(bounds.x, 0) + width * 0.5;
   const centerY = finiteOr(bounds.y, 0) + height * 0.5;
 

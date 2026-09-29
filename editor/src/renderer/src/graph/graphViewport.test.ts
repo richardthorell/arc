@@ -24,26 +24,28 @@ describe('graphViewport', () => {
   });
 
   it('fits graph bounds into the viewport with screen-space padding', () => {
-    expect(
-      fitGraphViewport({ x: 100, y: 50, width: 200, height: 100 }, { width: 800, height: 600 }, 50),
-    ).toEqual({ x: -300, y: 0, zoom: 4 });
+    expect(fitGraphViewport({ x: 100, y: 50, width: 200, height: 100 }, { width: 800, height: 600 }, 50)).toEqual({
+      x: -300,
+      y: 0,
+      zoom: 4,
+    });
   });
 
   it('clamps fit zoom and keeps the graph bounds centered', () => {
     expect(
-      fitGraphViewport(
-        { x: 10, y: 20, width: 10, height: 10 },
-        { width: 1000, height: 800 },
-        32,
-        { minZoom: 0.5, maxZoom: 2 },
-      ),
+      fitGraphViewport({ x: 10, y: 20, width: 10, height: 10 }, { width: 1000, height: 800 }, 32, {
+        minZoom: 0.5,
+        maxZoom: 2,
+      }),
     ).toEqual({ x: 470, y: 350, zoom: 2 });
   });
 
   it('handles point-like selections deterministically', () => {
-    expect(
-      fitGraphViewport({ x: 25, y: 40, width: 0, height: 0 }, { width: 400, height: 300 }),
-    ).toEqual({ x: 100, y: -10, zoom: 4 });
+    expect(fitGraphViewport({ x: 25, y: 40, width: 0, height: 0 }, { width: 400, height: 300 })).toEqual({
+      x: 100,
+      y: -10,
+      zoom: 4,
+    });
   });
 
   it('keeps the graph point under the zoom anchor stable', () => {
