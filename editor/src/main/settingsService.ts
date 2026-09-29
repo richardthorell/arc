@@ -6,6 +6,20 @@ import type { EditorSettingDescriptor, EditorSettingsSnapshot } from '../common/
 import type { ArcProjectCandidate } from '../common/projectTypes';
 import { AiProviderService } from './aiProviderService';
 import { androidToolchainSettingKeys, resolveAndroidToolchainValidation } from './androidToolchain';
+import { platformSettingsDescriptors } from './platformSettingsSchema';
+import {
+  appleToolchainSettingKeys,
+  buildToolSettingKeys,
+  editorHostPlatform,
+  licensedPlatformSettingKeys,
+  linuxToolchainSettingKeys,
+  resolveAppleToolchainValidation,
+  resolveBuildToolValidation,
+  resolveLicensedPlatformValidation,
+  resolveLinuxToolchainValidation,
+  resolveWebToolchainValidation,
+  webToolchainSettingKeys,
+} from './platformToolchains';
 import { resolveWindowsToolchainValidation, windowsToolchainSettingKeys } from './windowsToolchain';
 
 const schema: EditorSettingDescriptor[] = [
@@ -327,48 +341,56 @@ const schema: EditorSettingDescriptor[] = [
     scopes: ['user'],
   },
   {
-    key: 'platform.windows.visualStudioPath',
+    key: windowsToolchainSettingKeys.visualStudioPath,
     section: 'Windows',
     label: 'Visual Studio Installation',
     description: 'Optional Visual Studio installation root. Leave empty to auto-detect Visual Studio.',
     type: 'string',
+    format: 'path',
     defaultValue: '',
     scopes: ['user'],
+    hostPlatforms: ['windows'],
   },
   {
-    key: 'platform.windows.msvcToolchainPath',
+    key: windowsToolchainSettingKeys.msvcToolchainPath,
     section: 'Windows',
     label: 'MSVC Toolchain',
     description:
       'Optional MSVC toolchain root (VC/Tools/MSVC/<version>). Leave empty to use the detected installation.',
     type: 'string',
+    format: 'path',
     defaultValue: '',
     scopes: ['user'],
+    hostPlatforms: ['windows'],
   },
   {
-    key: 'platform.windows.sdkPath',
+    key: windowsToolchainSettingKeys.sdkPath,
     section: 'Windows',
     label: 'Windows SDK',
     description: 'Optional Windows SDK root. Leave empty to use the SDK discovered by the native toolchain.',
     type: 'string',
+    format: 'path',
     defaultValue: '',
     scopes: ['user'],
+    hostPlatforms: ['windows'],
   },
   {
-    key: 'platform.windows.cmakePath',
+    key: buildToolSettingKeys.cmakePath,
     section: 'Windows',
     label: 'CMake',
     description: 'Optional path to cmake.exe. Leave empty to use CMake from PATH or Visual Studio.',
     type: 'string',
+    format: 'path',
     defaultValue: '',
     scopes: ['user'],
   },
   {
-    key: 'platform.windows.ninjaPath',
+    key: buildToolSettingKeys.ninjaPath,
     section: 'Windows',
     label: 'Ninja',
     description: 'Optional path to ninja.exe. Leave empty to use Ninja from PATH or Visual Studio.',
     type: 'string',
+    format: 'path',
     defaultValue: '',
     scopes: ['user'],
   },
@@ -378,6 +400,7 @@ const schema: EditorSettingDescriptor[] = [
     label: 'Java / JDK',
     description: 'JDK root used by Android builds. Leave empty to auto-detect JAVA_HOME or Android Studio.',
     type: 'string',
+    format: 'path',
     defaultValue: '',
     scopes: ['user'],
   },
@@ -387,6 +410,7 @@ const schema: EditorSettingDescriptor[] = [
     label: 'Android SDK',
     description: 'Android SDK root. Leave empty to auto-detect ANDROID_SDK_ROOT, ANDROID_HOME, or the default SDK.',
     type: 'string',
+    format: 'path',
     defaultValue: '',
     scopes: ['user'],
   },
@@ -396,9 +420,11 @@ const schema: EditorSettingDescriptor[] = [
     label: 'Android NDK',
     description: 'Android NDK root. Leave empty to auto-detect an installed NDK from the Android SDK.',
     type: 'string',
+    format: 'path',
     defaultValue: '',
     scopes: ['user'],
   },
+  ...platformSettingsDescriptors,
   {
     key: 'extensions.allowProjectExtensions',
     section: 'Extensions',
@@ -558,6 +584,10 @@ export class SettingsService {
       sources[descriptor.key] = connected ? 'user' : 'default';
     }
 
+    const buildToolValidation = resolveBuildToolValidation({
+      cmakePath: stringValue(values, buildToolSettingKeys.cmakePath),
+      ninjaPath: stringValue(values, buildToolSettingKeys.ninjaPath),
+    });
     const androidValidation = resolveAndroidToolchainValidation({
       javaHome: stringValue(values, androidToolchainSettingKeys.javaHome),
       sdkPath: stringValue(values, androidToolchainSettingKeys.sdkPath),
@@ -569,15 +599,70 @@ export class SettingsService {
             visualStudioPath: stringValue(values, windowsToolchainSettingKeys.visualStudioPath),
             msvcToolchainPath: stringValue(values, windowsToolchainSettingKeys.msvcToolchainPath),
             sdkPath: stringValue(values, windowsToolchainSettingKeys.sdkPath),
-            cmakePath: stringValue(values, windowsToolchainSettingKeys.cmakePath),
-            ninjaPath: stringValue(values, windowsToolchainSettingKeys.ninjaPath),
+            cmakePath: stringValue(values, buildToolSettingKeys.cmakePath),
+            ninjaPath: stringValue(values, buildToolSettingKeys.ninjaPath),
           })
-        : {};
-    const pathValidation = { ...windowsValidation, ...androidValidation };
+        : {
+            [windowsToolchainSettingKeys.visualStudioPath]: {
+              valid: false,
+              resolvedPath: '',
+              message: 'Local Windows builds require a Windows host',
+              source: 'unresolved' as const,
+            },
+            [windowsToolchainSettingKeys.msvcToolchainPath]: {
+              valid: false,
+              resolvedPath: '',
+              message: 'MSVC requires a Windows host',
+              source: 'unresolved' as const,
+            },
+            [windowsToolchainSettingKeys.sdkPath]: {
+              valid: false,
+              resolvedPath: '',
+              message: 'Windows SDK discovery requires a Windows host',
+              source: 'unresolved' as const,
+            },
+          };
+    const linuxValidation = resolveLinuxToolchainValidation({
+      buildEnvironment: stringValue(values, linuxToolchainSettingKeys.buildEnvironment),
+      wslDistribution: stringValue(values, linuxToolchainSettingKeys.wslDistribution),
+      compilerPath:
+        sources[linuxToolchainSettingKeys.compilerPath] === 'default'
+          ? ''
+          : stringValue(values, linuxToolchainSettingKeys.compilerPath),
+      sysrootPath:
+        sources[linuxToolchainSettingKeys.sysrootPath] === 'default'
+          ? ''
+          : stringValue(values, linuxToolchainSettingKeys.sysrootPath),
+    });
+    const appleValidation = resolveAppleToolchainValidation({
+      xcodePath:
+        sources[appleToolchainSettingKeys.xcodePath] === 'default'
+          ? ''
+          : stringValue(values, appleToolchainSettingKeys.xcodePath),
+    });
+    const webValidation = resolveWebToolchainValidation({
+      emsdkPath:
+        sources[webToolchainSettingKeys.emsdkPath] === 'default'
+          ? ''
+          : stringValue(values, webToolchainSettingKeys.emsdkPath),
+    });
+    const licensedValidation = resolveLicensedPlatformValidation({
+      xboxGdkPath: stringValue(values, licensedPlatformSettingKeys.xboxGdkPath),
+      playStationSdkPath: stringValue(values, licensedPlatformSettingKeys.playStationSdkPath),
+      switchSdkPath: stringValue(values, licensedPlatformSettingKeys.switchSdkPath),
+    });
+    const pathValidation = {
+      ...buildToolValidation,
+      ...windowsValidation,
+      ...androidValidation,
+      ...linuxValidation,
+      ...appleValidation,
+      ...webValidation,
+      ...licensedValidation,
+    };
 
-    for (const key of [...Object.values(windowsToolchainSettingKeys), ...Object.values(androidToolchainSettingKeys)]) {
-      const validation = pathValidation[key];
-      if (sources[key] === 'default' && validation?.valid && validation.resolvedPath)
+    for (const [key, validation] of Object.entries(pathValidation)) {
+      if (sources[key] === 'default' && validation.valid && validation.resolvedPath)
         values[key] = validation.resolvedPath;
     }
 
@@ -587,6 +672,7 @@ export class SettingsService {
       sources,
       restartRequired: schema.filter((entry) => entry.restartRequired).map((entry) => entry.key),
       schema,
+      hostPlatform: editorHostPlatform(),
       aiProviders,
       pathValidation,
     };
@@ -600,10 +686,14 @@ export class SettingsService {
     if (expectedRevision !== this.revision) throw new Error('Settings changed; refresh before applying edits');
     const project = this.activeProject();
     if (scope === 'project' && !project?.writable) throw new Error('The active project is not writable');
+    const hostPlatform = editorHostPlatform();
     for (const [key, value] of Object.entries(changes)) {
       const descriptor = descriptors.get(key);
       if (!descriptor) throw new Error(`Unknown setting '${key}'`);
       if (!descriptor.scopes.includes(scope)) throw new Error(`${key} cannot be stored in ${scope} settings`);
+      if (descriptor.readOnly) throw new Error(`${key} is managed by ARC and cannot be changed directly`);
+      if (descriptor.hostPlatforms && !descriptor.hostPlatforms.includes(hostPlatform))
+        throw new Error(`${key} is not configurable from this host platform`);
       if (descriptor.secretProvider && isProviderTestAction(value)) continue;
       if (value !== undefined) validateValue(descriptor, value);
     }

@@ -17,8 +17,19 @@ export type EditorSettingsPageId =
   | 'ai.assistant'
   | 'ai.remote'
   | 'source-control'
+  | 'platforms.build-tools'
   | 'platforms.windows'
   | 'platforms.android'
+  | 'platforms.linux'
+  | 'platforms.apple.xcode'
+  | 'platforms.apple.macos'
+  | 'platforms.apple.ios'
+  | 'platforms.apple.tvos'
+  | 'platforms.apple.visionos'
+  | 'platforms.web'
+  | 'platforms.xbox'
+  | 'platforms.playstation'
+  | 'platforms.switch'
   | 'tools.external'
   | 'tools.shortcuts'
   | 'tools.extensions'
@@ -35,6 +46,7 @@ export type EditorSettingsCardDefinition = {
   title?: string;
   icon?: EditorSettingsIcon;
   provider?: AiProviderId;
+  keys?: readonly string[];
 };
 
 export type EditorSettingsPage = {
@@ -163,23 +175,123 @@ export const editorSettingsDefinition: readonly EditorSettingsDefinitionNode[] =
   {
     id: 'platforms',
     label: 'Platforms & SDKs',
-    keywords: ['windows', 'android', 'linux', 'apple', 'sdk', 'toolchain'],
+    keywords: ['windows', 'android', 'linux', 'apple', 'ios', 'macos', 'web', 'sdk', 'toolchain', 'wsl'],
     headerImage: platformsSettingsHeader,
     defaultExpanded: true,
     children: [
       {
+        id: 'platforms.build-tools',
+        label: 'Build Tools',
+        description: 'Shared native build tools used across ARC target platforms.',
+        keywords: ['cmake', 'ninja', 'build'],
+        cards: [
+          {
+            section: 'Windows',
+            title: 'Build Tools',
+            keys: ['platform.windows.cmakePath', 'platform.windows.ninjaPath'],
+          },
+        ],
+      },
+      {
         id: 'platforms.windows',
         label: 'Windows',
-        description: 'Windows SDK and native build toolchain locations.',
-        keywords: ['windows', 'msvc', 'visual studio', 'sdk', 'cmake', 'ninja', 'compiler', 'toolchain'],
-        cards: [{ section: 'Windows' }],
+        description: 'Visual Studio, MSVC and Windows SDK configuration for local Windows builds.',
+        keywords: ['windows', 'msvc', 'visual studio', 'sdk', 'compiler', 'toolchain'],
+        cards: [
+          {
+            section: 'Windows',
+            keys: [
+              'platform.windows.visualStudioPath',
+              'platform.windows.msvcToolchainPath',
+              'platform.windows.sdkPath',
+            ],
+          },
+        ],
       },
       {
         id: 'platforms.android',
         label: 'Android',
-        description: 'Java, Android SDK and NDK locations used by Android builds.',
+        description: 'Java, Android SDK and NDK locations used by Android builds and device tooling.',
         keywords: ['android', 'java', 'jdk', 'sdk', 'ndk', 'adb', 'toolchain'],
         cards: [{ section: 'Android', title: 'Android Toolchain' }],
+      },
+      {
+        id: 'platforms.linux',
+        label: 'Linux',
+        description: 'Build Linux locally on Linux or through WSL when ARC runs on Windows.',
+        keywords: ['linux', 'wsl', 'clang', 'gcc', 'sysroot', 'compiler'],
+        cards: [{ section: 'Linux', title: 'Linux Build Environment' }],
+      },
+      {
+        id: 'platforms.apple',
+        label: 'Apple',
+        keywords: ['apple', 'xcode', 'macos', 'ios', 'tvos', 'visionos'],
+        defaultExpanded: true,
+        children: [
+          {
+            id: 'platforms.apple.xcode',
+            label: 'Xcode',
+            description: 'Xcode developer tools used for all local Apple platform builds.',
+            keywords: ['xcode', 'developer dir'],
+            cards: [{ section: 'Apple', title: 'Apple Toolchain' }],
+          },
+          {
+            id: 'platforms.apple.macos',
+            label: 'macOS',
+            description: 'macOS SDK derived from the selected Xcode installation.',
+            keywords: ['macos', 'sdk'],
+            cards: [{ section: 'macOS' }],
+          },
+          {
+            id: 'platforms.apple.ios',
+            label: 'iOS',
+            description: 'iOS device and Simulator SDKs derived from Xcode.',
+            keywords: ['ios', 'iphone', 'simulator', 'sdk'],
+            cards: [{ section: 'iOS' }],
+          },
+          {
+            id: 'platforms.apple.tvos',
+            label: 'tvOS',
+            description: 'tvOS device and Simulator SDKs derived from Xcode.',
+            keywords: ['tvos', 'apple tv', 'simulator', 'sdk'],
+            cards: [{ section: 'tvOS' }],
+          },
+          {
+            id: 'platforms.apple.visionos',
+            label: 'visionOS',
+            description: 'visionOS device and Simulator SDKs derived from Xcode.',
+            keywords: ['visionos', 'vision pro', 'simulator', 'sdk'],
+            cards: [{ section: 'visionOS' }],
+          },
+        ],
+      },
+      {
+        id: 'platforms.web',
+        label: 'Web',
+        description: 'Emscripten SDK used for WebAssembly builds.',
+        keywords: ['web', 'webassembly', 'wasm', 'emscripten', 'emsdk'],
+        cards: [{ section: 'Web' }],
+      },
+      {
+        id: 'platforms.xbox',
+        label: 'Xbox',
+        description: 'Licensed Microsoft GDK root for Xbox development.',
+        keywords: ['xbox', 'gdk', 'console'],
+        cards: [{ section: 'Xbox' }],
+      },
+      {
+        id: 'platforms.playstation',
+        label: 'PlayStation',
+        description: 'Licensed PlayStation SDK root for console development.',
+        keywords: ['playstation', 'ps5', 'sdk', 'console'],
+        cards: [{ section: 'PlayStation' }],
+      },
+      {
+        id: 'platforms.switch',
+        label: 'Nintendo Switch',
+        description: 'Licensed Nintendo SDK root for Switch development.',
+        keywords: ['nintendo', 'switch', 'sdk', 'console'],
+        cards: [{ section: 'Nintendo Switch' }],
       },
     ],
   },

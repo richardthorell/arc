@@ -23,8 +23,19 @@ describe('settingsNavigation', () => {
       'ai.assistant',
       'ai.remote',
       'source-control',
+      'platforms.build-tools',
       'platforms.windows',
       'platforms.android',
+      'platforms.linux',
+      'platforms.apple.xcode',
+      'platforms.apple.macos',
+      'platforms.apple.ios',
+      'platforms.apple.tvos',
+      'platforms.apple.visionos',
+      'platforms.web',
+      'platforms.xbox',
+      'platforms.playstation',
+      'platforms.switch',
       'tools.external',
       'tools.shortcuts',
       'tools.extensions',
@@ -39,6 +50,17 @@ describe('settingsNavigation', () => {
       'editing.navigation',
       'editing.gizmos',
       'editing.scene',
+    ]);
+    expect(editorSettingsNavigation.find((node) => node.id === 'platforms')?.children?.map((node) => node.id)).toEqual([
+      'platforms.build-tools',
+      'platforms.windows',
+      'platforms.android',
+      'platforms.linux',
+      'platforms.apple',
+      'platforms.web',
+      'platforms.xbox',
+      'platforms.playstation',
+      'platforms.switch',
     ]);
   });
 
@@ -56,6 +78,12 @@ describe('settingsNavigation', () => {
       { section: 'OpenAI', title: 'OpenAI', icon: 'openai', provider: 'openai' },
       { section: 'Anthropic', title: 'Anthropic', icon: 'anthropic', provider: 'anthropic' },
     ]);
+    expect(getEditorSettingsPage('platforms.build-tools')?.cards?.[0]).toMatchObject({
+      section: 'Windows',
+      title: 'Build Tools',
+      keys: ['platform.windows.cmakePath', 'platform.windows.ninjaPath'],
+    });
+    expect(getEditorSettingsPage('platforms.apple.ios')?.cards).toEqual([{ section: 'iOS' }]);
     expect(getEditorSettingsPage('system.recovery')?.content).toEqual(['settings', 'recovery']);
     expect(getEditorSettingsPage('tools.extensions')?.content).toEqual(['settings', 'extensions']);
   });
@@ -67,7 +95,16 @@ describe('settingsNavigation', () => {
   });
 
   it('derives default-expanded groups from the hierarchy', () => {
-    expect(defaultExpandedSettingsNodes).toEqual(['editing', 'content', 'ai', 'platforms', 'tools', 'system']);
+    expect(defaultExpandedSettingsNodes).toEqual([
+      'editing',
+      'content',
+      'ai',
+      'platforms',
+      'platforms.apple',
+      'tools',
+      'system',
+    ]);
     expect(getEditorSettingsPage('editing')).toBeNull();
+    expect(getEditorSettingsPage('platforms.apple')).toBeNull();
   });
 });

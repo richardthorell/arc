@@ -422,6 +422,7 @@ describe('EditorPreferencesDialog', () => {
           label: 'Visual Studio',
           description: 'Visual Studio installation root.',
           type: 'string',
+          format: 'path',
           defaultValue: '',
           scopes: ['user'],
         },
@@ -431,6 +432,7 @@ describe('EditorPreferencesDialog', () => {
           label: 'Java / JDK',
           description: 'JDK root used by Android builds.',
           type: 'string',
+          format: 'path',
           defaultValue: '',
           scopes: ['user'],
         },
@@ -440,7 +442,7 @@ describe('EditorPreferencesDialog', () => {
         'platform.android.javaHome': 'C:\\Program Files\\Java\\jdk-26',
       },
       sources: {
-        'platform.windows.visualStudioPath': 'default',
+        'platform.windows.visualStudioPath': 'user',
         'platform.android.javaHome': 'default',
       },
       restartRequired: [],
@@ -449,7 +451,7 @@ describe('EditorPreferencesDialog', () => {
           valid: true,
           resolvedPath: 'C:\\Program Files\\Microsoft Visual Studio',
           message: 'Validated · Visual Studio C++',
-          source: 'default',
+          source: 'configured',
         },
         'platform.android.javaHome': {
           valid: true,
@@ -471,13 +473,17 @@ describe('EditorPreferencesDialog', () => {
     await waitFor(() => expect(window.arc.settings.snapshot).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole('treeitem', { name: /Windows/ }));
-    const windowsStatus = screen.getByText('Validated');
+    const windowsStatus = screen.getByText('Validated').closest('.settings-field-validation');
+    expect(windowsStatus).not.toBeNull();
+    expect(windowsStatus).toHaveTextContent('Validated · Configured');
     expect(windowsStatus).toHaveClass('settings-field-validation-valid');
     expect(windowsStatus).toHaveAttribute('title', 'C:\\Program Files\\Microsoft Visual Studio');
     expect(screen.queryByText('Validated · Visual Studio C++')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('treeitem', { name: /Android/ }));
-    const androidStatus = screen.getByText('Validated');
+    const androidStatus = screen.getByText('Validated').closest('.settings-field-validation');
+    expect(androidStatus).not.toBeNull();
+    expect(androidStatus).toHaveTextContent('Validated · Auto-detected');
     expect(androidStatus).toHaveClass('settings-field-validation-valid');
     expect(androidStatus).toHaveAttribute('title', 'C:\\Program Files\\Java\\jdk-26');
     expect(screen.queryByText('Validated · Java 26')).not.toBeInTheDocument();
@@ -494,6 +500,7 @@ describe('EditorPreferencesDialog', () => {
           label: 'Android SDK',
           description: 'Android SDK root.',
           type: 'string',
+          format: 'path',
           defaultValue: '',
           scopes: ['user'],
         },
