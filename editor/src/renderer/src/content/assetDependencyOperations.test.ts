@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAssetDependencyIndex,
+  describeAssetDependencyImpact,
   findAssetUsages,
+  findTransitiveDependentAssetIds,
   planAssetDelete,
   planAssetRelocation,
 } from './assetDependencyOperations';
@@ -21,6 +23,41 @@ describe('asset dependency operations', () => {
       { sourceAssetId: 'scene-b', targetAssetId: 'material-a', kind: 'material' },
     ]);
     expect(findAssetUsages(index, 'missing')).toEqual([]);
+  });
+
+  it('finds transitive dependents without duplicating shared paths', () => {
+    const index = buildAssetDependencyIndex([
+      ...references,
+      { sourceAssetId: 'level-a', targetAssetId: 'scene-a' },
+      { sourceAssetId: 'level-a', targetAssetId: 'scene-b' },
+      { sourceAssetId: 'package-a', targetAssetId: 'level-a' },
+    ]);
+
+    expect(findTransitiveDependentAssetIds(index, 'texture-a')).toEqual([
+      'material-a',
+      'scene-a',
+      'level-a',
+      'package-a',
+      'scene-b',
+    ]);
+    expect(describeAssetDependencyImpact(index, 'material-a')).toEqual({
+      assetId: 'material-a',
+      directDependents: [
+        { sourceAssetId: 'scene-a', targetAssetId: 'material-a', kind: 'material' },
+        { sourceAssetId: 'scene-b', targetAssetId: 'material-a', kind: 'material' },
+      ],
+      transitiveDependentAssetIds: ['scene-a', 'level-a', 'package-a', 'scene-b'],
+    });
+  });
+
+  it('handles dependency cycles without reporting the queried asset as its own dependent', () => {
+    const index = buildAssetDependencyIndex([
+      { sourceAssetId: 'asset-b', targetAssetId: 'asset-a' },
+      { sourceAssetId: 'asset-c', targetAssetId: 'asset-b' },
+      { sourceAssetId: 'asset-a', targetAssetId: 'asset-c' },
+    ]);
+
+    expect(findTransitiveDependentAssetIds(index, 'asset-a')).toEqual(['asset-b', 'asset-c']);
   });
 
   it('blocks deletion planning while dependents exist', () => {

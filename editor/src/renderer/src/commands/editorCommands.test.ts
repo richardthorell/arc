@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { EditorCommandRegistry, editorShortcutConflicts } from './editorCommands';
+import {
+  EditorCommandRegistry,
+  editorShortcutConflicts,
+  resolveEditorKeybindings,
+  validateEditorKeybindingOverrides,
+} from './editorCommands';
 
 describe('EditorCommandRegistry', () => {
   it('keeps stable command IDs and rejects duplicates', () => {
@@ -49,17 +54,40 @@ describe('EditorCommandRegistry', () => {
   });
 });
 
-describe('editorShortcutConflicts', () => {
-  const commands = [
-    { id: 'edit.undo', title: 'Undo', defaultShortcut: 'Ctrl+Z' },
-    { id: 'edit.redo', title: 'Redo', defaultShortcut: 'Ctrl+Shift+Z' },
-    { id: 'view.frame', title: 'Frame Selection', defaultShortcut: 'F' },
-  ];
+const commands = [
+  { id: 'edit.undo', title: 'Undo', defaultShortcut: 'Ctrl+Z' },
+  { id: 'edit.redo', title: 'Redo', defaultShortcut: 'Ctrl+Shift+Z' },
+  { id: 'view.frame', title: 'Frame Selection', defaultShortcut: 'F' },
+];
 
+describe('resolveEditorKeybindings', () => {
+  it('resolves defaults, overrides, and explicit disabled bindings deterministically', () => {
+    expect(resolveEditorKeybindings(commands, { 'edit.undo': ' Alt+Z ', 'view.frame': null })).toEqual([
+      { commandId: 'edit.redo', shortcut: 'Ctrl+Shift+Z', source: 'default' },
+      { commandId: 'edit.undo', shortcut: 'Alt+Z', source: 'override' },
+      { commandId: 'view.frame', source: 'disabled' },
+    ]);
+  });
+
+  it('reports stale and empty persisted overrides', () => {
+    expect(validateEditorKeybindingOverrides(commands, { stale: 'Q', 'edit.undo': '   ', 'view.frame': null })).toEqual(
+      [
+        { commandId: 'edit.undo', kind: 'empty-shortcut' },
+        { commandId: 'stale', kind: 'unknown-command' },
+      ],
+    );
+  });
+});
+
+describe('editorShortcutConflicts', () => {
   it('detects normalized conflicts from user overrides', () => {
     expect(editorShortcutConflicts(commands, { 'edit.redo': ' ctrl + z ' })).toEqual([
       { shortcut: 'ctrl+z', commandIds: ['edit.redo', 'edit.undo'] },
     ]);
+  });
+
+  it('does not report disabled bindings as conflicts', () => {
+    expect(editorShortcutConflicts(commands, { 'edit.undo': null, 'edit.redo': 'Ctrl+Z' })).toEqual([]);
   });
 
   it('does not report distinct shortcuts', () => {

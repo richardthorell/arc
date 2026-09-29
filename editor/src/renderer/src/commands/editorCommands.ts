@@ -71,26 +71,76 @@ export class EditorCommandRegistry {
   }
 }
 
+export type EditorKeybindingOverrides = Readonly<Record<string, string | null | undefined>>;
+
+export type ResolvedEditorKeybinding = {
+  commandId: string;
+  shortcut?: string;
+  source: 'default' | 'override' | 'disabled';
+};
+
 export type ShortcutConflict = {
   shortcut: string;
   commandIds: string[];
 };
 
+export type KeybindingOverrideDiagnostic = {
+  commandId: string;
+  kind: 'unknown-command' | 'empty-shortcut';
+};
+
 const normalizeShortcut = (shortcut: string): string => shortcut.trim().toLocaleLowerCase().replace(/\s+/g, '');
 
-/** Returns deterministic conflicts without mutating command or keybinding state. */
+/** Resolve defaults and user overrides without mutating the command registry. Null explicitly disables a default binding. */
+export const resolveEditorKeybindings = (
+  commands: readonly EditorCommand[],
+  overrides: EditorKeybindingOverrides = {},
+): ResolvedEditorKeybinding[] =>
+  commands
+    .map((command): ResolvedEditorKeybinding => {
+      if (Object.prototype.hasOwnProperty.call(overrides, command.id)) {
+        const override = overrides[command.id];
+        if (override === null) return { commandId: command.id, source: 'disabled' };
+        if (override !== undefined) {
+          const shortcut = override.trim();
+          return shortcut
+            ? { commandId: command.id, shortcut, source: 'override' }
+            : { commandId: command.id, source: 'disabled' };
+        }
+      }
+      return command.defaultShortcut
+        ? { commandId: command.id, shortcut: command.defaultShortcut.trim(), source: 'default' }
+        : { commandId: command.id, source: 'default' };
+    })
+    .sort((left, right) => left.commandId.localeCompare(right.commandId));
+
+/** Validate persisted overrides so stale command IDs and accidental empty bindings are visible to Settings UI. */
+export const validateEditorKeybindingOverrides = (
+  commands: readonly EditorCommand[],
+  overrides: EditorKeybindingOverrides,
+): KeybindingOverrideDiagnostic[] => {
+  const known = new Set(commands.map((command) => command.id));
+  return Object.entries(overrides)
+    .flatMap(([commandId, shortcut]): KeybindingOverrideDiagnostic[] => {
+      if (!known.has(commandId)) return [{ commandId, kind: 'unknown-command' }];
+      if (typeof shortcut === 'string' && !shortcut.trim()) return [{ commandId, kind: 'empty-shortcut' }];
+      return [];
+    })
+    .sort((left, right) => left.commandId.localeCompare(right.commandId) || left.kind.localeCompare(right.kind));
+};
+
+/** Returns deterministic conflicts from the effective keybinding set without mutating command or override state. */
 export const editorShortcutConflicts = (
   commands: readonly EditorCommand[],
-  overrides: Readonly<Record<string, string | undefined>> = {},
+  overrides: EditorKeybindingOverrides = {},
 ): ShortcutConflict[] => {
   const bindings = new Map<string, string[]>();
-  for (const command of commands) {
-    const shortcut = overrides[command.id] ?? command.defaultShortcut;
-    if (!shortcut) continue;
-    const normalized = normalizeShortcut(shortcut);
+  for (const binding of resolveEditorKeybindings(commands, overrides)) {
+    if (!binding.shortcut || binding.source === 'disabled') continue;
+    const normalized = normalizeShortcut(binding.shortcut);
     if (!normalized) continue;
     const commandIds = bindings.get(normalized) ?? [];
-    commandIds.push(command.id);
+    commandIds.push(binding.commandId);
     bindings.set(normalized, commandIds);
   }
 

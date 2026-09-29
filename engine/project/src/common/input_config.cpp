@@ -112,6 +112,18 @@ std::optional<input::mouse_axis> mouse_axis_from_token(std::string token)
     return std::nullopt;
 }
 
+std::optional<input::sensor_axis> sensor_axis_from_token(std::string token)
+{
+    token = normalized_token(std::move(token));
+    if (token == "gyroscopex" || token == "gyrox") return input::sensor_axis::gyroscope_x;
+    if (token == "gyroscopey" || token == "gyroy") return input::sensor_axis::gyroscope_y;
+    if (token == "gyroscopez" || token == "gyroz") return input::sensor_axis::gyroscope_z;
+    if (token == "accelerometerx" || token == "accelx") return input::sensor_axis::accelerometer_x;
+    if (token == "accelerometery" || token == "accely") return input::sensor_axis::accelerometer_y;
+    if (token == "accelerometerz" || token == "accelz") return input::sensor_axis::accelerometer_z;
+    return std::nullopt;
+}
+
 bool parse_processors(const nlohmann::json& source, input::input_binding& binding, std::string& error)
 {
     if (!source.contains("processors")) return true;
@@ -121,7 +133,6 @@ bool parse_processors(const nlohmann::json& source, input::input_binding& bindin
         error = "input binding processors must be an array";
         return false;
     }
-
     for (const auto& value : processors)
     {
         if (!value.is_object() || !value.contains("type") || !value.at("type").is_string())
@@ -202,6 +213,17 @@ std::optional<input::input_binding> parse_binding(const nlohmann::json& source, 
             return std::nullopt;
         }
     }
+    else if (device == "motion" || device == "sensor")
+    {
+        const auto axis = sensor_axis_from_token(control);
+        if (!axis)
+        {
+            error = "unknown motion sensor control '" + control + "'";
+            return std::nullopt;
+        }
+        result.device = input::input_device_type::motion_controller;
+        result.control = input::make_sensor_axis_control(*axis);
+    }
     else
     {
         error = "unsupported input binding device '" + source.at("device").get<std::string>() + "'";
@@ -218,13 +240,11 @@ input_config_load_result load_input_config(const std::filesystem::path& path)
 {
     std::ifstream stream(path, std::ios::binary);
     if (!stream) return {.error = "input config could not be read: " + path.generic_string()};
-
     try
     {
         nlohmann::json root;
         stream >> root;
         if (!root.is_object()) return {.error = "input config root must be an object"};
-
         input_config config;
         config.version = root.value("version", input_config_version);
         if (config.version != input_config_version)
@@ -237,7 +257,6 @@ input_config_load_result load_input_config(const std::filesystem::path& path)
         {
             if (!context_json.is_object() || !context_json.contains("name") || !context_json.at("name").is_string())
                 return {.error = "input context requires a string name"};
-
             input_context_config context;
             context.name = context_json.at("name").get<std::string>();
             if (context.name.empty()) return {.error = "input context name cannot be empty"};
@@ -274,7 +293,6 @@ input_config_load_result load_input_config(const std::filesystem::path& path)
                     context.actions.push_back(std::move(action));
                 }
             }
-
             if (context_json.contains("axes"))
             {
                 if (!context_json.at("axes").is_array()) return {.error = "input context axes must be an array"};
@@ -301,7 +319,6 @@ input_config_load_result load_input_config(const std::filesystem::path& path)
                     context.axes.push_back(std::move(axis));
                 }
             }
-
             if (context_json.contains("axes2d"))
             {
                 if (!context_json.at("axes2d").is_array()) return {.error = "input context axes2d must be an array"};
@@ -349,7 +366,6 @@ input_config_apply_result apply_input_config(const input_config& config, input::
 {
     if (config.version != input_config_version)
         return {.error = "unsupported input config version " + std::to_string(config.version)};
-
     auto& player = system.player(player_id);
     for (const auto& context : config.contexts)
     {

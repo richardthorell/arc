@@ -4,6 +4,7 @@ import {
   assetIdsForVirtualView,
   assetLibraryVirtualView,
   assetLibraryVirtualViews,
+  assetsForVirtualView,
   recordDownloadedAsset,
   recordRecentAsset,
   setAssetFavorite,
@@ -38,11 +39,31 @@ describe('asset library virtual views', () => {
     expect(assetIdsForVirtualView('downloads', membership)).toEqual(['asset-c']);
   });
 
+  it('resolves current assets in view order and ignores stale membership', () => {
+    const assets = [
+      { id: 'asset-a', scope: 'project' },
+      { id: 'asset-b', scope: 'builtin' },
+      { id: 'asset-c', scope: 'user' },
+    ] as const;
+    const membership = { favorites: ['asset-c', 'missing', 'asset-a', 'asset-c'] };
+
+    const resolved = assetsForVirtualView(assets, 'favorites', membership);
+    expect(resolved).toEqual([assets[2], assets[0]]);
+    expect(resolved[0]).toBe(assets[2]);
+    expect(assets[2].scope).toBe('user');
+  });
+
   it('keeps search results transient instead of persisting collection membership', () => {
     const membership = { 'search-results': ['stale-result'] };
     expect(assetIdsForVirtualView('search-results', membership, ['asset-a', 'asset-a', 'asset-c'])).toEqual([
       'asset-a',
       'asset-c',
+    ]);
+
+    const assets = [{ id: 'asset-a' }, { id: 'asset-c' }] as const;
+    expect(assetsForVirtualView(assets, 'search-results', membership, ['asset-c', 'asset-a'])).toEqual([
+      assets[1],
+      assets[0],
     ]);
   });
 
