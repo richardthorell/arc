@@ -15,7 +15,7 @@ framework::platform_capabilities query_native_system_capabilities() noexcept
     const auto system_memory_bytes = physical_pages > 0 && page_size > 0 ? static_cast<std::uint64_t>(physical_pages) *
                                                                                static_cast<std::uint64_t>(page_size)
                                                                          : 0u;
-    return {.family = framework::platform_family::linux,
+    return {.family = framework::platform_family::linux_os,
             .form_factor = framework::device_form_factor::desktop,
             .logical_processor_count = std::thread::hardware_concurrency(),
             .system_memory_bytes = system_memory_bytes,

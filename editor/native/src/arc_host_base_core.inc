@@ -5652,7 +5652,7 @@ host_response arc_host::query(const host_query_envelope& query) const
                             return "windows";
                         case framework::platform_family::android:
                             return "android";
-                        case framework::platform_family::linux:
+                        case framework::platform_family::linux_os:
                             return "linux";
                         case framework::platform_family::macos:
                             return "macos";

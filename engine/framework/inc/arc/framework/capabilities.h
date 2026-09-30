@@ -11,7 +11,7 @@ enum class platform_family : std::uint8_t
     unknown,
     windows,
     android,
-    linux,
+    linux_os,
     macos,
     ios
 };
