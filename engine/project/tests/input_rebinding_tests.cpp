@@ -45,8 +45,7 @@ arc::project::input_config gamepad_defaults()
     arc::project::input_config config{};
     arc::project::input_context_config gameplay{};
     gameplay.name = "Gameplay";
-    gameplay.actions.push_back(
-        {.name = "Jump", .bindings = {gamepad_binding(arc::input::gamepad_button::south)}});
+    gameplay.actions.push_back({.name = "Jump", .bindings = {gamepad_binding(arc::input::gamepad_button::south)}});
     config.contexts.push_back(std::move(gameplay));
     return config;
 }
@@ -61,8 +60,7 @@ class temporary_user_settings
 public:
     temporary_user_settings()
         : root_(std::filesystem::temp_directory_path() /
-                ("arc-input-overrides-" +
-                 std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())))
+                ("arc-input-overrides-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())))
     {
         std::filesystem::create_directories(root_);
     }
@@ -135,17 +133,16 @@ TEST_CASE("runtime input rebinding can unbind and restore one binding")
 
     const arc::project::input_mapping_target move_target{
         .context = "Gameplay", .name = "Move", .kind = arc::project::input_mapping_kind::axis2d};
-    REQUIRE(profile.replace_bindings(
-        move_target,
-        {{.binding = key_binding(arc::input::key::up), .contribution2d = {0.0f, 1.0f}},
-         {.binding = key_binding(arc::input::key::d), .contribution2d = {1.0f, 0.0f}}}));
+    REQUIRE(profile.replace_bindings(move_target,
+                                     {{.binding = key_binding(arc::input::key::up), .contribution2d = {0.0f, 1.0f}},
+                                      {.binding = key_binding(arc::input::key::d), .contribution2d = {1.0f, 0.0f}}}));
     REQUIRE(profile.reset_binding(move_target, 0));
     auto move = profile.effective_mapping(move_target);
     REQUIRE(move);
     CHECK(move->bindings[0].binding.control == arc::input::make_key_control(arc::input::key::w));
 
-    REQUIRE(profile.add_binding(
-        move_target, {.binding = key_binding(arc::input::key::a), .contribution2d = {-1.0f, 0.0f}}));
+    REQUIRE(profile.add_binding(move_target,
+                                {.binding = key_binding(arc::input::key::a), .contribution2d = {-1.0f, 0.0f}}));
     move = profile.effective_mapping(move_target);
     REQUIRE(move);
     REQUIRE(move->bindings.size() == 3);
@@ -175,19 +172,19 @@ TEST_CASE("input user overrides persist separately and preserve valid semantic t
     REQUIRE(effective);
     REQUIRE(effective->bindings.size() == 1);
     CHECK(effective->bindings[0].binding.control == arc::input::make_key_control(arc::input::key::enter));
-    CHECK(restored.default_mapping({.context = "Gameplay",
-                                    .name = "Pause",
-                                    .kind = arc::project::input_mapping_kind::action})
-              .has_value());
+    CHECK(
+        restored
+            .default_mapping({.context = "Gameplay", .name = "Pause", .kind = arc::project::input_mapping_kind::action})
+            .has_value());
 }
 
 TEST_CASE("missing and stale input user overrides do not corrupt project defaults")
 {
     temporary_user_settings temporary;
     arc::project::input_rebinding_profile profile(basic_defaults());
-    REQUIRE(arc::project::load_input_user_overrides(
-                profile, arc::project::input_user_overrides_path(temporary.root(), 0))
-                .succeeded);
+    REQUIRE(
+        arc::project::load_input_user_overrides(profile, arc::project::input_user_overrides_path(temporary.root(), 0))
+            .succeeded);
     CHECK(profile.user_overrides().contexts.empty());
 
     arc::project::input_config stale{};
@@ -219,17 +216,16 @@ TEST_CASE("runtime rebinding profiles remain independent per local player")
     arc::project::input_rebinding_profile player1(gamepad_defaults(), 1);
     REQUIRE(player0.install(input).succeeded);
     REQUIRE(player1.install(input).succeeded);
-    REQUIRE(player1.replace_bindings(
-        jump_target(), {{.binding = gamepad_binding(arc::input::gamepad_button::east)}}));
+    REQUIRE(player1.replace_bindings(jump_target(), {{.binding = gamepad_binding(arc::input::gamepad_button::east)}}));
 
     input.begin_frame();
-    REQUIRE(input.submit_button(second,
-                                arc::input::make_gamepad_button_control(arc::input::gamepad_button::east), true));
+    REQUIRE(
+        input.submit_button(second, arc::input::make_gamepad_button_control(arc::input::gamepad_button::east), true));
     CHECK(input.player(1).down("Jump"));
     CHECK_FALSE(input.player(0).down("Jump"));
 
-    REQUIRE(input.submit_button(first,
-                                arc::input::make_gamepad_button_control(arc::input::gamepad_button::south), true));
+    REQUIRE(
+        input.submit_button(first, arc::input::make_gamepad_button_control(arc::input::gamepad_button::south), true));
     CHECK(input.player(0).down("Jump"));
 }
 
@@ -242,25 +238,24 @@ TEST_CASE("rebind capture accepts assigned hot-plugged devices and rejects disco
 
     arc::project::input_rebind_capture capture;
     capture.begin(input, 1, {.device = arc::input::input_device_type::gamepad});
-    CHECK_FALSE(capture.offer(foreign,
-                              arc::input::make_gamepad_button_control(arc::input::gamepad_button::south), 1.0f));
+    CHECK_FALSE(
+        capture.offer(foreign, arc::input::make_gamepad_button_control(arc::input::gamepad_button::south), 1.0f));
     CHECK(capture.active());
 
     const auto hotplugged = input.connect_device(
         {.type = arc::input::input_device_type::gamepad, .name = "Hotplugged", .capabilities = {.buttons = true}});
     REQUIRE(input.assign_device(1, hotplugged));
-    const auto captured = capture.offer(
-        hotplugged, arc::input::make_gamepad_button_control(arc::input::gamepad_button::west), 1.0f);
+    const auto captured =
+        capture.offer(hotplugged, arc::input::make_gamepad_button_control(arc::input::gamepad_button::west), 1.0f);
     REQUIRE(captured);
     CHECK_FALSE(capture.active());
     CHECK(captured->binding.device == arc::input::input_device_type::gamepad);
-    CHECK(captured->binding.control ==
-          arc::input::make_gamepad_button_control(arc::input::gamepad_button::west));
+    CHECK(captured->binding.control == arc::input::make_gamepad_button_control(arc::input::gamepad_button::west));
 
     capture.begin(input, 1);
     REQUIRE(input.disconnect_device(hotplugged));
-    CHECK_FALSE(capture.offer(hotplugged,
-                              arc::input::make_gamepad_button_control(arc::input::gamepad_button::north), 1.0f));
+    CHECK_FALSE(
+        capture.offer(hotplugged, arc::input::make_gamepad_button_control(arc::input::gamepad_button::north), 1.0f));
     capture.cancel();
     CHECK(capture.canceled());
     CHECK_FALSE(capture.active());

@@ -42,10 +42,9 @@ std::optional<input_mapping_view> mapping_view(const input_context_config& conte
     {
         case input_mapping_kind::action:
         {
-            const auto found = std::find_if(context.actions.begin(), context.actions.end(),
-                                            [&target](const input_action_config& action) {
-                                                return action.name == target.name;
-                                            });
+            const auto found =
+                std::find_if(context.actions.begin(), context.actions.end(),
+                             [&target](const input_action_config& action) { return action.name == target.name; });
             if (found == context.actions.end()) return std::nullopt;
             view.bindings.reserve(found->bindings.size());
             for (const auto& binding : found->bindings)
@@ -54,8 +53,9 @@ std::optional<input_mapping_view> mapping_view(const input_context_config& conte
         }
         case input_mapping_kind::axis:
         {
-            const auto found = std::find_if(context.axes.begin(), context.axes.end(),
-                                            [&target](const input_axis_config& axis) { return axis.name == target.name; });
+            const auto found =
+                std::find_if(context.axes.begin(), context.axes.end(),
+                             [&target](const input_axis_config& axis) { return axis.name == target.name; });
             if (found == context.axes.end()) return std::nullopt;
             view.bindings.reserve(found->bindings.size());
             for (const auto& binding : found->bindings)
@@ -96,8 +96,7 @@ bool same_binding(const input::input_binding& lhs, const input::input_binding& r
     return true;
 }
 
-bool same_mapping_binding(const input_mapping_binding& lhs, const input_mapping_binding& rhs,
-                          input_mapping_kind kind)
+bool same_mapping_binding(const input_mapping_binding& lhs, const input_mapping_binding& rhs, input_mapping_kind kind)
 {
     if (!same_binding(lhs.binding, rhs.binding)) return false;
     if (kind == input_mapping_kind::axis) return lhs.contribution == rhs.contribution;
@@ -124,8 +123,9 @@ void set_override_mapping(input_config& overrides, const input_mapping_target& t
     {
         case input_mapping_kind::action:
         {
-            auto found = std::find_if(context.actions.begin(), context.actions.end(),
-                                      [&target](const input_action_config& action) { return action.name == target.name; });
+            auto found =
+                std::find_if(context.actions.begin(), context.actions.end(),
+                             [&target](const input_action_config& action) { return action.name == target.name; });
             if (found == context.actions.end())
             {
                 context.actions.push_back({.name = target.name});
@@ -180,28 +180,27 @@ bool remove_override_mapping(input_config& overrides, const input_mapping_target
     {
         case input_mapping_kind::action:
         {
-            const auto end = std::remove_if(context->actions.begin(), context->actions.end(),
-                                            [&target](const input_action_config& action) {
-                                                return action.name == target.name;
-                                            });
+            const auto end =
+                std::remove_if(context->actions.begin(), context->actions.end(),
+                               [&target](const input_action_config& action) { return action.name == target.name; });
             removed = end != context->actions.end();
             context->actions.erase(end, context->actions.end());
             break;
         }
         case input_mapping_kind::axis:
         {
-            const auto end = std::remove_if(context->axes.begin(), context->axes.end(),
-                                            [&target](const input_axis_config& axis) { return axis.name == target.name; });
+            const auto end =
+                std::remove_if(context->axes.begin(), context->axes.end(),
+                               [&target](const input_axis_config& axis) { return axis.name == target.name; });
             removed = end != context->axes.end();
             context->axes.erase(end, context->axes.end());
             break;
         }
         case input_mapping_kind::axis2d:
         {
-            const auto end = std::remove_if(context->axes2d.begin(), context->axes2d.end(),
-                                            [&target](const input_axis2d_config& axis) {
-                                                return axis.name == target.name;
-                                            });
+            const auto end =
+                std::remove_if(context->axes2d.begin(), context->axes2d.end(),
+                               [&target](const input_axis2d_config& axis) { return axis.name == target.name; });
             removed = end != context->axes2d.end();
             context->axes2d.erase(end, context->axes2d.end());
             break;
@@ -210,10 +209,9 @@ bool remove_override_mapping(input_config& overrides, const input_mapping_target
 
     if (context->actions.empty() && context->axes.empty() && context->axes2d.empty())
     {
-        const auto end = std::remove_if(overrides.contexts.begin(), overrides.contexts.end(),
-                                        [&target](const input_context_config& value) {
-                                            return value.name == target.context;
-                                        });
+        const auto end =
+            std::remove_if(overrides.contexts.begin(), overrides.contexts.end(),
+                           [&target](const input_context_config& value) { return value.name == target.context; });
         overrides.contexts.erase(end, overrides.contexts.end());
     }
     return removed;
@@ -229,25 +227,22 @@ void apply_overrides(input_config& effective, const input_config& overrides)
         for (const auto& override_action : override_context.actions)
         {
             const auto found = std::find_if(context->actions.begin(), context->actions.end(),
-                                            [&override_action](const input_action_config& action) {
-                                                return action.name == override_action.name;
-                                            });
+                                            [&override_action](const input_action_config& action)
+                                            { return action.name == override_action.name; });
             if (found != context->actions.end()) found->bindings = override_action.bindings;
         }
         for (const auto& override_axis : override_context.axes)
         {
-            const auto found = std::find_if(context->axes.begin(), context->axes.end(),
-                                            [&override_axis](const input_axis_config& axis) {
-                                                return axis.name == override_axis.name;
-                                            });
+            const auto found =
+                std::find_if(context->axes.begin(), context->axes.end(), [&override_axis](const input_axis_config& axis)
+                             { return axis.name == override_axis.name; });
             if (found != context->axes.end()) found->bindings = override_axis.bindings;
         }
         for (const auto& override_axis : override_context.axes2d)
         {
             const auto found = std::find_if(context->axes2d.begin(), context->axes2d.end(),
-                                            [&override_axis](const input_axis2d_config& axis) {
-                                                return axis.name == override_axis.name;
-                                            });
+                                            [&override_axis](const input_axis2d_config& axis)
+                                            { return axis.name == override_axis.name; });
             if (found != context->axes2d.end()) found->bindings = override_axis.bindings;
         }
     }
@@ -331,9 +326,8 @@ std::optional<input_rebind_capture_result> input_rebind_capture::offer(input::in
 
     active_ = false;
     canceled_ = false;
-    return input_rebind_capture_result{.device = device,
-                                       .binding = {.device = descriptor->type(), .control = control},
-                                       .value = value};
+    return input_rebind_capture_result{
+        .device = device, .binding = {.device = descriptor->type(), .control = control}, .value = value};
 }
 
 input_rebinding_profile::input_rebinding_profile(input_config project_defaults, input::player_id player)
@@ -484,9 +478,8 @@ std::vector<input_mapping_target> input_rebinding_profile::conflicts_for(const i
             for (const auto& candidate : action.bindings)
             {
                 if (same_physical_control(candidate, binding))
-                    append_unique(result, {.context = context.name,
-                                           .name = action.name,
-                                           .kind = input_mapping_kind::action});
+                    append_unique(result,
+                                  {.context = context.name, .name = action.name, .kind = input_mapping_kind::action});
             }
         }
         for (const auto& axis : context.axes)
@@ -553,8 +546,8 @@ void input_rebinding_profile::publish_override(const input_mapping_target& targe
     if (!default_context || !default_mapping(target)) return;
 
     auto& runtime_player = installed_system_->player(player_);
-    const std::string shadow_context = "__arc_user_override/" + std::to_string(player_) + "/" +
-                                       std::to_string(++publish_generation_);
+    const std::string shadow_context =
+        "__arc_user_override/" + std::to_string(player_) + "/" + std::to_string(++publish_generation_);
     runtime_player.add_context(shadow_context, default_context->priority, default_context->enabled);
 
     if (override->bindings.empty())
@@ -616,10 +609,8 @@ void input_rebinding_profile::disable_published_context(std::string_view context
     {
         if (published.target.context == context) runtime_player.set_context_enabled(published.context_name, false);
     }
-    const auto end = std::remove_if(published_.begin(), published_.end(),
-                                    [context](const published_override& value) {
-                                        return value.target.context == context;
-                                    });
+    const auto end = std::remove_if(published_.begin(), published_.end(), [context](const published_override& value)
+                                    { return value.target.context == context; });
     published_.erase(end, published_.end());
 }
 
