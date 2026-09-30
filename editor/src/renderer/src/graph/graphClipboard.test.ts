@@ -60,6 +60,36 @@ describe('graph clipboard operations', () => {
     expect(duplicated.edges[0]).toMatchObject({ sourceNodeId: 'node-1', targetNodeId: 'node-2' });
   });
 
+  it('rejects malformed clipboard payloads instead of silently dropping connections', () => {
+    expect(() =>
+      pasteGraphSelection(
+        {
+          nodes: [{ id: 'a', position: { x: 0, y: 0 }, label: 'A' }],
+          edges: [{ id: 'bad', sourceNodeId: 'a', targetNodeId: 'missing', pin: 'value' }],
+        },
+        idFactory(),
+      ),
+    ).toThrow('references a node outside the clipboard payload');
+  });
+
+  it('rejects duplicate source and generated IDs before graph mutation', () => {
+    expect(() =>
+      pasteGraphSelection(
+        {
+          nodes: [
+            { id: 'a', position: { x: 0, y: 0 }, label: 'A' },
+            { id: 'a', position: { x: 1, y: 1 }, label: 'Duplicate' },
+          ],
+          edges: [],
+        },
+        idFactory(),
+      ),
+    ).toThrow('duplicate node ID: a');
+
+    const copied = copyGraphSelection(nodes, edges, new Set(['a', 'b']));
+    expect(() => pasteGraphSelection(copied, () => 'same-id')).toThrow('generated duplicate node ID: same-id');
+  });
+
   it('deletes selected nodes and every incident connection without mutating inputs', () => {
     const remaining = deleteGraphSelection(nodes, edges, new Set(['b']));
 
