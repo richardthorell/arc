@@ -40,8 +40,8 @@ describe('graph geometry', () => {
   });
 
   it('zooms around a stable screen-space anchor', () => {
-    const next = graphViewportZoomAt({ x: 20, y: 10, zoom: 1 }, [120, 60], 2);
-    expect(next).toEqual({ x: -80, y: -40, zoom: 2 });
+    const next = graphViewportZoomAt({ x: 20, y: 10, zoom: 1 }, [120, 60], 1.5);
+    expect(next).toEqual({ x: -30, y: -15, zoom: 1.5 });
     expect([(120 - next.x) / next.zoom, (60 - next.y) / next.zoom]).toEqual([100, 50]);
   });
 
