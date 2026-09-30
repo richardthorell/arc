@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { collectAssetFacets, filterAssets, matchesAssetSearch, type AssetSearchMetadata } from './assetSearch';
+import {
+  collectAssetFacetCounts,
+  collectAssetFacets,
+  filterAssets,
+  matchesAssetSearch,
+  type AssetSearchMetadata,
+} from './assetSearch';
 
 const assets: AssetSearchMetadata[] = [
   {
@@ -39,5 +45,22 @@ describe('asset search', () => {
     const facets = collectAssetFacets([...assets, { ...assets[0], id: 'stone-2', tags: ['rock', 'Architecture'] }]);
     expect(facets.kinds).toEqual(['material', 'model']);
     expect(facets.tags).toEqual(['architecture', 'character', 'environment', 'rock']);
+  });
+
+  it('collects normalized deterministic facet counts without double-counting duplicate tags', () => {
+    const counts = collectAssetFacetCounts([
+      ...assets,
+      { ...assets[0], id: 'stone-2', tags: ['rock', 'ROCK', 'Architecture'] },
+    ]);
+    expect(counts.kinds).toEqual([
+      { value: 'material', count: 2 },
+      { value: 'model', count: 1 },
+    ]);
+    expect(counts.tags).toEqual([
+      { value: 'architecture', count: 1 },
+      { value: 'character', count: 1 },
+      { value: 'environment', count: 1 },
+      { value: 'rock', count: 2 },
+    ]);
   });
 });
