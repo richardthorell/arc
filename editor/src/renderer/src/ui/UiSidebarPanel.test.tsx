@@ -5,7 +5,12 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { subscribeSearchDrawerRequests } from '../search/searchDrawerRoute';
-import { requestedSettingsDialogKind, resetSettingsDialogRequest } from '../settings/settingsDialogRoute';
+import {
+  requestSettingsDialogOpen,
+  requestedSettingsDialogKind,
+  requestedSettingsDialogPageId,
+  resetSettingsDialogRequest,
+} from '../settings/settingsDialogRoute';
 import { UiSidebarPanel, UiSidebarPanelButton } from './UiSidebarPanel';
 
 let unsubscribeSearchRequest: (() => void) | undefined;
@@ -133,5 +138,16 @@ describe('UiSidebarPanel', () => {
     expect(onSettings).toHaveBeenCalledTimes(1);
     expect(onSelectActivity).not.toHaveBeenCalled();
     expect(onExpandedChange).not.toHaveBeenCalled();
+  });
+
+  it('opens settings when another editor surface requests a routed page', () => {
+    const onSettings = vi.fn();
+    render(<UiSidebarPanel activeActivity="scene" onSelectActivity={vi.fn()} onSettings={onSettings} />);
+
+    requestSettingsDialogOpen('editorPreferences', 'ai.providers');
+
+    expect(onSettings).toHaveBeenCalledTimes(1);
+    expect(requestedSettingsDialogKind()).toBe('editorPreferences');
+    expect(requestedSettingsDialogPageId()).toBe('ai.providers');
   });
 });
