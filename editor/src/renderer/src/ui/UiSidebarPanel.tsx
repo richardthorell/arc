@@ -28,8 +28,7 @@ export function UiSidebarPanelButton({
   return (
     <UiButton
       className={['ui-sidebar-panel-button', 'activity-button', className].filter(Boolean).join(' ')}
-      {...props
-      }
+      {...props}
     >
       {children}
       {showCounter && (
