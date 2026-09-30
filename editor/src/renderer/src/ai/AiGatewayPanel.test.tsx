@@ -93,11 +93,7 @@ describe('AiChatPanel', () => {
     ];
 
     render(
-      <AiChatPanel
-        conversationLabel="Scene review"
-        initialMessages={initialMessages}
-        provider={configuredProvider}
-      />,
+      <AiChatPanel conversationLabel="Scene review" initialMessages={initialMessages} provider={configuredProvider} />,
     );
 
     expect(screen.getByText('Scene review')).toBeInTheDocument();

@@ -20,12 +20,7 @@ export const UiAgentCard = forwardRef<HTMLElement, UiAgentCardProps>(function Ui
   const hasHeader = Boolean(title || subtitle || icon || actions);
 
   return (
-    <article
-      className={['ui-agent-card', className].filter(Boolean).join(' ')}
-      data-state={state}
-      ref={ref}
-      {...props}
-    >
+    <article className={['ui-agent-card', className].filter(Boolean).join(' ')} data-state={state} ref={ref} {...props}>
       {hasHeader && (
         <header className="ui-agent-card-header">
           {icon && <span className="ui-agent-card-icon">{icon}</span>}

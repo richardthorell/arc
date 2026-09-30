@@ -1,12 +1,7 @@
 import { Send } from 'lucide-react';
 import { useState } from 'react';
 import { UiAgentTextCard, UiButton, UiDrawerPanel, UiIconButton } from '../ui';
-import {
-  createAiMessage,
-  unavailableAiModelProvider,
-  type AiChatMessage,
-  type AiModelProvider,
-} from './aiChat';
+import { createAiMessage, unavailableAiModelProvider, type AiChatMessage, type AiModelProvider } from './aiChat';
 import './aiGateway.css';
 
 const openAiConnectivitySettings = () => {
