@@ -52,13 +52,17 @@ describe('graph geometry', () => {
   });
 
   it('fits graph bounds into the viewport with shared padding and zoom limits', () => {
-    expect(graphViewportFitBounds({ left: 0, top: 0, right: 400, bottom: 200 }, { width: 1000, height: 600 }, 50)).toEqual({
+    expect(
+      graphViewportFitBounds({ left: 0, top: 0, right: 400, bottom: 200 }, { width: 1000, height: 600 }, 50),
+    ).toEqual({
       x: 140,
       y: 120,
       zoom: 1.8,
     });
 
-    expect(graphViewportFitBounds({ left: 0, top: 0, right: 2000, bottom: 1000 }, { width: 1000, height: 600 }, 50)).toEqual({
+    expect(
+      graphViewportFitBounds({ left: 0, top: 0, right: 2000, bottom: 1000 }, { width: 1000, height: 600 }, 50),
+    ).toEqual({
       x: 50,
       y: 75,
       zoom: 0.45,
