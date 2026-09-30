@@ -146,9 +146,10 @@ TEST_CASE("virtual geometry graph selects mesh-shader rasterization without soft
                            [expected](const auto& pass) { return pass.builtin == expected; });
     };
     REQUIRE(contains(builtin_render_pass::virtual_geometry_hierarchy_traversal));
-    REQUIRE(std::count_if(
-                compiled.passes.begin(), compiled.passes.end(), [](const auto& pass)
-                { return pass.builtin == builtin_render_pass::virtual_geometry_hardware_command_generation; }) == 2);
+    REQUIRE(std::count_if(compiled.passes.begin(), compiled.passes.end(),
+                          [](const auto& pass) {
+                              return pass.builtin == builtin_render_pass::virtual_geometry_hardware_command_generation;
+                          }) == 2);
     REQUIRE(std::count_if(compiled.passes.begin(), compiled.passes.end(), [](const auto& pass)
                           { return pass.builtin == builtin_render_pass::virtual_geometry_mesh_shader_visibility; }) ==
             2);
