@@ -13,7 +13,7 @@ import subprocess
 import sys
 
 
-STAGE_EXTENSIONS = {".vert", ".frag", ".comp"}
+STAGE_EXTENSIONS = {".vert", ".frag", ".comp", ".mesh", ".task"}
 INCLUDE_PATTERN = re.compile(r'^\s*#include\s+["<]([^">]+)[">]', re.MULTILINE)
 
 

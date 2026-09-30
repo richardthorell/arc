@@ -191,7 +191,7 @@ TEST_CASE("virtual geometry hardware support resolves from backend-neutral capab
     REQUIRE(support.indexed_indirect);
     REQUIRE(support.mesh_shader);
 
-    capabilities.resource_limits.maximum_indirect_draw_count = 0;
+    capabilities.resource_limits.maximum_indirect_draw_count = 255;
     support = query_virtual_geometry_hardware_support(capabilities);
     REQUIRE_FALSE(support.indexed_indirect);
     REQUIRE_FALSE(support.mesh_shader);

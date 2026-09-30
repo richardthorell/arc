@@ -98,6 +98,8 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     std::vector<VkExtensionProperties> extensions(extension_count);
     vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &extension_count, extensions.data());
 
+    VkPhysicalDeviceVulkan11Features vulkan11{};
+    vulkan11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
     VkPhysicalDeviceVulkan12Features vulkan12{};
     vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 
@@ -122,8 +124,10 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
         tail->pNext = reinterpret_cast<VkBaseOutStructure*>(&feature);
         tail = reinterpret_cast<VkBaseOutStructure*>(&feature);
     };
+    const bool vulkan11_or_newer = properties.apiVersion >= VK_API_VERSION_1_1;
     const bool vulkan12_or_newer = properties.apiVersion >= VK_API_VERSION_1_2;
     const bool vulkan13_or_newer = properties.apiVersion >= VK_API_VERSION_1_3;
+    if (vulkan11_or_newer) append_feature(vulkan11);
     if (vulkan12_or_newer) append_feature(vulkan12);
     if (vulkan13_or_newer || has_extension(extensions, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME))
         append_feature(dynamic_rendering);
@@ -287,7 +291,7 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     // cache publication, and the shared sampling ABI are all executable.
     capabilities.virtual_texture_feedback = false;
     capabilities.virtual_texture_sampling = false;
-    capabilities.shader_draw_parameters = properties.apiVersion >= VK_API_VERSION_1_1;
+    capabilities.shader_draw_parameters = vulkan11.shaderDrawParameters == VK_TRUE;
     capabilities.gpu_scene_indirect =
         capabilities.compute_shaders && capabilities.storage_buffers && capabilities.draw_indirect;
     capabilities.gpu_scene_indirect_count = capabilities.gpu_scene_indirect && capabilities.draw_indirect_count;
@@ -310,6 +314,12 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
         const auto required = VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT | VK_FORMAT_FEATURE_STORAGE_IMAGE_ATOMIC_BIT;
         return (format_properties.optimalTilingFeatures & required) == required;
     };
+    const auto supports_attachment = [&](VkFormat format, VkFormatFeatureFlags required)
+    {
+        VkFormatProperties format_properties{};
+        vkGetPhysicalDeviceFormatProperties(physical_device, format, &format_properties);
+        return (format_properties.optimalTilingFeatures & required) == required;
+    };
     capabilities.atomics = {.storage_buffer_int32 = capabilities.compute_shaders && capabilities.storage_buffers,
                             .storage_image_r32_uint = supports_storage_atomic(VK_FORMAT_R32_UINT),
                             .storage_image_r32_sint = supports_storage_atomic(VK_FORMAT_R32_SINT)};
@@ -322,6 +332,7 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     // transform and selected by the executable graph's FXAA pass.
     capabilities.fxaa = true;
     capabilities.virtual_geometry_compute = false;
+    capabilities.virtual_geometry_indexed = false;
     capabilities.virtual_geometry_mesh_shader = false;
     capabilities.virtual_geometry_streaming = false;
     // VSM support is advertised only after allocation, feedback, caster rendering,
@@ -363,6 +374,17 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
         supports_storage_sampled(VK_FORMAT_R32_UINT);
     capabilities.virtual_geometry_compute = complete_virtual_geometry_compute;
     capabilities.virtual_geometry_streaming = complete_virtual_geometry_compute;
+    capabilities.virtual_geometry_indexed =
+        complete_virtual_geometry_compute && capabilities.graphics_queue && capabilities.draw_indirect &&
+        capabilities.multi_draw_indirect && capabilities.draw_indirect_first_instance &&
+        capabilities.shader_draw_parameters && capabilities.resource_limits.maximum_indirect_draw_count >= 256u &&
+        supports_attachment(VK_FORMAT_R32_UINT, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) &&
+        supports_attachment(VK_FORMAT_D32_SFLOAT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+    capabilities.virtual_geometry_mesh_shader =
+        capabilities.virtual_geometry_indexed && mesh_shader_extension && mesh_shader.meshShader == VK_TRUE &&
+        mesh_shader_properties.maxMeshWorkGroupInvocations >= 32u &&
+        mesh_shader_properties.maxMeshOutputVertices >= virtual_geometry_max_vertices_per_cluster &&
+        mesh_shader_properties.maxMeshOutputPrimitives >= virtual_geometry_max_triangles_per_cluster;
     capabilities.gpu_visibility_compaction =
         capabilities.bindless_geometry_tables && capabilities.bindless_material_tables;
     capabilities.gpu_transparent_sorting =
@@ -541,6 +563,8 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
             if (capabilities.synchronization2)
                 append_unique_extension(candidate_extensions, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
         }
+        if (capabilities.virtual_geometry_mesh_shader)
+            append_unique_extension(candidate_extensions, VK_EXT_MESH_SHADER_EXTENSION_NAME);
 
         std::string rejection;
         if (queue_family == UINT32_MAX)
@@ -589,6 +613,11 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
     dynamic_rendering.dynamicRendering = VK_TRUE;
 
     const bool enable_optional_features = !config.force_disable_optional_features;
+    VkPhysicalDeviceVulkan11Features vulkan11{};
+    vulkan11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+    vulkan11.shaderDrawParameters =
+        enable_optional_features && selected_capabilities.shader_draw_parameters ? VK_TRUE : VK_FALSE;
+
     VkPhysicalDeviceVulkan12Features vulkan12{};
     vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
     vulkan12.timelineSemaphore =
@@ -605,13 +634,30 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
     synchronization2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
     synchronization2.synchronization2 =
         enable_optional_features && selected_capabilities.synchronization2 ? VK_TRUE : VK_FALSE;
-    dynamic_rendering.pNext = &vulkan12;
+    dynamic_rendering.pNext = &vulkan11;
+    vulkan11.pNext = &vulkan12;
     vulkan12.pNext = &synchronization2;
+
+    VkPhysicalDeviceMeshShaderFeaturesEXT enabled_mesh_shader{};
+    enabled_mesh_shader.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT;
+    enabled_mesh_shader.meshShader =
+        enable_optional_features && selected_capabilities.virtual_geometry_mesh_shader ? VK_TRUE : VK_FALSE;
+    if (selected_capabilities.virtual_geometry_mesh_shader) synchronization2.pNext = &enabled_mesh_shader;
+    if (!enable_optional_features)
+    {
+        selected_capabilities.mesh_shaders = false;
+        selected_capabilities.task_shaders = false;
+        selected_capabilities.virtual_geometry_mesh_shader = false;
+    }
 
     VkPhysicalDeviceFeatures enabled_features{};
     enabled_features.fillModeNonSolid = selected_capabilities.fill_mode_non_solid ? VK_TRUE : VK_FALSE;
     enabled_features.samplerAnisotropy =
         enable_optional_features && selected_capabilities.sampler_anisotropy ? VK_TRUE : VK_FALSE;
+    enabled_features.multiDrawIndirect =
+        enable_optional_features && selected_capabilities.multi_draw_indirect ? VK_TRUE : VK_FALSE;
+    enabled_features.drawIndirectFirstInstance =
+        enable_optional_features && selected_capabilities.draw_indirect_first_instance ? VK_TRUE : VK_FALSE;
 
     const auto device_extension_names = make_c_strings(selected_device_extensions);
 

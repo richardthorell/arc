@@ -41,4 +41,6 @@ void main()
     bins[bin_index].maximum_tile_y = uint(clamp(ceil(maximum_pixel.y / 8.0), 0.0,
                                                    float((constants.viewport_capacities.y + 7u) / 8u)));
     bins[bin_index].flags = visible.flags;
+    atomicAdd(counters.raster_clusters, 1u);
+    atomicAdd(counters.raster_triangles, cluster.triangle_count);
 }

@@ -887,9 +887,11 @@ void vulkan_render_backend::destroy_virtual_geometry_traversal_resources()
         destroy_buffer(history);
     destroy_buffer(virtual_geometry_refinement_frontier_buffer_);
     destroy_buffer(virtual_geometry_raster_bin_buffer_);
+    destroy_buffer(virtual_geometry_hardware_command_buffer_);
     destroy_buffer(virtual_geometry_material_frame_buffer_);
     destroy_graph_image(virtual_geometry_encoded_depth_);
     destroy_graph_image(virtual_geometry_visibility_ids_);
+    destroy_graph_image(virtual_geometry_hardware_depth_);
     for (auto& frame : virtual_geometry_feedback_frames_)
     {
         destroy_buffer(frame.requests);
@@ -907,6 +909,14 @@ void vulkan_render_backend::destroy_virtual_geometry_traversal_resources()
         vkDestroyDescriptorSetLayout(device_, virtual_geometry_traversal_descriptor_set_layout_, nullptr);
     for (const auto pipeline : virtual_geometry_raster_pipelines_)
         if (pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device_, pipeline, nullptr);
+    if (virtual_geometry_hardware_command_pipeline_ != VK_NULL_HANDLE)
+        vkDestroyPipeline(device_, virtual_geometry_hardware_command_pipeline_, nullptr);
+    if (virtual_geometry_hardware_indexed_pipeline_ != VK_NULL_HANDLE)
+        vkDestroyPipeline(device_, virtual_geometry_hardware_indexed_pipeline_, nullptr);
+    if (virtual_geometry_hardware_mesh_pipeline_ != VK_NULL_HANDLE)
+        vkDestroyPipeline(device_, virtual_geometry_hardware_mesh_pipeline_, nullptr);
+    if (virtual_geometry_hardware_pipeline_layout_ != VK_NULL_HANDLE)
+        vkDestroyPipelineLayout(device_, virtual_geometry_hardware_pipeline_layout_, nullptr);
     if (virtual_geometry_raster_pipeline_layout_ != VK_NULL_HANDLE)
         vkDestroyPipelineLayout(device_, virtual_geometry_raster_pipeline_layout_, nullptr);
     if (virtual_geometry_raster_descriptor_pool_ != VK_NULL_HANDLE)
@@ -927,6 +937,10 @@ void vulkan_render_backend::destroy_virtual_geometry_traversal_resources()
     virtual_geometry_traversal_descriptor_set_layout_ = VK_NULL_HANDLE;
     virtual_geometry_traversal_descriptor_set_ = VK_NULL_HANDLE;
     virtual_geometry_raster_pipelines_.fill(VK_NULL_HANDLE);
+    virtual_geometry_hardware_command_pipeline_ = VK_NULL_HANDLE;
+    virtual_geometry_hardware_indexed_pipeline_ = VK_NULL_HANDLE;
+    virtual_geometry_hardware_mesh_pipeline_ = VK_NULL_HANDLE;
+    virtual_geometry_hardware_pipeline_layout_ = VK_NULL_HANDLE;
     virtual_geometry_raster_pipeline_layout_ = VK_NULL_HANDLE;
     virtual_geometry_raster_descriptor_pool_ = VK_NULL_HANDLE;
     virtual_geometry_raster_descriptor_set_layout_ = VK_NULL_HANDLE;
@@ -942,6 +956,7 @@ void vulkan_render_backend::destroy_virtual_geometry_traversal_resources()
     virtual_geometry_refinement_history_capacity_ = 0u;
     virtual_geometry_refinement_frontier_capacity_ = 0u;
     virtual_geometry_raster_bin_capacity_ = 0u;
+    virtual_geometry_hardware_command_capacity_ = 0u;
     virtual_geometry_refinement_pending_ = false;
 }
 

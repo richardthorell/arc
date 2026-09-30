@@ -1,0 +1,44 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "include/virtual_geometry_raster.glsl"
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct hardware_indirect_command
+{
+    uint word0;
+    uint word1;
+    uint word2;
+    uint word3;
+};
+
+layout(std430, set = 0, binding = 9) writeonly buffer hardware_command_buffer
+{
+    hardware_indirect_command commands[];
+};
+
+const uint hardware_mode_indexed = 1u;
+const uint hardware_mode_mesh = 2u;
+
+void main()
+{
+    uint visible_index = gl_GlobalInvocationID.x;
+    uint command_capacity = constants.hardware_parameters.y;
+    uint retained_visible = min(counters.visible_count, min(constants.viewport_capacities.z, command_capacity));
+    if (visible_index >= retained_visible)
+        return;
+
+    virtual_visible_cluster visible = visible_clusters[visible_index];
+    virtual_cluster cluster = clusters[visible.cluster_index];
+    if (constants.hardware_parameters.x == hardware_mode_mesh)
+        commands[visible_index] = hardware_indirect_command(1u, 1u, 1u, 0u);
+    else if (constants.hardware_parameters.x == hardware_mode_indexed)
+        commands[visible_index] =
+            hardware_indirect_command(cluster.triangle_count * 3u, 1u, 0u, visible_index);
+    else
+        return;
+
+    atomicAdd(counters.raster_clusters, 1u);
+    atomicAdd(counters.raster_triangles, cluster.triangle_count);
+    atomicAdd(counters.raster_indirect_commands, 1u);
+}

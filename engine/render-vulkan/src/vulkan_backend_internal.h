@@ -207,7 +207,9 @@ struct alignas(16) virtual_geometry_traversal_counter_data
     std::uint32_t refinement_frontier_count{};
     std::uint32_t refinement_frontier_overflow{};
     std::uint32_t traversed_nodes{};
-    std::uint32_t reserved[3]{};
+    std::uint32_t raster_clusters{};
+    std::uint32_t raster_triangles{};
+    std::uint32_t raster_indirect_commands{};
 };
 static_assert(sizeof(virtual_geometry_traversal_counter_data) == 112);
 
@@ -240,8 +242,9 @@ struct virtual_geometry_raster_push_constants
 {
     float view_projection[16]{};
     std::uint32_t viewport_capacities[4]{};
+    std::uint32_t hardware_parameters[4]{};
 };
-static_assert(sizeof(virtual_geometry_raster_push_constants) == 80);
+static_assert(sizeof(virtual_geometry_raster_push_constants) == 96);
 
 inline constexpr std::uint32_t virtual_geometry_bindless_texture_capacity = 4096u;
 inline constexpr std::uint32_t material_attribute_descriptor_set_capacity = 4096u;
@@ -1107,6 +1110,10 @@ private:
 
     void dispatch_virtual_geometry_raster(VkCommandBuffer command_buffer);
 
+    bool ensure_virtual_geometry_hardware_resources();
+
+    bool dispatch_virtual_geometry_hardware_raster(VkCommandBuffer command_buffer);
+
     bool ensure_virtual_geometry_material_resources();
 
     bool dispatch_virtual_geometry_material_resolve(VkCommandBuffer command_buffer);
@@ -1516,15 +1523,18 @@ private:
     std::array<gpu_buffer, 2> virtual_geometry_refinement_history_buffers_{};
     gpu_buffer virtual_geometry_refinement_frontier_buffer_;
     gpu_buffer virtual_geometry_raster_bin_buffer_;
+    gpu_buffer virtual_geometry_hardware_command_buffer_;
     gpu_buffer virtual_geometry_material_frame_buffer_;
     graph_image virtual_geometry_encoded_depth_;
     graph_image virtual_geometry_visibility_ids_;
+    graph_image virtual_geometry_hardware_depth_;
     std::uint32_t virtual_geometry_visible_capacity_{};
     std::uint32_t virtual_geometry_request_capacity_{};
     std::uint32_t virtual_geometry_fallback_capacity_{};
     std::uint32_t virtual_geometry_refinement_history_capacity_{};
     std::uint32_t virtual_geometry_refinement_frontier_capacity_{};
     std::uint32_t virtual_geometry_raster_bin_capacity_{};
+    std::uint32_t virtual_geometry_hardware_command_capacity_{};
     std::vector<virtual_geometry_feedback_frame> virtual_geometry_feedback_frames_;
     VkDescriptorSetLayout virtual_geometry_traversal_descriptor_set_layout_{};
     VkDescriptorPool virtual_geometry_traversal_descriptor_pool_{};
@@ -1536,6 +1546,10 @@ private:
     VkDescriptorSet virtual_geometry_raster_descriptor_set_{};
     VkPipelineLayout virtual_geometry_raster_pipeline_layout_{};
     std::array<VkPipeline, 3> virtual_geometry_raster_pipelines_{};
+    VkPipeline virtual_geometry_hardware_command_pipeline_{};
+    VkPipelineLayout virtual_geometry_hardware_pipeline_layout_{};
+    VkPipeline virtual_geometry_hardware_indexed_pipeline_{};
+    VkPipeline virtual_geometry_hardware_mesh_pipeline_{};
     VkDescriptorSetLayout virtual_geometry_material_descriptor_set_layout_{};
     VkDescriptorPool virtual_geometry_material_descriptor_pool_{};
     VkDescriptorSet virtual_geometry_material_descriptor_set_{};

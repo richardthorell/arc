@@ -11,10 +11,14 @@ bool vulkan_render_backend::ensure_virtual_geometry_raster_resources()
     const auto previous_visibility_view = virtual_geometry_visibility_ids_.view;
     if (!ensure_graph_image(virtual_geometry_encoded_depth_, std::max(viewport_width_, 1u),
                             std::max(viewport_height_, 1u), VK_FORMAT_R32_UINT,
-                            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT) ||
+                            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+                            VK_IMAGE_ASPECT_COLOR_BIT) ||
         !ensure_graph_image(virtual_geometry_visibility_ids_, std::max(viewport_width_, 1u),
                             std::max(viewport_height_, 1u), VK_FORMAT_R32_UINT,
-                            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT))
+                            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+                            VK_IMAGE_ASPECT_COLOR_BIT))
         return false;
     if (previous_depth_view != virtual_geometry_encoded_depth_.view ||
         previous_visibility_view != virtual_geometry_visibility_ids_.view)
@@ -39,13 +43,35 @@ bool vulkan_render_backend::ensure_virtual_geometry_raster_resources()
                                      [this, retired]() mutable { destroy_buffer(retired); });
     }
 
+    if (virtual_geometry_hardware_command_capacity_ < virtual_geometry_visible_capacity_ ||
+        virtual_geometry_hardware_command_buffer_.buffer == VK_NULL_HANDLE)
+    {
+        gpu_buffer replacement{};
+        if (!create_buffer(buffer_size(virtual_geometry_visible_capacity_, sizeof(VkDrawIndirectCommand)),
+                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+                               VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                           VMA_MEMORY_USAGE_GPU_ONLY, replacement))
+            return false;
+        auto retired = virtual_geometry_hardware_command_buffer_;
+        virtual_geometry_hardware_command_buffer_ = replacement;
+        virtual_geometry_hardware_command_capacity_ = virtual_geometry_visible_capacity_;
+        virtual_geometry_raster_descriptors_dirty_ = true;
+        if (retired.buffer != VK_NULL_HANDLE)
+            deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
+                                     [this, retired]() mutable { destroy_buffer(retired); });
+    }
+
     if (virtual_geometry_raster_descriptor_set_layout_ == VK_NULL_HANDLE)
     {
-        std::array<VkDescriptorSetLayoutBinding, 9> bindings{};
+        std::array<VkDescriptorSetLayoutBinding, 10> bindings{};
+        VkShaderStageFlags geometry_stages = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_VERTEX_BIT;
+        if (capabilities_.virtual_geometry_mesh_shader) geometry_stages |= VK_SHADER_STAGE_MESH_BIT_EXT;
         for (std::uint32_t binding = 0; binding < 7u; ++binding)
-            bindings[binding] = {binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+            bindings[binding] = {binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u,
+                                 binding < 5u ? geometry_stages : VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
         bindings[7] = {7u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
         bindings[8] = {8u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+        bindings[9] = {9u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
         VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
         layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
         layout.pBindings = bindings.data();
@@ -59,7 +85,7 @@ bool vulkan_render_backend::ensure_virtual_geometry_raster_resources()
     {
         VkDescriptorPool replacement_pool{};
         VkDescriptorSet replacement_set{};
-        const std::array pool_sizes{VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 7u},
+        const std::array pool_sizes{VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 8u},
                                     VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2u}};
         VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
         pool.maxSets = 1u;
@@ -83,16 +109,18 @@ bool vulkan_render_backend::ensure_virtual_geometry_raster_resources()
             VkDescriptorBufferInfo{virtual_geometry_page_heap_buffer_.buffer, 0u, VK_WHOLE_SIZE},
             VkDescriptorBufferInfo{virtual_geometry_counter_buffer_.buffer, 0u, VK_WHOLE_SIZE},
             VkDescriptorBufferInfo{virtual_geometry_raster_bin_buffer_.buffer, 0u, VK_WHOLE_SIZE},
+            VkDescriptorBufferInfo{virtual_geometry_hardware_command_buffer_.buffer, 0u, VK_WHOLE_SIZE},
         };
-        std::array<VkWriteDescriptorSet, 7> writes{};
-        for (std::uint32_t binding = 0; binding < writes.size(); ++binding)
+        std::array<VkWriteDescriptorSet, 8> writes{};
+        constexpr std::array<std::uint32_t, 8> buffer_bindings{0u, 1u, 2u, 3u, 4u, 5u, 6u, 9u};
+        for (std::uint32_t index = 0; index < writes.size(); ++index)
         {
-            writes[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            writes[binding].dstSet = replacement_set;
-            writes[binding].dstBinding = binding;
-            writes[binding].descriptorCount = 1u;
-            writes[binding].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            writes[binding].pBufferInfo = &buffers[binding];
+            writes[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[index].dstSet = replacement_set;
+            writes[index].dstBinding = buffer_bindings[index];
+            writes[index].descriptorCount = 1u;
+            writes[index].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            writes[index].pBufferInfo = &buffers[index];
         }
         vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0u, nullptr);
         const std::array images{
@@ -157,9 +185,250 @@ bool vulkan_render_backend::ensure_virtual_geometry_raster_resources()
     return true;
 }
 
+bool vulkan_render_backend::ensure_virtual_geometry_hardware_resources()
+{
+    if (!capabilities_.virtual_geometry_indexed ||
+        capabilities_.resource_limits.maximum_indirect_draw_count < virtual_geometry_visible_capacity_ ||
+        virtual_geometry_raster_descriptor_set_layout_ == VK_NULL_HANDLE)
+        return false;
+    if (!ensure_graph_image(virtual_geometry_hardware_depth_, std::max(viewport_width_, 1u),
+                            std::max(viewport_height_, 1u), VK_FORMAT_D32_SFLOAT,
+                            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT))
+        return false;
+
+    if (virtual_geometry_hardware_command_pipeline_ == VK_NULL_HANDLE)
+    {
+        const auto shader = create_shader_module(builtin::virtual_geometry_hardware_commands_comp_spv,
+                                                 std::size(builtin::virtual_geometry_hardware_commands_comp_spv));
+        if (shader == VK_NULL_HANDLE) return false;
+        VkComputePipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+        pipeline.stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+        pipeline.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        pipeline.stage.module = shader;
+        pipeline.stage.pName = "main";
+        pipeline.layout = virtual_geometry_raster_pipeline_layout_;
+        const auto status = vkCreateComputePipelines(device_, vk_pipeline_cache_, 1u, &pipeline, nullptr,
+                                                     &virtual_geometry_hardware_command_pipeline_);
+        vkDestroyShaderModule(device_, shader, nullptr);
+        if (status != VK_SUCCESS) return false;
+    }
+
+    if (virtual_geometry_hardware_pipeline_layout_ == VK_NULL_HANDLE)
+    {
+        VkShaderStageFlags stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        if (capabilities_.virtual_geometry_mesh_shader) stages |= VK_SHADER_STAGE_MESH_BIT_EXT;
+        const VkPushConstantRange push{stages, 0u, sizeof(virtual_geometry_raster_push_constants)};
+        VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        layout.setLayoutCount = 1u;
+        layout.pSetLayouts = &virtual_geometry_raster_descriptor_set_layout_;
+        layout.pushConstantRangeCount = 1u;
+        layout.pPushConstantRanges = &push;
+        if (vkCreatePipelineLayout(device_, &layout, nullptr, &virtual_geometry_hardware_pipeline_layout_) !=
+            VK_SUCCESS)
+            return false;
+    }
+
+    const auto create_pipeline = [&](bool mesh_shader, VkPipeline& destination)
+    {
+        if (destination != VK_NULL_HANDLE) return true;
+        const auto geometry_module = mesh_shader
+                                         ? create_shader_module(builtin::virtual_geometry_hardware_mesh_spv,
+                                                                std::size(builtin::virtual_geometry_hardware_mesh_spv))
+                                         : create_shader_module(builtin::virtual_geometry_hardware_vert_spv,
+                                                                std::size(builtin::virtual_geometry_hardware_vert_spv));
+        const auto fragment_module =
+            mesh_shader ? create_shader_module(builtin::virtual_geometry_hardware_mesh_frag_spv,
+                                               std::size(builtin::virtual_geometry_hardware_mesh_frag_spv))
+                        : create_shader_module(builtin::virtual_geometry_hardware_frag_spv,
+                                               std::size(builtin::virtual_geometry_hardware_frag_spv));
+        if (geometry_module == VK_NULL_HANDLE || fragment_module == VK_NULL_HANDLE)
+        {
+            if (geometry_module != VK_NULL_HANDLE) vkDestroyShaderModule(device_, geometry_module, nullptr);
+            if (fragment_module != VK_NULL_HANDLE) vkDestroyShaderModule(device_, fragment_module, nullptr);
+            return false;
+        }
+        std::array<VkPipelineShaderStageCreateInfo, 2> shader_stages{};
+        shader_stages[0] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+        shader_stages[0].stage = mesh_shader ? VK_SHADER_STAGE_MESH_BIT_EXT : VK_SHADER_STAGE_VERTEX_BIT;
+        shader_stages[0].module = geometry_module;
+        shader_stages[0].pName = "main";
+        shader_stages[1] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+        shader_stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        shader_stages[1].module = fragment_module;
+        shader_stages[1].pName = "main";
+
+        VkPipelineVertexInputStateCreateInfo vertex_input{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+        VkPipelineInputAssemblyStateCreateInfo input_assembly{
+            VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+        input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        VkPipelineViewportStateCreateInfo viewport{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+        viewport.viewportCount = 1u;
+        viewport.scissorCount = 1u;
+        VkPipelineRasterizationStateCreateInfo raster{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+        raster.polygonMode = VK_POLYGON_MODE_FILL;
+        raster.cullMode = VK_CULL_MODE_NONE;
+        raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        raster.lineWidth = 1.0f;
+        VkPipelineMultisampleStateCreateInfo multisample{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+        multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        VkPipelineDepthStencilStateCreateInfo depth{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+        depth.depthTestEnable = VK_TRUE;
+        depth.depthWriteEnable = VK_TRUE;
+        depth.depthCompareOp = VK_COMPARE_OP_LESS;
+        std::array<VkPipelineColorBlendAttachmentState, 2> blend_attachments{};
+        for (auto& attachment : blend_attachments)
+            attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT;
+        VkPipelineColorBlendStateCreateInfo blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+        blend.attachmentCount = static_cast<std::uint32_t>(blend_attachments.size());
+        blend.pAttachments = blend_attachments.data();
+        const std::array dynamic_states{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+        VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+        dynamic.dynamicStateCount = static_cast<std::uint32_t>(dynamic_states.size());
+        dynamic.pDynamicStates = dynamic_states.data();
+        const std::array color_formats{VK_FORMAT_R32_UINT, VK_FORMAT_R32_UINT};
+        VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
+        rendering.colorAttachmentCount = static_cast<std::uint32_t>(color_formats.size());
+        rendering.pColorAttachmentFormats = color_formats.data();
+        rendering.depthAttachmentFormat = VK_FORMAT_D32_SFLOAT;
+        VkGraphicsPipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+        pipeline.pNext = &rendering;
+        pipeline.stageCount = static_cast<std::uint32_t>(shader_stages.size());
+        pipeline.pStages = shader_stages.data();
+        pipeline.pVertexInputState = mesh_shader ? nullptr : &vertex_input;
+        pipeline.pInputAssemblyState = mesh_shader ? nullptr : &input_assembly;
+        pipeline.pViewportState = &viewport;
+        pipeline.pRasterizationState = &raster;
+        pipeline.pMultisampleState = &multisample;
+        pipeline.pDepthStencilState = &depth;
+        pipeline.pColorBlendState = &blend;
+        pipeline.pDynamicState = &dynamic;
+        pipeline.layout = virtual_geometry_hardware_pipeline_layout_;
+        const auto status =
+            vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1u, &pipeline, nullptr, &destination);
+        vkDestroyShaderModule(device_, geometry_module, nullptr);
+        vkDestroyShaderModule(device_, fragment_module, nullptr);
+        return status == VK_SUCCESS;
+    };
+
+    if (!create_pipeline(false, virtual_geometry_hardware_indexed_pipeline_)) return false;
+    if (capabilities_.virtual_geometry_mesh_shader &&
+        resolved_config_.features.virtual_geometry_path == virtual_geometry_raster_path::mesh_shader)
+        create_pipeline(true, virtual_geometry_hardware_mesh_pipeline_);
+    return true;
+}
+
+bool vulkan_render_backend::dispatch_virtual_geometry_hardware_raster(VkCommandBuffer command_buffer)
+{
+    const bool requested_mesh_shader =
+        resolved_config_.features.virtual_geometry_path == virtual_geometry_raster_path::mesh_shader;
+    if (!ensure_virtual_geometry_hardware_resources()) return false;
+    const bool mesh_shader = requested_mesh_shader && virtual_geometry_hardware_mesh_pipeline_ != VK_NULL_HANDLE &&
+                             vkCmdDrawMeshTasksIndirectEXT != nullptr;
+    if (requested_mesh_shader && !mesh_shader)
+    {
+        last_profile_.virtual_geometry.raster_path = virtual_geometry_raster_path::hardware_indexed;
+        last_profile_.virtual_geometry.fallback_reason =
+            "mesh-shader virtual-geometry rasterization is unavailable for this frame; using indexed hardware "
+            "rasterization";
+    }
+
+    const auto scope = begin_gpu_scope(command_buffer, mesh_shader ? "virtual geometry mesh hardware raster"
+                                                                   : "virtual geometry indexed hardware raster");
+    vkCmdFillBuffer(command_buffer, virtual_geometry_hardware_command_buffer_.buffer, 0u, VK_WHOLE_SIZE, 0u);
+    VkMemoryBarrier command_clear{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    command_clear.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    command_clear.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 1u, &command_clear, 0u, nullptr, 0u, nullptr);
+
+    virtual_geometry_raster_push_constants constants{};
+    std::copy_n(frame_camera_.view_projection.data(), 16u, constants.view_projection);
+    constants.viewport_capacities[0] = viewport_width_;
+    constants.viewport_capacities[1] = viewport_height_;
+    constants.viewport_capacities[2] = virtual_geometry_visible_capacity_;
+    constants.viewport_capacities[3] = virtual_geometry_raster_bin_capacity_;
+    constants.hardware_parameters[0] = mesh_shader ? 2u : 1u;
+    constants.hardware_parameters[1] = virtual_geometry_hardware_command_capacity_;
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, virtual_geometry_hardware_command_pipeline_);
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, virtual_geometry_raster_pipeline_layout_,
+                            0u, 1u, &virtual_geometry_raster_descriptor_set_, 0u, nullptr);
+    vkCmdPushConstants(command_buffer, virtual_geometry_raster_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0u,
+                       sizeof(constants), &constants);
+    vkCmdDispatch(command_buffer, (virtual_geometry_hardware_command_capacity_ + 63u) / 64u, 1u, 1u);
+
+    VkMemoryBarrier raster_inputs{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    raster_inputs.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    raster_inputs.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
+    VkPipelineStageFlags raster_stages = VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+    if (mesh_shader) raster_stages |= VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT;
+    vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, raster_stages, 0u, 1u, &raster_inputs,
+                         0u, nullptr, 0u, nullptr);
+
+    transition_graph_image(command_buffer, virtual_geometry_encoded_depth_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    transition_graph_image(command_buffer, virtual_geometry_visibility_ids_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    transition_graph_image(command_buffer, virtual_geometry_hardware_depth_,
+                           VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+    std::array<VkRenderingAttachmentInfo, 2> colors{};
+    const std::array color_views{virtual_geometry_encoded_depth_.view, virtual_geometry_visibility_ids_.view};
+    for (std::size_t index = 0; index < colors.size(); ++index)
+    {
+        colors[index].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        colors[index].imageView = color_views[index];
+        colors[index].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colors[index].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colors[index].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        colors[index].clearValue.color.uint32[0] = std::numeric_limits<std::uint32_t>::max();
+    }
+    VkRenderingAttachmentInfo depth{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+    depth.imageView = virtual_geometry_hardware_depth_.view;
+    depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depth.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depth.clearValue.depthStencil.depth = 1.0f;
+    VkRenderingInfo rendering{VK_STRUCTURE_TYPE_RENDERING_INFO};
+    rendering.renderArea.extent = {viewport_width_, viewport_height_};
+    rendering.layerCount = 1u;
+    rendering.colorAttachmentCount = static_cast<std::uint32_t>(colors.size());
+    rendering.pColorAttachments = colors.data();
+    rendering.pDepthAttachment = &depth;
+    cmd_begin_rendering(command_buffer, &rendering);
+    set_viewport_and_scissor(command_buffer);
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      mesh_shader ? virtual_geometry_hardware_mesh_pipeline_
+                                  : virtual_geometry_hardware_indexed_pipeline_);
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, virtual_geometry_hardware_pipeline_layout_,
+                            0u, 1u, &virtual_geometry_raster_descriptor_set_, 0u, nullptr);
+    const auto graphics_stages =
+        VK_SHADER_STAGE_FRAGMENT_BIT | (mesh_shader ? VK_SHADER_STAGE_MESH_BIT_EXT : VK_SHADER_STAGE_VERTEX_BIT);
+    vkCmdPushConstants(command_buffer, virtual_geometry_hardware_pipeline_layout_, graphics_stages, 0u,
+                       sizeof(constants), &constants);
+    if (mesh_shader)
+        vkCmdDrawMeshTasksIndirectEXT(command_buffer, virtual_geometry_hardware_command_buffer_.buffer, 0u,
+                                      virtual_geometry_hardware_command_capacity_, sizeof(VkDrawIndirectCommand));
+    else
+        vkCmdDrawIndirect(command_buffer, virtual_geometry_hardware_command_buffer_.buffer, 0u,
+                          virtual_geometry_hardware_command_capacity_, sizeof(VkDrawIndirectCommand));
+    cmd_end_rendering(command_buffer);
+    transition_graph_image(command_buffer, virtual_geometry_encoded_depth_, VK_IMAGE_LAYOUT_GENERAL);
+    transition_graph_image(command_buffer, virtual_geometry_visibility_ids_, VK_IMAGE_LAYOUT_GENERAL);
+    end_gpu_scope(command_buffer, scope);
+    return true;
+}
+
 void vulkan_render_backend::dispatch_virtual_geometry_raster(VkCommandBuffer command_buffer)
 {
     if (!ensure_virtual_geometry_raster_resources()) return;
+    if ((resolved_config_.features.virtual_geometry_path == virtual_geometry_raster_path::hardware_indexed ||
+         resolved_config_.features.virtual_geometry_path == virtual_geometry_raster_path::mesh_shader) &&
+        dispatch_virtual_geometry_hardware_raster(command_buffer))
+        return;
+    if (resolved_config_.features.virtual_geometry_path != virtual_geometry_raster_path::compute)
+    {
+        last_profile_.virtual_geometry.raster_path = virtual_geometry_raster_path::compute;
+        last_profile_.virtual_geometry.fallback_reason =
+            "hardware virtual-geometry rasterization is unavailable for this frame; using compute rasterization";
+    }
+    const auto scope = begin_gpu_scope(command_buffer, "virtual geometry compute raster");
     transition_graph_image(command_buffer, virtual_geometry_encoded_depth_, VK_IMAGE_LAYOUT_GENERAL);
     transition_graph_image(command_buffer, virtual_geometry_visibility_ids_, VK_IMAGE_LAYOUT_GENERAL);
     VkClearColorValue clear{};
@@ -255,6 +524,7 @@ void vulkan_render_backend::dispatch_virtual_geometry_raster(VkCommandBuffer com
     vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u,
                          0u, nullptr, 0u, nullptr, 1u, &depth_barrier);
     bind_and_dispatch(virtual_geometry_raster_pipelines_[2]);
+    end_gpu_scope(command_buffer, scope);
 }
 
 bool vulkan_render_backend::ensure_virtual_geometry_material_resources()
@@ -840,6 +1110,8 @@ void vulkan_render_backend::dispatch_virtual_geometry_refinement(VkCommandBuffer
     vkCmdFillBuffer(command_buffer, virtual_geometry_counter_buffer_.buffer, 0u, sizeof(std::uint32_t), 0u);
     vkCmdFillBuffer(command_buffer, virtual_geometry_counter_buffer_.buffer,
                     offsetof(virtual_geometry_traversal_counter_data, bin_count), sizeof(std::uint32_t), 0u);
+    vkCmdFillBuffer(command_buffer, virtual_geometry_counter_buffer_.buffer,
+                    offsetof(virtual_geometry_traversal_counter_data, raster_clusters), sizeof(std::uint32_t) * 3u, 0u);
     counter_output.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     counter_output.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
     vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u,
@@ -963,6 +1235,27 @@ void vulkan_render_backend::collect_virtual_geometry_feedback(std::uint32_t fram
     profile.history_invalidation_mask = static_cast<std::uint32_t>(frame.history_invalidation);
     profile.traversed_nodes = counters.traversed_nodes;
     profile.visible_clusters = std::min(counters.visible_count, virtual_geometry_visible_capacity_);
+    profile.visible_triangles = counters.raster_triangles;
+    profile.compute_raster_clusters = 0u;
+    profile.compute_raster_triangles = 0u;
+    profile.hardware_raster_clusters = 0u;
+    profile.hardware_raster_triangles = 0u;
+    profile.hardware_indirect_commands = 0u;
+    profile.mesh_task_commands = 0u;
+    if (profile.raster_path == virtual_geometry_raster_path::compute)
+    {
+        profile.compute_raster_clusters = counters.raster_clusters;
+        profile.compute_raster_triangles = counters.raster_triangles;
+    }
+    else
+    {
+        profile.hardware_raster_clusters = counters.raster_clusters;
+        profile.hardware_raster_triangles = counters.raster_triangles;
+        if (profile.raster_path == virtual_geometry_raster_path::mesh_shader)
+            profile.mesh_task_commands = counters.raster_indirect_commands;
+        else
+            profile.hardware_indirect_commands = counters.raster_indirect_commands;
+    }
     profile.frustum_rejected = counters.frustum_rejected;
     profile.cone_rejected = counters.cone_rejected;
     profile.hzb_rejected = counters.hzb_rejected;

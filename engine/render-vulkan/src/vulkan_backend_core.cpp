@@ -1168,6 +1168,7 @@ void vulkan_render_backend::collect_timestamp_results()
     last_profile_.water.spectrum_update_milliseconds = 0.0;
     last_profile_.water.inverse_fft_milliseconds = 0.0;
     last_profile_.water.foam_update_milliseconds = 0.0;
+    last_profile_.virtual_geometry.raster_milliseconds = 0.0;
     for (const auto& timing : last_profile_.pass_timings)
     {
         if (timing.name == "Water spectrum update")
@@ -1176,6 +1177,10 @@ void vulkan_render_backend::collect_timestamp_results()
             last_profile_.water.inverse_fft_milliseconds = timing.milliseconds;
         else if (timing.name == "Water foam update")
             last_profile_.water.foam_update_milliseconds = timing.milliseconds;
+        else if (timing.name == "virtual geometry compute raster" ||
+                 timing.name == "virtual geometry indexed hardware raster" ||
+                 timing.name == "virtual geometry mesh hardware raster")
+            last_profile_.virtual_geometry.raster_milliseconds += timing.milliseconds;
     }
 }
 

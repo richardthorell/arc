@@ -177,11 +177,11 @@ query_virtual_geometry_hardware_support(const render_capabilities& capabilities)
                                   capabilities.multi_draw_indirect && capabilities.draw_indirect_first_instance &&
                                   capabilities.shader_draw_parameters && capabilities.storage_buffers &&
                                   capabilities.atomics.storage_buffer_int32 &&
-                                  capabilities.resource_limits.maximum_indirect_draw_count > 0 &&
+                                  capabilities.resource_limits.maximum_indirect_draw_count >= 256u &&
                                   capabilities.resource_limits.maximum_per_stage_storage_buffers > 0;
     const bool mesh_shader =
         indexed_indirect && capabilities.mesh_shaders &&
-        capabilities.mesh_shader_limits.maximum_mesh_workgroup_invocations > 0 &&
+        capabilities.mesh_shader_limits.maximum_mesh_workgroup_invocations >= 32u &&
         capabilities.mesh_shader_limits.maximum_mesh_output_vertices >= virtual_geometry_max_vertices_per_cluster &&
         capabilities.mesh_shader_limits.maximum_mesh_output_primitives >= virtual_geometry_max_triangles_per_cluster;
     return {.indexed_indirect = indexed_indirect, .mesh_shader = mesh_shader};

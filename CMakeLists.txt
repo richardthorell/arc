@@ -27,6 +27,8 @@ file(GLOB_RECURSE ARC_BUILTIN_SHADER_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/*.vert"
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/*.frag"
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/*.comp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/*.mesh"
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/*.task"
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/include/*.glsl")
 set(ARC_GLSLC_EXECUTABLE "glslc" CACHE FILEPATH "glslc used to validate built-in shaders")
 set(ARC_SPIRV_VAL_EXECUTABLE "spirv-val" CACHE FILEPATH "spirv-val used to validate built-in shaders")
