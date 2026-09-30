@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AiGatewayApprovalPrompt } from './AiGatewayPanel';
 import { AiChatPanel } from './AiChatPanel';
-import type { AiModelProvider } from './aiChat';
+import type { AiChatMessage, AiModelProvider } from './aiChat';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
 
 afterEach(() => {
@@ -46,23 +46,25 @@ const status: ArcAiGatewayStatus = {
   audit: [],
 };
 
+const configuredProvider: AiModelProvider = {
+  id: 'test',
+  label: 'Test Agent',
+  configured: true,
+  async *stream() {
+    yield { type: 'delta', text: 'Hello ' };
+    yield { type: 'delta', text: 'from ARC.' };
+    yield { type: 'done' };
+  },
+};
+
 describe('AiChatPanel', () => {
   it('renders an enabled two-section chat shell for a configured provider', () => {
-    const provider: AiModelProvider = {
-      id: 'test',
-      label: 'Test Agent',
-      configured: true,
-      async *stream() {
-        yield { type: 'done' };
-      },
-    };
-
-    render(<AiChatPanel provider={provider} />);
+    render(<AiChatPanel provider={configuredProvider} />);
 
     expect(screen.getByRole('region', { name: 'AI Chat' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Conversations' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Chat' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Conversation')).toHaveValue('new');
+    expect(screen.getByLabelText('Conversation')).toHaveValue('active');
     expect(screen.getByLabelText('Conversation')).toBeEnabled();
     expect(screen.getByLabelText('Model')).toHaveValue('test');
     expect(screen.getByLabelText('Model')).toBeEnabled();
@@ -70,6 +72,44 @@ describe('AiChatPanel', () => {
     expect(screen.getByLabelText('Chat history')).toBeEmptyDOMElement();
     expect(screen.getByLabelText('Ask ARC')).toBeEnabled();
     expect(screen.getByLabelText('Send prompt')).toBeDisabled();
+  });
+
+  it('renders agent responses with the text-card specialization and streams mock replies', async () => {
+    const initialMessages: readonly AiChatMessage[] = [
+      {
+        id: 'user',
+        role: 'user',
+        content: 'What is selected?',
+        createdAt: '2026-09-30T17:00:00Z',
+        state: 'complete',
+      },
+      {
+        id: 'assistant',
+        role: 'assistant',
+        content: 'A cabin mesh is selected.',
+        createdAt: '2026-09-30T17:00:01Z',
+        state: 'complete',
+      },
+    ];
+
+    render(
+      <AiChatPanel
+        conversationLabel="Scene review"
+        initialMessages={initialMessages}
+        provider={configuredProvider}
+      />,
+    );
+
+    expect(screen.getByText('Scene review')).toBeInTheDocument();
+    expect(screen.getByText('A cabin mesh is selected.')).toBeInTheDocument();
+    expect(screen.getByText('ARC')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Ask ARC'), { target: { value: 'Suggest a polish pass' } });
+    expect(screen.getByLabelText('Send prompt')).toBeEnabled();
+    fireEvent.click(screen.getByLabelText('Send prompt'));
+
+    expect(screen.getByText('Suggest a polish pass')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Hello from ARC.')).toBeInTheDocument());
   });
 
   it('disables conversations and chat until an AI service is connected', () => {
