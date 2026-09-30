@@ -7,6 +7,8 @@ import {
   graphPinKey,
   graphSelectionBounds,
   graphSelectionScreenRect,
+  graphViewportFitBounds,
+  graphViewportZoomAt,
   sameGraphPointMaps,
 } from './graphGeometry';
 
@@ -34,6 +36,40 @@ describe('graph geometry', () => {
       top: 47,
       width: 40,
       height: 60,
+    });
+  });
+
+  it('zooms around a stable screen-space anchor', () => {
+    const next = graphViewportZoomAt({ x: 20, y: 10, zoom: 1 }, [120, 60], 2);
+    expect(next).toEqual({ x: -80, y: -40, zoom: 2 });
+    expect([(120 - next.x) / next.zoom, (60 - next.y) / next.zoom]).toEqual([100, 50]);
+  });
+
+  it('clamps anchored zoom without shifting the graph point under the cursor', () => {
+    const next = graphViewportZoomAt({ x: 0, y: 0, zoom: 1 }, [100, 50], 10);
+    expect(next.zoom).toBe(1.8);
+    expect([(100 - next.x) / next.zoom, (50 - next.y) / next.zoom]).toEqual([100, 50]);
+  });
+
+  it('fits graph bounds into the viewport with shared padding and zoom limits', () => {
+    expect(graphViewportFitBounds({ left: 0, top: 0, right: 400, bottom: 200 }, { width: 1000, height: 600 }, 50)).toEqual({
+      x: 50,
+      y: 75,
+      zoom: 1.8,
+    });
+
+    expect(graphViewportFitBounds({ left: 0, top: 0, right: 2000, bottom: 1000 }, { width: 1000, height: 600 }, 50)).toEqual({
+      x: 50,
+      y: 75,
+      zoom: 0.45,
+    });
+  });
+
+  it('centers degenerate fit bounds deterministically', () => {
+    expect(graphViewportFitBounds({ left: 20, top: 30, right: 20, bottom: 30 }, { width: 800, height: 600 })).toEqual({
+      x: 364,
+      y: 246,
+      zoom: 1.8,
     });
   });
 
