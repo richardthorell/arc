@@ -368,6 +368,8 @@ std::vector<std::unique_ptr<asset_importer>> default_importers()
     result.push_back(std::make_unique<source_blob_importer>(importer_ids::material_instance,
                                                             asset_types::material_instance, "ARC Material Instance",
                                                             std::vector<std::string>{".arcmatinst"}));
+    result.push_back(std::make_unique<source_blob_importer>(importer_ids::flow, asset_types::flow_graph,
+                                                            "ARC Flow Graph", std::vector<std::string>{".arcflow"}));
     result.push_back(std::make_unique<source_blob_importer>(
         importer_ids::shader, asset_types::shader, "ARC Shader",
         std::vector<std::string>{".slang", ".glsl", ".vert", ".frag", ".comp", ".hlsl", ".inc"}));

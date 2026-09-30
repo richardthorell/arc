@@ -549,7 +549,8 @@ struct host_water_snapshot
 
 struct host_flow_snapshot
 {
-    std::string graph_path;
+    std::string graph_guid;
+    std::string graph_path_hint;
     bool enabled{true};
 };
 
@@ -766,6 +767,7 @@ struct host_asset_snapshot
 {
     std::string guid;
     std::string path;
+    std::string source_path;
     std::string title;
     std::string description;
     std::string scope{"project"};
@@ -942,6 +944,9 @@ struct host_open_recovery_scene_command
 struct host_asset_reimport_command
 {
     std::string guid;
+};
+struct host_asset_scan_command
+{
 };
 struct host_set_texture_streaming_mode_command
 {
@@ -1128,7 +1133,8 @@ struct host_set_tag_command
 struct host_set_flow_command
 {
     host_entity_id entity{};
-    std::string graph_path;
+    std::string graph_guid;
+    std::string graph_path_hint;
     bool enabled{true};
     bool apply_to_selection{};
 };
@@ -1537,6 +1543,21 @@ struct host_history_cancel_transaction_command
 struct host_runtime_resume_command
 {
 };
+struct host_runtime_prepare_flow_sources_command
+{
+};
+struct host_runtime_flow_source_command
+{
+    std::string guid;
+    std::uint64_t revision{};
+    std::string source;
+};
+struct host_runtime_stage_flow_source_command : host_runtime_flow_source_command
+{
+};
+struct host_runtime_update_flow_source_command : host_runtime_flow_source_command
+{
+};
 struct host_runtime_pause_command
 {
 };
@@ -1595,7 +1616,8 @@ struct host_viewport_capture_command
 using host_command_payload = std::variant<
     host_open_project_command, host_close_project_command, host_reload_project_module_command, host_open_scene_command,
     host_new_scene_command, host_save_scene_command, host_save_scene_as_command, host_autosave_scene_command,
-    host_open_recovery_scene_command, host_asset_reimport_command, host_set_texture_streaming_mode_command,
+    host_open_recovery_scene_command, host_asset_reimport_command, host_asset_scan_command,
+    host_set_texture_streaming_mode_command,
     host_patch_texture_settings_command, host_shader_compile_command, host_asset_cancel_import_command,
     host_asset_move_command, host_asset_rename_command, host_create_entity_command, host_delete_entity_command,
     host_duplicate_entity_command, host_snap_to_floor_command, host_create_prefab_command,
@@ -1617,7 +1639,8 @@ using host_command_payload = std::variant<
     host_viewport_set_render_options_command, host_viewport_set_skeleton_joint_command,
     host_viewport_camera_input_command, host_viewport_set_pose_command, host_history_undo_command,
     host_history_redo_command, host_history_begin_transaction_command, host_history_commit_transaction_command,
-    host_history_cancel_transaction_command, host_runtime_resume_command, host_runtime_pause_command,
+    host_history_cancel_transaction_command, host_runtime_resume_command, host_runtime_prepare_flow_sources_command,
+    host_runtime_stage_flow_source_command, host_runtime_update_flow_source_command, host_runtime_pause_command,
     host_runtime_stop_command, host_runtime_step_command, host_runtime_set_time_scale_command,
     host_runtime_capture_snapshot_command, host_runtime_restore_snapshot_command, host_viewport_set_tool_command,
     host_viewport_pick_command, host_viewport_capture_command>;

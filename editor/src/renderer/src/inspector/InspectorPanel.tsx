@@ -325,7 +325,12 @@ export function InspectorPanel({
       void runMutation(
         next,
         'entity.setFlow',
-        { ...entityPayload(next), graphPath: next.flow.graphPath, enabled: next.flow.enabled },
+        {
+          ...entityPayload(next),
+          graphGuid: next.flow.graphGuid,
+          graphPathHint: next.flow.graphPathHint,
+          enabled: next.flow.enabled,
+        },
         settled,
         transactionKey,
         transactionLabel,

@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 
 import { buildAssetCreation } from '../content/assetCreation';
 import { readArcAssetDragPayload } from '../services/assetDragPayload';
-import { openAssetEditorDocument } from '../editors/editorRegistry';
+import { openAssetEditorDocument, resolveRegisteredEditorAsset } from '../editors/editorRegistry';
 import { MaterialParameterSubsection } from './MaterialParameterSubsection';
 
 export type AssetPickerItem = {
@@ -13,6 +13,7 @@ export type AssetPickerItem = {
   typeId?: string;
   name: string;
   path: string;
+  sourcePath?: string;
   kind: string;
   status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'stale' | 'importing' | 'failed' | 'missing';
   scope?: 'builtin' | 'project' | 'user' | 'organization' | 'procedural';
@@ -101,8 +102,11 @@ const createProjectAsset = async (
     throw new Error(`A ${assetTypeLabel.toLocaleLowerCase()} already exists at ${definition.asset.path}`);
   }
   await window.arc.projects.writeText(definition.asset.path, definition.contents);
-  openAssetEditorDocument(definition.asset);
-  return definition.asset.path;
+  await window.arc.host.command('asset.scan');
+  const registered = await resolveRegisteredEditorAsset({ ...definition.asset, sourcePath: definition.asset.path });
+  if (!registered?.guid) throw new Error(`The ${assetTypeLabel.toLocaleLowerCase()} could not be registered`);
+  openAssetEditorDocument(registered);
+  return kind === 'flow' ? registered.guid : registered.path;
 };
 
 type PrimitiveMeshKind = 'plane' | 'cube' | 'sphere' | 'cylinder' | 'cone' | 'capsule';

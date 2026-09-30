@@ -1105,6 +1105,8 @@ std::string command_type(const host_command_payload& payload)
                 return "scene.openRecovery";
             else if constexpr (std::is_same_v<type, host_asset_reimport_command>)
                 return "asset.reimport";
+            else if constexpr (std::is_same_v<type, host_asset_scan_command>)
+                return "asset.scan";
             else if constexpr (std::is_same_v<type, host_set_texture_streaming_mode_command>)
                 return "asset.setTextureStreamingMode";
             else if constexpr (std::is_same_v<type, host_patch_texture_settings_command>)
@@ -1254,6 +1256,12 @@ std::string command_type(const host_command_payload& payload)
                 return "history.cancelTransaction";
             else if constexpr (std::is_same_v<type, host_runtime_resume_command>)
                 return "runtime.resume";
+            else if constexpr (std::is_same_v<type, host_runtime_prepare_flow_sources_command>)
+                return "runtime.prepareFlowSources";
+            else if constexpr (std::is_same_v<type, host_runtime_stage_flow_source_command>)
+                return "runtime.stageFlowSource";
+            else if constexpr (std::is_same_v<type, host_runtime_update_flow_source_command>)
+                return "runtime.updateFlowSource";
             else if constexpr (std::is_same_v<type, host_runtime_pause_command>)
                 return "runtime.pause";
             else if constexpr (std::is_same_v<type, host_runtime_stop_command>)
@@ -1666,8 +1674,13 @@ std::string to_json(const host_command_envelope& envelope)
             else if constexpr (std::is_same_v<type, host_set_tag_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"tag\":" + quote(payload.tag) + '}';
             else if constexpr (std::is_same_v<type, host_set_flow_command>)
-                return "{\"entity\":" + to_json(payload.entity) + ",\"graphPath\":" + quote(payload.graph_path) +
+                return "{\"entity\":" + to_json(payload.entity) + ",\"graphGuid\":" + quote(payload.graph_guid) +
+                       ",\"graphPathHint\":" + quote(payload.graph_path_hint) +
                        ",\"enabled\":" + bool_json(payload.enabled) + '}';
+            else if constexpr (std::is_same_v<type, host_runtime_stage_flow_source_command> ||
+                               std::is_same_v<type, host_runtime_update_flow_source_command>)
+                return "{\"guid\":" + quote(payload.guid) + ",\"revision\":" +
+                       std::to_string(payload.revision) + ",\"source\":" + quote(payload.source) + '}';
             else if constexpr (std::is_same_v<type, host_set_transform_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"transform\":" + to_json(payload.transform) + '}';
             else if constexpr (std::is_same_v<type, host_set_render_layer_command>)
@@ -2114,7 +2127,8 @@ std::string to_json(const host_selected_entity_snapshot& snapshot)
     json += snapshot.water ? to_json(*snapshot.water) : "null";
     json += ",\"flow\":";
     if (snapshot.flow)
-        json += "{\"graphPath\":" + quote(snapshot.flow->graph_path) +
+        json += "{\"graphGuid\":" + quote(snapshot.flow->graph_guid) +
+                ",\"graphPathHint\":" + quote(snapshot.flow->graph_path_hint) +
                 ",\"enabled\":" + bool_json(snapshot.flow->enabled) + '}';
     else
         json += "null";
@@ -2183,6 +2197,7 @@ std::string to_json(const host_project_assets_snapshot& snapshot)
         const auto& asset = snapshot.assets[index];
         if (index != 0) json += ',';
         json += "{\"guid\":" + quote(asset.guid) + ",\"path\":" + quote(asset.path) +
+                ",\"sourcePath\":" + quote(asset.source_path) +
                 ",\"title\":" + quote(asset.title) + ",\"description\":" + quote(asset.description) +
                 ",\"scope\":" + quote(asset.scope) + ",\"kind\":" + quote(asset.kind) +
                 ",\"typeId\":" + quote(asset.type_id) + ",\"importerId\":" + quote(asset.importer_id) +
@@ -2454,6 +2469,8 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         else
             envelope.payload = host_asset_cancel_import_command{.guid = std::move(guid)};
     }
+    else if (type == "asset.scan")
+        envelope.payload = host_asset_scan_command{};
     else if (type == "shader.compile")
     {
         host_shader_compile_command command;
@@ -2658,12 +2675,13 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
     else if (type == "entity.setFlow")
     {
         host_set_flow_command command;
-        if (!entity_field_value(payload, "entity", command.entity) ||
-            !string_value(payload, "graphPath", command.graph_path))
+        if (!entity_field_value(payload, "entity", command.entity))
         {
-            error = "Flow command requires entity and graphPath";
+            error = "Flow command requires entity";
             return false;
         }
+        string_value(payload, "graphGuid", command.graph_guid);
+        string_value(payload, "graphPathHint", command.graph_path_hint);
         bool_value(payload, "enabled", command.enabled);
         bool_value(payload, "applyToSelection", command.apply_to_selection);
         envelope.payload = std::move(command);
@@ -3338,6 +3356,36 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
     }
     else if (type == "runtime.resume")
         envelope.payload = host_runtime_resume_command{};
+    else if (type == "runtime.prepareFlowSources")
+        envelope.payload = host_runtime_prepare_flow_sources_command{};
+    else if (type == "runtime.stageFlowSource" || type == "runtime.updateFlowSource")
+    {
+        std::string guid;
+        std::string source;
+        std::uint64_t revision{};
+        if (!string_value(payload, "guid", guid) || guid.empty() || !string_value(payload, "source", source) ||
+            !number_value(payload, "revision", revision))
+        {
+            error = "Flow source command requires guid, revision, and source";
+            return false;
+        }
+        if (type == "runtime.stageFlowSource")
+        {
+            host_runtime_stage_flow_source_command command;
+            command.guid = std::move(guid);
+            command.revision = revision;
+            command.source = std::move(source);
+            envelope.payload = std::move(command);
+        }
+        else
+        {
+            host_runtime_update_flow_source_command command;
+            command.guid = std::move(guid);
+            command.revision = revision;
+            command.source = std::move(source);
+            envelope.payload = std::move(command);
+        }
+    }
     else if (type == "runtime.pause")
         envelope.payload = host_runtime_pause_command{};
     else if (type == "runtime.stop")

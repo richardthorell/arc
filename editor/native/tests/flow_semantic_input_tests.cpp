@@ -41,10 +41,40 @@ public:
         return root_ / "Content";
     }
 
-    void write_flow(std::string_view source) const
+    [[nodiscard]] std::filesystem::path input_config() const
+    {
+        return root_ / "Config" / "Input.json";
+    }
+
+    [[nodiscard]] arc::assets::asset_reference flow_reference() const
+    {
+        return {.guid = {.high = 0x464c4f57494e5055ull, .low = 1},
+                .expected_type = arc::assets::asset_types::flow_graph,
+                .path_hint = "Content/Input.arcflow"};
+    }
+
+    [[nodiscard]] arc::editor::flow_play_source_resolver resolver() const
+    {
+        return [this](const arc::assets::asset_reference& reference,
+                      std::string& error) -> std::optional<arc::editor::flow_play_source>
+        {
+            if (reference.guid != flow_reference().guid)
+            {
+                error = "Flow test source was not found";
+                return std::nullopt;
+            }
+            return arc::editor::flow_play_source{.reference = flow_reference(),
+                                                 .generation = 1,
+                                                 .display_name = "Input.arcflow",
+                                                 .source = flow_source_};
+        };
+    }
+
+    void write_flow(std::string_view source)
     {
         std::ofstream output(content() / "Input.arcflow", std::ios::binary);
         output << source;
+        flow_source_ = source;
     }
 
     void write_input(std::string_view control) const
@@ -57,6 +87,7 @@ public:
 
 private:
     std::filesystem::path root_;
+    std::string flow_source_;
 };
 
 constexpr std::string_view semantic_input_graph = R"json({
@@ -99,9 +130,10 @@ TEST_CASE("Flow Input Action uses semantic project mappings")
     auto& world = runtime.worlds().create({.name = "flow-semantic-input", .install_placeholder_systems = false});
     const auto entity = world.entities().create();
     world.entities().emplace<arc::scene::name_component>(entity, arc::scene::name_component{"idle"});
-    world.entities().emplace<arc::scene::flow_component>(entity, arc::scene::flow_component{"Input.arcflow", true});
+    world.entities().emplace<arc::scene::flow_component>(
+        entity, arc::scene::flow_component{project.flow_reference(), true});
 
-    const auto install = arc::editor::install_flow_play_runtime(world, project.content());
+    const auto install = arc::editor::install_flow_play_runtime(world, project.resolver(), project.input_config());
     REQUIRE(install.succeeded);
     runtime.start();
 
@@ -127,9 +159,10 @@ TEST_CASE("Flow semantic action can be remapped without changing the graph")
     auto& world = runtime.worlds().create({.name = "flow-semantic-remap", .install_placeholder_systems = false});
     const auto entity = world.entities().create();
     world.entities().emplace<arc::scene::name_component>(entity, arc::scene::name_component{"idle"});
-    world.entities().emplace<arc::scene::flow_component>(entity, arc::scene::flow_component{"Input.arcflow", true});
+    world.entities().emplace<arc::scene::flow_component>(
+        entity, arc::scene::flow_component{project.flow_reference(), true});
 
-    const auto install = arc::editor::install_flow_play_runtime(world, project.content());
+    const auto install = arc::editor::install_flow_play_runtime(world, project.resolver(), project.input_config());
     REQUIRE(install.succeeded);
     runtime.start();
 

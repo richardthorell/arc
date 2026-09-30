@@ -10,10 +10,8 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <fstream>
 #include <memory>
 #include <optional>
-#include <sstream>
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
@@ -60,7 +58,9 @@ const scene::flow_component* active_flow_binding(const ecs::world& world, ecs::e
 {
     if (!world.alive(entity)) return nullptr;
     const auto* binding = world.try_get<scene::flow_component>(entity);
-    if (!binding || !binding->enabled || binding->graph_path.empty()) return nullptr;
+    if (!binding || !binding->enabled ||
+        (!binding->graph.guid.valid() && binding->graph.path_hint.empty()))
+        return nullptr;
     if (const auto* active = world.try_get<scene::active_component>(entity); active && !active->active) return nullptr;
     return binding;
 }
@@ -136,9 +136,12 @@ std::optional<input::mouse_button> simulation_mouse_button(std::int32_t code) no
 
 struct compiled_flow_artifact
 {
+    assets::asset_reference reference;
+    std::string display_name;
     std::string source;
     std::shared_ptr<const flow::bytecode_program> program;
-    std::uint64_t generation{1};
+    std::uint64_t source_generation{};
+    std::uint64_t program_generation{1};
     std::optional<std::string> rejected_source;
     std::string reload_error;
 };
@@ -146,26 +149,24 @@ struct compiled_flow_artifact
 struct bound_flow_instance
 {
     ecs::entity entity{};
-    std::string graph_path;
+    assets::asset_reference graph;
+    std::string graph_name;
     std::shared_ptr<const flow::bytecode_program> program;
     std::uint64_t artifact_generation{};
     flow::vm_instance vm;
 
-    bound_flow_instance(ecs::entity value, std::string path, std::shared_ptr<const flow::bytecode_program> bytecode,
-                        std::uint64_t generation)
-        : entity(value), graph_path(std::move(path)), program(std::move(bytecode)), artifact_generation(generation),
+    bound_flow_instance(ecs::entity value, assets::asset_reference reference, std::string name,
+                        std::shared_ptr<const flow::bytecode_program> bytecode, std::uint64_t generation)
+        : entity(value), graph(std::move(reference)), graph_name(std::move(name)), program(std::move(bytecode)),
+          artifact_generation(generation),
           vm(*program)
     {
     }
 };
 
-std::optional<std::string> read_text_file(const std::filesystem::path& path)
+std::string flow_key(const assets::asset_reference& reference)
 {
-    std::ifstream input_file(path, std::ios::binary);
-    if (!input_file) return std::nullopt;
-    std::ostringstream stream;
-    stream << input_file.rdbuf();
-    return stream.str();
+    return reference.guid.valid() ? assets::to_string(reference.guid) : reference.path_hint;
 }
 
 void report_reload_error(compiled_flow_artifact& artifact, std::string message)
@@ -178,8 +179,9 @@ void report_reload_error(compiled_flow_artifact& artifact, std::string message)
 class flow_play_session
 {
 public:
-    flow_play_session(ecs::world& world, std::filesystem::path content_root, std::filesystem::path input_config_path)
-        : world_(&world), content_root_(std::move(content_root)), input_config_path_(std::move(input_config_path))
+    flow_play_session(ecs::world& world, flow_play_source_resolver source_resolver,
+                      std::filesystem::path input_config_path)
+        : world_(&world), source_resolver_(std::move(source_resolver)), input_config_path_(std::move(input_config_path))
     {
         keyboard_ = input_.connect_device({.type = input::input_device_type::keyboard,
                                            .connectivity = input::input_connectivity_type::builtin,
@@ -214,14 +216,14 @@ public:
         {
             const auto* binding = active_flow_binding(std::as_const(*world_), entity);
             if (!binding) continue;
-            if (const auto error = append_instance(entity, binding->graph_path); !error.empty())
+            if (const auto error = append_instance(entity, binding->graph); !error.empty())
                 return {.error = error};
         }
 
         for (auto& instance : instances_)
         {
             const auto result = begin_instance(instance, nullptr);
-            if (!result.succeeded()) return {.error = execution_error(result, instance.graph_path, instance.entity)};
+            if (!result.succeeded()) return {.error = execution_error(result, instance.graph_name, instance.entity)};
         }
 
         cursor_.revision = baseline;
@@ -292,7 +294,7 @@ public:
             }
             const auto result = instance.vm.fixed_tick(context.fixed_delta_seconds(), world);
             if (!result.succeeded())
-                throw std::runtime_error(execution_error(result, instance.graph_path, instance.entity));
+                throw std::runtime_error(execution_error(result, instance.graph_name, instance.entity));
         }
     }
 
@@ -307,7 +309,7 @@ public:
             const auto result =
                 instance.vm.tick(context.frame_delta_seconds(), {.api = &api, .self = flow_entity(instance.entity)});
             if (!result.succeeded())
-                throw std::runtime_error(execution_error(result, instance.graph_path, instance.entity));
+                throw std::runtime_error(execution_error(result, instance.graph_name, instance.entity));
         }
     }
 
@@ -317,7 +319,7 @@ private:
     [[nodiscard]] std::string initialize_input()
     {
         const bool explicit_path = !input_config_path_.empty();
-        if (!explicit_path) input_config_path_ = content_root_.parent_path() / "Config" / "Input.json";
+        if (!explicit_path) return {};
 
         std::error_code exists_error;
         const bool exists = std::filesystem::exists(input_config_path_, exists_error);
@@ -394,41 +396,44 @@ private:
     [[nodiscard]] bool matches_current_binding(const bound_flow_instance& instance) const noexcept
     {
         const auto* binding = active_flow_binding(std::as_const(*world_), instance.entity);
-        return binding && binding->graph_path == instance.graph_path;
+        return binding && binding->graph == instance.graph;
     }
 
     void reload_changed_programs(ecs::system_context& context)
     {
-        for (auto& [graph_path, artifact] : programs_)
+        for (auto& [graph_key, artifact] : programs_)
         {
-            const auto source = read_text_file(content_root_ / std::filesystem::path{graph_path});
-            if (!source)
+            std::string resolve_error;
+            const auto resolved = source_resolver_(artifact.reference, resolve_error);
+            if (!resolved)
             {
-                report_reload_error(artifact, "Flow graph '" + graph_path +
-                                                  "' hot reload could not read the source; keeping generation " +
-                                                  std::to_string(artifact.generation));
+                report_reload_error(artifact, "Flow graph '" + artifact.display_name +
+                                                  "' hot reload could not resolve the source; keeping generation " +
+                                                  std::to_string(artifact.program_generation) +
+                                                  (resolve_error.empty() ? std::string{} : ": " + resolve_error));
                 continue;
             }
 
-            if (*source == artifact.source)
+            if (resolved->generation == artifact.source_generation && resolved->source == artifact.source)
             {
                 artifact.rejected_source.reset();
                 artifact.reload_error.clear();
                 continue;
             }
-            if (artifact.rejected_source && *artifact.rejected_source == *source) continue;
+            if (artifact.rejected_source && *artifact.rejected_source == resolved->source) continue;
 
-            auto compiled = flow::compile_asset(*source);
+            auto compiled = flow::compile_asset(resolved->source);
             if (!compiled.succeeded || !compiled.bytecode)
             {
-                artifact.rejected_source = *source;
-                report_reload_error(artifact, compile_error(graph_path, compiled) + "; keeping generation " +
-                                                  std::to_string(artifact.generation));
+                artifact.rejected_source = resolved->source;
+                report_reload_error(artifact, compile_error(artifact.display_name, compiled) +
+                                                  "; keeping generation " +
+                                                  std::to_string(artifact.program_generation));
                 continue;
             }
 
             auto next_program = std::make_shared<const flow::bytecode_program>(std::move(*compiled.bytecode));
-            const std::uint64_t next_generation = artifact.generation + 1;
+            const std::uint64_t next_generation = artifact.program_generation + 1;
             std::vector<std::size_t> indices;
             std::vector<bound_flow_instance> replacements;
             indices.reserve(instances_.size());
@@ -438,10 +443,13 @@ private:
             for (std::size_t index = 0; index < instances_.size(); ++index)
             {
                 const auto& instance = instances_[index];
-                if (instance.graph_path != graph_path || instance.artifact_generation != artifact.generation) continue;
+                if (flow_key(instance.graph) != graph_key ||
+                    instance.artifact_generation != artifact.program_generation)
+                    continue;
 
                 indices.push_back(index);
-                replacements.emplace_back(instance.entity, instance.graph_path, next_program, next_generation);
+                replacements.emplace_back(instance.entity, instance.graph, resolved->display_name, next_program,
+                                          next_generation);
                 if (!replacements.back().vm.valid())
                 {
                     replacement_valid = false;
@@ -451,10 +459,10 @@ private:
 
             if (!replacement_valid)
             {
-                artifact.rejected_source = *source;
-                report_reload_error(artifact, "Flow graph '" + graph_path +
+                artifact.rejected_source = resolved->source;
+                report_reload_error(artifact, "Flow graph '" + artifact.display_name +
                                                   "' hot reload produced an invalid VM; keeping generation " +
-                                                  std::to_string(artifact.generation));
+                                                  std::to_string(artifact.program_generation));
                 continue;
             }
 
@@ -463,12 +471,15 @@ private:
                 const auto result = end_instance(instances_[index], &context);
                 if (!result.succeeded())
                     throw std::runtime_error(
-                        execution_error(result, instances_[index].graph_path, instances_[index].entity));
+                        execution_error(result, instances_[index].graph_name, instances_[index].entity));
             }
 
-            artifact.source = *source;
+            artifact.reference = resolved->reference;
+            artifact.display_name = resolved->display_name;
+            artifact.source = resolved->source;
+            artifact.source_generation = resolved->generation;
             artifact.program = next_program;
-            artifact.generation = next_generation;
+            artifact.program_generation = next_generation;
             artifact.rejected_source.reset();
             artifact.reload_error.clear();
 
@@ -478,11 +489,11 @@ private:
                 instance = std::move(replacements[replacement_index]);
                 const auto result = begin_instance(instance, &context);
                 if (!result.succeeded())
-                    throw std::runtime_error(execution_error(result, instance.graph_path, instance.entity));
+                    throw std::runtime_error(execution_error(result, instance.graph_name, instance.entity));
             }
 
-            std::string reload_message = "Reloaded Flow graph '" + graph_path + "' as generation ";
-            reload_message += std::to_string(artifact.generation);
+            std::string reload_message = "Reloaded Flow graph '" + artifact.display_name + "' as generation ";
+            reload_message += std::to_string(artifact.program_generation);
             reload_message += "; restarted ";
             reload_message += std::to_string(indices.size());
             reload_message += " bound instance(s) from defaults";
@@ -490,51 +501,53 @@ private:
         }
     }
 
-    [[nodiscard]] shared_program program_for(std::string_view graph_path, std::uint64_t& generation, std::string& error)
+    [[nodiscard]] shared_program program_for(const assets::asset_reference& graph, std::string& display_name,
+                                             std::uint64_t& generation, std::string& error)
     {
-        if (!valid_flow_graph_path(graph_path))
-        {
-            error = "Flow graph path is invalid: " + std::string(graph_path);
-            return {};
-        }
-
-        const auto found = programs_.find(std::string(graph_path));
+        const auto key = flow_key(graph);
+        const auto found = programs_.find(key);
         if (found != programs_.end())
         {
-            generation = found->second.generation;
+            generation = found->second.program_generation;
+            display_name = found->second.display_name;
             return found->second.program;
         }
 
-        const auto source = read_text_file(content_root_ / std::filesystem::path{graph_path});
-        if (!source)
+        const auto resolved = source_resolver_(graph, error);
+        if (!resolved)
         {
-            error = "Flow graph could not be read: " + std::string(graph_path);
+            if (error.empty()) error = "Flow graph could not be resolved: " + key;
             return {};
         }
 
-        auto compiled = flow::compile_asset(*source);
+        display_name = resolved->display_name.empty() ? key : resolved->display_name;
+        auto compiled = flow::compile_asset(resolved->source);
         if (!compiled.succeeded || !compiled.bytecode)
         {
-            error = compile_error(graph_path, compiled);
+            error = compile_error(display_name, compiled);
             return {};
         }
 
         auto program = std::make_shared<const flow::bytecode_program>(std::move(*compiled.bytecode));
         compiled_flow_artifact artifact;
-        artifact.source = *source;
+        artifact.reference = resolved->reference;
+        artifact.display_name = display_name;
+        artifact.source = resolved->source;
+        artifact.source_generation = resolved->generation;
         artifact.program = program;
-        auto inserted = programs_.emplace(std::string(graph_path), std::move(artifact));
-        generation = inserted.first->second.generation;
+        auto inserted = programs_.emplace(flow_key(resolved->reference), std::move(artifact));
+        generation = inserted.first->second.program_generation;
         return inserted.first->second.program;
     }
 
-    [[nodiscard]] std::string append_instance(ecs::entity entity, std::string_view graph_path)
+    [[nodiscard]] std::string append_instance(ecs::entity entity, const assets::asset_reference& graph)
     {
         std::string error;
+        std::string display_name;
         std::uint64_t generation{};
-        auto program = program_for(graph_path, generation, error);
+        auto program = program_for(graph, display_name, generation, error);
         if (!program) return error;
-        instances_.emplace_back(entity, std::string(graph_path), std::move(program), generation);
+        instances_.emplace_back(entity, graph, std::move(display_name), std::move(program), generation);
         return {};
     }
 
@@ -564,7 +577,7 @@ private:
         const bool entity_alive = world_->alive(instances_[index].entity);
         const auto result = end_instance(instances_[index], &context);
         if (entity_alive && !result.succeeded())
-            return execution_error(result, instances_[index].graph_path, instances_[index].entity);
+            return execution_error(result, instances_[index].graph_name, instances_[index].entity);
         instances_.erase(instances_.begin() + static_cast<std::ptrdiff_t>(index));
         return {};
     }
@@ -574,7 +587,7 @@ private:
         auto found = std::find_if(instances_.begin(), instances_.end(),
                                   [entity](const bound_flow_instance& instance) { return instance.entity == entity; });
         const auto* binding = active_flow_binding(std::as_const(*world_), entity);
-        if (found != instances_.end() && binding && found->graph_path == binding->graph_path) return {};
+        if (found != instances_.end() && binding && found->graph == binding->graph) return {};
 
         if (found != instances_.end())
         {
@@ -584,13 +597,13 @@ private:
 
         binding = active_flow_binding(std::as_const(*world_), entity);
         if (!binding) return {};
-        if (const auto error = append_instance(entity, binding->graph_path); !error.empty()) return error;
+        if (const auto error = append_instance(entity, binding->graph); !error.empty()) return error;
 
         auto& instance = instances_.back();
         const auto result = begin_instance(instance, &context);
         if (result.succeeded()) return {};
         if (instance.vm.active()) (void)end_instance(instance, &context);
-        const std::string error = execution_error(result, instance.graph_path, instance.entity);
+        const std::string error = execution_error(result, instance.graph_name, instance.entity);
         instances_.pop_back();
         return error;
     }
@@ -601,11 +614,11 @@ private:
         const auto result = triggered ? instance.vm.input_action_triggered(action, 1.0, world)
                                       : instance.vm.input_action_completed(action, 0.0, world);
         if (!result.succeeded())
-            throw std::runtime_error(execution_error(result, instance.graph_path, instance.entity));
+            throw std::runtime_error(execution_error(result, instance.graph_name, instance.entity));
     }
 
     ecs::world* world_{};
-    std::filesystem::path content_root_;
+    flow_play_source_resolver source_resolver_;
     std::filesystem::path input_config_path_;
     input::input_system input_;
     input::input_device_id keyboard_{};
@@ -618,28 +631,13 @@ private:
 
 } // namespace
 
-bool valid_flow_graph_path(std::string_view value) noexcept
-{
-    try
-    {
-        if (value.empty() || value.find('\\') != std::string_view::npos) return false;
-        const std::filesystem::path path{value};
-        if (path.has_root_path() || path.extension() != ".arcflow") return false;
-        const auto normalized = path.lexically_normal();
-        if (normalized.generic_string() != value) return false;
-        return std::none_of(normalized.begin(), normalized.end(), [](const auto& part) { return part == ".."; });
-    }
-    catch (...)
-    {
-        return false;
-    }
-}
-
 flow_play_install_result install_flow_play_runtime(framework::runtime_world& world,
-                                                   const std::filesystem::path& content_root,
+                                                   flow_play_source_resolver source_resolver,
                                                    std::filesystem::path input_config_path)
 {
-    auto session = std::make_shared<flow_play_session>(world.entities(), content_root, std::move(input_config_path));
+    if (!source_resolver) return {.error = "Flow source resolver is unavailable"};
+    auto session = std::make_shared<flow_play_session>(world.entities(), std::move(source_resolver),
+                                                       std::move(input_config_path));
     auto result = session->initialize();
     if (!result.succeeded) return result;
 

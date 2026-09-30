@@ -3,7 +3,11 @@ import { ChevronDown, ChevronRight, Folder, Globe2, Grid2X2, List, Lock, Search,
 
 import type { ArcAssetSourceDescriptor } from '../../../common/assetSourceTypes';
 import type { CommandId } from '../app/workbenchTypes';
-import { openAssetEditorDocument, openSkeletonEditorDocument } from '../editors/editorRegistry';
+import {
+  openAssetEditorDocument,
+  openSkeletonEditorDocument,
+  resolveRegisteredEditorAsset,
+} from '../editors/editorRegistry';
 import { buildModelSubassets } from '../model/modelSubassets';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import type { AssetItem, ProjectSnapshot } from '../services/editorHostTypes';
@@ -425,9 +429,15 @@ export function ContentBrowserPanel({
         throw new Error(`An asset already exists at ${definition.asset.path}`);
       }
       await window.arc.projects.writeText(definition.asset.path, definition.contents);
-      setSelection(new Set([definition.asset.id]));
-      onSelectAsset(definition.asset.id);
-      openAssetEditorDocument(definition.asset);
+      await window.arc.host.command('asset.scan');
+      const registered = await resolveRegisteredEditorAsset({
+        ...definition.asset,
+        sourcePath: definition.asset.path,
+      });
+      if (!registered?.guid) throw new Error('The created asset could not be registered');
+      setSelection(new Set([registered.id]));
+      onSelectAsset(registered.id);
+      openAssetEditorDocument(registered);
       setCreateKind(null);
       setCreateName('');
     } catch (error) {

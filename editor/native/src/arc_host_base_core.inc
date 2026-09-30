@@ -277,6 +277,7 @@ template <class Command> constexpr bool is_project_mutation() noexcept
     return is_authoring_command<Command>() || std::is_same_v<Command, host_save_scene_command> ||
            std::is_same_v<Command, host_save_scene_as_command> ||
            std::is_same_v<Command, host_reload_project_module_command> ||
+           std::is_same_v<Command, host_asset_scan_command> ||
            std::is_same_v<Command, host_asset_reimport_command> ||
            std::is_same_v<Command, host_set_texture_streaming_mode_command> ||
            std::is_same_v<Command, host_patch_texture_settings_command> ||
@@ -1858,6 +1859,19 @@ struct terrain_asset_stroke_session
     std::vector<scene::terrain_paint_sample_edit> paint_edits;
 };
 
+struct pending_play_flow_source
+{
+    assets::asset_guid guid{};
+    std::uint64_t editor_revision{};
+    std::string source;
+};
+
+struct cached_play_flow_source
+{
+    std::uint64_t content_generation{};
+    flow_play_source source;
+};
+
 struct arc_host::state
 {
     explicit state(std::unique_ptr<render::renderer> renderer_value)
@@ -1878,6 +1892,197 @@ struct arc_host::state
             if (auto* world = simulation.worlds().find(play_runtime_world_id)) return world;
         const auto worlds = simulation.worlds().ordered_worlds();
         return worlds.empty() ? nullptr : simulation.worlds().find(worlds.front());
+    }
+
+    [[nodiscard]] std::optional<std::string> flow_asset_relative_path(const assets::asset_snapshot& asset,
+                                                                      std::string& error) const
+    {
+        if (assets.root.empty())
+        {
+            error = "Project Content root is unavailable";
+            return std::nullopt;
+        }
+        auto source = asset.source_path;
+        if (!source.is_absolute()) source = project.root / source;
+        const auto relative = source.lexically_normal().lexically_relative(assets.root.lexically_normal());
+        if (relative.empty())
+        {
+            error = "Flow asset has no Content-relative source path";
+            return std::nullopt;
+        }
+        for (const auto& component : relative)
+            if (component == "..")
+            {
+                error = "Flow asset is outside the project Content root";
+                return std::nullopt;
+            }
+        return relative.generic_string();
+    }
+
+    void clear_play_flow_sandbox(bool clear_pending = true) noexcept
+    {
+        play_flow_source_cache.clear();
+        play_flow_overlay.reset();
+        play_flow_filesystem.reset();
+        play_flow_base.reset();
+        if (clear_pending) pending_play_flow_sources.clear();
+    }
+
+    [[nodiscard]] bool initialize_play_flow_sandbox(std::string& error)
+    {
+        clear_play_flow_sandbox(false);
+        if (!asset_files || !asset_registry)
+        {
+            error = "Project assets are unavailable";
+            return false;
+        }
+
+        auto root = io::virtual_path::parse("authoring://project");
+        if (!root)
+        {
+            error = root.error().message;
+            return false;
+        }
+        play_flow_filesystem = std::make_unique<io::virtual_file_system>(simulation.jobs());
+        play_flow_base = std::make_shared<io::filesystem_file_provider>(
+            *asset_files, assets.root, io::filesystem_provider_config{.debounce = std::chrono::milliseconds{50}});
+        play_flow_overlay = std::make_shared<io::memory_file_provider>(simulation.jobs());
+        auto mounted = play_flow_filesystem->mount(
+            {.root = root.value(), .priority = 0, .provider = play_flow_base, .debug_name = "Project Content"});
+        if (!mounted)
+        {
+            error = mounted.error().message;
+            clear_play_flow_sandbox(false);
+            return false;
+        }
+        mounted = play_flow_filesystem->mount(
+            {.root = root.value(), .priority = 100, .provider = play_flow_overlay, .debug_name = "Play Flow Overlay"});
+        if (!mounted)
+        {
+            error = mounted.error().message;
+            clear_play_flow_sandbox(false);
+            return false;
+        }
+
+        std::vector<io::memory_provider_update> updates;
+        updates.reserve(pending_play_flow_sources.size());
+        for (const auto& [guid, pending] : pending_play_flow_sources)
+        {
+            const auto asset = asset_registry->find(guid);
+            if (!asset || asset->type != assets::asset_types::flow_graph)
+            {
+                error = "Flow override refers to a missing or non-Flow asset: " + assets::to_string(guid);
+                clear_play_flow_sandbox(false);
+                return false;
+            }
+            const auto relative = flow_asset_relative_path(*asset, error);
+            if (!relative)
+            {
+                clear_play_flow_sandbox(false);
+                return false;
+            }
+            io::file_buffer bytes;
+            bytes.resize(pending.source.size());
+            std::memcpy(bytes.data(), pending.source.data(), pending.source.size());
+            updates.push_back({.relative_path = *relative, .bytes = std::move(bytes)});
+        }
+        if (!updates.empty())
+        {
+            const auto published = play_flow_overlay->publish(updates);
+            if (!published)
+            {
+                error = published.error().message;
+                clear_play_flow_sandbox(false);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    [[nodiscard]] std::optional<flow_play_source> resolve_play_flow_source(const assets::asset_reference& requested,
+                                                                           std::string& error)
+    {
+        if (!asset_registry || !play_flow_filesystem)
+        {
+            error = "Play asset sandbox is unavailable";
+            return std::nullopt;
+        }
+        auto reference = requested;
+        if (!reference.guid.valid() && !reference.path_hint.empty())
+            reference = asset_registry->resolve(reference.path_hint, assets::asset_types::flow_graph);
+        if (!reference.guid.valid())
+        {
+            error = "Flow asset identity is missing";
+            return std::nullopt;
+        }
+        const auto asset = asset_registry->find(reference.guid);
+        if (!asset || asset->type != assets::asset_types::flow_graph)
+        {
+            error = "Flow asset is missing or has the wrong type: " + assets::to_string(reference.guid);
+            return std::nullopt;
+        }
+        const auto relative = flow_asset_relative_path(*asset, error);
+        if (!relative) return std::nullopt;
+        const auto locator = std::string{"authoring://project/"} + *relative;
+        auto resolved = play_flow_filesystem->resolve(locator);
+        if (!resolved)
+        {
+            error = resolved.error().message.empty() ? "Flow source could not be resolved" : resolved.error().message;
+            return std::nullopt;
+        }
+
+        const auto found = play_flow_source_cache.find(reference.guid);
+        if (found != play_flow_source_cache.end() &&
+            found->second.content_generation == resolved.value().content_generation())
+            return found->second.source;
+
+        auto loaded = play_flow_filesystem->read_all(resolved.value()).get();
+        if (!loaded)
+        {
+            error = loaded.error().message.empty() ? "Flow source could not be read" : loaded.error().message;
+            return std::nullopt;
+        }
+        reference.expected_type = assets::asset_types::flow_graph;
+        reference.path_hint = assets::normalize_asset_path(asset->source_path);
+        const auto& bytes = loaded.value();
+        flow_play_source source{
+            .reference = reference,
+            .generation = resolved.value().content_generation(),
+            .display_name = asset->title.empty() ? asset->source_path.filename().string() : asset->title,
+            .source = std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size())};
+        play_flow_source_cache.insert_or_assign(
+            reference.guid,
+            cached_play_flow_source{.content_generation = resolved.value().content_generation(), .source = source});
+        return source;
+    }
+
+    [[nodiscard]] bool publish_play_flow_source(assets::asset_guid guid, std::string_view source, std::string& error)
+    {
+        if (!asset_registry || !play_flow_overlay)
+        {
+            error = "No active Play asset sandbox";
+            return false;
+        }
+        const auto asset = asset_registry->find(guid);
+        if (!asset || asset->type != assets::asset_types::flow_graph)
+        {
+            error = "Flow asset is missing or has the wrong type";
+            return false;
+        }
+        const auto relative = flow_asset_relative_path(*asset, error);
+        if (!relative) return false;
+        io::file_buffer bytes;
+        bytes.resize(source.size());
+        std::memcpy(bytes.data(), source.data(), source.size());
+        const std::array update{io::memory_provider_update{.relative_path = *relative, .bytes = std::move(bytes)}};
+        const auto published = play_flow_overlay->publish(update);
+        if (!published)
+        {
+            error = published.error().message;
+            return false;
+        }
+        play_flow_source_cache.erase(guid);
+        return true;
     }
 
     bool begin_play_session()
@@ -1971,12 +2176,26 @@ struct arc_host::state
             abandon_runtime_world();
             return false;
         }
+        std::string sandbox_error;
+        if (!initialize_play_flow_sandbox(sandbox_error))
+        {
+            diagnostics::error("editor.play", "Could not create the Play asset sandbox: " + sandbox_error);
+            abandon_runtime_world();
+            pending_play_flow_sources.clear();
+            return false;
+        }
+        const auto flow_source_resolver = [this](const assets::asset_reference& requested,
+                                                 std::string& error) -> std::optional<flow_play_source>
+        { return resolve_play_flow_source(requested, error); };
+        auto input_config_path = project.root / "Config" / "Input.json";
+        if (!std::filesystem::exists(input_config_path)) input_config_path.clear();
         const auto flow_install =
-            install_flow_play_runtime(*runtime_world, !assets.root.empty() ? assets.root : project.root / "Content");
+            install_flow_play_runtime(*runtime_world, flow_source_resolver, std::move(input_config_path));
         if (!flow_install.succeeded)
         {
             diagnostics::error("editor.play", flow_install.error);
             abandon_runtime_world();
+            clear_play_flow_sandbox();
             return false;
         }
         try
@@ -1987,9 +2206,11 @@ struct arc_host::state
         {
             diagnostics::error("editor.play", std::string("Could not start play runtime world: ") + error.what());
             abandon_runtime_world();
+            clear_play_flow_sandbox();
             return false;
         }
 
+        pending_play_flow_sources.clear();
         pending_pick.reset();
         preview_stopped = false;
         simulation.resume();
@@ -2000,6 +2221,7 @@ struct arc_host::state
     {
         if (!play_world && !play_runtime_world_id.valid())
         {
+            clear_play_flow_sandbox();
             preview_stopped = true;
             return true;
         }
@@ -2010,6 +2232,7 @@ struct arc_host::state
         play_world.reset();
         play_camera_entity = {};
         play_source_scene_revision = 0;
+        clear_play_flow_sandbox();
         pending_pick.reset();
         preview_stopped = true;
         return true;
@@ -2160,6 +2383,12 @@ struct arc_host::state
     framework::runtime_world_id play_runtime_world_id{};
     ecs::entity play_camera_entity{};
     std::uint64_t play_source_scene_revision{};
+    std::unordered_map<assets::asset_guid, pending_play_flow_source, assets::asset_guid_hash>
+        pending_play_flow_sources;
+    std::unique_ptr<io::virtual_file_system> play_flow_filesystem;
+    std::shared_ptr<io::filesystem_file_provider> play_flow_base;
+    std::shared_ptr<io::memory_file_provider> play_flow_overlay;
+    std::unordered_map<assets::asset_guid, cached_play_flow_source, assets::asset_guid_hash> play_flow_source_cache;
     editor_project_state project;
     editor_asset_state assets;
     editor_scene_state scene;
@@ -2562,6 +2791,14 @@ host_response arc_host::execute(const host_command_envelope& command)
                 return success("{\"generation\":" + std::to_string(result.generation) + ",\"classification\":" +
                                to_json_string(classification) + ",\"message\":" + to_json_string(result.message) + '}');
             }
+            else if constexpr (std::is_same_v<command_type, host_asset_scan_command>)
+            {
+                if (!state_->asset_registry) return fail("No project asset registry is active");
+                const auto scanned = state_->asset_registry->scan();
+                if (!scanned.succeeded()) return fail(scanned.error.message);
+                return success("{\"discovered\":" + std::to_string(scanned.discovered) +
+                               ",\"updated\":" + std::to_string(scanned.updated) + '}');
+            }
             else if constexpr (std::is_same_v<command_type, host_asset_reimport_command> ||
                                std::is_same_v<command_type, host_set_texture_streaming_mode_command> ||
                                std::is_same_v<command_type, host_patch_texture_settings_command> ||
@@ -2856,6 +3093,53 @@ host_response arc_host::execute(const host_command_envelope& command)
                                                      {"binding", resource.binding},
                                                      {"count", resource.count}});
                 return success(response.dump());
+            }
+            else if constexpr (std::is_same_v<command_type, host_runtime_prepare_flow_sources_command>)
+            {
+                if (!state_->preview_stopped) return fail("Flow sources can only be prepared before Play starts");
+                state_->pending_play_flow_sources.clear();
+                return success("{\"prepared\":true}");
+            }
+            else if constexpr (std::is_same_v<command_type, host_runtime_stage_flow_source_command>)
+            {
+                constexpr std::size_t maximum_flow_sources = 256;
+                constexpr std::size_t maximum_flow_source_bytes = 8u * 1024u * 1024u;
+                constexpr std::size_t maximum_flow_batch_bytes = 32u * 1024u * 1024u;
+                if (!state_->preview_stopped) return fail("Flow sources can only be staged before Play starts");
+                const auto guid = assets::parse_asset_guid(payload.guid);
+                if (!guid) return fail("Flow source GUID is malformed");
+                const auto asset = state_->asset_registry ? state_->asset_registry->find(*guid) : std::nullopt;
+                if (!asset || asset->type != assets::asset_types::flow_graph)
+                    return fail("Flow source GUID is not a registered Flow asset");
+                if (payload.source.size() > maximum_flow_source_bytes)
+                    return fail("Flow source exceeds the 8 MiB Play override limit");
+                std::size_t batch_bytes = payload.source.size();
+                for (const auto& [existing_guid, existing] : state_->pending_play_flow_sources)
+                    if (existing_guid != *guid) batch_bytes += existing.source.size();
+                if (batch_bytes > maximum_flow_batch_bytes)
+                    return fail("Flow source overrides exceed the 32 MiB Play batch limit");
+                if (!state_->pending_play_flow_sources.contains(*guid) &&
+                    state_->pending_play_flow_sources.size() >= maximum_flow_sources)
+                    return fail("Flow source overrides exceed the 256 asset Play batch limit");
+                state_->pending_play_flow_sources.insert_or_assign(
+                    *guid, pending_play_flow_source{.guid = *guid,
+                                                    .editor_revision = payload.revision,
+                                                    .source = payload.source});
+                return success("{\"staged\":true}");
+            }
+            else if constexpr (std::is_same_v<command_type, host_runtime_update_flow_source_command>)
+            {
+                if (state_->preview_stopped) return fail("No play session is active");
+                constexpr std::size_t maximum_flow_source_bytes = 8u * 1024u * 1024u;
+                if (payload.source.size() > maximum_flow_source_bytes)
+                    return fail("Flow source exceeds the 8 MiB Play override limit");
+                const auto guid = assets::parse_asset_guid(payload.guid);
+                if (!guid) return fail("Flow source GUID is malformed");
+                std::string error;
+                if (!state_->publish_play_flow_source(*guid, payload.source, error)) return fail(error);
+                diagnostics::info("editor.play", "Staged Flow asset " + payload.guid + " revision " +
+                                                        std::to_string(payload.revision) + " for hot reload");
+                return success("{\"updated\":true}");
             }
             else if constexpr (std::is_same_v<command_type, host_runtime_resume_command>)
             {
@@ -3488,11 +3772,31 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto entity = to_scene_entity(payload.entity);
                 const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);
                 if (targets.empty()) return fail("Cannot edit a missing or unselected entity", entity);
-                if (!payload.graph_path.empty() && !valid_flow_graph_path(payload.graph_path))
-                    return fail("Flow graph path must be a normalized Content-relative .arcflow path", entity);
+                assets::asset_reference graph{.expected_type = assets::asset_types::flow_graph,
+                                              .path_hint = payload.graph_path_hint};
+                if (!payload.graph_guid.empty())
+                {
+                    const auto parsed = assets::parse_asset_guid(payload.graph_guid);
+                    if (!parsed) return fail("Flow graph GUID is invalid", entity);
+                    graph.guid = *parsed;
+                }
+                if (state_->asset_registry)
+                {
+                    if (graph.guid.valid())
+                    {
+                        const auto asset = state_->asset_registry->find(graph.guid);
+                        if (!asset || asset->type != assets::asset_types::flow_graph)
+                            return fail("Flow graph GUID does not identify a registered Flow asset", entity);
+                        graph.path_hint = assets::normalize_asset_path(asset->source_path);
+                    }
+                    else if (!graph.path_hint.empty())
+                        graph = state_->asset_registry->resolve(graph.path_hint, assets::asset_types::flow_graph);
+                }
+                if (!graph.guid.valid() && !graph.path_hint.empty())
+                    return fail("Flow graph could not be resolved", entity);
                 for (const auto target : targets)
                     state_->scene.scene.emplace<scene::flow_component>(
-                        target, scene::flow_component{payload.graph_path, payload.enabled});
+                        target, scene::flow_component{graph, payload.enabled});
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
                            "Flow binding changed for " + std::to_string(targets.size()) + " entity(s)", entity);
                 return success("{\"entity\":" + to_json(payload.entity) + '}');
@@ -6533,7 +6837,8 @@ host_selected_entity_snapshot arc_host::runtime_entity_snapshot(host_entity_id h
     }
     if (const auto* flow = world.try_get<scene::flow_component>(entity))
     {
-        snapshot.flow = host_flow_snapshot{flow->graph_path, flow->enabled};
+        snapshot.flow = host_flow_snapshot{flow->graph.guid.valid() ? assets::to_string(flow->graph.guid) : std::string{},
+                                           flow->graph.path_hint, flow->enabled};
         snapshot.components.push_back(
             {host_component_kind::flow, "arc::scene.flow_component", "Flow", state_->runtime_revision, 0, false});
     }
@@ -6893,7 +7198,8 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
                                                        host_component_kind::decal, "Decal");
     if (const auto* flow = state_->scene.scene.try_get<scene::flow_component>(selected))
     {
-        snapshot.flow = host_flow_snapshot{flow->graph_path, flow->enabled};
+        snapshot.flow = host_flow_snapshot{flow->graph.guid.valid() ? assets::to_string(flow->graph.guid) : std::string{},
+                                           flow->graph.path_hint, flow->enabled};
         snapshot.components.push_back(
             {host_component_kind::flow, "arc::scene.flow_component", "Flow", state_->scene_revision, 0, true});
     }
@@ -7016,6 +7322,7 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
             if (type == arc::assets::asset_types::texture_2d) return "texture";
             if (type == arc::assets::asset_types::environment) return "environment";
             if (type == arc::assets::asset_types::water_preset) return "water";
+            if (type == arc::assets::asset_types::flow_graph) return "flow";
             if (type == arc::assets::asset_types::imported_scene) return "scene";
             if (type == arc::assets::asset_types::static_mesh) return "mesh";
             return "unknown";
@@ -7099,6 +7406,7 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
                 display_path = asset.source_path;
             host_asset_snapshot host_asset{.guid = arc::assets::to_string(asset.guid),
                                            .path = arc::assets::normalize_asset_path(display_path),
+                                           .source_path = arc::assets::normalize_asset_path(asset.source_path),
                                            .title = asset.title,
                                            .description = asset.description,
                                            .scope = asset.read_only ? "builtin" : "project",

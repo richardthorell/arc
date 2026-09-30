@@ -208,6 +208,7 @@ classify_asset_path(const std::filesystem::path& path) noexcept
     if (extension == ".arcprefab") return std::pair{asset_types::prefab, importer_ids::prefab};
     if (extension == ".arcmat") return std::pair{asset_types::material, importer_ids::material};
     if (extension == ".arcmatinst") return std::pair{asset_types::material_instance, importer_ids::material_instance};
+    if (extension == ".arcflow") return std::pair{asset_types::flow_graph, importer_ids::flow};
     if (extension == ".terrain") return std::pair{asset_types::terrain, importer_ids::terrain};
     if (extension == ".arcwater") return std::pair{asset_types::water_preset, importer_ids::water_preset};
     const bool shader_include =

@@ -1,9 +1,12 @@
 #pragma once
 
+#include <arc/assets/assets.h>
 #include <arc/framework/runtime_world.h>
 
 #include <cstddef>
 #include <filesystem>
+#include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -18,22 +21,28 @@ struct flow_play_install_result
     std::string error;
 };
 
-/** Returns true for a normalized Content-relative .arcflow path. */
-[[nodiscard]] bool valid_flow_graph_path(std::string_view value) noexcept;
+struct flow_play_source
+{
+    assets::asset_reference reference;
+    std::uint64_t generation{};
+    std::string display_name;
+    std::string source;
+};
+
+using flow_play_source_resolver =
+    std::function<std::optional<flow_play_source>(const assets::asset_reference&, std::string& error)>;
 
 /**
  * Compile and attach authored Flow bindings to an isolated Play World.
  *
- * Compiled programs are shared by path; VM state remains per entity. Initial bindings receive Begin Play before this
+ * Compiled programs are shared by asset identity; VM state remains per entity. The resolver supplies immutable source
+ * generations and never exposes physical paths to the Play World. Initial bindings receive Begin Play before this
  * returns. Runtime Flow/Active component and entity lifecycle changes are then reconciled at fixed-tick phase
- * boundaries so newly eligible bindings receive Begin Play and bindings that become ineligible receive End Play.
- * Source edits publish a new immutable program generation after successful compilation. Bound VMs restart from graph
- * defaults across the generation transition; rejected edits keep the last-good generation active. Input Action nodes
- * consume semantic actions resolved through ARC's input player/context mapping system. When an explicit input config
- * path is not supplied, Config/Input.json beside the Content directory is used when present.
+ * boundaries. Source generations publish new immutable programs after successful compilation; rejected edits retain
+ * the last-good generation. Input Action nodes consume semantic actions resolved through ARC's input mapping system.
  */
 [[nodiscard]] flow_play_install_result install_flow_play_runtime(framework::runtime_world& world,
-                                                                 const std::filesystem::path& content_root,
+                                                                 flow_play_source_resolver source_resolver,
                                                                  std::filesystem::path input_config_path = {});
 
 } // namespace arc::editor

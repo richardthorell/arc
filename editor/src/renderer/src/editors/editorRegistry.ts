@@ -29,6 +29,7 @@ import type {
 type HostAssetIdentity = {
   guid?: string;
   path?: string;
+  sourcePath?: string;
   scope?: AssetItem['scope'];
   readOnly?: boolean;
   state?: AssetItem['status'];
@@ -83,16 +84,14 @@ const registeredAssetFromHost = (
   const registryPath = cleanAssetPath(candidate.path ?? '');
   const projectPath = projectRelativeHostAssetPath(payload, candidate);
   const authoredPath = cleanAssetPath(asset.path);
-  const path =
-    authoredPath && normalizedAssetPath(authoredPath) !== normalizedAssetPath(registryPath)
-      ? authoredPath
-      : projectPath || authoredPath || registryPath;
+  const path = registryPath || authoredPath;
 
   return {
     ...asset,
     id: candidate.guid || asset.id,
     guid: candidate.guid || asset.guid,
     path,
+    sourcePath: candidate.sourcePath || projectPath || asset.sourcePath || path,
     scope: candidate.scope ?? asset.scope,
     readOnly: candidate.readOnly ?? asset.readOnly,
     status: candidate.state ?? asset.status,
@@ -107,7 +106,9 @@ export const resolveRegisteredEditorAsset = async (
 ): Promise<AssetItem | null> => {
   if (!asset.path || typeof window === 'undefined' || !window.arc?.host?.query) return null;
 
-  const expectedPath = normalizedAssetPath(asset.path);
+  const expectedPaths = new Set(
+    [asset.path, asset.sourcePath].filter((value): value is string => Boolean(value)).map(normalizedAssetPath),
+  );
   const deadline = Date.now() + timeoutMs;
   do {
     try {
@@ -119,11 +120,12 @@ export const resolveRegisteredEditorAsset = async (
         if (asset.guid && candidate.guid === asset.guid) return true;
         const registryPath = normalizedAssetPath(candidate.path ?? '');
         const projectPath = normalizedAssetPath(projectRelativeHostAssetPath(payload, candidate));
-        return registryPath === expectedPath || projectPath === expectedPath;
+        const sourcePath = normalizedAssetPath(candidate.sourcePath ?? '');
+        return expectedPaths.has(registryPath) || expectedPaths.has(projectPath) || expectedPaths.has(sourcePath);
       });
       if (registered && payload) {
         const resolved = registeredAssetFromHost(asset, registered, payload);
-        if (asset.kind === 'material' || asset.kind === 'shader') {
+        if (asset.kind === 'material' || asset.kind === 'shader' || asset.kind === 'flow') {
           console.info('[material-flow] asset registration resolved', {
             kind: asset.kind,
             authoredPath: asset.path,
@@ -148,7 +150,7 @@ export const resolveRegisteredEditorAsset = async (
   console.warn('[material-flow] asset registration unresolved', {
     kind: asset.kind,
     guid: asset.guid ?? '',
-    path: asset.path,
+    path: asset.sourcePath ?? asset.path,
   });
   return null;
 };
@@ -164,7 +166,7 @@ const shaderRegistration: EditorRegistration = {
     id: `shader:${asset.guid ?? asset.path}`,
     kind: 'shader',
     title: asset.name,
-    path: asset.path,
+    path: asset.sourcePath ?? asset.path,
     assetId: asset.id,
     assetGuid: asset.guid,
     assetScope: asset.scope,
@@ -188,7 +190,7 @@ const materialRegistration: EditorRegistration = {
     id: `material:${asset.guid ?? asset.path}`,
     kind: 'material',
     title: asset.name,
-    path: asset.path,
+    path: asset.sourcePath ?? asset.path,
     assetId: asset.id,
     assetGuid: asset.guid,
     assetScope: asset.scope,
@@ -212,7 +214,7 @@ const flowRegistration: EditorRegistration = {
     id: `flow:${asset.guid ?? asset.path}`,
     kind: 'flow',
     title: asset.name,
-    path: asset.path,
+    path: asset.sourcePath ?? asset.path,
     assetId: asset.id,
     assetGuid: asset.guid,
     assetScope: asset.scope,
@@ -326,7 +328,7 @@ export const openAssetEditorDocument = (asset: AssetItem, registry: EditorRegist
   if (!target || !registry) return false;
 
   const needsCanonicalProjectIdentity =
-    asset.scope !== 'builtin' && (asset.kind === 'material' || asset.kind === 'shader');
+    asset.scope !== 'builtin' && (asset.kind === 'material' || asset.kind === 'shader' || asset.kind === 'flow');
   if (!needsCanonicalProjectIdentity || typeof window === 'undefined' || !window.arc?.host?.query) {
     openEditorDocumentInStore(target.document, target.registration.allowMultiple);
     return true;

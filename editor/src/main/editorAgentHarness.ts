@@ -1547,7 +1547,12 @@ export class EditorAgentHarness {
         throw new Error('value.path must reference a .arcflow asset');
       return {
         type: 'entity.setFlow',
-        payload: { entity, graphPath, enabled: value.enabled !== false },
+        payload: {
+          entity,
+          graphGuid: typeof value.assetGuid === 'string' ? value.assetGuid : '',
+          graphPathHint: graphPath,
+          enabled: value.enabled !== false,
+        },
       };
     }
     if (action === 'snapToFloor') return { type: 'entity.snapToFloor', payload: { entity } };
@@ -1611,11 +1616,21 @@ export class EditorAgentHarness {
       }
       if (component === 'flow') {
         const flow = { ...asObject(snapshot.flow), ...fields };
-        const graphPath = typeof flow.graphPath === 'string' ? flow.graphPath : '';
+        const graphPath =
+          typeof flow.graphPathHint === 'string'
+            ? flow.graphPathHint
+            : typeof flow.graphPath === 'string'
+              ? flow.graphPath
+              : '';
         if (graphPath) requireProjectAssetPath(graphPath, 'fields.graphPath');
         return {
           type: 'entity.setFlow',
-          payload: { entity, graphPath, enabled: flow.enabled !== false },
+          payload: {
+            entity,
+            graphGuid: typeof flow.graphGuid === 'string' ? flow.graphGuid : '',
+            graphPathHint: graphPath,
+            enabled: flow.enabled !== false,
+          },
         };
       }
       if (component === 'worldenvironment') {
