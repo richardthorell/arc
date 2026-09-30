@@ -71,9 +71,10 @@ export const nativeMaterialCompileResult = (
 
 export type MaterialGraphEditImpact = 'none' | 'parameter-values' | 'shader';
 
-const sameParameterIdentity = (before: MaterialGraphNode, after: MaterialGraphNode): boolean =>
-  before.id === after.id &&
-  before.type === after.type &&
+const sameParameterMetadata = (before: MaterialGraphNode, after: MaterialGraphNode): boolean =>
+  JSON.stringify(before.parameter ?? null) === JSON.stringify(after.parameter ?? null);
+
+const isExistingExposedParameter = (before: MaterialGraphNode, after: MaterialGraphNode): boolean =>
   before.parameter?.exposed === true &&
   after.parameter?.exposed === true &&
   before.parameter.name === after.parameter.name;
@@ -98,9 +99,14 @@ export const materialGraphEditImpact = (before: MaterialGraph, after: MaterialGr
   let changedParameterValue = false;
   for (const node of after.nodes) {
     const previous = beforeById.get(node.id);
-    if (!previous || !sameParameterIdentity(previous, node)) return 'shader';
-    if (JSON.stringify(previous.values) !== JSON.stringify(node.values)) changedParameterValue = true;
+    if (!previous || previous.type !== node.type) return 'shader';
+    if (!sameParameterMetadata(previous, node)) return 'shader';
     if (previous.position[0] !== node.position[0] || previous.position[1] !== node.position[1]) return 'shader';
+
+    if (JSON.stringify(previous.values) !== JSON.stringify(node.values)) {
+      if (!isExistingExposedParameter(previous, node)) return 'shader';
+      changedParameterValue = true;
+    }
   }
 
   return changedParameterValue ? 'parameter-values' : 'none';
