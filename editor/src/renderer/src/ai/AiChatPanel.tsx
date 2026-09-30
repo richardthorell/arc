@@ -1,4 +1,4 @@
-import { MessageSquarePlus, Send } from 'lucide-react';
+import { Send } from 'lucide-react';
 import { useState } from 'react';
 import { UiDrawerPanel, UiIconButton } from '../ui';
 import { unavailableAiModelProvider, type AiModelProvider } from './aiChat';
@@ -10,27 +10,9 @@ export function AiChatPanel({ provider = unavailableAiModelProvider }: { provide
   return (
     <UiDrawerPanel className="ai-chat-panel" aria-label="AI Chat">
       <section className="ai-chat-conversations" aria-label="Conversations">
-        <header className="ai-chat-section-header">
-          <strong>Conversations</strong>
-          <UiIconButton label="New conversation" onClick={() => undefined}>
-            <MessageSquarePlus size={15} />
-          </UiIconButton>
-        </header>
-
-        <div className="ai-chat-conversation-controls">
-          <label>
-            <span>Conversation</span>
-            <select aria-label="Conversation" defaultValue="new">
-              <option value="new">New conversation</option>
-            </select>
-          </label>
-          <label>
-            <span>Model</span>
-            <select aria-label="Model" defaultValue={provider.id}>
-              <option value={provider.id}>{provider.label}</option>
-            </select>
-          </label>
-        </div>
+        <select aria-label="Conversation" defaultValue="new">
+          <option value="new">New conversation</option>
+        </select>
       </section>
 
       <section className="ai-chat-session" aria-label="Chat">
@@ -41,16 +23,26 @@ export function AiChatPanel({ provider = unavailableAiModelProvider }: { provide
             event.preventDefault();
           }}
         >
-          <textarea
-            aria-label="Ask ARC"
-            placeholder="Ask ARC..."
-            value={prompt}
-            rows={3}
-            onChange={(event) => setPrompt(event.target.value)}
-          />
-          <UiIconButton label="Send prompt" disabled type="submit">
-            <Send size={15} />
-          </UiIconButton>
+          <div className="ai-chat-composer-surface">
+            <textarea
+              aria-label="Ask ARC"
+              placeholder="Ask ARC..."
+              value={prompt}
+              rows={3}
+              onChange={(event) => setPrompt(event.target.value)}
+            />
+            <div className="ai-chat-composer-toolbar">
+              <label className="ai-chat-model-picker">
+                <span>Model</span>
+                <select aria-label="Model" defaultValue={provider.id}>
+                  <option value={provider.id}>{provider.label}</option>
+                </select>
+              </label>
+              <UiIconButton label="Send prompt" disabled type="submit">
+                <Send size={15} />
+              </UiIconButton>
+            </div>
+          </div>
         </form>
       </section>
     </UiDrawerPanel>
