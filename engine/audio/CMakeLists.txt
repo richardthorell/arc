@@ -1,8 +1,12 @@
+include("${CMAKE_CURRENT_LIST_DIR}/../../third_party/miniaudio.cmake")
+
 arc_add_module(
     NAME arc-audio
     TYPE STATIC
     DEPS arc-math
 )
+
+target_link_libraries(arc-audio PRIVATE arc-third-party-miniaudio)
 
 if(BUILD_TESTING)
     add_executable(arc-audio-foundation-tests
