@@ -106,4 +106,21 @@ if(BUILD_TESTING)
     )
 
     add_test(NAME arc-input-composite-tests COMMAND arc-input-composite-tests)
+
+    add_executable(arc-input-capabilities-tests
+        test_support/capabilities_tests.cpp
+    )
+    arc_configure_first_party_target(arc-input-capabilities-tests)
+
+    target_compile_features(arc-input-capabilities-tests
+        PRIVATE
+            cxx_std_20
+    )
+
+    target_link_libraries(arc-input-capabilities-tests
+        PRIVATE
+            arc-input
+    )
+
+    add_test(NAME arc-input-capabilities-tests COMMAND arc-input-capabilities-tests)
 endif()

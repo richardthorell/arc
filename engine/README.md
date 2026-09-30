@@ -108,8 +108,11 @@ Lower-level render headers can be included directly when needed:
 #include <arc/render/resources.h>
 ```
 
-The raster renderer resolves immutable adapter capabilities into a separate
-quality/path configuration. `low` currently selects the direct forward
+Platform hosts publish a backend-neutral capability snapshot, input exposes
+per-device and aggregate capabilities, and the raster renderer resolves
+immutable adapter facts into a separate enabled quality/path configuration.
+See [`docs/platform-capabilities.md`](../docs/platform-capabilities.md) for the
+selection and diagnostics contract. `low` currently selects the direct forward
 fallback with 32 point/spot lights and 1024-pixel directional shadows;
 `medium` selects the deferred path. Render graphs use typed formats and strong
 resource handles, validate access hazards, and report transitions, lifetimes,

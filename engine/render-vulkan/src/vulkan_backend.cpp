@@ -139,14 +139,33 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     driver_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
     VkPhysicalDeviceDescriptorIndexingProperties descriptor_indexing_properties{};
     descriptor_indexing_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES;
+    VkPhysicalDeviceSubgroupProperties subgroup_properties{};
+    subgroup_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
+    VkPhysicalDeviceSubgroupSizeControlProperties subgroup_size_properties{};
+    subgroup_size_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES;
+    VkPhysicalDeviceMeshShaderPropertiesEXT mesh_shader_properties{};
+    mesh_shader_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_EXT;
+
+    VkPhysicalDeviceProperties2 properties2{};
+    properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    VkBaseOutStructure* property_tail = reinterpret_cast<VkBaseOutStructure*>(&properties2);
+    auto append_property = [&](auto& property)
+    {
+        property_tail->pNext = reinterpret_cast<VkBaseOutStructure*>(&property);
+        property_tail = reinterpret_cast<VkBaseOutStructure*>(&property);
+    };
     if (vulkan12_or_newer)
     {
-        VkPhysicalDeviceProperties2 properties2{};
-        properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-        properties2.pNext = &driver_properties;
-        driver_properties.pNext = &descriptor_indexing_properties;
-        vkGetPhysicalDeviceProperties2(physical_device, &properties2);
+        append_property(driver_properties);
+        append_property(descriptor_indexing_properties);
     }
+    append_property(subgroup_properties);
+    const bool subgroup_size_control =
+        vulkan13_or_newer || has_extension(extensions, VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME);
+    if (subgroup_size_control) append_property(subgroup_size_properties);
+    const bool mesh_shader_extension = has_extension(extensions, VK_EXT_MESH_SHADER_EXTENSION_NAME);
+    if (mesh_shader_extension) append_property(mesh_shader_properties);
+    vkGetPhysicalDeviceProperties2(physical_device, &properties2);
 
     VkPhysicalDeviceMemoryProperties2 memory_properties{};
     memory_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
@@ -170,6 +189,54 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.max_texture_dimension_2d = properties.limits.maxImageDimension2D;
     capabilities.max_color_attachments = properties.limits.maxColorAttachments;
     capabilities.max_compute_workgroup_invocations = properties.limits.maxComputeWorkGroupInvocations;
+    capabilities.resource_limits = {
+        .maximum_indirect_draw_count = properties.limits.maxDrawIndirectCount,
+        .maximum_storage_buffer_range = properties.limits.maxStorageBufferRange,
+        .maximum_per_stage_storage_buffers = properties.limits.maxPerStageDescriptorStorageBuffers,
+        .maximum_per_stage_storage_images = properties.limits.maxPerStageDescriptorStorageImages,
+        .maximum_push_constant_bytes = properties.limits.maxPushConstantsSize,
+        .minimum_storage_buffer_offset_alignment = properties.limits.minStorageBufferOffsetAlignment};
+    const auto has_stage = [&](VkShaderStageFlagBits stage)
+    { return (subgroup_properties.supportedStages & stage) != 0; };
+    const auto has_subgroup_operation = [&](VkSubgroupFeatureFlagBits operation)
+    { return (subgroup_properties.supportedOperations & operation) != 0; };
+    capabilities.subgroups = {.minimum_size = subgroup_size_control ? subgroup_size_properties.minSubgroupSize
+                                                                    : subgroup_properties.subgroupSize,
+                              .maximum_size = subgroup_size_control ? subgroup_size_properties.maxSubgroupSize
+                                                                    : subgroup_properties.subgroupSize,
+                              .compute_stage = has_stage(VK_SHADER_STAGE_COMPUTE_BIT),
+                              .vertex_stage = has_stage(VK_SHADER_STAGE_VERTEX_BIT),
+                              .fragment_stage = has_stage(VK_SHADER_STAGE_FRAGMENT_BIT),
+                              .task_stage = has_stage(VK_SHADER_STAGE_TASK_BIT_EXT),
+                              .mesh_stage = has_stage(VK_SHADER_STAGE_MESH_BIT_EXT),
+                              .basic_operations = has_subgroup_operation(VK_SUBGROUP_FEATURE_BASIC_BIT),
+                              .vote_operations = has_subgroup_operation(VK_SUBGROUP_FEATURE_VOTE_BIT),
+                              .arithmetic_operations = has_subgroup_operation(VK_SUBGROUP_FEATURE_ARITHMETIC_BIT),
+                              .ballot_operations = has_subgroup_operation(VK_SUBGROUP_FEATURE_BALLOT_BIT),
+                              .shuffle_operations = has_subgroup_operation(VK_SUBGROUP_FEATURE_SHUFFLE_BIT),
+                              .shuffle_relative_operations =
+                                  has_subgroup_operation(VK_SUBGROUP_FEATURE_SHUFFLE_RELATIVE_BIT),
+                              .clustered_operations = has_subgroup_operation(VK_SUBGROUP_FEATURE_CLUSTERED_BIT),
+                              .quad_operations = has_subgroup_operation(VK_SUBGROUP_FEATURE_QUAD_BIT)};
+    if (mesh_shader_extension)
+    {
+        capabilities.mesh_shader_limits = {
+            .maximum_task_workgroup_invocations = mesh_shader_properties.maxTaskWorkGroupInvocations,
+            .maximum_mesh_workgroup_invocations = mesh_shader_properties.maxMeshWorkGroupInvocations,
+            .maximum_task_workgroup_count_x = mesh_shader_properties.maxTaskWorkGroupCount[0],
+            .maximum_task_workgroup_count_y = mesh_shader_properties.maxTaskWorkGroupCount[1],
+            .maximum_task_workgroup_count_z = mesh_shader_properties.maxTaskWorkGroupCount[2],
+            .maximum_mesh_workgroup_count_x = mesh_shader_properties.maxMeshWorkGroupCount[0],
+            .maximum_mesh_workgroup_count_y = mesh_shader_properties.maxMeshWorkGroupCount[1],
+            .maximum_mesh_workgroup_count_z = mesh_shader_properties.maxMeshWorkGroupCount[2],
+            .maximum_task_payload_bytes = mesh_shader_properties.maxTaskPayloadSize,
+            .maximum_task_shared_memory_bytes = mesh_shader_properties.maxTaskSharedMemorySize,
+            .maximum_mesh_shared_memory_bytes = mesh_shader_properties.maxMeshSharedMemorySize,
+            .maximum_mesh_output_vertices = mesh_shader_properties.maxMeshOutputVertices,
+            .maximum_mesh_output_primitives = mesh_shader_properties.maxMeshOutputPrimitives,
+            .preferred_task_workgroup_invocations = mesh_shader_properties.maxPreferredTaskWorkGroupInvocations,
+            .preferred_mesh_workgroup_invocations = mesh_shader_properties.maxPreferredMeshWorkGroupInvocations};
+    }
     for (std::uint32_t heap = 0; heap < memory_properties.memoryProperties.memoryHeapCount; ++heap)
     {
         const auto bytes = memory_properties.memoryProperties.memoryHeaps[heap].size;
@@ -194,6 +261,8 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
         capabilities.graphics_queue |= (queues[index].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
         capabilities.compute_queue |= (queues[index].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0;
         capabilities.transfer_queue |= (queues[index].queueFlags & VK_QUEUE_TRANSFER_BIT) != 0;
+        capabilities.dedicated_compute_queue |= (queues[index].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0 &&
+                                                (queues[index].queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0;
         capabilities.gpu_timestamps |= queues[index].timestampValidBits > 0;
         if (surface != VK_NULL_HANDLE)
         {
@@ -207,6 +276,8 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.draw_indirect = properties.limits.maxDrawIndirectCount > 0;
     capabilities.draw_indirect_count =
         vulkan12_or_newer || has_extension(extensions, VK_KHR_DRAW_INDIRECT_COUNT_EXTENSION_NAME);
+    capabilities.multi_draw_indirect = features.features.multiDrawIndirect == VK_TRUE;
+    capabilities.draw_indirect_first_instance = features.features.drawIndirectFirstInstance == VK_TRUE;
     capabilities.compute_shaders = capabilities.compute_queue;
     capabilities.storage_buffers = properties.limits.maxStorageBufferRange >= 128u * 1024u * 1024u;
     capabilities.storage_images = properties.limits.maxPerStageDescriptorStorageImages > 0;
@@ -232,6 +303,16 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
         const auto required = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT;
         return (format_properties.optimalTilingFeatures & required) == required;
     };
+    const auto supports_storage_atomic = [&](VkFormat format)
+    {
+        VkFormatProperties format_properties{};
+        vkGetPhysicalDeviceFormatProperties(physical_device, format, &format_properties);
+        const auto required = VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT | VK_FORMAT_FEATURE_STORAGE_IMAGE_ATOMIC_BIT;
+        return (format_properties.optimalTilingFeatures & required) == required;
+    };
+    capabilities.atomics = {.storage_buffer_int32 = capabilities.compute_shaders && capabilities.storage_buffers,
+                            .storage_image_r32_uint = supports_storage_atomic(VK_FORMAT_R32_UINT),
+                            .storage_image_r32_sint = supports_storage_atomic(VK_FORMAT_R32_SINT)};
     capabilities.temporal_resolve =
         capabilities.compute_shaders && capabilities.storage_images &&
         supports_storage_sampled(VK_FORMAT_R16G16B16A16_SFLOAT) && supports_storage_sampled(VK_FORMAT_R16G16_SFLOAT) &&
@@ -290,6 +371,7 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
                                 properties.limits.maxPerStageDescriptorStorageBuffers >= 7u &&
                                 properties.limits.maxComputeWorkGroupInvocations >= 64u;
     capabilities.descriptor_buffer = descriptor_buffer.descriptorBuffer == VK_TRUE;
+    capabilities.task_shaders = mesh_shader.taskShader == VK_TRUE;
     capabilities.mesh_shaders = mesh_shader.meshShader == VK_TRUE;
     // Capability facts describe executable ARC paths. Ray-query acceleration structures and
     // their graph execution are enabled together by the lighting backend; a driver extension

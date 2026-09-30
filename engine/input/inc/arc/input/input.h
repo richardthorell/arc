@@ -301,6 +301,22 @@ struct input_device_capabilities
     std::uint16_t axis_count{};
 };
 
+/** @brief Aggregate snapshot derived from the currently connected physical devices. */
+struct input_system_capabilities
+{
+    std::uint32_t connected_devices{};
+    bool buttons{};
+    bool axes{};
+    bool pointer{};
+    bool scroll{};
+    bool rumble{};
+    bool haptics{};
+    bool gyroscope{};
+    bool accelerometer{};
+    bool touch{};
+    bool battery{};
+};
+
 /**
  * @brief Current power state reported by a battery-capable input device.
  */
@@ -695,6 +711,7 @@ public:
     [[nodiscard]] std::vector<input_device_id> devices(bool connected_only = true) const;
     [[nodiscard]] std::vector<input_device_id> devices(input_device_type type, bool connected_only = true) const;
     [[nodiscard]] const std::vector<input_device_event>& device_events() const noexcept;
+    [[nodiscard]] input_system_capabilities capabilities() const noexcept;
 
     input_player& player(player_id id);
     [[nodiscard]] const input_player* find_player(player_id id) const noexcept;

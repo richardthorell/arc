@@ -1,4 +1,5 @@
 #include "native_viewport_controller.h"
+#include "native_system_capabilities.h"
 
 #include <arc/editor/arc_host.h>
 #include <arc/jobs/jobs.h>
@@ -146,6 +147,7 @@ int main()
                                 .memory = &memory});
     jobs.register_main_thread();
     auto host = std::make_shared<arc::editor::arc_host>(std::make_unique<arc::render::renderer>());
+    host->set_platform_capabilities(arc::editor::query_native_system_capabilities());
     std::mutex host_mutex;
     std::mutex output_mutex;
     auto native_viewport = arc::editor::make_native_viewport_controller(host, host_mutex, output_mutex, jobs);

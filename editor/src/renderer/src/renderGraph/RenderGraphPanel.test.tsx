@@ -49,6 +49,49 @@ const diagnostics = {
     targetFrameMilliseconds: 16.67,
     fallbackReasons: [],
   },
+  capabilities: {
+    platform: {
+      family: 'windows',
+      formFactor: 'desktop',
+      logicalProcessorCount: 16,
+      systemMemoryBytes: 32 * 1024 * 1024 * 1024,
+      windowSystem: true,
+      highDpi: true,
+      multipleWindows: true,
+      dynamicLibraries: true,
+      persistentLocalStorage: true,
+      nativePackageAssets: false,
+    },
+    input: {
+      connectedDevices: 2,
+      buttons: true,
+      axes: true,
+      pointer: true,
+      scroll: true,
+      rumble: true,
+      haptics: false,
+      gyroscope: false,
+      accelerometer: false,
+      touch: false,
+      battery: false,
+    },
+    render: {
+      available: true,
+      adapterName: 'ARC Test Adapter',
+      apiMajor: 1,
+      apiMinor: 3,
+      memoryBudgetBytes: 8 * 1024 * 1024 * 1024,
+      maximumIndirectDrawCount: 1_048_576,
+      maximumStorageBufferRange: 128 * 1024 * 1024,
+      subgroupMinimumSize: 32,
+      subgroupMaximumSize: 32,
+      meshShaders: true,
+      taskShaders: true,
+      indexedVirtualGeometryRaster: true,
+      meshVirtualGeometryRaster: true,
+      enabledVirtualGeometryRasterPath: 'compute',
+    },
+  },
   environment: {
     enabled: true,
     skyVisible: true,
@@ -189,6 +232,9 @@ describe('RenderGraphPanel', () => {
     expect(document.querySelector('.render-graph-transition')).toBeInTheDocument();
     expect(screen.getByLabelText('Texture streaming diagnostics')).toHaveTextContent('Hit 87.5%');
     expect(screen.getByLabelText('GPU Scene resource tables')).toHaveTextContent('4 geometry');
+    expect(screen.getByLabelText('Runtime capabilities')).toHaveTextContent('ARC Test Adapter');
+    expect(screen.getByLabelText('Runtime capabilities')).toHaveTextContent('VG indexed supported');
+    expect(screen.getByLabelText('Runtime capabilities')).toHaveTextContent('active compute');
     expect(screen.getByLabelText('Water simulation diagnostics')).toHaveTextContent('3 cascades');
     expect(screen.getByLabelText('Water simulation diagnostics')).toHaveTextContent('18.5 MiB');
     expect(screen.getByLabelText('Water simulation diagnostics')).toHaveTextContent('Foam 0.21 ms');

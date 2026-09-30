@@ -115,6 +115,37 @@ export function RenderGraphPanel({
           <span>{bytes(snapshot.graph.estimatedTransientBytes)} transient</span>
         </div>
       )}
+      {snapshot?.capabilities && (
+        <div className="tool-summary-strip" aria-label="Runtime capabilities">
+          <span>
+            {snapshot.capabilities.platform.family} · {snapshot.capabilities.platform.formFactor} ·{' '}
+            {snapshot.capabilities.platform.logicalProcessorCount} logical CPUs ·{' '}
+            {bytes(snapshot.capabilities.platform.systemMemoryBytes)} RAM
+          </span>
+          <span>
+            Input {snapshot.capabilities.input.connectedDevices} devices
+            {snapshot.capabilities.input.pointer ? ' · pointer' : ''}
+            {snapshot.capabilities.input.touch ? ' · touch' : ''}
+            {snapshot.capabilities.input.haptics ? ' · haptics' : ''}
+          </span>
+          <span>
+            {snapshot.capabilities.render.available
+              ? `${snapshot.capabilities.render.adapterName} · API ${snapshot.capabilities.render.apiMajor}.${snapshot.capabilities.render.apiMinor}`
+              : 'Render adapter unavailable'}
+          </span>
+          {snapshot.capabilities.render.available && (
+            <span>
+              {bytes(snapshot.capabilities.render.memoryBudgetBytes)} GPU budget · subgroup{' '}
+              {snapshot.capabilities.render.subgroupMinimumSize}–{snapshot.capabilities.render.subgroupMaximumSize}
+            </span>
+          )}
+          <span>
+            VG indexed {snapshot.capabilities.render.indexedVirtualGeometryRaster ? 'supported' : 'unavailable'} · mesh{' '}
+            {snapshot.capabilities.render.meshVirtualGeometryRaster ? 'supported' : 'unavailable'} · active{' '}
+            {snapshot.capabilities.render.enabledVirtualGeometryRasterPath}
+          </span>
+        </div>
+      )}
       {!!snapshot?.graph.submissions?.length && (
         <div className="tool-summary-strip" aria-label="Render graph queue submissions">
           {snapshot.graph.submissions.map((submission, index) => (

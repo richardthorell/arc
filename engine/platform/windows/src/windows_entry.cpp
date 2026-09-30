@@ -203,6 +203,25 @@ DWORD window_style(const arc::framework::application_config& config)
     return WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
 }
 
+arc::framework::platform_capabilities query_platform_capabilities() noexcept
+{
+    SYSTEM_INFO system{};
+    GetNativeSystemInfo(&system);
+    MEMORYSTATUSEX memory{};
+    memory.dwLength = sizeof(memory);
+    const bool memory_available = GlobalMemoryStatusEx(&memory) == TRUE;
+    return {.family = arc::framework::platform_family::windows,
+            .form_factor = arc::framework::device_form_factor::desktop,
+            .logical_processor_count = system.dwNumberOfProcessors,
+            .system_memory_bytes = memory_available ? memory.ullTotalPhys : 0u,
+            .window_system = true,
+            .high_dpi = true,
+            .multiple_windows = true,
+            .dynamic_libraries = true,
+            .persistent_local_storage = true,
+            .native_package_assets = false};
+}
+
 } // namespace
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
@@ -213,6 +232,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
     if (!app) return -1;
 
     arc::framework::runtime runtime(*app);
+    runtime.set_platform_capabilities(query_platform_capabilities());
     arc::platform::windows::windows_input_backend input_backend(runtime.input());
     arc::platform::windows::windows_controller_manager controller_manager(runtime.input());
     window_state state{.runtime = &runtime, .input = &input_backend, .controllers = &controller_manager};

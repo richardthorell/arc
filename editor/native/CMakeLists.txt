@@ -71,8 +71,23 @@ endif()
 
 set(ARC_HOST_PROCESS_SOURCES
     src/arc_host_process_main.cpp
+    src/native_system_capabilities.h
     src/native_viewport_controller.h
 )
+if(WIN32)
+    list(APPEND ARC_HOST_PROCESS_SOURCES
+        src/windows/native_system_capabilities.cpp
+    )
+elseif(UNIX AND NOT APPLE AND NOT ANDROID)
+    list(APPEND ARC_HOST_PROCESS_SOURCES
+        src/linux/native_system_capabilities.cpp
+    )
+else()
+    list(APPEND ARC_HOST_PROCESS_SOURCES
+        src/native_system_capabilities_stub.cpp
+    )
+endif()
+
 if(WIN32 AND ARC_BUILD_RENDER_VULKAN AND TARGET arc-render-vulkan)
     list(APPEND ARC_HOST_PROCESS_SOURCES
         src/windows/native_viewport_controller.cpp

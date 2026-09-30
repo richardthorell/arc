@@ -15,6 +15,11 @@ namespace arc::render
 class renderer;
 }
 
+namespace arc::framework
+{
+struct platform_capabilities;
+}
+
 namespace arc::editor
 {
 
@@ -54,6 +59,8 @@ public:
     std::vector<host_event> poll_events();
 
     host_viewport_frame request_viewport(const host_viewport_request& request);
+
+    void set_platform_capabilities(framework::platform_capabilities capabilities) noexcept;
 
     // Transitional escape hatches for panels that have not moved to protocol snapshots yet.
     render::renderer& renderer_service() noexcept;
