@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { ExplorerPanel } from '../app/Workbench';
 import { panelRegistry } from '../app/panelRegistry';
 import type { WorkbenchPanelId } from '../app/workbenchTypes';
-import { AiGatewayPanel } from '../ai/AiGatewayPanel';
+import { AiChatPanel } from '../ai/AiGatewayPanel';
 import { BuildOutputPanel } from '../buildOutput/BuildOutputPanel';
 import { ConsolePanel } from '../console/ConsolePanel';
 import { ContentBrowserPanel } from '../content/ContentBrowserPanel';
@@ -20,7 +20,6 @@ import { ViewportPanel } from '../viewport/ViewportPanel';
 import {
   panelBuildFixture,
   panelDiagnosticsFixture,
-  panelGatewayFixture,
   panelInspectorFixture,
   panelProfilerFixtures,
   panelProjectFixture,
@@ -70,7 +69,7 @@ const productionComponentNames: Partial<Record<WorkbenchPanelId, string>> = {
   console: 'ConsolePanel',
   buildOutput: 'BuildOutputPanel',
   versionControl: 'VersionControlPanel',
-  aiAssistant: 'AiGatewayPanel',
+  aiAssistant: 'AiChatPanel',
   profiler: 'ProfilerPanel',
 };
 
@@ -242,16 +241,7 @@ export function UiLabPanels() {
       case 'versionControl':
         return <VersionControlPanel />;
       case 'aiAssistant':
-        return (
-          <AiGatewayPanel
-            onApprove={() => undefined}
-            onCancelEdit={() => undefined}
-            onDeny={() => undefined}
-            onRevoke={() => undefined}
-            onUndoLastEdit={() => undefined}
-            status={panelGatewayFixture}
-          />
-        );
+        return <AiChatPanel />;
       case 'profiler':
         return <ProfilerPanel samples={panelProfilerFixtures} />;
       default:
