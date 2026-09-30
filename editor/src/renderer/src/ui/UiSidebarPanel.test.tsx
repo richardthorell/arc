@@ -140,13 +140,23 @@ describe('UiSidebarPanel', () => {
     expect(onExpandedChange).not.toHaveBeenCalled();
   });
 
-  it('opens settings when another editor surface requests a routed page', () => {
+  it('opens routed settings without collapsing an already-open utility drawer', () => {
     const onSettings = vi.fn();
-    render(<UiSidebarPanel activeActivity="scene" onSelectActivity={vi.fn()} onSettings={onSettings} />);
+    const onExpandedChange = vi.fn();
+    render(
+      <UiSidebarPanel
+        activeActivity="aiAssistant"
+        expanded
+        onExpandedChange={onExpandedChange}
+        onSelectActivity={vi.fn()}
+        onSettings={onSettings}
+      />,
+    );
 
     requestSettingsDialogOpen('editorPreferences', 'ai.providers');
 
     expect(onSettings).toHaveBeenCalledTimes(1);
+    expect(onExpandedChange).toHaveBeenCalledWith(true);
     expect(requestedSettingsDialogKind()).toBe('editorPreferences');
     expect(requestedSettingsDialogPageId()).toBe('ai.providers');
   });
