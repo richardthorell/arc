@@ -10,6 +10,8 @@ export type AssetSearchFacet = {
   tags?: readonly string[];
 };
 
+export type AssetFacetCount<T extends string = string> = { value: T; count: number };
+
 const normalize = (value: string) => value.trim().toLocaleLowerCase();
 
 const normalizedTags = (asset: AssetSearchMetadata) =>
@@ -51,4 +53,23 @@ export const collectAssetFacets = (assets: readonly AssetSearchMetadata[]) => {
     kinds: [...kinds].sort((a, b) => a.localeCompare(b)),
     tags: [...tags].sort((a, b) => a.localeCompare(b)),
   };
+};
+
+/** Builds stable facet counts from the current result population without coupling them to grid/list layout. */
+export const collectAssetFacetCounts = (assets: readonly AssetSearchMetadata[]) => {
+  const kindCounts = new Map<ReturnType<typeof assetPresentationKind>, number>();
+  const tagCounts = new Map<string, number>();
+
+  for (const asset of assets) {
+    const kind = assetPresentationKind(asset);
+    kindCounts.set(kind, (kindCounts.get(kind) ?? 0) + 1);
+    for (const tag of normalizedTags(asset)) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+  }
+
+  const sortedCounts = <T extends string>(counts: Map<T, number>): AssetFacetCount<T>[] =>
+    [...counts.entries()]
+      .map(([value, count]) => ({ value, count }))
+      .sort((left, right) => left.value.localeCompare(right.value));
+
+  return { kinds: sortedCounts(kindCounts), tags: sortedCounts(tagCounts) };
 };
