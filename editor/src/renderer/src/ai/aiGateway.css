@@ -55,6 +55,42 @@
   background-size: 16px 16px;
 }
 
+.ai-chat-message-list {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-height: 100%;
+  padding: 14px;
+}
+
+.ai-chat-message-list > .ui-agent-card {
+  width: min(100%, 680px);
+  justify-self: start;
+}
+
+.ai-chat-user-message {
+  width: fit-content;
+  max-width: min(82%, 560px);
+  justify-self: end;
+  padding: 8px 10px;
+  border: 1px solid var(--arc-color-border-subtle);
+  border-radius: var(--arc-radius-2);
+  background: var(--arc-color-bg-field);
+  color: var(--arc-color-text);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.ai-chat-system-message {
+  max-width: 560px;
+  justify-self: center;
+  color: var(--arc-color-text-dim);
+  font-size: var(--arc-text-xxs);
+  line-height: 1.45;
+  text-align: center;
+}
+
 .ai-chat-connect-empty {
   position: absolute;
   inset: 0;
