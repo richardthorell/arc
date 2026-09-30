@@ -48,7 +48,7 @@ struct input_rebind_capture_filter
     float actuation_threshold{0.5f};
 };
 
-struct input_rebind_capture_result
+struct [[nodiscard]] input_rebind_capture_result
 {
     input::input_device_id device{};
     input::input_binding binding;
