@@ -35,11 +35,7 @@ describe('texture preview geometry', () => {
   });
 
   it('clamps anchored zoom to the shared limits', () => {
-    expect(zoomTexturePreviewAroundPoint(1, 0, { x: 0, y: 0 }, { x: 0, y: 0 }).zoom).toBe(
-      TEXTURE_PREVIEW_MIN_ZOOM,
-    );
-    expect(zoomTexturePreviewAroundPoint(1, 100, { x: 0, y: 0 }, { x: 0, y: 0 }).zoom).toBe(
-      TEXTURE_PREVIEW_MAX_ZOOM,
-    );
+    expect(zoomTexturePreviewAroundPoint(1, 0, { x: 0, y: 0 }, { x: 0, y: 0 }).zoom).toBe(TEXTURE_PREVIEW_MIN_ZOOM);
+    expect(zoomTexturePreviewAroundPoint(1, 100, { x: 0, y: 0 }, { x: 0, y: 0 }).zoom).toBe(TEXTURE_PREVIEW_MAX_ZOOM);
   });
 });
