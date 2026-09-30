@@ -50,7 +50,8 @@ export type InspectorSkeleton = {
 };
 
 export type InspectorFlow = {
-  graphPath: string;
+  graphGuid: string;
+  graphPathHint: string;
   enabled: boolean;
 };
 
@@ -117,7 +118,8 @@ function parseFlow(value: unknown): InspectorFlow | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as Record<string, unknown>;
   return {
-    graphPath: typeof raw.graphPath === 'string' ? raw.graphPath : '',
+    graphGuid: typeof raw.graphGuid === 'string' ? raw.graphGuid : '',
+    graphPathHint: typeof raw.graphPathHint === 'string' ? raw.graphPathHint : '',
     enabled: raw.enabled !== false,
   };
 }

@@ -8,7 +8,13 @@ import { resetEditorDocuments } from '../editors/editorDocuments';
 import type { ProjectSnapshot } from '../services/editorHostTypes';
 import { ContentBrowserPanel } from './ContentBrowserPanel';
 
-const writeText = vi.fn().mockResolvedValue(undefined);
+const createAsset = vi.fn().mockImplementation(async ({ path, kind }: { path: string; kind: string }) => ({
+  guid: 'flow-guid',
+  path: path.replace(/^Content\//, ''),
+  sourcePath: path,
+  kind,
+  state: 'ready',
+}));
 
 const project: ProjectSnapshot = {
   name: 'Flow Test',
@@ -30,12 +36,12 @@ const project: ProjectSnapshot = {
 };
 
 beforeEach(() => {
-  writeText.mockClear();
+  createAsset.mockClear();
   Object.defineProperty(window, 'arc', {
     configurable: true,
     value: {
       assetSources: { list: vi.fn().mockResolvedValue([]) },
-      projects: { writeText },
+      projects: { createAsset },
     },
   });
 });
@@ -69,8 +75,8 @@ describe('Content Browser Flow creation', () => {
     fireEvent.change(view.getByLabelText('Asset name'), { target: { value: 'Player Controller' } });
     fireEvent.click(view.getByRole('button', { name: 'Create Flow Graph' }));
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    const [path, text] = writeText.mock.calls[0] as [string, string];
+    await waitFor(() => expect(createAsset).toHaveBeenCalledTimes(1));
+    const [{ path, text }] = createAsset.mock.calls[0] as [{ path: string; text: string }];
     expect(path).toBe('Content/Player Controller.arcflow');
     const asset = JSON.parse(text);
     expect(asset).toMatchObject({ version: 1, assetType: 'flow', name: 'Player Controller' });

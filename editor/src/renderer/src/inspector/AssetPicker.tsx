@@ -13,6 +13,7 @@ export type AssetPickerItem = {
   typeId?: string;
   name: string;
   path: string;
+  sourcePath?: string;
   kind: string;
   status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'stale' | 'importing' | 'failed' | 'missing';
   scope?: 'builtin' | 'project' | 'user' | 'organization' | 'procedural';
@@ -100,9 +101,25 @@ const createProjectAsset = async (
   if (assets.some((asset) => normalizedPath(asset.path) === normalizedPath(definition.asset.path))) {
     throw new Error(`A ${assetTypeLabel.toLocaleLowerCase()} already exists at ${definition.asset.path}`);
   }
-  await window.arc.projects.writeText(definition.asset.path, definition.contents);
-  openAssetEditorDocument(definition.asset);
-  return definition.asset.path;
+  const created = await window.arc.projects.createAsset({
+    path: definition.asset.path,
+    text: definition.contents,
+    kind,
+  });
+  const registered = {
+    ...definition.asset,
+    id: created.guid,
+    guid: created.guid,
+    path: created.path || definition.asset.path,
+    sourcePath: created.sourcePath || definition.asset.path,
+    typeId: created.typeId,
+    importerId: created.importerId,
+    scope: 'project' as const,
+    readOnly: false,
+    status: created.state === 'failed' ? ('failed' as const) : ('ready' as const),
+  };
+  openAssetEditorDocument(registered);
+  return kind === 'flow' ? registered.guid : registered.path;
 };
 
 type PrimitiveMeshKind = 'plane' | 'cube' | 'sphere' | 'cylinder' | 'cone' | 'capsule';
@@ -407,22 +424,7 @@ export function MaterialPicker({
     });
   };
 
-  const createMaterial = async (name: string) => {
-    const projectSnapshot = await window.arc.projects.snapshot();
-    const activeProject = projectSnapshot?.activeProject;
-    if (activeProject && !activeProject.writable) throw new Error('The active project is read-only');
-    const contentRoot = activeProject?.descriptor.paths.content || projectContentRootFromAssets(props.assets);
-    const definition = buildAssetCreation(
-      { root: activeProject?.projectRoot ?? '', assetRoot: contentRoot },
-      { kind: 'material', name, folder: contentRoot },
-    );
-    if (props.assets.some((asset) => normalizedPath(asset.path) === normalizedPath(definition.asset.path))) {
-      throw new Error(`A material already exists at ${definition.asset.path}`);
-    }
-    await window.arc.projects.writeText(definition.asset.path, definition.contents);
-    openAssetEditorDocument(definition.asset);
-    return definition.asset.path;
-  };
+  const createMaterial = (name: string) => createProjectAsset('material', name, props.assets, 'Material');
 
   return (
     <>

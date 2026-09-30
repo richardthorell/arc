@@ -8,7 +8,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { arcAssetDragMime } from '../services/assetDragPayload';
 import { AssetPicker, FlowPicker, MaterialPicker, TexturePicker } from './AssetPicker';
 
-const writeText = vi.fn().mockResolvedValue({ succeeded: true });
+const createAsset = vi
+  .fn()
+  .mockImplementation(
+    async ({ path, text: _text, kind }: { path: string; text: string; kind: 'material' | 'flow' | 'shader' }) => ({
+      guid: `${kind}-asset-guid`,
+      path,
+      sourcePath: path,
+      kind,
+      state: 'ready',
+    }),
+  );
 const snapshot = vi.fn().mockResolvedValue({
   activeProject: {
     writable: true,
@@ -19,12 +29,12 @@ const snapshot = vi.fn().mockResolvedValue({
 
 afterEach(cleanup);
 beforeEach(() => {
-  writeText.mockClear();
+  createAsset.mockClear();
   snapshot.mockClear();
   Object.defineProperty(window, 'arc', {
     configurable: true,
     value: {
-      projects: { snapshot, writeText },
+      projects: { snapshot, createAsset },
     },
   });
 });
@@ -213,9 +223,9 @@ describe('AssetPicker', () => {
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     await waitFor(() => expect(snapshot).toHaveBeenCalled());
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    expect(writeText.mock.calls[0][0]).toBe('GameContent/Hero Surface.arcmat');
-    const asset = JSON.parse(writeText.mock.calls[0][1]);
+    await waitFor(() => expect(createAsset).toHaveBeenCalledTimes(1));
+    expect(createAsset.mock.calls[0][0].path).toBe('GameContent/Hero Surface.arcmat');
+    const asset = JSON.parse(createAsset.mock.calls[0][0].text);
     expect(asset.version).toBe(4);
     expect(asset).not.toHaveProperty('shader');
     expect(asset).not.toHaveProperty('surface');
@@ -240,13 +250,13 @@ describe('AssetPicker', () => {
     await user.type(screen.getByLabelText('New flow graph name'), 'Game Startup');
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    expect(writeText.mock.calls[0][0]).toBe('GameContent/Game Startup.arcflow');
-    const asset = JSON.parse(writeText.mock.calls[0][1]);
+    await waitFor(() => expect(createAsset).toHaveBeenCalledTimes(1));
+    expect(createAsset.mock.calls[0][0].path).toBe('GameContent/Game Startup.arcflow');
+    const asset = JSON.parse(createAsset.mock.calls[0][0].text);
     expect(asset.assetType).toBe('flow');
     expect(asset.name).toBe('Game Startup');
     expect(asset.graph.version).toBe(1);
-    await waitFor(() => expect(onChange).toHaveBeenCalledWith('GameContent/Game Startup.arcflow'));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('flow-asset-guid'));
   });
 
   it('shows an open-in-editor action for an assigned Flow Graph', () => {

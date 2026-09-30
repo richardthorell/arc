@@ -358,6 +358,21 @@ const arcApi = {
         : ipcRenderer.invoke('project:readText', path),
     writeText: (path: string, text: string): Promise<{ succeeded: boolean }> =>
       ipcRenderer.invoke('project:writeText', path, text),
+    createAsset: (request: {
+      path: string;
+      text: string;
+      kind: 'material' | 'flow' | 'shader';
+    }): Promise<{
+      guid: string;
+      path: string;
+      sourcePath: string;
+      kind: 'material' | 'flow' | 'shader';
+      typeId?: string;
+      importerId?: string;
+      scope?: 'project';
+      readOnly?: boolean;
+      state?: string;
+    }> => ipcRenderer.invoke('project:createAsset', request),
     importTexture: (file: File): Promise<ExternalTextureImportResult> => importDroppedTexture(file),
     importModel: (file: File, destinationFolder?: string): Promise<ExternalModelImportResult> =>
       importDroppedModel(file, destinationFolder),

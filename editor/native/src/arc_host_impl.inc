@@ -21,6 +21,7 @@
 #include <arc/assets/cook.h>
 #include <arc/geometric/box.h>
 #include <arc/framework/framework.h>
+#include <arc/io/virtual_file_system.h>
 #include <arc/project/project.h>
 #include <arc/render/render.h>
 #include <arc/render/primitives.h>

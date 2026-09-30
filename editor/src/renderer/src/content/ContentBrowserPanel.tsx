@@ -424,10 +424,26 @@ export function ContentBrowserPanel({
       if (project.assets.some((asset) => normalizedPath(asset.path) === normalizedPath(definition.asset.path))) {
         throw new Error(`An asset already exists at ${definition.asset.path}`);
       }
-      await window.arc.projects.writeText(definition.asset.path, definition.contents);
-      setSelection(new Set([definition.asset.id]));
-      onSelectAsset(definition.asset.id);
-      openAssetEditorDocument(definition.asset);
+      const created = await window.arc.projects.createAsset({
+        path: definition.asset.path,
+        text: definition.contents,
+        kind: definition.asset.kind as 'material' | 'flow' | 'shader',
+      });
+      const registered = {
+        ...definition.asset,
+        id: created.guid,
+        guid: created.guid,
+        path: created.path || definition.asset.path,
+        sourcePath: created.sourcePath || definition.asset.path,
+        typeId: created.typeId,
+        importerId: created.importerId,
+        scope: 'project' as const,
+        readOnly: false,
+        status: created.state === 'failed' ? ('failed' as const) : ('ready' as const),
+      };
+      setSelection(new Set([registered.id]));
+      onSelectAsset(registered.id);
+      openAssetEditorDocument(registered);
       setCreateKind(null);
       setCreateName('');
     } catch (error) {

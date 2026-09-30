@@ -1099,6 +1099,60 @@ void app.whenReady().then(async () => {
     fs.renameSync(temporary, target);
     return { succeeded: true };
   });
+  ipcMain.handle('project:createAsset', async (_event, request: { path?: unknown; text?: unknown; kind?: unknown }) => {
+    if (!projectService?.active()?.writable) throw new Error('The active project is read-only');
+    if (typeof request?.path !== 'string' || typeof request?.text !== 'string')
+      throw new Error('Asset creation request is invalid');
+    if (!['material', 'flow', 'shader'].includes(String(request.kind)))
+      throw new Error('Asset creation kind is unsupported');
+    if (Buffer.byteLength(request.text, 'utf8') > 8 * 1024 * 1024) throw new Error('Authored asset is too large');
+
+    const target = resolveProjectFile(request.path);
+    if (fs.existsSync(target)) throw new Error(`An asset already exists at ${request.path}`);
+    const temporary = `${target}.tmp-${process.pid}-${Date.now()}`;
+    let created = false;
+    try {
+      fs.writeFileSync(temporary, request.text, { encoding: 'utf8', flag: 'wx' });
+      fs.renameSync(temporary, target);
+      created = true;
+
+      const scan = await hostClient?.command('asset.scan');
+      if (!scan?.succeeded) throw new Error(scan?.error || 'The native asset scan failed');
+      const response = await hostClient?.query('project.assets');
+      if (!response?.succeeded) throw new Error(response?.error || 'The asset registry is unavailable');
+      const payload = response.payload as {
+        assets?: Array<{
+          guid?: string;
+          path?: string;
+          sourcePath?: string;
+          kind?: string;
+          typeId?: string;
+          importerId?: string;
+          scope?: string;
+          readOnly?: boolean;
+          state?: string;
+        }>;
+      };
+      const normalized = request.path.replaceAll('\\', '/').replace(/^\.\//, '').toLocaleLowerCase();
+      const registered = payload.assets?.find(
+        (asset) =>
+          asset.guid &&
+          asset.kind === request.kind &&
+          (asset.sourcePath ?? asset.path ?? '').replaceAll('\\', '/').replace(/^\.\//, '').toLocaleLowerCase() ===
+            normalized,
+      );
+      if (!registered?.guid) throw new Error('The created asset could not be registered');
+      return registered;
+    } catch (error) {
+      if (fs.existsSync(temporary)) fs.rmSync(temporary, { force: true });
+      if (created) {
+        fs.rmSync(target, { force: true });
+        fs.rmSync(`${target}.arcmeta`, { force: true });
+        await hostClient?.command('asset.scan').catch(() => undefined);
+      }
+      throw error;
+    }
+  });
   ipcMain.handle('build:snapshot', () => buildService?.snapshot() ?? null);
   ipcMain.handle('build:execute', (_event, request: ArcBuildRequest) => buildService?.execute(request));
   ipcMain.handle('build:openDiagnostic', async (_event, file: string) => {

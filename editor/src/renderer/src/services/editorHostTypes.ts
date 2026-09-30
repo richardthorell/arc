@@ -36,7 +36,10 @@ export type AssetItem = {
   title?: string;
   description?: string;
   tags?: string[];
+  /** Asset-root-relative logical/display path. */
   path: string;
+  /** Scope-root-relative path used by the authoring file bridge. */
+  sourcePath?: string;
   scope?: 'builtin' | 'project' | 'user' | 'organization';
   readOnly?: boolean;
   kind:

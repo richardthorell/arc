@@ -5,17 +5,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ContentBrowserPanel } from './ContentBrowserPanel';
 
-const writeText = vi.fn().mockResolvedValue(undefined);
+const createAsset = vi.fn().mockImplementation(async ({ path, kind }: { path: string; kind: string }) => ({
+  guid: `${kind}-guid`,
+  path: path.replace(/^Content\//, ''),
+  sourcePath: path,
+  kind,
+  state: 'ready',
+}));
 
 afterEach(cleanup);
 beforeEach(() => {
-  writeText.mockClear();
+  createAsset.mockClear();
   localStorage.clear();
   Object.defineProperty(window, 'arc', {
     configurable: true,
     value: {
       assetSources: { list: vi.fn().mockResolvedValue([]) },
-      projects: { writeText },
+      projects: { createAsset },
     },
   });
 });
@@ -206,8 +212,8 @@ describe('ContentBrowserPanel', () => {
     fireEvent.change(view.getByLabelText('Asset name'), { target: { value: 'Rock Material' } });
     fireEvent.click(view.getByRole('button', { name: 'Create Material' }));
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    const [path, text] = writeText.mock.calls[0] as [string, string];
+    await waitFor(() => expect(createAsset).toHaveBeenCalledTimes(1));
+    const [{ path, text }] = createAsset.mock.calls[0] as [{ path: string; text: string }];
     expect(path).toBe('Content/Props/Rock Material.arcmat');
     const asset = JSON.parse(text);
     expect(asset.version).toBe(4);
@@ -229,9 +235,9 @@ describe('ContentBrowserPanel', () => {
     fireEvent.change(view.getByLabelText('Shader template'), { target: { value: 'compute' } });
     fireEvent.click(view.getByRole('button', { name: 'Create Shader' }));
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    expect(writeText.mock.calls[0][0]).toBe('Content/Cull Tiles.slang');
-    expect(writeText.mock.calls[0][1]).toContain('[numthreads(8, 8, 1)]');
+    await waitFor(() => expect(createAsset).toHaveBeenCalledTimes(1));
+    expect(createAsset.mock.calls[0][0].path).toBe('Content/Cull Tiles.slang');
+    expect(createAsset.mock.calls[0][0].text).toContain('[numthreads(8, 8, 1)]');
   });
 
   it('offers creation from the empty-space context menu', () => {
@@ -260,7 +266,7 @@ describe('ContentBrowserPanel', () => {
     fireEvent.change(view.getByLabelText('Asset name'), { target: { value: 'Engine View Material' } });
     fireEvent.click(view.getByRole('button', { name: 'Create Material' }));
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    expect(writeText.mock.calls[0][0]).toBe('Content/Engine View Material.arcmat');
+    await waitFor(() => expect(createAsset).toHaveBeenCalledTimes(1));
+    expect(createAsset.mock.calls[0][0].path).toBe('Content/Engine View Material.arcmat');
   });
 });

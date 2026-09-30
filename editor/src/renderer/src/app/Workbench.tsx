@@ -87,6 +87,7 @@ import { SearchPanel } from '../search/SearchPanel';
 import { SettingsDialog } from '../settings/SettingsDialog';
 import { VersionControlPanel } from '../versionControl/VersionControlPanel';
 import { ContentBrowserPanel as ContentBrowserV2 } from '../content/ContentBrowserPanel';
+import { flowDocumentPlaySource, loadFlowDocument } from '../flow/flowDocumentState';
 
 import './workbench.css';
 import '../editors/editorShell.css';
@@ -163,6 +164,7 @@ type HostRuntimeSnapshot = {
 type HostAssetSnapshot = {
   guid: string;
   path: string;
+  sourcePath: string;
   title: string;
   description: string;
   scope: 'builtin' | 'project' | 'user' | 'organization';
@@ -874,6 +876,28 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
             entity: selectedSnapshot.entity,
           })) as HostResponse;
         } else if (command === 'scene.play') {
+          if (runtimeState.state === 'stopped') {
+            const prepared = (await window.arc.host.command('runtime.prepareFlowSources')) as HostResponse;
+            if (!prepared.succeeded) {
+              setLastCommand(prepared.error || 'Could not prepare Flow sources for Play');
+              return;
+            }
+            for (const document of editorDocuments) {
+              if (document.kind !== 'flow') continue;
+              if (!(await loadFlowDocument(document))) {
+                setLastCommand(`Could not load ${document.title} for Play`);
+                return;
+              }
+              const source = flowDocumentPlaySource(document);
+              if (!source) continue;
+              const staged = (await window.arc.host.command('runtime.stageFlowSource', source)) as HostResponse;
+              if (!staged.succeeded) {
+                await window.arc.host.command('runtime.prepareFlowSources');
+                setLastCommand(staged.error || `Could not stage ${document.title} for Play`);
+                return;
+              }
+            }
+          }
           response = (await window.arc.host.command('runtime.resume')) as HostResponse<HostRuntimeSnapshot>;
         } else if (command === 'scene.pause') {
           response = (await window.arc.host.command('runtime.pause')) as HostResponse<HostRuntimeSnapshot>;
@@ -983,6 +1007,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         title: asset.title || undefined,
         description: asset.description || undefined,
         path: asset.path,
+        sourcePath: asset.sourcePath || asset.path,
         scope: asset.scope,
         readOnly: asset.readOnly,
         kind: assetKindFromHost(asset.kind),

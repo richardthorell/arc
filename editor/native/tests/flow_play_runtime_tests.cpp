@@ -6,11 +6,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <chrono>
-#include <filesystem>
-#include <fstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 
 namespace
@@ -23,40 +21,62 @@ class flow_test_application final : public arc::framework::application
 class temporary_flow_content
 {
 public:
-    temporary_flow_content() : root_(make_root())
+    void write(std::string_view name, std::string_view source)
     {
-        std::filesystem::create_directories(root_);
+        auto& entry = entries_[std::string{name}];
+        if (!entry.reference.guid.valid())
+        {
+            entry.reference.guid = {.high = 0x464c4f5754455354ull, .low = next_guid_++};
+            entry.reference.expected_type = arc::assets::asset_types::flow_graph;
+            entry.reference.path_hint = std::string{name};
+        }
+        entry.source = source;
+        ++entry.generation;
     }
 
-    ~temporary_flow_content()
+    [[nodiscard]] arc::assets::asset_reference reference(std::string_view name) const
     {
-        std::error_code error;
-        std::filesystem::remove_all(root_, error);
+        return entries_.at(std::string{name}).reference;
     }
 
-    [[nodiscard]] const std::filesystem::path& root() const noexcept
+    [[nodiscard]] arc::editor::flow_play_source_resolver resolver()
     {
-        return root_;
-    }
-
-    void write(std::string_view name, std::string_view source) const
-    {
-        std::ofstream output(root_ / std::filesystem::path{name}, std::ios::binary);
-        REQUIRE(output.good());
-        output.write(source.data(), static_cast<std::streamsize>(source.size()));
-        REQUIRE(output.good());
+        return [this](const arc::assets::asset_reference& reference,
+                      std::string& error) -> std::optional<arc::editor::flow_play_source>
+        {
+            for (const auto& [name, entry] : entries_)
+            {
+                if (reference.guid.valid() ? reference.guid != entry.reference.guid : reference.path_hint != name)
+                    continue;
+                return arc::editor::flow_play_source{.reference = entry.reference,
+                                                     .generation = entry.generation,
+                                                     .display_name = name,
+                                                     .source = entry.source};
+            }
+            error = "Flow test source was not found";
+            return std::nullopt;
+        };
     }
 
 private:
-    [[nodiscard]] static std::filesystem::path make_root()
+    struct source_entry
     {
-        return std::filesystem::temp_directory_path() /
-               ("arc-flow-hot-lifecycle-" +
-                std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-    }
-
-    std::filesystem::path root_;
+        arc::assets::asset_reference reference;
+        std::uint64_t generation{};
+        std::string source;
+    };
+    std::unordered_map<std::string, source_entry> entries_;
+    std::uint64_t next_guid_{1};
 };
+
+arc::editor::flow_play_source_resolver empty_resolver()
+{
+    return [](const arc::assets::asset_reference&, std::string& error)
+    {
+        error = "No Flow sources are registered";
+        return std::optional<arc::editor::flow_play_source>{};
+    };
+}
 
 constexpr std::string_view lifecycle_graph = R"json({
     "version": 1,
@@ -116,26 +136,12 @@ constexpr std::string_view alternate_graph = R"json({
 
 } // namespace
 
-TEST_CASE("Flow graph paths stay inside Content")
-{
-    using arc::editor::valid_flow_graph_path;
-    CHECK(valid_flow_graph_path("Gameplay/Player.arcflow"));
-    CHECK(valid_flow_graph_path("Player.arcflow"));
-    CHECK_FALSE(valid_flow_graph_path(""));
-    CHECK_FALSE(valid_flow_graph_path("../Player.arcflow"));
-    CHECK_FALSE(valid_flow_graph_path("Gameplay/../Player.arcflow"));
-    CHECK_FALSE(valid_flow_graph_path("/tmp/Player.arcflow"));
-    CHECK_FALSE(valid_flow_graph_path("Gameplay\\Player.arcflow"));
-    CHECK_FALSE(valid_flow_graph_path("Gameplay/Player.txt"));
-}
-
 TEST_CASE("Play world without Flow bindings installs cleanly")
 {
     arc::memory::memory_system memory;
     arc::framework::runtime_world world(memory, arc::framework::runtime_world_id{1},
                                         {.name = "flow-test", .install_placeholder_systems = false});
-    const auto root = std::filesystem::temp_directory_path() / "arc-flow-empty-content";
-    const auto result = arc::editor::install_flow_play_runtime(world, root);
+    const auto result = arc::editor::install_flow_play_runtime(world, empty_resolver());
     CHECK(result.succeeded);
     CHECK(result.instances == 0);
     CHECK(result.unique_programs == 0);
@@ -149,8 +155,7 @@ TEST_CASE("Unassigned Flow binding is inert during Play install")
     const auto entity = world.entities().create();
     world.entities().emplace<arc::scene::flow_component>(entity);
 
-    const auto root = std::filesystem::temp_directory_path() / "arc-flow-unassigned-content";
-    const auto result = arc::editor::install_flow_play_runtime(world, root);
+    const auto result = arc::editor::install_flow_play_runtime(world, empty_resolver());
     CHECK(result.succeeded);
     CHECK(result.instances == 0);
     CHECK(result.unique_programs == 0);
@@ -165,7 +170,7 @@ TEST_CASE("Flow bindings reconcile while Play is running")
     flow_test_application app;
     arc::framework::runtime host(app);
     auto& world = host.worlds().create({.name = "flow-hot-lifecycle", .install_placeholder_systems = false});
-    const auto install = arc::editor::install_flow_play_runtime(world, content.root());
+    const auto install = arc::editor::install_flow_play_runtime(world, content.resolver());
     REQUIRE(install.succeeded);
     CHECK(install.instances == 0);
     CHECK(install.unique_programs == 0);
@@ -174,7 +179,7 @@ TEST_CASE("Flow bindings reconcile while Play is running")
 
     const auto entity = world.entities().create();
     world.entities().emplace<arc::scene::name_component>(entity, arc::scene::name_component{"idle"});
-    arc::scene::flow_component binding{"Lifecycle.arcflow", true};
+    arc::scene::flow_component binding{content.reference("Lifecycle.arcflow"), true};
     world.entities().emplace<arc::scene::flow_component>(entity, std::move(binding));
     REQUIRE(host.advance(1.0 / 60.0).completed_ticks == 1);
     CHECK(std::as_const(world.entities()).get<arc::scene::name_component>(entity).value == "running");
@@ -187,7 +192,7 @@ TEST_CASE("Flow bindings reconcile while Play is running")
     REQUIRE(host.advance(1.0 / 60.0).completed_ticks == 1);
     CHECK(std::as_const(world.entities()).get<arc::scene::name_component>(entity).value == "running");
 
-    world.entities().get<arc::scene::flow_component>(entity).graph_path = "Alternate.arcflow";
+    world.entities().get<arc::scene::flow_component>(entity).graph = content.reference("Alternate.arcflow");
     REQUIRE(host.advance(1.0 / 60.0).completed_ticks == 1);
     CHECK(std::as_const(world.entities()).get<arc::scene::name_component>(entity).value == "alternate");
 
@@ -195,7 +200,7 @@ TEST_CASE("Flow bindings reconcile while Play is running")
     REQUIRE(host.advance(1.0 / 60.0).completed_ticks == 1);
     CHECK(std::as_const(world.entities()).get<arc::scene::name_component>(entity).value == "alternate-stopped");
 
-    arc::scene::flow_component rebound{"Lifecycle.arcflow", true};
+    arc::scene::flow_component rebound{content.reference("Lifecycle.arcflow"), true};
     world.entities().emplace<arc::scene::flow_component>(entity, std::move(rebound));
     REQUIRE(host.advance(1.0 / 60.0).completed_ticks == 1);
     CHECK(std::as_const(world.entities()).get<arc::scene::name_component>(entity).value == "running");
@@ -223,13 +228,13 @@ TEST_CASE("Flow source changes hot reload bound Play instances")
     flow_test_application app;
     arc::framework::runtime host(app);
     auto& world = host.worlds().create({.name = "flow-source-hot-reload", .install_placeholder_systems = false});
-    const auto install = arc::editor::install_flow_play_runtime(world, content.root());
+    const auto install = arc::editor::install_flow_play_runtime(world, content.resolver());
     REQUIRE(install.succeeded);
     host.start();
 
     const auto entity = world.entities().create();
     world.entities().emplace<arc::scene::name_component>(entity, arc::scene::name_component{"idle"});
-    arc::scene::flow_component binding{"Lifecycle.arcflow", true};
+    arc::scene::flow_component binding{content.reference("Lifecycle.arcflow"), true};
     world.entities().emplace<arc::scene::flow_component>(entity, std::move(binding));
     REQUIRE(host.advance(1.0 / 60.0).completed_ticks == 1);
     CHECK(std::as_const(world.entities()).get<arc::scene::name_component>(entity).value == "running");
@@ -253,13 +258,13 @@ TEST_CASE("Flow hot reload keeps the last good generation and recovers after a c
     flow_test_application app;
     arc::framework::runtime host(app);
     auto& world = host.worlds().create({.name = "flow-hot-reload-recovery", .install_placeholder_systems = false});
-    const auto install = arc::editor::install_flow_play_runtime(world, content.root());
+    const auto install = arc::editor::install_flow_play_runtime(world, content.resolver());
     REQUIRE(install.succeeded);
     host.start();
 
     const auto entity = world.entities().create();
     world.entities().emplace<arc::scene::name_component>(entity, arc::scene::name_component{"idle"});
-    arc::scene::flow_component binding{"Lifecycle.arcflow", true};
+    arc::scene::flow_component binding{content.reference("Lifecycle.arcflow"), true};
     world.entities().emplace<arc::scene::flow_component>(entity, std::move(binding));
     REQUIRE(host.advance(1.0 / 60.0).completed_ticks == 1);
     CHECK(std::as_const(world.entities()).get<arc::scene::name_component>(entity).value == "running");

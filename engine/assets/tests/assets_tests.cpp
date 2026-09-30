@@ -131,6 +131,20 @@ TEST_CASE("Water preset paths classify as versioned Water assets")
     CHECK(classification->second == importer_ids::water_preset);
 }
 
+TEST_CASE("Flow graph paths classify as immutable source assets")
+{
+    using namespace arc::assets;
+    const auto classification = classify_asset_path("GameContent/Logic/Player.arcflow");
+    REQUIRE(classification.has_value());
+    CHECK(classification->first == asset_types::flow_graph);
+    CHECK(classification->second == importer_ids::flow);
+
+    const auto uppercase = classify_asset_path("GameContent/Logic/Player.ARCFLOW");
+    REQUIRE(uppercase.has_value());
+    CHECK(uppercase->first == asset_types::flow_graph);
+    CHECK(uppercase->second == importer_ids::flow);
+}
+
 TEST_CASE("asset metadata round trips stable subasset identities")
 {
     using namespace arc::assets;

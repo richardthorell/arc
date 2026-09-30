@@ -21,6 +21,7 @@ export type FlowDocumentState = {
   confirmedGraph: string;
   history: FlowGraph[];
   historyIndex: number;
+  revision: number;
   loading: boolean;
   saving: boolean;
   loaded: boolean;
@@ -44,6 +45,7 @@ const initialState = (document: EditorDocument): FlowDocumentState => {
     confirmedGraph: '',
     history: [],
     historyIndex: -1,
+    revision: 1,
     loading: false,
     saving: false,
     loaded: false,
@@ -117,6 +119,7 @@ export const loadFlowDocument = async (document: EditorDocument, force = false):
       confirmedGraph,
       history: [cloneFlowGraph(graph)],
       historyIndex: 0,
+      revision: current.revision + 1,
       loading: false,
       loaded: true,
       message: document.readOnly ? 'Flow graph opened read-only' : '',
@@ -154,6 +157,7 @@ export const replaceFlowGraph = (
     graph: nextGraph,
     history,
     historyIndex,
+    revision: current.revision + 1,
     message: options.message ?? '',
   });
   updateDirtyState(document, nextGraph, current.confirmedGraph);
@@ -164,7 +168,7 @@ export const undoFlowGraph = (document: EditorDocument) => {
   if (document.readOnly || current.historyIndex <= 0) return false;
   const historyIndex = current.historyIndex - 1;
   const graph = cloneFlowGraph(current.history[historyIndex]);
-  setState(document.id, { graph, historyIndex, message: 'Undo Flow graph edit' });
+  setState(document.id, { graph, historyIndex, revision: current.revision + 1, message: 'Undo Flow graph edit' });
   updateDirtyState(document, graph, current.confirmedGraph);
   return true;
 };
@@ -174,7 +178,7 @@ export const redoFlowGraph = (document: EditorDocument) => {
   if (document.readOnly || current.historyIndex + 1 >= current.history.length) return false;
   const historyIndex = current.historyIndex + 1;
   const graph = cloneFlowGraph(current.history[historyIndex]);
-  setState(document.id, { graph, historyIndex, message: 'Redo Flow graph edit' });
+  setState(document.id, { graph, historyIndex, revision: current.revision + 1, message: 'Redo Flow graph edit' });
   updateDirtyState(document, graph, current.confirmedGraph);
   return true;
 };
@@ -187,6 +191,22 @@ const serializedFlow = (document: EditorDocument, current: FlowDocumentState) =>
     graph: cloneFlowGraph(current.graph),
   };
   return { asset, text: `${JSON.stringify(asset, null, 2)}\n` };
+};
+
+export type FlowPlaySource = {
+  guid: string;
+  revision: number;
+  source: string;
+};
+
+export const flowDocumentPlaySource = (document: EditorDocument): FlowPlaySource | null => {
+  const current = ensureState(document);
+  if (!document.assetGuid || !current.loaded) return null;
+  return {
+    guid: document.assetGuid,
+    revision: current.revision,
+    source: serializedFlow(document, current).text,
+  };
 };
 
 export const saveFlowDocument = async (document: EditorDocument): Promise<boolean> => {
@@ -205,12 +225,27 @@ export const saveFlowDocument = async (document: EditorDocument): Promise<boolea
     const latest = ensureState(document);
     const serialized = serializedFlow(document, latest);
     await window.arc.projects.writeText(document.path, serialized.text);
+    let hotReloadWarning = '';
+    if (document.assetGuid && window.arc?.host) {
+      const runtime = (await window.arc.host.query('runtime.state')) as {
+        succeeded?: boolean;
+        payload?: { state?: string };
+      };
+      if (runtime.succeeded && runtime.payload?.state && runtime.payload.state !== 'stopped') {
+        const updated = (await window.arc.host.command('runtime.updateFlowSource', {
+          guid: document.assetGuid,
+          revision: latest.revision,
+          source: serialized.text,
+        })) as { succeeded?: boolean; error?: string };
+        if (!updated.succeeded) hotReloadWarning = `; Play reload failed: ${updated.error || 'unknown error'}`;
+      }
+    }
     const confirmedGraph = graphFingerprint(latest.graph);
     setState(document.id, {
       asset: serialized.asset,
       confirmedGraph,
       saving: false,
-      message: 'Flow graph saved',
+      message: `Flow graph saved${hotReloadWarning}`,
     });
     updateEditorDocumentInStore(document.id, { dirty: false });
     return true;

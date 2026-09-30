@@ -263,7 +263,7 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
     const bool supports_v2 = name == "Terrain" || name == "Water" || name == "Camera" || name == "MeshRenderer" ||
                              name == "VirtualMeshRenderer" || name == "Vegetation" || name == "DirectionalLight" ||
                              name == "PointLight" || name == "SpotLight" || name == "AreaLight" ||
-                             name == "PrefabInstance";
+                             name == "PrefabInstance" || name == "Flow";
     const bool supports_v3 = name == "Terrain" || name == "Camera" || name == "MeshRenderer" ||
                              name == "DirectionalLight" || name == "PointLight" || name == "SpotLight" ||
                              name == "AreaLight";
@@ -287,11 +287,13 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
         return value.contains("value") && value["value"].is_boolean() ? true : fail("has an invalid active value");
     if (name == "Flow")
     {
-        if (!value.contains("graph") || !value["graph"].is_string() || !value.contains("enabled") ||
-            !value["enabled"].is_boolean())
+        if (!value.contains("graph") || !value.contains("enabled") || !value["enabled"].is_boolean())
             return fail("has an invalid Flow graph binding");
-        return valid_flow_graph_reference(value["graph"].get<std::string>()) ? true
-                                                                             : fail("has an invalid Flow graph path");
+        if (component_version == 1u)
+            return value["graph"].is_string() && valid_flow_graph_reference(value["graph"].get<std::string>())
+                       ? true
+                       : fail("has an invalid Flow graph path");
+        return validate_asset_reference_json(value["graph"], {}) ? true : fail("has an invalid Flow asset reference");
     }
     if (name == "RenderLayer")
         return value.contains("mask") && value["mask"].is_number_unsigned() ? true : fail("has an invalid layer mask");
@@ -737,6 +739,42 @@ assets::asset_reference read_asset_reference(const json& value, assets::asset_ty
     return result;
 }
 
+assets::asset_reference read_legacy_flow_reference(std::string_view value, const std::filesystem::path& project_root,
+                                                   assets::asset_manager* asset_registry)
+{
+    assets::asset_reference result{.expected_type = assets::asset_types::flow_graph};
+    if (value.empty()) return result;
+
+    std::filesystem::path project_relative{value};
+    std::filesystem::path content_relative{value};
+    if (asset_registry)
+    {
+        const auto content_root = relative_asset_path(asset_registry->config().asset_root, project_root);
+        const auto normalized_content_root = content_root.lexically_normal();
+        const auto normalized_value = project_relative.lexically_normal();
+        auto value_iterator = normalized_value.begin();
+        auto root_iterator = normalized_content_root.begin();
+        bool already_project_relative = !normalized_content_root.empty();
+        for (; root_iterator != normalized_content_root.end(); ++root_iterator, ++value_iterator)
+        {
+            if (value_iterator == normalized_value.end() || *value_iterator != *root_iterator)
+            {
+                already_project_relative = false;
+                break;
+            }
+        }
+        if (!already_project_relative) project_relative = normalized_content_root / normalized_value;
+
+        result = asset_registry->resolve(project_relative.generic_string(), assets::asset_types::flow_graph);
+        if (result.expected_type.valid() == false) result.expected_type = assets::asset_types::flow_graph;
+        if (result.path_hint.empty()) result.path_hint = project_relative.generic_string();
+        return result;
+    }
+
+    result.path_hint = (std::filesystem::path{"Content"} / content_relative).lexically_normal().generic_string();
+    return result;
+}
+
 bool validate_scene_for_save(const editor_scene_state& state, const std::filesystem::path& project_root,
                              std::string& error)
 {
@@ -794,6 +832,12 @@ bool validate_scene_for_save(const editor_scene_state& state, const std::filesys
     }
     for (const auto entity : all_entities)
     {
+        const auto* flow = state.scene.try_get<scene::flow_component>(entity);
+        if (flow && !is_normal_project_relative_path(flow->graph.path_hint, project_root))
+        {
+            error = "Flow asset references must be project-relative";
+            return false;
+        }
         const auto* terrain = state.scene.try_get<scene::terrain_component>(entity);
         if (terrain && !is_normal_project_relative_path(terrain->asset.path_hint, project_root))
         {
@@ -1100,7 +1144,9 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                                  {"revision", component->content_revision}};
     }
     if (const auto* component = state.scene.try_get<scene::flow_component>(value))
-        components["Flow"] = {{"version", 1}, {"graph", component->graph_path}, {"enabled", component->enabled}};
+        components["Flow"] = {{"version", 2},
+                              {"graph", serialize_asset_reference(component->graph, project_root)},
+                              {"enabled", component->enabled}};
     if (const auto* component = state.scene.try_get<scene::water_component>(value))
         components["Water"] = {{"version", 2},
                                {"type", static_cast<std::uint8_t>(component->type)},
@@ -1261,6 +1307,8 @@ scene_document_result save_scene_document(editor_scene_state& state, const std::
             refresh(binding.source);
             refresh(binding.material);
         }
+        for (const auto entity : state.scene.entities())
+            if (auto* flow = state.scene.try_get<scene::flow_component>(entity)) refresh(flow->graph);
     }
     std::string validation_error;
     if (!validate_scene_for_save(state, project_root, validation_error))
@@ -1489,8 +1537,14 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
             if (components.contains("Flow"))
             {
                 const auto& flow = components["Flow"];
-                loaded.scene.emplace<scene::flow_component>(
-                    entity, scene::flow_component{flow.value("graph", ""), flow.value("enabled", true)});
+                scene::flow_component component;
+                component.enabled = flow.value("enabled", true);
+                if (flow.value("version", 1u) >= 2u)
+                    component.graph = read_asset_reference(flow["graph"], assets::asset_types::flow_graph, project_root,
+                                                           asset_registry);
+                else
+                    component.graph = read_legacy_flow_reference(flow.value("graph", ""), project_root, asset_registry);
+                loaded.scene.emplace<scene::flow_component>(entity, std::move(component));
             }
             if (components.contains("RenderLayer"))
                 loaded.scene.emplace<scene::render_layer_component>(entity,

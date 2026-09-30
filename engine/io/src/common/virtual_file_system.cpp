@@ -549,7 +549,7 @@ filesystem_file_provider::filesystem_file_provider(async_file_service& files, st
                                                    filesystem_provider_config config)
     : files_(&files), config_(config)
 {
-    root = std::filesystem::absolute(root).lexically_normal();
+    if (!root.empty()) root = std::filesystem::absolute(root).lexically_normal();
     root_ = std::move(root);
 }
 
@@ -567,6 +567,9 @@ std::uint64_t filesystem_file_provider::provider_generation() const noexcept
 
 file_result<std::filesystem::path> filesystem_file_provider::physical_path(std::string_view relative_path) const
 {
+    if (root_.empty())
+        return file_result<std::filesystem::path>::failure(logical_error(
+            file_error_code::provider_unavailable, relative_path, "Filesystem provider root is unavailable"));
     auto normalized = normalize_relative(relative_path);
     if (!normalized) return file_result<std::filesystem::path>::failure(normalized.error());
     auto candidate = (root_ / std::filesystem::path(normalized.value())).lexically_normal();

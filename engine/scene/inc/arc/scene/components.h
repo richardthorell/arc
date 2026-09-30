@@ -102,13 +102,13 @@ struct active_component
 /**
  * @brief Authored gameplay Flow Graph binding instantiated for this entity in Play.
  *
- * graph_path is normalized relative to the project's Content root. The editor compiles
- * the graph once per unique path when a Play World starts while each entity owns its
- * own Flow VM state.
+ * graph uses a stable asset GUID as its authority and retains a project-relative path
+ * hint for recovery. The editor compiles the graph once per unique asset when a Play
+ * World starts while each entity owns its own Flow VM state.
  */
 struct flow_component
 {
-    std::string graph_path;
+    assets::asset_reference graph{.expected_type = assets::asset_types::flow_graph};
     bool enabled{true};
 };
 
