@@ -6,7 +6,11 @@ export type AssetLibraryMutationTarget = {
 };
 
 const normalizeRelativeFolder = (folder: string) => {
-  const normalized = folder.trim().replaceAll('\\', '/').replace(/\/+/g, '/').replace(/^\/|\/$/g, '');
+  const normalized = folder
+    .trim()
+    .replaceAll('\\', '/')
+    .replace(/\/+/g, '/')
+    .replace(/^\/|\/$/g, '');
   if (!normalized) return '';
 
   const segments = normalized.split('/');
