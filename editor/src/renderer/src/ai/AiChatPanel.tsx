@@ -26,6 +26,8 @@ type AiChatPanelProps = {
   provider?: AiModelProvider;
   providers?: readonly AiModelProvider[];
   initialConversations?: readonly AiConversation[];
+  initialMessages?: readonly AiChatMessage[];
+  conversationLabel?: string;
   persistConversations?: boolean;
 };
 
@@ -33,16 +35,36 @@ export function AiChatPanel({
   provider,
   providers,
   initialConversations,
-  persistConversations = true,
+  initialMessages,
+  conversationLabel = 'New conversation',
+  persistConversations,
 }: AiChatPanelProps) {
   const configuredProviders = useMemo(
     () => (providers ?? [provider ?? unavailableAiModelProvider]).filter((candidate) => candidate.configured),
     [provider, providers],
   );
   const connected = configuredProviders.length > 0;
-  const [conversations, setConversations] = useState<AiConversation[]>(() =>
-    initialConversations ? initialConversations.map(cloneConversation) : loadAiConversations(),
-  );
+  const shouldPersistConversations =
+    persistConversations ?? (initialConversations === undefined && initialMessages === undefined);
+  const [conversations, setConversations] = useState<AiConversation[]>(() => {
+    if (initialConversations) return initialConversations.map(cloneConversation);
+    if (initialMessages?.length) {
+      const firstTimestamp = initialMessages[0]?.createdAt ?? new Date().toISOString();
+      const lastTimestamp = initialMessages[initialMessages.length - 1]?.createdAt ?? firstTimestamp;
+      return [
+        {
+          id: 'seeded-conversation',
+          title: conversationLabel,
+          createdAt: firstTimestamp,
+          updatedAt: lastTimestamp,
+          messages: initialMessages.map((message) => ({ ...message })),
+          modelId: configuredProviders[0]?.id,
+          modelLabel: configuredProviders[0]?.label,
+        },
+      ];
+    }
+    return loadAiConversations();
+  });
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [selectedModelId, setSelectedModelId] = useState(() => configuredProviders[0]?.id ?? '');
   const [prompt, setPrompt] = useState('');
@@ -59,8 +81,8 @@ export function AiChatPanel({
   }, [configuredProviders, selectedModelId]);
 
   useEffect(() => {
-    if (persistConversations) saveAiConversations(conversations);
-  }, [conversations, persistConversations]);
+    if (shouldPersistConversations) saveAiConversations(conversations);
+  }, [conversations, shouldPersistConversations]);
 
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) ?? null;
   const activeProvider = activeConversation
