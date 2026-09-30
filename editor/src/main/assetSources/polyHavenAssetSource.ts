@@ -106,9 +106,11 @@ const normalizeAsset = (id: string, raw: PolyHavenAsset): ArcRemoteAsset => ({
 
 const defaultFetcher: JsonFetcher = async (url, headers) => {
   const response = await fetch(url, { headers });
-  if (!response.ok) throw new Error(`Poly Haven request failed (${response.status} ${response.statusText})`);
+  if (!response.ok) throw new Error(`request failed (${response.status} ${response.statusText})`);
   return response.json();
 };
+
+const errorMessage = (reason: unknown): string => (reason instanceof Error ? reason.message : String(reason));
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -171,10 +173,18 @@ export class PolyHavenAssetSource implements ArcAssetSourceAdapter {
     };
   }
 
+  private async requestJson(url: string, operation: string): Promise<unknown> {
+    try {
+      return await this.fetchJson(url, this.headers());
+    } catch (reason) {
+      throw new Error(`Poly Haven ${operation} failed: ${errorMessage(reason)}`);
+    }
+  }
+
   private async catalog(): Promise<PolyHavenCatalog> {
     const now = Date.now();
     if (this.catalogCache && this.catalogCache.expiresAt > now) return this.catalogCache.value;
-    const value = validateCatalog(await this.fetchJson(`${this.baseUrl}/assets`, this.headers()));
+    const value = validateCatalog(await this.requestJson(`${this.baseUrl}/assets`, 'catalog request'));
     this.catalogCache = { value, expiresAt: now + this.cacheDurationMs };
     return value;
   }
@@ -211,7 +221,10 @@ export class PolyHavenAssetSource implements ArcAssetSourceAdapter {
 
   async getDownloadManifest(assetId: string): Promise<ArcAssetDownloadManifest> {
     if (!assetId.trim()) throw new Error('Poly Haven asset id is required');
-    const payload = await this.fetchJson(`${this.baseUrl}/files/${encodeURIComponent(assetId)}`, this.headers());
+    const payload = await this.requestJson(
+      `${this.baseUrl}/files/${encodeURIComponent(assetId)}`,
+      `download manifest request for '${assetId}'`,
+    );
     const files = flattenFiles(payload);
     if (files.length === 0) throw new Error(`Poly Haven returned no downloadable files for '${assetId}'`);
     return {
