@@ -246,13 +246,12 @@ std::optional<input::touch_control> touch_control_from_token(std::string token)
     return std::nullopt;
 }
 
-bool parse_processors(const nlohmann::json& source, input::input_binding& binding, std::string& error)
+bool parse_processor_array(const nlohmann::json& processors, std::vector<input::input_processor>& destination,
+                           std::string& error)
 {
-    if (!source.contains("processors")) return true;
-    const auto& processors = source.at("processors");
     if (!processors.is_array())
     {
-        error = "input binding processors must be an array";
+        error = "input processors must be an array";
         return false;
     }
     for (const auto& value : processors)
@@ -303,8 +302,18 @@ bool parse_processors(const nlohmann::json& source, input::input_binding& bindin
             error = "unknown input processor type '" + value.at("type").get<std::string>() + "'";
             return false;
         }
-        binding.processors.push_back(processor);
+        destination.push_back(processor);
     }
+    return true;
+}
+
+bool parse_processors(const nlohmann::json& source, input::input_binding& binding, std::string& error)
+{
+    if (source.contains("processors") && !parse_processor_array(source.at("processors"), binding.processors, error))
+        return false;
+    if (source.contains("compositeProcessors") &&
+        !parse_processor_array(source.at("compositeProcessors"), binding.composite_processors, error))
+        return false;
     return true;
 }
 
@@ -395,6 +404,27 @@ std::optional<input::input_binding> parse_binding(const nlohmann::json& source, 
     }
 
     if (!parse_processors(source, result, error)) return std::nullopt;
+    if (source.contains("modifiers"))
+    {
+        const auto& modifiers = source.at("modifiers");
+        if (!modifiers.is_array() || modifiers.empty())
+        {
+            error = "input binding modifiers must be a non-empty array";
+            return std::nullopt;
+        }
+        result.modifiers.reserve(modifiers.size());
+        for (const auto& modifier_json : modifiers)
+        {
+            std::string modifier_error;
+            auto modifier = parse_binding(modifier_json, modifier_error);
+            if (!modifier)
+            {
+                error = "input binding modifier: " + std::move(modifier_error);
+                return std::nullopt;
+            }
+            result.modifiers.push_back(std::move(*modifier));
+        }
+    }
     return result;
 }
 
