@@ -97,6 +97,10 @@
   padding: 24px;
 }
 
+.ai-chat-home-center:only-child {
+  grid-row: 1 / -1;
+}
+
 .ai-chat-home-composer {
   width: min(100%, 560px);
 }
