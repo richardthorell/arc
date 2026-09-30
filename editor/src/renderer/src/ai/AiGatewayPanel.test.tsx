@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { AiGatewayApprovalPrompt, AiGatewayPanel } from './AiGatewayPanel';
+import { AiChatPanel, AiGatewayApprovalPrompt } from './AiGatewayPanel';
 import { aiConversationStorageKey, type AiModelProvider } from './aiChat';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
 
@@ -47,34 +47,13 @@ const status: ArcAiGatewayStatus = {
   activeEditSession: null,
   lastCommittedEdit: null,
   viewportLease: { clientId: 'codex', expiresAt: '2026-01-01T00:01:00Z' },
-  audit: [
-    {
-      sequence: 1,
-      timestamp: '2026-01-01T00:00:00Z',
-      clientId: 'codex',
-      category: 'read',
-      operation: 'scene.overview',
-      succeeded: true,
-      detail: '',
-    },
-  ],
+  audit: [],
 };
 
-const renderPanel = (provider?: AiModelProvider) =>
-  render(
-    <AiGatewayPanel
-      status={status}
-      onApprove={() => undefined}
-      onDeny={() => undefined}
-      onRevoke={() => undefined}
-      onCancelEdit={() => undefined}
-      onUndoLastEdit={() => undefined}
-      provider={provider}
-    />,
-  );
+const renderPanel = (provider?: AiModelProvider) => render(<AiChatPanel provider={provider} />);
 
-describe('AiGatewayPanel', () => {
-  it('opens as a real assistant chat and streams a provider response', async () => {
+describe('AiChatPanel', () => {
+  it('renders as AI Chat and streams a provider response', async () => {
     const provider: AiModelProvider = {
       id: 'test',
       label: 'Test Agent',
@@ -88,8 +67,10 @@ describe('AiGatewayPanel', () => {
     };
 
     renderPanel(provider);
-    expect(screen.getByRole('region', { name: 'ARC Assistant' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'AI Chat' })).toBeInTheDocument();
+    expect(screen.getByText('AI Chat')).toBeInTheDocument();
     expect(screen.getByText('Test Agent')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Gateway diagnostics')).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Ask ARC'), {
       target: { value: 'How should I light this room?' },
@@ -113,71 +94,7 @@ describe('AiGatewayPanel', () => {
     expect(selector.querySelectorAll('option')).toHaveLength(2);
   });
 
-  it('keeps gateway administration behind diagnostics', () => {
-    const approve = vi.fn();
-    render(
-      <AiGatewayPanel
-        status={status}
-        onApprove={approve}
-        onDeny={() => undefined}
-        onRevoke={() => undefined}
-        onCancelEdit={() => undefined}
-        onUndoLastEdit={() => undefined}
-      />,
-    );
-
-    expect(screen.queryByText(status.endpoint)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText('Gateway diagnostics'));
-    expect(screen.getByLabelText('AI Gateway diagnostics')).toBeInTheDocument();
-    expect(screen.getByText(status.endpoint)).toBeInTheDocument();
-    expect(screen.getAllByText('Codex').length).toBeGreaterThan(0);
-    expect(screen.getByText(/Viewport control/)).toBeInTheDocument();
-    expect(screen.getByText('scene.overview')).toBeInTheDocument();
-    fireEvent.click(screen.getByText(/Allow 15 min/));
-    expect(approve).toHaveBeenCalledWith('request');
-  });
-
-  it('offers immediate revoke and transaction cancellation in diagnostics', () => {
-    const revoke = vi.fn();
-    const cancel = vi.fn();
-    const undo = vi.fn();
-    render(
-      <AiGatewayPanel
-        status={{
-          ...status,
-          pendingEditRequests: [],
-          activeEditSession: {
-            id: 'edit',
-            clientId: 'codex',
-            label: 'Adjust light',
-            startedAt: '2026-01-01T00:00:00Z',
-            lastActivityAt: '2026-01-01T00:00:00Z',
-            expectedSceneRevision: 9,
-          },
-          lastCommittedEdit: {
-            clientId: 'codex',
-            label: 'Previous light edit',
-            sceneRevision: 8,
-            committedAt: '2026-01-01T00:00:00Z',
-          },
-        }}
-        onApprove={() => undefined}
-        onDeny={() => undefined}
-        onRevoke={revoke}
-        onCancelEdit={cancel}
-        onUndoLastEdit={undo}
-      />,
-    );
-    fireEvent.click(screen.getByLabelText('Gateway diagnostics'));
-    fireEvent.click(screen.getByLabelText('Revoke Codex'));
-    fireEvent.click(screen.getByText('Cancel'));
-    fireEvent.click(screen.getByText('Undo'));
-    expect(revoke).toHaveBeenCalledWith('codex');
-    expect(cancel).toHaveBeenCalledWith('edit', 'codex');
-    expect(undo).toHaveBeenCalledOnce();
-  });
-
-  it('surfaces edit approval outside the assistant panel', () => {
+  it('keeps edit approval outside the chat panel', () => {
     const approve = vi.fn();
     const deny = vi.fn();
     const open = vi.fn();
@@ -185,7 +102,7 @@ describe('AiGatewayPanel', () => {
     expect(screen.getByRole('alertdialog')).toHaveTextContent('Codex requests editor action access');
     fireEvent.click(screen.getByText('Allow'));
     fireEvent.click(screen.getByText('Deny'));
-    fireEvent.click(screen.getByText('Details'));
+    fireEvent.click(screen.getByText('Open chat'));
     expect(approve).toHaveBeenCalledWith('request');
     expect(deny).toHaveBeenCalledWith('request');
     expect(open).toHaveBeenCalledOnce();
