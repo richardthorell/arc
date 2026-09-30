@@ -63,7 +63,7 @@ describe('material parameter authoring metadata', () => {
         parameters: group.parameters.map((parameter) => ({ name: parameter.name, type: parameter.type })),
       })),
     ).toEqual([
-      { name: 'Color', parameters: [{ name: 'Base Color', type: 'vec3' }] },
+      { name: 'Color', parameters: [{ name: 'Base Color', type: 'vec4' }] },
       {
         name: 'Surface',
         parameters: [
