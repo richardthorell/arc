@@ -1,72 +1,128 @@
-import { Send } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowLeft, Send } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { requestSettingsDialogOpen } from '../settings/settingsDialogRoute';
 import { UiAgentTextCard, UiButton, UiDrawerPanel, UiIconButton } from '../ui';
-import { createAiMessage, unavailableAiModelProvider, type AiChatMessage, type AiModelProvider } from './aiChat';
+import {
+  conversationTitleFromPrompt,
+  createAiConversation,
+  createAiMessage,
+  loadAiConversations,
+  saveAiConversations,
+  unavailableAiModelProvider,
+  type AiChatMessage,
+  type AiConversation,
+  type AiModelProvider,
+} from './aiChat';
 import './aiGateway.css';
 
 const openAiConnectivitySettings = () => requestSettingsDialogOpen('editorPreferences', 'ai.providers');
 
+const cloneConversation = (conversation: AiConversation): AiConversation => ({
+  ...conversation,
+  messages: conversation.messages.map((message) => ({ ...message })),
+});
+
 type AiChatPanelProps = {
   provider?: AiModelProvider;
-  initialMessages?: readonly AiChatMessage[];
-  conversationLabel?: string;
+  providers?: readonly AiModelProvider[];
+  initialConversations?: readonly AiConversation[];
+  persistConversations?: boolean;
 };
 
 export function AiChatPanel({
-  provider = unavailableAiModelProvider,
-  initialMessages = [],
-  conversationLabel = 'New conversation',
+  provider,
+  providers,
+  initialConversations,
+  persistConversations = true,
 }: AiChatPanelProps) {
+  const configuredProviders = useMemo(
+    () => (providers ?? [provider ?? unavailableAiModelProvider]).filter((candidate) => candidate.configured),
+    [provider, providers],
+  );
+  const connected = configuredProviders.length > 0;
+  const [conversations, setConversations] = useState<AiConversation[]>(() =>
+    initialConversations ? initialConversations.map(cloneConversation) : loadAiConversations(),
+  );
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [selectedModelId, setSelectedModelId] = useState(() => configuredProviders[0]?.id ?? '');
   const [prompt, setPrompt] = useState('');
-  const [messages, setMessages] = useState<AiChatMessage[]>(() => [...initialMessages]);
   const [streaming, setStreaming] = useState(false);
-  const connected = provider.configured;
 
-  const updateAssistantMessage = (id: string, update: (message: AiChatMessage) => AiChatMessage) => {
-    setMessages((current) => current.map((message) => (message.id === id ? update(message) : message)));
+  useEffect(() => {
+    if (!configuredProviders.length) {
+      setSelectedModelId('');
+      return;
+    }
+    if (!configuredProviders.some((candidate) => candidate.id === selectedModelId)) {
+      setSelectedModelId(configuredProviders[0].id);
+    }
+  }, [configuredProviders, selectedModelId]);
+
+  useEffect(() => {
+    if (persistConversations) saveAiConversations(conversations);
+  }, [conversations, persistConversations]);
+
+  const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) ?? null;
+  const activeProvider = activeConversation
+    ? configuredProviders.find((candidate) => candidate.id === activeConversation.modelId) ?? null
+    : null;
+  const recentConversations = useMemo(
+    () => [...conversations].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+    [conversations],
+  );
+
+  const updateAssistantMessage = (
+    conversationId: string,
+    messageId: string,
+    update: (message: AiChatMessage) => AiChatMessage,
+  ) => {
+    setConversations((current) =>
+      current.map((conversation) =>
+        conversation.id !== conversationId
+          ? conversation
+          : {
+              ...conversation,
+              updatedAt: new Date().toISOString(),
+              messages: conversation.messages.map((message) => (message.id === messageId ? update(message) : message)),
+            },
+      ),
+    );
   };
 
-  const sendPrompt = async () => {
-    const content = prompt.trim();
-    if (!connected || streaming || !content) return;
-
-    const userMessage = createAiMessage('user', content);
-    const assistantMessage = createAiMessage('assistant', '', 'streaming');
-    const requestMessages = [...messages, userMessage];
-
-    setPrompt('');
+  const streamResponse = async (
+    conversationId: string,
+    model: AiModelProvider,
+    requestMessages: AiChatMessage[],
+    assistantMessage: AiChatMessage,
+  ) => {
     setStreaming(true);
-    setMessages([...requestMessages, assistantMessage]);
-
     try {
       let completed = false;
-      for await (const event of provider.stream({ conversationId: 'active', messages: requestMessages })) {
+      for await (const event of model.stream({ conversationId, messages: requestMessages })) {
         if (event.type === 'delta') {
-          updateAssistantMessage(assistantMessage.id, (message) => ({
+          updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
             ...message,
             content: `${message.content}${event.text}`,
           }));
           continue;
         }
         if (event.type === 'error') {
-          completed = true;
-          updateAssistantMessage(assistantMessage.id, (message) => ({
+          updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
             ...message,
             content: message.content ? `${message.content}\n\n${event.message}` : event.message,
             state: 'error',
           }));
-          continue;
+          return;
         }
         completed = true;
-        updateAssistantMessage(assistantMessage.id, (message) => ({ ...message, state: 'complete' }));
+        updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({ ...message, state: 'complete' }));
       }
 
       if (!completed) {
-        updateAssistantMessage(assistantMessage.id, (message) => ({ ...message, state: 'complete' }));
+        updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({ ...message, state: 'complete' }));
       }
     } catch (error) {
-      updateAssistantMessage(assistantMessage.id, (message) => ({
+      updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
         ...message,
         content: message.content || (error instanceof Error ? error.message : String(error)),
         state: 'error',
@@ -76,84 +132,203 @@ export function AiChatPanel({
     }
   };
 
+  const startConversation = async () => {
+    const content = prompt.trim();
+    const model = configuredProviders.find((candidate) => candidate.id === selectedModelId);
+    if (!model || streaming || !content) return;
+
+    const conversation = createAiConversation();
+    const userMessage = createAiMessage('user', content);
+    const assistantMessage = createAiMessage('assistant', '', 'streaming');
+    conversation.title = conversationTitleFromPrompt(content);
+    conversation.modelId = model.id;
+    conversation.modelLabel = model.label;
+    conversation.messages = [userMessage, assistantMessage];
+
+    setPrompt('');
+    setConversations((current) => [conversation, ...current]);
+    setActiveConversationId(conversation.id);
+    await streamResponse(conversation.id, model, [userMessage], assistantMessage);
+  };
+
+  const sendPrompt = async () => {
+    const content = prompt.trim();
+    if (!activeConversation || !activeProvider || streaming || !content) return;
+
+    const userMessage = createAiMessage('user', content);
+    const assistantMessage = createAiMessage('assistant', '', 'streaming');
+    const requestMessages = [...activeConversation.messages, userMessage];
+
+    setPrompt('');
+    setConversations((current) =>
+      current.map((conversation) =>
+        conversation.id === activeConversation.id
+          ? {
+              ...conversation,
+              updatedAt: new Date().toISOString(),
+              messages: [...conversation.messages, userMessage, assistantMessage],
+            }
+          : conversation,
+      ),
+    );
+    await streamResponse(activeConversation.id, activeProvider, requestMessages, assistantMessage);
+  };
+
+  const renderMessages = (conversation: AiConversation) => (
+    <div className="ai-chat-message-list">
+      {conversation.messages.map((message) => {
+        if (message.role === 'assistant') {
+          return (
+            <UiAgentTextCard
+              key={message.id}
+              state={message.state}
+              subtitle={conversation.modelLabel ?? activeProvider?.label}
+              text={message.content}
+              title="ARC"
+            />
+          );
+        }
+        if (message.role === 'user') {
+          return (
+            <div className="ai-chat-user-message" key={message.id}>
+              {message.content}
+            </div>
+          );
+        }
+        return (
+          <div className="ai-chat-system-message" key={message.id}>
+            {message.content}
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
     <UiDrawerPanel className="ai-chat-panel" aria-label="AI Chat">
-      <section className="ai-chat-conversations" aria-label="Conversations">
-        <select aria-label="Conversation" defaultValue="active" disabled={!connected}>
-          <option value="active">{conversationLabel}</option>
-        </select>
-      </section>
+      {activeConversation ? (
+        <section className="ai-chat-active" aria-label="Active conversation">
+          <header className="ai-chat-active-header">
+            <UiIconButton label="Back to conversations" onClick={() => setActiveConversationId(null)}>
+              <ArrowLeft size={15} />
+            </UiIconButton>
+            <div>
+              <strong>{activeConversation.title}</strong>
+              <span>{activeConversation.modelLabel ?? activeProvider?.label ?? 'Model unavailable'}</span>
+            </div>
+          </header>
 
-      <section className="ai-chat-session" aria-label="Chat" aria-disabled={!connected}>
-        <div className="ai-chat-history" aria-label="Chat history" aria-busy={streaming}>
-          {!connected ? (
-            <div className="ai-chat-connect-empty">
-              <strong>Connect your AI service</strong>
-              <span>Connect an AI provider in Editor Preferences to start a conversation.</span>
-              <UiButton onClick={openAiConnectivitySettings} variant="primary">
-                Open AI settings
-              </UiButton>
-            </div>
-          ) : messages.length > 0 ? (
-            <div className="ai-chat-message-list">
-              {messages.map((message) => {
-                if (message.role === 'assistant') {
-                  return (
-                    <UiAgentTextCard
-                      key={message.id}
-                      state={message.state}
-                      subtitle={provider.label}
-                      text={message.content}
-                      title="ARC"
-                    />
-                  );
-                }
-                if (message.role === 'user') {
-                  return (
-                    <div className="ai-chat-user-message" key={message.id}>
-                      {message.content}
-                    </div>
-                  );
-                }
-                return (
-                  <div className="ai-chat-system-message" key={message.id}>
-                    {message.content}
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
-        <form
-          className="ai-chat-composer"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void sendPrompt();
-          }}
-        >
-          <div className="ai-chat-composer-surface">
-            <textarea
-              aria-label="Ask ARC"
-              disabled={!connected}
-              placeholder="Ask ARC..."
-              value={prompt}
-              rows={3}
-              onChange={(event) => setPrompt(event.target.value)}
-            />
-            <div className="ai-chat-composer-toolbar">
-              <label className="ai-chat-model-picker">
-                <span>Model</span>
-                <select aria-label="Model" defaultValue={provider.id} disabled={!connected || streaming}>
-                  <option value={provider.id}>{provider.label}</option>
-                </select>
-              </label>
-              <UiIconButton label="Send prompt" disabled={!connected || streaming || !prompt.trim()} type="submit">
-                <Send size={15} />
-              </UiIconButton>
-            </div>
+          <div className="ai-chat-history" aria-label="Chat history" aria-busy={streaming}>
+            {renderMessages(activeConversation)}
           </div>
-        </form>
-      </section>
+
+          <form
+            className="ai-chat-composer ai-chat-active-composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void sendPrompt();
+            }}
+          >
+            <div className="ai-chat-composer-surface">
+              <textarea
+                aria-label="Ask ARC"
+                disabled={!activeProvider || streaming}
+                placeholder={activeProvider ? 'Ask ARC...' : 'The model for this conversation is unavailable'}
+                value={prompt}
+                rows={3}
+                onChange={(event) => setPrompt(event.target.value)}
+              />
+              <div className="ai-chat-composer-toolbar ai-chat-composer-toolbar-active">
+                <span className="ai-chat-locked-model">{activeConversation.modelLabel ?? 'Model unavailable'}</span>
+                <UiIconButton
+                  label="Send prompt"
+                  disabled={!activeProvider || streaming || !prompt.trim()}
+                  type="submit"
+                >
+                  <Send size={15} />
+                </UiIconButton>
+              </div>
+            </div>
+          </form>
+        </section>
+      ) : (
+        <section className="ai-chat-home" aria-label="Conversations">
+          {recentConversations.length > 0 && (
+            <div className="ai-chat-recent" aria-label="Recent conversations">
+              <span className="ai-chat-recent-label">Recent conversations</span>
+              <div className="ai-chat-recent-list">
+                {recentConversations.map((conversation) => (
+                  <button
+                    aria-label={`Open conversation ${conversation.title}`}
+                    disabled={!connected || streaming}
+                    key={conversation.id}
+                    onClick={() => {
+                      setPrompt('');
+                      setActiveConversationId(conversation.id);
+                    }}
+                    type="button"
+                  >
+                    <span>{conversation.title}</span>
+                    <small>
+                      {conversation.modelLabel ?? 'AI'} · {conversation.messages.length}{' '}
+                      {conversation.messages.length === 1 ? 'message' : 'messages'}
+                    </small>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="ai-chat-home-center">
+            {!connected ? (
+              <div className="ai-chat-connect-empty">
+                <strong>Connect your AI service</strong>
+                <span>Connect an AI provider in Editor Preferences to start a conversation.</span>
+                <UiButton onClick={openAiConnectivitySettings} variant="primary">
+                  Open AI settings
+                </UiButton>
+              </div>
+            ) : (
+              <form
+                className="ai-chat-home-composer"
+                aria-label="New conversation"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void startConversation();
+                }}
+              >
+                <div className="ai-chat-composer-surface">
+                  <textarea
+                    aria-label="Start a conversation"
+                    disabled={streaming}
+                    placeholder="Ask ARC..."
+                    value={prompt}
+                    rows={3}
+                    onChange={(event) => setPrompt(event.target.value)}
+                  />
+                  <div className="ai-chat-composer-toolbar">
+                    <select
+                      aria-label="Model"
+                      disabled={streaming}
+                      onChange={(event) => setSelectedModelId(event.target.value)}
+                      value={selectedModelId}
+                    >
+                      {configuredProviders.map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>
+                          {candidate.label}
+                        </option>
+                      ))}
+                    </select>
+                    <UiIconButton label="Start conversation" disabled={streaming || !prompt.trim()} type="submit">
+                      <Send size={15} />
+                    </UiIconButton>
+                  </div>
+                </div>
+              </form>
+            )}
+          </div>
+        </section>
+      )}
     </UiDrawerPanel>
   );
 }
