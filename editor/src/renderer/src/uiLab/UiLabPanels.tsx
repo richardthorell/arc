@@ -4,6 +4,7 @@ import { ExplorerPanel } from '../app/Workbench';
 import { panelRegistry } from '../app/panelRegistry';
 import type { WorkbenchPanelId } from '../app/workbenchTypes';
 import { AiChatPanel } from '../ai/AiChatPanel';
+import type { AiChatMessage, AiModelProvider } from '../ai/aiChat';
 import { BuildOutputPanel } from '../buildOutput/BuildOutputPanel';
 import { ConsolePanel } from '../console/ConsolePanel';
 import { ContentBrowserPanel } from '../content/ContentBrowserPanel';
@@ -53,6 +54,7 @@ const panelSize: Partial<Record<WorkbenchPanelId, 'featured' | 'tall' | 'normal'
   renderGraph: 'featured',
   worldSettings: 'tall',
   contentBrowser: 'featured',
+  aiAssistant: 'featured',
   profiler: 'featured',
 };
 
@@ -69,8 +71,42 @@ const productionComponentNames: Partial<Record<WorkbenchPanelId, string>> = {
   console: 'ConsolePanel',
   buildOutput: 'BuildOutputPanel',
   versionControl: 'VersionControlPanel',
-  aiAssistant: 'AiChatPanel',
+  aiAssistant: 'AiChatPanel ×2',
   profiler: 'ProfilerPanel',
+};
+
+const uiLabAiMessages: readonly AiChatMessage[] = [
+  {
+    id: 'ui-lab-user-1',
+    role: 'user',
+    content: 'Can you summarize the selected cabin and suggest one small polish pass?',
+    createdAt: '2026-09-30T17:00:00Z',
+    state: 'complete',
+  },
+  {
+    id: 'ui-lab-agent-1',
+    role: 'assistant',
+    content:
+      'The selected cabin is an asset-backed mesh with a material already assigned. A small polish pass could focus on the material response: reduce the roughness variation slightly, then check the result from both grazing and front-facing angles before changing any geometry.',
+    createdAt: '2026-09-30T17:00:04Z',
+    state: 'complete',
+  },
+];
+
+const uiLabAiProvider: AiModelProvider = {
+  id: 'ui-lab-mock',
+  label: 'ARC Mock',
+  configured: true,
+  async *stream(request) {
+    const prompt = [...request.messages].reverse().find((message) => message.role === 'user')?.content ?? 'that';
+    const response = `Mock response received for “${prompt}”. This provider is intentionally deterministic so we can iterate on chat layout, streaming states, response cards, and future task cards without a live AI service.`;
+    const chunks = response.match(/.{1,28}(?:\s|$)/g) ?? [response];
+    for (const text of chunks) {
+      yield { type: 'delta' as const, text };
+      await Promise.resolve();
+    }
+    yield { type: 'done' as const };
+  },
 };
 
 function PanelCard({ id, children }: { id: WorkbenchPanelId; children: React.ReactNode }) {
@@ -241,7 +277,22 @@ export function UiLabPanels() {
       case 'versionControl':
         return <VersionControlPanel />;
       case 'aiAssistant':
-        return <AiChatPanel />;
+        return (
+          <div className="ui-lab-ai-chat-variants">
+            <section className="ui-lab-ai-chat-variant" aria-label="Disconnected AI Chat preview">
+              <header>Disconnected</header>
+              <AiChatPanel />
+            </section>
+            <section className="ui-lab-ai-chat-variant" aria-label="Mock provider AI Chat preview">
+              <header>Mock provider</header>
+              <AiChatPanel
+                conversationLabel="Cabin polish"
+                initialMessages={uiLabAiMessages}
+                provider={uiLabAiProvider}
+              />
+            </section>
+          </div>
+        );
       case 'profiler':
         return <ProfilerPanel samples={panelProfilerFixtures} />;
       default:
