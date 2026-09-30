@@ -71,10 +71,7 @@ export function createAssetProvenanceMetadata(
   };
 }
 
-export function createAssetReimportRequest(
-  assetId: string,
-  metadata: AssetProvenanceMetadata,
-): AssetReimportRequest {
+export function createAssetReimportRequest(assetId: string, metadata: AssetProvenanceMetadata): AssetReimportRequest {
   return {
     assetId: requireText(assetId, 'asset ID'),
     source: { ...metadata.source },
