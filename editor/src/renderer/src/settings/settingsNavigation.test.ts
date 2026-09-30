@@ -30,8 +30,6 @@ describe('settingsNavigation', () => {
       'platforms.apple.xcode',
       'platforms.apple.macos',
       'platforms.apple.ios',
-      'platforms.apple.tvos',
-      'platforms.apple.visionos',
       'platforms.web',
       'platforms.xbox',
       'platforms.playstation',
