@@ -91,7 +91,7 @@ export const panelRegistry: Record<WorkbenchPanelId, PanelRegistration> = {
   },
   aiAssistant: {
     id: 'aiAssistant',
-    title: 'AI Gateway',
+    title: 'AI Chat',
     icon: Bot,
     defaultRegion: 'left',
     activityId: 'aiAssistant',
@@ -112,7 +112,7 @@ export const isSidebarPanel = (panel: WorkbenchPanelId): panel is SidebarPanelId
 export const activityRegistry: ActivityRegistration[] = [
   { id: 'scene', title: 'Hierarchy', icon: FolderTree, panelId: 'hierarchy' },
   { id: 'search', title: 'Search', icon: Search, panelId: 'search' },
-  { id: 'aiAssistant', title: 'AI Gateway', icon: Bot, panelId: 'aiAssistant' },
+  { id: 'aiAssistant', title: 'AI Chat', icon: Bot, panelId: 'aiAssistant' },
   { id: 'versionControl', title: 'Version Control', icon: GitBranch, panelId: 'versionControl' },
 ];
 
