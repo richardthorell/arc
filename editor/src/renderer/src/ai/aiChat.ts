@@ -106,12 +106,15 @@ export const loadAiConversations = (storage: Pick<Storage, 'getItem'> = localSto
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isConversation).map((conversation) => ({
-      ...conversation,
-      messages: conversation.messages.map((message) =>
-        message.state === 'streaming' ? { ...message, state: 'error' as const } : message,
-      ),
-    }));
+    return parsed
+      .filter(isConversation)
+      .filter((conversation) => conversation.messages.length > 0)
+      .map((conversation) => ({
+        ...conversation,
+        messages: conversation.messages.map((message) =>
+          message.state === 'streaming' ? { ...message, state: 'error' as const } : message,
+        ),
+      }));
   } catch {
     return [];
   }
@@ -121,7 +124,10 @@ export const saveAiConversations = (
   conversations: readonly AiConversation[],
   storage: Pick<Storage, 'setItem'> = localStorage,
 ): void => {
-  storage.setItem(aiConversationStorageKey, JSON.stringify(conversations));
+  storage.setItem(
+    aiConversationStorageKey,
+    JSON.stringify(conversations.filter((conversation) => conversation.messages.length > 0)),
+  );
 };
 
 export const unavailableAiModelProvider: AiModelProvider = {
