@@ -39,24 +39,14 @@ describe('shader diagnostic navigation', () => {
   });
 
   it('routes diagnostics for the active source to the current editor', () => {
-    expect(
-      routeShaderDiagnostic(
-        { path: '.\\shaders\\main.frag', line: 14, column: 2 },
-        'shaders/main.frag',
-      ),
-    ).toEqual({
+    expect(routeShaderDiagnostic({ path: '.\\shaders\\main.frag', line: 14, column: 2 }, 'shaders/main.frag')).toEqual({
       kind: 'active-document',
       target: { path: './shaders/main.frag', line: 14, column: 2 },
     });
   });
 
   it('routes include diagnostics to an external document instead of the active editor', () => {
-    expect(
-      routeShaderDiagnostic(
-        { path: 'shaders/include/lighting.glsl', line: 27 },
-        'shaders/main.frag',
-      ),
-    ).toEqual({
+    expect(routeShaderDiagnostic({ path: 'shaders/include/lighting.glsl', line: 27 }, 'shaders/main.frag')).toEqual({
       kind: 'external-document',
       target: { path: 'shaders/include/lighting.glsl', line: 27, column: 1 },
     });
