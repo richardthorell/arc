@@ -27,25 +27,32 @@ export type FlowVariableOverrideReconciliation = {
 const exposedVariables = (variables: readonly FlowVariableDefinition[]) =>
   variables.filter((variable) => variable.exposed);
 
-const isFiniteNumber = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value);
+const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 
 const isVector = (value: unknown, size: number): boolean =>
   Array.isArray(value) && value.length === size && value.every(isFiniteNumber);
 
 export function isFlowVariableOverrideValueCompatible(type: FlowValueType, value: unknown): boolean {
   switch (type) {
-    case 'bool': return typeof value === 'boolean';
-    case 'int': return Number.isInteger(value);
-    case 'float': return isFiniteNumber(value);
-    case 'vec2': return isVector(value, 2);
-    case 'vec3': return isVector(value, 3);
-    case 'vec4': return isVector(value, 4);
+    case 'bool':
+      return typeof value === 'boolean';
+    case 'int':
+      return Number.isInteger(value);
+    case 'float':
+      return isFiniteNumber(value);
+    case 'vec2':
+      return isVector(value, 2);
+    case 'vec3':
+      return isVector(value, 3);
+    case 'vec4':
+      return isVector(value, 4);
     case 'string':
     case 'name':
     case 'entity':
-    case 'component': return typeof value === 'string';
-    case 'any': return value !== undefined;
+    case 'component':
+      return typeof value === 'string';
+    case 'any':
+      return value !== undefined;
   }
 }
 
