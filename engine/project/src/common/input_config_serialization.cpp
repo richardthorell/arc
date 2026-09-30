@@ -389,6 +389,28 @@ std::optional<ordered_json> binding_to_json(const input::input_binding& binding,
         }
         result["processors"] = std::move(processors);
     }
+    if (!binding.modifiers.empty())
+    {
+        ordered_json modifiers = ordered_json::array();
+        for (const auto& modifier : binding.modifiers)
+        {
+            auto serialized = binding_to_json(modifier, error);
+            if (!serialized) return std::nullopt;
+            modifiers.push_back(std::move(*serialized));
+        }
+        result["modifiers"] = std::move(modifiers);
+    }
+    if (!binding.composite_processors.empty())
+    {
+        ordered_json processors = ordered_json::array();
+        for (const auto& processor : binding.composite_processors)
+        {
+            auto serialized = processor_to_json(processor, error);
+            if (!serialized) return std::nullopt;
+            processors.push_back(std::move(*serialized));
+        }
+        result["compositeProcessors"] = std::move(processors);
+    }
     return result;
 }
 

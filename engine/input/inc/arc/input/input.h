@@ -541,12 +541,20 @@ struct input_processor
 
 /**
  * @brief One physical source used by a player mapping.
+ *
+ * Modifiers turn the source into a chord: every modifier must be actuated before
+ * the source contributes to the mapping. Modifiers can themselves contain
+ * modifiers, which gives the mapping model deterministic nested combinations
+ * without platform-specific key concepts. Source processors run first;
+ * composite processors run after the modifier gate.
  */
 struct input_binding
 {
     input_device_type device{input_device_type::unknown};
     input_control control{};
     std::vector<input_processor> processors;
+    std::vector<input_binding> modifiers;
+    std::vector<input_processor> composite_processors;
 };
 
 /**

@@ -21,6 +21,30 @@ bool contains_player(const std::vector<player_id>& players, player_id id)
     return std::find(players.begin(), players.end(), id) != players.end();
 }
 
+float apply_processor_chain(float value, const std::vector<input_processor>& processors) noexcept
+{
+    for (const input_processor& processor : processors)
+    {
+        switch (processor.type)
+        {
+            case input_processor_type::scale:
+                value *= processor.value;
+                break;
+            case input_processor_type::invert:
+                value = -value;
+                break;
+            case input_processor_type::clamp:
+            {
+                const float lower = std::min(processor.value, processor.secondary);
+                const float upper = std::max(processor.value, processor.secondary);
+                value = std::clamp(value, lower, upper);
+                break;
+            }
+        }
+    }
+    return value;
+}
+
 } // namespace
 
 input_device_id input_device::id() const noexcept
@@ -500,31 +524,17 @@ float input_system::binding_value(player_id player_value, const input_binding& b
         if (control != values.end()) value += control->second;
     }
 
-    return apply_processors(value, binding);
+    value = apply_processors(value, binding);
+    for (const input_binding& modifier : binding.modifiers)
+    {
+        if (std::abs(binding_value(player_value, modifier, previous)) < action_threshold) return 0.0f;
+    }
+    return apply_processor_chain(value, binding.composite_processors);
 }
 
 float input_system::apply_processors(float value, const input_binding& binding) noexcept
 {
-    for (const input_processor& processor : binding.processors)
-    {
-        switch (processor.type)
-        {
-            case input_processor_type::scale:
-                value *= processor.value;
-                break;
-            case input_processor_type::invert:
-                value = -value;
-                break;
-            case input_processor_type::clamp:
-            {
-                const float lower = std::min(processor.value, processor.secondary);
-                const float upper = std::max(processor.value, processor.secondary);
-                value = std::clamp(value, lower, upper);
-                break;
-            }
-        }
-    }
-    return value;
+    return apply_processor_chain(value, binding.processors);
 }
 
 float input_system::normalize_output(float value) noexcept

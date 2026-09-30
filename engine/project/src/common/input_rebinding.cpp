@@ -83,15 +83,27 @@ std::optional<input_mapping_view> mapping_view(const input_config& config, const
     return context ? mapping_view(*context, target) : std::nullopt;
 }
 
+bool same_processors(const std::vector<input::input_processor>& lhs, const std::vector<input::input_processor>& rhs)
+{
+    if (lhs.size() != rhs.size()) return false;
+    for (std::size_t index = 0; index < lhs.size(); ++index)
+    {
+        const auto& left = lhs[index];
+        const auto& right = rhs[index];
+        if (left.type != right.type || left.value != right.value || left.secondary != right.secondary) return false;
+    }
+    return true;
+}
+
 bool same_binding(const input::input_binding& lhs, const input::input_binding& rhs)
 {
-    if (lhs.device != rhs.device || lhs.control != rhs.control || lhs.processors.size() != rhs.processors.size())
+    if (lhs.device != rhs.device || lhs.control != rhs.control || !same_processors(lhs.processors, rhs.processors) ||
+        lhs.modifiers.size() != rhs.modifiers.size() ||
+        !same_processors(lhs.composite_processors, rhs.composite_processors))
         return false;
-    for (std::size_t index = 0; index < lhs.processors.size(); ++index)
+    for (std::size_t index = 0; index < lhs.modifiers.size(); ++index)
     {
-        const auto& left = lhs.processors[index];
-        const auto& right = rhs.processors[index];
-        if (left.type != right.type || left.value != right.value || left.secondary != right.secondary) return false;
+        if (!same_binding(lhs.modifiers[index], rhs.modifiers[index])) return false;
     }
     return true;
 }
