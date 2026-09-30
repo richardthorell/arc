@@ -5,11 +5,25 @@ import {
   type AssetLibraryScope,
   type AssetLibraryScopeId,
 } from './assetLibraryScopes';
+import {
+  assetIdsForVirtualView,
+  assetLibraryVirtualViews,
+  type AssetLibraryVirtualMembership,
+  type AssetLibraryVirtualView,
+} from './assetLibraryVirtualViews';
 
 export type AssetLibraryScopeNavigationItem = AssetLibraryScope & {
+  kind: 'scope';
   assetCount: number;
   available: boolean;
 };
+
+export type AssetLibraryVirtualNavigationItem = AssetLibraryVirtualView & {
+  kind: 'virtual-view';
+  assetCount: number;
+};
+
+export type AssetLibraryNavigationItem = AssetLibraryScopeNavigationItem | AssetLibraryVirtualNavigationItem;
 
 /**
  * Builds the logical Content Browser scope roots without coupling navigation to
@@ -28,6 +42,7 @@ export function buildAssetLibraryScopeNavigation(
 
   return assetLibraryScopes.map((scope) => ({
     ...scope,
+    kind: 'scope' as const,
     assetCount: counts.get(scope.id) ?? 0,
     available: scope.id === 'project' || scope.id === 'builtin' || counts.has(scope.id),
   }));
@@ -37,4 +52,39 @@ export function visibleAssetLibraryScopeNavigation(
   assets: readonly Pick<AssetItem, 'scope'>[],
 ): readonly AssetLibraryScopeNavigationItem[] {
   return buildAssetLibraryScopeNavigation(assets).filter((scope) => scope.available);
+}
+
+/**
+ * Builds non-storage navigation roots from stable asset IDs. Virtual views are
+ * explicitly tagged so callers cannot accidentally treat them as filesystem
+ * scopes or derive storage paths from them. Search Results remain transient and
+ * only appear while a query has results.
+ */
+export function buildAssetLibraryVirtualNavigation(
+  membership: AssetLibraryVirtualMembership,
+  searchResults: readonly string[] = [],
+): readonly AssetLibraryVirtualNavigationItem[] {
+  return assetLibraryVirtualViews()
+    .map((view) => ({
+      ...view,
+      kind: 'virtual-view' as const,
+      assetCount: assetIdsForVirtualView(view.id, membership, searchResults).length,
+    }))
+    .filter((view) => view.id !== 'search-results' || view.assetCount > 0);
+}
+
+/**
+ * Returns one navigation model while preserving the scope/view distinction.
+ * Assets may therefore appear in multiple virtual views without changing their
+ * storage scope or stable identity.
+ */
+export function buildAssetLibraryNavigation(
+  assets: readonly Pick<AssetItem, 'scope'>[],
+  membership: AssetLibraryVirtualMembership,
+  searchResults: readonly string[] = [],
+): readonly AssetLibraryNavigationItem[] {
+  return [
+    ...buildAssetLibraryVirtualNavigation(membership, searchResults),
+    ...visibleAssetLibraryScopeNavigation(assets),
+  ];
 }
