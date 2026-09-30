@@ -1,0 +1,78 @@
+.ui-agent-card {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--arc-color-border-subtle);
+  border-radius: var(--arc-radius-2);
+  background: color-mix(in srgb, var(--arc-color-bg-panel) 92%, black);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 14%);
+  color: var(--arc-color-text);
+}
+
+.ui-agent-card[data-state='streaming'] {
+  border-color: color-mix(in srgb, var(--arc-color-accent) 45%, var(--arc-color-border-subtle));
+}
+
+.ui-agent-card[data-state='error'] {
+  border-style: dashed;
+}
+
+.ui-agent-card-header {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border-bottom: 1px solid var(--arc-color-border-subtle);
+  background: color-mix(in srgb, var(--arc-color-bg-chrome) 78%, transparent);
+}
+
+.ui-agent-card-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--arc-color-text-muted);
+}
+
+.ui-agent-card-heading {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 1px;
+}
+
+.ui-agent-card-heading strong {
+  overflow: hidden;
+  color: var(--arc-color-text-strong);
+  font-size: var(--arc-text-xs);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-agent-card-heading small {
+  overflow: hidden;
+  color: var(--arc-color-text-dim);
+  font-size: var(--arc-text-xxs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-agent-card-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.ui-agent-card-content {
+  min-width: 0;
+  padding: 10px 11px;
+}
+
+.ui-agent-text-card-content {
+  color: var(--arc-color-text);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

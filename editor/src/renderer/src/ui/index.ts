@@ -1,3 +1,5 @@
+export { UiAgentCard, UiAgentTextCard } from './UiAgentCard';
+export type { UiAgentCardProps, UiAgentCardState, UiAgentTextCardProps } from './UiAgentCard';
 export { UiButton } from './UiButton';
 export { UiColorControl } from './UiColorControl';
 export type { UiColorControlProps } from './UiColorControl';

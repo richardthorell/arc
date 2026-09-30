@@ -9,6 +9,7 @@ import { UiSettingsNavigation } from './UiSettingsNavigation';
 const nodes = [
   { id: 'general', label: 'General' },
   { id: 'editing', label: 'Editing', children: [{ id: 'editing.viewport', label: 'Viewport' }] },
+  { id: 'ai', label: 'AI', children: [{ id: 'ai.providers', label: 'Providers' }] },
 ] as const;
 
 afterEach(cleanup);
@@ -34,5 +35,26 @@ describe('UiSettingsNavigation', () => {
 
     fireEvent.click(screen.getByRole('treeitem', { name: /Viewport/ }));
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'editing.viewport' }));
+  });
+
+  it('accepts a settings navigation request from elsewhere in the editor', () => {
+    const onQueryChange = vi.fn();
+    const onSelect = vi.fn();
+
+    render(
+      <UiSettingsNavigation
+        defaultExpandedIds={['ai']}
+        nodes={nodes}
+        onQueryChange={onQueryChange}
+        onSelect={onSelect}
+        query="provider"
+        selectedId="general"
+      />,
+    );
+
+    window.dispatchEvent(new CustomEvent('arc-settings-navigate', { detail: { id: 'ai.providers' } }));
+
+    expect(onQueryChange).toHaveBeenCalledWith('');
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'ai.providers' }));
   });
 });

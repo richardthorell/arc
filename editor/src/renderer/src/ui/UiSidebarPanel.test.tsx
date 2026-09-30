@@ -47,7 +47,7 @@ describe('UiSidebarPanel', () => {
     expect(screen.getByRole('complementary', { name: 'Global utilities' })).toHaveClass('ui-sidebar-panel');
     expect(screen.queryByRole('button', { name: 'Hierarchy' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'AI Gateway' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'AI Chat' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Version Control' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Editor Preferences' })).toBeInTheDocument();
   });

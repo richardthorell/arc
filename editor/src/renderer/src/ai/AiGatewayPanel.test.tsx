@@ -3,18 +3,14 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { AiGatewayApprovalPrompt, AiGatewayPanel } from './AiGatewayPanel';
-import { aiConversationStorageKey, type AiModelProvider } from './aiChat';
+import { AiGatewayApprovalPrompt } from './AiGatewayPanel';
+import { AiChatPanel } from './AiChatPanel';
+import type { AiChatMessage, AiModelProvider } from './aiChat';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
-
-Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-  configurable: true,
-  value: vi.fn(),
-});
 
 afterEach(() => {
   cleanup();
-  localStorage.removeItem(aiConversationStorageKey);
+  vi.useRealTimers();
 });
 
 const status: ArcAiGatewayStatus = {
@@ -47,137 +43,99 @@ const status: ArcAiGatewayStatus = {
   activeEditSession: null,
   lastCommittedEdit: null,
   viewportLease: { clientId: 'codex', expiresAt: '2026-01-01T00:01:00Z' },
-  audit: [
-    {
-      sequence: 1,
-      timestamp: '2026-01-01T00:00:00Z',
-      clientId: 'codex',
-      category: 'read',
-      operation: 'scene.overview',
-      succeeded: true,
-      detail: '',
-    },
-  ],
+  audit: [],
 };
 
-const renderPanel = (provider?: AiModelProvider) =>
-  render(
-    <AiGatewayPanel
-      status={status}
-      onApprove={() => undefined}
-      onDeny={() => undefined}
-      onRevoke={() => undefined}
-      onCancelEdit={() => undefined}
-      onUndoLastEdit={() => undefined}
-      provider={provider}
-    />,
-  );
+const configuredProvider: AiModelProvider = {
+  id: 'test',
+  label: 'Test Agent',
+  configured: true,
+  async *stream() {
+    yield { type: 'delta', text: 'Hello ' };
+    yield { type: 'delta', text: 'from ARC.' };
+    yield { type: 'done' };
+  },
+};
 
-describe('AiGatewayPanel', () => {
-  it('opens as a real assistant chat and streams a provider response', async () => {
-    const provider: AiModelProvider = {
-      id: 'test',
-      label: 'Test Agent',
-      configured: true,
-      async *stream(request) {
-        expect(request.messages.at(-1)?.content).toBe('How should I light this room?');
-        yield { type: 'delta', text: 'Start with ' };
-        yield { type: 'delta', text: 'a key light.' };
-        yield { type: 'done' };
-      },
-    };
+describe('AiChatPanel', () => {
+  it('renders an enabled two-section chat shell for a configured provider', () => {
+    render(<AiChatPanel provider={configuredProvider} />);
 
-    renderPanel(provider);
-    expect(screen.getByRole('region', { name: 'ARC Assistant' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'AI Chat' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Conversations' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Chat' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Conversation')).toHaveValue('active');
+    expect(screen.getByLabelText('Conversation')).toBeEnabled();
+    expect(screen.getByLabelText('Model')).toHaveValue('test');
+    expect(screen.getByLabelText('Model')).toBeEnabled();
     expect(screen.getByText('Test Agent')).toBeInTheDocument();
+    expect(screen.getByLabelText('Chat history')).toBeEmptyDOMElement();
+    expect(screen.getByLabelText('Ask ARC')).toBeEnabled();
+    expect(screen.getByLabelText('Send prompt')).toBeDisabled();
+  });
 
-    fireEvent.change(screen.getByLabelText('Ask ARC'), {
-      target: { value: 'How should I light this room?' },
-    });
+  it('renders agent responses with the text-card specialization and streams mock replies', async () => {
+    const initialMessages: readonly AiChatMessage[] = [
+      {
+        id: 'user',
+        role: 'user',
+        content: 'What is selected?',
+        createdAt: '2026-09-30T17:00:00Z',
+        state: 'complete',
+      },
+      {
+        id: 'assistant',
+        role: 'assistant',
+        content: 'A cabin mesh is selected.',
+        createdAt: '2026-09-30T17:00:01Z',
+        state: 'complete',
+      },
+    ];
+
+    render(
+      <AiChatPanel conversationLabel="Scene review" initialMessages={initialMessages} provider={configuredProvider} />,
+    );
+
+    expect(screen.getByText('Scene review')).toBeInTheDocument();
+    expect(screen.getByText('A cabin mesh is selected.')).toBeInTheDocument();
+    expect(screen.getByText('ARC')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Ask ARC'), { target: { value: 'Suggest a polish pass' } });
+    expect(screen.getByLabelText('Send prompt')).toBeEnabled();
     fireEvent.click(screen.getByLabelText('Send prompt'));
 
-    const promptMessage = screen
-      .getAllByText('How should I light this room?')
-      .find((element) => element.tagName === 'P');
-    expect(promptMessage).toBeVisible();
-    await waitFor(() => expect(screen.getByText('Start with a key light.')).toBeVisible());
-    expect((screen.getByLabelText('AI conversation') as HTMLSelectElement).value).not.toBe('');
-    expect(localStorage.getItem(aiConversationStorageKey)).toContain('How should I light this room?');
+    expect(screen.getByText('Suggest a polish pass')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Hello from ARC.')).toBeInTheDocument());
   });
 
-  it('creates a fresh conversation from the header', () => {
-    renderPanel();
-    const selector = screen.getByLabelText('AI conversation');
-    expect(selector.querySelectorAll('option')).toHaveLength(1);
-    fireEvent.click(screen.getByLabelText('New AI chat'));
-    expect(selector.querySelectorAll('option')).toHaveLength(2);
+  it('disables conversations and chat until an AI service is connected', () => {
+    vi.useFakeTimers();
+    const keydown = vi.fn();
+    const navigate = vi.fn();
+    window.addEventListener('keydown', keydown);
+    window.addEventListener('arc-settings-navigate', navigate);
+
+    render(<AiChatPanel />);
+
+    expect(screen.getByLabelText('Conversation')).toBeDisabled();
+    expect(screen.getByLabelText('Model')).toBeDisabled();
+    expect(screen.getByLabelText('Ask ARC')).toBeDisabled();
+    expect(screen.getByText('Connect your AI service')).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open AI settings' }));
+    expect(keydown).toHaveBeenCalledOnce();
+    expect((keydown.mock.calls[0][0] as KeyboardEvent).ctrlKey).toBe(true);
+    expect((keydown.mock.calls[0][0] as KeyboardEvent).key).toBe(',');
+
+    vi.runAllTimers();
+    expect(navigate).toHaveBeenCalledOnce();
+    expect((navigate.mock.calls[0][0] as CustomEvent).detail).toEqual({ id: 'ai.providers' });
+
+    window.removeEventListener('keydown', keydown);
+    window.removeEventListener('arc-settings-navigate', navigate);
   });
 
-  it('keeps gateway administration behind diagnostics', () => {
-    const approve = vi.fn();
-    render(
-      <AiGatewayPanel
-        status={status}
-        onApprove={approve}
-        onDeny={() => undefined}
-        onRevoke={() => undefined}
-        onCancelEdit={() => undefined}
-        onUndoLastEdit={() => undefined}
-      />,
-    );
-
-    expect(screen.queryByText(status.endpoint)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText('Gateway diagnostics'));
-    expect(screen.getByLabelText('AI Gateway diagnostics')).toBeInTheDocument();
-    expect(screen.getByText(status.endpoint)).toBeInTheDocument();
-    expect(screen.getAllByText('Codex').length).toBeGreaterThan(0);
-    expect(screen.getByText(/Viewport control/)).toBeInTheDocument();
-    expect(screen.getByText('scene.overview')).toBeInTheDocument();
-    fireEvent.click(screen.getByText(/Allow 15 min/));
-    expect(approve).toHaveBeenCalledWith('request');
-  });
-
-  it('offers immediate revoke and transaction cancellation in diagnostics', () => {
-    const revoke = vi.fn();
-    const cancel = vi.fn();
-    const undo = vi.fn();
-    render(
-      <AiGatewayPanel
-        status={{
-          ...status,
-          pendingEditRequests: [],
-          activeEditSession: {
-            id: 'edit',
-            clientId: 'codex',
-            label: 'Adjust light',
-            startedAt: '2026-01-01T00:00:00Z',
-            lastActivityAt: '2026-01-01T00:00:00Z',
-            expectedSceneRevision: 9,
-          },
-          lastCommittedEdit: {
-            clientId: 'codex',
-            label: 'Previous light edit',
-            sceneRevision: 8,
-            committedAt: '2026-01-01T00:00:00Z',
-          },
-        }}
-        onApprove={() => undefined}
-        onDeny={() => undefined}
-        onRevoke={revoke}
-        onCancelEdit={cancel}
-        onUndoLastEdit={undo}
-      />,
-    );
-    fireEvent.click(screen.getByLabelText('Gateway diagnostics'));
-    fireEvent.click(screen.getByLabelText('Revoke Codex'));
-    fireEvent.click(screen.getByText('Cancel'));
-    fireEvent.click(screen.getByText('Undo'));
-    expect(revoke).toHaveBeenCalledWith('codex');
-    expect(cancel).toHaveBeenCalledWith('edit', 'codex');
-    expect(undo).toHaveBeenCalledOnce();
-  });
-
-  it('surfaces edit approval outside the assistant panel', () => {
+  it('keeps edit approval outside the chat panel', () => {
     const approve = vi.fn();
     const deny = vi.fn();
     const open = vi.fn();
@@ -185,7 +143,7 @@ describe('AiGatewayPanel', () => {
     expect(screen.getByRole('alertdialog')).toHaveTextContent('Codex requests editor action access');
     fireEvent.click(screen.getByText('Allow'));
     fireEvent.click(screen.getByText('Deny'));
-    fireEvent.click(screen.getByText('Details'));
+    fireEvent.click(screen.getByText('Open chat'));
     expect(approve).toHaveBeenCalledWith('request');
     expect(deny).toHaveBeenCalledWith('request');
     expect(open).toHaveBeenCalledOnce();
