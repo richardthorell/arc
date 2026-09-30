@@ -16,6 +16,8 @@ export type AiConversation = {
   createdAt: string;
   updatedAt: string;
   messages: AiChatMessage[];
+  modelId?: string;
+  modelLabel?: string;
 };
 
 export type AiModelRequest = {
@@ -91,6 +93,8 @@ const isConversation = (value: unknown): value is AiConversation => {
     typeof conversation.title === 'string' &&
     typeof conversation.createdAt === 'string' &&
     typeof conversation.updatedAt === 'string' &&
+    (conversation.modelId === undefined || typeof conversation.modelId === 'string') &&
+    (conversation.modelLabel === undefined || typeof conversation.modelLabel === 'string') &&
     Array.isArray(conversation.messages) &&
     conversation.messages.every(isMessage)
   );
