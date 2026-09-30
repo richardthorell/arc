@@ -23,6 +23,14 @@ export type GraphDiagnosticSummary = {
   diagnostics: GraphDiagnostic[];
 };
 
+export type GraphDiagnosticOverlay = {
+  targetKey: string;
+  target: GraphDiagnosticTarget;
+  nodeId?: string;
+  highestSeverity: GraphDiagnosticSeverity;
+  diagnostics: GraphDiagnostic[];
+};
+
 const severityRank: Record<GraphDiagnosticSeverity, number> = {
   error: 0,
   warning: 1,
@@ -65,6 +73,31 @@ export const sortGraphDiagnostics = (diagnostics: readonly GraphDiagnostic[]): G
 
 export const graphDiagnosticsForNode = (diagnostics: readonly GraphDiagnostic[], nodeId: string): GraphDiagnostic[] =>
   sortGraphDiagnostics(diagnostics.filter((diagnostic) => graphDiagnosticNodeId(diagnostic) === nodeId));
+
+export const buildGraphDiagnosticOverlays = (diagnostics: readonly GraphDiagnostic[]): GraphDiagnosticOverlay[] => {
+  const byTarget = new Map<string, GraphDiagnostic[]>();
+
+  for (const diagnostic of diagnostics) {
+    const key = graphDiagnosticTargetKey(diagnostic);
+    const existing = byTarget.get(key);
+    if (existing) existing.push(diagnostic);
+    else byTarget.set(key, [diagnostic]);
+  }
+
+  return [...byTarget.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([targetKey, targetDiagnostics]) => {
+      const sorted = sortGraphDiagnostics(targetDiagnostics);
+      const primary = sorted[0];
+      return {
+        targetKey,
+        target: primary.target,
+        nodeId: graphDiagnosticNodeId(primary),
+        highestSeverity: primary.severity,
+        diagnostics: sorted,
+      };
+    });
+};
 
 export const summarizeGraphDiagnostics = (diagnostics: readonly GraphDiagnostic[]): GraphDiagnosticSummary[] => {
   const byNode = new Map<string, GraphDiagnostic[]>();
