@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { ExplorerPanel } from '../app/Workbench';
 import { panelRegistry } from '../app/panelRegistry';
 import type { WorkbenchPanelId } from '../app/workbenchTypes';
-import { AiChatPanel } from '../ai/AiGatewayPanel';
+import { AiChatPanel } from '../ai/AiChatPanel';
 import { BuildOutputPanel } from '../buildOutput/BuildOutputPanel';
 import { ConsolePanel } from '../console/ConsolePanel';
 import { ContentBrowserPanel } from '../content/ContentBrowserPanel';
