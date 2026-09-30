@@ -151,6 +151,30 @@ TEST_CASE("virtual geometry graph selects mesh-shader rasterization without soft
     REQUIRE_FALSE(contains(builtin_render_pass::virtual_geometry_software_depth));
 }
 
+TEST_CASE("virtual geometry graph consumes GPU-generated indexed hardware commands")
+{
+    using namespace arc::render;
+    resolved_render_config config;
+    config.quality = render_quality_tier::ultra;
+    config.path = render_path::deferred;
+    config.features.gpu_driven_rendering = true;
+    config.features.hzb_occlusion = true;
+    config.features.virtual_geometry = true;
+    config.features.virtual_geometry_path = virtual_geometry_raster_path::hardware_indexed;
+
+    const auto compiled = make_scene_draw_graph("viewport", config, true).compile().value();
+    const auto contains = [&](builtin_render_pass expected)
+    {
+        return std::any_of(compiled.passes.begin(), compiled.passes.end(),
+                           [expected](const auto& pass) { return pass.builtin == expected; });
+    };
+    REQUIRE(contains(builtin_render_pass::virtual_geometry_hardware_command_generation));
+    REQUIRE(contains(builtin_render_pass::virtual_geometry_hardware_visibility));
+    REQUIRE_FALSE(contains(builtin_render_pass::virtual_geometry_mesh_shader_visibility));
+    REQUIRE_FALSE(contains(builtin_render_pass::virtual_geometry_cluster_binning));
+    REQUIRE_FALSE(contains(builtin_render_pass::virtual_geometry_software_depth));
+}
+
 TEST_CASE("virtual geometry artifact is deterministic page aligned and integrity checked")
 {
     using namespace arc::render;

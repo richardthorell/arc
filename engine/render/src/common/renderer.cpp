@@ -295,10 +295,35 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
         optional_features && virtual_geometry_quality && gpu_driven && capabilities.hzb_occlusion &&
         capabilities.descriptor_indexing && capabilities.virtual_geometry_streaming &&
         capabilities.bindless_sampled_images && capabilities.bindless_samplers && capabilities.bindless_material_tables;
-    const auto virtual_geometry_path =
+    const auto automatic_virtual_geometry_path =
         virtual_geometry_common && capabilities.virtual_geometry_mesh_shader ? virtual_geometry_raster_path::mesh_shader
-        : virtual_geometry_common && capabilities.virtual_geometry_compute   ? virtual_geometry_raster_path::compute
+        : virtual_geometry_common && capabilities.virtual_geometry_indexed
+            ? virtual_geometry_raster_path::hardware_indexed
+        : virtual_geometry_common && capabilities.virtual_geometry_compute ? virtual_geometry_raster_path::compute
                                                                            : virtual_geometry_raster_path::unavailable;
+    auto virtual_geometry_path = automatic_virtual_geometry_path;
+    if (virtual_geometry_common)
+    {
+        switch (config.virtual_geometry_raster)
+        {
+            case virtual_geometry_raster_override::compute:
+                virtual_geometry_path = capabilities.virtual_geometry_compute ? virtual_geometry_raster_path::compute
+                                                                              : automatic_virtual_geometry_path;
+                break;
+            case virtual_geometry_raster_override::hardware_indexed:
+                virtual_geometry_path = capabilities.virtual_geometry_indexed
+                                            ? virtual_geometry_raster_path::hardware_indexed
+                                            : automatic_virtual_geometry_path;
+                break;
+            case virtual_geometry_raster_override::mesh_shader:
+                virtual_geometry_path = capabilities.virtual_geometry_mesh_shader
+                                            ? virtual_geometry_raster_path::mesh_shader
+                                            : automatic_virtual_geometry_path;
+                break;
+            case virtual_geometry_raster_override::auto_select:
+                break;
+        }
+    }
     const bool virtual_shadow_maps = optional_features && result.quality == render_quality_tier::ultra && gpu_driven &&
                                      capabilities.virtual_shadow_allocation && capabilities.virtual_shadow_feedback &&
                                      capabilities.virtual_shadow_rendering && capabilities.virtual_shadow_sampling &&
@@ -421,6 +446,18 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
         result.fallback_reasons.push_back(
             "virtual geometry requires executable traversal, HZB, bindless material access, streaming, and a "
             "compute or mesh-shader raster path; using conventional LOD geometry");
+    else if (config.virtual_geometry_raster == virtual_geometry_raster_override::compute &&
+             virtual_geometry_path != virtual_geometry_raster_path::compute)
+        result.fallback_reasons.push_back(
+            "forced virtual-geometry compute rasterization is unavailable; using the best executable path");
+    else if (config.virtual_geometry_raster == virtual_geometry_raster_override::hardware_indexed &&
+             virtual_geometry_path != virtual_geometry_raster_path::hardware_indexed)
+        result.fallback_reasons.push_back(
+            "forced virtual-geometry indexed rasterization is unavailable; using the best executable path");
+    else if (config.virtual_geometry_raster == virtual_geometry_raster_override::mesh_shader &&
+             virtual_geometry_path != virtual_geometry_raster_path::mesh_shader)
+        result.fallback_reasons.push_back(
+            "forced virtual-geometry mesh rasterization is unavailable; using the best executable path");
     if (result.quality == render_quality_tier::ultra && !virtual_shadow_maps)
         result.fallback_reasons.push_back(
             "virtual shadow maps require executable allocation, feedback, rendering, sampling, compute, and storage "

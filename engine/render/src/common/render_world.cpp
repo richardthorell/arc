@@ -406,6 +406,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
     render_graph_resource_handle virtual_page_requests{};
     render_graph_resource_handle virtual_page_request_readback{};
     render_graph_resource_handle virtual_cluster_bins{};
+    render_graph_resource_handle virtual_hardware_commands{};
 
     const bool needs_depth_pyramid = config.features.hzb_occlusion || config.screen_space_shadows ||
                                      config.features.screen_space_gi || config.features.screen_space_reflections ||
@@ -815,6 +816,11 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                                        .kind = render_resource_kind::buffer,
                                                        .byte_size = 8ull * 1024ull * 1024ull,
                                                        .element_stride = sizeof(std::uint32_t)});
+            virtual_hardware_commands =
+                graph.add_resource({.name = "virtual_geometry_hardware_commands",
+                                    .kind = render_resource_kind::buffer,
+                                    .byte_size = static_cast<std::uint64_t>(maximum_gpu_scene_instances) * 64u * 16u,
+                                    .element_stride = 16u});
             virtual_visibility = graph.add_resource({.name = "virtual_geometry_visibility",
                                                      .kind = render_resource_kind::color_texture,
                                                      .width_scale = config.render_scale,
@@ -868,25 +874,48 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                         .usage = render_resource_usage::storage_buffer,
                                         .write = true}}});
 
-            if (config.features.virtual_geometry_path == virtual_geometry_raster_path::mesh_shader)
+            if (config.features.virtual_geometry_path == virtual_geometry_raster_path::hardware_indexed ||
+                config.features.virtual_geometry_path == virtual_geometry_raster_path::mesh_shader)
             {
-                graph.add_pass({.name = "virtual geometry mesh-shader visibility",
-                                .kind = render_pass_kind::custom,
-                                .builtin = builtin_render_pass::virtual_geometry_mesh_shader_visibility,
+                graph.add_pass({.name = "virtual geometry hardware command generation",
+                                .queue = compute_queue,
+                                .kind = render_pass_kind::compute,
+                                .builtin = builtin_render_pass::virtual_geometry_hardware_command_generation,
                                 .reads = {{.handle = virtual_visible_clusters,
                                            .kind = render_resource_kind::buffer,
                                            .usage = render_resource_usage::storage_buffer},
                                           {.handle = virtual_metadata,
                                            .kind = render_resource_kind::buffer,
                                            .usage = render_resource_usage::storage_buffer}},
-                                .writes = {{.handle = virtual_visibility,
-                                            .kind = render_resource_kind::color_texture,
-                                            .usage = render_resource_usage::storage,
-                                            .write = true},
-                                           {.handle = virtual_encoded_depth,
-                                            .kind = render_resource_kind::color_texture,
-                                            .usage = render_resource_usage::storage,
+                                .writes = {{.handle = virtual_hardware_commands,
+                                            .kind = render_resource_kind::buffer,
+                                            .usage = render_resource_usage::indirect_buffer,
                                             .write = true}}});
+                graph.add_pass(
+                    {.name = config.features.virtual_geometry_path == virtual_geometry_raster_path::mesh_shader
+                                 ? "virtual geometry mesh-shader visibility"
+                                 : "virtual geometry indexed hardware visibility",
+                     .kind = render_pass_kind::custom,
+                     .builtin = config.features.virtual_geometry_path == virtual_geometry_raster_path::mesh_shader
+                                    ? builtin_render_pass::virtual_geometry_mesh_shader_visibility
+                                    : builtin_render_pass::virtual_geometry_hardware_visibility,
+                     .reads = {{.handle = virtual_visible_clusters,
+                                .kind = render_resource_kind::buffer,
+                                .usage = render_resource_usage::storage_buffer},
+                               {.handle = virtual_metadata,
+                                .kind = render_resource_kind::buffer,
+                                .usage = render_resource_usage::storage_buffer},
+                               {.handle = virtual_hardware_commands,
+                                .kind = render_resource_kind::buffer,
+                                .usage = render_resource_usage::indirect_buffer}},
+                     .writes = {{.handle = virtual_visibility,
+                                 .kind = render_resource_kind::color_texture,
+                                 .usage = render_resource_usage::color_attachment,
+                                 .write = true},
+                                {.handle = virtual_encoded_depth,
+                                 .kind = render_resource_kind::color_texture,
+                                 .usage = render_resource_usage::color_attachment,
+                                 .write = true}}});
             }
             else
             {
@@ -1376,25 +1405,48 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                     .usage = render_resource_usage::storage_buffer,
                                     .write = true}}});
 
-        if (config.features.virtual_geometry_path == virtual_geometry_raster_path::mesh_shader)
+        if (config.features.virtual_geometry_path == virtual_geometry_raster_path::hardware_indexed ||
+            config.features.virtual_geometry_path == virtual_geometry_raster_path::mesh_shader)
         {
-            graph.add_pass({.name = "virtual geometry final mesh-shader visibility",
-                            .kind = render_pass_kind::custom,
-                            .builtin = builtin_render_pass::virtual_geometry_mesh_shader_visibility,
+            graph.add_pass({.name = "virtual geometry final hardware command generation",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::virtual_geometry_hardware_command_generation,
                             .reads = {{.handle = virtual_visible_clusters,
                                        .kind = render_resource_kind::buffer,
                                        .usage = render_resource_usage::storage_buffer},
                                       {.handle = virtual_metadata,
                                        .kind = render_resource_kind::buffer,
                                        .usage = render_resource_usage::storage_buffer}},
-                            .writes = {{.handle = virtual_visibility,
-                                        .kind = render_resource_kind::color_texture,
-                                        .usage = render_resource_usage::storage,
-                                        .write = true},
-                                       {.handle = virtual_encoded_depth,
-                                        .kind = render_resource_kind::color_texture,
-                                        .usage = render_resource_usage::storage,
+                            .writes = {{.handle = virtual_hardware_commands,
+                                        .kind = render_resource_kind::buffer,
+                                        .usage = render_resource_usage::indirect_buffer,
                                         .write = true}}});
+            graph.add_pass(
+                {.name = config.features.virtual_geometry_path == virtual_geometry_raster_path::mesh_shader
+                             ? "virtual geometry final mesh-shader visibility"
+                             : "virtual geometry final indexed hardware visibility",
+                 .kind = render_pass_kind::custom,
+                 .builtin = config.features.virtual_geometry_path == virtual_geometry_raster_path::mesh_shader
+                                ? builtin_render_pass::virtual_geometry_mesh_shader_visibility
+                                : builtin_render_pass::virtual_geometry_hardware_visibility,
+                 .reads = {{.handle = virtual_visible_clusters,
+                            .kind = render_resource_kind::buffer,
+                            .usage = render_resource_usage::storage_buffer},
+                           {.handle = virtual_metadata,
+                            .kind = render_resource_kind::buffer,
+                            .usage = render_resource_usage::storage_buffer},
+                           {.handle = virtual_hardware_commands,
+                            .kind = render_resource_kind::buffer,
+                            .usage = render_resource_usage::indirect_buffer}},
+                 .writes = {{.handle = virtual_visibility,
+                             .kind = render_resource_kind::color_texture,
+                             .usage = render_resource_usage::color_attachment,
+                             .write = true},
+                            {.handle = virtual_encoded_depth,
+                             .kind = render_resource_kind::color_texture,
+                             .usage = render_resource_usage::color_attachment,
+                             .write = true}}});
         }
         else
         {
