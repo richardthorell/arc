@@ -89,7 +89,10 @@ export function AiChatPanel({
     ? configuredProviders.find((candidate) => candidate.id === activeConversation.modelId) ?? null
     : null;
   const recentConversations = useMemo(
-    () => [...conversations].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+    () =>
+      conversations
+        .filter((conversation) => conversation.messages.length > 0)
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
     [conversations],
   );
 
@@ -275,14 +278,14 @@ export function AiChatPanel({
         </section>
       ) : (
         <section className="ai-chat-home" aria-label="Conversations">
-          {recentConversations.length > 0 && (
+          {connected && recentConversations.length > 0 && (
             <div className="ai-chat-recent" aria-label="Recent conversations">
               <span className="ai-chat-recent-label">Recent conversations</span>
               <div className="ai-chat-recent-list">
                 {recentConversations.map((conversation) => (
                   <button
                     aria-label={`Open conversation ${conversation.title}`}
-                    disabled={!connected || streaming}
+                    disabled={streaming}
                     key={conversation.id}
                     onClick={() => {
                       setPrompt('');
