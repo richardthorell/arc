@@ -265,6 +265,27 @@ TEST_CASE("runtime normalizes application config")
     REQUIRE_FALSE(normalized.visible);
 }
 
+TEST_CASE("runtime retains a backend-neutral platform capability snapshot")
+{
+    recording_application app;
+    arc::framework::runtime runtime(app);
+    runtime.set_platform_capabilities({.family = arc::framework::platform_family::android,
+                                       .form_factor = arc::framework::device_form_factor::handheld,
+                                       .logical_processor_count = 8,
+                                       .system_memory_bytes = 8ull * 1024ull * 1024ull * 1024ull,
+                                       .window_system = true,
+                                       .high_dpi = true,
+                                       .persistent_local_storage = true,
+                                       .native_package_assets = true});
+
+    REQUIRE(runtime.platform().family == arc::framework::platform_family::android);
+    REQUIRE(runtime.platform().form_factor == arc::framework::device_form_factor::handheld);
+    REQUIRE(runtime.platform().logical_processor_count == 8);
+    REQUIRE(runtime.platform().system_memory_bytes == 8ull * 1024ull * 1024ull * 1024ull);
+    REQUIRE(runtime.platform().window_system);
+    REQUIRE(runtime.platform().native_package_assets);
+}
+
 TEST_CASE("runtime calls lifecycle hooks in order")
 {
     recording_application app;

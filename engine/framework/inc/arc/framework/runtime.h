@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arc/framework/application.h>
+#include <arc/framework/capabilities.h>
 #include <arc/framework/module.h>
 #include <arc/framework/runtime_world.h>
 #include <arc/framework/service.h>
@@ -78,6 +79,12 @@ public:
      */
     [[nodiscard]] const application_config& config() const noexcept;
 
+    /** @brief Replace the immutable capability snapshot supplied by the platform host. */
+    void set_platform_capabilities(platform_capabilities capabilities) noexcept;
+
+    /** @brief Return the capability snapshot supplied by the active platform host. */
+    [[nodiscard]] const platform_capabilities& platform() const noexcept;
+
     /**
      * @brief Return the runtime-owned physical input and player mapping system.
      */
@@ -135,6 +142,7 @@ private:
 
     application* app_{};
     application_config config_{};
+    platform_capabilities platform_capabilities_{};
     input::input_system input_{};
     memory::memory_system memory_{};
     memory::system_memory_resource frame_memory_resource_{memory_, memory::memory_domain::frame,

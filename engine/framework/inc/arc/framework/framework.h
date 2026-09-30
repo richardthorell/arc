@@ -10,6 +10,7 @@
  */
 
 #include <arc/framework/application.h>
+#include <arc/framework/capabilities.h>
 #include <arc/framework/event.h>
 #include <arc/framework/headless.h>
 #include <arc/framework/module.h>

@@ -396,6 +396,28 @@ const std::vector<input_device_event>& input_system::device_events() const noexc
     return device_events_;
 }
 
+input_system_capabilities input_system::capabilities() const noexcept
+{
+    input_system_capabilities result{};
+    for (const auto& [_, device] : devices_)
+    {
+        if (!device.connected_) continue;
+        const auto& capabilities = device.descriptor_.capabilities;
+        ++result.connected_devices;
+        result.buttons |= capabilities.buttons;
+        result.axes |= capabilities.axes;
+        result.pointer |= capabilities.pointer;
+        result.scroll |= capabilities.scroll;
+        result.rumble |= capabilities.rumble || capabilities.trigger_rumble;
+        result.haptics |= capabilities.haptics;
+        result.gyroscope |= capabilities.gyroscope;
+        result.accelerometer |= capabilities.accelerometer;
+        result.touch |= capabilities.touchpad;
+        result.battery |= capabilities.battery;
+    }
+    return result;
+}
+
 input_player& input_system::player(player_id id)
 {
     const auto found = players_.find(id);

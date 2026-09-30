@@ -337,6 +337,16 @@ const application_config& runtime::config() const noexcept
     return config_;
 }
 
+void runtime::set_platform_capabilities(platform_capabilities capabilities) noexcept
+{
+    platform_capabilities_ = capabilities;
+}
+
+const platform_capabilities& runtime::platform() const noexcept
+{
+    return platform_capabilities_;
+}
+
 jobs::job_system& runtime::jobs() noexcept
 {
     return jobs_;
