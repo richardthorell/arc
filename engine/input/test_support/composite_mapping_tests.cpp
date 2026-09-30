@@ -52,8 +52,8 @@ int main()
     auto special = gamepad_binding(gamepad_button::south);
     special.modifiers.push_back(key_binding(key::left_shift));
     player.bind_action("gameplay", "Special", special);
-    if (const int error = require(input.submit_button(gamepad, make_gamepad_button_control(gamepad_button::south), true), 8))
-        return error;
+    const auto south = make_gamepad_button_control(gamepad_button::south);
+    if (const int error = require(input.submit_button(gamepad, south, true), 8)) return error;
     if (const int error = require(!player.down("Special"), 9)) return error;
     if (const int error = require(input.submit_button(keyboard, make_key_control(key::left_shift), true), 10))
         return error;
