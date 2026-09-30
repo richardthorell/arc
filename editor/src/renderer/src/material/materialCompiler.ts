@@ -1,4 +1,4 @@
-import type { MaterialGraph, MaterialGraphNodeType, MaterialGraphValueType } from './materialGraphTypes';
+import type { MaterialGraph, MaterialGraphNode, MaterialGraphNodeType, MaterialGraphValueType } from './materialGraphTypes';
 
 /** Diagnostic returned by ARC's native Material IR/compiler pipeline. */
 export type MaterialCompileDiagnostic = {
@@ -62,6 +62,42 @@ export const nativeMaterialCompileResult = (
   if (!succeeded && diagnostics.length === 0)
     diagnostics.push({ severity: 'error', message: payload?.message || fallbackMessage });
   return { status: succeeded ? 'succeeded' : 'failed', succeeded, diagnostics };
+};
+
+export type MaterialGraphEditImpact = 'none' | 'parameter-values' | 'shader';
+
+const sameParameterIdentity = (before: MaterialGraphNode, after: MaterialGraphNode): boolean =>
+  before.id === after.id &&
+  before.type === after.type &&
+  before.parameter?.exposed === true &&
+  after.parameter?.exposed === true &&
+  before.parameter.name === after.parameter.name;
+
+/**
+ * Classify an authored graph edit before deciding whether shader compilation is required.
+ *
+ * Only value changes on already-exposed parameters are safe to treat as runtime parameter
+ * updates. Topology, node identity/type, parameter metadata, and viewport-independent authored
+ * structure remain shader-affecting and must go through the authoritative native compiler.
+ */
+export const materialGraphEditImpact = (before: MaterialGraph, after: MaterialGraph): MaterialGraphEditImpact => {
+  if (before === after || JSON.stringify(before) === JSON.stringify(after)) return 'none';
+  if (before.connections.length !== after.connections.length || before.nodes.length !== after.nodes.length) return 'shader';
+
+  const beforeConnections = JSON.stringify(before.connections);
+  const afterConnections = JSON.stringify(after.connections);
+  if (beforeConnections !== afterConnections) return 'shader';
+
+  const beforeById = new Map(before.nodes.map((node) => [node.id, node]));
+  let changedParameterValue = false;
+  for (const node of after.nodes) {
+    const previous = beforeById.get(node.id);
+    if (!previous || !sameParameterIdentity(previous, node)) return 'shader';
+    if (JSON.stringify(previous.values) !== JSON.stringify(node.values)) changedParameterValue = true;
+    if (previous.position[0] !== node.position[0] || previous.position[1] !== node.position[1]) return 'shader';
+  }
+
+  return changedParameterValue ? 'parameter-values' : 'none';
 };
 
 export type MaterialEditorParameterKind = 'scalar' | 'vector' | 'color' | 'texture';
