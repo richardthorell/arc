@@ -38,12 +38,13 @@ int main()
     assert(!evaluate_chord(ordered, ordered_active, wrong_order));
 
     const input_digital_axis2d_composite wasd{
-        .parts = {
-            {.binding = key_binding(key::w), .contribution = {0.0f, 1.0f}},
-            {.binding = key_binding(key::s), .contribution = {0.0f, -1.0f}},
-            {.binding = key_binding(key::a), .contribution = {-1.0f, 0.0f}},
-            {.binding = key_binding(key::d), .contribution = {1.0f, 0.0f}},
-        },
+        .parts =
+            {
+                {.binding = key_binding(key::w), .contribution = {0.0f, 1.0f}},
+                {.binding = key_binding(key::s), .contribution = {0.0f, -1.0f}},
+                {.binding = key_binding(key::a), .contribution = {-1.0f, 0.0f}},
+                {.binding = key_binding(key::d), .contribution = {1.0f, 0.0f}},
+            },
     };
 
     const std::array diagonal{true, false, false, true};
