@@ -11,13 +11,16 @@
 namespace
 {
 
+std::filesystem::path unique_root()
+{
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    return std::filesystem::temp_directory_path() / ("arc-input-composites-" + std::to_string(stamp));
+}
+
 class temporary_input_config
 {
 public:
-    temporary_input_config()
-        : root_(std::filesystem::temp_directory_path() /
-                ("arc-input-composites-" +
-                 std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())))
+    temporary_input_config() : root_(unique_root())
     {
         std::filesystem::create_directories(root_);
     }
@@ -89,19 +92,19 @@ TEST_CASE("input config persists modifier chords and vector composites")
     REQUIRE(loaded.config.contexts[0].axes2d.size() == 1);
     CHECK(loaded.config.contexts[0].axes2d[0].bindings.size() == 4);
 
-    arc::input::input_system input;
-    const auto keyboard = input.connect_device({.type = arc::input::input_device_type::keyboard,
-                                                .name = "Keyboard",
-                                                .capabilities = {.buttons = true}});
+    using namespace arc::input;
+    input_system input;
+    const auto keyboard = input.connect_device(
+        {.type = input_device_type::keyboard, .name = "Keyboard", .capabilities = {.buttons = true}});
     REQUIRE(arc::project::apply_input_config(loaded.config, input).succeeded);
     auto& player = input.player(0);
 
-    REQUIRE(input.submit_button(keyboard, arc::input::make_key_control(arc::input::key::s), true));
+    REQUIRE(input.submit_button(keyboard, make_key_control(key::s), true));
     CHECK_FALSE(player.down("Save"));
-    REQUIRE(input.submit_button(keyboard, arc::input::make_key_control(arc::input::key::left_control), true));
+    REQUIRE(input.submit_button(keyboard, make_key_control(key::left_control), true));
     CHECK(player.down("Save"));
 
-    REQUIRE(input.submit_button(keyboard, arc::input::make_key_control(arc::input::key::w), true));
+    REQUIRE(input.submit_button(keyboard, make_key_control(key::w), true));
     const auto opposed = player.axis2d("Move");
     CHECK(opposed[0] == 0.0f);
     CHECK(opposed[1] == 0.0f);
@@ -152,7 +155,7 @@ TEST_CASE("input config rejects incomplete modifier chords")
               }]
             }]
           }]
-        })json", "Invalid.json");
+        })json");
         const auto loaded = arc::project::load_input_config(path);
         CHECK_FALSE(loaded.succeeded);
         CHECK(loaded.error.find("modifier") != std::string::npos);
