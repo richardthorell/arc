@@ -230,8 +230,7 @@ TEST_CASE("GUID Flow bindings use isolated Play overrides and custom Content roo
 {
     const auto root =
         std::filesystem::temp_directory_path() /
-        ("arc-flow-play-sandbox-" +
-         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        ("arc-flow-play-sandbox-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     const auto content = root / "GameContent";
     std::filesystem::create_directories(content);
     const auto source_path = content / "QuickStart.arcflow";
@@ -246,8 +245,8 @@ TEST_CASE("GUID Flow bindings use isolated Play overrides and custom Content roo
         auto host = manager.acquire(std::make_unique<arc::render::renderer>());
         arc::editor::editor_asset_state assets;
         assets.root = content;
-        REQUIRE(host->open_project({.name = "Flow Sandbox", .root = root, .content_roots = {content}}, assets)
-                    .succeeded);
+        REQUIRE(
+            host->open_project({.name = "Flow Sandbox", .root = root, .content_roots = {content}}, assets).succeeded);
         const auto registered = host->project_assets_snapshot();
         const auto flow = std::find_if(registered.assets.begin(), registered.assets.end(), [](const auto& asset)
                                        { return asset.kind == "flow" && asset.path == "QuickStart.arcflow"; });
@@ -262,18 +261,16 @@ TEST_CASE("GUID Flow bindings use isolated Play overrides and custom Content roo
         REQUIRE(host->execute(arc::editor::host_component_operation_command{
                                   .operation = arc::editor::host_component_operation::add, .component = "flow"})
                     .succeeded);
-        REQUIRE(host->execute(arc::editor::host_set_flow_command{.entity = entity,
-                                                                 .graph_guid = flow->guid,
-                                                                 .graph_path_hint = flow->path,
-                                                                 .enabled = true})
+        REQUIRE(host
+                    ->execute(arc::editor::host_set_flow_command{
+                        .entity = entity, .graph_guid = flow->guid, .graph_path_hint = flow->path, .enabled = true})
                     .succeeded);
         REQUIRE(host->selected_entity_snapshot().flow.has_value());
         CHECK(host->selected_entity_snapshot().flow->graph_guid == flow->guid);
 
         REQUIRE(host->execute(arc::editor::host_runtime_prepare_flow_sources_command{}).succeeded);
-        REQUIRE(host
-                    ->execute(arc::editor::host_runtime_stage_flow_source_command{
-                        {.guid = flow->guid, .revision = 1, .source = "{\"version\":1"}})
+        REQUIRE(host->execute(arc::editor::host_runtime_stage_flow_source_command{
+                                  {.guid = flow->guid, .revision = 1, .source = "{\"version\":1"}})
                     .succeeded);
         const auto invalid_start = host->execute(arc::editor::host_runtime_resume_command{});
         REQUIRE_FALSE(invalid_start.succeeded);
@@ -282,20 +279,18 @@ TEST_CASE("GUID Flow bindings use isolated Play overrides and custom Content roo
         CHECK(host->runtime_snapshot().state == arc::editor::host_runtime_state::stopped);
 
         REQUIRE(host->execute(arc::editor::host_runtime_prepare_flow_sources_command{}).succeeded);
-        REQUIRE(host
-                    ->execute(arc::editor::host_runtime_stage_flow_source_command{
-                        {.guid = flow->guid,
-                         .revision = 2,
-                         .source = flow_name_graph("Quick Start", "overlay-generation")}})
+        REQUIRE(host->execute(arc::editor::host_runtime_stage_flow_source_command{
+                                  {.guid = flow->guid,
+                                   .revision = 2,
+                                   .source = flow_name_graph("Quick Start", "overlay-generation")}})
                     .succeeded);
         REQUIRE(host->execute(arc::editor::host_runtime_resume_command{}).succeeded);
         CHECK(host->runtime_entity_snapshot(entity).name == "overlay-generation");
 
-        REQUIRE(host
-                    ->execute(arc::editor::host_runtime_update_flow_source_command{
-                        {.guid = flow->guid,
-                         .revision = 3,
-                         .source = flow_name_graph("Quick Start", "saved-reload-generation")}})
+        REQUIRE(host->execute(arc::editor::host_runtime_update_flow_source_command{
+                                  {.guid = flow->guid,
+                                   .revision = 3,
+                                   .source = flow_name_graph("Quick Start", "saved-reload-generation")}})
                     .succeeded);
         REQUIRE(host->execute(arc::editor::host_runtime_pause_command{}).succeeded);
         REQUIRE(host->execute(arc::editor::host_runtime_step_command{.ticks = 1}).succeeded);

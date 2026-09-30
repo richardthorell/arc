@@ -658,15 +658,15 @@ TEST_CASE("legacy Flow paths migrate to schema v2 GUID references")
 {
     const auto root =
         std::filesystem::temp_directory_path() /
-        ("arc-flow-scene-migration-" +
-         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        ("arc-flow-scene-migration-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     const auto content = root / "GameContent";
     std::error_code error;
     std::filesystem::create_directories(content, error);
     REQUIRE_FALSE(error);
     {
         std::ofstream flow(content / "QuickStart.arcflow", std::ios::binary);
-        flow << R"json({"version":1,"assetType":"flow","name":"Quick Start","graph":{"version":1,"variables":[],"nodes":[{"id":"begin","type":"beginPlay","position":[0,0],"values":{}}],"connections":[],"viewport":{"x":0,"y":0,"zoom":1}}})json";
+        flow
+            << R"json({"version":1,"assetType":"flow","name":"Quick Start","graph":{"version":1,"variables":[],"nodes":[{"id":"begin","type":"beginPlay","position":[0,0],"values":{}}],"connections":[],"viewport":{"x":0,"y":0,"zoom":1}}})json";
     }
 
     {
@@ -674,8 +674,8 @@ TEST_CASE("legacy Flow paths migrate to schema v2 GUID references")
         auto host = manager.acquire(std::make_unique<arc::render::renderer>());
         arc::editor::editor_asset_state assets;
         assets.root = content;
-        REQUIRE(host->open_project({.name = "Flow Migration", .root = root, .content_roots = {content}}, assets)
-                    .succeeded);
+        REQUIRE(
+            host->open_project({.name = "Flow Migration", .root = root, .content_roots = {content}}, assets).succeeded);
         const auto registered = host->project_assets_snapshot();
         const auto flow = std::find_if(registered.assets.begin(), registered.assets.end(), [](const auto& asset)
                                        { return asset.kind == "flow" && asset.path == "QuickStart.arcflow"; });
@@ -688,17 +688,15 @@ TEST_CASE("legacy Flow paths migrate to schema v2 GUID references")
         REQUIRE(host->execute(arc::editor::host_component_operation_command{
                                   .operation = arc::editor::host_component_operation::add, .component = "flow"})
                     .succeeded);
-        REQUIRE(host->execute(arc::editor::host_set_flow_command{.entity = entity,
-                                                                 .graph_guid = flow->guid,
-                                                                 .graph_path_hint = flow->path,
-                                                                 .enabled = true})
+        REQUIRE(host
+                    ->execute(arc::editor::host_set_flow_command{
+                        .entity = entity, .graph_guid = flow->guid, .graph_path_hint = flow->path, .enabled = true})
                     .succeeded);
         const auto scene_path = root / "QuickStart.arcscene";
         REQUIRE(host->execute(arc::editor::host_save_scene_as_command{.path = scene_path}).succeeded);
 
         std::ifstream saved_input(scene_path, std::ios::binary);
-        const std::string saved_text{std::istreambuf_iterator<char>{saved_input},
-                                     std::istreambuf_iterator<char>{}};
+        const std::string saved_text{std::istreambuf_iterator<char>{saved_input}, std::istreambuf_iterator<char>{}};
         saved_input.close();
         auto legacy = nlohmann::json::parse(saved_text);
         bool replaced{};
@@ -706,8 +704,7 @@ TEST_CASE("legacy Flow paths migrate to schema v2 GUID references")
         {
             auto& components = record["components"];
             if (!components.contains("Flow")) continue;
-            components["Flow"] = {
-                {"version", 1}, {"graph", "GameContent/QuickStart.arcflow"}, {"enabled", true}};
+            components["Flow"] = {{"version", 1}, {"graph", "GameContent/QuickStart.arcflow"}, {"enabled", true}};
             replaced = true;
         }
         REQUIRE(replaced);
@@ -722,8 +719,7 @@ TEST_CASE("legacy Flow paths migrate to schema v2 GUID references")
         REQUIRE(host->execute(arc::editor::host_open_scene_command{.path = scene_path}).succeeded);
         const arc::scene::flow_component* binding{};
         for (const auto loaded_entity : host->scene_state().scene.entities())
-            if (const auto* candidate =
-                    host->scene_state().scene.try_get<arc::scene::flow_component>(loaded_entity))
+            if (const auto* candidate = host->scene_state().scene.try_get<arc::scene::flow_component>(loaded_entity))
             {
                 binding = candidate;
                 break;

@@ -293,8 +293,7 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
             return value["graph"].is_string() && valid_flow_graph_reference(value["graph"].get<std::string>())
                        ? true
                        : fail("has an invalid Flow graph path");
-        return validate_asset_reference_json(value["graph"], {}) ? true
-                                                                  : fail("has an invalid Flow asset reference");
+        return validate_asset_reference_json(value["graph"], {}) ? true : fail("has an invalid Flow asset reference");
     }
     if (name == "RenderLayer")
         return value.contains("mask") && value["mask"].is_number_unsigned() ? true : fail("has an invalid layer mask");
@@ -1145,9 +1144,9 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                                  {"revision", component->content_revision}};
     }
     if (const auto* component = state.scene.try_get<scene::flow_component>(value))
-        components["Flow"] = {
-            {"version", 2}, {"graph", serialize_asset_reference(component->graph, project_root)},
-            {"enabled", component->enabled}};
+        components["Flow"] = {{"version", 2},
+                              {"graph", serialize_asset_reference(component->graph, project_root)},
+                              {"enabled", component->enabled}};
     if (const auto* component = state.scene.try_get<scene::water_component>(value))
         components["Water"] = {{"version", 2},
                                {"type", static_cast<std::uint8_t>(component->type)},
@@ -1544,8 +1543,7 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                     component.graph = read_asset_reference(flow["graph"], assets::asset_types::flow_graph, project_root,
                                                            asset_registry);
                 else
-                    component.graph = read_legacy_flow_reference(flow.value("graph", ""), project_root,
-                                                                 asset_registry);
+                    component.graph = read_legacy_flow_reference(flow.value("graph", ""), project_root, asset_registry);
                 loaded.scene.emplace<scene::flow_component>(entity, std::move(component));
             }
             if (components.contains("RenderLayer"))

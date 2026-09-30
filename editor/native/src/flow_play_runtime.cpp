@@ -58,8 +58,7 @@ const scene::flow_component* active_flow_binding(const ecs::world& world, ecs::e
 {
     if (!world.alive(entity)) return nullptr;
     const auto* binding = world.try_get<scene::flow_component>(entity);
-    if (!binding || !binding->enabled ||
-        (!binding->graph.guid.valid() && binding->graph.path_hint.empty()))
+    if (!binding || !binding->enabled || (!binding->graph.guid.valid() && binding->graph.path_hint.empty()))
         return nullptr;
     if (const auto* active = world.try_get<scene::active_component>(entity); active && !active->active) return nullptr;
     return binding;
@@ -158,8 +157,7 @@ struct bound_flow_instance
     bound_flow_instance(ecs::entity value, assets::asset_reference reference, std::string name,
                         std::shared_ptr<const flow::bytecode_program> bytecode, std::uint64_t generation)
         : entity(value), graph(std::move(reference)), graph_name(std::move(name)), program(std::move(bytecode)),
-          artifact_generation(generation),
-          vm(*program)
+          artifact_generation(generation), vm(*program)
     {
     }
 };
@@ -216,8 +214,7 @@ public:
         {
             const auto* binding = active_flow_binding(std::as_const(*world_), entity);
             if (!binding) continue;
-            if (const auto error = append_instance(entity, binding->graph); !error.empty())
-                return {.error = error};
+            if (const auto error = append_instance(entity, binding->graph); !error.empty()) return {.error = error};
         }
 
         for (auto& instance : instances_)
@@ -654,8 +651,8 @@ flow_play_install_result install_flow_play_runtime(framework::runtime_world& wor
                                                    std::filesystem::path input_config_path)
 {
     if (!source_resolver) return {.error = "Flow source resolver is unavailable"};
-    auto session = std::make_shared<flow_play_session>(world.entities(), std::move(source_resolver),
-                                                       std::move(input_config_path));
+    auto session =
+        std::make_shared<flow_play_session>(world.entities(), std::move(source_resolver), std::move(input_config_path));
     auto result = session->initialize();
     if (!result.succeeded) return result;
 
