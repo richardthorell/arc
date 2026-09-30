@@ -1,4 +1,9 @@
-import type { MaterialGraph, MaterialGraphNode, MaterialGraphNodeType, MaterialGraphValueType } from './materialGraphTypes';
+import type {
+  MaterialGraph,
+  MaterialGraphNode,
+  MaterialGraphNodeType,
+  MaterialGraphValueType,
+} from './materialGraphTypes';
 
 /** Diagnostic returned by ARC's native Material IR/compiler pipeline. */
 export type MaterialCompileDiagnostic = {
@@ -82,7 +87,8 @@ const sameParameterIdentity = (before: MaterialGraphNode, after: MaterialGraphNo
  */
 export const materialGraphEditImpact = (before: MaterialGraph, after: MaterialGraph): MaterialGraphEditImpact => {
   if (before === after || JSON.stringify(before) === JSON.stringify(after)) return 'none';
-  if (before.connections.length !== after.connections.length || before.nodes.length !== after.nodes.length) return 'shader';
+  if (before.connections.length !== after.connections.length || before.nodes.length !== after.nodes.length)
+    return 'shader';
 
   const beforeConnections = JSON.stringify(before.connections);
   const afterConnections = JSON.stringify(after.connections);
