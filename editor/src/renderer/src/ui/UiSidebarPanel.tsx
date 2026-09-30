@@ -5,7 +5,7 @@ import { Settings } from 'lucide-react';
 import { activityRegistry } from '../app/panelRegistry';
 import type { ActivityId, ActivityRegistration } from '../app/workbenchTypes';
 import { requestSearchDrawer } from '../search/searchDrawerRoute';
-import { requestSettingsDialog } from '../settings/settingsDialogRoute';
+import { requestSettingsDialog, subscribeSettingsDialogOpenRequests } from '../settings/settingsDialogRoute';
 import { UiButton } from './UiButton';
 
 import './UiSidebarPanel.css';
@@ -28,7 +28,8 @@ export function UiSidebarPanelButton({
   return (
     <UiButton
       className={['ui-sidebar-panel-button', 'activity-button', className].filter(Boolean).join(' ')}
-      {...props}
+      {...props
+      }
     >
       {children}
       {showCounter && (
@@ -89,6 +90,8 @@ export function UiSidebarPanel({
       window.removeEventListener('focus', refreshVersionControlCount);
     };
   }, []);
+
+  useEffect(() => subscribeSettingsDialogOpenRequests(() => onSettings()), [onSettings]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
