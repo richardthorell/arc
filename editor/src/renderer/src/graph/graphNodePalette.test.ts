@@ -84,21 +84,23 @@ describe('graph node palette keyboard selection', () => {
 describe('graph node palette creation', () => {
   it('creates the selected visible descriptor inside one domain transaction', () => {
     const results = queryGraphNodePalette(nodes, { search: 'constant' });
+    const labels: string[] = [];
     const create = vi.fn((descriptor: GraphNodePaletteDescriptor<Kind>) => `node:${descriptor.kind}`);
-    const transact = vi.fn((label: string, operation: () => string) => ({ label, value: operation() }));
-
-    expect(createGraphNodeFromPalette(results, 'constant', { create, transact })).toEqual({
-      label: 'Create Constant',
-      value: 'node:constant',
+    const transact = vi.fn((label: string, operation: () => string) => {
+      labels.push(label);
+      return operation();
     });
+
+    expect(createGraphNodeFromPalette(results, 'constant', { create, transact })).toBe('node:constant');
+    expect(labels).toEqual(['Create Constant']);
     expect(transact).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledTimes(1);
   });
 
   it('does not create stale or filtered-out selections', () => {
     const results = queryGraphNodePalette(nodes, { search: 'constant' });
-    const create = vi.fn();
-    const transact = vi.fn((_label: string, operation: () => unknown) => operation());
+    const create = vi.fn((_descriptor: GraphNodePaletteDescriptor<Kind>) => 'created');
+    const transact = vi.fn((_label: string, operation: () => string) => operation());
 
     expect(createGraphNodeFromPalette(results, 'branch', { create, transact })).toBeUndefined();
     expect(transact).not.toHaveBeenCalled();
