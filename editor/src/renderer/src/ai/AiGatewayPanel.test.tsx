@@ -10,6 +10,7 @@ import type { ArcAiGatewayStatus } from '../../../preload/preload';
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
 });
 
 const status: ArcAiGatewayStatus = {
@@ -46,7 +47,7 @@ const status: ArcAiGatewayStatus = {
 };
 
 describe('AiChatPanel', () => {
-  it('renders a clean two-section AI chat shell', () => {
+  it('renders an enabled two-section chat shell for a configured provider', () => {
     const provider: AiModelProvider = {
       id: 'test',
       label: 'Test Agent',
@@ -62,16 +63,40 @@ describe('AiChatPanel', () => {
     expect(screen.getByRole('region', { name: 'Conversations' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Chat' })).toBeInTheDocument();
     expect(screen.getByLabelText('Conversation')).toHaveValue('new');
+    expect(screen.getByLabelText('Conversation')).toBeEnabled();
     expect(screen.getByLabelText('Model')).toHaveValue('test');
+    expect(screen.getByLabelText('Model')).toBeEnabled();
     expect(screen.getByText('Test Agent')).toBeInTheDocument();
     expect(screen.getByLabelText('Chat history')).toBeEmptyDOMElement();
+    expect(screen.getByLabelText('Ask ARC')).toBeEnabled();
     expect(screen.getByLabelText('Send prompt')).toBeDisabled();
   });
 
-  it('keeps the composer editable while the shell is being redesigned', () => {
+  it('disables conversations and chat until an AI service is connected', () => {
+    vi.useFakeTimers();
+    const keydown = vi.fn();
+    const navigate = vi.fn();
+    window.addEventListener('keydown', keydown);
+    window.addEventListener('arc-settings-navigate', navigate);
+
     render(<AiChatPanel />);
-    fireEvent.change(screen.getByLabelText('Ask ARC'), { target: { value: 'Hello ARC' } });
-    expect(screen.getByLabelText('Ask ARC')).toHaveValue('Hello ARC');
+
+    expect(screen.getByLabelText('Conversation')).toBeDisabled();
+    expect(screen.getByLabelText('Model')).toBeDisabled();
+    expect(screen.getByLabelText('Ask ARC')).toBeDisabled();
+    expect(screen.getByText('Connect your AI service')).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open AI settings' }));
+    expect(keydown).toHaveBeenCalledOnce();
+    expect((keydown.mock.calls[0][0] as KeyboardEvent).ctrlKey).toBe(true);
+    expect((keydown.mock.calls[0][0] as KeyboardEvent).key).toBe(',');
+
+    vi.runAllTimers();
+    expect(navigate).toHaveBeenCalledOnce();
+    expect((navigate.mock.calls[0][0] as CustomEvent).detail).toEqual({ id: 'ai.providers' });
+
+    window.removeEventListener('keydown', keydown);
+    window.removeEventListener('arc-settings-navigate', navigate);
   });
 
   it('keeps edit approval outside the chat panel', () => {
