@@ -63,6 +63,14 @@ describe('PolyHavenAssetSource', () => {
     await expect(source.getAsset('missing')).resolves.toBeNull();
   });
 
+  it('surfaces catalog provider failures with operation context', async () => {
+    const source = new PolyHavenAssetSource({
+      fetchJson: vi.fn().mockRejectedValue(new Error('network unavailable')),
+    });
+
+    await expect(source.search()).rejects.toThrow('Poly Haven catalog request failed: network unavailable');
+  });
+
   it('flattens nested Poly Haven file responses into a download manifest', async () => {
     const fetchJson = vi.fn().mockResolvedValue({
       blend: {
@@ -107,5 +115,15 @@ describe('PolyHavenAssetSource', () => {
         },
       ],
     });
+  });
+
+  it('surfaces manifest provider failures with the asset id', async () => {
+    const source = new PolyHavenAssetSource({
+      fetchJson: vi.fn().mockRejectedValue('provider timeout'),
+    });
+
+    await expect(source.getDownloadManifest('dirty football')).rejects.toThrow(
+      "Poly Haven download manifest request for 'dirty football' failed: provider timeout",
+    );
   });
 });
