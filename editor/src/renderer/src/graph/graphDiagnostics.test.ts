@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildGraphDiagnosticOverlays,
   graphDiagnosticNodeId,
   graphDiagnosticsForNode,
   graphDiagnosticTargetKey,
@@ -71,6 +72,40 @@ describe('graphDiagnostics', () => {
       'error-a',
       'info-a',
     ]);
+  });
+
+  it('groups diagnostics by exact overlay target while preserving domain-neutral jump anchors', () => {
+    const overlays = buildGraphDiagnosticOverlays([
+      ...diagnostics,
+      {
+        id: 'warning-a',
+        severity: 'warning',
+        message: 'Node warning',
+        target: { kind: 'node', nodeId: 'node-a' },
+      },
+      {
+        id: 'wire-error',
+        severity: 'error',
+        message: 'Invalid connection',
+        target: { kind: 'connection', connectionId: 'wire-1', sourceNodeId: 'node-a', targetNodeId: 'node-b' },
+      },
+      {
+        id: 'orphan-wire',
+        severity: 'warning',
+        message: 'Wire has no node anchor',
+        target: { kind: 'connection', connectionId: 'orphan' },
+      },
+    ]);
+
+    expect(overlays.map((overlay) => overlay.targetKey)).toEqual([
+      'connection:orphan',
+      'connection:wire-1',
+      'node:node-a',
+      'pin:node-b:input',
+    ]);
+    expect(overlays[0]).toMatchObject({ nodeId: undefined, highestSeverity: 'warning' });
+    expect(overlays[1]).toMatchObject({ nodeId: 'node-b', highestSeverity: 'error' });
+    expect(overlays[2].diagnostics.map((diagnostic) => diagnostic.id)).toEqual(['error-a', 'warning-a', 'info-a']);
   });
 
   it('summarizes diagnostics per node for shared badges and detail surfaces', () => {
