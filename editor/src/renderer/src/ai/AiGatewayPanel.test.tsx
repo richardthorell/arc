@@ -1,21 +1,15 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AiGatewayApprovalPrompt } from './AiGatewayPanel';
 import { AiChatPanel } from './AiChatPanel';
-import { aiConversationStorageKey, type AiModelProvider } from './aiChat';
+import type { AiModelProvider } from './aiChat';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
-
-Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-  configurable: true,
-  value: vi.fn(),
-});
 
 afterEach(() => {
   cleanup();
-  localStorage.removeItem(aiConversationStorageKey);
 });
 
 const status: ArcAiGatewayStatus = {
@@ -51,48 +45,33 @@ const status: ArcAiGatewayStatus = {
   audit: [],
 };
 
-const renderPanel = (provider?: AiModelProvider) => render(<AiChatPanel provider={provider} />);
-
 describe('AiChatPanel', () => {
-  it('renders as AI Chat and streams a provider response', async () => {
+  it('renders a clean two-section AI chat shell', () => {
     const provider: AiModelProvider = {
       id: 'test',
       label: 'Test Agent',
       configured: true,
-      async *stream(request) {
-        expect(request.messages.at(-1)?.content).toBe('How should I light this room?');
-        yield { type: 'delta', text: 'Start with ' };
-        yield { type: 'delta', text: 'a key light.' };
+      async *stream() {
         yield { type: 'done' };
       },
     };
 
-    renderPanel(provider);
+    render(<AiChatPanel provider={provider} />);
+
     expect(screen.getByRole('region', { name: 'AI Chat' })).toBeInTheDocument();
-    expect(screen.getByText('AI Chat')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Conversations' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Chat' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Conversation')).toHaveValue('new');
+    expect(screen.getByLabelText('Model')).toHaveValue('test');
     expect(screen.getByText('Test Agent')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Gateway diagnostics')).not.toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText('Ask ARC'), {
-      target: { value: 'How should I light this room?' },
-    });
-    fireEvent.click(screen.getByLabelText('Send prompt'));
-
-    const promptMessage = screen
-      .getAllByText('How should I light this room?')
-      .find((element) => element.tagName === 'P');
-    expect(promptMessage).toBeVisible();
-    await waitFor(() => expect(screen.getByText('Start with a key light.')).toBeVisible());
-    expect((screen.getByLabelText('AI conversation') as HTMLSelectElement).value).not.toBe('');
-    expect(localStorage.getItem(aiConversationStorageKey)).toContain('How should I light this room?');
+    expect(screen.getByLabelText('Chat history')).toBeEmptyDOMElement();
+    expect(screen.getByLabelText('Send prompt')).toBeDisabled();
   });
 
-  it('creates a fresh conversation from the header', () => {
-    renderPanel();
-    const selector = screen.getByLabelText('AI conversation');
-    expect(selector.querySelectorAll('option')).toHaveLength(1);
-    fireEvent.click(screen.getByLabelText('New AI chat'));
-    expect(selector.querySelectorAll('option')).toHaveLength(2);
+  it('keeps the composer editable while the shell is being redesigned', () => {
+    render(<AiChatPanel />);
+    fireEvent.change(screen.getByLabelText('Ask ARC'), { target: { value: 'Hello ARC' } });
+    expect(screen.getByLabelText('Ask ARC')).toHaveValue('Hello ARC');
   });
 
   it('keeps edit approval outside the chat panel', () => {
