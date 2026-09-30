@@ -5,6 +5,7 @@ import {
   createGraphSelection,
   navigateGraphSelection,
   remapGraphClipboardSnapshot,
+  selectGraphMarquee,
   selectGraphNode,
   selectGraphRange,
 } from './graphSelection';
@@ -25,6 +26,43 @@ describe('graphSelection', () => {
     const selection = selectGraphRange(initial, ['a', 'b', 'c', 'd'], 'd');
     expect([...selection.ids]).toEqual(['b', 'c', 'd']);
     expect(selection.anchor).toBe('b');
+  });
+
+  it('selects graph nodes intersecting a marquee independent of drag direction', () => {
+    const selectable = [
+      { id: 'a', bounds: { x: 0, y: 0, width: 20, height: 20 } },
+      { id: 'b', bounds: { x: 30, y: 30, width: 20, height: 20 } },
+      { id: 'c', bounds: { x: 80, y: 80, width: 20, height: 20 } },
+    ];
+
+    const forward = selectGraphMarquee(createGraphSelection(), selectable, {
+      x: 10,
+      y: 10,
+      width: 50,
+      height: 50,
+    });
+    expect([...forward.ids]).toEqual(['a', 'b']);
+    expect(forward.anchor).toBe('a');
+
+    const reverse = selectGraphMarquee(createGraphSelection(), selectable, {
+      x: 60,
+      y: 60,
+      width: -50,
+      height: -50,
+    });
+    expect([...reverse.ids]).toEqual(['a', 'b']);
+  });
+
+  it('supports additive marquee selection while preserving the existing anchor', () => {
+    const initial = createGraphSelection(['existing'], 'existing');
+    const selection = selectGraphMarquee(
+      initial,
+      [{ id: 'new', bounds: { x: 5, y: 5, width: 10, height: 10 } }],
+      { x: 0, y: 0, width: 20, height: 20 },
+      true,
+    );
+    expect([...selection.ids]).toEqual(['existing', 'new']);
+    expect(selection.anchor).toBe('existing');
   });
 
   it('navigates selection deterministically in domain-provided order', () => {
