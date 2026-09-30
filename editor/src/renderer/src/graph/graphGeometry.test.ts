@@ -53,8 +53,8 @@ describe('graph geometry', () => {
 
   it('fits graph bounds into the viewport with shared padding and zoom limits', () => {
     expect(graphViewportFitBounds({ left: 0, top: 0, right: 400, bottom: 200 }, { width: 1000, height: 600 }, 50)).toEqual({
-      x: 50,
-      y: 75,
+      x: 140,
+      y: 120,
       zoom: 1.8,
     });
 
