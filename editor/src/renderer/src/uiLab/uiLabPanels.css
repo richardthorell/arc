@@ -103,6 +103,11 @@
   min-height: 540px;
 }
 
+.ui-lab-production-panel[data-panel-id='versionControl'],
+.ui-lab-production-panel[data-panel-id='aiAssistant'] {
+  min-height: 720px;
+}
+
 .ui-lab-production-panel-label {
   display: flex;
   align-items: center;
@@ -151,7 +156,7 @@
 .ui-lab-production-panel-stage > .production-tool-panel,
 .ui-lab-production-panel-stage > .console-panel,
 .ui-lab-production-panel-stage > .build-output-panel,
-.ui-lab-production-panel-stage > .ai-gateway-panel,
+.ui-lab-production-panel-stage > .ai-chat-panel,
 .ui-lab-production-panel-stage > .arc-viewport-shell,
 .ui-lab-production-panel-stage > .environment-inspector,
 .ui-lab-production-panel-stage > .data-inspector,
