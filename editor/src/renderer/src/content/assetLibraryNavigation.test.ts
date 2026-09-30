@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildAssetLibraryScopeNavigation, visibleAssetLibraryScopeNavigation } from './assetLibraryNavigation';
+import {
+  buildAssetLibraryNavigation,
+  buildAssetLibraryScopeNavigation,
+  buildAssetLibraryVirtualNavigation,
+  visibleAssetLibraryScopeNavigation,
+} from './assetLibraryNavigation';
 
 describe('asset library scope navigation', () => {
   it('keeps project and built-in roots stable for an empty project', () => {
@@ -15,8 +20,13 @@ describe('asset library scope navigation', () => {
     ]);
 
     expect(navigation.map((scope) => scope.id)).toEqual(['builtin', 'project', 'user', 'organization']);
-    expect(navigation.find((scope) => scope.id === 'user')).toMatchObject({ writable: true, assetCount: 1 });
+    expect(navigation.find((scope) => scope.id === 'user')).toMatchObject({
+      kind: 'scope',
+      writable: true,
+      assetCount: 1,
+    });
     expect(navigation.find((scope) => scope.id === 'organization')).toMatchObject({
+      kind: 'scope',
       writable: false,
       assetCount: 2,
     });
@@ -33,5 +43,53 @@ describe('asset library scope navigation', () => {
     const moved = { ...asset, scope: 'user' as const };
 
     expect(asset.id).toBe(moved.id);
+  });
+});
+
+describe('asset library virtual navigation', () => {
+  it('keeps virtual views distinct from storage scopes and counts stable membership', () => {
+    const navigation = buildAssetLibraryVirtualNavigation({
+      favorites: ['asset-a', 'asset-b', 'asset-a'],
+      recent: ['asset-b'],
+      downloads: [],
+    });
+
+    expect(navigation.map((view) => view.id)).toEqual(['favorites', 'recent', 'downloads']);
+    expect(navigation.find((view) => view.id === 'favorites')).toMatchObject({
+      kind: 'virtual-view',
+      assetCount: 2,
+      persistent: true,
+    });
+  });
+
+  it('only exposes transient Search Results while results exist', () => {
+    expect(buildAssetLibraryVirtualNavigation({}, []).some((view) => view.id === 'search-results')).toBe(false);
+
+    expect(buildAssetLibraryVirtualNavigation({}, ['asset-a', 'asset-a', 'asset-b'])).toContainEqual(
+      expect.objectContaining({
+        id: 'search-results',
+        kind: 'virtual-view',
+        assetCount: 2,
+        persistent: false,
+      }),
+    );
+  });
+
+  it('combines virtual views and logical scopes without conflating their identities', () => {
+    const navigation = buildAssetLibraryNavigation(
+      [{ scope: 'project' }, { scope: 'user' }],
+      { favorites: ['asset-a'], recent: [], downloads: [] },
+    );
+
+    expect(navigation.filter((item) => item.kind === 'virtual-view').map((item) => item.id)).toEqual([
+      'favorites',
+      'recent',
+      'downloads',
+    ]);
+    expect(navigation.filter((item) => item.kind === 'scope').map((item) => item.id)).toEqual([
+      'builtin',
+      'project',
+      'user',
+    ]);
   });
 });
