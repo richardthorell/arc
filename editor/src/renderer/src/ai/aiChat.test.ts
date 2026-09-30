@@ -18,14 +18,20 @@ describe('AI conversation helpers', () => {
     expect(conversationTitleFromPrompt('x'.repeat(60))).toBe(`${'x'.repeat(39)}…`);
   });
 
-  it('persists conversations and marks interrupted streams as errors on restore', () => {
+  it('persists conversations, their locked model, and interrupted stream state', () => {
     const conversation = createAiConversation();
+    conversation.modelId = 'test-model';
+    conversation.modelLabel = 'Test Model';
     conversation.messages.push(createAiMessage('assistant', 'partial', 'streaming'));
     saveAiConversations([conversation]);
 
     const restored = loadAiConversations();
     expect(restored).toHaveLength(1);
-    expect(restored[0].id).toBe(conversation.id);
+    expect(restored[0]).toMatchObject({
+      id: conversation.id,
+      modelId: 'test-model',
+      modelLabel: 'Test Model',
+    });
     expect(restored[0].messages[0]).toMatchObject({ content: 'partial', state: 'error' });
   });
 
