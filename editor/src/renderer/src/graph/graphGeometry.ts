@@ -12,6 +12,11 @@ export type GraphSelectionBounds = {
   bottom: number;
 };
 
+export type GraphViewportSize = {
+  width: number;
+  height: number;
+};
+
 export const graphPinKey = (nodeId: string, pin: string, output: boolean) =>
   `${nodeId}:${output ? 'output' : 'input'}:${pin}`;
 
@@ -42,6 +47,46 @@ export const graphConnectionPath = (from: GraphPoint, to: GraphPoint, minimumHan
 
 export const clampGraphZoom = (zoom: number, minimum = 0.35, maximum = 1.8) =>
   Math.min(maximum, Math.max(minimum, zoom));
+
+export const graphViewportZoomAt = (
+  viewport: GraphViewport,
+  screenPoint: GraphPoint,
+  zoom: number,
+  minimum = 0.35,
+  maximum = 1.8,
+): GraphViewport => {
+  const nextZoom = clampGraphZoom(zoom, minimum, maximum);
+  const graphX = (screenPoint[0] - viewport.x) / viewport.zoom;
+  const graphY = (screenPoint[1] - viewport.y) / viewport.zoom;
+  return {
+    x: screenPoint[0] - graphX * nextZoom,
+    y: screenPoint[1] - graphY * nextZoom,
+    zoom: nextZoom,
+  };
+};
+
+export const graphViewportFitBounds = (
+  bounds: GraphSelectionBounds,
+  viewportSize: GraphViewportSize,
+  padding = 48,
+  minimumZoom = 0.35,
+  maximumZoom = 1.8,
+): GraphViewport => {
+  const width = Math.max(0, bounds.right - bounds.left);
+  const height = Math.max(0, bounds.bottom - bounds.top);
+  const availableWidth = Math.max(1, viewportSize.width - padding * 2);
+  const availableHeight = Math.max(1, viewportSize.height - padding * 2);
+  const widthZoom = width > 0 ? availableWidth / width : maximumZoom;
+  const heightZoom = height > 0 ? availableHeight / height : maximumZoom;
+  const zoom = clampGraphZoom(Math.min(widthZoom, heightZoom), minimumZoom, maximumZoom);
+  const centerX = (bounds.left + bounds.right) * 0.5;
+  const centerY = (bounds.top + bounds.bottom) * 0.5;
+  return {
+    x: viewportSize.width * 0.5 - centerX * zoom,
+    y: viewportSize.height * 0.5 - centerY * zoom,
+    zoom,
+  };
+};
 
 export const graphSelectionBounds = ({ start, current }: GraphSelection): GraphSelectionBounds => ({
   left: Math.min(start[0], current[0]),
