@@ -29,6 +29,19 @@
 #include <thread>
 #include <variant>
 
+namespace
+{
+
+std::string flow_name_graph(std::string_view graph_name, std::string_view entity_name)
+{
+    return std::string{R"json({"version":1,"assetType":"flow","name":")json"} + std::string{graph_name} +
+           R"json(","graph":{"version":1,"variables":[],"nodes":[{"id":"begin","type":"beginPlay","position":[0,0],"values":{}},{"id":"self","type":"selfEntity","position":[0,100],"values":{}},{"id":"name","type":"stringLiteral","position":[0,200],"values":{"value":")json" +
+           std::string{entity_name} +
+           R"json("}},{"id":"set","type":"setName","position":[300,0],"values":{}}],"connections":[{"id":"e","kind":"execution","from":{"nodeId":"begin","pin":"exec"},"to":{"nodeId":"set","pin":"exec"}},{"id":"self-value","kind":"value","from":{"nodeId":"self","pin":"entity"},"to":{"nodeId":"set","pin":"entity"}},{"id":"name-value","kind":"value","from":{"nodeId":"name","pin":"value"},"to":{"nodeId":"set","pin":"name"}}],"viewport":{"x":0,"y":0,"zoom":1}}})json";
+}
+
+} // namespace
+
 TEST_CASE("camera and render layer JSON commands preserve their typed payloads")
 {
     const arc::editor::host_entity_id entity{12, 4};
@@ -159,8 +172,13 @@ TEST_CASE("scene authoring protocol commands and edit transactions round trip")
 
 TEST_CASE("runtime protocol commands and state query round trip")
 {
-    const std::array<arc::editor::host_command_payload, 7> payloads{
+    const std::array<arc::editor::host_command_payload, 10> payloads{
         arc::editor::host_runtime_resume_command{},
+        arc::editor::host_runtime_prepare_flow_sources_command{},
+        arc::editor::host_runtime_stage_flow_source_command{
+            {.guid = "00112233445566778899aabbccddeeff", .revision = 3, .source = "{}"}},
+        arc::editor::host_runtime_update_flow_source_command{
+            {.guid = "00112233445566778899aabbccddeeff", .revision = 4, .source = "{}"}},
         arc::editor::host_runtime_pause_command{},
         arc::editor::host_runtime_stop_command{},
         arc::editor::host_runtime_step_command{.ticks = 3},
@@ -206,6 +224,95 @@ TEST_CASE("runtime protocol commands and state query round trip")
     REQUIRE(json.find("\"state\":\"paused\"") != std::string::npos);
     REQUIRE(json.find("\"tickId\":42") != std::string::npos);
     REQUIRE(json.find("\"error\":\"project system fault\"") != std::string::npos);
+}
+
+TEST_CASE("GUID Flow bindings use isolated Play overrides and custom Content roots")
+{
+    const auto root =
+        std::filesystem::temp_directory_path() /
+        ("arc-flow-play-sandbox-" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto content = root / "GameContent";
+    std::filesystem::create_directories(content);
+    const auto source_path = content / "QuickStart.arcflow";
+    const auto disk_source = flow_name_graph("Quick Start", "disk-generation");
+    {
+        std::ofstream output(source_path, std::ios::binary);
+        output << disk_source;
+    }
+
+    {
+        arc::editor::arc_host_manager manager;
+        auto host = manager.acquire(std::make_unique<arc::render::renderer>());
+        arc::editor::editor_asset_state assets;
+        assets.root = content;
+        REQUIRE(host->open_project({.name = "Flow Sandbox", .root = root, .content_roots = {content}}, assets)
+                    .succeeded);
+        const auto registered = host->project_assets_snapshot();
+        const auto flow = std::find_if(registered.assets.begin(), registered.assets.end(), [](const auto& asset)
+                                       { return asset.kind == "flow" && asset.path == "QuickStart.arcflow"; });
+        REQUIRE(flow != registered.assets.end());
+        REQUIRE_FALSE(flow->guid.empty());
+        CHECK(flow->source_path == "GameContent/QuickStart.arcflow");
+
+        REQUIRE(
+            host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::empty})
+                .succeeded);
+        const auto entity = host->selected_entity_snapshot().entity;
+        REQUIRE(host->execute(arc::editor::host_component_operation_command{
+                                  .operation = arc::editor::host_component_operation::add, .component = "flow"})
+                    .succeeded);
+        REQUIRE(host->execute(arc::editor::host_set_flow_command{.entity = entity,
+                                                                 .graph_guid = flow->guid,
+                                                                 .graph_path_hint = flow->path,
+                                                                 .enabled = true})
+                    .succeeded);
+        REQUIRE(host->selected_entity_snapshot().flow.has_value());
+        CHECK(host->selected_entity_snapshot().flow->graph_guid == flow->guid);
+
+        REQUIRE(host->execute(arc::editor::host_runtime_prepare_flow_sources_command{}).succeeded);
+        REQUIRE(host
+                    ->execute(arc::editor::host_runtime_stage_flow_source_command{
+                        {.guid = flow->guid, .revision = 1, .source = "{\"version\":1"}})
+                    .succeeded);
+        const auto invalid_start = host->execute(arc::editor::host_runtime_resume_command{});
+        REQUIRE_FALSE(invalid_start.succeeded);
+        CHECK(invalid_start.error.find("QuickStart.arcflow") != std::string::npos);
+        CHECK(invalid_start.error.find("FLOW_PARSE_ERROR") != std::string::npos);
+        CHECK(host->runtime_snapshot().state == arc::editor::host_runtime_state::stopped);
+
+        REQUIRE(host->execute(arc::editor::host_runtime_prepare_flow_sources_command{}).succeeded);
+        REQUIRE(host
+                    ->execute(arc::editor::host_runtime_stage_flow_source_command{
+                        {.guid = flow->guid,
+                         .revision = 2,
+                         .source = flow_name_graph("Quick Start", "overlay-generation")}})
+                    .succeeded);
+        REQUIRE(host->execute(arc::editor::host_runtime_resume_command{}).succeeded);
+        CHECK(host->runtime_entity_snapshot(entity).name == "overlay-generation");
+
+        REQUIRE(host
+                    ->execute(arc::editor::host_runtime_update_flow_source_command{
+                        {.guid = flow->guid,
+                         .revision = 3,
+                         .source = flow_name_graph("Quick Start", "saved-reload-generation")}})
+                    .succeeded);
+        REQUIRE(host->execute(arc::editor::host_runtime_pause_command{}).succeeded);
+        REQUIRE(host->execute(arc::editor::host_runtime_step_command{.ticks = 1}).succeeded);
+        CHECK(host->runtime_entity_snapshot(entity).name == "saved-reload-generation");
+
+        REQUIRE(host->execute(arc::editor::host_runtime_stop_command{}).succeeded);
+        REQUIRE(host->execute(arc::editor::host_runtime_resume_command{}).succeeded);
+        CHECK(host->runtime_entity_snapshot(entity).name == "disk-generation");
+        REQUIRE(host->execute(arc::editor::host_runtime_stop_command{}).succeeded);
+
+        std::ifstream input(source_path, std::ios::binary);
+        const std::string persisted{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
+        CHECK(persisted == disk_source);
+    }
+
+    std::error_code cleanup_error;
+    std::filesystem::remove_all(root, cleanup_error);
 }
 
 TEST_CASE("active play worlds expose read-only hierarchy and entity inspection queries")

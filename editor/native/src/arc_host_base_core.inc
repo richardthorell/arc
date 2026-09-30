@@ -38,6 +38,7 @@
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <span>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -1863,6 +1864,7 @@ struct pending_play_flow_source
 {
     assets::asset_guid guid{};
     std::uint64_t editor_revision{};
+    assets::asset_hash content_hash{};
     std::string source;
 };
 
@@ -2015,6 +2017,8 @@ struct arc_host::state
             error = "Flow asset identity is missing";
             return std::nullopt;
         }
+        if (const auto found = play_flow_source_cache.find(reference.guid); found != play_flow_source_cache.end())
+            return found->second.source;
         const auto asset = asset_registry->find(reference.guid);
         if (!asset || asset->type != assets::asset_types::flow_graph)
         {
@@ -2031,11 +2035,6 @@ struct arc_host::state
             return std::nullopt;
         }
 
-        const auto found = play_flow_source_cache.find(reference.guid);
-        if (found != play_flow_source_cache.end() &&
-            found->second.content_generation == resolved.value().content_generation())
-            return found->second.source;
-
         auto loaded = play_flow_filesystem->read_all(resolved.value()).get();
         if (!loaded)
         {
@@ -2050,10 +2049,52 @@ struct arc_host::state
             .generation = resolved.value().content_generation(),
             .display_name = asset->title.empty() ? asset->source_path.filename().string() : asset->title,
             .source = std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size())};
+        auto compiled = flow::compile_asset(source.source);
+        if (compiled.succeeded && compiled.bytecode)
+            source.compiled_program =
+                std::make_shared<const flow::bytecode_program>(std::move(*compiled.bytecode));
+        else
+        {
+            source.compile_error = "Flow graph '" + source.display_name + "' failed to compile";
+            if (!compiled.diagnostics.empty())
+            {
+                const auto& diagnostic = compiled.diagnostics.front();
+                if (!diagnostic.code.empty()) source.compile_error += " [" + diagnostic.code + ']';
+                if (!diagnostic.message.empty()) source.compile_error += ": " + diagnostic.message;
+                if (!diagnostic.node_id.empty()) source.compile_error += " at node '" + diagnostic.node_id + '\'';
+            }
+        }
         play_flow_source_cache.insert_or_assign(
             reference.guid,
             cached_play_flow_source{.content_generation = resolved.value().content_generation(), .source = source});
         return source;
+    }
+
+    void poll_play_flow_changes()
+    {
+        if (!play_flow_filesystem) return;
+        const auto changes = play_flow_filesystem->poll_changes();
+        if (changes.events.empty()) return;
+        std::vector<assets::asset_reference> active_references;
+        active_references.reserve(play_flow_source_cache.size());
+        for (const auto& [guid, cached] : play_flow_source_cache)
+        {
+            static_cast<void>(guid);
+            active_references.push_back(cached.source.reference);
+        }
+        play_flow_source_cache.clear();
+        for (const auto& reference : active_references)
+        {
+            std::string refresh_error;
+            const auto refreshed = resolve_play_flow_source(reference, refresh_error);
+            if (refreshed && !refreshed->compile_error.empty())
+                diagnostics::warn("editor.play", refreshed->compile_error + "; keeping the last-good program");
+            else if (!refreshed && !refresh_error.empty())
+                diagnostics::warn("editor.play", "Flow asset " + assets::to_string(reference.guid) +
+                                                        " could not be refreshed: " + refresh_error);
+        }
+        diagnostics::info("editor.play", "Play asset sandbox observed " +
+                                                std::to_string(changes.events.size()) + " source change(s)");
     }
 
     [[nodiscard]] bool publish_play_flow_source(assets::asset_guid guid, std::string_view source, std::string& error)
@@ -2082,11 +2123,17 @@ struct arc_host::state
             return false;
         }
         play_flow_source_cache.erase(guid);
+        assets::asset_reference reference{.guid = guid, .expected_type = assets::asset_types::flow_graph};
+        const auto compiled = resolve_play_flow_source(reference, error);
+        if (!compiled) return false;
+        if (!compiled->compile_error.empty())
+            diagnostics::warn("editor.play", compiled->compile_error + "; keeping the last-good program");
         return true;
     }
 
     bool begin_play_session()
     {
+        play_start_error.clear();
         if (play_world)
         {
             simulation.resume();
@@ -2149,7 +2196,8 @@ struct arc_host::state
         }
         catch (const std::exception& error)
         {
-            diagnostics::error("editor.play", std::string("Could not create play runtime world: ") + error.what());
+            play_start_error = std::string("Could not create play runtime world: ") + error.what();
+            diagnostics::error("editor.play", play_start_error);
             play_world.reset();
             play_camera_entity = {};
             play_source_scene_revision = 0;
@@ -2166,12 +2214,14 @@ struct arc_host::state
         };
         if (!runtime_world->attach_entities(*play_world))
         {
+            play_start_error = "Could not attach the authoring scene to the Play World";
             abandon_runtime_world();
             return false;
         }
         const auto installed = project_module.install_systems(*runtime_world);
         if (!installed.succeeded)
         {
+            play_start_error = installed.error;
             diagnostics::error("editor.play", installed.error);
             abandon_runtime_world();
             return false;
@@ -2179,7 +2229,8 @@ struct arc_host::state
         std::string sandbox_error;
         if (!initialize_play_flow_sandbox(sandbox_error))
         {
-            diagnostics::error("editor.play", "Could not create the Play asset sandbox: " + sandbox_error);
+            play_start_error = "Could not create the Play asset sandbox: " + sandbox_error;
+            diagnostics::error("editor.play", play_start_error);
             abandon_runtime_world();
             pending_play_flow_sources.clear();
             return false;
@@ -2193,6 +2244,7 @@ struct arc_host::state
             install_flow_play_runtime(*runtime_world, flow_source_resolver, std::move(input_config_path));
         if (!flow_install.succeeded)
         {
+            play_start_error = flow_install.error;
             diagnostics::error("editor.play", flow_install.error);
             abandon_runtime_world();
             clear_play_flow_sandbox();
@@ -2204,7 +2256,8 @@ struct arc_host::state
         }
         catch (const std::exception& error)
         {
-            diagnostics::error("editor.play", std::string("Could not start play runtime world: ") + error.what());
+            play_start_error = std::string("Could not start play runtime world: ") + error.what();
+            diagnostics::error("editor.play", play_start_error);
             abandon_runtime_world();
             clear_play_flow_sandbox();
             return false;
@@ -2383,6 +2436,7 @@ struct arc_host::state
     framework::runtime_world_id play_runtime_world_id{};
     ecs::entity play_camera_entity{};
     std::uint64_t play_source_scene_revision{};
+    std::string play_start_error;
     std::unordered_map<assets::asset_guid, pending_play_flow_source, assets::asset_guid_hash>
         pending_play_flow_sources;
     std::unique_ptr<io::virtual_file_system> play_flow_filesystem;
@@ -3124,6 +3178,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 state_->pending_play_flow_sources.insert_or_assign(
                     *guid, pending_play_flow_source{.guid = *guid,
                                                     .editor_revision = payload.revision,
+                                                    .content_hash = assets::hash_bytes(std::as_bytes(std::span{
+                                                        payload.source.data(), payload.source.size()})),
                                                     .source = payload.source});
                 return success("{\"staged\":true}");
             }
@@ -3146,7 +3202,9 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const bool starting = state_->preview_stopped;
                 if (starting)
                 {
-                    if (!state_->begin_play_session()) return fail("Could not create the play session world");
+                    if (!state_->begin_play_session())
+                        return fail(state_->play_start_error.empty() ? "Could not create the play session world"
+                                                                     : state_->play_start_error);
                 }
                 else
                 {
@@ -7652,6 +7710,7 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
                            ",\"progress\":" + std::to_string(event.progress) + "}");
         }
     }
+    state_->poll_play_flow_changes();
     const auto frame_start = std::chrono::steady_clock::now();
     float delta_seconds = 0.0f;
     if (state_->last_viewport_frame_time.time_since_epoch().count() != 0)

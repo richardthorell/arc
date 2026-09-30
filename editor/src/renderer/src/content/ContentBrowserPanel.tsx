@@ -3,11 +3,7 @@ import { ChevronDown, ChevronRight, Folder, Globe2, Grid2X2, List, Lock, Search,
 
 import type { ArcAssetSourceDescriptor } from '../../../common/assetSourceTypes';
 import type { CommandId } from '../app/workbenchTypes';
-import {
-  openAssetEditorDocument,
-  openSkeletonEditorDocument,
-  resolveRegisteredEditorAsset,
-} from '../editors/editorRegistry';
+import { openAssetEditorDocument, openSkeletonEditorDocument } from '../editors/editorRegistry';
 import { buildModelSubassets } from '../model/modelSubassets';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import type { AssetItem, ProjectSnapshot } from '../services/editorHostTypes';
@@ -428,13 +424,23 @@ export function ContentBrowserPanel({
       if (project.assets.some((asset) => normalizedPath(asset.path) === normalizedPath(definition.asset.path))) {
         throw new Error(`An asset already exists at ${definition.asset.path}`);
       }
-      await window.arc.projects.writeText(definition.asset.path, definition.contents);
-      await window.arc.host.command('asset.scan');
-      const registered = await resolveRegisteredEditorAsset({
-        ...definition.asset,
-        sourcePath: definition.asset.path,
+      const created = await window.arc.projects.createAsset({
+        path: definition.asset.path,
+        text: definition.contents,
+        kind: definition.asset.kind as 'material' | 'flow' | 'shader',
       });
-      if (!registered?.guid) throw new Error('The created asset could not be registered');
+      const registered = {
+        ...definition.asset,
+        id: created.guid,
+        guid: created.guid,
+        path: created.path || definition.asset.path,
+        sourcePath: created.sourcePath || definition.asset.path,
+        typeId: created.typeId,
+        importerId: created.importerId,
+        scope: 'project' as const,
+        readOnly: false,
+        status: created.state === 'failed' ? ('failed' as const) : ('ready' as const),
+      };
       setSelection(new Set([registered.id]));
       onSelectAsset(registered.id);
       openAssetEditorDocument(registered);

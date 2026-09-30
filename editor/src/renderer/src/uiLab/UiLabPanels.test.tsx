@@ -23,6 +23,12 @@ beforeEach(() => {
           modifiedAt: '2026-08-15T23:17:00-07:00',
         }),
         writeText: vi.fn().mockResolvedValue({ succeeded: true }),
+        createAsset: vi.fn().mockResolvedValue({
+          guid: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+          type: 'flow',
+          path: 'Example.arcflow',
+          sourcePath: 'Content/Example.arcflow',
+        }),
       },
       sourceControl: {
         snapshot: vi.fn().mockResolvedValue(panelSourceControlFixture),

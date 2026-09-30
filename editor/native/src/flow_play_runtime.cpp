@@ -422,17 +422,27 @@ private:
             }
             if (artifact.rejected_source && *artifact.rejected_source == resolved->source) continue;
 
-            auto compiled = flow::compile_asset(resolved->source);
-            if (!compiled.succeeded || !compiled.bytecode)
+            if (!resolved->compile_error.empty())
             {
                 artifact.rejected_source = resolved->source;
-                report_reload_error(artifact, compile_error(artifact.display_name, compiled) +
-                                                  "; keeping generation " +
+                report_reload_error(artifact, resolved->compile_error + "; keeping generation " +
                                                   std::to_string(artifact.program_generation));
                 continue;
             }
-
-            auto next_program = std::make_shared<const flow::bytecode_program>(std::move(*compiled.bytecode));
+            auto next_program = resolved->compiled_program;
+            if (!next_program)
+            {
+                auto compiled = flow::compile_asset(resolved->source);
+                if (!compiled.succeeded || !compiled.bytecode)
+                {
+                    artifact.rejected_source = resolved->source;
+                    report_reload_error(artifact, compile_error(artifact.display_name, compiled) +
+                                                      "; keeping generation " +
+                                                      std::to_string(artifact.program_generation));
+                    continue;
+                }
+                next_program = std::make_shared<const flow::bytecode_program>(std::move(*compiled.bytecode));
+            }
             const std::uint64_t next_generation = artifact.program_generation + 1;
             std::vector<std::size_t> indices;
             std::vector<bound_flow_instance> replacements;
@@ -521,14 +531,22 @@ private:
         }
 
         display_name = resolved->display_name.empty() ? key : resolved->display_name;
-        auto compiled = flow::compile_asset(resolved->source);
-        if (!compiled.succeeded || !compiled.bytecode)
+        if (!resolved->compile_error.empty())
         {
-            error = compile_error(display_name, compiled);
+            error = resolved->compile_error;
             return {};
         }
-
-        auto program = std::make_shared<const flow::bytecode_program>(std::move(*compiled.bytecode));
+        auto program = resolved->compiled_program;
+        if (!program)
+        {
+            auto compiled = flow::compile_asset(resolved->source);
+            if (!compiled.succeeded || !compiled.bytecode)
+            {
+                error = compile_error(display_name, compiled);
+                return {};
+            }
+            program = std::make_shared<const flow::bytecode_program>(std::move(*compiled.bytecode));
+        }
         compiled_flow_artifact artifact;
         artifact.reference = resolved->reference;
         artifact.display_name = display_name;

@@ -1,11 +1,13 @@
 #pragma once
 
 #include <arc/assets/assets.h>
+#include <arc/flow/flow.h>
 #include <arc/framework/runtime_world.h>
 
 #include <cstddef>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -27,6 +29,8 @@ struct flow_play_source
     std::uint64_t generation{};
     std::string display_name;
     std::string source;
+    std::shared_ptr<const flow::bytecode_program> compiled_program;
+    std::string compile_error;
 };
 
 using flow_play_source_resolver =
