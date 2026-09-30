@@ -31,6 +31,7 @@ export function SettingsDialog({ onClose, onResetLayout }: SettingsDialogProps) 
   }, [kind, pageId]);
 
   const close = () => {
+    if (kind === 'editorPreferences') window.dispatchEvent(new Event('arc-editor-settings-closed'));
     resetSettingsDialogRequest();
     onClose();
   };
