@@ -1,0 +1,54 @@
+{
+  "format": "arc-virtual-geometry-comparison",
+  "version": 1,
+  "milestone": "VG2.5 hardware visibility raster",
+  "baselineCommit": "6ed6d68f",
+  "implementationCommit": "d5a7c61b",
+  "corpus": "generated-wave-grid-developer",
+  "capture": "flythrough-near",
+  "sourceTriangles": 131072,
+  "hierarchyFingerprint": "0xa915449bdb863852",
+  "visibleClusterFingerprint": "0xd28265a4fe7fe51f",
+  "before": {
+    "path": "compute",
+    "visibleClusters": 482,
+    "visibleTriangles": 39576,
+    "computeRasterClusters": 482,
+    "hardwareIndirectCommands": 0,
+    "cpuClusterDraws": 0
+  },
+  "afterIndexed": {
+    "path": "hardware_indexed",
+    "visibleClusters": 482,
+    "visibleTriangles": 39576,
+    "computeRasterClusters": 0,
+    "hardwareIndirectCommands": 482,
+    "cpuClusterDraws": 0
+  },
+  "afterMesh": {
+    "path": "mesh_shader",
+    "visibleClusters": 482,
+    "visibleTriangles": 39576,
+    "computeRasterClusters": 0,
+    "meshTaskCommands": 482,
+    "cpuClusterDraws": 0
+  },
+  "identityAbi": {
+    "depth": "floatBitsToUint(clamp(fragmentDepth, 0, 1))",
+    "primitive": "(visibleClusterIndex << 8) | localTriangleIndex",
+    "sharedBy": ["compute", "hardware_indexed", "mesh_shader"]
+  },
+  "assessment": {
+    "visibleSelectionUnchanged": true,
+    "depthIdentityAbiUnchanged": true,
+    "cpuSubmissionIndependentOfSourceClusterCount": true,
+    "gpuCommandsGeneratedFromFinalVisibleClusters": true,
+    "timingPolicy": "GPU timings remain informational and require a live Vulkan capture; they are not an absolute CI pass/fail condition."
+  },
+  "informationalHeadlessTimings": {
+    "cookMilliseconds": 1802.26,
+    "artifactEncodeMilliseconds": 6.0185,
+    "referenceTraversalMilliseconds": 0.1955,
+    "gpuTimingsAvailable": false
+  }
+}

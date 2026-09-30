@@ -146,6 +146,12 @@ TEST_CASE("virtual geometry graph selects mesh-shader rasterization without soft
                            [expected](const auto& pass) { return pass.builtin == expected; });
     };
     REQUIRE(contains(builtin_render_pass::virtual_geometry_hierarchy_traversal));
+    REQUIRE(std::count_if(
+                compiled.passes.begin(), compiled.passes.end(), [](const auto& pass)
+                { return pass.builtin == builtin_render_pass::virtual_geometry_hardware_command_generation; }) == 2);
+    REQUIRE(std::count_if(compiled.passes.begin(), compiled.passes.end(), [](const auto& pass)
+                          { return pass.builtin == builtin_render_pass::virtual_geometry_mesh_shader_visibility; }) ==
+            2);
     REQUIRE(contains(builtin_render_pass::virtual_geometry_mesh_shader_visibility));
     REQUIRE_FALSE(contains(builtin_render_pass::virtual_geometry_cluster_binning));
     REQUIRE_FALSE(contains(builtin_render_pass::virtual_geometry_software_depth));
@@ -170,6 +176,19 @@ TEST_CASE("virtual geometry graph consumes GPU-generated indexed hardware comman
     };
     REQUIRE(contains(builtin_render_pass::virtual_geometry_hardware_command_generation));
     REQUIRE(contains(builtin_render_pass::virtual_geometry_hardware_visibility));
+    std::vector<std::size_t> command_passes;
+    std::vector<std::size_t> visibility_passes;
+    for (std::size_t index = 0; index < compiled.passes.size(); ++index)
+    {
+        if (compiled.passes[index].builtin == builtin_render_pass::virtual_geometry_hardware_command_generation)
+            command_passes.push_back(index);
+        if (compiled.passes[index].builtin == builtin_render_pass::virtual_geometry_hardware_visibility)
+            visibility_passes.push_back(index);
+    }
+    REQUIRE(command_passes.size() == 2);
+    REQUIRE(visibility_passes.size() == 2);
+    REQUIRE(command_passes[0] < visibility_passes[0]);
+    REQUIRE(command_passes[1] < visibility_passes[1]);
     REQUIRE_FALSE(contains(builtin_render_pass::virtual_geometry_mesh_shader_visibility));
     REQUIRE_FALSE(contains(builtin_render_pass::virtual_geometry_cluster_binning));
     REQUIRE_FALSE(contains(builtin_render_pass::virtual_geometry_software_depth));

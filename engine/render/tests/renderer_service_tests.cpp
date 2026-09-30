@@ -295,6 +295,13 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     REQUIRE(resolved.features.virtual_geometry_path == virtual_geometry_raster_path::compute);
     REQUIRE(resolved.features.virtual_shadow_virtual_geometry);
 
+    config.virtual_geometry_raster = virtual_geometry_raster_override::hardware_indexed;
+    resolved = resolve_render_config(config, capabilities);
+    REQUIRE(resolved.features.virtual_geometry_path == virtual_geometry_raster_path::compute);
+    REQUIRE(std::any_of(resolved.fallback_reasons.begin(), resolved.fallback_reasons.end(), [](const auto& reason)
+                        { return reason.find("forced virtual-geometry indexed rasterization") != std::string::npos; }));
+    config.virtual_geometry_raster = virtual_geometry_raster_override::auto_select;
+
     capabilities.virtual_geometry_indexed = true;
     resolved = resolve_render_config(config, capabilities);
     REQUIRE(resolved.features.virtual_geometry_path == virtual_geometry_raster_path::hardware_indexed);

@@ -46,3 +46,7 @@ visible-triangle selections, half as many root-only parent fallbacks, a 0.35% st
 unchanged artifact size.
 `vg2.4-comparison.json` records the two-phase HZB before/after counters and the slow-threshold transition result.
 Local CPU timings are included only as informational context; GPU timings remain per-run telemetry.
+`vg2.5-comparison.json` records the developer-corpus compute, indexed-hardware, and mesh-shader work models. All three
+paths consume the same final visible-cluster selection and emit the same depth/primitive identity ABI. Indexed and mesh
+commands are generated on the GPU, so CPU submission remains independent of source and visible cluster counts. The
+checked-in GPU counts are deterministic workload counters; live GPU timings remain informational capture data.
