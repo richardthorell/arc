@@ -1,22 +1,11 @@
 import { Send } from 'lucide-react';
 import { useState } from 'react';
+import { requestSettingsDialogOpen } from '../settings/settingsDialogRoute';
 import { UiAgentTextCard, UiButton, UiDrawerPanel, UiIconButton } from '../ui';
 import { createAiMessage, unavailableAiModelProvider, type AiChatMessage, type AiModelProvider } from './aiChat';
 import './aiGateway.css';
 
-const openAiConnectivitySettings = () => {
-  window.dispatchEvent(
-    new KeyboardEvent('keydown', {
-      key: ',',
-      code: 'Comma',
-      ctrlKey: true,
-      bubbles: true,
-    }),
-  );
-  window.setTimeout(() => {
-    window.dispatchEvent(new CustomEvent('arc-settings-navigate', { detail: { id: 'ai.providers' } }));
-  }, 0);
-};
+const openAiConnectivitySettings = () => requestSettingsDialogOpen('editorPreferences', 'ai.providers');
 
 type AiChatPanelProps = {
   provider?: AiModelProvider;

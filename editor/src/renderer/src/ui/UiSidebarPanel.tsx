@@ -5,7 +5,7 @@ import { Settings } from 'lucide-react';
 import { activityRegistry } from '../app/panelRegistry';
 import type { ActivityId, ActivityRegistration } from '../app/workbenchTypes';
 import { requestSearchDrawer } from '../search/searchDrawerRoute';
-import { requestSettingsDialog } from '../settings/settingsDialogRoute';
+import { requestSettingsDialog, subscribeSettingsDialogOpenRequests } from '../settings/settingsDialogRoute';
 import { UiButton } from './UiButton';
 
 import './UiSidebarPanel.css';
@@ -89,6 +89,8 @@ export function UiSidebarPanel({
       window.removeEventListener('focus', refreshVersionControlCount);
     };
   }, []);
+
+  useEffect(() => subscribeSettingsDialogOpenRequests(() => onSettings()), [onSettings]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

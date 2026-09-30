@@ -7,9 +7,16 @@ import { AiGatewayApprovalPrompt } from './AiGatewayPanel';
 import { AiChatPanel } from './AiChatPanel';
 import type { AiChatMessage, AiModelProvider } from './aiChat';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
+import {
+  requestedSettingsDialogKind,
+  requestedSettingsDialogPageId,
+  resetSettingsDialogRequest,
+  subscribeSettingsDialogOpenRequests,
+} from '../settings/settingsDialogRoute';
 
 afterEach(() => {
   cleanup();
+  resetSettingsDialogRequest();
   vi.useRealTimers();
 });
 
@@ -108,12 +115,9 @@ describe('AiChatPanel', () => {
     await waitFor(() => expect(screen.getByText('Hello from ARC.')).toBeInTheDocument());
   });
 
-  it('disables conversations and chat until an AI service is connected', () => {
-    vi.useFakeTimers();
-    const keydown = vi.fn();
-    const navigate = vi.fn();
-    window.addEventListener('keydown', keydown);
-    window.addEventListener('arc-settings-navigate', navigate);
+  it('routes disconnected users directly to AI provider settings', () => {
+    const requests: Array<{ kind: string; pageId: string | null }> = [];
+    const unsubscribe = subscribeSettingsDialogOpenRequests((request) => requests.push(request));
 
     render(<AiChatPanel />);
 
@@ -123,16 +127,11 @@ describe('AiChatPanel', () => {
     expect(screen.getByText('Connect your AI service')).toBeVisible();
 
     fireEvent.click(screen.getByRole('button', { name: 'Open AI settings' }));
-    expect(keydown).toHaveBeenCalledOnce();
-    expect((keydown.mock.calls[0][0] as KeyboardEvent).ctrlKey).toBe(true);
-    expect((keydown.mock.calls[0][0] as KeyboardEvent).key).toBe(',');
 
-    vi.runAllTimers();
-    expect(navigate).toHaveBeenCalledOnce();
-    expect((navigate.mock.calls[0][0] as CustomEvent).detail).toEqual({ id: 'ai.providers' });
-
-    window.removeEventListener('keydown', keydown);
-    window.removeEventListener('arc-settings-navigate', navigate);
+    expect(requests).toEqual([{ kind: 'editorPreferences', pageId: 'ai.providers' }]);
+    expect(requestedSettingsDialogKind()).toBe('editorPreferences');
+    expect(requestedSettingsDialogPageId()).toBe('ai.providers');
+    unsubscribe();
   });
 
   it('keeps edit approval outside the chat panel', () => {
