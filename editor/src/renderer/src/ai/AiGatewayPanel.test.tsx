@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AiGatewayApprovalPrompt } from './AiGatewayPanel';
 import { AiChatPanel } from './AiChatPanel';
-import { aiConversationStorageKey, type AiChatMessage, type AiModelProvider } from './aiChat';
+import { aiConversationStorageKey, type AiChatMessage, type AiConversation, type AiModelProvider } from './aiChat';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
 import {
   requestedSettingsDialogKind,
@@ -75,6 +75,24 @@ const alternateProvider: AiModelProvider = {
   },
 };
 
+const recentConversation: AiConversation = {
+  id: 'recent',
+  title: 'Cabin polish',
+  createdAt: '2026-09-30T17:00:00Z',
+  updatedAt: '2026-09-30T17:00:01Z',
+  modelId: 'test',
+  modelLabel: 'Test Agent',
+  messages: [
+    {
+      id: 'recent-user',
+      role: 'user',
+      content: 'Polish the cabin.',
+      createdAt: '2026-09-30T17:00:00Z',
+      state: 'complete',
+    },
+  ],
+};
+
 describe('AiChatPanel', () => {
   it('starts on a conversation home with the first prompt and model selection centered in the panel', () => {
     render(<AiChatPanel persistConversations={false} providers={[configuredProvider, alternateProvider]} />);
@@ -86,6 +104,28 @@ describe('AiChatPanel', () => {
     expect(screen.getByLabelText('Model')).toHaveValue('test');
     expect(screen.getByLabelText('Model')).toBeEnabled();
     expect(screen.getByLabelText('Start conversation')).toBeDisabled();
+    expect(screen.queryByLabelText('Recent conversations')).not.toBeInTheDocument();
+  });
+
+  it('does not show empty placeholder conversations in recent history', () => {
+    const emptyConversation: AiConversation = {
+      id: 'empty',
+      title: 'New Chat',
+      createdAt: '2026-09-30T17:00:00Z',
+      updatedAt: '2026-09-30T17:00:00Z',
+      messages: [],
+    };
+
+    render(
+      <AiChatPanel
+        initialConversations={[emptyConversation]}
+        persistConversations={false}
+        provider={configuredProvider}
+      />,
+    );
+
+    expect(screen.queryByLabelText('Recent conversations')).not.toBeInTheDocument();
+    expect(screen.queryByText('New Chat')).not.toBeInTheDocument();
   });
 
   it('locks the selected model after the first prompt and returns to history with Back', async () => {
@@ -144,12 +184,14 @@ describe('AiChatPanel', () => {
     await waitFor(() => expect(screen.getByText('Hello from ARC.')).toBeInTheDocument());
   });
 
-  it('routes disconnected users directly to AI provider settings', () => {
+  it('routes disconnected users directly to AI provider settings without showing conversation history', () => {
     const requests: Array<{ kind: string; pageId: string | null }> = [];
     const unsubscribe = subscribeSettingsDialogOpenRequests((request) => requests.push(request));
 
-    render(<AiChatPanel persistConversations={false} />);
+    render(<AiChatPanel initialConversations={[recentConversation]} persistConversations={false} />);
 
+    expect(screen.queryByLabelText('Recent conversations')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open conversation Cabin polish' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Start a conversation')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Model')).not.toBeInTheDocument();
     expect(screen.getByText('Connect your AI service')).toBeVisible();
