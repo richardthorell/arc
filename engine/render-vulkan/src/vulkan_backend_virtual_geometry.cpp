@@ -67,8 +67,9 @@ bool vulkan_render_backend::ensure_virtual_geometry_raster_resources()
         VkShaderStageFlags geometry_stages = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_VERTEX_BIT;
         if (capabilities_.virtual_geometry_mesh_shader) geometry_stages |= VK_SHADER_STAGE_MESH_BIT_EXT;
         for (std::uint32_t binding = 0; binding < 7u; ++binding)
-            bindings[binding] = {binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u,
-                                 binding < 5u ? geometry_stages : VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+            bindings[binding] = {
+                binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u,
+                binding < 5u ? geometry_stages : static_cast<VkShaderStageFlags>(VK_SHADER_STAGE_COMPUTE_BIT), nullptr};
         bindings[7] = {7u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
         bindings[8] = {8u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
         bindings[9] = {9u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
