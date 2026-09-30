@@ -51,6 +51,22 @@ struct renderer_config
     std::uint64_t texture_upload_budget_per_frame{};
 };
 
+/** @brief Raw adapter support available to future hardware virtual-geometry raster paths. */
+struct virtual_geometry_hardware_support
+{
+    bool indexed_indirect{};
+    bool mesh_shader{};
+};
+
+/**
+ * @brief Resolve hardware raster support exclusively from backend-neutral adapter facts.
+ *
+ * This does not enable either path. Executable renderer paths remain represented
+ * by render_feature_set and are introduced by the owning raster milestone.
+ */
+[[nodiscard]] virtual_geometry_hardware_support
+query_virtual_geometry_hardware_support(const render_capabilities& capabilities) noexcept;
+
 /**
  * @brief Resolve project rendering policy against immutable adapter support.
  */

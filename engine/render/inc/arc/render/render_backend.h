@@ -237,6 +237,65 @@ inline constexpr render_quality_profile ultra_render_quality_profile{.quality = 
     return standard_render_quality_profile;
 }
 
+/** @brief Backend-neutral limits that bound indirect and storage-resource work. */
+struct render_resource_limits
+{
+    std::uint32_t maximum_indirect_draw_count{};
+    std::uint64_t maximum_storage_buffer_range{};
+    std::uint32_t maximum_per_stage_storage_buffers{};
+    std::uint32_t maximum_per_stage_storage_images{};
+    std::uint32_t maximum_push_constant_bytes{};
+    std::uint64_t minimum_storage_buffer_offset_alignment{};
+};
+
+/** @brief Subgroup operations and shader stages supported by the adapter. */
+struct render_subgroup_capabilities
+{
+    std::uint32_t minimum_size{};
+    std::uint32_t maximum_size{};
+    bool compute_stage{};
+    bool vertex_stage{};
+    bool fragment_stage{};
+    bool task_stage{};
+    bool mesh_stage{};
+    bool basic_operations{};
+    bool vote_operations{};
+    bool arithmetic_operations{};
+    bool ballot_operations{};
+    bool shuffle_operations{};
+    bool shuffle_relative_operations{};
+    bool clustered_operations{};
+    bool quad_operations{};
+};
+
+/** @brief Limits relevant to optional task/mesh-shader cluster rasterization. */
+struct render_mesh_shader_limits
+{
+    std::uint32_t maximum_task_workgroup_invocations{};
+    std::uint32_t maximum_mesh_workgroup_invocations{};
+    std::uint32_t maximum_task_workgroup_count_x{};
+    std::uint32_t maximum_task_workgroup_count_y{};
+    std::uint32_t maximum_task_workgroup_count_z{};
+    std::uint32_t maximum_mesh_workgroup_count_x{};
+    std::uint32_t maximum_mesh_workgroup_count_y{};
+    std::uint32_t maximum_mesh_workgroup_count_z{};
+    std::uint32_t maximum_task_payload_bytes{};
+    std::uint32_t maximum_task_shared_memory_bytes{};
+    std::uint32_t maximum_mesh_shared_memory_bytes{};
+    std::uint32_t maximum_mesh_output_vertices{};
+    std::uint32_t maximum_mesh_output_primitives{};
+    std::uint32_t preferred_task_workgroup_invocations{};
+    std::uint32_t preferred_mesh_workgroup_invocations{};
+};
+
+/** @brief Shader atomic operations required by GPU-generated visibility paths. */
+struct render_atomic_capabilities
+{
+    bool storage_buffer_int32{};
+    bool storage_image_r32_uint{};
+    bool storage_image_r32_sint{};
+};
+
 /**
  * @brief Optional backend features exposed through capability queries.
  */
@@ -259,6 +318,10 @@ struct render_capabilities
     std::uint32_t max_texture_dimension_2d{};
     std::uint32_t max_color_attachments{};
     std::uint32_t max_compute_workgroup_invocations{};
+    render_resource_limits resource_limits{};
+    render_subgroup_capabilities subgroups{};
+    render_mesh_shader_limits mesh_shader_limits{};
+    render_atomic_capabilities atomics{};
     bool graphics_queue{};
     bool compute_queue{};
     bool transfer_queue{};
@@ -267,6 +330,8 @@ struct render_capabilities
     bool gpu_timestamps{};
     bool draw_indirect{};
     bool draw_indirect_count{};
+    bool multi_draw_indirect{};
+    bool draw_indirect_first_instance{};
     bool compute_shaders{};
     bool storage_buffers{};
     bool storage_images{};
@@ -337,6 +402,7 @@ struct render_capabilities
     bool dynamic_rendering{};
     bool descriptor_indexing{};
     bool descriptor_buffer{};
+    bool task_shaders{};
     bool mesh_shaders{};
     bool ray_tracing{};
     bool sparse_resources{};

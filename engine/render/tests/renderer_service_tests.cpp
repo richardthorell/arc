@@ -165,6 +165,38 @@ TEST_CASE("render quality profiles expose immutable implemented tier policy")
     REQUIRE(ultra.target_frame_time_ms == Catch::Approx(1000.0f / 30.0f));
 }
 
+TEST_CASE("virtual geometry hardware support resolves from backend-neutral capability limits")
+{
+    using namespace arc::render;
+    render_capabilities capabilities{};
+    capabilities.graphics_queue = true;
+    capabilities.draw_indirect = true;
+    capabilities.multi_draw_indirect = true;
+    capabilities.draw_indirect_first_instance = true;
+    capabilities.shader_draw_parameters = true;
+    capabilities.storage_buffers = true;
+    capabilities.atomics.storage_buffer_int32 = true;
+    capabilities.resource_limits.maximum_indirect_draw_count = 4096;
+    capabilities.resource_limits.maximum_per_stage_storage_buffers = 8;
+
+    auto support = query_virtual_geometry_hardware_support(capabilities);
+    REQUIRE(support.indexed_indirect);
+    REQUIRE_FALSE(support.mesh_shader);
+
+    capabilities.mesh_shaders = true;
+    capabilities.mesh_shader_limits.maximum_mesh_workgroup_invocations = 32;
+    capabilities.mesh_shader_limits.maximum_mesh_output_vertices = virtual_geometry_max_vertices_per_cluster;
+    capabilities.mesh_shader_limits.maximum_mesh_output_primitives = virtual_geometry_max_triangles_per_cluster;
+    support = query_virtual_geometry_hardware_support(capabilities);
+    REQUIRE(support.indexed_indirect);
+    REQUIRE(support.mesh_shader);
+
+    capabilities.resource_limits.maximum_indirect_draw_count = 0;
+    support = query_virtual_geometry_hardware_support(capabilities);
+    REQUIRE_FALSE(support.indexed_indirect);
+    REQUIRE_FALSE(support.mesh_shader);
+}
+
 TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallbacks")
 {
     using namespace arc::render;
@@ -199,6 +231,7 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     capabilities.draw_indirect = true;
     capabilities.draw_indirect_count = true;
     capabilities.sparse_resources = true;
+    capabilities.mesh_shaders = true;
     capabilities.ray_tracing = true;
 
     renderer_config config{};
@@ -215,6 +248,7 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     REQUIRE(resolved.features.async_compute);
     REQUIRE_FALSE(resolved.features.virtual_geometry);
     REQUIRE(resolved.features.virtual_geometry_path == virtual_geometry_raster_path::unavailable);
+    REQUIRE_FALSE(resolved.features.mesh_shaders);
     REQUIRE(resolved.features.software_ray_tracing);
     REQUIRE(resolved.features.virtual_shadow_maps);
     REQUIRE_FALSE(resolved.features.virtual_shadow_virtual_geometry);

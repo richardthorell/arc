@@ -170,6 +170,23 @@ anti_aliasing_method resolve_anti_aliasing(anti_aliasing_method requested, rende
     return anti_aliasing_method::disabled;
 }
 
+virtual_geometry_hardware_support
+query_virtual_geometry_hardware_support(const render_capabilities& capabilities) noexcept
+{
+    const bool indexed_indirect = capabilities.graphics_queue && capabilities.draw_indirect &&
+                                  capabilities.multi_draw_indirect && capabilities.draw_indirect_first_instance &&
+                                  capabilities.shader_draw_parameters && capabilities.storage_buffers &&
+                                  capabilities.atomics.storage_buffer_int32 &&
+                                  capabilities.resource_limits.maximum_indirect_draw_count > 0 &&
+                                  capabilities.resource_limits.maximum_per_stage_storage_buffers > 0;
+    const bool mesh_shader =
+        indexed_indirect && capabilities.mesh_shaders &&
+        capabilities.mesh_shader_limits.maximum_mesh_workgroup_invocations > 0 &&
+        capabilities.mesh_shader_limits.maximum_mesh_output_vertices >= virtual_geometry_max_vertices_per_cluster &&
+        capabilities.mesh_shader_limits.maximum_mesh_output_primitives >= virtual_geometry_max_triangles_per_cluster;
+    return {.indexed_indirect = indexed_indirect, .mesh_shader = mesh_shader};
+}
+
 resolved_render_config resolve_render_config(const renderer_config& config, const render_capabilities& capabilities)
 {
     resolved_render_config result{};
@@ -357,7 +374,7 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
                        .sparse_resources = optional_features && capabilities.sparse_resources,
                        .sampler_anisotropy = optional_features && capabilities.sampler_anisotropy,
                        .texture_compression_bc = capabilities.texture_compression_bc,
-                       .mesh_shaders = optional_features && capabilities.mesh_shaders,
+                       .mesh_shaders = virtual_geometry_path == virtual_geometry_raster_path::mesh_shader,
                        .ray_tracing = capabilities.ray_tracing,
                        .variable_rate_shading = optional_features && capabilities.variable_rate_shading,
                        .submission = submission};
