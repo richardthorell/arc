@@ -1,4 +1,4 @@
-import type { HTMLAttributes } from 'react';
+import { useEffect, type HTMLAttributes } from 'react';
 
 import { UiSearchInput } from './UiTextInput';
 import { UiTreeView } from './UiTreeView';
@@ -18,6 +18,15 @@ export type UiSettingsNavigationProps = Omit<HTMLAttributes<HTMLDivElement>, 'on
   onSelect?: (node: UiTreeNode) => void;
 };
 
+const findSettingsNode = (nodes: readonly UiTreeNode[], id: string): UiTreeNode | null => {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    const child = node.children ? findSettingsNode(node.children, id) : null;
+    if (child) return child;
+  }
+  return null;
+};
+
 export function UiSettingsNavigation({
   nodes,
   selectedId = null,
@@ -31,6 +40,19 @@ export function UiSettingsNavigation({
   className,
   ...props
 }: UiSettingsNavigationProps) {
+  useEffect(() => {
+    const navigate = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (!id || !onSelect) return;
+      const node = findSettingsNode(nodes, id);
+      if (!node) return;
+      onQueryChange('');
+      onSelect(node);
+    };
+    window.addEventListener('arc-settings-navigate', navigate);
+    return () => window.removeEventListener('arc-settings-navigate', navigate);
+  }, [nodes, onQueryChange, onSelect]);
+
   return (
     <div className={['ui-settings-navigation', className].filter(Boolean).join(' ')} {...props}>
       <UiSearchInput
