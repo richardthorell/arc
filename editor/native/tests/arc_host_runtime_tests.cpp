@@ -304,11 +304,25 @@ TEST_CASE("GUID Flow bindings use isolated Play overrides and custom Content roo
         REQUIRE(host->execute(arc::editor::host_runtime_stop_command{}).succeeded);
         REQUIRE(host->execute(arc::editor::host_runtime_resume_command{}).succeeded);
         CHECK(host->runtime_entity_snapshot(entity).name == "disk-generation");
-        REQUIRE(host->execute(arc::editor::host_runtime_stop_command{}).succeeded);
 
-        std::ifstream input(source_path, std::ios::binary);
-        const std::string persisted{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
-        CHECK(persisted == disk_source);
+        {
+            std::ifstream input(source_path, std::ios::binary);
+            const std::string persisted{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
+            CHECK(persisted == disk_source);
+        }
+
+        REQUIRE(host->execute(arc::editor::host_runtime_pause_command{}).succeeded);
+        REQUIRE(host->execute(arc::editor::host_runtime_step_command{.ticks = 1}).succeeded);
+        const auto external_source = flow_name_graph("Quick Start", "external-generation");
+        {
+            std::ofstream output(source_path, std::ios::binary | std::ios::trunc);
+            output << external_source;
+        }
+        REQUIRE(host->execute(arc::editor::host_runtime_step_command{.ticks = 1}).succeeded);
+        std::this_thread::sleep_for(std::chrono::milliseconds(120));
+        REQUIRE(host->execute(arc::editor::host_runtime_step_command{.ticks = 1}).succeeded);
+        CHECK(host->runtime_entity_snapshot(entity).name == "external-generation");
+        REQUIRE(host->execute(arc::editor::host_runtime_stop_command{}).succeeded);
     }
 
     std::error_code cleanup_error;

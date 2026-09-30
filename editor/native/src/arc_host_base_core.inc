@@ -1935,8 +1935,12 @@ struct arc_host::state
         clear_play_flow_sandbox(false);
         if (!asset_files || !asset_registry)
         {
-            error = "Project assets are unavailable";
-            return false;
+            if (!pending_play_flow_sources.empty())
+            {
+                error = "Project assets are unavailable";
+                return false;
+            }
+            return true;
         }
 
         auto root = io::virtual_path::parse("authoring://project");
@@ -3240,6 +3244,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (state_->preview_stopped) return fail("No play session is active");
                 if (!state_->simulation.paused()) return fail("Pause the play session before stepping");
                 if (!state_->simulation.step(payload.ticks)) return fail("Play session could not queue a fixed-step");
+                state_->poll_play_flow_changes();
                 const framework::frame_time stepped = state_->simulation.advance(0.0);
                 ++state_->runtime_revision;
                 const auto snapshot = runtime_snapshot();
