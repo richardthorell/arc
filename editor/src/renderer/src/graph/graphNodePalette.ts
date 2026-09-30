@@ -20,6 +20,13 @@ export interface GraphNodePaletteQuery {
 
 export type GraphNodePaletteMovement = 'next' | 'previous' | 'first' | 'last';
 
+export interface GraphNodePaletteCreationExecutor<TKind extends string, TResult> {
+  /** Runs one user-visible graph edit as one undo/redo transaction. */
+  transact: (label: string, operation: () => TResult) => TResult;
+  /** Domain-owned creation. Shared palette code never constructs domain nodes. */
+  create: (descriptor: GraphNodePaletteDescriptor<TKind>) => TResult;
+}
+
 function normalize(value: string): string {
   return value.trim().toLocaleLowerCase();
 }
@@ -100,4 +107,24 @@ export function resolveGraphNodePaletteSelection<TKind extends string>(
 ): GraphNodePaletteDescriptor<TKind> | undefined {
   if (selectedKind === undefined) return undefined;
   return descriptors.find(({ kind }) => kind === selectedKind);
+}
+
+/**
+ * Activates a currently visible palette result as one undoable graph edit.
+ *
+ * The result list must already be produced by `queryGraphNodePalette`, which
+ * prevents stale keyboard/pointer selections from bypassing search or pin
+ * compatibility filtering. Domains own both node construction and their undo
+ * stack; the shared palette guarantees that creation enters that stack as one
+ * user operation.
+ */
+export function createGraphNodeFromPalette<TKind extends string, TResult>(
+  descriptors: readonly GraphNodePaletteDescriptor<TKind>[],
+  selectedKind: TKind | undefined,
+  executor: GraphNodePaletteCreationExecutor<TKind, TResult>,
+): TResult | undefined {
+  const descriptor = resolveGraphNodePaletteSelection(descriptors, selectedKind);
+  if (!descriptor) return undefined;
+
+  return executor.transact(`Create ${descriptor.name}`, () => executor.create(descriptor));
 }
