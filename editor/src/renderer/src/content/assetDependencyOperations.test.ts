@@ -7,6 +7,7 @@ import {
   planAssetBulkDelete,
   planAssetDelete,
   planAssetRelocation,
+  planAssetRelocationTransaction,
 } from './assetDependencyOperations';
 
 describe('asset dependency operations', () => {
@@ -105,9 +106,40 @@ describe('asset dependency operations', () => {
     });
   });
 
-  it('rejects no-op relocation plans', () => {
-    expect(() => planAssetRelocation('asset-guid', 'A.arc', 'A.arc')).toThrow(
+  it('normalizes relocation paths before checking for no-op moves', () => {
+    expect(() => planAssetRelocation('asset-guid', './Materials/Old.arc', 'Materials\\Old.arc')).toThrow(
       'Asset relocation requires a different destination path',
     );
+  });
+
+  it('plans bulk relocations as one deterministic identity-preserving transaction', () => {
+    expect(
+      planAssetRelocationTransaction([
+        { assetId: 'texture-b', fromPath: 'Textures/B.arc', toPath: 'Shared\\B.arc' },
+        { assetId: 'material-a', fromPath: './Materials/A.arc', toPath: 'Shared/A.arc' },
+      ]),
+    ).toEqual({
+      atomic: true,
+      operations: [
+        { assetId: 'material-a', fromPath: 'Materials/A.arc', toPath: 'Shared/A.arc', preserveIdentity: true },
+        { assetId: 'texture-b', fromPath: 'Textures/B.arc', toPath: 'Shared/B.arc', preserveIdentity: true },
+      ],
+    });
+  });
+
+  it('rejects ambiguous bulk relocation transactions before mutation', () => {
+    expect(() =>
+      planAssetRelocationTransaction([
+        { assetId: 'asset-a', fromPath: 'A.arc', toPath: 'Moved/A.arc' },
+        { assetId: 'asset-a', fromPath: 'B.arc', toPath: 'Moved/B.arc' },
+      ]),
+    ).toThrow('Asset relocation contains duplicate asset id: asset-a');
+
+    expect(() =>
+      planAssetRelocationTransaction([
+        { assetId: 'asset-a', fromPath: 'A.arc', toPath: 'Moved/Same.arc' },
+        { assetId: 'asset-b', fromPath: 'B.arc', toPath: 'Moved\\Same.arc' },
+      ]),
+    ).toThrow('Asset relocation contains duplicate destination path: Moved/Same.arc');
   });
 });
