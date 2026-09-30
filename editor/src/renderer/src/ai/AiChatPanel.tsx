@@ -110,7 +110,7 @@ export function AiChatPanel({
                 Open AI settings
               </UiButton>
             </div>
-          ) : (
+          ) : messages.length > 0 ? (
             <div className="ai-chat-message-list">
               {messages.map((message) => {
                 if (message.role === 'assistant') {
@@ -138,7 +138,7 @@ export function AiChatPanel({
                 );
               })}
             </div>
-          )}
+          ) : null}
         </div>
         <form
           className="ai-chat-composer"
