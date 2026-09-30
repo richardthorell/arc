@@ -10,8 +10,16 @@ export type ShaderNavigationTarget = {
   column: number;
 };
 
+export type ShaderDiagnosticRoute =
+  | { kind: 'active-document'; target: ShaderNavigationTarget }
+  | { kind: 'external-document'; target: ShaderNavigationTarget };
+
 function normalizePath(path: string): string {
   return path.trim().replaceAll('\\', '/');
+}
+
+function comparablePath(path: string): string {
+  return normalizePath(path).replace(/^\.\//, '');
 }
 
 /**
@@ -36,6 +44,27 @@ export function resolveShaderDiagnosticTarget(
   const rawColumn = diagnostic.column;
   const column = Number.isInteger(rawColumn) && (rawColumn ?? 0) > 0 ? rawColumn! : 1;
   return { path, line: line!, column };
+}
+
+/**
+ * Classify a resolved diagnostic before the editor reveals it. Diagnostics for
+ * includes or other source files must not be revealed in the currently active
+ * editor, because doing so would highlight the right line in the wrong file.
+ */
+export function routeShaderDiagnostic(
+  diagnostic: ShaderDiagnosticLocation,
+  activePath?: string,
+): ShaderDiagnosticRoute | undefined {
+  const target = resolveShaderDiagnosticTarget(diagnostic, activePath);
+  if (!target) return undefined;
+
+  const currentPath = activePath ? comparablePath(activePath) : '';
+  const targetPath = comparablePath(target.path);
+  if (currentPath && targetPath === currentPath) {
+    return { kind: 'active-document', target };
+  }
+
+  return { kind: 'external-document', target };
 }
 
 export function shaderDiagnosticTargetKey(target: ShaderNavigationTarget): string {
