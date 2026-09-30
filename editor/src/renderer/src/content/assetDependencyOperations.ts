@@ -128,7 +128,8 @@ export const planAssetBulkDelete = (index: AssetDependencyIndex, assetIds: reado
 export const planAssetRelocation = (assetId: string, fromPath: string, toPath: string): AssetRelocationPlan => {
   const normalizedFromPath = normalizeAssetPath(fromPath);
   const normalizedToPath = normalizeAssetPath(toPath);
-  if (normalizedFromPath === normalizedToPath) throw new Error('Asset relocation requires a different destination path');
+  if (normalizedFromPath === normalizedToPath)
+    throw new Error('Asset relocation requires a different destination path');
   return { assetId, fromPath: normalizedFromPath, toPath: normalizedToPath, preserveIdentity: true };
 };
 
@@ -140,7 +141,8 @@ export const planAssetRelocationTransaction = (
   const operations: AssetRelocationPlan[] = [];
 
   for (const request of requests) {
-    if (assetIds.has(request.assetId)) throw new Error(`Asset relocation contains duplicate asset id: ${request.assetId}`);
+    if (assetIds.has(request.assetId))
+      throw new Error(`Asset relocation contains duplicate asset id: ${request.assetId}`);
     assetIds.add(request.assetId);
 
     const operation = planAssetRelocation(request.assetId, request.fromPath, request.toPath);
