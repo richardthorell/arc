@@ -76,10 +76,11 @@ describe('asset library virtual navigation', () => {
   });
 
   it('combines virtual views and logical scopes without conflating their identities', () => {
-    const navigation = buildAssetLibraryNavigation(
-      [{ scope: 'project' }, { scope: 'user' }],
-      { favorites: ['asset-a'], recent: [], downloads: [] },
-    );
+    const navigation = buildAssetLibraryNavigation([{ scope: 'project' }, { scope: 'user' }], {
+      favorites: ['asset-a'],
+      recent: [],
+      downloads: [],
+    });
 
     expect(navigation.filter((item) => item.kind === 'virtual-view').map((item) => item.id)).toEqual([
       'favorites',

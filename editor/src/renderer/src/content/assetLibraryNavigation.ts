@@ -83,5 +83,8 @@ export function buildAssetLibraryNavigation(
   membership: AssetLibraryVirtualMembership,
   searchResults: readonly string[] = [],
 ): readonly AssetLibraryNavigationItem[] {
-  return [...buildAssetLibraryVirtualNavigation(membership, searchResults), ...visibleAssetLibraryScopeNavigation(assets)];
+  return [
+    ...buildAssetLibraryVirtualNavigation(membership, searchResults),
+    ...visibleAssetLibraryScopeNavigation(assets),
+  ];
 }
