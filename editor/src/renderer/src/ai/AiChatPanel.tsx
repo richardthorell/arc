@@ -308,7 +308,11 @@ export function AiChatPanel({
             {!connected ? (
               <div className="ai-chat-connect-empty">
                 <strong>Connect your AI service</strong>
-                <span>Connect an AI provider in Editor Preferences to start a conversation.</span>
+                <span>
+                  Connect an AI provider in Editor Preferences
+                  <br />
+                  to start a conversation.
+                </span>
                 <UiButton onClick={openAiConnectivitySettings} variant="primary">
                   Open AI settings
                 </UiButton>
