@@ -43,6 +43,49 @@ export type EditorDiagnosticsSnapshot = {
     targetFrameMilliseconds: number;
     fallbackReasons: string[];
   };
+  capabilities?: {
+    platform: {
+      family: string;
+      formFactor: string;
+      logicalProcessorCount: number;
+      systemMemoryBytes: number;
+      windowSystem: boolean;
+      highDpi: boolean;
+      multipleWindows: boolean;
+      dynamicLibraries: boolean;
+      persistentLocalStorage: boolean;
+      nativePackageAssets: boolean;
+    };
+    input: {
+      connectedDevices: number;
+      buttons: boolean;
+      axes: boolean;
+      pointer: boolean;
+      scroll: boolean;
+      rumble: boolean;
+      haptics: boolean;
+      gyroscope: boolean;
+      accelerometer: boolean;
+      touch: boolean;
+      battery: boolean;
+    };
+    render: {
+      available: boolean;
+      adapterName: string;
+      apiMajor: number;
+      apiMinor: number;
+      memoryBudgetBytes: number;
+      maximumIndirectDrawCount: number;
+      maximumStorageBufferRange: number;
+      subgroupMinimumSize: number;
+      subgroupMaximumSize: number;
+      meshShaders: boolean;
+      taskShaders: boolean;
+      indexedVirtualGeometryRaster: boolean;
+      meshVirtualGeometryRaster: boolean;
+      enabledVirtualGeometryRasterPath: string;
+    };
+  };
   environment: {
     enabled: boolean;
     skyVisible: boolean;

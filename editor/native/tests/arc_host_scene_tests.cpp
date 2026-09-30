@@ -9,11 +9,13 @@
 #include <arc/editor/material_preview.h>
 #include <arc/editor/scene_document.h>
 #include <arc/editor/world_environment_host.h>
+#include <arc/framework/capabilities.h>
 #include <arc/project/project.h>
 #include <arc/render/primitives.h>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <array>
@@ -38,6 +40,14 @@ TEST_CASE("arc host executes scene commands and exposes snapshots")
     auto renderer = std::make_unique<arc::render::renderer>();
     arc::editor::arc_host_manager manager;
     auto host = manager.acquire(std::move(renderer));
+    host->set_platform_capabilities({.family = arc::framework::platform_family::android,
+                                     .form_factor = arc::framework::device_form_factor::handheld,
+                                     .logical_processor_count = 8,
+                                     .system_memory_bytes = 6ull * 1024ull * 1024ull * 1024ull,
+                                     .window_system = true,
+                                     .high_dpi = true,
+                                     .persistent_local_storage = true,
+                                     .native_package_assets = true});
 
     arc::editor::editor_asset_state assets;
     const auto opened =
@@ -81,6 +91,18 @@ TEST_CASE("arc host executes scene commands and exposes snapshots")
     REQUIRE(host->query({.request_id = 5, .payload = arc::editor::host_project_assets_query{}}).succeeded);
     const auto diagnostics = host->query({.request_id = 6, .payload = arc::editor::host_gateway_diagnostics_query{}});
     REQUIRE(diagnostics.succeeded);
+    const auto diagnostic_document = nlohmann::json::parse(diagnostics.payload_json);
+    REQUIRE(diagnostic_document.at("capabilities").at("platform").at("family") == "android");
+    REQUIRE(diagnostic_document.at("capabilities").at("platform").at("logicalProcessorCount") == 8);
+    REQUIRE(diagnostic_document.at("capabilities").at("input").at("connectedDevices") == 0);
+    REQUIRE_FALSE(diagnostic_document.at("capabilities").at("render").at("available").get<bool>());
+    REQUIRE(diagnostic_document.at("capabilities").at("render").at("enabledVirtualGeometryRasterPath") ==
+            "unavailable");
+    CHECK(diagnostics.payload_json.find("\"capabilities\":{") != std::string::npos);
+    CHECK(diagnostics.payload_json.find("\"platform\":{") != std::string::npos);
+    CHECK(diagnostics.payload_json.find("\"family\":\"android\"") != std::string::npos);
+    CHECK(diagnostics.payload_json.find("\"input\":{") != std::string::npos);
+    CHECK(diagnostics.payload_json.find("\"render\":{") != std::string::npos);
     CHECK(diagnostics.payload_json.find("\"textureStreaming\"") != std::string::npos);
     CHECK(diagnostics.payload_json.find("\"resources\":[") != std::string::npos);
     REQUIRE(host

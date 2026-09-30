@@ -2231,6 +2231,11 @@ arc_host::~arc_host()
     }
 }
 
+void arc_host::set_platform_capabilities(framework::platform_capabilities capabilities) noexcept
+{
+    state_->simulation.set_platform_capabilities(capabilities);
+}
+
 host_response arc_host::open_project(const host_open_project_command& command, const editor_asset_state& assets,
                                      std::uint64_t request_id)
 {
@@ -5632,6 +5637,64 @@ host_response arc_host::query(const host_query_envelope& query) const
             {
                 const auto profile = state_->renderer->last_frame_profile();
                 const auto texture_resources = state_->renderer->texture_residency().resource_snapshots();
+                const auto* render_capabilities =
+                    state_->renderer->backend() ? &state_->renderer->backend()->capabilities() : nullptr;
+                const auto hardware_support =
+                    render_capabilities ? render::query_virtual_geometry_hardware_support(*render_capabilities)
+                                        : render::virtual_geometry_hardware_support{};
+                const auto& platform_capabilities = state_->simulation.platform();
+                const auto input_capabilities = state_->simulation.input().capabilities();
+                const auto platform_name = [](framework::platform_family family)
+                {
+                    switch (family)
+                    {
+                        case framework::platform_family::windows:
+                            return "windows";
+                        case framework::platform_family::android:
+                            return "android";
+                        case framework::platform_family::linux:
+                            return "linux";
+                        case framework::platform_family::macos:
+                            return "macos";
+                        case framework::platform_family::ios:
+                            return "ios";
+                        case framework::platform_family::unknown:
+                            break;
+                    }
+                    return "unknown";
+                };
+                const auto form_factor_name = [](framework::device_form_factor form_factor)
+                {
+                    switch (form_factor)
+                    {
+                        case framework::device_form_factor::desktop:
+                            return "desktop";
+                        case framework::device_form_factor::handheld:
+                            return "handheld";
+                        case framework::device_form_factor::tablet:
+                            return "tablet";
+                        case framework::device_form_factor::console:
+                            return "console";
+                        case framework::device_form_factor::server:
+                            return "server";
+                        case framework::device_form_factor::unknown:
+                            break;
+                    }
+                    return "unknown";
+                };
+                const auto virtual_geometry_raster_path_name = [](render::virtual_geometry_raster_path path)
+                {
+                    switch (path)
+                    {
+                        case render::virtual_geometry_raster_path::compute:
+                            return "compute";
+                        case render::virtual_geometry_raster_path::mesh_shader:
+                            return "meshShader";
+                        case render::virtual_geometry_raster_path::unavailable:
+                            break;
+                    }
+                    return "unavailable";
+                };
                 const auto usage_name = [](render::render_resource_usage usage)
                 {
                     switch (usage)
@@ -5788,7 +5851,58 @@ host_response arc_host::query(const host_query_envelope& query) const
                     json += to_json_string(profile.configuration.fallback_reasons[index]);
                 }
                 json +=
-                    "]},\"environment\":{\"enabled\":" + std::string(profile.environment.enabled ? "true" : "false") +
+                    "]},\"capabilities\":{\"platform\":{\"family\":" +
+                    to_json_string(platform_name(platform_capabilities.family)) +
+                    ",\"formFactor\":" + to_json_string(form_factor_name(platform_capabilities.form_factor)) +
+                    ",\"logicalProcessorCount\":" + std::to_string(platform_capabilities.logical_processor_count) +
+                    ",\"systemMemoryBytes\":" + std::to_string(platform_capabilities.system_memory_bytes) +
+                    ",\"windowSystem\":" + std::string(platform_capabilities.window_system ? "true" : "false") +
+                    ",\"highDpi\":" + std::string(platform_capabilities.high_dpi ? "true" : "false") +
+                    ",\"multipleWindows\":" + std::string(platform_capabilities.multiple_windows ? "true" : "false") +
+                    ",\"dynamicLibraries\":" + std::string(platform_capabilities.dynamic_libraries ? "true" : "false") +
+                    ",\"persistentLocalStorage\":" +
+                    std::string(platform_capabilities.persistent_local_storage ? "true" : "false") +
+                    ",\"nativePackageAssets\":" +
+                    std::string(platform_capabilities.native_package_assets ? "true" : "false") +
+                    "},\"input\":{\"connectedDevices\":" + std::to_string(input_capabilities.connected_devices) +
+                    ",\"buttons\":" + std::string(input_capabilities.buttons ? "true" : "false") +
+                    ",\"axes\":" + std::string(input_capabilities.axes ? "true" : "false") +
+                    ",\"pointer\":" + std::string(input_capabilities.pointer ? "true" : "false") +
+                    ",\"scroll\":" + std::string(input_capabilities.scroll ? "true" : "false") +
+                    ",\"rumble\":" + std::string(input_capabilities.rumble ? "true" : "false") +
+                    ",\"haptics\":" + std::string(input_capabilities.haptics ? "true" : "false") +
+                    ",\"gyroscope\":" + std::string(input_capabilities.gyroscope ? "true" : "false") +
+                    ",\"accelerometer\":" + std::string(input_capabilities.accelerometer ? "true" : "false") +
+                    ",\"touch\":" + std::string(input_capabilities.touch ? "true" : "false") +
+                    ",\"battery\":" + std::string(input_capabilities.battery ? "true" : "false") +
+                    "},\"render\":{\"available\":" + std::string(render_capabilities ? "true" : "false") +
+                    ",\"adapterName\":" +
+                    to_json_string(render_capabilities ? render_capabilities->adapter_name : std::string{}) +
+                    ",\"apiMajor\":" + std::to_string(render_capabilities ? render_capabilities->api_major : 0u) +
+                    ",\"apiMinor\":" + std::to_string(render_capabilities ? render_capabilities->api_minor : 0u) +
+                    ",\"memoryBudgetBytes\":" +
+                    std::to_string(render_capabilities ? render_capabilities->memory_budget : 0u) +
+                    ",\"maximumIndirectDrawCount\":" +
+                    std::to_string(
+                        render_capabilities ? render_capabilities->resource_limits.maximum_indirect_draw_count : 0u) +
+                    ",\"maximumStorageBufferRange\":" +
+                    std::to_string(
+                        render_capabilities ? render_capabilities->resource_limits.maximum_storage_buffer_range : 0u) +
+                    ",\"subgroupMinimumSize\":" +
+                    std::to_string(render_capabilities ? render_capabilities->subgroups.minimum_size : 0u) +
+                    ",\"subgroupMaximumSize\":" +
+                    std::to_string(render_capabilities ? render_capabilities->subgroups.maximum_size : 0u) +
+                    ",\"meshShaders\":" +
+                    std::string(render_capabilities && render_capabilities->mesh_shaders ? "true" : "false") +
+                    ",\"taskShaders\":" +
+                    std::string(render_capabilities && render_capabilities->task_shaders ? "true" : "false") +
+                    ",\"indexedVirtualGeometryRaster\":" +
+                    std::string(hardware_support.indexed_indirect ? "true" : "false") +
+                    ",\"meshVirtualGeometryRaster\":" + std::string(hardware_support.mesh_shader ? "true" : "false") +
+                    ",\"enabledVirtualGeometryRasterPath\":" +
+                    to_json_string(
+                        virtual_geometry_raster_path_name(profile.configuration.features.virtual_geometry_path)) +
+                    "}},\"environment\":{\"enabled\":" + std::string(profile.environment.enabled ? "true" : "false") +
                     ",\"skyVisible\":" + std::string(profile.environment.sky_visible ? "true" : "false") +
                     ",\"affectsLighting\":" + std::string(profile.environment.affects_lighting ? "true" : "false") +
                     ",\"source\":" + to_json_string(profile.environment.source) +
@@ -5920,12 +6034,7 @@ host_response arc_host::query(const host_query_envelope& query) const
                 json +=
                     "]},\"virtualGeometry\":{\"enabled\":" +
                     std::string(profile.virtual_geometry.enabled ? "true" : "false") + ",\"rasterPath\":" +
-                    to_json_string(profile.virtual_geometry.raster_path == render::virtual_geometry_raster_path::compute
-                                       ? "compute"
-                                   : profile.virtual_geometry.raster_path ==
-                                           render::virtual_geometry_raster_path::mesh_shader
-                                       ? "meshShader"
-                                       : "unavailable") +
+                    to_json_string(virtual_geometry_raster_path_name(profile.virtual_geometry.raster_path)) +
                     ",\"visibleClusters\":" + std::to_string(profile.virtual_geometry.visible_clusters) +
                     ",\"visibleTriangles\":" + std::to_string(profile.virtual_geometry.visible_triangles) +
                     ",\"frustumRejected\":" + std::to_string(profile.virtual_geometry.frustum_rejected) +
