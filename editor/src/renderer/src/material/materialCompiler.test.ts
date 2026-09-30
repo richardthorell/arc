@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { materialEditorParameters, nativeMaterialCompileResult } from './materialCompiler';
+import { materialEditorParameters, materialGraphEditImpact, nativeMaterialCompileResult } from './materialCompiler';
 import { createDefaultMaterialGraph, createMaterialNode } from './materialGraphTypes';
 
 describe('native material compiler editor adapter', () => {
@@ -51,5 +51,34 @@ describe('native material compiler editor adapter', () => {
         type: 'texture2d',
       }),
     );
+  });
+
+  it('classifies value-only edits to existing exposed parameters without requiring a shader rebuild', () => {
+    const before = createDefaultMaterialGraph();
+    const after = structuredClone(before);
+    after.nodes[1].values = { ...after.nodes[1].values, value: [0.2, 0.3, 0.4] };
+
+    expect(materialGraphEditImpact(before, after)).toBe('parameter-values');
+  });
+
+  it('keeps topology and parameter metadata changes on the shader compile path', () => {
+    const before = createDefaultMaterialGraph();
+    const topology = structuredClone(before);
+    topology.connections = topology.connections.slice(1);
+    expect(materialGraphEditImpact(before, topology)).toBe('shader');
+
+    const metadata = structuredClone(before);
+    metadata.nodes[1].parameter = { ...metadata.nodes[1].parameter!, name: 'Tint' };
+    expect(materialGraphEditImpact(before, metadata)).toBe('shader');
+  });
+
+  it('does not classify values on unexposed nodes as runtime parameter edits', () => {
+    const before = createDefaultMaterialGraph();
+    const node = createMaterialNode('constant', [160, 160], { value: 0.5 });
+    before.nodes.push(node);
+    const after = structuredClone(before);
+    after.nodes.at(-1)!.values.value = 0.75;
+
+    expect(materialGraphEditImpact(before, after)).toBe('shader');
   });
 });
