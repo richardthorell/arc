@@ -12,7 +12,7 @@ export type GraphSelectionBounds = {
   bottom: number;
 };
 
-export type GraphViewportSize = {
+type GraphViewportSize = {
   width: number;
   height: number;
 };
