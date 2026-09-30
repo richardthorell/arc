@@ -32,6 +32,17 @@ export type AssetRelocationPlan = {
   preserveIdentity: true;
 };
 
+export type AssetRelocationRequest = {
+  assetId: string;
+  fromPath: string;
+  toPath: string;
+};
+
+export type AssetRelocationTransaction = {
+  operations: readonly AssetRelocationPlan[];
+  atomic: true;
+};
+
 const byReferenceIdentity = (left: AssetReference, right: AssetReference) => {
   const source = left.sourceAssetId.localeCompare(right.sourceAssetId);
   if (source !== 0) return source;
@@ -39,6 +50,8 @@ const byReferenceIdentity = (left: AssetReference, right: AssetReference) => {
   if (target !== 0) return target;
   return (left.kind ?? '').localeCompare(right.kind ?? '');
 };
+
+const normalizeAssetPath = (path: string) => path.replace(/\\/g, '/').replace(/^\.\//, '');
 
 export const buildAssetDependencyIndex = (references: readonly AssetReference[]): AssetDependencyIndex => {
   const index = new Map<string, AssetReference[]>();
@@ -113,6 +126,31 @@ export const planAssetBulkDelete = (index: AssetDependencyIndex, assetIds: reado
 };
 
 export const planAssetRelocation = (assetId: string, fromPath: string, toPath: string): AssetRelocationPlan => {
-  if (fromPath === toPath) throw new Error('Asset relocation requires a different destination path');
-  return { assetId, fromPath, toPath, preserveIdentity: true };
+  const normalizedFromPath = normalizeAssetPath(fromPath);
+  const normalizedToPath = normalizeAssetPath(toPath);
+  if (normalizedFromPath === normalizedToPath) throw new Error('Asset relocation requires a different destination path');
+  return { assetId, fromPath: normalizedFromPath, toPath: normalizedToPath, preserveIdentity: true };
+};
+
+export const planAssetRelocationTransaction = (
+  requests: readonly AssetRelocationRequest[],
+): AssetRelocationTransaction => {
+  const assetIds = new Set<string>();
+  const destinations = new Set<string>();
+  const operations: AssetRelocationPlan[] = [];
+
+  for (const request of requests) {
+    if (assetIds.has(request.assetId)) throw new Error(`Asset relocation contains duplicate asset id: ${request.assetId}`);
+    assetIds.add(request.assetId);
+
+    const operation = planAssetRelocation(request.assetId, request.fromPath, request.toPath);
+    if (destinations.has(operation.toPath)) {
+      throw new Error(`Asset relocation contains duplicate destination path: ${operation.toPath}`);
+    }
+    destinations.add(operation.toPath);
+    operations.push(operation);
+  }
+
+  operations.sort((left, right) => left.assetId.localeCompare(right.assetId));
+  return { operations, atomic: true };
 };
