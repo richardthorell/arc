@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { FlowVariableDefinition } from './flowGraphTypes';
 import {
   reconcileFlowVariableOverrides,
+  reconcileFlowVariableOverridesWithDiagnostics,
   resetFlowVariableOverride,
   resolveFlowVariableOverrides,
   setFlowVariableOverride,
@@ -70,5 +71,23 @@ describe('flow variable overrides', () => {
         { variableId: 'speed', value: 7 },
       ]),
     ).toEqual([{ variableId: 'speed', value: 5 }]);
+  });
+
+  it('reports actionable reasons when graph edits invalidate authored overrides', () => {
+    const result = reconcileFlowVariableOverridesWithDiagnostics(variables, [
+      { variableId: 'speed', value: 5 },
+      { variableId: 'removed', value: 10 },
+      { variableId: 'internal', value: true },
+      { variableId: 'title', value: 42 },
+      { variableId: 'speed', value: 7 },
+    ]);
+
+    expect(result.overrides).toEqual([{ variableId: 'speed', value: 5 }]);
+    expect(result.diagnostics).toEqual([
+      { variableId: 'removed', reason: 'missing-variable' },
+      { variableId: 'internal', reason: 'not-exposed' },
+      { variableId: 'title', reason: 'invalid-value' },
+      { variableId: 'speed', reason: 'duplicate' },
+    ]);
   });
 });

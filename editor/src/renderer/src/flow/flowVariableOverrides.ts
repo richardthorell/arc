@@ -14,8 +14,47 @@ export type FlowExposedVariable = {
   overridden: boolean;
 };
 
+export type FlowVariableOverrideDiagnostic = {
+  variableId: string;
+  reason: 'duplicate' | 'missing-variable' | 'not-exposed' | 'invalid-value';
+};
+
+export type FlowVariableOverrideReconciliation = {
+  overrides: FlowVariableOverride[];
+  diagnostics: FlowVariableOverrideDiagnostic[];
+};
+
 const exposedVariables = (variables: readonly FlowVariableDefinition[]) =>
   variables.filter((variable) => variable.exposed);
+
+const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+
+const isVector = (value: unknown, size: number): boolean =>
+  Array.isArray(value) && value.length === size && value.every(isFiniteNumber);
+
+export function isFlowVariableOverrideValueCompatible(type: FlowValueType, value: unknown): boolean {
+  switch (type) {
+    case 'bool':
+      return typeof value === 'boolean';
+    case 'int':
+      return Number.isInteger(value);
+    case 'float':
+      return isFiniteNumber(value);
+    case 'vec2':
+      return isVector(value, 2);
+    case 'vec3':
+      return isVector(value, 3);
+    case 'vec4':
+      return isVector(value, 4);
+    case 'string':
+    case 'name':
+    case 'entity':
+    case 'component':
+      return typeof value === 'string';
+    case 'any':
+      return value !== undefined;
+  }
+}
 
 export function resolveFlowVariableOverrides(
   variables: readonly FlowVariableDefinition[],
@@ -55,18 +94,45 @@ export function resetFlowVariableOverride(
   return overrides.filter((override) => override.variableId !== variableId);
 }
 
+export function reconcileFlowVariableOverridesWithDiagnostics(
+  variables: readonly FlowVariableDefinition[],
+  overrides: readonly FlowVariableOverride[],
+): FlowVariableOverrideReconciliation {
+  const variablesById = new Map(variables.map((variable) => [variable.id, variable]));
+  const seen = new Set<string>();
+  const reconciled: FlowVariableOverride[] = [];
+  const diagnostics: FlowVariableOverrideDiagnostic[] = [];
+
+  for (const override of overrides) {
+    if (seen.has(override.variableId)) {
+      diagnostics.push({ variableId: override.variableId, reason: 'duplicate' });
+      continue;
+    }
+    seen.add(override.variableId);
+
+    const variable = variablesById.get(override.variableId);
+    if (!variable) {
+      diagnostics.push({ variableId: override.variableId, reason: 'missing-variable' });
+      continue;
+    }
+    if (!variable.exposed) {
+      diagnostics.push({ variableId: override.variableId, reason: 'not-exposed' });
+      continue;
+    }
+    if (!isFlowVariableOverrideValueCompatible(variable.type, override.value)) {
+      diagnostics.push({ variableId: override.variableId, reason: 'invalid-value' });
+      continue;
+    }
+
+    reconciled.push(override);
+  }
+
+  return { overrides: reconciled, diagnostics };
+}
+
 export function reconcileFlowVariableOverrides(
   variables: readonly FlowVariableDefinition[],
   overrides: readonly FlowVariableOverride[],
 ): FlowVariableOverride[] {
-  const exposedById = new Map(exposedVariables(variables).map((variable) => [variable.id, variable]));
-  const seen = new Set<string>();
-
-  return overrides.filter((override) => {
-    if (seen.has(override.variableId) || !exposedById.has(override.variableId)) {
-      return false;
-    }
-    seen.add(override.variableId);
-    return true;
-  });
+  return reconcileFlowVariableOverridesWithDiagnostics(variables, overrides).overrides;
 }
