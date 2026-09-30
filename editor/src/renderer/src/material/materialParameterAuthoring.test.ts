@@ -7,7 +7,9 @@ describe('material parameter authoring metadata', () => {
   it('provides deterministic defaults for existing exposed parameters', () => {
     const graph = createDefaultMaterialGraph();
 
-    expect(materialAuthoringParameters(graph).map(({ name, group, sortOrder }) => ({ name, group, sortOrder }))).toEqual([
+    expect(
+      materialAuthoringParameters(graph).map(({ name, group, sortOrder }) => ({ name, group, sortOrder })),
+    ).toEqual([
       { name: 'Base Color', group: 'Parameters', sortOrder: 0 },
       { name: 'Metallic', group: 'Parameters', sortOrder: 0 },
       { name: 'Roughness', group: 'Parameters', sortOrder: 0 },
@@ -21,7 +23,11 @@ describe('material parameter authoring metadata', () => {
     expect(roughness?.parameter).toBeDefined();
     expect(metallic?.parameter).toBeDefined();
 
-    Object.assign(roughness!.parameter!, { group: ' Surface ', description: '  Microsurface response  ', sortOrder: 20 });
+    Object.assign(roughness!.parameter!, {
+      group: ' Surface ',
+      description: '  Microsurface response  ',
+      sortOrder: 20,
+    });
     Object.assign(metallic!.parameter!, { group: 'Surface', sortOrder: 10 });
 
     const detail = createMaterialNode('constant', [200, 200], { value: 1 });
@@ -29,12 +35,14 @@ describe('material parameter authoring metadata', () => {
     Object.assign(detail.parameter, { group: 'Detail', sortOrder: Number.NaN });
     graph.nodes.push(detail);
 
-    expect(materialAuthoringParameters(graph).map(({ name, group, description, sortOrder }) => ({
-      name,
-      group,
-      description,
-      sortOrder,
-    }))).toEqual([
+    expect(
+      materialAuthoringParameters(graph).map(({ name, group, description, sortOrder }) => ({
+        name,
+        group,
+        description,
+        sortOrder,
+      })),
+    ).toEqual([
       { name: 'Detail', group: 'Detail', description: undefined, sortOrder: 0 },
       { name: 'Base Color', group: 'Parameters', description: undefined, sortOrder: 0 },
       { name: 'Metallic', group: 'Surface', description: undefined, sortOrder: 10 },
@@ -45,13 +53,16 @@ describe('material parameter authoring metadata', () => {
   it('groups parameters without changing compiler-owned type metadata', () => {
     const graph = createDefaultMaterialGraph();
     for (const node of graph.nodes) {
-      if (node.parameter) Object.assign(node.parameter, { group: node.parameter.name === 'Base Color' ? 'Color' : 'Surface' });
+      if (node.parameter)
+        Object.assign(node.parameter, { group: node.parameter.name === 'Base Color' ? 'Color' : 'Surface' });
     }
 
-    expect(materialParameterGroups(graph).map((group) => ({
-      name: group.name,
-      parameters: group.parameters.map((parameter) => ({ name: parameter.name, type: parameter.type })),
-    }))).toEqual([
+    expect(
+      materialParameterGroups(graph).map((group) => ({
+        name: group.name,
+        parameters: group.parameters.map((parameter) => ({ name: parameter.name, type: parameter.type })),
+      })),
+    ).toEqual([
       { name: 'Color', parameters: [{ name: 'Base Color', type: 'vec3' }] },
       {
         name: 'Surface',

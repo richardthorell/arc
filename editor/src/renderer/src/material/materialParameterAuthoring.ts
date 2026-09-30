@@ -14,8 +14,7 @@ const DEFAULT_GROUP = 'Parameters';
 const readString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 
-const readSortOrder = (value: unknown): number =>
-  typeof value === 'number' && Number.isFinite(value) ? value : 0;
+const readSortOrder = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
 
 /**
  * Build deterministic editor presentation metadata for exposed material parameters.
@@ -51,7 +50,9 @@ export const materialAuthoringParameters = (graph: MaterialGraph): MaterialAutho
     );
 };
 
-export const materialParameterGroups = (graph: MaterialGraph): Array<{ name: string; parameters: MaterialAuthoringParameter[] }> => {
+export const materialParameterGroups = (
+  graph: MaterialGraph,
+): Array<{ name: string; parameters: MaterialAuthoringParameter[] }> => {
   const groups = new Map<string, MaterialAuthoringParameter[]>();
   for (const parameter of materialAuthoringParameters(graph)) {
     const parameters = groups.get(parameter.group) ?? [];
