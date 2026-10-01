@@ -1,20 +1,63 @@
 .ui-agent-card {
+  --ui-agent-card-background: color-mix(in srgb, var(--arc-color-bg-panel) 92%, black);
+  --ui-agent-card-border: var(--arc-color-border-subtle);
+
+  position: relative;
   display: grid;
   min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--arc-color-border-subtle);
+  border: 1px solid var(--ui-agent-card-border);
   border-radius: var(--arc-radius-2);
-  background: color-mix(in srgb, var(--arc-color-bg-panel) 92%, black);
+  background: var(--ui-agent-card-background);
   box-shadow: 0 4px 14px rgb(0 0 0 / 14%);
   color: var(--arc-color-text);
 }
 
+.ui-agent-card[data-tone='agent'] {
+  --ui-agent-card-background: color-mix(in srgb, var(--arc-color-bg-panel) 94%, #6d8fa8 6%);
+  --ui-agent-card-border: color-mix(in srgb, var(--arc-color-border-subtle) 78%, #7898af 22%);
+}
+
+.ui-agent-card[data-tone='user'] {
+  --ui-agent-card-background: color-mix(in srgb, var(--arc-color-bg-field) 84%, var(--arc-color-accent) 16%);
+  --ui-agent-card-border: color-mix(in srgb, var(--arc-color-border-subtle) 62%, var(--arc-color-accent) 38%);
+}
+
+.ui-agent-card[data-side='left']::before,
+.ui-agent-card[data-side='right']::before {
+  position: absolute;
+  z-index: 0;
+  top: 11px;
+  width: 9px;
+  height: 20px;
+  border: 1px solid var(--ui-agent-card-border);
+  background: var(--ui-agent-card-background);
+  content: '';
+}
+
+.ui-agent-card[data-side='left']::before {
+  left: -7px;
+  border-right: 0;
+  border-radius: 7px 0 0 7px;
+}
+
+.ui-agent-card[data-side='right']::before {
+  right: -7px;
+  border-left: 0;
+  border-radius: 0 7px 7px 0;
+}
+
 .ui-agent-card[data-state='streaming'] {
-  border-color: color-mix(in srgb, var(--arc-color-accent) 45%, var(--arc-color-border-subtle));
+  --ui-agent-card-border: color-mix(in srgb, var(--arc-color-accent) 45%, var(--arc-color-border-subtle));
 }
 
 .ui-agent-card[data-state='error'] {
   border-style: dashed;
+}
+
+.ui-agent-card-header,
+.ui-agent-card-content {
+  position: relative;
+  z-index: 1;
 }
 
 .ui-agent-card-header {
@@ -23,8 +66,9 @@
   align-items: center;
   gap: 8px;
   padding: 6px 9px;
-  border-bottom: 1px solid var(--arc-color-border-subtle);
-  background: color-mix(in srgb, var(--arc-color-bg-chrome) 78%, transparent);
+  border-bottom: 1px solid var(--ui-agent-card-border);
+  border-radius: var(--arc-radius-2) var(--arc-radius-2) 0 0;
+  background: color-mix(in srgb, var(--arc-color-bg-chrome) 78%, var(--ui-agent-card-background));
 }
 
 .ui-agent-card-icon {
@@ -68,6 +112,8 @@
 .ui-agent-card-content {
   min-width: 0;
   padding: 10px 11px;
+  border-radius: inherit;
+  background: var(--ui-agent-card-background);
 }
 
 .ui-agent-text-card-content {
