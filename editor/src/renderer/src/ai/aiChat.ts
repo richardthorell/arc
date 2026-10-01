@@ -8,6 +8,8 @@ export type AiChatMessage = {
   content: string;
   createdAt: string;
   state: AiChatMessageState;
+  modelId?: string;
+  modelLabel?: string;
 };
 
 export type AiConversation = {
@@ -82,7 +84,9 @@ const isMessage = (value: unknown): value is AiChatMessage => {
     (message.role === 'user' || message.role === 'assistant' || message.role === 'system') &&
     typeof message.content === 'string' &&
     typeof message.createdAt === 'string' &&
-    (message.state === 'complete' || message.state === 'streaming' || message.state === 'error')
+    (message.state === 'complete' || message.state === 'streaming' || message.state === 'error') &&
+    (message.modelId === undefined || typeof message.modelId === 'string') &&
+    (message.modelLabel === undefined || typeof message.modelLabel === 'string')
   );
 };
 
