@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-const migratedInspectorSurfaces = ['InspectorComponentCard.tsx', 'InspectorControls.tsx'] as const;
+const migratedInspectorSurfaces = ['ColorPicker.tsx', 'InspectorComponentCard.tsx', 'InspectorControls.tsx'] as const;
 
 const nativeControlPattern = /<(?:button|input|select|textarea)\b/i;
 
