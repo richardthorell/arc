@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { EditorSettingsSnapshot } from '../../../common/editorWorkflowTypes';
@@ -69,8 +69,9 @@ describe('AiGatewayPanel runtime providers', () => {
 
     window.dispatchEvent(new Event('arc-editor-settings-closed'));
 
-    await waitFor(() => expect(screen.getByLabelText('Model')).toHaveValue('openai:gpt-5.6-sol'));
-    expect(screen.getByRole('option', { name: 'GPT-5.6 Sol' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('Model')).toHaveTextContent('GPT-5.6 Sol'));
+    fireEvent.click(screen.getByLabelText('Model'));
+    expect(screen.getByRole('option', { name: 'GPT-5.6 Sol' })).toHaveAttribute('aria-selected', 'true');
     expect(snapshot).toHaveBeenCalledTimes(2);
   });
 
@@ -95,6 +96,6 @@ describe('AiGatewayPanel runtime providers', () => {
     await waitFor(() => expect(screen.getByText('Connect your AI service')).toBeVisible());
     window.dispatchEvent(new CustomEvent('arc-editor-settings-changed', { detail: settingsSnapshot(true) }));
 
-    await waitFor(() => expect(screen.getByLabelText('Model')).toHaveValue('openai:gpt-5.6-sol'));
+    await waitFor(() => expect(screen.getByLabelText('Model')).toHaveTextContent('GPT-5.6 Sol'));
   });
 });
