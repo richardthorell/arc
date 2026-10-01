@@ -9,7 +9,12 @@ export type RemoteDownloadIntegrityResult = Readonly<{
   actual?: string;
 }>;
 
-const normalizeDigest = (value: string): string => value.trim().toLocaleLowerCase().replace(/^sha256:/, '').replace(/^md5:/, '');
+const normalizeDigest = (value: string): string =>
+  value
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/^sha256:/, '')
+    .replace(/^md5:/, '');
 
 const digestLength: Readonly<Record<'md5' | 'sha256', number>> = {
   md5: 32,
