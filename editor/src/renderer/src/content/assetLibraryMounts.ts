@@ -8,12 +8,7 @@ export type AssetLibraryMount = {
 
 export type AssetLibraryMountMap = Partial<Record<AssetLibraryScopeId, string>>;
 
-const normalizeMountRoot = (root: string) =>
-  root
-    .trim()
-    .replaceAll('\\', '/')
-    .replace(/\/+/g, '/')
-    .replace(/\/$/, '');
+const normalizeMountRoot = (root: string) => root.trim().replaceAll('\\', '/').replace(/\/+/g, '/').replace(/\/$/, '');
 
 /**
  * Builds the renderer-side logical mount table without making a mount path
