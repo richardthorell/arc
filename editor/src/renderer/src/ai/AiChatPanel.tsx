@@ -1,14 +1,7 @@
 import { Asterisk, ArrowLeft, Bot, Plus, Send, Sparkles, Square } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { requestSettingsDialogOpen } from '../settings/settingsDialogRoute';
-import {
-  UiAgentTextCard,
-  UiButton,
-  UiDrawerPanel,
-  UiDropdown,
-  UiIconButton,
-  type UiDropdownOption,
-} from '../ui';
+import { UiAgentTextCard, UiButton, UiDrawerPanel, UiDropdown, UiIconButton, type UiDropdownOption } from '../ui';
 import {
   conversationTitleFromPrompt,
   createAiConversation,
@@ -309,9 +302,7 @@ export function AiChatPanel({
   const renderMessages = (conversation: AiConversation) => (
     <div className="ai-chat-message-list">
       {conversation.messages.map((message) => {
-        const timestamp = (
-          <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
-        );
+        const timestamp = <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>;
 
         if (message.role === 'assistant') {
           const responseModelId = message.modelId ?? conversation.modelId ?? activeProvider?.id;

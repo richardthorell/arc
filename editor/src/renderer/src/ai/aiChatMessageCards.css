@@ -1,25 +1,33 @@
 .ai-chat-user-card {
   --ui-agent-card-background: linear-gradient(180deg, #142a48, #10243f);
   --ui-agent-card-border: #2f6fbf;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 18%), 0 0 0 1px rgb(55 129 224 / 6%);
+  box-shadow:
+    0 8px 24px rgb(0 0 0 / 18%),
+    0 0 0 1px rgb(55 129 224 / 6%);
 }
 
 .ai-chat-agent-card.is-openai {
   --ui-agent-card-background: linear-gradient(180deg, #12342f, #102d29);
   --ui-agent-card-border: #2a7d70;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 18%), 0 0 0 1px rgb(61 170 150 / 5%);
+  box-shadow:
+    0 8px 24px rgb(0 0 0 / 18%),
+    0 0 0 1px rgb(61 170 150 / 5%);
 }
 
 .ai-chat-agent-card.is-anthropic {
   --ui-agent-card-background: linear-gradient(180deg, #3a2a1c, #322318);
   --ui-agent-card-border: #8e653b;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 18%), 0 0 0 1px rgb(196 139 79 / 5%);
+  box-shadow:
+    0 8px 24px rgb(0 0 0 / 18%),
+    0 0 0 1px rgb(196 139 79 / 5%);
 }
 
 .ai-chat-agent-card.is-mock {
   --ui-agent-card-background: linear-gradient(180deg, #292642, #232039);
   --ui-agent-card-border: #65639a;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 18%), 0 0 0 1px rgb(133 131 198 / 5%);
+  box-shadow:
+    0 8px 24px rgb(0 0 0 / 18%),
+    0 0 0 1px rgb(133 131 198 / 5%);
 }
 
 .ai-chat-agent-card.is-generic {
