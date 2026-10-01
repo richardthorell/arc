@@ -35,6 +35,13 @@ const modelIcon = (providerId: string) => {
   return <Bot aria-hidden="true" size={13} />;
 };
 
+const agentToneClass = (providerId: string | undefined) => {
+  if (providerId?.startsWith('openai:')) return 'is-openai';
+  if (providerId?.startsWith('anthropic:')) return 'is-anthropic';
+  if (providerId?.includes('mock')) return 'is-mock';
+  return 'is-generic';
+};
+
 type ActiveStream = {
   controller: AbortController;
   conversationId: string;
@@ -230,7 +237,11 @@ export function AiChatPanel({
 
     const conversation = createAiConversation();
     const userMessage = createAiMessage('user', content);
-    const assistantMessage = createAiMessage('assistant', '', 'streaming');
+    const assistantMessage: AiChatMessage = {
+      ...createAiMessage('assistant', '', 'streaming'),
+      modelId: model.id,
+      modelLabel: model.label,
+    };
     conversation.title = conversationTitleFromPrompt(content);
     conversation.modelId = model.id;
     conversation.modelLabel = model.label;
@@ -247,7 +258,11 @@ export function AiChatPanel({
     if (!activeConversation || !activeProvider || streaming || !content) return;
 
     const userMessage = createAiMessage('user', content);
-    const assistantMessage = createAiMessage('assistant', '', 'streaming');
+    const assistantMessage: AiChatMessage = {
+      ...createAiMessage('assistant', '', 'streaming'),
+      modelId: activeProvider.id,
+      modelLabel: activeProvider.label,
+    };
     const requestMessages = [...activeConversation.messages, userMessage];
 
     setPrompt('');
@@ -288,21 +303,29 @@ export function AiChatPanel({
     <div className="ai-chat-message-list">
       {conversation.messages.map((message) => {
         if (message.role === 'assistant') {
+          const responseModelId = message.modelId ?? conversation.modelId ?? activeProvider?.id;
           return (
             <UiAgentTextCard
+              className={`ai-chat-message-card ai-chat-agent-card ${agentToneClass(responseModelId)}`}
+              data-model-id={responseModelId}
               key={message.id}
+              side="left"
               state={message.state}
-              subtitle={conversation.modelLabel ?? activeProvider?.label}
               text={message.content}
-              title="ARC"
+              tone="agent"
             />
           );
         }
         if (message.role === 'user') {
           return (
-            <div className="ai-chat-user-message" key={message.id}>
-              {message.content}
-            </div>
+            <UiAgentTextCard
+              className="ai-chat-message-card ai-chat-user-card"
+              key={message.id}
+              side="right"
+              state={message.state}
+              text={message.content}
+              tone="user"
+            />
           );
         }
         return (
