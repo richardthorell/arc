@@ -44,10 +44,14 @@ describe('AI conversation helpers', () => {
     saveAiConversations([empty, populated]);
 
     expect(JSON.parse(localStorage.getItem(aiConversationStorageKey) ?? '[]')).toHaveLength(1);
-    expect(loadAiConversations()).toEqual([expect.objectContaining({ id: populated.id, title: 'Useful conversation' })]);
+    expect(loadAiConversations()).toEqual([
+      expect.objectContaining({ id: populated.id, title: 'Useful conversation' }),
+    ]);
 
     localStorage.setItem(aiConversationStorageKey, JSON.stringify([empty, populated]));
-    expect(loadAiConversations()).toEqual([expect.objectContaining({ id: populated.id, title: 'Useful conversation' })]);
+    expect(loadAiConversations()).toEqual([
+      expect.objectContaining({ id: populated.id, title: 'Useful conversation' }),
+    ]);
   });
 
   it('ignores malformed stored data', () => {

@@ -86,7 +86,7 @@ export function AiChatPanel({
 
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) ?? null;
   const activeProvider = activeConversation
-    ? configuredProviders.find((candidate) => candidate.id === activeConversation.modelId) ?? null
+    ? (configuredProviders.find((candidate) => candidate.id === activeConversation.modelId) ?? null)
     : null;
   const recentConversations = useMemo(
     () =>
