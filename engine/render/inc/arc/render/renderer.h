@@ -9,11 +9,13 @@
 #include <arc/render/mesh.h>
 #include <arc/render/render_backend.h>
 #include <arc/render/render_graph.h>
+#include <arc/render/renderer_profile.h>
 #include <arc/render/virtual_mesh.h>
 #include <arc/render/virtual_geometry.h>
 #include <arc/render/texture_streaming.h>
 
 #include <memory>
+#include <string>
 #include <unordered_map>
 
 namespace arc::render
@@ -51,6 +53,12 @@ struct renderer_config
     std::uint64_t texture_cpu_cache_budget_bytes{};
     /** Zero selects the resolved quality-tier frame upload cap. */
     std::uint64_t texture_upload_budget_per_frame{};
+    /** Optional target/device and project policy loaded from Config/Renderer.json. */
+    renderer_profile_document profiles;
+    /** Final explicit runtime/editor layer. */
+    renderer_profile_overrides profile_overrides;
+    /** Optional explicit profile identity; capability predicates are still enforced. */
+    std::string requested_profile_id;
 };
 
 /** @brief Raw adapter support available to future hardware virtual-geometry raster paths. */
@@ -73,7 +81,8 @@ query_virtual_geometry_hardware_support(const render_capabilities& capabilities)
  * @brief Resolve project rendering policy against immutable adapter support.
  */
 [[nodiscard]] resolved_render_config resolve_render_config(const renderer_config& config,
-                                                           const render_capabilities& capabilities);
+                                                           const render_capabilities& capabilities,
+                                                           const framework::platform_capabilities& platform = {});
 
 /** @brief Resolve one requested AA mode against the active path, scale, and executable backend features. */
 [[nodiscard]] anti_aliasing_method resolve_anti_aliasing(anti_aliasing_method requested, render_path path,
@@ -168,6 +177,12 @@ public:
      * @brief Return the immutable renderer configuration.
      */
     [[nodiscard]] const renderer_config& config() const noexcept;
+
+    /** @brief Update backend-neutral platform facts used for device-profile selection. */
+    void set_platform_capabilities(framework::platform_capabilities capabilities);
+
+    /** @brief Replace project renderer policy and re-resolve the active backend atomically. */
+    void set_profile_document(renderer_profile_document profiles);
 
     /**
      * @brief Return the concrete path and feature set selected for the backend.
@@ -391,6 +406,8 @@ public:
     [[nodiscard]] render_submit_result render_frame(std::uint64_t frame_index, const render_graph& graph);
 
 private:
+    void configure_backend();
+
     struct temporal_view_state
     {
         math::matrix4f view_projection{math::identity<float, 4>()};
@@ -406,6 +423,7 @@ private:
     };
 
     renderer_config config_{};
+    framework::platform_capabilities platform_capabilities_{};
     resolved_render_config resolved_config_{};
     std::unique_ptr<render_backend> backend_;
     render_frame_queue frame_queue_;

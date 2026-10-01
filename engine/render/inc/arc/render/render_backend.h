@@ -40,6 +40,16 @@ enum class render_quality_tier : std::uint8_t
     ultra
 };
 
+/** @brief Coarse capability tier used for profile diagnostics and subsystem policy. */
+enum class render_scalability_tier : std::uint8_t
+{
+    automatic,
+    constrained,
+    balanced,
+    performance,
+    premium
+};
+
 /**
  * @brief Backend-neutral raster path used for a view.
  */
@@ -134,100 +144,142 @@ struct render_quality_profile
     bool prefer_hzb_occlusion{true};
     bool prefer_temporal_upscaling{true};
     bool prefer_async_compute{true};
+    /** GPU cache reserved for resident virtual-geometry pages. */
+    std::uint64_t virtual_geometry_gpu_budget_bytes{512ull * 1024ull * 1024ull};
+    /** CPU cache reserved for compressed virtual-geometry pages. */
+    std::uint64_t virtual_geometry_cpu_budget_bytes{256ull * 1024ull * 1024ull};
+    /** Maximum virtual-geometry page loads admitted per frame. */
+    std::uint32_t virtual_geometry_request_limit{4096};
+    /** Projected triangle area below which hybrid raster prefers compute. */
+    float virtual_geometry_compute_crossover_pixels{4.0f};
+    /** Projected triangle area above which hybrid raster prefers hardware. */
+    float virtual_geometry_hardware_crossover_pixels{12.0f};
+    /** Conventional texture residency budget. */
+    std::uint64_t texture_gpu_budget_bytes{512ull * 1024ull * 1024ull};
+    /** Compressed CPU texture cache; zero derives from the GPU budget. */
+    std::uint64_t texture_cpu_budget_bytes{};
+    /** Texture bytes uploaded during one frame. */
+    std::uint64_t texture_upload_budget_per_frame{64ull * 1024ull * 1024ull};
+    /** Maximum texture requests admitted per frame. */
+    std::uint32_t texture_request_limit{2048};
+    /** Physical cache reserved for virtual textures when the feature is executable. */
+    std::uint64_t virtual_texture_cache_budget_bytes{256ull * 1024ull * 1024ull};
+    /** Multiplier applied by terrain consumers to the geometry error target. */
+    float terrain_geometry_error_scale{1.0f};
+    /** Normalized post-processing quality available to effect-specific policies. */
+    float post_process_quality{0.75f};
 };
 
-inline constexpr render_quality_profile low_render_quality_profile{.quality = render_quality_tier::low,
-                                                                   .default_path = render_path::forward_plus,
-                                                                   .minimum_render_scale = 0.5f,
-                                                                   .maximum_render_scale = 1.0f,
-                                                                   .max_point_lights = 32,
-                                                                   .max_spot_lights = 32,
-                                                                   .directional_shadow_cascades = 2,
-                                                                   .directional_shadow_resolution = 1024,
-                                                                   .directional_shadow_distance = 80.0f,
-                                                                   .local_shadow_atlas_resolution = 2048,
-                                                                   .max_shadowed_point_lights = 0,
-                                                                   .max_shadowed_spot_lights = 2,
-                                                                   .max_local_shadow_resolution = 512,
-                                                                   .screen_space_shadows = false,
-                                                                   .screen_space_shadow_scale = 0.0f,
-                                                                   .target_frame_time_ms = default_target_frame_time_ms,
-                                                                   .geometry_error_threshold = 2.0f,
-                                                                   .minimum_geometry_error_threshold = 1.0f,
-                                                                   .maximum_geometry_error_threshold = 6.0f,
-                                                                   .minimum_shadow_resolution_scale = 0.5f,
-                                                                   .minimum_volumetric_resolution_scale = 0.35f,
-                                                                   .gi_trace_budget = 0,
-                                                                   .reflection_ray_budget = 0,
-                                                                   .lighting_trace_scale = 0.0f,
-                                                                   .surface_cache_update_budget = 0,
-                                                                   .radiance_probe_update_budget = 0,
-                                                                   .preferred_submission =
-                                                                       gpu_submission_path::indirect,
-                                                                   .prefer_gpu_driven = false,
-                                                                   .prefer_hzb_occlusion = false,
-                                                                   .prefer_temporal_upscaling = false,
-                                                                   .prefer_async_compute = false};
+inline constexpr render_quality_profile low_render_quality_profile{
+    .quality = render_quality_tier::low,
+    .default_path = render_path::forward_plus,
+    .minimum_render_scale = 0.5f,
+    .maximum_render_scale = 1.0f,
+    .max_point_lights = 32,
+    .max_spot_lights = 32,
+    .directional_shadow_cascades = 2,
+    .directional_shadow_resolution = 1024,
+    .directional_shadow_distance = 80.0f,
+    .local_shadow_atlas_resolution = 2048,
+    .max_shadowed_point_lights = 0,
+    .max_shadowed_spot_lights = 2,
+    .max_local_shadow_resolution = 512,
+    .screen_space_shadows = false,
+    .screen_space_shadow_scale = 0.0f,
+    .target_frame_time_ms = default_target_frame_time_ms,
+    .geometry_error_threshold = 2.0f,
+    .minimum_geometry_error_threshold = 1.0f,
+    .maximum_geometry_error_threshold = 6.0f,
+    .minimum_shadow_resolution_scale = 0.5f,
+    .minimum_volumetric_resolution_scale = 0.35f,
+    .gi_trace_budget = 0,
+    .reflection_ray_budget = 0,
+    .lighting_trace_scale = 0.0f,
+    .surface_cache_update_budget = 0,
+    .radiance_probe_update_budget = 0,
+    .preferred_submission = gpu_submission_path::indirect,
+    .prefer_gpu_driven = false,
+    .prefer_hzb_occlusion = false,
+    .prefer_temporal_upscaling = false,
+    .prefer_async_compute = false,
+    .texture_gpu_budget_bytes = 256ull * 1024ull * 1024ull,
+    .texture_upload_budget_per_frame = 32ull * 1024ull * 1024ull,
+    .virtual_texture_cache_budget_bytes = 128ull * 1024ull * 1024ull,
+    .terrain_geometry_error_scale = 1.5f,
+    .post_process_quality = 0.35f};
 
 inline constexpr render_quality_profile standard_render_quality_profile{};
 
-inline constexpr render_quality_profile high_render_quality_profile{.quality = render_quality_tier::high,
-                                                                    .default_path = render_path::deferred,
-                                                                    .minimum_render_scale = 0.67f,
-                                                                    .maximum_render_scale = 1.0f,
-                                                                    .max_point_lights = 64,
-                                                                    .max_spot_lights = 64,
-                                                                    .directional_shadow_cascades = 4,
-                                                                    .directional_shadow_resolution = 4096,
-                                                                    .directional_shadow_distance = 300.0f,
-                                                                    .local_shadow_atlas_resolution = 8192,
-                                                                    .max_shadowed_point_lights = 8,
-                                                                    .max_shadowed_spot_lights = 16,
-                                                                    .max_local_shadow_resolution = 2048,
-                                                                    .screen_space_shadows = true,
-                                                                    .screen_space_shadow_scale = 1.0f,
-                                                                    .target_frame_time_ms =
-                                                                        default_target_frame_time_ms,
-                                                                    .geometry_error_threshold = 0.75f,
-                                                                    .minimum_geometry_error_threshold = 0.35f,
-                                                                    .maximum_geometry_error_threshold = 3.0f,
-                                                                    .minimum_shadow_resolution_scale = 0.67f,
-                                                                    .minimum_volumetric_resolution_scale = 0.5f,
-                                                                    .gi_trace_budget = 2,
-                                                                    .reflection_ray_budget = 2,
-                                                                    .lighting_trace_scale = 0.5f,
-                                                                    .surface_cache_update_budget = 256,
-                                                                    .radiance_probe_update_budget = 64};
+inline constexpr render_quality_profile high_render_quality_profile{
+    .quality = render_quality_tier::high,
+    .default_path = render_path::deferred,
+    .minimum_render_scale = 0.67f,
+    .maximum_render_scale = 1.0f,
+    .max_point_lights = 64,
+    .max_spot_lights = 64,
+    .directional_shadow_cascades = 4,
+    .directional_shadow_resolution = 4096,
+    .directional_shadow_distance = 300.0f,
+    .local_shadow_atlas_resolution = 8192,
+    .max_shadowed_point_lights = 8,
+    .max_shadowed_spot_lights = 16,
+    .max_local_shadow_resolution = 2048,
+    .screen_space_shadows = true,
+    .screen_space_shadow_scale = 1.0f,
+    .target_frame_time_ms = default_target_frame_time_ms,
+    .geometry_error_threshold = 0.75f,
+    .minimum_geometry_error_threshold = 0.35f,
+    .maximum_geometry_error_threshold = 3.0f,
+    .minimum_shadow_resolution_scale = 0.67f,
+    .minimum_volumetric_resolution_scale = 0.5f,
+    .gi_trace_budget = 2,
+    .reflection_ray_budget = 2,
+    .lighting_trace_scale = 0.5f,
+    .surface_cache_update_budget = 256,
+    .radiance_probe_update_budget = 64,
+    .texture_gpu_budget_bytes = 1024ull * 1024ull * 1024ull,
+    .virtual_texture_cache_budget_bytes = 512ull * 1024ull * 1024ull,
+    .terrain_geometry_error_scale = 0.8f,
+    .post_process_quality = 0.9f};
 
-inline constexpr render_quality_profile ultra_render_quality_profile{.quality = render_quality_tier::ultra,
-                                                                     .default_path = render_path::deferred,
-                                                                     .minimum_render_scale = 0.75f,
-                                                                     .maximum_render_scale = 1.0f,
-                                                                     .max_point_lights = 128,
-                                                                     .max_spot_lights = 128,
-                                                                     .directional_shadow_cascades = 4,
-                                                                     .directional_shadow_resolution = 4096,
-                                                                     .directional_shadow_distance = 400.0f,
-                                                                     .local_shadow_atlas_resolution = 8192,
-                                                                     .max_shadowed_point_lights = 12,
-                                                                     .max_shadowed_spot_lights = 24,
-                                                                     .max_local_shadow_resolution = 2048,
-                                                                     .screen_space_shadows = true,
-                                                                     .screen_space_shadow_scale = 1.0f,
-                                                                     .virtual_shadow_budget_bytes =
-                                                                         512ull * 1024ull * 1024ull,
-                                                                     .virtual_shadow_page_render_budget = 2048,
-                                                                     .target_frame_time_ms = 1000.0f / 30.0f,
-                                                                     .geometry_error_threshold = 0.5f,
-                                                                     .minimum_geometry_error_threshold = 0.25f,
-                                                                     .maximum_geometry_error_threshold = 2.0f,
-                                                                     .minimum_shadow_resolution_scale = 0.75f,
-                                                                     .minimum_volumetric_resolution_scale = 0.67f,
-                                                                     .gi_trace_budget = 4,
-                                                                     .reflection_ray_budget = 4,
-                                                                     .lighting_trace_scale = 1.0f,
-                                                                     .surface_cache_update_budget = 512,
-                                                                     .radiance_probe_update_budget = 128};
+inline constexpr render_quality_profile ultra_render_quality_profile{
+    .quality = render_quality_tier::ultra,
+    .default_path = render_path::deferred,
+    .minimum_render_scale = 0.75f,
+    .maximum_render_scale = 1.0f,
+    .max_point_lights = 128,
+    .max_spot_lights = 128,
+    .directional_shadow_cascades = 4,
+    .directional_shadow_resolution = 4096,
+    .directional_shadow_distance = 400.0f,
+    .local_shadow_atlas_resolution = 8192,
+    .max_shadowed_point_lights = 12,
+    .max_shadowed_spot_lights = 24,
+    .max_local_shadow_resolution = 2048,
+    .screen_space_shadows = true,
+    .screen_space_shadow_scale = 1.0f,
+    .virtual_shadow_budget_bytes = 512ull * 1024ull * 1024ull,
+    .virtual_shadow_page_render_budget = 2048,
+    .target_frame_time_ms = 1000.0f / 30.0f,
+    .geometry_error_threshold = 0.5f,
+    .minimum_geometry_error_threshold = 0.25f,
+    .maximum_geometry_error_threshold = 2.0f,
+    .minimum_shadow_resolution_scale = 0.75f,
+    .minimum_volumetric_resolution_scale = 0.67f,
+    .gi_trace_budget = 4,
+    .reflection_ray_budget = 4,
+    .lighting_trace_scale = 1.0f,
+    .surface_cache_update_budget = 512,
+    .radiance_probe_update_budget = 128,
+    .virtual_geometry_gpu_budget_bytes = 1024ull * 1024ull * 1024ull,
+    .virtual_geometry_cpu_budget_bytes = 512ull * 1024ull * 1024ull,
+    .virtual_geometry_compute_crossover_pixels = 3.0f,
+    .virtual_geometry_hardware_crossover_pixels = 10.0f,
+    .texture_gpu_budget_bytes = 2048ull * 1024ull * 1024ull,
+    .texture_upload_budget_per_frame = 128ull * 1024ull * 1024ull,
+    .virtual_texture_cache_budget_bytes = 1024ull * 1024ull * 1024ull,
+    .terrain_geometry_error_scale = 0.6f,
+    .post_process_quality = 1.0f};
 
 [[nodiscard]] constexpr const render_quality_profile& quality_profile(render_quality_tier quality) noexcept
 {
@@ -473,6 +525,11 @@ struct render_feature_set
  */
 struct resolved_render_config
 {
+    /** Deterministic device profile selected before project and runtime overrides. */
+    std::string device_profile_id{"engine-default"};
+    render_scalability_tier cpu_tier{render_scalability_tier::balanced};
+    render_scalability_tier gpu_tier{render_scalability_tier::balanced};
+    render_scalability_tier memory_tier{render_scalability_tier::balanced};
     render_quality_tier requested_quality{render_quality_tier::auto_select};
     render_quality_tier quality{render_quality_tier::medium};
     render_path requested_path{render_path::auto_select};
@@ -481,6 +538,9 @@ struct resolved_render_config
     anti_aliasing_method anti_aliasing{anti_aliasing_method::disabled};
     temporal_settings temporal{};
     render_feature_set features{};
+    /** Fully layered profile used by runtime budget consumers. */
+    render_quality_profile profile{};
+    bool dynamic_resolution{true};
     float target_frame_time_ms{default_target_frame_time_ms};
     float minimum_render_scale{standard_render_quality_profile.minimum_render_scale};
     float maximum_render_scale{standard_render_quality_profile.maximum_render_scale};
@@ -507,6 +567,21 @@ struct resolved_render_config
     std::uint32_t surface_cache_update_budget{standard_render_quality_profile.surface_cache_update_budget};
     std::uint32_t radiance_probe_update_budget{standard_render_quality_profile.radiance_probe_update_budget};
     std::uint64_t lighting_scene_gpu_budget_bytes{};
+    std::uint64_t virtual_geometry_gpu_budget_bytes{standard_render_quality_profile.virtual_geometry_gpu_budget_bytes};
+    std::uint64_t virtual_geometry_cpu_budget_bytes{standard_render_quality_profile.virtual_geometry_cpu_budget_bytes};
+    std::uint32_t virtual_geometry_request_limit{standard_render_quality_profile.virtual_geometry_request_limit};
+    float virtual_geometry_compute_crossover_pixels{
+        standard_render_quality_profile.virtual_geometry_compute_crossover_pixels};
+    float virtual_geometry_hardware_crossover_pixels{
+        standard_render_quality_profile.virtual_geometry_hardware_crossover_pixels};
+    std::uint64_t texture_gpu_budget_bytes{standard_render_quality_profile.texture_gpu_budget_bytes};
+    std::uint64_t texture_cpu_budget_bytes{standard_render_quality_profile.texture_cpu_budget_bytes};
+    std::uint64_t texture_upload_budget_per_frame{standard_render_quality_profile.texture_upload_budget_per_frame};
+    std::uint32_t texture_request_limit{standard_render_quality_profile.texture_request_limit};
+    std::uint64_t virtual_texture_cache_budget_bytes{
+        standard_render_quality_profile.virtual_texture_cache_budget_bytes};
+    float terrain_geometry_error_scale{standard_render_quality_profile.terrain_geometry_error_scale};
+    float post_process_quality{standard_render_quality_profile.post_process_quality};
     lighting_trace_path indirect_lighting_path{lighting_trace_path::baked_probe};
     std::vector<std::string> fallback_reasons;
 };

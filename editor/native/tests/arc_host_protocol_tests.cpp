@@ -36,7 +36,10 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
         .position = {1.0f, 2.0f, 3.0f}, .rotation = {0.0f, 0.0f, 0.707f, 0.707f}, .scale = {2.0f, 2.0f, 2.0f}};
 
     const arc::editor::host_command_envelope commands[]{
-        {.request_id = 1, .payload = arc::editor::host_open_project_command{.name = "Protocol", .root = "D:/Protocol"}},
+        {.request_id = 1,
+         .payload = arc::editor::host_open_project_command{.name = "Protocol",
+                                                           .root = "D:/Protocol",
+                                                           .renderer_settings = "Config/Renderer.json"}},
         {.request_id = 2,
          .payload = arc::editor::host_open_scene_command{.path = "D:/Protocol/assets/test.glb", .append = true}},
         {.request_id = 3,
@@ -150,6 +153,11 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
         REQUIRE(arc::editor::from_json(json, parsed, error));
         REQUIRE(parsed.request_id == command.request_id);
         REQUIRE(parsed.command_type == arc::editor::command_type(command.payload));
+        if (command.request_id == 1)
+        {
+            const auto& open = std::get<arc::editor::host_open_project_command>(parsed.payload);
+            REQUIRE(open.renderer_settings == "Config/Renderer.json");
+        }
         if (command.request_id == 3)
         {
             const auto& create = std::get<arc::editor::host_create_entity_command>(parsed.payload);

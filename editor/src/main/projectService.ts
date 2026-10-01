@@ -391,6 +391,7 @@ export class ProjectService {
         contentRoots: project.descriptor.assetRoots.map((entry) => path.join(project.projectRoot, entry)),
         builtinContentRoots: this.builtinAssetsRoot ? [this.builtinAssetsRoot] : [],
         cacheRoot: path.join(project.projectRoot, project.descriptor.paths.intermediate, 'Cache'),
+        rendererSettings: project.descriptor.settings.renderer,
         defaultScene: project.descriptor.defaultScene?.pathHint ?? '',
         projectGuid: project.descriptor.guid,
         engineVersion: project.descriptor.engineVersion,

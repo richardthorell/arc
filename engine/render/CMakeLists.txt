@@ -5,6 +5,8 @@ arc_add_module(
     NO_TESTS
 )
 
+target_link_libraries(arc-render PRIVATE "$<BUILD_INTERFACE:arc-third-party-json>")
+
 if(NOT TARGET arc-third-party-tinyexr)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/tinyexr"

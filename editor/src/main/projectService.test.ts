@@ -58,7 +58,12 @@ describe('ProjectService', () => {
     expect(opened.succeeded).toBe(true);
     expect(commands[0]).toMatchObject({
       type: 'project.open',
-      payload: { name: 'Alpine', readOnly: false, builtinContentRoots: [builtinAssetsRoot] },
+      payload: {
+        name: 'Alpine',
+        readOnly: false,
+        builtinContentRoots: [builtinAssetsRoot],
+        rendererSettings: 'Config/Renderer.json',
+      },
     });
     expect(service.snapshot().recentProjects[0].guid).toBe(created.project?.descriptor.guid);
   });

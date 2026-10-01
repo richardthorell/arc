@@ -106,6 +106,7 @@ export function RenderGraphPanel({
           <span>Frame {snapshot.frameIndex}</span>
           <span>{snapshot.renderer.path}</span>
           <span>{snapshot.renderer.qualityTier}</span>
+          {snapshot.renderer.deviceProfile && <span>{snapshot.renderer.deviceProfile}</span>}
           <span>{Math.round(snapshot.renderer.renderScale * 100)}%</span>
           <span>{snapshot.graph.resourceCount} resources</span>
           <span>{snapshot.graph.physicalResourceCount ?? snapshot.graph.resourceCount} physical</span>

@@ -895,6 +895,7 @@ struct host_open_project_command
     std::vector<std::filesystem::path> content_roots;
     std::vector<std::filesystem::path> builtin_content_roots;
     std::filesystem::path cache_root;
+    std::filesystem::path renderer_settings;
     std::filesystem::path default_scene;
     std::string project_guid;
     std::string engine_version;

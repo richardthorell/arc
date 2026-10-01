@@ -278,8 +278,7 @@ template <class Command> constexpr bool is_project_mutation() noexcept
     return is_authoring_command<Command>() || std::is_same_v<Command, host_save_scene_command> ||
            std::is_same_v<Command, host_save_scene_as_command> ||
            std::is_same_v<Command, host_reload_project_module_command> ||
-           std::is_same_v<Command, host_asset_scan_command> ||
-           std::is_same_v<Command, host_asset_reimport_command> ||
+           std::is_same_v<Command, host_asset_scan_command> || std::is_same_v<Command, host_asset_reimport_command> ||
            std::is_same_v<Command, host_set_texture_streaming_mode_command> ||
            std::is_same_v<Command, host_patch_texture_settings_command> ||
            std::is_same_v<Command, host_asset_cancel_import_command> ||
@@ -2048,15 +2047,14 @@ struct arc_host::state
         reference.expected_type = assets::asset_types::flow_graph;
         reference.path_hint = assets::normalize_asset_path(asset->source_path);
         const auto& bytes = loaded.value();
-        flow_play_source source{
-            .reference = reference,
-            .generation = resolved.value().content_generation(),
-            .display_name = asset->title.empty() ? asset->source_path.filename().string() : asset->title,
-            .source = std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size())};
+        flow_play_source source{.reference = reference,
+                                .generation = resolved.value().content_generation(),
+                                .display_name =
+                                    asset->title.empty() ? asset->source_path.filename().string() : asset->title,
+                                .source = std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size())};
         auto compiled = flow::compile_asset(source.source);
         if (compiled.succeeded && compiled.bytecode)
-            source.compiled_program =
-                std::make_shared<const flow::bytecode_program>(std::move(*compiled.bytecode));
+            source.compiled_program = std::make_shared<const flow::bytecode_program>(std::move(*compiled.bytecode));
         else
         {
             source.compile_error = "Flow graph '" + source.display_name + "' failed to compile";
@@ -2095,10 +2093,10 @@ struct arc_host::state
                 diagnostics::warn("editor.play", refreshed->compile_error + "; keeping the last-good program");
             else if (!refreshed && !refresh_error.empty())
                 diagnostics::warn("editor.play", "Flow asset " + assets::to_string(reference.guid) +
-                                                        " could not be refreshed: " + refresh_error);
+                                                     " could not be refreshed: " + refresh_error);
         }
-        diagnostics::info("editor.play", "Play asset sandbox observed " +
-                                                std::to_string(changes.events.size()) + " source change(s)");
+        diagnostics::info("editor.play",
+                          "Play asset sandbox observed " + std::to_string(changes.events.size()) + " source change(s)");
     }
 
     [[nodiscard]] bool publish_play_flow_source(assets::asset_guid guid, std::string_view source, std::string& error)
@@ -2441,8 +2439,7 @@ struct arc_host::state
     ecs::entity play_camera_entity{};
     std::uint64_t play_source_scene_revision{};
     std::string play_start_error;
-    std::unordered_map<assets::asset_guid, pending_play_flow_source, assets::asset_guid_hash>
-        pending_play_flow_sources;
+    std::unordered_map<assets::asset_guid, pending_play_flow_source, assets::asset_guid_hash> pending_play_flow_sources;
     std::unique_ptr<io::virtual_file_system> play_flow_filesystem;
     std::shared_ptr<io::filesystem_file_provider> play_flow_base;
     std::shared_ptr<io::memory_file_provider> play_flow_overlay;
@@ -2518,9 +2515,10 @@ arc_host::~arc_host()
     }
 }
 
-void arc_host::set_platform_capabilities(framework::platform_capabilities capabilities) noexcept
+void arc_host::set_platform_capabilities(framework::platform_capabilities capabilities)
 {
     state_->simulation.set_platform_capabilities(capabilities);
+    state_->renderer->set_platform_capabilities(capabilities);
 }
 
 host_response arc_host::open_project(const host_open_project_command& command, const editor_asset_state& assets,
@@ -2528,6 +2526,27 @@ host_response arc_host::open_project(const host_open_project_command& command, c
 {
     if (!state_->end_play_session())
         return {.request_id = request_id, .succeeded = false, .error = "Could not end the active play session"};
+    render::renderer_profile_document renderer_profiles;
+    if (!command.renderer_settings.empty())
+    {
+        const auto settings_path = resolve_project_document(command.root, command.renderer_settings, false);
+        if (!settings_path)
+            return {.request_id = request_id,
+                    .succeeded = false,
+                    .error = "Renderer settings must be contained by the project root"};
+        auto loaded = render::load_renderer_profile_document(*settings_path);
+        if (!loaded)
+        {
+            std::string error = "Could not load renderer settings";
+            if (loaded.error)
+            {
+                if (!loaded.error->field.empty()) error += " at '" + loaded.error->field + "'";
+                if (!loaded.error->message.empty()) error += ": " + loaded.error->message;
+            }
+            return {.request_id = request_id, .succeeded = false, .error = std::move(error)};
+        }
+        renderer_profiles = std::move(loaded.document);
+    }
     state_->project_module.unload();
     if (!command.read_only && !command.editor_module_path.empty())
     {
@@ -2605,6 +2624,7 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     ++state_->world_epoch;
     state_->history.clear(state_->scene, false);
     reset_editor_camera(state_->scene, state_->camera_controller);
+    state_->renderer->set_profile_document(std::move(renderer_profiles));
     state_->project_open = true;
     state_->project_read_only = command.read_only;
 
@@ -2777,6 +2797,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     resolved.root = context.value().root;
                     resolved.content_roots = context.value().asset_roots;
                     resolved.cache_root = context.value().asset_cache_root;
+                    resolved.renderer_settings = descriptor.value().settings.renderer;
                     resolved.default_scene = descriptor.value().default_scene
                                                  ? std::filesystem::path{descriptor.value().default_scene->path_hint}
                                                  : std::filesystem::path{};
@@ -2809,6 +2830,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 state_->scene.terrain_render_proxies.clear(*state_->renderer);
                 state_->scene = create_blank_scene(*state_->renderer);
                 reset_editor_camera(state_->scene, state_->camera_controller);
+                state_->renderer->set_profile_document({});
                 state_->project = {};
                 state_->project_open = false;
                 state_->project_read_only = false;
@@ -3187,8 +3209,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 state_->pending_play_flow_sources.insert_or_assign(
                     *guid, pending_play_flow_source{.guid = *guid,
                                                     .editor_revision = payload.revision,
-                                                    .content_hash = assets::hash_bytes(std::as_bytes(std::span{
-                                                        payload.source.data(), payload.source.size()})),
+                                                    .content_hash = assets::hash_bytes(std::as_bytes(
+                                                        std::span{payload.source.data(), payload.source.size()})),
                                                     .source = payload.source});
                 return success("{\"staged\":true}");
             }
@@ -3203,7 +3225,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 std::string error;
                 if (!state_->publish_play_flow_source(*guid, payload.source, error)) return fail(error);
                 diagnostics::info("editor.play", "Staged Flow asset " + payload.guid + " revision " +
-                                                        std::to_string(payload.revision) + " for hot reload");
+                                                     std::to_string(payload.revision) + " for hot reload");
                 return success("{\"updated\":true}");
             }
             else if constexpr (std::is_same_v<command_type, host_runtime_resume_command>)
@@ -3863,8 +3885,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (!graph.guid.valid() && !graph.path_hint.empty())
                     return fail("Flow graph could not be resolved", entity);
                 for (const auto target : targets)
-                    state_->scene.scene.emplace<scene::flow_component>(
-                        target, scene::flow_component{graph, payload.enabled});
+                    state_->scene.scene.emplace<scene::flow_component>(target,
+                                                                       scene::flow_component{graph, payload.enabled});
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
                            "Flow binding changed for " + std::to_string(targets.size()) + " entity(s)", entity);
                 return success("{\"entity\":" + to_json(payload.entity) + '}');
@@ -6066,6 +6088,23 @@ host_response arc_host::query(const host_query_envelope& query) const
                     }
                     return "unavailable";
                 };
+                const auto scalability_tier_name = [](render::render_scalability_tier tier)
+                {
+                    switch (tier)
+                    {
+                        case render::render_scalability_tier::constrained:
+                            return "constrained";
+                        case render::render_scalability_tier::balanced:
+                            return "balanced";
+                        case render::render_scalability_tier::performance:
+                            return "performance";
+                        case render::render_scalability_tier::premium:
+                            return "premium";
+                        case render::render_scalability_tier::automatic:
+                            break;
+                    }
+                    return "auto";
+                };
                 const auto usage_name = [](render::render_resource_usage usage)
                 {
                     switch (usage)
@@ -6204,6 +6243,12 @@ host_response arc_host::query(const host_query_envelope& query) const
                                    : profile.configuration.quality == render::render_quality_tier::ultra ? "ultra"
                                    : profile.configuration.quality == render::render_quality_tier::high  ? "high"
                                                                                                          : "standard") +
+                    ",\"deviceProfile\":" + to_json_string(profile.configuration.device_profile_id) +
+                    ",\"cpuTier\":" + to_json_string(scalability_tier_name(profile.configuration.cpu_tier)) +
+                    ",\"gpuTier\":" + to_json_string(scalability_tier_name(profile.configuration.gpu_tier)) +
+                    ",\"memoryTier\":" + to_json_string(scalability_tier_name(profile.configuration.memory_tier)) +
+                    ",\"dynamicResolution\":" +
+                    std::string(profile.configuration.dynamic_resolution ? "true" : "false") +
                     ",\"targetFrameMilliseconds\":" + std::to_string(profile.configuration.target_frame_time_ms) +
                     ",\"geometryErrorThreshold\":" + std::to_string(profile.configuration.geometry_error_threshold) +
                     ",\"shadowResolutionScale\":" + std::to_string(profile.configuration.shadow_resolution_scale) +
@@ -6215,7 +6260,26 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"surfaceCacheUpdateBudget\":" +
                     std::to_string(profile.configuration.surface_cache_update_budget) +
                     ",\"radianceProbeUpdateBudget\":" +
-                    std::to_string(profile.configuration.radiance_probe_update_budget) + ",\"fallbackReasons\":[";
+                    std::to_string(profile.configuration.radiance_probe_update_budget) +
+                    ",\"virtualGeometryGpuBudgetBytes\":" +
+                    std::to_string(profile.configuration.virtual_geometry_gpu_budget_bytes) +
+                    ",\"virtualGeometryCpuBudgetBytes\":" +
+                    std::to_string(profile.configuration.virtual_geometry_cpu_budget_bytes) +
+                    ",\"virtualGeometryRequestLimit\":" +
+                    std::to_string(profile.configuration.virtual_geometry_request_limit) +
+                    ",\"virtualGeometryComputeCrossoverPixels\":" +
+                    std::to_string(profile.configuration.virtual_geometry_compute_crossover_pixels) +
+                    ",\"virtualGeometryHardwareCrossoverPixels\":" +
+                    std::to_string(profile.configuration.virtual_geometry_hardware_crossover_pixels) +
+                    ",\"textureGpuBudgetBytes\":" + std::to_string(profile.configuration.texture_gpu_budget_bytes) +
+                    ",\"textureCpuBudgetBytes\":" + std::to_string(profile.configuration.texture_cpu_budget_bytes) +
+                    ",\"textureRequestLimit\":" + std::to_string(profile.configuration.texture_request_limit) +
+                    ",\"virtualTextureCacheBudgetBytes\":" +
+                    std::to_string(profile.configuration.virtual_texture_cache_budget_bytes) +
+                    ",\"terrainGeometryErrorScale\":" +
+                    std::to_string(profile.configuration.terrain_geometry_error_scale) +
+                    ",\"postProcessQuality\":" + std::to_string(profile.configuration.post_process_quality) +
+                    ",\"fallbackReasons\":[";
                 for (std::size_t index = 0; index < profile.configuration.fallback_reasons.size(); ++index)
                 {
                     if (index != 0) json += ',';
@@ -7022,8 +7086,9 @@ host_selected_entity_snapshot arc_host::runtime_entity_snapshot(host_entity_id h
     }
     if (const auto* flow = world.try_get<scene::flow_component>(entity))
     {
-        snapshot.flow = host_flow_snapshot{flow->graph.guid.valid() ? assets::to_string(flow->graph.guid) : std::string{},
-                                           flow->graph.path_hint, flow->enabled};
+        snapshot.flow =
+            host_flow_snapshot{flow->graph.guid.valid() ? assets::to_string(flow->graph.guid) : std::string{},
+                               flow->graph.path_hint, flow->enabled};
         snapshot.components.push_back(
             {host_component_kind::flow, "arc::scene.flow_component", "Flow", state_->runtime_revision, 0, false});
     }
@@ -7383,8 +7448,9 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
                                                        host_component_kind::decal, "Decal");
     if (const auto* flow = state_->scene.scene.try_get<scene::flow_component>(selected))
     {
-        snapshot.flow = host_flow_snapshot{flow->graph.guid.valid() ? assets::to_string(flow->graph.guid) : std::string{},
-                                           flow->graph.path_hint, flow->enabled};
+        snapshot.flow =
+            host_flow_snapshot{flow->graph.guid.valid() ? assets::to_string(flow->graph.guid) : std::string{},
+                               flow->graph.path_hint, flow->enabled};
         snapshot.components.push_back(
             {host_component_kind::flow, "arc::scene.flow_component", "Flow", state_->scene_revision, 0, true});
     }
