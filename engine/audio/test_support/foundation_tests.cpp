@@ -71,5 +71,38 @@ int main()
         return 10;
     }
 
+    audio_runtime runtime{};
+    if (runtime.backend() != backend_type::miniaudio || runtime.initialized() ||
+        runtime.playback_device() != invalid_device_id)
+    {
+        return 11;
+    }
+
+    runtime_config invalid_runtime{};
+    invalid_runtime.output.channel_count = 0;
+    if (runtime.initialize(invalid_runtime) != runtime_error::invalid_configuration || runtime.initialized())
+    {
+        return 12;
+    }
+
+    runtime_config null_runtime{};
+    null_runtime.device = device_mode::null_output;
+    if (runtime.initialize(null_runtime) != runtime_error::none)
+    {
+        return 13;
+    }
+
+    if (!runtime.initialized() || runtime.playback_device() == invalid_device_id)
+    {
+        return 14;
+    }
+
+    runtime.shutdown();
+    if (runtime.initialized() || runtime.playback_device() != invalid_device_id)
+    {
+        return 15;
+    }
+
+    runtime.shutdown();
     return 0;
 }
