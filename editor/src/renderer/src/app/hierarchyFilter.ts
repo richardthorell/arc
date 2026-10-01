@@ -19,10 +19,7 @@ function normalizeQuery(query: string): string {
  * Matching is intentionally presentation-only: entity IDs and authored expansion
  * state stay untouched, and ancestors are only expanded for the filtered view.
  */
-export function filterHierarchy(
-  entries: readonly HierarchyFilterEntry[],
-  query: string,
-): HierarchyFilterResult {
+export function filterHierarchy(entries: readonly HierarchyFilterEntry[], query: string): HierarchyFilterResult {
   const normalizedQuery = normalizeQuery(query);
   if (normalizedQuery.length === 0) {
     return {
