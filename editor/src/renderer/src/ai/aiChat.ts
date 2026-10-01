@@ -1,5 +1,4 @@
 import {
-  AI_RUNTIME_SCHEMA_VERSION,
   textContent,
   type AiModelCapabilities,
   type AiModelDescriptor,
@@ -91,7 +90,6 @@ export const createAiModelRequest = (
   messages: readonly AiChatMessage[],
   signal?: AbortSignal,
 ): AiModelRequest => ({
-  schemaVersion: AI_RUNTIME_SCHEMA_VERSION,
   conversationId,
   messages: toAiRuntimeMessages(messages),
   signal,
@@ -173,7 +171,7 @@ export const unavailableAiModelProvider: AiModelProvider = {
     const text =
       'No AI model provider is configured yet. Stage 1 adds the conversation and streaming foundation; model configuration and editor-aware tools are layered on next.';
     for (const chunk of text.match(/.{1,24}(?:\s|$)/g) ?? [text]) {
-      yield { type: 'text.delta' as const, text: chunk };
+      yield { type: 'delta' as const, text: chunk };
       await Promise.resolve();
     }
     yield { type: 'done' as const, finishReason: 'stop' as const };
