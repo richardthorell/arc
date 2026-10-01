@@ -5,24 +5,28 @@ import {
   defaultMaterialParameterGroup,
   groupMaterialParameters,
   materialParameterPresentation,
+  type MaterialParameterMetadata,
 } from './materialParameterPresentation';
 
 const node = (
   id: string,
   name: string,
   options: { exposed?: boolean; group?: string; sortOrder?: number } = {},
-): MaterialGraphNode => ({
-  id,
-  type: 'constant',
-  position: [0, 0],
-  values: { value: 0 },
-  parameter: {
+): MaterialGraphNode => {
+  const parameter: MaterialParameterMetadata = {
     exposed: options.exposed ?? true,
     name,
     group: options.group,
     sortOrder: options.sortOrder,
-  },
-});
+  };
+  return {
+    id,
+    type: 'constant',
+    position: [0, 0],
+    values: { value: 0 },
+    parameter,
+  };
+};
 
 describe('material parameter presentation', () => {
   it('omits hidden and unnamed parameters', () => {
