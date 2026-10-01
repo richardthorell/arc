@@ -2,12 +2,22 @@ import { forwardRef } from 'react';
 import type { HTMLAttributes, ReactNode } from 'react';
 
 import '../layout/toolbar.css';
+import type { EditorToolbarRegion } from './editorToolbarContract';
 
 export type UiEditorToolbarProps = Omit<HTMLAttributes<HTMLDivElement>, 'children'> & {
   left?: ReactNode;
   center?: ReactNode;
   right?: ReactNode;
 };
+
+export type UiToolbarRegionProps = HTMLAttributes<HTMLDivElement> & {
+  region: EditorToolbarRegion;
+};
+
+export function UiToolbarRegion({ className, region, ...props }: UiToolbarRegionProps) {
+  const classes = [`toolbar-${region}`, 'ui-toolbar-region', className].filter(Boolean).join(' ');
+  return <div className={classes} data-toolbar-region={region} {...props} />;
+}
 
 export const UiEditorToolbar = forwardRef<HTMLDivElement, UiEditorToolbarProps>(function UiEditorToolbar(
   { className, left, center, right, role = 'toolbar', ...props },
@@ -16,15 +26,9 @@ export const UiEditorToolbar = forwardRef<HTMLDivElement, UiEditorToolbarProps>(
   const classes = ['main-toolbar', 'ui-editor-toolbar', className].filter(Boolean).join(' ');
   return (
     <div className={classes} ref={ref} role={role} {...props}>
-      <div className="toolbar-left" data-toolbar-region="left">
-        {left}
-      </div>
-      <div className="toolbar-center" data-toolbar-region="center">
-        {center}
-      </div>
-      <div className="toolbar-right" data-toolbar-region="right">
-        {right}
-      </div>
+      <UiToolbarRegion region="left">{left}</UiToolbarRegion>
+      <UiToolbarRegion region="center">{center}</UiToolbarRegion>
+      <UiToolbarRegion region="right">{right}</UiToolbarRegion>
     </div>
   );
 });
