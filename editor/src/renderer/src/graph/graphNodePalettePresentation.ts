@@ -1,8 +1,4 @@
-import {
-  queryGraphNodePalette,
-  type GraphNodePaletteDescriptor,
-  type GraphNodePaletteQuery,
-} from './graphNodePalette';
+import { queryGraphNodePalette, type GraphNodePaletteDescriptor, type GraphNodePaletteQuery } from './graphNodePalette';
 
 export interface GraphNodePaletteGroup<TKind extends string = string> {
   category: string;
