@@ -139,7 +139,7 @@ describe('AiChatPanel', () => {
     expect(activeConversation).toBeInTheDocument();
     expect(activeConversation).toHaveTextContent('Polish the cabin material');
     expect(screen.queryByLabelText('Model')).not.toBeInTheDocument();
-    expect(screen.getByText('Alternate Agent')).toBeInTheDocument();
+    expect(activeConversation).toHaveTextContent('Alternate Agent');
     await waitFor(() => expect(screen.getByText('Alternate reply.')).toBeInTheDocument());
 
     fireEvent.click(screen.getByLabelText('Back to conversations'));
