@@ -22,17 +22,19 @@ describe('UiAgentCard', () => {
     expect(screen.getByRole('button', { name: 'Inspect' })).toBeInTheDocument();
   });
 
-  it('supports content-only speech cards with speaker side and tone', () => {
+  it('supports content-only speech cards with speaker side, tone, and timestamp', () => {
     const { container } = render(
-      <UiAgentTextCard side="left" state="streaming" text="Working on it" tone="agent" />,
+      <UiAgentTextCard side="left" state="streaming" text="Working on it" timestamp="2:15 PM" tone="agent" />,
     );
 
     expect(screen.getByText('Working on it')).toBeInTheDocument();
+    expect(screen.getByText('2:15 PM')).toBeInTheDocument();
     const card = container.querySelector('.ui-agent-card');
     expect(card).toHaveAttribute('data-state', 'streaming');
     expect(card).toHaveAttribute('data-side', 'left');
     expect(card).toHaveAttribute('data-tone', 'agent');
     expect(container.querySelector('.ui-agent-card-header')).not.toBeInTheDocument();
+    expect(container.querySelector('.ui-agent-card-timestamp')).toBeInTheDocument();
   });
 
   it('can place the speech tab on the user side', () => {
