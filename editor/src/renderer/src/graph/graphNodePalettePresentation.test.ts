@@ -22,6 +22,7 @@ describe('buildGraphNodePalettePresentation', () => {
       ['add'],
       ['comment'],
     ]);
+    expect(presentation.selectedKind).toBe('branch');
   });
 
   it('uses the same search and pin-context filtering as palette activation', () => {
