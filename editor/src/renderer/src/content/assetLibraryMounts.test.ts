@@ -6,7 +6,7 @@ describe('asset library mounts', () => {
   it('keeps logical scope ordering and writability independent of physical roots', () => {
     const mounts = buildAssetLibraryMounts({
       organization: 'Z:\\Shared\\Arc\\',
-      user: '/Users/richard/.arc/assets/',
+      user: '/Users/example/.arc/assets/',
       project: 'C:\\Projects\\Game\\Content\\',
       builtin: 'C:\\Arc\\Engine\\Assets\\',
     });
@@ -14,7 +14,7 @@ describe('asset library mounts', () => {
     expect(mounts).toEqual([
       { scope: 'builtin', root: 'C:/Arc/Engine/Assets', writable: false },
       { scope: 'project', root: 'C:/Projects/Game/Content', writable: true },
-      { scope: 'user', root: '/Users/richard/.arc/assets', writable: true },
+      { scope: 'user', root: '/Users/example/.arc/assets', writable: true },
       { scope: 'organization', root: 'Z:/Shared/Arc', writable: false },
     ]);
   });
