@@ -3,6 +3,7 @@ export * from './graphDiagnostics';
 export * from './graphGeometry';
 export * from './graphMeasurement';
 export * from './graphNodePalette';
+export * from './graphNodePalettePresentation';
 export * from './graphSelection';
 export * from './graphTypes';
 export * from './graphViewport';
