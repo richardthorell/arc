@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { panelRegistry } from '../app/panelRegistry';
@@ -82,12 +82,17 @@ describe('UiLabPanels', () => {
     render(<UiLabPanels />);
 
     expect(screen.getByRole('region', { name: 'Disconnected AI Chat preview' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Mock provider AI Chat preview' })).toBeInTheDocument();
+    const mockPreview = screen.getByRole('region', { name: 'Mock provider AI Chat preview' });
+    expect(mockPreview).toBeInTheDocument();
     expect(screen.getAllByRole('region', { name: 'AI Chat' })).toHaveLength(2);
     expect(screen.getByText('Connect your AI service')).toBeInTheDocument();
-    expect(screen.getByText('Cabin polish')).toBeInTheDocument();
-    expect(screen.getByText(/The selected cabin is an asset-backed mesh/)).toBeInTheDocument();
-    expect(screen.getAllByText('ARC Mock').length).toBeGreaterThan(0);
+
+    const cabinConversation = within(mockPreview).getByRole('button', { name: 'Open conversation Cabin polish' });
+    expect(cabinConversation).toBeInTheDocument();
+    fireEvent.click(cabinConversation);
+
+    expect(within(mockPreview).getByText(/The selected cabin is an asset-backed mesh/)).toBeInTheDocument();
+    expect(within(mockPreview).getAllByText('ARC Mock').length).toBeGreaterThan(0);
   });
 
   it('does not invent an Asset Explorer clone while it is still private to Workbench', () => {

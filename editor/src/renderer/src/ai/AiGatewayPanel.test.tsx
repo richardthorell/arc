@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AiGatewayApprovalPrompt } from './AiGatewayPanel';
 import { AiChatPanel } from './AiChatPanel';
-import type { AiChatMessage, AiModelProvider } from './aiChat';
+import { aiConversationStorageKey, type AiChatMessage, type AiConversation, type AiModelProvider } from './aiChat';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
 import {
   requestedSettingsDialogKind,
@@ -16,6 +16,7 @@ import {
 
 afterEach(() => {
   cleanup();
+  localStorage.removeItem(aiConversationStorageKey);
   resetSettingsDialogRequest();
   vi.useRealTimers();
 });
@@ -64,24 +65,91 @@ const configuredProvider: AiModelProvider = {
   },
 };
 
+const alternateProvider: AiModelProvider = {
+  id: 'alternate',
+  label: 'Alternate Agent',
+  configured: true,
+  async *stream() {
+    yield { type: 'delta', text: 'Alternate reply.' };
+    yield { type: 'done' };
+  },
+};
+
+const recentConversation: AiConversation = {
+  id: 'recent',
+  title: 'Cabin polish',
+  createdAt: '2026-09-30T17:00:00Z',
+  updatedAt: '2026-09-30T17:00:01Z',
+  modelId: 'test',
+  modelLabel: 'Test Agent',
+  messages: [
+    {
+      id: 'recent-user',
+      role: 'user',
+      content: 'Polish the cabin.',
+      createdAt: '2026-09-30T17:00:00Z',
+      state: 'complete',
+    },
+  ],
+};
+
 describe('AiChatPanel', () => {
-  it('renders an enabled two-section chat shell for a configured provider', () => {
-    render(<AiChatPanel provider={configuredProvider} />);
+  it('starts on a conversation home with the first prompt and model selection centered in the panel', () => {
+    render(<AiChatPanel persistConversations={false} providers={[configuredProvider, alternateProvider]} />);
 
     expect(screen.getByRole('region', { name: 'AI Chat' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Conversations' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Chat' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Conversation')).toHaveValue('active');
-    expect(screen.getByLabelText('Conversation')).toBeEnabled();
+    expect(screen.queryByRole('region', { name: 'Active conversation' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Start a conversation')).toBeEnabled();
     expect(screen.getByLabelText('Model')).toHaveValue('test');
     expect(screen.getByLabelText('Model')).toBeEnabled();
-    expect(screen.getByText('Test Agent')).toBeInTheDocument();
-    expect(screen.getByLabelText('Chat history')).toBeEmptyDOMElement();
-    expect(screen.getByLabelText('Ask ARC')).toBeEnabled();
-    expect(screen.getByLabelText('Send prompt')).toBeDisabled();
+    expect(screen.getByLabelText('Start conversation')).toBeDisabled();
+    expect(screen.queryByLabelText('Recent conversations')).not.toBeInTheDocument();
   });
 
-  it('renders agent responses with the text-card specialization and streams mock replies', async () => {
+  it('does not show empty placeholder conversations in recent history', () => {
+    const emptyConversation: AiConversation = {
+      id: 'empty',
+      title: 'New Chat',
+      createdAt: '2026-09-30T17:00:00Z',
+      updatedAt: '2026-09-30T17:00:00Z',
+      messages: [],
+    };
+
+    render(
+      <AiChatPanel
+        initialConversations={[emptyConversation]}
+        persistConversations={false}
+        provider={configuredProvider}
+      />,
+    );
+
+    expect(screen.queryByLabelText('Recent conversations')).not.toBeInTheDocument();
+    expect(screen.queryByText('New Chat')).not.toBeInTheDocument();
+  });
+
+  it('locks the selected model after the first prompt and returns to history with Back', async () => {
+    render(<AiChatPanel persistConversations={false} providers={[configuredProvider, alternateProvider]} />);
+
+    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'alternate' } });
+    fireEvent.change(screen.getByLabelText('Start a conversation'), { target: { value: 'Polish the cabin material' } });
+    fireEvent.click(screen.getByLabelText('Start conversation'));
+
+    const activeConversation = screen.getByRole('region', { name: 'Active conversation' });
+    expect(activeConversation).toBeInTheDocument();
+    expect(activeConversation).toHaveTextContent('Polish the cabin material');
+    expect(screen.queryByLabelText('Model')).not.toBeInTheDocument();
+    expect(activeConversation).toHaveTextContent('Alternate Agent');
+    await waitFor(() => expect(screen.getByText('Alternate reply.')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('Back to conversations'));
+
+    expect(screen.getByRole('region', { name: 'Conversations' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Model')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open conversation Polish the cabin material' })).toBeInTheDocument();
+  });
+
+  it('opens a recent conversation and keeps the model fixed while chatting', async () => {
     const initialMessages: readonly AiChatMessage[] = [
       {
         id: 'user',
@@ -103,9 +171,11 @@ describe('AiChatPanel', () => {
       <AiChatPanel conversationLabel="Scene review" initialMessages={initialMessages} provider={configuredProvider} />,
     );
 
-    expect(screen.getByText('Scene review')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Open conversation Scene review' }));
+
     expect(screen.getByText('A cabin mesh is selected.')).toBeInTheDocument();
-    expect(screen.getByText('ARC')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Model')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Test Agent').length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByLabelText('Ask ARC'), { target: { value: 'Suggest a polish pass' } });
     expect(screen.getByLabelText('Send prompt')).toBeEnabled();
@@ -115,15 +185,16 @@ describe('AiChatPanel', () => {
     await waitFor(() => expect(screen.getByText('Hello from ARC.')).toBeInTheDocument());
   });
 
-  it('routes disconnected users directly to AI provider settings', () => {
+  it('routes disconnected users directly to AI provider settings without showing conversation history', () => {
     const requests: Array<{ kind: string; pageId: string | null }> = [];
     const unsubscribe = subscribeSettingsDialogOpenRequests((request) => requests.push(request));
 
-    render(<AiChatPanel />);
+    render(<AiChatPanel initialConversations={[recentConversation]} persistConversations={false} />);
 
-    expect(screen.getByLabelText('Conversation')).toBeDisabled();
-    expect(screen.getByLabelText('Model')).toBeDisabled();
-    expect(screen.getByLabelText('Ask ARC')).toBeDisabled();
+    expect(screen.queryByLabelText('Recent conversations')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open conversation Cabin polish' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Start a conversation')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Model')).not.toBeInTheDocument();
     expect(screen.getByText('Connect your AI service')).toBeVisible();
 
     fireEvent.click(screen.getByRole('button', { name: 'Open AI settings' }));

@@ -90,7 +90,15 @@ export function UiSidebarPanel({
     };
   }, []);
 
-  useEffect(() => subscribeSettingsDialogOpenRequests(() => onSettings()), [onSettings]);
+  useEffect(
+    () =>
+      subscribeSettingsDialogOpenRequests(() => {
+        const preserveExpandedDrawer = expanded;
+        onSettings();
+        if (preserveExpandedDrawer) onExpandedChange?.(true);
+      }),
+    [expanded, onExpandedChange, onSettings],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
