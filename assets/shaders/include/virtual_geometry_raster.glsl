@@ -76,6 +76,7 @@ layout(std430, set = 0, binding = 4) readonly buffer page_heap_buffer
 {
     uint page_words[];
 };
+#ifndef ARC_VIRTUAL_GEOMETRY_HARDWARE
 layout(std430, set = 0, binding = 5) buffer traversal_counter_buffer
 {
     uint visible_count;
@@ -91,6 +92,21 @@ layout(std430, set = 0, binding = 5) buffer traversal_counter_buffer
     uint traversal_overflow;
     uint fallback_overflow;
     uint bin_count;
+    uint previous_hzb_tested;
+    uint previous_hzb_rejected;
+    uint current_hzb_tested;
+    uint current_hzb_rejected;
+    uint refinement_candidates;
+    uint hysteresis_refine_suppressed;
+    uint hysteresis_coarsen_suppressed;
+    uint refinement_history_overflow;
+    uint pressure_suppressed_requests;
+    uint refinement_frontier_count;
+    uint refinement_frontier_overflow;
+    uint traversed_nodes;
+    uint raster_clusters;
+    uint raster_triangles;
+    uint raster_indirect_commands;
 } counters;
 layout(std430, set = 0, binding = 6) buffer bin_buffer
 {
@@ -98,11 +114,13 @@ layout(std430, set = 0, binding = 6) buffer bin_buffer
 };
 layout(set = 0, binding = 7, r32ui) uniform uimage2D encoded_depth;
 layout(set = 0, binding = 8, r32ui) uniform uimage2D visibility_ids;
+#endif
 
 layout(push_constant) uniform raster_constants
 {
     mat4 view_projection;
     uvec4 viewport_capacities;
+    uvec4 hardware_parameters;
 } constants;
 
 uint load_byte(uint byte_offset)

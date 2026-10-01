@@ -43,6 +43,8 @@ struct renderer_config
     bool force_disable_hardware_ray_tracing{};
     bool force_disable_texture_streaming{};
     bool force_disable_virtual_textures{};
+    /** Select one raster implementation for validation; auto prefers mesh, indexed hardware, then compute. */
+    virtual_geometry_raster_override virtual_geometry_raster{virtual_geometry_raster_override::auto_select};
     /** Zero selects the quality- and adapter-resolved budget. */
     std::uint64_t texture_gpu_budget_bytes{};
     /** Zero selects min(256 MiB, GPU budget / 4). */

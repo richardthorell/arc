@@ -193,7 +193,7 @@ static_assert(sizeof(virtual_geometry_fallback_record) == 16u);
 /** @brief Pack the visible-cluster and local triangle identity used by material resolve. */
 [[nodiscard]] std::uint32_t encode_virtual_geometry_visibility_id(std::uint32_t visible_cluster,
                                                                   std::uint32_t triangle) noexcept;
-/** @brief Reference two-phase depth then identity arbitration used by the Vulkan compute path. */
+/** @brief Reference depth then identity arbitration shared by compute and hardware raster paths. */
 [[nodiscard]] virtual_geometry_visibility_sample
 resolve_virtual_geometry_visibility(std::span<const virtual_geometry_visibility_candidate> candidates) noexcept;
 /** @brief Apply perspective correction to screen-space triangle weights used by material resolve. */

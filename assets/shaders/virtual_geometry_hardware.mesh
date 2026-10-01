@@ -1,0 +1,34 @@
+#version 460
+#extension GL_EXT_mesh_shader : require
+#extension GL_ARB_shader_draw_parameters : require
+#extension GL_GOOGLE_include_directive : require
+#define ARC_VIRTUAL_GEOMETRY_HARDWARE 1
+#include "include/virtual_geometry_raster.glsl"
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+layout(triangles, max_vertices = 64, max_primitives = 124) out;
+layout(location = 0) perprimitiveEXT out flat uint output_visible_index[];
+layout(location = 1) perprimitiveEXT out flat uint output_triangle_index[];
+
+void main()
+{
+    uint visible_index = gl_DrawID;
+    virtual_visible_cluster visible = visible_clusters[visible_index];
+    virtual_cluster cluster = clusters[visible.cluster_index];
+    virtual_page page = pages[cluster.page_index];
+    mat4 model_view_projection = constants.view_projection * transforms[visible.instance_index].model;
+    SetMeshOutputsEXT(cluster.vertex_count, cluster.triangle_count);
+
+    for (uint vertex = gl_LocalInvocationIndex; vertex < cluster.vertex_count; vertex += gl_WorkGroupSize.x)
+        gl_MeshVerticesEXT[vertex].gl_Position = model_view_projection * vec4(decode_position(cluster, page, vertex), 1.0);
+
+    for (uint triangle = gl_LocalInvocationIndex; triangle < cluster.triangle_count; triangle += gl_WorkGroupSize.x)
+    {
+        gl_PrimitiveTriangleIndicesEXT[triangle] =
+            uvec3(load_triangle_index(cluster, page, triangle, 0u),
+                  load_triangle_index(cluster, page, triangle, 1u),
+                  load_triangle_index(cluster, page, triangle, 2u));
+        output_visible_index[triangle] = visible_index;
+        output_triangle_index[triangle] = triangle;
+    }
+}

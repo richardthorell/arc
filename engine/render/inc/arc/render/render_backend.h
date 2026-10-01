@@ -370,6 +370,8 @@ struct render_capabilities
     bool fxaa{};
     /** @brief Backend can execute ARC's compute traversal and software cluster rasterizer. */
     bool virtual_geometry_compute{};
+    /** @brief Backend can consume the GPU-selected cluster stream through indirect hardware rasterization. */
+    bool virtual_geometry_indexed{};
     /** @brief Backend can execute cluster rasterization with mesh shaders. */
     bool virtual_geometry_mesh_shader{};
     /** @brief Backend can safely request, upload, and retire virtual-geometry pages. */
@@ -963,6 +965,12 @@ struct render_virtual_geometry_profile
     std::uint32_t traversed_nodes{};
     std::uint32_t visible_clusters{};
     std::uint64_t visible_triangles{};
+    std::uint32_t compute_raster_clusters{};
+    std::uint64_t compute_raster_triangles{};
+    std::uint32_t hardware_raster_clusters{};
+    std::uint64_t hardware_raster_triangles{};
+    std::uint32_t hardware_indirect_commands{};
+    std::uint32_t mesh_task_commands{};
     std::uint32_t frustum_rejected{};
     std::uint32_t cone_rejected{};
     std::uint32_t hzb_rejected{};

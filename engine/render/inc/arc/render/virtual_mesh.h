@@ -37,6 +37,18 @@ enum class virtual_geometry_raster_path : std::uint8_t
 {
     unavailable,
     compute,
+    hardware_indexed,
+    mesh_shader,
+    /** Reserved for VG2.6 classification across compute and hardware paths. */
+    hybrid
+};
+
+/** @brief Explicit validation override for the virtual-geometry raster implementation. */
+enum class virtual_geometry_raster_override : std::uint8_t
+{
+    auto_select,
+    compute,
+    hardware_indexed,
     mesh_shader
 };
 

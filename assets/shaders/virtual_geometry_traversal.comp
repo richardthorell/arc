@@ -120,6 +120,9 @@ layout(std430, set = 0, binding = 9) buffer counter_buffer
     uint refinement_frontier_count;
     uint refinement_frontier_overflow;
     uint traversed_nodes;
+    uint raster_clusters;
+    uint raster_triangles;
+    uint raster_indirect_commands;
 } counters;
 layout(std430, set = 0, binding = 10) writeonly buffer fallback_buffer
 {

@@ -110,6 +110,8 @@ enum class builtin_render_pass : std::uint8_t
     virtual_geometry_visibility_resolve,
     virtual_geometry_final_visibility_resolve,
     virtual_geometry_material_resolve,
+    virtual_geometry_hardware_command_generation,
+    virtual_geometry_hardware_visibility,
     virtual_geometry_mesh_shader_visibility,
     virtual_geometry_shadow_traversal,
     atmosphere_transmittance,

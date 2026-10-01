@@ -6055,8 +6055,12 @@ host_response arc_host::query(const host_query_envelope& query) const
                     {
                         case render::virtual_geometry_raster_path::compute:
                             return "compute";
+                        case render::virtual_geometry_raster_path::hardware_indexed:
+                            return "hardwareIndexed";
                         case render::virtual_geometry_raster_path::mesh_shader:
                             return "meshShader";
+                        case render::virtual_geometry_raster_path::hybrid:
+                            return "hybrid";
                         case render::virtual_geometry_raster_path::unavailable:
                             break;
                     }
@@ -6404,6 +6408,15 @@ host_response arc_host::query(const host_query_envelope& query) const
                     to_json_string(virtual_geometry_raster_path_name(profile.virtual_geometry.raster_path)) +
                     ",\"visibleClusters\":" + std::to_string(profile.virtual_geometry.visible_clusters) +
                     ",\"visibleTriangles\":" + std::to_string(profile.virtual_geometry.visible_triangles) +
+                    ",\"computeRasterClusters\":" + std::to_string(profile.virtual_geometry.compute_raster_clusters) +
+                    ",\"computeRasterTriangles\":" + std::to_string(profile.virtual_geometry.compute_raster_triangles) +
+                    ",\"hardwareRasterClusters\":" + std::to_string(profile.virtual_geometry.hardware_raster_clusters) +
+                    ",\"hardwareRasterTriangles\":" +
+                    std::to_string(profile.virtual_geometry.hardware_raster_triangles) +
+                    ",\"hardwareIndirectCommands\":" +
+                    std::to_string(profile.virtual_geometry.hardware_indirect_commands) +
+                    ",\"meshTaskCommands\":" + std::to_string(profile.virtual_geometry.mesh_task_commands) +
+                    ",\"rasterMilliseconds\":" + std::to_string(profile.virtual_geometry.raster_milliseconds) +
                     ",\"frustumRejected\":" + std::to_string(profile.virtual_geometry.frustum_rejected) +
                     ",\"coneRejected\":" + std::to_string(profile.virtual_geometry.cone_rejected) +
                     ",\"hzbRejected\":" + std::to_string(profile.virtual_geometry.hzb_rejected) +
