@@ -1,0 +1,42 @@
+import { materialGraphEditImpact, type MaterialGraphEditImpact } from './materialCompiler';
+import type { MaterialGraph } from './materialGraphTypes';
+
+export type MaterialCompileUpdateAction = 'none' | 'parameter-update' | 'shader-compile';
+
+const materialGraphSemanticSnapshot = (graph: MaterialGraph): string =>
+  JSON.stringify({
+    ...graph,
+    viewport: undefined,
+    nodes: graph.nodes.map((node) => ({ ...node, position: undefined })),
+  });
+
+/**
+ * Decide how an authored graph edit should update a live material.
+ *
+ * Layout-only edits are editor state and do not affect the compiled material. Exposed
+ * parameter value edits are runtime data updates and must not invalidate the last
+ * successful shader compilation. Shader-affecting edits continue through ARC's
+ * authoritative native Material IR/compiler path.
+ */
+export const materialCompileUpdateAction = (
+  before: MaterialGraph,
+  after: MaterialGraph,
+): MaterialCompileUpdateAction => {
+  if (materialGraphSemanticSnapshot(before) === materialGraphSemanticSnapshot(after)) return 'none';
+  return materialCompileUpdateActionForImpact(materialGraphEditImpact(before, after));
+};
+
+export const materialCompileUpdateActionForImpact = (impact: MaterialGraphEditImpact): MaterialCompileUpdateAction => {
+  switch (impact) {
+    case 'none':
+      return 'none';
+    case 'parameter-values':
+      return 'parameter-update';
+    case 'shader':
+      return 'shader-compile';
+  }
+};
+
+/** Only shader-affecting edits invalidate compiled shader state or schedule compilation. */
+export const materialEditRequiresShaderCompile = (before: MaterialGraph, after: MaterialGraph): boolean =>
+  materialCompileUpdateAction(before, after) === 'shader-compile';
