@@ -94,13 +94,15 @@ const recentConversation: AiConversation = {
 };
 
 describe('AiChatPanel', () => {
-  it('starts on a conversation home with the first prompt and model selection centered in the panel', () => {
+  it('starts on a conversation home with the polished composer controls', () => {
     render(<AiChatPanel persistConversations={false} providers={[configuredProvider, alternateProvider]} />);
 
     expect(screen.getByRole('region', { name: 'AI Chat' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Conversations' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Active conversation' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Start a conversation')).toBeEnabled();
+    expect(screen.getByLabelText('Start a conversation')).toHaveAttribute('placeholder', 'Ask anything...');
+    expect(screen.getByRole('button', { name: 'Add context' })).toBeInTheDocument();
     expect(screen.getByLabelText('Model')).toHaveValue('test');
     expect(screen.getByLabelText('Model')).toBeEnabled();
     expect(screen.getByLabelText('Start conversation')).toBeDisabled();
@@ -139,7 +141,8 @@ describe('AiChatPanel', () => {
     expect(activeConversation).toBeInTheDocument();
     expect(activeConversation).toHaveTextContent('Polish the cabin material');
     expect(screen.queryByLabelText('Model')).not.toBeInTheDocument();
-    expect(activeConversation).toHaveTextContent('Alternate Agent');
+    expect(screen.getByLabelText('Conversation model')).toHaveTextContent('Alternate Agent');
+    expect(screen.getByRole('button', { name: 'Add context' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Alternate reply.')).toBeInTheDocument());
 
     fireEvent.click(screen.getByLabelText('Back to conversations'));
@@ -175,14 +178,52 @@ describe('AiChatPanel', () => {
 
     expect(screen.getByText('A cabin mesh is selected.')).toBeInTheDocument();
     expect(screen.queryByLabelText('Model')).not.toBeInTheDocument();
-    expect(screen.getAllByText('Test Agent').length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Conversation model')).toHaveTextContent('Test Agent');
 
-    fireEvent.change(screen.getByLabelText('Ask ARC'), { target: { value: 'Suggest a polish pass' } });
+    fireEvent.change(screen.getByLabelText('Chat prompt'), { target: { value: 'Suggest a polish pass' } });
+    expect(screen.getByLabelText('Chat prompt')).toHaveAttribute('placeholder', 'Ask anything...');
     expect(screen.getByLabelText('Send prompt')).toBeEnabled();
     fireEvent.click(screen.getByLabelText('Send prompt'));
 
     expect(screen.getByText('Suggest a polish pass')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Hello from ARC.')).toBeInTheDocument());
+  });
+
+  it('turns the round send action into a stop action while a response streams', async () => {
+    let releaseStream: (() => void) | undefined;
+    let streamSignal: AbortSignal | undefined;
+    const slowProvider: AiModelProvider = {
+      id: 'slow',
+      label: 'Slow Agent',
+      configured: true,
+      async *stream(request) {
+        streamSignal = request.signal;
+        yield { type: 'delta', text: 'Working' };
+        await new Promise<void>((resolve) => {
+          releaseStream = resolve;
+        });
+        yield { type: 'delta', text: ' should not arrive' };
+        yield { type: 'done' };
+      },
+    };
+
+    render(<AiChatPanel persistConversations={false} provider={slowProvider} />);
+
+    fireEvent.change(screen.getByLabelText('Start a conversation'), { target: { value: 'Do some work' } });
+    fireEvent.click(screen.getByLabelText('Start conversation'));
+
+    await waitFor(() => expect(screen.getByText('Working')).toBeInTheDocument());
+    await waitFor(() => expect(releaseStream).toBeTypeOf('function'));
+    expect(screen.getByLabelText('Stop response')).toBeEnabled();
+
+    fireEvent.click(screen.getByLabelText('Stop response'));
+
+    expect(streamSignal?.aborted).toBe(true);
+    expect(screen.queryByLabelText('Stop response')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Chat prompt')).toBeEnabled();
+
+    releaseStream?.();
+    await waitFor(() => expect(screen.queryByText(/should not arrive/)).not.toBeInTheDocument());
   });
 
   it('routes disconnected users directly to AI provider settings without showing conversation history', () => {
