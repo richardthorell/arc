@@ -333,15 +333,22 @@ bool matches(const renderer_device_profile_match& match, const render_capabiliti
     if (match.gpu_class == renderer_gpu_class::integrated && !capabilities.integrated_gpu) return false;
     if (match.gpu_class == renderer_gpu_class::discrete && !capabilities.discrete_gpu) return false;
     if (match.form_factor && *match.form_factor != platform.form_factor) return false;
+    if ((match.minimum_logical_processors != 0 || match.maximum_logical_processors != 0) &&
+        platform.logical_processor_count == 0)
+        return false;
     if (match.minimum_logical_processors != 0 && platform.logical_processor_count < match.minimum_logical_processors)
         return false;
     if (match.maximum_logical_processors != 0 && platform.logical_processor_count > match.maximum_logical_processors)
+        return false;
+    if ((match.minimum_system_memory_bytes != 0 || match.maximum_system_memory_bytes != 0) &&
+        platform.system_memory_bytes == 0)
         return false;
     if (match.minimum_system_memory_bytes != 0 && platform.system_memory_bytes < match.minimum_system_memory_bytes)
         return false;
     if (match.maximum_system_memory_bytes != 0 && platform.system_memory_bytes > match.maximum_system_memory_bytes)
         return false;
     const auto gpu_memory = available_gpu_memory(capabilities);
+    if ((match.minimum_gpu_memory_bytes != 0 || match.maximum_gpu_memory_bytes != 0) && gpu_memory == 0) return false;
     if (match.minimum_gpu_memory_bytes != 0 && gpu_memory < match.minimum_gpu_memory_bytes) return false;
     if (match.maximum_gpu_memory_bytes != 0 && gpu_memory > match.maximum_gpu_memory_bytes) return false;
     return std::all_of(match.required_features.begin(), match.required_features.end(),
@@ -492,6 +499,7 @@ renderer_profile_document_result parse_renderer_profile_document(std::string_vie
                 result.document.device_profiles.push_back(std::move(profile));
             }
         }
+        parse_settings(root, result.document.project_overrides, "");
         if (const auto iterator = root.find("overrides"); iterator != root.end())
             parse_settings(*iterator, result.document.project_overrides, "overrides.");
         parse_flat_project_settings(root, result.document.project_overrides);

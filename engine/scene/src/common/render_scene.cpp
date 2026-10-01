@@ -648,14 +648,16 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                          .mobility = entity_mobility(scene, value),
                          .shadow_lod_bias = terrain.shadow_lod_bias,
                          .maximum_shadow_distance = terrain.maximum_shadow_distance,
-                         .geometry_error_scale = 1.0f,
+                         .geometry_error_scale = renderer.resolved_config().terrain_geometry_error_scale,
                          .label = entity_label(scene, value)});
                     submitted_terrain = true;
                     continue;
                 }
 
                 const auto mesh = select_cooked_lod(region.geometry, world_packet.camera, renderer_bounds,
-                                                    renderer.resolved_config().geometry_error_threshold, -1, 0.0f);
+                                                    renderer.resolved_config().geometry_error_threshold *
+                                                        renderer.resolved_config().terrain_geometry_error_scale,
+                                                    -1, 0.0f);
                 if (!renderer.mesh_alive(mesh)) continue;
 
                 append_mesh_item(scene, world_packet, result, editor_options, value, transform, mesh, proxy->material,

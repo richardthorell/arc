@@ -143,6 +143,18 @@ TEST_CASE("renderer profile parser accepts current flat project settings")
     CHECK(*parsed.document.project_overrides.anti_aliasing == anti_aliasing_method::fxaa);
 }
 
+TEST_CASE("renderer profile parser accepts legacy template settings")
+{
+    using namespace arc::render;
+    const auto parsed = parse_renderer_profile_document(
+        R"json({ "formatVersion": 1, "backend": "vulkan", "quality": "low", "antiAliasing": "taa" })json");
+    REQUIRE(parsed);
+    REQUIRE(parsed.document.project_overrides.quality);
+    REQUIRE(parsed.document.project_overrides.anti_aliasing);
+    CHECK(*parsed.document.project_overrides.quality == render_quality_tier::low);
+    CHECK(*parsed.document.project_overrides.anti_aliasing == anti_aliasing_method::taa);
+}
+
 TEST_CASE("renderer profile parser rejects unknown capability predicates")
 {
     const auto parsed = arc::render::parse_renderer_profile_document(R"json(
