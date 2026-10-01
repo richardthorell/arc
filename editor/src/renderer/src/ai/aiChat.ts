@@ -23,6 +23,7 @@ export type AiConversation = {
 export type AiModelRequest = {
   conversationId: string;
   messages: AiChatMessage[];
+  signal?: AbortSignal;
 };
 
 export type AiModelStreamEvent =
