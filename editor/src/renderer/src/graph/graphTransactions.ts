@@ -12,8 +12,7 @@ export type GraphTransaction<T> = {
 };
 
 export type GraphTransactionResult<T> =
-  | { committed: true; state: T }
-  | { committed: false; state: T; failedOperationId: string; error: unknown };
+  { committed: true; state: T } | { committed: false; state: T; failedOperationId: string; error: unknown };
 
 /**
  * Applies a logical graph edit as one atomic transaction.
