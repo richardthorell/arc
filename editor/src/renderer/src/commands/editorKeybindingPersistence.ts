@@ -27,8 +27,8 @@ export const serializeEditorKeybindingOverrides = (
   overrides: Object.fromEntries(
     Object.entries(overrides)
       .filter(([, shortcut]) => shortcut !== undefined)
-      .map(([commandId, shortcut]) => [commandId, shortcut === null ? null : shortcut!.trim()])
-      .sort(([left], [right]) => left.localeCompare(right)),
+      .sort(([leftId], [rightId]) => leftId.localeCompare(rightId))
+      .map(([commandId, shortcut]) => [commandId, shortcut === null ? null : shortcut!.trim()]),
   ),
 });
 
