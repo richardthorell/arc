@@ -91,7 +91,11 @@ describe('AI runtime contracts', () => {
       textFromRuntimeMessage({
         id: 'b',
         role: 'assistant',
-        content: [textContent('Hello '), { type: 'image', mimeType: 'image/png', uri: 'arc://capture/1' }, textContent('world')],
+        content: [
+          textContent('Hello '),
+          { type: 'image', mimeType: 'image/png', uri: 'arc://capture/1' },
+          textContent('world'),
+        ],
       }),
     ).toBe('Hello world');
   });
