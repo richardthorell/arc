@@ -14,6 +14,18 @@ export interface GraphClipboardSnapshot<T> {
   readonly nodes: readonly GraphClipboardNode<T>[];
 }
 
+export interface GraphSelectionRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface GraphSelectableBounds {
+  readonly id: GraphSelectionId;
+  readonly bounds: GraphSelectionRect;
+}
+
 export type GraphSelectionNavigationDirection = 'previous' | 'next' | 'first' | 'last';
 
 export function createGraphSelection(
@@ -51,6 +63,42 @@ export function selectGraphRange(
   const start = Math.min(from, to);
   const end = Math.max(from, to);
   for (let index = start; index <= end; index += 1) ids.add(orderedIds[index]);
+  return { ids, anchor };
+}
+
+function normalizeRect(rect: GraphSelectionRect): GraphSelectionRect {
+  return {
+    x: rect.width < 0 ? rect.x + rect.width : rect.x,
+    y: rect.height < 0 ? rect.y + rect.height : rect.y,
+    width: Math.abs(rect.width),
+    height: Math.abs(rect.height),
+  };
+}
+
+function rectsIntersect(a: GraphSelectionRect, b: GraphSelectionRect): boolean {
+  const left = Math.max(a.x, b.x);
+  const top = Math.max(a.y, b.y);
+  const right = Math.min(a.x + a.width, b.x + b.width);
+  const bottom = Math.min(a.y + a.height, b.y + b.height);
+  return right >= left && bottom >= top;
+}
+
+export function selectGraphMarquee(
+  selection: GraphSelectionState,
+  selectable: readonly GraphSelectableBounds[],
+  marquee: GraphSelectionRect,
+  additive = false,
+): GraphSelectionState {
+  const normalizedMarquee = normalizeRect(marquee);
+  const ids = additive ? new Set(selection.ids) : new Set<GraphSelectionId>();
+  let anchor = additive ? selection.anchor : null;
+
+  for (const item of selectable) {
+    if (!rectsIntersect(normalizedMarquee, normalizeRect(item.bounds))) continue;
+    ids.add(item.id);
+    anchor ??= item.id;
+  }
+
   return { ids, anchor };
 }
 
