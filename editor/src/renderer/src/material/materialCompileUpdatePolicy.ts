@@ -10,14 +10,10 @@ export type MaterialCompileUpdateAction = 'none' | 'parameter-update' | 'shader-
  * last successful shader compilation. Shader-affecting edits continue through ARC's
  * authoritative native Material IR/compiler path.
  */
-export const materialCompileUpdateAction = (
-  before: MaterialGraph,
-  after: MaterialGraph,
-): MaterialCompileUpdateAction => materialCompileUpdateActionForImpact(materialGraphEditImpact(before, after));
+export const materialCompileUpdateAction = (before: MaterialGraph, after: MaterialGraph): MaterialCompileUpdateAction =>
+  materialCompileUpdateActionForImpact(materialGraphEditImpact(before, after));
 
-export const materialCompileUpdateActionForImpact = (
-  impact: MaterialGraphEditImpact,
-): MaterialCompileUpdateAction => {
+export const materialCompileUpdateActionForImpact = (impact: MaterialGraphEditImpact): MaterialCompileUpdateAction => {
   switch (impact) {
     case 'none':
       return 'none';
