@@ -107,7 +107,7 @@ struct renderer_profile_error
 };
 
 /** @brief Result of parsing or loading a renderer profile document. */
-struct renderer_profile_document_result
+struct [[nodiscard]] renderer_profile_document_result
 {
     renderer_profile_document document;
     std::optional<renderer_profile_error> error;
