@@ -4,6 +4,7 @@ import {
   createGraphClipboardSnapshot,
   createGraphSelection,
   navigateGraphSelection,
+  reconcileGraphSelection,
   remapGraphClipboardSnapshot,
   selectGraphMarquee,
   selectGraphNode,
@@ -19,6 +20,17 @@ describe('graphSelection', () => {
     selection = selectGraphNode(selection, 'a', true);
     expect([...selection.ids]).toEqual(['b']);
     expect(selection.anchor).toBe('a');
+  });
+
+  it('reconciles stale selection and anchor after graph mutations', () => {
+    const selection = createGraphSelection(['removed', 'b', 'a'], 'removed');
+    const reconciled = reconcileGraphSelection(selection, ['a', 'b', 'c']);
+    expect([...reconciled.ids]).toEqual(['b', 'a']);
+    expect(reconciled.anchor).toBe('a');
+
+    const empty = reconcileGraphSelection(createGraphSelection(['removed'], 'removed'), ['a']);
+    expect([...empty.ids]).toEqual([]);
+    expect(empty.anchor).toBeNull();
   });
 
   it('selects a contiguous range from the stable anchor', () => {
