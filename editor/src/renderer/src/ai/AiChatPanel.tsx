@@ -21,6 +21,7 @@ import {
   type AiModelProvider,
 } from './aiChat';
 import './aiGateway.css';
+import './aiChatMessageCards.css';
 
 const openAiConnectivitySettings = () => requestSettingsDialogOpen('editorPreferences', 'ai.providers');
 
@@ -40,6 +41,12 @@ const agentToneClass = (providerId: string | undefined) => {
   if (providerId?.startsWith('anthropic:')) return 'is-anthropic';
   if (providerId?.includes('mock')) return 'is-mock';
   return 'is-generic';
+};
+
+const formatMessageTime = (createdAt: string) => {
+  const timestamp = new Date(createdAt);
+  if (Number.isNaN(timestamp.getTime())) return '';
+  return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(timestamp);
 };
 
 type ActiveStream = {
@@ -302,6 +309,10 @@ export function AiChatPanel({
   const renderMessages = (conversation: AiConversation) => (
     <div className="ai-chat-message-list">
       {conversation.messages.map((message) => {
+        const timestamp = (
+          <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
+        );
+
         if (message.role === 'assistant') {
           const responseModelId = message.modelId ?? conversation.modelId ?? activeProvider?.id;
           return (
@@ -312,6 +323,7 @@ export function AiChatPanel({
               side="left"
               state={message.state}
               text={message.content}
+              timestamp={timestamp}
               tone="agent"
             />
           );
@@ -324,6 +336,7 @@ export function AiChatPanel({
               side="right"
               state={message.state}
               text={message.content}
+              timestamp={timestamp}
               tone="user"
             />
           );
