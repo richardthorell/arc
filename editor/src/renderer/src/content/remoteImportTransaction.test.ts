@@ -55,8 +55,6 @@ describe('remote import transaction', () => {
 
   it('rejects publishing before the import stage', () => {
     const transaction = beginRemoteImportDownload(createRemoteImportTransaction());
-    expect(() => publishRemoteImportedAsset(transaction, 'asset-mesh')).toThrow(
-      'only be published while importing',
-    );
+    expect(() => publishRemoteImportedAsset(transaction, 'asset-mesh')).toThrow('only be published while importing');
   });
 });

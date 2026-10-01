@@ -1,10 +1,5 @@
 export type RemoteImportTransactionState =
-  | 'pending'
-  | 'downloading'
-  | 'importing'
-  | 'committed'
-  | 'cancelled'
-  | 'failed';
+  'pending' | 'downloading' | 'importing' | 'committed' | 'cancelled' | 'failed';
 
 export type RemoteImportTransaction = Readonly<{
   state: RemoteImportTransactionState;
@@ -18,11 +13,7 @@ export const createRemoteImportTransaction = (): RemoteImportTransaction => ({
   publishedAssetIds: [],
 });
 
-const terminalStates: ReadonlySet<RemoteImportTransactionState> = new Set([
-  'committed',
-  'cancelled',
-  'failed',
-]);
+const terminalStates: ReadonlySet<RemoteImportTransactionState> = new Set(['committed', 'cancelled', 'failed']);
 
 const assertMutable = (transaction: RemoteImportTransaction): void => {
   if (terminalStates.has(transaction.state)) {
@@ -30,27 +21,20 @@ const assertMutable = (transaction: RemoteImportTransaction): void => {
   }
 };
 
-export const beginRemoteImportDownload = (
-  transaction: RemoteImportTransaction,
-): RemoteImportTransaction => {
+export const beginRemoteImportDownload = (transaction: RemoteImportTransaction): RemoteImportTransaction => {
   assertMutable(transaction);
   if (transaction.state !== 'pending') throw new Error('Remote import download can only begin once');
   return { ...transaction, state: 'downloading' };
 };
 
-export const stageRemoteImportPath = (
-  transaction: RemoteImportTransaction,
-  path: string,
-): RemoteImportTransaction => {
+export const stageRemoteImportPath = (transaction: RemoteImportTransaction, path: string): RemoteImportTransaction => {
   assertMutable(transaction);
   if (transaction.state !== 'downloading') throw new Error('Remote import files can only be staged while downloading');
   if (!path || transaction.stagedPaths.includes(path)) return transaction;
   return { ...transaction, stagedPaths: [...transaction.stagedPaths, path] };
 };
 
-export const beginRemoteAssetImport = (
-  transaction: RemoteImportTransaction,
-): RemoteImportTransaction => {
+export const beginRemoteAssetImport = (transaction: RemoteImportTransaction): RemoteImportTransaction => {
   assertMutable(transaction);
   if (transaction.state !== 'downloading') throw new Error('Remote asset import requires a completed download stage');
   return { ...transaction, state: 'importing' };
@@ -71,16 +55,12 @@ export const publishRemoteImportedAsset = (
  * files and partially published assets stay enumerated until cleanup succeeds,
  * preventing a cancelled job from being mistaken for an empty/safe import.
  */
-export const cancelRemoteImport = (
-  transaction: RemoteImportTransaction,
-): RemoteImportTransaction => {
+export const cancelRemoteImport = (transaction: RemoteImportTransaction): RemoteImportTransaction => {
   assertMutable(transaction);
   return { ...transaction, state: 'cancelled' };
 };
 
-export const failRemoteImport = (
-  transaction: RemoteImportTransaction,
-): RemoteImportTransaction => {
+export const failRemoteImport = (transaction: RemoteImportTransaction): RemoteImportTransaction => {
   assertMutable(transaction);
   return { ...transaction, state: 'failed' };
 };
@@ -96,9 +76,7 @@ export const remoteImportCleanup = (
  * A remote import is publishable only after callers have completed the import
  * stage. Commit does not erase cleanup records; it only seals the transaction.
  */
-export const commitRemoteImport = (
-  transaction: RemoteImportTransaction,
-): RemoteImportTransaction => {
+export const commitRemoteImport = (transaction: RemoteImportTransaction): RemoteImportTransaction => {
   assertMutable(transaction);
   if (transaction.state !== 'importing') throw new Error('Remote import can only commit from the importing state');
   return { ...transaction, state: 'committed' };
