@@ -26,9 +26,7 @@ describe('flow instance overrides', () => {
   });
 
   it('preserves compatible overrides by stable variable id across recompilation', () => {
-    const recompiled = graph([
-      { id: 'speed', name: 'Movement Speed', type: 'float', defaultValue: 2, exposed: true },
-    ]);
+    const recompiled = graph([{ id: 'speed', name: 'Movement Speed', type: 'float', defaultValue: 2, exposed: true }]);
 
     expect(reconcileFlowInstanceOverrides(recompiled, [{ variableId: 'speed', value: 4.5 }])).toEqual({
       overrides: [{ variableId: 'speed', value: 4.5 }],
