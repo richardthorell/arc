@@ -113,7 +113,7 @@
   min-width: 0;
   min-height: 42px;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--arc-color-border);
   background: var(--arc-color-bg-chrome);
@@ -146,6 +146,7 @@
 
 .ai-chat-message-card {
   width: fit-content;
+  min-width: min(180px, 100%);
   max-width: min(82%, 680px);
 }
 
