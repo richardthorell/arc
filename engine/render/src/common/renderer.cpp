@@ -16,7 +16,6 @@ namespace arc::render
 namespace
 {
 
-constexpr std::uint64_t gibibyte = 1024ull * 1024ull * 1024ull;
 constexpr std::uint64_t mebibyte = 1024ull * 1024ull;
 
 float halton(std::uint64_t index, std::uint32_t base) noexcept
