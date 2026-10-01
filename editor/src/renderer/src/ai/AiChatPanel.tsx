@@ -1,7 +1,14 @@
-import { ArrowLeft, Plus, Send, Square } from 'lucide-react';
+import { Asterisk, ArrowLeft, Bot, Plus, Send, Sparkles, Square } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { requestSettingsDialogOpen } from '../settings/settingsDialogRoute';
-import { UiAgentTextCard, UiButton, UiDrawerPanel, UiIconButton } from '../ui';
+import {
+  UiAgentTextCard,
+  UiButton,
+  UiDrawerPanel,
+  UiDropdown,
+  UiIconButton,
+  type UiDropdownOption,
+} from '../ui';
 import {
   conversationTitleFromPrompt,
   createAiConversation,
@@ -21,6 +28,12 @@ const cloneConversation = (conversation: AiConversation): AiConversation => ({
   ...conversation,
   messages: conversation.messages.map((message) => ({ ...message })),
 });
+
+const modelIcon = (providerId: string) => {
+  if (providerId.startsWith('openai:')) return <Sparkles aria-hidden="true" size={13} />;
+  if (providerId.startsWith('anthropic:')) return <Asterisk aria-hidden="true" size={13} />;
+  return <Bot aria-hidden="true" size={13} />;
+};
 
 type ActiveStream = {
   controller: AbortController;
@@ -102,6 +115,15 @@ export function AiChatPanel({
   const activeProvider = activeConversation
     ? (configuredProviders.find((candidate) => candidate.id === activeConversation.modelId) ?? null)
     : null;
+  const modelOptions = useMemo<ReadonlyArray<UiDropdownOption<string>>>(
+    () =>
+      configuredProviders.map((candidate) => ({
+        value: candidate.id,
+        label: candidate.label,
+        icon: modelIcon(candidate.id),
+      })),
+    [configuredProviders],
+  );
   const recentConversations = useMemo(
     () =>
       conversations
@@ -243,6 +265,25 @@ export function AiChatPanel({
     await streamResponse(activeConversation.id, activeProvider, requestMessages, assistantMessage);
   };
 
+  const selectActiveModel = (modelId: string) => {
+    if (!activeConversation || streaming) return;
+    const model = configuredProviders.find((candidate) => candidate.id === modelId);
+    if (!model) return;
+
+    setConversations((current) =>
+      current.map((conversation) =>
+        conversation.id === activeConversation.id
+          ? {
+              ...conversation,
+              modelId: model.id,
+              modelLabel: model.label,
+              updatedAt: new Date().toISOString(),
+            }
+          : conversation,
+      ),
+    );
+  };
+
   const renderMessages = (conversation: AiConversation) => (
     <div className="ai-chat-message-list">
       {conversation.messages.map((message) => {
@@ -332,9 +373,14 @@ export function AiChatPanel({
               <div className="ai-chat-composer-toolbar ai-chat-composer-toolbar-active">
                 {renderAddContextButton()}
                 <div className="ai-chat-composer-actions">
-                  <span className="ai-chat-locked-model" aria-label="Conversation model">
-                    {activeConversation.modelLabel ?? 'Model unavailable'}
-                  </span>
+                  <UiDropdown
+                    ariaLabel="Model"
+                    className="ai-chat-model-dropdown"
+                    disabled={streaming || !activeProvider}
+                    onValueChange={selectActiveModel}
+                    options={modelOptions}
+                    value={activeProvider?.id ?? configuredProviders[0]?.id ?? ''}
+                  />
                   {renderSubmitButton('Send prompt', !activeProvider || !prompt.trim())}
                 </div>
               </div>
@@ -403,18 +449,14 @@ export function AiChatPanel({
                   <div className="ai-chat-composer-toolbar">
                     {renderAddContextButton()}
                     <div className="ai-chat-composer-actions">
-                      <select
-                        aria-label="Model"
+                      <UiDropdown
+                        ariaLabel="Model"
+                        className="ai-chat-model-dropdown"
                         disabled={streaming}
-                        onChange={(event) => setSelectedModelId(event.target.value)}
+                        onValueChange={setSelectedModelId}
+                        options={modelOptions}
                         value={selectedModelId}
-                      >
-                        {configuredProviders.map((candidate) => (
-                          <option key={candidate.id} value={candidate.id}>
-                            {candidate.label}
-                          </option>
-                        ))}
-                      </select>
+                      />
                       {renderSubmitButton('Start conversation', !prompt.trim())}
                     </div>
                   </div>
