@@ -41,9 +41,10 @@ export function reconcileGraphSelection(
 ): GraphSelectionState {
   const validIds = new Set(orderedIds);
   const ids = new Set([...selection.ids].filter((id) => validIds.has(id)));
-  const anchor = selection.anchor !== null && validIds.has(selection.anchor)
-    ? selection.anchor
-    : orderedIds.find((id) => ids.has(id)) ?? null;
+  const anchor =
+    selection.anchor !== null && validIds.has(selection.anchor)
+      ? selection.anchor
+      : (orderedIds.find((id) => ids.has(id)) ?? null);
   return { ids, anchor };
 }
 
