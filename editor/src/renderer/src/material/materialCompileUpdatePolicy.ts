@@ -18,7 +18,10 @@ const materialGraphSemanticSnapshot = (graph: MaterialGraph): string =>
  * successful shader compilation. Shader-affecting edits continue through ARC's
  * authoritative native Material IR/compiler path.
  */
-export const materialCompileUpdateAction = (before: MaterialGraph, after: MaterialGraph): MaterialCompileUpdateAction => {
+export const materialCompileUpdateAction = (
+  before: MaterialGraph,
+  after: MaterialGraph,
+): MaterialCompileUpdateAction => {
   if (materialGraphSemanticSnapshot(before) === materialGraphSemanticSnapshot(after)) return 'none';
   return materialCompileUpdateActionForImpact(materialGraphEditImpact(before, after));
 };
