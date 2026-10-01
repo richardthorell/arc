@@ -187,61 +187,47 @@ query_virtual_geometry_hardware_support(const render_capabilities& capabilities)
     return {.indexed_indirect = indexed_indirect, .mesh_shader = mesh_shader};
 }
 
-resolved_render_config resolve_render_config(const renderer_config& config, const render_capabilities& capabilities)
+resolved_render_config resolve_render_config(const renderer_config& config, const render_capabilities& capabilities,
+                                             const framework::platform_capabilities& platform)
 {
     resolved_render_config result{};
-    result.requested_quality = config.quality;
-    result.requested_path = config.path;
-    result.requested_anti_aliasing = config.anti_aliasing;
+    auto runtime_overrides = config.profile_overrides;
+    if (config.quality != render_quality_tier::auto_select) runtime_overrides.quality = config.quality;
+    if (config.path != render_path::auto_select) runtime_overrides.path = config.path;
+    if (config.anti_aliasing != anti_aliasing_method::auto_select)
+        runtime_overrides.anti_aliasing = config.anti_aliasing;
+    if (!config.enable_dynamic_resolution) runtime_overrides.dynamic_resolution = false;
+    if (config.target_frame_time_ms > 0.0f) runtime_overrides.target_frame_time_ms = config.target_frame_time_ms;
+    if (config.texture_gpu_budget_bytes != 0)
+        runtime_overrides.texture_gpu_budget_bytes = config.texture_gpu_budget_bytes;
+    if (config.texture_cpu_cache_budget_bytes != 0)
+        runtime_overrides.texture_cpu_budget_bytes = config.texture_cpu_cache_budget_bytes;
+    if (config.texture_upload_budget_per_frame != 0)
+        runtime_overrides.texture_upload_budget_per_frame = config.texture_upload_budget_per_frame;
+
+    const auto profile_resolution = resolve_renderer_profile(config.profiles, runtime_overrides, capabilities, platform,
+                                                             config.requested_profile_id);
+    result.device_profile_id = profile_resolution.device_profile_id;
+    result.requested_quality = profile_resolution.requested_quality;
+    result.quality = profile_resolution.quality;
+    result.profile = profile_resolution.profile;
+    result.dynamic_resolution = profile_resolution.dynamic_resolution;
+    result.requested_path = profile_resolution.path;
+    result.requested_anti_aliasing = profile_resolution.anti_aliasing;
     result.temporal = config.temporal;
+    result.fallback_reasons = profile_resolution.diagnostics;
 
-    if (config.quality == render_quality_tier::auto_select)
-    {
-        const bool constrained_memory =
-            capabilities.integrated_gpu ||
-            (capabilities.dedicated_video_memory != 0 && capabilities.dedicated_video_memory < 2ull * gibibyte);
-        result.quality = constrained_memory ? render_quality_tier::low : render_quality_tier::medium;
-        result.fallback_reasons.push_back(
-            constrained_memory ? "auto-selected low quality for an integrated or memory-constrained adapter"
-                               : "auto-selected standard quality");
-    }
-    else if (config.quality == render_quality_tier::ultra &&
-             ((capabilities.memory_budget != 0 && capabilities.memory_budget < 12ull * gibibyte) ||
-              (capabilities.memory_budget == 0 && capabilities.dedicated_video_memory != 0 &&
-               capabilities.dedicated_video_memory < 12ull * gibibyte)))
-    {
-        result.quality = render_quality_tier::high;
-        result.fallback_reasons.push_back(
-            "ultra quality requires at least 12 GiB of available GPU memory; using high limits");
-    }
-    else if (config.quality == render_quality_tier::high &&
-             ((capabilities.memory_budget != 0 && capabilities.memory_budget < 6ull * gibibyte) ||
-              (capabilities.memory_budget == 0 && capabilities.dedicated_video_memory != 0 &&
-               capabilities.dedicated_video_memory < 6ull * gibibyte)))
-    {
-        result.quality = render_quality_tier::medium;
-        result.fallback_reasons.push_back(
-            "high shadow quality requires at least 6 GiB of available GPU memory; using standard limits");
-    }
-    else
-    {
-        result.quality = config.quality;
-    }
-
-    const auto& profile = quality_profile(result.quality);
-    result.target_frame_time_ms =
-        config.target_frame_time_ms > 0.0f ? config.target_frame_time_ms : profile.target_frame_time_ms;
-    if (config.path == render_path::auto_select)
-        result.path = profile.default_path;
-    else
-        result.path = config.path;
+    const auto& profile = result.profile;
+    result.target_frame_time_ms = profile.target_frame_time_ms;
+    result.path = result.requested_path == render_path::auto_select ? profile.default_path : result.requested_path;
+    const auto requested_anti_aliasing = result.requested_anti_aliasing;
     result.anti_aliasing =
         config.force_disable_temporal
-            ? (config.anti_aliasing == anti_aliasing_method::disabled
+            ? (requested_anti_aliasing == anti_aliasing_method::disabled
                    ? anti_aliasing_method::disabled
                    : resolve_anti_aliasing(anti_aliasing_method::fxaa, result.path, 1.0f, capabilities))
-            : resolve_anti_aliasing(config.anti_aliasing, result.path, 1.0f, capabilities);
-    result.minimum_render_scale = config.enable_dynamic_resolution ? profile.minimum_render_scale : 1.0f;
+            : resolve_anti_aliasing(requested_anti_aliasing, result.path, 1.0f, capabilities);
+    result.minimum_render_scale = result.dynamic_resolution ? profile.minimum_render_scale : 1.0f;
     result.maximum_render_scale = profile.maximum_render_scale;
     result.max_point_lights = profile.max_point_lights;
     result.max_spot_lights = profile.max_spot_lights;
@@ -267,6 +253,34 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
     result.lighting_trace_scale = profile.lighting_trace_scale;
     result.surface_cache_update_budget = profile.surface_cache_update_budget;
     result.radiance_probe_update_budget = profile.radiance_probe_update_budget;
+    result.virtual_geometry_gpu_budget_bytes = profile.virtual_geometry_gpu_budget_bytes;
+    result.virtual_geometry_cpu_budget_bytes = profile.virtual_geometry_cpu_budget_bytes;
+    result.virtual_geometry_request_limit = profile.virtual_geometry_request_limit;
+    result.virtual_geometry_compute_crossover_pixels = profile.virtual_geometry_compute_crossover_pixels;
+    result.virtual_geometry_hardware_crossover_pixels = profile.virtual_geometry_hardware_crossover_pixels;
+    result.texture_gpu_budget_bytes = profile.texture_gpu_budget_bytes;
+    result.texture_cpu_budget_bytes = profile.texture_cpu_budget_bytes;
+    result.texture_upload_budget_per_frame = profile.texture_upload_budget_per_frame;
+    result.texture_request_limit = profile.texture_request_limit;
+    result.virtual_texture_cache_budget_bytes = profile.virtual_texture_cache_budget_bytes;
+    result.terrain_geometry_error_scale = profile.terrain_geometry_error_scale;
+    result.post_process_quality = profile.post_process_quality;
+    const auto adapter_memory =
+        capabilities.memory_budget != 0 ? capabilities.memory_budget : capabilities.dedicated_video_memory;
+    if (adapter_memory != 0)
+    {
+        result.virtual_geometry_gpu_budget_bytes =
+            std::min(result.virtual_geometry_gpu_budget_bytes, adapter_memory / 10u);
+        result.texture_gpu_budget_bytes =
+            std::min(result.texture_gpu_budget_bytes, std::max(std::uint64_t{128} * mebibyte, adapter_memory / 4u));
+        result.virtual_texture_cache_budget_bytes =
+            std::min(result.virtual_texture_cache_budget_bytes, adapter_memory / 8u);
+    }
+    if (platform.system_memory_bytes != 0)
+        result.virtual_geometry_cpu_budget_bytes =
+            std::min(result.virtual_geometry_cpu_budget_bytes, platform.system_memory_bytes / 16u);
+    if (result.texture_cpu_budget_bytes == 0)
+        result.texture_cpu_budget_bytes = std::min(std::uint64_t{256} * mebibyte, result.texture_gpu_budget_bytes / 4u);
     result.lighting_scene_gpu_budget_bytes = result.quality == render_quality_tier::ultra  ? 768ull * 1024ull * 1024ull
                                              : result.quality == render_quality_tier::high ? 384ull * 1024ull * 1024ull
                                                                                            : 0ull;
@@ -430,7 +444,8 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
         result.fallback_reasons.push_back(
             "full GPU multi-draw requires visibility compaction and bindless geometry, material, texture, and "
             "sampler tables; using classic GPU visibility");
-    if (result.anti_aliasing != config.anti_aliasing && config.anti_aliasing != anti_aliasing_method::auto_select)
+    if (result.anti_aliasing != result.requested_anti_aliasing &&
+        result.requested_anti_aliasing != anti_aliasing_method::auto_select)
         result.fallback_reasons.push_back("requested anti-aliasing is unavailable; using an executable fallback");
     if (config.force_disable_gpu_driven)
         result.fallback_reasons.push_back("GPU-driven rendering was disabled by renderer configuration");
@@ -757,63 +772,39 @@ void renderer::set_backend(std::unique_ptr<render_backend> backend)
     gpu_scene_.reset();
     temporal_views_.clear();
     backend_ = std::move(backend);
-    if (backend_)
-    {
-        resolved_config_ = resolve_render_config(config_, backend_->capabilities());
-        frame_budget_.reset(quality_profile(resolved_config_.quality), resolved_config_.target_frame_time_ms);
-        const auto& budget = frame_budget_.settings();
-        resolved_config_.render_scale = budget.render_scale;
-        resolved_config_.geometry_error_threshold = budget.geometry_error_threshold;
-        resolved_config_.shadow_resolution_scale = budget.shadow_resolution_scale;
-        resolved_config_.volumetric_resolution_scale = budget.volumetric_resolution_scale;
-        resolved_config_.gi_trace_budget = budget.gi_trace_budget;
-        resolved_config_.reflection_ray_budget = budget.reflection_ray_budget;
-        resolved_config_.lighting_trace_scale = budget.lighting_trace_scale;
-        resolved_config_.surface_cache_update_budget = budget.surface_cache_update_budget;
-        resolved_config_.radiance_probe_update_budget = budget.radiance_probe_update_budget;
-        virtual_geometry_residency_config residency;
-        if (resolved_config_.quality == render_quality_tier::ultra)
-        {
-            residency.gpu_budget_bytes = 1024ull * 1024ull * 1024ull;
-            residency.compressed_cpu_budget_bytes = 512ull * 1024ull * 1024ull;
-        }
-        if (const auto device_budget = backend_->capabilities().memory_budget; device_budget != 0)
-            residency.gpu_budget_bytes = std::min(residency.gpu_budget_bytes, device_budget / 10u);
-        virtual_geometry_residency_.configure(residency);
-        const std::uint64_t texture_quality_budget =
-            resolved_config_.quality == render_quality_tier::low      ? 256ull * mebibyte
-            : resolved_config_.quality == render_quality_tier::medium ? 512ull * mebibyte
-            : resolved_config_.quality == render_quality_tier::high   ? 1024ull * mebibyte
-                                                                      : 2048ull * mebibyte;
-        const auto adapter_memory = backend_->capabilities().memory_budget != 0
-                                        ? backend_->capabilities().memory_budget
-                                        : backend_->capabilities().dedicated_video_memory;
-        std::uint64_t texture_gpu_budget =
-            config_.texture_gpu_budget_bytes != 0 ? config_.texture_gpu_budget_bytes : texture_quality_budget;
-        if (adapter_memory != 0)
-            texture_gpu_budget =
-                std::min(texture_gpu_budget, std::max(std::uint64_t{128} * mebibyte, adapter_memory / 4u));
-        const auto quality_upload_budget = resolved_config_.quality == render_quality_tier::low     ? 32ull * mebibyte
-                                           : resolved_config_.quality == render_quality_tier::ultra ? 128ull * mebibyte
-                                                                                                    : 64ull * mebibyte;
-        texture_residency_.configure(
-            {.gpu_budget_bytes = texture_gpu_budget,
-             .cpu_cache_budget_bytes = config_.texture_cpu_cache_budget_bytes != 0
-                                           ? config_.texture_cpu_cache_budget_bytes
-                                           : std::min(std::uint64_t{256} * mebibyte, texture_gpu_budget / 4u),
-             .upload_budget_per_frame = config_.texture_upload_budget_per_frame != 0
-                                            ? config_.texture_upload_budget_per_frame
-                                            : quality_upload_budget,
-             .maximum_requests_per_frame = 2048,
-             .protected_frame_count = 30});
-        lighting_scene_config lighting_config;
-        lighting_config.gpu_budget_bytes = resolved_config_.lighting_scene_gpu_budget_bytes;
-        lighting_config.compressed_cpu_budget_bytes = resolved_config_.lighting_scene_gpu_budget_bytes / 3u;
-        lighting_config.maximum_surface_updates_per_frame = resolved_config_.surface_cache_update_budget;
-        lighting_config.maximum_radiance_probe_updates_per_frame = resolved_config_.radiance_probe_update_budget;
-        lighting_scene_.configure(lighting_config);
-        backend_->configure(resolved_config_);
-    }
+    if (backend_) configure_backend();
+}
+
+void renderer::configure_backend()
+{
+    resolved_config_ = resolve_render_config(config_, backend_->capabilities(), platform_capabilities_);
+    frame_budget_.reset(resolved_config_.profile, resolved_config_.target_frame_time_ms);
+    const auto& budget = frame_budget_.settings();
+    resolved_config_.render_scale = budget.render_scale;
+    resolved_config_.geometry_error_threshold = budget.geometry_error_threshold;
+    resolved_config_.shadow_resolution_scale = budget.shadow_resolution_scale;
+    resolved_config_.volumetric_resolution_scale = budget.volumetric_resolution_scale;
+    resolved_config_.gi_trace_budget = budget.gi_trace_budget;
+    resolved_config_.reflection_ray_budget = budget.reflection_ray_budget;
+    resolved_config_.lighting_trace_scale = budget.lighting_trace_scale;
+    resolved_config_.surface_cache_update_budget = budget.surface_cache_update_budget;
+    resolved_config_.radiance_probe_update_budget = budget.radiance_probe_update_budget;
+    virtual_geometry_residency_.configure(
+        {.gpu_budget_bytes = resolved_config_.virtual_geometry_gpu_budget_bytes,
+         .compressed_cpu_budget_bytes = resolved_config_.virtual_geometry_cpu_budget_bytes,
+         .maximum_requests_per_frame = resolved_config_.virtual_geometry_request_limit});
+    texture_residency_.configure({.gpu_budget_bytes = resolved_config_.texture_gpu_budget_bytes,
+                                  .cpu_cache_budget_bytes = resolved_config_.texture_cpu_budget_bytes,
+                                  .upload_budget_per_frame = resolved_config_.texture_upload_budget_per_frame,
+                                  .maximum_requests_per_frame = resolved_config_.texture_request_limit,
+                                  .protected_frame_count = 30});
+    lighting_scene_config lighting_config;
+    lighting_config.gpu_budget_bytes = resolved_config_.lighting_scene_gpu_budget_bytes;
+    lighting_config.compressed_cpu_budget_bytes = resolved_config_.lighting_scene_gpu_budget_bytes / 3u;
+    lighting_config.maximum_surface_updates_per_frame = resolved_config_.surface_cache_update_budget;
+    lighting_config.maximum_radiance_probe_updates_per_frame = resolved_config_.radiance_probe_update_budget;
+    lighting_scene_.configure(lighting_config);
+    backend_->configure(resolved_config_);
 }
 
 render_backend* renderer::backend() noexcept
@@ -829,6 +820,18 @@ const render_backend* renderer::backend() const noexcept
 const renderer_config& renderer::config() const noexcept
 {
     return config_;
+}
+
+void renderer::set_platform_capabilities(framework::platform_capabilities capabilities)
+{
+    platform_capabilities_ = capabilities;
+    if (backend_) configure_backend();
+}
+
+void renderer::set_profile_document(renderer_profile_document profiles)
+{
+    config_.profiles = std::move(profiles);
+    if (backend_) configure_backend();
 }
 
 const resolved_render_config& renderer::resolved_config() const noexcept
@@ -1813,7 +1816,7 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
             packet.events.push_back({.payload = lighting_scene_update_event{.batch = std::move(update)}});
     }
 
-    if (config_.enable_dynamic_resolution)
+    if (resolved_config_.dynamic_resolution)
     {
         float gpu_frame_time_ms{};
         for (const auto& timing : backend_->last_frame_profile().pass_timings)
@@ -1823,11 +1826,12 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
             const auto previous = frame_budget_.settings();
             const auto& budget = frame_budget_.update(gpu_frame_time_ms);
             resolved_config_.render_scale = budget.render_scale;
-            const auto effective_aa = config_.force_disable_temporal
-                                          ? resolve_anti_aliasing(anti_aliasing_method::fxaa, resolved_config_.path,
-                                                                  budget.render_scale, backend_->capabilities())
-                                          : resolve_anti_aliasing(config_.anti_aliasing, resolved_config_.path,
-                                                                  budget.render_scale, backend_->capabilities());
+            const auto effective_aa =
+                config_.force_disable_temporal
+                    ? resolve_anti_aliasing(anti_aliasing_method::fxaa, resolved_config_.path, budget.render_scale,
+                                            backend_->capabilities())
+                    : resolve_anti_aliasing(resolved_config_.requested_anti_aliasing, resolved_config_.path,
+                                            budget.render_scale, backend_->capabilities());
             resolved_config_.anti_aliasing = effective_aa;
             resolved_config_.features.anti_aliasing = effective_aa;
             resolved_config_.features.fxaa = effective_aa == anti_aliasing_method::fxaa;
@@ -1842,7 +1846,7 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
             resolved_config_.lighting_trace_scale = budget.lighting_trace_scale;
             resolved_config_.surface_cache_update_budget = budget.surface_cache_update_budget;
             resolved_config_.radiance_probe_update_budget = budget.radiance_probe_update_budget;
-            const auto& profile = quality_profile(resolved_config_.quality);
+            const auto& profile = resolved_config_.profile;
             const auto scaled_shadow_dimension = [&](std::uint32_t base, std::uint32_t minimum)
             {
                 const auto scaled =
