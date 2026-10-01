@@ -3,6 +3,8 @@ import { forwardRef, type HTMLAttributes, type ReactNode } from 'react';
 import './UiAgentCard.css';
 
 export type UiAgentCardState = 'complete' | 'streaming' | 'error';
+export type UiAgentCardSide = 'left' | 'right' | 'none';
+export type UiAgentCardTone = 'agent' | 'user' | 'neutral';
 
 export type UiAgentCardProps = Omit<HTMLAttributes<HTMLElement>, 'title'> & {
   title?: ReactNode;
@@ -10,17 +12,37 @@ export type UiAgentCardProps = Omit<HTMLAttributes<HTMLElement>, 'title'> & {
   icon?: ReactNode;
   actions?: ReactNode;
   state?: UiAgentCardState;
+  side?: UiAgentCardSide;
+  tone?: UiAgentCardTone;
   children: ReactNode;
 };
 
 export const UiAgentCard = forwardRef<HTMLElement, UiAgentCardProps>(function UiAgentCard(
-  { title, subtitle, icon, actions, state = 'complete', children, className, ...props },
+  {
+    title,
+    subtitle,
+    icon,
+    actions,
+    state = 'complete',
+    side = 'none',
+    tone = 'neutral',
+    children,
+    className,
+    ...props
+  },
   ref,
 ) {
   const hasHeader = Boolean(title || subtitle || icon || actions);
 
   return (
-    <article className={['ui-agent-card', className].filter(Boolean).join(' ')} data-state={state} ref={ref} {...props}>
+    <article
+      className={['ui-agent-card', className].filter(Boolean).join(' ')}
+      data-side={side}
+      data-state={state}
+      data-tone={tone}
+      ref={ref}
+      {...props}
+    >
       {hasHeader && (
         <header className="ui-agent-card-header">
           {icon && <span className="ui-agent-card-icon">{icon}</span>}
