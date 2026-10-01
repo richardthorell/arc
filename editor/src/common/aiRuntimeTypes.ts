@@ -21,6 +21,7 @@ export type AiImageContentPart = {
 };
 
 export type AiRuntimeContentPart = AiTextContentPart | AiImageContentPart;
+export type AiRuntimeMessageContent = string | readonly AiRuntimeContentPart[];
 
 export type AiToolDefinition = {
   name: string;
@@ -37,14 +38,14 @@ export type AiToolCall = {
 export type AiToolResult = {
   toolCallId: string;
   name: string;
-  content: readonly AiRuntimeContentPart[];
+  content: AiRuntimeMessageContent;
   isError?: boolean;
 };
 
 export type AiRuntimeMessage = {
   id: string;
   role: AiRuntimeRole;
-  content: readonly AiRuntimeContentPart[];
+  content: AiRuntimeMessageContent;
   createdAt?: string;
   toolCalls?: readonly AiToolCall[];
   toolResult?: AiToolResult;
@@ -60,22 +61,26 @@ export type AiModelCapabilities = {
 
 export type AiModelDescriptor = {
   id: string;
-  providerId: string;
-  modelId: string;
   label: string;
-  capabilities: AiModelCapabilities;
+  providerId?: string;
+  modelId?: string;
+  capabilities?: AiModelCapabilities;
 };
 
-export type AiRuntimeRequestPayload = {
+export type AiRuntimeRequest = {
+  conversationId: string;
+  messages: readonly AiRuntimeMessage[];
+  tools?: readonly AiToolDefinition[];
+  metadata?: AiJsonObject;
+  signal?: AbortSignal;
+};
+
+export type AiSerializedRuntimeRequest = {
   schemaVersion: AiRuntimeSchemaVersion;
   conversationId: string;
   messages: readonly AiRuntimeMessage[];
   tools?: readonly AiToolDefinition[];
   metadata?: AiJsonObject;
-};
-
-export type AiRuntimeRequest = AiRuntimeRequestPayload & {
-  signal?: AbortSignal;
 };
 
 export type AiTokenUsage = {
@@ -98,32 +103,41 @@ export type AiRuntimeErrorCode =
   | 'tool'
   | 'unknown';
 
-export type AiRuntimeError = {
-  code: AiRuntimeErrorCode;
-  message: string;
-  retryable: boolean;
-  retryAfterMs?: number;
-};
-
 export type AiRuntimeFinishReason = 'stop' | 'tool_calls' | 'length' | 'cancelled' | 'error' | 'unknown';
 
 export type AiRuntimeStreamEvent =
-  | { type: 'text.delta'; text: string }
-  | { type: 'tool.call.start'; callId: string; name: string }
-  | { type: 'tool.call.arguments.delta'; callId: string; delta: string }
-  | { type: 'tool.call.ready'; call: AiToolCall }
-  | { type: 'tool.result'; result: AiToolResult }
+  | { type: 'delta'; text: string }
+  | { type: 'tool-call-start'; callId: string; name: string }
+  | { type: 'tool-call-arguments-delta'; callId: string; delta: string }
+  | { type: 'tool-call'; call: AiToolCall }
+  | { type: 'tool-result'; result: AiToolResult }
   | { type: 'usage'; usage: AiTokenUsage }
-  | { type: 'error'; error: AiRuntimeError }
-  | { type: 'done'; finishReason: AiRuntimeFinishReason };
+  | {
+      type: 'error';
+      message: string;
+      code?: AiRuntimeErrorCode;
+      retryable?: boolean;
+      retryAfterMs?: number;
+    }
+  | { type: 'done'; finishReason?: AiRuntimeFinishReason };
 
 export const textContent = (text: string): AiTextContentPart => ({ type: 'text', text });
 
-export const textFromRuntimeMessage = (message: AiRuntimeMessage): string =>
-  message.content
+export const textFromRuntimeMessage = (message: AiRuntimeMessage): string => {
+  if (typeof message.content === 'string') return message.content;
+  return message.content
     .filter((part): part is AiTextContentPart => part.type === 'text')
     .map((part) => part.text)
     .join('');
+};
+
+export const serializeAiRuntimeRequest = (request: AiRuntimeRequest): AiSerializedRuntimeRequest => ({
+  schemaVersion: AI_RUNTIME_SCHEMA_VERSION,
+  conversationId: request.conversationId,
+  messages: request.messages,
+  ...(request.tools ? { tools: request.tools } : {}),
+  ...(request.metadata ? { metadata: request.metadata } : {}),
+});
 
 export const isTerminalAiRuntimeEvent = (event: AiRuntimeStreamEvent): boolean =>
   event.type === 'done' || event.type === 'error';
