@@ -32,6 +32,35 @@ describe('asset library scope navigation', () => {
     });
   });
 
+  it('surfaces configured optional mounts before they contain assets', () => {
+    const navigation = visibleAssetLibraryScopeNavigation([], [
+      { scope: 'user' },
+      { scope: 'organization' },
+    ]);
+
+    expect(navigation.map((scope) => scope.id)).toEqual(['builtin', 'project', 'user', 'organization']);
+    expect(navigation.find((scope) => scope.id === 'user')).toMatchObject({
+      mounted: true,
+      writable: true,
+      assetCount: 0,
+    });
+    expect(navigation.find((scope) => scope.id === 'organization')).toMatchObject({
+      mounted: true,
+      writable: false,
+      assetCount: 0,
+    });
+  });
+
+  it('keeps asset-discovered optional scopes distinguishable from configured mounts', () => {
+    const navigation = buildAssetLibraryScopeNavigation([{ scope: 'user' }]);
+
+    expect(navigation.find((scope) => scope.id === 'user')).toMatchObject({
+      available: true,
+      mounted: false,
+      assetCount: 1,
+    });
+  });
+
   it('treats legacy unscoped assets as project assets without changing identity', () => {
     const navigation = buildAssetLibraryScopeNavigation([{ scope: undefined }, { scope: 'project' }]);
 
