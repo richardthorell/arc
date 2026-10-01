@@ -35,7 +35,9 @@ describe('material parameter presentation', () => {
   });
 
   it('normalizes optional authoring metadata', () => {
-    expect(materialParameterPresentation(node('roughness', ' Roughness ', { group: ' Surface ', sortOrder: 2 }))).toEqual({
+    expect(
+      materialParameterPresentation(node('roughness', ' Roughness ', { group: ' Surface ', sortOrder: 2 })),
+    ).toEqual({
       nodeId: 'roughness',
       name: 'Roughness',
       group: 'Surface',

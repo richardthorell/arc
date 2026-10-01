@@ -21,12 +21,9 @@ export const defaultMaterialParameterGroup = 'Parameters';
 
 const normalizedText = (value: string | undefined) => value?.trim() ?? '';
 
-const normalizedSortOrder = (value: number | undefined) =>
-  Number.isFinite(value) ? (value as number) : 0;
+const normalizedSortOrder = (value: number | undefined) => (Number.isFinite(value) ? (value as number) : 0);
 
-export const materialParameterPresentation = (
-  node: MaterialGraphNode,
-): MaterialParameterPresentation | null => {
+export const materialParameterPresentation = (node: MaterialGraphNode): MaterialParameterPresentation | null => {
   const parameter = node.parameter as MaterialParameterMetadata | undefined;
   if (!parameter?.exposed) {
     return null;
