@@ -11,6 +11,7 @@ export type UiAgentCardProps = Omit<HTMLAttributes<HTMLElement>, 'title'> & {
   subtitle?: ReactNode;
   icon?: ReactNode;
   actions?: ReactNode;
+  timestamp?: ReactNode;
   state?: UiAgentCardState;
   side?: UiAgentCardSide;
   tone?: UiAgentCardTone;
@@ -23,6 +24,7 @@ export const UiAgentCard = forwardRef<HTMLElement, UiAgentCardProps>(function Ui
     subtitle,
     icon,
     actions,
+    timestamp,
     state = 'complete',
     side = 'none',
     tone = 'neutral',
@@ -56,6 +58,7 @@ export const UiAgentCard = forwardRef<HTMLElement, UiAgentCardProps>(function Ui
         </header>
       )}
       <div className="ui-agent-card-content">{children}</div>
+      {timestamp && <footer className="ui-agent-card-timestamp">{timestamp}</footer>}
     </article>
   );
 });
