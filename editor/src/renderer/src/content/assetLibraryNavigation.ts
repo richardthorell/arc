@@ -1,4 +1,5 @@
 import type { AssetItem } from '../services/editorHostTypes';
+import type { AssetLibraryMount } from './assetLibraryMounts';
 import {
   assetLibraryScopes,
   assetScopeId,
@@ -16,6 +17,7 @@ export type AssetLibraryScopeNavigationItem = AssetLibraryScope & {
   kind: 'scope';
   assetCount: number;
   available: boolean;
+  mounted: boolean;
 };
 
 export type AssetLibraryVirtualNavigationItem = AssetLibraryVirtualView & {
@@ -29,10 +31,11 @@ export type AssetLibraryNavigationItem = AssetLibraryScopeNavigationItem | Asset
  * Builds the logical Content Browser scope roots without coupling navigation to
  * physical paths or providers. Project and Built-in remain visible even when
  * empty so a new project has stable navigation; optional shared mounts appear
- * once the host exposes assets from them.
+ * when the host configures a mount or exposes assets from them.
  */
 export function buildAssetLibraryScopeNavigation(
   assets: readonly Pick<AssetItem, 'scope'>[],
+  mounts: readonly Pick<AssetLibraryMount, 'scope'>[] = [],
 ): readonly AssetLibraryScopeNavigationItem[] {
   const counts = new Map<AssetLibraryScopeId, number>();
   for (const asset of assets) {
@@ -40,18 +43,22 @@ export function buildAssetLibraryScopeNavigation(
     counts.set(scope, (counts.get(scope) ?? 0) + 1);
   }
 
+  const mountedScopes = new Set(mounts.map((mount) => mount.scope));
+
   return assetLibraryScopes.map((scope) => ({
     ...scope,
     kind: 'scope' as const,
     assetCount: counts.get(scope.id) ?? 0,
-    available: scope.id === 'project' || scope.id === 'builtin' || counts.has(scope.id),
+    mounted: mountedScopes.has(scope.id),
+    available: scope.id === 'project' || scope.id === 'builtin' || mountedScopes.has(scope.id) || counts.has(scope.id),
   }));
 }
 
 export function visibleAssetLibraryScopeNavigation(
   assets: readonly Pick<AssetItem, 'scope'>[],
+  mounts: readonly Pick<AssetLibraryMount, 'scope'>[] = [],
 ): readonly AssetLibraryScopeNavigationItem[] {
-  return buildAssetLibraryScopeNavigation(assets).filter((scope) => scope.available);
+  return buildAssetLibraryScopeNavigation(assets, mounts).filter((scope) => scope.available);
 }
 
 /**
@@ -82,9 +89,10 @@ export function buildAssetLibraryNavigation(
   assets: readonly Pick<AssetItem, 'scope'>[],
   membership: AssetLibraryVirtualMembership,
   searchResults: readonly string[] = [],
+  mounts: readonly Pick<AssetLibraryMount, 'scope'>[] = [],
 ): readonly AssetLibraryNavigationItem[] {
   return [
     ...buildAssetLibraryVirtualNavigation(membership, searchResults),
-    ...visibleAssetLibraryScopeNavigation(assets),
+    ...visibleAssetLibraryScopeNavigation(assets, mounts),
   ];
 }
