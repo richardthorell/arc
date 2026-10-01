@@ -4,7 +4,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { UiEditorToolbar, UiToolbarGroup, UiToolbarSeparator } from './UiEditorToolbar';
+import { UiEditorToolbar, UiToolbarGroup, UiToolbarRegion, UiToolbarSeparator } from './UiEditorToolbar';
 
 afterEach(cleanup);
 
@@ -26,6 +26,18 @@ describe('UiEditorToolbar', () => {
     expect(screen.getByLabelText('Modes')).toHaveClass('ui-toolbar-group', 'toolbar-group');
     expect(toolbar.querySelector('[data-toolbar-region="center"]')).toContainElement(screen.getByLabelText('Modes'));
     expect(toolbar.querySelector('[data-toolbar-region="right"] .toolbar-separator')).toBeInTheDocument();
+  });
+
+  it('exposes the shared region primitive for domain-specific toolbar composition', () => {
+    render(
+      <UiToolbarRegion className="domain-region" region="right">
+        <button>Options</button>
+      </UiToolbarRegion>,
+    );
+
+    const region = screen.getByText('Options').parentElement;
+    expect(region).toHaveClass('toolbar-right', 'ui-toolbar-region', 'domain-region');
+    expect(region).toHaveAttribute('data-toolbar-region', 'right');
   });
 
   it('allows embedded surfaces to override the default toolbar role', () => {
