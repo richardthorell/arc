@@ -1,20 +1,95 @@
 .ui-agent-card {
+  --ui-agent-card-background: color-mix(in srgb, var(--arc-color-bg-panel) 92%, black);
+  --ui-agent-card-border: var(--arc-color-border-subtle);
+
+  position: relative;
   display: grid;
   min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--arc-color-border-subtle);
+  border: 1px solid var(--ui-agent-card-border);
   border-radius: var(--arc-radius-2);
-  background: color-mix(in srgb, var(--arc-color-bg-panel) 92%, black);
+  background: var(--ui-agent-card-background);
   box-shadow: 0 4px 14px rgb(0 0 0 / 14%);
   color: var(--arc-color-text);
 }
 
+.ui-agent-card[data-tone='agent'] {
+  --ui-agent-card-background: color-mix(in srgb, var(--arc-color-bg-panel) 88%, #31596b 12%);
+  --ui-agent-card-border: color-mix(in srgb, var(--arc-color-border-subtle) 70%, #4d8198 30%);
+}
+
+.ui-agent-card[data-tone='user'] {
+  --ui-agent-card-background: color-mix(in srgb, var(--arc-color-bg-field) 72%, #1d4f8f 28%);
+  --ui-agent-card-border: color-mix(in srgb, var(--arc-color-border-subtle) 48%, #4b93ef 52%);
+}
+
+.ui-agent-card[data-side='left'] {
+  border-top-left-radius: 3px;
+}
+
+.ui-agent-card[data-side='right'] {
+  border-top-right-radius: 3px;
+}
+
+.ui-agent-card[data-side='left']::before,
+.ui-agent-card[data-side='left']::after,
+.ui-agent-card[data-side='right']::before,
+.ui-agent-card[data-side='right']::after {
+  position: absolute;
+  content: '';
+  pointer-events: none;
+}
+
+.ui-agent-card[data-side='left']::before,
+.ui-agent-card[data-side='right']::before {
+  z-index: 0;
+  top: -1px;
+  width: 13px;
+  height: 17px;
+  background: var(--ui-agent-card-border);
+}
+
+.ui-agent-card[data-side='left']::after,
+.ui-agent-card[data-side='right']::after {
+  z-index: 1;
+  top: 0;
+  width: 11px;
+  height: 14px;
+  background: var(--ui-agent-card-background);
+}
+
+.ui-agent-card[data-side='left']::before {
+  left: -12px;
+  clip-path: polygon(100% 0, 0 0, 100% 100%);
+}
+
+.ui-agent-card[data-side='left']::after {
+  left: -10px;
+  clip-path: polygon(100% 0, 0 0, 100% 100%);
+}
+
+.ui-agent-card[data-side='right']::before {
+  right: -12px;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
+.ui-agent-card[data-side='right']::after {
+  right: -10px;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
 .ui-agent-card[data-state='streaming'] {
-  border-color: color-mix(in srgb, var(--arc-color-accent) 45%, var(--arc-color-border-subtle));
+  --ui-agent-card-border: color-mix(in srgb, var(--arc-color-accent) 45%, var(--arc-color-border-subtle));
 }
 
 .ui-agent-card[data-state='error'] {
   border-style: dashed;
+}
+
+.ui-agent-card-header,
+.ui-agent-card-content,
+.ui-agent-card-timestamp {
+  position: relative;
+  z-index: 2;
 }
 
 .ui-agent-card-header {
@@ -23,8 +98,9 @@
   align-items: center;
   gap: 8px;
   padding: 6px 9px;
-  border-bottom: 1px solid var(--arc-color-border-subtle);
-  background: color-mix(in srgb, var(--arc-color-bg-chrome) 78%, transparent);
+  border-bottom: 1px solid var(--ui-agent-card-border);
+  border-radius: var(--arc-radius-2) var(--arc-radius-2) 0 0;
+  background: color-mix(in srgb, var(--arc-color-bg-chrome) 78%, var(--ui-agent-card-background));
 }
 
 .ui-agent-card-icon {
@@ -67,7 +143,23 @@
 
 .ui-agent-card-content {
   min-width: 0;
-  padding: 10px 11px;
+  padding: 10px 11px 5px;
+  border-radius: inherit;
+  background: var(--ui-agent-card-background);
+}
+
+.ui-agent-card-timestamp {
+  display: flex;
+  justify-content: flex-start;
+  padding: 0 11px 7px;
+  color: color-mix(in srgb, var(--arc-color-text-dim) 84%, transparent);
+  font-size: var(--arc-text-xxs);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.ui-agent-card[data-side='right'] .ui-agent-card-timestamp {
+  justify-content: flex-end;
 }
 
 .ui-agent-text-card-content {
