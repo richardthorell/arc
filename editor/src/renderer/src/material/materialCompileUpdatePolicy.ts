@@ -3,15 +3,25 @@ import type { MaterialGraph } from './materialGraphTypes';
 
 export type MaterialCompileUpdateAction = 'none' | 'parameter-update' | 'shader-compile';
 
+const materialGraphSemanticSnapshot = (graph: MaterialGraph): string =>
+  JSON.stringify({
+    ...graph,
+    viewport: undefined,
+    nodes: graph.nodes.map((node) => ({ ...node, position: undefined })),
+  });
+
 /**
  * Decide how an authored graph edit should update a live material.
  *
- * Exposed parameter value edits are runtime data updates and must not invalidate the
- * last successful shader compilation. Shader-affecting edits continue through ARC's
+ * Layout-only edits are editor state and do not affect the compiled material. Exposed
+ * parameter value edits are runtime data updates and must not invalidate the last
+ * successful shader compilation. Shader-affecting edits continue through ARC's
  * authoritative native Material IR/compiler path.
  */
-export const materialCompileUpdateAction = (before: MaterialGraph, after: MaterialGraph): MaterialCompileUpdateAction =>
-  materialCompileUpdateActionForImpact(materialGraphEditImpact(before, after));
+export const materialCompileUpdateAction = (before: MaterialGraph, after: MaterialGraph): MaterialCompileUpdateAction => {
+  if (materialGraphSemanticSnapshot(before) === materialGraphSemanticSnapshot(after)) return 'none';
+  return materialCompileUpdateActionForImpact(materialGraphEditImpact(before, after));
+};
 
 export const materialCompileUpdateActionForImpact = (impact: MaterialGraphEditImpact): MaterialCompileUpdateAction => {
   switch (impact) {
