@@ -15,12 +15,12 @@ ma_format to_miniaudio_format(const sample_format format) noexcept
 {
     switch (format)
     {
-    case sample_format::signed_16:
-        return ma_format_s16;
-    case sample_format::signed_24:
-        return ma_format_s24;
-    case sample_format::float_32:
-        return ma_format_f32;
+        case sample_format::signed_16:
+            return ma_format_s16;
+        case sample_format::signed_24:
+            return ma_format_s24;
+        case sample_format::float_32:
+            return ma_format_f32;
     }
 
     return ma_format_unknown;
@@ -133,8 +133,8 @@ std::unique_ptr<audio_backend> create_audio_backend(const backend_type backend)
 {
     switch (backend)
     {
-    case backend_type::miniaudio:
-        return std::make_unique<miniaudio_backend>();
+        case backend_type::miniaudio:
+            return std::make_unique<miniaudio_backend>();
     }
 
     return {};

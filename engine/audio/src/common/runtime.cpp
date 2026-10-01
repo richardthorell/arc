@@ -17,9 +17,7 @@ struct audio_runtime::implementation
     device_id playback_device = invalid_device_id;
 };
 
-audio_runtime::audio_runtime(const backend_type backend) : implementation_(std::make_unique<implementation>(backend))
-{
-}
+audio_runtime::audio_runtime(const backend_type backend) : implementation_(std::make_unique<implementation>(backend)) {}
 
 audio_runtime::~audio_runtime() = default;
 
