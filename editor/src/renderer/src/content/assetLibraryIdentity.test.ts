@@ -32,10 +32,7 @@ describe('assetLibraryIdentity', () => {
     expect(
       referencesPreserveAssetIdentity(
         [asset, { id: 'asset-99', guid: 'guid-99' }],
-        [
-          { assetId: 'asset-42' },
-          { assetId: 'asset-99' },
-        ],
+        [{ assetId: 'asset-42' }, { assetId: 'asset-99' }],
       ),
     ).toBe(true);
 
