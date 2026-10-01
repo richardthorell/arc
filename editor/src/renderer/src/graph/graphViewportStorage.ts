@@ -1,9 +1,5 @@
 import type { GraphViewport } from './graphTypes';
-import {
-  DEFAULT_GRAPH_VIEWPORT,
-  persistGraphViewport,
-  restoreGraphViewport,
-} from './graphViewportState';
+import { DEFAULT_GRAPH_VIEWPORT, persistGraphViewport, restoreGraphViewport } from './graphViewportState';
 
 export interface GraphViewportStorage {
   getItem(key: string): string | null;
@@ -16,11 +12,7 @@ const KEY_PREFIX = 'arc.graph.viewport.v1';
 export const graphViewportStorageKey = (domain: string, documentId: string) =>
   `${KEY_PREFIX}:${encodeURIComponent(domain)}:${encodeURIComponent(documentId)}`;
 
-export const loadGraphViewport = (
-  storage: GraphViewportStorage,
-  domain: string,
-  documentId: string,
-): GraphViewport => {
+export const loadGraphViewport = (storage: GraphViewportStorage, domain: string, documentId: string): GraphViewport => {
   try {
     const serialized = storage.getItem(graphViewportStorageKey(domain, documentId));
     if (serialized === null) return { ...DEFAULT_GRAPH_VIEWPORT };
@@ -36,14 +28,8 @@ export const saveGraphViewport = (
   documentId: string,
   viewport: GraphViewport,
 ) => {
-  storage.setItem(
-    graphViewportStorageKey(domain, documentId),
-    JSON.stringify(persistGraphViewport(viewport)),
-  );
+  storage.setItem(graphViewportStorageKey(domain, documentId), JSON.stringify(persistGraphViewport(viewport)));
 };
 
-export const clearGraphViewport = (
-  storage: GraphViewportStorage,
-  domain: string,
-  documentId: string,
-) => storage.removeItem(graphViewportStorageKey(domain, documentId));
+export const clearGraphViewport = (storage: GraphViewportStorage, domain: string, documentId: string) =>
+  storage.removeItem(graphViewportStorageKey(domain, documentId));

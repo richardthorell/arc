@@ -13,8 +13,12 @@ const createStorage = (): GraphViewportStorage & { values: Map<string, string> }
   return {
     values,
     getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => { values.set(key, value); },
-    removeItem: (key) => { values.delete(key); },
+    setItem: (key, value) => {
+      values.set(key, value);
+    },
+    removeItem: (key) => {
+      values.delete(key);
+    },
   };
 };
 
