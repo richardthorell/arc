@@ -19,6 +19,10 @@
 
 .ai-chat-active {
   grid-template-rows: auto minmax(0, 1fr) auto;
+  background-color: #080b0e;
+  background-image: radial-gradient(circle, rgb(164 183 198 / 8%) 1px, transparent 1px);
+  background-position: 0 0;
+  background-size: 16px 16px;
 }
 
 .ai-chat-recent {
@@ -81,8 +85,7 @@
   font-size: var(--arc-text-xxs);
 }
 
-.ai-chat-home-center,
-.ai-chat-history {
+.ai-chat-home-center {
   background-color: #080b0e;
   background-image: radial-gradient(circle, rgb(164 183 198 / 8%) 1px, transparent 1px);
   background-position: 0 0;
@@ -130,6 +133,7 @@
   position: relative;
   min-height: 0;
   overflow: auto;
+  background: transparent;
 }
 
 .ai-chat-message-list {
@@ -194,9 +198,9 @@
 }
 
 .ai-chat-composer {
-  padding: 10px;
-  border-top: 1px solid var(--arc-color-border);
-  background: var(--arc-color-bg-chrome);
+  padding: 10px 14px 14px;
+  border-top: 0;
+  background: transparent;
 }
 
 .ai-chat-composer-surface {
@@ -253,36 +257,38 @@
   margin-left: auto;
 }
 
-.ai-chat-composer-toolbar select {
-  width: auto;
-  max-width: 240px;
-  min-width: 0;
-  height: 30px;
-  padding: 0 24px 0 8px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  outline: none;
-  background: transparent;
-  color: var(--arc-color-text-muted);
-  font: inherit;
-  cursor: pointer;
+.ai-chat-model-dropdown {
+  max-width: 260px;
 }
 
-.ai-chat-composer-toolbar select:hover:not(:disabled) {
+.ai-chat-model-dropdown .ui-dropdown-trigger.ui-button {
+  min-width: 0;
+  height: 30px;
+  padding: 0 7px 0 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--arc-color-text-muted);
+}
+
+.ai-chat-model-dropdown .ui-dropdown-trigger.ui-button:hover:not(:disabled),
+.ai-chat-model-dropdown .ui-dropdown-trigger.ui-button[aria-expanded='true'] {
   border-color: var(--arc-color-border-subtle);
   background: var(--arc-color-bg-chrome);
   color: var(--arc-color-text);
 }
 
-.ai-chat-composer-toolbar select:focus {
-  border-color: var(--arc-color-border-strong);
-  background: var(--arc-color-bg-chrome);
-  color: var(--arc-color-text);
+.ai-chat-model-dropdown .ui-dropdown-value {
+  gap: 6px;
 }
 
-.ai-chat-composer-toolbar select:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
+.ai-chat-model-dropdown .ui-dropdown-icon {
+  color: var(--arc-color-text-muted);
+}
+
+.ai-chat-model-dropdown .ui-dropdown-trigger:hover:not(:disabled) .ui-dropdown-icon,
+.ai-chat-model-dropdown .ui-dropdown-trigger[aria-expanded='true'] .ui-dropdown-icon {
+  color: currentColor;
 }
 
 .ai-chat-add-button.ui-icon-button {
@@ -312,18 +318,6 @@
   place-items: center;
   padding: 0;
   border-radius: 50%;
-}
-
-.ai-chat-locked-model {
-  min-width: 0;
-  max-width: 240px;
-  overflow: hidden;
-  padding: 0 8px;
-  color: var(--arc-color-text-muted);
-  font-size: var(--arc-text-xs);
-  line-height: 30px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .ai-gateway-approval-prompt {
@@ -375,8 +369,7 @@
     padding: 16px;
   }
 
-  .ai-chat-composer-toolbar select,
-  .ai-chat-locked-model {
+  .ai-chat-model-dropdown {
     max-width: 180px;
   }
 
