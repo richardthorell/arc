@@ -135,8 +135,9 @@ describe('AiChatPanel', () => {
     fireEvent.change(screen.getByLabelText('Start a conversation'), { target: { value: 'Polish the cabin material' } });
     fireEvent.click(screen.getByLabelText('Start conversation'));
 
-    expect(screen.getByRole('region', { name: 'Active conversation' })).toBeInTheDocument();
-    expect(screen.getByText('Polish the cabin material')).toBeInTheDocument();
+    const activeConversation = screen.getByRole('region', { name: 'Active conversation' });
+    expect(activeConversation).toBeInTheDocument();
+    expect(activeConversation).toHaveTextContent('Polish the cabin material');
     expect(screen.queryByLabelText('Model')).not.toBeInTheDocument();
     expect(screen.getByText('Alternate Agent')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Alternate reply.')).toBeInTheDocument());
