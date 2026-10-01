@@ -33,10 +33,7 @@ describe('asset library scope navigation', () => {
   });
 
   it('surfaces configured optional mounts before they contain assets', () => {
-    const navigation = visibleAssetLibraryScopeNavigation([], [
-      { scope: 'user' },
-      { scope: 'organization' },
-    ]);
+    const navigation = visibleAssetLibraryScopeNavigation([], [{ scope: 'user' }, { scope: 'organization' }]);
 
     expect(navigation.map((scope) => scope.id)).toEqual(['builtin', 'project', 'user', 'organization']);
     expect(navigation.find((scope) => scope.id === 'user')).toMatchObject({

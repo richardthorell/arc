@@ -50,8 +50,7 @@ export function buildAssetLibraryScopeNavigation(
     kind: 'scope' as const,
     assetCount: counts.get(scope.id) ?? 0,
     mounted: mountedScopes.has(scope.id),
-    available:
-      scope.id === 'project' || scope.id === 'builtin' || mountedScopes.has(scope.id) || counts.has(scope.id),
+    available: scope.id === 'project' || scope.id === 'builtin' || mountedScopes.has(scope.id) || counts.has(scope.id),
   }));
 }
 
