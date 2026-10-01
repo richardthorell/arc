@@ -16,16 +16,6 @@ namespace arc::render
 inline constexpr std::string_view renderer_profile_format = "arc-renderer-profile";
 inline constexpr std::uint32_t renderer_profile_format_version = 1;
 
-/** @brief Coarse capability tier used for profile diagnostics and future subsystem policy. */
-enum class renderer_scalability_tier : std::uint8_t
-{
-    automatic,
-    constrained,
-    balanced,
-    performance,
-    premium
-};
-
 /** @brief GPU topology condition used by data-driven device profiles. */
 enum class renderer_gpu_class : std::uint8_t
 {
@@ -45,9 +35,9 @@ struct renderer_profile_overrides
     std::optional<render_quality_tier> quality;
     std::optional<render_path> path;
     std::optional<anti_aliasing_method> anti_aliasing;
-    std::optional<renderer_scalability_tier> cpu_tier;
-    std::optional<renderer_scalability_tier> gpu_tier;
-    std::optional<renderer_scalability_tier> memory_tier;
+    std::optional<render_scalability_tier> cpu_tier;
+    std::optional<render_scalability_tier> gpu_tier;
+    std::optional<render_scalability_tier> memory_tier;
     std::optional<bool> dynamic_resolution;
     std::optional<float> target_frame_time_ms;
     std::optional<float> minimum_render_scale;
@@ -137,9 +127,9 @@ struct renderer_profile_resolution
     render_quality_profile profile{};
     render_path path{render_path::auto_select};
     anti_aliasing_method anti_aliasing{anti_aliasing_method::auto_select};
-    renderer_scalability_tier cpu_tier{renderer_scalability_tier::balanced};
-    renderer_scalability_tier gpu_tier{renderer_scalability_tier::balanced};
-    renderer_scalability_tier memory_tier{renderer_scalability_tier::balanced};
+    render_scalability_tier cpu_tier{render_scalability_tier::balanced};
+    render_scalability_tier gpu_tier{render_scalability_tier::balanced};
+    render_scalability_tier memory_tier{render_scalability_tier::balanced};
     bool dynamic_resolution{true};
     std::vector<std::string> diagnostics;
 };

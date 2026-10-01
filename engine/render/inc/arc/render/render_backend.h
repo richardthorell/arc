@@ -40,6 +40,16 @@ enum class render_quality_tier : std::uint8_t
     ultra
 };
 
+/** @brief Coarse capability tier used for profile diagnostics and subsystem policy. */
+enum class render_scalability_tier : std::uint8_t
+{
+    automatic,
+    constrained,
+    balanced,
+    performance,
+    premium
+};
+
 /**
  * @brief Backend-neutral raster path used for a view.
  */
@@ -517,6 +527,9 @@ struct resolved_render_config
 {
     /** Deterministic device profile selected before project and runtime overrides. */
     std::string device_profile_id{"engine-default"};
+    render_scalability_tier cpu_tier{render_scalability_tier::balanced};
+    render_scalability_tier gpu_tier{render_scalability_tier::balanced};
+    render_scalability_tier memory_tier{render_scalability_tier::balanced};
     render_quality_tier requested_quality{render_quality_tier::auto_select};
     render_quality_tier quality{render_quality_tier::medium};
     render_path requested_path{render_path::auto_select};

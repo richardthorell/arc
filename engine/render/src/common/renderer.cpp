@@ -208,6 +208,9 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
     const auto profile_resolution = resolve_renderer_profile(config.profiles, runtime_overrides, capabilities, platform,
                                                              config.requested_profile_id);
     result.device_profile_id = profile_resolution.device_profile_id;
+    result.cpu_tier = profile_resolution.cpu_tier;
+    result.gpu_tier = profile_resolution.gpu_tier;
+    result.memory_tier = profile_resolution.memory_tier;
     result.requested_quality = profile_resolution.requested_quality;
     result.quality = profile_resolution.quality;
     result.profile = profile_resolution.profile;

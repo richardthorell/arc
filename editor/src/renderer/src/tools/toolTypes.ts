@@ -40,7 +40,23 @@ export type EditorDiagnosticsSnapshot = {
     path: string;
     renderScale: number;
     qualityTier: string;
+    deviceProfile?: string;
+    cpuTier?: string;
+    gpuTier?: string;
+    memoryTier?: string;
+    dynamicResolution?: boolean;
     targetFrameMilliseconds: number;
+    virtualGeometryGpuBudgetBytes?: number;
+    virtualGeometryCpuBudgetBytes?: number;
+    virtualGeometryRequestLimit?: number;
+    virtualGeometryComputeCrossoverPixels?: number;
+    virtualGeometryHardwareCrossoverPixels?: number;
+    textureGpuBudgetBytes?: number;
+    textureCpuBudgetBytes?: number;
+    textureRequestLimit?: number;
+    virtualTextureCacheBudgetBytes?: number;
+    terrainGeometryErrorScale?: number;
+    postProcessQuality?: number;
     fallbackReasons: string[];
   };
   capabilities?: {

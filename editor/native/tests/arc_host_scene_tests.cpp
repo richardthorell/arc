@@ -119,6 +119,56 @@ TEST_CASE("arc host executes scene commands and exposes snapshots")
                         { return event.event_type == arc::editor::host_event_type::entity_deleted; }));
 }
 
+TEST_CASE("arc host applies and clears project renderer profiles")
+{
+    constexpr std::uint64_t mebibyte = 1024ull * 1024ull;
+    const auto root = std::filesystem::temp_directory_path() / "arc-editor-renderer-profile-test";
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+    std::filesystem::create_directories(root / "Config", error);
+    REQUIRE_FALSE(error);
+    {
+        std::ofstream output(root / "Config" / "Renderer.json", std::ios::binary | std::ios::trunc);
+        output << R"json({
+          "format": "arc-renderer-profile",
+          "formatVersion": 1,
+          "deviceProfiles": [{
+            "id": "portable-editor",
+            "priority": 10,
+            "match": { "formFactor": "handheld" },
+            "settings": {
+              "quality": "low",
+              "virtualGeometry": { "gpuCacheMiB": 192, "requestLimit": 640 }
+            }
+          }],
+          "overrides": { "virtualGeometry": { "requestLimit": 320 } }
+        })json";
+    }
+
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::make_unique<arc::render::renderer>());
+    host->set_platform_capabilities({.family = arc::framework::platform_family::windows,
+                                     .form_factor = arc::framework::device_form_factor::handheld,
+                                     .logical_processor_count = 8,
+                                     .system_memory_bytes = 16ull * 1024ull * mebibyte});
+    host->renderer_service().set_backend(std::make_unique<pick_test_backend>());
+    REQUIRE(
+        host->open_project({.name = "Renderer Profile", .root = root, .renderer_settings = "Config/Renderer.json"}, {})
+            .succeeded);
+    const auto& resolved = host->renderer_service().resolved_config();
+    CHECK(resolved.device_profile_id == "portable-editor");
+    CHECK(resolved.quality == arc::render::render_quality_tier::low);
+    CHECK(resolved.virtual_geometry_gpu_budget_bytes == 192ull * mebibyte);
+    CHECK(resolved.virtual_geometry_request_limit == 320u);
+
+    REQUIRE(host->execute(arc::editor::host_close_project_command{}).succeeded);
+    CHECK(host->renderer_service().resolved_config().device_profile_id == "engine-default");
+    CHECK(host->renderer_service().resolved_config().virtual_geometry_request_limit ==
+          arc::render::standard_render_quality_profile.virtual_geometry_request_limit);
+
+    std::filesystem::remove_all(root, error);
+}
+
 TEST_CASE("workspace documents component operations and read only projects are host authoritative")
 {
     const auto root = std::filesystem::temp_directory_path() / "arc-editor-workspace-contract-test";

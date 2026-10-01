@@ -60,7 +60,7 @@ public:
 
     host_viewport_frame request_viewport(const host_viewport_request& request);
 
-    void set_platform_capabilities(framework::platform_capabilities capabilities) noexcept;
+    void set_platform_capabilities(framework::platform_capabilities capabilities);
 
     // Transitional escape hatches for panels that have not moved to protocol snapshots yet.
     render::renderer& renderer_service() noexcept;

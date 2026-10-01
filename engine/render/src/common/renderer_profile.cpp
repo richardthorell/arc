@@ -109,13 +109,13 @@ anti_aliasing_method parse_anti_aliasing(std::string_view value, std::string_vie
     throw parse_failure(std::string(field), "must be auto, disabled, fxaa, taa, or taau");
 }
 
-renderer_scalability_tier parse_scalability_tier(std::string_view value, std::string_view field)
+render_scalability_tier parse_scalability_tier(std::string_view value, std::string_view field)
 {
-    if (value == "auto") return renderer_scalability_tier::automatic;
-    if (value == "constrained") return renderer_scalability_tier::constrained;
-    if (value == "balanced") return renderer_scalability_tier::balanced;
-    if (value == "performance") return renderer_scalability_tier::performance;
-    if (value == "premium") return renderer_scalability_tier::premium;
+    if (value == "auto") return render_scalability_tier::automatic;
+    if (value == "constrained") return render_scalability_tier::constrained;
+    if (value == "balanced") return render_scalability_tier::balanced;
+    if (value == "performance") return render_scalability_tier::performance;
+    if (value == "premium") return render_scalability_tier::premium;
     throw parse_failure(std::string(field), "must be auto, constrained, balanced, performance, or premium");
 }
 
@@ -357,37 +357,37 @@ std::uint32_t specificity(const renderer_device_profile_match& match) noexcept
            static_cast<std::uint32_t>(match.required_features.size());
 }
 
-renderer_scalability_tier cpu_tier(const framework::platform_capabilities& platform) noexcept
+render_scalability_tier cpu_tier(const framework::platform_capabilities& platform) noexcept
 {
     if ((platform.logical_processor_count != 0 && platform.logical_processor_count <= 4u) ||
         (platform.system_memory_bytes != 0 && platform.system_memory_bytes < 8ull * gibibyte))
-        return renderer_scalability_tier::constrained;
-    if (platform.logical_processor_count >= 16u) return renderer_scalability_tier::performance;
-    return renderer_scalability_tier::balanced;
+        return render_scalability_tier::constrained;
+    if (platform.logical_processor_count >= 16u) return render_scalability_tier::performance;
+    return render_scalability_tier::balanced;
 }
 
-renderer_scalability_tier gpu_tier(const render_capabilities& capabilities) noexcept
+render_scalability_tier gpu_tier(const render_capabilities& capabilities) noexcept
 {
     const auto memory = available_gpu_memory(capabilities);
     if (capabilities.integrated_gpu || (memory != 0 && memory < 2ull * gibibyte))
-        return renderer_scalability_tier::constrained;
-    if (memory >= 12ull * gibibyte) return renderer_scalability_tier::premium;
-    if (memory >= 6ull * gibibyte) return renderer_scalability_tier::performance;
-    return renderer_scalability_tier::balanced;
+        return render_scalability_tier::constrained;
+    if (memory >= 12ull * gibibyte) return render_scalability_tier::premium;
+    if (memory >= 6ull * gibibyte) return render_scalability_tier::performance;
+    return render_scalability_tier::balanced;
 }
 
-renderer_scalability_tier memory_tier(const render_capabilities& capabilities,
-                                      const framework::platform_capabilities& platform) noexcept
+render_scalability_tier memory_tier(const render_capabilities& capabilities,
+                                    const framework::platform_capabilities& platform) noexcept
 {
     const auto gpu_memory = available_gpu_memory(capabilities);
     if ((platform.system_memory_bytes != 0 && platform.system_memory_bytes < 8ull * gibibyte) ||
         (gpu_memory != 0 && gpu_memory < 2ull * gibibyte))
-        return renderer_scalability_tier::constrained;
+        return render_scalability_tier::constrained;
     if (platform.system_memory_bytes >= 32ull * gibibyte && gpu_memory >= 12ull * gibibyte)
-        return renderer_scalability_tier::premium;
+        return render_scalability_tier::premium;
     if (platform.system_memory_bytes >= 16ull * gibibyte && gpu_memory >= 6ull * gibibyte)
-        return renderer_scalability_tier::performance;
-    return renderer_scalability_tier::balanced;
+        return render_scalability_tier::performance;
+    return render_scalability_tier::balanced;
 }
 
 void apply_settings(render_quality_profile& profile, const renderer_profile_overrides& overrides)
@@ -574,9 +574,9 @@ renderer_profile_resolution resolve_renderer_profile(const renderer_profile_docu
         return std::nullopt;
     }();
     result.requested_quality = last_quality.value_or(render_quality_tier::auto_select);
-    const bool constrained = result.cpu_tier == renderer_scalability_tier::constrained ||
-                             result.gpu_tier == renderer_scalability_tier::constrained ||
-                             result.memory_tier == renderer_scalability_tier::constrained;
+    const bool constrained = result.cpu_tier == render_scalability_tier::constrained ||
+                             result.gpu_tier == render_scalability_tier::constrained ||
+                             result.memory_tier == render_scalability_tier::constrained;
     result.quality = result.requested_quality == render_quality_tier::auto_select
                          ? (constrained ? render_quality_tier::low : render_quality_tier::medium)
                          : result.requested_quality;

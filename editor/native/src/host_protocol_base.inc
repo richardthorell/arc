@@ -1602,6 +1602,7 @@ std::string to_json(const host_command_envelope& envelope)
                        ",\"contentRoots\":" + path_array_json(payload.content_roots) +
                        ",\"builtinContentRoots\":" + path_array_json(payload.builtin_content_roots) +
                        ",\"cacheRoot\":" + quote(payload.cache_root.generic_string()) +
+                       ",\"rendererSettings\":" + quote(payload.renderer_settings.generic_string()) +
                        ",\"defaultScene\":" + quote(payload.default_scene.generic_string()) +
                        ",\"projectGuid\":" + quote(payload.project_guid) +
                        ",\"engineVersion\":" + quote(payload.engine_version) +
@@ -1679,8 +1680,8 @@ std::string to_json(const host_command_envelope& envelope)
                        ",\"enabled\":" + bool_json(payload.enabled) + '}';
             else if constexpr (std::is_same_v<type, host_runtime_stage_flow_source_command> ||
                                std::is_same_v<type, host_runtime_update_flow_source_command>)
-                return "{\"guid\":" + quote(payload.guid) + ",\"revision\":" +
-                       std::to_string(payload.revision) + ",\"source\":" + quote(payload.source) + '}';
+                return "{\"guid\":" + quote(payload.guid) + ",\"revision\":" + std::to_string(payload.revision) +
+                       ",\"source\":" + quote(payload.source) + '}';
             else if constexpr (std::is_same_v<type, host_set_transform_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"transform\":" + to_json(payload.transform) + '}';
             else if constexpr (std::is_same_v<type, host_set_render_layer_command>)
@@ -2197,12 +2198,11 @@ std::string to_json(const host_project_assets_snapshot& snapshot)
         const auto& asset = snapshot.assets[index];
         if (index != 0) json += ',';
         json += "{\"guid\":" + quote(asset.guid) + ",\"path\":" + quote(asset.path) +
-                ",\"sourcePath\":" + quote(asset.source_path) +
-                ",\"title\":" + quote(asset.title) + ",\"description\":" + quote(asset.description) +
-                ",\"scope\":" + quote(asset.scope) + ",\"kind\":" + quote(asset.kind) +
-                ",\"typeId\":" + quote(asset.type_id) + ",\"importerId\":" + quote(asset.importer_id) +
-                ",\"state\":" + quote(asset.state) + ",\"residency\":" + quote(asset.residency) +
-                ",\"generation\":" + std::to_string(asset.generation) +
+                ",\"sourcePath\":" + quote(asset.source_path) + ",\"title\":" + quote(asset.title) +
+                ",\"description\":" + quote(asset.description) + ",\"scope\":" + quote(asset.scope) +
+                ",\"kind\":" + quote(asset.kind) + ",\"typeId\":" + quote(asset.type_id) +
+                ",\"importerId\":" + quote(asset.importer_id) + ",\"state\":" + quote(asset.state) +
+                ",\"residency\":" + quote(asset.residency) + ",\"generation\":" + std::to_string(asset.generation) +
                 ",\"strongReferences\":" + std::to_string(asset.strong_references) +
                 ",\"pins\":" + std::to_string(asset.pins) + ",\"diagnostic\":" + quote(asset.diagnostic) +
                 ",\"dependencies\":[";
@@ -2259,9 +2259,11 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         command.root = root;
         std::string descriptor_path;
         std::string cache_root;
+        std::string renderer_settings;
         std::string default_scene;
         string_value(payload, "descriptorPath", descriptor_path);
         string_value(payload, "cacheRoot", cache_root);
+        string_value(payload, "rendererSettings", renderer_settings);
         string_value(payload, "defaultScene", default_scene);
         std::string editor_module_path;
         string_value(payload, "projectGuid", command.project_guid);
@@ -2270,6 +2272,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         string_value(payload, "editorModulePath", editor_module_path);
         command.descriptor_path = descriptor_path;
         command.cache_root = cache_root;
+        command.renderer_settings = renderer_settings;
         command.default_scene = default_scene;
         command.editor_module_path = editor_module_path;
         string_array_value(payload, "contentRoots", command.content_roots);
