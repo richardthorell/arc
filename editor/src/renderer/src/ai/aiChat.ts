@@ -1,3 +1,13 @@
+import {
+  AI_RUNTIME_SCHEMA_VERSION,
+  textContent,
+  type AiModelCapabilities,
+  type AiModelDescriptor,
+  type AiRuntimeMessage,
+  type AiRuntimeRequest,
+  type AiRuntimeStreamEvent,
+} from '../../../common/aiRuntimeTypes';
+
 export type AiChatRole = 'user' | 'assistant' | 'system';
 
 export type AiChatMessageState = 'complete' | 'streaming' | 'error';
@@ -22,21 +32,19 @@ export type AiConversation = {
   modelLabel?: string;
 };
 
-export type AiModelRequest = {
-  conversationId: string;
-  messages: AiChatMessage[];
-  signal?: AbortSignal;
-};
+export type AiModelRequest = AiRuntimeRequest;
+export type AiModelStreamEvent = AiRuntimeStreamEvent;
 
-export type AiModelStreamEvent =
-  { type: 'delta'; text: string } | { type: 'done' } | { type: 'error'; message: string };
-
-export interface AiModelProvider {
-  readonly id: string;
-  readonly label: string;
+export interface AiModelProvider extends AiModelDescriptor {
   readonly configured: boolean;
   stream(request: AiModelRequest): AsyncIterable<AiModelStreamEvent>;
 }
+
+export const textOnlyAiModelCapabilities = {
+  streaming: true,
+  tools: false,
+  inputModalities: ['text'],
+} as const satisfies AiModelCapabilities;
 
 export const aiConversationStorageKey = 'arc.ai.conversations.v1';
 
@@ -68,6 +76,25 @@ export const createAiMessage = (
   content,
   createdAt: now(),
   state,
+});
+
+export const toAiRuntimeMessages = (messages: readonly AiChatMessage[]): AiRuntimeMessage[] =>
+  messages.map((message) => ({
+    id: message.id,
+    role: message.role,
+    content: [textContent(message.content)],
+    createdAt: message.createdAt,
+  }));
+
+export const createAiModelRequest = (
+  conversationId: string,
+  messages: readonly AiChatMessage[],
+  signal?: AbortSignal,
+): AiModelRequest => ({
+  schemaVersion: AI_RUNTIME_SCHEMA_VERSION,
+  conversationId,
+  messages: toAiRuntimeMessages(messages),
+  signal,
 });
 
 export const conversationTitleFromPrompt = (prompt: string): string => {
@@ -137,15 +164,18 @@ export const saveAiConversations = (
 
 export const unavailableAiModelProvider: AiModelProvider = {
   id: 'unconfigured',
+  providerId: 'none',
+  modelId: 'unconfigured',
   label: 'No provider',
+  capabilities: textOnlyAiModelCapabilities,
   configured: false,
   async *stream() {
     const text =
       'No AI model provider is configured yet. Stage 1 adds the conversation and streaming foundation; model configuration and editor-aware tools are layered on next.';
     for (const chunk of text.match(/.{1,24}(?:\s|$)/g) ?? [text]) {
-      yield { type: 'delta' as const, text: chunk };
+      yield { type: 'text.delta' as const, text: chunk };
       await Promise.resolve();
     }
-    yield { type: 'done' as const };
+    yield { type: 'done' as const, finishReason: 'stop' as const };
   },
 };
