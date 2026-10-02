@@ -38,7 +38,10 @@ describe('asset library mounts', () => {
   });
 
   it('resolves relative asset paths through their logical mount', () => {
-    const mounts = buildAssetLibraryMounts({ project: 'C:\\Projects\\Game\\Content', user: '/Users/example/.arc/assets' });
+    const mounts = buildAssetLibraryMounts({
+      project: 'C:\\Projects\\Game\\Content',
+      user: '/Users/example/.arc/assets',
+    });
 
     expect(resolveAssetLibraryMountPath(mounts, 'project', 'Materials\\Metal.arcasset')).toBe(
       'C:/Projects/Game/Content/Materials/Metal.arcasset',
