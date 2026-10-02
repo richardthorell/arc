@@ -1,11 +1,22 @@
 import { describe, expect, it } from 'vitest';
 
-import { conversationTitleFromPrompt, createAiConversation, createAiMessage } from './aiChat';
+import {
+  conversationCaptionFromResponse,
+  conversationTitleFromPrompt,
+  createAiConversation,
+  createAiMessage,
+} from './aiChat';
 
 describe('AI conversation helpers', () => {
   it('creates compact titles from the first user prompt', () => {
     expect(conversationTitleFromPrompt('  Make   the light warmer  ')).toBe('Make the light warmer');
     expect(conversationTitleFromPrompt('x'.repeat(60))).toBe(`${'x'.repeat(39)}…`);
+  });
+
+  it('normalizes provider-generated captions before persisting them', () => {
+    expect(conversationCaptionFromResponse('"Inspect Editor Harness"\nExtra explanation')).toBe('Inspect Editor Harness');
+    expect(conversationCaptionFromResponse('  Scene   Lighting Polish!  ')).toBe('Scene Lighting Polish');
+    expect(conversationCaptionFromResponse('   ')).toBeNull();
   });
 
   it('creates conversations and messages with persistence-ready metadata', () => {
