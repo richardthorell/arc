@@ -6,6 +6,7 @@ import {
   findTransitiveDependentAssetIds,
   planAssetBulkDelete,
   planAssetDelete,
+  planAssetDeleteTransaction,
   planAssetRelocation,
   planAssetRelocationTransaction,
 } from './assetDependencyOperations';
@@ -94,6 +95,42 @@ describe('asset dependency operations', () => {
       ],
       blockingReferences: [],
       safe: true,
+    });
+  });
+
+  it('plans delete mutations as explicit atomic transactions', () => {
+    const index = buildAssetDependencyIndex([
+      { sourceAssetId: 'material-a', targetAssetId: 'texture-a', kind: 'texture' },
+      { sourceAssetId: 'scene-a', targetAssetId: 'material-a', kind: 'material' },
+    ]);
+
+    expect(planAssetDeleteTransaction(index, ['texture-a', 'material-a'])).toEqual({
+      assetIds: ['material-a', 'texture-a'],
+      internalReferences: [{ sourceAssetId: 'material-a', targetAssetId: 'texture-a', kind: 'texture' }],
+      blockingReferences: [{ sourceAssetId: 'scene-a', targetAssetId: 'material-a', kind: 'material' }],
+      atomic: true,
+      executable: false,
+    });
+
+    expect(planAssetDeleteTransaction(index, ['scene-a', 'texture-a', 'material-a'])).toEqual({
+      assetIds: ['material-a', 'scene-a', 'texture-a'],
+      internalReferences: [
+        { sourceAssetId: 'material-a', targetAssetId: 'texture-a', kind: 'texture' },
+        { sourceAssetId: 'scene-a', targetAssetId: 'material-a', kind: 'material' },
+      ],
+      blockingReferences: [],
+      atomic: true,
+      executable: true,
+    });
+  });
+
+  it('never treats an empty delete selection as an executable transaction', () => {
+    expect(planAssetDeleteTransaction(buildAssetDependencyIndex([]), [])).toEqual({
+      assetIds: [],
+      internalReferences: [],
+      blockingReferences: [],
+      atomic: true,
+      executable: false,
     });
   });
 
