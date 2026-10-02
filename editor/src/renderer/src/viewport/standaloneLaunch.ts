@@ -14,6 +14,21 @@ export type StandaloneLaunchFailure = Readonly<{
   message: string;
 }>;
 
+export type StandaloneSessionStatus = 'launching' | 'running' | 'stopping' | 'stopped' | 'failed';
+
+export type StandaloneSession = Readonly<{
+  request: StandaloneLaunchRequest;
+  status: StandaloneSessionStatus;
+  processId?: number;
+  failure?: StandaloneLaunchFailure;
+}>;
+
+export type StandaloneSessionEvent =
+  | Readonly<{ type: 'started'; sessionId: string; processId: number }>
+  | Readonly<{ type: 'stop-requested'; sessionId: string }>
+  | Readonly<{ type: 'stopped'; sessionId: string }>
+  | Readonly<{ type: 'failed'; sessionId: string; failure: StandaloneLaunchFailure }>;
+
 const normalizeProjectPath = (projectPath: string): string => projectPath.trim().replace(/\\/g, '/');
 
 /**
@@ -42,6 +57,43 @@ export const createStandaloneLaunchRequest = (
     configuration,
   };
 };
+
+export const createStandaloneSession = (request: StandaloneLaunchRequest): StandaloneSession => ({
+  request,
+  status: 'launching',
+});
+
+/**
+ * Applies host lifecycle events only to the standalone session they identify.
+ * Stale events from a stopped/relaunched process cannot mutate a newer session.
+ */
+export const reduceStandaloneSession = (
+  session: StandaloneSession,
+  event: StandaloneSessionEvent,
+): StandaloneSession => {
+  if (event.sessionId !== session.request.sessionId) return session;
+
+  switch (event.type) {
+    case 'started':
+      if (session.status !== 'launching' || !Number.isInteger(event.processId) || event.processId <= 0) return session;
+      return { ...session, status: 'running', processId: event.processId, failure: undefined };
+    case 'stop-requested':
+      if (session.status !== 'launching' && session.status !== 'running') return session;
+      return { ...session, status: 'stopping' };
+    case 'stopped':
+      if (session.status === 'stopped') return session;
+      return { ...session, status: 'stopped', processId: undefined };
+    case 'failed':
+      if (session.status === 'stopped') return session;
+      return { ...session, status: 'failed', processId: undefined, failure: event.failure };
+  }
+};
+
+export const createStandaloneRelaunchRequest = (
+  session: StandaloneSession,
+  nextSessionId: string,
+): StandaloneLaunchRequest =>
+  createStandaloneLaunchRequest(nextSessionId, session.request.projectPath, session.request.configuration);
 
 export const describeStandaloneLaunchFailure = (failure: StandaloneLaunchFailure): string => {
   const detail = failure.message.trim();
