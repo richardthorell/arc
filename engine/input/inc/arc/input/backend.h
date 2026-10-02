@@ -63,15 +63,24 @@ struct input_backend_descriptor
 {
     switch (type)
     {
-    case input_device_type::keyboard: return capabilities.keyboard;
-    case input_device_type::mouse: return capabilities.mouse;
-    case input_device_type::gamepad: return capabilities.gamepad;
-    case input_device_type::touch: return capabilities.touch;
-    case input_device_type::pen: return capabilities.pen;
-    case input_device_type::wheel: return capabilities.wheel;
-    case input_device_type::flight_stick: return capabilities.flight_stick;
-    case input_device_type::motion_controller: return capabilities.motion_controller;
-    case input_device_type::unknown: return false;
+        case input_device_type::keyboard:
+            return capabilities.keyboard;
+        case input_device_type::mouse:
+            return capabilities.mouse;
+        case input_device_type::gamepad:
+            return capabilities.gamepad;
+        case input_device_type::touch:
+            return capabilities.touch;
+        case input_device_type::pen:
+            return capabilities.pen;
+        case input_device_type::wheel:
+            return capabilities.wheel;
+        case input_device_type::flight_stick:
+            return capabilities.flight_stick;
+        case input_device_type::motion_controller:
+            return capabilities.motion_controller;
+        case input_device_type::unknown:
+            return false;
     }
     return false;
 }
