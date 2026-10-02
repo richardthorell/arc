@@ -121,19 +121,12 @@ enumerate_binding_conflicts(const std::vector<input_mapping_binding>& mappings, 
 
                 const bool same_context = existing.context == candidate.context;
                 const bool same_priority = existing.context_priority == candidate.context_priority;
-                const input_conflict_kind kind = (lhs.modifier || rhs.modifier)
-                                                     ? input_conflict_kind::chord_component
-                                                     : (same_context ? input_conflict_kind::same_context
-                                                                     : input_conflict_kind::layered_context);
-                result.push_back({existing.binding_id,
-                                  candidate.binding_id,
-                                  existing.context,
-                                  candidate.context,
-                                  existing.action,
-                                  candidate.action,
-                                  rhs.control,
-                                  kind,
-                                  same_context || same_priority});
+                const input_conflict_kind kind =
+                    (lhs.modifier || rhs.modifier)
+                        ? input_conflict_kind::chord_component
+                        : (same_context ? input_conflict_kind::same_context : input_conflict_kind::layered_context);
+                result.push_back({existing.binding_id, candidate.binding_id, existing.context, candidate.context,
+                                  existing.action, candidate.action, rhs.control, kind, same_context || same_priority});
             }
         }
     }
@@ -164,14 +157,17 @@ apply_binding_conflict_policy(const std::vector<input_mapping_binding>& mappings
 
     if ((policy == input_conflict_policy::replace || policy == input_conflict_policy::unbind_previous) && ambiguous)
     {
-        resolution.bindings.erase(
-            std::remove_if(resolution.bindings.begin(), resolution.bindings.end(), [&](const input_mapping_binding& item) {
-                return std::any_of(resolution.conflicts.begin(), resolution.conflicts.end(),
-                                   [&](const input_binding_conflict& conflict) {
-                                       return conflict.ambiguous && conflict.existing_binding_id == item.binding_id;
-                                   });
-            }),
-            resolution.bindings.end());
+        resolution.bindings.erase(std::remove_if(resolution.bindings.begin(), resolution.bindings.end(),
+                                                 [&](const input_mapping_binding& item)
+                                                 {
+                                                     return std::any_of(
+                                                         resolution.conflicts.begin(), resolution.conflicts.end(),
+                                                         [&](const input_binding_conflict& conflict) {
+                                                             return conflict.ambiguous &&
+                                                                    conflict.existing_binding_id == item.binding_id;
+                                                         });
+                                                 }),
+                                  resolution.bindings.end());
     }
 
     resolution.bindings.push_back(std::move(candidate));

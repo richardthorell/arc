@@ -33,7 +33,8 @@ int main()
     using namespace arc::input;
 
     const input_mapping_binding jump = mapping("gameplay", 0, "jump", "jump-space", key_binding(key::space));
-    const input_mapping_binding interact = mapping("gameplay", 0, "interact", "interact-space", key_binding(key::space));
+    const input_mapping_binding interact =
+        mapping("gameplay", 0, "interact", "interact-space", key_binding(key::space));
 
     auto conflicts = enumerate_binding_conflicts({jump}, interact);
     assert(conflicts.size() == 1);
