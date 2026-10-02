@@ -69,4 +69,15 @@ describe('runtimeAiProvidersFromSettings', () => {
     expect(runtimeAiProvidersFromSettings(snapshot('disconnected'))).toEqual([]);
     expect(runtimeAiProvidersFromSettings(snapshot('invalid'))).toEqual([]);
   });
+
+  it('rejects secret-like runtime metadata at the production provider boundary', async () => {
+    const provider = runtimeAiProvidersFromSettings(snapshot('connected'))[0];
+    const stream = provider.stream({
+      conversationId: 'conversation',
+      messages: [],
+      metadata: { nested: { openaiApiKey: 'sk-must-not-leave-arc' } },
+    });
+
+    await expect(stream.next()).rejects.toThrow(/unsafe_runtime_metadata/);
+  });
 });
