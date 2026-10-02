@@ -10,67 +10,185 @@ if(BUILD_TESTING)
     )
     arc_configure_first_party_target(arc-input-rumble-tests)
 
-    target_compile_features(arc-input-rumble-tests PRIVATE cxx_std_20)
-    target_link_libraries(arc-input-rumble-tests PRIVATE arc-input)
+    target_compile_features(arc-input-rumble-tests
+        PRIVATE
+            cxx_std_20
+    )
+
+    target_link_libraries(arc-input-rumble-tests
+        PRIVATE
+            arc-input
+    )
+
     add_test(NAME arc-input-rumble-tests COMMAND arc-input-rumble-tests)
 
-    add_executable(arc-input-battery-tests test_support/battery_tests.cpp)
+    add_executable(arc-input-battery-tests
+        test_support/battery_tests.cpp
+    )
     arc_configure_first_party_target(arc-input-battery-tests)
-    target_compile_features(arc-input-battery-tests PRIVATE cxx_std_20)
-    target_link_libraries(arc-input-battery-tests PRIVATE arc-input)
+
+    target_compile_features(arc-input-battery-tests
+        PRIVATE
+            cxx_std_20
+    )
+
+    target_link_libraries(arc-input-battery-tests
+        PRIVATE
+            arc-input
+    )
+
     add_test(NAME arc-input-battery-tests COMMAND arc-input-battery-tests)
 
-    add_executable(arc-input-touch-tests test_support/touch_tests.cpp)
+    add_executable(arc-input-touch-tests
+        test_support/touch_tests.cpp
+    )
     arc_configure_first_party_target(arc-input-touch-tests)
-    target_compile_features(arc-input-touch-tests PRIVATE cxx_std_20)
-    target_link_libraries(arc-input-touch-tests PRIVATE arc-input)
+
+    target_compile_features(arc-input-touch-tests
+        PRIVATE
+            cxx_std_20
+    )
+
+    target_link_libraries(arc-input-touch-tests
+        PRIVATE
+            arc-input
+    )
+
     add_test(NAME arc-input-touch-tests COMMAND arc-input-touch-tests)
 
-    add_executable(arc-input-advanced-output-tests test_support/advanced_output_tests.cpp)
+    add_executable(arc-input-advanced-output-tests
+        test_support/advanced_output_tests.cpp
+    )
     arc_configure_first_party_target(arc-input-advanced-output-tests)
-    target_compile_features(arc-input-advanced-output-tests PRIVATE cxx_std_20)
-    target_link_libraries(arc-input-advanced-output-tests PRIVATE arc-input)
+
+    target_compile_features(arc-input-advanced-output-tests
+        PRIVATE
+            cxx_std_20
+    )
+
+    target_link_libraries(arc-input-advanced-output-tests
+        PRIVATE
+            arc-input
+    )
+
     add_test(NAME arc-input-advanced-output-tests COMMAND arc-input-advanced-output-tests)
 
-    add_executable(arc-input-composite-mapping-tests test_support/composite_mapping_tests.cpp)
+    add_executable(arc-input-composite-mapping-tests
+        test_support/composite_mapping_tests.cpp
+    )
     arc_configure_first_party_target(arc-input-composite-mapping-tests)
-    target_compile_features(arc-input-composite-mapping-tests PRIVATE cxx_std_20)
-    target_link_libraries(arc-input-composite-mapping-tests PRIVATE arc-input)
+
+    target_compile_features(arc-input-composite-mapping-tests
+        PRIVATE
+            cxx_std_20
+    )
+
+    target_link_libraries(arc-input-composite-mapping-tests
+        PRIVATE
+            arc-input
+    )
+
     add_test(NAME arc-input-composite-mapping-tests COMMAND arc-input-composite-mapping-tests)
 
-    add_executable(arc-input-composite-tests test_support/composite_tests.cpp)
+    add_executable(arc-input-composite-tests
+        test_support/composite_tests.cpp
+    )
     arc_configure_first_party_target(arc-input-composite-tests)
-    target_compile_features(arc-input-composite-tests PRIVATE cxx_std_20)
-    target_link_libraries(arc-input-composite-tests PRIVATE arc-input)
+
+    target_compile_features(arc-input-composite-tests
+        PRIVATE
+            cxx_std_20
+    )
+
+    target_link_libraries(arc-input-composite-tests
+        PRIVATE
+            arc-input
+    )
+
     add_test(NAME arc-input-composite-tests COMMAND arc-input-composite-tests)
 
-    add_executable(arc-input-capabilities-tests test_support/capabilities_tests.cpp)
+    add_executable(arc-input-capabilities-tests
+        test_support/capabilities_tests.cpp
+    )
     arc_configure_first_party_target(arc-input-capabilities-tests)
-    target_compile_features(arc-input-capabilities-tests PRIVATE cxx_std_20)
-    target_link_libraries(arc-input-capabilities-tests PRIVATE arc-input)
+
+    target_compile_features(arc-input-capabilities-tests
+        PRIVATE
+            cxx_std_20
+    )
+
+    target_link_libraries(arc-input-capabilities-tests
+        PRIVATE
+            arc-input
+    )
+
     add_test(NAME arc-input-capabilities-tests COMMAND arc-input-capabilities-tests)
 
-    add_executable(arc-input-conflict-tests test_support/conflict_tests.cpp)
+    add_executable(arc-input-conflict-tests
+        test_support/conflict_tests.cpp
+    )
     arc_configure_first_party_target(arc-input-conflict-tests)
-    target_compile_features(arc-input-conflict-tests PRIVATE cxx_std_20)
-    target_link_libraries(arc-input-conflict-tests PRIVATE arc-input)
+
+    target_compile_features(arc-input-conflict-tests
+        PRIVATE
+            cxx_std_20
+    )
+
+    target_link_libraries(arc-input-conflict-tests
+        PRIVATE
+            arc-input
+    )
+
     add_test(NAME arc-input-conflict-tests COMMAND arc-input-conflict-tests)
 
-    add_executable(arc-input-action-trigger-tests test_support/action_trigger_tests.cpp)
+    add_executable(arc-input-action-trigger-tests
+        test_support/action_trigger_tests.cpp
+    )
     arc_configure_first_party_target(arc-input-action-trigger-tests)
-    target_compile_features(arc-input-action-trigger-tests PRIVATE cxx_std_20)
-    target_link_libraries(arc-input-action-trigger-tests PRIVATE arc-input)
+
+    target_compile_features(arc-input-action-trigger-tests
+        PRIVATE
+            cxx_std_20
+    )
+
+    target_link_libraries(arc-input-action-trigger-tests
+        PRIVATE
+            arc-input
+    )
+
     add_test(NAME arc-input-action-trigger-tests COMMAND arc-input-action-trigger-tests)
 
-    add_executable(arc-input-action-trigger-runtime-tests test_support/action_trigger_runtime_tests.cpp)
+    add_executable(arc-input-action-trigger-runtime-tests
+        test_support/action_trigger_runtime_tests.cpp
+    )
     arc_configure_first_party_target(arc-input-action-trigger-runtime-tests)
-    target_compile_features(arc-input-action-trigger-runtime-tests PRIVATE cxx_std_20)
-    target_link_libraries(arc-input-action-trigger-runtime-tests PRIVATE arc-input)
+
+    target_compile_features(arc-input-action-trigger-runtime-tests
+        PRIVATE
+            cxx_std_20
+    )
+
+    target_link_libraries(arc-input-action-trigger-runtime-tests
+        PRIVATE
+            arc-input
+    )
+
     add_test(NAME arc-input-action-trigger-runtime-tests COMMAND arc-input-action-trigger-runtime-tests)
 
-    add_executable(arc-input-backend-capabilities-tests test_support/backend_capabilities_tests.cpp)
+    add_executable(arc-input-backend-capabilities-tests
+        test_support/backend_capabilities_tests.cpp
+    )
     arc_configure_first_party_target(arc-input-backend-capabilities-tests)
-    target_compile_features(arc-input-backend-capabilities-tests PRIVATE cxx_std_20)
-    target_link_libraries(arc-input-backend-capabilities-tests PRIVATE arc-input)
+
+    target_compile_features(arc-input-backend-capabilities-tests
+        PRIVATE
+            cxx_std_20
+    )
+
+    target_link_libraries(arc-input-backend-capabilities-tests
+        PRIVATE
+            arc-input
+    )
+
     add_test(NAME arc-input-backend-capabilities-tests COMMAND arc-input-backend-capabilities-tests)
 endif()
