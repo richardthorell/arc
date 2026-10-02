@@ -58,7 +58,12 @@ const configuredProvider: AiModelProvider = {
   id: 'openai:test',
   label: 'Test Agent',
   configured: true,
-  async *stream() {
+  async *stream(request) {
+    if (request.metadata?.purpose === 'conversation-caption') {
+      yield { type: 'delta', text: 'ARC conversation' };
+      yield { type: 'done', finishReason: 'stop' };
+      return;
+    }
     yield { type: 'delta', text: 'Hello ' };
     yield { type: 'delta', text: 'from ARC.' };
     yield { type: 'done' };
@@ -69,7 +74,12 @@ const alternateProvider: AiModelProvider = {
   id: 'anthropic:alternate',
   label: 'Alternate Agent',
   configured: true,
-  async *stream() {
+  async *stream(request) {
+    if (request.metadata?.purpose === 'conversation-caption') {
+      yield { type: 'delta', text: 'Cabin material polish' };
+      yield { type: 'done', finishReason: 'stop' };
+      return;
+    }
     yield { type: 'delta', text: 'Alternate reply.' };
     yield { type: 'done' };
   },
@@ -152,6 +162,7 @@ describe('AiChatPanel', () => {
     expect(screen.getByLabelText('Model')).toHaveTextContent('Alternate Agent');
     expect(screen.getByRole('button', { name: 'Add context' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Alternate reply.')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Cabin material polish')).toBeInTheDocument());
 
     fireEvent.click(screen.getByLabelText('Model'));
     fireEvent.click(screen.getByRole('option', { name: 'Test Agent' }));
@@ -161,7 +172,26 @@ describe('AiChatPanel', () => {
 
     expect(screen.getByRole('region', { name: 'Conversations' })).toBeInTheDocument();
     expect(screen.getByLabelText('Model')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Open conversation Polish the cabin material' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open conversation Cabin material polish' })).toBeInTheDocument();
+  });
+
+  it('sends with Enter while Shift+Enter remains available for multiline prompts', async () => {
+    render(<AiChatPanel persistConversations={false} provider={configuredProvider} />);
+
+    const composer = screen.getByLabelText('Start a conversation');
+    fireEvent.change(composer, { target: { value: 'Inspect the current scene' } });
+    fireEvent.keyDown(composer, { key: 'Enter', shiftKey: true });
+    expect(screen.queryByRole('region', { name: 'Active conversation' })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(composer, { key: 'Enter' });
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Active conversation' })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Hello from ARC.')).toBeInTheDocument());
+
+    const followUp = screen.getByLabelText('Chat prompt');
+    fireEvent.change(followUp, { target: { value: 'And what is selected?' } });
+    fireEvent.keyDown(followUp, { key: 'Enter' });
+
+    expect(screen.getByText('And what is selected?')).toBeInTheDocument();
   });
 
   it('opens a recent conversation with the model dropdown available while chatting', async () => {
