@@ -34,7 +34,10 @@ struct dependency_validation
     std::vector<dependency_reference> dependencies;
     std::vector<dependency_reference> unresolved;
 
-    [[nodiscard]] bool valid() const noexcept { return unresolved.empty(); }
+    [[nodiscard]] bool valid() const noexcept
+    {
+        return unresolved.empty();
+    }
 };
 
 /**
@@ -48,31 +51,40 @@ template <typename Resolver>
 [[nodiscard]] dependency_validation validate_dependencies(std::vector<dependency_reference> references,
                                                           Resolver&& resolves_asset_id)
 {
-    references.erase(std::remove_if(references.begin(), references.end(), [](const dependency_reference& reference) {
-                         return reference.asset_id.empty();
-                     }),
-                     references.end());
+    const auto has_empty_asset_id = [](const dependency_reference& reference) { return reference.asset_id.empty(); };
+    references.erase(std::remove_if(references.begin(), references.end(), has_empty_asset_id), references.end());
 
-    std::stable_sort(references.begin(), references.end(), [](const dependency_reference& lhs,
-                                                              const dependency_reference& rhs) {
+    const auto compare_references = [](const dependency_reference& lhs, const dependency_reference& rhs)
+    {
         if (lhs.kind != rhs.kind)
+        {
             return lhs.kind < rhs.kind;
+        }
         if (lhs.asset_id != rhs.asset_id)
+        {
             return lhs.asset_id < rhs.asset_id;
+        }
         return lhs.source_node_id < rhs.source_node_id;
-    });
+    };
+    std::stable_sort(references.begin(), references.end(), compare_references);
 
     dependency_validation result;
     for (const auto& reference : references)
     {
-        const bool duplicate = !result.dependencies.empty() && result.dependencies.back().kind == reference.kind &&
-                               result.dependencies.back().asset_id == reference.asset_id;
-        if (duplicate)
-            continue;
+        if (!result.dependencies.empty())
+        {
+            const auto& previous = result.dependencies.back();
+            if (previous.kind == reference.kind && previous.asset_id == reference.asset_id)
+            {
+                continue;
+            }
+        }
 
         result.dependencies.push_back(reference);
         if (!resolves_asset_id(std::string_view{reference.asset_id}))
+        {
             result.unresolved.push_back(reference);
+        }
     }
     return result;
 }
