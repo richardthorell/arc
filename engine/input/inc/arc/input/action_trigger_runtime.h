@@ -22,8 +22,7 @@ class input_action_trigger_runtime final
 {
 public:
     [[nodiscard]] input_trigger_result evaluate(player_id player, std::string_view action, std::string_view context,
-                                                const input_trigger_config& config, float value,
-                                                float delta_seconds)
+                                                const input_trigger_config& config, float value, float delta_seconds)
     {
         player_state& player_runtime = players_[player];
         action_state& action_runtime = player_runtime.actions[std::string(action)];
@@ -33,8 +32,7 @@ public:
             action_runtime.trigger = {};
         }
 
-        input_trigger_result result =
-            evaluate_action_trigger(action_runtime.trigger, config, value, delta_seconds);
+        input_trigger_result result = evaluate_action_trigger(action_runtime.trigger, config, value, delta_seconds);
         action_runtime.trigger = result.state;
         return result;
     }
