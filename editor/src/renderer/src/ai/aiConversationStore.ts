@@ -16,7 +16,8 @@ const normalizeProjectGuid = (projectGuid: string) => projectGuid.trim().toLocal
 export const aiProjectConversationStorageKey = (projectGuid: string) =>
   `arc.ai.projects.${normalizeProjectGuid(projectGuid)}.conversations.v${AI_CONVERSATION_STORE_VERSION}`;
 
-const isOptionalString = (value: unknown): value is string | undefined => value === undefined || typeof value === 'string';
+const isOptionalString = (value: unknown): value is string | undefined =>
+  value === undefined || typeof value === 'string';
 
 const isContextReference = (value: unknown): value is AiConversationContextReference => {
   if (!value || typeof value !== 'object') return false;
@@ -128,7 +129,8 @@ export const migrateAiConversationStoreDocument = (
   if (!value || typeof value !== 'object') return null;
   const source = value as Partial<AiConversationStoreSnapshot> & { schemaVersion?: number };
   if (source.schemaVersion !== AI_CONVERSATION_STORE_VERSION) return null;
-  if (typeof source.projectGuid !== 'string' || normalizeProjectGuid(source.projectGuid) !== normalizedGuid) return null;
+  if (typeof source.projectGuid !== 'string' || normalizeProjectGuid(source.projectGuid) !== normalizedGuid)
+    return null;
   if (!Array.isArray(source.conversations) || !source.conversations.every(isConversation)) return null;
 
   const conversations = source.conversations
