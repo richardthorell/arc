@@ -1,5 +1,6 @@
 import type { AiProviderId } from '../../../common/aiProviderTypes';
 import type { AiModelCapabilities } from '../../../common/aiRuntimeTypes';
+import { assertAiRuntimeRequestSafeForProvider } from '../../../common/aiSecurityPolicy';
 import type { EditorSettingDescriptor, EditorSettingsSnapshot } from '../../../common/editorWorkflowTypes';
 import type { AiModelProvider } from './aiChat';
 
@@ -42,7 +43,8 @@ export const runtimeAiProvidersFromSettings = (
       label: modelLabel(descriptor, modelId),
       capabilities: runtimeModelCapabilities,
       configured: true,
-      async *stream() {
+      async *stream(request) {
+        assertAiRuntimeRequestSafeForProvider(request);
         yield {
           type: 'error' as const,
           code: 'provider' as const,
