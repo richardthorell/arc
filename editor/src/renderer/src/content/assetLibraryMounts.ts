@@ -10,6 +10,15 @@ export type AssetLibraryMountMap = Partial<Record<AssetLibraryScopeId, string>>;
 
 const normalizeMountRoot = (root: string) => root.trim().replaceAll('\\', '/').replace(/\/+/g, '/').replace(/\/$/, '');
 
+const normalizeRelativeAssetPath = (path: string): string | null => {
+  const normalized = path.trim().replaceAll('\\', '/').replace(/\/+/g, '/').replace(/^\.\//, '');
+  if (!normalized || normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)) return null;
+
+  const segments = normalized.split('/');
+  if (segments.some((segment) => segment === '' || segment === '.' || segment === '..')) return null;
+  return segments.join('/');
+};
+
 /**
  * Builds the renderer-side logical mount table without making a mount path
  * part of asset identity. Missing optional mounts simply stay unavailable;
@@ -38,4 +47,21 @@ export function assetLibraryMountForScope(
   scope: AssetLibraryScopeId,
 ): AssetLibraryMount | null {
   return mounts.find((mount) => mount.scope === scope) ?? null;
+}
+
+/**
+ * Resolves a scope-relative asset path through the configured logical mount.
+ * The returned physical path is deliberately derived at the storage boundary;
+ * callers should keep stable asset identity and logical scope separate from it.
+ * Absolute paths and traversal segments are rejected instead of escaping a mount.
+ */
+export function resolveAssetLibraryMountPath(
+  mounts: readonly AssetLibraryMount[],
+  scope: AssetLibraryScopeId,
+  relativePath: string,
+): string | null {
+  const mount = assetLibraryMountForScope(mounts, scope);
+  const normalizedRelativePath = normalizeRelativeAssetPath(relativePath);
+  if (!mount || !normalizedRelativePath) return null;
+  return `${mount.root}/${normalizedRelativePath}`;
 }
