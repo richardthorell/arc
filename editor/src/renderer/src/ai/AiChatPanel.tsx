@@ -6,13 +6,12 @@ import {
   conversationTitleFromPrompt,
   createAiConversation,
   createAiMessage,
-  loadAiConversations,
-  saveAiConversations,
   unavailableAiModelProvider,
   type AiChatMessage,
   type AiConversation,
   type AiModelProvider,
 } from './aiChat';
+import { loadAiConversationStore, saveAiConversationStore } from './aiConversationStore';
 import './aiGateway.css';
 import './aiChatMessageCards.css';
 
@@ -51,6 +50,7 @@ type ActiveStream = {
 type AiChatPanelProps = {
   provider?: AiModelProvider;
   providers?: readonly AiModelProvider[];
+  projectGuid?: string;
   initialConversations?: readonly AiConversation[];
   initialMessages?: readonly AiChatMessage[];
   conversationLabel?: string;
@@ -60,6 +60,7 @@ type AiChatPanelProps = {
 export function AiChatPanel({
   provider,
   providers,
+  projectGuid,
   initialConversations,
   initialMessages,
   conversationLabel = 'New conversation',
@@ -71,7 +72,12 @@ export function AiChatPanel({
   );
   const connected = configuredProviders.length > 0;
   const shouldPersistConversations =
-    persistConversations ?? (initialConversations === undefined && initialMessages === undefined);
+    persistConversations ??
+    (Boolean(projectGuid) && initialConversations === undefined && initialMessages === undefined);
+  const persistedStore = useMemo(
+    () => (shouldPersistConversations && projectGuid ? loadAiConversationStore(projectGuid) : null),
+    [projectGuid, shouldPersistConversations],
+  );
   const [conversations, setConversations] = useState<AiConversation[]>(() => {
     if (initialConversations) return initialConversations.map(cloneConversation);
     if (initialMessages?.length) {
@@ -89,10 +95,14 @@ export function AiChatPanel({
         },
       ];
     }
-    return loadAiConversations();
+    return persistedStore?.conversations.map(cloneConversation) ?? [];
   });
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [selectedModelId, setSelectedModelId] = useState(() => configuredProviders[0]?.id ?? '');
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(
+    () => persistedStore?.uiState.activeConversationId ?? null,
+  );
+  const [selectedModelId, setSelectedModelId] = useState(
+    () => persistedStore?.uiState.selectedModelId ?? configuredProviders[0]?.id ?? '',
+  );
   const [prompt, setPrompt] = useState('');
   const [streaming, setStreaming] = useState(false);
   const activeStreamRef = useRef<ActiveStream | null>(null);
@@ -108,8 +118,12 @@ export function AiChatPanel({
   }, [configuredProviders, selectedModelId]);
 
   useEffect(() => {
-    if (shouldPersistConversations) saveAiConversations(conversations);
-  }, [conversations, shouldPersistConversations]);
+    if (!shouldPersistConversations || !projectGuid) return;
+    saveAiConversationStore(projectGuid, conversations, {
+      ...(activeConversationId ? { activeConversationId } : {}),
+      ...(selectedModelId ? { selectedModelId } : {}),
+    });
+  }, [activeConversationId, conversations, projectGuid, selectedModelId, shouldPersistConversations]);
 
   useEffect(
     () => () => {
