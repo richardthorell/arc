@@ -73,10 +73,7 @@ export const evaluateAiOutboundDataItem = (
   return allowed();
 };
 
-export const assertAiOutboundDataAllowed = (
-  items: readonly AiOutboundDataItem[],
-  activeProjectGuid?: string,
-): void => {
+export const assertAiOutboundDataAllowed = (items: readonly AiOutboundDataItem[], activeProjectGuid?: string): void => {
   for (const item of items) {
     const decision = evaluateAiOutboundDataItem(item, activeProjectGuid);
     if (!decision.allowed) throw new Error(`[AI security: ${decision.code}] ${decision.reason}`);
@@ -84,10 +81,7 @@ export const assertAiOutboundDataAllowed = (
 };
 
 export type AiRestrictedOperation =
-  | 'arbitrary-process'
-  | 'unrestricted-filesystem'
-  | 'project-lifecycle'
-  | 'build-package';
+  'arbitrary-process' | 'unrestricted-filesystem' | 'project-lifecycle' | 'build-package';
 
 export type AiToolSecurityDescriptor = {
   name: string;
@@ -229,7 +223,9 @@ export const summarizeAiRuntimeRequestForDiagnostics = (request: AiRuntimeReques
     messageRoles,
     toolNames: request.tools?.map((tool) => tool.name) ?? [],
     metadataKeys: request.metadata
-      ? Object.keys(request.metadata).filter((key) => !isAiSecretFieldName(key)).sort()
+      ? Object.keys(request.metadata)
+          .filter((key) => !isAiSecretFieldName(key))
+          .sort()
       : [],
     cancelled: request.signal?.aborted ?? false,
   };

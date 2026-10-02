@@ -26,16 +26,19 @@ describe('AI security policy', () => {
     ).toMatchObject({ allowed: false, code: 'credential_blocked' });
 
     expect(
-      evaluateAiOutboundDataItem({
-        id: 'secret',
-        label: 'Signing secret',
-        origin: 'project',
-        sensitivity: 'secret',
-        projectScoped: true,
-        projectGuid: 'project-a',
-        inspectable: true,
-        explicitlyApproved: true,
-      }, 'project-a'),
+      evaluateAiOutboundDataItem(
+        {
+          id: 'secret',
+          label: 'Signing secret',
+          origin: 'project',
+          sensitivity: 'secret',
+          projectScoped: true,
+          projectGuid: 'project-a',
+          inspectable: true,
+          explicitlyApproved: true,
+        },
+        'project-a',
+      ),
     ).toMatchObject({ allowed: false, code: 'secret_blocked' });
   });
 
@@ -165,9 +168,7 @@ describe('AI security policy', () => {
     expect(redactAiDiagnosticText('Authorization: Bearer abcdefghijklmnop')).toBe(
       `Authorization: Bearer ${AI_REDACTED_VALUE}`,
     );
-    expect(redactAiDiagnosticText('api_key=sk-abcdefghijklmnopqrstuvwxyz')).toBe(
-      `api_key=${AI_REDACTED_VALUE}`,
-    );
+    expect(redactAiDiagnosticText('api_key=sk-abcdefghijklmnopqrstuvwxyz')).toBe(`api_key=${AI_REDACTED_VALUE}`);
     expect(
       redactAiDiagnosticValue({
         provider: 'openai',
