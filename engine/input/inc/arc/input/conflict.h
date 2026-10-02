@@ -196,16 +196,16 @@ apply_binding_conflict_policy(const std::vector<input_mapping_binding>& mappings
  * rebinding is atomic: callers receive the original effective mapping set unchanged. This keeps
  * runtime rebinding on the same conflict rules used by project validation and editor tooling.
  */
-[[nodiscard]] inline input_rebind_resolution
-rebind_input_mapping(const std::vector<input_mapping_binding>& mappings, const std::string& binding_id,
-                     input_binding replacement, input_conflict_policy policy)
+[[nodiscard]] inline input_rebind_resolution rebind_input_mapping(const std::vector<input_mapping_binding>& mappings,
+                                                                  const std::string& binding_id,
+                                                                  input_binding replacement,
+                                                                  input_conflict_policy policy)
 {
     input_rebind_resolution result;
     result.bindings = mappings;
 
-    const auto target = std::find_if(mappings.begin(), mappings.end(), [&](const input_mapping_binding& item) {
-        return item.binding_id == binding_id;
-    });
+    const auto target = std::find_if(mappings.begin(), mappings.end(),
+                                     [&](const input_mapping_binding& item) { return item.binding_id == binding_id; });
     if (target == mappings.end())
     {
         return result;
@@ -216,9 +216,8 @@ rebind_input_mapping(const std::vector<input_mapping_binding>& mappings, const s
 
     std::vector<input_mapping_binding> remaining;
     remaining.reserve(mappings.size() - 1);
-    std::copy_if(mappings.begin(), mappings.end(), std::back_inserter(remaining), [&](const input_mapping_binding& item) {
-        return item.binding_id != binding_id;
-    });
+    std::copy_if(mappings.begin(), mappings.end(), std::back_inserter(remaining),
+                 [&](const input_mapping_binding& item) { return item.binding_id != binding_id; });
 
     input_conflict_resolution resolution = apply_binding_conflict_policy(remaining, std::move(candidate), policy);
     result.conflicts = std::move(resolution.conflicts);
