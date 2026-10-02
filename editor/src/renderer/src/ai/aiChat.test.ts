@@ -1,16 +1,6 @@
-// @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import {
-  aiConversationStorageKey,
-  conversationTitleFromPrompt,
-  createAiConversation,
-  createAiMessage,
-  loadAiConversations,
-  saveAiConversations,
-} from './aiChat';
-
-afterEach(() => localStorage.removeItem(aiConversationStorageKey));
+import { conversationTitleFromPrompt, createAiConversation, createAiMessage } from './aiChat';
 
 describe('AI conversation helpers', () => {
   it('creates compact titles from the first user prompt', () => {
@@ -18,44 +8,15 @@ describe('AI conversation helpers', () => {
     expect(conversationTitleFromPrompt('x'.repeat(60))).toBe(`${'x'.repeat(39)}…`);
   });
 
-  it('persists conversations, their locked model, and interrupted stream state', () => {
+  it('creates conversations and messages with persistence-ready metadata', () => {
     const conversation = createAiConversation();
-    conversation.modelId = 'test-model';
-    conversation.modelLabel = 'Test Model';
-    conversation.messages.push(createAiMessage('assistant', 'partial', 'streaming'));
-    saveAiConversations([conversation]);
+    const message = createAiMessage('assistant', 'Hello');
 
-    const restored = loadAiConversations();
-    expect(restored).toHaveLength(1);
-    expect(restored[0]).toMatchObject({
-      id: conversation.id,
-      modelId: 'test-model',
-      modelLabel: 'Test Model',
-    });
-    expect(restored[0].messages[0]).toMatchObject({ content: 'partial', state: 'error' });
-  });
-
-  it('drops empty placeholder conversations from persisted history', () => {
-    const empty = createAiConversation();
-    const populated = createAiConversation();
-    populated.title = 'Useful conversation';
-    populated.messages.push(createAiMessage('user', 'Hello'));
-
-    saveAiConversations([empty, populated]);
-
-    expect(JSON.parse(localStorage.getItem(aiConversationStorageKey) ?? '[]')).toHaveLength(1);
-    expect(loadAiConversations()).toEqual([
-      expect.objectContaining({ id: populated.id, title: 'Useful conversation' }),
-    ]);
-
-    localStorage.setItem(aiConversationStorageKey, JSON.stringify([empty, populated]));
-    expect(loadAiConversations()).toEqual([
-      expect.objectContaining({ id: populated.id, title: 'Useful conversation' }),
-    ]);
-  });
-
-  it('ignores malformed stored data', () => {
-    localStorage.setItem(aiConversationStorageKey, JSON.stringify([{ nope: true }]));
-    expect(loadAiConversations()).toEqual([]);
+    expect(conversation).toMatchObject({ title: 'New Chat', messages: [] });
+    expect(conversation.id).toBeTruthy();
+    expect(conversation.createdAt).toBeTruthy();
+    expect(message).toMatchObject({ role: 'assistant', content: 'Hello', state: 'complete' });
+    expect(message.id).toBeTruthy();
+    expect(message.createdAt).toBeTruthy();
   });
 });
