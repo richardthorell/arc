@@ -74,7 +74,9 @@ const usageFromResponse = (response: unknown): AiTokenUsage | null => {
   return {
     ...(number(source.input_tokens) !== undefined ? { inputTokens: number(source.input_tokens) } : {}),
     ...(number(source.output_tokens) !== undefined ? { outputTokens: number(source.output_tokens) } : {}),
-    ...(number(inputDetails?.cached_tokens) !== undefined ? { cachedInputTokens: number(inputDetails?.cached_tokens) } : {}),
+    ...(number(inputDetails?.cached_tokens) !== undefined
+      ? { cachedInputTokens: number(inputDetails?.cached_tokens) }
+      : {}),
     ...(number(outputDetails?.reasoning_tokens) !== undefined
       ? { reasoningTokens: number(outputDetails?.reasoning_tokens) }
       : {}),
@@ -185,7 +187,8 @@ export class OpenAiRuntimeAdapter {
                   ? 'invalid_request'
                   : 'provider',
         message: `OpenAI request failed (HTTP ${String(response.status)})`,
-        retryable: response.status === 408 || response.status === 409 || response.status === 429 || response.status >= 500,
+        retryable:
+          response.status === 408 || response.status === 409 || response.status === 429 || response.status >= 500,
       };
       return;
     }
