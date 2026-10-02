@@ -124,6 +124,40 @@ if(BUILD_TESTING)
 
     add_test(NAME arc-input-capabilities-tests COMMAND arc-input-capabilities-tests)
 
+    add_executable(arc-input-conflict-tests
+        test_support/conflict_tests.cpp
+    )
+    arc_configure_first_party_target(arc-input-conflict-tests)
+
+    target_compile_features(arc-input-conflict-tests
+        PRIVATE
+            cxx_std_20
+    )
+
+    target_link_libraries(arc-input-conflict-tests
+        PRIVATE
+            arc-input
+    )
+
+    add_test(NAME arc-input-conflict-tests COMMAND arc-input-conflict-tests)
+
+    add_executable(arc-input-action-trigger-tests
+        test_support/action_trigger_tests.cpp
+    )
+    arc_configure_first_party_target(arc-input-action-trigger-tests)
+
+    target_compile_features(arc-input-action-trigger-tests
+        PRIVATE
+            cxx_std_20
+    )
+
+    target_link_libraries(arc-input-action-trigger-tests
+        PRIVATE
+            arc-input
+    )
+
+    add_test(NAME arc-input-action-trigger-tests COMMAND arc-input-action-trigger-tests)
+
     add_executable(arc-input-backend-capabilities-tests
         test_support/backend_capabilities_tests.cpp
     )

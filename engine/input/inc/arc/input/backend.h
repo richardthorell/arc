@@ -19,7 +19,7 @@ enum class input_platform : std::uint8_t
     unknown,
     windows,
     android,
-    linux,
+    linux_desktop,
     macos,
     ios
 };
