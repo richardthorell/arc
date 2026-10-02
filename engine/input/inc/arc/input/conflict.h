@@ -57,6 +57,20 @@ struct input_conflict_resolution
     std::vector<input_binding_conflict> conflicts;
 };
 
+enum class input_rebind_status : std::uint8_t
+{
+    applied,
+    rejected_conflict,
+    binding_not_found
+};
+
+struct input_rebind_resolution
+{
+    input_rebind_status status{input_rebind_status::binding_not_found};
+    std::vector<input_mapping_binding> bindings;
+    std::vector<input_binding_conflict> conflicts;
+};
+
 namespace detail
 {
 struct binding_control
@@ -173,6 +187,50 @@ apply_binding_conflict_policy(const std::vector<input_mapping_binding>& mappings
     resolution.bindings.push_back(std::move(candidate));
     resolution.accepted = true;
     return resolution;
+}
+
+/**
+ * @brief Rebind one existing runtime mapping through the shared conflict-policy path.
+ *
+ * The binding identity, action, context, priority, and enabled state are retained. Rejected
+ * rebinding is atomic: callers receive the original effective mapping set unchanged. This keeps
+ * runtime rebinding on the same conflict rules used by project validation and editor tooling.
+ */
+[[nodiscard]] inline input_rebind_resolution
+rebind_input_mapping(const std::vector<input_mapping_binding>& mappings, const std::string& binding_id,
+                     input_binding replacement, input_conflict_policy policy)
+{
+    input_rebind_resolution result;
+    result.bindings = mappings;
+
+    const auto target = std::find_if(mappings.begin(), mappings.end(), [&](const input_mapping_binding& item) {
+        return item.binding_id == binding_id;
+    });
+    if (target == mappings.end())
+    {
+        return result;
+    }
+
+    input_mapping_binding candidate = *target;
+    candidate.binding = std::move(replacement);
+
+    std::vector<input_mapping_binding> remaining;
+    remaining.reserve(mappings.size() - 1);
+    std::copy_if(mappings.begin(), mappings.end(), std::back_inserter(remaining), [&](const input_mapping_binding& item) {
+        return item.binding_id != binding_id;
+    });
+
+    input_conflict_resolution resolution = apply_binding_conflict_policy(remaining, std::move(candidate), policy);
+    result.conflicts = std::move(resolution.conflicts);
+    if (!resolution.accepted)
+    {
+        result.status = input_rebind_status::rejected_conflict;
+        return result;
+    }
+
+    result.status = input_rebind_status::applied;
+    result.bindings = std::move(resolution.bindings);
+    return result;
 }
 
 } // namespace arc::input
