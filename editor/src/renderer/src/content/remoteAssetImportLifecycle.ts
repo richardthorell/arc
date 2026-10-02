@@ -16,18 +16,14 @@ export const beginRemoteAssetImport = (state: RemoteAssetImportLifecycle): Remot
   operationId: state.operationId + 1,
 });
 
-export const requestRemoteAssetImportCancellation = (
-  state: RemoteAssetImportLifecycle,
-): RemoteAssetImportLifecycle =>
+export const requestRemoteAssetImportCancellation = (state: RemoteAssetImportLifecycle): RemoteAssetImportLifecycle =>
   state.phase === 'running' ? { ...state, phase: 'canceling' } : state;
 
 export const completeRemoteAssetImport = (
   state: RemoteAssetImportLifecycle,
   operationId: number,
 ): RemoteAssetImportLifecycle =>
-  operationId === state.operationId && state.phase === 'running'
-    ? { phase: 'completed', operationId }
-    : state;
+  operationId === state.operationId && state.phase === 'running' ? { phase: 'completed', operationId } : state;
 
 export const cancelRemoteAssetImport = (
   state: RemoteAssetImportLifecycle,
