@@ -1,8 +1,14 @@
 export type RemoteAssetImportPhase = 'idle' | 'running' | 'canceling' | 'completed' | 'failed' | 'canceled';
 
+export type RemoteAssetImportProgress = {
+  bytesReceived: number;
+  totalBytes?: number;
+};
+
 export type RemoteAssetImportLifecycle = {
   phase: RemoteAssetImportPhase;
   operationId: number;
+  progress?: RemoteAssetImportProgress;
   error?: string;
 };
 
@@ -14,7 +20,29 @@ export const initialRemoteAssetImportLifecycle = (): RemoteAssetImportLifecycle 
 export const beginRemoteAssetImport = (state: RemoteAssetImportLifecycle): RemoteAssetImportLifecycle => ({
   phase: 'running',
   operationId: state.operationId + 1,
+  progress: { bytesReceived: 0 },
 });
+
+export const updateRemoteAssetImportProgress = (
+  state: RemoteAssetImportLifecycle,
+  operationId: number,
+  progress: RemoteAssetImportProgress,
+): RemoteAssetImportLifecycle => {
+  if (operationId !== state.operationId || (state.phase !== 'running' && state.phase !== 'canceling')) {
+    return state;
+  }
+
+  const bytesReceived = Math.max(state.progress?.bytesReceived ?? 0, Math.max(0, progress.bytesReceived));
+  const totalBytes = progress.totalBytes !== undefined && progress.totalBytes > 0 ? progress.totalBytes : state.progress?.totalBytes;
+
+  return {
+    ...state,
+    progress: {
+      bytesReceived: totalBytes === undefined ? bytesReceived : Math.min(bytesReceived, totalBytes),
+      ...(totalBytes === undefined ? {} : { totalBytes }),
+    },
+  };
+};
 
 export const requestRemoteAssetImportCancellation = (state: RemoteAssetImportLifecycle): RemoteAssetImportLifecycle =>
   state.phase === 'running' ? { ...state, phase: 'canceling' } : state;
@@ -23,14 +51,24 @@ export const completeRemoteAssetImport = (
   state: RemoteAssetImportLifecycle,
   operationId: number,
 ): RemoteAssetImportLifecycle =>
-  operationId === state.operationId && state.phase === 'running' ? { phase: 'completed', operationId } : state;
+  operationId === state.operationId && state.phase === 'running'
+    ? {
+        phase: 'completed',
+        operationId,
+        ...(state.progress === undefined ? {} : { progress: state.progress }),
+      }
+    : state;
 
 export const cancelRemoteAssetImport = (
   state: RemoteAssetImportLifecycle,
   operationId: number,
 ): RemoteAssetImportLifecycle =>
   operationId === state.operationId && (state.phase === 'running' || state.phase === 'canceling')
-    ? { phase: 'canceled', operationId }
+    ? {
+        phase: 'canceled',
+        operationId,
+        ...(state.progress === undefined ? {} : { progress: state.progress }),
+      }
     : state;
 
 export const failRemoteAssetImport = (
@@ -39,5 +77,10 @@ export const failRemoteAssetImport = (
   error: string,
 ): RemoteAssetImportLifecycle =>
   operationId === state.operationId && (state.phase === 'running' || state.phase === 'canceling')
-    ? { phase: 'failed', operationId, error }
+    ? {
+        phase: 'failed',
+        operationId,
+        error,
+        ...(state.progress === undefined ? {} : { progress: state.progress }),
+      }
     : state;
