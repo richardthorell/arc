@@ -4,6 +4,8 @@ ARC's built-in AI runtime uses ARC-owned request, message, tool, usage, error, a
 
 The canonical TypeScript contracts live in `editor/src/common/aiRuntimeTypes.ts` so renderer, preload/main-process services, and future provider adapters can share them without depending on AI Chat UI components.
 
+The security and data-boundary rules for these contracts live in `editor/src/common/aiSecurityPolicy.ts` and are documented in `docs/ai-chat-security.md`.
+
 ## Boundary
 
 ```text
@@ -47,6 +49,8 @@ When a request needs to cross a persistence/serialization boundary, use `seriali
 
 This gives persisted/exported data an explicit migration boundary without forcing a serialization version into every in-memory stream call.
 
+Provider adapters must validate ARC-owned request metadata with `assertAiRuntimeRequestSafeForProvider()` before dispatch and must propagate the runtime signal to transport cancellation. Credentials are added only at the provider transport boundary and never become runtime request fields.
+
 ## Streaming events
 
 Provider adapters normalize their responses into this event family:
@@ -82,6 +86,8 @@ Adapters should map provider errors into ARC error codes where possible:
 
 Use `retryable` and `retryAfterMs` when the provider supplies enough information. AI Chat should not branch on raw OpenAI or Anthropic response payloads.
 
+Provider/service diagnostics must be redacted with the helpers in `aiSecurityPolicy.ts` and should log request summaries rather than message/context payload contents.
+
 ## Design rules
 
 1. Provider-specific request/response types do not enter renderer UI components.
@@ -90,3 +96,5 @@ Use `retryable` and `retryAfterMs` when the provider supplies enough information
 4. Serialized requests are schema-versioned and never contain runtime-only objects such as signals.
 5. Model capability checks use `AiModelCapabilities` rather than provider-name heuristics.
 6. Future `EditorAgentHarness` tools are projected into these contracts rather than creating a second tool protocol for AI Chat.
+7. Provider credentials never become runtime message, metadata, context, tool, persistence, or diagnostic data.
+8. Project/editor context must pass the AI security policy before it can be sent to an external provider.
