@@ -95,10 +95,7 @@ export function recordFlowDebugPause(state: FlowDebuggerState, pause: FlowDebugP
   return { ...state, pause };
 }
 
-export function recordFlowDebugWatches(
-  state: FlowDebuggerState,
-  snapshot: FlowDebugWatchSnapshot,
-): FlowDebuggerState {
+export function recordFlowDebugWatches(state: FlowDebuggerState, snapshot: FlowDebugWatchSnapshot): FlowDebuggerState {
   if (!state.attachedInstance || !sameInstance(state.attachedInstance, snapshot.instance)) return state;
 
   const seen = new Set<string>();
