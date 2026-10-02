@@ -42,9 +42,10 @@ export function AiGatewayPanel({
     };
 
     void refreshProject();
-    const unsubscribe = window.arc.host.onEvent((event) => {
-      if (event.type === 'project.opened' || event.type === 'project.closed') scheduleRefresh();
-    });
+    const unsubscribe =
+      window.arc.host?.onEvent((event) => {
+        if (event.type === 'project.opened' || event.type === 'project.closed') scheduleRefresh();
+      }) ?? (() => undefined);
     return () => {
       disposed = true;
       if (refreshTimer) clearTimeout(refreshTimer);
