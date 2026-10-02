@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { assetLibraryMountForScope, buildAssetLibraryMounts } from './assetLibraryMounts';
+import { assetLibraryMountForScope, buildAssetLibraryMounts, resolveAssetLibraryMountPath } from './assetLibraryMounts';
 
 describe('asset library mounts', () => {
   it('keeps logical scope ordering and writability independent of physical roots', () => {
@@ -35,5 +35,28 @@ describe('asset library mounts', () => {
       root: '/user',
       writable: true,
     });
+  });
+
+  it('resolves relative asset paths through their logical mount', () => {
+    const mounts = buildAssetLibraryMounts({
+      project: 'C:\\Projects\\Game\\Content',
+      user: '/Users/example/.arc/assets',
+    });
+
+    expect(resolveAssetLibraryMountPath(mounts, 'project', 'Materials\\Metal.arcasset')).toBe(
+      'C:/Projects/Game/Content/Materials/Metal.arcasset',
+    );
+    expect(resolveAssetLibraryMountPath(mounts, 'user', './Textures/Noise.arcasset')).toBe(
+      '/Users/example/.arc/assets/Textures/Noise.arcasset',
+    );
+  });
+
+  it('does not alias missing scopes or allow a relative path to escape its mount', () => {
+    const mounts = buildAssetLibraryMounts({ project: '/project/Content' });
+
+    expect(resolveAssetLibraryMountPath(mounts, 'user', 'Textures/Noise.arcasset')).toBeNull();
+    expect(resolveAssetLibraryMountPath(mounts, 'project', '../Shared/Secret.arcasset')).toBeNull();
+    expect(resolveAssetLibraryMountPath(mounts, 'project', '/absolute/asset.arcasset')).toBeNull();
+    expect(resolveAssetLibraryMountPath(mounts, 'project', 'C:\\Other\\asset.arcasset')).toBeNull();
   });
 });
