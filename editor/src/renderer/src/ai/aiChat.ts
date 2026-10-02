@@ -32,6 +32,10 @@ export const textOnlyAiModelCapabilities = {
   inputModalities: ['text'],
 } as const satisfies AiModelCapabilities;
 
+// Kept only so older renderer data can be identified and migrated by
+// aiConversationStore. New production persistence is project-scoped.
+export const aiConversationStorageKey = 'arc.ai.conversations.v1';
+
 const makeId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
