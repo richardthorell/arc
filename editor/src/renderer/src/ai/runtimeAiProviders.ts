@@ -3,13 +3,20 @@ import type { AiModelCapabilities } from '../../../common/aiRuntimeTypes';
 import { assertAiRuntimeRequestSafeForProvider } from '../../../common/aiSecurityPolicy';
 import type { EditorSettingDescriptor, EditorSettingsSnapshot } from '../../../common/editorWorkflowTypes';
 import type { AiModelProvider } from './aiChat';
+import { streamOpenAiRuntime } from './openAiRuntimeProvider';
 
 const modelSettingKeys: Record<AiProviderId, string> = {
   openai: 'ai.openai.model',
   anthropic: 'ai.anthropic.model',
 };
 
-const runtimeModelCapabilities: AiModelCapabilities = {
+const openAiCapabilities: AiModelCapabilities = {
+  streaming: true,
+  tools: true,
+  inputModalities: ['text', 'image'],
+};
+
+const placeholderCapabilities: AiModelCapabilities = {
   streaming: true,
   tools: true,
   inputModalities: ['text'],
@@ -41,16 +48,19 @@ export const runtimeAiProvidersFromSettings = (
       providerId: account.id,
       modelId,
       label: modelLabel(descriptor, modelId),
-      capabilities: runtimeModelCapabilities,
+      capabilities: account.id === 'openai' ? openAiCapabilities : placeholderCapabilities,
       configured: true,
-      async *stream(request) {
-        assertAiRuntimeRequestSafeForProvider(request);
-        yield {
-          type: 'error' as const,
-          code: 'provider' as const,
-          retryable: false,
-          message: `${account.label} is connected, but provider execution is not wired to AI Chat yet.`,
-        };
+      stream(request) {
+        if (account.id === 'openai') return streamOpenAiRuntime(modelId, request);
+        return (async function* () {
+          assertAiRuntimeRequestSafeForProvider(request);
+          yield {
+            type: 'error' as const,
+            code: 'provider' as const,
+            retryable: false,
+            message: `${account.label} is connected, but provider execution is not wired to AI Chat yet.`,
+          };
+        })();
       },
     }));
   });

@@ -52,14 +52,14 @@ describe('runtimeAiProvidersFromSettings', () => {
         providerId: 'openai',
         modelId: 'gpt-5.6-sol',
         label: 'GPT-5.6 Sol',
-        capabilities: { streaming: true, tools: true, inputModalities: ['text'] },
+        capabilities: { streaming: true, tools: true, inputModalities: ['text', 'image'] },
       },
       {
         id: 'openai:gpt-5.6-luna',
         providerId: 'openai',
         modelId: 'gpt-5.6-luna',
         label: 'GPT-5.6 Luna',
-        capabilities: { streaming: true, tools: true, inputModalities: ['text'] },
+        capabilities: { streaming: true, tools: true, inputModalities: ['text', 'image'] },
       },
     ]);
   });
