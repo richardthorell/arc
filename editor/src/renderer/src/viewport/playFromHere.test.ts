@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createPlayFromHereOverride } from './playFromHere';
+import { createPlayFromHereOverride, PlayFromHereOverrideQueue } from './playFromHere';
 
 describe('Play From Here override', () => {
   it('captures a deterministic transient camera transform', () => {
@@ -38,5 +38,65 @@ describe('Play From Here override', () => {
     },
   ])('rejects non-finite spawn transforms', ({ position, rotation }) => {
     expect(() => createPlayFromHereOverride('camera', { position, rotation })).toThrow(/finite values/);
+  });
+
+  it('consumes a staged override exactly once', () => {
+    const queue = new PlayFromHereOverrideQueue();
+    queue.stage(
+      createPlayFromHereOverride('camera', {
+        position: [3, 4, 5],
+        rotation: [0, 0, 0, 1],
+      }),
+    );
+
+    expect(queue.hasPendingOverride).toBe(true);
+    expect(queue.consume(true)).toMatchObject({ source: 'camera', transform: { position: [3, 4, 5] } });
+    expect(queue.hasPendingOverride).toBe(false);
+    expect(queue.consume(true)).toBeUndefined();
+  });
+
+  it('clears the override when a project opts out', () => {
+    const queue = new PlayFromHereOverrideQueue();
+    queue.stage(
+      createPlayFromHereOverride('cursor', {
+        position: [8, 0, -2],
+        rotation: [0, 0, 0, 1],
+      }),
+    );
+
+    expect(queue.consume(false)).toBeUndefined();
+    expect(queue.hasPendingOverride).toBe(false);
+    expect(queue.consume(true)).toBeUndefined();
+  });
+
+  it('detaches staged and consumed values from caller mutation', () => {
+    const queue = new PlayFromHereOverrideQueue();
+    const override = createPlayFromHereOverride('camera', {
+      position: [1, 2, 3],
+      rotation: [0, 0, 0, 1],
+    });
+    queue.stage(override);
+    (override.transform.position as [number, number, number])[0] = 99;
+
+    const consumed = queue.consume(true)!;
+    expect(consumed.transform.position).toEqual([1, 2, 3]);
+    (consumed.transform.position as [number, number, number])[1] = 77;
+
+    expect(queue.hasPendingOverride).toBe(false);
+  });
+
+  it('supports explicit cancellation before Play starts', () => {
+    const queue = new PlayFromHereOverrideQueue();
+    queue.stage(
+      createPlayFromHereOverride('camera', {
+        position: [0, 1, 2],
+        rotation: [0, 0, 0, 1],
+      }),
+    );
+
+    queue.clear();
+
+    expect(queue.hasPendingOverride).toBe(false);
+    expect(queue.consume(true)).toBeUndefined();
   });
 });
