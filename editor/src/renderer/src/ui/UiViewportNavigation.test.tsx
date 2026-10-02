@@ -13,8 +13,9 @@ describe('UiViewportNavigation', () => {
     );
 
     const navigation = screen.getByRole('toolbar', { name: 'Viewport navigation' });
-    expect(navigation).toHaveClass('ui-floating-surface', 'ui-viewport-navigation');
-    expect(screen.getByRole('button', { name: 'Frame selection' })).toBeInTheDocument();
+    expect(navigation.classList.contains('ui-floating-surface')).toBe(true);
+    expect(navigation.classList.contains('ui-viewport-navigation')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Frame selection' })).not.toBeNull();
   });
 
   it('preserves consumer classes', () => {
@@ -24,6 +25,7 @@ describe('UiViewportNavigation', () => {
       </UiViewportNavigation>,
     );
 
-    expect(screen.getByRole('toolbar', { name: 'Preview navigation' })).toHaveClass('preview-navigation');
+    const navigation = screen.getByRole('toolbar', { name: 'Preview navigation' });
+    expect(navigation.classList.contains('preview-navigation')).toBe(true);
   });
 });
