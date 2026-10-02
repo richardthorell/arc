@@ -26,10 +26,7 @@ input_config_conflict_bindings(const input_config& config)
         {
             for (std::size_t index = 0; index < action.bindings.size(); ++index)
             {
-                mappings.push_back({context.name,
-                                    context.priority,
-                                    context.enabled,
-                                    action.name,
+                mappings.push_back({context.name, context.priority, context.enabled, action.name,
                                     context.name + "/" + action.name + "/" + std::to_string(index),
                                     action.bindings[index]});
             }
