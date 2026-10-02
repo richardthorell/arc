@@ -6,8 +6,7 @@ using namespace arc::input;
 
 namespace
 {
-input_trigger_result step(input_trigger_state state, input_trigger_type type, float value, float dt,
-                          float hold = 0.5F)
+input_trigger_result step(input_trigger_state state, input_trigger_type type, float value, float dt, float hold = 0.5F)
 {
     input_trigger_config config{};
     config.type = type;

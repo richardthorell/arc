@@ -50,8 +50,7 @@ struct [[nodiscard]] input_trigger_result
 };
 
 [[nodiscard]] inline input_trigger_result evaluate_action_trigger(input_trigger_state state,
-                                                                  const input_trigger_config& config,
-                                                                  float value,
+                                                                  const input_trigger_config& config, float value,
                                                                   float delta_seconds) noexcept
 {
     const float dt = std::max(0.0F, delta_seconds);
@@ -78,60 +77,58 @@ struct [[nodiscard]] input_trigger_result
 
     switch (config.type)
     {
-    case input_trigger_type::press:
-        if (pressed)
-            phase = input_action_phase::performed;
-        break;
-    case input_trigger_type::release:
-        if (pressed)
-            phase = input_action_phase::started;
-        else if (released)
-            phase = input_action_phase::performed;
-        break;
-    case input_trigger_type::hold:
-        if (pressed)
-            phase = input_action_phase::started;
-        else if (is_actuated && !state.performed && state.actuated_seconds >= std::max(0.0F, config.hold_seconds))
-        {
-            state.performed = true;
-            phase = input_action_phase::performed;
-        }
-        else if (released && !state.performed)
-            phase = input_action_phase::canceled;
-        break;
-    case input_trigger_type::tap:
-        if (pressed)
-            phase = input_action_phase::started;
-        else if (released)
-            phase = state.actuated_seconds <= std::max(0.0F, config.tap_seconds)
-                        ? input_action_phase::performed
-                        : input_action_phase::canceled;
-        break;
-    case input_trigger_type::double_tap:
-        if (released && state.actuated_seconds <= std::max(0.0F, config.tap_seconds))
-        {
-            if (state.waiting_for_second_tap)
+        case input_trigger_type::press:
+            if (pressed) phase = input_action_phase::performed;
+            break;
+        case input_trigger_type::release:
+            if (pressed)
+                phase = input_action_phase::started;
+            else if (released)
+                phase = input_action_phase::performed;
+            break;
+        case input_trigger_type::hold:
+            if (pressed)
+                phase = input_action_phase::started;
+            else if (is_actuated && !state.performed && state.actuated_seconds >= std::max(0.0F, config.hold_seconds))
             {
-                state.waiting_for_second_tap = false;
-                state.since_first_tap_seconds = 0.0F;
+                state.performed = true;
                 phase = input_action_phase::performed;
             }
-            else
-            {
-                state.waiting_for_second_tap = true;
-                state.since_first_tap_seconds = 0.0F;
+            else if (released && !state.performed)
+                phase = input_action_phase::canceled;
+            break;
+        case input_trigger_type::tap:
+            if (pressed)
                 phase = input_action_phase::started;
+            else if (released)
+                phase = state.actuated_seconds <= std::max(0.0F, config.tap_seconds) ? input_action_phase::performed
+                                                                                     : input_action_phase::canceled;
+            break;
+        case input_trigger_type::double_tap:
+            if (released && state.actuated_seconds <= std::max(0.0F, config.tap_seconds))
+            {
+                if (state.waiting_for_second_tap)
+                {
+                    state.waiting_for_second_tap = false;
+                    state.since_first_tap_seconds = 0.0F;
+                    phase = input_action_phase::performed;
+                }
+                else
+                {
+                    state.waiting_for_second_tap = true;
+                    state.since_first_tap_seconds = 0.0F;
+                    phase = input_action_phase::started;
+                }
             }
-        }
-        break;
-    case input_trigger_type::threshold:
-        if (pressed)
-            phase = input_action_phase::started;
-        else if (released)
-            phase = input_action_phase::canceled;
-        else if (is_actuated)
-            phase = input_action_phase::performed;
-        break;
+            break;
+        case input_trigger_type::threshold:
+            if (pressed)
+                phase = input_action_phase::started;
+            else if (released)
+                phase = input_action_phase::canceled;
+            else if (is_actuated)
+                phase = input_action_phase::performed;
+            break;
     }
 
     if (released)
