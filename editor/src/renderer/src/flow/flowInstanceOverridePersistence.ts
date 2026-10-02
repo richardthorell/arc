@@ -8,8 +8,7 @@ export type PersistedFlowInstanceOverrides = {
 };
 
 export type FlowInstanceOverrideParseResult =
-  | { ok: true; overrides: FlowInstanceOverride[] }
-  | { ok: false; error: string };
+  { ok: true; overrides: FlowInstanceOverride[] } | { ok: false; error: string };
 
 const isOverride = (value: unknown): value is FlowInstanceOverride => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
