@@ -25,6 +25,14 @@ export type AssetBulkDeletePlan = {
   safe: boolean;
 };
 
+export type AssetDeleteTransaction = {
+  assetIds: readonly string[];
+  internalReferences: readonly AssetReference[];
+  blockingReferences: readonly AssetReference[];
+  atomic: true;
+  executable: boolean;
+};
+
 export type AssetRelocationPlan = {
   assetId: string;
   fromPath: string;
@@ -122,6 +130,20 @@ export const planAssetBulkDelete = (index: AssetDependencyIndex, assetIds: reado
     internalReferences,
     blockingReferences,
     safe: blockingReferences.length === 0,
+  };
+};
+
+export const planAssetDeleteTransaction = (
+  index: AssetDependencyIndex,
+  assetIds: readonly string[],
+): AssetDeleteTransaction => {
+  const plan = planAssetBulkDelete(index, assetIds);
+  return {
+    assetIds: plan.assetIds,
+    internalReferences: plan.internalReferences,
+    blockingReferences: plan.blockingReferences,
+    atomic: true,
+    executable: plan.safe && plan.assetIds.length > 0,
   };
 };
 
