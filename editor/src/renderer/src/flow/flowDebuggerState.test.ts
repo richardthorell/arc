@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   attachFlowDebugger,
   createFlowDebuggerState,
+  detachFlowDebugger,
   isFlowBreakpointEnabled,
   recordFlowDebugPause,
+  recordFlowDebugWatches,
   removeFlowBreakpoint,
   resumeFlowDebugger,
   setFlowBreakpoint,
@@ -68,5 +70,52 @@ describe('flowDebuggerState', () => {
     state = removeFlowBreakpoint(state, 'graph-player', 'node-start');
     expect(isFlowBreakpointEnabled(state, 'graph-player', 'node-start')).toBe(false);
     expect(isFlowBreakpointEnabled(state, 'graph-enemy', 'node-start')).toBe(true);
+  });
+
+  it('accepts watch snapshots only from the attached runtime instance', () => {
+    const attached = instance('entity-a', 'runtime-1');
+    const stale = instance('entity-a', 'runtime-old');
+    let state = attachFlowDebugger(createFlowDebuggerState(), attached);
+
+    state = recordFlowDebugWatches(state, {
+      instance: stale,
+      watches: [{ slotId: 'health', label: 'Health', value: 1 }],
+    });
+    expect(state.watches).toEqual([]);
+
+    state = recordFlowDebugWatches(state, {
+      instance: attached,
+      watches: [
+        { slotId: ' health ', label: 'Health', value: 100 },
+        { slotId: 'health', label: 'Duplicate', value: 50 },
+        { slotId: '', label: 'Invalid', value: true },
+        { slotId: 'isGrounded', label: 'Is Grounded', value: false },
+      ],
+    });
+
+    expect(state.watches).toEqual([
+      { slotId: 'health', label: 'Health', value: 100 },
+      { slotId: 'isGrounded', label: 'Is Grounded', value: false },
+    ]);
+  });
+
+  it('clears runtime watch values when attachment identity changes or detaches', () => {
+    const first = instance('entity-a', 'runtime-1');
+    const restarted = instance('entity-a', 'runtime-2');
+    let state = attachFlowDebugger(createFlowDebuggerState(), first);
+    state = recordFlowDebugWatches(state, {
+      instance: first,
+      watches: [{ slotId: 'speed', label: 'Speed', value: 3.5 }],
+    });
+
+    state = attachFlowDebugger(state, restarted);
+    expect(state.watches).toEqual([]);
+
+    state = recordFlowDebugWatches(state, {
+      instance: restarted,
+      watches: [{ slotId: 'speed', label: 'Speed', value: 4 }],
+    });
+    state = detachFlowDebugger(state);
+    expect(state.watches).toEqual([]);
   });
 });
