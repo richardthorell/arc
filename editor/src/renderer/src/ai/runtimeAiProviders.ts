@@ -1,10 +1,17 @@
 import type { AiProviderId } from '../../../common/aiProviderTypes';
+import type { AiModelCapabilities } from '../../../common/aiRuntimeTypes';
 import type { EditorSettingDescriptor, EditorSettingsSnapshot } from '../../../common/editorWorkflowTypes';
 import type { AiModelProvider } from './aiChat';
 
 const modelSettingKeys: Record<AiProviderId, string> = {
   openai: 'ai.openai.model',
   anthropic: 'ai.anthropic.model',
+};
+
+const runtimeModelCapabilities: AiModelCapabilities = {
+  streaming: true,
+  tools: true,
+  inputModalities: ['text'],
 };
 
 const modelOptions = (snapshot: EditorSettingsSnapshot, providerId: AiProviderId): string[] => {
@@ -30,11 +37,16 @@ export const runtimeAiProvidersFromSettings = (
     const descriptor = snapshot.schema.find((candidate) => candidate.key === key);
     return modelOptions(snapshot, account.id).map((modelId) => ({
       id: `${account.id}:${modelId}`,
+      providerId: account.id,
+      modelId,
       label: modelLabel(descriptor, modelId),
+      capabilities: runtimeModelCapabilities,
       configured: true,
       async *stream() {
         yield {
           type: 'error' as const,
+          code: 'provider' as const,
+          retryable: false,
           message: `${account.label} is connected, but provider execution is not wired to AI Chat yet.`,
         };
       },

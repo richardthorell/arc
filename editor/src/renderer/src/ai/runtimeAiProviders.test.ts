@@ -35,12 +35,32 @@ const snapshot = (connectionStatus: 'disconnected' | 'cold' | 'connected' | 'inv
 });
 
 describe('runtimeAiProvidersFromSettings', () => {
-  it('exposes configured models for a connected account with the selected default first', () => {
+  it('exposes configured model descriptors with the selected default first', () => {
     const providers = runtimeAiProvidersFromSettings(snapshot('connected'));
 
-    expect(providers.map(({ id, label }) => ({ id, label }))).toEqual([
-      { id: 'openai:gpt-5.6-sol', label: 'GPT-5.6 Sol' },
-      { id: 'openai:gpt-5.6-luna', label: 'GPT-5.6 Luna' },
+    expect(
+      providers.map(({ id, providerId, modelId, label, capabilities }) => ({
+        id,
+        providerId,
+        modelId,
+        label,
+        capabilities,
+      })),
+    ).toEqual([
+      {
+        id: 'openai:gpt-5.6-sol',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        label: 'GPT-5.6 Sol',
+        capabilities: { streaming: true, tools: true, inputModalities: ['text'] },
+      },
+      {
+        id: 'openai:gpt-5.6-luna',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-luna',
+        label: 'GPT-5.6 Luna',
+        capabilities: { streaming: true, tools: true, inputModalities: ['text'] },
+      },
     ]);
   });
 
