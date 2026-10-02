@@ -4,10 +4,7 @@ export type HierarchyContextSelection = Readonly<{
 }>;
 
 export type HierarchyContextActionId =
-  | 'hierarchy.rename'
-  | 'hierarchy.duplicate'
-  | 'hierarchy.delete'
-  | 'hierarchy.create-child';
+  'hierarchy.rename' | 'hierarchy.duplicate' | 'hierarchy.delete' | 'hierarchy.create-child';
 
 export type HierarchyContextAction = Readonly<{
   id: HierarchyContextActionId;
