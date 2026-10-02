@@ -77,7 +77,8 @@ describe('runtimeAiProvidersFromSettings', () => {
       messages: [],
       metadata: { nested: { openaiApiKey: 'sk-must-not-leave-arc' } },
     });
+    const iterator = stream[Symbol.asyncIterator]();
 
-    await expect(stream.next()).rejects.toThrow(/unsafe_runtime_metadata/);
+    await expect(iterator.next()).rejects.toThrow(/unsafe_runtime_metadata/);
   });
 });
