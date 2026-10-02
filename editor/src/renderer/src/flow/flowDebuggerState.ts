@@ -21,16 +21,31 @@ export type FlowDebugPause = {
   reason: 'breakpoint' | 'step' | 'error' | 'instruction_budget';
 };
 
+export type FlowDebugValue = string | number | boolean | null;
+
+export type FlowDebugWatch = {
+  slotId: string;
+  label: string;
+  value: FlowDebugValue;
+};
+
+export type FlowDebugWatchSnapshot = {
+  instance: FlowDebugInstanceId;
+  watches: readonly FlowDebugWatch[];
+};
+
 export type FlowDebuggerState = {
   attachedInstance: FlowDebugInstanceId | null;
   breakpoints: readonly FlowBreakpoint[];
   pause: FlowDebugPause | null;
+  watches: readonly FlowDebugWatch[];
 };
 
 export const createFlowDebuggerState = (): FlowDebuggerState => ({
   attachedInstance: null,
   breakpoints: [],
   pause: null,
+  watches: [],
 });
 
 const sameInstance = (left: FlowDebugInstanceId, right: FlowDebugInstanceId) =>
@@ -40,12 +55,12 @@ const sameInstance = (left: FlowDebugInstanceId, right: FlowDebugInstanceId) =>
 
 export function attachFlowDebugger(state: FlowDebuggerState, instance: FlowDebugInstanceId): FlowDebuggerState {
   if (state.attachedInstance && sameInstance(state.attachedInstance, instance)) return state;
-  return { ...state, attachedInstance: instance, pause: null };
+  return { ...state, attachedInstance: instance, pause: null, watches: [] };
 }
 
 export function detachFlowDebugger(state: FlowDebuggerState): FlowDebuggerState {
-  if (!state.attachedInstance && !state.pause) return state;
-  return { ...state, attachedInstance: null, pause: null };
+  if (!state.attachedInstance && !state.pause && state.watches.length === 0) return state;
+  return { ...state, attachedInstance: null, pause: null, watches: [] };
 }
 
 export function setFlowBreakpoint(
@@ -78,6 +93,21 @@ export function removeFlowBreakpoint(state: FlowDebuggerState, graphId: string, 
 export function recordFlowDebugPause(state: FlowDebuggerState, pause: FlowDebugPause): FlowDebuggerState {
   if (!state.attachedInstance || !sameInstance(state.attachedInstance, pause.instance)) return state;
   return { ...state, pause };
+}
+
+export function recordFlowDebugWatches(state: FlowDebuggerState, snapshot: FlowDebugWatchSnapshot): FlowDebuggerState {
+  if (!state.attachedInstance || !sameInstance(state.attachedInstance, snapshot.instance)) return state;
+
+  const seen = new Set<string>();
+  const watches: FlowDebugWatch[] = [];
+  for (const watch of snapshot.watches) {
+    const slotId = watch.slotId.trim();
+    if (!slotId || seen.has(slotId)) continue;
+    seen.add(slotId);
+    watches.push({ ...watch, slotId });
+  }
+
+  return { ...state, watches };
 }
 
 export function resumeFlowDebugger(state: FlowDebuggerState): FlowDebuggerState {
