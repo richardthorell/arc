@@ -22,6 +22,36 @@ export function AiGatewayPanel({
   provider?: AiModelProvider;
 }) {
   const [runtimeProviders, setRuntimeProviders] = useState<AiModelProvider[]>([]);
+  const [projectGuid, setProjectGuid] = useState<string | null>(null);
+
+  useEffect(() => {
+    let disposed = false;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const refreshProject = async () => {
+      try {
+        const snapshot = await window.arc.projects.snapshot();
+        if (!disposed) setProjectGuid(snapshot?.activeProject?.descriptor.guid ?? null);
+      } catch {
+        if (!disposed) setProjectGuid(null);
+      }
+    };
+    const scheduleRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => void refreshProject(), 0);
+    };
+
+    void refreshProject();
+    const unsubscribe =
+      window.arc.host?.onEvent((event) => {
+        if (event.type === 'project.opened' || event.type === 'project.closed') scheduleRefresh();
+      }) ?? (() => undefined);
+    return () => {
+      disposed = true;
+      if (refreshTimer) clearTimeout(refreshTimer);
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (provider) return;
@@ -54,7 +84,15 @@ export function AiGatewayPanel({
     };
   }, [provider]);
 
-  return provider ? <AiChatPanel provider={provider} /> : <AiChatPanel providers={runtimeProviders} />;
+  return provider ? (
+    <AiChatPanel key={projectGuid ?? 'no-project'} projectGuid={projectGuid ?? undefined} provider={provider} />
+  ) : (
+    <AiChatPanel
+      key={projectGuid ?? 'no-project'}
+      projectGuid={projectGuid ?? undefined}
+      providers={runtimeProviders}
+    />
+  );
 }
 
 export function AiGatewayApprovalPrompt({
