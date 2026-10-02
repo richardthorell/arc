@@ -1,8 +1,10 @@
 import { Asterisk, ArrowLeft, Bot, Plus, Send, Sparkles, Square } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { requestSettingsDialogOpen } from '../settings/settingsDialogRoute';
 import { UiAgentTextCard, UiButton, UiDrawerPanel, UiDropdown, UiIconButton, type UiDropdownOption } from '../ui';
 import {
+  conversationCaptionFromResponse,
+  conversationCaptionInstruction,
   conversationTitleFromPrompt,
   createAiConversation,
   createAiMessage,
@@ -11,6 +13,7 @@ import {
   type AiConversation,
   type AiModelProvider,
 } from './aiChat';
+import { renderAiChatMessageText } from './AiChatMessageText';
 import { loadAiConversationStore, saveAiConversationStore } from './aiConversationStore';
 import './aiGateway.css';
 import './aiChatMessageCards.css';
@@ -45,6 +48,11 @@ type ActiveStream = {
   controller: AbortController;
   conversationId: string;
   messageId: string;
+};
+
+type StreamResponseResult = {
+  completed: boolean;
+  text: string;
 };
 
 type AiChatPanelProps = {
@@ -106,6 +114,7 @@ export function AiChatPanel({
   const [prompt, setPrompt] = useState('');
   const [streaming, setStreaming] = useState(false);
   const activeStreamRef = useRef<ActiveStream | null>(null);
+  const captionControllersRef = useRef(new Set<AbortController>());
 
   useEffect(() => {
     if (!configuredProviders.length) {
@@ -128,6 +137,8 @@ export function AiChatPanel({
   useEffect(
     () => () => {
       activeStreamRef.current?.controller.abort();
+      for (const controller of captionControllersRef.current) controller.abort();
+      captionControllersRef.current.clear();
     },
     [],
   );
@@ -189,7 +200,7 @@ export function AiChatPanel({
     model: AiModelProvider,
     requestMessages: AiChatMessage[],
     assistantMessage: AiChatMessage,
-  ) => {
+  ): Promise<StreamResponseResult> => {
     const controller = new AbortController();
     activeStreamRef.current = {
       controller,
@@ -198,8 +209,9 @@ export function AiChatPanel({
     };
     setStreaming(true);
 
+    let responseText = '';
+    let completed = false;
     try {
-      let completed = false;
       for await (const event of model.stream({
         conversationId,
         messages: requestMessages,
@@ -207,6 +219,7 @@ export function AiChatPanel({
       })) {
         if (controller.signal.aborted) break;
         if (event.type === 'delta') {
+          responseText = `${responseText}${event.text}`;
           updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
             ...message,
             content: `${message.content}${event.text}`,
@@ -219,15 +232,19 @@ export function AiChatPanel({
             content: message.content ? `${message.content}\n\n${event.message}` : event.message,
             state: 'error',
           }));
-          return;
+          return { completed: false, text: responseText };
         }
-        completed = true;
-        updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({ ...message, state: 'complete' }));
+        if (event.type === 'done') {
+          completed = true;
+          updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({ ...message, state: 'complete' }));
+        }
       }
 
       if (!completed && !controller.signal.aborted) {
+        completed = true;
         updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({ ...message, state: 'complete' }));
       }
+      return { completed: completed && !controller.signal.aborted, text: responseText };
     } catch (error) {
       if (!controller.signal.aborted) {
         updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
@@ -236,11 +253,55 @@ export function AiChatPanel({
           state: 'error',
         }));
       }
+      return { completed: false, text: responseText };
     } finally {
       if (activeStreamRef.current?.controller === controller) {
         activeStreamRef.current = null;
         setStreaming(false);
       }
+    }
+  };
+
+  const generateConversationCaption = async (
+    conversationId: string,
+    model: AiModelProvider,
+    openingPrompt: string,
+    openingResponse: string,
+  ) => {
+    const controller = new AbortController();
+    captionControllersRef.current.add(controller);
+    const fallbackTitle = conversationTitleFromPrompt(openingPrompt);
+    const messages = [
+      createAiMessage('system', conversationCaptionInstruction),
+      createAiMessage('user', `Opening request:\n${openingPrompt}\n\nOpening response:\n${openingResponse}`),
+    ];
+    let generated = '';
+
+    try {
+      for await (const event of model.stream({
+        conversationId: `${conversationId}:caption`,
+        messages,
+        metadata: { purpose: 'conversation-caption' },
+        signal: controller.signal,
+      })) {
+        if (controller.signal.aborted) return;
+        if (event.type === 'delta') generated = `${generated}${event.text}`;
+        if (event.type === 'error') return;
+        if (event.type === 'done') break;
+      }
+      const caption = conversationCaptionFromResponse(generated);
+      if (!caption) return;
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === conversationId && conversation.title === fallbackTitle
+            ? { ...conversation, title: caption }
+            : conversation,
+        ),
+      );
+    } catch {
+      // The opening prompt remains a useful fallback if background caption generation fails.
+    } finally {
+      captionControllersRef.current.delete(controller);
     }
   };
 
@@ -264,7 +325,10 @@ export function AiChatPanel({
     setPrompt('');
     setConversations((current) => [conversation, ...current]);
     setActiveConversationId(conversation.id);
-    await streamResponse(conversation.id, model, [userMessage], assistantMessage);
+    const result = await streamResponse(conversation.id, model, [userMessage], assistantMessage);
+    if (result.completed && result.text.trim()) {
+      void generateConversationCaption(conversation.id, model, content, result.text);
+    }
   };
 
   const sendPrompt = async () => {
@@ -313,6 +377,12 @@ export function AiChatPanel({
     );
   };
 
+  const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
+  };
+
   const renderMessages = (conversation: AiConversation) => (
     <div className="ai-chat-message-list">
       {conversation.messages.map((message) => {
@@ -325,6 +395,7 @@ export function AiChatPanel({
               className={`ai-chat-message-card ai-chat-agent-card ${agentToneClass(responseModelId)}`}
               data-model-id={responseModelId}
               key={message.id}
+              renderText={renderAiChatMessageText}
               side="left"
               state={message.state}
               text={message.content}
@@ -338,6 +409,7 @@ export function AiChatPanel({
             <UiAgentTextCard
               className="ai-chat-message-card ai-chat-user-card"
               key={message.id}
+              renderText={renderAiChatMessageText}
               side="right"
               state={message.state}
               text={message.content}
@@ -410,6 +482,7 @@ export function AiChatPanel({
                 value={prompt}
                 rows={3}
                 onChange={(event) => setPrompt(event.target.value)}
+                onKeyDown={handleComposerKeyDown}
               />
               <div className="ai-chat-composer-toolbar ai-chat-composer-toolbar-active">
                 {renderAddContextButton()}
@@ -486,6 +559,7 @@ export function AiChatPanel({
                     value={prompt}
                     rows={3}
                     onChange={(event) => setPrompt(event.target.value)}
+                    onKeyDown={handleComposerKeyDown}
                   />
                   <div className="ai-chat-composer-toolbar">
                     {renderAddContextButton()}
