@@ -25,7 +25,7 @@ const requestId = () =>
 export async function* streamOpenAiRuntime(
   modelId: string,
   request: AiRuntimeRequest,
-  bridge: ArcAiRuntimeBridge | undefined = window.arcAiRuntime,
+  bridge: ArcAiRuntimeBridge | undefined = typeof window === 'undefined' ? undefined : window.arcAiRuntime,
 ): AsyncGenerator<AiRuntimeStreamEvent> {
   assertAiRuntimeRequestSafeForProvider(request);
   if (!bridge) {
