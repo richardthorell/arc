@@ -78,5 +78,36 @@ int main()
     disabled.context_enabled = false;
     assert(enumerate_binding_conflicts({jump}, disabled).empty());
 
+    const input_mapping_binding move = mapping("gameplay", 0, "move", "move-w", key_binding(key::w));
+    const input_mapping_binding reload = mapping("gameplay", 0, "reload", "reload-r", key_binding(key::r));
+
+    const auto runtime_reject =
+        rebind_input_mapping({move, reload}, "reload-r", key_binding(key::w), input_conflict_policy::reject);
+    assert(runtime_reject.status == input_rebind_status::rejected_conflict);
+    assert(runtime_reject.bindings.size() == 2);
+    assert(runtime_reject.bindings[0].binding_id == "move-w");
+    assert(runtime_reject.bindings[1].binding.control == make_key_control(key::r));
+    assert(runtime_reject.conflicts.size() == 1);
+    assert(runtime_reject.conflicts.front().existing_action == "move");
+    assert(runtime_reject.conflicts.front().candidate_action == "reload");
+
+    const auto runtime_replace =
+        rebind_input_mapping({move, reload}, "reload-r", key_binding(key::w), input_conflict_policy::replace);
+    assert(runtime_replace.status == input_rebind_status::applied);
+    assert(runtime_replace.bindings.size() == 1);
+    assert(runtime_replace.bindings.front().binding_id == "reload-r");
+    assert(runtime_replace.bindings.front().binding.control == make_key_control(key::w));
+
+    const auto runtime_allow =
+        rebind_input_mapping({move, reload}, "reload-r", key_binding(key::e), input_conflict_policy::reject);
+    assert(runtime_allow.status == input_rebind_status::applied);
+    assert(runtime_allow.bindings.size() == 2);
+
+    const auto missing =
+        rebind_input_mapping({move, reload}, "missing", key_binding(key::e), input_conflict_policy::replace);
+    assert(missing.status == input_rebind_status::binding_not_found);
+    assert(missing.bindings.size() == 2);
+    assert(missing.conflicts.empty());
+
     return 0;
 }
