@@ -10,7 +10,8 @@ export const installOpenAiRuntimeIpc = (credential: () => string | null): void =
   ipcMain.handle('ai-runtime:start', async (ipcEvent, start: AiRuntimeStreamStartRequest) => {
     if (!start || typeof start.requestId !== 'string' || !start.requestId.trim())
       throw new Error('AI runtime request id is required');
-    if (start.providerId !== 'openai') throw new Error(`AI provider '${String(start.providerId)}' is not supported yet`);
+    if (start.providerId !== 'openai')
+      throw new Error(`AI provider '${String(start.providerId)}' is not supported yet`);
     if (typeof start.modelId !== 'string' || !start.modelId.trim()) throw new Error('AI model id is required');
 
     const apiKey = credential();
