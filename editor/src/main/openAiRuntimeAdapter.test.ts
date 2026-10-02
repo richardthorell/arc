@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { AiRuntimeRequest } from '../common/aiRuntimeTypes';
+import type { AiRuntimeRequest, AiRuntimeStreamEvent } from '../common/aiRuntimeTypes';
 import { OpenAiRuntimeAdapter } from './openAiRuntimeAdapter';
 
 const request = (signal?: AbortSignal): AiRuntimeRequest => ({
@@ -16,7 +16,7 @@ const sseResponse = (...events: unknown[]) =>
   });
 
 const collect = async (adapter: OpenAiRuntimeAdapter, runtimeRequest = request()) => {
-  const events = [];
+  const events: AiRuntimeStreamEvent[] = [];
   for await (const event of adapter.stream(runtimeRequest, { modelId: 'gpt-5.6-sol', reasoningEffort: 'medium' }))
     events.push(event);
   return events;
