@@ -21,7 +21,9 @@ const safeHttpUrl = (value: string): string | null => {
 };
 
 const linkClick = (event: MouseEvent<HTMLAnchorElement>) => {
-  if (!event.ctrlKey && !event.metaKey) event.preventDefault();
+  event.preventDefault();
+  if (!event.ctrlKey && !event.metaKey) return;
+  window.open(event.currentTarget.href, '_blank', 'noopener,noreferrer');
 };
 
 export const renderAiChatMessageText = (text: string): ReactNode => {
