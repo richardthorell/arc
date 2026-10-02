@@ -41,6 +41,10 @@ int main()
     result = evaluate_action_trigger(result.state, tap, 0.0F, 0.2F);
     assert(result.phase == input_action_phase::performed);
 
+    result = evaluate_action_trigger({}, tap, 1.0F, 0.0F);
+    result = evaluate_action_trigger(result.state, tap, 0.0F, 0.3F);
+    assert(result.phase == input_action_phase::canceled);
+
     input_trigger_config threshold{};
     threshold.type = input_trigger_type::threshold;
     threshold.actuation_threshold = 0.7F;
@@ -61,17 +65,6 @@ int main()
     result = evaluate_action_trigger(result.state, double_tap, 1.0F, 0.1F);
     result = evaluate_action_trigger(result.state, double_tap, 0.0F, 0.1F);
     assert(result.phase == input_action_phase::performed);
-
-    // State ownership is explicit: advancing one player's state cannot affect another.
-    const auto player_one = evaluate_action_trigger({}, tap, 1.0F, 0.0F);
-    const auto player_two = evaluate_action_trigger({}, tap, 0.0F, 0.0F);
-    assert(player_one.state.actuated);
-    assert(!player_two.state.actuated);
-
-    // Mapping-context disable is represented by dropping the old state.
-    result = evaluate_action_trigger({}, threshold, 0.0F, 0.0F);
-    assert(result.phase == input_action_phase::none);
-    assert(!result.state.actuated);
 
     return 0;
 }

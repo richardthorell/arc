@@ -5,5 +5,6 @@ export * from './graphMeasurement';
 export * from './graphNodePalette';
 export * from './graphNodePalettePresentation';
 export * from './graphSelection';
+export * from './graphTransactions';
 export * from './graphTypes';
 export * from './graphViewport';

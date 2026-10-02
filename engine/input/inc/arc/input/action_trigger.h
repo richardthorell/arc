@@ -43,20 +43,12 @@ struct input_trigger_state
     float since_first_tap_seconds{};
 };
 
-struct input_trigger_result
+struct [[nodiscard]] input_trigger_result
 {
     input_action_phase phase{input_action_phase::none};
     input_trigger_state state{};
 };
 
-/**
- * @brief Advance one semantic-action trigger by a caller supplied frame delta.
- *
- * The evaluator is platform neutral and contains no global state. Callers own one
- * state value per player/action/trigger, which prevents trigger history leaking
- * between players or mapping contexts. A context becoming inactive should discard
- * its state rather than continuing an old gesture when it is enabled again.
- */
 [[nodiscard]] inline input_trigger_result evaluate_action_trigger(input_trigger_state state,
                                                                   const input_trigger_config& config,
                                                                   float value,
@@ -79,8 +71,10 @@ struct input_trigger_result
         }
     }
 
-    if (is_actuated)
-        state.actuated_seconds = state.actuated ? state.actuated_seconds + dt : 0.0F;
+    if (state.actuated)
+        state.actuated_seconds += dt;
+    else if (is_actuated)
+        state.actuated_seconds = 0.0F;
 
     switch (config.type)
     {
