@@ -16,6 +16,10 @@ authentication, rate limiting, protocol adaptation, event streaming, OpenAPI, an
 A built-in agent must invoke `EditorAgentHarness` directly with a stable client ID. It must not loop back through the
 localhost gateway or duplicate operation validation. External clients use the same harness through the gateway.
 
+The built-in AI runtime additionally applies the data/tool policy in `docs/ai-chat-security.md`, but that policy is a
+pre-flight guard rather than a replacement for harness authority. Skills and provider responses can request only tools
+that project existing harness capabilities; they cannot grant capabilities or bypass approval/transaction semantics.
+
 ## Current capability surface
 
 - Inspect and search the scene, components, spatial relationships, assets, history, renderer state, and diagnostics.
@@ -38,6 +42,10 @@ covered by the editor history transaction; newly created assets are not currentl
 Saving scenes, opening or replacing projects, running scripts or processes, arbitrary file access, and build/package
 execution remain unavailable to agents. These operations need separate user intent and lifecycle policies rather than
 being added as generic harness commands.
+
+The built-in agent/tool loop must check cancellation immediately before every harness invocation. A skill declaration
+or provider tool call is never sufficient authority on its own: the operation must still exist in current harness
+capabilities and any mutation must retain the harness approval/transaction path.
 
 The next useful capability additions are prefab authoring/instantiation, selected component add/remove/reset with
 GUID-first targeting, typed updates to existing material and Flow assets with rollback, terrain brush strokes, and
