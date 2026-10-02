@@ -7,10 +7,7 @@ export type RuntimeSessionState = {
 };
 
 export type RuntimeSessionEffect =
-  | 'begin-runtime-world'
-  | 'end-runtime-world'
-  | 'acquire-player-control'
-  | 'release-player-control';
+  'begin-runtime-world' | 'end-runtime-world' | 'acquire-player-control' | 'release-player-control';
 
 export type RuntimeSessionTransition = {
   state: RuntimeSessionState;
@@ -55,10 +52,7 @@ export const transitionRuntimeSession = (
   if (target === 'edit') {
     return {
       state: createEditSessionState(),
-      effects:
-        current.mode === 'play'
-          ? ['release-player-control', 'end-runtime-world']
-          : ['end-runtime-world'],
+      effects: current.mode === 'play' ? ['release-player-control', 'end-runtime-world'] : ['end-runtime-world'],
     };
   }
 
