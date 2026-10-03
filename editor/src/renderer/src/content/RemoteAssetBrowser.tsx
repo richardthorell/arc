@@ -22,6 +22,7 @@ import './remoteAssetBrowser.css';
 
 type Props = {
   source: ArcAssetSourceDescriptor;
+  onImportedFiles?: (paths: readonly string[]) => void;
 };
 
 const formatBytes = (bytes: number | undefined): string => {
@@ -38,7 +39,7 @@ const progressLabel = (progress: ArcAssetImportProgress | null): string => {
   return `${progress.phase} ${progress.completedFiles}/${progress.totalFiles}${file}`;
 };
 
-export function RemoteAssetBrowser({ source }: Props) {
+export function RemoteAssetBrowser({ source, onImportedFiles }: Props) {
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<ArcRemoteAssetKind | 'all'>('all');
   const [view, setView] = useState<'grid' | 'list'>('grid');
@@ -143,6 +144,7 @@ export function RemoteAssetBrowser({ source }: Props) {
         (progress) => setImportProgress(progress),
       )
       .then((imported) => {
+        if (imported.succeeded) onImportedFiles?.(imported.importedFiles);
         setImportMessage(
           `Imported ${imported.importedFiles.length} files · ${imported.cacheHits} cache hits · ${imported.downloadedFiles} downloaded`,
         );

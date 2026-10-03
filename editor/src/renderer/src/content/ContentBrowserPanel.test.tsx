@@ -241,15 +241,62 @@ describe('ContentBrowserPanel', () => {
     expect(view.getByRole('listbox')).toHaveClass('list');
   });
 
-  it('shows starred assets in the top-level Favorites folder', () => {
+  it('migrates legacy Favorites and exposes all durable virtual views', async () => {
     localStorage.setItem('arc.content.favorites', JSON.stringify(['rock-guid']));
     const view = renderBrowser();
 
-    fireEvent.click(view.getByRole('button', { name: 'Favorites' }));
+    const favorites = await view.findByRole('button', { name: 'Favorites (1)' });
+    expect(view.getByRole('button', { name: 'Recent (0)' })).toBeInTheDocument();
+    expect(view.getByRole('button', { name: 'Downloads (0)' })).toBeInTheDocument();
+    fireEvent.click(favorites);
 
     expect(view.getByText('Hero Rock')).toBeInTheDocument();
     expect(view.queryByText('Sky')).not.toBeInTheDocument();
     expect(view.queryByText('Engine Sky Texture')).not.toBeInTheDocument();
+    expect(localStorage.getItem('arc.content.favorites')).toBeNull();
+  });
+
+  it('records selected assets in the persistent Recent virtual view', async () => {
+    const view = renderBrowser();
+    fireEvent.click(view.getByText('Hero Rock'));
+
+    const recent = await view.findByRole('button', { name: 'Recent (1)' });
+    fireEvent.click(recent);
+
+    expect(view.getByText('Hero Rock')).toBeInTheDocument();
+    expect(view.queryByText('Sky')).not.toBeInTheDocument();
+  });
+
+  it('turns a live query into a transient cross-scope Search Results view', async () => {
+    const view = renderBrowser();
+    fireEvent.change(view.getByLabelText('Search assets'), { target: { value: 'engine sky' } });
+
+    expect(await view.findByRole('button', { name: 'Search Results (1)' })).toBeInTheDocument();
+    expect(view.getByText('Engine Sky Texture')).toBeInTheDocument();
+    expect(view.queryByText('Hero Rock')).not.toBeInTheDocument();
+    expect(localStorage.getItem('arc.content.virtualViews.v1:D:/Test')).not.toContain('search-results');
+  });
+
+  it('uses the virtual-view action policy to remove downloaded assets without deleting them', async () => {
+    localStorage.setItem(
+      'arc.content.virtualViews.v1:D:/Test',
+      JSON.stringify({
+        version: 1,
+        views: [
+          { kind: 'favorites', assetIds: [] },
+          { kind: 'recent', assetIds: [] },
+          { kind: 'downloads', assetIds: ['rock'] },
+        ],
+      }),
+    );
+    const view = renderBrowser();
+
+    fireEvent.click(await view.findByRole('button', { name: 'Downloads (1)' }));
+    expect(view.getByText('Hero Rock')).toBeInTheDocument();
+    fireEvent.click(view.getByRole('button', { name: 'Remove from Downloads' }));
+
+    await waitFor(() => expect(view.queryByText('Hero Rock')).not.toBeInTheDocument());
+    expect(view.getByRole('button', { name: 'Downloads (0)' })).toBeInTheDocument();
   });
 
   it('renders engine folders as a nested tree without flattening duplicate leaf names', () => {
