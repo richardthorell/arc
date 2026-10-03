@@ -32,10 +32,7 @@ export function buildAssetLibraryScopeViews(
 }
 
 /** Returns the assets visible in a scope while preserving their ARC-owned IDs. */
-export function assetsForLibraryScope(
-  view: AssetLibraryScopeView,
-  assets: readonly AssetItem[],
-): AssetItem[] {
+export function assetsForLibraryScope(view: AssetLibraryScopeView, assets: readonly AssetItem[]): AssetItem[] {
   if (!view.available) return [];
   const visibleIds = new Set(view.assetIds);
   return assets.filter((asset) => visibleIds.has(assetLibraryIdentity(asset)));
