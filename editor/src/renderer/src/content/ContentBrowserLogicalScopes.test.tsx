@@ -3,9 +3,10 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { ProjectSnapshot } from '../services/editorHostTypes';
 import { ContentBrowserPanel } from './ContentBrowserPanel';
 
-const baseProject = {
+const baseProject: ProjectSnapshot = {
   name: 'Scopes',
   root: 'D:/Scopes',
   assetRoot: 'D:/Scopes/Content',
@@ -85,7 +86,7 @@ beforeEach(() => {
   });
 });
 
-const renderBrowser = (project = baseProject) =>
+const renderBrowser = (project: ProjectSnapshot = baseProject) =>
   render(
     <ContentBrowserPanel
       project={project}
