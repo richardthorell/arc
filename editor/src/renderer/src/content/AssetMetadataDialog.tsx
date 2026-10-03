@@ -106,7 +106,9 @@ export function AssetMetadataDialog({ asset, onClose, onSave }: Props) {
             />
             <small>Comma-separated. Tags are normalized and de-duplicated when saved.</small>
           </label>
-          {!editable && <p className="asset-metadata-readonly">Built-in and read-only asset metadata cannot be edited.</p>}
+          {!editable && (
+            <p className="asset-metadata-readonly">Built-in and read-only asset metadata cannot be edited.</p>
+          )}
           {error && <p className="asset-metadata-error">{error}</p>}
         </section>
 
