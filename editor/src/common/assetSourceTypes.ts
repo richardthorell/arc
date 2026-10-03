@@ -93,10 +93,10 @@ export type ArcAssetImportProgress = {
 
 export type ArcAssetImportResult = {
   succeeded: boolean;
-  operationId: number;
+  operationId?: number;
   destinationRoot: string;
   importedFiles: string[];
-  importedAssetIds: string[];
+  importedAssetIds?: string[];
   cacheHits: number;
   downloadedFiles: number;
   provenance: ArcImportedAssetProvenance;
