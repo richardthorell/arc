@@ -1,0 +1,63 @@
+name: Apply AI 686 wiring
+
+on:
+  push:
+    branches:
+      - ai/686-built-in-agent-adapter
+
+permissions:
+  contents: write
+
+jobs:
+  patch-main:
+    if: ${{ !contains(github.event.head_commit.message, 'AI: wire built-in agent adapter') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Patch editor main-process lifecycle
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('editor/src/main/main.ts')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  "import { EditorAgentHarness } from './editorAgentHarness';\nimport { AiGatewayServer } from './aiGatewayServer';",
+                  "import { EditorAgentHarness } from './editorAgentHarness';\nimport { BuiltInAgentAdapter } from './builtInAgentAdapter';\nimport { installBuiltInAgentIpc } from './builtInAgentIpc';\nimport { AiGatewayServer } from './aiGatewayServer';",
+              ),
+              (
+                  "let agentHarness: EditorAgentHarness | null = null;\nlet aiGateway: AiGatewayServer | null = null;",
+                  "let agentHarness: EditorAgentHarness | null = null;\nlet builtInAgentAdapter: BuiltInAgentAdapter | null = null;\nlet disposeBuiltInAgentIpc: (() => void) | null = null;\nlet aiGateway: AiGatewayServer | null = null;",
+              ),
+              (
+                  "    agentHarness = harness;\n    hostClient.onEvent((event) => {",
+                  "    agentHarness = harness;\n    builtInAgentAdapter = new BuiltInAgentAdapter(harness);\n    disposeBuiltInAgentIpc = installBuiltInAgentIpc(builtInAgentAdapter);\n    hostClient.onEvent((event) => {",
+              ),
+              (
+                  "    } finally {\n      aiGateway = null;\n      agentHarness = null;",
+                  "    } finally {\n      disposeBuiltInAgentIpc?.();\n      disposeBuiltInAgentIpc = null;\n      await builtInAgentAdapter?.dispose();\n      builtInAgentAdapter = null;\n      aiGateway = null;\n      agentHarness = null;",
+              ),
+          ]
+
+          for before, after in replacements:
+              count = text.count(before)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one main.ts match, found {count}: {before[:80]!r}')
+              text = text.replace(before, after, 1)
+
+          path.write_text(text, encoding='utf-8')
+          Path('.github/workflows/ai686-apply.yml').unlink()
+          PY
+
+      - name: Commit lifecycle wiring
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor/src/main/main.ts .github/workflows/ai686-apply.yml
+          git commit -m "AI: wire built-in agent adapter"
+          git push origin HEAD:${{ github.ref_name }}
