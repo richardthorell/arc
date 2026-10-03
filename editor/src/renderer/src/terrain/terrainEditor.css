@@ -34,9 +34,9 @@
   gap: 4px;
 }
 
-.terrain-mode-tabs button,
-.terrain-overlay-tool-row button,
-.terrain-stack-panel button {
+.terrain-mode-tabs .ui-button,
+.terrain-overlay-tool-row .ui-button,
+.terrain-stack-panel .ui-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -49,15 +49,15 @@
   font-size: 11px;
 }
 
-.terrain-mode-tabs button:hover,
-.terrain-overlay-tool-row button:hover,
-.terrain-stack-panel button:hover:not(:disabled) {
+.terrain-mode-tabs .ui-button:hover,
+.terrain-overlay-tool-row .ui-button:hover,
+.terrain-stack-panel .ui-button:hover:not(:disabled) {
   color: var(--arc-color-text);
   background: var(--arc-color-bg-hover);
 }
 
-.terrain-mode-tabs button.active,
-.terrain-overlay-tool-row button.active {
+.terrain-mode-tabs .ui-button.active,
+.terrain-overlay-tool-row .ui-button.active {
   border-color: rgba(85, 168, 221, 0.42);
   color: var(--arc-color-text-strong);
   background: rgba(49, 126, 181, 0.28);
@@ -67,7 +67,7 @@
   padding: 7px 8px 0;
 }
 
-.terrain-overlay-tabs button {
+.terrain-overlay-tabs .ui-button {
   min-height: 28px;
   padding: 0 10px;
 }
@@ -78,7 +78,7 @@
   padding: 6px 8px 0;
 }
 
-.terrain-overlay-tool-row button {
+.terrain-overlay-tool-row .ui-button {
   min-height: 28px;
   padding: 0 8px;
 }
@@ -121,7 +121,7 @@
   gap: 5px;
 }
 
-.terrain-paint-target-grid button {
+.terrain-paint-target-grid .ui-button {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
   align-items: center;
@@ -138,7 +138,7 @@
   text-align: left;
 }
 
-.terrain-paint-target-grid button.active {
+.terrain-paint-target-grid .ui-button.active {
   border-color: rgba(85, 168, 221, 0.55);
   color: var(--arc-color-text);
   background: rgba(49, 126, 181, 0.22);
@@ -149,7 +149,7 @@
   height: 24px;
 }
 
-.terrain-paint-target-grid button span:last-child {
+.terrain-paint-target-grid .ui-button span:last-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -221,7 +221,7 @@
   background: rgba(62, 139, 191, 0.16);
 }
 
-.terrain-stack-header > button {
+.terrain-stack-header > .ui-button {
   width: 28px;
   height: 28px;
 }
@@ -271,7 +271,7 @@
   color: var(--arc-color-accent, #4da3ff);
 }
 
-.terrain-stack-toolbar button {
+.terrain-stack-toolbar .ui-button {
   min-height: 27px;
   padding: 0 8px;
   border-color: var(--arc-color-border);
@@ -323,8 +323,8 @@
   border-radius: 0;
 }
 
-.terrain-stack-row > button,
-.terrain-stack-row-actions button {
+.terrain-stack-row > .ui-button,
+.terrain-stack-row-actions .ui-button {
   width: 22px;
   height: 22px;
   padding: 0;
@@ -446,7 +446,7 @@
   line-height: 1.5;
 }
 
-.terrain-stack-panel button:disabled {
+.terrain-stack-panel .ui-button:disabled {
   opacity: 0.35;
 }
 
