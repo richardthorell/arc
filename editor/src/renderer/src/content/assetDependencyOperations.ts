@@ -59,7 +59,13 @@ const byReferenceIdentity = (left: AssetReference, right: AssetReference) => {
   return (left.kind ?? '').localeCompare(right.kind ?? '');
 };
 
-const normalizeAssetPath = (path: string) => path.replace(/\\/g, '/').replace(/^\.\//, '');
+const normalizeAssetPath = (path: string) => {
+  const normalized = path.replace(/\\/g, '/').replace(/^\.\//, '');
+  if (normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized))
+    throw new Error(`Asset path must be relative: ${path}`);
+  if (normalized.split('/').includes('..')) throw new Error(`Asset path cannot traverse outside the asset root: ${path}`);
+  return normalized;
+};
 
 export const buildAssetDependencyIndex = (references: readonly AssetReference[]): AssetDependencyIndex => {
   const index = new Map<string, AssetReference[]>();
