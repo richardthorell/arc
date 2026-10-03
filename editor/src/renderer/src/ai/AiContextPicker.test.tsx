@@ -69,12 +69,12 @@ describe('AiContextPicker', () => {
   it('adds visible removable context chips from structured project context', async () => {
     render(<PickerHarness />);
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /^Current selection\b/ })).toBeVisible());
-    fireEvent.click(screen.getByRole('button', { name: /^Current selection\b/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Current selection 1 selected/ })).toBeVisible());
+    fireEvent.click(screen.getByRole('button', { name: /Current selection 1 selected/ }));
 
     expect(screen.getByLabelText('Attached context')).toHaveTextContent('Current selection');
     expect(screen.getByRole('button', { name: 'Remove Current selection' })).toBeVisible();
-    expect(screen.getByRole('button', { name: /^Current selection\b/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Current selection 1 selected/ })).toBeDisabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove Current selection' }));
     expect(screen.queryByLabelText('Attached context')).not.toBeInTheDocument();
