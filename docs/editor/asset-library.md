@@ -22,6 +22,14 @@ Suggested logical URIs:
 - `asset://user/...`
 - `asset://org/<organization-id>/...`
 
+## Search metadata and facets
+
+The Content Browser search model is layout-independent. Search matches asset name, title, description, path and tags, and composes with folder-prefix, asset-type, tag and state filters. Type and tag facets are derived deterministically from the matching metadata population so the UI can show useful counts without encoding view state into asset metadata.
+
+Project-owned searchable metadata is stored in the versioned project file `.arc-asset-metadata.json`. Entries prefer the stable asset GUID as identity and fall back to a normalized asset path only when no GUID exists. The file stores only authoring metadata (`title`, `description`, and `tags`); grid/list selection, folder expansion, sort order and other Content Browser layout state remain editor UI state.
+
+Built-in/read-only assets expose their registry metadata for search and inspection but cannot be edited from the project metadata dialog. Type-specific details such as texture resolution/format, model geometry counts, material references, shader stages, prefab composition and scene counts continue to come from the asset registry rather than being duplicated into the metadata file.
+
 ## Online sources
 
 Online libraries are **sources**, not scopes. A source adapter normalizes provider-specific catalogs into ARC's common source contract. The Content Browser can search one source or aggregate multiple sources, while keeping provider-specific networking and response formats outside the UI.
