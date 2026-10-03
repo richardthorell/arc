@@ -126,6 +126,12 @@ export type ProjectSnapshot = {
   name: string;
   root: string;
   assetRoot: string;
+  /**
+   * Optional host-owned physical roots for logical asset-library scopes.
+   * Renderer code uses these only to determine mount availability; paths must
+   * never become part of asset identity or renderer navigation state.
+   */
+  mounts?: Partial<Record<'builtin' | 'project' | 'user' | 'organization', string>>;
   activeScene: string;
   scene: SceneEntity[];
   assets: AssetItem[];
