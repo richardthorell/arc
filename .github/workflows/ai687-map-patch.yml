@@ -1,0 +1,38 @@
+name: Apply AI 687 lookup map typing
+
+on:
+  push:
+    branches:
+      - ai/687-harness-tool-registry
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: "${{ !contains(github.event.head_commit.message, 'AI: type stable tool lookup map') }}"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - name: Patch lookup map typing
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('editor/src/main/builtInAgentToolRegistry.ts')
+          text = path.read_text(encoding='utf-8')
+          before = "const entryByName = new Map(registryEntries.map((entry) => [entry.method, entry]));"
+          after = "const entryByName: ReadonlyMap<string, RegistryEntry> = new Map(\n  registryEntries.map((entry) => [entry.method, entry]),\n);"
+          if text.count(before) != 1:
+              raise SystemExit('Expected one entryByName declaration')
+          path.write_text(text.replace(before, after, 1), encoding='utf-8')
+          Path('.github/workflows/ai687-map-patch.yml').unlink()
+          PY
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor/src/main/builtInAgentToolRegistry.ts .github/workflows/ai687-map-patch.yml
+          git commit -m "AI: type stable tool lookup map"
+          git push origin HEAD:${{ github.ref_name }}
