@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ComponentProps } from 'react';
+import { useEffect, useMemo, useState, type ComponentProps, type SyntheticEvent } from 'react';
 import { Lock } from 'lucide-react';
 
 import type { AssetItem, ProjectSnapshot } from '../services/editorHostTypes';
@@ -63,7 +63,7 @@ export function ContentBrowserPanel(props: Props) {
       : props.project;
   const projectAuthoring = activeScope?.scope === 'project' && activeScope.writable;
 
-  const suppressNonProjectMutation = (event: React.SyntheticEvent) => {
+  const suppressNonProjectMutation = (event: SyntheticEvent) => {
     if (projectAuthoring) return;
     event.preventDefault();
     event.stopPropagation();
