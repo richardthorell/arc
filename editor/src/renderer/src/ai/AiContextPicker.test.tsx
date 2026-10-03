@@ -7,7 +7,7 @@ import { useState } from 'react';
 
 import type { AiConversationContextReference } from '../../../common/aiConversationTypes';
 import type { AiProjectContextSnapshot } from '../../../common/aiContextTypes';
-import { AiContextChips, AiContextPicker } from './AiContextPicker';
+import { AiContextChips, AiContextPicker } from './AiContextPickerView';
 
 const snapshot: AiProjectContextSnapshot = {
   schemaVersion: 1,
