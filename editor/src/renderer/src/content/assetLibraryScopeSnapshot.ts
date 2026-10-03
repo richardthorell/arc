@@ -7,17 +7,6 @@ import {
 import { buildAssetLibraryScopeViews, type AssetLibraryScopeView } from './assetLibraryScopeView';
 
 /**
- * Host-owned storage configuration supplied with an editor project snapshot.
- * Physical roots are consumed only to establish logical mount availability and
- * never become part of renderer navigation state or asset identity.
- */
-export type AssetLibraryHostScopeConfig = {
-  mounts?: AssetLibraryMountMap;
-};
-
-export type ProjectSnapshotWithAssetLibraryScopes = ProjectSnapshot & AssetLibraryHostScopeConfig;
-
-/**
  * Builds the Content Browser's logical scope model from authoritative host
  * configuration plus the authoritative asset registry snapshot.
  *
@@ -27,7 +16,7 @@ export type ProjectSnapshotWithAssetLibraryScopes = ProjectSnapshot & AssetLibra
  * happens to contain assets.
  */
 export function assetLibraryScopeViewsForProject(
-  project: ProjectSnapshotWithAssetLibraryScopes | null,
+  project: ProjectSnapshot | null,
   assets: readonly AssetItem[] = project?.assets ?? [],
 ): AssetLibraryScopeView[] {
   const roots: AssetLibraryMountMap = project
