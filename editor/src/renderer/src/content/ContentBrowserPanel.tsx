@@ -14,7 +14,18 @@ import {
   type AssetCreationRequest,
   type ShaderAssetTemplate,
 } from './assetCreation';
+import { AssetMetadataDialog } from './AssetMetadataDialog';
 import { ContentAssetCard } from './ContentAssetCard';
+import { searchAssetLibrary } from './assetLibrarySearch';
+import { buildAssetMetadataFacets } from './assetMetadataFacets';
+import {
+  applyAssetMetadata,
+  loadAssetMetadata,
+  saveAssetMetadata,
+  setAssetMetadataEntry,
+  type AssetMetadata,
+  type AssetMetadataEntries,
+} from './assetMetadataStore';
 import { assetPresentationKind, type AssetPresentationKind } from './assetPresentation';
 import { RemoteAssetBrowser } from './RemoteAssetBrowser';
 
@@ -73,13 +84,14 @@ const readContentTreeWidth = () => {
   const stored = Number.parseInt(localStorage.getItem(contentTreeWidthStorageKey) ?? '', 10);
   return Number.isFinite(stored) ? clampContentTreeWidth(stored) : defaultContentTreeWidth;
 };
-const assetTypeOptions = [
+const assetTypeOptions: Array<{ value: AssetPresentationKind | 'all'; label: string }> = [
   { value: 'all', label: 'All types' },
   { value: 'scene', label: 'Scene' },
   { value: 'model', label: 'Model' },
   { value: 'material', label: 'Material' },
   { value: 'flow', label: 'Flow Graph' },
   { value: 'texture', label: 'Texture' },
+  { value: 'environment', label: 'Environment' },
   { value: 'shader', label: 'Shader' },
   { value: 'prefab', label: 'Prefab' },
   { value: 'water', label: 'Water' },
@@ -226,6 +238,7 @@ export function ContentBrowserPanel({
   const [folder, setFolder] = useState('');
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<AssetPresentationKind | 'all'>('all');
+  const [tag, setTag] = useState('all');
   const [state, setState] = useState<AssetItem['status'] | 'all'>('all');
   const [sort, setSort] = useState<'name' | 'type' | 'state'>('name');
   const [view, setView] = useState<'grid' | 'list'>('grid');
@@ -234,6 +247,8 @@ export function ContentBrowserPanel({
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set([folderKey('project', '')]));
   const [onlineSources, setOnlineSources] = useState<ArcAssetSourceDescriptor[]>([]);
   const [selection, setSelection] = useState<Set<string>>(() => new Set(selectedAssetId ? [selectedAssetId] : []));
+  const [metadataEntries, setMetadataEntries] = useState<AssetMetadataEntries>({});
+  const [metadataAssetId, setMetadataAssetId] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<Set<string>>(() => {
     try {
       return new Set(JSON.parse(localStorage.getItem('arc.content.favorites') ?? '[]') as string[]);
@@ -267,17 +282,32 @@ export function ContentBrowserPanel({
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    setMetadataEntries({});
+    setMetadataAssetId(null);
+    if (!project) return () => undefined;
+    void loadAssetMetadata().then((entries) => {
+      if (!cancelled) setMetadataEntries(entries);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [project?.root]);
+
+  useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       setCreateMenuOpen(false);
       setCreateContextMenu(null);
+      setMetadataAssetId(null);
       if (!creating) setCreateKind(null);
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [creating]);
 
-  const assets = useMemo(() => project?.assets ?? [], [project?.assets]);
+  const registryAssets = useMemo(() => project?.assets ?? [], [project?.assets]);
+  const assets = useMemo(() => applyAssetMetadata(registryAssets, metadataEntries), [metadataEntries, registryAssets]);
   const projectAssets = useMemo(() => assets.filter((asset) => (asset.scope ?? 'project') === 'project'), [assets]);
   const builtinAssets = useMemo(() => assets.filter((asset) => asset.scope === 'builtin'), [assets]);
   const favoriteAssets = useMemo(() => assets.filter((asset) => favorites.has(favoriteId(asset))), [assets, favorites]);
@@ -297,32 +327,73 @@ export function ContentBrowserPanel({
     if (browserSource === 'project') return projectAssets;
     return [];
   }, [browserSource, builtinAssets, favoriteAssets, projectAssets]);
+  const searchPathPrefix = useMemo(() => {
+    if (browserSource === 'favorites') return '';
+    const root = browserSource === 'builtin' ? 'Engine' : contentRoot;
+    return folder ? `${root}/${cleanPath(folder)}` : root;
+  }, [browserSource, contentRoot, folder]);
+  const facetPopulation = useMemo(
+    () => searchAssetLibrary(scopedAssets, { text: search, pathPrefix: searchPathPrefix }).assets,
+    [scopedAssets, search, searchPathPrefix],
+  );
+  const metadataFacets = useMemo(
+    () =>
+      buildAssetMetadataFacets(
+        facetPopulation.map((asset) => ({ assetType: assetPresentationKind(asset), tags: asset.tags })),
+      ),
+    [facetPopulation],
+  );
+  const typeFacetCounts = useMemo(
+    () => new Map(metadataFacets.assetTypes.map((facet) => [facet.value, facet.count])),
+    [metadataFacets.assetTypes],
+  );
+  const contextualAssetTypeOptions = useMemo(
+    () =>
+      assetTypeOptions.map((option) => ({
+        ...option,
+        label:
+          option.value === 'all'
+            ? `All types (${facetPopulation.length})`
+            : `${option.label} (${typeFacetCounts.get(option.value) ?? 0})`,
+      })),
+    [facetPopulation.length, typeFacetCounts],
+  );
+  const tagOptions = useMemo(
+    () => [
+      { value: 'all', label: `All tags (${facetPopulation.length})` },
+      ...metadataFacets.tags.map((facet) => ({ value: facet.value, label: `${facet.value} (${facet.count})` })),
+    ],
+    [facetPopulation.length, metadataFacets.tags],
+  );
+  const queryKinds = useMemo(() => {
+    if (kind === 'all') return undefined;
+    return [...new Set(scopedAssets.filter((asset) => assetPresentationKind(asset) === kind).map((asset) => asset.kind))];
+  }, [kind, scopedAssets]);
   const filtered = useMemo(
     () =>
-      scopedAssets
-        .filter((asset) => {
-          const source: LocalBrowserSource = browserSource === 'builtin' ? 'builtin' : 'project';
-          const assetFolder = relativeFolderPath(asset.path, source, contentRootName);
-          const assetFolderNormalized = normalizedPath(assetFolder);
-          const folderNormalized = normalizedPath(folder);
-          const inFolder =
-            browserSource === 'favorites' ||
-            !folderNormalized ||
-            assetFolderNormalized === folderNormalized ||
-            assetFolderNormalized.startsWith(`${folderNormalized}/`);
-          return (
-            inFolder &&
-            (kind === 'all' || assetPresentationKind(asset) === kind) &&
-            (state === 'all' || asset.status === state) &&
-            (!search || `${asset.name} ${asset.path} ${asset.guid ?? ''}`.toLowerCase().includes(search.toLowerCase()))
-          );
-        })
+      [...searchAssetLibrary(scopedAssets, {
+        text: search,
+        pathPrefix: searchPathPrefix,
+        kinds: queryKinds,
+        tags: tag === 'all' ? undefined : [tag],
+      }).assets]
+        .filter((asset) => state === 'all' || asset.status === state)
         .sort((left, right) => {
-          const a = sort === 'name' ? left.name : sort === 'type' ? assetPresentationKind(left) : left.status;
-          const b = sort === 'name' ? right.name : sort === 'type' ? assetPresentationKind(right) : right.status;
-          return a.localeCompare(b);
+          const a =
+            sort === 'name'
+              ? left.title?.trim() || left.name
+              : sort === 'type'
+                ? assetPresentationKind(left)
+                : left.status;
+          const b =
+            sort === 'name'
+              ? right.title?.trim() || right.name
+              : sort === 'type'
+                ? assetPresentationKind(right)
+                : right.status;
+          return a.localeCompare(b) || left.id.localeCompare(right.id);
         }),
-    [browserSource, contentRootName, folder, kind, scopedAssets, search, sort, state],
+    [queryKinds, scopedAssets, search, searchPathPrefix, sort, state, tag],
   );
   const activeOnlineSource = onlineSources.find((source) => source.id === browserSource) ?? null;
   const crumbs = browserSource === 'favorites' || !folder ? [] : folder.split('/');
@@ -330,6 +401,7 @@ export function ContentBrowserPanel({
   const projectFolderPath = (relativePath: string) =>
     relativePath ? `${contentRoot}/${cleanPath(relativePath)}` : contentRoot;
   const creationFolder = browserSource === 'project' ? projectFolderPath(folder) : contentRoot;
+  const metadataAsset = metadataAssetId ? assets.find((asset) => asset.id === metadataAssetId) ?? null : null;
 
   const select = (asset: AssetItem, additive: boolean) => {
     setSelection((current) => {
@@ -354,6 +426,17 @@ export function ContentBrowserPanel({
   const activateAsset = (asset: AssetItem) => {
     if (openAssetEditorDocument(asset)) return;
     if (asset.kind === 'prefab') onInstantiatePrefab(asset.path);
+  };
+
+  const openSelectedMetadata = () => {
+    if (selection.size !== 1) return;
+    setMetadataAssetId(selection.values().next().value ?? null);
+  };
+
+  const persistMetadata = async (asset: AssetItem, metadata: AssetMetadata) => {
+    const next = setAssetMetadataEntry(metadataEntries, asset, metadata);
+    await saveAssetMetadata(next);
+    setMetadataEntries(next);
   };
 
   const selectTreeFolder = (source: LocalBrowserSource, path: string, hasChildren: boolean) => {
@@ -683,6 +766,15 @@ export function ContentBrowserPanel({
               >
                 Import
               </UiButton>
+              <UiButton
+                disabled={selection.size !== 1}
+                title="Edit searchable metadata and inspect type-specific asset details"
+                type="button"
+                variant="toolbar"
+                onClick={openSelectedMetadata}
+              >
+                Metadata
+              </UiButton>
               <nav aria-label="Content path">
                 <UiButton
                   className="content-breadcrumb-button"
@@ -727,9 +819,16 @@ export function ContentBrowserPanel({
               <UiSelect
                 ariaLabel="Asset type"
                 className="content-toolbar-select content-toolbar-select-type"
-                options={assetTypeOptions}
+                options={contextualAssetTypeOptions}
                 value={kind}
                 onValueChange={(value) => setKind(value as typeof kind)}
+              />
+              <UiSelect
+                ariaLabel="Asset tag"
+                className="content-toolbar-select content-toolbar-select-tag"
+                options={tagOptions}
+                value={tag}
+                onValueChange={setTag}
               />
               <UiSelect
                 ariaLabel="Asset state"
@@ -836,6 +935,13 @@ export function ContentBrowserPanel({
             </div>
           </div>
         </>
+      )}
+      {metadataAsset && (
+        <AssetMetadataDialog
+          asset={metadataAsset}
+          onClose={() => setMetadataAssetId(null)}
+          onSave={(metadata) => persistMetadata(metadataAsset, metadata)}
+        />
       )}
       {createContextMenu && createMenu(createContextMenu.folder, true)}
       {createKind && (
