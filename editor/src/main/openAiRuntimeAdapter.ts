@@ -8,6 +8,11 @@ import {
   type AiTokenUsage,
   textFromRuntimeMessage,
 } from '../common/aiRuntimeTypes';
+import {
+  projectAiToolsForOpenAi,
+  providerToolName,
+  stableToolNameFromProvider,
+} from '../common/aiToolProviderProjection';
 import { assertAiRuntimeRequestSafeForProvider, redactAiDiagnosticText } from '../common/aiSecurityPolicy';
 
 export type OpenAiRuntimeSettings = {
@@ -55,7 +60,7 @@ const openAiInput = (messages: readonly AiRuntimeMessage[]): unknown[] => {
       input.push({
         type: 'function_call',
         call_id: call.id,
-        name: call.name,
+        name: providerToolName(call.name),
         arguments: JSON.stringify(call.arguments),
       });
     }
@@ -156,13 +161,7 @@ export class OpenAiRuntimeAdapter {
       input: openAiInput(request.messages),
       store: settings.storeResponses ?? false,
     };
-    if (request.tools?.length)
-      body.tools = request.tools.map((tool) => ({
-        type: 'function',
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.inputSchema,
-      }));
+    if (request.tools?.length) body.tools = projectAiToolsForOpenAi(request.tools);
     if (settings.reasoningEffort && settings.reasoningEffort !== 'none')
       body.reasoning = { effort: settings.reasoningEffort };
 
@@ -193,6 +192,7 @@ export class OpenAiRuntimeAdapter {
       return;
     }
 
+    const stableToolName = (providerName: string) => stableToolNameFromProvider(providerName, request.tools ?? []);
     let sawToolCall = false;
     try {
       for await (const event of readServerSentEvents(response)) {
@@ -207,10 +207,10 @@ export class OpenAiRuntimeAdapter {
           const item = event.item;
           if (stringField(item, 'type') === 'function_call') {
             const callId = stringField(item, 'call_id');
-            const name = stringField(item, 'name');
-            if (callId && name) {
+            const providerName = stringField(item, 'name');
+            if (callId && providerName) {
               sawToolCall = true;
-              yield { type: 'tool-call-start', callId, name };
+              yield { type: 'tool-call-start', callId, name: stableToolName(providerName) };
             }
           }
           continue;
@@ -225,7 +225,8 @@ export class OpenAiRuntimeAdapter {
           const item = event.item;
           if (stringField(item, 'type') === 'function_call') {
             const callId = stringField(item, 'call_id');
-            const name = stringField(item, 'name');
+            const providerName = stringField(item, 'name');
+            const name = stableToolName(providerName);
             try {
               const arguments_ = JSON.parse(stringField(item, 'arguments') || '{}') as unknown;
               yield { type: 'tool-call', call: { id: callId, name, arguments: jsonObject(arguments_) } };

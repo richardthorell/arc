@@ -4,7 +4,9 @@ import type {
   BuiltInAgentEvent,
   BuiltInAgentInvokeRequest,
   BuiltInAgentRuntimeBridge,
+  BuiltInAgentToolInvokeRequest,
 } from '../common/builtInAgentTypes';
+import type { AiJsonObject } from '../common/aiRuntimeTypes';
 import type { AiInstructionSourceSnapshot } from '../common/aiInstructionTypes';
 import type { ArcProjectBrowserSnapshot } from '../common/projectTypes';
 import type { AiRuntimeStreamEnvelope, AiRuntimeStreamStartRequest } from '../common/aiRuntimeIpcTypes';
@@ -49,6 +51,14 @@ const api: ArcAiRuntimeApi = {
         ...(params !== undefined ? { params } : {}),
       };
       return ipcRenderer.invoke('ai-runtime:agent-invoke', request);
+    },
+    tools: () => ipcRenderer.invoke('ai-runtime:agent-tools'),
+    invokeTool: (name, arguments_?: AiJsonObject) => {
+      const request: BuiltInAgentToolInvokeRequest = {
+        name,
+        ...(arguments_ !== undefined ? { arguments: arguments_ } : {}),
+      };
+      return ipcRenderer.invoke('ai-runtime:agent-invoke-tool', request);
     },
     onEvent: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, agentEvent: BuiltInAgentEvent) => callback(agentEvent);
