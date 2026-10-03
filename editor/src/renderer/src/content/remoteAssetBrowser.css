@@ -89,12 +89,26 @@
   font-size: 11px;
 }
 
-.remote-import-button {
+.remote-import-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.remote-import-button,
+.remote-import-cancel-button {
   display: inline-flex;
+  min-height: 30px;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 30px;
+}
+
+.remote-import-button {
+  flex: 1 1 auto;
+}
+
+.remote-import-cancel-button {
+  flex: 0 0 auto;
 }
 
 .remote-asset-details progress {
