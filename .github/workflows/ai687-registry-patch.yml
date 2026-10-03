@@ -1,0 +1,62 @@
+name: Apply AI 687 registry identity cleanup
+
+on:
+  push:
+    branches:
+      - ai/687-harness-tool-registry
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, 'AI: keep harness operation names stable') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - name: Patch stable registry identity
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('editor/src/main/builtInAgentToolRegistry.ts')
+          text = path.read_text(encoding='utf-8')
+          replacements = [
+              (
+                  "import { BuiltInAgentAdapter } from './builtInAgentAdapter';",
+                  "import type { BuiltInAgentAdapter } from './builtInAgentAdapter';",
+              ),
+              (
+                  "export const builtInAgentToolName = (method: AgentHarnessMethod): string =>\n  `arc_${method\n    .replaceAll('.', '_')\n    .replaceAll(/([a-z0-9])([A-Z])/gu, '$1_$2')\n    .toLocaleLowerCase()}`;\n\nconst entryByName = new Map(registryEntries.map((entry) => [builtInAgentToolName(entry.method), entry]));",
+                  "const entryByName = new Map(registryEntries.map((entry) => [entry.method, entry]));",
+              ),
+              (
+                  "  name: builtInAgentToolName(entry.method),\n  boundary: 'harness',",
+                  "  name: entry.method,\n  boundary: 'harness',",
+              ),
+              (
+                  "    name: builtInAgentToolName(entry.method),\n    operationId: entry.method,\n    description: entry.description,",
+                  "    name: entry.method,\n    description: entry.description,",
+              ),
+              (
+                  "  constructor(private readonly adapter: BuiltInAgentAdapter) {}",
+                  "  constructor(private readonly adapter: Pick<BuiltInAgentAdapter, 'capabilities' | 'invoke'>) {}",
+              ),
+          ]
+          for before, after in replacements:
+              count = text.count(before)
+              if count != 1:
+                  raise SystemExit(f'Expected one match, found {count}: {before[:100]!r}')
+              text = text.replace(before, after, 1)
+          path.write_text(text, encoding='utf-8')
+          Path('.github/workflows/ai687-registry-patch.yml').unlink()
+          PY
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor/src/main/builtInAgentToolRegistry.ts .github/workflows/ai687-registry-patch.yml
+          git commit -m "AI: keep harness operation names stable"
+          git push origin HEAD:${{ github.ref_name }}
