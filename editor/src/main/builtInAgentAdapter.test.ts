@@ -2,11 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { BUILT_IN_AGENT_CLIENT_ID, BUILT_IN_AGENT_CLIENT_NAME } from '../common/builtInAgentTypes';
 import { BuiltInAgentAdapter } from './builtInAgentAdapter';
-import {
-  EditorAgentHarness,
-  type AgentHarnessHost,
-  type AgentHostResponse,
-} from './editorAgentHarness';
+import { EditorAgentHarness, type AgentHarnessHost, type AgentHostResponse } from './editorAgentHarness';
 
 const response = (payload: unknown = {}): AgentHostResponse => ({
   kind: 'response',
@@ -43,7 +39,9 @@ describe('BuiltInAgentAdapter', () => {
     );
 
     const capabilities = await adapter.capabilities();
-    expect(capabilities.operations).toEqual(expect.arrayContaining(['agent.capabilities', 'scene.overview', 'edit.begin']));
+    expect(capabilities.operations).toEqual(
+      expect.arrayContaining(['agent.capabilities', 'scene.overview', 'edit.begin']),
+    );
     expect(capabilities.editActions).toEqual(expect.arrayContaining(['create', 'setTransform', 'createAsset']));
   });
 
@@ -57,9 +55,7 @@ describe('BuiltInAgentAdapter', () => {
         expect.objectContaining({ id: request.id, clientId: BUILT_IN_AGENT_CLIENT_ID, label: 'AI edit' }),
       ]),
     );
-    await expect(
-      adapter.invoke('edit.begin', { label: 'AI edit', expectedSceneRevision: 4 }),
-    ).rejects.toThrow();
+    await expect(adapter.invoke('edit.begin', { label: 'AI edit', expectedSceneRevision: 4 })).rejects.toThrow();
     expect(harness.status().audit).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ clientId: BUILT_IN_AGENT_CLIENT_ID, operation: 'edit.request', succeeded: true }),

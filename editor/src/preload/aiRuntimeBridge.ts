@@ -58,8 +58,7 @@ const api: ArcAiRuntimeApi = {
       const listener = (_event: Electron.IpcRendererEvent, agentEvent: BuiltInAgentEvent) => callback(agentEvent);
       ipcRenderer.on('ai-runtime:agent-event', listener);
       agentEventListenerCount += 1;
-      if (agentEventListenerCount === 1)
-        void ipcRenderer.invoke('ai-runtime:agent-subscribe').catch(() => undefined);
+      if (agentEventListenerCount === 1) void ipcRenderer.invoke('ai-runtime:agent-subscribe').catch(() => undefined);
       return () => {
         ipcRenderer.removeListener('ai-runtime:agent-event', listener);
         agentEventListenerCount = Math.max(0, agentEventListenerCount - 1);
