@@ -178,5 +178,39 @@ describe('asset dependency operations', () => {
         { assetId: 'asset-b', fromPath: 'B.arc', toPath: 'Moved\\Same.arc' },
       ]),
     ).toThrow('Asset relocation contains duplicate destination path: Moved/Same.arc');
+
+    expect(() =>
+      planAssetRelocationTransaction([
+        { assetId: 'asset-a', fromPath: 'Same.arc', toPath: 'Moved/A.arc' },
+        { assetId: 'asset-b', fromPath: './Same.arc', toPath: 'Moved/B.arc' },
+      ]),
+    ).toThrow('Asset relocation contains duplicate source path: Same.arc');
+  });
+
+  it('rejects relocation into an occupied asset path before mutation', () => {
+    expect(() =>
+      planAssetRelocationTransaction(
+        [{ assetId: 'asset-a', fromPath: 'A.arc', toPath: 'Existing\\B.arc' }],
+        ['A.arc', './Existing/B.arc'],
+      ),
+    ).toThrow('Asset relocation destination is already occupied: Existing/B.arc');
+  });
+
+  it('allows atomic swaps when every occupied destination is vacated by the transaction', () => {
+    expect(
+      planAssetRelocationTransaction(
+        [
+          { assetId: 'asset-b', fromPath: 'B.arc', toPath: 'A.arc' },
+          { assetId: 'asset-a', fromPath: 'A.arc', toPath: 'B.arc' },
+        ],
+        ['A.arc', 'B.arc', 'Untouched.arc'],
+      ),
+    ).toEqual({
+      atomic: true,
+      operations: [
+        { assetId: 'asset-a', fromPath: 'A.arc', toPath: 'B.arc', preserveIdentity: true },
+        { assetId: 'asset-b', fromPath: 'B.arc', toPath: 'A.arc', preserveIdentity: true },
+      ],
+    });
   });
 });
