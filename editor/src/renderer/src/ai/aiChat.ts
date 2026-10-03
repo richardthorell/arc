@@ -32,6 +32,9 @@ export const textOnlyAiModelCapabilities = {
   inputModalities: ['text'],
 } as const satisfies AiModelCapabilities;
 
+export const conversationCaptionInstruction =
+  'Create a concise 3-7 word title for this ARC editor conversation. Use the opening request and response as context. Return only the title with no quotes, markdown, or trailing punctuation.';
+
 // Kept only so older renderer data can be identified and migrated by
 // aiConversationStore. New production persistence is project-scoped.
 export const aiConversationStorageKey = 'arc.ai.conversations.v1';
@@ -88,6 +91,16 @@ export const conversationTitleFromPrompt = (prompt: string): string => {
   const normalized = prompt.replace(/\s+/g, ' ').trim();
   if (!normalized) return 'New Chat';
   return normalized.length > 42 ? `${normalized.slice(0, 39).trimEnd()}…` : normalized;
+};
+
+export const conversationCaptionFromResponse = (response: string): string | null => {
+  const firstLine = response.split(/\r?\n/u, 1)[0]?.trim() ?? '';
+  const normalized = firstLine
+    .replace(/^(["'`*_]+)|(["'`*_.!?:;,-]+)$/gu, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  if (!normalized) return null;
+  return normalized.length > 64 ? `${normalized.slice(0, 61).trimEnd()}…` : normalized;
 };
 
 export const unavailableAiModelProvider: AiModelProvider = {

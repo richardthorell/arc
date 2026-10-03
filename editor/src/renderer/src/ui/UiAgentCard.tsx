@@ -65,12 +65,14 @@ export const UiAgentCard = forwardRef<HTMLElement, UiAgentCardProps>(function Ui
 
 export type UiAgentTextCardProps = Omit<UiAgentCardProps, 'children'> & {
   text: string;
+  renderText?: (text: string) => ReactNode;
 };
 
-export function UiAgentTextCard({ text, state = 'complete', ...props }: UiAgentTextCardProps) {
+export function UiAgentTextCard({ text, renderText, state = 'complete', ...props }: UiAgentTextCardProps) {
+  const content = text ? (renderText ? renderText(text) : text) : state === 'streaming' ? '…' : '';
   return (
     <UiAgentCard state={state} {...props}>
-      <div className="ui-agent-text-card-content">{text || (state === 'streaming' ? '…' : '')}</div>
+      <div className="ui-agent-text-card-content">{content}</div>
     </UiAgentCard>
   );
 }

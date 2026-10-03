@@ -34,15 +34,15 @@ describe('AiChatPanel project persistence', () => {
     fireEvent.click(screen.getByLabelText('Start conversation'));
     await waitFor(() => expect(screen.getByText('Saved response.')).toBeInTheDocument());
     fireEvent.click(screen.getByLabelText('Back to conversations'));
-    expect(screen.getByRole('button', { name: 'Open conversation Project A question' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open conversation Saved response' })).toBeInTheDocument();
     first.unmount();
 
     const second = render(<AiChatPanel projectGuid={projectB} provider={provider} />);
-    expect(screen.queryByRole('button', { name: 'Open conversation Project A question' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open conversation Saved response' })).not.toBeInTheDocument();
     second.unmount();
 
     render(<AiChatPanel projectGuid={projectA} provider={provider} />);
-    expect(screen.getByRole('button', { name: 'Open conversation Project A question' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open conversation Saved response' })).toBeInTheDocument();
   });
 
   it('restores persisted active conversation and model UI state', async () => {
