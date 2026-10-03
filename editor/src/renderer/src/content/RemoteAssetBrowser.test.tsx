@@ -32,6 +32,8 @@ const rock = {
 const search = vi.fn();
 const manifest = vi.fn();
 const importToProject = vi.fn();
+const createImportOperation = vi.fn();
+const cancelImport = vi.fn();
 
 beforeEach(() => {
   search.mockReset().mockResolvedValue({ source, total: 1, assets: [rock] });
@@ -48,8 +50,10 @@ beforeEach(() => {
     onProgress?.({ phase: 'complete', completedFiles: 2, totalFiles: 2, completedBytes: 30, totalBytes: 30 });
     return {
       succeeded: true,
+      operationId: 41,
       destinationRoot: 'Content/External/polyhaven/rock',
       importedFiles: ['rock.gltf', 'rock_diff.png'],
+      importedAssetIds: ['mesh-guid', 'texture-guid'],
       cacheHits: 0,
       downloadedFiles: 2,
       provenance: {
@@ -60,9 +64,11 @@ beforeEach(() => {
       },
     };
   });
+  createImportOperation.mockReset().mockReturnValue(41);
+  cancelImport.mockReset().mockReturnValue(true);
   Object.defineProperty(window, 'arc', {
     configurable: true,
-    value: { assetSources: { search, manifest, importToProject } },
+    value: { assetSources: { search, manifest, importToProject, createImportOperation, cancelImport } },
   });
 });
 
@@ -88,9 +94,46 @@ describe('RemoteAssetBrowser', () => {
       assetId: 'rock',
       logicalPaths: ['gltf/2k/gltf', 'gltf/2k/gltf/include/0'],
       destinationScope: 'project',
+      operationId: 41,
     });
     expect(await view.findByText('Imported 2 files · 0 cache hits · 2 downloaded')).toBeInTheDocument();
     expect(onImportedFiles).toHaveBeenCalledWith(['rock.gltf', 'rock_diff.png']);
+  });
+
+  it('cancels the active import and reports that no project files were kept', async () => {
+    let rejectImport: ((reason: unknown) => void) | undefined;
+    importToProject.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectImport = reject;
+        }),
+    );
+    cancelImport.mockImplementationOnce(() => {
+      const error = new Error('Remote asset import canceled');
+      error.name = 'AbortError';
+      rejectImport?.(error);
+      return true;
+    });
+
+    const view = render(<RemoteAssetBrowser source={source} />);
+    fireEvent.click(await view.findByRole('button', { name: /Granite Rock/ }));
+    await waitFor(() => expect(view.getByLabelText('Remote asset format')).toHaveValue('gltf'));
+    fireEvent.click(view.getByRole('button', { name: 'Import to Project' }));
+    fireEvent.click(await view.findByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(cancelImport).toHaveBeenCalledWith(41));
+    expect(await view.findByText('Import canceled. No project files were kept.')).toBeInTheDocument();
+  });
+
+  it('surfaces provider failures through the shared actionable error presentation', async () => {
+    search.mockRejectedValueOnce(new Error('network connection failed'));
+    const view = render(<RemoteAssetBrowser source={source} />);
+
+    expect(
+      await view.findByText(
+        'Unable to browse remote assets. The asset provider could not be reached. Check your connection and try again.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('ignores a stale manifest when a newer asset selection resolves first', async () => {

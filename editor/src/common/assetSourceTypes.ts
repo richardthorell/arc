@@ -79,10 +79,11 @@ export type ArcAssetImportRequest = {
   assetId: string;
   logicalPaths: string[];
   destinationScope: 'project';
+  operationId?: number;
 };
 
 export type ArcAssetImportProgress = {
-  phase: 'resolving' | 'downloading' | 'verifying' | 'copying' | 'complete';
+  phase: 'resolving' | 'downloading' | 'verifying' | 'staging' | 'publishing' | 'importing' | 'complete';
   completedFiles: number;
   totalFiles: number;
   completedBytes: number;
@@ -92,8 +93,10 @@ export type ArcAssetImportProgress = {
 
 export type ArcAssetImportResult = {
   succeeded: boolean;
+  operationId?: number;
   destinationRoot: string;
   importedFiles: string[];
+  importedAssetIds?: string[];
   cacheHits: number;
   downloadedFiles: number;
   provenance: ArcImportedAssetProvenance;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Grid2X2, List, Search } from 'lucide-react';
+import { Download, Grid2X2, List, Search, X } from 'lucide-react';
 
 import type {
   ArcAssetDownloadManifest,
@@ -9,6 +9,16 @@ import type {
   ArcRemoteAsset,
   ArcRemoteAssetKind,
 } from '../../../common/assetSourceTypes';
+import { remoteAssetFailureMessage } from './remoteAssetErrors';
+import {
+  beginRemoteAssetImport,
+  cancelRemoteAssetImport,
+  completeRemoteAssetImport,
+  failRemoteAssetImport,
+  initialRemoteAssetImportLifecycle,
+  requestRemoteAssetImportCancellation,
+  updateRemoteAssetImportProgress,
+} from './remoteAssetImportLifecycle';
 import {
   manifestFormats,
   manifestResolutions,
@@ -39,6 +49,11 @@ const progressLabel = (progress: ArcAssetImportProgress | null): string => {
   return `${progress.phase} ${progress.completedFiles}/${progress.totalFiles}${file}`;
 };
 
+const isCancellationReason = (reason: unknown): boolean => {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  return (reason instanceof Error && reason.name === 'AbortError') || /cancelled|canceled|aborted/i.test(message);
+};
+
 export function RemoteAssetBrowser({ source, onImportedFiles }: Props) {
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<ArcRemoteAssetKind | 'all'>('all');
@@ -51,11 +66,14 @@ export function RemoteAssetBrowser({ source, onImportedFiles }: Props) {
   const [manifestLoading, setManifestLoading] = useState(false);
   const [resolution, setResolution] = useState('');
   const [format, setFormat] = useState('');
-  const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<ArcAssetImportProgress | null>(null);
   const [importMessage, setImportMessage] = useState('');
+  const [importLifecycle, setImportLifecycle] = useState(initialRemoteAssetImportLifecycle);
   const searchRevision = useRef(0);
   const manifestRevision = useRef(0);
+  const activeOperation = useRef<number | null>(null);
+  const importing = importLifecycle.phase === 'running' || importLifecycle.phase === 'canceling';
+  const canceling = importLifecycle.phase === 'canceling';
 
   useEffect(() => {
     const revision = ++searchRevision.current;
@@ -72,7 +90,7 @@ export function RemoteAssetBrowser({ source, onImportedFiles }: Props) {
           if (revision === searchRevision.current) setResult(next);
         })
         .catch((reason) => {
-          if (revision === searchRevision.current) setError(reason instanceof Error ? reason.message : String(reason));
+          if (revision === searchRevision.current) setError(remoteAssetFailureMessage('search', reason));
         })
         .finally(() => {
           if (revision === searchRevision.current) setLoading(false);
@@ -83,11 +101,26 @@ export function RemoteAssetBrowser({ source, onImportedFiles }: Props) {
 
   useEffect(() => {
     ++manifestRevision.current;
+    const operationId = activeOperation.current;
+    if (operationId !== null) {
+      window.arc.assetSources.cancelImport(operationId);
+      activeOperation.current = null;
+    }
     setSelected(null);
     setManifest(null);
     setManifestLoading(false);
+    setImportProgress(null);
     setImportMessage('');
+    setImportLifecycle(initialRemoteAssetImportLifecycle());
   }, [source.id]);
+
+  useEffect(
+    () => () => {
+      const operationId = activeOperation.current;
+      if (operationId !== null) window.arc.assetSources.cancelImport(operationId);
+    },
+    [],
+  );
 
   const selectAsset = (asset: ArcRemoteAsset) => {
     const revision = ++manifestRevision.current;
@@ -109,8 +142,7 @@ export function RemoteAssetBrowser({ source, onImportedFiles }: Props) {
         setFormat(preferredFormat(formats, asset.kind));
       })
       .catch((reason) => {
-        if (revision === manifestRevision.current)
-          setImportMessage(reason instanceof Error ? reason.message : String(reason));
+        if (revision === manifestRevision.current) setImportMessage(remoteAssetFailureMessage('manifest', reason));
       })
       .finally(() => {
         if (revision === manifestRevision.current) setManifestLoading(false);
@@ -130,7 +162,9 @@ export function RemoteAssetBrowser({ source, onImportedFiles }: Props) {
 
   const importSelected = () => {
     if (!selected || selectedFiles.length === 0 || importing) return;
-    setImporting(true);
+    const operationId = window.arc.assetSources.createImportOperation();
+    activeOperation.current = operationId;
+    setImportLifecycle((current) => beginRemoteAssetImport(current, operationId));
     setImportMessage('');
     setImportProgress(null);
     void window.arc.assetSources
@@ -140,17 +174,49 @@ export function RemoteAssetBrowser({ source, onImportedFiles }: Props) {
           assetId: selected.id,
           logicalPaths: selectedFiles.map((file) => file.logicalPath),
           destinationScope: 'project',
+          operationId,
         },
-        (progress) => setImportProgress(progress),
+        (progress) => {
+          if (activeOperation.current !== operationId) return;
+          setImportProgress(progress);
+          setImportLifecycle((current) =>
+            updateRemoteAssetImportProgress(current, operationId, {
+              bytesReceived: progress.completedBytes,
+              totalBytes: progress.totalBytes,
+            }),
+          );
+        },
       )
       .then((imported) => {
+        if (activeOperation.current !== operationId) return;
+        setImportLifecycle((current) => completeRemoteAssetImport(current, operationId));
         if (imported.succeeded) onImportedFiles?.(imported.importedFiles);
         setImportMessage(
           `Imported ${imported.importedFiles.length} files · ${imported.cacheHits} cache hits · ${imported.downloadedFiles} downloaded`,
         );
       })
-      .catch((reason) => setImportMessage(reason instanceof Error ? reason.message : String(reason)))
-      .finally(() => setImporting(false));
+      .catch((reason) => {
+        if (activeOperation.current !== operationId) return;
+        if (isCancellationReason(reason)) {
+          setImportLifecycle((current) => cancelRemoteAssetImport(current, operationId));
+          setImportMessage('Import canceled. No project files were kept.');
+          return;
+        }
+        const message = remoteAssetFailureMessage('import', reason);
+        setImportLifecycle((current) => failRemoteAssetImport(current, operationId, message));
+        setImportMessage(message);
+      })
+      .finally(() => {
+        if (activeOperation.current === operationId) activeOperation.current = null;
+      });
+  };
+
+  const cancelSelectedImport = () => {
+    const operationId = activeOperation.current;
+    if (operationId === null || !importing) return;
+    setImportLifecycle((current) => requestRemoteAssetImportCancellation(current));
+    setImportMessage('Canceling import…');
+    window.arc.assetSources.cancelImport(operationId);
   };
 
   return (
@@ -263,13 +329,20 @@ export function RemoteAssetBrowser({ source, onImportedFiles }: Props) {
                 <span>{selectedFiles.length} files</span>
                 <span>{formatBytes(selectionBytes)}</span>
               </div>
-              <button
-                className="remote-import-button"
-                disabled={selectedFiles.length === 0 || importing}
-                onClick={importSelected}
-              >
-                <Download size={14} /> {importing ? 'Importing…' : 'Import to Project'}
-              </button>
+              <div className="remote-import-actions">
+                <button
+                  className="remote-import-button"
+                  disabled={selectedFiles.length === 0 || importing}
+                  onClick={importSelected}
+                >
+                  <Download size={14} /> {importing ? (canceling ? 'Canceling…' : 'Importing…') : 'Import to Project'}
+                </button>
+                {importing && (
+                  <button className="remote-import-cancel-button" disabled={canceling} onClick={cancelSelectedImport}>
+                    <X size={14} /> {canceling ? 'Canceling…' : 'Cancel'}
+                  </button>
+                )}
+              </div>
               {importProgress && (
                 <progress
                   max={importProgress.totalBytes ?? Math.max(importProgress.totalFiles, 1)}
