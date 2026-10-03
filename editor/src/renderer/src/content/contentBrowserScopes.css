@@ -1,0 +1,73 @@
+.content-browser-scope-shell {
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+}
+
+.content-browser-scope-nav {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  min-height: 34px;
+  padding: 4px 6px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  background: var(--panel-header-background, rgba(255, 255, 255, 0.02));
+}
+
+.content-browser-scope-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 26px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary, #a9adb6);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.content-browser-scope-button:hover {
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text-primary, #f2f3f5);
+}
+
+.content-browser-scope-button.active {
+  border-color: var(--border-color-strong, rgba(255, 255, 255, 0.14));
+  background: rgba(255, 255, 255, 0.075);
+  color: var(--text-primary, #f2f3f5);
+}
+
+.content-browser-scope-access {
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.content-browser-scope-access.read-only {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.content-browser-scope-core {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.content-browser-scope-core > .content-browser-v2 {
+  height: 100%;
+}
+
+/* Until scope-aware mutations are wired through the main-process storage
+   boundary, non-Project mounts are browse-only in this production surface.
+   Their logical writable/read-only policy is still shown above. */
+.content-browser-scope-shell.scope-authoring-disabled .content-create-wrap,
+.content-browser-scope-shell.scope-authoring-disabled .content-create-wrap + .ui-button {
+  display: none;
+}
