@@ -69,7 +69,7 @@ describe('BuiltInAgentToolRegistry', () => {
     const { adapter, invoke } = fakeAdapter(snapshot);
     const registry = new BuiltInAgentToolRegistry(adapter);
 
-    await expect(registry.invoke('viewport.state')).rejects.toThrow('Unknown built-in ARC AI tool');
+    await expect(registry.invoke('viewport.state')).rejects.toThrow(/tool_capability_missing/);
     await expect(
       registry.invoke('edit.apply', {
         editSessionId: 'edit-1',
