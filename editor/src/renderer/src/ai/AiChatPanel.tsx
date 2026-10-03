@@ -1,5 +1,6 @@
 import { Asterisk, ArrowLeft, Bot, Plus, Send, Sparkles, Square } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import type { AiConversationContextReference } from '../../../common/aiConversationTypes';
 import { requestSettingsDialogOpen } from '../settings/settingsDialogRoute';
 import { UiAgentTextCard, UiButton, UiDrawerPanel, UiDropdown, UiIconButton, type UiDropdownOption } from '../ui';
 import {
@@ -14,13 +15,16 @@ import {
   type AiModelProvider,
 } from './aiChat';
 import { renderAiChatMessageText } from './AiChatMessageText';
+import { AiContextChips, AiContextPicker } from './AiContextPicker';
+import { appendAiContextAttachments } from './aiContextAttachments';
 import {
   prepareAiContextBudget,
   type AiContextBudgetDiagnostics,
   type AiProjectContextSource,
 } from './aiContextBudget';
+import { createAiAssetContextProvider } from './aiContextPicker';
 import { loadAiConversationStore, saveAiConversationStore } from './aiConversationStore';
-import { createWindowAiProjectContextService } from './aiProjectContextService';
+import { createDefaultAiContextProviders, createWindowAiProjectContextService } from './aiProjectContextService';
 import './aiGateway.css';
 import './aiChatMessageCards.css';
 
@@ -99,7 +103,9 @@ export function AiChatPanel({
   const ownedContextService = useMemo(() => {
     if (contextSource !== undefined || !projectGuid || typeof window === 'undefined') return null;
     if (!window.arc?.projects?.snapshot || !window.arc?.host?.query) return null;
-    return createWindowAiProjectContextService();
+    return createWindowAiProjectContextService({
+      providers: [...createDefaultAiContextProviders(), createAiAssetContextProvider()],
+    });
   }, [contextSource, projectGuid]);
   const projectContextSource = contextSource === undefined ? ownedContextService : contextSource;
   const [conversations, setConversations] = useState<AiConversation[]>(() => {
@@ -129,6 +135,8 @@ export function AiChatPanel({
   );
   const [prompt, setPrompt] = useState('');
   const [streaming, setStreaming] = useState(false);
+  const [contextPickerOpen, setContextPickerOpen] = useState(false);
+  const [pendingContext, setPendingContext] = useState<AiConversationContextReference[]>([]);
   const activeStreamRef = useRef<ActiveStream | null>(null);
   const captionControllersRef = useRef(new Set<AbortController>());
 
@@ -165,6 +173,8 @@ export function AiChatPanel({
   const activeProvider = activeConversation
     ? (configuredProviders.find((candidate) => candidate.id === activeConversation.modelId) ?? null)
     : null;
+  const selectedProvider = configuredProviders.find((candidate) => candidate.id === selectedModelId) ?? null;
+  const composerProvider = activeConversation ? activeProvider : selectedProvider;
   const modelOptions = useMemo<ReadonlyArray<UiDropdownOption<string>>>(
     () =>
       configuredProviders.map((candidate) => ({
@@ -254,9 +264,25 @@ export function AiChatPanel({
       if (contextPlan.summary) updateConversationSummary(conversationId, contextPlan.summary);
       onContextBudget?.(contextPlan.diagnostics);
 
+      const currentReferences = new Map(
+        (requestMessages[requestMessages.length - 1]?.contextReferences ?? []).map((reference) => [reference.id, reference]),
+      );
+      const rejectedCurrent = contextPlan.diagnostics.rejectedReferences.filter(
+        (reference) => reference.origin === 'explicit' && currentReferences.has(reference.id),
+      );
+      if (rejectedCurrent.length) {
+        const labels = rejectedCurrent.map(
+          (reference) => currentReferences.get(reference.id)?.label ?? reference.kind,
+        );
+        throw new Error(
+          `Attached context is stale or unavailable: ${labels.join(', ')}. Re-add the context and retry.`,
+        );
+      }
+
+      const providerMessages = appendAiContextAttachments(contextPlan.messages, requestMessages, model.capabilities);
       for await (const event of model.stream({
         conversationId,
-        messages: contextPlan.messages,
+        messages: providerMessages,
         signal: controller.signal,
       })) {
         if (controller.signal.aborted) break;
@@ -347,13 +373,18 @@ export function AiChatPanel({
     }
   };
 
+  const messageWithPendingContext = (content: string): AiChatMessage => {
+    const message = createAiMessage('user', content);
+    return pendingContext.length ? { ...message, contextReferences: pendingContext.map((reference) => ({ ...reference })) } : message;
+  };
+
   const startConversation = async () => {
     const content = prompt.trim();
     const model = configuredProviders.find((candidate) => candidate.id === selectedModelId);
     if (!model || streaming || !content) return;
 
     const conversation = createAiConversation();
-    const userMessage = createAiMessage('user', content);
+    const userMessage = messageWithPendingContext(content);
     const assistantMessage: AiChatMessage = {
       ...createAiMessage('assistant', '', 'streaming'),
       modelId: model.id,
@@ -365,9 +396,11 @@ export function AiChatPanel({
     conversation.messages = [userMessage, assistantMessage];
 
     setPrompt('');
+    setContextPickerOpen(false);
     setConversations((current) => [conversation, ...current]);
     setActiveConversationId(conversation.id);
     const result = await streamResponse(conversation.id, model, conversation, [userMessage], assistantMessage);
+    if (result.completed) setPendingContext([]);
     if (result.completed && result.text.trim()) {
       void generateConversationCaption(conversation.id, model, content, result.text);
     }
@@ -377,7 +410,7 @@ export function AiChatPanel({
     const content = prompt.trim();
     if (!activeConversation || !activeProvider || streaming || !content) return;
 
-    const userMessage = createAiMessage('user', content);
+    const userMessage = messageWithPendingContext(content);
     const assistantMessage: AiChatMessage = {
       ...createAiMessage('assistant', '', 'streaming'),
       modelId: activeProvider.id,
@@ -386,6 +419,7 @@ export function AiChatPanel({
     const requestMessages = [...activeConversation.messages, userMessage];
 
     setPrompt('');
+    setContextPickerOpen(false);
     setConversations((current) =>
       current.map((conversation) =>
         conversation.id === activeConversation.id
@@ -397,7 +431,8 @@ export function AiChatPanel({
           : conversation,
       ),
     );
-    await streamResponse(activeConversation.id, activeProvider, activeConversation, requestMessages, assistantMessage);
+    const result = await streamResponse(activeConversation.id, activeProvider, activeConversation, requestMessages, assistantMessage);
+    if (result.completed) setPendingContext([]);
   };
 
   const selectActiveModel = (modelId: string) => {
@@ -423,6 +458,21 @@ export function AiChatPanel({
     if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
     event.currentTarget.form?.requestSubmit();
+  };
+
+  const addPendingContext = (reference: AiConversationContextReference) => {
+    setPendingContext((current) =>
+      current.some((candidate) => candidate.id === reference.id) ? current : [...current, reference],
+    );
+  };
+
+  const removePendingContext = (id: string) => {
+    setPendingContext((current) => current.filter((reference) => reference.id !== id));
+  };
+
+  const clearComposerContext = () => {
+    setPendingContext([]);
+    setContextPickerOpen(false);
   };
 
   const renderMessages = (conversation: AiConversation) => (
@@ -470,10 +520,28 @@ export function AiChatPanel({
   );
 
   const renderAddContextButton = () => (
-    <UiIconButton className="ai-chat-add-button" label="Add context" type="button" variant="ghost">
+    <UiIconButton
+      className="ai-chat-add-button"
+      disabled={!projectContextSource || streaming}
+      label="Add context"
+      type="button"
+      variant="ghost"
+      onClick={() => setContextPickerOpen((current) => !current)}
+    >
       <Plus size={17} />
     </UiIconButton>
   );
+
+  const renderContextPicker = () =>
+    contextPickerOpen ? (
+      <AiContextPicker
+        onAdd={addPendingContext}
+        onClose={() => setContextPickerOpen(false)}
+        selected={pendingContext}
+        source={projectContextSource}
+        supportsImages={composerProvider?.capabilities?.inputModalities.includes('image') ?? false}
+      />
+    ) : null;
 
   const renderSubmitButton = (label: string, disabled: boolean) => (
     <UiIconButton
@@ -497,6 +565,7 @@ export function AiChatPanel({
               label="Back to conversations"
               onClick={() => {
                 if (streaming) stopResponse();
+                clearComposerContext();
                 setActiveConversationId(null);
               }}
             >
@@ -517,6 +586,7 @@ export function AiChatPanel({
             }}
           >
             <div className="ai-chat-composer-surface">
+              <AiContextChips references={pendingContext} onRemove={removePendingContext} />
               <textarea
                 aria-label="Chat prompt"
                 disabled={!activeProvider || streaming}
@@ -541,6 +611,7 @@ export function AiChatPanel({
                 </div>
               </div>
             </div>
+            {renderContextPicker()}
           </form>
         </section>
       ) : (
@@ -556,6 +627,7 @@ export function AiChatPanel({
                     key={conversation.id}
                     onClick={() => {
                       setPrompt('');
+                      clearComposerContext();
                       setActiveConversationId(conversation.id);
                     }}
                     type="button"
@@ -594,6 +666,7 @@ export function AiChatPanel({
                 }}
               >
                 <div className="ai-chat-composer-surface">
+                  <AiContextChips references={pendingContext} onRemove={removePendingContext} />
                   <textarea
                     aria-label="Start a conversation"
                     disabled={streaming}
@@ -618,6 +691,7 @@ export function AiChatPanel({
                     </div>
                   </div>
                 </div>
+                {renderContextPicker()}
               </form>
             )}
           </div>
