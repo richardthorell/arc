@@ -152,6 +152,10 @@ describe('asset provenance', () => {
       },
     );
     const plan = createDeterministicReimportPlan('arc:asset:stable-rock', previous)!;
+    const driftedRecipeVersion = {
+      ...plan,
+      recipe: { ...plan.recipe, version: 2 },
+    } as unknown as Parameters<typeof completeDeterministicReimport>[0];
 
     expect(
       completeDeterministicReimport({ ...plan, request: { ...plan.request, assetId: 'other' } }, previous, {
@@ -159,7 +163,7 @@ describe('asset provenance', () => {
       }),
     ).toBeNull();
     expect(
-      completeDeterministicReimport({ ...plan, recipe: { ...plan.recipe, version: 2 } }, previous, {
+      completeDeterministicReimport(driftedRecipeVersion, previous, {
         importedAt: '2026-10-03T05:00:00.000Z',
       }),
     ).toBeNull();
