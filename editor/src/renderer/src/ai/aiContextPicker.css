@@ -1,0 +1,227 @@
+.ai-chat-home-composer,
+.ai-chat-composer {
+  position: relative;
+}
+
+.ai-context-picker.ui-floating-surface {
+  position: absolute;
+  z-index: 40;
+  bottom: 52px;
+  left: 8px;
+  display: grid;
+  width: min(430px, calc(100% - 16px));
+  max-height: min(560px, calc(100vh - 150px));
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  padding: 0;
+  overflow: hidden;
+}
+
+.ai-context-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px 9px;
+  border-bottom: 1px solid var(--arc-color-border-subtle);
+}
+
+.ai-context-picker-header > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.ai-context-picker-header strong {
+  color: var(--arc-color-text-strong);
+  font-size: var(--arc-text-xs);
+  font-weight: 600;
+}
+
+.ai-context-picker-header small,
+.ai-context-picker-footer {
+  color: var(--arc-color-text-dim);
+  font-size: var(--arc-text-xxs);
+}
+
+.ai-context-picker-header .ui-icon-button {
+  width: 26px;
+  height: 26px;
+}
+
+.ai-context-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--arc-color-border-subtle);
+  color: var(--arc-color-text-dim);
+}
+
+.ai-context-picker-search .ui-search-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.ai-context-picker-scroll {
+  min-height: 0;
+  overflow: auto;
+  padding: 6px;
+}
+
+.ai-context-picker-section {
+  display: grid;
+  gap: 3px;
+  padding: 3px 0 7px;
+}
+
+.ai-context-picker-section + .ai-context-picker-section {
+  border-top: 1px solid var(--arc-color-border-subtle);
+  padding-top: 8px;
+}
+
+.ai-context-picker-section-title {
+  padding: 2px 6px 4px;
+  color: var(--arc-color-text-dim);
+  font-size: var(--arc-text-xxs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.ai-context-picker-list {
+  display: grid;
+  gap: 2px;
+}
+
+.ai-context-picker-row {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 7px;
+  border: 1px solid transparent;
+  border-radius: var(--arc-radius-1);
+  background: transparent;
+  color: var(--arc-color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ai-context-picker-row:hover:not(:disabled) {
+  border-color: var(--arc-color-border-subtle);
+  background: var(--arc-color-bg-field);
+}
+
+.ai-context-picker-row:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.ai-context-picker-row-icon {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid var(--arc-color-border-subtle);
+  border-radius: 6px;
+  background: var(--arc-color-bg-chrome);
+  color: var(--arc-color-text-muted);
+}
+
+.ai-context-picker-row-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.ai-context-picker-row-copy strong,
+.ai-context-picker-row-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-context-picker-row-copy strong {
+  color: var(--arc-color-text);
+  font-size: var(--arc-text-xs);
+  font-weight: 500;
+}
+
+.ai-context-picker-row-copy small,
+.ai-context-picker-added {
+  color: var(--arc-color-text-dim);
+  font-size: var(--arc-text-xxs);
+}
+
+.ai-context-picker-added {
+  padding-right: 3px;
+}
+
+.ai-context-picker-status,
+.ai-context-picker-error {
+  padding: 12px 10px;
+  color: var(--arc-color-text-dim);
+  font-size: var(--arc-text-xxs);
+  line-height: 1.45;
+}
+
+.ai-context-picker-error {
+  color: var(--arc-color-danger, #e48b8b);
+}
+
+.ai-context-picker-footer {
+  padding: 7px 10px;
+  border-top: 1px solid var(--arc-color-border-subtle);
+}
+
+.ai-context-chips {
+  display: flex;
+  max-height: 66px;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 10px 0;
+  overflow: auto;
+}
+
+.ai-context-chip {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 190px;
+  height: 24px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 4px 0 7px;
+  border: 1px solid var(--arc-color-border-subtle);
+  border-radius: 999px;
+  background: var(--arc-color-bg-chrome);
+  color: var(--arc-color-text-muted);
+  font-size: var(--arc-text-xxs);
+}
+
+.ai-context-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-context-chip button {
+  display: grid;
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.ai-context-chip button:hover {
+  background: var(--arc-color-bg-hover);
+  color: var(--arc-color-text);
+}
