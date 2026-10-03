@@ -24,6 +24,8 @@ export { UiDropdown } from './UiDropdown';
 export type { UiDropdownOption } from './UiDropdown';
 export { UiEditorToolbar, UiToolbarGroup, UiToolbarSeparator } from './UiEditorToolbar';
 export type { UiEditorToolbarProps } from './UiEditorToolbar';
+export { editorToolbarPlacementFor, editorToolbarPrimaryActions } from './editorToolbarActionContract';
+export type { EditorToolbarActionPlacement, EditorToolbarPrimaryAction } from './editorToolbarActionContract';
 export { UiFloatingSurface } from './UiFloatingSurface';
 export { UiIconButton } from './UiIconButton';
 export { UiNodeCard } from './UiNodeCard';
