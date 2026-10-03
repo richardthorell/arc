@@ -1,5 +1,9 @@
 import type { AssetItem, ProjectSnapshot } from '../services/editorHostTypes';
-import { buildAssetLibraryMountNavigation, buildAssetLibraryMounts, type AssetLibraryMountMap } from './assetLibraryMounts';
+import {
+  buildAssetLibraryMountNavigation,
+  buildAssetLibraryMounts,
+  type AssetLibraryMountMap,
+} from './assetLibraryMounts';
 import { buildAssetLibraryScopeViews, type AssetLibraryScopeView } from './assetLibraryScopeView';
 
 /**

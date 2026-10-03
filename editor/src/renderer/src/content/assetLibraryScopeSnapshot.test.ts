@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import type { AssetItem, ProjectSnapshot } from '../services/editorHostTypes';
-import { assetLibraryScopeViewsForProject, type ProjectSnapshotWithAssetLibraryScopes } from './assetLibraryScopeSnapshot';
+import {
+  assetLibraryScopeViewsForProject,
+  type ProjectSnapshotWithAssetLibraryScopes,
+} from './assetLibraryScopeSnapshot';
 
 const asset = (id: string, scope: AssetItem['scope']): AssetItem =>
   ({ id, guid: id, name: id, path: `${scope}/${id}.arcasset`, kind: 'material', status: 'ready', scope }) as AssetItem;
 
-const project = (overrides: Partial<ProjectSnapshotWithAssetLibraryScopes> = {}): ProjectSnapshotWithAssetLibraryScopes =>
+const project = (
+  overrides: Partial<ProjectSnapshotWithAssetLibraryScopes> = {},
+): ProjectSnapshotWithAssetLibraryScopes =>
   ({
     name: 'Scope Test',
     root: '/project',
