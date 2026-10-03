@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+import type {
+  BuiltInAgentEvent,
+  BuiltInAgentInvokeRequest,
+  BuiltInAgentRuntimeBridge,
+} from '../common/builtInAgentTypes';
 import type { AiInstructionSourceSnapshot } from '../common/aiInstructionTypes';
 import type { ArcProjectBrowserSnapshot } from '../common/projectTypes';
 import type { AiRuntimeStreamEnvelope, AiRuntimeStreamStartRequest } from '../common/aiRuntimeIpcTypes';
@@ -9,7 +14,10 @@ export type ArcAiRuntimeApi = {
   cancel(requestId: string): Promise<boolean>;
   instructionSources(): Promise<AiInstructionSourceSnapshot>;
   onEvent(callback: (event: AiRuntimeStreamEnvelope) => void): () => void;
+  agent: BuiltInAgentRuntimeBridge;
 };
+
+let agentEventListenerCount = 0;
 
 const api: ArcAiRuntimeApi = {
   start: (request) => ipcRenderer.invoke('ai-runtime:start', request),
@@ -32,6 +40,28 @@ const api: ArcAiRuntimeApi = {
     const listener = (_event: Electron.IpcRendererEvent, envelope: AiRuntimeStreamEnvelope) => callback(envelope);
     ipcRenderer.on('ai-runtime:event', listener);
     return () => ipcRenderer.removeListener('ai-runtime:event', listener);
+  },
+  agent: {
+    capabilities: () => ipcRenderer.invoke('ai-runtime:agent-capabilities'),
+    invoke: (method, params) => {
+      const request: BuiltInAgentInvokeRequest = {
+        method,
+        ...(params !== undefined ? { params } : {}),
+      };
+      return ipcRenderer.invoke('ai-runtime:agent-invoke', request);
+    },
+    onEvent: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, agentEvent: BuiltInAgentEvent) => callback(agentEvent);
+      ipcRenderer.on('ai-runtime:agent-event', listener);
+      agentEventListenerCount += 1;
+      if (agentEventListenerCount === 1) void ipcRenderer.invoke('ai-runtime:agent-subscribe').catch(() => undefined);
+      return () => {
+        ipcRenderer.removeListener('ai-runtime:agent-event', listener);
+        agentEventListenerCount = Math.max(0, agentEventListenerCount - 1);
+        if (agentEventListenerCount === 0)
+          void ipcRenderer.invoke('ai-runtime:agent-unsubscribe').catch(() => undefined);
+      };
+    },
   },
 };
 
