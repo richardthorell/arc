@@ -202,6 +202,7 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     using namespace arc::render;
     render_capabilities capabilities{};
     capabilities.dedicated_video_memory = 16ull * 1024ull * 1024ull * 1024ull;
+    capabilities.max_texture_dimension_2d = 16384;
     capabilities.compute_queue = true;
     capabilities.dedicated_compute_queue = true;
     capabilities.compute_shaders = true;
@@ -218,10 +219,12 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     capabilities.virtual_geometry_compute = true;
     capabilities.virtual_geometry_streaming = true;
     capabilities.virtual_shadow_allocation = true;
+    capabilities.virtual_shadow_depth_formats = {.d16_unorm = true, .d32_float = true};
     capabilities.virtual_shadow_feedback = true;
     capabilities.virtual_shadow_rendering = true;
     capabilities.virtual_shadow_sampling = true;
     capabilities.virtual_shadow_virtual_geometry = true;
+    capabilities.virtual_shadow_lights = {.directional = true, .point = true, .spot = true};
     capabilities.screen_space_contact_shadows = true;
     capabilities.screen_space_indirect_lighting = true;
     capabilities.surface_cache = true;
@@ -251,6 +254,10 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     REQUIRE_FALSE(resolved.features.mesh_shaders);
     REQUIRE(resolved.features.software_ray_tracing);
     REQUIRE(resolved.features.virtual_shadow_maps);
+    REQUIRE(resolved.features.virtual_shadow_lights.directional);
+    REQUIRE(resolved.features.virtual_shadow_lights.point);
+    REQUIRE(resolved.features.virtual_shadow_lights.spot);
+    REQUIRE(resolved.virtual_shadow_pool.valid());
     REQUIRE_FALSE(resolved.features.virtual_shadow_virtual_geometry);
     REQUIRE(resolved.features.screen_space_contact_shadows);
     REQUIRE(resolved.virtual_shadow_budget_bytes == 512ull * 1024ull * 1024ull);

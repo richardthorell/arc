@@ -56,6 +56,40 @@ enum class shadow_light_kind : std::uint8_t
     spot
 };
 
+/** @brief Per-light-kind executable virtual-shadow support. */
+struct virtual_shadow_light_support
+{
+    bool directional{};
+    bool point{};
+    bool spot{};
+
+    [[nodiscard]] constexpr bool supports(shadow_light_kind kind) const noexcept
+    {
+        switch (kind)
+        {
+            case shadow_light_kind::directional:
+                return directional;
+            case shadow_light_kind::point:
+                return point;
+            case shadow_light_kind::spot:
+                return spot;
+        }
+        return false;
+    }
+
+    [[nodiscard]] constexpr bool any() const noexcept
+    {
+        return directional || point || spot;
+    }
+};
+
+/** @brief Resolve a request against support for that exact light topology. */
+[[nodiscard]] constexpr shadow_map_method resolve_shadow_map_method(shadow_map_method requested, shadow_light_kind kind,
+                                                                    virtual_shadow_light_support support) noexcept
+{
+    return resolve_shadow_map_method(requested, support.supports(kind));
+}
+
 struct directional_shadow_settings
 {
     std::uint32_t cascade_count{maximum_directional_shadow_cascades};

@@ -33,6 +33,8 @@ inline constexpr std::uint32_t virtual_shadow_page_protection_frames = 30;
 inline constexpr std::uint64_t default_virtual_shadow_budget_bytes = 512ull * 1024ull * 1024ull;
 /** @brief Default upper bound for the dense GPU page-table address space. */
 inline constexpr std::uint64_t default_virtual_shadow_page_table_bytes = 64ull * 1024ull * 1024ull;
+/** @brief Default number of light-owned virtual address spaces. */
+inline constexpr std::uint32_t default_virtual_shadow_address_space_capacity = 256;
 /** @brief Default number of per-face/per-level view records retained by the cache. */
 inline constexpr std::uint32_t default_virtual_shadow_view_capacity = 4096;
 inline constexpr std::uint32_t invalid_virtual_shadow_index = 0xffffffffu;
@@ -71,39 +73,15 @@ struct virtual_shadow_physical_pool_layout
         return pages_per_axis != 0 && atlas_extent != 0 && physical_page_capacity != 0 && allocated_bytes != 0 &&
                allocated_bytes <= budget_bytes;
     }
+
+    friend constexpr bool operator==(virtual_shadow_physical_pool_layout,
+                                     virtual_shadow_physical_pool_layout) noexcept = default;
 };
 
 /** @brief Resolve one square paired-atlas allocation without using backend-native types. */
 [[nodiscard]] virtual_shadow_physical_pool_layout
 resolve_virtual_shadow_physical_pool(std::uint64_t budget_bytes, std::uint32_t maximum_texture_dimension_2d,
                                      virtual_shadow_depth_format_support formats) noexcept;
-
-/** @brief Per-light-kind executable VSM support. */
-struct virtual_shadow_light_support
-{
-    bool directional{};
-    bool point{};
-    bool spot{};
-
-    [[nodiscard]] constexpr bool supports(shadow_light_kind kind) const noexcept
-    {
-        switch (kind)
-        {
-            case shadow_light_kind::directional:
-                return directional;
-            case shadow_light_kind::point:
-                return point;
-            case shadow_light_kind::spot:
-                return spot;
-        }
-        return false;
-    }
-
-    [[nodiscard]] constexpr bool any() const noexcept
-    {
-        return directional || point || spot;
-    }
-};
 
 /** @brief Static or dynamic depth layer represented by a virtual page. */
 enum class virtual_shadow_page_layer : std::uint8_t
@@ -270,6 +248,7 @@ struct virtual_shadow_gpu_snapshot
 struct virtual_shadow_cache_config
 {
     virtual_shadow_physical_pool_layout physical_pool{};
+    std::uint32_t address_space_capacity{default_virtual_shadow_address_space_capacity};
     std::uint32_t page_table_entry_capacity{static_cast<std::uint32_t>(default_virtual_shadow_page_table_bytes /
                                                                        sizeof(gpu_virtual_shadow_page_table_entry))};
     std::uint32_t view_capacity{default_virtual_shadow_view_capacity};
@@ -403,6 +382,7 @@ private:
     virtual_shadow_depth_format depth_format_{virtual_shadow_depth_format::d16_unorm};
     virtual_shadow_physical_pool_layout physical_pool_layout_{};
     std::uint32_t page_table_entry_capacity_{};
+    std::uint32_t address_space_capacity_{};
     std::uint32_t view_capacity_{};
     std::vector<address_space_slot> address_spaces_;
     std::vector<std::uint32_t> free_address_spaces_;

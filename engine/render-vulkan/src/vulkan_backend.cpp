@@ -335,6 +335,11 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.virtual_geometry_indexed = false;
     capabilities.virtual_geometry_mesh_shader = false;
     capabilities.virtual_geometry_streaming = false;
+    const VkFormatFeatureFlags virtual_shadow_depth_features =
+        VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+    capabilities.virtual_shadow_depth_formats = {
+        .d16_unorm = supports_attachment(VK_FORMAT_D16_UNORM, virtual_shadow_depth_features),
+        .d32_float = supports_attachment(VK_FORMAT_D32_SFLOAT, virtual_shadow_depth_features)};
     // VSM support is advertised only after allocation, feedback, caster rendering,
     // sampling, and contact-shadow pipelines are all executable. Resource plumbing
     // alone must not cause Ultra to select an incomplete path.

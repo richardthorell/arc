@@ -456,8 +456,21 @@ TEST_CASE("Ultra virtual shadow graph declares page feedback cache and lighting 
     config.features.screen_space_contact_shadows = true;
     config.screen_space_shadows = true;
     config.screen_space_shadow_scale = 1.0f;
+    constexpr std::uint64_t physical_page_pair_bytes =
+        static_cast<std::uint64_t>(virtual_shadow_physical_page_texels) * virtual_shadow_physical_page_texels * 4u;
+    config.virtual_shadow_pool = resolve_virtual_shadow_physical_pool(
+        physical_page_pair_bytes * 9u, virtual_shadow_physical_page_texels * 3u, {.d16_unorm = true});
+    config.virtual_shadow_address_space_capacity = 8;
+    config.virtual_shadow_view_capacity = 32;
+    config.virtual_shadow_page_table_entry_capacity = 128;
 
-    const auto compiled = make_scene_draw_graph("vsm", config, true).compile().value();
+    auto graph = make_scene_draw_graph("vsm", config, true);
+    const auto compiled_result = graph.compile();
+    if (!compiled_result.has_value())
+        UNSCOPED_INFO(compiled_result.error().message << " pass=" << compiled_result.error().pass
+                                                      << " resource=" << compiled_result.error().resource);
+    REQUIRE(compiled_result.has_value());
+    const auto& compiled = compiled_result.value();
     const auto pass_index = [&](builtin_render_pass expected)
     {
         for (std::size_t index = 0; index < compiled.passes.size(); ++index)
@@ -491,15 +504,29 @@ TEST_CASE("Ultra virtual shadow graph declares page feedback cache and lighting 
     };
     const auto* static_pages = resource("virtual_shadow_static_pages");
     const auto* dynamic_pages = resource("virtual_shadow_dynamic_pages");
+    const auto* address_spaces = resource("virtual_shadow_address_spaces");
+    const auto* views = resource("virtual_shadow_views");
     const auto* page_table = resource("virtual_shadow_page_table");
     const auto* readback = resource("virtual_shadow_feedback_readback");
     REQUIRE(static_pages != nullptr);
     REQUIRE(dynamic_pages != nullptr);
+    REQUIRE(address_spaces != nullptr);
+    REQUIRE(views != nullptr);
     REQUIRE(page_table != nullptr);
     REQUIRE(readback != nullptr);
     REQUIRE(static_pages->format == render_format::d16_unorm);
+    REQUIRE(static_pages->extent.width == config.virtual_shadow_pool.atlas_extent);
+    REQUIRE(static_pages->extent.height == config.virtual_shadow_pool.atlas_extent);
+    REQUIRE(dynamic_pages->extent.width == static_pages->extent.width);
+    REQUIRE(dynamic_pages->extent.height == static_pages->extent.height);
+    REQUIRE(dynamic_pages->extent.depth == static_pages->extent.depth);
     REQUIRE(static_pages->persistent);
     REQUIRE(dynamic_pages->persistent);
+    REQUIRE(address_spaces->byte_size ==
+            config.virtual_shadow_address_space_capacity * sizeof(gpu_virtual_shadow_address_space_record));
+    REQUIRE(views->byte_size == config.virtual_shadow_view_capacity * sizeof(gpu_virtual_shadow_view_record));
+    REQUIRE(page_table->byte_size ==
+            config.virtual_shadow_page_table_entry_capacity * sizeof(gpu_virtual_shadow_page_table_entry));
     REQUIRE(page_table->lifetime == render_resource_lifetime_class::per_world);
     REQUIRE(readback->memory == render_memory_class::readback);
     REQUIRE(readback->exported);

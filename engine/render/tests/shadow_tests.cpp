@@ -367,4 +367,12 @@ TEST_CASE("virtual shadow requests always retain a conventional executable fallb
     REQUIRE(resolve_shadow_map_method(shadow_map_method::conventional, true) == shadow_map_method::conventional);
     REQUIRE(resolve_shadow_map_method(shadow_map_method::auto_select, false) == shadow_map_method::conventional);
     REQUIRE(resolve_shadow_map_method(shadow_map_method::virtualized, false) == shadow_map_method::conventional);
+
+    const arc::render::virtual_shadow_light_support directional_only{.directional = true};
+    REQUIRE(resolve_shadow_map_method(shadow_map_method::virtualized, arc::render::shadow_light_kind::directional,
+                                      directional_only) == shadow_map_method::virtualized);
+    REQUIRE(resolve_shadow_map_method(shadow_map_method::virtualized, arc::render::shadow_light_kind::point,
+                                      directional_only) == shadow_map_method::conventional);
+    REQUIRE(resolve_shadow_map_method(shadow_map_method::virtualized, arc::render::shadow_light_kind::spot,
+                                      directional_only) == shadow_map_method::conventional);
 }

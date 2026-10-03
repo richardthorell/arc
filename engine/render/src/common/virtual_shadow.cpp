@@ -167,7 +167,7 @@ virtual_shadow_cache& virtual_shadow_cache::operator=(virtual_shadow_cache&&) no
 virtual_shadow_cache::virtual_shadow_cache(const virtual_shadow_cache_config& config)
     : budget_bytes_(config.physical_pool.budget_bytes), depth_format_(config.physical_pool.format),
       physical_pool_layout_(config.physical_pool), page_table_entry_capacity_(config.page_table_entry_capacity),
-      view_capacity_(config.view_capacity)
+      address_space_capacity_(config.address_space_capacity), view_capacity_(config.view_capacity)
 {
     const auto capacity = physical_pool_layout_.valid() ? physical_pool_layout_.physical_page_capacity : 0u;
     physical_pages_.resize(capacity);
@@ -221,6 +221,12 @@ virtual_shadow_cache::create_address_space(const virtual_shadow_address_space_de
     std::uint32_t index{};
     if (free_address_spaces_.empty())
     {
+        if (address_spaces_.size() >= address_space_capacity_)
+        {
+            release_range(free_page_table_ranges_, *page_base, page_count);
+            release_range(free_view_ranges_, *view_base, view_count);
+            return std::nullopt;
+        }
         index = static_cast<std::uint32_t>(address_spaces_.size());
         address_spaces_.push_back({});
     }
