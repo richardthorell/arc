@@ -134,10 +134,10 @@ describe('ContentBrowserPanel', () => {
     const view = renderBrowser();
 
     fireEvent.click(view.getByRole('combobox', { name: 'Asset type' }));
-    expect(view.getByRole('option', { name: /Model/ })).toBeInTheDocument();
+    expect(view.getByRole('option', { name: 'Model (1)' })).toBeInTheDocument();
     expect(view.queryByRole('option', { name: /^Mesh/ })).not.toBeInTheDocument();
 
-    fireEvent.click(view.getByRole('option', { name: /Model/ }));
+    fireEvent.click(view.getByRole('option', { name: 'Model (1)' }));
     expect(view.getByText('Hero Rock')).toBeInTheDocument();
     expect(view.queryByText('Main Scene')).not.toBeInTheDocument();
   });
