@@ -1,4 +1,4 @@
-import type { AiJsonObject } from './aiRuntimeTypes';
+import type { AiImageContentPart, AiJsonObject } from './aiRuntimeTypes';
 
 export const AI_CONVERSATION_STORE_VERSION = 1 as const;
 export type AiConversationStoreVersion = typeof AI_CONVERSATION_STORE_VERSION;
@@ -12,6 +12,7 @@ export type AiConversationContextReference = {
   label?: string;
   stableId?: string;
   metadata?: AiJsonObject;
+  attachment?: AiImageContentPart;
 };
 
 export type AiConversationToolReference = {
