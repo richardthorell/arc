@@ -137,9 +137,9 @@ export const parseAiSkillMarkdown = (source: string): ParsedSkillMarkdown => {
   const { metadata, body } = parseFrontMatter(source);
   if (requireScalar(metadata, 'format') !== AI_SKILL_FORMAT)
     throw new Error(`Skill format must be '${AI_SKILL_FORMAT}'`);
-  const formatVersion = Number.parseInt(requireScalar(metadata, 'formatVersion'), 10);
-  if (formatVersion !== AI_SKILL_FORMAT_VERSION)
-    throw new Error(`Unsupported skill format version ${String(formatVersion)}`);
+  const formatVersion = requireScalar(metadata, 'formatVersion');
+  if (formatVersion !== String(AI_SKILL_FORMAT_VERSION))
+    throw new Error(`Unsupported skill format version ${formatVersion}`);
 
   const id = requireScalar(metadata, 'id');
   if (!identifierPattern.test(id)) throw new Error('Skill ID must use lowercase letters, numbers, and hyphens');
