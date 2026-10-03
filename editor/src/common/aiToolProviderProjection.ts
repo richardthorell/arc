@@ -13,17 +13,27 @@ export type AnthropicToolDefinition = Readonly<{
   input_schema: AiJsonObject;
 }>;
 
+export const providerToolName = (stableName: string): string =>
+  `arc_${stableName
+    .replaceAll('.', '_')
+    .replaceAll(/([a-z0-9])([A-Z])/gu, '$1_$2')
+    .replaceAll(/[^a-zA-Z0-9_-]/gu, '_')
+    .toLocaleLowerCase()}`;
+
+export const stableToolNameFromProvider = (providerName: string, tools: readonly AiToolDefinition[]): string =>
+  tools.find((tool) => providerToolName(tool.name) === providerName)?.name ?? providerName;
+
 export const projectAiToolsForOpenAi = (tools: readonly AiToolDefinition[]): OpenAiToolDefinition[] =>
   tools.map((tool) => ({
     type: 'function',
-    name: tool.name,
+    name: providerToolName(tool.name),
     description: tool.description,
     parameters: tool.inputSchema,
   }));
 
 export const projectAiToolsForAnthropic = (tools: readonly AiToolDefinition[]): AnthropicToolDefinition[] =>
   tools.map((tool) => ({
-    name: tool.name,
+    name: providerToolName(tool.name),
     description: tool.description,
     input_schema: tool.inputSchema,
   }));
