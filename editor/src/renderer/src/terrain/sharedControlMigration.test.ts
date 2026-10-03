@@ -9,6 +9,7 @@ const terrainSurfaces = readdirSync(terrainDirectory)
   .sort();
 
 const nativeControlPattern = /<(?:button|input|select|textarea)\b/i;
+const nativeControlSelectorPattern = /(?:^|[\s,>+~])(?:button|input|select|textarea)(?=[\s.#:[>+~,{]|$)/im;
 
 describe('terrain shared control migration', () => {
   it('keeps the terrain surface inventory covered', () => {
@@ -19,5 +20,11 @@ describe('terrain shared control migration', () => {
     const source = readFileSync(new URL(filename, import.meta.url), 'utf8');
 
     expect(source).not.toMatch(nativeControlPattern);
+  });
+
+  it('keeps terrain CSS from restyling native controls', () => {
+    const css = readFileSync(new URL('terrainEditor.css', import.meta.url), 'utf8');
+
+    expect(css).not.toMatch(nativeControlSelectorPattern);
   });
 });
