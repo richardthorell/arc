@@ -5,6 +5,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { EditorAgentHarness } from './editorAgentHarness';
+import { BuiltInAgentAdapter } from './builtInAgentAdapter';
+import { installBuiltInAgentIpc } from './builtInAgentIpc';
 import { AiGatewayServer } from './aiGatewayServer';
 import { ProjectAssetWorkspace } from './projectAssetWorkspace';
 import { ProjectService } from './projectService';
@@ -36,6 +38,8 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 let mainWindow: BrowserWindow | null = null;
 let hostClient: ArcHostClient | null = null;
 let agentHarness: EditorAgentHarness | null = null;
+let builtInAgentAdapter: BuiltInAgentAdapter | null = null;
+let disposeBuiltInAgentIpc: (() => void) | null = null;
 let aiGateway: AiGatewayServer | null = null;
 let projectService: ProjectService | null = null;
 let settingsService: SettingsService | null = null;
@@ -989,6 +993,8 @@ void app.whenReady().then(async () => {
       }),
     });
     agentHarness = harness;
+    builtInAgentAdapter = new BuiltInAgentAdapter(harness);
+    disposeBuiltInAgentIpc = installBuiltInAgentIpc(builtInAgentAdapter);
     hostClient.onEvent((event) => {
       harness.recordHostEvent(event);
       if (
@@ -1560,6 +1566,10 @@ app.on('before-quit', (event) => {
     try {
       await aiGateway?.stop();
     } finally {
+      disposeBuiltInAgentIpc?.();
+      disposeBuiltInAgentIpc = null;
+      await builtInAgentAdapter?.dispose();
+      builtInAgentAdapter = null;
       aiGateway = null;
       agentHarness = null;
       projectService = null;
