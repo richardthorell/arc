@@ -99,6 +99,6 @@ describe('Content Browser Flow creation', () => {
     );
 
     fireEvent.click(view.getByRole('combobox', { name: 'Asset type' }));
-    expect(view.getByRole('option', { name: 'Flow Graph' })).toBeInTheDocument();
+    expect(view.getByRole('option', { name: 'Flow Graph (0)' })).toBeInTheDocument();
   });
 });
