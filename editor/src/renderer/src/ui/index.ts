@@ -65,3 +65,5 @@ export { UiTreeView } from './UiTreeView';
 export { UiVector3Control } from './UiVector3Control';
 export type { UiVector3Axis, UiVector3ControlProps, UiVector3Value } from './UiVector3Control';
 export type { UiTreeNode } from './UiTreeView';
+export { UiViewportNavigation } from './UiViewportNavigation';
+export type { UiViewportNavigationProps } from './UiViewportNavigation';
