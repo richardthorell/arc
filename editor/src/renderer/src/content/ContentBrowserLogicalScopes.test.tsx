@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ContentBrowserPanel } from './ContentBrowserPanel.next';
+import { ContentBrowserPanel } from './ContentBrowserPanel';
 
 const baseProject = {
   name: 'Scopes',
