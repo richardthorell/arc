@@ -88,4 +88,27 @@ describe('searchAssetLibrary', () => {
     expect(searchAssetLibrary(assets, {}).assets.map((item) => item.id)).toEqual(['m1', 't1', 'm2']);
     expect(assets).toEqual(before);
   });
+
+  it('keeps large metadata libraries deterministic without requiring raw-path queries', () => {
+    const library = Array.from({ length: 10_000 }, (_, index) =>
+      asset({
+        id: `asset-${index.toString().padStart(5, '0')}`,
+        name: `Asset ${index}`,
+        title: index % 250 === 0 ? `Landmark ${index}` : undefined,
+        description: index % 2 === 0 ? 'Outdoor environment asset' : 'Interior gameplay asset',
+        tags: [index % 2 === 0 ? 'Environment' : 'Gameplay', `Batch-${index % 20}`],
+        path: `Assets/Generated/Batch-${index % 20}/Asset-${index}`,
+        kind: index % 3 === 0 ? 'mesh' : 'texture',
+      }),
+    );
+
+    const query = { text: 'landmark', tags: ['environment'] } as const;
+    const first = searchAssetLibrary(library, query);
+    const second = searchAssetLibrary(library, query);
+
+    expect(first.assets.length).toBe(40);
+    expect(second.assets.map((item) => item.id)).toEqual(first.assets.map((item) => item.id));
+    expect(first.assets.every((item) => item.tags?.includes('Environment'))).toBe(true);
+    expect(first.facets).toEqual(second.facets);
+  });
 });
