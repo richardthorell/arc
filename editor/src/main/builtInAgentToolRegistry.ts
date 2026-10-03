@@ -279,7 +279,9 @@ const registryEntries = [
 
 const entryByMethod = new Map<AgentHarnessMethod, RegistryEntry>(registryEntries.map((entry) => [entry.method, entry]));
 
-const entryByName = new Map(registryEntries.map((entry) => [entry.method, entry]));
+const entryByName: ReadonlyMap<string, RegistryEntry> = new Map(
+  registryEntries.map((entry) => [entry.method, entry]),
+);
 
 const toJsonValue = (value: unknown, path = 'result'): AiJsonValue => {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
