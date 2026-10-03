@@ -1,36 +1,30 @@
 import { describe, expect, it } from 'vitest';
 
 import type { AssetItem, ProjectSnapshot } from '../services/editorHostTypes';
-import {
-  assetLibraryScopeViewsForProject,
-  type ProjectSnapshotWithAssetLibraryScopes,
-} from './assetLibraryScopeSnapshot';
+import { assetLibraryScopeViewsForProject } from './assetLibraryScopeSnapshot';
 
 const asset = (id: string, scope: AssetItem['scope']): AssetItem =>
   ({ id, guid: id, name: id, path: `${scope}/${id}.arcasset`, kind: 'material', status: 'ready', scope }) as AssetItem;
 
-const project = (
-  overrides: Partial<ProjectSnapshotWithAssetLibraryScopes> = {},
-): ProjectSnapshotWithAssetLibraryScopes =>
-  ({
-    name: 'Scope Test',
-    root: '/project',
-    assetRoot: '/project/Content',
-    activeScene: '',
-    scene: [],
-    assets: [],
-    console: [],
-    renderStats: {
-      fps: 0,
-      frameTimeMs: 0,
-      drawCalls: 0,
-      triangles: 0,
-      visibleEntities: 0,
-      lights: 0,
-      gpuMemoryMb: 0,
-    },
-    ...overrides,
-  }) as ProjectSnapshot;
+const project = (overrides: Partial<ProjectSnapshot> = {}): ProjectSnapshot => ({
+  name: 'Scope Test',
+  root: '/project',
+  assetRoot: '/project/Content',
+  activeScene: '',
+  scene: [],
+  assets: [],
+  console: [],
+  renderStats: {
+    fps: 0,
+    frameTimeMs: 0,
+    drawCalls: 0,
+    triangles: 0,
+    visibleEntities: 0,
+    lights: 0,
+    gpuMemoryMb: 0,
+  },
+  ...overrides,
+});
 
 describe('asset library project scope adapter', () => {
   it('keeps Project available through the existing assetRoot compatibility path', () => {
