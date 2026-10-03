@@ -11,7 +11,9 @@ const project = (root: string, assetRoots: string[] = ['Content']): ArcProjectCa
     descriptor: { assetRoots },
   }) as ArcProjectCandidate;
 
-const service = (overrides: { builtinAssetsRoot?: string; userAssetsRoot?: string; organizationAssetsRoot?: string } = {}) =>
+const service = (
+  overrides: { builtinAssetsRoot?: string; userAssetsRoot?: string; organizationAssetsRoot?: string } = {},
+) =>
   new ProjectService({
     userDataPath: path.resolve('tmp/project-service-mount-bridge'),
     currentEngineVersion: '1.0.0',

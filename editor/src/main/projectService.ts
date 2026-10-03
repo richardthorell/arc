@@ -31,8 +31,7 @@ export class ProjectService extends ProjectServiceCore {
     super(coreOptions);
     this.logicalBuiltinAssetsRoot = options.builtinAssetsRoot ?? '';
     this.logicalUserAssetsRoot = userAssetsRoot ?? process.env.ARC_USER_ASSETS_ROOT ?? '';
-    this.logicalOrganizationAssetsRoot =
-      organizationAssetsRoot ?? process.env.ARC_ORGANIZATION_ASSETS_ROOT ?? '';
+    this.logicalOrganizationAssetsRoot = organizationAssetsRoot ?? process.env.ARC_ORGANIZATION_ASSETS_ROOT ?? '';
   }
 
   assetMounts(project: ArcProjectCandidate | null = this.active()): ProjectAssetLogicalMounts {
