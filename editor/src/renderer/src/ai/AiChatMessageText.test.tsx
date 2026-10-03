@@ -12,7 +12,9 @@ afterEach(() => {
 
 describe('renderAiChatMessageText', () => {
   it('renders HTTP links without swallowing trailing sentence punctuation', () => {
-    render(<div>{renderAiChatMessageText('Billing: https://platform.openai.com/settings/organization/billing/.')}</div>);
+    render(
+      <div>{renderAiChatMessageText('Billing: https://platform.openai.com/settings/organization/billing/.')}</div>,
+    );
 
     const link = screen.getByRole('link');
     expect(link).toHaveAttribute('href', 'https://platform.openai.com/settings/organization/billing/');
