@@ -14,7 +14,9 @@ describe('AI conversation helpers', () => {
   });
 
   it('normalizes provider-generated captions before persisting them', () => {
-    expect(conversationCaptionFromResponse('"Inspect Editor Harness"\nExtra explanation')).toBe('Inspect Editor Harness');
+    expect(conversationCaptionFromResponse('"Inspect Editor Harness"\nExtra explanation')).toBe(
+      'Inspect Editor Harness',
+    );
     expect(conversationCaptionFromResponse('  Scene   Lighting Polish!  ')).toBe('Scene Lighting Polish');
     expect(conversationCaptionFromResponse('   ')).toBeNull();
   });
