@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
 
@@ -69,12 +69,13 @@ describe('AiContextPicker', () => {
   it('adds visible removable context chips from structured project context', async () => {
     render(<PickerHarness />);
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /Current selection 1 selected/ })).toBeVisible());
-    fireEvent.click(screen.getByRole('button', { name: /Current selection 1 selected/ }));
+    const currentContext = await screen.findByRole('region', { name: 'Current editor context' });
+    const currentSelection = within(currentContext).getByRole('button', { name: /Current selection/ });
+    fireEvent.click(currentSelection);
 
     expect(screen.getByLabelText('Attached context')).toHaveTextContent('Current selection');
     expect(screen.getByRole('button', { name: 'Remove Current selection' })).toBeVisible();
-    expect(screen.getByRole('button', { name: /Current selection 1 selected/ })).toBeDisabled();
+    expect(within(currentContext).getByRole('button', { name: /Current selection/ })).toBeDisabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove Current selection' }));
     expect(screen.queryByLabelText('Attached context')).not.toBeInTheDocument();
