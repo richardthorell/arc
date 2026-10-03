@@ -3,7 +3,12 @@ import type {
   AiInstructionSourceSnapshot,
 } from '../../../common/aiInstructionTypes';
 import type { AiProviderId } from '../../../common/aiProviderTypes';
-import type { AiModelCapabilities, AiRuntimeRequest, AiRuntimeStreamEvent } from '../../../common/aiRuntimeTypes';
+import type {
+  AiModelCapabilities,
+  AiRuntimeRequest,
+  AiRuntimeStreamEvent,
+  AiToolDefinition,
+} from '../../../common/aiRuntimeTypes';
 import { assertAiRuntimeRequestSafeForProvider } from '../../../common/aiSecurityPolicy';
 import type { EditorSettingDescriptor, EditorSettingsSnapshot } from '../../../common/editorWorkflowTypes';
 import type { AiModelProvider } from './aiChat';
@@ -61,8 +66,27 @@ const defaultInstructionSources = async (): Promise<AiInstructionSourceSnapshot>
   }
 };
 
+const defaultAgentTools = async (): Promise<AiToolDefinition[]> => {
+  const bridge = typeof window === 'undefined' ? undefined : window.arcAiRuntime;
+  if (!bridge?.agent?.tools) return [];
+  try {
+    return await bridge.agent.tools();
+  } catch {
+    return [];
+  }
+};
+
+const withAgentTools = (request: AiRuntimeRequest, agentTools: readonly AiToolDefinition[]): AiRuntimeRequest => {
+  if (!agentTools.length) return request;
+  const tools = new Map<string, AiToolDefinition>();
+  for (const tool of request.tools ?? []) tools.set(tool.name, tool);
+  for (const tool of agentTools) tools.set(tool.name, tool);
+  return { ...request, tools: [...tools.values()] };
+};
+
 export type RuntimeAiProviderOptions = {
   instructionSources?: () => Promise<AiInstructionSourceSnapshot>;
+  agentTools?: () => Promise<AiToolDefinition[]>;
   onInstructionResolution?: (diagnostics: AiInstructionResolutionDiagnostics) => void;
 };
 
@@ -72,9 +96,12 @@ const withResolvedInstructions = (
   options: RuntimeAiProviderOptions,
 ): AsyncIterable<AiRuntimeStreamEvent> =>
   (async function* () {
-    const sources = await (options.instructionSources ?? defaultInstructionSources)();
+    const [sources, agentTools] = await Promise.all([
+      (options.instructionSources ?? defaultInstructionSources)(),
+      (options.agentTools ?? defaultAgentTools)(),
+    ]);
     if (request.signal?.aborted) return;
-    const resolution = resolveAiRuntimeInstructions(request, sources);
+    const resolution = resolveAiRuntimeInstructions(withAgentTools(request, agentTools), sources);
     options.onInstructionResolution?.(resolution.diagnostics);
     yield* execute(resolution.request);
   })();
