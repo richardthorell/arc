@@ -55,7 +55,7 @@ export type { UiSliderProps } from './UiSlider';
 export { UiSplitButton } from './UiSplitButton';
 export type { UiSplitButtonOption } from './UiSplitButton';
 export { UiTab, UiTabs } from './UiTabs';
-export { UiSearchInput, UiTextInput } from './UiTextInput';
+export { UiSearchInput, UiTextArea, UiTextInput } from './UiTextInput';
 export { UiToggleButton } from './UiToggleButton';
 export type { UiToggleButtonProps } from './UiToggleButton';
 export { UiTreeRow } from './UiTreeRow';
