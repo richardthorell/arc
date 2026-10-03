@@ -2,10 +2,7 @@ import { z } from 'zod';
 
 import type { AiJsonObject, AiJsonValue, AiToolDefinition } from '../common/aiRuntimeTypes';
 import { assertAiToolInvocationAllowed, type AiToolSecurityDescriptor } from '../common/aiSecurityPolicy';
-import type {
-  BuiltInAgentCapabilities,
-  BuiltInAgentToolExecutionResult,
-} from '../common/builtInAgentTypes';
+import type { BuiltInAgentCapabilities, BuiltInAgentToolExecutionResult } from '../common/builtInAgentTypes';
 import { agentEditActions, type AgentHarnessMethod } from './agentHarnessContract';
 import type { BuiltInAgentAdapter } from './builtInAgentAdapter';
 
@@ -252,9 +249,7 @@ const registryEntries = [
   {
     method: 'edit.commit',
     description: 'Commit an active approved ARC edit transaction.',
-    schema: z
-      .object({ editSessionId: z.string().min(1), expectedSceneRevision: z.number().int().positive() })
-      .strict(),
+    schema: z.object({ editSessionId: z.string().min(1), expectedSceneRevision: z.number().int().positive() }).strict(),
     mutating: true,
   },
   {
@@ -279,9 +274,7 @@ const registryEntries = [
 
 const entryByMethod = new Map<AgentHarnessMethod, RegistryEntry>(registryEntries.map((entry) => [entry.method, entry]));
 
-const entryByName: ReadonlyMap<string, RegistryEntry> = new Map(
-  registryEntries.map((entry) => [entry.method, entry]),
-);
+const entryByName: ReadonlyMap<string, RegistryEntry> = new Map(registryEntries.map((entry) => [entry.method, entry]));
 
 const toJsonValue = (value: unknown, path = 'result'): AiJsonValue => {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
@@ -292,7 +285,10 @@ const toJsonValue = (value: unknown, path = 'result'): AiJsonValue => {
   if (Array.isArray(value)) return value.map((entry, index) => toJsonValue(entry, `${path}[${String(index)}]`));
   if (value && typeof value === 'object') {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, nested]) => [key, toJsonValue(nested, `${path}.${key}`)]),
+      Object.entries(value as Record<string, unknown>).map(([key, nested]) => [
+        key,
+        toJsonValue(nested, `${path}.${key}`),
+      ]),
     );
   }
   throw new Error(`${path} contains a non-serializable ${typeof value}`);
@@ -333,7 +329,9 @@ const definition = (entry: RegistryEntry, capabilities: BuiltInAgentCapabilities
 
 export const builtInAgentToolDefinitions = (capabilities: BuiltInAgentCapabilities): AiToolDefinition[] => {
   const operations = new Set(capabilities.operations);
-  return registryEntries.filter((entry) => operations.has(entry.method)).map((entry) => definition(entry, capabilities));
+  return registryEntries
+    .filter((entry) => operations.has(entry.method))
+    .map((entry) => definition(entry, capabilities));
 };
 
 const serializeToolResult = (

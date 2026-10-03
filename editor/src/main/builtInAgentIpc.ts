@@ -1,9 +1,6 @@
 import { ipcMain, type WebContents } from 'electron';
 
-import type {
-  BuiltInAgentInvokeRequest,
-  BuiltInAgentToolInvokeRequest,
-} from '../common/builtInAgentTypes';
+import type { BuiltInAgentInvokeRequest, BuiltInAgentToolInvokeRequest } from '../common/builtInAgentTypes';
 import { BuiltInAgentAdapter } from './builtInAgentAdapter';
 import { BuiltInAgentToolRegistry } from './builtInAgentToolRegistry';
 
@@ -31,7 +28,8 @@ const toolInvokeRequest = (value: unknown): BuiltInAgentToolInvokeRequest => {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('Built-in agent tool invocation request is invalid');
   const request = value as Record<string, unknown>;
-  if (typeof request.name !== 'string' || request.name.trim() === '') throw new Error('Built-in agent tool name is required');
+  if (typeof request.name !== 'string' || request.name.trim() === '')
+    throw new Error('Built-in agent tool name is required');
   const arguments_ = request.arguments;
   if (arguments_ !== undefined && (!arguments_ || typeof arguments_ !== 'object' || Array.isArray(arguments_)))
     throw new Error('Built-in agent tool arguments must be an object');
