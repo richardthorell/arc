@@ -63,6 +63,35 @@ export const createReimportRequest = (provenance: ArcImportedAssetProvenance): A
   };
 };
 
+export type ArcDeterministicReimportPlan = {
+  arcAssetId: string;
+  request: ArcAssetImportRequest;
+  recipe: ArcAssetImportRecipe;
+  expectedSourceRevision?: string;
+  expectedSourceHash?: string;
+};
+
+export const createDeterministicReimportPlan = (
+  arcAssetId: string,
+  provenance: ArcImportedAssetProvenance,
+): ArcDeterministicReimportPlan | null => {
+  const stableAssetId = arcAssetId.trim();
+  const request = createReimportRequest(provenance);
+  if (!stableAssetId || !request || !provenance.recipe) return null;
+
+  return {
+    arcAssetId: stableAssetId,
+    request,
+    recipe: {
+      version: provenance.recipe.version,
+      logicalPaths: [...provenance.recipe.logicalPaths],
+      options: provenance.recipe.options ? { ...provenance.recipe.options } : undefined,
+    },
+    expectedSourceRevision: provenance.sourceRevision,
+    expectedSourceHash: provenance.sourceHash,
+  };
+};
+
 export type ArcAssetProvenanceMetadata = {
   provider: string;
   providerAssetId: string;
