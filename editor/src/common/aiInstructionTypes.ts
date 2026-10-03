@@ -27,10 +27,6 @@ export type AiInstructionSourceSnapshot = {
   diagnostics: AiInstructionSourceDiagnostic[];
 };
 
-export type AiInstructionSourceRequest = {
-  project?: AiInstructionProjectScope | null;
-};
-
 export type AiSkillResolutionReason = 'selected' | 'not-relevant' | 'missing-capability';
 
 export type AiResolvedSkillDiagnostic = {
