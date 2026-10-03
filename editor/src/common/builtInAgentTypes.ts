@@ -20,3 +20,9 @@ export type BuiltInAgentInvokeRequest = Readonly<{
   method: string;
   params?: unknown;
 }>;
+
+export type BuiltInAgentRuntimeBridge = {
+  capabilities(): Promise<BuiltInAgentCapabilities>;
+  invoke(method: string, params?: unknown): Promise<unknown>;
+  onEvent(callback: (event: BuiltInAgentEvent) => void): () => void;
+};
