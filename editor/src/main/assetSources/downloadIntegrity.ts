@@ -30,14 +30,21 @@ const validateExpectedDigest = (algorithm: 'md5' | 'sha256', value: string): str
 };
 
 /**
- * Verifies downloaded bytes against provider checksum metadata before they can
+ * Verifies downloaded bytes against provider integrity metadata before they can
  * advance to ARC's importer/cooker. Files without provider checksum metadata
  * remain explicitly unverified rather than being treated as verified.
  */
 export const verifyRemoteDownloadIntegrity = (
-  file: Pick<ArcAssetDownloadFile, 'logicalPath' | 'checksum'>,
+  file: Pick<ArcAssetDownloadFile, 'logicalPath' | 'sizeBytes' | 'checksum'>,
   bytes: Uint8Array,
 ): RemoteDownloadIntegrityResult => {
+  if (file.sizeBytes !== undefined && bytes.byteLength !== file.sizeBytes) {
+    const path = file.logicalPath || '<unknown>';
+    throw new Error(
+      `Remote asset integrity check failed for '${path}': size mismatch (expected ${file.sizeBytes} bytes, got ${bytes.byteLength})`,
+    );
+  }
+
   if (!file.checksum) return { verified: false };
 
   const { algorithm } = file.checksum;
