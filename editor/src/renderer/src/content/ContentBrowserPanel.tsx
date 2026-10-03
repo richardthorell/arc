@@ -35,11 +35,11 @@ const projectForScope = (
   return {
     ...project,
     assetRoot: logicalRootForScope(project, scope),
-    assets: project.assets.map((asset) =>
-      visibleIds.has(assetLibraryIdentity(asset))
-        ? ({ ...asset, scope: 'project' } as AssetItem)
-        : ({ ...asset, scope: 'organization' } as AssetItem),
-    ),
+    assets: project.assets.map((asset) => {
+      if (visibleIds.has(assetLibraryIdentity(asset))) return { ...asset, scope: 'project' } as AssetItem;
+      if (scope === 'project' && asset.scope === 'builtin') return asset;
+      return { ...asset, scope: 'organization' } as AssetItem;
+    }),
   };
 };
 
@@ -94,6 +94,7 @@ export function ContentBrowserPanel(props: Props) {
                 className={`content-browser-scope-button ${selected ? 'active' : ''}`}
                 key={scope.scope}
                 type="button"
+                aria-label={`${scope.label} ${scope.writable ? 'Writable' : 'Read only'}`}
                 aria-pressed={selected}
                 title={scope.description}
                 onClick={() => setScopeId(scope.scope)}
