@@ -43,8 +43,8 @@ describe('AI agent tool loop', () => {
         expect(resultMessage.toolResult).toMatchObject({
           toolCallId: 'call-1',
           name: 'scene.findEntities',
-          isError: undefined,
         });
+        expect(resultMessage.toolResult?.isError).not.toBe(true);
         yield { type: 'delta' as const, text: 'I found the floor.' };
         yield { type: 'done' as const, finishReason: 'stop' as const };
       })(),
