@@ -130,7 +130,9 @@ describe('RemoteAssetBrowser', () => {
     const view = render(<RemoteAssetBrowser source={source} />);
 
     expect(
-      await view.findByText('Unable to browse remote assets. The asset provider could not be reached. Check your connection and try again.'),
+      await view.findByText(
+        'Unable to browse remote assets. The asset provider could not be reached. Check your connection and try again.',
+      ),
     ).toBeInTheDocument();
   });
 

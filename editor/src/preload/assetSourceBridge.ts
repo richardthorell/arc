@@ -259,7 +259,7 @@ const waitForImportedAssets = async (
 ): Promise<string[]> => {
   const expected = importedFiles.filter(isImportableAssetPath);
   if (expected.length === 0) {
-    throw new Error('The selected remote variant does not contain a format supported by ARC\'s importer/cooker');
+    throw new Error("The selected remote variant does not contain a format supported by ARC's importer/cooker");
   }
 
   const deadline = Date.now() + importWaitTimeoutMs;
@@ -338,7 +338,8 @@ export const createAssetSourceBridge = (invoke: Invoke) => {
     ): Promise<ArcAssetImportResult> => {
       if (request.destinationScope !== 'project') throw new Error('Only project-scope online imports are implemented');
       const operationId = request.operationId ?? nextImportOperationId++;
-      if (!Number.isSafeInteger(operationId) || operationId <= 0) throw new Error('Remote import operation ID is invalid');
+      if (!Number.isSafeInteger(operationId) || operationId <= 0)
+        throw new Error('Remote import operation ID is invalid');
       if (activeImports.has(operationId)) throw new Error(`Remote import operation ${operationId} is already running`);
 
       const controller = new AbortController();
@@ -364,7 +365,9 @@ export const createAssetSourceBridge = (invoke: Invoke) => {
         );
         if (selected.length === 0) throw new Error('The selected remote asset variant has no files');
         if (requestedPaths.size > 0 && selected.length !== requestedPaths.size) {
-          throw new Error('The selected remote asset variant changed before import. Refresh the variants and try again.');
+          throw new Error(
+            'The selected remote asset variant changed before import. Refresh the variants and try again.',
+          );
         }
 
         const roots = await projectRoots();
@@ -385,9 +388,14 @@ export const createAssetSourceBridge = (invoke: Invoke) => {
           throw new Error('This remote asset already exists in the project. Remove it before importing it again.');
         }
         await mkdir(sourceRoot, { recursive: true });
+        const stagingParent = ensureContained(
+          roots.savedRoot,
+          path.join(roots.savedRoot, 'AssetImports', 'staging', normalizeSegment(request.sourceId)),
+        );
+        await mkdir(stagingParent, { recursive: true });
         stagingRoot = ensureContained(
-          sourceRoot,
-          path.join(sourceRoot, `.${normalizeSegment(request.assetId)}.import-${operationId}-${Date.now()}`),
+          stagingParent,
+          path.join(stagingParent, `.${normalizeSegment(request.assetId)}.import-${operationId}-${Date.now()}`),
         );
         await rm(stagingRoot, { recursive: true, force: true });
         await mkdir(stagingRoot, { recursive: true });
@@ -515,7 +523,11 @@ export const createAssetSourceBridge = (invoke: Invoke) => {
         throwIfAborted(signal);
         await writeFile(
           provenancePath,
-          JSON.stringify({ provenance, importedFiles, importedAssetIds, logicalPaths: selected.map((file) => file.logicalPath) }, null, 2),
+          JSON.stringify(
+            { provenance, importedFiles, importedAssetIds, logicalPaths: selected.map((file) => file.logicalPath) },
+            null,
+            2,
+          ),
           'utf8',
         );
 
