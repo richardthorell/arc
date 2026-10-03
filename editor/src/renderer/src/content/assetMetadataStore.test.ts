@@ -23,10 +23,7 @@ const asset: AssetItem = {
 
 describe('assetMetadataStore', () => {
   it('normalizes tags without losing the first user-facing spelling', () => {
-    expect(normalizeAssetTags([' Hero ', 'hero', '', 'Environment', ' environment '])).toEqual([
-      'Hero',
-      'Environment',
-    ]);
+    expect(normalizeAssetTags([' Hero ', 'hero', '', 'Environment', ' environment '])).toEqual(['Hero', 'Environment']);
   });
 
   it('serializes project metadata deterministically and ignores empty entries', () => {

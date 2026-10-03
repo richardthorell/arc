@@ -108,7 +108,9 @@ export const setAssetMetadataEntry = (
   return next;
 };
 
-export const loadAssetMetadata = async (api: AssetMetadataFileApi = window.arc.projects): Promise<AssetMetadataEntries> => {
+export const loadAssetMetadata = async (
+  api: AssetMetadataFileApi = window.arc.projects,
+): Promise<AssetMetadataEntries> => {
   try {
     const file = await api.readText(assetMetadataFilePath);
     return parseAssetMetadata(file.text);

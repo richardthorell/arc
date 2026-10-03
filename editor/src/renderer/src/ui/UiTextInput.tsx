@@ -28,5 +28,7 @@ export const UiTextArea = forwardRef<HTMLTextAreaElement, UiTextAreaProps>(funct
   { className, ...props },
   ref,
 ) {
-  return <textarea ref={ref} className={['ui-text-input', 'ui-text-area', className].filter(Boolean).join(' ')} {...props} />;
+  return (
+    <textarea ref={ref} className={['ui-text-input', 'ui-text-area', className].filter(Boolean).join(' ')} {...props} />
+  );
 });

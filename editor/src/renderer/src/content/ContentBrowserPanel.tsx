@@ -367,16 +367,20 @@ export function ContentBrowserPanel({
   );
   const queryKinds = useMemo(() => {
     if (kind === 'all') return undefined;
-    return [...new Set(scopedAssets.filter((asset) => assetPresentationKind(asset) === kind).map((asset) => asset.kind))];
+    return [
+      ...new Set(scopedAssets.filter((asset) => assetPresentationKind(asset) === kind).map((asset) => asset.kind)),
+    ];
   }, [kind, scopedAssets]);
   const filtered = useMemo(
     () =>
-      [...searchAssetLibrary(scopedAssets, {
-        text: search,
-        pathPrefix: searchPathPrefix,
-        kinds: queryKinds,
-        tags: tag === 'all' ? undefined : [tag],
-      }).assets]
+      [
+        ...searchAssetLibrary(scopedAssets, {
+          text: search,
+          pathPrefix: searchPathPrefix,
+          kinds: queryKinds,
+          tags: tag === 'all' ? undefined : [tag],
+        }).assets,
+      ]
         .filter((asset) => state === 'all' || asset.status === state)
         .sort((left, right) => {
           const a =
@@ -401,7 +405,7 @@ export function ContentBrowserPanel({
   const projectFolderPath = (relativePath: string) =>
     relativePath ? `${contentRoot}/${cleanPath(relativePath)}` : contentRoot;
   const creationFolder = browserSource === 'project' ? projectFolderPath(folder) : contentRoot;
-  const metadataAsset = metadataAssetId ? assets.find((asset) => asset.id === metadataAssetId) ?? null : null;
+  const metadataAsset = metadataAssetId ? (assets.find((asset) => asset.id === metadataAssetId) ?? null) : null;
 
   const select = (asset: AssetItem, additive: boolean) => {
     setSelection((current) => {
