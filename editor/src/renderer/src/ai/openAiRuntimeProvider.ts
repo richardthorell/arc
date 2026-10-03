@@ -1,3 +1,4 @@
+import type { AiInstructionSourceSnapshot } from '../../../common/aiInstructionTypes';
 import type { AiRuntimeStreamEnvelope, AiRuntimeStreamStartRequest } from '../../../common/aiRuntimeIpcTypes';
 import {
   isTerminalAiRuntimeEvent,
@@ -10,6 +11,7 @@ import { assertAiRuntimeRequestSafeForProvider } from '../../../common/aiSecurit
 export type ArcAiRuntimeBridge = {
   start(request: AiRuntimeStreamStartRequest): Promise<void>;
   cancel(requestId: string): Promise<boolean>;
+  instructionSources?(): Promise<AiInstructionSourceSnapshot>;
   onEvent(callback: (event: AiRuntimeStreamEnvelope) => void): () => void;
 };
 
