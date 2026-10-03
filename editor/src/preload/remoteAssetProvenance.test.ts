@@ -55,10 +55,7 @@ describe('remote asset provenance', () => {
   });
 
   it('produces the same source hash regardless of manifest ordering or checksum case', () => {
-    const reordered = [
-      { ...files[1] },
-      { ...files[0], checksum: { algorithm: 'sha256' as const, value: 'abcdef' } },
-    ];
+    const reordered = [{ ...files[1] }, { ...files[0], checksum: { algorithm: 'sha256' as const, value: 'abcdef' } }];
     expect(createRemoteManifestHash(reordered)).toBe(createRemoteManifestHash(files));
   });
 
