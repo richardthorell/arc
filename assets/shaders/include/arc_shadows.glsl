@@ -1,6 +1,8 @@
 #ifndef ARC_SHADOWS_GLSL
 #define ARC_SHADOWS_GLSL
 
+#include "arc_virtual_shadows.glsl"
+
 #ifndef ARC_SHADOW_SET
 #define ARC_SHADOW_SET 0
 #endif

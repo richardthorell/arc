@@ -5,6 +5,7 @@
 #include <arc/render/gpu_driven.h>
 #include <arc/render/render_graph.h>
 #include <arc/render/lighting_scene.h>
+#include <arc/render/virtual_shadow.h>
 #include <arc/render/virtual_mesh.h>
 
 #include <array>
@@ -430,6 +431,8 @@ struct render_capabilities
     bool virtual_geometry_streaming{};
     /** @brief Backend can allocate and retain generational physical VSM pages. */
     bool virtual_shadow_allocation{};
+    /** @brief Sampled depth formats usable by a paired virtual-shadow atlas. */
+    virtual_shadow_depth_format_support virtual_shadow_depth_formats{};
     /** @brief Backend can mark, compact, and asynchronously read VSM page feedback. */
     bool virtual_shadow_feedback{};
     /** @brief Backend can render conventional geometry into selected VSM pages. */
@@ -438,6 +441,8 @@ struct render_capabilities
     bool virtual_shadow_sampling{};
     /** @brief Backend can submit virtual-geometry clusters as VSM casters. */
     bool virtual_shadow_virtual_geometry{};
+    /** @brief Complete executable VSM paths, resolved independently per light topology. */
+    virtual_shadow_light_support virtual_shadow_lights{};
     /** @brief Backend can execute HZB-based contact and screen-space shadows. */
     bool screen_space_contact_shadows{};
     /** @brief Backend can execute ARC's HZB screen-space GI and reflection traces. */
@@ -499,6 +504,7 @@ struct render_feature_set
     bool virtual_textures{};
     virtual_geometry_raster_path virtual_geometry_path{virtual_geometry_raster_path::unavailable};
     bool virtual_shadow_maps{};
+    virtual_shadow_light_support virtual_shadow_lights{};
     bool virtual_shadow_virtual_geometry{};
     bool screen_space_contact_shadows{};
     bool software_ray_tracing{};
@@ -558,6 +564,11 @@ struct resolved_render_config
     float screen_space_shadow_scale{standard_render_quality_profile.screen_space_shadow_scale};
     std::uint64_t virtual_shadow_budget_bytes{};
     std::uint32_t virtual_shadow_page_render_budget{};
+    virtual_shadow_physical_pool_layout virtual_shadow_pool{};
+    std::uint32_t virtual_shadow_address_space_capacity{default_virtual_shadow_address_space_capacity};
+    std::uint32_t virtual_shadow_page_table_entry_capacity{static_cast<std::uint32_t>(
+        default_virtual_shadow_page_table_bytes / sizeof(gpu_virtual_shadow_page_table_entry))};
+    std::uint32_t virtual_shadow_view_capacity{default_virtual_shadow_view_capacity};
     float geometry_error_threshold{standard_render_quality_profile.geometry_error_threshold};
     float shadow_resolution_scale{1.0f};
     float volumetric_resolution_scale{1.0f};

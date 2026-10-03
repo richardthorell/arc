@@ -801,12 +801,19 @@ private:
         VkFormat format{VK_FORMAT_UNDEFINED};
         VkImageLayout static_layout{VK_IMAGE_LAYOUT_UNDEFINED};
         VkImageLayout dynamic_layout{VK_IMAGE_LAYOUT_UNDEFINED};
+        gpu_buffer address_spaces;
+        gpu_buffer views;
         gpu_buffer page_table;
         gpu_buffer requests;
         gpu_buffer feedback;
         VkDeviceSize page_table_capacity{};
+        VkDeviceSize address_space_capacity{};
+        VkDeviceSize view_capacity{};
         std::uint32_t atlas_extent{};
         std::uint32_t physical_page_capacity{};
+        std::uint64_t uploaded_address_space_revision{};
+        std::uint64_t uploaded_view_revision{};
+        std::uint64_t uploaded_page_table_revision{};
     };
 
     struct virtual_shadow_light_state
@@ -814,20 +821,6 @@ private:
         virtual_shadow_address_space_handle address_space{};
         std::uint64_t last_seen_frame{};
     };
-
-    struct gpu_virtual_shadow_page_mapping
-    {
-        std::uint32_t address_space_index{};
-        std::uint32_t address_space_generation{};
-        std::uint32_t physical_page_index{};
-        std::uint32_t physical_page_generation{};
-        std::uint32_t packed_coordinate{};
-        std::uint32_t flags{};
-        std::uint32_t content_revision_low{};
-        std::uint32_t content_revision_high{};
-    };
-
-    static_assert(sizeof(gpu_virtual_shadow_page_mapping) == 32);
 
     struct object_pick_readback
     {
