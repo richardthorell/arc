@@ -281,18 +281,19 @@ export function ContentBrowserPanel({
     };
   }, []);
 
+  const activeProjectRoot = project?.root ?? null;
   useEffect(() => {
     let cancelled = false;
     setMetadataEntries({});
     setMetadataAssetId(null);
-    if (!project) return () => undefined;
+    if (!activeProjectRoot) return () => undefined;
     void loadAssetMetadata().then((entries) => {
       if (!cancelled) setMetadataEntries(entries);
     });
     return () => {
       cancelled = true;
     };
-  }, [project?.root]);
+  }, [activeProjectRoot]);
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -381,6 +382,7 @@ export function ContentBrowserPanel({
           tags: tag === 'all' ? undefined : [tag],
         }).assets,
       ]
+        .filter((asset) => kind === 'all' || assetPresentationKind(asset) === kind)
         .filter((asset) => state === 'all' || asset.status === state)
         .sort((left, right) => {
           const a =
@@ -397,7 +399,7 @@ export function ContentBrowserPanel({
                 : right.status;
           return a.localeCompare(b) || left.id.localeCompare(right.id);
         }),
-    [queryKinds, scopedAssets, search, searchPathPrefix, sort, state, tag],
+    [kind, queryKinds, scopedAssets, search, searchPathPrefix, sort, state, tag],
   );
   const activeOnlineSource = onlineSources.find((source) => source.id === browserSource) ?? null;
   const crumbs = browserSource === 'favorites' || !folder ? [] : folder.split('/');

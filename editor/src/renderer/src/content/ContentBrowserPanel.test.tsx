@@ -70,6 +70,14 @@ const project = {
       status: 'stale' as const,
     },
     {
+      id: 'main-scene',
+      guid: 'main-scene-guid',
+      name: 'Main Scene',
+      path: 'Content/Scenes/main.arcscene',
+      kind: 'scene' as const,
+      status: 'ready' as const,
+    },
+    {
       id: 'engine-sky-texture',
       guid: 'engine-sky-texture-guid',
       name: 'Engine Sky Texture',
@@ -131,6 +139,7 @@ describe('ContentBrowserPanel', () => {
 
     fireEvent.click(view.getByRole('option', { name: /Model/ }));
     expect(view.getByText('Hero Rock')).toBeInTheDocument();
+    expect(view.queryByText('Main Scene')).not.toBeInTheDocument();
   });
 
   it('persists an adjustable Content Browser tree width', () => {
