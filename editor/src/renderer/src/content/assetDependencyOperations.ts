@@ -157,8 +157,10 @@ export const planAssetRelocation = (assetId: string, fromPath: string, toPath: s
 
 export const planAssetRelocationTransaction = (
   requests: readonly AssetRelocationRequest[],
+  occupiedPaths: readonly string[] = [],
 ): AssetRelocationTransaction => {
   const assetIds = new Set<string>();
+  const sources = new Set<string>();
   const destinations = new Set<string>();
   const operations: AssetRelocationPlan[] = [];
 
@@ -168,11 +170,22 @@ export const planAssetRelocationTransaction = (
     assetIds.add(request.assetId);
 
     const operation = planAssetRelocation(request.assetId, request.fromPath, request.toPath);
+    if (sources.has(operation.fromPath)) {
+      throw new Error(`Asset relocation contains duplicate source path: ${operation.fromPath}`);
+    }
+    sources.add(operation.fromPath);
     if (destinations.has(operation.toPath)) {
       throw new Error(`Asset relocation contains duplicate destination path: ${operation.toPath}`);
     }
     destinations.add(operation.toPath);
     operations.push(operation);
+  }
+
+  const occupied = new Set(occupiedPaths.map(normalizeAssetPath));
+  for (const operation of operations) {
+    if (occupied.has(operation.toPath) && !sources.has(operation.toPath)) {
+      throw new Error(`Asset relocation destination is already occupied: ${operation.toPath}`);
+    }
   }
 
   operations.sort((left, right) => left.assetId.localeCompare(right.assetId));
