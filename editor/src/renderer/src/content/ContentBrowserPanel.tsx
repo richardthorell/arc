@@ -1,5 +1,17 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Folder, Globe2, Grid2X2, List, Lock, Search, Star } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Clock3,
+  Download,
+  Folder,
+  Globe2,
+  Grid2X2,
+  List,
+  Lock,
+  Search,
+  Star,
+} from 'lucide-react';
 
 import type { ArcAssetSourceDescriptor } from '../../../common/assetSourceTypes';
 import type { CommandId } from '../app/workbenchTypes';
@@ -27,6 +39,22 @@ import {
   type AssetMetadataEntries,
 } from './assetMetadataStore';
 import { assetPresentationKind, type AssetPresentationKind } from './assetPresentation';
+import {
+  assetIdsMatchingImportedPaths,
+  assetsForVirtualView,
+  assetVirtualViewContains,
+  assetVirtualViewForKind,
+  defaultAssetVirtualViews,
+  isAssetVirtualViewKind,
+  loadAssetVirtualViews,
+  recordDownloadedAssets,
+  recordRecentAsset,
+  removeAssetFromVirtualCollection,
+  saveAssetVirtualViews,
+  setFavoriteAsset,
+} from './assetVirtualViewIntegration';
+import { getAssetVirtualViewActions } from './assetVirtualViewActions';
+import type { AssetVirtualView, AssetVirtualViewKind } from './assetVirtualViews';
 import { RemoteAssetBrowser } from './RemoteAssetBrowser';
 
 import './contentBrowser.css';
@@ -71,7 +99,6 @@ const cleanPath = (path: string) =>
     .replace(/^\/|\/$/g, '');
 const parentFolder = (path: string) => cleanPath(path).split('/').slice(0, -1).join('/');
 const normalizedPath = (path: string) => cleanPath(path).toLocaleLowerCase();
-const favoriteId = (asset: AssetItem) => asset.guid ?? asset.path;
 const folderKey = (source: LocalBrowserSource, path: string) => `${source}:${normalizedPath(path)}`;
 const modelFileExtensions = new Set(['fbx', 'glb', 'gltf', 'obj']);
 const isModelFile = (file: File) => modelFileExtensions.has(file.name.split('.').at(-1)?.toLocaleLowerCase() ?? '');
@@ -249,13 +276,10 @@ export function ContentBrowserPanel({
   const [selection, setSelection] = useState<Set<string>>(() => new Set(selectedAssetId ? [selectedAssetId] : []));
   const [metadataEntries, setMetadataEntries] = useState<AssetMetadataEntries>({});
   const [metadataAssetId, setMetadataAssetId] = useState<string | null>(null);
-  const [favorites, setFavorites] = useState<Set<string>>(() => {
-    try {
-      return new Set(JSON.parse(localStorage.getItem('arc.content.favorites') ?? '[]') as string[]);
-    } catch {
-      return new Set();
-    }
-  });
+  const [virtualViews, setVirtualViews] = useState<AssetVirtualView[]>(defaultAssetVirtualViews);
+  const [virtualViewsLoaded, setVirtualViewsLoaded] = useState(false);
+  const [searchOriginSource, setSearchOriginSource] = useState('project');
+  const [pendingDownloadedPaths, setPendingDownloadedPaths] = useState<readonly string[]>([]);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [createContextMenu, setCreateContextMenu] = useState<CreateContextMenu | null>(null);
   const [createKind, setCreateKind] = useState<CreateKind | null>(null);
@@ -282,6 +306,7 @@ export function ContentBrowserPanel({
   }, []);
 
   const activeProjectRoot = project?.root ?? null;
+  const activeProjectAssets = project?.assets;
   useEffect(() => {
     let cancelled = false;
     setMetadataEntries({});
@@ -294,6 +319,26 @@ export function ContentBrowserPanel({
       cancelled = true;
     };
   }, [activeProjectRoot]);
+
+  useEffect(() => {
+    setVirtualViewsLoaded(false);
+    setBrowserSource('project');
+    setSearchOriginSource('project');
+    setFolder('');
+    setSearch('');
+    setPendingDownloadedPaths([]);
+    if (!activeProjectRoot) {
+      setVirtualViews(defaultAssetVirtualViews());
+      return;
+    }
+    setVirtualViews(loadAssetVirtualViews(localStorage, activeProjectRoot, activeProjectAssets ?? []));
+    setVirtualViewsLoaded(true);
+  }, [activeProjectAssets, activeProjectRoot]);
+
+  useEffect(() => {
+    if (!activeProjectRoot || !virtualViewsLoaded) return;
+    saveAssetVirtualViews(localStorage, activeProjectRoot, virtualViews);
+  }, [activeProjectRoot, virtualViews, virtualViewsLoaded]);
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -311,7 +356,14 @@ export function ContentBrowserPanel({
   const assets = useMemo(() => applyAssetMetadata(registryAssets, metadataEntries), [metadataEntries, registryAssets]);
   const projectAssets = useMemo(() => assets.filter((asset) => (asset.scope ?? 'project') === 'project'), [assets]);
   const builtinAssets = useMemo(() => assets.filter((asset) => asset.scope === 'builtin'), [assets]);
-  const favoriteAssets = useMemo(() => assets.filter((asset) => favorites.has(favoriteId(asset))), [assets, favorites]);
+  const searchResultIds = useMemo(
+    () => (search.trim() ? searchAssetLibrary(assets, { text: search }).assets.map((asset) => asset.id) : []),
+    [assets, search],
+  );
+  const virtualAssets = useMemo(() => {
+    if (!isAssetVirtualViewKind(browserSource)) return null;
+    return assetsForVirtualView(virtualViews, browserSource, assets, searchResultIds);
+  }, [assets, browserSource, searchResultIds, virtualViews]);
   const contentRoot = project ? projectAssetRootPath(project) : 'Content';
   const contentRootName = cleanPath(contentRoot).split('/').at(-1) || 'Content';
   const projectFolders = useMemo(
@@ -323,13 +375,13 @@ export function ContentBrowserPanel({
     [builtinAssets, contentRootName],
   );
   const scopedAssets = useMemo(() => {
-    if (browserSource === 'favorites') return favoriteAssets;
+    if (virtualAssets) return virtualAssets;
     if (browserSource === 'builtin') return builtinAssets;
     if (browserSource === 'project') return projectAssets;
     return [];
-  }, [browserSource, builtinAssets, favoriteAssets, projectAssets]);
+  }, [browserSource, builtinAssets, projectAssets, virtualAssets]);
   const searchPathPrefix = useMemo(() => {
-    if (browserSource === 'favorites') return '';
+    if (isAssetVirtualViewKind(browserSource)) return '';
     const root = browserSource === 'builtin' ? 'Engine' : contentRoot;
     return folder ? `${root}/${cleanPath(folder)}` : root;
   }, [browserSource, contentRoot, folder]);
@@ -402,8 +454,22 @@ export function ContentBrowserPanel({
     [kind, queryKinds, scopedAssets, search, searchPathPrefix, sort, state, tag],
   );
   const activeOnlineSource = onlineSources.find((source) => source.id === browserSource) ?? null;
-  const crumbs = browserSource === 'favorites' || !folder ? [] : folder.split('/');
-  const sourceTitle = browserSource === 'builtin' ? 'Engine' : browserSource === 'favorites' ? 'Favorites' : 'Content';
+  const activeVirtualView = isAssetVirtualViewKind(browserSource)
+    ? assetVirtualViewForKind(virtualViews, browserSource, searchResultIds)
+    : null;
+  const crumbs = isAssetVirtualViewKind(browserSource) || !folder ? [] : folder.split('/');
+  const sourceTitle =
+    browserSource === 'builtin'
+      ? 'Engine'
+      : browserSource === 'favorites'
+        ? 'Favorites'
+        : browserSource === 'recent'
+          ? 'Recent'
+          : browserSource === 'downloads'
+            ? 'Downloads'
+            : browserSource === 'search-results'
+              ? 'Search Results'
+              : 'Content';
   const projectFolderPath = (relativePath: string) =>
     relativePath ? `${contentRoot}/${cleanPath(relativePath)}` : contentRoot;
   const creationFolder = browserSource === 'project' ? projectFolderPath(folder) : contentRoot;
@@ -416,22 +482,42 @@ export function ContentBrowserPanel({
       else next.add(asset.id);
       return next;
     });
+    setVirtualViews((current) => recordRecentAsset(current, asset.id));
     onSelectAsset(asset.id);
   };
   const toggleFavorite = (asset: AssetItem) => {
-    setFavorites((current) => {
-      const next = new Set(current);
-      const id = favoriteId(asset);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      localStorage.setItem('arc.content.favorites', JSON.stringify([...next]));
-      return next;
-    });
+    setVirtualViews((current) =>
+      setFavoriteAsset(current, asset.id, !assetVirtualViewContains(current, 'favorites', asset.id)),
+    );
   };
 
   const activateAsset = (asset: AssetItem) => {
     if (openAssetEditorDocument(asset)) return;
     if (asset.kind === 'prefab') onInstantiatePrefab(asset.path);
+  };
+
+  const selectVirtualSource = (source: AssetVirtualViewKind) => {
+    setBrowserSource(source);
+    setFolder('');
+    if (source !== 'search-results') setSearch('');
+  };
+
+  const changeSearch = (value: string) => {
+    setSearch(value);
+    if (value.trim()) {
+      if (browserSource !== 'search-results') setSearchOriginSource(browserSource);
+      setBrowserSource('search-results');
+      setFolder('');
+    } else if (browserSource === 'search-results') {
+      setBrowserSource(searchOriginSource);
+    }
+  };
+
+  const removeFromActiveVirtualView = (asset: AssetItem) => {
+    if (!activeVirtualView || (activeVirtualView.kind !== 'favorites' && activeVirtualView.kind !== 'downloads'))
+      return;
+    const kind = activeVirtualView.kind;
+    setVirtualViews((current) => removeAssetFromVirtualCollection(current, kind, asset.id));
   };
 
   const openSelectedMetadata = () => {
@@ -444,6 +530,14 @@ export function ContentBrowserPanel({
     await saveAssetMetadata(next);
     setMetadataEntries(next);
   };
+
+  useEffect(() => {
+    if (pendingDownloadedPaths.length === 0) return;
+    const assetIds = assetIdsMatchingImportedPaths(assets, pendingDownloadedPaths);
+    if (assetIds.length === 0) return;
+    setVirtualViews((current) => recordDownloadedAssets(current, assetIds));
+    setPendingDownloadedPaths([]);
+  }, [assets, pendingDownloadedPaths]);
 
   const selectTreeFolder = (source: LocalBrowserSource, path: string, hasChildren: boolean) => {
     const wasSelected = browserSource === source && normalizedPath(folder) === normalizedPath(path);
@@ -639,15 +733,41 @@ export function ContentBrowserPanel({
         <UiTreeRow
           selected={browserSource === 'favorites'}
           className={`content-tree-row ${browserSource === 'favorites' ? 'active' : ''}`}
-          onClick={() => {
-            setBrowserSource('favorites');
-            setFolder('');
-          }}
+          onClick={() => selectVirtualSource('favorites')}
         >
           <span aria-hidden="true" style={{ width: 13 }} />
           <Star className="entity-icon entity-icon-light" size={14} fill="currentColor" aria-hidden="true" />
-          <span>Favorites</span>
+          <span>Favorites ({assetVirtualViewForKind(virtualViews, 'favorites').assetIds.length})</span>
         </UiTreeRow>
+        <UiTreeRow
+          selected={browserSource === 'recent'}
+          className={`content-tree-row ${browserSource === 'recent' ? 'active' : ''}`}
+          onClick={() => selectVirtualSource('recent')}
+        >
+          <span aria-hidden="true" style={{ width: 13 }} />
+          <Clock3 className="entity-icon" size={14} aria-hidden="true" />
+          <span>Recent ({assetVirtualViewForKind(virtualViews, 'recent').assetIds.length})</span>
+        </UiTreeRow>
+        <UiTreeRow
+          selected={browserSource === 'downloads'}
+          className={`content-tree-row ${browserSource === 'downloads' ? 'active' : ''}`}
+          onClick={() => selectVirtualSource('downloads')}
+        >
+          <span aria-hidden="true" style={{ width: 13 }} />
+          <Download className="entity-icon" size={14} aria-hidden="true" />
+          <span>Downloads ({assetVirtualViewForKind(virtualViews, 'downloads').assetIds.length})</span>
+        </UiTreeRow>
+        {search.trim() && (
+          <UiTreeRow
+            selected={browserSource === 'search-results'}
+            className={`content-tree-row ${browserSource === 'search-results' ? 'active' : ''}`}
+            onClick={() => selectVirtualSource('search-results')}
+          >
+            <span aria-hidden="true" style={{ width: 13 }} />
+            <Search className="entity-icon" size={14} aria-hidden="true" />
+            <span>Search Results ({searchResultIds.length})</span>
+          </UiTreeRow>
+        )}
         <UiTreeRow
           selected={browserSource === 'project' && !folder}
           className={`content-tree-row ${browserSource === 'project' && !folder ? 'active' : ''}`}
@@ -743,7 +863,7 @@ export function ContentBrowserPanel({
         onPointerDown={beginContentTreeResize}
       />
       {activeOnlineSource ? (
-        <RemoteAssetBrowser source={activeOnlineSource} />
+        <RemoteAssetBrowser source={activeOnlineSource} onImportedFiles={setPendingDownloadedPaths} />
       ) : (
         <>
           <div className="content-browser-main">
@@ -819,7 +939,7 @@ export function ContentBrowserPanel({
                   aria-label="Search assets"
                   placeholder="Search assets"
                   value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+                  onChange={(event) => changeSearch(event.target.value)}
                 />
               </label>
               <UiSelect
@@ -895,11 +1015,23 @@ export function ContentBrowserPanel({
                   <Fragment key={asset.id}>
                     <ContentAssetCard
                       asset={asset}
-                      favorite={favorites.has(favoriteId(asset))}
+                      favorite={assetVirtualViewContains(virtualViews, 'favorites', asset.id)}
                       selected={selection.has(asset.id)}
                       thumbnailProvider={thumbnailProvider}
                       onActivate={() => activateAsset(asset)}
                       onFavorite={() => toggleFavorite(asset)}
+                      onRemoveFromView={
+                        activeVirtualView &&
+                        getAssetVirtualViewActions(activeVirtualView, {
+                          assetId: asset.id,
+                          writable: !asset.readOnly,
+                        }).some(({ action, enabled }) => action === 'remove-from-view' && enabled)
+                          ? () => removeFromActiveVirtualView(asset)
+                          : undefined
+                      }
+                      removeFromViewLabel={
+                        activeVirtualView?.kind === 'downloads' ? 'Remove from Downloads' : undefined
+                      }
                       onReimport={() => asset.guid && onAssetAction('asset.reimport', asset.guid)}
                       onSelect={(additive) => select(asset, additive)}
                       expandable={modelSubassets.length > 0}
@@ -935,7 +1067,13 @@ export function ContentBrowserPanel({
                 <div className="content-empty">
                   {browserSource === 'favorites'
                     ? 'No favorite assets yet. Star an asset to add it here.'
-                    : 'No assets match this folder and filter.'}
+                    : browserSource === 'recent'
+                      ? 'No recently used assets yet.'
+                      : browserSource === 'downloads'
+                        ? 'No downloaded assets yet.'
+                        : browserSource === 'search-results'
+                          ? 'No assets match this search.'
+                          : 'No assets match this folder and filter.'}
                 </div>
               )}
             </div>

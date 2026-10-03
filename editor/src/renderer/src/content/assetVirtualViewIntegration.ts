@@ -56,7 +56,11 @@ export const saveAssetVirtualViews = (
   storage: AssetVirtualViewStorage,
   projectRoot: string,
   views: readonly AssetVirtualView[],
-) => storage.setItem(assetVirtualViewStorageKey(projectRoot), serializeAssetVirtualViews(normalizeAssetVirtualViews(views)));
+) =>
+  storage.setItem(
+    assetVirtualViewStorageKey(projectRoot),
+    serializeAssetVirtualViews(normalizeAssetVirtualViews(views)),
+  );
 
 export const assetVirtualViewForKind = (
   views: readonly AssetVirtualView[],
@@ -102,7 +106,9 @@ export const recordRecentAsset = (
   limit = 50,
 ): AssetVirtualView[] => {
   const current = assetVirtualViewForKind(views, 'recent');
-  const ids = [assetId, ...current.assetIds.filter((candidate) => candidate !== assetId)].filter(Boolean).slice(0, limit);
+  const ids = [assetId, ...current.assetIds.filter((candidate) => candidate !== assetId)]
+    .filter(Boolean)
+    .slice(0, limit);
   return replaceAssetVirtualView(views, createAssetVirtualView('recent', ids));
 };
 
@@ -132,7 +138,9 @@ export const assetIdsMatchingImportedPaths = (
   return [
     ...new Set(
       assets.flatMap((asset) => {
-        const candidates = [asset.path, asset.sourcePath].filter((value): value is string => Boolean(value)).map(normalizePath);
+        const candidates = [asset.path, asset.sourcePath]
+          .filter((value): value is string => Boolean(value))
+          .map(normalizePath);
         const matches = candidates.some((candidate) =>
           paths.some(
             (imported) =>
@@ -145,7 +153,10 @@ export const assetIdsMatchingImportedPaths = (
   ];
 };
 
-const replaceAssetVirtualView = (views: readonly AssetVirtualView[], replacement: AssetVirtualView): AssetVirtualView[] => {
+const replaceAssetVirtualView = (
+  views: readonly AssetVirtualView[],
+  replacement: AssetVirtualView,
+): AssetVirtualView[] => {
   const normalized = normalizeAssetVirtualViews(views);
   const index = normalized.findIndex((view) => view.kind === replacement.kind);
   if (index < 0) return [...normalized, replacement];
@@ -162,4 +173,9 @@ const parseLegacyFavorites = (serialized: string | null): string[] => {
   }
 };
 
-const normalizePath = (value: string) => value.replaceAll('\\', '/').replace(/\/+/g, '/').replace(/^\/|\/$/g, '').toLowerCase();
+const normalizePath = (value: string) =>
+  value
+    .replaceAll('\\', '/')
+    .replace(/\/+/g, '/')
+    .replace(/^\/|\/$/g, '')
+    .toLowerCase();

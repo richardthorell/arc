@@ -70,7 +70,8 @@ afterEach(cleanup);
 
 describe('RemoteAssetBrowser', () => {
   it('browses provider assets, selects a variant, and imports its dependencies', async () => {
-    const view = render(<RemoteAssetBrowser source={source} />);
+    const onImportedFiles = vi.fn();
+    const view = render(<RemoteAssetBrowser source={source} onImportedFiles={onImportedFiles} />);
     await waitFor(() => expect(search).toHaveBeenCalledWith('polyhaven', expect.objectContaining({ limit: 160 })));
     const assetButton = await view.findByRole('button', { name: /Granite Rock/ });
     expect(view.getByText('Powered by Poly Haven')).toBeInTheDocument();
@@ -89,6 +90,7 @@ describe('RemoteAssetBrowser', () => {
       destinationScope: 'project',
     });
     expect(await view.findByText('Imported 2 files · 0 cache hits · 2 downloaded')).toBeInTheDocument();
+    expect(onImportedFiles).toHaveBeenCalledWith(['rock.gltf', 'rock_diff.png']);
   });
 
   it('ignores a stale manifest when a newer asset selection resolves first', async () => {

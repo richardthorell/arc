@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronRight, Star } from 'lucide-react';
+import { ChevronDown, ChevronRight, Star, X } from 'lucide-react';
 
 import { DocumentTypeIcon } from '../assets/DocumentTypeIcon';
 import { loadMaterialSphereThumbnail } from '../assets/materialThumbnail';
@@ -217,6 +217,8 @@ export function ContentAssetCard({
   thumbnailProvider,
   onActivate,
   onFavorite,
+  onRemoveFromView,
+  removeFromViewLabel,
   onReimport,
   onSelect,
   expandable = false,
@@ -229,6 +231,8 @@ export function ContentAssetCard({
   thumbnailProvider: AssetThumbnailProvider;
   onActivate: () => void;
   onFavorite: () => void;
+  onRemoveFromView?: () => void;
+  removeFromViewLabel?: string;
   onReimport: () => void;
   onSelect: (additive: boolean) => void;
   expandable?: boolean;
@@ -352,6 +356,11 @@ export function ContentAssetCard({
           <button aria-label="Favorite" className={favorite ? 'active' : ''} onClick={onFavorite}>
             <Star size={12} />
           </button>
+          {onRemoveFromView && removeFromViewLabel && (
+            <button aria-label={removeFromViewLabel} title={removeFromViewLabel} onClick={onRemoveFromView}>
+              <X size={12} />
+            </button>
+          )}
           {asset.guid && !asset.readOnly && <button onClick={onReimport}>Reimport</button>}
         </span>
       </div>
