@@ -25,6 +25,7 @@ export type AiRuntimeMessageContent = string | readonly AiRuntimeContentPart[];
 
 export type AiToolDefinition = {
   name: string;
+  operationId?: string;
   description: string;
   inputSchema: AiJsonObject;
 };
