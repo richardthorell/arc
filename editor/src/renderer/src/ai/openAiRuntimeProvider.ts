@@ -1,3 +1,4 @@
+import type { BuiltInAgentRuntimeBridge } from '../../../common/builtInAgentTypes';
 import type { AiInstructionSourceSnapshot } from '../../../common/aiInstructionTypes';
 import type { AiRuntimeStreamEnvelope, AiRuntimeStreamStartRequest } from '../../../common/aiRuntimeIpcTypes';
 import {
@@ -13,6 +14,7 @@ export type ArcAiRuntimeBridge = {
   cancel(requestId: string): Promise<boolean>;
   instructionSources?(): Promise<AiInstructionSourceSnapshot>;
   onEvent(callback: (event: AiRuntimeStreamEnvelope) => void): () => void;
+  agent?: BuiltInAgentRuntimeBridge;
 };
 
 declare global {
