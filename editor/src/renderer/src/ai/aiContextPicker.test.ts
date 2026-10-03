@@ -109,7 +109,12 @@ describe('AI context picker model', () => {
     const reference = captureAiViewportReference(snapshot());
 
     expect(reference.kind).toBe('viewportCapture');
-    expect(reference.metadata).toMatchObject({ projectGuid: 'project-guid', viewportId: 'viewport-1', width: 640, height: 360 });
+    expect(reference.metadata).toMatchObject({
+      projectGuid: 'project-guid',
+      viewportId: 'viewport-1',
+      width: 640,
+      height: 360,
+    });
     expect(reference.metadata).not.toHaveProperty('revision');
     expect(reference.attachment).toEqual({
       type: 'image',
@@ -124,7 +129,9 @@ describe('AI context picker model', () => {
     const hostQuery = vi.fn().mockResolvedValue({
       succeeded: true,
       payload: {
-        assets: [{ guid: 'asset-guid', path: 'Content/Test.arcscene', typeId: 'arc.scene', state: 'ready', generation: 4 }],
+        assets: [
+          { guid: 'asset-guid', path: 'Content/Test.arcscene', typeId: 'arc.scene', state: 'ready', generation: 4 },
+        ],
       },
     });
     const provider = createAiAssetContextProvider();

@@ -265,15 +265,16 @@ export function AiChatPanel({
       onContextBudget?.(contextPlan.diagnostics);
 
       const currentReferences = new Map(
-        (requestMessages[requestMessages.length - 1]?.contextReferences ?? []).map((reference) => [reference.id, reference]),
+        (requestMessages[requestMessages.length - 1]?.contextReferences ?? []).map((reference) => [
+          reference.id,
+          reference,
+        ]),
       );
       const rejectedCurrent = contextPlan.diagnostics.rejectedReferences.filter(
         (reference) => reference.origin === 'explicit' && currentReferences.has(reference.id),
       );
       if (rejectedCurrent.length) {
-        const labels = rejectedCurrent.map(
-          (reference) => currentReferences.get(reference.id)?.label ?? reference.kind,
-        );
+        const labels = rejectedCurrent.map((reference) => currentReferences.get(reference.id)?.label ?? reference.kind);
         throw new Error(
           `Attached context is stale or unavailable: ${labels.join(', ')}. Re-add the context and retry.`,
         );
@@ -375,7 +376,9 @@ export function AiChatPanel({
 
   const messageWithPendingContext = (content: string): AiChatMessage => {
     const message = createAiMessage('user', content);
-    return pendingContext.length ? { ...message, contextReferences: pendingContext.map((reference) => ({ ...reference })) } : message;
+    return pendingContext.length
+      ? { ...message, contextReferences: pendingContext.map((reference) => ({ ...reference })) }
+      : message;
   };
 
   const startConversation = async () => {
@@ -431,7 +434,13 @@ export function AiChatPanel({
           : conversation,
       ),
     );
-    const result = await streamResponse(activeConversation.id, activeProvider, activeConversation, requestMessages, assistantMessage);
+    const result = await streamResponse(
+      activeConversation.id,
+      activeProvider,
+      activeConversation,
+      requestMessages,
+      assistantMessage,
+    );
     if (result.completed) setPendingContext([]);
   };
 

@@ -1,15 +1,4 @@
-import {
-  Box,
-  Bug,
-  Camera,
-  FileBox,
-  Image,
-  Monitor,
-  MousePointer2,
-  Package,
-  Search,
-  X,
-} from 'lucide-react';
+import { Box, Bug, Camera, FileBox, Image, Monitor, MousePointer2, Package, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import type { AiConversationContextReference } from '../../../common/aiConversationTypes';
@@ -128,7 +117,10 @@ export function AiContextPicker({ source, selected, supportsImages, onAdd, onClo
   }, [source]);
 
   const candidates = useMemo(
-    () => (snapshot ? collectAiContextPickerCandidates(snapshot).filter((candidate) => candidateMatches(candidate, query)) : []),
+    () =>
+      snapshot
+        ? collectAiContextPickerCandidates(snapshot).filter((candidate) => candidateMatches(candidate, query))
+        : [],
     [query, snapshot],
   );
   const selectedIds = useMemo(() => new Set(selected.map((reference) => reference.id)), [selected]);
@@ -172,7 +164,11 @@ export function AiContextPicker({ source, selected, supportsImages, onAdd, onClo
 
       <div className="ai-context-picker-scroll">
         {loading && <div className="ai-context-picker-status">Collecting fresh project context…</div>}
-        {error && <div className="ai-context-picker-error" role="alert">{error}</div>}
+        {error && (
+          <div className="ai-context-picker-error" role="alert">
+            {error}
+          </div>
+        )}
         {!loading && snapshot && (
           <>
             {candidateSection('Current editor context', quick, snapshot, selectedIds, onAdd)}
@@ -187,10 +183,14 @@ export function AiContextPicker({ source, selected, supportsImages, onAdd, onClo
                     type="button"
                     onClick={captureViewport}
                   >
-                    <span className="ai-context-picker-row-icon" aria-hidden="true"><Camera size={15} /></span>
+                    <span className="ai-context-picker-row-icon" aria-hidden="true">
+                      <Camera size={15} />
+                    </span>
                     <span className="ai-context-picker-row-copy">
                       <strong>Viewport capture</strong>
-                      <small>{supportsImages ? 'Attach the current rendered frame' : 'Requires an image-capable model'}</small>
+                      <small>
+                        {supportsImages ? 'Attach the current rendered frame' : 'Requires an image-capable model'}
+                      </small>
                     </span>
                     {captureSelected && <span className="ai-context-picker-added">Added</span>}
                   </button>

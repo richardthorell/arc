@@ -9,14 +9,7 @@ import type {
 import type { AiJsonObject } from '../../../common/aiRuntimeTypes';
 import type { AiContextProvider } from './aiProjectContextService';
 
-export type AiContextPickerKind =
-  | 'selection'
-  | 'scene'
-  | 'workspace'
-  | 'viewport'
-  | 'diagnostics'
-  | 'entity'
-  | 'asset';
+export type AiContextPickerKind = 'selection' | 'scene' | 'workspace' | 'viewport' | 'diagnostics' | 'entity' | 'asset';
 
 export type AiContextPickerCandidate = {
   id: string;
@@ -44,7 +37,9 @@ const jsonRevision = (revision: AiContextRevision): AiJsonObject => ({
 });
 
 const section = (snapshot: AiProjectContextSnapshot, id: AiContextSectionId): AiContextSection | undefined =>
-  snapshot.sections.find((candidate) => candidate.id === id && candidate.status === 'ready' && candidate.data !== undefined);
+  snapshot.sections.find(
+    (candidate) => candidate.id === id && candidate.status === 'ready' && candidate.data !== undefined,
+  );
 
 const recordData = (candidate: AiContextSection | undefined): Record<string, AiContextJsonValue> | null =>
   candidate?.data && typeof candidate.data === 'object' && !Array.isArray(candidate.data)
@@ -80,7 +75,12 @@ const quickCandidates = (snapshot: AiProjectContextSnapshot): AiContextPickerCan
     const selectedGuids = Array.isArray(selectionData.selectedGuids)
       ? selectionData.selectedGuids.filter((value): value is string => typeof value === 'string')
       : [];
-    const guid = typeof selectionData.guid === 'string' ? selectionData.guid : selectedGuids.length === 1 ? selectedGuids[0] : undefined;
+    const guid =
+      typeof selectionData.guid === 'string'
+        ? selectionData.guid
+        : selectedGuids.length === 1
+          ? selectedGuids[0]
+          : undefined;
     result.push({
       id: 'selection:current',
       kind: 'selection',
