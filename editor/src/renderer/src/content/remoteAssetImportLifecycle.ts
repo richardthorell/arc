@@ -33,7 +33,8 @@ export const updateRemoteAssetImportProgress = (
   }
 
   const bytesReceived = Math.max(state.progress?.bytesReceived ?? 0, Math.max(0, progress.bytesReceived));
-  const totalBytes = progress.totalBytes !== undefined && progress.totalBytes > 0 ? progress.totalBytes : state.progress?.totalBytes;
+  const totalBytes =
+    progress.totalBytes !== undefined && progress.totalBytes > 0 ? progress.totalBytes : state.progress?.totalBytes;
 
   return {
     ...state,
