@@ -1,9 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 import type {
-  BuiltInAgentCapabilities,
   BuiltInAgentEvent,
   BuiltInAgentInvokeRequest,
+  BuiltInAgentRuntimeBridge,
 } from '../common/builtInAgentTypes';
 import type { AiInstructionSourceSnapshot } from '../common/aiInstructionTypes';
 import type { ArcProjectBrowserSnapshot } from '../common/projectTypes';
@@ -14,11 +14,7 @@ export type ArcAiRuntimeApi = {
   cancel(requestId: string): Promise<boolean>;
   instructionSources(): Promise<AiInstructionSourceSnapshot>;
   onEvent(callback: (event: AiRuntimeStreamEnvelope) => void): () => void;
-  agent: {
-    capabilities(): Promise<BuiltInAgentCapabilities>;
-    invoke(method: string, params?: unknown): Promise<unknown>;
-    onEvent(callback: (event: BuiltInAgentEvent) => void): () => void;
-  };
+  agent: BuiltInAgentRuntimeBridge;
 };
 
 let agentEventListenerCount = 0;
