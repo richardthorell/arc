@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <tuple>
 
@@ -121,7 +122,8 @@ resolve_virtual_shadow_physical_pool(std::uint64_t budget_bytes, std::uint32_t m
     const auto bytes_per_slot = physical_page_bytes(result.format);
     const auto budget_axis = floor_square_root(budget_bytes / bytes_per_slot);
     const auto dimension_axis = maximum_texture_dimension_2d / virtual_shadow_physical_page_texels;
-    result.pages_per_axis = std::min(budget_axis, dimension_axis);
+    constexpr std::uint32_t maximum_square_axis = 65535u;
+    result.pages_per_axis = std::min({budget_axis, dimension_axis, maximum_square_axis});
     if (result.pages_per_axis == 0) return result;
     result.atlas_extent = result.pages_per_axis * virtual_shadow_physical_page_texels;
     result.physical_page_capacity = result.pages_per_axis * result.pages_per_axis;
@@ -268,7 +270,9 @@ virtual_shadow_cache::create_address_space(const virtual_shadow_address_space_de
         }
     }
     rebuild_gpu_address_space(index);
-    ++gpu_revision_;
+    ++address_space_revision_;
+    ++view_revision_;
+    ++page_table_revision_;
     return virtual_shadow_address_space_handle{index, slot.generation};
 }
 
@@ -294,7 +298,9 @@ bool virtual_shadow_cache::destroy_address_space(virtual_shadow_address_space_ha
     if (++slot.generation == 0) slot.generation = 1;
     rebuild_gpu_address_space(handle.index);
     free_address_spaces_.push_back(handle.index);
-    ++gpu_revision_;
+    ++address_space_revision_;
+    ++view_revision_;
+    ++page_table_revision_;
     return true;
 }
 
@@ -407,8 +413,10 @@ bool virtual_shadow_cache::update_address_space_views(virtual_shadow_address_spa
         output.face = input.face;
         output.level = input.level;
     }
+    const auto* current = gpu_views_.data() + slot.view_base;
+    if (std::memcmp(packed.data(), current, packed.size() * sizeof(gpu_virtual_shadow_view_record)) == 0) return true;
     std::copy(packed.begin(), packed.end(), gpu_views_.begin() + slot.view_base);
-    ++gpu_revision_;
+    ++view_revision_;
     return true;
 }
 
@@ -428,7 +436,9 @@ virtual_shadow_gpu_snapshot virtual_shadow_cache::gpu_snapshot() const noexcept
     return {.address_spaces = gpu_address_spaces_,
             .views = gpu_views_,
             .page_table = gpu_page_table_,
-            .revision = gpu_revision_};
+            .address_space_revision = address_space_revision_,
+            .view_revision = view_revision_,
+            .page_table_revision = page_table_revision_};
 }
 
 virtual_shadow_page_mapping* virtual_shadow_cache::find_mutable(const virtual_shadow_page_key& key) noexcept
@@ -528,7 +538,7 @@ void virtual_shadow_cache::release_mapping(const virtual_shadow_page_key& key) n
         }
     }
     mappings_.erase(found);
-    ++gpu_revision_;
+    ++page_table_revision_;
 }
 
 void virtual_shadow_cache::clear_gpu_mapping(const virtual_shadow_page_key& key) noexcept
@@ -639,7 +649,7 @@ bool virtual_shadow_cache::publish(const virtual_shadow_page_key& key, std::uint
     mapping->content_revision = content_revision;
     mapping->dirty_reason = virtual_shadow_invalidation_reason::none;
     publish_gpu_mapping(*mapping);
-    ++gpu_revision_;
+    ++page_table_revision_;
     return true;
 }
 
@@ -680,7 +690,7 @@ void virtual_shadow_cache::clear() noexcept
         if (++slot.generation == 0) slot.generation = 1;
         free_physical_pages_.push_back(index - 1u);
     }
-    ++gpu_revision_;
+    ++page_table_revision_;
 }
 
 virtual_shadow_cache_statistics virtual_shadow_cache::statistics() const noexcept

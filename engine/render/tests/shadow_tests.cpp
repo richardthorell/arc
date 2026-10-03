@@ -357,6 +357,47 @@ TEST_CASE("directional virtual shadow views are stable equal-grid clip levels")
     }
 }
 
+TEST_CASE("point and spot virtual shadow views are deterministic finite quadtrees")
+{
+    const arc::render::virtual_shadow_address_space_descriptor point_descriptor{
+        .light_kind = arc::render::shadow_light_kind::point, .virtual_resolution = 512, .level_count = 3};
+    const auto point = arc::render::make_point_virtual_shadow_views(point_descriptor, {1.0f, 2.0f, 3.0f}, 50.0f);
+    const auto point_again = arc::render::make_point_virtual_shadow_views(point_descriptor, {1.0f, 2.0f, 3.0f}, 50.0f);
+    REQUIRE(point.size() == arc::render::point_shadow_face_count * point_descriptor.level_count);
+    REQUIRE(point_again.size() == point.size());
+    for (std::size_t index = 0; index < point.size(); ++index)
+    {
+        REQUIRE(point[index].face == point_again[index].face);
+        REQUIRE(point[index].level == point_again[index].level);
+        for (std::uint32_t row = 0; row < 4; ++row)
+            for (std::uint32_t column = 0; column < 4; ++column)
+                REQUIRE(point[index].world_to_shadow_clip(row, column) ==
+                        point_again[index].world_to_shadow_clip(row, column));
+    }
+
+    const arc::render::virtual_shadow_address_space_descriptor spot_descriptor{
+        .light_kind = arc::render::shadow_light_kind::spot, .virtual_resolution = 512, .level_count = 3};
+    const auto spot = arc::render::make_spot_virtual_shadow_views(spot_descriptor, {1.0f, 2.0f, 3.0f},
+                                                                  {0.0f, -1.0f, 0.0f}, 0.75f, 50.0f);
+    REQUIRE(spot.size() == spot_descriptor.level_count);
+
+    const auto require_finite_quadtree =
+        [](const std::span<const arc::render::virtual_shadow_view_descriptor> views, std::uint8_t levels)
+    {
+        for (std::size_t index = 0; index < views.size(); ++index)
+        {
+            const auto level = static_cast<std::uint32_t>(index % levels);
+            REQUIRE(views[index].level == level);
+            REQUIRE(views[index].pages_per_axis == std::max(1u, 4u >> level));
+            for (std::uint32_t row = 0; row < 4; ++row)
+                for (std::uint32_t column = 0; column < 4; ++column)
+                    REQUIRE(std::isfinite(views[index].world_to_shadow_clip(row, column)));
+        }
+    };
+    require_finite_quadtree(point, point_descriptor.level_count);
+    require_finite_quadtree(spot, spot_descriptor.level_count);
+}
+
 TEST_CASE("virtual shadow requests always retain a conventional executable fallback")
 {
     using arc::render::resolve_shadow_map_method;

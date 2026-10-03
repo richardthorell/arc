@@ -241,7 +241,9 @@ struct virtual_shadow_gpu_snapshot
     std::span<const gpu_virtual_shadow_address_space_record> address_spaces;
     std::span<const gpu_virtual_shadow_view_record> views;
     std::span<const gpu_virtual_shadow_page_table_entry> page_table;
-    std::uint64_t revision{};
+    std::uint64_t address_space_revision{};
+    std::uint64_t view_revision{};
+    std::uint64_t page_table_revision{};
 };
 
 /** @brief Complete construction contract for a backend-neutral VSM cache. */
@@ -394,7 +396,9 @@ private:
     std::vector<gpu_virtual_shadow_address_space_record> gpu_address_spaces_;
     std::vector<gpu_virtual_shadow_view_record> gpu_views_;
     std::vector<gpu_virtual_shadow_page_table_entry> gpu_page_table_;
-    std::uint64_t gpu_revision_{1};
+    std::uint64_t address_space_revision_{1};
+    std::uint64_t view_revision_{1};
+    std::uint64_t page_table_revision_{1};
     virtual_shadow_cache_statistics cumulative_{};
 };
 

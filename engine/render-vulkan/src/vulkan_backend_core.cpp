@@ -211,7 +211,10 @@ void vulkan_render_backend::configure(const resolved_render_config& config)
 {
     const float previous_scale = resolved_config_.render_scale;
     const std::uint32_t previous_local_shadow_atlas = resolved_config_.local_shadow_atlas_resolution;
-    const std::uint64_t previous_virtual_shadow_budget = resolved_config_.virtual_shadow_budget_bytes;
+    const auto previous_virtual_shadow_pool = resolved_config_.virtual_shadow_pool;
+    const auto previous_virtual_shadow_address_spaces = resolved_config_.virtual_shadow_address_space_capacity;
+    const auto previous_virtual_shadow_page_table = resolved_config_.virtual_shadow_page_table_entry_capacity;
+    const auto previous_virtual_shadow_views = resolved_config_.virtual_shadow_view_capacity;
     resolved_config_ = config;
     if (!local_shadow_allocator_ || previous_local_shadow_atlas != config.local_shadow_atlas_resolution)
     {
@@ -221,11 +224,16 @@ void vulkan_render_backend::configure(const resolved_render_config& config)
     }
     if (config.features.virtual_shadow_maps)
     {
-        if (!virtual_shadow_cache_ || previous_virtual_shadow_budget != config.virtual_shadow_budget_bytes)
+        if (!virtual_shadow_cache_ || previous_virtual_shadow_pool != config.virtual_shadow_pool ||
+            previous_virtual_shadow_address_spaces != config.virtual_shadow_address_space_capacity ||
+            previous_virtual_shadow_page_table != config.virtual_shadow_page_table_entry_capacity ||
+            previous_virtual_shadow_views != config.virtual_shadow_view_capacity)
         {
-            virtual_shadow_cache_ =
-                std::make_unique<virtual_shadow_cache>(config.virtual_shadow_budget_bytes, capabilities_.memory_budget,
-                                                       virtual_shadow_depth_format::d16_unorm);
+            virtual_shadow_cache_ = std::make_unique<virtual_shadow_cache>(virtual_shadow_cache_config{
+                .physical_pool = config.virtual_shadow_pool,
+                .address_space_capacity = config.virtual_shadow_address_space_capacity,
+                .page_table_entry_capacity = config.virtual_shadow_page_table_entry_capacity,
+                .view_capacity = config.virtual_shadow_view_capacity});
             virtual_shadow_lights_.clear();
             retire_virtual_shadow_resources();
         }
