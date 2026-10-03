@@ -7,7 +7,7 @@ import type {
   BuiltInAgentToolExecutionResult,
 } from '../common/builtInAgentTypes';
 import { agentEditActions, type AgentHarnessMethod } from './agentHarnessContract';
-import { BuiltInAgentAdapter } from './builtInAgentAdapter';
+import type { BuiltInAgentAdapter } from './builtInAgentAdapter';
 
 export const BUILT_IN_AGENT_TOOL_RESULT_MAX_BYTES = 64 * 1024;
 const maximumResultPreviewCharacters = 16 * 1024;
@@ -279,13 +279,7 @@ const registryEntries = [
 
 const entryByMethod = new Map<AgentHarnessMethod, RegistryEntry>(registryEntries.map((entry) => [entry.method, entry]));
 
-export const builtInAgentToolName = (method: AgentHarnessMethod): string =>
-  `arc_${method
-    .replaceAll('.', '_')
-    .replaceAll(/([a-z0-9])([A-Z])/gu, '$1_$2')
-    .toLocaleLowerCase()}`;
-
-const entryByName = new Map(registryEntries.map((entry) => [builtInAgentToolName(entry.method), entry]));
+const entryByName = new Map(registryEntries.map((entry) => [entry.method, entry]));
 
 const toJsonValue = (value: unknown, path = 'result'): AiJsonValue => {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
@@ -312,7 +306,7 @@ const jsonSchema = (schema: z.ZodType<unknown>): AiJsonObject =>
   toJsonObject(JSON.parse(JSON.stringify(z.toJSONSchema(schema))) as unknown, 'tool schema');
 
 const securityDescriptor = (entry: RegistryEntry): AiToolSecurityDescriptor => ({
-  name: builtInAgentToolName(entry.method),
+  name: entry.method,
   boundary: 'harness',
   harnessOperation: entry.method,
   ...(entry.mutating ? { mutating: true, requiresHarnessApproval: true } : {}),
@@ -329,8 +323,7 @@ const definition = (entry: RegistryEntry, capabilities: BuiltInAgentCapabilities
     }
   }
   return {
-    name: builtInAgentToolName(entry.method),
-    operationId: entry.method,
+    name: entry.method,
     description: entry.description,
     inputSchema,
   };
@@ -362,7 +355,7 @@ const serializeToolResult = (
 };
 
 export class BuiltInAgentToolRegistry {
-  constructor(private readonly adapter: BuiltInAgentAdapter) {}
+  constructor(private readonly adapter: Pick<BuiltInAgentAdapter, 'capabilities' | 'invoke'>) {}
 
   async definitions(): Promise<AiToolDefinition[]> {
     return builtInAgentToolDefinitions(await this.adapter.capabilities());
