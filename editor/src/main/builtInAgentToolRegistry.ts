@@ -297,7 +297,7 @@ const toJsonValue = (value: unknown, path = 'result'): AiJsonValue => {
 const toJsonObject = (value: unknown, label: string): AiJsonObject => {
   const json = toJsonValue(value, label);
   if (!json || typeof json !== 'object' || Array.isArray(json)) throw new Error(`${label} must be an object`);
-  return json;
+  return json as AiJsonObject;
 };
 
 const jsonSchema = (schema: z.ZodType<unknown>): AiJsonObject =>
