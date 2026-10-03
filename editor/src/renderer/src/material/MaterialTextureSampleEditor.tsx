@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { TexturePicker, type AssetPickerItem } from '../inspector/AssetPicker';
+import { UiTextInput, UiToggleButton } from '../ui';
 import { materialTextureDimension, type MaterialGraphNode } from './materialGraphTypes';
 import './materialTextureSample.css';
 
@@ -115,23 +116,22 @@ export function MaterialTextureSampleEditor({
         />
         {readOnly && <span className="material-node-texture-readonly" aria-hidden="true" />}
       </div>
-      <label className="material-node-parameter-toggle">
-        <input
+      <div className="material-node-parameter-toggle">
+        <UiToggleButton
           checked={parameterEnabled}
           disabled={readOnly}
-          type="checkbox"
-          onChange={(event) =>
+          label="Parameter"
+          onCheckedChange={(checked) =>
             onChange({
               ...node,
               parameter: {
-                exposed: event.target.checked,
+                exposed: checked,
                 name: parameterName,
               },
             })
           }
         />
-        <span>Parameter</span>
-        <input
+        <UiTextInput
           aria-label="Parameter name"
           disabled={readOnly || !parameterEnabled}
           value={parameterName}
@@ -145,7 +145,7 @@ export function MaterialTextureSampleEditor({
             })
           }
         />
-      </label>
+      </div>
     </>
   );
 }
