@@ -1,10 +1,16 @@
 import { ipcMain, type WebContents } from 'electron';
 
-import type { BuiltInAgentInvokeRequest } from '../common/builtInAgentTypes';
+import type {
+  BuiltInAgentInvokeRequest,
+  BuiltInAgentToolInvokeRequest,
+} from '../common/builtInAgentTypes';
 import { BuiltInAgentAdapter } from './builtInAgentAdapter';
+import { BuiltInAgentToolRegistry } from './builtInAgentToolRegistry';
 
 const capabilitiesChannel = 'ai-runtime:agent-capabilities';
 const invokeChannel = 'ai-runtime:agent-invoke';
+const toolsChannel = 'ai-runtime:agent-tools';
+const invokeToolChannel = 'ai-runtime:agent-invoke-tool';
 const subscribeChannel = 'ai-runtime:agent-subscribe';
 const unsubscribeChannel = 'ai-runtime:agent-unsubscribe';
 const eventChannel = 'ai-runtime:agent-event';
@@ -21,7 +27,22 @@ const invokeRequest = (value: unknown): BuiltInAgentInvokeRequest => {
   };
 };
 
+const toolInvokeRequest = (value: unknown): BuiltInAgentToolInvokeRequest => {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Built-in agent tool invocation request is invalid');
+  const request = value as Record<string, unknown>;
+  if (typeof request.name !== 'string' || request.name.trim() === '') throw new Error('Built-in agent tool name is required');
+  const arguments_ = request.arguments;
+  if (arguments_ !== undefined && (!arguments_ || typeof arguments_ !== 'object' || Array.isArray(arguments_)))
+    throw new Error('Built-in agent tool arguments must be an object');
+  return {
+    name: request.name,
+    ...(arguments_ !== undefined ? { arguments: arguments_ as BuiltInAgentToolInvokeRequest['arguments'] } : {}),
+  };
+};
+
 export const installBuiltInAgentIpc = (adapter: BuiltInAgentAdapter): (() => void) => {
+  const registry = new BuiltInAgentToolRegistry(adapter);
   const subscriptions = new Map<number, () => void>();
 
   const unsubscribe = (senderId: number): void => {
@@ -47,6 +68,11 @@ export const installBuiltInAgentIpc = (adapter: BuiltInAgentAdapter): (() => voi
     const request = invokeRequest(rawRequest);
     return adapter.invoke(request.method, request.params);
   });
+  ipcMain.handle(toolsChannel, () => registry.definitions());
+  ipcMain.handle(invokeToolChannel, (_event, rawRequest: unknown) => {
+    const request = toolInvokeRequest(rawRequest);
+    return registry.invoke(request.name, request.arguments);
+  });
   ipcMain.handle(subscribeChannel, (event) => {
     subscribe(event.sender);
     return true;
@@ -59,6 +85,8 @@ export const installBuiltInAgentIpc = (adapter: BuiltInAgentAdapter): (() => voi
   return () => {
     ipcMain.removeHandler(capabilitiesChannel);
     ipcMain.removeHandler(invokeChannel);
+    ipcMain.removeHandler(toolsChannel);
+    ipcMain.removeHandler(invokeToolChannel);
     ipcMain.removeHandler(subscribeChannel);
     ipcMain.removeHandler(unsubscribeChannel);
     for (const senderId of [...subscriptions.keys()]) unsubscribe(senderId);
