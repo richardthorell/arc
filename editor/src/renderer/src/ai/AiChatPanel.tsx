@@ -15,7 +15,7 @@ import {
   type AiModelProvider,
 } from './aiChat';
 import { renderAiChatMessageText } from './AiChatMessageText';
-import { AiContextChips, AiContextPicker } from './AiContextPicker';
+import { AiContextChips, AiContextPicker } from './AiContextPickerView';
 import { appendAiContextAttachments } from './aiContextAttachments';
 import {
   prepareAiContextBudget,
