@@ -15,6 +15,8 @@ export type ProjectAssetMountRoots = {
   organizationRoot: string;
 };
 
+export type ProjectAssetLogicalMounts = Partial<Record<'builtin' | 'project' | 'user' | 'organization', string>>;
+
 const optionalRoot = (value: string | undefined): string => (value?.trim() ? path.resolve(value) : '');
 
 export const resolveProjectAssetMountRoots = (options: ProjectAssetMountRootOptions): ProjectAssetMountRoots => {
@@ -36,3 +38,15 @@ export const resolveProjectAssetMountRoots = (options: ProjectAssetMountRootOpti
     organizationRoot: optionalRoot(options.organizationAssetsRoot),
   };
 };
+
+/**
+ * Converts host-owned physical mount roots into the production project-snapshot
+ * contract. Unavailable optional mounts stay absent rather than masquerading as
+ * empty storage providers, and physical paths remain storage configuration only.
+ */
+export const projectAssetLogicalMounts = (roots: ProjectAssetMountRoots): ProjectAssetLogicalMounts => ({
+  ...(roots.builtinRoot ? { builtin: roots.builtinRoot } : {}),
+  project: roots.projectRoot,
+  ...(roots.userRoot ? { user: roots.userRoot } : {}),
+  ...(roots.organizationRoot ? { organization: roots.organizationRoot } : {}),
+});
