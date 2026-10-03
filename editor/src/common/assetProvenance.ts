@@ -92,6 +92,51 @@ export const createDeterministicReimportPlan = (
   };
 };
 
+export type ArcCompletedReimport = {
+  arcAssetId: string;
+  provenance: ArcImportedAssetProvenance;
+};
+
+export type CompleteDeterministicReimportOptions = {
+  importedAt: string;
+  sourceUrl?: string;
+  sourceRevision?: string;
+  sourceHash?: string;
+  license?: string;
+};
+
+export const completeDeterministicReimport = (
+  plan: ArcDeterministicReimportPlan,
+  previous: ArcImportedAssetProvenance,
+  options: CompleteDeterministicReimportOptions,
+): ArcCompletedReimport | null => {
+  if (
+    plan.request.sourceId !== previous.sourceId ||
+    plan.request.assetId !== previous.sourceAssetId ||
+    plan.recipe.version !== previous.recipe?.version
+  ) {
+    return null;
+  }
+
+  return {
+    arcAssetId: plan.arcAssetId,
+    provenance: {
+      sourceId: previous.sourceId,
+      sourceAssetId: previous.sourceAssetId,
+      importedAt: options.importedAt,
+      license: options.license ?? previous.license,
+      sourceUrl: options.sourceUrl ?? previous.sourceUrl,
+      sourceRevision: options.sourceRevision ?? previous.sourceRevision,
+      sourceHash: options.sourceHash ?? previous.sourceHash,
+      recipe: {
+        version: plan.recipe.version,
+        logicalPaths: [...plan.recipe.logicalPaths],
+        options: plan.recipe.options ? { ...plan.recipe.options } : undefined,
+      },
+    },
+  };
+};
+
 export type ArcAssetProvenanceMetadata = {
   provider: string;
   providerAssetId: string;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  completeDeterministicReimport,
   createAssetImportRecipe,
   createAssetProvenanceMetadata,
   createDeterministicReimportPlan,
@@ -105,6 +106,65 @@ describe('asset provenance', () => {
       createDeterministicReimportPlan('   ', {
         ...legacy,
         recipe: createAssetImportRecipe({ logicalPaths: ['mesh.glb'] }),
+      }),
+    ).toBeNull();
+  });
+
+  it('completes source updates without changing stable ARC identity or the recorded recipe', () => {
+    const previous = createImportedAssetProvenance(
+      { sourceId: 'polyhaven', id: 'rock_01', license: 'CC0' },
+      {
+        importedAt: '2026-09-28T20:00:00.000Z',
+        sourceRevision: 'revision-7',
+        sourceHash: 'sha256:old',
+        recipe: createAssetImportRecipe({ logicalPaths: ['4k/rock.glb'] }, { scale: 2 }),
+      },
+    );
+    const plan = createDeterministicReimportPlan('arc:asset:stable-rock', previous);
+
+    expect(
+      completeDeterministicReimport(plan!, previous, {
+        importedAt: '2026-10-03T05:00:00.000Z',
+        sourceRevision: 'revision-8',
+        sourceHash: 'sha256:new',
+      }),
+    ).toEqual({
+      arcAssetId: 'arc:asset:stable-rock',
+      provenance: {
+        sourceId: 'polyhaven',
+        sourceAssetId: 'rock_01',
+        importedAt: '2026-10-03T05:00:00.000Z',
+        license: 'CC0',
+        sourceUrl: undefined,
+        sourceRevision: 'revision-8',
+        sourceHash: 'sha256:new',
+        recipe: { version: 1, logicalPaths: ['4k/rock.glb'], options: { scale: 2 } },
+      },
+    });
+  });
+
+  it('rejects reimport completion when provider identity or recipe version drifted', () => {
+    const previous = createImportedAssetProvenance(
+      { sourceId: 'polyhaven', id: 'rock_01', license: 'CC0' },
+      {
+        importedAt: '2026-09-28T20:00:00.000Z',
+        recipe: createAssetImportRecipe({ logicalPaths: ['rock.glb'] }),
+      },
+    );
+    const plan = createDeterministicReimportPlan('arc:asset:stable-rock', previous)!;
+    const driftedRecipeVersion = {
+      ...plan,
+      recipe: { ...plan.recipe, version: 2 },
+    } as unknown as Parameters<typeof completeDeterministicReimport>[0];
+
+    expect(
+      completeDeterministicReimport({ ...plan, request: { ...plan.request, assetId: 'other' } }, previous, {
+        importedAt: '2026-10-03T05:00:00.000Z',
+      }),
+    ).toBeNull();
+    expect(
+      completeDeterministicReimport(driftedRecipeVersion, previous, {
+        importedAt: '2026-10-03T05:00:00.000Z',
       }),
     ).toBeNull();
   });
