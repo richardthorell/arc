@@ -16,11 +16,14 @@ const response = (payload: unknown = {}): AgentHostResponse => ({
 });
 
 class MockHost implements AgentHarnessHost {
+  readonly queries: Array<{ type: string; payload: Record<string, unknown> }> = [];
+
   async command(): Promise<AgentHostResponse> {
     return response();
   }
 
-  async query(): Promise<AgentHostResponse> {
+  async query(type: string, payload: Record<string, unknown> = {}): Promise<AgentHostResponse> {
+    this.queries.push({ type, payload });
     return response({ entities: [], totalEntityCount: 0 });
   }
 }
@@ -43,6 +46,30 @@ describe('BuiltInAgentAdapter', () => {
       expect.arrayContaining(['agent.capabilities', 'scene.overview', 'edit.begin']),
     );
     expect(capabilities.editActions).toEqual(expect.arrayContaining(['create', 'setTransform', 'createAsset']));
+  });
+
+  it('invokes editor operations directly through the transport-neutral harness', async () => {
+    const host = new MockHost();
+    const harness = new EditorAgentHarness(host);
+    const adapter = new BuiltInAgentAdapter(harness);
+
+    await adapter.invoke('scene.overview');
+
+    expect(host.queries).toEqual([
+      {
+        type: 'gateway.sceneEntities',
+        payload: { search: '', offset: 0, limit: 200 },
+      },
+    ]);
+    expect(harness.status().audit).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          clientId: BUILT_IN_AGENT_CLIENT_ID,
+          operation: 'scene.overview',
+          succeeded: true,
+        }),
+      ]),
+    );
   });
 
   it('routes operations through harness approval and audit policy instead of bypassing it', async () => {
