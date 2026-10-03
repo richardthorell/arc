@@ -1,0 +1,72 @@
+name: Temporary Fix 356
+
+on:
+  push:
+    branches: [assets/356-complete-metadata-search]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set Up Node 22.23
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.2
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Install Electron Dependencies
+        run: npm ci --prefix editor
+      - name: Fix presentation filtering and project lifecycle dependency
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('editor/src/renderer/src/content/ContentBrowserPanel.tsx')
+          text = path.read_text()
+          old_effect = """  useEffect(() => {\n    let cancelled = false;\n    setMetadataEntries({});\n    setMetadataAssetId(null);\n    if (!project) return () => undefined;\n    void loadAssetMetadata().then((entries) => {\n      if (!cancelled) setMetadataEntries(entries);\n    });\n    return () => {\n      cancelled = true;\n    };\n  }, [project?.root]);\n"""
+          new_effect = """  const activeProjectRoot = project?.root ?? null;\n  useEffect(() => {\n    let cancelled = false;\n    setMetadataEntries({});\n    setMetadataAssetId(null);\n    if (!activeProjectRoot) return () => undefined;\n    void loadAssetMetadata().then((entries) => {\n      if (!cancelled) setMetadataEntries(entries);\n    });\n    return () => {\n      cancelled = true;\n    };\n  }, [activeProjectRoot]);\n"""
+          if old_effect not in text:
+              raise SystemExit('metadata lifecycle block not found')
+          text = text.replace(old_effect, new_effect, 1)
+
+          old_filter = """      ]\n        .filter((asset) => state === 'all' || asset.status === state)\n        .sort((left, right) => {\n"""
+          new_filter = """      ]\n        .filter((asset) => kind === 'all' || assetPresentationKind(asset) === kind)\n        .filter((asset) => state === 'all' || asset.status === state)\n        .sort((left, right) => {\n"""
+          if old_filter not in text:
+              raise SystemExit('filtered asset block not found')
+          text = text.replace(old_filter, new_filter, 1)
+          text = text.replace(
+              "    [queryKinds, scopedAssets, search, searchPathPrefix, sort, state, tag],",
+              "    [kind, queryKinds, scopedAssets, search, searchPathPrefix, sort, state, tag],",
+              1,
+          )
+          path.write_text(text)
+
+          test_path = Path('editor/src/renderer/src/content/ContentBrowserPanel.test.tsx')
+          tests = test_path.read_text()
+          fixture_anchor = """    {\n      id: 'sky',\n      guid: 'sky-guid',\n      name: 'Sky',\n      tags: ['Environment'],\n      path: 'Content/Environment/sky.hdr',\n      kind: 'texture' as const,\n      status: 'stale' as const,\n    },\n"""
+          fixture = fixture_anchor + """    {\n      id: 'main-scene',\n      guid: 'main-scene-guid',\n      name: 'Main Scene',\n      path: 'Content/Scenes/main.arcscene',\n      kind: 'scene' as const,\n      status: 'ready' as const,\n    },\n"""
+          if fixture_anchor not in tests:
+              raise SystemExit('scene fixture anchor not found')
+          tests = tests.replace(fixture_anchor, fixture, 1)
+          assertion_anchor = """    fireEvent.click(view.getByRole('option', { name: /Model/ }));\n    expect(view.getByText('Hero Rock')).toBeInTheDocument();\n"""
+          assertion = assertion_anchor + """    expect(view.queryByText('Main Scene')).not.toBeInTheDocument();\n"""
+          if assertion_anchor not in tests:
+              raise SystemExit('model assertion anchor not found')
+          tests = tests.replace(assertion_anchor, assertion, 1)
+          test_path.write_text(tests)
+          PY
+          cd editor
+          npx prettier --write src/renderer/src/content/ContentBrowserPanel.tsx src/renderer/src/content/ContentBrowserPanel.test.tsx
+      - name: Commit Fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor/src/renderer/src/content/ContentBrowserPanel.tsx editor/src/renderer/src/content/ContentBrowserPanel.test.tsx
+          git commit -m "Fix asset presentation filtering" || exit 0
+          git push origin HEAD:${GITHUB_REF_NAME}
