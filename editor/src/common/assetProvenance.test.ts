@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createAssetImportRecipe,
   createAssetProvenanceMetadata,
+  createDeterministicReimportPlan,
   createImportedAssetProvenance,
   createReimportRequest,
 } from './assetProvenance';
@@ -60,6 +61,52 @@ describe('asset provenance', () => {
       logicalPaths: ['4k/albedo.jpg', '4k/rock.glb'],
       destinationScope: 'project',
     });
+  });
+
+  it('builds a deterministic reimport plan without replacing stable ARC identity', () => {
+    const provenance = createImportedAssetProvenance(
+      { sourceId: 'polyhaven', id: 'rock_01', license: 'CC0' },
+      {
+        importedAt: '2026-09-28T20:00:00.000Z',
+        sourceRevision: 'revision-7',
+        sourceHash: 'sha256:abc123',
+        recipe: createAssetImportRecipe({ logicalPaths: ['4k/rock.glb'] }, { scale: 2, generateTangents: false }),
+      },
+    );
+
+    expect(createDeterministicReimportPlan('arc:asset:stable-rock', provenance)).toEqual({
+      arcAssetId: 'arc:asset:stable-rock',
+      request: {
+        sourceId: 'polyhaven',
+        assetId: 'rock_01',
+        logicalPaths: ['4k/rock.glb'],
+        destinationScope: 'project',
+      },
+      recipe: {
+        version: 1,
+        logicalPaths: ['4k/rock.glb'],
+        options: { generateTangents: false, scale: 2 },
+      },
+      expectedSourceRevision: 'revision-7',
+      expectedSourceHash: 'sha256:abc123',
+    });
+  });
+
+  it('does not create a deterministic reimport plan without stable identity or a recorded recipe', () => {
+    const legacy = {
+      sourceId: 'polyhaven',
+      sourceAssetId: 'legacy_asset',
+      importedAt: '2026-01-01T00:00:00.000Z',
+      license: 'CC0',
+    };
+
+    expect(createDeterministicReimportPlan('arc:asset:legacy', legacy)).toBeNull();
+    expect(
+      createDeterministicReimportPlan('   ', {
+        ...legacy,
+        recipe: createAssetImportRecipe({ logicalPaths: ['mesh.glb'] }),
+      }),
+    ).toBeNull();
   });
 
   it('keeps legacy provenance readable when no recipe was recorded', () => {
