@@ -1,4 +1,4 @@
-import { assetLibraryScope, type AssetLibraryScopeId } from './assetLibraryScopes';
+import { assetLibraryScope, assetLibraryScopes, type AssetLibraryScopeId } from './assetLibraryScopes';
 
 export type AssetLibraryMount = {
   scope: AssetLibraryScopeId;
@@ -7,6 +7,14 @@ export type AssetLibraryMount = {
 };
 
 export type AssetLibraryMountMap = Partial<Record<AssetLibraryScopeId, string>>;
+
+export type AssetLibraryMountNavigationItem = {
+  scope: AssetLibraryScopeId;
+  label: string;
+  description: string;
+  available: boolean;
+  writable: boolean;
+};
 
 const normalizeMountRoot = (root: string) => root.trim().replaceAll('\\', '/').replace(/\/+/g, '/').replace(/\/$/, '');
 
@@ -47,6 +55,24 @@ export function assetLibraryMountForScope(
   scope: AssetLibraryScopeId,
 ): AssetLibraryMount | null {
   return mounts.find((mount) => mount.scope === scope) ?? null;
+}
+
+/**
+ * Builds Content Browser navigation state from the authoritative logical mount
+ * table. Physical roots stay out of renderer navigation so storage location can
+ * change without changing asset identity or leaking host paths into UI state.
+ */
+export function buildAssetLibraryMountNavigation(
+  mounts: readonly AssetLibraryMount[],
+): AssetLibraryMountNavigationItem[] {
+  const availableScopes = new Set(mounts.map((mount) => mount.scope));
+  return assetLibraryScopes.map((scope) => ({
+    scope: scope.id,
+    label: scope.label,
+    description: scope.description,
+    available: availableScopes.has(scope.id),
+    writable: scope.writable,
+  }));
 }
 
 /**

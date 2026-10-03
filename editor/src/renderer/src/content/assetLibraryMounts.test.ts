@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { assetLibraryMountForScope, buildAssetLibraryMounts, resolveAssetLibraryMountPath } from './assetLibraryMounts';
+import {
+  assetLibraryMountForScope,
+  buildAssetLibraryMountNavigation,
+  buildAssetLibraryMounts,
+  resolveAssetLibraryMountPath,
+} from './assetLibraryMounts';
 
 describe('asset library mounts', () => {
   it('keeps logical scope ordering and writability independent of physical roots', () => {
@@ -35,6 +40,20 @@ describe('asset library mounts', () => {
       root: '/user',
       writable: true,
     });
+  });
+
+  it('exposes ordered Content Browser navigation without physical roots', () => {
+    const mounts = buildAssetLibraryMounts({ project: '/project', organization: '/shared' });
+
+    expect(buildAssetLibraryMountNavigation(mounts)).toEqual([
+      expect.objectContaining({ scope: 'builtin', label: 'Built-in', available: false, writable: false }),
+      expect.objectContaining({ scope: 'project', label: 'Project', available: true, writable: true }),
+      expect.objectContaining({ scope: 'user', label: 'User', available: false, writable: true }),
+      expect.objectContaining({ scope: 'organization', label: 'Organization', available: true, writable: false }),
+    ]);
+    expect(buildAssetLibraryMountNavigation(mounts)).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ root: expect.any(String) })]),
+    );
   });
 
   it('resolves relative asset paths through their logical mount', () => {
