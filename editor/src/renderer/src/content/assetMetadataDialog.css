@@ -1,0 +1,100 @@
+.asset-metadata-dialog .ui-dialog-body {
+  padding: 0;
+}
+
+.asset-metadata-dialog-content {
+  display: grid;
+  gap: 1px;
+  background: var(--arc-color-border-subtle);
+}
+
+.asset-metadata-section {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  background: var(--arc-color-bg-panel);
+}
+
+.asset-metadata-section > header {
+  display: grid;
+  gap: 2px;
+}
+
+.asset-metadata-section > header strong {
+  color: var(--arc-color-text-strong);
+  font-size: var(--arc-text-sm);
+  font-weight: 600;
+}
+
+.asset-metadata-section > header small,
+.asset-metadata-section label > small {
+  color: var(--arc-color-text-dim);
+  font-size: var(--arc-text-xxs);
+  line-height: 1.4;
+}
+
+.asset-metadata-section label {
+  display: grid;
+  gap: 6px;
+  color: var(--arc-color-text-muted);
+  font-size: var(--arc-text-xs);
+}
+
+.asset-metadata-section .ui-text-area {
+  min-height: 74px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.asset-metadata-details {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  border: 1px solid var(--arc-color-border-subtle);
+  border-radius: var(--arc-radius-2);
+  overflow: hidden;
+}
+
+.asset-metadata-details > div {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 12px;
+  padding: 7px 9px;
+  background: var(--arc-color-bg-field);
+  font-size: var(--arc-text-xs);
+}
+
+.asset-metadata-details > div + div {
+  border-top: 1px solid var(--arc-color-border-subtle);
+}
+
+.asset-metadata-details dt {
+  color: var(--arc-color-text-dim);
+}
+
+.asset-metadata-details dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--arc-color-text);
+}
+
+.asset-metadata-readonly,
+.asset-metadata-error {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--arc-radius-2);
+  font-size: var(--arc-text-xs);
+  line-height: 1.4;
+}
+
+.asset-metadata-readonly {
+  background: color-mix(in srgb, var(--arc-color-bg-field) 85%, transparent);
+  color: var(--arc-color-text-muted);
+}
+
+.asset-metadata-error {
+  border: 1px solid color-mix(in srgb, var(--arc-color-danger) 45%, var(--arc-color-border-subtle));
+  background: color-mix(in srgb, var(--arc-color-danger) 10%, var(--arc-color-bg-field));
+  color: var(--arc-color-text-strong);
+}
