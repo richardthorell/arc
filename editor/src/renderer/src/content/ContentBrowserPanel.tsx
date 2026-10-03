@@ -50,7 +50,9 @@ export function ContentBrowserPanel(props: Props) {
 
   useEffect(() => {
     if (availableScopes.some((scope) => scope.scope === scopeId)) return;
-    setScopeId(availableScopes.find((scope) => scope.scope === 'project')?.scope ?? availableScopes[0]?.scope ?? 'project');
+    setScopeId(
+      availableScopes.find((scope) => scope.scope === 'project')?.scope ?? availableScopes[0]?.scope ?? 'project',
+    );
   }, [availableScopes, scopeId]);
 
   const activeScope =
@@ -73,7 +75,8 @@ export function ContentBrowserPanel(props: Props) {
     <div
       className={`content-browser-scope-shell ${projectAuthoring ? '' : 'scope-authoring-disabled'}`}
       onContextMenuCapture={(event) => {
-        if (!projectAuthoring && !(event.target as HTMLElement).closest('.content-asset')) suppressNonProjectMutation(event);
+        if (!projectAuthoring && !(event.target as HTMLElement).closest('.content-asset'))
+          suppressNonProjectMutation(event);
       }}
       onDragOverCapture={(event) => {
         if (!projectAuthoring) suppressNonProjectMutation(event);
