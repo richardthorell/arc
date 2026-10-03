@@ -17,9 +17,12 @@ export const initialRemoteAssetImportLifecycle = (): RemoteAssetImportLifecycle 
   operationId: 0,
 });
 
-export const beginRemoteAssetImport = (state: RemoteAssetImportLifecycle): RemoteAssetImportLifecycle => ({
+export const beginRemoteAssetImport = (
+  state: RemoteAssetImportLifecycle,
+  operationId = state.operationId + 1,
+): RemoteAssetImportLifecycle => ({
   phase: 'running',
-  operationId: state.operationId + 1,
+  operationId,
   progress: { bytesReceived: 0 },
 });
 
