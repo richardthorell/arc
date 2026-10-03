@@ -1,6 +1,7 @@
-import { forwardRef, type InputHTMLAttributes } from 'react';
+import { forwardRef, type InputHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 
 type UiTextInputProps = InputHTMLAttributes<HTMLInputElement>;
+type UiTextAreaProps = TextareaHTMLAttributes<HTMLTextAreaElement>;
 
 export const UiTextInput = forwardRef<HTMLInputElement, UiTextInputProps>(function UiTextInput(
   { className, ...props },
@@ -21,4 +22,11 @@ export const UiSearchInput = forwardRef<HTMLInputElement, UiTextInputProps>(func
       {...props}
     />
   );
+});
+
+export const UiTextArea = forwardRef<HTMLTextAreaElement, UiTextAreaProps>(function UiTextArea(
+  { className, ...props },
+  ref,
+) {
+  return <textarea ref={ref} className={['ui-text-input', 'ui-text-area', className].filter(Boolean).join(' ')} {...props} />;
 });
