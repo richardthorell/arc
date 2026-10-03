@@ -14,7 +14,13 @@ import {
   type AiModelProvider,
 } from './aiChat';
 import { renderAiChatMessageText } from './AiChatMessageText';
+import {
+  prepareAiContextBudget,
+  type AiContextBudgetDiagnostics,
+  type AiProjectContextSource,
+} from './aiContextBudget';
 import { loadAiConversationStore, saveAiConversationStore } from './aiConversationStore';
+import { createWindowAiProjectContextService } from './aiProjectContextService';
 import './aiGateway.css';
 import './aiChatMessageCards.css';
 
@@ -63,6 +69,8 @@ type AiChatPanelProps = {
   initialMessages?: readonly AiChatMessage[];
   conversationLabel?: string;
   persistConversations?: boolean;
+  contextSource?: AiProjectContextSource | null;
+  onContextBudget?: (diagnostics: AiContextBudgetDiagnostics) => void;
 };
 
 export function AiChatPanel({
@@ -73,6 +81,8 @@ export function AiChatPanel({
   initialMessages,
   conversationLabel = 'New conversation',
   persistConversations,
+  contextSource,
+  onContextBudget,
 }: AiChatPanelProps) {
   const configuredProviders = useMemo(
     () => (providers ?? [provider ?? unavailableAiModelProvider]).filter((candidate) => candidate.configured),
@@ -86,6 +96,12 @@ export function AiChatPanel({
     () => (shouldPersistConversations && projectGuid ? loadAiConversationStore(projectGuid) : null),
     [projectGuid, shouldPersistConversations],
   );
+  const ownedContextService = useMemo(() => {
+    if (contextSource !== undefined || !projectGuid || typeof window === 'undefined') return null;
+    if (!window.arc?.projects?.snapshot || !window.arc?.host?.query) return null;
+    return createWindowAiProjectContextService();
+  }, [contextSource, projectGuid]);
+  const projectContextSource = contextSource === undefined ? ownedContextService : contextSource;
   const [conversations, setConversations] = useState<AiConversation[]>(() => {
     if (initialConversations) return initialConversations.map(cloneConversation);
     if (initialMessages?.length) {
@@ -133,6 +149,8 @@ export function AiChatPanel({
       ...(selectedModelId ? { selectedModelId } : {}),
     });
   }, [activeConversationId, conversations, projectGuid, selectedModelId, shouldPersistConversations]);
+
+  useEffect(() => () => ownedContextService?.dispose(), [ownedContextService]);
 
   useEffect(
     () => () => {
@@ -182,6 +200,18 @@ export function AiChatPanel({
     );
   };
 
+  const updateConversationSummary = (conversationId: string, summary: NonNullable<AiConversation['summary']>) => {
+    setConversations((current) =>
+      current.map((conversation) =>
+        conversation.id === conversationId &&
+        (conversation.summary?.text !== summary.text ||
+          conversation.summary?.throughMessageId !== summary.throughMessageId)
+          ? { ...conversation, summary, updatedAt: new Date().toISOString() }
+          : conversation,
+      ),
+    );
+  };
+
   const stopResponse = () => {
     const activeStream = activeStreamRef.current;
     if (!activeStream) return;
@@ -198,6 +228,7 @@ export function AiChatPanel({
   const streamResponse = async (
     conversationId: string,
     model: AiModelProvider,
+    requestConversation: AiConversation,
     requestMessages: AiChatMessage[],
     assistantMessage: AiChatMessage,
   ): Promise<StreamResponseResult> => {
@@ -212,9 +243,20 @@ export function AiChatPanel({
     let responseText = '';
     let completed = false;
     try {
+      const contextPlan = await prepareAiContextBudget({
+        conversation: { ...requestConversation, messages: requestMessages },
+        messages: requestMessages,
+        modelCapabilities: model.capabilities,
+        projectGuid,
+        projectContextSource,
+      });
+      if (controller.signal.aborted) return { completed: false, text: responseText };
+      if (contextPlan.summary) updateConversationSummary(conversationId, contextPlan.summary);
+      onContextBudget?.(contextPlan.diagnostics);
+
       for await (const event of model.stream({
         conversationId,
-        messages: requestMessages,
+        messages: contextPlan.messages,
         signal: controller.signal,
       })) {
         if (controller.signal.aborted) break;
@@ -325,7 +367,7 @@ export function AiChatPanel({
     setPrompt('');
     setConversations((current) => [conversation, ...current]);
     setActiveConversationId(conversation.id);
-    const result = await streamResponse(conversation.id, model, [userMessage], assistantMessage);
+    const result = await streamResponse(conversation.id, model, conversation, [userMessage], assistantMessage);
     if (result.completed && result.text.trim()) {
       void generateConversationCaption(conversation.id, model, content, result.text);
     }
@@ -355,7 +397,7 @@ export function AiChatPanel({
           : conversation,
       ),
     );
-    await streamResponse(activeConversation.id, activeProvider, requestMessages, assistantMessage);
+    await streamResponse(activeConversation.id, activeProvider, activeConversation, requestMessages, assistantMessage);
   };
 
   const selectActiveModel = (modelId: string) => {
