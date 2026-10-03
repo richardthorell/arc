@@ -155,7 +155,9 @@
   text-decoration: underline;
   text-decoration-color: transparent;
   text-underline-offset: 2px;
-  transition: color 100ms ease, text-decoration-color 100ms ease;
+  transition:
+    color 100ms ease,
+    text-decoration-color 100ms ease;
 }
 
 .ai-chat-message-link:hover {
