@@ -146,7 +146,7 @@ TEST_CASE("virtual shadow page requests are deterministic and retain coarse fall
         static_cast<std::uint64_t>(arc::render::virtual_shadow_page_texels +
                                    arc::render::virtual_shadow_page_guard_texels * 2u) *
         (arc::render::virtual_shadow_page_texels + arc::render::virtual_shadow_page_guard_texels * 2u) * 4u;
-    arc::render::virtual_shadow_cache cache(one_d16_page_pair * 2u);
+    arc::render::virtual_shadow_cache cache(one_d16_page_pair * 4u);
     const auto light = cache.create_address_space({.light_kind = arc::render::shadow_light_kind::spot,
                                                    .light_key = 42,
                                                    .virtual_resolution = 2048,
@@ -186,7 +186,7 @@ TEST_CASE("virtual shadow cache protects recent and pinned pages under pressure"
         static_cast<std::uint64_t>(arc::render::virtual_shadow_page_texels +
                                    arc::render::virtual_shadow_page_guard_texels * 2u) *
         (arc::render::virtual_shadow_page_texels + arc::render::virtual_shadow_page_guard_texels * 2u) * 4u;
-    arc::render::virtual_shadow_cache cache(one_d16_page_pair * 2u);
+    arc::render::virtual_shadow_cache cache(one_d16_page_pair * 4u);
     const auto light = cache.create_address_space(
         {.light_kind = arc::render::shadow_light_kind::spot, .light_key = 71, .level_count = 5});
     REQUIRE(light);
@@ -203,8 +203,10 @@ TEST_CASE("virtual shadow cache protects recent and pinned pages under pressure"
     };
     REQUIRE(request(0, 1, true).render_pages.size() == 1);
     REQUIRE(request(1, 1, false).render_pages.size() == 1);
-    REQUIRE(request(2, 2, false).failed_requests == 1);
-    REQUIRE(request(2, 64, false).render_pages.size() == 1);
+    REQUIRE(request(2, 1, false).render_pages.size() == 1);
+    REQUIRE(request(3, 1, false).render_pages.size() == 1);
+    REQUIRE(request(4, 2, false).failed_requests == 1);
+    REQUIRE(request(4, 64, false).render_pages.size() == 1);
     REQUIRE(cache.statistics().eviction_count == 1);
     REQUIRE(cache.statistics().pinned_pages == 1);
 }
@@ -214,10 +216,145 @@ TEST_CASE("virtual shadow clipmap origins snap at physical page granularity")
     const auto snapped = arc::render::snap_virtual_shadow_clipmap_origin({13.2f, -4.1f}, 0.125f);
     REQUIRE(snapped[0] == Catch::Approx(0.0f));
     REQUIRE(snapped[1] == Catch::Approx(-16.0f));
-    REQUIRE(arc::render::virtual_shadow_pages_per_axis(16384, 0) == 128);
-    REQUIRE(arc::render::virtual_shadow_pages_per_axis(16384, 4) == 8);
+    const arc::render::virtual_shadow_address_space_descriptor directional{
+        .light_kind = arc::render::shadow_light_kind::directional, .virtual_resolution = 16384};
+    const arc::render::virtual_shadow_address_space_descriptor local{
+        .light_kind = arc::render::shadow_light_kind::spot, .virtual_resolution = 16384, .level_count = 5};
+    REQUIRE(arc::render::virtual_shadow_pages_per_axis(directional, 0) == 128);
+    REQUIRE(arc::render::virtual_shadow_pages_per_axis(directional, 4) == 128);
+    REQUIRE(arc::render::virtual_shadow_pages_per_axis(local, 0) == 128);
+    REQUIRE(arc::render::virtual_shadow_pages_per_axis(local, 4) == 8);
     REQUIRE(arc::render::virtual_shadow_parent_page({6, 10, 1, 2}) ==
             arc::render::virtual_shadow_page_coordinate{3, 5, 2, 2});
+}
+
+TEST_CASE("virtual shadow pool layout honors paired atlas budget and device limits")
+{
+    constexpr std::uint64_t d16_pair_bytes =
+        static_cast<std::uint64_t>(arc::render::virtual_shadow_physical_page_texels) *
+        arc::render::virtual_shadow_physical_page_texels * 4u;
+    const auto d16 = arc::render::resolve_virtual_shadow_physical_pool(
+        d16_pair_bytes * 10u, arc::render::virtual_shadow_physical_page_texels * 8u,
+        {.d16_unorm = true, .d32_float = true});
+    REQUIRE(d16.valid());
+    REQUIRE(d16.format == arc::render::virtual_shadow_depth_format::d16_unorm);
+    REQUIRE(d16.pages_per_axis == 3);
+    REQUIRE(d16.physical_page_capacity == 9);
+    REQUIRE(d16.allocated_bytes == d16_pair_bytes * 9u);
+
+    const auto dimension_limited = arc::render::resolve_virtual_shadow_physical_pool(
+        d16_pair_bytes * 100u, arc::render::virtual_shadow_physical_page_texels * 2u, {.d16_unorm = true});
+    REQUIRE(dimension_limited.pages_per_axis == 2);
+    REQUIRE(dimension_limited.physical_page_capacity == 4);
+
+    const auto d32 = arc::render::resolve_virtual_shadow_physical_pool(
+        d16_pair_bytes * 8u, arc::render::virtual_shadow_physical_page_texels * 8u, {.d32_float = true});
+    REQUIRE(d32.format == arc::render::virtual_shadow_depth_format::d32_float);
+    REQUIRE(d32.pages_per_axis == 2);
+    REQUIRE_FALSE(arc::render::resolve_virtual_shadow_physical_pool(
+                      d16_pair_bytes, arc::render::virtual_shadow_physical_page_texels - 1u, {.d16_unorm = true})
+                      .valid());
+}
+
+TEST_CASE("virtual shadow dense tables are deterministic and layer independent")
+{
+    constexpr std::uint64_t d16_pair_bytes =
+        static_cast<std::uint64_t>(arc::render::virtual_shadow_physical_page_texels) *
+        arc::render::virtual_shadow_physical_page_texels * 4u;
+    const auto pool = arc::render::resolve_virtual_shadow_physical_pool(
+        d16_pair_bytes * 4u, arc::render::virtual_shadow_physical_page_texels * 2u, {.d16_unorm = true});
+    arc::render::virtual_shadow_cache cache(
+        {.physical_pool = pool, .page_table_entry_capacity = 16, .view_capacity = 8});
+    const auto light = cache.create_address_space({.light_kind = arc::render::shadow_light_kind::spot,
+                                                   .light_key = 91,
+                                                   .virtual_resolution = 256,
+                                                   .level_count = 2});
+    REQUIRE(light);
+    const auto* descriptor = cache.address_space(*light);
+    REQUIRE(descriptor != nullptr);
+    REQUIRE(arc::render::virtual_shadow_page_table_entry_count(*descriptor) == 5);
+    REQUIRE(arc::render::virtual_shadow_dense_page_offset(*descriptor, {0, 0, 0, 0}) == 0u);
+    REQUIRE(arc::render::virtual_shadow_dense_page_offset(*descriptor, {1, 1, 0, 0}) == 3u);
+    REQUIRE(arc::render::virtual_shadow_dense_page_offset(*descriptor, {0, 0, 1, 0}) == 4u);
+    REQUIRE_FALSE(arc::render::virtual_shadow_dense_page_offset(*descriptor, {1, 0, 1, 0}));
+
+    const arc::render::virtual_shadow_page_key static_key{.address_space = *light,
+                                                          .coordinate = {1, 1, 0, 0},
+                                                          .layer =
+                                                              arc::render::virtual_shadow_page_layer::static_depth};
+    const arc::render::virtual_shadow_page_key dynamic_key{.address_space = *light,
+                                                           .coordinate = {1, 1, 0, 0},
+                                                           .layer =
+                                                               arc::render::virtual_shadow_page_layer::dynamic_depth};
+    const std::array requests{
+        arc::render::virtual_shadow_page_request{.key = static_key, .frame_index = 1, .content_revision = 11},
+        arc::render::virtual_shadow_page_request{.key = dynamic_key, .frame_index = 1, .content_revision = 12}};
+    REQUIRE(cache.resolve_requests(requests, 1).render_pages.size() == 2);
+    REQUIRE(cache.publish(static_key, 11));
+    REQUIRE(cache.publish(dynamic_key, 12));
+    const auto dense_index = cache.dense_page_index(static_key);
+    REQUIRE(dense_index == cache.dense_page_index(dynamic_key));
+    const auto snapshot = cache.gpu_snapshot();
+    REQUIRE(snapshot.page_table[*dense_index].static_depth.physical_page != arc::render::invalid_virtual_shadow_index);
+    REQUIRE(snapshot.page_table[*dense_index].dynamic_depth.physical_page != arc::render::invalid_virtual_shadow_index);
+    REQUIRE(snapshot.page_table[*dense_index].static_depth.content_revision_low == 11);
+    REQUIRE(snapshot.page_table[*dense_index].dynamic_depth.content_revision_low == 12);
+}
+
+TEST_CASE("virtual shadow dense ranges recycle without reviving stale identities")
+{
+    constexpr std::uint64_t d16_pair_bytes =
+        static_cast<std::uint64_t>(arc::render::virtual_shadow_physical_page_texels) *
+        arc::render::virtual_shadow_physical_page_texels * 4u;
+    const auto pool = arc::render::resolve_virtual_shadow_physical_pool(
+        d16_pair_bytes, arc::render::virtual_shadow_physical_page_texels, {.d16_unorm = true});
+    arc::render::virtual_shadow_cache cache(
+        {.physical_pool = pool, .page_table_entry_capacity = 1, .view_capacity = 1});
+    const auto first = cache.create_address_space({.light_kind = arc::render::shadow_light_kind::spot,
+                                                   .virtual_resolution = arc::render::virtual_shadow_page_texels,
+                                                   .level_count = 1});
+    REQUIRE(first);
+    REQUIRE_FALSE(cache.create_address_space({.light_kind = arc::render::shadow_light_kind::spot,
+                                              .virtual_resolution = arc::render::virtual_shadow_page_texels,
+                                              .level_count = 1}));
+    const auto stale = *first;
+    REQUIRE(cache.destroy_address_space(*first));
+    const auto replacement = cache.create_address_space({.light_kind = arc::render::shadow_light_kind::spot,
+                                                         .virtual_resolution = arc::render::virtual_shadow_page_texels,
+                                                         .level_count = 1});
+    REQUIRE(replacement);
+    REQUIRE(replacement->index == stale.index);
+    REQUIRE(replacement->generation != stale.generation);
+    REQUIRE_FALSE(cache.dense_page_index({.address_space = stale, .coordinate = {0, 0, 0, 0}}));
+    REQUIRE(cache.dense_page_index({.address_space = *replacement, .coordinate = {0, 0, 0, 0}}) == 0u);
+}
+
+TEST_CASE("directional virtual shadow views are stable equal-grid clip levels")
+{
+    const arc::render::virtual_shadow_address_space_descriptor descriptor{
+        .light_kind = arc::render::shadow_light_kind::directional, .virtual_resolution = 1024};
+    arc::render::directional_shadow_camera camera{};
+    camera.inverse_view_projection = arc::math::identity<float, 4>();
+    const auto first = arc::render::make_directional_virtual_shadow_views(descriptor, camera, {0.1f, 0.0f, 0.0f},
+                                                                          {0.0f, -1.0f, 0.0f}, 200.0f);
+    const auto within_page = arc::render::make_directional_virtual_shadow_views(descriptor, camera, {1.0f, 0.0f, 0.0f},
+                                                                                {0.0f, -1.0f, 0.0f}, 200.0f);
+    const auto crossed_page = arc::render::make_directional_virtual_shadow_views(descriptor, camera, {4.0f, 0.0f, 0.0f},
+                                                                                 {0.0f, -1.0f, 0.0f}, 200.0f);
+    REQUIRE(first.size() == arc::render::virtual_shadow_directional_clip_levels);
+    for (std::uint32_t axis = 0; axis < 3; ++axis)
+        REQUIRE(within_page[0].snapped_origin[axis] == Catch::Approx(first[0].snapped_origin[axis]));
+    const auto crossed_delta = arc::math::sub(crossed_page[0].snapped_origin, first[0].snapped_origin);
+    REQUIRE(arc::math::length_squared(crossed_delta) > 0.0f);
+    for (std::size_t level = 0; level < first.size(); ++level)
+    {
+        REQUIRE(first[level].pages_per_axis == 8);
+        if (level != 0)
+            REQUIRE(first[level].world_units_per_texel == Catch::Approx(first[level - 1].world_units_per_texel * 2.0f));
+        for (std::uint32_t row = 0; row < 4; ++row)
+            for (std::uint32_t column = 0; column < 4; ++column)
+                REQUIRE(std::isfinite(first[level].world_to_shadow_clip(row, column)));
+    }
 }
 
 TEST_CASE("virtual shadow requests always retain a conventional executable fallback")
