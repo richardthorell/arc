@@ -165,7 +165,9 @@ describe('AI agent tool loop', () => {
     vi.useFakeTimers();
     const execute = (runtimeRequest: AiRuntimeRequest) =>
       (async function* () {
-        await new Promise<void>((resolve) => runtimeRequest.signal?.addEventListener('abort', () => resolve(), { once: true }));
+        await new Promise<void>((resolve) =>
+          runtimeRequest.signal?.addEventListener('abort', () => resolve(), { once: true }),
+        );
       })();
     const iterator = runAiAgentToolLoop(request(), execute, vi.fn(), { stepTimeoutMs: 25 })[Symbol.asyncIterator]();
 

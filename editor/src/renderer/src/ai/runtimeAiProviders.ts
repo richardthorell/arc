@@ -12,11 +12,7 @@ import type {
 import { assertAiRuntimeRequestSafeForProvider } from '../../../common/aiSecurityPolicy';
 import type { EditorSettingDescriptor, EditorSettingsSnapshot } from '../../../common/editorWorkflowTypes';
 import type { AiModelProvider } from './aiChat';
-import {
-  runAiAgentToolLoop,
-  type AiAgentToolInvoker,
-  type AiAgentToolLoopOptions,
-} from './aiAgentToolLoop';
+import { runAiAgentToolLoop, type AiAgentToolInvoker, type AiAgentToolLoopOptions } from './aiAgentToolLoop';
 import { resolveAiRuntimeInstructions } from './aiInstructionResolver';
 import { streamOpenAiRuntime } from './openAiRuntimeProvider';
 
@@ -95,7 +91,8 @@ const withAgentTools = (request: AiRuntimeRequest, agentTools: readonly AiToolDe
   return { ...request, tools: [...tools.values()] };
 };
 
-const shouldAttachAgentTools = (request: AiRuntimeRequest): boolean => request.metadata?.purpose !== 'conversation-caption';
+const shouldAttachAgentTools = (request: AiRuntimeRequest): boolean =>
+  request.metadata?.purpose !== 'conversation-caption';
 
 export type RuntimeAiProviderOptions = {
   instructionSources?: () => Promise<AiInstructionSourceSnapshot>;
