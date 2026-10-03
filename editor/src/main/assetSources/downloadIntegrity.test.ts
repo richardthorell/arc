@@ -13,7 +13,11 @@ describe('remote download integrity', () => {
     const expected = digest(algorithm);
     expect(
       verifyRemoteDownloadIntegrity(
-        { logicalPath: 'textures/albedo.png', checksum: { algorithm, value: expected.toUpperCase() } },
+        {
+          logicalPath: 'textures/albedo.png',
+          sizeBytes: bytes.byteLength,
+          checksum: { algorithm, value: expected.toUpperCase() },
+        },
         bytes,
       ),
     ).toEqual({ verified: true, algorithm, expected, actual: expected });
@@ -27,6 +31,21 @@ describe('remote download integrity', () => {
         bytes,
       ).verified,
     ).toBe(true);
+  });
+
+  it('rejects download size mismatches before checksum verification', () => {
+    expect(() =>
+      verifyRemoteDownloadIntegrity(
+        {
+          logicalPath: 'models/source.glb',
+          sizeBytes: bytes.byteLength + 1,
+          checksum: { algorithm: 'sha256', value: digest('sha256') },
+        },
+        bytes,
+      ),
+    ).toThrow(
+      `Remote asset integrity check failed for 'models/source.glb': size mismatch (expected ${bytes.byteLength + 1} bytes, got ${bytes.byteLength})`,
+    );
   });
 
   it('rejects checksum mismatches with the logical path and digest details', () => {
@@ -48,7 +67,9 @@ describe('remote download integrity', () => {
     ).toThrow('invalid MD5 digest');
   });
 
-  it('keeps files without checksum metadata explicitly unverified', () => {
-    expect(verifyRemoteDownloadIntegrity({ logicalPath: 'textures/albedo.png' }, bytes)).toEqual({ verified: false });
+  it('keeps files without checksum metadata explicitly unverified after matching size validation', () => {
+    expect(
+      verifyRemoteDownloadIntegrity({ logicalPath: 'textures/albedo.png', sizeBytes: bytes.byteLength }, bytes),
+    ).toEqual({ verified: false });
   });
 });
