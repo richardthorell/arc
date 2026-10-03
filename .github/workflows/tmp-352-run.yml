@@ -30,18 +30,11 @@ jobs:
           from pathlib import Path
           path = Path('editor/src/renderer/src/content/ContentBrowserPanel.tsx')
           text = path.read_text()
-          old = """  const removeFromActiveVirtualView = (asset: AssetItem) => {
-            if (!activeVirtualView || (activeVirtualView.kind !== 'favorites' && activeVirtualView.kind !== 'downloads')) return;
-            setVirtualViews((current) => removeAssetFromVirtualCollection(current, activeVirtualView.kind, asset.id));
-          };"""
-          new = """  const removeFromActiveVirtualView = (asset: AssetItem) => {
-            if (!activeVirtualView || (activeVirtualView.kind !== 'favorites' && activeVirtualView.kind !== 'downloads')) return;
-            const kind = activeVirtualView.kind;
-            setVirtualViews((current) => removeAssetFromVirtualCollection(current, kind, asset.id));
-          };"""
-          if old not in text:
-              raise SystemExit('narrowing anchor not found')
-          path.write_text(text.replace(old, new, 1))
+          target = "setVirtualViews((current) => removeAssetFromVirtualCollection(current, activeVirtualView.kind, asset.id));"
+          replacement = "const kind = activeVirtualView.kind;\n    setVirtualViews((current) => removeAssetFromVirtualCollection(current, kind, asset.id));"
+          if target not in text:
+              raise SystemExit('narrowing call not found')
+          path.write_text(text.replace(target, replacement, 1))
           PY
       - name: Format
         run: npm run format --prefix editor -- --write src/renderer/src/content/ContentBrowserPanel.tsx src/renderer/src/content/ContentBrowserPanel.test.tsx src/renderer/src/content/ContentAssetCard.tsx src/renderer/src/content/RemoteAssetBrowser.tsx src/renderer/src/content/RemoteAssetBrowser.test.tsx src/renderer/src/content/assetVirtualViewIntegration.ts src/renderer/src/content/assetVirtualViewIntegration.test.ts
