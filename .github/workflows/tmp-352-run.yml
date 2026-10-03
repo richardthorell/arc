@@ -31,19 +31,11 @@ jobs:
           path = Path('editor/src/renderer/src/content/ContentBrowserPanel.tsx')
           text = path.read_text()
           old = """  const removeFromActiveVirtualView = (asset: AssetItem) => {
-            if (
-              !activeVirtualView ||
-              (activeVirtualView.kind !== 'favorites' && activeVirtualView.kind !== 'downloads')
-            )
-              return;
+            if (!activeVirtualView || (activeVirtualView.kind !== 'favorites' && activeVirtualView.kind !== 'downloads')) return;
             setVirtualViews((current) => removeAssetFromVirtualCollection(current, activeVirtualView.kind, asset.id));
           };"""
           new = """  const removeFromActiveVirtualView = (asset: AssetItem) => {
-            if (
-              !activeVirtualView ||
-              (activeVirtualView.kind !== 'favorites' && activeVirtualView.kind !== 'downloads')
-            )
-              return;
+            if (!activeVirtualView || (activeVirtualView.kind !== 'favorites' && activeVirtualView.kind !== 'downloads')) return;
             const kind = activeVirtualView.kind;
             setVirtualViews((current) => removeAssetFromVirtualCollection(current, kind, asset.id));
           };"""
