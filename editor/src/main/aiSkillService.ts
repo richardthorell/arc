@@ -125,7 +125,10 @@ const parseFrontMatter = (source: string): { metadata: Map<string, FrontMatterVa
     }
   }
 
-  const body = lines.slice(end + 1).join('\n').trim();
+  const body = lines
+    .slice(end + 1)
+    .join('\n')
+    .trim();
   if (!body) throw new Error('Skill Markdown must include instructions after the front matter');
   return { metadata, body };
 };
@@ -204,7 +207,8 @@ export class AiSkillService {
         try {
           const realProjectRoot = fs.realpathSync(projectRoot);
           const realSkillRoot = fs.realpathSync(skillRoot);
-          if (!isContainedPath(realProjectRoot, realSkillRoot)) throw new Error('Project skill root resolves outside the project');
+          if (!isContainedPath(realProjectRoot, realSkillRoot))
+            throw new Error('Project skill root resolves outside the project');
           this.scanRoot(skillRoot, 'project', project.projectGuid, skills, diagnostics, ids, false);
         } catch (error) {
           diagnostics.push({
@@ -241,8 +245,7 @@ export class AiSkillService {
     required: boolean,
   ): void {
     if (!root || !fs.existsSync(root)) {
-      if (required)
-        diagnostics.push({ origin, path: root, message: 'Built-in skill root is unavailable' });
+      if (required) diagnostics.push({ origin, path: root, message: 'Built-in skill root is unavailable' });
       return;
     }
 
@@ -265,10 +268,13 @@ export class AiSkillService {
       const skillPath = path.join(skillRoot, skillFileName);
       try {
         const realSkillRoot = fs.realpathSync(skillRoot);
-        if (!isContainedPath(realRoot, realSkillRoot)) throw new Error('Skill directory resolves outside its skill root');
-        if (!fs.existsSync(skillPath) || !fs.statSync(skillPath).isFile()) throw new Error(`Skill directory is missing ${skillFileName}`);
+        if (!isContainedPath(realRoot, realSkillRoot))
+          throw new Error('Skill directory resolves outside its skill root');
+        if (!fs.existsSync(skillPath) || !fs.statSync(skillPath).isFile())
+          throw new Error(`Skill directory is missing ${skillFileName}`);
         const realSkillPath = fs.realpathSync(skillPath);
-        if (!isContainedPath(realSkillRoot, realSkillPath)) throw new Error(`${skillFileName} resolves outside its skill directory`);
+        if (!isContainedPath(realSkillRoot, realSkillPath))
+          throw new Error(`${skillFileName} resolves outside its skill directory`);
         if (fs.statSync(realSkillPath).size > maximumSkillSourceBytes)
           throw new Error(`${skillFileName} exceeds the ${maximumSkillSourceBytes} byte limit`);
 

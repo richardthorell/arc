@@ -101,8 +101,12 @@ describe('AiSkillService', () => {
 
     expect(snapshot.skills.map((skill) => skill.manifest.id)).toEqual(['scene-inspection']);
     expect(snapshot.diagnostics).toHaveLength(2);
-    expect(snapshot.diagnostics.map((diagnostic) => diagnostic.message).join('\n')).toContain('duplicates an already loaded skill');
-    expect(snapshot.diagnostics.map((diagnostic) => diagnostic.message).join('\n')).toContain("Unknown skill metadata field 'permissions'");
+    expect(snapshot.diagnostics.map((diagnostic) => diagnostic.message).join('\n')).toContain(
+      'duplicates an already loaded skill',
+    );
+    expect(snapshot.diagnostics.map((diagnostic) => diagnostic.message).join('\n')).toContain(
+      "Unknown skill metadata field 'permissions'",
+    );
   });
 
   it('validates versioned metadata, declared capabilities, tools, and contexts', () => {
