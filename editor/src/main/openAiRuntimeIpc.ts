@@ -1,11 +1,29 @@
 import { ipcMain } from 'electron';
+import fs from 'node:fs';
+import path from 'node:path';
 
+import type { AiInstructionProjectScope } from '../common/aiInstructionTypes';
 import type { AiRuntimeStreamEnvelope, AiRuntimeStreamStartRequest } from '../common/aiRuntimeIpcTypes';
 import type { AiRuntimeRequest } from '../common/aiRuntimeTypes';
+import { loadAiInstructionSources } from './aiInstructionSourceService';
 import { OpenAiRuntimeAdapter } from './openAiRuntimeAdapter';
+
+const resolveBuiltinAiSkillRoot = (): string => {
+  const candidates = [
+    process.env.ARC_PACKAGED_AI_SKILLS_PATH,
+    path.join(process.resourcesPath, 'ai-skills'),
+    path.resolve(process.cwd(), 'resources', 'ai-skills'),
+    path.resolve(process.cwd(), 'editor', 'resources', 'ai-skills'),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0]!;
+};
 
 export const installOpenAiRuntimeIpc = (credential: () => string | null): void => {
   const activeRequests = new Map<string, { controller: AbortController; senderId: number }>();
+
+  ipcMain.handle('ai-runtime:instruction-sources', (_event, project: AiInstructionProjectScope | null = null) =>
+    loadAiInstructionSources(resolveBuiltinAiSkillRoot(), project),
+  );
 
   ipcMain.handle('ai-runtime:start', async (ipcEvent, start: AiRuntimeStreamStartRequest) => {
     if (!start || typeof start.requestId !== 'string' || !start.requestId.trim())
