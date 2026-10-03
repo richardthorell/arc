@@ -90,11 +90,11 @@
   padding-left: 2px;
 }
 
-.material-node-parameter-toggle > input:last-child {
+.material-node-parameter-toggle > .ui-text-input {
   margin-left: 5px;
 }
 
-.material-node-parameter-toggle > input:last-child:disabled {
+.material-node-parameter-toggle > .ui-text-input:disabled {
   opacity: 0.55;
   cursor: default;
 }
