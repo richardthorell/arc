@@ -13,6 +13,8 @@ const bundledProjectTool = process.env.ARC_PACKAGED_PROJECT_TOOL_PATH;
 const bundledTemplates = process.env.ARC_PACKAGED_TEMPLATES_PATH;
 const bundledRenderVulkan = process.env.ARC_PACKAGED_RENDER_VULKAN_PATH;
 const bundledAssets = process.env.ARC_PACKAGED_ASSETS_PATH ?? path.resolve(process.cwd(), '..', 'assets');
+const bundledAiSkills =
+  process.env.ARC_PACKAGED_AI_SKILLS_PATH ?? path.resolve(process.cwd(), 'resources', 'ai-skills');
 if (process.env.ARC_REQUIRE_PACKAGED_HOST === '1' && !bundledHost) {
   throw new Error('ARC_PACKAGED_HOST_PATH is required for packaged editor builds');
 }
@@ -21,9 +23,14 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     executableName: 'arc-editor',
-    extraResource: [bundledHost, bundledProjectTool, bundledTemplates, bundledRenderVulkan, bundledAssets].filter(
-      (entry): entry is string => Boolean(entry),
-    ),
+    extraResource: [
+      bundledHost,
+      bundledProjectTool,
+      bundledTemplates,
+      bundledRenderVulkan,
+      bundledAssets,
+      bundledAiSkills,
+    ].filter((entry): entry is string => Boolean(entry)),
   },
   rebuildConfig: {},
   makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerDeb({}), new MakerRpm({})],
