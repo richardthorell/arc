@@ -1,4 +1,7 @@
-import type { AssetSearchMetadata } from './assetMetadataSearch';
+export type AssetMetadataFacetSource = {
+  assetType: string;
+  tags?: readonly string[];
+};
 
 export type AssetMetadataFacet = {
   value: string;
@@ -29,7 +32,7 @@ const buildFacets = (values: readonly string[]): AssetMetadataFacet[] => {
  * Builds stable facet data from asset metadata. Facets intentionally reference metadata values,
  * never storage paths, so the same asset can move between logical scopes without changing search UX.
  */
-export const buildAssetMetadataFacets = (assets: readonly AssetSearchMetadata[]): AssetMetadataFacets => ({
+export const buildAssetMetadataFacets = (assets: readonly AssetMetadataFacetSource[]): AssetMetadataFacets => ({
   assetTypes: buildFacets(assets.map((asset) => asset.assetType)),
   tags: buildFacets(assets.flatMap((asset) => asset.tags ?? [])),
 });
