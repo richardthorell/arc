@@ -59,6 +59,7 @@ export async function* runAiAgentToolLoop(
   const stepTimeoutMs = positiveInteger(options.stepTimeoutMs, AI_AGENT_STEP_TIMEOUT_MS, 'stepTimeoutMs');
   const messages: AiRuntimeMessage[] = [...request.messages];
 
+  // A provider tool-call turn is intermediate; only a non-tool completion is terminal for Chat.
   for (let step = 0; step < maximumSteps; ++step) {
     if (request.signal?.aborted) return;
 
