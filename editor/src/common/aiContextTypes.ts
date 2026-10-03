@@ -1,7 +1,14 @@
 export const AI_PROJECT_CONTEXT_SCHEMA_VERSION = 1 as const;
 
 export type AiContextSectionId =
-  'project' | 'scene' | 'selection' | 'workspace' | 'diagnostics' | 'viewport' | 'recentChanges';
+  | 'project'
+  | 'scene'
+  | 'selection'
+  | 'workspace'
+  | 'assets'
+  | 'diagnostics'
+  | 'viewport'
+  | 'recentChanges';
 
 export type AiContextJsonValue =
   null | boolean | number | string | AiContextJsonValue[] | { [key: string]: AiContextJsonValue };
