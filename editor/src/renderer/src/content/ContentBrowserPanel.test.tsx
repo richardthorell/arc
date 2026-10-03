@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ContentBrowserPanel } from './ContentBrowserPanel';
+import { assetMetadataFilePath } from './assetMetadataStore';
 
 const createAsset = vi.fn().mockImplementation(async ({ path, kind }: { path: string; kind: string }) => ({
   guid: `${kind}-guid`,
@@ -12,16 +13,20 @@ const createAsset = vi.fn().mockImplementation(async ({ path, kind }: { path: st
   kind,
   state: 'ready',
 }));
+const readText = vi.fn().mockRejectedValue(new Error('missing metadata'));
+const writeText = vi.fn().mockResolvedValue({ succeeded: true });
 
 afterEach(cleanup);
 beforeEach(() => {
   createAsset.mockClear();
+  readText.mockReset().mockRejectedValue(new Error('missing metadata'));
+  writeText.mockReset().mockResolvedValue({ succeeded: true });
   localStorage.clear();
   Object.defineProperty(window, 'arc', {
     configurable: true,
     value: {
       assetSources: { list: vi.fn().mockResolvedValue([]) },
-      projects: { createAsset },
+      projects: { createAsset, readText, writeText },
     },
   });
 });
@@ -47,14 +52,19 @@ const project = {
       id: 'rock',
       guid: 'rock-guid',
       name: 'Hero Rock',
+      description: 'Granite landmark for the hero route',
+      tags: ['Environment', 'Hero'],
       path: 'Content/Props/hero.glb',
       kind: 'mesh' as const,
       status: 'ready' as const,
+      vertexCount: 120,
+      triangleCount: 80,
     },
     {
       id: 'sky',
       guid: 'sky-guid',
       name: 'Sky',
+      tags: ['Environment'],
       path: 'Content/Environment/sky.hdr',
       kind: 'texture' as const,
       status: 'stale' as const,
@@ -102,8 +112,10 @@ describe('ContentBrowserPanel', () => {
 
     expect(view.getByRole('button', { name: /Create/ })).toHaveClass('ui-button', 'ui-button-toolbar');
     expect(view.getByRole('button', { name: 'Import' })).toHaveClass('ui-button', 'ui-button-toolbar');
+    expect(view.getByRole('button', { name: 'Metadata' })).toHaveClass('ui-button', 'ui-button-toolbar');
     expect(view.getByLabelText('Search assets')).toHaveClass('ui-text-input', 'ui-search-input');
     expect(view.getByRole('combobox', { name: 'Asset type' })).toHaveClass('ui-select-trigger');
+    expect(view.getByRole('combobox', { name: 'Asset tag' })).toHaveClass('ui-select-trigger');
     expect(view.getByRole('combobox', { name: 'Asset state' })).toHaveClass('ui-select-trigger');
     expect(view.getByRole('combobox', { name: 'Sort assets' })).toHaveClass('ui-select-trigger');
     expect(view.getByLabelText('Grid view')).toHaveClass('ui-icon-button');
@@ -114,10 +126,10 @@ describe('ContentBrowserPanel', () => {
     const view = renderBrowser();
 
     fireEvent.click(view.getByRole('combobox', { name: 'Asset type' }));
-    expect(view.getByRole('option', { name: 'Model' })).toBeInTheDocument();
-    expect(view.queryByRole('option', { name: 'Mesh' })).not.toBeInTheDocument();
+    expect(view.getByRole('option', { name: /Model/ })).toBeInTheDocument();
+    expect(view.queryByRole('option', { name: /^Mesh/ })).not.toBeInTheDocument();
 
-    fireEvent.click(view.getByRole('option', { name: 'Model' }));
+    fireEvent.click(view.getByRole('option', { name: /Model/ }));
     expect(view.getByText('Hero Rock')).toBeInTheDocument();
   });
 
@@ -145,6 +157,22 @@ describe('ContentBrowserPanel', () => {
     expect(view.queryByText('References (0)')).not.toBeInTheDocument();
   });
 
+  it('filters registry assets through searchable metadata', () => {
+    const view = renderBrowser();
+    fireEvent.change(view.getByLabelText('Search assets'), { target: { value: 'granite hero' } });
+    expect(view.getByText('Hero Rock')).toBeInTheDocument();
+    expect(view.queryByText('Sky')).not.toBeInTheDocument();
+  });
+
+  it('uses deterministic tag facets to narrow assets', () => {
+    const view = renderBrowser();
+    fireEvent.click(view.getByRole('combobox', { name: 'Asset tag' }));
+    fireEvent.click(view.getByRole('option', { name: /hero \(1\)/i }));
+
+    expect(view.getByText('Hero Rock')).toBeInTheDocument();
+    expect(view.queryByText('Sky')).not.toBeInTheDocument();
+  });
+
   it('filters registry assets and emits GUID drag payloads', () => {
     const view = renderBrowser();
     fireEvent.change(view.getByLabelText('Search assets'), { target: { value: 'rock' } });
@@ -153,6 +181,42 @@ describe('ContentBrowserPanel', () => {
     const transfer = { setData: vi.fn(), effectAllowed: '' };
     fireEvent.dragStart(view.getByText('Hero Rock').closest('.content-asset')!, { dataTransfer: transfer });
     expect(transfer.setData).toHaveBeenCalledWith('application/x-arc-asset', expect.stringContaining('rock-guid'));
+  });
+
+  it('loads project metadata independently of browser layout state', async () => {
+    readText.mockResolvedValueOnce({
+      text: JSON.stringify({
+        version: 1,
+        assets: { 'guid:rock-guid': { title: 'Saved Rock Title', tags: ['Curated'] } },
+      }),
+    });
+    const view = renderBrowser();
+
+    await waitFor(() => expect(view.getByText('Saved Rock Title')).toBeInTheDocument());
+    fireEvent.click(view.getByRole('combobox', { name: 'Asset tag' }));
+    expect(view.getByRole('option', { name: /curated \(1\)/i })).toBeInTheDocument();
+  });
+
+  it('edits and persists searchable metadata while showing type-specific details', async () => {
+    const view = renderBrowser();
+    fireEvent.click(view.getByText('Hero Rock'));
+    fireEvent.click(view.getByRole('button', { name: 'Metadata' }));
+
+    expect(view.getByRole('dialog', { name: 'Asset metadata' })).toBeInTheDocument();
+    expect(view.getByRole('region', { name: 'Model metadata' })).toBeInTheDocument();
+    expect(view.getByText('Vertices')).toBeInTheDocument();
+    expect(view.getByText('120')).toBeInTheDocument();
+
+    fireEvent.change(view.getByLabelText('Asset title'), { target: { value: 'Cliff Sentinel' } });
+    fireEvent.change(view.getByLabelText('Asset description'), { target: { value: 'Primary cliff landmark' } });
+    fireEvent.change(view.getByLabelText('Asset tags'), { target: { value: 'Hero, Landmark, hero' } });
+    fireEvent.click(view.getByRole('button', { name: 'Save metadata' }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+    expect(writeText.mock.calls[0][0]).toBe(assetMetadataFilePath);
+    expect(writeText.mock.calls[0][1]).toContain('Cliff Sentinel');
+    expect(writeText.mock.calls[0][1]).toContain('Landmark');
+    await waitFor(() => expect(view.getByText('Cliff Sentinel')).toBeInTheDocument());
   });
 
   it('supports folder navigation and list view', () => {
