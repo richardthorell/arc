@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { resolveProjectAssetMountRoots } from './projectAssetMountRoots';
+import { projectAssetLogicalMounts, resolveProjectAssetMountRoots } from './projectAssetMountRoots';
 
 describe('resolveProjectAssetMountRoots', () => {
   it('resolves explicitly configured logical mount roots without inventing optional scopes', () => {
@@ -45,5 +45,35 @@ describe('resolveProjectAssetMountRoots', () => {
         projectAssetRoots: ['../shared'],
       }),
     ).toThrow('must remain inside the active project');
+  });
+});
+
+describe('projectAssetLogicalMounts', () => {
+  it('projects resolved host roots onto the production logical-mount contract', () => {
+    expect(
+      projectAssetLogicalMounts({
+        builtinRoot: path.resolve('engine/assets'),
+        projectRoot: path.resolve('workspace/project/Content'),
+        userRoot: path.resolve('user/assets'),
+        organizationRoot: path.resolve('organization/assets'),
+      }),
+    ).toEqual({
+      builtin: path.resolve('engine/assets'),
+      project: path.resolve('workspace/project/Content'),
+      user: path.resolve('user/assets'),
+      organization: path.resolve('organization/assets'),
+    });
+  });
+
+  it('omits unavailable optional roots while keeping Project authoritative', () => {
+    const projectRoot = path.resolve('workspace/project/Content');
+    expect(
+      projectAssetLogicalMounts({
+        builtinRoot: '',
+        projectRoot,
+        userRoot: '',
+        organizationRoot: '',
+      }),
+    ).toEqual({ project: projectRoot });
   });
 });
