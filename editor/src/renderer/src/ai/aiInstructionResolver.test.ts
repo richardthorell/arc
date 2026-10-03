@@ -58,7 +58,10 @@ describe('resolveAiRuntimeInstructions', () => {
       'asset.mutate',
     ]);
 
-    const resolution = resolveAiRuntimeInstructions(request('Inspect the selected scene entity'), sources([scene, material]));
+    const resolution = resolveAiRuntimeInstructions(
+      request('Inspect the selected scene entity'),
+      sources([scene, material]),
+    );
 
     expect(resolution.diagnostics.selectedSkillIds).toEqual(['scene-inspection']);
     expect(resolution.diagnostics.skills.find((entry) => entry.id === 'material-authoring')).toMatchObject({
@@ -80,7 +83,10 @@ describe('resolveAiRuntimeInstructions', () => {
     ]);
     renderer.manifest.tools = ['viewport.move', 'diagnostics.get'];
 
-    const withoutTool = resolveAiRuntimeInstructions(request('Debug renderer viewport diagnostics'), sources([renderer]));
+    const withoutTool = resolveAiRuntimeInstructions(
+      request('Debug renderer viewport diagnostics'),
+      sources([renderer]),
+    );
     expect(withoutTool.diagnostics.selectedSkillIds).toEqual([]);
     expect(withoutTool.diagnostics.skills[0]).toMatchObject({
       reason: 'missing-capability',
@@ -103,17 +109,21 @@ describe('resolveAiRuntimeInstructions', () => {
   });
 
   it('uses deterministic relevance ordering and does not inject unrelated skills', () => {
-    const projectScene = skill(
-      'project-scene-review',
-      'Inspect scene entity hierarchy.',
-      ['scene.read'],
-      { origin: 'project', projectGuid: 'project-guid' },
-    );
+    const projectScene = skill('project-scene-review', 'Inspect scene entity hierarchy.', ['scene.read'], {
+      origin: 'project',
+      projectGuid: 'project-guid',
+    });
     const builtinScene = skill('scene-inspection', 'Inspect scene entity hierarchy.', ['scene.read']);
     const play = skill('play-workflows', 'Run play mode and inspect runtime state.', ['scene.read', 'play.control']);
 
-    const first = resolveAiRuntimeInstructions(request('Inspect the scene entity hierarchy'), sources([builtinScene, play, projectScene]));
-    const second = resolveAiRuntimeInstructions(request('Inspect the scene entity hierarchy'), sources([projectScene, builtinScene, play]));
+    const first = resolveAiRuntimeInstructions(
+      request('Inspect the scene entity hierarchy'),
+      sources([builtinScene, play, projectScene]),
+    );
+    const second = resolveAiRuntimeInstructions(
+      request('Inspect the scene entity hierarchy'),
+      sources([projectScene, builtinScene, play]),
+    );
 
     expect(first.diagnostics.selectedSkillIds).toEqual(second.diagnostics.selectedSkillIds);
     expect(first.diagnostics.selectedSkillIds).toEqual(['project-scene-review', 'scene-inspection']);

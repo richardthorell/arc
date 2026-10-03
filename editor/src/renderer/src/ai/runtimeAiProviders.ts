@@ -49,7 +49,9 @@ const unavailableInstructionSources = (message: string): AiInstructionSourceSnap
 const defaultInstructionSources = async (): Promise<AiInstructionSourceSnapshot> => {
   const bridge = typeof window === 'undefined' ? undefined : window.arcAiRuntime;
   if (!bridge?.instructionSources)
-    return unavailableInstructionSources('AI instruction source bridge is unavailable; using ARC base instructions only');
+    return unavailableInstructionSources(
+      'AI instruction source bridge is unavailable; using ARC base instructions only',
+    );
   try {
     return await bridge.instructionSources();
   } catch (error) {

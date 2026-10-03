@@ -32,7 +32,10 @@ const validatedProjectScope = (
       guid?: unknown;
     };
     if (descriptor.format !== arcProjectFormat) throw new Error('Project descriptor is not an ARC project');
-    if (typeof descriptor.guid !== 'string' || normalizedGuid(descriptor.guid) !== normalizedGuid(requested.projectGuid))
+    if (
+      typeof descriptor.guid !== 'string' ||
+      normalizedGuid(descriptor.guid) !== normalizedGuid(requested.projectGuid)
+    )
       throw new Error('Project descriptor GUID does not match the active project');
     return { project: { projectRoot, projectGuid: descriptor.guid } };
   } catch (error) {
@@ -56,7 +59,8 @@ const readProjectInstructions = (
   try {
     const projectRoot = fs.realpathSync(project.projectRoot);
     const instructionPath = fs.realpathSync(candidate);
-    if (!containedPath(projectRoot, instructionPath)) throw new Error(`${projectInstructionFileName} resolves outside the project`);
+    if (!containedPath(projectRoot, instructionPath))
+      throw new Error(`${projectInstructionFileName} resolves outside the project`);
     const stat = fs.statSync(instructionPath);
     if (!stat.isFile()) throw new Error(`${projectInstructionFileName} must be a file`);
     if (stat.size > maximumProjectInstructionBytes)

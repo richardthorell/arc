@@ -58,7 +58,9 @@ const latestUserText = (request: AiRuntimeRequest): string => {
 const availableContexts = (request: AiRuntimeRequest): AiContextSectionId[] => {
   const result = new Set<AiContextSectionId>();
   for (const message of request.messages) {
-    const match = message.id.match(/^arc-context:auto:(project|scene|selection|workspace|assets|diagnostics|viewport|recentChanges)$/u);
+    const match = message.id.match(
+      /^arc-context:auto:(project|scene|selection|workspace|assets|diagnostics|viewport|recentChanges)$/u,
+    );
     if (match) result.add(match[1] as AiContextSectionId);
   }
   return [...result].sort();
@@ -170,8 +172,7 @@ export const resolveAiRuntimeInstructions = (
   const selected = sources.skills
     .map((skill, index) => ({ skill, diagnostic: skillDiagnostics[index]! }))
     .filter(
-      ({ diagnostic }) =>
-        diagnostic.missingCapabilities.length === 0 && diagnostic.score >= minimumRelevanceScore,
+      ({ diagnostic }) => diagnostic.missingCapabilities.length === 0 && diagnostic.score >= minimumRelevanceScore,
     )
     .sort(
       (left, right) =>
@@ -186,12 +187,8 @@ export const resolveAiRuntimeInstructions = (
     if (selectedIds.has(diagnostic.id)) diagnostic.reason = 'selected';
   }
 
-  const messages: AiRuntimeMessage[] = [
-    instructionMessage('arc-instructions:base', arcBaseInstructions),
-  ];
-  const instructionSources: AiInstructionResolutionDiagnostics['instructionSources'] = [
-    { kind: 'base', id: 'arc' },
-  ];
+  const messages: AiRuntimeMessage[] = [instructionMessage('arc-instructions:base', arcBaseInstructions)];
+  const instructionSources: AiInstructionResolutionDiagnostics['instructionSources'] = [{ kind: 'base', id: 'arc' }];
 
   if (sources.projectInstructions?.trim()) {
     messages.push(
