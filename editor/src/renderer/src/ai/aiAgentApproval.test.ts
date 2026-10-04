@@ -96,6 +96,6 @@ describe('AiAgentApprovalCoordinator', () => {
     controller.abort();
 
     await expect(resultPromise).rejects.toThrow('cancelled');
-    await vi.waitFor(() => expect(deny).toHaveBeenCalledWith('request-1'));
+    expect(deny).toHaveBeenCalledWith('request-1');
   });
 });
