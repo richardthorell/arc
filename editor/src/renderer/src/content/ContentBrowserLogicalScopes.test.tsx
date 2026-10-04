@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render } from '@testing-library/react';
+import { cleanup, fireEvent, render, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ProjectSnapshot } from '../services/editorHostTypes';
@@ -142,5 +142,36 @@ describe('ContentBrowserPanel logical scopes', () => {
     expect(view.getByRole('button', { name: 'User Writable' })).toBeInTheDocument();
     expect(view.queryByRole('button', { name: /Built-in/ })).not.toBeInTheDocument();
     expect(view.queryByRole('button', { name: /Organization/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps the selected folder when the workbench rerenders with the same project', () => {
+    const panel = (project: ProjectSnapshot) => (
+      <ContentBrowserPanel
+        project={project}
+        cache={null}
+        selectedAssetId={null}
+        onSelectAsset={vi.fn()}
+        onCommand={vi.fn()}
+        onInstantiatePrefab={vi.fn()}
+        onAssetAction={vi.fn()}
+        thumbnailProvider={vi.fn().mockResolvedValue(null)}
+      />
+    );
+    const view = render(panel(baseProject));
+
+    fireEvent.click(view.getByText('Props'));
+    const contentPath = view.getByRole('navigation', { name: 'Content path' });
+    expect(within(contentPath).getByRole('button', { name: 'Props' })).toBeInTheDocument();
+    expect(view.getByText('Project Rock')).toBeInTheDocument();
+
+    view.rerender(
+      panel({
+        ...baseProject,
+        assets: baseProject.assets.map((asset) => ({ ...asset })),
+      }),
+    );
+
+    expect(within(contentPath).getByRole('button', { name: 'Props' })).toBeInTheDocument();
+    expect(view.getByText('Project Rock')).toBeInTheDocument();
   });
 });
