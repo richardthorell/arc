@@ -5,6 +5,7 @@ import {
   createRemoteImportProvenance,
   createRemoteImportProvenanceSidecar,
   createRemoteManifestHash,
+  serializeRemoteImportProvenanceSidecar,
 } from './remoteAssetProvenance';
 
 const asset: ArcRemoteAsset = {
@@ -90,5 +91,25 @@ describe('remote asset provenance', () => {
     });
     expect(sidecar).not.toHaveProperty('logicalPaths');
     expect(sidecar.provenance.recipe?.logicalPaths).toEqual(['4k/rock.glb']);
+  });
+
+  it('serializes the sidecar as stable human-readable JSON ready for persistence', () => {
+    const provenance = createRemoteImportProvenance(asset, { logicalPaths: ['4k/rock.glb'] }, [files[0]], {
+      importedAt: '2026-10-03T10:00:00.000Z',
+      sourceHomepage: 'https://polyhaven.com',
+    });
+    const sidecar = createRemoteImportProvenanceSidecar(
+      provenance,
+      ['Content/External/polyhaven/rock_01/rock.glb'],
+      ['asset-guid-1'],
+    );
+
+    const serialized = serializeRemoteImportProvenanceSidecar(sidecar);
+
+    expect(serialized.endsWith('\n')).toBe(true);
+    expect(JSON.parse(serialized)).toEqual(sidecar);
+    expect(serialized).toContain('"version": 1');
+    expect(serialized).toContain('"sourceHash": "sha256:');
+    expect(serialized).toContain('"recipe": {');
   });
 });

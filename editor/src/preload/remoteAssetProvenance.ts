@@ -64,3 +64,6 @@ export const createRemoteImportProvenanceSidecar = (
   importedFiles: [...importedFiles],
   importedAssetIds: [...importedAssetIds],
 });
+
+export const serializeRemoteImportProvenanceSidecar = (sidecar: ArcRemoteImportProvenanceSidecar): string =>
+  `${JSON.stringify(sidecar, null, 2)}\n`;
