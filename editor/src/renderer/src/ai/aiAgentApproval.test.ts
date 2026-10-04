@@ -83,11 +83,12 @@ describe('AiAgentApprovalCoordinator', () => {
     expect(JSON.parse(result.content)).toMatchObject({ state: 'approved' });
   });
 
-  it('cancels a pending approval wait when the agent turn is stopped', async () => {
+  it('cancels and denies a pending harness approval when the agent turn is stopped', async () => {
+    const deny = vi.fn(async () => true);
     const coordinator = new AiAgentApprovalCoordinator({
       invokeTool: vi.fn(async () => pendingResult()),
       approve: vi.fn(async () => true),
-      deny: vi.fn(async () => true),
+      deny,
     });
     const controller = new AbortController();
     const resultPromise = coordinator.invokeTool(call, controller.signal);
@@ -95,5 +96,6 @@ describe('AiAgentApprovalCoordinator', () => {
     controller.abort();
 
     await expect(resultPromise).rejects.toThrow('cancelled');
+    await vi.waitFor(() => expect(deny).toHaveBeenCalledWith('request-1'));
   });
 });
