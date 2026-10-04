@@ -33,6 +33,7 @@ const normalizedToolFailure = (call: AiToolCall, error: unknown): AiToolResult =
     return {
       toolCallId: call.id,
       name: call.name,
+      operation: call.name,
       content:
         `ARC tool revision conflict: ${message}. ` +
         'Refresh authoritative scene state with scene.overview. If an edit session is still active, use the revision reported by that session or cancel and begin a new transaction before retrying the mutation.',
@@ -44,6 +45,7 @@ const normalizedToolFailure = (call: AiToolCall, error: unknown): AiToolResult =
   return {
     toolCallId: call.id,
     name: call.name,
+    operation: call.name,
     content: `ARC tool error: ${message}`,
     isError: true,
     errorCode: 'tool_error',
@@ -53,7 +55,10 @@ const normalizedToolFailure = (call: AiToolCall, error: unknown): AiToolResult =
 const successfulToolResult = (call: AiToolCall, result: BuiltInAgentToolExecutionResult): AiToolResult => ({
   toolCallId: call.id,
   name: call.name,
+  operation: result.operation,
   content: result.content,
+  truncated: result.truncated,
+  originalBytes: result.originalBytes,
 });
 
 const positiveInteger = (value: number | undefined, fallback: number, name: string): number => {
@@ -109,9 +114,17 @@ export async function* runAiAgentToolLoop(
           yield event;
           continue;
         }
+        if (event.type === 'tool-call-start') {
+          yield { ...event, agentStep: step };
+          continue;
+        }
+        if (event.type === 'tool-call-arguments-delta') {
+          yield { ...event, agentStep: step };
+          continue;
+        }
         if (event.type === 'tool-call') {
           calls.push(event.call);
-          yield event;
+          yield { type: 'tool-call', call: event.call, agentStep: step };
           continue;
         }
         if (event.type === 'done') {
@@ -180,7 +193,7 @@ export async function* runAiAgentToolLoop(
       const call = calls[index]!;
       const result = await executeTool(call, invokeTool);
       if (request.signal?.aborted) return;
-      yield { type: 'tool-result', result };
+      yield { type: 'tool-result', result, agentStep: step };
       messages.push({
         id: runtimeMessageId('agent-tool', step, index),
         role: 'tool',
