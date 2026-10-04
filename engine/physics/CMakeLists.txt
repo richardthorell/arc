@@ -1,8 +1,14 @@
+include(${PROJECT_SOURCE_DIR}/third_party/jolt.cmake)
+
 arc_add_module(
     NAME arc-physics
     TYPE STATIC
     DEPS arc-math
 )
+
+# Jolt remains a private backend dependency. ARC consumers only see the
+# engine-owned physics interfaces under engine/physics/inc.
+target_link_libraries(arc-physics PRIVATE arc::third-party-jolt)
 
 if(BUILD_TESTING)
     add_executable(arc-physics-foundation-tests
