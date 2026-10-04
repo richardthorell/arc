@@ -1,4 +1,4 @@
-include(${PROJECT_SOURCE_DIR}/third_party/jolt.cmake)
+include(${CMAKE_SOURCE_DIR}/third_party/jolt.cmake)
 
 arc_add_module(
     NAME arc-physics
