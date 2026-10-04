@@ -3,8 +3,10 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import type { AiRuntimeRequest } from '../../../common/aiRuntimeTypes';
 import { AiChatPanel } from './AiChatPanel';
 import type { AiModelProvider } from './aiChat';
+import { loadAiConversationStore } from './aiConversationStore';
 
 const projectA = '11111111-1111-1111-1111-111111111111';
 const projectB = '22222222-2222-2222-2222-222222222222';
@@ -55,5 +57,78 @@ describe('AiChatPanel project persistence', () => {
     render(<AiChatPanel projectGuid={projectA} provider={provider} />);
     expect(screen.getByRole('region', { name: 'Active conversation' })).toHaveTextContent('Resume me');
     expect(screen.getByLabelText('Model')).toHaveTextContent('Test Agent');
+  });
+
+  it('persists agent tool activity and replays it into a later provider turn', async () => {
+    const chatRequests: AiRuntimeRequest[] = [];
+    const toolProvider: AiModelProvider = {
+      id: 'openai:tools',
+      providerId: 'openai',
+      modelId: 'tools',
+      label: 'Tool Agent',
+      configured: true,
+      capabilities: { streaming: true, tools: true, inputModalities: ['text'] },
+      async *stream(request) {
+        if (request.metadata?.purpose === 'conversation-caption') {
+          yield { type: 'delta', text: 'Floor inspection' };
+          yield { type: 'done', finishReason: 'stop' };
+          return;
+        }
+        chatRequests.push(request);
+        yield {
+          type: 'tool-call',
+          call: { id: `call-${chatRequests.length}`, name: 'scene.findEntities', arguments: { search: 'Floor' } },
+          agentStep: 0,
+        };
+        yield {
+          type: 'tool-result',
+          result: {
+            toolCallId: `call-${chatRequests.length}`,
+            name: 'scene.findEntities',
+            operation: 'scene.findEntities',
+            content: '{"entities":[{"guid":"floor-guid","name":"Floor"}]}',
+            truncated: false,
+            originalBytes: 53,
+          },
+          agentStep: 0,
+        };
+        yield { type: 'delta', text: `Tool response ${chatRequests.length}.` };
+        yield { type: 'done', finishReason: 'stop' };
+      },
+    };
+
+    render(<AiChatPanel projectGuid={projectA} provider={toolProvider} />);
+    fireEvent.change(screen.getByLabelText('Start a conversation'), { target: { value: 'Inspect the floor' } });
+    fireEvent.click(screen.getByLabelText('Start conversation'));
+    await waitFor(() => expect(screen.getByText('Tool response 1.')).toBeInTheDocument());
+    await waitFor(() => {
+      const tool = loadAiConversationStore(projectA).conversations[0]?.messages[1]?.toolReferences?.[0];
+      expect(tool).toMatchObject({
+        toolCallId: 'call-1',
+        name: 'scene.findEntities',
+        operation: 'scene.findEntities',
+        state: 'complete',
+        step: 0,
+        arguments: { search: 'Floor' },
+        resultContent: '{"entities":[{"guid":"floor-guid","name":"Floor"}]}',
+      });
+    });
+
+    fireEvent.change(screen.getByLabelText('Chat prompt'), { target: { value: 'What did you find?' } });
+    fireEvent.click(screen.getByLabelText('Send prompt'));
+    await waitFor(() => expect(screen.getByText('Tool response 2.')).toBeInTheDocument());
+
+    expect(chatRequests).toHaveLength(2);
+    const replayed = chatRequests[1]!.messages;
+    expect(replayed.map((message) => message.role)).toEqual(['user', 'assistant', 'tool', 'assistant', 'user']);
+    expect(replayed[1]?.toolCalls?.[0]).toMatchObject({
+      id: 'call-1',
+      name: 'scene.findEntities',
+      arguments: { search: 'Floor' },
+    });
+    expect(replayed[2]?.toolResult).toMatchObject({
+      toolCallId: 'call-1',
+      operation: 'scene.findEntities',
+    });
   });
 });
