@@ -35,8 +35,7 @@ class GatewaySelectionHost implements AgentHarnessHost {
 
   async query(type: string, payload?: Record<string, unknown>): Promise<AgentHostResponse> {
     if (type === 'gateway.entity') {
-      if (payload?.guid !== 'floor-guid')
-        return { ...reply(), succeeded: false, error: 'Entity was not found' };
+      if (payload?.guid !== 'floor-guid') return { ...reply(), succeeded: false, error: 'Entity was not found' };
       return reply({ entity: { index: 4, generation: 2 }, guid: 'floor-guid', name: 'Floor' });
     }
     if (type === 'entity.selected') {

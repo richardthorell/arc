@@ -14,7 +14,8 @@ TEST_CASE("agent selection uses the native editor selection state and event")
 {
     arc::editor::arc_host_manager manager;
     auto host = manager.acquire(std::make_unique<arc::render::renderer>());
-    REQUIRE(host->open_project({.name = "Agent Selection", .root = std::filesystem::temp_directory_path()}, {}).succeeded);
+    REQUIRE(
+        host->open_project({.name = "Agent Selection", .root = std::filesystem::temp_directory_path()}, {}).succeeded);
 
     REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::plane})
                 .succeeded);
@@ -36,19 +37,17 @@ TEST_CASE("agent selection uses the native editor selection state and event")
     REQUIRE(selected.selection_count == 1);
     REQUIRE(selected.selected_guids == std::vector<std::string>{first_guid});
 
-    const auto selected_query = host->query(arc::editor::host_query_envelope{
-        .request_id = 1, .payload = arc::editor::host_selected_entity_query{}});
+    const auto selected_query = host->query(
+        arc::editor::host_query_envelope{.request_id = 1, .payload = arc::editor::host_selected_entity_query{}});
     REQUIRE(selected_query.succeeded);
     const auto selected_json = nlohmann::json::parse(selected_query.payload_json);
     REQUIRE(selected_json.at("selectionCount") == 1);
     REQUIRE(selected_json.at("selectedGuids").at(0) == first_guid);
 
     const auto select_events = host->poll_events();
-    REQUIRE(std::any_of(select_events.begin(), select_events.end(), [&](const auto& event)
-                        {
-                            return event.event_type == arc::editor::host_event_type::entity_selected &&
-                                   event.entity == first;
-                        }));
+    REQUIRE(std::any_of(
+        select_events.begin(), select_events.end(), [&](const auto& event)
+        { return event.event_type == arc::editor::host_event_type::entity_selected && event.entity == first; }));
 
     REQUIRE(host->execute(arc::editor::host_clear_selection_command{}).succeeded);
     const auto cleared = host->selected_entity_snapshot();
