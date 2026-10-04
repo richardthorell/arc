@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ArcAssetDownloadFile, ArcRemoteAsset } from '../common/assetSourceTypes';
-import { createRemoteImportProvenance, createRemoteManifestHash } from './remoteAssetProvenance';
+import {
+  createRemoteImportProvenance,
+  createRemoteImportProvenanceSidecar,
+  createRemoteManifestHash,
+} from './remoteAssetProvenance';
 
 const asset: ArcRemoteAsset = {
   id: 'rock_01',
@@ -64,5 +68,27 @@ describe('remote asset provenance', () => {
       index === 0 ? { ...file, checksum: { algorithm: 'sha256' as const, value: 'different' } } : file,
     );
     expect(createRemoteManifestHash(changed)).not.toBe(createRemoteManifestHash(files));
+  });
+
+  it('builds a versioned sidecar without duplicating recipe state', () => {
+    const provenance = createRemoteImportProvenance(asset, { logicalPaths: ['4k/rock.glb'] }, [files[0]], {
+      importedAt: '2026-10-03T10:00:00.000Z',
+      sourceHomepage: 'https://polyhaven.com',
+    });
+
+    const sidecar = createRemoteImportProvenanceSidecar(
+      provenance,
+      ['Content/External/polyhaven/rock_01/rock.glb'],
+      ['asset-guid-1'],
+    );
+
+    expect(sidecar).toEqual({
+      version: 1,
+      provenance,
+      importedFiles: ['Content/External/polyhaven/rock_01/rock.glb'],
+      importedAssetIds: ['asset-guid-1'],
+    });
+    expect(sidecar).not.toHaveProperty('logicalPaths');
+    expect(sidecar.provenance.recipe?.logicalPaths).toEqual(['4k/rock.glb']);
   });
 });

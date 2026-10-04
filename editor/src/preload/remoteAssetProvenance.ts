@@ -14,6 +14,13 @@ export type CreateRemoteImportProvenanceOptions = {
   importOptions?: Record<string, string | number | boolean | null>;
 };
 
+export type ArcRemoteImportProvenanceSidecar = {
+  version: 1;
+  provenance: ArcImportedAssetProvenance;
+  importedFiles: string[];
+  importedAssetIds: string[];
+};
+
 const normalizeChecksum = (file: ArcAssetDownloadFile): string =>
   file.checksum
     ? `${file.checksum.algorithm}:${file.checksum.value.toLocaleLowerCase()}`
@@ -46,3 +53,14 @@ export const createRemoteImportProvenance = (
     recipe: createAssetImportRecipe(request, options.importOptions),
   });
 };
+
+export const createRemoteImportProvenanceSidecar = (
+  provenance: ArcImportedAssetProvenance,
+  importedFiles: readonly string[],
+  importedAssetIds: readonly string[],
+): ArcRemoteImportProvenanceSidecar => ({
+  version: 1,
+  provenance,
+  importedFiles: [...importedFiles],
+  importedAssetIds: [...importedAssetIds],
+});
