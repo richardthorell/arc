@@ -9,6 +9,7 @@ import type {
   ArcRemoteAsset,
   ArcRemoteAssetKind,
 } from '../../../common/assetSourceTypes';
+import { UiButton, UiIconButton, UiSelect, UiTextInput } from '../ui';
 import { remoteAssetFailureMessage } from './remoteAssetErrors';
 import {
   beginRemoteAssetImport,
@@ -34,6 +35,13 @@ type Props = {
   source: ArcAssetSourceDescriptor;
   onImportedFiles?: (paths: readonly string[]) => void;
 };
+
+const assetKindOptions = [
+  { value: 'all', label: 'All types' },
+  { value: 'hdri', label: 'HDRIs' },
+  { value: 'texture', label: 'Textures' },
+  { value: 'model', label: 'Models' },
+] as const;
 
 const formatBytes = (bytes: number | undefined): string => {
   if (bytes === undefined) return 'Size unavailable';
@@ -227,29 +235,25 @@ export function RemoteAssetBrowser({ source, onImportedFiles }: Props) {
           {source.attribution && <span className="remote-source-attribution">{source.attribution}</span>}
           <label>
             <Search size={13} />
-            <input
+            <UiTextInput
               aria-label="Search online assets"
               placeholder={`Search ${source.displayName}`}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
           </label>
-          <select
-            aria-label="Online asset type"
+          <UiSelect
+            ariaLabel="Online asset type"
+            options={assetKindOptions}
             value={kind}
-            onChange={(event) => setKind(event.target.value as typeof kind)}
-          >
-            <option value="all">All types</option>
-            <option value="hdri">HDRIs</option>
-            <option value="texture">Textures</option>
-            <option value="model">Models</option>
-          </select>
-          <button className={view === 'grid' ? 'active' : ''} aria-label="Grid view" onClick={() => setView('grid')}>
+            onValueChange={(value) => setKind(value as typeof kind)}
+          />
+          <UiIconButton active={view === 'grid'} label="Grid view" onClick={() => setView('grid')}>
             <Grid2X2 size={14} />
-          </button>
-          <button className={view === 'list' ? 'active' : ''} aria-label="List view" onClick={() => setView('list')}>
+          </UiIconButton>
+          <UiIconButton active={view === 'list'} label="List view" onClick={() => setView('list')}>
             <List size={14} />
-          </button>
+          </UiIconButton>
         </header>
         <div className="remote-result-summary">
           {loading
@@ -300,29 +304,23 @@ export function RemoteAssetBrowser({ source, onImportedFiles }: Props) {
               {resolutions.length > 0 && (
                 <label>
                   Resolution
-                  <select
-                    aria-label="Remote asset resolution"
+                  <UiSelect
+                    ariaLabel="Remote asset resolution"
+                    options={resolutions.map((value) => ({ value, label: value }))}
                     value={resolution}
-                    onChange={(event) => setResolution(event.target.value)}
-                  >
-                    {resolutions.map((value) => (
-                      <option key={value}>{value}</option>
-                    ))}
-                  </select>
+                    onValueChange={setResolution}
+                  />
                 </label>
               )}
               {formats.length > 0 && (
                 <label>
                   Format
-                  <select
-                    aria-label="Remote asset format"
+                  <UiSelect
+                    ariaLabel="Remote asset format"
+                    options={formats.map((value) => ({ value, label: value }))}
                     value={format}
-                    onChange={(event) => setFormat(event.target.value)}
-                  >
-                    {formats.map((value) => (
-                      <option key={value}>{value}</option>
-                    ))}
-                  </select>
+                    onValueChange={setFormat}
+                  />
                 </label>
               )}
               <div className="remote-import-summary">
@@ -330,17 +328,22 @@ export function RemoteAssetBrowser({ source, onImportedFiles }: Props) {
                 <span>{formatBytes(selectionBytes)}</span>
               </div>
               <div className="remote-import-actions">
-                <button
+                <UiButton
                   className="remote-import-button"
                   disabled={selectedFiles.length === 0 || importing}
                   onClick={importSelected}
                 >
                   <Download size={14} /> {importing ? (canceling ? 'Canceling…' : 'Importing…') : 'Import to Project'}
-                </button>
+                </UiButton>
                 {importing && (
-                  <button className="remote-import-cancel-button" disabled={canceling} onClick={cancelSelectedImport}>
+                  <UiButton
+                    className="remote-import-cancel-button"
+                    disabled={canceling}
+                    variant="ghost"
+                    onClick={cancelSelectedImport}
+                  >
                     <X size={14} /> {canceling ? 'Canceling…' : 'Cancel'}
-                  </button>
+                  </UiButton>
                 )}
               </div>
               {importProgress && (

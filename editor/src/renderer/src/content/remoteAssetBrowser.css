@@ -74,14 +74,6 @@
   font-size: 10px;
 }
 
-.remote-asset-details select {
-  min-height: 28px;
-  border: 1px solid var(--border-subtle, #3a3a3a);
-  border-radius: 3px;
-  background: var(--surface-raised, #262626);
-  color: var(--text-primary, #eee);
-}
-
 .remote-import-summary {
   display: flex;
   justify-content: space-between;
