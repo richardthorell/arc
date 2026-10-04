@@ -1,10 +1,5 @@
 import type { AiConversationToolReference } from '../../../common/aiConversationTypes';
-import {
-  UiAgentAssetCard,
-  UiAgentToolCard,
-  UiAgentViewportCard,
-  type UiAgentActivityState,
-} from '../ui';
+import { UiAgentAssetCard, UiAgentToolCard, UiAgentViewportCard, type UiAgentActivityState } from '../ui';
 
 const detailCharacterLimit = 1800;
 
