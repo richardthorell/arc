@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  normalizeMaterialParameterDescription,
-  setMaterialParameterDescription,
-} from './materialParameterDescription';
+import { normalizeMaterialParameterDescription, setMaterialParameterDescription } from './materialParameterDescription';
 
 describe('material parameter descriptions', () => {
   it('normalizes authored help text and treats blank text as unset', () => {
