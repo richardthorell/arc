@@ -66,15 +66,22 @@ export function pasteGraphSelection<Node extends GraphClipboardNode, Edge extend
   payload: GraphClipboardPayload<Node, Edge>,
   createId: GraphIdFactory,
   offset = { x: 24, y: 24 },
+  occupiedIds: ReadonlySet<string> = new Set(),
 ): GraphClipboardPasteResult<Node, Edge> {
   assertValidClipboardPayload(payload);
 
   const generatedIds = new Set<string>();
   const nodeIdMap = new Map<string, string>();
+  const claimGeneratedId = (id: string, kind: 'node' | 'edge'): void => {
+    if (!id || generatedIds.has(id) || occupiedIds.has(id)) {
+      throw new Error(`Graph clipboard generated unavailable ${kind} ID: ${id}`);
+    }
+    generatedIds.add(id);
+  };
+
   const nodes = payload.nodes.map((node) => {
     const id = createId('node', node.id);
-    if (!id || generatedIds.has(id)) throw new Error(`Graph clipboard generated duplicate node ID: ${id}`);
-    generatedIds.add(id);
+    claimGeneratedId(id, 'node');
     nodeIdMap.set(node.id, id);
     return {
       ...structuredClone(node),
@@ -90,8 +97,7 @@ export function pasteGraphSelection<Node extends GraphClipboardNode, Edge extend
       throw new Error(`Graph clipboard edge ${edge.id} could not be remapped`);
     }
     const id = createId('edge', edge.id);
-    if (!id || generatedIds.has(id)) throw new Error(`Graph clipboard generated duplicate edge ID: ${id}`);
-    generatedIds.add(id);
+    claimGeneratedId(id, 'edge');
     return {
       ...structuredClone(edge),
       id,
@@ -115,7 +121,13 @@ export function duplicateGraphSelection<Node extends GraphClipboardNode, Edge ex
   createId: GraphIdFactory,
   offset = { x: 24, y: 24 },
 ): GraphClipboardPasteResult<Node, Edge> {
-  return pasteGraphSelection(copyGraphSelection(nodes, edges, selectedNodeIds), createId, offset);
+  const occupiedIds = new Set([...nodes.map((node) => node.id), ...edges.map((edge) => edge.id)]);
+  return pasteGraphSelection(
+    copyGraphSelection(nodes, edges, selectedNodeIds),
+    createId,
+    offset,
+    occupiedIds,
+  );
 }
 
 export function deleteGraphSelection<Node extends GraphClipboardNode, Edge extends GraphClipboardEdge>(
