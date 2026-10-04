@@ -96,12 +96,12 @@ describe('AI conversation tool transcript', () => {
         },
         {
           toolCallId: 'call-2',
-          name: 'selection.set',
-          operation: 'selection.set',
+          name: 'viewport.pick',
+          operation: 'viewport.pick',
           state: 'complete',
           step: 1,
-          arguments: { guids: ['floor-guid'] },
-          resultContent: '{"selected":["floor-guid"]}',
+          arguments: { x: 100, y: 120 },
+          resultContent: '{"selection":{"guid":"floor-guid"}}',
           startedAt: '2026-10-04T04:00:01.000Z',
           completedAt: '2026-10-04T04:00:01.500Z',
         },
@@ -120,7 +120,7 @@ describe('AI conversation tool transcript', () => {
       toolCallId: 'call-1',
       operation: 'scene.findEntities',
     });
-    expect(runtime[2]?.toolCalls?.[0]).toMatchObject({ id: 'call-2', name: 'selection.set' });
+    expect(runtime[2]?.toolCalls?.[0]).toMatchObject({ id: 'call-2', name: 'viewport.pick' });
     expect(runtime.at(-1)?.content).toEqual([{ type: 'text', text: 'The floor is selected.' }]);
   });
 
