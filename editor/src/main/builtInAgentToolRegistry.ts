@@ -136,6 +136,16 @@ const registryEntries = [
     schema: z.object({ sinceSceneRevision: z.number().int().nonnegative() }).strict(),
   },
   {
+    method: 'selection.set',
+    description: 'Replace the editor selection with one scene entity using its persistent GUID.',
+    schema: z.object({ guid: z.string().min(1) }).strict(),
+  },
+  {
+    method: 'selection.clear',
+    description: 'Clear the current editor entity selection without mutating scene content.',
+    schema: empty,
+  },
+  {
     method: 'assets.list',
     description: 'List project assets available for validated scene and material bindings.',
     schema: empty,
