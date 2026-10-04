@@ -2,10 +2,21 @@
 
 #include <cassert>
 #include <limits>
+#include <type_traits>
 
 int main()
 {
     using namespace arc::physics;
+
+    static_assert(!std::is_same_v<world_handle, body_handle>);
+    static_assert(!std::is_same_v<body_handle, shape_handle>);
+    static_assert(!std::is_same_v<shape_handle, material_handle>);
+
+    constexpr world_handle world{7};
+    static_assert(world.valid());
+    static_assert(world.value() == 7);
+    static_assert(!world_handle{}.valid());
+    static_assert(body_id{} == invalid_body_id);
 
     body_definition body{};
     assert(validate(body) == validation_error::none);
