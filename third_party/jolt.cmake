@@ -1,5 +1,6 @@
-# Jolt Physics is private implementation detail of arc-physics. Keep this target
-# out of ARC public interfaces so Jolt types cannot leak into gameplay-facing APIs.
+# Jolt Physics is a private implementation detail of arc-physics. Keep this
+# target out of ARC public interfaces so Jolt types cannot leak into gameplay-
+# facing APIs.
 include(FetchContent)
 
 set(ARC_PINNED_JOLT_VERSION "v5.6.0" CACHE STRING
@@ -11,16 +12,12 @@ if(NOT TARGET arc-third-party-jolt)
 endif()
 
 if(ARC_FETCH_THIRD_PARTY)
-    set(JPH_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
-    set(JPH_BUILD_VIEWER OFF CACHE BOOL "" FORCE)
-    set(JPH_BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
-    set(JPH_BUILD_HELLO_WORLD OFF CACHE BOOL "" FORCE)
-    set(JPH_BUILD_PERFORMANCE_TEST OFF CACHE BOOL "" FORCE)
     set(JPH_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
     set(JPH_USE_DX12 OFF CACHE BOOL "" FORCE)
     set(JPH_USE_VK OFF CACHE BOOL "" FORCE)
     set(JPH_USE_MTL OFF CACHE BOOL "" FORCE)
     set(JPH_USE_CPU_COMPUTE OFF CACHE BOOL "" FORCE)
+    set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 
     FetchContent_Declare(
         jolt
@@ -40,7 +37,17 @@ if(ARC_FETCH_THIRD_PARTY)
     else()
         target_compile_options(Jolt PRIVATE -w)
     endif()
-    target_link_libraries(arc-third-party-jolt INTERFACE Jolt)
+
+    # Keep the fetched Jolt target build-tree-only. The installed ARC SDK
+    # exports the private wrapper so arc-physics' static-library dependency graph
+    # remains valid without exposing Jolt as an SDK dependency before the backend
+    # itself is shipped.
+    target_link_libraries(arc-third-party-jolt INTERFACE "$<BUILD_INTERFACE:Jolt>")
 else()
     message(FATAL_ERROR "arc-physics requires Jolt and ARC_FETCH_THIRD_PARTY is OFF")
 endif()
+
+set_target_properties(arc-third-party-jolt PROPERTIES EXPORT_NAME _Jolt)
+install(TARGETS arc-third-party-jolt
+    EXPORT ARCTargets
+    COMPONENT sdk-private)
