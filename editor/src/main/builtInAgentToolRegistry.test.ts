@@ -25,6 +25,12 @@ const fakeAdapter = (snapshot: BuiltInAgentCapabilities, result: unknown = { ok:
   };
 };
 
+const transform = {
+  position: [0, 0, 0],
+  rotation: [0, 0, 0, 1],
+  scale: [4, 4, 4],
+};
+
 describe('BuiltInAgentToolRegistry', () => {
   it('keeps the registry aligned with the authoritative harness operation catalog', () => {
     expect(registeredBuiltInAgentMethods()).toEqual(agentHarnessMethods);
@@ -47,6 +53,31 @@ describe('BuiltInAgentToolRegistry', () => {
     });
   });
 
+  it('advertises explicit value shapes for edit actions instead of an untyped record', () => {
+    const definition = builtInAgentToolDefinitions(capabilities(['edit.apply'], ['rename', 'setTransform'])).find(
+      (tool) => tool.name === 'edit.apply',
+    );
+    const properties = definition?.inputSchema.properties as Record<string, unknown> | undefined;
+    const value = properties?.value as { anyOf?: Array<Record<string, unknown>> } | undefined;
+
+    expect(properties?.action).toMatchObject({ enum: ['rename', 'setTransform'] });
+    expect(value?.anyOf?.length).toBeGreaterThan(2);
+    expect(value?.anyOf).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          description: expect.stringContaining('setTransform'),
+          required: ['guid', 'transform'],
+          additionalProperties: false,
+        }),
+        expect.objectContaining({
+          description: expect.stringContaining('rename'),
+          required: ['guid', 'name'],
+          additionalProperties: false,
+        }),
+      ]),
+    );
+  });
+
   it('validates arguments before invoking the harness operation', async () => {
     const { adapter, invoke } = fakeAdapter(capabilities(['scene.getEntity']));
     const registry = new BuiltInAgentToolRegistry(adapter);
@@ -64,6 +95,52 @@ describe('BuiltInAgentToolRegistry', () => {
     });
   });
 
+  it('rejects malformed action values before they reach edit handlers', async () => {
+    const snapshot = capabilities(['edit.apply'], ['rename', 'setTransform']);
+    const { adapter, invoke } = fakeAdapter(snapshot);
+    const registry = new BuiltInAgentToolRegistry(adapter);
+    const common = { editSessionId: 'edit-1', expectedSceneRevision: 3, action: 'setTransform' as const };
+
+    await expect(
+      registry.invoke('edit.apply', {
+        ...common,
+        value: { guid: 'entity-guid', position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [4, 4, 4] },
+      }),
+    ).rejects.toThrow('Invalid arguments for edit.apply');
+    await expect(
+      registry.invoke('edit.apply', {
+        ...common,
+        value: { entity: 'entity-guid', transform },
+      }),
+    ).rejects.toThrow('Invalid arguments for edit.apply');
+    expect(invoke).not.toHaveBeenCalled();
+
+    await registry.invoke('edit.apply', {
+      ...common,
+      value: { guid: 'entity-guid', transform },
+    });
+    expect(invoke).toHaveBeenCalledWith('edit.apply', {
+      ...common,
+      value: { guid: 'entity-guid', transform },
+    });
+  });
+
+  it('validates the value against the selected edit action', async () => {
+    const snapshot = capabilities(['edit.apply'], ['rename', 'setTransform']);
+    const { adapter, invoke } = fakeAdapter(snapshot);
+    const registry = new BuiltInAgentToolRegistry(adapter);
+
+    await expect(
+      registry.invoke('edit.apply', {
+        editSessionId: 'edit-1',
+        expectedSceneRevision: 3,
+        action: 'rename',
+        value: { guid: 'entity-guid', transform },
+      }),
+    ).rejects.toThrow('Invalid arguments for edit.apply at value');
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it('rejects operations and edit actions removed from the live harness capability snapshot', async () => {
     const snapshot = capabilities(['edit.apply'], ['rename']);
     const { adapter, invoke } = fakeAdapter(snapshot);
@@ -75,7 +152,7 @@ describe('BuiltInAgentToolRegistry', () => {
         editSessionId: 'edit-1',
         expectedSceneRevision: 4,
         action: 'setTransform',
-        value: {},
+        value: { guid: 'entity-guid', transform },
       }),
     ).rejects.toThrow("Edit action 'setTransform' is not available from EditorAgentHarness");
     expect(invoke).not.toHaveBeenCalled();
