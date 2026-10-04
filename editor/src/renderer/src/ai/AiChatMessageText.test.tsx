@@ -15,9 +15,7 @@ describe('renderAiChatMessageText', () => {
   it('renders common inline Markdown and headings', () => {
     render(
       <div>
-        {renderAiChatMessageText(
-          '# Result\n\nThis is **bold**, *italic*, ~~old~~, and `inline code`.\nSecond line.',
-        )}
+        {renderAiChatMessageText('# Result\n\nThis is **bold**, *italic*, ~~old~~, and `inline code`.\nSecond line.')}
       </div>,
     );
 

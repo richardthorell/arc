@@ -304,7 +304,11 @@ export const renderAiChatMessageText = (text: string): ReactNode => {
         <li key={`item-${itemIndex}`}>{renderInlineMarkdown(item, `list-${blocks.length}-${itemIndex}`)}</li>
       ));
       blocks.push(
-        orderedList ? <ol key={`list-${blocks.length}`}>{children}</ol> : <ul key={`list-${blocks.length}`}>{children}</ul>,
+        orderedList ? (
+          <ol key={`list-${blocks.length}`}>{children}</ol>
+        ) : (
+          <ul key={`list-${blocks.length}`}>{children}</ul>
+        ),
       );
       continue;
     }
