@@ -12,7 +12,8 @@ const normalizedEntry = (value: unknown): { group?: string; order?: number } | u
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const source = value as Record<string, unknown>;
   const group = typeof source.group === 'string' ? source.group.trim() : '';
-  const order = typeof source.order === 'number' && Number.isInteger(source.order) && source.order >= 0 ? source.order : undefined;
+  const order =
+    typeof source.order === 'number' && Number.isInteger(source.order) && source.order >= 0 ? source.order : undefined;
   if (!group && order === undefined) return undefined;
   return { ...(group ? { group } : {}), ...(order !== undefined ? { order } : {}) };
 };
@@ -24,12 +25,19 @@ export const materialParameterMetadataFromAsset = (asset: MaterialAssetJson): Ma
   }
 
   const source = raw as Record<string, unknown>;
-  if (source.version !== MATERIAL_PARAMETER_METADATA_VERSION || !source.parameters || typeof source.parameters !== 'object' || Array.isArray(source.parameters)) {
+  if (
+    source.version !== MATERIAL_PARAMETER_METADATA_VERSION ||
+    !source.parameters ||
+    typeof source.parameters !== 'object' ||
+    Array.isArray(source.parameters)
+  ) {
     return { version: MATERIAL_PARAMETER_METADATA_VERSION, parameters: {} };
   }
 
   const parameters: MaterialParameterAuthoringMetadata['parameters'] = {};
-  for (const [id, value] of Object.entries(source.parameters as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right))) {
+  for (const [id, value] of Object.entries(source.parameters as Record<string, unknown>).sort(([left], [right]) =>
+    left.localeCompare(right),
+  )) {
     const entry = normalizedEntry(value);
     if (id && entry) parameters[id] = entry;
   }

@@ -8,13 +8,10 @@ import {
 
 describe('material parameter authoring metadata', () => {
   it('persists group/order by stable parameter id in deterministic order', () => {
-    const asset = withMaterialParameterMetadata(
-      { version: 4, name: 'Test' },
-      [
-        { id: 'roughness', name: 'Roughness', group: ' Surface ', order: 2 },
-        { id: 'base-color', name: 'Base Color', group: 'Surface', order: 0 },
-      ],
-    );
+    const asset = withMaterialParameterMetadata({ version: 4, name: 'Test' }, [
+      { id: 'roughness', name: 'Roughness', group: ' Surface ', order: 2 },
+      { id: 'base-color', name: 'Base Color', group: 'Surface', order: 0 },
+    ]);
 
     expect(asset.parameterMetadata).toEqual({
       version: 1,
@@ -38,7 +35,9 @@ describe('material parameter authoring metadata', () => {
     });
 
     expect(metadata.parameters).toEqual({ valid: { group: 'Surface', order: 3 } });
-    expect(materialParameterMetadataFromAsset({ parameterMetadata: { version: 99, parameters: {} } }).parameters).toEqual({});
+    expect(
+      materialParameterMetadataFromAsset({ parameterMetadata: { version: 99, parameters: {} } }).parameters,
+    ).toEqual({});
   });
 
   it('applies presentation metadata without changing stable ids or names', () => {
