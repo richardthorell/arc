@@ -18,6 +18,12 @@ export const aiProjectConversationStorageKey = (projectGuid: string) =>
 
 const isOptionalString = (value: unknown): value is string | undefined =>
   value === undefined || typeof value === 'string';
+const isOptionalBoolean = (value: unknown): value is boolean | undefined =>
+  value === undefined || typeof value === 'boolean';
+const isOptionalNonnegativeInteger = (value: unknown): value is number | undefined =>
+  value === undefined || (Number.isSafeInteger(value) && Number(value) >= 0);
+const isOptionalObject = (value: unknown): value is Record<string, unknown> | undefined =>
+  value === undefined || (value !== null && typeof value === 'object' && !Array.isArray(value));
 
 const isContextReference = (value: unknown): value is AiConversationContextReference => {
   if (!value || typeof value !== 'object') return false;
@@ -41,7 +47,19 @@ const isToolReference = (value: unknown): value is AiConversationToolReference =
       reference.state === 'complete' ||
       reference.state === 'error' ||
       reference.state === 'cancelled') &&
-    isOptionalString(reference.summary)
+    isOptionalString(reference.summary) &&
+    isOptionalNonnegativeInteger(reference.step) &&
+    isOptionalObject(reference.arguments) &&
+    isOptionalString(reference.operation) &&
+    isOptionalString(reference.resultContent) &&
+    isOptionalBoolean(reference.resultTruncated) &&
+    isOptionalNonnegativeInteger(reference.originalBytes) &&
+    (reference.errorCode === undefined ||
+      reference.errorCode === 'revision_conflict' ||
+      reference.errorCode === 'tool_error') &&
+    isOptionalBoolean(reference.retryable) &&
+    isOptionalString(reference.startedAt) &&
+    isOptionalString(reference.completedAt)
   );
 };
 
@@ -84,11 +102,28 @@ const isConversation = (value: unknown): value is AiStoredConversation => {
   );
 };
 
+const normalizeMessage = (message: AiConversationMessage): AiConversationMessage => {
+  if (message.state !== 'streaming') return { ...message };
+  const timestamp = new Date().toISOString();
+  return {
+    ...message,
+    state: 'error',
+    toolReferences: message.toolReferences?.map((reference) =>
+      reference.state === 'pending'
+        ? {
+            ...reference,
+            state: 'cancelled' as const,
+            summary: 'Interrupted when the editor closed',
+            completedAt: timestamp,
+          }
+        : { ...reference },
+    ),
+  };
+};
+
 const normalizeConversation = (conversation: AiStoredConversation): AiStoredConversation => ({
   ...conversation,
-  messages: conversation.messages.map((message) =>
-    message.state === 'streaming' ? { ...message, state: 'error' as const } : { ...message },
-  ),
+  messages: conversation.messages.map(normalizeMessage),
 });
 
 const normalizeUiState = (value: unknown): AiConversationUiState => {

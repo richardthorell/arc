@@ -44,6 +44,9 @@ export type AiToolResult = {
   isError?: boolean;
   errorCode?: AiToolResultErrorCode;
   retryable?: boolean;
+  operation?: string;
+  truncated?: boolean;
+  originalBytes?: number;
 };
 
 export type AiRuntimeMessage = {
@@ -111,10 +114,10 @@ export type AiRuntimeFinishReason = 'stop' | 'tool_calls' | 'length' | 'cancelle
 
 export type AiRuntimeStreamEvent =
   | { type: 'delta'; text: string }
-  | { type: 'tool-call-start'; callId: string; name: string }
-  | { type: 'tool-call-arguments-delta'; callId: string; delta: string }
-  | { type: 'tool-call'; call: AiToolCall }
-  | { type: 'tool-result'; result: AiToolResult }
+  | { type: 'tool-call-start'; callId: string; name: string; agentStep?: number }
+  | { type: 'tool-call-arguments-delta'; callId: string; delta: string; agentStep?: number }
+  | { type: 'tool-call'; call: AiToolCall; agentStep?: number }
+  | { type: 'tool-result'; result: AiToolResult; agentStep?: number }
   | { type: 'usage'; usage: AiTokenUsage }
   | {
       type: 'error';

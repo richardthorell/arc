@@ -24,6 +24,11 @@ import {
 } from './aiContextBudget';
 import { createAiAssetContextProvider } from './aiContextPicker';
 import { loadAiConversationStore, saveAiConversationStore } from './aiConversationStore';
+import {
+  finishPendingConversationTools,
+  recordConversationToolCall,
+  recordConversationToolResult,
+} from './aiConversationToolTranscript';
 import { createDefaultAiContextProviders, createWindowAiProjectContextService } from './aiProjectContextService';
 import './aiGateway.css';
 import './aiChatMessageCards.css';
@@ -32,7 +37,10 @@ const openAiConnectivitySettings = () => requestSettingsDialogOpen('editorPrefer
 
 const cloneConversation = (conversation: AiConversation): AiConversation => ({
   ...conversation,
-  messages: conversation.messages.map((message) => ({ ...message })),
+  messages: conversation.messages.map((message) => ({
+    ...message,
+    toolReferences: message.toolReferences?.map((reference) => ({ ...reference })),
+  })),
 });
 
 const modelIcon = (providerId: string) => {
@@ -228,9 +236,16 @@ export function AiChatPanel({
 
     activeStreamRef.current = null;
     activeStream.controller.abort();
+    const timestamp = new Date().toISOString();
     updateAssistantMessage(activeStream.conversationId, activeStream.messageId, (message) => ({
       ...message,
       state: 'complete',
+      toolReferences: finishPendingConversationTools(
+        message.toolReferences,
+        'cancelled',
+        'Cancelled by user',
+        timestamp,
+      ),
     }));
     setStreaming(false);
   };
@@ -295,11 +310,34 @@ export function AiChatPanel({
           }));
           continue;
         }
+        if (event.type === 'tool-call') {
+          const timestamp = new Date().toISOString();
+          updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
+            ...message,
+            toolReferences: recordConversationToolCall(message.toolReferences, event.call, event.agentStep, timestamp),
+          }));
+          continue;
+        }
+        if (event.type === 'tool-result') {
+          const timestamp = new Date().toISOString();
+          updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
+            ...message,
+            toolReferences: recordConversationToolResult(
+              message.toolReferences,
+              event.result,
+              event.agentStep,
+              timestamp,
+            ),
+          }));
+          continue;
+        }
         if (event.type === 'error') {
+          const timestamp = new Date().toISOString();
           updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
             ...message,
             content: message.content ? `${message.content}\n\n${event.message}` : event.message,
             state: 'error',
+            toolReferences: finishPendingConversationTools(message.toolReferences, 'error', event.message, timestamp),
           }));
           return { completed: false, text: responseText };
         }
@@ -316,10 +354,13 @@ export function AiChatPanel({
       return { completed: completed && !controller.signal.aborted, text: responseText };
     } catch (error) {
       if (!controller.signal.aborted) {
+        const messageText = error instanceof Error ? error.message : String(error);
+        const timestamp = new Date().toISOString();
         updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
           ...message,
-          content: message.content || (error instanceof Error ? error.message : String(error)),
+          content: message.content || messageText,
           state: 'error',
+          toolReferences: finishPendingConversationTools(message.toolReferences, 'error', messageText, timestamp),
         }));
       }
       return { completed: false, text: responseText };

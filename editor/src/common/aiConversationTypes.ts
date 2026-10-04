@@ -1,4 +1,4 @@
-import type { AiImageContentPart, AiJsonObject } from './aiRuntimeTypes';
+import type { AiImageContentPart, AiJsonObject, AiToolResultErrorCode } from './aiRuntimeTypes';
 
 export const AI_CONVERSATION_STORE_VERSION = 1 as const;
 export type AiConversationStoreVersion = typeof AI_CONVERSATION_STORE_VERSION;
@@ -20,6 +20,16 @@ export type AiConversationToolReference = {
   name: string;
   state: 'pending' | 'complete' | 'error' | 'cancelled';
   summary?: string;
+  step?: number;
+  arguments?: AiJsonObject;
+  operation?: string;
+  resultContent?: string;
+  resultTruncated?: boolean;
+  originalBytes?: number;
+  errorCode?: AiToolResultErrorCode;
+  retryable?: boolean;
+  startedAt?: string;
+  completedAt?: string;
 };
 
 export type AiConversationMessage = {
