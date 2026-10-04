@@ -4,14 +4,14 @@ import type {
   AiConversationRole,
   AiStoredConversation,
 } from '../../../common/aiConversationTypes';
-import {
-  textContent,
-  type AiModelCapabilities,
-  type AiModelDescriptor,
-  type AiRuntimeMessage,
-  type AiRuntimeRequest,
-  type AiRuntimeStreamEvent,
+import type {
+  AiModelCapabilities,
+  AiModelDescriptor,
+  AiRuntimeMessage,
+  AiRuntimeRequest,
+  AiRuntimeStreamEvent,
 } from '../../../common/aiRuntimeTypes';
+import { runtimeMessagesForConversation } from './aiConversationToolTranscript';
 
 export type AiChatRole = AiConversationRole;
 export type AiChatMessageState = AiConversationMessageState;
@@ -70,12 +70,7 @@ export const createAiMessage = (
 });
 
 export const toAiRuntimeMessages = (messages: readonly AiChatMessage[]): AiRuntimeMessage[] =>
-  messages.map((message) => ({
-    id: message.id,
-    role: message.role,
-    content: [textContent(message.content)],
-    createdAt: message.createdAt,
-  }));
+  runtimeMessagesForConversation(messages);
 
 export const createAiModelRequest = (
   conversationId: string,
