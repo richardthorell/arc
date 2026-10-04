@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { AiJsonObject, AiJsonValue, AiToolDefinition } from '../common/aiRuntimeTypes';
 import { assertAiToolInvocationAllowed, type AiToolSecurityDescriptor } from '../common/aiSecurityPolicy';
 import type { BuiltInAgentCapabilities, BuiltInAgentToolExecutionResult } from '../common/builtInAgentTypes';
+import { agentEditorBatchRequestSchema } from './agentEditorBatch';
 import { agentEditActions, type AgentEditAction, type AgentHarnessMethod } from './agentHarnessContract';
 import { agentEditValueSchema, validateAgentEditValue } from './agentEditToolSchemas';
 import type { BuiltInAgentAdapter } from './builtInAgentAdapter';
@@ -255,6 +256,13 @@ const registryEntries = [
         value: agentEditValueSchema,
       })
       .strict(),
+    mutating: true,
+  },
+  {
+    method: 'editor.applyBatch',
+    description:
+      'Apply multiple validated editor mutations in one active transaction. Use tempId to reference entities created earlier in the same batch.',
+    schema: agentEditorBatchRequestSchema,
     mutating: true,
   },
   {
