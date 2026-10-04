@@ -122,12 +122,7 @@ export function duplicateGraphSelection<Node extends GraphClipboardNode, Edge ex
   offset = { x: 24, y: 24 },
 ): GraphClipboardPasteResult<Node, Edge> {
   const occupiedIds = new Set([...nodes.map((node) => node.id), ...edges.map((edge) => edge.id)]);
-  return pasteGraphSelection(
-    copyGraphSelection(nodes, edges, selectedNodeIds),
-    createId,
-    offset,
-    occupiedIds,
-  );
+  return pasteGraphSelection(copyGraphSelection(nodes, edges, selectedNodeIds), createId, offset, occupiedIds);
 }
 
 export function deleteGraphSelection<Node extends GraphClipboardNode, Edge extends GraphClipboardEdge>(

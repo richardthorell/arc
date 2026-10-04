@@ -93,7 +93,12 @@ describe('graph clipboard operations', () => {
   it('rejects pasted IDs that collide with the destination graph', () => {
     const copied = copyGraphSelection(nodes, edges, new Set(['a', 'b']));
     expect(() =>
-      pasteGraphSelection(copied, (kind) => (kind === 'node' ? 'occupied-node' : 'new-edge'), undefined, new Set(['occupied-node'])),
+      pasteGraphSelection(
+        copied,
+        (kind) => (kind === 'node' ? 'occupied-node' : 'new-edge'),
+        undefined,
+        new Set(['occupied-node']),
+      ),
     ).toThrow('generated unavailable node ID: occupied-node');
   });
 
