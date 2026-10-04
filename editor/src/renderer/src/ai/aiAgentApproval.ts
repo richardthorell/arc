@@ -71,6 +71,7 @@ const resultWithDecision = (
 };
 
 const abortedError = () => new Error('AI edit approval was cancelled');
+const approvalFailedError = () => new Error('ARC edit approval could not be granted');
 
 export class AiAgentApprovalCoordinator {
   private mode: AiAgentApprovalMode = 'ask';
@@ -81,7 +82,7 @@ export class AiAgentApprovalCoordinator {
   setMode(mode: AiAgentApprovalMode): void {
     this.mode = mode;
     if (mode === 'auto') {
-      for (const requestId of [...this.pending.keys()]) void this.approve(requestId);
+      for (const requestId of [...this.pending.keys()]) void this.autoApprove(requestId);
     }
   }
 
@@ -94,7 +95,7 @@ export class AiAgentApprovalCoordinator {
     if (signal?.aborted) throw abortedError();
 
     if (this.mode === 'auto') {
-      if (!(await this.options.approve(request.id))) throw new Error('ARC edit approval could not be granted');
+      if (!(await this.options.approve(request.id))) throw approvalFailedError();
       return resultWithDecision(result, request, 'approved');
     }
 
@@ -104,6 +105,7 @@ export class AiAgentApprovalCoordinator {
         if (!pending) return;
         this.pending.delete(request.id);
         pending.detachAbort();
+        void this.options.deny(request.id).catch(() => undefined);
         reject(abortedError());
       };
       if (signal) signal.addEventListener('abort', onAbort, { once: true });
@@ -133,7 +135,17 @@ export class AiAgentApprovalCoordinator {
     for (const [requestId, pending] of this.pending) {
       this.pending.delete(requestId);
       pending.detachAbort();
+      void this.options.deny(requestId).catch(() => undefined);
       pending.reject(abortedError());
+    }
+  }
+
+  private async autoApprove(requestId: string): Promise<void> {
+    try {
+      if (await this.approve(requestId)) return;
+      this.rejectPending(requestId, approvalFailedError());
+    } catch (error) {
+      this.rejectPending(requestId, error instanceof Error ? error : new Error(String(error)));
     }
   }
 
@@ -143,5 +155,13 @@ export class AiAgentApprovalCoordinator {
     this.pending.delete(requestId);
     pending.detachAbort();
     pending.resolve(resultWithDecision(pending.result, pending.request, decision));
+  }
+
+  private rejectPending(requestId: string, error: Error): void {
+    const pending = this.pending.get(requestId);
+    if (!pending) return;
+    this.pending.delete(requestId);
+    pending.detachAbort();
+    pending.reject(error);
   }
 }
