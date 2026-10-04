@@ -420,7 +420,11 @@ export class BuiltInAgentToolRegistry {
       }
     }
 
-    return serializeToolResult(name, entry.method, await this.adapter.invoke(entry.method, invokeParams));
+    return serializeToolResult(
+      name,
+      entry.method,
+      await this.adapter.invoke(entry.method, invokeParams),
+    );
   }
 }
 
