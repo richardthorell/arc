@@ -47,6 +47,7 @@ describe('AiAgentApprovalCoordinator', () => {
 
     await expect(coordinator.approve('request-1')).resolves.toBe(true);
     const result = await resultPromise;
+    expect(approve).toHaveBeenCalledTimes(1);
     expect(approve).toHaveBeenCalledWith('request-1');
     expect(JSON.parse(result.content)).toMatchObject({ id: 'request-1', state: 'approved' });
   });
@@ -61,8 +62,9 @@ describe('AiAgentApprovalCoordinator', () => {
     const resultPromise = coordinator.invokeTool(call);
     await Promise.resolve();
     await expect(coordinator.deny('request-1')).resolves.toBe(true);
-    await expect(resultPromise).resolves.toMatchObject({ operation: 'edit.request' });
-    expect(JSON.parse((await resultPromise).content)).toMatchObject({ state: 'denied' });
+    const result = await resultPromise;
+    expect(result).toMatchObject({ operation: 'edit.request' });
+    expect(JSON.parse(result.content)).toMatchObject({ state: 'denied' });
   });
 
   it('auto-approves through the harness without bypassing edit.request', async () => {
