@@ -10,8 +10,7 @@
 namespace arc::physics
 {
 
-template <typename Tag>
-class handle
+template <typename Tag> class handle
 {
 public:
     using value_type = std::uint64_t;
@@ -19,9 +18,18 @@ public:
     constexpr handle() noexcept = default;
     explicit constexpr handle(value_type value) noexcept : value_(value) {}
 
-    [[nodiscard]] constexpr value_type value() const noexcept { return value_; }
-    [[nodiscard]] constexpr bool valid() const noexcept { return value_ != 0; }
-    explicit constexpr operator bool() const noexcept { return valid(); }
+    [[nodiscard]] constexpr value_type value() const noexcept
+    {
+        return value_;
+    }
+    [[nodiscard]] constexpr bool valid() const noexcept
+    {
+        return value_ != 0;
+    }
+    explicit constexpr operator bool() const noexcept
+    {
+        return valid();
+    }
 
     friend constexpr bool operator==(handle, handle) noexcept = default;
 
