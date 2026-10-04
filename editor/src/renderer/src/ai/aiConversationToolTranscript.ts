@@ -46,15 +46,16 @@ export const recordConversationToolCall = (
 ): AiConversationToolReference[] => {
   const current = references ?? [];
   const index = current.findIndex((reference) => reference.toolCallId === call.id);
+  const existing = index >= 0 ? current[index] : undefined;
   const next: AiConversationToolReference = {
-    ...(index >= 0 ? current[index] : {}),
+    ...(existing ?? {}),
     toolCallId: call.id,
     name: call.name,
     state: 'pending',
     step: normalizeStep(agentStep),
     arguments: call.arguments,
     operation: call.name,
-    startedAt: index >= 0 ? current[index]?.startedAt ?? timestamp : timestamp,
+    startedAt: existing?.startedAt ?? timestamp,
   };
   if (index < 0) return [...current, next];
   return current.map((reference, candidate) => (candidate === index ? next : reference));
@@ -86,7 +87,7 @@ export const recordConversationToolResult = (
     ...(result.retryable !== undefined ? { retryable: result.retryable } : {}),
     summary: result.isError
       ? compactErrorSummary(text)
-      : truncated && result.originalBytes
+      : truncated && result.originalBytes !== undefined
         ? `Completed · result truncated from ${result.originalBytes.toLocaleString()} bytes`
         : 'Completed',
     startedAt: existing?.startedAt ?? timestamp,
