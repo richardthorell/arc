@@ -23,8 +23,11 @@ describe('renderAiChatMessageText', () => {
     expect(screen.getByText('bold')).toHaveProperty('tagName', 'STRONG');
     expect(screen.getByText('italic')).toHaveProperty('tagName', 'EM');
     expect(screen.getByText('old')).toHaveProperty('tagName', 'DEL');
-    expect(screen.getByText('inline code')).toHaveProperty('tagName', 'CODE');
-    expect(screen.getByText('Second line.')).toBeInTheDocument();
+    const inlineCode = screen.getByText('inline code');
+    expect(inlineCode).toHaveProperty('tagName', 'CODE');
+    const paragraph = inlineCode.closest('p');
+    expect(paragraph).toHaveTextContent('Second line.');
+    expect(paragraph?.querySelector('br')).toBeInTheDocument();
   });
 
   it('renders lists, blockquotes, fenced code, and tables', () => {
