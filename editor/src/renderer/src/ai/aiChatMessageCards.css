@@ -1,5 +1,15 @@
+.ai-chat-panel,
+.ai-chat-active,
+.ai-chat-home-center {
+  background-color: var(--arc-color-bg-field);
+}
+
 .ai-chat-message-list {
   gap: 18px;
+}
+
+.ai-chat-message-card {
+  min-width: 0;
 }
 
 .ai-chat-message-card.ui-agent-card {
@@ -58,7 +68,7 @@
 
 .ai-chat-message-card .ui-agent-text-card-content {
   font-family: var(--arc-font-ui);
-  font-size: var(--arc-text-sm);
+  font-size: var(--arc-text-md);
   font-weight: 500;
   line-height: 1.5;
 }
