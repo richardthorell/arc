@@ -9,7 +9,7 @@ import {
   ShieldCheck,
   Wrench,
 } from 'lucide-react';
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 
 import { UiAgentCard, type UiAgentCardProps, type UiAgentCardState } from './UiAgentCard';
 import { UiIconButton } from './UiIconButton';
@@ -86,6 +86,10 @@ export function UiAgentStructuredCard({
   const detailsId = useId();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const canCollapse = collapsible && Boolean(details);
+
+  useEffect(() => {
+    if (defaultExpanded) setExpanded(true);
+  }, [defaultExpanded]);
 
   return (
     <UiAgentCard
