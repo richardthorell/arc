@@ -46,4 +46,13 @@ describe('UiEditorToolbar', () => {
     expect(screen.queryByRole('toolbar')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Embedded actions')).toHaveAttribute('role', 'presentation');
   });
+
+  it('supports semantic section shells without duplicating toolbar structure', () => {
+    render(<UiEditorToolbar as="section" aria-label="Scene toolbar" left={<span>Play</span>} />);
+
+    const toolbar = screen.getByRole('toolbar', { name: 'Scene toolbar' });
+    expect(toolbar.tagName).toBe('SECTION');
+    expect(toolbar).toHaveClass('main-toolbar', 'ui-editor-toolbar');
+    expect(toolbar.querySelector('[data-toolbar-region="left"]')).toHaveTextContent('Play');
+  });
 });
