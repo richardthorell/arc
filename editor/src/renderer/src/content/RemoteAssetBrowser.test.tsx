@@ -119,9 +119,7 @@ describe('RemoteAssetBrowser', () => {
 
     const view = render(<RemoteAssetBrowser source={source} />);
     fireEvent.click(await view.findByRole('button', { name: /Granite Rock/ }));
-    await waitFor(() =>
-      expect(view.getByRole('combobox', { name: 'Remote asset format' })).toHaveTextContent('gltf'),
-    );
+    await waitFor(() => expect(view.getByRole('combobox', { name: 'Remote asset format' })).toHaveTextContent('gltf'));
     fireEvent.click(view.getByRole('button', { name: 'Import to Project' }));
     fireEvent.click(await view.findByRole('button', { name: 'Cancel' }));
 
