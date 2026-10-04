@@ -137,17 +137,35 @@ const assetSortOptions = [
   { value: 'state', label: 'State' },
 ];
 
-const relativeFolderPath = (assetPath: string, source: LocalBrowserSource, projectRootName: string) => {
-  const segments = parentFolder(assetPath).split('/').filter(Boolean);
+const relativeAssetPath = (assetPath: string, source: LocalBrowserSource, projectRootName: string) => {
+  const segments = cleanPath(assetPath).split('/').filter(Boolean);
   if (segments.length === 0) return '';
 
   const aliases = new Set(
-    (source === 'project' ? [projectRootName, 'Content'] : ['Engine', 'Builtin'])
+    (source === 'project'
+      ? [projectRootName, 'Content', projectRootName.toLocaleLowerCase() === 'engine' ? 'Builtin' : '']
+      : ['Engine', 'Builtin']
+    )
       .filter(Boolean)
       .map((value) => value.toLocaleLowerCase()),
   );
   const rootIndex = segments.findIndex((segment) => aliases.has(segment.replace(/:$/, '').toLocaleLowerCase()));
   return (rootIndex >= 0 ? segments.slice(rootIndex + 1) : segments).join('/');
+};
+
+const relativeFolderPath = (assetPath: string, source: LocalBrowserSource, projectRootName: string) =>
+  parentFolder(relativeAssetPath(assetPath, source, projectRootName));
+
+const assetIsWithinFolder = (
+  assetPath: string,
+  source: LocalBrowserSource,
+  projectRootName: string,
+  folder: string,
+) => {
+  const selected = normalizedPath(folder);
+  if (!selected) return true;
+  const relative = normalizedPath(relativeAssetPath(assetPath, source, projectRootName));
+  return relative === selected || relative.startsWith(`${selected}/`);
 };
 
 export const buildContentFolderTree = (
@@ -383,14 +401,14 @@ export function ContentBrowserPanel({
     if (browserSource === 'project') return projectAssets;
     return [];
   }, [browserSource, builtinAssets, projectAssets, virtualAssets]);
-  const searchPathPrefix = useMemo(() => {
-    if (isAssetVirtualViewKind(browserSource)) return '';
-    const root = browserSource === 'builtin' ? 'Engine' : contentRoot;
-    return folder ? `${root}/${cleanPath(folder)}` : root;
-  }, [browserSource, contentRoot, folder]);
+  const folderAssets = useMemo(() => {
+    if (isAssetVirtualViewKind(browserSource)) return scopedAssets;
+    const source = browserSource === 'builtin' ? 'builtin' : 'project';
+    return scopedAssets.filter((asset) => assetIsWithinFolder(asset.path, source, contentRootName, folder));
+  }, [browserSource, contentRootName, folder, scopedAssets]);
   const facetPopulation = useMemo(
-    () => searchAssetLibrary(scopedAssets, { text: search, pathPrefix: searchPathPrefix }).assets,
-    [scopedAssets, search, searchPathPrefix],
+    () => searchAssetLibrary(folderAssets, { text: search }).assets,
+    [folderAssets, search],
   );
   const metadataFacets = useMemo(
     () =>
@@ -430,9 +448,8 @@ export function ContentBrowserPanel({
   const filtered = useMemo(
     () =>
       [
-        ...searchAssetLibrary(scopedAssets, {
+        ...searchAssetLibrary(folderAssets, {
           text: search,
-          pathPrefix: searchPathPrefix,
           kinds: queryKinds,
           tags: tag === 'all' ? undefined : [tag],
         }).assets,
@@ -454,7 +471,7 @@ export function ContentBrowserPanel({
                 : right.status;
           return a.localeCompare(b) || left.id.localeCompare(right.id);
         }),
-    [kind, queryKinds, scopedAssets, search, searchPathPrefix, sort, state, tag],
+    [folderAssets, kind, queryKinds, search, sort, state, tag],
   );
   const activeOnlineSource = onlineSources.find((source) => source.id === browserSource) ?? null;
   const activeVirtualView = isAssetVirtualViewKind(browserSource)
