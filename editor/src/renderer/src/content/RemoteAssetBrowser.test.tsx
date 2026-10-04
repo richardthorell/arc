@@ -84,8 +84,10 @@ describe('RemoteAssetBrowser', () => {
 
     fireEvent.click(assetButton);
     await waitFor(() => expect(manifest).toHaveBeenCalledWith('polyhaven', 'rock'));
-    await waitFor(() => expect(view.getByLabelText('Remote asset resolution')).toHaveValue('2k'));
-    expect(view.getByLabelText('Remote asset format')).toHaveValue('gltf');
+    await waitFor(() =>
+      expect(view.getByRole('combobox', { name: 'Remote asset resolution' })).toHaveTextContent('2k'),
+    );
+    expect(view.getByRole('combobox', { name: 'Remote asset format' })).toHaveTextContent('gltf');
 
     fireEvent.click(view.getByRole('button', { name: 'Import to Project' }));
     await waitFor(() => expect(importToProject).toHaveBeenCalledTimes(1));
@@ -117,7 +119,9 @@ describe('RemoteAssetBrowser', () => {
 
     const view = render(<RemoteAssetBrowser source={source} />);
     fireEvent.click(await view.findByRole('button', { name: /Granite Rock/ }));
-    await waitFor(() => expect(view.getByLabelText('Remote asset format')).toHaveValue('gltf'));
+    await waitFor(() =>
+      expect(view.getByRole('combobox', { name: 'Remote asset format' })).toHaveTextContent('gltf'),
+    );
     fireEvent.click(view.getByRole('button', { name: 'Import to Project' }));
     fireEvent.click(await view.findByRole('button', { name: 'Cancel' }));
 
@@ -164,8 +168,10 @@ describe('RemoteAssetBrowser', () => {
     fireEvent.click(await view.findByRole('button', { name: /Granite Rock/ }));
     fireEvent.click(await view.findByRole('button', { name: /Pine Tree/ }));
 
-    await waitFor(() => expect(view.getByLabelText('Remote asset resolution')).toHaveValue('4k'));
-    expect(view.getByLabelText('Remote asset format')).toHaveValue('fbx');
+    await waitFor(() =>
+      expect(view.getByRole('combobox', { name: 'Remote asset resolution' })).toHaveTextContent('4k'),
+    );
+    expect(view.getByRole('combobox', { name: 'Remote asset format' })).toHaveTextContent('fbx');
 
     resolveRock({
       sourceId: 'polyhaven',
@@ -174,8 +180,8 @@ describe('RemoteAssetBrowser', () => {
     });
 
     await waitFor(() => expect(manifest).toHaveBeenCalledTimes(2));
-    expect(view.getByLabelText('Remote asset resolution')).toHaveValue('4k');
-    expect(view.getByLabelText('Remote asset format')).toHaveValue('fbx');
+    expect(view.getByRole('combobox', { name: 'Remote asset resolution' })).toHaveTextContent('4k');
+    expect(view.getByRole('combobox', { name: 'Remote asset format' })).toHaveTextContent('fbx');
     expect(view.getByRole('button', { name: /Pine Tree/ })).toHaveClass('selected');
   });
 });
