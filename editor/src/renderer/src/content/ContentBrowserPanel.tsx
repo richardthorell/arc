@@ -59,10 +59,13 @@ export function ContentBrowserPanel(props: Props) {
     availableScopes.find((scope) => scope.scope === scopeId) ??
     availableScopes.find((scope) => scope.scope === 'project') ??
     null;
-  const scopedProject =
-    props.project && activeScope
-      ? projectForScope(props.project, activeScope.scope, activeScope.assetIds)
-      : props.project;
+  const scopedProject = useMemo(
+    () =>
+      props.project && activeScope
+        ? projectForScope(props.project, activeScope.scope, activeScope.assetIds)
+        : props.project,
+    [activeScope, props.project],
+  );
   const projectAuthoring = activeScope?.scope === 'project' && activeScope.writable;
 
   const suppressNonProjectMutation = (event: SyntheticEvent) => {
@@ -110,7 +113,7 @@ export function ContentBrowserPanel(props: Props) {
         </nav>
       )}
       <div className="content-browser-scope-core">
-        <ContentBrowserPanelCore {...props} project={scopedProject} />
+        <ContentBrowserPanelCore key={activeScope?.scope ?? 'project'} {...props} project={scopedProject} />
       </div>
     </div>
   );

@@ -321,12 +321,15 @@ export function ContentBrowserPanel({
   }, [activeProjectRoot]);
 
   useEffect(() => {
-    setVirtualViewsLoaded(false);
     setBrowserSource('project');
     setSearchOriginSource('project');
     setFolder('');
     setSearch('');
     setPendingDownloadedPaths([]);
+  }, [activeProjectRoot]);
+
+  useEffect(() => {
+    setVirtualViewsLoaded(false);
     if (!activeProjectRoot) {
       setVirtualViews(defaultAssetVirtualViews());
       return;
