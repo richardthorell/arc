@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Box, FileBox, Image, Layers3 } from 'lucide-react';
+import { Box, FileBox, Layers3 } from 'lucide-react';
 
 import { useEditorReferenceController } from '../services/EditorReferenceContext';
 import { parseEditorReference, type ResolvedEditorReference } from '../services/editorReferences';
