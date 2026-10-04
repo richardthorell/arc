@@ -12,6 +12,7 @@ import type {
 import { assertAiRuntimeRequestSafeForProvider } from '../../../common/aiSecurityPolicy';
 import type { EditorSettingDescriptor, EditorSettingsSnapshot } from '../../../common/editorWorkflowTypes';
 import type { AiModelProvider } from './aiChat';
+import { runAiAgentToolLoop, type AiAgentToolInvoker, type AiAgentToolLoopOptions } from './aiAgentToolLoop';
 import { resolveAiRuntimeInstructions } from './aiInstructionResolver';
 import { streamOpenAiRuntime } from './openAiRuntimeProvider';
 
@@ -76,6 +77,12 @@ const defaultAgentTools = async (): Promise<AiToolDefinition[]> => {
   }
 };
 
+const defaultAgentToolInvoker: AiAgentToolInvoker = async (call) => {
+  const bridge = typeof window === 'undefined' ? undefined : window.arcAiRuntime;
+  if (!bridge?.agent?.invokeTool) throw new Error('Built-in agent tool bridge is unavailable');
+  return bridge.agent.invokeTool(call.name, call.arguments);
+};
+
 const withAgentTools = (request: AiRuntimeRequest, agentTools: readonly AiToolDefinition[]): AiRuntimeRequest => {
   if (!agentTools.length) return request;
   const tools = new Map<string, AiToolDefinition>();
@@ -84,9 +91,14 @@ const withAgentTools = (request: AiRuntimeRequest, agentTools: readonly AiToolDe
   return { ...request, tools: [...tools.values()] };
 };
 
+const shouldAttachAgentTools = (request: AiRuntimeRequest): boolean =>
+  request.metadata?.purpose !== 'conversation-caption';
+
 export type RuntimeAiProviderOptions = {
   instructionSources?: () => Promise<AiInstructionSourceSnapshot>;
   agentTools?: () => Promise<AiToolDefinition[]>;
+  agentInvokeTool?: AiAgentToolInvoker;
+  agentLoop?: AiAgentToolLoopOptions;
   onInstructionResolution?: (diagnostics: AiInstructionResolutionDiagnostics) => void;
 };
 
@@ -98,12 +110,21 @@ const withResolvedInstructions = (
   (async function* () {
     const [sources, agentTools] = await Promise.all([
       (options.instructionSources ?? defaultInstructionSources)(),
-      (options.agentTools ?? defaultAgentTools)(),
+      shouldAttachAgentTools(request) ? (options.agentTools ?? defaultAgentTools)() : Promise.resolve([]),
     ]);
     if (request.signal?.aborted) return;
     const resolution = resolveAiRuntimeInstructions(withAgentTools(request, agentTools), sources);
     options.onInstructionResolution?.(resolution.diagnostics);
-    yield* execute(resolution.request);
+    if (!agentTools.length) {
+      yield* execute(resolution.request);
+      return;
+    }
+    yield* runAiAgentToolLoop(
+      resolution.request,
+      execute,
+      options.agentInvokeTool ?? defaultAgentToolInvoker,
+      options.agentLoop,
+    );
   })();
 
 export const runtimeAiProvidersFromSettings = (
