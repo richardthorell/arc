@@ -1,10 +1,14 @@
 #include <arc/editor/arc_host.h>
+#include <arc/render/render.h>
 
 #include <catch2/catch_test_macros.hpp>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <filesystem>
+#include <memory>
+#include <string>
+#include <vector>
 
 TEST_CASE("agent selection uses the native editor selection state and event")
 {
@@ -32,7 +36,8 @@ TEST_CASE("agent selection uses the native editor selection state and event")
     REQUIRE(selected.selection_count == 1);
     REQUIRE(selected.selected_guids == std::vector<std::string>{first_guid});
 
-    const auto selected_query = host->query(arc::editor::host_selected_entity_query{});
+    const auto selected_query = host->query(arc::editor::host_query_envelope{
+        .request_id = 1, .payload = arc::editor::host_selected_entity_query{}});
     REQUIRE(selected_query.succeeded);
     const auto selected_json = nlohmann::json::parse(selected_query.payload_json);
     REQUIRE(selected_json.at("selectionCount") == 1);
