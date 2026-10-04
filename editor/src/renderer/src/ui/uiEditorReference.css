@@ -1,0 +1,76 @@
+.ui-editor-reference {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px 2px 4px;
+  border: 1px solid var(--arc-color-border);
+  border-radius: 6px;
+  background: var(--arc-color-bg-field);
+  color: var(--arc-color-text);
+  font: inherit;
+  line-height: 1.2;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.ui-editor-reference:hover:not(:disabled) {
+  border-color: var(--arc-color-border-strong);
+  background: var(--arc-color-bg-hover);
+}
+
+.ui-editor-reference:focus-visible {
+  outline: 1px solid var(--arc-color-accent);
+  outline-offset: 1px;
+}
+
+.ui-editor-reference:disabled,
+.ui-editor-reference.is-disabled {
+  cursor: default;
+  opacity: 0.62;
+}
+
+.ui-editor-reference-icon,
+.ui-editor-reference-thumbnail {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  border-radius: 4px;
+}
+
+.ui-editor-reference-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--arc-color-bg-elevated);
+  color: var(--arc-color-text-muted);
+}
+
+.ui-editor-reference-thumbnail {
+  object-fit: cover;
+  background: var(--arc-color-bg-elevated);
+}
+
+.ui-editor-reference-copy {
+  display: inline-flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.ui-editor-reference-label,
+.ui-editor-reference-subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-editor-reference-label {
+  color: var(--arc-color-text);
+}
+
+.ui-editor-reference-subtitle {
+  color: var(--arc-color-text-muted);
+  font-size: var(--arc-text-xs);
+}
