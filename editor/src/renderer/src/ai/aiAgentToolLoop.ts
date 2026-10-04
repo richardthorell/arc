@@ -73,7 +73,8 @@ const executeTool = async (
   signal?: AbortSignal,
 ): Promise<AiToolResult> => {
   try {
-    return successfulToolResult(call, await invokeTool(call, signal));
+    const result = signal ? await invokeTool(call, signal) : await invokeTool(call);
+    return successfulToolResult(call, result);
   } catch (error) {
     return normalizedToolFailure(call, error);
   }
