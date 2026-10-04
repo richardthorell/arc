@@ -38,6 +38,8 @@ export { UiDrawerPanel } from './UiDrawerPanel';
 export type { UiDrawerPanelProps } from './UiDrawerPanel';
 export { UiDropdown } from './UiDropdown';
 export type { UiDropdownOption } from './UiDropdown';
+export { UiEditorReference } from './UiEditorReference';
+export type { UiEditorReferenceProps } from './UiEditorReference';
 export { UiEditorToolbar, UiToolbarGroup, UiToolbarRegion, UiToolbarSeparator } from './UiEditorToolbar';
 export type { UiEditorToolbarProps, UiToolbarRegionProps } from './UiEditorToolbar';
 export { editorToolbarPlacementFor, editorToolbarPrimaryActions } from './editorToolbarActionContract';
