@@ -19,15 +19,36 @@ export type AiAgentToolLoopOptions = Readonly<{
   stepTimeoutMs?: number;
 }>;
 
+const revisionSensitiveTools = new Set(['edit.begin', 'edit.apply', 'edit.commit', 'history.undo', 'history.redo']);
+
 const runtimeMessageId = (prefix: string, step: number, index = 0): string =>
   `${prefix}-${step.toString(36)}-${index.toString(36)}-${Date.now().toString(36)}`;
 
-const normalizedToolFailure = (call: AiToolCall, error: unknown): AiToolResult => ({
-  toolCallId: call.id,
-  name: call.name,
-  content: `ARC tool error: ${redactAiDiagnosticText(error instanceof Error ? error.message : String(error))}`,
-  isError: true,
-});
+const isRevisionConflict = (call: AiToolCall, message: string): boolean =>
+  revisionSensitiveTools.has(call.name) && /scene revision/iu.test(message);
+
+const normalizedToolFailure = (call: AiToolCall, error: unknown): AiToolResult => {
+  const message = redactAiDiagnosticText(error instanceof Error ? error.message : String(error));
+  if (isRevisionConflict(call, message)) {
+    return {
+      toolCallId: call.id,
+      name: call.name,
+      content:
+        `ARC tool revision conflict: ${message}. ` +
+        'Refresh authoritative scene state with scene.overview. If an edit session is still active, use the revision reported by that session or cancel and begin a new transaction before retrying the mutation.',
+      isError: true,
+      errorCode: 'revision_conflict',
+      retryable: true,
+    };
+  }
+  return {
+    toolCallId: call.id,
+    name: call.name,
+    content: `ARC tool error: ${message}`,
+    isError: true,
+    errorCode: 'tool_error',
+  };
+};
 
 const successfulToolResult = (call: AiToolCall, result: BuiltInAgentToolExecutionResult): AiToolResult => ({
   toolCallId: call.id,
