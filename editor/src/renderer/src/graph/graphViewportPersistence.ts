@@ -10,8 +10,7 @@ export type PersistedGraphViewport = {
   zoom: number;
 };
 
-const isFiniteNumber = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value);
+const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 
 export const serializeGraphViewport = (viewport: GraphViewport): PersistedGraphViewport => ({
   version: GRAPH_VIEWPORT_STATE_VERSION,
@@ -20,17 +19,12 @@ export const serializeGraphViewport = (viewport: GraphViewport): PersistedGraphV
   zoom: viewport.zoom,
 });
 
-export const parseGraphViewport = (
-  value: unknown,
-  minimumZoom = 0.35,
-  maximumZoom = 1.8,
-): GraphViewport | null => {
+export const parseGraphViewport = (value: unknown, minimumZoom = 0.35, maximumZoom = 1.8): GraphViewport | null => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
 
   const candidate = value as Partial<PersistedGraphViewport>;
   if (candidate.version !== GRAPH_VIEWPORT_STATE_VERSION) return null;
-  if (!isFiniteNumber(candidate.x) || !isFiniteNumber(candidate.y) || !isFiniteNumber(candidate.zoom))
-    return null;
+  if (!isFiniteNumber(candidate.x) || !isFiniteNumber(candidate.y) || !isFiniteNumber(candidate.zoom)) return null;
   if (candidate.zoom <= 0) return null;
 
   return {

@@ -29,9 +29,11 @@ describe('graph viewport persistence', () => {
   });
 
   it('clamps persisted zoom to the shared navigation range', () => {
-    expect(
-      parseGraphViewport({ version: GRAPH_VIEWPORT_STATE_VERSION, x: 0, y: 0, zoom: 9 }),
-    ).toEqual({ x: 0, y: 0, zoom: 1.8 });
+    expect(parseGraphViewport({ version: GRAPH_VIEWPORT_STATE_VERSION, x: 0, y: 0, zoom: 9 })).toEqual({
+      x: 0,
+      y: 0,
+      zoom: 1.8,
+    });
   });
 
   it.each([
