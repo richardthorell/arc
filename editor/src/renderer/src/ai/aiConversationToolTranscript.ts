@@ -1,13 +1,5 @@
-import type {
-  AiConversationMessage,
-  AiConversationToolReference,
-} from '../../../common/aiConversationTypes';
-import {
-  textContent,
-  type AiRuntimeMessage,
-  type AiToolCall,
-  type AiToolResult,
-} from '../../../common/aiRuntimeTypes';
+import type { AiConversationMessage, AiConversationToolReference } from '../../../common/aiConversationTypes';
+import { textContent, type AiRuntimeMessage, type AiToolCall, type AiToolResult } from '../../../common/aiRuntimeTypes';
 
 export const AI_CONVERSATION_TOOL_RESULT_MAX_CHARACTERS = 16 * 1024;
 
@@ -128,13 +120,12 @@ export const runtimeMessagesForConversationMessage = (
   message: AiConversationMessage,
   baseMessage?: AiRuntimeMessage,
 ): AiRuntimeMessage[] => {
-  const base: AiRuntimeMessage =
-    baseMessage ?? {
-      id: message.id,
-      role: message.role,
-      content: [textContent(message.content)],
-      createdAt: message.createdAt,
-    };
+  const base: AiRuntimeMessage = baseMessage ?? {
+    id: message.id,
+    role: message.role,
+    content: [textContent(message.content)],
+    createdAt: message.createdAt,
+  };
   if (message.role !== 'assistant') return [base];
 
   const replayable = replayableReferences(message);

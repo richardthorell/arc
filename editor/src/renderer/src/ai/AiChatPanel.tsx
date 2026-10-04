@@ -314,12 +314,7 @@ export function AiChatPanel({
           const timestamp = new Date().toISOString();
           updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
             ...message,
-            toolReferences: recordConversationToolCall(
-              message.toolReferences,
-              event.call,
-              event.agentStep,
-              timestamp,
-            ),
+            toolReferences: recordConversationToolCall(message.toolReferences, event.call, event.agentStep, timestamp),
           }));
           continue;
         }
@@ -342,12 +337,7 @@ export function AiChatPanel({
             ...message,
             content: message.content ? `${message.content}\n\n${event.message}` : event.message,
             state: 'error',
-            toolReferences: finishPendingConversationTools(
-              message.toolReferences,
-              'error',
-              event.message,
-              timestamp,
-            ),
+            toolReferences: finishPendingConversationTools(message.toolReferences, 'error', event.message, timestamp),
           }));
           return { completed: false, text: responseText };
         }
