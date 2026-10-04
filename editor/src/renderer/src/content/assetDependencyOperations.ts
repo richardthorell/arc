@@ -63,7 +63,8 @@ const normalizeAssetPath = (path: string) => {
   const normalized = path.replace(/\\/g, '/').replace(/^\.\//, '');
   if (normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized))
     throw new Error(`Asset path must be relative: ${path}`);
-  if (normalized.split('/').includes('..')) throw new Error(`Asset path cannot traverse outside the asset root: ${path}`);
+  if (normalized.split('/').includes('..'))
+    throw new Error(`Asset path cannot traverse outside the asset root: ${path}`);
   return normalized;
 };
 
