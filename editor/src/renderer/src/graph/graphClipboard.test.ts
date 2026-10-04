@@ -87,7 +87,20 @@ describe('graph clipboard operations', () => {
     ).toThrow('duplicate node ID: a');
 
     const copied = copyGraphSelection(nodes, edges, new Set(['a', 'b']));
-    expect(() => pasteGraphSelection(copied, () => 'same-id')).toThrow('generated duplicate node ID: same-id');
+    expect(() => pasteGraphSelection(copied, () => 'same-id')).toThrow('generated unavailable node ID: same-id');
+  });
+
+  it('rejects pasted IDs that collide with the destination graph', () => {
+    const copied = copyGraphSelection(nodes, edges, new Set(['a', 'b']));
+    expect(() =>
+      pasteGraphSelection(copied, (kind) => (kind === 'node' ? 'occupied-node' : 'new-edge'), undefined, new Set(['occupied-node'])),
+    ).toThrow('generated unavailable node ID: occupied-node');
+  });
+
+  it('rejects duplicate IDs that collide with existing graph content', () => {
+    expect(() => duplicateGraphSelection(nodes, edges, new Set(['a']), () => 'b')).toThrow(
+      'generated unavailable node ID: b',
+    );
   });
 
   it('deletes selected nodes and every incident connection without mutating inputs', () => {
