@@ -55,8 +55,9 @@ export const withMaterialParameterMetadata = (
   }
 
   if (Object.keys(parameters).length === 0) {
-    const { parameterMetadata: _parameterMetadata, ...rest } = asset;
-    return rest;
+    const cleaned = { ...asset };
+    delete cleaned.parameterMetadata;
+    return cleaned;
   }
   return {
     ...asset,
