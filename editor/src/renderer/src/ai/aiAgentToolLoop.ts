@@ -12,10 +12,7 @@ export const AI_AGENT_MAX_STEPS = 8;
 export const AI_AGENT_STEP_TIMEOUT_MS = 60_000;
 
 export type AiAgentModelExecutor = (request: AiRuntimeRequest) => AsyncIterable<AiRuntimeStreamEvent>;
-export type AiAgentToolInvoker = (
-  call: AiToolCall,
-  signal?: AbortSignal,
-) => Promise<BuiltInAgentToolExecutionResult>;
+export type AiAgentToolInvoker = (call: AiToolCall, signal?: AbortSignal) => Promise<BuiltInAgentToolExecutionResult>;
 
 export type AiAgentToolLoopOptions = Readonly<{
   maximumSteps?: number;

@@ -1,21 +1,6 @@
-import {
-  Asterisk,
-  ArrowLeft,
-  Bot,
-  Check,
-  Plus,
-  Send,
-  ShieldCheck,
-  Sparkles,
-  Square,
-  X,
-  Zap,
-} from 'lucide-react';
+import { Asterisk, ArrowLeft, Bot, Check, Plus, Send, ShieldCheck, Sparkles, Square, X, Zap } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import type {
-  AiConversationContextReference,
-  AiConversationToolReference,
-} from '../../../common/aiConversationTypes';
+import type { AiConversationContextReference, AiConversationToolReference } from '../../../common/aiConversationTypes';
 import { requestSettingsDialogOpen } from '../settings/settingsDialogRoute';
 import {
   UiAgentCard,
