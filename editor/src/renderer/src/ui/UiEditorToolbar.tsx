@@ -25,8 +25,12 @@ export const UiEditorToolbar = forwardRef<HTMLElement, UiEditorToolbarProps>(fun
   ref,
 ) {
   const classes = ['main-toolbar', 'ui-editor-toolbar', className].filter(Boolean).join(' ');
+  const setRef = (element: HTMLElement | null) => {
+    if (typeof ref === 'function') ref(element);
+    else if (ref) ref.current = element;
+  };
   return (
-    <Component className={classes} ref={ref} role={role} {...props}>
+    <Component className={classes} ref={setRef} role={role} {...props}>
       <UiToolbarRegion region="left">{left}</UiToolbarRegion>
       <UiToolbarRegion region="center">{center}</UiToolbarRegion>
       <UiToolbarRegion region="right">{right}</UiToolbarRegion>
