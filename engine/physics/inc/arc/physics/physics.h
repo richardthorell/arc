@@ -10,8 +10,39 @@
 namespace arc::physics
 {
 
-using body_id = std::uint64_t;
-inline constexpr body_id invalid_body_id = 0;
+template <typename Tag>
+class handle
+{
+public:
+    using value_type = std::uint64_t;
+
+    constexpr handle() noexcept = default;
+    explicit constexpr handle(value_type value) noexcept : value_(value) {}
+
+    [[nodiscard]] constexpr value_type value() const noexcept { return value_; }
+    [[nodiscard]] constexpr bool valid() const noexcept { return value_ != 0; }
+    explicit constexpr operator bool() const noexcept { return valid(); }
+
+    friend constexpr bool operator==(handle, handle) noexcept = default;
+
+private:
+    value_type value_ = 0;
+};
+
+struct world_handle_tag;
+struct body_handle_tag;
+struct shape_handle_tag;
+struct material_handle_tag;
+
+using world_handle = handle<world_handle_tag>;
+using body_handle = handle<body_handle_tag>;
+using shape_handle = handle<shape_handle_tag>;
+using material_handle = handle<material_handle_tag>;
+
+// Keep the existing body identifier name as the public compatibility spelling while
+// the backend-neutral handle contract grows around it.
+using body_id = body_handle;
+inline constexpr body_id invalid_body_id{};
 
 enum class body_motion : std::uint8_t
 {
