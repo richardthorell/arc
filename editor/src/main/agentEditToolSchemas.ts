@@ -97,14 +97,8 @@ export const agentEditValueSchemas = {
     .describe('instantiatePrefab: project-relative .arcprefab path and optional parentGuid'),
 } as const satisfies Record<AgentEditAction, z.ZodType<unknown>>;
 
-const valueVariants = agentEditActions.map(
-  (action) => agentEditValueSchemas[action],
-);
-type AgentEditValueVariants = [
-  z.ZodType<unknown>,
-  z.ZodType<unknown>,
-  ...z.ZodType<unknown>[],
-];
+const valueVariants = agentEditActions.map((action) => agentEditValueSchemas[action]);
+type AgentEditValueVariants = [z.ZodType<unknown>, z.ZodType<unknown>, ...z.ZodType<unknown>[]];
 
 export const agentEditValueSchema = z
   .union(valueVariants as unknown as AgentEditValueVariants)

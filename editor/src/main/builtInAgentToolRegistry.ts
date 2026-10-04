@@ -403,10 +403,7 @@ export class BuiltInAgentToolRegistry {
       try {
         invokeParams = {
           ...params,
-          value: toJsonValue(
-            validateAgentEditValue(action as AgentEditAction, params.value),
-            'tool arguments.value',
-          ),
+          value: toJsonValue(validateAgentEditValue(action as AgentEditAction, params.value), 'tool arguments.value'),
         };
       } catch (error) {
         if (error instanceof z.ZodError) {
@@ -420,11 +417,7 @@ export class BuiltInAgentToolRegistry {
       }
     }
 
-    return serializeToolResult(
-      name,
-      entry.method,
-      await this.adapter.invoke(entry.method, invokeParams),
-    );
+    return serializeToolResult(name, entry.method, await this.adapter.invoke(entry.method, invokeParams));
   }
 }
 
