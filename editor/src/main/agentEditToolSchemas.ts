@@ -33,10 +33,7 @@ export const agentEditValueSchemas = {
     .object({ guid: entityGuid, active: z.boolean() })
     .strict()
     .describe('setActive: target entity guid and active state'),
-  setTag: z
-    .object({ guid: entityGuid, tag: z.string() })
-    .strict()
-    .describe('setTag: target entity guid and tag'),
+  setTag: z.object({ guid: entityGuid, tag: z.string() }).strict().describe('setTag: target entity guid and tag'),
   setMobility: z
     .object({ guid: entityGuid, mobility: z.string().min(1) })
     .strict()

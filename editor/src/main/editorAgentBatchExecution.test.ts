@@ -49,11 +49,9 @@ class BatchHost implements AgentHarnessHost {
 const beginApprovedEdit = async (harness: EditorAgentHarness) => {
   const request = harness.requestEdit('writer', 'Batch scene edit');
   harness.approveEdit(request.id);
-  return (await harness.invoke(
-    'edit.begin',
-    { label: 'Batch scene edit', expectedSceneRevision: 4 },
-    'writer',
-  )) as { id: string };
+  return (await harness.invoke('edit.begin', { label: 'Batch scene edit', expectedSceneRevision: 4 }, 'writer')) as {
+    id: string;
+  };
 };
 
 describe('EditorAgentHarness editor.applyBatch', () => {
@@ -101,11 +99,7 @@ describe('EditorAgentHarness editor.applyBatch', () => {
     expect(host.commands[3].revision).toBe(6);
     expect(host.commands[2].edit).toMatchObject({ phase: 'update', label: 'Batch scene edit' });
 
-    await harness.invoke(
-      'edit.commit',
-      { editSessionId: session.id, expectedSceneRevision: 7 },
-      'writer',
-    );
+    await harness.invoke('edit.commit', { editSessionId: session.id, expectedSceneRevision: 7 }, 'writer');
     expect(host.commands.at(-1)?.type).toBe('history.commitTransaction');
   });
 

@@ -37,9 +37,7 @@ const entitySetTransform = z
   .object({
     type: z.literal('entity.setTransform'),
     target: agentBatchEntityTargetSchema,
-    transform: z
-      .object({ position: vector3, rotation: quaternion, scale: vector3 })
-      .strict(),
+    transform: z.object({ position: vector3, rotation: quaternion, scale: vector3 }).strict(),
   })
   .strict();
 const entitySetRenderLayer = z

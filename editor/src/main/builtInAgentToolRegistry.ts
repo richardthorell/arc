@@ -400,12 +400,17 @@ export class BuiltInAgentToolRegistry {
       if (typeof action !== 'string' || !capabilities.editActions.includes(action))
         throw new Error(`Edit action '${String(action)}' is not available from EditorAgentHarness`);
       try {
-        params.value = toJsonValue(validateAgentEditValue(action as AgentEditAction, params.value), 'tool arguments.value');
+        params.value = toJsonValue(
+          validateAgentEditValue(action as AgentEditAction, params.value),
+          'tool arguments.value',
+        );
       } catch (error) {
         if (error instanceof z.ZodError) {
           const issue = error.issues[0];
           const path = issue?.path.length ? `.${issue.path.join('.')}` : '';
-          throw new Error(`Invalid arguments for edit.apply at value${path}: ${issue?.message ?? 'schema validation failed'}`);
+          throw new Error(
+            `Invalid arguments for edit.apply at value${path}: ${issue?.message ?? 'schema validation failed'}`,
+          );
         }
         throw error;
       }

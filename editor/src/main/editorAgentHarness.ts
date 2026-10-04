@@ -30,7 +30,8 @@ const requireGuid = (value: unknown): string => {
 
 const requireSceneRevision = (value: unknown): number => {
   const revision = Number(value);
-  if (!Number.isSafeInteger(revision) || revision <= 0) throw new Error('Batch operation did not return a valid sceneRevision');
+  if (!Number.isSafeInteger(revision) || revision <= 0)
+    throw new Error('Batch operation did not return a valid sceneRevision');
   return revision;
 };
 
