@@ -17,7 +17,8 @@ export type WorkbenchEditorReferenceActions = {
   highlightAsset?: (asset: AssetItem, active: boolean) => void | Promise<void>;
 };
 
-const titleCase = (value: string) => value.replace(/(^|[-_])([a-z])/gu, (_, prefix, letter) => `${prefix ? ' ' : ''}${letter.toUpperCase()}`);
+const titleCase = (value: string) =>
+  value.replace(/(^|[-_])([a-z])/gu, (_, prefix, letter) => `${prefix ? ' ' : ''}${letter.toUpperCase()}`);
 
 export const findReferencedEntity = (project: ProjectSnapshot | null, guid: string): SceneEntity | null =>
   project ? (flattenScene(project.scene).find((entity) => entity.guid === guid) ?? null) : null;

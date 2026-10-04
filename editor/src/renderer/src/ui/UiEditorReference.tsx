@@ -39,9 +39,7 @@ export function UiEditorReference({ href, children, className }: UiEditorReferen
   if (!reference) return <span className={className}>{children ?? href}</span>;
 
   const label = children ?? resolved?.label ?? reference.id;
-  const classes = ['ui-editor-reference', className, resolved?.disabled ? 'is-disabled' : '']
-    .filter(Boolean)
-    .join(' ');
+  const classes = ['ui-editor-reference', className, resolved?.disabled ? 'is-disabled' : ''].filter(Boolean).join(' ');
 
   return (
     <button

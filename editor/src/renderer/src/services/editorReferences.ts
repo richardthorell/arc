@@ -39,9 +39,15 @@ export const editorReferenceUri = (reference: EditorReference): string =>
   `arc://${reference.kind}/${encodeURIComponent(reference.id)}`;
 
 export type EditorReferenceHandlers = {
-  resolveEntity?: (id: string) => Omit<ResolvedEditorReference, 'reference'> | null | Promise<Omit<ResolvedEditorReference, 'reference'> | null>;
-  resolveAsset?: (id: string) => Omit<ResolvedEditorReference, 'reference'> | null | Promise<Omit<ResolvedEditorReference, 'reference'> | null>;
-  resolveScene?: (id: string) => Omit<ResolvedEditorReference, 'reference'> | null | Promise<Omit<ResolvedEditorReference, 'reference'> | null>;
+  resolveEntity?: (
+    id: string,
+  ) => Omit<ResolvedEditorReference, 'reference'> | null | Promise<Omit<ResolvedEditorReference, 'reference'> | null>;
+  resolveAsset?: (
+    id: string,
+  ) => Omit<ResolvedEditorReference, 'reference'> | null | Promise<Omit<ResolvedEditorReference, 'reference'> | null>;
+  resolveScene?: (
+    id: string,
+  ) => Omit<ResolvedEditorReference, 'reference'> | null | Promise<Omit<ResolvedEditorReference, 'reference'> | null>;
   activateEntity?: (id: string) => void | Promise<void>;
   activateAsset?: (id: string) => void | Promise<void>;
   activateScene?: (id: string) => void | Promise<void>;
@@ -53,10 +59,8 @@ export type EditorReferenceHandlers = {
   highlightScene?: (id: string, active: boolean) => void | Promise<void>;
 };
 
-const handlerFor = <T>(
-  reference: EditorReference,
-  handlers: Partial<Record<EditorReferenceKind, T>>,
-): T | undefined => handlers[reference.kind];
+const handlerFor = <T>(reference: EditorReference, handlers: Partial<Record<EditorReferenceKind, T>>): T | undefined =>
+  handlers[reference.kind];
 
 export const createEditorReferenceController = (handlers: EditorReferenceHandlers): EditorReferenceController => ({
   resolve: async (reference) => {
@@ -84,11 +88,12 @@ export const createEditorReferenceController = (handlers: EditorReferenceHandler
       scene: handlers.focusScene,
     });
     if (focus) await focus(reference.id);
-    else await handlerFor(reference, {
-      entity: handlers.activateEntity,
-      asset: handlers.activateAsset,
-      scene: handlers.activateScene,
-    })?.(reference.id);
+    else
+      await handlerFor(reference, {
+        entity: handlers.activateEntity,
+        asset: handlers.activateAsset,
+        scene: handlers.activateScene,
+      })?.(reference.id);
   },
   highlight: async (reference, active) => {
     const highlight = handlerFor(reference, {
