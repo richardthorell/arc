@@ -174,4 +174,27 @@ describe('ContentBrowserPanel logical scopes', () => {
     expect(within(contentPath).getByRole('button', { name: 'Props' })).toBeInTheDocument();
     expect(view.getByText('Project Rock')).toBeInTheDocument();
   });
+
+  it('shows host asset-root-relative paths inside project and built-in folders', () => {
+    const project = {
+      ...baseProject,
+      assets: baseProject.assets.map((asset) =>
+        asset.scope === 'project'
+          ? { ...asset, path: 'Props/rock.glb', sourcePath: 'Content/Props/rock.glb' }
+          : asset.scope === 'builtin'
+            ? { ...asset, path: 'builtin/Materials/grid.arcmat' }
+            : asset,
+      ),
+    };
+    const view = renderBrowser(project);
+
+    expect(view.getByText('Project Rock')).toBeInTheDocument();
+    fireEvent.click(view.getByText('Props'));
+    expect(view.getByText('Project Rock')).toBeInTheDocument();
+
+    fireEvent.click(view.getByRole('button', { name: 'Built-in Read only' }));
+    expect(view.getByText('Built-in Grid')).toBeInTheDocument();
+    fireEvent.click(view.getByText('Materials'));
+    expect(view.getByText('Built-in Grid')).toBeInTheDocument();
+  });
 });
