@@ -395,15 +395,19 @@ export class BuiltInAgentToolRegistry {
       throw new Error(`Invalid arguments for ${name}${path}: ${issue?.message ?? 'schema validation failed'}`);
     }
     const params = toJsonObject(parsed.data, 'tool arguments');
+    let invokeParams = params;
     if (entry.method === 'edit.apply') {
       const action = params.action;
       if (typeof action !== 'string' || !capabilities.editActions.includes(action))
         throw new Error(`Edit action '${String(action)}' is not available from EditorAgentHarness`);
       try {
-        params.value = toJsonValue(
-          validateAgentEditValue(action as AgentEditAction, params.value),
-          'tool arguments.value',
-        );
+        invokeParams = {
+          ...params,
+          value: toJsonValue(
+            validateAgentEditValue(action as AgentEditAction, params.value),
+            'tool arguments.value',
+          ),
+        };
       } catch (error) {
         if (error instanceof z.ZodError) {
           const issue = error.issues[0];
@@ -416,7 +420,7 @@ export class BuiltInAgentToolRegistry {
       }
     }
 
-    return serializeToolResult(name, entry.method, await this.adapter.invoke(entry.method, params));
+    return serializeToolResult(name, entry.method, await this.adapter.invoke(entry.method, invokeParams));
   }
 }
 
