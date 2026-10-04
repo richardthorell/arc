@@ -45,7 +45,20 @@ const conversation = (id: string, content = 'Hello'): AiStoredConversation => ({
       modelId: 'openai:gpt-5.6-sol',
       modelLabel: 'GPT-5.6 Sol',
       toolReferences: [
-        { toolCallId: 'call-1', name: 'scene.getEntity', state: 'complete', summary: 'Read cabin entity' },
+        {
+          toolCallId: 'call-1',
+          name: 'scene.getEntity',
+          state: 'complete',
+          summary: 'Completed',
+          step: 0,
+          arguments: { guid: 'entity-guid' },
+          operation: 'scene.getEntity',
+          resultContent: '{"name":"Cabin"}',
+          resultTruncated: false,
+          originalBytes: 16,
+          startedAt: '2026-10-01T20:00:00.250Z',
+          completedAt: '2026-10-01T20:00:00.500Z',
+        },
       ],
     },
   ],
@@ -75,27 +88,41 @@ describe('AI project conversation store', () => {
     expect(aiProjectConversationStorageKey(projectA)).not.toBe(aiProjectConversationStorageKey(projectB));
   });
 
-  it('persists future context, tool, summary, and UI-state fields without credentials', () => {
+  it('persists context, durable tool transcript, summary, and UI-state fields without credentials', () => {
     const snapshot = saveAiConversationStore(projectA, [conversation('a')], {
       activeConversationId: 'a',
       selectedModelId: 'openai:gpt-5.6-sol',
     });
     const serialized = localStorage.getItem(aiProjectConversationStorageKey(projectA)) ?? '';
+    const tool = snapshot.conversations[0].messages[1].toolReferences?.[0];
 
     expect(snapshot.conversations[0].summary?.text).toBe('Summary');
     expect(snapshot.conversations[0].pinnedContext?.[0].stableId).toBe('asset-guid');
-    expect(snapshot.conversations[0].messages[1].toolReferences?.[0].name).toBe('scene.getEntity');
+    expect(tool).toMatchObject({
+      name: 'scene.getEntity',
+      operation: 'scene.getEntity',
+      arguments: { guid: 'entity-guid' },
+      resultContent: '{"name":"Cabin"}',
+      resultTruncated: false,
+    });
     expect(serialized).not.toContain('apiKey');
     expect(serialized).not.toContain('credential');
     expect(serialized).not.toContain('secret');
   });
 
-  it('marks interrupted streaming messages as errors when reopening a project', () => {
+  it('marks interrupted streaming messages and pending tools as interrupted when reopening a project', () => {
     const interrupted = conversation('streaming');
     interrupted.messages[1].state = 'streaming';
+    interrupted.messages[1].toolReferences![0]!.state = 'pending';
+    interrupted.messages[1].toolReferences![0]!.resultContent = undefined;
     saveAiConversationStore(projectA, [interrupted], {});
 
-    expect(loadAiConversationStore(projectA).conversations[0].messages[1].state).toBe('error');
+    const restored = loadAiConversationStore(projectA).conversations[0].messages[1];
+    expect(restored.state).toBe('error');
+    expect(restored.toolReferences?.[0]).toMatchObject({
+      state: 'cancelled',
+      summary: 'Interrupted when the editor closed',
+    });
   });
 
   it('migrates the old global renderer history exactly once into the active project', () => {
