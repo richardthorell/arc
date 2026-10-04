@@ -9,6 +9,8 @@ import {
   UiButton,
 } from '../ui';
 
+import './UiLabAgentCards.css';
+
 export function UiLabAgentCards() {
   return (
     <div className="ui-lab-agent-card-gallery" aria-label="AI response card gallery">
