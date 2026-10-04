@@ -18,19 +18,14 @@ const normalizeQuery = (query: string): string => query.trim().toLocaleLowerCase
  * to preserve context. Walking parent links instead of recursively scanning
  * children keeps the result deterministic for large, flat scene snapshots.
  */
-export function filterHierarchy(
-  entries: readonly HierarchyFilterEntry[],
-  query: string,
-): HierarchyFilterResult {
+export function filterHierarchy(entries: readonly HierarchyFilterEntry[], query: string): HierarchyFilterResult {
   const normalizedQuery = normalizeQuery(query);
   const allIds = new Set(entries.map((entry) => entry.id));
   if (!normalizedQuery) return { visibleIds: allIds, matchedIds: allIds };
 
   const byId = new Map(entries.map((entry) => [entry.id, entry] as const));
   const matchedIds = new Set(
-    entries
-      .filter((entry) => entry.name.toLocaleLowerCase().includes(normalizedQuery))
-      .map((entry) => entry.id),
+    entries.filter((entry) => entry.name.toLocaleLowerCase().includes(normalizedQuery)).map((entry) => entry.id),
   );
   const visibleIds = new Set(matchedIds);
 
