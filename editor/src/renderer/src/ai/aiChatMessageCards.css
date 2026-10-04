@@ -19,75 +19,46 @@
 }
 
 .ai-chat-user-card {
-  --ui-agent-card-background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--arc-color-bg-selected-strong) 74%, var(--arc-color-bg-selected)) 0%,
-    color-mix(in srgb, var(--arc-color-bg-selected-strong) 56%, var(--arc-color-bg-selected)) 100%
-  );
-  --ui-agent-card-border: color-mix(in srgb, var(--arc-color-accent) 72%, var(--arc-color-border-accent));
+  --ui-agent-card-background: linear-gradient(180deg, #2766c7 0%, #1d4fa7 100%);
+  --ui-agent-card-border: #397bd7;
 
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 11%),
-    inset 0 -1px 0 rgb(0 0 0 / 18%),
-    0 8px 24px rgb(0 0 0 / 20%);
+    inset 0 1px 0 rgb(255 255 255 / 13%),
+    inset 0 -1px 0 rgb(0 0 0 / 20%),
+    0 8px 24px rgb(0 0 0 / 22%);
 }
 
-.ai-chat-agent-card {
-  --ui-agent-card-background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--arc-color-bg-panel-raised) 56%, var(--arc-color-bg-panel)) 0%,
-    color-mix(in srgb, var(--arc-color-bg-panel) 90%, var(--arc-color-bg-field)) 100%
-  );
-  --ui-agent-card-border: var(--arc-color-border);
+.ai-chat-user-card .ui-agent-card-content {
+  padding: 11px 14px;
 }
 
-.ai-chat-agent-card.is-openai {
-  --ui-agent-card-background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--arc-color-bg-panel-raised) 92%, #5f9f8f 8%) 0%,
-    color-mix(in srgb, var(--arc-color-bg-panel) 94%, #5f9f8f 6%) 100%
-  );
-  --ui-agent-card-border: color-mix(in srgb, var(--arc-color-border) 78%, #6fae9e 22%);
+.ai-chat-agent-card.ui-agent-card {
+  --ui-agent-card-background: transparent;
+  --ui-agent-card-border: transparent;
+
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
-.ai-chat-agent-card.is-anthropic {
-  --ui-agent-card-background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--arc-color-bg-panel-raised) 92%, #c18b5f 8%) 0%,
-    color-mix(in srgb, var(--arc-color-bg-panel) 94%, #c18b5f 6%) 100%
-  );
-  --ui-agent-card-border: color-mix(in srgb, var(--arc-color-border) 78%, #c18b5f 22%);
-}
-
-.ai-chat-agent-card.is-mock {
-  --ui-agent-card-background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--arc-color-bg-panel-raised) 91%, #8587bd 9%) 0%,
-    color-mix(in srgb, var(--arc-color-bg-panel) 94%, #8587bd 6%) 100%
-  );
-  --ui-agent-card-border: color-mix(in srgb, var(--arc-color-border) 76%, #8587bd 24%);
-}
-
-.ai-chat-agent-card.is-generic {
-  --ui-agent-card-background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--arc-color-bg-panel-raised) 92%, #456a7d 8%) 0%,
-    color-mix(in srgb, var(--arc-color-bg-panel) 95%, #456a7d 5%) 100%
-  );
-  --ui-agent-card-border: color-mix(in srgb, var(--arc-color-border) 80%, #456a7d 20%);
-}
-
-.ai-chat-message-card .ui-agent-card-content {
-  padding: 11px 13px 5px;
+.ai-chat-agent-card.ui-agent-card .ui-agent-card-content {
+  padding: 2px 0;
+  background: transparent;
 }
 
 .ai-chat-message-card .ui-agent-card-timestamp {
-  padding: 0 13px 9px;
-  color: rgb(194 205 218 / 48%);
+  display: none;
 }
 
 .ai-chat-message-card .ui-agent-text-card-content {
   line-height: 1.5;
+}
+
+.ai-chat-approval-card .ui-agent-card-content,
+.ai-chat-approval-outcome .ui-agent-card-content {
+  padding: 11px 13px 10px;
 }
 
 .ai-chat-composer-surface:focus-within {
