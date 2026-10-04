@@ -98,9 +98,14 @@ export const agentEditValueSchemas = {
 } as const satisfies Record<AgentEditAction, z.ZodType<unknown>>;
 
 const valueVariants = agentEditActions.map((action) => agentEditValueSchemas[action]);
+type AgentEditValueVariants = [
+  z.ZodType<unknown>,
+  z.ZodType<unknown>,
+  ...z.ZodType<unknown>[],
+];
 
 export const agentEditValueSchema = z
-  .union(valueVariants as [z.ZodType<unknown>, z.ZodType<unknown>, ...z.ZodType<unknown>[]])
+  .union(valueVariants as unknown as AgentEditValueVariants)
   .describe('Value shape depends on action; use the matching action-specific object shape.');
 
 export const validateAgentEditValue = (action: AgentEditAction, value: unknown): unknown =>
