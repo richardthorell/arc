@@ -5,6 +5,7 @@ import {
   deleteGraphSelection,
   duplicateGraphSelection,
   pasteGraphSelection,
+  pasteGraphSelectionEdit,
   type GraphIdFactory,
 } from './graphClipboard';
 
@@ -48,6 +49,23 @@ describe('graph clipboard operations', () => {
     expect([...pasted.selectedNodeIds]).toEqual(['node-1', 'node-2']);
     expect(pasted.nodeIdMap.get('a')).toBe('node-1');
     expect(pasted.nodeIdMap.get('b')).toBe('node-2');
+  });
+
+  it('packages a paste as one immutable before/after edit for undo integration', () => {
+    const copied = copyGraphSelection(nodes, edges, new Set(['a', 'b']));
+    const edit = pasteGraphSelectionEdit(nodes, edges, copied, idFactory());
+
+    expect(edit.before.nodes).toEqual(nodes);
+    expect(edit.before.edges).toEqual(edges);
+    expect(edit.before.nodes[0]).not.toBe(nodes[0]);
+    expect(edit.after.nodes.map((node) => node.id)).toEqual(['a', 'b', 'c', 'node-1', 'node-2']);
+    expect(edit.after.edges.map((edge) => edge.id)).toEqual(['ab', 'bc', 'edge-1']);
+    expect([...edit.selectedNodeIds]).toEqual(['node-1', 'node-2']);
+    expect(edit.nodeIdMap.get('a')).toBe('node-1');
+
+    edit.after.nodes[0].label = 'changed';
+    expect(nodes[0].label).toBe('A');
+    expect(edit.before.nodes[0].label).toBe('A');
   });
 
   it('duplicates through the same copy/paste contract', () => {
