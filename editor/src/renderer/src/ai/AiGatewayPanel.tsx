@@ -1,9 +1,11 @@
 import { Check, ShieldCheck, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { BUILT_IN_AGENT_CLIENT_ID } from '../../../common/builtInAgentTypes';
 import type { EditorSettingsSnapshot } from '../../../common/editorWorkflowTypes';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
 import { UiButton } from '../ui';
 import { AiChatPanel } from './AiChatPanel';
+import { AiAgentApprovalCoordinator, type AiAgentApprovalMode } from './aiAgentApproval';
 import type { AiModelProvider } from './aiChat';
 import { runtimeAiProvidersFromSettings } from './runtimeAiProviders';
 import './aiGateway.css';
@@ -11,6 +13,7 @@ import './aiGateway.css';
 // Compatibility wrapper for existing workbench call sites. The drawer now exposes chat only;
 // gateway status and administration stay outside the panel.
 export function AiGatewayPanel({
+  status,
   provider,
 }: {
   status: ArcAiGatewayStatus | null;
@@ -23,6 +26,32 @@ export function AiGatewayPanel({
 }) {
   const [runtimeProviders, setRuntimeProviders] = useState<AiModelProvider[]>([]);
   const [projectGuid, setProjectGuid] = useState<string | null>(null);
+  const [approvalMode, setApprovalMode] = useState<AiAgentApprovalMode>('ask');
+  const approvalCoordinatorRef = useRef<AiAgentApprovalCoordinator | null>(null);
+
+  if (!approvalCoordinatorRef.current) {
+    approvalCoordinatorRef.current = new AiAgentApprovalCoordinator({
+      invokeTool: async (call, signal) => {
+        if (signal?.aborted) throw new Error('AI edit approval was cancelled');
+        const bridge = window.arcAiRuntime?.agent;
+        if (!bridge?.invokeTool) throw new Error('Built-in agent tool bridge is unavailable');
+        const result = await bridge.invokeTool(call.name, call.arguments);
+        if (signal?.aborted) throw new Error('AI edit approval was cancelled');
+        return result;
+      },
+      approve: async (requestId) => Boolean(await window.arc.aiGateway.approve(requestId)),
+      deny: async (requestId) => Boolean(await window.arc.aiGateway.deny(requestId)),
+    });
+  }
+  const approvalCoordinator = approvalCoordinatorRef.current;
+  const pendingApproval =
+    status?.pendingEditRequests.find((request) => request.clientId === BUILT_IN_AGENT_CLIENT_ID) ?? null;
+
+  useEffect(() => {
+    approvalCoordinator.setMode(approvalMode);
+  }, [approvalCoordinator, approvalMode]);
+
+  useEffect(() => () => approvalCoordinator.dispose(), [approvalCoordinator]);
 
   useEffect(() => {
     let disposed = false;
@@ -58,7 +87,12 @@ export function AiGatewayPanel({
     let disposed = false;
 
     const applySnapshot = (snapshot: EditorSettingsSnapshot | null | undefined) => {
-      if (!disposed) setRuntimeProviders(runtimeAiProvidersFromSettings(snapshot));
+      if (!disposed)
+        setRuntimeProviders(
+          runtimeAiProvidersFromSettings(snapshot, {
+            agentInvokeTool: (call, signal) => approvalCoordinator.invokeTool(call, signal),
+          }),
+        );
     };
     const refresh = async () => {
       try {
@@ -82,19 +116,35 @@ export function AiGatewayPanel({
       window.removeEventListener('arc-editor-settings-changed', onSettingsChanged);
       window.removeEventListener('arc-editor-settings-closed', onSettingsClosed);
     };
-  }, [provider]);
+  }, [approvalCoordinator, provider]);
+
+  const chatProps = {
+    approvalMode,
+    onApprovalModeChange: setApprovalMode,
+    pendingApproval,
+    onApproveRequest: (requestId: string) => approvalCoordinator.approve(requestId),
+    onDenyRequest: (requestId: string) => approvalCoordinator.deny(requestId),
+  };
 
   return provider ? (
-    <AiChatPanel key={projectGuid ?? 'no-project'} projectGuid={projectGuid ?? undefined} provider={provider} />
+    <AiChatPanel
+      key={projectGuid ?? 'no-project'}
+      projectGuid={projectGuid ?? undefined}
+      provider={provider}
+      {...chatProps}
+    />
   ) : (
     <AiChatPanel
       key={projectGuid ?? 'no-project'}
       projectGuid={projectGuid ?? undefined}
       providers={runtimeProviders}
+      {...chatProps}
     />
   );
 }
 
+// Built-in ARC AI approvals are owned by the conversation that requested them.
+// Keep the global fallback only for external gateway clients until they get a dedicated surface.
 export function AiGatewayApprovalPrompt({
   status,
   onApprove,
@@ -106,7 +156,7 @@ export function AiGatewayApprovalPrompt({
   onDeny: (requestId: string) => void;
   onOpenGateway: () => void;
 }) {
-  const request = status?.pendingEditRequests[0];
+  const request = status?.pendingEditRequests.find((candidate) => candidate.clientId !== BUILT_IN_AGENT_CLIENT_ID);
   if (!request) return null;
   return (
     <aside className="ai-gateway-approval-prompt" role="alertdialog" aria-label="AI editor action approval">

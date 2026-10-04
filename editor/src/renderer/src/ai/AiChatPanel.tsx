@@ -1,8 +1,17 @@
-import { Asterisk, ArrowLeft, Bot, Plus, Send, Sparkles, Square } from 'lucide-react';
+import { Asterisk, ArrowLeft, Bot, Check, Plus, Send, ShieldCheck, Sparkles, Square, X, Zap } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import type { AiConversationContextReference } from '../../../common/aiConversationTypes';
+import type { AiConversationContextReference, AiConversationToolReference } from '../../../common/aiConversationTypes';
 import { requestSettingsDialogOpen } from '../settings/settingsDialogRoute';
-import { UiAgentTextCard, UiButton, UiDrawerPanel, UiDropdown, UiIconButton, type UiDropdownOption } from '../ui';
+import {
+  UiAgentCard,
+  UiAgentTextCard,
+  UiButton,
+  UiDrawerPanel,
+  UiDropdown,
+  UiIconButton,
+  type UiDropdownOption,
+} from '../ui';
+import type { AiAgentApprovalMode, AiAgentApprovalRequest } from './aiAgentApproval';
 import {
   conversationCaptionFromResponse,
   conversationCaptionInstruction,
@@ -34,6 +43,12 @@ import './aiGateway.css';
 import './aiChatMessageCards.css';
 
 const openAiConnectivitySettings = () => requestSettingsDialogOpen('editorPreferences', 'ai.providers');
+const chatBottomThreshold = 48;
+
+const approvalModeOptions: ReadonlyArray<UiDropdownOption<AiAgentApprovalMode>> = [
+  { value: 'ask', label: 'Ask', icon: <ShieldCheck aria-hidden="true" size={13} /> },
+  { value: 'auto', label: 'Auto approve', icon: <Zap aria-hidden="true" size={13} /> },
+];
 
 const cloneConversation = (conversation: AiConversation): AiConversation => ({
   ...conversation,
@@ -62,6 +77,28 @@ const formatMessageTime = (createdAt: string) => {
   return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(timestamp);
 };
 
+const approvalOutcome = (
+  reference: AiConversationToolReference,
+): { state: 'approved' | 'denied'; label: string } | null => {
+  if (reference.name !== 'edit.request' || reference.state !== 'complete' || !reference.resultContent) return null;
+  try {
+    const result = JSON.parse(reference.resultContent) as Record<string, unknown>;
+    if (result.state !== 'approved' && result.state !== 'denied') return null;
+    const argumentLabel = reference.arguments?.label;
+    return {
+      state: result.state,
+      label:
+        typeof result.label === 'string'
+          ? result.label
+          : typeof argumentLabel === 'string'
+            ? argumentLabel
+            : 'AI Scene Edit',
+    };
+  } catch {
+    return null;
+  }
+};
+
 type ActiveStream = {
   controller: AbortController;
   conversationId: string;
@@ -83,6 +120,11 @@ type AiChatPanelProps = {
   persistConversations?: boolean;
   contextSource?: AiProjectContextSource | null;
   onContextBudget?: (diagnostics: AiContextBudgetDiagnostics) => void;
+  approvalMode?: AiAgentApprovalMode;
+  onApprovalModeChange?: (mode: AiAgentApprovalMode) => void;
+  pendingApproval?: AiAgentApprovalRequest | null;
+  onApproveRequest?: (requestId: string) => Promise<boolean> | boolean;
+  onDenyRequest?: (requestId: string) => Promise<boolean> | boolean;
 };
 
 export function AiChatPanel({
@@ -95,6 +137,11 @@ export function AiChatPanel({
   persistConversations,
   contextSource,
   onContextBudget,
+  approvalMode = 'ask',
+  onApprovalModeChange,
+  pendingApproval = null,
+  onApproveRequest,
+  onDenyRequest,
 }: AiChatPanelProps) {
   const configuredProviders = useMemo(
     () => (providers ?? [provider ?? unavailableAiModelProvider]).filter((candidate) => candidate.configured),
@@ -145,8 +192,11 @@ export function AiChatPanel({
   const [streaming, setStreaming] = useState(false);
   const [contextPickerOpen, setContextPickerOpen] = useState(false);
   const [pendingContext, setPendingContext] = useState<AiConversationContextReference[]>([]);
+  const [approvalBusy, setApprovalBusy] = useState(false);
   const activeStreamRef = useRef<ActiveStream | null>(null);
   const captionControllersRef = useRef(new Set<AbortController>());
+  const historyRef = useRef<HTMLDivElement | null>(null);
+  const historyPinnedToBottomRef = useRef(true);
 
   useEffect(() => {
     if (!configuredProviders.length) {
@@ -176,6 +226,23 @@ export function AiChatPanel({
     },
     [],
   );
+
+  useEffect(() => {
+    setApprovalBusy(false);
+  }, [pendingApproval?.id]);
+
+  useEffect(() => {
+    const history = historyRef.current;
+    if (!history || !activeConversationId) return;
+    historyPinnedToBottomRef.current = true;
+    history.scrollTop = history.scrollHeight;
+
+    const observer = new MutationObserver(() => {
+      if (historyPinnedToBottomRef.current) history.scrollTop = history.scrollHeight;
+    });
+    observer.observe(history, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, [activeConversationId]);
 
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) ?? null;
   const activeProvider = activeConversation
@@ -427,6 +494,7 @@ export function AiChatPanel({
     const model = configuredProviders.find((candidate) => candidate.id === selectedModelId);
     if (!model || streaming || !content) return;
 
+    historyPinnedToBottomRef.current = true;
     const conversation = createAiConversation();
     const userMessage = messageWithPendingContext(content);
     const assistantMessage: AiChatMessage = {
@@ -454,6 +522,7 @@ export function AiChatPanel({
     const content = prompt.trim();
     if (!activeConversation || !activeProvider || streaming || !content) return;
 
+    historyPinnedToBottomRef.current = true;
     const userMessage = messageWithPendingContext(content);
     const assistantMessage: AiChatMessage = {
       ...createAiMessage('assistant', '', 'streaming'),
@@ -525,6 +594,44 @@ export function AiChatPanel({
     setContextPickerOpen(false);
   };
 
+  const resolvePendingApproval = async (approve: boolean) => {
+    if (!pendingApproval || approvalBusy) return;
+    const handler = approve ? onApproveRequest : onDenyRequest;
+    if (!handler) return;
+    setApprovalBusy(true);
+    try {
+      const resolved = await handler(pendingApproval.id);
+      if (!resolved) setApprovalBusy(false);
+    } catch {
+      setApprovalBusy(false);
+    }
+  };
+
+  const renderApprovalOutcome = (reference: AiConversationToolReference) => {
+    const outcome = approvalOutcome(reference);
+    if (!outcome) return null;
+    const approved = outcome.state === 'approved';
+    return (
+      <UiAgentCard
+        className={`ai-chat-message-card ai-chat-approval-outcome${approved ? ' is-approved' : ' is-denied'}`}
+        icon={approved ? <ShieldCheck aria-hidden="true" size={15} /> : <X aria-hidden="true" size={15} />}
+        key={`approval-${reference.toolCallId}`}
+        side="left"
+        state="complete"
+        subtitle={outcome.label}
+        timestamp={reference.completedAt ? formatMessageTime(reference.completedAt) : undefined}
+        title={approved ? 'Edit approved' : 'Edit denied'}
+        tone="neutral"
+      >
+        <div className="ai-chat-approval-copy">
+          {approved
+            ? 'The agent resumed with temporary edit access through the ARC transaction harness.'
+            : 'The edit request was denied. No approved scene mutation was started from this request.'}
+        </div>
+      </UiAgentCard>
+    );
+  };
+
   const renderMessages = (conversation: AiConversation) => (
     <div className="ai-chat-message-list">
       {conversation.messages.map((message) => {
@@ -533,17 +640,19 @@ export function AiChatPanel({
         if (message.role === 'assistant') {
           const responseModelId = message.modelId ?? conversation.modelId ?? activeProvider?.id;
           return (
-            <UiAgentTextCard
-              className={`ai-chat-message-card ai-chat-agent-card ${agentToneClass(responseModelId)}`}
-              data-model-id={responseModelId}
-              key={message.id}
-              renderText={renderAiChatMessageText}
-              side="left"
-              state={message.state}
-              text={message.content}
-              timestamp={timestamp}
-              tone="agent"
-            />
+            <div className="ai-chat-assistant-turn" key={message.id}>
+              <UiAgentTextCard
+                className={`ai-chat-message-card ai-chat-agent-card ${agentToneClass(responseModelId)}`}
+                data-model-id={responseModelId}
+                renderText={renderAiChatMessageText}
+                side="left"
+                state={message.state}
+                text={message.content}
+                timestamp={timestamp}
+                tone="agent"
+              />
+              {message.toolReferences?.map(renderApprovalOutcome)}
+            </div>
           );
         }
         if (message.role === 'user') {
@@ -566,6 +675,49 @@ export function AiChatPanel({
           </div>
         );
       })}
+      {pendingApproval && (
+        <UiAgentCard
+          aria-label="AI editor action approval"
+          className="ai-chat-message-card ai-chat-approval-card"
+          icon={<ShieldCheck aria-hidden="true" size={16} />}
+          role="alertdialog"
+          side="left"
+          state="streaming"
+          subtitle={pendingApproval.label}
+          timestamp={formatMessageTime(pendingApproval.requestedAt)}
+          title="Allow editor changes?"
+          tone="neutral"
+          actions={
+            approvalMode === 'ask' ? (
+              <>
+                <UiButton
+                  disabled={approvalBusy || !onDenyRequest}
+                  type="button"
+                  variant="ghost"
+                  onClick={() => void resolvePendingApproval(false)}
+                >
+                  <X size={12} /> Deny
+                </UiButton>
+                <UiButton
+                  disabled={approvalBusy || !onApproveRequest}
+                  type="button"
+                  variant="primary"
+                  onClick={() => void resolvePendingApproval(true)}
+                >
+                  <Check size={12} /> Allow
+                </UiButton>
+              </>
+            ) : (
+              <span className="ai-chat-approval-auto">Auto approving…</span>
+            )
+          }
+        >
+          <div className="ai-chat-approval-copy">
+            ARC Built-in AI is requesting temporary edit access. Approval still uses ARC's validated transaction,
+            revision, and commit checks.
+          </div>
+        </UiAgentCard>
+      )}
     </div>
   );
 
@@ -590,6 +742,17 @@ export function AiChatPanel({
         selected={pendingContext}
         source={projectContextSource}
         supportsImages={composerProvider?.capabilities?.inputModalities.includes('image') ?? false}
+      />
+    ) : null;
+
+  const renderApprovalModeDropdown = () =>
+    onApprovalModeChange ? (
+      <UiDropdown
+        ariaLabel="Agent approval mode"
+        className="ai-chat-model-dropdown ai-chat-approval-dropdown"
+        onValueChange={onApprovalModeChange}
+        options={approvalModeOptions}
+        value={approvalMode}
       />
     ) : null;
 
@@ -624,7 +787,18 @@ export function AiChatPanel({
             <strong>{activeConversation.title}</strong>
           </header>
 
-          <div className="ai-chat-history" aria-label="Chat history" aria-busy={streaming}>
+          <div
+            className="ai-chat-history"
+            aria-label="Chat history"
+            aria-busy={streaming}
+            ref={historyRef}
+            onScroll={() => {
+              const history = historyRef.current;
+              if (!history) return;
+              historyPinnedToBottomRef.current =
+                history.scrollHeight - history.scrollTop - history.clientHeight <= chatBottomThreshold;
+            }}
+          >
             {renderMessages(activeConversation)}
           </div>
 
@@ -649,6 +823,7 @@ export function AiChatPanel({
               <div className="ai-chat-composer-toolbar ai-chat-composer-toolbar-active">
                 {renderAddContextButton()}
                 <div className="ai-chat-composer-actions">
+                  {renderApprovalModeDropdown()}
                   <UiDropdown
                     ariaLabel="Model"
                     className="ai-chat-model-dropdown"
@@ -676,6 +851,7 @@ export function AiChatPanel({
                     disabled={streaming}
                     key={conversation.id}
                     onClick={() => {
+                      historyPinnedToBottomRef.current = true;
                       setPrompt('');
                       clearComposerContext();
                       setActiveConversationId(conversation.id);
@@ -729,6 +905,7 @@ export function AiChatPanel({
                   <div className="ai-chat-composer-toolbar">
                     {renderAddContextButton()}
                     <div className="ai-chat-composer-actions">
+                      {renderApprovalModeDropdown()}
                       <UiDropdown
                         ariaLabel="Model"
                         className="ai-chat-model-dropdown"

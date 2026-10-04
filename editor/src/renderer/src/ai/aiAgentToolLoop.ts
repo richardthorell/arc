@@ -12,7 +12,7 @@ export const AI_AGENT_MAX_STEPS = 8;
 export const AI_AGENT_STEP_TIMEOUT_MS = 60_000;
 
 export type AiAgentModelExecutor = (request: AiRuntimeRequest) => AsyncIterable<AiRuntimeStreamEvent>;
-export type AiAgentToolInvoker = (call: AiToolCall) => Promise<BuiltInAgentToolExecutionResult>;
+export type AiAgentToolInvoker = (call: AiToolCall, signal?: AbortSignal) => Promise<BuiltInAgentToolExecutionResult>;
 
 export type AiAgentToolLoopOptions = Readonly<{
   maximumSteps?: number;
@@ -67,9 +67,14 @@ const positiveInteger = (value: number | undefined, fallback: number, name: stri
   return resolved;
 };
 
-const executeTool = async (call: AiToolCall, invokeTool: AiAgentToolInvoker): Promise<AiToolResult> => {
+const executeTool = async (
+  call: AiToolCall,
+  invokeTool: AiAgentToolInvoker,
+  signal?: AbortSignal,
+): Promise<AiToolResult> => {
   try {
-    return successfulToolResult(call, await invokeTool(call));
+    const result = signal ? await invokeTool(call, signal) : await invokeTool(call);
+    return successfulToolResult(call, result);
   } catch (error) {
     return normalizedToolFailure(call, error);
   }
@@ -191,7 +196,7 @@ export async function* runAiAgentToolLoop(
     for (let index = 0; index < calls.length; ++index) {
       if (request.signal?.aborted) return;
       const call = calls[index]!;
-      const result = await executeTool(call, invokeTool);
+      const result = await executeTool(call, invokeTool, request.signal);
       if (request.signal?.aborted) return;
       yield { type: 'tool-result', result, agentStep: step };
       messages.push({
