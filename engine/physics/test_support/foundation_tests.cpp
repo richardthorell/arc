@@ -1,8 +1,33 @@
+#include <arc/physics/backend.h>
 #include <arc/physics/physics.h>
 
 #include <cassert>
 #include <limits>
 #include <type_traits>
+
+namespace
+{
+
+class test_backend final : public arc::physics::backend
+{
+public:
+    [[nodiscard]] std::string_view name() const noexcept override
+    {
+        return "test";
+    }
+
+    [[nodiscard]] bool initialized() const noexcept override
+    {
+        return true;
+    }
+};
+
+arc::physics::backend_ptr create_test_backend(const arc::physics::backend_config&)
+{
+    return std::make_unique<test_backend>();
+}
+
+} // namespace
 
 int main()
 {
@@ -11,12 +36,20 @@ int main()
     static_assert(!std::is_same_v<world_handle, body_handle>);
     static_assert(!std::is_same_v<body_handle, shape_handle>);
     static_assert(!std::is_same_v<shape_handle, material_handle>);
+    static_assert(std::is_abstract_v<backend>);
+    static_assert(std::is_same_v<decltype(&create_test_backend), backend_factory>);
 
     constexpr world_handle world{7};
     static_assert(world.valid());
     static_assert(world.value() == 7);
     static_assert(!world_handle{}.valid());
     static_assert(body_id{} == invalid_body_id);
+
+    backend_config config{};
+    backend_ptr backend_instance = create_test_backend(config);
+    assert(backend_instance);
+    assert(backend_instance->initialized());
+    assert(backend_instance->name() == "test");
 
     body_definition body{};
     assert(validate(body) == validation_error::none);
