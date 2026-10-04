@@ -22,7 +22,24 @@ export type GraphClipboardPasteResult<
   selectedNodeIds: ReadonlySet<string>;
 };
 
+export type GraphClipboardEditResult<Node extends GraphClipboardNode, Edge extends GraphClipboardEdge> = {
+  before: GraphClipboardPayload<Node, Edge>;
+  after: GraphClipboardPayload<Node, Edge>;
+  selectedNodeIds: ReadonlySet<string>;
+  nodeIdMap: ReadonlyMap<string, string>;
+};
+
 export type GraphIdFactory = (kind: 'node' | 'edge', previousId: string) => string;
+
+function cloneGraph<Node extends GraphClipboardNode, Edge extends GraphClipboardEdge>(
+  nodes: readonly Node[],
+  edges: readonly Edge[],
+): GraphClipboardPayload<Node, Edge> {
+  return {
+    nodes: nodes.map((node) => structuredClone(node)),
+    edges: edges.map((edge) => structuredClone(edge)),
+  };
+}
 
 function assertUniqueIds(items: readonly { id: string }[], kind: 'node' | 'edge'): void {
   const ids = new Set<string>();
@@ -111,6 +128,28 @@ export function pasteGraphSelection<Node extends GraphClipboardNode, Edge extend
     edges,
     nodeIdMap,
     selectedNodeIds: new Set(nodes.map((node) => node.id)),
+  };
+}
+
+export function pasteGraphSelectionEdit<Node extends GraphClipboardNode, Edge extends GraphClipboardEdge>(
+  nodes: readonly Node[],
+  edges: readonly Edge[],
+  payload: GraphClipboardPayload<Node, Edge>,
+  createId: GraphIdFactory,
+  offset = { x: 24, y: 24 },
+): GraphClipboardEditResult<Node, Edge> {
+  const before = cloneGraph(nodes, edges);
+  const occupiedIds = new Set([...nodes.map((node) => node.id), ...edges.map((edge) => edge.id)]);
+  const pasted = pasteGraphSelection(payload, createId, offset, occupiedIds);
+
+  return {
+    before,
+    after: {
+      nodes: [...before.nodes.map((node) => structuredClone(node)), ...pasted.nodes],
+      edges: [...before.edges.map((edge) => structuredClone(edge)), ...pasted.edges],
+    },
+    selectedNodeIds: pasted.selectedNodeIds,
+    nodeIdMap: pasted.nodeIdMap,
   };
 }
 
