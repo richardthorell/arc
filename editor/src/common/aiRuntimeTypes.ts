@@ -35,11 +35,15 @@ export type AiToolCall = {
   arguments: AiJsonObject;
 };
 
+export type AiToolResultErrorCode = 'revision_conflict' | 'tool_error';
+
 export type AiToolResult = {
   toolCallId: string;
   name: string;
   content: AiRuntimeMessageContent;
   isError?: boolean;
+  errorCode?: AiToolResultErrorCode;
+  retryable?: boolean;
 };
 
 export type AiRuntimeMessage = {

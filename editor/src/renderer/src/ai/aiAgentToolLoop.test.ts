@@ -89,7 +89,7 @@ describe('AI agent tool loop', () => {
           return;
         }
 
-        expect(resultMessage.toolResult).toMatchObject({ isError: true });
+        expect(resultMessage.toolResult).toMatchObject({ isError: true, errorCode: 'tool_error' });
         expect(String(resultMessage.content)).toContain('ARC tool error: harness unavailable');
         yield { type: 'delta' as const, text: 'I could not inspect the floor.' };
         yield { type: 'done' as const, finishReason: 'stop' as const };
@@ -106,10 +106,97 @@ describe('AI agent tool loop', () => {
       expect.arrayContaining([
         expect.objectContaining({
           type: 'tool-result',
-          result: expect.objectContaining({ isError: true }),
+          result: expect.objectContaining({ isError: true, errorCode: 'tool_error' }),
         }),
         { type: 'delta', text: 'I could not inspect the floor.' },
       ]),
+    );
+  });
+
+  it('classifies stale mutation revisions and tells the model how to recover', async () => {
+    const execute = vi.fn((runtimeRequest: AiRuntimeRequest) =>
+      (async function* () {
+        const resultMessage = runtimeRequest.messages.find((message) => message.role === 'tool');
+        if (!resultMessage) {
+          yield {
+            type: 'tool-call' as const,
+            call: {
+              id: 'call-edit',
+              name: 'edit.apply',
+              arguments: {
+                editSessionId: 'edit-1',
+                expectedSceneRevision: 11,
+                action: 'rename',
+                value: { guid: 'floor-guid', name: 'Ground' },
+              },
+            },
+          };
+          yield { type: 'done' as const, finishReason: 'tool_calls' as const };
+          return;
+        }
+
+        expect(resultMessage.toolResult).toMatchObject({
+          toolCallId: 'call-edit',
+          name: 'edit.apply',
+          isError: true,
+          errorCode: 'revision_conflict',
+          retryable: true,
+        });
+        expect(String(resultMessage.content)).toContain('Edit session expects scene revision 12');
+        expect(String(resultMessage.content)).toContain('scene.overview');
+        expect(String(resultMessage.content)).toContain('cancel and begin a new transaction');
+        yield { type: 'delta' as const, text: 'The scene changed, so I refreshed before retrying.' };
+        yield { type: 'done' as const, finishReason: 'stop' as const };
+      })(),
+    );
+
+    const events = await collect(
+      runAiAgentToolLoop(request(), execute, async () => {
+        throw new Error('Edit session expects scene revision 12');
+      }),
+    );
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'tool-result',
+          result: expect.objectContaining({
+            errorCode: 'revision_conflict',
+            retryable: true,
+          }),
+        }),
+        { type: 'delta', text: 'The scene changed, so I refreshed before retrying.' },
+      ]),
+    );
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not misclassify non-conflict mutation validation errors', async () => {
+    const execute = vi.fn((runtimeRequest: AiRuntimeRequest) =>
+      (async function* () {
+        const resultMessage = runtimeRequest.messages.find((message) => message.role === 'tool');
+        if (!resultMessage) {
+          yield {
+            type: 'tool-call' as const,
+            call: { id: 'call-edit', name: 'edit.begin', arguments: { label: 'Rename floor' } },
+          };
+          yield { type: 'done' as const, finishReason: 'tool_calls' as const };
+          return;
+        }
+
+        expect(resultMessage.toolResult).toMatchObject({
+          isError: true,
+          errorCode: 'tool_error',
+        });
+        expect(resultMessage.toolResult?.retryable).toBeUndefined();
+        yield { type: 'done' as const, finishReason: 'stop' as const };
+      })(),
+    );
+
+    await collect(
+      runAiAgentToolLoop(request(), execute, async () => {
+        throw new Error('expectedSceneRevision must be a positive integer');
+      }),
     );
   });
 
