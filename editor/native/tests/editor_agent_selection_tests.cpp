@@ -1,4 +1,5 @@
 #include <arc/editor/arc_host.h>
+#include <arc/editor/editor_state.h>
 #include <arc/render/render.h>
 
 #include <catch2/catch_test_macros.hpp>
@@ -14,8 +15,9 @@ TEST_CASE("agent selection uses the native editor selection state and event")
 {
     arc::editor::arc_host_manager manager;
     auto host = manager.acquire(std::make_unique<arc::render::renderer>());
-    REQUIRE(
-        host->open_project({.name = "Agent Selection", .root = std::filesystem::temp_directory_path()}, {}).succeeded);
+    arc::editor::editor_asset_state assets{};
+    assets.root = std::filesystem::temp_directory_path();
+    REQUIRE(host->open_project({.name = "Agent Selection", .root = assets.root}, assets).succeeded);
 
     REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::plane})
                 .succeeded);
