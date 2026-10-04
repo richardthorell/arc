@@ -6,6 +6,22 @@ export type {
   UiAgentCardTone,
   UiAgentTextCardProps,
 } from './UiAgentCard';
+export {
+  UiAgentApprovalCard,
+  UiAgentAssetCard,
+  UiAgentDiffCard,
+  UiAgentErrorCard,
+  UiAgentStructuredCard,
+  UiAgentTaskCard,
+  UiAgentToolCard,
+  UiAgentViewportCard,
+} from './UiAgentActivityCard';
+export type {
+  UiAgentActivityCardProps,
+  UiAgentActivityKind,
+  UiAgentActivityState,
+  UiAgentStructuredCardProps,
+} from './UiAgentActivityCard';
 export { UiButton } from './UiButton';
 export { UiColorControl } from './UiColorControl';
 export type { UiColorControlProps } from './UiColorControl';

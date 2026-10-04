@@ -18,6 +18,7 @@ import { ShaderEditorPanel } from '../shader/ShaderEditorPanel';
 import { VersionControlPanel } from '../versionControl/VersionControlPanel';
 import { ViewportPanel } from '../viewport/ViewportPanel';
 
+import { UiLabAgentCards } from './UiLabAgentCards';
 import {
   panelBuildFixture,
   panelDiagnosticsFixture,
@@ -71,7 +72,7 @@ const productionComponentNames: Partial<Record<WorkbenchPanelId, string>> = {
   console: 'ConsolePanel',
   buildOutput: 'BuildOutputPanel',
   versionControl: 'VersionControlPanel',
-  aiAssistant: 'AiChatPanel ×2',
+  aiAssistant: 'AiChatPanel + activity cards',
   profiler: 'ProfilerPanel',
 };
 
@@ -290,6 +291,10 @@ export function UiLabPanels() {
                 initialMessages={uiLabAiMessages}
                 provider={uiLabAiProvider}
               />
+            </section>
+            <section className="ui-lab-ai-chat-variant" aria-label="AI response card preview">
+              <header>Response cards</header>
+              <UiLabAgentCards />
             </section>
           </div>
         );

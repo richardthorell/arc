@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { AiConversationContextReference, AiConversationToolReference } from '../../../common/aiConversationTypes';
 import { requestSettingsDialogOpen } from '../settings/settingsDialogRoute';
 import {
-  UiAgentCard,
+  UiAgentApprovalCard,
+  UiAgentErrorCard,
   UiAgentTextCard,
   UiButton,
   UiDrawerPanel,
@@ -23,6 +24,7 @@ import {
   type AiConversation,
   type AiModelProvider,
 } from './aiChat';
+import { AiChatToolActivityCard } from './AiChatActivityCards';
 import { renderAiChatMessageText } from './AiChatMessageText';
 import { AiContextChips, AiContextPicker } from './AiContextPickerView';
 import { appendAiContextAttachments } from './aiContextAttachments';
@@ -612,24 +614,26 @@ export function AiChatPanel({
     if (!outcome) return null;
     const approved = outcome.state === 'approved';
     return (
-      <UiAgentCard
+      <UiAgentApprovalCard
         className={`ai-chat-message-card ai-chat-approval-outcome${approved ? ' is-approved' : ' is-denied'}`}
-        icon={approved ? <ShieldCheck aria-hidden="true" size={15} /> : <X aria-hidden="true" size={15} />}
         key={`approval-${reference.toolCallId}`}
-        side="left"
-        state="complete"
+        state={approved ? 'complete' : 'cancelled'}
         subtitle={outcome.label}
-        timestamp={reference.completedAt ? formatMessageTime(reference.completedAt) : undefined}
-        title={approved ? 'Edit approved' : 'Edit denied'}
-        tone="neutral"
-      >
-        <div className="ai-chat-approval-copy">
-          {approved
+        summary={
+          approved
             ? 'The agent resumed with temporary edit access through the ARC transaction harness.'
-            : 'The edit request was denied. No approved scene mutation was started from this request.'}
-        </div>
-      </UiAgentCard>
+            : 'The edit request was denied. No approved scene mutation was started from this request.'
+        }
+        title={approved ? 'Edit approved' : 'Edit denied'}
+      />
     );
+  };
+
+  const renderToolActivity = (reference: AiConversationToolReference) => {
+    const approval = renderApprovalOutcome(reference);
+    if (approval) return approval;
+    if (reference.name === 'edit.request') return null;
+    return <AiChatToolActivityCard key={`tool-${reference.toolCallId}`} reference={reference} />;
   };
 
   const renderMessages = (conversation: AiConversation) => (
@@ -641,17 +645,27 @@ export function AiChatPanel({
           const responseModelId = message.modelId ?? conversation.modelId ?? activeProvider?.id;
           return (
             <div className="ai-chat-assistant-turn" key={message.id}>
-              <UiAgentTextCard
-                className={`ai-chat-message-card ai-chat-agent-card ${agentToneClass(responseModelId)}`}
-                data-model-id={responseModelId}
-                renderText={renderAiChatMessageText}
-                side="left"
-                state={message.state}
-                text={message.content}
-                timestamp={timestamp}
-                tone="agent"
-              />
-              {message.toolReferences?.map(renderApprovalOutcome)}
+              {message.state === 'error' ? (
+                <UiAgentErrorCard
+                  className="ai-chat-message-card ai-chat-response-error-card"
+                  defaultExpanded
+                  details={<div>{renderAiChatMessageText(message.content)}</div>}
+                  summary="The AI response stopped before it could complete."
+                  title="AI response failed"
+                />
+              ) : (
+                <UiAgentTextCard
+                  className={`ai-chat-message-card ai-chat-agent-card ${agentToneClass(responseModelId)}`}
+                  data-model-id={responseModelId}
+                  renderText={renderAiChatMessageText}
+                  side="left"
+                  state={message.state}
+                  text={message.content}
+                  timestamp={timestamp}
+                  tone="agent"
+                />
+              )}
+              {message.toolReferences?.map(renderToolActivity)}
             </div>
           );
         }
@@ -676,17 +690,14 @@ export function AiChatPanel({
         );
       })}
       {pendingApproval && (
-        <UiAgentCard
+        <UiAgentApprovalCard
           aria-label="AI editor action approval"
           className="ai-chat-message-card ai-chat-approval-card"
-          icon={<ShieldCheck aria-hidden="true" size={16} />}
           role="alertdialog"
-          side="left"
-          state="streaming"
+          state={approvalBusy ? 'running' : 'pending'}
           subtitle={pendingApproval.label}
-          timestamp={formatMessageTime(pendingApproval.requestedAt)}
+          summary="ARC Built-in AI is requesting temporary edit access. Approval still uses ARC's validated transaction, revision, and commit checks."
           title="Allow editor changes?"
-          tone="neutral"
           actions={
             approvalMode === 'ask' ? (
               <>
@@ -711,12 +722,7 @@ export function AiChatPanel({
               <span className="ai-chat-approval-auto">Auto approving…</span>
             )
           }
-        >
-          <div className="ai-chat-approval-copy">
-            ARC Built-in AI is requesting temporary edit access. Approval still uses ARC's validated transaction,
-            revision, and commit checks.
-          </div>
-        </UiAgentCard>
+        />
       )}
     </div>
   );

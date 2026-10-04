@@ -1,0 +1,167 @@
+.ui-agent-activity-card {
+  --ui-agent-activity-accent: var(--arc-color-text-muted);
+
+  overflow: hidden;
+  border-radius: var(--arc-radius-2);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 3%),
+    0 5px 16px rgb(0 0 0 / 12%);
+}
+
+.ui-agent-activity-card .ui-agent-card-header {
+  min-height: 38px;
+  padding: 7px 9px;
+  background: color-mix(in srgb, var(--arc-color-bg-chrome) 72%, var(--arc-color-bg-field));
+}
+
+.ui-agent-activity-card .ui-agent-card-icon {
+  color: var(--ui-agent-activity-accent);
+}
+
+.ui-agent-activity-card-task {
+  --ui-agent-activity-accent: color-mix(in srgb, var(--arc-color-accent) 75%, var(--arc-color-text));
+}
+
+.ui-agent-activity-card-tool {
+  --ui-agent-activity-accent: color-mix(in srgb, var(--arc-color-text-muted) 76%, #9aa8bd 24%);
+}
+
+.ui-agent-activity-card-approval {
+  --ui-agent-activity-accent: color-mix(in srgb, var(--arc-color-accent) 62%, #79a9ff 38%);
+}
+
+.ui-agent-activity-card-diff {
+  --ui-agent-activity-accent: color-mix(in srgb, var(--arc-color-accent) 50%, #9c8cff 50%);
+}
+
+.ui-agent-activity-card-viewport {
+  --ui-agent-activity-accent: color-mix(in srgb, var(--arc-color-accent) 56%, #65c7d3 44%);
+}
+
+.ui-agent-activity-card-asset {
+  --ui-agent-activity-accent: color-mix(in srgb, var(--arc-color-accent) 45%, #72bf9c 55%);
+}
+
+.ui-agent-activity-card-error {
+  --ui-agent-activity-accent: var(--arc-color-danger);
+}
+
+.ui-agent-activity-status {
+  display: inline-flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border: 1px solid var(--arc-color-border-subtle);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--arc-color-bg-field) 84%, transparent);
+  color: var(--arc-color-text-muted);
+  font-size: var(--arc-text-xxs);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ui-agent-activity-status::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
+}
+
+.ui-agent-activity-status[data-state='running'],
+.ui-agent-activity-status[data-state='pending'] {
+  border-color: color-mix(in srgb, var(--arc-color-accent) 34%, var(--arc-color-border-subtle));
+  color: color-mix(in srgb, var(--arc-color-accent) 76%, var(--arc-color-text));
+}
+
+.ui-agent-activity-status[data-state='complete'] {
+  color: color-mix(in srgb, var(--arc-color-success) 76%, var(--arc-color-text));
+}
+
+.ui-agent-activity-status[data-state='error'] {
+  border-color: color-mix(in srgb, var(--arc-color-danger) 35%, var(--arc-color-border-subtle));
+  color: var(--arc-color-danger);
+}
+
+.ui-agent-activity-status[data-state='cancelled'] {
+  color: var(--arc-color-text-dim);
+}
+
+.ui-agent-activity-card[data-activity-state='running'] .ui-agent-activity-status::before {
+  animation: ui-agent-activity-pulse 1.35s ease-in-out infinite;
+}
+
+.ui-agent-activity-disclosure.ui-icon-button {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+}
+
+.ui-agent-activity-card .ui-agent-card-content {
+  display: grid;
+  gap: 8px;
+  padding: 10px 11px;
+}
+
+.ui-agent-activity-summary {
+  color: var(--arc-color-text);
+  font-size: var(--arc-text-sm);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.ui-agent-activity-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  color: var(--arc-color-text-dim);
+  font-size: var(--arc-text-xxs);
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-agent-activity-details {
+  min-width: 0;
+  max-height: 220px;
+  padding: 8px 9px;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--arc-color-border-subtle) 82%, transparent);
+  border-radius: var(--arc-radius-1);
+  background: color-mix(in srgb, var(--arc-color-bg-field) 82%, black 18%);
+  color: var(--arc-color-text-muted);
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-xs);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.ui-agent-activity-details pre {
+  margin: 0;
+  font: inherit;
+  white-space: pre-wrap;
+}
+
+.ui-agent-activity-card-error .ui-agent-card-content {
+  background: color-mix(in srgb, var(--ui-agent-card-background) 94%, var(--arc-color-danger) 6%);
+}
+
+@keyframes ui-agent-activity-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-agent-activity-card[data-activity-state='running'] .ui-agent-activity-status::before {
+    animation: none;
+  }
+}
