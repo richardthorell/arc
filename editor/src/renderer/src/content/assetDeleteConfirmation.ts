@@ -23,7 +23,9 @@ export const describeAssetDeleteConfirmation = (
   assetIds: readonly string[],
 ): AssetDeleteConfirmation => {
   const transaction = planAssetDeleteTransaction(index, assetIds);
-  const blockingAssetIds = [...new Set(transaction.blockingReferences.map((reference) => reference.sourceAssetId))].sort();
+  const blockingAssetIds = [
+    ...new Set(transaction.blockingReferences.map((reference) => reference.sourceAssetId)),
+  ].sort();
 
   return {
     assetIds: transaction.assetIds,
