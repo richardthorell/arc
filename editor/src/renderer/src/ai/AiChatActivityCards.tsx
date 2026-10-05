@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import type { AiConversationToolReference } from '../../../common/aiConversationTypes';
 import { UiAgentAssetCard, UiAgentToolCard, UiAgentViewportCard, type UiAgentActivityState } from '../ui';
 
@@ -40,28 +42,56 @@ const durationLabel = (reference: AiConversationToolReference): string | undefin
   return `${Math.round(durationMs / 1000)} s`;
 };
 
-const toolDetails = (reference: AiConversationToolReference) => {
-  const sections: string[] = [];
-  if (reference.arguments && Object.keys(reference.arguments).length) {
-    sections.push(`Arguments\n${JSON.stringify(reference.arguments, null, 2)}`);
-  }
-  if (reference.resultContent) {
-    sections.push(`Result\n${formattedResult(reference.resultContent)}`);
-  }
-  if (reference.resultTruncated) {
-    sections.push(
-      `Result was truncated${reference.originalBytes ? ` from ${reference.originalBytes.toLocaleString()} bytes` : ''}.`,
-    );
-  }
-  if (reference.errorCode) {
-    sections.push(`Error code\n${reference.errorCode}${reference.retryable ? ' (retryable)' : ''}`);
-  }
-  return sections.length ? <pre>{boundedText(sections.join('\n\n'))}</pre> : undefined;
-};
+function ToolDetails({ reference }: { reference: AiConversationToolReference }) {
+  const [copied, setCopied] = useState(false);
+  const argumentsText =
+    reference.arguments && Object.keys(reference.arguments).length ? JSON.stringify(reference.arguments, null, 2) : null;
+  const resultText = reference.resultContent ? formattedResult(reference.resultContent) : null;
+
+  const copyResult = async () => {
+    if (!resultText || !navigator.clipboard?.writeText) return;
+    await navigator.clipboard.writeText(resultText);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  };
+
+  if (!argumentsText && !resultText && !reference.resultTruncated && !reference.errorCode) return undefined;
+
+  return (
+    <div className="ai-chat-tool-details">
+      {argumentsText ? (
+        <section className="ai-chat-tool-detail-section">
+          <div className="ai-chat-tool-detail-label">Arguments</div>
+          <pre>{boundedText(argumentsText)}</pre>
+        </section>
+      ) : null}
+      {resultText ? (
+        <section className="ai-chat-tool-detail-section">
+          <div className="ai-chat-tool-detail-label">Result</div>
+          <pre>{boundedText(resultText)}</pre>
+          <button className="ai-chat-tool-copy-json" type="button" onClick={() => void copyResult()}>
+            {copied ? 'Copied' : 'Copy JSON'}
+          </button>
+        </section>
+      ) : null}
+      {reference.resultTruncated ? (
+        <div className="ai-chat-tool-detail-note">
+          Result was truncated{reference.originalBytes ? ` from ${reference.originalBytes.toLocaleString()} bytes` : ''}.
+        </div>
+      ) : null}
+      {reference.errorCode ? (
+        <section className="ai-chat-tool-detail-section">
+          <div className="ai-chat-tool-detail-label">Error code</div>
+          <pre>{`${reference.errorCode}${reference.retryable ? ' (retryable)' : ''}`}</pre>
+        </section>
+      ) : null}
+    </div>
+  );
+}
 
 export function AiChatToolActivityCard({ reference }: { reference: AiConversationToolReference }) {
   const state = activityStateFor(reference);
-  const details = toolDetails(reference);
+  const details = <ToolDetails reference={reference} />;
   const duration = durationLabel(reference);
   const metadata = [reference.step !== undefined ? `Step ${reference.step + 1}` : undefined, duration]
     .filter(Boolean)
