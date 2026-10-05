@@ -96,9 +96,12 @@ const stateValue = (value: unknown, label: string): AiTaskProgressState => {
 const parseStep = (value: unknown, label: string, allowChildren: boolean): ParsedStep => {
   if (!isObject(value)) throw new Error(`${label} must be an object`);
   const childrenValue = value.children;
-  if (!allowChildren && childrenValue !== undefined) throw new Error(`${label}.children cannot be nested more than one level`);
-  if (childrenValue !== undefined && !Array.isArray(childrenValue)) throw new Error(`${label}.children must be an array`);
-  if (Array.isArray(childrenValue) && childrenValue.length > 8) throw new Error(`${label}.children may contain at most 8 steps`);
+  if (!allowChildren && childrenValue !== undefined)
+    throw new Error(`${label}.children cannot be nested more than one level`);
+  if (childrenValue !== undefined && !Array.isArray(childrenValue))
+    throw new Error(`${label}.children must be an array`);
+  if (Array.isArray(childrenValue) && childrenValue.length > 8)
+    throw new Error(`${label}.children may contain at most 8 steps`);
   const detail = value.detail === undefined ? undefined : stringValue(value.detail, `${label}.detail`);
   return {
     id: stringValue(value.id, `${label}.id`),
@@ -160,9 +163,7 @@ const taskForStep = (step: ParsedStep, planId: string, agentStep: number): AiTas
   agentStep,
   planId,
   ...(step.detail ? { detail: step.detail } : {}),
-  ...(step.children?.length
-    ? { children: step.children.map((child) => taskForStep(child, planId, agentStep)) }
-    : {}),
+  ...(step.children?.length ? { children: step.children.map((child) => taskForStep(child, planId, agentStep)) } : {}),
 });
 
 export const taskTreeForAgentPlan = (plan: ParsedPlan, agentStep: number): AiTaskProgress => ({

@@ -15,7 +15,11 @@ const toConversationTaskReference = (
     title: task.title,
     state: task.state,
     ...(task.agentStep !== undefined ? { step: task.agentStep } : {}),
-    ...(task.toolCallIds ? { toolCallIds: [...task.toolCallIds] } : existing?.toolCallIds ? { toolCallIds: [...existing.toolCallIds] } : {}),
+    ...(task.toolCallIds
+      ? { toolCallIds: [...task.toolCallIds] }
+      : existing?.toolCallIds
+        ? { toolCallIds: [...existing.toolCallIds] }
+        : {}),
     ...(task.detail ? { detail: task.detail } : {}),
     ...(task.planId ? { planId: task.planId } : {}),
     ...(task.parentId ? { parentId: task.parentId } : {}),

@@ -153,7 +153,11 @@ function PlanStepRows({
           <div className="ai-chat-plan-step-content">
             <strong>{reference.title}</strong>
             {reference.detail ? <small>{reference.detail}</small> : null}
-            {toolCount ? <small>{toolCount} linked tool {toolCount === 1 ? 'call' : 'calls'}</small> : null}
+            {toolCount ? (
+              <small>
+                {toolCount} linked tool {toolCount === 1 ? 'call' : 'calls'}
+              </small>
+            ) : null}
           </div>
         </div>
         {reference.children?.length ? <PlanStepRows references={reference.children} depth={depth + 1} /> : null}
@@ -164,7 +168,9 @@ function PlanStepRows({
 
 export function AiChatTaskPlanCard({ plan }: { plan: AiConversationTaskReference }) {
   const state = taskActivityStateFor(plan);
-  const leaves = flattenPlanReferences(plan).slice(1).filter((reference) => !reference.children?.length);
+  const leaves = flattenPlanReferences(plan)
+    .slice(1)
+    .filter((reference) => !reference.children?.length);
   const completed = leaves.filter((reference) => reference.state === 'completed').length;
   const active = leaves.find((reference) => reference.state === 'in_progress');
   const summary = active
