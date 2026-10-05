@@ -61,6 +61,7 @@ export type AiTaskProgress = {
   planId?: string;
   parentId?: string;
   order?: number;
+  children?: readonly AiTaskProgress[];
 };
 
 export type AiRuntimeMessage = {
