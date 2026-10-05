@@ -1,4 +1,5 @@
-import { Check, X } from 'lucide-react';
+import { Check, ListChecks, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import type { AiConversationTaskReference, AiConversationToolReference } from '../../../common/aiConversationTypes';
 import './aiChatLiveProgress.css';
 
@@ -57,24 +58,73 @@ const collectPendingTools = (references: readonly AiConversationToolReference[] 
 export function AiChatLiveProgress({ tasks, tools, showIdle = false }: AiChatLiveProgressProps) {
   const taskRows = collectRunnableTasks(tasks);
   const rows = taskRows.length ? taskRows : collectPendingTools(tools);
+  const visibleRows = rows.length ? rows : [{ id: 'idle', title: 'Thinking…', state: 'working' as const }];
+  const hasFailure = rows.some((row) => row.state === 'failed');
+  const hasActiveWork = rows.some((row) => row.state === 'working' || row.state === 'waiting');
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  const [messageStreaming, setMessageStreaming] = useState(hasActiveWork);
+  const [expanded, setExpanded] = useState(hasFailure || hasActiveWork);
+  const wasTerminalRef = useRef(false);
+
+  useEffect(() => {
+    const turn = shellRef.current?.closest('.ai-chat-assistant-turn');
+    const card = turn?.querySelector<HTMLElement>('.ai-chat-agent-card');
+    if (!card) return;
+
+    const update = () => setMessageStreaming(card.dataset.state === 'streaming');
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(card, { attributes: true, attributeFilter: ['data-state'] });
+    return () => observer.disconnect();
+  }, []);
+
+  const terminal = !messageStreaming;
+
+  useEffect(() => {
+    if (!terminal) {
+      setExpanded(true);
+      wasTerminalRef.current = false;
+      return;
+    }
+    if (!wasTerminalRef.current) setExpanded(hasFailure);
+    wasTerminalRef.current = true;
+  }, [hasFailure, terminal]);
 
   if (!rows.length && !showIdle) return null;
-  const visibleRows = rows.length ? rows : [{ id: 'idle', title: 'Thinking…', state: 'working' as const }];
 
+  const toggleLabel = expanded ? 'Hide tasks' : 'Show tasks';
   return (
-    <div className="ai-chat-live-progress" aria-live="polite" aria-label="AI progress" role="status">
-      {visibleRows.map((row) => (
-        <div className={`ai-chat-live-progress-row is-${row.state}`} data-progress-state={row.state} key={row.id}>
-          <span className="ai-chat-live-progress-indicator" aria-hidden="true">
-            {row.state === 'complete' ? <Check size={11} strokeWidth={2.4} /> : null}
-            {row.state === 'failed' ? <X size={11} strokeWidth={2.4} /> : null}
-          </span>
-          <span className="ai-chat-live-progress-label" key={`${row.id}:${row.state}:${row.title}`}>
-            {row.title}
-          </span>
-          {row.state === 'waiting' ? <span className="ai-chat-live-progress-state">Waiting</span> : null}
+    <div
+      className={`ai-chat-task-progress-shell${terminal ? ' is-terminal' : ''}${expanded ? ' is-expanded' : ''}`}
+      ref={shellRef}
+    >
+      {terminal ? (
+        <button
+          aria-label={toggleLabel}
+          className="ui-agent-card-action-button ai-chat-task-list-toggle"
+          title={toggleLabel}
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+        >
+          <ListChecks aria-hidden="true" size={15} />
+        </button>
+      ) : null}
+      {expanded || !terminal ? (
+        <div className="ai-chat-live-progress" aria-live="polite" aria-label="AI progress" role="status">
+          {visibleRows.map((row) => (
+            <div className={`ai-chat-live-progress-row is-${row.state}`} data-progress-state={row.state} key={row.id}>
+              <span className="ai-chat-live-progress-indicator" aria-hidden="true">
+                {row.state === 'complete' ? <Check size={11} strokeWidth={2.4} /> : null}
+                {row.state === 'failed' ? <X size={11} strokeWidth={2.4} /> : null}
+              </span>
+              <span className="ai-chat-live-progress-label" key={`${row.id}:${row.state}:${row.title}`}>
+                {row.title}
+              </span>
+              {row.state === 'waiting' ? <span className="ai-chat-live-progress-state">Waiting</span> : null}
+            </div>
+          ))}
         </div>
-      ))}
+      ) : null}
     </div>
   );
 }
