@@ -45,7 +45,9 @@ const durationLabel = (reference: AiConversationToolReference): string | undefin
 function ToolDetails({ reference }: { reference: AiConversationToolReference }) {
   const [copied, setCopied] = useState(false);
   const argumentsText =
-    reference.arguments && Object.keys(reference.arguments).length ? JSON.stringify(reference.arguments, null, 2) : null;
+    reference.arguments && Object.keys(reference.arguments).length
+      ? JSON.stringify(reference.arguments, null, 2)
+      : null;
   const resultText = reference.resultContent ? formattedResult(reference.resultContent) : null;
 
   const copyResult = async () => {
@@ -76,7 +78,8 @@ function ToolDetails({ reference }: { reference: AiConversationToolReference }) 
       ) : null}
       {reference.resultTruncated ? (
         <div className="ai-chat-tool-detail-note">
-          Result was truncated{reference.originalBytes ? ` from ${reference.originalBytes.toLocaleString()} bytes` : ''}.
+          Result was truncated{reference.originalBytes ? ` from ${reference.originalBytes.toLocaleString()} bytes` : ''}
+          .
         </div>
       ) : null}
       {reference.errorCode ? (
