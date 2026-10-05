@@ -58,6 +58,16 @@
   color: var(--arc-color-text-muted);
 }
 
+.ai-chat-live-progress-row.is-failed,
+.ai-chat-live-progress-row.is-failed .ai-chat-live-progress-label {
+  color: var(--arc-color-danger);
+}
+
+.ai-chat-live-progress-row.is-failed .ai-chat-live-progress-indicator {
+  border-color: transparent;
+  color: var(--arc-color-danger);
+}
+
 .ai-chat-live-progress-row.is-waiting {
   opacity: 0.62;
 }
