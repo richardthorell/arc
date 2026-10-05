@@ -67,11 +67,11 @@ const entitySetBaseColor = z
   .object({
     type: z.literal('entity.setBaseColor'),
     target: agentBatchEntityTargetSchema,
-    color: vector4,
+    color: vector3,
   })
   .strict()
   .describe(
-    'Override the Base Color parameter on the entity current material instance. Prefer this for simple entity color requests instead of creating a new material asset.',
+    'Override the RGB Base Color parameter on the entity current material instance. Prefer this for simple entity color requests instead of creating a new material asset.',
   );
 const entitySetFlow = z
   .object({
