@@ -107,4 +107,31 @@ describe('AiChatTaskActivityCard', () => {
     expect(container.querySelectorAll('[data-progress-state="working"]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-progress-state="waiting"]')).toHaveLength(0);
   });
+
+  it('keeps a failed task visible with a red X when no task is active', () => {
+    const { container } = render(
+      <AiChatTaskActivityCard
+        reference={{
+          id: 'capsule-plan',
+          planId: 'capsule-plan',
+          title: 'Create green capsule',
+          state: 'failed',
+          children: [
+            { id: 'inspect', title: 'Inspect scene', state: 'completed' },
+            { id: 'create', title: 'Create capsule', state: 'failed', detail: 'Editor operation failed' },
+            { id: 'verify', title: 'Verify result', state: 'planned' },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Inspect scene')).toBeVisible();
+    expect(screen.getByText('Create capsule')).toBeVisible();
+    expect(screen.getByText('Verify result')).toBeVisible();
+    expect(container.querySelectorAll('[data-progress-state="complete"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-progress-state="failed"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-progress-state="working"]')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-progress-state="waiting"]')).toHaveLength(1);
+    expect(container.querySelector('[data-progress-state="failed"] svg')).toBeInTheDocument();
+  });
 });
