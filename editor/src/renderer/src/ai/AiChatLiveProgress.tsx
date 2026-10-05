@@ -1,8 +1,8 @@
-import { Check } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import type { AiConversationTaskReference, AiConversationToolReference } from '../../../common/aiConversationTypes';
 import './aiChatLiveProgress.css';
 
-type ProgressRowState = 'complete' | 'working' | 'waiting';
+type ProgressRowState = 'complete' | 'failed' | 'working' | 'waiting';
 
 type ProgressRow = {
   id: string;
@@ -25,6 +25,7 @@ const collectRunnableTasks = (references: readonly AiConversationTaskReference[]
       return;
     }
     if (reference.state === 'completed') rows.push({ id: reference.id, title: reference.title, state: 'complete' });
+    if (reference.state === 'failed') rows.push({ id: reference.id, title: reference.title, state: 'failed' });
     if (reference.state === 'in_progress') rows.push({ id: reference.id, title: reference.title, state: 'working' });
     if (reference.state === 'planned') rows.push({ id: reference.id, title: reference.title, state: 'waiting' });
   };
@@ -66,6 +67,7 @@ export function AiChatLiveProgress({ tasks, tools, showIdle = false }: AiChatLiv
         <div className={`ai-chat-live-progress-row is-${row.state}`} data-progress-state={row.state} key={row.id}>
           <span className="ai-chat-live-progress-indicator" aria-hidden="true">
             {row.state === 'complete' ? <Check size={11} strokeWidth={2.4} /> : null}
+            {row.state === 'failed' ? <X size={11} strokeWidth={2.4} /> : null}
           </span>
           <span className="ai-chat-live-progress-label" key={`${row.id}:${row.state}:${row.title}`}>
             {row.title}
