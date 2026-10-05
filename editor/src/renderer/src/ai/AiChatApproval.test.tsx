@@ -69,6 +69,10 @@ describe('AiChatPanel approvals', () => {
       />,
     );
 
+    fireEvent.change(screen.getByLabelText('Start a conversation'), { target: { value: 'Create a cube' } });
+    fireEvent.click(screen.getByLabelText('Start conversation'));
+
+    await waitFor(() => expect(screen.getByRole('alertdialog', { name: 'AI editor action approval' })).toBeVisible());
     fireEvent.click(screen.getByRole('button', { name: /Deny/u }));
     await waitFor(() => expect(onDenyRequest).toHaveBeenCalledWith('request-1'));
   });
