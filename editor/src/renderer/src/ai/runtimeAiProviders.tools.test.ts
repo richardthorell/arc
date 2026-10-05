@@ -106,7 +106,9 @@ describe('runtime AI provider harness tools', () => {
     await iterator.next();
 
     expect(onInstructionResolution).toHaveBeenCalledWith(
-      expect.objectContaining({ availableTools: ['agent.updatePlan', 'custom.lookup', 'edit.begin', 'scene.getEntity'] }),
+      expect.objectContaining({
+        availableTools: ['agent.updatePlan', 'custom.lookup', 'edit.begin', 'scene.getEntity'],
+      }),
     );
   });
 });
