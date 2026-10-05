@@ -137,7 +137,11 @@ export function MaterialEditorToolbar({ document }: { document: EditorDocument }
                     <Eye size={13} /> View <ChevronDown aria-hidden="true" size={12} />
                   </UiButton>
                   {viewOpen && (
-                    <UiContextMenu aria-label="Material graph view options" className="material-toolbar-popup" width={210}>
+                    <UiContextMenu
+                      aria-label="Material graph view options"
+                      className="material-toolbar-popup"
+                      width={210}
+                    >
                       <UiContextMenuItem
                         leading={menuCheck(state.showGrid)}
                         onClick={() => {
