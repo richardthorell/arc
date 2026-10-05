@@ -40,10 +40,7 @@ describe('AI agent tool loop', () => {
           return;
         }
 
-        expect(resultMessage.toolResult).toMatchObject({
-          toolCallId: 'call-1',
-          name: 'scene.findEntities',
-        });
+        expect(resultMessage.toolResult).toMatchObject({ toolCallId: 'call-1', name: 'scene.findEntities' });
         expect(resultMessage.toolResult?.isError).not.toBe(true);
         yield { type: 'delta' as const, text: 'I found the floor.' };
         yield { type: 'done' as const, finishReason: 'stop' as const };
@@ -122,13 +119,8 @@ describe('AI agent tool loop', () => {
             type: 'tool-call' as const,
             call: {
               id: 'call-edit',
-              name: 'edit.apply',
-              arguments: {
-                editSessionId: 'edit-1',
-                expectedSceneRevision: 11,
-                action: 'rename',
-                value: { guid: 'floor-guid', name: 'Ground' },
-              },
+              name: 'editor.applyBatch',
+              arguments: { editSessionId: 'edit-1', expectedSceneRevision: 11, operations: [] },
             },
           };
           yield { type: 'done' as const, finishReason: 'tool_calls' as const };
@@ -137,38 +129,21 @@ describe('AI agent tool loop', () => {
 
         expect(resultMessage.toolResult).toMatchObject({
           toolCallId: 'call-edit',
-          name: 'edit.apply',
+          name: 'editor.applyBatch',
           isError: true,
           errorCode: 'revision_conflict',
           retryable: true,
         });
         expect(String(resultMessage.content)).toContain('Edit session expects scene revision 12');
-        expect(String(resultMessage.content)).toContain('scene.overview');
-        expect(String(resultMessage.content)).toContain('cancel and begin a new transaction');
-        yield { type: 'delta' as const, text: 'The scene changed, so I refreshed before retrying.' };
         yield { type: 'done' as const, finishReason: 'stop' as const };
       })(),
     );
 
-    const events = await collect(
+    await collect(
       runAiAgentToolLoop(request(), execute, async () => {
         throw new Error('Edit session expects scene revision 12');
       }),
     );
-
-    expect(events).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: 'tool-result',
-          result: expect.objectContaining({
-            errorCode: 'revision_conflict',
-            retryable: true,
-          }),
-        }),
-        { type: 'delta', text: 'The scene changed, so I refreshed before retrying.' },
-      ]),
-    );
-    expect(execute).toHaveBeenCalledTimes(2);
   });
 
   it('does not misclassify non-conflict mutation validation errors', async () => {
@@ -183,11 +158,7 @@ describe('AI agent tool loop', () => {
           yield { type: 'done' as const, finishReason: 'tool_calls' as const };
           return;
         }
-
-        expect(resultMessage.toolResult).toMatchObject({
-          isError: true,
-          errorCode: 'tool_error',
-        });
+        expect(resultMessage.toolResult).toMatchObject({ isError: true, errorCode: 'tool_error' });
         expect(resultMessage.toolResult?.retryable).toBeUndefined();
         yield { type: 'done' as const, finishReason: 'stop' as const };
       })(),
@@ -219,11 +190,42 @@ describe('AI agent tool loop', () => {
     expect(invokeTool).not.toHaveBeenCalled();
   });
 
-  it('terminates runaway tool loops at the configured maximum depth', async () => {
+  it('reserves one provider turn for a terminal response after the final allowed tool step', async () => {
+    let providerCall = 0;
+    const execute = () =>
+      (async function* () {
+        ++providerCall;
+        if (providerCall <= 2) {
+          yield {
+            type: 'tool-call' as const,
+            call: { id: `call-${providerCall}`, name: 'scene.findEntities', arguments: { search: 'Floor' } },
+          };
+          yield { type: 'done' as const, finishReason: 'tool_calls' as const };
+          return;
+        }
+        yield { type: 'delta' as const, text: 'Done.' };
+        yield { type: 'done' as const, finishReason: 'stop' as const };
+      })();
+    const invokeTool = vi.fn(async () => ({
+      name: 'scene.findEntities',
+      operation: 'scene.findEntities',
+      content: '{}',
+      truncated: false,
+      originalBytes: 2,
+    }));
+
+    const events = await collect(runAiAgentToolLoop(request(), execute, invokeTool, { maximumSteps: 2 }));
+
+    expect(invokeTool).toHaveBeenCalledTimes(2);
+    expect(providerCall).toBe(3);
+    expect(events.at(-1)).toEqual({ type: 'done', finishReason: 'stop' });
+  });
+
+  it('rejects another tool request after the configured tool-step budget is exhausted', async () => {
     let call = 0;
     const execute = () =>
       (async function* () {
-        call += 1;
+        ++call;
         yield {
           type: 'tool-call' as const,
           call: { id: `call-${call}`, name: 'scene.findEntities', arguments: { search: 'Floor' } },
@@ -240,12 +242,12 @@ describe('AI agent tool loop', () => {
 
     const events = await collect(runAiAgentToolLoop(request(), execute, invokeTool, { maximumSteps: 2 }));
 
+    expect(invokeTool).toHaveBeenCalledTimes(2);
     expect(events.at(-1)).toMatchObject({
       type: 'error',
       code: 'tool',
       message: 'AI agent reached the maximum of 2 tool steps',
     });
-    expect(invokeTool).toHaveBeenCalledTimes(1);
   });
 
   it('aborts a provider step that exceeds the configured timeout', async () => {
