@@ -120,7 +120,7 @@ export function AiChatLiveProgress({ tasks, tools, showIdle = false }: AiChatLiv
                 {row.state === 'complete' ? <Check size={11} strokeWidth={2.4} /> : null}
                 {row.state === 'failed' ? <X size={11} strokeWidth={2.4} /> : null}
               </span>
-              <span className="ai-chat-live-progress-label" key={`${row.id}:${row.state}:${row.title}`}>
+              <span className="ai-chat-live-progress-label" key={`${row.id}:${row.title}`}>
                 {row.title}
               </span>
               {row.state === 'waiting' ? <span className="ai-chat-live-progress-state">Waiting</span> : null}
