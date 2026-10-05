@@ -59,7 +59,8 @@ const entitySetMaterial = z
   .object({
     type: z.literal('entity.setMaterial'),
     target: agentBatchEntityTargetSchema,
-    material: agentBatchMaterialTargetSchema,
+    path: z.string().min(1).optional(),
+    material: agentBatchMaterialTargetSchema.optional(),
   })
   .strict();
 const entitySetFlow = z
@@ -154,12 +155,21 @@ export const agentEditorBatchRequestSchema = z
           });
         }
       }
-      if (operation.type === 'entity.setMaterial' && 'tempId' in operation.material && !materials.has(operation.material.tempId)) {
-        context.addIssue({
-          code: 'custom',
-          path: ['operations', index, 'material'],
-          message: `tempId '${operation.material.tempId}' must reference a material created earlier in this batch`,
-        });
+      if (operation.type === 'entity.setMaterial') {
+        if (Boolean(operation.path) === Boolean(operation.material)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['operations', index],
+            message: 'entity.setMaterial requires exactly one of path or material',
+          });
+        }
+        if (operation.material && 'tempId' in operation.material && !materials.has(operation.material.tempId)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['operations', index, 'material'],
+            message: `tempId '${operation.material.tempId}' must reference a material created earlier in this batch`,
+          });
+        }
       }
       if (operation.type === 'entity.create' && operation.tempId) {
         if (entities.has(operation.tempId) || materials.has(operation.tempId)) {
