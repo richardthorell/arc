@@ -41,14 +41,18 @@ function validatePolicy(policy: AgentTransactionPreviewPolicy): void {
   }
 }
 
-function cloneRecord(value: Readonly<Record<string, unknown>> | undefined): Readonly<Record<string, unknown>> | undefined {
+function cloneRecord(
+  value: Readonly<Record<string, unknown>> | undefined,
+): Readonly<Record<string, unknown>> | undefined {
   return value ? structuredClone(value) : undefined;
 }
 
 function validateChange(change: AgentTransactionChange): AgentTransactionChange {
   const targetId = requireNonEmpty(change.targetId, 'targetId');
-  if (change.kind === 'create' && change.before !== undefined) throw new Error('create changes cannot contain before state');
-  if (change.kind === 'delete' && change.after !== undefined) throw new Error('delete changes cannot contain after state');
+  if (change.kind === 'create' && change.before !== undefined)
+    throw new Error('create changes cannot contain before state');
+  if (change.kind === 'delete' && change.after !== undefined)
+    throw new Error('delete changes cannot contain after state');
   if (change.kind === 'update' && (change.before === undefined || change.after === undefined)) {
     throw new Error('update changes require before and after state');
   }
