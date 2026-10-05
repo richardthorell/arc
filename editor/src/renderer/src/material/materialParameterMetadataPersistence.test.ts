@@ -56,7 +56,13 @@ describe('material parameter metadata persistence', () => {
     { version: 1, parameters: {} },
     { version: 1, parameters: [{ id: '', order: 0 }] },
     { version: 1, parameters: [{ id: 'a', order: -1 }] },
-    { version: 1, parameters: [{ id: 'a', order: 0 }, { id: 'a', order: 1 }] },
+    {
+      version: 1,
+      parameters: [
+        { id: 'a', order: 0 },
+        { id: 'a', order: 1 },
+      ],
+    },
     { version: 1, parameters: [{ id: 'a', order: 0, group: 4 }] },
   ])('rejects malformed payload %#', (payload) => {
     expect(parseMaterialParameterMetadata(payload)).toBeNull();

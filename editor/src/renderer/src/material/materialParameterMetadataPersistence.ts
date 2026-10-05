@@ -1,7 +1,4 @@
-import {
-  normalizeMaterialParameterMetadata,
-  type MaterialParameterDescriptor,
-} from './materialParameterGroups';
+import { normalizeMaterialParameterMetadata, type MaterialParameterDescriptor } from './materialParameterGroups';
 
 export const MATERIAL_PARAMETER_METADATA_VERSION = 1;
 
