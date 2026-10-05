@@ -172,8 +172,11 @@ const batchOperationToEditApply = (
       return { action: 'setTransform', value: { guid, transform: operation.transform } };
     case 'entity.setRenderLayer':
       return { action: 'setRenderLayer', value: { guid, renderLayerMask: operation.renderLayerMask } };
-    case 'entity.setMaterial':
-      return { action: 'setMaterial', value: { guid, path: resolveBatchMaterial(operation.material, createdMaterials) } };
+    case 'entity.setMaterial': {
+      const path = operation.material ? resolveBatchMaterial(operation.material, createdMaterials) : operation.path;
+      if (!path) throw new Error('entity.setMaterial requires a material path or material tempId');
+      return { action: 'setMaterial', value: { guid, path } };
+    }
     case 'entity.setFlow':
       return {
         action: 'setFlow',
