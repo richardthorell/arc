@@ -45,7 +45,7 @@ describe('AiChatTaskActivityCard', () => {
     expect(screen.queryByRole('status', { name: 'AI progress' })).not.toBeInTheDocument();
   });
 
-  it('shows the current semantic plan step with queued work waiting behind it', () => {
+  it('keeps completed plan steps checked while the spinner advances to the next row', () => {
     const { container, rerender } = render(
       <AiChatTaskActivityCard
         reference={{
@@ -69,12 +69,13 @@ describe('AiChatTaskActivityCard', () => {
       />,
     );
 
-    expect(screen.queryByText('Inspect scene')).not.toBeInTheDocument();
+    expect(screen.getByText('Inspect scene')).toBeVisible();
     expect(screen.getByText('Create capsule')).toBeVisible();
     expect(screen.getByText('Verify result')).toBeVisible();
-    expect(screen.getByText('Waiting')).toBeVisible();
+    expect(container.querySelectorAll('[data-progress-state="complete"]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-progress-state="working"]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-progress-state="waiting"]')).toHaveLength(1);
+    expect(container.querySelector('[data-progress-state="complete"] svg')).toBeInTheDocument();
 
     rerender(
       <AiChatTaskActivityCard
@@ -99,8 +100,10 @@ describe('AiChatTaskActivityCard', () => {
       />,
     );
 
-    expect(screen.queryByText('Create capsule')).not.toBeInTheDocument();
+    expect(screen.getByText('Inspect scene')).toBeVisible();
+    expect(screen.getByText('Create capsule')).toBeVisible();
     expect(screen.getByText('Verify result')).toBeVisible();
+    expect(container.querySelectorAll('[data-progress-state="complete"]')).toHaveLength(2);
     expect(container.querySelectorAll('[data-progress-state="working"]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-progress-state="waiting"]')).toHaveLength(0);
   });
