@@ -331,11 +331,10 @@ export async function* runAiAgentToolLoop(
     if (!planned && planRoots.size && hasSemanticExecution) {
       const failed = failedPlanTask(planRoots);
       if (failed) {
-        let recoveringRoot = mapTaskTree(failed.root, failed.task.id, (task) => ({
-          ...withLinkedCalls(task, executionCalls, providerStep),
-          state: 'in_progress',
-          detail: undefined,
-        }));
+        let recoveringRoot = mapTaskTree(failed.root, failed.task.id, (task) => {
+          const { detail: _detail, ...linkedTask } = withLinkedCalls(task, executionCalls, providerStep);
+          return { ...linkedTask, state: 'in_progress' };
+        });
         recoveringRoot = deriveTaskTreeStates(recoveringRoot);
         planRoots.set(recoveringRoot.id, recoveringRoot);
         planned = {
@@ -389,11 +388,10 @@ export async function* runAiAgentToolLoop(
       planRoots.set(failedRoot.id, failedRoot);
       yield { type: 'task-update', task: failedRoot };
     } else if (planned && recoveringPlanTask) {
-      let recoveredRoot = mapTaskTree(planRoots.get(planned.root.id)!, planned.task.id, (task) => ({
-        ...task,
-        state: 'completed',
-        detail: undefined,
-      }));
+      let recoveredRoot = mapTaskTree(planRoots.get(planned.root.id)!, planned.task.id, (task) => {
+        const { detail: _detail, ...recoveredTask } = task;
+        return { ...recoveredTask, state: 'completed' };
+      });
       recoveredRoot = deriveTaskTreeStates(recoveredRoot);
       planRoots.set(recoveredRoot.id, recoveredRoot);
       yield { type: 'task-update', task: recoveredRoot };
