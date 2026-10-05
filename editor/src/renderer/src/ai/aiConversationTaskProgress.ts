@@ -42,7 +42,7 @@ export const recordConversationTaskUpdate = (
   const existing = index >= 0 ? current[index] : undefined;
   const next = toConversationTaskReference(task, timestamp, existing);
   if (index < 0) return [...current, next];
-  return current.map((reference, candidate) => (candidate === index ? { ...reference, ...next } : { ...reference }));
+  return current.map((reference, candidate) => (candidate === index ? next : { ...reference }));
 };
 
 const finishTask = (
