@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
+import { findNativeControlViolations, formatNativeControlViolations } from '../testing/sharedControlMigration';
+
 const terrainSurfaces = [
   'CreateTerrainDialog.tsx',
   'TerrainStackPanel.tsx',
@@ -15,14 +17,12 @@ const readSurface = (fileName: (typeof terrainSurfaces)[number]) =>
 describe('terrain shared control migration', () => {
   it('keeps current terrain editor surfaces on shared controls', () => {
     for (const fileName of terrainSurfaces) {
-      const source = readSurface(fileName);
+      const violations = findNativeControlViolations(readSurface(fileName));
 
-      expect(source, `${fileName} should not use native buttons`).not.toMatch(/<button\b/);
-      expect(source, `${fileName} should not use native selects`).not.toMatch(/<select\b/);
-      expect(source, `${fileName} should not use native text or numeric inputs`).not.toMatch(
-        /<input\b(?![^>]*\btype=["'](?:file|hidden)["'])/,
-      );
-      expect(source, `${fileName} should not use native textareas`).not.toMatch(/<textarea\b/);
+      expect(
+        violations,
+        formatNativeControlViolations(fileName, violations),
+      ).toEqual([]);
     }
   });
 
