@@ -97,6 +97,121 @@ describe('AI agent task progress', () => {
     });
   });
 
+  it('keeps model-authored plans grouped, semantic, and local to the runtime', async () => {
+    let providerTurn = 0;
+    const execute = vi.fn(() =>
+      (async function* () {
+        ++providerTurn;
+        if (providerTurn === 1) {
+          yield {
+            type: 'tool-call' as const,
+            call: {
+              id: 'plan-1',
+              name: 'agent.updatePlan',
+              arguments: {
+                planId: 'capsule-plan',
+                title: 'Create green capsule',
+                steps: [
+                  { id: 'inspect', title: 'Inspect scene', state: 'completed' },
+                  {
+                    id: 'build',
+                    title: 'Build capsule',
+                    state: 'in_progress',
+                    children: [
+                      { id: 'create', title: 'Create capsule', state: 'in_progress' },
+                      { id: 'verify', title: 'Verify result', state: 'planned' },
+                    ],
+                  },
+                ],
+              },
+            },
+          };
+          yield {
+            type: 'tool-call' as const,
+            call: { id: 'mutate', name: 'editor.applyBatch', arguments: { operations: [] } },
+          };
+          yield { type: 'done' as const, finishReason: 'tool_calls' as const };
+          return;
+        }
+        if (providerTurn === 2) {
+          yield {
+            type: 'tool-call' as const,
+            call: {
+              id: 'plan-2',
+              name: 'agent.updatePlan',
+              arguments: {
+                planId: 'capsule-plan',
+                title: 'Create green capsule',
+                steps: [
+                  { id: 'inspect', title: 'Inspect scene', state: 'completed' },
+                  {
+                    id: 'build',
+                    title: 'Build capsule',
+                    state: 'completed',
+                    children: [
+                      { id: 'create', title: 'Create capsule', state: 'completed' },
+                      { id: 'verify', title: 'Verify result', state: 'completed' },
+                    ],
+                  },
+                ],
+              },
+            },
+          };
+          yield { type: 'done' as const, finishReason: 'tool_calls' as const };
+          return;
+        }
+        yield { type: 'done' as const, finishReason: 'stop' as const };
+      })(),
+    );
+    const invokeTool = vi.fn(async (call: AiToolCall) => ({
+      name: call.name,
+      operation: call.name,
+      content: '{}',
+      truncated: false,
+      originalBytes: 2,
+    }));
+
+    const events = await collect(runAiAgentToolLoop(request, execute, invokeTool));
+    const tasks = events.filter(
+      (event): event is Extract<AiRuntimeStreamEvent, { type: 'task-update' }> => event.type === 'task-update',
+    );
+
+    expect(invokeTool).toHaveBeenCalledTimes(1);
+    expect(invokeTool).toHaveBeenCalledWith(expect.objectContaining({ id: 'mutate', name: 'editor.applyBatch' }));
+    expect(events.some((event) => event.type === 'tool-call' && event.call.name === 'agent.updatePlan')).toBe(false);
+    expect(tasks[0]?.task).toMatchObject({
+      id: 'capsule-plan',
+      title: 'Create green capsule',
+      state: 'in_progress',
+      children: [
+        { id: 'inspect', title: 'Inspect scene', state: 'completed' },
+        {
+          id: 'build',
+          title: 'Build capsule',
+          state: 'in_progress',
+          children: [
+            { id: 'create', title: 'Create capsule', state: 'in_progress' },
+            { id: 'verify', title: 'Verify result', state: 'planned' },
+          ],
+        },
+      ],
+    });
+    const linked = tasks.find((event) =>
+      event.task.children?.some((step) =>
+        step.children?.some((child) => child.id === 'create' && child.toolCallIds?.includes('mutate')),
+      ),
+    );
+    expect(linked).toBeDefined();
+    expect(tasks.at(-1)?.task).toMatchObject({
+      id: 'capsule-plan',
+      state: 'completed',
+      children: [
+        { id: 'inspect', state: 'completed' },
+        { id: 'build', state: 'completed' },
+      ],
+    });
+  });
+
   it('updates a persisted task reference in place instead of appending progress spam', () => {
     const started = recordConversationTaskUpdate(
       undefined,
