@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { AiConversationToolReference } from '../../../common/aiConversationTypes';
 import { AiChatToolActivityCard } from './AiChatActivityCards';
@@ -31,6 +31,23 @@ describe('AiChatToolActivityCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Expand details' }));
     expect(screen.getByText(/sceneRevision/u)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Copy JSON' })).toBeVisible();
+  });
+
+  it('copies the complete formatted result JSON', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const resultContent = JSON.stringify({ sceneRevision: 42, entity: { index: 4, generation: 1 } });
+    render(<AiChatToolActivityCard reference={reference({ resultContent })} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand details' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy JSON' }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(JSON.stringify(JSON.parse(resultContent), null, 2)));
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeVisible();
   });
 
   it('specializes asset, viewport, and error tool activity', () => {
