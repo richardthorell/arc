@@ -8,6 +8,8 @@ export const recordConversationTaskUpdate = (
   task: AiTaskProgress,
   timestamp: string,
 ): AiConversationTaskReference[] => {
+  const existing = references?.find((reference) => reference.id === task.id);
+  const startedAt = existing?.startedAt ?? (task.state === 'planned' ? undefined : timestamp);
   const next: AiConversationTaskReference = {
     id: task.id,
     title: task.title,
@@ -15,9 +17,7 @@ export const recordConversationTaskUpdate = (
     ...(task.agentStep !== undefined ? { step: task.agentStep } : {}),
     ...(task.toolCallIds ? { toolCallIds: [...task.toolCallIds] } : {}),
     ...(task.detail ? { detail: task.detail } : {}),
-    startedAt:
-      references?.find((reference) => reference.id === task.id)?.startedAt ??
-      (task.state === 'planned' ? undefined : timestamp),
+    ...(startedAt ? { startedAt } : {}),
     ...(terminalTaskStates.has(task.state) ? { completedAt: timestamp } : {}),
   };
   const current = references ?? [];
