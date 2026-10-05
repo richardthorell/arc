@@ -102,18 +102,18 @@ function ToolDetails({ reference }: { reference: AiConversationToolReference }) 
   );
 }
 
-const taskIsLive = (reference: AiConversationTaskReference): boolean => {
-  if (reference.state === 'planned' || reference.state === 'in_progress') return true;
-  return reference.children?.some(taskIsLive) ?? false;
+const taskShouldShow = (reference: AiConversationTaskReference): boolean => {
+  if (reference.state === 'planned' || reference.state === 'in_progress' || reference.state === 'failed') return true;
+  return reference.children?.some(taskShouldShow) ?? false;
 };
 
 export function AiChatTaskPlanCard({ plan }: { plan: AiConversationTaskReference }) {
-  if (!taskIsLive(plan)) return null;
+  if (!taskShouldShow(plan)) return null;
   return <AiChatLiveProgress tasks={[plan]} />;
 }
 
 export function AiChatTaskActivityCard({ reference }: { reference: AiConversationTaskReference }) {
-  if (!taskIsLive(reference)) return null;
+  if (!taskShouldShow(reference)) return null;
   return reference.children?.length ? (
     <AiChatTaskPlanCard plan={reference} />
   ) : (
