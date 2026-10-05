@@ -1,5 +1,7 @@
-export { UiAgentCard, UiAgentTextCard } from './UiAgentCard';
+export { UiAgentCard, UiAgentCardActionRow, UiAgentCardCopyAction, UiAgentTextCard } from './UiAgentCard';
 export type {
+  UiAgentCardActionAlignment,
+  UiAgentCardActionRowProps,
   UiAgentCardProps,
   UiAgentCardSide,
   UiAgentCardState,
