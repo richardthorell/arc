@@ -24,7 +24,7 @@ import {
   type AiConversation,
   type AiModelProvider,
 } from './aiChat';
-import { AiChatToolActivityCard } from './AiChatActivityCards';
+import { AiChatTaskActivityCard, AiChatToolActivityCard } from './AiChatActivityCards';
 import { renderAiChatMessageText } from './AiChatMessageText';
 import { AiContextChips, AiContextPicker } from './AiContextPickerView';
 import { appendAiContextAttachments } from './aiContextAttachments';
@@ -35,6 +35,10 @@ import {
 } from './aiContextBudget';
 import { createAiAssetContextProvider } from './aiContextPicker';
 import { loadAiConversationStore, saveAiConversationStore } from './aiConversationStore';
+import {
+  finishPendingConversationTasks,
+  recordConversationTaskUpdate,
+} from './aiConversationTaskProgress';
 import {
   finishPendingConversationTools,
   recordConversationToolCall,
@@ -57,6 +61,10 @@ const cloneConversation = (conversation: AiConversation): AiConversation => ({
   messages: conversation.messages.map((message) => ({
     ...message,
     toolReferences: message.toolReferences?.map((reference) => ({ ...reference })),
+    taskReferences: message.taskReferences?.map((reference) => ({
+      ...reference,
+      ...(reference.toolCallIds ? { toolCallIds: [...reference.toolCallIds] } : {}),
+    })),
   })),
 });
 
@@ -315,6 +323,12 @@ export function AiChatPanel({
         'Cancelled by user',
         timestamp,
       ),
+      taskReferences: finishPendingConversationTasks(
+        message.taskReferences,
+        'cancelled',
+        'Cancelled by user',
+        timestamp,
+      ),
     }));
     setStreaming(false);
   };
@@ -379,6 +393,14 @@ export function AiChatPanel({
           }));
           continue;
         }
+        if (event.type === 'task-update') {
+          const timestamp = new Date().toISOString();
+          updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
+            ...message,
+            taskReferences: recordConversationTaskUpdate(message.taskReferences, event.task, timestamp),
+          }));
+          continue;
+        }
         if (event.type === 'tool-call') {
           const timestamp = new Date().toISOString();
           updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
@@ -407,6 +429,7 @@ export function AiChatPanel({
             content: message.content ? `${message.content}\n\n${event.message}` : event.message,
             state: 'error',
             toolReferences: finishPendingConversationTools(message.toolReferences, 'error', event.message, timestamp),
+            taskReferences: finishPendingConversationTasks(message.taskReferences, 'failed', event.message, timestamp),
           }));
           return { completed: false, text: responseText };
         }
@@ -430,6 +453,7 @@ export function AiChatPanel({
           content: message.content || messageText,
           state: 'error',
           toolReferences: finishPendingConversationTools(message.toolReferences, 'error', messageText, timestamp),
+          taskReferences: finishPendingConversationTasks(message.taskReferences, 'failed', messageText, timestamp),
         }));
       }
       return { completed: false, text: responseText };
@@ -665,6 +689,9 @@ export function AiChatPanel({
                   tone="agent"
                 />
               )}
+              {message.taskReferences?.map((reference) => (
+                <AiChatTaskActivityCard key={`task-${reference.id}`} reference={reference} />
+              ))}
               {message.toolReferences?.map(renderToolActivity)}
             </div>
           );
