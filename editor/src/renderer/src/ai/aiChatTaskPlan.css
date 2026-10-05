@@ -1,0 +1,74 @@
+.ai-chat-plan-steps {
+  display: grid;
+  gap: 8px;
+}
+
+.ai-chat-plan-step {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ai-chat-plan-step[data-task-depth='1'] {
+  margin-left: 18px;
+}
+
+.ai-chat-plan-step-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ai-chat-plan-step-marker {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  margin-top: 5px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: 0.55;
+}
+
+.ai-chat-plan-step-content {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ai-chat-plan-step-content > strong {
+  overflow: hidden;
+  color: var(--arc-color-text-strong);
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-chat-plan-step-content > small {
+  color: var(--arc-color-text-muted);
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-xs);
+}
+
+.ai-chat-plan-step.is-completed .ai-chat-plan-step-marker {
+  background: currentColor;
+  opacity: 0.55;
+}
+
+.ai-chat-plan-step.is-completed .ai-chat-plan-step-content > strong,
+.ai-chat-plan-step.is-cancelled .ai-chat-plan-step-content > strong {
+  color: var(--arc-color-text-muted);
+}
+
+.ai-chat-plan-step.is-in_progress .ai-chat-plan-step-marker {
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 14%, transparent);
+  opacity: 1;
+}
+
+.ai-chat-plan-step.is-failed .ai-chat-plan-step-marker {
+  background: currentColor;
+  opacity: 1;
+}

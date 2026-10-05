@@ -58,6 +58,10 @@ export type AiTaskProgress = {
   agentStep?: number;
   toolCallIds?: readonly string[];
   detail?: string;
+  planId?: string;
+  parentId?: string;
+  order?: number;
+  children?: readonly AiTaskProgress[];
 };
 
 export type AiRuntimeMessage = {

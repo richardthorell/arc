@@ -39,6 +39,10 @@ export type AiConversationTaskReference = {
   step?: number;
   toolCallIds?: string[];
   detail?: string;
+  planId?: string;
+  parentId?: string;
+  order?: number;
+  children?: AiConversationTaskReference[];
   startedAt?: string;
   completedAt?: string;
 };

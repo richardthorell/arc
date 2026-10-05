@@ -12,6 +12,7 @@ import type {
 import { assertAiRuntimeRequestSafeForProvider } from '../../../common/aiSecurityPolicy';
 import type { EditorSettingDescriptor, EditorSettingsSnapshot } from '../../../common/editorWorkflowTypes';
 import type { AiModelProvider } from './aiChat';
+import { aiAgentPlanToolDefinition } from './aiAgentPlan';
 import { runAiAgentToolLoop, type AiAgentToolInvoker, type AiAgentToolLoopOptions } from './aiAgentToolLoop';
 import { resolveAiRuntimeInstructions } from './aiInstructionResolver';
 import { streamOpenAiRuntime } from './openAiRuntimeProvider';
@@ -108,14 +109,16 @@ const withResolvedInstructions = (
   options: RuntimeAiProviderOptions,
 ): AsyncIterable<AiRuntimeStreamEvent> =>
   (async function* () {
-    const [sources, agentTools] = await Promise.all([
+    const attachAgentTools = shouldAttachAgentTools(request);
+    const [sources, harnessTools] = await Promise.all([
       (options.instructionSources ?? defaultInstructionSources)(),
-      shouldAttachAgentTools(request) ? (options.agentTools ?? defaultAgentTools)() : Promise.resolve([]),
+      attachAgentTools ? (options.agentTools ?? defaultAgentTools)() : Promise.resolve([]),
     ]);
     if (request.signal?.aborted) return;
-    const resolution = resolveAiRuntimeInstructions(withAgentTools(request, agentTools), sources);
+    const runtimeTools = attachAgentTools ? [...harnessTools, aiAgentPlanToolDefinition] : [];
+    const resolution = resolveAiRuntimeInstructions(withAgentTools(request, runtimeTools), sources);
     options.onInstructionResolution?.(resolution.diagnostics);
-    if (!agentTools.length) {
+    if (!runtimeTools.length) {
       yield* execute(resolution.request);
       return;
     }

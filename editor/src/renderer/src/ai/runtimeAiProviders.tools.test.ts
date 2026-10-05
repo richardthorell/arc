@@ -71,7 +71,7 @@ describe('runtime AI provider harness tools', () => {
 
     expect(onInstructionResolution).toHaveBeenCalledWith(
       expect.objectContaining({
-        availableTools: ['edit.begin', 'scene.getEntity'],
+        availableTools: ['agent.updatePlan', 'edit.begin', 'scene.getEntity'],
         availableCapabilities: expect.arrayContaining(['scene.read', 'scene.mutate']),
       }),
     );
@@ -106,7 +106,9 @@ describe('runtime AI provider harness tools', () => {
     await iterator.next();
 
     expect(onInstructionResolution).toHaveBeenCalledWith(
-      expect.objectContaining({ availableTools: ['custom.lookup', 'edit.begin', 'scene.getEntity'] }),
+      expect.objectContaining({
+        availableTools: ['agent.updatePlan', 'custom.lookup', 'edit.begin', 'scene.getEntity'],
+      }),
     );
   });
 });
