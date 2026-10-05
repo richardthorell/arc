@@ -35,10 +35,7 @@ import {
 } from './aiContextBudget';
 import { createAiAssetContextProvider } from './aiContextPicker';
 import { loadAiConversationStore, saveAiConversationStore } from './aiConversationStore';
-import {
-  finishPendingConversationTasks,
-  recordConversationTaskUpdate,
-} from './aiConversationTaskProgress';
+import { finishPendingConversationTasks, recordConversationTaskUpdate } from './aiConversationTaskProgress';
 import {
   finishPendingConversationTools,
   recordConversationToolCall,
