@@ -4,31 +4,29 @@ import { parseAgentEditorBatchRequest } from './agentEditorBatch';
 
 describe('agent editor batch contract', () => {
   it('accepts entity creation followed by tempId-based edits', () => {
-    expect(
-      parseAgentEditorBatchRequest({
-        editSessionId: 'edit-1',
-        expectedSceneRevision: 4,
-        operations: [
-          { type: 'entity.create', tempId: 'cube', kind: 'cube' },
-          {
-            type: 'entity.setTransform',
-            target: { tempId: 'cube' },
-            transform: {
-              position: [0, 0, 0],
-              rotation: [0, 0, 0, 1],
-              scale: [4, 4, 4],
-            },
-          },
-          { type: 'entity.rename', target: { tempId: 'cube' }, name: 'Large Cube' },
-        ],
-      }),
-    ).toMatchObject({
+    const parsed = parseAgentEditorBatchRequest({
+      editSessionId: 'edit-1',
+      expectedSceneRevision: 4,
       operations: [
-        { type: 'entity.create' },
-        { type: 'entity.setTransform' },
-        { type: 'entity.rename' },
+        { type: 'entity.create', tempId: 'cube', kind: 'cube' },
+        {
+          type: 'entity.setTransform',
+          target: { tempId: 'cube' },
+          transform: {
+            position: [0, 0, 0],
+            rotation: [0, 0, 0, 1],
+            scale: [4, 4, 4],
+          },
+        },
+        { type: 'entity.rename', target: { tempId: 'cube' }, name: 'Large Cube' },
       ],
     });
+
+    expect(parsed.operations.map((operation) => operation.type)).toEqual([
+      'entity.create',
+      'entity.setTransform',
+      'entity.rename',
+    ]);
   });
 
   it('rejects forward and duplicate tempId references before execution', () => {
