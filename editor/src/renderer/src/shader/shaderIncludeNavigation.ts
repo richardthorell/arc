@@ -26,10 +26,7 @@ function collapseSegments(path: string): string {
  * depending on editor UI state. Relative includes are resolved from the active
  * shader's directory; project/root-style paths remain unchanged.
  */
-export function resolveShaderIncludeTarget(
-  includePath: string,
-  activePath?: string,
-): ShaderIncludeTarget | undefined {
+export function resolveShaderIncludeTarget(includePath: string, activePath?: string): ShaderIncludeTarget | undefined {
   const include = normalizePath(includePath);
   if (!include) return undefined;
 
