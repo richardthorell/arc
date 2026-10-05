@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   createGraphNodeFromPalette,
+  groupGraphNodePaletteResults,
   moveGraphNodePaletteSelection,
   queryGraphNodePalette,
   resolveGraphNodePaletteSelection,
@@ -53,6 +54,32 @@ describe('queryGraphNodePalette', () => {
 
   it('returns deterministic category/name ordering', () => {
     expect(queryGraphNodePalette(nodes).map((node) => node.kind)).toEqual(['branch', 'add', 'constant']);
+  });
+});
+
+describe('graph node palette grouping', () => {
+  it('groups filtered results without changing flat keyboard order', () => {
+    const results = queryGraphNodePalette(nodes);
+    const groups = groupGraphNodePaletteResults(results);
+
+    expect(groups.map(({ category }) => category)).toEqual(['Flow', 'Math', 'Values']);
+    expect(groups.flatMap(({ descriptors }) => descriptors.map(({ kind }) => kind))).toEqual([
+      'branch',
+      'add',
+      'constant',
+    ]);
+  });
+
+  it('uses one shared label for uncategorized descriptors', () => {
+    const uncategorized: GraphNodePaletteDescriptor<'a' | 'b'>[] = [
+      { kind: 'a', name: 'A' },
+      { kind: 'b', name: 'B', category: '   ' },
+    ];
+
+    expect(groupGraphNodePaletteResults(uncategorized)).toEqual([
+      { category: 'Other', descriptors: uncategorized },
+    ]);
+    expect(groupGraphNodePaletteResults(uncategorized, 'General')[0].category).toBe('General');
   });
 });
 
