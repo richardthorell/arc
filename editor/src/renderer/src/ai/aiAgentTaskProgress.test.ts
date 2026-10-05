@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { AiRuntimeRequest, AiRuntimeStreamEvent } from '../../../common/aiRuntimeTypes';
+import type { AiRuntimeRequest, AiRuntimeStreamEvent, AiToolCall } from '../../../common/aiRuntimeTypes';
 import { runAiAgentToolLoop } from './aiAgentToolLoop';
 import { recordConversationTaskUpdate } from './aiConversationTaskProgress';
 
@@ -36,7 +36,7 @@ describe('AI agent task progress', () => {
         yield { type: 'done' as const, finishReason: 'stop' as const };
       })(),
     );
-    const invokeTool = vi.fn(async (call) => ({
+    const invokeTool = vi.fn(async (call: AiToolCall) => ({
       name: call.name,
       operation: call.name,
       content: '{}',
