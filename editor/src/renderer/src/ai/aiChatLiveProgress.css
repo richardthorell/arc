@@ -25,9 +25,12 @@
 }
 
 .ai-chat-live-progress-indicator {
+  display: inline-flex;
   width: 10px;
   height: 10px;
   box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
   border: 1.5px solid color-mix(in srgb, currentColor 28%, transparent);
   border-radius: 50%;
 }
@@ -40,6 +43,19 @@
 
 .ai-chat-live-progress-row.is-working .ai-chat-live-progress-label {
   color: var(--arc-color-text-strong);
+}
+
+.ai-chat-live-progress-row.is-complete {
+  color: var(--arc-color-text-muted);
+}
+
+.ai-chat-live-progress-row.is-complete .ai-chat-live-progress-indicator {
+  border-color: transparent;
+  color: var(--arc-color-success);
+}
+
+.ai-chat-live-progress-row.is-complete .ai-chat-live-progress-label {
+  color: var(--arc-color-text-muted);
 }
 
 .ai-chat-live-progress-row.is-waiting {
