@@ -127,6 +127,7 @@ struct render_quality_profile
     float screen_space_shadow_scale{0.5f};
     std::uint64_t virtual_shadow_budget_bytes{};
     std::uint32_t virtual_shadow_page_render_budget{};
+    std::uint32_t virtual_shadow_request_capacity{default_virtual_shadow_request_capacity};
     float target_frame_time_ms{default_target_frame_time_ms};
     float geometry_error_threshold{1.0f};
     float minimum_geometry_error_threshold{0.5f};
@@ -261,6 +262,7 @@ inline constexpr render_quality_profile ultra_render_quality_profile{
     .screen_space_shadow_scale = 1.0f,
     .virtual_shadow_budget_bytes = 512ull * 1024ull * 1024ull,
     .virtual_shadow_page_render_budget = 2048,
+    .virtual_shadow_request_capacity = default_virtual_shadow_request_capacity,
     .target_frame_time_ms = 1000.0f / 30.0f,
     .geometry_error_threshold = 0.5f,
     .minimum_geometry_error_threshold = 0.25f,
@@ -564,6 +566,7 @@ struct resolved_render_config
     float screen_space_shadow_scale{standard_render_quality_profile.screen_space_shadow_scale};
     std::uint64_t virtual_shadow_budget_bytes{};
     std::uint32_t virtual_shadow_page_render_budget{};
+    std::uint32_t virtual_shadow_request_capacity{default_virtual_shadow_request_capacity};
     virtual_shadow_physical_pool_layout virtual_shadow_pool{};
     std::uint32_t virtual_shadow_address_space_capacity{default_virtual_shadow_address_space_capacity};
     std::uint32_t virtual_shadow_page_table_entry_capacity{static_cast<std::uint32_t>(
@@ -970,6 +973,12 @@ struct render_shadow_profile
     std::uint32_t virtual_evictions{};
     std::uint32_t virtual_parent_fallbacks{};
     std::uint32_t virtual_failed_requests{};
+    std::uint32_t virtual_receiver_samples{};
+    std::uint32_t virtual_raw_requests{};
+    std::uint32_t virtual_compacted_requests{};
+    std::uint32_t virtual_duplicate_requests{};
+    std::uint32_t virtual_stale_requests{};
+    std::uint32_t virtual_request_overflow{};
     std::uint64_t virtual_memory_bytes{};
     std::string fallback_reason;
 };

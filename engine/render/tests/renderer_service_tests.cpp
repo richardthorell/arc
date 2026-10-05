@@ -162,6 +162,7 @@ TEST_CASE("render quality profiles expose immutable implemented tier policy")
     REQUIRE(ultra.gi_trace_budget == 4);
     REQUIRE(ultra.virtual_shadow_budget_bytes == 512ull * 1024ull * 1024ull);
     REQUIRE(ultra.virtual_shadow_page_render_budget == 2048);
+    REQUIRE(ultra.virtual_shadow_request_capacity == default_virtual_shadow_request_capacity);
     REQUIRE(ultra.target_frame_time_ms == Catch::Approx(1000.0f / 30.0f));
 }
 
@@ -261,6 +262,11 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     REQUIRE_FALSE(resolved.features.virtual_shadow_virtual_geometry);
     REQUIRE(resolved.features.screen_space_contact_shadows);
     REQUIRE(resolved.virtual_shadow_budget_bytes == 512ull * 1024ull * 1024ull);
+    REQUIRE(resolved.virtual_shadow_request_capacity == default_virtual_shadow_request_capacity);
+    capabilities.resource_limits.maximum_storage_buffer_range = sizeof(gpu_virtual_shadow_request_slot) * 128u;
+    resolved = resolve_render_config(config, capabilities);
+    REQUIRE(resolved.virtual_shadow_request_capacity == 128u);
+    capabilities.resource_limits.maximum_storage_buffer_range = 0u;
     REQUIRE(resolved.features.hardware_ray_tracing);
     REQUIRE(resolved.features.screen_space_gi);
     REQUIRE(resolved.features.screen_space_reflections);

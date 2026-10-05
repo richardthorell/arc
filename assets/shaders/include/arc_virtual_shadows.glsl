@@ -9,6 +9,7 @@ struct ArcVirtualShadowAddressSpace
 {
     uvec4 identityTopology; // generation, kind, virtual resolution, packed levels/faces
     uvec4 ranges; // view base/count, page-table base/count
+    uvec4 requestMetadata; // mobility, light priority, reserved, reserved
 };
 
 struct ArcVirtualShadowView
@@ -27,6 +28,22 @@ struct ArcVirtualShadowPageTableEntry
 {
     ArcVirtualShadowPhysicalMapping staticDepth;
     ArcVirtualShadowPhysicalMapping dynamicDepth;
+};
+
+struct ArcVirtualShadowPageRequest
+{
+    uvec4 identityPage; // address-space index/generation, packed page coordinate, packed topology
+    uvec4 frameRevision; // frame low/high, content revision low/high
+    uvec4 demand; // float coverage bits, light priority, flags, reserved
+};
+
+struct ArcVirtualShadowRequestSlot
+{
+    uint hash;
+    uint ready;
+    uint reserved0;
+    uint reserved1;
+    ArcVirtualShadowPageRequest request;
 };
 
 uint arcVirtualShadowLevelCount(ArcVirtualShadowAddressSpace addressSpace)

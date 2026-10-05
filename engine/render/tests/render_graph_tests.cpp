@@ -463,6 +463,7 @@ TEST_CASE("Ultra virtual shadow graph declares page feedback cache and lighting 
     config.virtual_shadow_address_space_capacity = 8;
     config.virtual_shadow_view_capacity = 32;
     config.virtual_shadow_page_table_entry_capacity = 128;
+    config.virtual_shadow_request_capacity = 512;
 
     auto graph = make_scene_draw_graph("vsm", config, true);
     const auto compiled_result = graph.compile();
@@ -514,6 +515,8 @@ TEST_CASE("Ultra virtual shadow graph declares page feedback cache and lighting 
     REQUIRE(views != nullptr);
     REQUIRE(page_table != nullptr);
     REQUIRE(readback != nullptr);
+    REQUIRE(readback->byte_size ==
+            config.virtual_shadow_request_capacity * sizeof(gpu_virtual_shadow_page_request));
     REQUIRE(static_pages->format == render_format::d16_unorm);
     REQUIRE(static_pages->extent.width == config.virtual_shadow_pool.atlas_extent);
     REQUIRE(static_pages->extent.height == config.virtual_shadow_pool.atlas_extent);

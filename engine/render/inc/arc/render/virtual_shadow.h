@@ -37,6 +37,8 @@ inline constexpr std::uint64_t default_virtual_shadow_page_table_bytes = 64ull *
 inline constexpr std::uint32_t default_virtual_shadow_address_space_capacity = 256;
 /** @brief Default number of per-face/per-level view records retained by the cache. */
 inline constexpr std::uint32_t default_virtual_shadow_view_capacity = 4096;
+/** @brief Default upper bound for receiver requests emitted and returned per frame. */
+inline constexpr std::uint32_t default_virtual_shadow_request_capacity = 65536;
 inline constexpr std::uint32_t invalid_virtual_shadow_index = 0xffffffffu;
 
 /** @brief Physical depth format selected for the VSM page pool. */
@@ -198,6 +200,10 @@ struct alignas(16) gpu_virtual_shadow_address_space_record
     std::uint32_t view_count{};
     std::uint32_t page_table_base{};
     std::uint32_t page_table_count{};
+    std::uint32_t mobility{};
+    std::uint32_t priority{};
+    std::uint32_t reserved0{};
+    std::uint32_t reserved1{};
 };
 
 /** @brief Stable GPU projection and dense-table range for one face and level. */
@@ -227,13 +233,79 @@ struct alignas(16) gpu_virtual_shadow_page_table_entry
     gpu_virtual_shadow_physical_mapping dynamic_depth{};
 };
 
-static_assert(sizeof(gpu_virtual_shadow_address_space_record) == 32);
+enum class virtual_shadow_gpu_request_flag : std::uint32_t
+{
+    none = 0,
+    coarse = 1u << 0u,
+    filter_expanded = 1u << 1u,
+    motion_expanded = 1u << 2u
+};
+
+[[nodiscard]] constexpr virtual_shadow_gpu_request_flag operator|(virtual_shadow_gpu_request_flag lhs,
+                                                                  virtual_shadow_gpu_request_flag rhs) noexcept
+{
+    return static_cast<virtual_shadow_gpu_request_flag>(static_cast<std::uint32_t>(lhs) |
+                                                        static_cast<std::uint32_t>(rhs));
+}
+
+[[nodiscard]] constexpr bool contains(virtual_shadow_gpu_request_flag value,
+                                      virtual_shadow_gpu_request_flag flag) noexcept
+{
+    return (static_cast<std::uint32_t>(value) & static_cast<std::uint32_t>(flag)) != 0;
+}
+
+/** @brief Fixed-layout request produced by GPU receiver marking and consumed one frame later. */
+struct alignas(16) gpu_virtual_shadow_page_request
+{
+    std::uint32_t address_space{};
+    std::uint32_t address_space_generation{};
+    std::uint32_t page_xy{}; // x in low 16 bits, y in high 16 bits.
+    std::uint32_t topology{}; // level, face, and layer in successive bytes.
+    std::uint32_t frame_low{};
+    std::uint32_t frame_high{};
+    std::uint32_t content_revision_low{};
+    std::uint32_t content_revision_high{};
+    std::uint32_t projected_coverage_bits{};
+    std::uint32_t light_priority{};
+    std::uint32_t flags{};
+    std::uint32_t reserved{};
+};
+
+/** @brief GPU-written counters copied with the compact request array. */
+struct alignas(16) gpu_virtual_shadow_feedback_header
+{
+    std::uint32_t request_count{};
+    std::uint32_t raw_request_count{};
+    std::uint32_t duplicate_count{};
+    std::uint32_t overflow_count{};
+    std::uint32_t receiver_sample_count{};
+    std::uint32_t reserved0{};
+    std::uint32_t reserved1{};
+    std::uint32_t reserved2{};
+};
+
+/** @brief Internal fixed-layout hash slot used for bounded GPU request deduplication. */
+struct alignas(16) gpu_virtual_shadow_request_slot
+{
+    std::uint32_t hash{};
+    std::uint32_t ready{};
+    std::uint32_t reserved0{};
+    std::uint32_t reserved1{};
+    gpu_virtual_shadow_page_request request{};
+};
+
+static_assert(sizeof(gpu_virtual_shadow_address_space_record) == 48);
 static_assert(sizeof(gpu_virtual_shadow_view_record) == 96);
 static_assert(sizeof(gpu_virtual_shadow_physical_mapping) == 16);
 static_assert(sizeof(gpu_virtual_shadow_page_table_entry) == 32);
+static_assert(sizeof(gpu_virtual_shadow_page_request) == 48);
+static_assert(sizeof(gpu_virtual_shadow_feedback_header) == 32);
+static_assert(sizeof(gpu_virtual_shadow_request_slot) == 64);
 static_assert(std::is_standard_layout_v<gpu_virtual_shadow_address_space_record>);
 static_assert(std::is_standard_layout_v<gpu_virtual_shadow_view_record>);
 static_assert(std::is_standard_layout_v<gpu_virtual_shadow_page_table_entry>);
+static_assert(std::is_standard_layout_v<gpu_virtual_shadow_page_request>);
+static_assert(std::is_standard_layout_v<gpu_virtual_shadow_request_slot>);
 
 /** @brief Borrowed cache-owned tables for a backend upload. */
 struct virtual_shadow_gpu_snapshot
@@ -266,6 +338,11 @@ struct virtual_shadow_page_request
     std::uint16_t light_priority{128};
     bool coarse_page{};
 };
+
+[[nodiscard]] gpu_virtual_shadow_page_request
+encode_virtual_shadow_gpu_request(const virtual_shadow_page_request& request,
+                                  virtual_shadow_gpu_request_flag flags =
+                                      virtual_shadow_gpu_request_flag::none) noexcept;
 
 /** @brief Resolved page-table entry consumed by rendering backends. */
 struct virtual_shadow_page_mapping
@@ -311,6 +388,17 @@ struct [[nodiscard]] virtual_shadow_request_result
     std::uint32_t failed_requests{};
 };
 
+/** @brief Generation-safe translation of one completed GPU feedback batch. */
+struct virtual_shadow_feedback_translation
+{
+    std::vector<virtual_shadow_page_request> requests;
+    std::uint32_t raw_requests{};
+    std::uint32_t duplicate_requests{};
+    std::uint32_t stale_requests{};
+    std::uint32_t invalid_requests{};
+    std::uint32_t overflow_requests{};
+};
+
 /**
  * @brief Persistent backend-neutral virtual shadow page allocator and cache.
  *
@@ -339,12 +427,19 @@ public:
     address_space(virtual_shadow_address_space_handle handle) const noexcept;
     [[nodiscard]] bool update_address_space_views(virtual_shadow_address_space_handle handle,
                                                   std::span<const virtual_shadow_view_descriptor> views) noexcept;
+    [[nodiscard]] bool update_address_space_request_metadata(virtual_shadow_address_space_handle handle,
+                                                             render_mobility mobility,
+                                                             std::uint16_t priority) noexcept;
     [[nodiscard]] std::optional<std::uint32_t> dense_page_index(const virtual_shadow_page_key& key) const noexcept;
     /** @brief Borrow all GPU tables until the cache is next mutated. */
     [[nodiscard]] virtual_shadow_gpu_snapshot gpu_snapshot() const noexcept;
 
     [[nodiscard]] virtual_shadow_request_result resolve_requests(std::span<const virtual_shadow_page_request> requests,
                                                                  std::uint64_t frame_index);
+    [[nodiscard]] virtual_shadow_feedback_translation
+    translate_gpu_feedback(std::span<const gpu_virtual_shadow_page_request> requests,
+                           const gpu_virtual_shadow_feedback_header& header,
+                           std::uint64_t maximum_frame_index) const;
     [[nodiscard]] const virtual_shadow_page_mapping* find(const virtual_shadow_page_key& key) const noexcept;
     [[nodiscard]] const virtual_shadow_page_mapping*
     find_resident_or_ancestor(const virtual_shadow_page_key& key) const noexcept;
