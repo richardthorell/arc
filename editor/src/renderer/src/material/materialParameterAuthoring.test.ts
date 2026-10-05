@@ -34,6 +34,13 @@ describe('material parameter authoring metadata', () => {
     detail.parameter = { exposed: true, name: 'Detail' };
     Object.assign(detail.parameter, { group: 'Detail', sortOrder: Number.NaN });
     graph.nodes.push(detail);
+    const output = graph.nodes.find((node) => node.type === 'output');
+    expect(output).toBeDefined();
+    graph.connections.push({
+      id: 'detail-output',
+      from: { nodeId: detail.id, pin: 'value' },
+      to: { nodeId: output!.id, pin: 'opacity' },
+    });
 
     expect(
       materialAuthoringParameters(graph).map(({ name, group, description, sortOrder }) => ({
