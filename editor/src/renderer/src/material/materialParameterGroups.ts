@@ -79,7 +79,9 @@ export function groupMaterialParameters<T extends MaterialParameterDescriptor>(
  * surfaces persist deterministic metadata without depending on incidental edit
  * history or whitespace/casing differences in group labels.
  */
-export function normalizeMaterialParameterMetadata<T extends MaterialParameterDescriptor>(parameters: readonly T[]): T[] {
+export function normalizeMaterialParameterMetadata<T extends MaterialParameterDescriptor>(
+  parameters: readonly T[],
+): T[] {
   const normalizedGroupLabels = new Map<string, string | undefined>();
   for (const parameter of parameters) {
     const normalized = normalizeGroup(parameter.group);
