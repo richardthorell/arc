@@ -8,7 +8,7 @@ import type {
   AiToolResult,
 } from '../../../common/aiRuntimeTypes';
 
-export const AI_AGENT_MAX_STEPS = 8;
+export const AI_AGENT_MAX_STEPS = 10;
 export const AI_AGENT_STEP_TIMEOUT_MS = 60_000;
 
 export type AiAgentModelExecutor = (request: AiRuntimeRequest) => AsyncIterable<AiRuntimeStreamEvent>;
@@ -19,7 +19,14 @@ export type AiAgentToolLoopOptions = Readonly<{
   stepTimeoutMs?: number;
 }>;
 
-const revisionSensitiveTools = new Set(['edit.begin', 'edit.apply', 'edit.commit', 'history.undo', 'history.redo']);
+const revisionSensitiveTools = new Set([
+  'edit.begin',
+  'edit.apply',
+  'editor.applyBatch',
+  'edit.commit',
+  'history.undo',
+  'history.redo',
+]);
 
 const runtimeMessageId = (prefix: string, step: number, index = 0): string =>
   `${prefix}-${step.toString(36)}-${index.toString(36)}-${Date.now().toString(36)}`;
@@ -89,9 +96,11 @@ export async function* runAiAgentToolLoop(
   const maximumSteps = positiveInteger(options.maximumSteps, AI_AGENT_MAX_STEPS, 'maximumSteps');
   const stepTimeoutMs = positiveInteger(options.stepTimeoutMs, AI_AGENT_STEP_TIMEOUT_MS, 'stepTimeoutMs');
   const messages: AiRuntimeMessage[] = [...request.messages];
+  let toolSteps = 0;
 
-  // A provider tool-call turn is intermediate; only a non-tool completion is terminal for Chat.
-  for (let step = 0; step < maximumSteps; ++step) {
+  // maximumSteps bounds provider turns that execute tools. One additional provider turn is
+  // reserved for the terminal response after the final allowed tool result is available.
+  for (let providerStep = 0; providerStep <= maximumSteps; ++providerStep) {
     if (request.signal?.aborted) return;
 
     const controller = new AbortController();
@@ -120,16 +129,16 @@ export async function* runAiAgentToolLoop(
           continue;
         }
         if (event.type === 'tool-call-start') {
-          yield { ...event, agentStep: step };
+          yield { ...event, agentStep: providerStep };
           continue;
         }
         if (event.type === 'tool-call-arguments-delta') {
-          yield { ...event, agentStep: step };
+          yield { ...event, agentStep: providerStep };
           continue;
         }
         if (event.type === 'tool-call') {
           calls.push(event.call);
-          yield { type: 'tool-call', call: event.call, agentStep: step };
+          yield { type: 'tool-call', call: event.call, agentStep: providerStep };
           continue;
         }
         if (event.type === 'done') {
@@ -154,7 +163,7 @@ export async function* runAiAgentToolLoop(
       yield {
         type: 'error',
         code: 'provider',
-        message: `AI agent step ${step + 1} exceeded the ${stepTimeoutMs} ms timeout`,
+        message: `AI agent step ${providerStep + 1} exceeded the ${stepTimeoutMs} ms timeout`,
         retryable: true,
       };
       return;
@@ -176,7 +185,7 @@ export async function* runAiAgentToolLoop(
       return;
     }
 
-    if (step + 1 >= maximumSteps) {
+    if (toolSteps >= maximumSteps) {
       yield {
         type: 'error',
         code: 'tool',
@@ -187,7 +196,7 @@ export async function* runAiAgentToolLoop(
     }
 
     messages.push({
-      id: runtimeMessageId('agent-assistant', step),
+      id: runtimeMessageId('agent-assistant', providerStep),
       role: 'assistant',
       content: stepText,
       toolCalls: calls,
@@ -198,13 +207,14 @@ export async function* runAiAgentToolLoop(
       const call = calls[index]!;
       const result = await executeTool(call, invokeTool, request.signal);
       if (request.signal?.aborted) return;
-      yield { type: 'tool-result', result, agentStep: step };
+      yield { type: 'tool-result', result, agentStep: providerStep };
       messages.push({
-        id: runtimeMessageId('agent-tool', step, index),
+        id: runtimeMessageId('agent-tool', providerStep, index),
         role: 'tool',
         content: result.content,
         toolResult: result,
       });
     }
+    ++toolSteps;
   }
 }
