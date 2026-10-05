@@ -22,7 +22,7 @@ type MaterialParameterAsset = {
   name: string;
   path: string;
   kind: string;
-  status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'stale' | 'importing' | 'failed' | 'missing';
+  status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'source' | 'stale' | 'importing' | 'failed' | 'missing';
   scope?: 'builtin' | 'project' | 'user' | 'organization' | 'procedural';
   readOnly?: boolean;
 };

@@ -119,8 +119,8 @@ describe('ContentAssetCard', () => {
     expect(tooltip).toHaveTextContent('2.50 MiB');
     expect(tooltip).toHaveTextContent('.glb');
     expect(tooltip).toHaveTextContent('Content/Architecture/SM_Cabin.glb');
-    expect(tooltip).toHaveTextContent('18,432');
-    expect(tooltip).toHaveTextContent('12,288');
+    expect(tooltip).toHaveTextContent(/18(?:[,\s])432/);
+    expect(tooltip).toHaveTextContent(/12(?:[,\s])288/);
   });
 
   it('shows texture metadata only for texture-like asset types', async () => {
@@ -143,8 +143,8 @@ describe('ContentAssetCard', () => {
   it('defines useful per-type details for every current asset presentation kind', () => {
     expect(assetSpecificHoverDetails(model)).toEqual([
       { label: 'Meshes', value: '3' },
-      { label: 'Vertices', value: '18,432' },
-      { label: 'Triangles', value: '12,288' },
+      { label: 'Vertices', value: (18_432).toLocaleString() },
+      { label: 'Triangles', value: (12_288).toLocaleString() },
       { label: 'Material slots', value: '2' },
       { label: 'Nodes', value: '5' },
       { label: 'Animations', value: '0' },

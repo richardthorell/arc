@@ -3,8 +3,18 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   assignDroppedMaterialToViewport,
   instantiateDroppedMeshInViewport,
+  viewportAssetDropCompatibilityError,
   viewportMeshDropIntent,
 } from './viewportAssetDrop';
+
+describe('viewportAssetDropCompatibilityError', () => {
+  it('explains that raw shader sources are not entity materials', () => {
+    expect(viewportAssetDropCompatibilityError('shader')).toBe(
+      'Shader source assets cannot be assigned directly. Choose a Material (.arcmat) for the mesh.',
+    );
+    expect(viewportAssetDropCompatibilityError('material')).toBeNull();
+  });
+});
 
 describe('assignDroppedMaterialToViewport', () => {
   it('waits for the viewport pick frame and assigns the material to the picked entity', async () => {

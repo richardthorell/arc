@@ -126,6 +126,7 @@ const assetTypeOptions: Array<{ value: AssetPresentationKind | 'all'; label: str
 const assetStateOptions = [
   { value: 'all', label: 'All states' },
   { value: 'ready', label: 'Ready' },
+  { value: 'source', label: 'Source' },
   { value: 'stale', label: 'Stale' },
   { value: 'importing', label: 'Importing' },
   { value: 'failed', label: 'Failed' },

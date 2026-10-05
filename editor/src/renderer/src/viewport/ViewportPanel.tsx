@@ -7,7 +7,11 @@ import type { StartupState } from '../app/workbenchTypes';
 import type { ProjectSnapshot } from '../services/editorHostTypes';
 import { collectSceneCameraSources } from './viewportCameraSource';
 import { arcAssetDragMime, arcEnvironmentDragMime, readArcAssetDragPayload } from '../services/assetDragPayload';
-import { assignDroppedMaterialToViewport, instantiateDroppedMeshInViewport } from './viewportAssetDrop';
+import {
+  assignDroppedMaterialToViewport,
+  instantiateDroppedMeshInViewport,
+  viewportAssetDropCompatibilityError,
+} from './viewportAssetDrop';
 
 import './viewport.css';
 import { toViewportPixels } from './viewportCoordinates';
@@ -530,6 +534,13 @@ export function ViewportPanel({
     if (!viewportActive) return;
     const dropped = readArcAssetDragPayload(event.dataTransfer);
     if (!dropped) return;
+    const compatibilityError = viewportAssetDropCompatibilityError(dropped.type);
+    if (compatibilityError) {
+      event.preventDefault();
+      event.stopPropagation();
+      setViewportError(compatibilityError);
+      return;
+    }
     const position = pointerCoordinates(event.clientX, event.clientY);
     if (dropped.type === 'material') {
       event.preventDefault();

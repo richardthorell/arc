@@ -26,6 +26,11 @@ export type ViewportMeshDropIntent = 'create' | 'createChild' | 'replace';
 export type ViewportMeshDropResult =
   { succeeded: true; entity: HostEntityId; intent: ViewportMeshDropIntent } | { succeeded: false; error: string };
 
+export const viewportAssetDropCompatibilityError = (assetType: string) =>
+  assetType === 'shader'
+    ? 'Shader source assets cannot be assigned directly. Choose a Material (.arcmat) for the mesh.'
+    : null;
+
 type WaitOptions = {
   attempts?: number;
   intervalMs?: number;
