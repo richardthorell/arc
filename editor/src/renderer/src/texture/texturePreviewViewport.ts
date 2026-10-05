@@ -18,11 +18,7 @@ export const clampTexturePreviewZoom = (zoom: number) => {
  * Invalid/zero geometry falls back to 1x so transient resize or unloaded-image states cannot
  * poison persisted view state with NaN/Infinity.
  */
-export const fitTexturePreviewZoom = (
-  texture: TexturePreviewSize,
-  viewport: TexturePreviewSize,
-  padding = 0,
-) => {
+export const fitTexturePreviewZoom = (texture: TexturePreviewSize, viewport: TexturePreviewSize, padding = 0) => {
   if (
     !positiveFinite(texture.width) ||
     !positiveFinite(texture.height) ||
@@ -37,9 +33,7 @@ export const fitTexturePreviewZoom = (
   const availableHeight = viewport.height - inset;
   if (!positiveFinite(availableWidth) || !positiveFinite(availableHeight)) return TEXTURE_PREVIEW_MIN_ZOOM;
 
-  return clampTexturePreviewZoom(
-    Math.min(availableWidth / texture.width, availableHeight / texture.height),
-  );
+  return clampTexturePreviewZoom(Math.min(availableWidth / texture.width, availableHeight / texture.height));
 };
 
 export const zoomTexturePreviewAroundPoint = (
