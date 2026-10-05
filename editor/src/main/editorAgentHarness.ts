@@ -2,6 +2,7 @@ export * from './editorAgentHarnessCore';
 
 import {
   type AgentBatchEntityTarget,
+  type AgentBatchMaterialTarget,
   type AgentEditorBatchOperation,
   parseAgentEditorBatchRequest,
 } from './agentEditorBatch';
@@ -56,21 +57,108 @@ const resolveBatchTarget = (target: AgentBatchEntityTarget, created: ReadonlyMap
   return guid;
 };
 
+const resolveBatchMaterial = (target: AgentBatchMaterialTarget, created: ReadonlyMap<string, string>): string => {
+  if ('path' in target) return target.path;
+  const path = created.get(target.tempId);
+  if (!path) throw new Error(`Batch material tempId '${target.tempId}' has not been created`);
+  return path;
+};
+
+const semanticMaterialDefinition = (
+  name: string,
+  baseColor: readonly [number, number, number, number],
+  metallic = 0,
+  roughness = 0.62,
+): Record<string, unknown> => ({
+  version: 4,
+  name,
+  domain: 'surface',
+  blendMode: 'opaque',
+  shadingModel: 'standard',
+  doubleSided: false,
+  graph: {
+    version: 1,
+    nodes: [
+      {
+        id: 'base-color',
+        type: 'colorRgba',
+        position: [80, 120],
+        values: { value: [...baseColor] },
+        parameter: { exposed: true, name: 'Base Color' },
+      },
+      {
+        id: 'metallic',
+        type: 'constant',
+        position: [80, 290],
+        values: { value: metallic },
+        parameter: { exposed: true, name: 'Metallic' },
+      },
+      {
+        id: 'roughness',
+        type: 'constant',
+        position: [80, 420],
+        values: { value: roughness },
+        parameter: { exposed: true, name: 'Roughness' },
+      },
+      { id: 'material-output', type: 'output', position: [520, 210], values: {} },
+    ],
+    connections: [
+      {
+        id: 'base-color-output',
+        from: { nodeId: 'base-color', pin: 'rgb' },
+        to: { nodeId: 'material-output', pin: 'baseColor' },
+      },
+      {
+        id: 'metallic-output',
+        from: { nodeId: 'metallic', pin: 'value' },
+        to: { nodeId: 'material-output', pin: 'metallic' },
+      },
+      {
+        id: 'roughness-output',
+        from: { nodeId: 'roughness', pin: 'value' },
+        to: { nodeId: 'material-output', pin: 'roughness' },
+      },
+    ],
+    viewport: { x: 40, y: 40, zoom: 1 },
+  },
+});
+
+const assetName = (path: string): string => {
+  const filename = path.slice(path.lastIndexOf('/') + 1);
+  return filename.slice(0, filename.lastIndexOf('.')) || 'New Material';
+};
+
 const batchOperationToEditApply = (
   operation: AgentEditorBatchOperation,
-  created: ReadonlyMap<string, string>,
+  createdEntities: ReadonlyMap<string, string>,
+  createdMaterials: ReadonlyMap<string, string>,
 ): { action: string; value: Record<string, unknown> } => {
   if (operation.type === 'entity.create') {
     return {
       action: 'create',
       value: {
         ...(operation.kind ? { kind: operation.kind } : {}),
-        ...(operation.parent ? { parentGuid: resolveBatchTarget(operation.parent, created) } : {}),
+        ...(operation.parent ? { parentGuid: resolveBatchTarget(operation.parent, createdEntities) } : {}),
+      },
+    };
+  }
+  if (operation.type === 'material.create') {
+    return {
+      action: 'createAsset',
+      value: {
+        kind: 'material',
+        path: operation.path,
+        definition: semanticMaterialDefinition(
+          operation.name ?? assetName(operation.path),
+          operation.baseColor,
+          operation.metallic,
+          operation.roughness,
+        ),
       },
     };
   }
 
-  const guid = resolveBatchTarget(operation.target, created);
+  const guid = resolveBatchTarget(operation.target, createdEntities);
   switch (operation.type) {
     case 'entity.rename':
       return { action: 'rename', value: { guid, name: operation.name } };
@@ -85,7 +173,7 @@ const batchOperationToEditApply = (
     case 'entity.setRenderLayer':
       return { action: 'setRenderLayer', value: { guid, renderLayerMask: operation.renderLayerMask } };
     case 'entity.setMaterial':
-      return { action: 'setMaterial', value: { guid, path: operation.path } };
+      return { action: 'setMaterial', value: { guid, path: resolveBatchMaterial(operation.material, createdMaterials) } };
     case 'entity.setFlow':
       return {
         action: 'setFlow',
@@ -107,7 +195,7 @@ const batchOperationToEditApply = (
         action: 'reparent',
         value: {
           guid,
-          ...(operation.parent ? { parentGuid: resolveBatchTarget(operation.parent, created) } : {}),
+          ...(operation.parent ? { parentGuid: resolveBatchTarget(operation.parent, createdEntities) } : {}),
           ...(operation.preserveWorld !== undefined ? { preserveWorld: operation.preserveWorld } : {}),
         },
       };
@@ -144,14 +232,15 @@ export class EditorAgentHarness extends EditorAgentHarnessCore {
 
   private async applyBatch(rawParams: unknown, clientId: string): Promise<Record<string, unknown>> {
     const request = parseAgentEditorBatchRequest(rawParams);
-    const created = new Map<string, string>();
-    const createdResources: Record<string, { kind: 'entity'; guid: string }> = {};
+    const createdEntities = new Map<string, string>();
+    const createdMaterials = new Map<string, string>();
+    const createdResources: Record<string, { kind: 'entity'; guid: string } | { kind: 'material'; path: string }> = {};
     const results: Array<Record<string, unknown>> = [];
     let expectedSceneRevision = request.expectedSceneRevision;
     let authority: Record<string, unknown> = {};
 
     for (const [index, operation] of request.operations.entries()) {
-      const edit = batchOperationToEditApply(operation, created);
+      const edit = batchOperationToEditApply(operation, createdEntities, createdMaterials);
       const result = asObject(
         await super.invoke(
           'edit.apply',
@@ -169,8 +258,11 @@ export class EditorAgentHarness extends EditorAgentHarnessCore {
 
       if (operation.type === 'entity.create' && operation.tempId) {
         const guid = requireGuid(result.guid);
-        created.set(operation.tempId, guid);
+        createdEntities.set(operation.tempId, guid);
         createdResources[operation.tempId] = { kind: 'entity', guid };
+      } else if (operation.type === 'material.create') {
+        createdMaterials.set(operation.tempId, operation.path);
+        createdResources[operation.tempId] = { kind: 'material', path: operation.path };
       }
 
       results.push({ index, type: operation.type, result });
