@@ -27,6 +27,8 @@ type BatchCreatedAssets = {
   paths: string[];
 };
 
+const materialParameterCommandPrefix = '__arc_primitive_parameter__/__arc_material_parameter__';
+
 const asObject = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 
@@ -74,6 +76,16 @@ const resolveBatchMaterial = (target: AgentBatchMaterialTarget, created: Readonl
   const path = created.get(target.tempId);
   if (!path) throw new Error(`Batch material tempId '${target.tempId}' has not been created`);
   return path;
+};
+
+const materialParameterPath = (
+  name: string,
+  type: string,
+  kind: string,
+  value: readonly number[],
+): string => {
+  const payload = JSON.stringify({ name, type, kind, value: [...value] });
+  return `${materialParameterCommandPrefix}${Buffer.from(payload, 'utf8').toString('hex')}/0`;
 };
 
 const semanticMaterialDefinition = (
@@ -181,6 +193,11 @@ const batchOperationToEditApply = (
       if (!path) throw new Error('entity.setMaterial requires a material path or material tempId');
       return { action: 'setMaterial', value: { guid, path } };
     }
+    case 'entity.setBaseColor':
+      return {
+        action: 'setMaterial',
+        value: { guid, path: materialParameterPath('Base Color', 'vec4', 'color', operation.color) },
+      };
     case 'entity.setFlow':
       return {
         action: 'setFlow',
