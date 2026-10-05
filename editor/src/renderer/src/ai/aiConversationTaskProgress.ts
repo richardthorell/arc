@@ -2,6 +2,7 @@ import type { AiConversationTaskReference } from '../../../common/aiConversation
 import type { AiTaskProgress, AiTaskProgressState } from '../../../common/aiRuntimeTypes';
 
 const terminalTaskStates = new Set<AiTaskProgressState>(['completed', 'failed', 'cancelled']);
+const hiddenFallbackTaskTitles = new Set(['edit.cancel']);
 
 const resolvedTaskState = (
   task: AiTaskProgress,
@@ -59,6 +60,8 @@ export const recordConversationTaskUpdate = (
   timestamp: string,
 ): AiConversationTaskReference[] => {
   const current = references ?? [];
+  if (!task.planId && hiddenFallbackTaskTitles.has(task.title)) return current.map((reference) => ({ ...reference }));
+
   const index = current.findIndex((reference) => reference.id === task.id);
   const existing = index >= 0 ? current[index] : undefined;
   const next = toConversationTaskReference(task, timestamp, existing);
