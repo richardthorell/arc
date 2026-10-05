@@ -8,12 +8,17 @@ const detailCharacterLimit = 1800;
 const boundedText = (value: string): string =>
   value.length <= detailCharacterLimit ? value : `${value.slice(0, detailCharacterLimit)}\n…`;
 
-const formattedResult = (value: string): string => {
+const parsedResult = (value: string): unknown => {
   try {
-    return JSON.stringify(JSON.parse(value) as unknown, null, 2);
+    return JSON.parse(value) as unknown;
   } catch {
     return value;
   }
+};
+
+const formattedResult = (value: string): string => {
+  const parsed = parsedResult(value);
+  return typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2);
 };
 
 const activityStateFor = (reference: AiConversationToolReference): UiAgentActivityState => {
@@ -44,15 +49,21 @@ const durationLabel = (reference: AiConversationToolReference): string | undefin
 
 function ToolDetails({ reference }: { reference: AiConversationToolReference }) {
   const [copied, setCopied] = useState(false);
-  const argumentsText =
-    reference.arguments && Object.keys(reference.arguments).length
-      ? JSON.stringify(reference.arguments, null, 2)
-      : null;
+  const hasArguments = Boolean(reference.arguments && Object.keys(reference.arguments).length);
+  const argumentsText = hasArguments ? JSON.stringify(reference.arguments, null, 2) : null;
   const resultText = reference.resultContent ? formattedResult(reference.resultContent) : null;
+  const copyPayload = JSON.stringify(
+    {
+      ...(hasArguments ? { arguments: reference.arguments } : {}),
+      ...(reference.resultContent ? { result: parsedResult(reference.resultContent) } : {}),
+    },
+    null,
+    2,
+  );
 
   const copyResult = async () => {
     if (!resultText || !navigator.clipboard?.writeText) return;
-    await navigator.clipboard.writeText(resultText);
+    await navigator.clipboard.writeText(copyPayload);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1200);
   };
