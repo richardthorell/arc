@@ -17,6 +17,9 @@ export const recordConversationTaskUpdate = (
     ...(task.agentStep !== undefined ? { step: task.agentStep } : {}),
     ...(task.toolCallIds ? { toolCallIds: [...task.toolCallIds] } : {}),
     ...(task.detail ? { detail: task.detail } : {}),
+    ...(task.planId ? { planId: task.planId } : {}),
+    ...(task.parentId ? { parentId: task.parentId } : {}),
+    ...(task.order !== undefined ? { order: task.order } : {}),
     ...(startedAt ? { startedAt } : {}),
     ...(terminalTaskStates.has(task.state) ? { completedAt: timestamp } : {}),
   };
