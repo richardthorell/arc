@@ -21,17 +21,19 @@ const reference = (overrides: Partial<AiConversationToolReference> = {}): AiConv
 });
 
 describe('AiChatToolActivityCard', () => {
-  it('renders stable operation metadata and bounded details from persisted tool references', () => {
+  it('renders stable operation metadata, bounded details, and a persistent copy action row', () => {
     const { container } = render(<AiChatToolActivityCard reference={reference()} />);
 
     expect(container.querySelector('[data-activity-kind="tool"]')).toBeInTheDocument();
     expect(screen.getByText('scene.overview')).toBeVisible();
     expect(screen.getByText('Step 2 · 840 ms')).toBeVisible();
     expect(screen.queryByText(/sceneRevision/u)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy tool JSON' })).toBeVisible();
+    expect(container.querySelector('.ui-agent-card-action-row')).toHaveAttribute('data-align', 'left');
+    expect(container.querySelector('.ui-agent-card-action-row')).toHaveAttribute('data-reveal-on-hover', 'false');
 
     fireEvent.click(screen.getByRole('button', { name: 'Expand details' }));
     expect(screen.getByText(/sceneRevision/u)).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Copy JSON' })).toBeVisible();
   });
 
   it('copies arguments and the complete result together as JSON', async () => {
@@ -51,8 +53,7 @@ describe('AiChatToolActivityCard', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Expand details' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Copy JSON' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy tool JSON' }));
 
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(
