@@ -4,12 +4,24 @@ import type { AiTaskProgress, AiTaskProgressState } from '../../../common/aiRunt
 const terminalTaskStates = new Set<AiTaskProgressState>(['completed', 'failed', 'cancelled']);
 const hiddenFallbackTaskTitles = new Set(['edit.cancel']);
 
+const hasNewLinkedToolCall = (task: AiTaskProgress, existing: AiConversationTaskReference): boolean => {
+  const previous = new Set(existing.toolCallIds ?? []);
+  return (task.toolCallIds ?? []).some((toolCallId) => !previous.has(toolCallId));
+};
+
 const resolvedTaskState = (
   task: AiTaskProgress,
   existing: AiConversationTaskReference | undefined,
 ): AiTaskProgressState => {
-  if (existing && terminalTaskStates.has(existing.state)) return existing.state;
-  return task.state;
+  if (!existing || !terminalTaskStates.has(existing.state)) return task.state;
+  if (
+    (existing.state === 'failed' || existing.state === 'cancelled') &&
+    (task.state === 'in_progress' || task.state === 'completed') &&
+    hasNewLinkedToolCall(task, existing)
+  ) {
+    return task.state;
+  }
+  return existing.state;
 };
 
 const toConversationTaskReference = (
