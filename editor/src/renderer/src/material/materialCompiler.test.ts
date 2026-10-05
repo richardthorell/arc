@@ -38,11 +38,16 @@ describe('native material compiler editor adapter', () => {
     ]);
   });
 
-  it('exposes Texture Sample parameters as texture2d values', () => {
+  it('exposes connected Texture Sample parameters as texture2d values', () => {
     const graph = createDefaultMaterialGraph();
     const texture = createMaterialNode('textureSample', [160, 160], { texture: 'Content/Textures/albedo.png' });
     texture.parameter = { exposed: true, name: 'Albedo' };
     graph.nodes.push(texture);
+    graph.connections.push({
+      id: 'texture-to-base-color',
+      from: { nodeId: texture.id, pin: 'rgb' },
+      to: { nodeId: 'material-output', pin: 'baseColor' },
+    });
 
     expect(materialEditorParameters(graph)).toContainEqual(
       expect.objectContaining({
@@ -53,10 +58,34 @@ describe('native material compiler editor adapter', () => {
     );
   });
 
+  it('omits exposed nodes that cannot affect Material Output', () => {
+    const graph = createDefaultMaterialGraph();
+    const disconnected = createMaterialNode('constant', [160, 160], { value: 0.5 });
+    disconnected.parameter = { exposed: true, name: 'Disconnected' };
+    const multiply = createMaterialNode('multiply', [260, 160]);
+    multiply.parameter = { exposed: true, name: 'Operation' };
+    graph.nodes.push(disconnected, multiply);
+
+    expect(materialEditorParameters(graph).map((parameter) => parameter.name)).not.toContain('Disconnected');
+    expect(materialEditorParameters(graph).map((parameter) => parameter.name)).not.toContain('Operation');
+  });
+
+  it('supports the modern Color node as an RGBA color parameter', () => {
+    const graph = createDefaultMaterialGraph();
+    expect(materialEditorParameters(graph)).toContainEqual(
+      expect.objectContaining({
+        name: 'Base Color',
+        nodeType: 'colorRgba',
+        type: 'vec4',
+        editorKind: 'color',
+      }),
+    );
+  });
+
   it('classifies value-only edits to existing exposed parameters without requiring a shader rebuild', () => {
     const before = createDefaultMaterialGraph();
     const after = structuredClone(before);
-    after.nodes[1].values = { ...after.nodes[1].values, value: [0.2, 0.3, 0.4] };
+    after.nodes[0].values = { ...after.nodes[0].values, value: [0.2, 0.3, 0.4, 1] };
 
     expect(materialGraphEditImpact(before, after)).toBe('parameter-values');
   });
@@ -68,13 +97,14 @@ describe('native material compiler editor adapter', () => {
     expect(materialGraphEditImpact(before, topology)).toBe('shader');
 
     const metadata = structuredClone(before);
-    metadata.nodes[1].parameter = { ...metadata.nodes[1].parameter!, name: 'Tint' };
+    metadata.nodes[0].parameter = { ...metadata.nodes[0].parameter!, name: 'Tint' };
     expect(materialGraphEditImpact(before, metadata)).toBe('shader');
   });
 
-  it('does not classify values on unexposed nodes as runtime parameter edits', () => {
+  it('does not classify values on ineffective exposed nodes as runtime parameter edits', () => {
     const before = createDefaultMaterialGraph();
     const node = createMaterialNode('constant', [160, 160], { value: 0.5 });
+    node.parameter = { exposed: true, name: 'Disconnected' };
     before.nodes.push(node);
     const after = structuredClone(before);
     after.nodes.at(-1)!.values.value = 0.75;
