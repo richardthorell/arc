@@ -76,9 +76,7 @@ describe('graph node palette grouping', () => {
       { kind: 'b', name: 'B', category: '   ' },
     ];
 
-    expect(groupGraphNodePaletteResults(uncategorized)).toEqual([
-      { category: 'Other', descriptors: uncategorized },
-    ]);
+    expect(groupGraphNodePaletteResults(uncategorized)).toEqual([{ category: 'Other', descriptors: uncategorized }]);
     expect(groupGraphNodePaletteResults(uncategorized, 'General')[0].category).toBe('General');
   });
 });
