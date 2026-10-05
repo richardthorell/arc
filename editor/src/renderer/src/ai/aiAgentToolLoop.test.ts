@@ -198,7 +198,7 @@ describe('AI agent tool loop', () => {
     const events = await collect(runAiAgentToolLoop(request(), execute, invokeTool, { maximumSteps: 2 }));
 
     expect(invokeTool).toHaveBeenCalledTimes(2);
-    expect(execute).toHaveBeenCalledTimes?.;
+    expect(providerCall).toBe(3);
     expect(events.at(-1)).toEqual({ type: 'done', finishReason: 'stop' });
   });
 
