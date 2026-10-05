@@ -244,6 +244,15 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
     result.screen_space_shadow_scale = profile.screen_space_shadow_scale;
     result.virtual_shadow_budget_bytes = profile.virtual_shadow_budget_bytes;
     result.virtual_shadow_page_render_budget = profile.virtual_shadow_page_render_budget;
+    result.virtual_shadow_request_capacity = profile.virtual_shadow_request_capacity;
+    if (capabilities.resource_limits.maximum_storage_buffer_range != 0u)
+    {
+        const auto maximum_requests =
+            capabilities.resource_limits.maximum_storage_buffer_range /
+            std::max(sizeof(gpu_virtual_shadow_request_slot), sizeof(gpu_virtual_shadow_page_request));
+        result.virtual_shadow_request_capacity = static_cast<std::uint32_t>(
+            std::min<std::uint64_t>(result.virtual_shadow_request_capacity, maximum_requests));
+    }
     if (capabilities.memory_budget != 0 && result.virtual_shadow_budget_bytes != 0)
         result.virtual_shadow_budget_bytes =
             std::min(result.virtual_shadow_budget_bytes, capabilities.memory_budget * 8u / 100u);

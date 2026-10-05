@@ -1,6 +1,7 @@
 #include <arc/render/virtual_shadow.h>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -38,6 +39,11 @@ gpu_virtual_shadow_physical_mapping invalid_gpu_mapping() noexcept
 gpu_virtual_shadow_page_table_entry invalid_gpu_page_entry() noexcept
 {
     return {.static_depth = invalid_gpu_mapping(), .dynamic_depth = invalid_gpu_mapping()};
+}
+
+std::uint64_t combine_u32(std::uint32_t low, std::uint32_t high) noexcept
+{
+    return static_cast<std::uint64_t>(low) | (static_cast<std::uint64_t>(high) << 32u);
 }
 
 math::matrix4f look_at_rh(const math::vector3f& eye, const math::vector3f& center, const math::vector3f& up) noexcept
@@ -370,6 +376,8 @@ void virtual_shadow_cache::rebuild_gpu_address_space(std::uint32_t index) noexce
     output.view_count = slot.view_count;
     output.page_table_base = slot.page_table_base;
     output.page_table_count = slot.page_table_count;
+    output.mobility = static_cast<std::uint32_t>(slot.descriptor.mobility);
+    output.priority = slot.descriptor.priority;
 }
 
 bool virtual_shadow_cache::update_address_space_views(virtual_shadow_address_space_handle handle,
@@ -417,6 +425,20 @@ bool virtual_shadow_cache::update_address_space_views(virtual_shadow_address_spa
     if (std::memcmp(packed.data(), current, packed.size() * sizeof(gpu_virtual_shadow_view_record)) == 0) return true;
     std::copy(packed.begin(), packed.end(), gpu_views_.begin() + slot.view_base);
     ++view_revision_;
+    return true;
+}
+
+bool virtual_shadow_cache::update_address_space_request_metadata(virtual_shadow_address_space_handle handle,
+                                                                 render_mobility mobility,
+                                                                 std::uint16_t priority) noexcept
+{
+    if (!address_space(handle)) return false;
+    auto& slot = address_spaces_[handle.index];
+    if (slot.descriptor.mobility == mobility && slot.descriptor.priority == priority) return true;
+    slot.descriptor.mobility = mobility;
+    slot.descriptor.priority = priority;
+    rebuild_gpu_address_space(handle.index);
+    ++address_space_revision_;
     return true;
 }
 
@@ -637,6 +659,109 @@ virtual_shadow_cache::resolve_requests(std::span<const virtual_shadow_page_reque
         result.render_pages.push_back(mapping);
         ++cumulative_.cache_misses;
     }
+    return result;
+}
+
+gpu_virtual_shadow_page_request encode_virtual_shadow_gpu_request(const virtual_shadow_page_request& request,
+                                                                  virtual_shadow_gpu_request_flag flags) noexcept
+{
+    if (request.coarse_page) flags = flags | virtual_shadow_gpu_request_flag::coarse;
+    return {.address_space = request.key.address_space.index,
+            .address_space_generation = request.key.address_space.generation,
+            .page_xy = static_cast<std::uint32_t>(request.key.coordinate.x) |
+                       (static_cast<std::uint32_t>(request.key.coordinate.y) << 16u),
+            .topology = static_cast<std::uint32_t>(request.key.coordinate.level) |
+                        (static_cast<std::uint32_t>(request.key.coordinate.face) << 8u) |
+                        (static_cast<std::uint32_t>(request.key.layer) << 16u),
+            .frame_low = static_cast<std::uint32_t>(request.frame_index),
+            .frame_high = static_cast<std::uint32_t>(request.frame_index >> 32u),
+            .content_revision_low = static_cast<std::uint32_t>(request.content_revision),
+            .content_revision_high = static_cast<std::uint32_t>(request.content_revision >> 32u),
+            .projected_coverage_bits = std::bit_cast<std::uint32_t>(std::max(request.projected_coverage, 0.0f)),
+            .light_priority = request.light_priority,
+            .flags = static_cast<std::uint32_t>(flags)};
+}
+
+virtual_shadow_feedback_translation
+virtual_shadow_cache::translate_gpu_feedback(std::span<const gpu_virtual_shadow_page_request> requests,
+                                             const gpu_virtual_shadow_feedback_header& header,
+                                             std::uint64_t maximum_frame_index) const
+{
+    virtual_shadow_feedback_translation result{};
+    result.raw_requests = header.raw_request_count;
+    result.duplicate_requests = header.duplicate_count;
+    result.overflow_requests = header.overflow_count;
+    const auto count = std::min<std::size_t>(header.request_count, requests.size());
+    if (header.request_count > requests.size())
+        result.overflow_requests =
+            std::max(result.overflow_requests, static_cast<std::uint32_t>(header.request_count - requests.size()));
+    result.requests.reserve(count);
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        const auto& encoded = requests[index];
+        const virtual_shadow_address_space_handle address_space{encoded.address_space,
+                                                                encoded.address_space_generation};
+        if (!this->address_space(address_space))
+        {
+            ++result.stale_requests;
+            continue;
+        }
+        const auto layer = (encoded.topology >> 16u) & 0xffu;
+        if (layer > static_cast<std::uint32_t>(virtual_shadow_page_layer::dynamic_depth))
+        {
+            ++result.invalid_requests;
+            continue;
+        }
+        const virtual_shadow_page_coordinate coordinate{
+            .x = static_cast<std::uint16_t>(encoded.page_xy & 0xffffu),
+            .y = static_cast<std::uint16_t>(encoded.page_xy >> 16u),
+            .level = static_cast<std::uint8_t>(encoded.topology & 0xffu),
+            .face = static_cast<std::uint8_t>((encoded.topology >> 8u) & 0xffu)};
+        const virtual_shadow_page_key key{.address_space = address_space,
+                                          .coordinate = coordinate,
+                                          .layer = static_cast<virtual_shadow_page_layer>(layer)};
+        const auto frame_index = combine_u32(encoded.frame_low, encoded.frame_high);
+        const auto coverage = std::bit_cast<float>(encoded.projected_coverage_bits);
+        if (!dense_page_index(key) || frame_index > maximum_frame_index || !std::isfinite(coverage) || coverage < 0.0f)
+        {
+            ++result.invalid_requests;
+            continue;
+        }
+        result.requests.push_back(
+            {.key = key,
+             .frame_index = frame_index,
+             .content_revision = combine_u32(encoded.content_revision_low, encoded.content_revision_high),
+             .projected_coverage = coverage,
+             .light_priority = static_cast<std::uint16_t>(std::min(
+                 encoded.light_priority, static_cast<std::uint32_t>(std::numeric_limits<std::uint16_t>::max()))),
+             .coarse_page = contains(static_cast<virtual_shadow_gpu_request_flag>(encoded.flags),
+                                     virtual_shadow_gpu_request_flag::coarse)});
+    }
+
+    std::stable_sort(result.requests.begin(), result.requests.end(),
+                     [](const auto& lhs, const auto& rhs) { return lhs.key < rhs.key; });
+    std::vector<virtual_shadow_page_request> unique;
+    unique.reserve(result.requests.size());
+    for (const auto& request : result.requests)
+    {
+        if (unique.empty() || unique.back().key != request.key)
+        {
+            unique.push_back(request);
+            continue;
+        }
+        auto& merged = unique.back();
+        merged.projected_coverage = std::max(merged.projected_coverage, request.projected_coverage);
+        merged.light_priority = std::max(merged.light_priority, request.light_priority);
+        merged.coarse_page = merged.coarse_page || request.coarse_page;
+        if (request.frame_index > merged.frame_index ||
+            (request.frame_index == merged.frame_index && request.content_revision > merged.content_revision))
+        {
+            merged.frame_index = request.frame_index;
+            merged.content_revision = request.content_revision;
+        }
+        ++result.duplicate_requests;
+    }
+    result.requests = std::move(unique);
     return result;
 }
 

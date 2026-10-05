@@ -215,6 +215,7 @@ void vulkan_render_backend::configure(const resolved_render_config& config)
     const auto previous_virtual_shadow_address_spaces = resolved_config_.virtual_shadow_address_space_capacity;
     const auto previous_virtual_shadow_page_table = resolved_config_.virtual_shadow_page_table_entry_capacity;
     const auto previous_virtual_shadow_views = resolved_config_.virtual_shadow_view_capacity;
+    const auto previous_virtual_shadow_requests = resolved_config_.virtual_shadow_request_capacity;
     resolved_config_ = config;
     if (!local_shadow_allocator_ || previous_local_shadow_atlas != config.local_shadow_atlas_resolution)
     {
@@ -227,7 +228,8 @@ void vulkan_render_backend::configure(const resolved_render_config& config)
         if (!virtual_shadow_cache_ || previous_virtual_shadow_pool != config.virtual_shadow_pool ||
             previous_virtual_shadow_address_spaces != config.virtual_shadow_address_space_capacity ||
             previous_virtual_shadow_page_table != config.virtual_shadow_page_table_entry_capacity ||
-            previous_virtual_shadow_views != config.virtual_shadow_view_capacity)
+            previous_virtual_shadow_views != config.virtual_shadow_view_capacity ||
+            previous_virtual_shadow_requests != config.virtual_shadow_request_capacity)
         {
             virtual_shadow_cache_ = std::make_unique<virtual_shadow_cache>(virtual_shadow_cache_config{
                 .physical_pool = config.virtual_shadow_pool,
@@ -455,6 +457,7 @@ bool vulkan_render_backend::render_native_viewport_frame(std::uint32_t width, st
     collect_texture_mip_feedback(swapchain_.frame_index);
     collect_gpu_visibility_feedback(swapchain_.frame_index);
     collect_virtual_geometry_feedback(swapchain_.frame_index);
+    collect_virtual_shadow_feedback(swapchain_.frame_index);
     collect_timestamp_results();
     collect_object_pick_result();
     collect_frame_capture_result();
@@ -886,6 +889,7 @@ surface_frame_result vulkan_render_backend::render_shared_viewport_frame(shared_
     collect_texture_mip_feedback(slot_index);
     collect_gpu_visibility_feedback(slot_index);
     collect_virtual_geometry_feedback(slot_index);
+    collect_virtual_shadow_feedback(slot_index);
     collect_timestamp_results();
     collect_object_pick_result();
     collect_frame_capture_result();

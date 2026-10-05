@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <atomic>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -327,6 +328,65 @@ TEST_CASE("virtual shadow dense ranges recycle without reviving stale identities
     REQUIRE(replacement->generation != stale.generation);
     REQUIRE_FALSE(cache.dense_page_index({.address_space = stale, .coordinate = {0, 0, 0, 0}}));
     REQUIRE(cache.dense_page_index({.address_space = *replacement, .coordinate = {0, 0, 0, 0}}) == 0u);
+}
+
+TEST_CASE("virtual shadow GPU feedback is generation safe deterministic and bounded")
+{
+    constexpr std::uint64_t d16_pair_bytes =
+        static_cast<std::uint64_t>(arc::render::virtual_shadow_physical_page_texels) *
+        arc::render::virtual_shadow_physical_page_texels * 4u;
+    const auto pool = arc::render::resolve_virtual_shadow_physical_pool(
+        d16_pair_bytes * 4u, arc::render::virtual_shadow_physical_page_texels * 2u, {.d16_unorm = true});
+    arc::render::virtual_shadow_cache cache(
+        {.physical_pool = pool, .page_table_entry_capacity = 16, .view_capacity = 8});
+    const auto light = cache.create_address_space({.light_kind = arc::render::shadow_light_kind::spot,
+                                                   .virtual_resolution = 256,
+                                                   .level_count = 2,
+                                                   .priority = 120});
+    REQUIRE(light);
+    REQUIRE(cache.update_address_space_request_metadata(*light, arc::render::render_mobility::stationary, 200));
+    const auto snapshot = cache.gpu_snapshot();
+    REQUIRE(snapshot.address_spaces[light->index].mobility ==
+            static_cast<std::uint32_t>(arc::render::render_mobility::stationary));
+    REQUIRE(snapshot.address_spaces[light->index].priority == 200);
+
+    const arc::render::virtual_shadow_page_request request{
+        .key = {.address_space = *light,
+                .coordinate = {1, 1, 0, 0},
+                .layer = arc::render::virtual_shadow_page_layer::dynamic_depth},
+        .frame_index = 2,
+        .content_revision = 11,
+        .projected_coverage = 0.4f,
+        .light_priority = 120};
+    auto duplicate = arc::render::encode_virtual_shadow_gpu_request(request);
+    duplicate.frame_low = 3;
+    duplicate.content_revision_low = 12;
+    duplicate.projected_coverage_bits = std::bit_cast<std::uint32_t>(0.8f);
+    duplicate.light_priority = 200;
+    auto stale = duplicate;
+    ++stale.address_space_generation;
+    auto invalid = duplicate;
+    invalid.page_xy = 9u;
+    auto future = duplicate;
+    future.frame_low = 4;
+    const std::array feedback{arc::render::encode_virtual_shadow_gpu_request(request), duplicate, stale, invalid,
+                              future};
+    const auto translated = cache.translate_gpu_feedback(feedback,
+                                                         {.request_count = static_cast<std::uint32_t>(feedback.size()),
+                                                          .raw_request_count = 7,
+                                                          .duplicate_count = 1,
+                                                          .overflow_count = 2},
+                                                         3);
+    REQUIRE(translated.requests.size() == 1);
+    CHECK(translated.raw_requests == 7);
+    CHECK(translated.duplicate_requests == 2);
+    CHECK(translated.stale_requests == 1);
+    CHECK(translated.invalid_requests == 2);
+    CHECK(translated.overflow_requests == 2);
+    CHECK(translated.requests[0].frame_index == 3);
+    CHECK(translated.requests[0].content_revision == 12);
+    CHECK(translated.requests[0].projected_coverage == Catch::Approx(0.8f));
+    CHECK(translated.requests[0].light_priority == 200);
 }
 
 TEST_CASE("directional virtual shadow views are stable equal-grid clip levels")

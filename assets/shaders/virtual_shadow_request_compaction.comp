@@ -1,0 +1,45 @@
+#version 450
+
+#include "include/arc_virtual_shadows.glsl"
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer request_slot_buffer
+{
+    ArcVirtualShadowRequestSlot request_slots[];
+};
+layout(std430, set = 0, binding = 1) writeonly buffer compact_request_buffer
+{
+    ArcVirtualShadowPageRequest compact_requests[];
+};
+layout(std430, set = 0, binding = 2) buffer feedback_header_buffer
+{
+    uint request_count;
+    uint raw_request_count;
+    uint duplicate_count;
+    uint overflow_count;
+    uint receiver_sample_count;
+    uint reserved0;
+    uint reserved1;
+    uint reserved2;
+} feedback;
+
+layout(push_constant) uniform virtual_shadow_compaction_constants
+{
+    uint slot_capacity;
+    uint request_capacity;
+} constants;
+
+void main()
+{
+    uint slot = gl_GlobalInvocationID.x;
+    if (slot >= constants.slot_capacity || request_slots[slot].ready == 0u)
+        return;
+    uint output_index = atomicAdd(feedback.request_count, 1u);
+    if (output_index >= constants.request_capacity)
+    {
+        atomicAdd(feedback.overflow_count, 1u);
+        return;
+    }
+    compact_requests[output_index] = request_slots[slot].request;
+}
