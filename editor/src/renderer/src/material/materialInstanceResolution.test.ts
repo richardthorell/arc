@@ -60,8 +60,9 @@ describe('material instance resolution', () => {
 
     expect(reset.overrides).toEqual([]);
     expect(instance.overrides).toHaveLength(1);
-    expect(resolveMaterialInstance(reset, [{ id: 'roughness-id', name: 'Roughness', value: 0.7 }]).parameters[0])
-      .toMatchObject({ value: 0.7, inherited: true });
+    expect(
+      resolveMaterialInstance(reset, [{ id: 'roughness-id', name: 'Roughness', value: 0.7 }]).parameters[0],
+    ).toMatchObject({ value: 0.7, inherited: true });
   });
 
   it('defensively copies vector-like values', () => {
