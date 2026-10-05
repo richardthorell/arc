@@ -49,6 +49,17 @@ export type AiToolResult = {
   originalBytes?: number;
 };
 
+export type AiTaskProgressState = 'planned' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
+
+export type AiTaskProgress = {
+  id: string;
+  title: string;
+  state: AiTaskProgressState;
+  agentStep?: number;
+  toolCallIds?: readonly string[];
+  detail?: string;
+};
+
 export type AiRuntimeMessage = {
   id: string;
   role: AiRuntimeRole;
@@ -114,6 +125,7 @@ export type AiRuntimeFinishReason = 'stop' | 'tool_calls' | 'length' | 'cancelle
 
 export type AiRuntimeStreamEvent =
   | { type: 'delta'; text: string }
+  | { type: 'task-update'; task: AiTaskProgress }
   | { type: 'tool-call-start'; callId: string; name: string; agentStep?: number }
   | { type: 'tool-call-arguments-delta'; callId: string; delta: string; agentStep?: number }
   | { type: 'tool-call'; call: AiToolCall; agentStep?: number }

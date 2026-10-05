@@ -4,6 +4,7 @@ import type {
   AiRuntimeMessage,
   AiRuntimeRequest,
   AiRuntimeStreamEvent,
+  AiTaskProgress,
   AiToolCall,
   AiToolResult,
 } from '../../../common/aiRuntimeTypes';
@@ -30,6 +31,20 @@ const revisionSensitiveTools = new Set([
 
 const runtimeMessageId = (prefix: string, step: number, index = 0): string =>
   `${prefix}-${step.toString(36)}-${index.toString(36)}-${Date.now().toString(36)}`;
+
+const taskForCalls = (
+  providerStep: number,
+  calls: readonly AiToolCall[],
+  state: AiTaskProgress['state'],
+  detail?: string,
+): AiTaskProgress => ({
+  id: `agent-step-${providerStep}`,
+  title: calls.length === 1 ? calls[0]!.name : `Run ${calls.length} editor operations`,
+  state,
+  agentStep: providerStep,
+  toolCallIds: calls.map((call) => call.id),
+  ...(detail ? { detail } : {}),
+});
 
 const isRevisionConflict = (call: AiToolCall, message: string): boolean =>
   revisionSensitiveTools.has(call.name) && /scene revision/iu.test(message);
@@ -98,8 +113,6 @@ export async function* runAiAgentToolLoop(
   const messages: AiRuntimeMessage[] = [...request.messages];
   let toolSteps = 0;
 
-  // maximumSteps bounds provider turns that execute tools. One additional provider turn is
-  // reserved for the terminal response after the final allowed tool result is available.
   for (let providerStep = 0; providerStep <= maximumSteps; ++providerStep) {
     if (request.signal?.aborted) return;
 
@@ -122,17 +135,12 @@ export async function* runAiAgentToolLoop(
       for await (const event of execute({ ...request, messages, signal: controller.signal })) {
         if (request.signal?.aborted) return;
         if (timedOut) break;
-
         if (event.type === 'delta') {
           stepText = `${stepText}${event.text}`;
           yield event;
           continue;
         }
-        if (event.type === 'tool-call-start') {
-          yield { ...event, agentStep: providerStep };
-          continue;
-        }
-        if (event.type === 'tool-call-arguments-delta') {
+        if (event.type === 'tool-call-start' || event.type === 'tool-call-arguments-delta') {
           yield { ...event, agentStep: providerStep };
           continue;
         }
@@ -195,6 +203,7 @@ export async function* runAiAgentToolLoop(
       return;
     }
 
+    yield { type: 'task-update', task: taskForCalls(providerStep, calls, 'in_progress') };
     messages.push({
       id: runtimeMessageId('agent-assistant', providerStep),
       role: 'assistant',
@@ -202,11 +211,13 @@ export async function* runAiAgentToolLoop(
       toolCalls: calls,
     });
 
+    let failedResult: AiToolResult | undefined;
     for (let index = 0; index < calls.length; ++index) {
       if (request.signal?.aborted) return;
       const call = calls[index]!;
       const result = await executeTool(call, invokeTool, request.signal);
       if (request.signal?.aborted) return;
+      if (result.isError && !failedResult) failedResult = result;
       yield { type: 'tool-result', result, agentStep: providerStep };
       messages.push({
         id: runtimeMessageId('agent-tool', providerStep, index),
@@ -215,6 +226,15 @@ export async function* runAiAgentToolLoop(
         toolResult: result,
       });
     }
+    yield {
+      type: 'task-update',
+      task: taskForCalls(
+        providerStep,
+        calls,
+        failedResult ? 'failed' : 'completed',
+        failedResult ? `Failed while running ${failedResult.name}` : undefined,
+      ),
+    };
     ++toolSteps;
   }
 }

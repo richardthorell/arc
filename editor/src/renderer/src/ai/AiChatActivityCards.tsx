@@ -1,8 +1,9 @@
-import type { AiConversationToolReference } from '../../../common/aiConversationTypes';
+import type { AiConversationTaskReference, AiConversationToolReference } from '../../../common/aiConversationTypes';
 import {
   UiAgentAssetCard,
   UiAgentCardActionRow,
   UiAgentCardCopyAction,
+  UiAgentTaskCard,
   UiAgentToolCard,
   UiAgentViewportCard,
   type UiAgentActivityState,
@@ -43,6 +44,14 @@ const activityStateFor = (reference: AiConversationToolReference): UiAgentActivi
   return 'complete';
 };
 
+const taskActivityStateFor = (reference: AiConversationTaskReference): UiAgentActivityState => {
+  if (reference.state === 'planned') return 'pending';
+  if (reference.state === 'in_progress') return 'running';
+  if (reference.state === 'failed') return 'error';
+  if (reference.state === 'cancelled') return 'cancelled';
+  return 'complete';
+};
+
 const activitySummaryFor = (reference: AiConversationToolReference): string => {
   if (reference.summary?.trim()) return reference.summary.trim();
   if (reference.state === 'pending') return 'ARC is running this editor operation.';
@@ -51,7 +60,16 @@ const activitySummaryFor = (reference: AiConversationToolReference): string => {
   return 'The editor operation completed.';
 };
 
-const durationLabel = (reference: AiConversationToolReference): string | undefined => {
+const taskSummaryFor = (reference: AiConversationTaskReference): string => {
+  if (reference.detail?.trim()) return reference.detail.trim();
+  if (reference.state === 'planned') return 'Waiting to start.';
+  if (reference.state === 'in_progress') return 'ARC is working on this task.';
+  if (reference.state === 'failed') return 'This task did not complete.';
+  if (reference.state === 'cancelled') return 'This task was cancelled.';
+  return 'Task completed.';
+};
+
+const durationLabel = (reference: { startedAt?: string; completedAt?: string }): string | undefined => {
   if (!reference.startedAt || !reference.completedAt) return undefined;
   const started = Date.parse(reference.startedAt);
   const completed = Date.parse(reference.completedAt);
@@ -98,6 +116,37 @@ function ToolDetails({ reference }: { reference: AiConversationToolReference }) 
         </section>
       ) : null}
     </div>
+  );
+}
+
+export function AiChatTaskActivityCard({ reference }: { reference: AiConversationTaskReference }) {
+  const state = taskActivityStateFor(reference);
+  const duration = durationLabel(reference);
+  const toolCount = reference.toolCallIds?.length ?? 0;
+  const metadata = [
+    reference.step !== undefined ? `Step ${reference.step + 1}` : undefined,
+    toolCount ? `${toolCount} tool ${toolCount === 1 ? 'call' : 'calls'}` : undefined,
+    duration,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const details = toolCount ? (
+    <div className="ai-chat-task-tool-links">
+      <div className="ai-chat-tool-detail-label">Linked tool calls</div>
+      <code>{reference.toolCallIds!.join(', ')}</code>
+    </div>
+  ) : undefined;
+
+  return (
+    <UiAgentTaskCard
+      className="ai-chat-task-card"
+      defaultExpanded={state === 'error' || state === 'cancelled'}
+      details={details}
+      metadata={metadata || undefined}
+      state={state}
+      summary={taskSummaryFor(reference)}
+      title={reference.title}
+    />
   );
 }
 
