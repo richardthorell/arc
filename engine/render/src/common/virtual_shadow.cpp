@@ -662,9 +662,8 @@ virtual_shadow_cache::resolve_requests(std::span<const virtual_shadow_page_reque
     return result;
 }
 
-gpu_virtual_shadow_page_request
-encode_virtual_shadow_gpu_request(const virtual_shadow_page_request& request,
-                                  virtual_shadow_gpu_request_flag flags) noexcept
+gpu_virtual_shadow_page_request encode_virtual_shadow_gpu_request(const virtual_shadow_page_request& request,
+                                                                  virtual_shadow_gpu_request_flag flags) noexcept
 {
     if (request.coarse_page) flags = flags | virtual_shadow_gpu_request_flag::coarse;
     return {.address_space = request.key.address_space.index,
@@ -683,9 +682,10 @@ encode_virtual_shadow_gpu_request(const virtual_shadow_page_request& request,
             .flags = static_cast<std::uint32_t>(flags)};
 }
 
-virtual_shadow_feedback_translation virtual_shadow_cache::translate_gpu_feedback(
-    std::span<const gpu_virtual_shadow_page_request> requests, const gpu_virtual_shadow_feedback_header& header,
-    std::uint64_t maximum_frame_index) const
+virtual_shadow_feedback_translation
+virtual_shadow_cache::translate_gpu_feedback(std::span<const gpu_virtual_shadow_page_request> requests,
+                                             const gpu_virtual_shadow_feedback_header& header,
+                                             std::uint64_t maximum_frame_index) const
 {
     virtual_shadow_feedback_translation result{};
     result.raw_requests = header.raw_request_count;
@@ -700,7 +700,7 @@ virtual_shadow_feedback_translation virtual_shadow_cache::translate_gpu_feedback
     {
         const auto& encoded = requests[index];
         const virtual_shadow_address_space_handle address_space{encoded.address_space,
-                                                                 encoded.address_space_generation};
+                                                                encoded.address_space_generation};
         if (!this->address_space(address_space))
         {
             ++result.stale_requests;
@@ -718,8 +718,8 @@ virtual_shadow_feedback_translation virtual_shadow_cache::translate_gpu_feedback
             .level = static_cast<std::uint8_t>(encoded.topology & 0xffu),
             .face = static_cast<std::uint8_t>((encoded.topology >> 8u) & 0xffu)};
         const virtual_shadow_page_key key{.address_space = address_space,
-                                           .coordinate = coordinate,
-                                           .layer = static_cast<virtual_shadow_page_layer>(layer)};
+                                          .coordinate = coordinate,
+                                          .layer = static_cast<virtual_shadow_page_layer>(layer)};
         const auto frame_index = combine_u32(encoded.frame_low, encoded.frame_high);
         const auto coverage = std::bit_cast<float>(encoded.projected_coverage_bits);
         if (!dense_page_index(key) || frame_index > maximum_frame_index || !std::isfinite(coverage) || coverage < 0.0f)
@@ -732,9 +732,8 @@ virtual_shadow_feedback_translation virtual_shadow_cache::translate_gpu_feedback
              .frame_index = frame_index,
              .content_revision = combine_u32(encoded.content_revision_low, encoded.content_revision_high),
              .projected_coverage = coverage,
-             .light_priority = static_cast<std::uint16_t>(
-                 std::min(encoded.light_priority,
-                          static_cast<std::uint32_t>(std::numeric_limits<std::uint16_t>::max()))),
+             .light_priority = static_cast<std::uint16_t>(std::min(
+                 encoded.light_priority, static_cast<std::uint32_t>(std::numeric_limits<std::uint16_t>::max()))),
              .coarse_page = contains(static_cast<virtual_shadow_gpu_request_flag>(encoded.flags),
                                      virtual_shadow_gpu_request_flag::coarse)});
     }

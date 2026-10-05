@@ -259,7 +259,7 @@ struct alignas(16) gpu_virtual_shadow_page_request
 {
     std::uint32_t address_space{};
     std::uint32_t address_space_generation{};
-    std::uint32_t page_xy{}; // x in low 16 bits, y in high 16 bits.
+    std::uint32_t page_xy{};  // x in low 16 bits, y in high 16 bits.
     std::uint32_t topology{}; // level, face, and layer in successive bytes.
     std::uint32_t frame_low{};
     std::uint32_t frame_high{};
@@ -339,10 +339,9 @@ struct virtual_shadow_page_request
     bool coarse_page{};
 };
 
-[[nodiscard]] gpu_virtual_shadow_page_request
-encode_virtual_shadow_gpu_request(const virtual_shadow_page_request& request,
-                                  virtual_shadow_gpu_request_flag flags =
-                                      virtual_shadow_gpu_request_flag::none) noexcept;
+[[nodiscard]] gpu_virtual_shadow_page_request encode_virtual_shadow_gpu_request(
+    const virtual_shadow_page_request& request,
+    virtual_shadow_gpu_request_flag flags = virtual_shadow_gpu_request_flag::none) noexcept;
 
 /** @brief Resolved page-table entry consumed by rendering backends. */
 struct virtual_shadow_page_mapping
@@ -428,8 +427,7 @@ public:
     [[nodiscard]] bool update_address_space_views(virtual_shadow_address_space_handle handle,
                                                   std::span<const virtual_shadow_view_descriptor> views) noexcept;
     [[nodiscard]] bool update_address_space_request_metadata(virtual_shadow_address_space_handle handle,
-                                                             render_mobility mobility,
-                                                             std::uint16_t priority) noexcept;
+                                                             render_mobility mobility, std::uint16_t priority) noexcept;
     [[nodiscard]] std::optional<std::uint32_t> dense_page_index(const virtual_shadow_page_key& key) const noexcept;
     /** @brief Borrow all GPU tables until the cache is next mutated. */
     [[nodiscard]] virtual_shadow_gpu_snapshot gpu_snapshot() const noexcept;
@@ -438,8 +436,7 @@ public:
                                                                  std::uint64_t frame_index);
     [[nodiscard]] virtual_shadow_feedback_translation
     translate_gpu_feedback(std::span<const gpu_virtual_shadow_page_request> requests,
-                           const gpu_virtual_shadow_feedback_header& header,
-                           std::uint64_t maximum_frame_index) const;
+                           const gpu_virtual_shadow_feedback_header& header, std::uint64_t maximum_frame_index) const;
     [[nodiscard]] const virtual_shadow_page_mapping* find(const virtual_shadow_page_key& key) const noexcept;
     [[nodiscard]] const virtual_shadow_page_mapping*
     find_resident_or_ancestor(const virtual_shadow_page_key& key) const noexcept;

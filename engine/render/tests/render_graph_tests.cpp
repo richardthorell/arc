@@ -515,8 +515,7 @@ TEST_CASE("Ultra virtual shadow graph declares page feedback cache and lighting 
     REQUIRE(views != nullptr);
     REQUIRE(page_table != nullptr);
     REQUIRE(readback != nullptr);
-    REQUIRE(readback->byte_size ==
-            config.virtual_shadow_request_capacity * sizeof(gpu_virtual_shadow_page_request));
+    REQUIRE(readback->byte_size == config.virtual_shadow_request_capacity * sizeof(gpu_virtual_shadow_page_request));
     REQUIRE(static_pages->format == render_format::d16_unorm);
     REQUIRE(static_pages->extent.width == config.virtual_shadow_pool.atlas_extent);
     REQUIRE(static_pages->extent.height == config.virtual_shadow_pool.atlas_extent);

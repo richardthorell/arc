@@ -371,12 +371,12 @@ TEST_CASE("virtual shadow GPU feedback is generation safe deterministic and boun
     future.frame_low = 4;
     const std::array feedback{arc::render::encode_virtual_shadow_gpu_request(request), duplicate, stale, invalid,
                               future};
-    const auto translated = cache.translate_gpu_feedback(
-        feedback, {.request_count = static_cast<std::uint32_t>(feedback.size()),
-                   .raw_request_count = 7,
-                   .duplicate_count = 1,
-                   .overflow_count = 2},
-        3);
+    const auto translated = cache.translate_gpu_feedback(feedback,
+                                                         {.request_count = static_cast<std::uint32_t>(feedback.size()),
+                                                          .raw_request_count = 7,
+                                                          .duplicate_count = 1,
+                                                          .overflow_count = 2},
+                                                         3);
     REQUIRE(translated.requests.size() == 1);
     CHECK(translated.raw_requests == 7);
     CHECK(translated.duplicate_requests == 2);

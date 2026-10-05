@@ -342,8 +342,8 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
         .d32_float = supports_attachment(VK_FORMAT_D32_SFLOAT, virtual_shadow_depth_features)};
     // Allocation and receiver feedback are executable, but normal profile selection
     // remains disabled until caster rendering and sampling complete the path.
-    capabilities.virtual_shadow_allocation = capabilities.compute_shaders && capabilities.storage_buffers &&
-                                             capabilities.virtual_shadow_depth_formats.any();
+    capabilities.virtual_shadow_allocation =
+        capabilities.compute_shaders && capabilities.storage_buffers && capabilities.virtual_shadow_depth_formats.any();
     capabilities.virtual_shadow_feedback = capabilities.virtual_shadow_allocation && capabilities.hzb_occlusion;
     capabilities.virtual_shadow_rendering = false;
     capabilities.virtual_shadow_sampling = false;

@@ -337,8 +337,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
     render_graph_resource_handle virtual_shadow_feedback{};
     if (config.features.virtual_shadow_maps && config.virtual_shadow_pool.valid())
     {
-        const auto maximum_virtual_shadow_requests =
-            static_cast<std::uint64_t>(config.virtual_shadow_request_capacity);
+        const auto maximum_virtual_shadow_requests = static_cast<std::uint64_t>(config.virtual_shadow_request_capacity);
         constexpr std::uint64_t virtual_shadow_request_stride = sizeof(gpu_virtual_shadow_page_request);
         constexpr std::uint64_t virtual_shadow_mapping_stride = sizeof(gpu_virtual_shadow_page_table_entry);
         const auto shadow_format = config.virtual_shadow_pool.format == virtual_shadow_depth_format::d16_unorm
