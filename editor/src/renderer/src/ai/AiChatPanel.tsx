@@ -1,9 +1,8 @@
-import { Asterisk, ArrowLeft, Bot, Check, Plus, Send, ShieldCheck, Sparkles, Square, X, Zap } from 'lucide-react';
+import { Asterisk, ArrowLeft, Bot, Plus, Send, ShieldCheck, Sparkles, Square, Zap } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { AiConversationContextReference, AiConversationToolReference } from '../../../common/aiConversationTypes';
 import { requestSettingsDialogOpen } from '../settings/settingsDialogRoute';
 import {
-  UiAgentApprovalCard,
   UiAgentErrorCard,
   UiAgentTextCard,
   UiButton,
@@ -25,6 +24,7 @@ import {
   type AiModelProvider,
 } from './aiChat';
 import { AiChatTaskActivityCard, AiChatToolActivityCard } from './AiChatActivityCards';
+import { AiChatApprovalDeclined, AiChatApprovalPrompt } from './AiChatApprovalStatus';
 import { renderAiChatMessageText } from './AiChatMessageText';
 import { AiContextChips, AiContextPicker } from './AiContextPickerView';
 import { appendAiContextAttachments } from './aiContextAttachments';
@@ -577,6 +577,44 @@ export function AiChatPanel({
     if (result.completed) setPendingContext([]);
   };
 
+  const retryFailedResponse = async (messageId: string) => {
+    if (!activeConversation || streaming) return;
+    const messageIndex = activeConversation.messages.findIndex((message) => message.id === messageId);
+    if (messageIndex < 0) return;
+    const failedMessage = activeConversation.messages[messageIndex];
+    if (!failedMessage || failedMessage.role !== 'assistant' || failedMessage.state !== 'error') return;
+
+    const modelId = failedMessage.modelId ?? activeConversation.modelId;
+    const model = configuredProviders.find((candidate) => candidate.id === modelId);
+    if (!model) return;
+
+    const requestMessages = activeConversation.messages.slice(0, messageIndex);
+    const retryMessage: AiChatMessage = {
+      ...failedMessage,
+      content: '',
+      state: 'streaming',
+      modelId: model.id,
+      modelLabel: model.label,
+      toolReferences: undefined,
+      taskReferences: undefined,
+    };
+    const requestConversation: AiConversation = { ...activeConversation, messages: requestMessages };
+
+    historyPinnedToBottomRef.current = true;
+    setConversations((current) =>
+      current.map((conversation) =>
+        conversation.id !== activeConversation.id
+          ? conversation
+          : {
+              ...conversation,
+              updatedAt: new Date().toISOString(),
+              messages: conversation.messages.map((message) => (message.id === messageId ? retryMessage : message)),
+            },
+      ),
+    );
+    await streamResponse(activeConversation.id, model, requestConversation, requestMessages, retryMessage);
+  };
+
   const selectActiveModel = (modelId: string) => {
     if (!activeConversation || streaming) return;
     const model = configuredProviders.find((candidate) => candidate.id === modelId);
@@ -632,22 +670,8 @@ export function AiChatPanel({
 
   const renderApprovalOutcome = (reference: AiConversationToolReference) => {
     const outcome = approvalOutcome(reference);
-    if (!outcome) return null;
-    const approved = outcome.state === 'approved';
-    return (
-      <UiAgentApprovalCard
-        className={`ai-chat-message-card ai-chat-approval-outcome${approved ? ' is-approved' : ' is-denied'}`}
-        key={`approval-${reference.toolCallId}`}
-        state={approved ? 'complete' : 'cancelled'}
-        subtitle={outcome.label}
-        summary={
-          approved
-            ? 'The agent resumed with temporary edit access through the ARC transaction harness.'
-            : 'The edit request was denied. No approved scene mutation was started from this request.'
-        }
-        title={approved ? 'Edit approved' : 'Edit denied'}
-      />
-    );
+    if (!outcome || outcome.state === 'approved') return null;
+    return <AiChatApprovalDeclined key={`approval-${reference.toolCallId}`} label={outcome.label} />;
   };
 
   const renderToolActivity = (reference: AiConversationToolReference) => {
@@ -664,15 +688,25 @@ export function AiChatPanel({
 
         if (message.role === 'assistant') {
           const responseModelId = message.modelId ?? conversation.modelId ?? activeProvider?.id;
+          const canRetry = configuredProviders.some((candidate) => candidate.id === responseModelId);
           return (
             <div className="ai-chat-assistant-turn" key={message.id}>
               {message.state === 'error' ? (
                 <UiAgentErrorCard
                   className="ai-chat-message-card ai-chat-response-error-card"
-                  defaultExpanded
-                  details={<div>{renderAiChatMessageText(message.content)}</div>}
-                  summary="The AI response stopped before it could complete."
-                  title="AI response failed"
+                  details={message.content ? <div>{renderAiChatMessageText(message.content)}</div> : undefined}
+                  summary="The response couldn't be completed. You can try again."
+                  title="Something went wrong"
+                  actions={
+                    <UiButton
+                      disabled={streaming || !canRetry}
+                      type="button"
+                      variant="ghost"
+                      onClick={() => void retryFailedResponse(message.id)}
+                    >
+                      Retry
+                    </UiButton>
+                  }
                 />
               ) : (
                 <UiAgentTextCard
@@ -713,39 +747,14 @@ export function AiChatPanel({
           </div>
         );
       })}
-      {pendingApproval && (
-        <UiAgentApprovalCard
-          aria-label="AI editor action approval"
-          className="ai-chat-message-card ai-chat-approval-card"
-          role="alertdialog"
-          state={approvalBusy ? 'running' : 'pending'}
-          subtitle={pendingApproval.label}
-          summary="ARC Built-in AI is requesting temporary edit access. Approval still uses ARC's validated transaction, revision, and commit checks."
-          title="Allow editor changes?"
-          actions={
-            approvalMode === 'ask' ? (
-              <>
-                <UiButton
-                  disabled={approvalBusy || !onDenyRequest}
-                  type="button"
-                  variant="ghost"
-                  onClick={() => void resolvePendingApproval(false)}
-                >
-                  <X size={12} /> Deny
-                </UiButton>
-                <UiButton
-                  disabled={approvalBusy || !onApproveRequest}
-                  type="button"
-                  variant="primary"
-                  onClick={() => void resolvePendingApproval(true)}
-                >
-                  <Check size={12} /> Allow
-                </UiButton>
-              </>
-            ) : (
-              <span className="ai-chat-approval-auto">Auto approving…</span>
-            )
-          }
+      {pendingApproval && approvalMode === 'ask' && (
+        <AiChatApprovalPrompt
+          busy={approvalBusy}
+          canApprove={Boolean(onApproveRequest)}
+          canDeny={Boolean(onDenyRequest)}
+          request={pendingApproval}
+          onApprove={() => void resolvePendingApproval(true)}
+          onDeny={() => void resolvePendingApproval(false)}
         />
       )}
     </div>
