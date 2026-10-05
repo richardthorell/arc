@@ -338,6 +338,22 @@ struct hzb_reduce_push_constants
     std::int32_t source_mip{-1};
 };
 
+struct alignas(16) virtual_shadow_marking_push_constants
+{
+    float inverse_view_projection[16]{};
+    std::uint32_t viewport_address_spaces[4]{};
+    std::uint32_t frame_revision[4]{};
+    std::uint32_t sampling[4]{};
+};
+static_assert(sizeof(virtual_shadow_marking_push_constants) == 112);
+
+struct virtual_shadow_compaction_push_constants
+{
+    std::uint32_t slot_capacity{};
+    std::uint32_t request_capacity{};
+};
+static_assert(sizeof(virtual_shadow_compaction_push_constants) == 8);
+
 struct temporal_mask_push_constants
 {
     std::int32_t width{};
@@ -575,6 +591,14 @@ private:
         std::uint64_t submitted_frame{};
     };
 
+    struct virtual_shadow_feedback_frame
+    {
+        gpu_buffer requests;
+        gpu_buffer header;
+        std::uint32_t request_capacity{};
+        std::uint64_t submitted_frame{};
+    };
+
     struct texture_feedback_slot
     {
         texture_handle resource{};
@@ -804,13 +828,25 @@ private:
         gpu_buffer address_spaces;
         gpu_buffer views;
         gpu_buffer page_table;
-        gpu_buffer requests;
-        gpu_buffer feedback;
+        gpu_buffer request_slots;
+        gpu_buffer compact_requests;
+        gpu_buffer feedback_header;
+        std::vector<virtual_shadow_feedback_frame> feedback_frames;
+        VkDescriptorSetLayout marking_descriptor_set_layout{};
+        VkDescriptorSetLayout compaction_descriptor_set_layout{};
+        VkDescriptorPool descriptor_pool{};
+        std::vector<VkDescriptorSet> marking_descriptor_sets;
+        std::vector<VkDescriptorSet> compaction_descriptor_sets;
+        VkPipelineLayout marking_pipeline_layout{};
+        VkPipeline marking_pipeline{};
+        VkPipelineLayout compaction_pipeline_layout{};
+        VkPipeline compaction_pipeline{};
         VkDeviceSize page_table_capacity{};
         VkDeviceSize address_space_capacity{};
         VkDeviceSize view_capacity{};
         std::uint32_t atlas_extent{};
         std::uint32_t physical_page_capacity{};
+        std::uint32_t request_capacity{};
         std::uint64_t uploaded_address_space_revision{};
         std::uint64_t uploaded_view_revision{};
         std::uint64_t uploaded_page_table_revision{};
@@ -1199,9 +1235,19 @@ private:
 
     bool ensure_virtual_shadow_resources();
 
+    bool ensure_virtual_shadow_feedback_frame(virtual_shadow_feedback_frame& frame);
+
+    void collect_virtual_shadow_feedback(std::uint32_t frame_slot);
+
     static std::uint64_t virtual_shadow_light_key(shadow_light_kind kind, render_object_id object) noexcept;
 
     void prepare_virtual_shadow_cache(std::uint64_t frame_index);
+
+    void upload_virtual_shadow_tables();
+
+    void dispatch_virtual_shadow_page_marking(VkCommandBuffer command_buffer);
+
+    void copy_virtual_shadow_feedback(VkCommandBuffer command_buffer);
 
     void transition_virtual_shadow_image(VkCommandBuffer command_buffer, VkImage image, VkImageLayout& current_layout,
                                          VkImageLayout new_layout);
@@ -1565,12 +1611,14 @@ private:
     std::unique_ptr<virtual_shadow_cache> virtual_shadow_cache_;
     std::unordered_map<std::uint64_t, virtual_shadow_light_state> virtual_shadow_lights_;
     std::vector<virtual_shadow_page_mapping> pending_virtual_shadow_pages_;
+    virtual_shadow_feedback_translation completed_virtual_shadow_feedback_{};
     std::vector<active_local_shadow> active_local_shadows_;
     std::unordered_map<std::uint64_t, std::uint64_t> local_shadow_static_signatures_;
     std::unordered_map<std::uint64_t, std::uint64_t> static_shadow_transform_hashes_;
     std::unordered_set<std::uint64_t> reported_moved_static_objects_;
     std::uint64_t shadow_resource_revision_{1};
     bool last_static_shadow_cache_hit_{};
+    bool virtual_shadow_feedback_pending_{};
 
     VkDescriptorSetLayout white_descriptor_set_layout_{};
     VkDescriptorPool white_descriptor_pool_{};
