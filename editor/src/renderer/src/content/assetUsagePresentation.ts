@@ -18,10 +18,7 @@ export type AssetUsagePresentation = {
  * authoritative dependency index. UI components should consume this model
  * rather than independently traversing or de-duplicating asset references.
  */
-export const describeAssetUsages = (
-  index: AssetDependencyIndex,
-  assetId: string,
-): AssetUsagePresentation => {
+export const describeAssetUsages = (index: AssetDependencyIndex, assetId: string): AssetUsagePresentation => {
   const directReferences = findAssetUsages(index, assetId);
   const directAssetIds = [...new Set(directReferences.map((reference) => reference.sourceAssetId))].sort();
   const directAssetIdSet = new Set(directAssetIds);
