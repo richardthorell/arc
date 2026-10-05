@@ -1,10 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { EditorCommandExecutor } from './editorCommandExecution';
-import {
-  deriveEditorCommandPaletteExecutionView,
-  executeSelectedEditorCommand,
-} from './editorCommandPaletteExecution';
+import { deriveEditorCommandPaletteExecutionView, executeSelectedEditorCommand } from './editorCommandPaletteExecution';
 import { EditorCommandRegistry } from './editorCommands';
 
 const createRegistry = (): EditorCommandRegistry => {
@@ -18,7 +15,11 @@ describe('editor command palette execution', () => {
   it('projects executable and context-sensitive enabled state for palette matches', () => {
     const registry = createRegistry();
     const executor = new EditorCommandExecutor();
-    executor.register('scene.focus-selection', () => undefined, (context) => context.selectionCount === 1);
+    executor.register(
+      'scene.focus-selection',
+      () => undefined,
+      (context) => context.selectionCount === 1,
+    );
 
     const view = deriveEditorCommandPaletteExecutionView(
       registry,

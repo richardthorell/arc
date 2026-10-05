@@ -3,10 +3,7 @@ import {
   type EditorCommandExecutionContext,
   type EditorCommandExecutionState,
 } from './editorCommandExecution';
-import {
-  deriveEditorCommandPaletteView,
-  type EditorCommandPaletteState,
-} from './editorCommandPalette';
+import { deriveEditorCommandPaletteView, type EditorCommandPaletteState } from './editorCommandPalette';
 import { EditorCommandRegistry } from './editorCommands';
 
 export type EditorCommandPaletteExecutionView = {
@@ -29,9 +26,7 @@ export const deriveEditorCommandPaletteExecutionView = (
   const commandStates = palette.matches.map((match) => executor.state(match.command, context));
   return {
     commandStates,
-    selectedCommandState: palette.selectedCommand
-      ? executor.state(palette.selectedCommand, context)
-      : undefined,
+    selectedCommandState: palette.selectedCommand ? executor.state(palette.selectedCommand, context) : undefined,
   };
 };
 
