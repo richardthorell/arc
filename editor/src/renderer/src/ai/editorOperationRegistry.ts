@@ -19,7 +19,7 @@ export type EditorOperationDefinition<TInput = unknown, TResult = unknown> = {
 
 export type EditorOperationSummary = Omit<EditorOperationDefinition<unknown, unknown>, 'schema' | 'execute'>;
 
-const OPERATION_ID = /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)+$/;
+const OPERATION_ID = /^[a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)+$/;
 
 export class EditorOperationRegistry {
   private readonly operations = new Map<string, EditorOperationDefinition<unknown, unknown>>();
