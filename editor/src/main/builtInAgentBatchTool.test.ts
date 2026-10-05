@@ -21,6 +21,9 @@ describe('editor.applyBatch built-in tool', () => {
     const serialized = JSON.stringify(definition?.inputSchema);
     expect(serialized).toContain('entity.create');
     expect(serialized).toContain('entity.setTransform');
+    expect(serialized).toContain('entity.setBaseColor');
+    expect(serialized).toContain('simple entity color requests');
+    expect(serialized).toContain('explicitly requests floor/surface placement');
     expect(serialized).toContain('tempId');
   });
 
