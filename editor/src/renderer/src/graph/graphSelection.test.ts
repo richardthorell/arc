@@ -83,15 +83,11 @@ describe('graphSelection', () => {
       { id: 'valid', bounds: { x: 0, y: 0, width: 10, height: 10 } },
       { id: 'invalid', bounds: { x: Number.NaN, y: 0, width: 10, height: 10 } },
     ];
-    expect(
-      [...selectGraphMarquee(initial, selectable, { x: -1, y: -1, width: 20, height: 20 }).ids],
-    ).toEqual(['valid']);
-    expect(
-      [...selectGraphMarquee(initial, selectable, { x: 0, y: 0, width: Number.NaN, height: 20 }).ids],
-    ).toEqual([]);
-    expect(
-      selectGraphMarquee(initial, selectable, { x: 0, y: 0, width: Number.NaN, height: 20 }, true),
-    ).toBe(initial);
+    expect([...selectGraphMarquee(initial, selectable, { x: -1, y: -1, width: 20, height: 20 }).ids]).toEqual([
+      'valid',
+    ]);
+    expect([...selectGraphMarquee(initial, selectable, { x: 0, y: 0, width: Number.NaN, height: 20 }).ids]).toEqual([]);
+    expect(selectGraphMarquee(initial, selectable, { x: 0, y: 0, width: Number.NaN, height: 20 }, true)).toBe(initial);
   });
 
   it('supports additive marquee selection while preserving the existing anchor', () => {
