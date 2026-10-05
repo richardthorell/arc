@@ -8,9 +8,16 @@ import type {
   AiToolCall,
   AiToolResult,
 } from '../../../common/aiRuntimeTypes';
+import {
+  AI_AGENT_PLAN_TOOL_NAME,
+  agentPlanToolResult,
+  parseAgentPlan,
+  taskUpdatesForAgentPlan,
+} from './aiAgentPlan';
 
 export const AI_AGENT_MAX_STEPS = 10;
 export const AI_AGENT_STEP_TIMEOUT_MS = 60_000;
+const additionalPlanTurns = 4;
 
 export type AiAgentModelExecutor = (request: AiRuntimeRequest) => AsyncIterable<AiRuntimeStreamEvent>;
 export type AiAgentToolInvoker = (call: AiToolCall, signal?: AbortSignal) => Promise<BuiltInAgentToolExecutionResult>;
@@ -102,6 +109,24 @@ const executeTool = async (
   }
 };
 
+const activePlanTask = (tasks: ReadonlyMap<string, AiTaskProgress>): AiTaskProgress | undefined => {
+  const inProgress = [...tasks.values()].filter(
+    (task) => task.planId && task.parentId && task.state === 'in_progress',
+  );
+  if (!inProgress.length) return undefined;
+  const parentIds = new Set(inProgress.map((task) => task.parentId));
+  return (
+    inProgress.find((task) => !parentIds.has(task.id) && ![...tasks.values()].some((candidate) => candidate.parentId === task.id && candidate.state === 'in_progress')) ??
+    inProgress.at(-1)
+  );
+};
+
+const withLinkedCalls = (task: AiTaskProgress, calls: readonly AiToolCall[], providerStep: number): AiTaskProgress => ({
+  ...task,
+  agentStep: providerStep,
+  toolCallIds: [...new Set([...(task.toolCallIds ?? []), ...calls.map((call) => call.id)])],
+});
+
 export async function* runAiAgentToolLoop(
   request: AiRuntimeRequest,
   execute: AiAgentModelExecutor,
@@ -111,9 +136,12 @@ export async function* runAiAgentToolLoop(
   const maximumSteps = positiveInteger(options.maximumSteps, AI_AGENT_MAX_STEPS, 'maximumSteps');
   const stepTimeoutMs = positiveInteger(options.stepTimeoutMs, AI_AGENT_STEP_TIMEOUT_MS, 'stepTimeoutMs');
   const messages: AiRuntimeMessage[] = [...request.messages];
+  const planTasks = new Map<string, AiTaskProgress>();
   let toolSteps = 0;
 
-  for (let providerStep = 0; providerStep <= maximumSteps; ++providerStep) {
+  // Plan-only provider turns do not consume the editor-tool budget. A small extra
+  // allowance lets the model publish/revise a plan without stealing mutation turns.
+  for (let providerStep = 0; providerStep <= maximumSteps + additionalPlanTurns; ++providerStep) {
     if (request.signal?.aborted) return;
 
     const controller = new AbortController();
@@ -141,12 +169,13 @@ export async function* runAiAgentToolLoop(
           continue;
         }
         if (event.type === 'tool-call-start' || event.type === 'tool-call-arguments-delta') {
-          yield { ...event, agentStep: providerStep };
+          if (event.name !== AI_AGENT_PLAN_TOOL_NAME) yield { ...event, agentStep: providerStep };
           continue;
         }
         if (event.type === 'tool-call') {
           calls.push(event.call);
-          yield { type: 'tool-call', call: event.call, agentStep: providerStep };
+          if (event.call.name !== AI_AGENT_PLAN_TOOL_NAME)
+            yield { type: 'tool-call', call: event.call, agentStep: providerStep };
           continue;
         }
         if (event.type === 'done') {
@@ -193,7 +222,9 @@ export async function* runAiAgentToolLoop(
       return;
     }
 
-    if (toolSteps >= maximumSteps) {
+    const planCalls = calls.filter((call) => call.name === AI_AGENT_PLAN_TOOL_NAME);
+    const executionCalls = calls.filter((call) => call.name !== AI_AGENT_PLAN_TOOL_NAME);
+    if (executionCalls.length && toolSteps >= maximumSteps) {
       yield {
         type: 'error',
         code: 'tool',
@@ -203,7 +234,6 @@ export async function* runAiAgentToolLoop(
       return;
     }
 
-    yield { type: 'task-update', task: taskForCalls(providerStep, calls, 'in_progress') };
     messages.push({
       id: runtimeMessageId('agent-assistant', providerStep),
       role: 'assistant',
@@ -211,10 +241,50 @@ export async function* runAiAgentToolLoop(
       toolCalls: calls,
     });
 
+    for (let index = 0; index < planCalls.length; ++index) {
+      const call = planCalls[index]!;
+      let result: AiToolResult;
+      try {
+        const updates = taskUpdatesForAgentPlan(parseAgentPlan(call.arguments), providerStep);
+        for (const task of updates) {
+          const previous = planTasks.get(task.id);
+          const merged: AiTaskProgress = {
+            ...previous,
+            ...task,
+            ...(previous?.toolCallIds && !task.toolCallIds ? { toolCallIds: previous.toolCallIds } : {}),
+          };
+          planTasks.set(task.id, merged);
+          yield { type: 'task-update', task: merged };
+        }
+        result = agentPlanToolResult(call, updates.length - 1);
+      } catch (error) {
+        result = normalizedToolFailure(call, error);
+      }
+      messages.push({
+        id: runtimeMessageId('agent-plan', providerStep, index),
+        role: 'tool',
+        content: result.content,
+        toolResult: result,
+      });
+    }
+
+    if (!executionCalls.length) continue;
+
+    const plannedTask = activePlanTask(planTasks);
+    let genericTask: AiTaskProgress | undefined;
+    if (plannedTask) {
+      const linked = withLinkedCalls(plannedTask, executionCalls, providerStep);
+      planTasks.set(linked.id, linked);
+      yield { type: 'task-update', task: linked };
+    } else {
+      genericTask = taskForCalls(providerStep, executionCalls, 'in_progress');
+      yield { type: 'task-update', task: genericTask };
+    }
+
     let failedResult: AiToolResult | undefined;
-    for (let index = 0; index < calls.length; ++index) {
+    for (let index = 0; index < executionCalls.length; ++index) {
       if (request.signal?.aborted) return;
-      const call = calls[index]!;
+      const call = executionCalls[index]!;
       const result = await executeTool(call, invokeTool, request.signal);
       if (request.signal?.aborted) return;
       if (result.isError && !failedResult) failedResult = result;
@@ -226,15 +296,32 @@ export async function* runAiAgentToolLoop(
         toolResult: result,
       });
     }
-    yield {
-      type: 'task-update',
-      task: taskForCalls(
-        providerStep,
-        calls,
-        failedResult ? 'failed' : 'completed',
-        failedResult ? `Failed while running ${failedResult.name}` : undefined,
-      ),
-    };
+
+    if (plannedTask && failedResult) {
+      const failed: AiTaskProgress = {
+        ...planTasks.get(plannedTask.id)!,
+        state: 'failed',
+        detail: `Failed while running ${failedResult.name}`,
+      };
+      planTasks.set(failed.id, failed);
+      yield { type: 'task-update', task: failed };
+      const root = failed.planId ? planTasks.get(failed.planId) : undefined;
+      if (root) {
+        const failedRoot: AiTaskProgress = { ...root, state: 'failed' };
+        planTasks.set(failedRoot.id, failedRoot);
+        yield { type: 'task-update', task: failedRoot };
+      }
+    } else if (genericTask) {
+      yield {
+        type: 'task-update',
+        task: taskForCalls(
+          providerStep,
+          executionCalls,
+          failedResult ? 'failed' : 'completed',
+          failedResult ? `Failed while running ${failedResult.name}` : undefined,
+        ),
+      };
+    }
     ++toolSteps;
   }
 }
