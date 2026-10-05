@@ -19,16 +19,25 @@ it never resolves to an unshadowed light.
 The cache stores separate static and dynamic depth layers. Coarse pages are pinned, recently used pages are protected
 for 30 frames, and missing fine pages sample their nearest resident ancestor.
 
+Directional receiver demand is generated from the previous completed HZB. The GPU samples receivers on a bounded
+screen grid, reprojects them through the M1 clip records, conservatively expands page demand for filtering and camera
+uncertainty, and deduplicates requests in a fixed-capacity hash table. A compact request batch is copied to a per-frame
+readback buffer and consumed only after that frame's fence signals. CPU translation sorts the batch, validates address
+space generations and coordinates, and rejects stale work before cache allocation. Overflow is observable and never
+replaces the independently generated coarse correctness pages.
+
 The resolved renderer configuration owns the physical-pool contract. It selects D16 when depth attachment and sampled
 image support are both available, otherwise D32, and derives one square atlas extent from the memory budget and
 adapter image limit. The CPU cache, render graph, and backend consume that exact format, extent, and capacity; they do
 not independently recalculate the pool.
 
-Vulkan realizes the shared static/dynamic depth atlases, page table, request buffer, and feedback buffer through
+Vulkan realizes the shared static/dynamic depth atlases, page table, request buffers, and feedback buffers through
 render-graph passes. Resources are retired after frame completion and ordinary rendering never waits for device idle.
-The Vulkan backend must keep the VSM capability facts disabled until its complete caster-render and sampling pipelines
-are initialized successfully. Executable support is tracked independently for directional, point, and spot lights so
-an incomplete local-light path cannot disable or accidentally enable another topology.
+Allocation and receiver-feedback capability facts can be reported independently, but VSM light-kind support remains
+disabled until caster rendering and sampling are initialized successfully. Executable support is tracked independently
+for directional, point, and spot lights so an incomplete local-light path cannot disable or accidentally enable another
+topology.
 
 The Lighting panel exposes address-space count, page capacity and residency, rendered/reused pages, evictions, parent
-fallbacks, failed requests, and physical memory. These values describe executed work rather than requested features.
+fallbacks, failed requests, receiver samples, raw/compacted/duplicate/stale/overflow requests, and physical memory.
+These values describe executed work rather than requested features.
