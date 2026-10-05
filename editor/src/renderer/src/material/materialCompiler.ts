@@ -163,6 +163,8 @@ export type MaterialEditorParameter = {
 /**
  * Return authored exposed-parameter metadata for the inspector.
  *
+ * Parameter type checking and reachability are owned exclusively by the native compiler; this
+ * editor-side projection only filters obviously ineffective controls for presentation.
  * Only value-source nodes that contribute to Material Output are useful runtime parameters.
  * Disconnected nodes and operation/utility nodes are deliberately omitted so the editor never
  * presents controls that cannot affect the material result.
