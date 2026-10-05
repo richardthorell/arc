@@ -17,6 +17,8 @@ if(ARC_FETCH_THIRD_PARTY)
     set(JPH_USE_VK OFF CACHE BOOL "" FORCE)
     set(JPH_USE_MTL OFF CACHE BOOL "" FORCE)
     set(JPH_USE_CPU_COMPUTE OFF CACHE BOOL "" FORCE)
+    # ARC uses MSVC's DLL runtime; Jolt defaults to the incompatible static runtime.
+    set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
     set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 
     FetchContent_Declare(
