@@ -109,8 +109,7 @@ const effectiveExposedParameterNodeIds = (graph: MaterialGraph): Set<string> => 
   return new Set(
     graph.nodes
       .filter(
-        (node) =>
-          node.parameter?.exposed === true && parameterNodeTypes.has(node.type) && contributing.has(node.id),
+        (node) => node.parameter?.exposed === true && parameterNodeTypes.has(node.type) && contributing.has(node.id),
       )
       .map((node) => node.id),
   );
