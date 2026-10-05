@@ -11,8 +11,10 @@ import type {
 import {
   AI_AGENT_PLAN_TOOL_NAME,
   agentPlanToolResult,
+  flattenTaskTree,
+  mapTaskTree,
   parseAgentPlan,
-  taskUpdatesForAgentPlan,
+  taskTreeForAgentPlan,
 } from './aiAgentPlan';
 
 export const AI_AGENT_MAX_STEPS = 10;
@@ -109,16 +111,37 @@ const executeTool = async (
   }
 };
 
-const activePlanTask = (tasks: ReadonlyMap<string, AiTaskProgress>): AiTaskProgress | undefined => {
-  const inProgress = [...tasks.values()].filter(
-    (task) => task.planId && task.parentId && task.state === 'in_progress',
-  );
-  if (!inProgress.length) return undefined;
-  const parentIds = new Set(inProgress.map((task) => task.parentId));
-  return (
-    inProgress.find((task) => !parentIds.has(task.id) && ![...tasks.values()].some((candidate) => candidate.parentId === task.id && candidate.state === 'in_progress')) ??
-    inProgress.at(-1)
-  );
+const preserveRuntimeTaskData = (previous: AiTaskProgress | undefined, next: AiTaskProgress): AiTaskProgress => {
+  if (!previous) return next;
+  const previousById = new Map(flattenTaskTree(previous).map((task) => [task.id, task]));
+  const merge = (task: AiTaskProgress): AiTaskProgress => {
+    const old = previousById.get(task.id);
+    return {
+      ...task,
+      ...(old?.toolCallIds?.length ? { toolCallIds: old.toolCallIds } : {}),
+      ...(task.children?.length ? { children: task.children.map(merge) } : {}),
+    };
+  };
+  return merge(next);
+};
+
+const activePlanTask = (
+  roots: ReadonlyMap<string, AiTaskProgress>,
+): { root: AiTaskProgress; task: AiTaskProgress } | undefined => {
+  const candidates = [...roots.values()].reverse();
+  for (const root of candidates) {
+    const flat = flattenTaskTree(root);
+    const parentIds = new Set(flat.flatMap((task) => task.children?.map((child) => child.id) ?? []));
+    const active = [...flat]
+      .reverse()
+      .find((task) => task.id !== root.id && task.state === 'in_progress' && !task.children?.length);
+    if (active) return { root, task: active };
+    const fallback = [...flat]
+      .reverse()
+      .find((task) => task.id !== root.id && task.state === 'in_progress' && !parentIds.has(task.id));
+    if (fallback) return { root, task: fallback };
+  }
+  return undefined;
 };
 
 const withLinkedCalls = (task: AiTaskProgress, calls: readonly AiToolCall[], providerStep: number): AiTaskProgress => ({
@@ -136,7 +159,7 @@ export async function* runAiAgentToolLoop(
   const maximumSteps = positiveInteger(options.maximumSteps, AI_AGENT_MAX_STEPS, 'maximumSteps');
   const stepTimeoutMs = positiveInteger(options.stepTimeoutMs, AI_AGENT_STEP_TIMEOUT_MS, 'stepTimeoutMs');
   const messages: AiRuntimeMessage[] = [...request.messages];
-  const planTasks = new Map<string, AiTaskProgress>();
+  const planRoots = new Map<string, AiTaskProgress>();
   let toolSteps = 0;
 
   // Plan-only provider turns do not consume the editor-tool budget. A small extra
@@ -154,6 +177,7 @@ export async function* runAiAgentToolLoop(
     }, stepTimeoutMs);
 
     const calls: AiToolCall[] = [];
+    const localPlanCallIds = new Set<string>();
     let stepText = '';
     let finishReason: Extract<AiRuntimeStreamEvent, { type: 'done' }>['finishReason'] = 'unknown';
     let sawDone = false;
@@ -168,8 +192,13 @@ export async function* runAiAgentToolLoop(
           yield event;
           continue;
         }
-        if (event.type === 'tool-call-start' || event.type === 'tool-call-arguments-delta') {
-          if (event.name !== AI_AGENT_PLAN_TOOL_NAME) yield { ...event, agentStep: providerStep };
+        if (event.type === 'tool-call-start') {
+          if (event.name === AI_AGENT_PLAN_TOOL_NAME) localPlanCallIds.add(event.callId);
+          else yield { ...event, agentStep: providerStep };
+          continue;
+        }
+        if (event.type === 'tool-call-arguments-delta') {
+          if (!localPlanCallIds.has(event.callId)) yield { ...event, agentStep: providerStep };
           continue;
         }
         if (event.type === 'tool-call') {
@@ -245,18 +274,12 @@ export async function* runAiAgentToolLoop(
       const call = planCalls[index]!;
       let result: AiToolResult;
       try {
-        const updates = taskUpdatesForAgentPlan(parseAgentPlan(call.arguments), providerStep);
-        for (const task of updates) {
-          const previous = planTasks.get(task.id);
-          const merged: AiTaskProgress = {
-            ...previous,
-            ...task,
-            ...(previous?.toolCallIds && !task.toolCallIds ? { toolCallIds: previous.toolCallIds } : {}),
-          };
-          planTasks.set(task.id, merged);
-          yield { type: 'task-update', task: merged };
-        }
-        result = agentPlanToolResult(call, updates.length - 1);
+        const parsed = parseAgentPlan(call.arguments);
+        const proposedRoot = taskTreeForAgentPlan(parsed, providerStep);
+        const root = preserveRuntimeTaskData(planRoots.get(proposedRoot.id), proposedRoot);
+        planRoots.set(root.id, root);
+        yield { type: 'task-update', task: root };
+        result = agentPlanToolResult(call, flattenTaskTree(root).length - 1);
       } catch (error) {
         result = normalizedToolFailure(call, error);
       }
@@ -270,12 +293,14 @@ export async function* runAiAgentToolLoop(
 
     if (!executionCalls.length) continue;
 
-    const plannedTask = activePlanTask(planTasks);
+    const planned = activePlanTask(planRoots);
     let genericTask: AiTaskProgress | undefined;
-    if (plannedTask) {
-      const linked = withLinkedCalls(plannedTask, executionCalls, providerStep);
-      planTasks.set(linked.id, linked);
-      yield { type: 'task-update', task: linked };
+    if (planned) {
+      const linkedRoot = mapTaskTree(planned.root, planned.task.id, (task) =>
+        withLinkedCalls(task, executionCalls, providerStep),
+      );
+      planRoots.set(linkedRoot.id, linkedRoot);
+      yield { type: 'task-update', task: linkedRoot };
     } else {
       genericTask = taskForCalls(providerStep, executionCalls, 'in_progress');
       yield { type: 'task-update', task: genericTask };
@@ -297,20 +322,15 @@ export async function* runAiAgentToolLoop(
       });
     }
 
-    if (plannedTask && failedResult) {
-      const failed: AiTaskProgress = {
-        ...planTasks.get(plannedTask.id)!,
+    if (planned && failedResult) {
+      let failedRoot = mapTaskTree(planRoots.get(planned.root.id)!, planned.task.id, (task) => ({
+        ...task,
         state: 'failed',
         detail: `Failed while running ${failedResult.name}`,
-      };
-      planTasks.set(failed.id, failed);
-      yield { type: 'task-update', task: failed };
-      const root = failed.planId ? planTasks.get(failed.planId) : undefined;
-      if (root) {
-        const failedRoot: AiTaskProgress = { ...root, state: 'failed' };
-        planTasks.set(failedRoot.id, failedRoot);
-        yield { type: 'task-update', task: failedRoot };
-      }
+      }));
+      failedRoot = { ...failedRoot, state: 'failed' };
+      planRoots.set(failedRoot.id, failedRoot);
+      yield { type: 'task-update', task: failedRoot };
     } else if (genericTask) {
       yield {
         type: 'task-update',
