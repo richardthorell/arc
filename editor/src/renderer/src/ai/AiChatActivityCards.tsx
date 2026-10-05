@@ -119,7 +119,82 @@ function ToolDetails({ reference }: { reference: AiConversationToolReference }) 
   );
 }
 
+const flattenPlanReferences = (reference: AiConversationTaskReference): AiConversationTaskReference[] => {
+  const result: AiConversationTaskReference[] = [reference];
+  const collect = (children: readonly AiConversationTaskReference[] | undefined) => {
+    for (const child of children ?? []) {
+      result.push(child);
+      collect(child.children);
+    }
+  };
+  collect(reference.children);
+  return result;
+};
+
+function PlanStepRows({
+  references,
+  depth = 0,
+}: {
+  references: readonly AiConversationTaskReference[];
+  depth?: number;
+}) {
+  return references.map((reference) => {
+    const toolCount = reference.toolCallIds?.length ?? 0;
+    return (
+      <div
+        className={`ai-chat-plan-step is-${reference.state}`}
+        data-task-state={reference.state}
+        data-task-depth={depth}
+        key={reference.id}
+      >
+        <div className="ai-chat-plan-step-line">
+          <span className="ai-chat-plan-step-marker" aria-hidden="true" />
+          <div className="ai-chat-plan-step-content">
+            <strong>{reference.title}</strong>
+            {reference.detail ? <small>{reference.detail}</small> : null}
+            {toolCount ? <small>{toolCount} linked tool {toolCount === 1 ? 'call' : 'calls'}</small> : null}
+          </div>
+        </div>
+        {reference.children?.length ? <PlanStepRows references={reference.children} depth={depth + 1} /> : null}
+      </div>
+    );
+  });
+}
+
+export function AiChatTaskPlanCard({ plan }: { plan: AiConversationTaskReference }) {
+  const state = taskActivityStateFor(plan);
+  const flat = flattenPlanReferences(plan).slice(1);
+  const parentIds = new Set(flat.flatMap((reference) => reference.children?.map((child) => child.id) ?? []));
+  const leaves = flat.filter((reference) => !reference.children?.length && !parentIds.has(reference.id));
+  const completed = leaves.filter((reference) => reference.state === 'completed').length;
+  const active = leaves.find((reference) => reference.state === 'in_progress');
+  const summary = active
+    ? `Working on ${active.title}`
+    : state === 'complete'
+      ? 'Plan completed.'
+      : state === 'error'
+        ? 'Plan stopped on a failed step.'
+        : state === 'cancelled'
+          ? 'Plan was cancelled.'
+          : 'Plan ready to run.';
+  const metadata = leaves.length ? `${completed}/${leaves.length} steps complete` : undefined;
+
+  return (
+    <UiAgentTaskCard
+      className="ai-chat-task-card ai-chat-task-plan-card"
+      defaultExpanded={state === 'running' || state === 'error'}
+      details={<div className="ai-chat-plan-steps"><PlanStepRows references={plan.children ?? []} /></div>}
+      metadata={metadata}
+      state={state}
+      summary={summary}
+      title={plan.title}
+    />
+  );
+}
+
 export function AiChatTaskActivityCard({ reference }: { reference: AiConversationTaskReference }) {
+  if (reference.children?.length) return <AiChatTaskPlanCard plan={reference} />;
+
   const state = taskActivityStateFor(reference);
   const duration = durationLabel(reference);
   const toolCount = reference.toolCallIds?.length ?? 0;
@@ -146,86 +221,6 @@ export function AiChatTaskActivityCard({ reference }: { reference: AiConversatio
       state={state}
       summary={taskSummaryFor(reference)}
       title={reference.title}
-    />
-  );
-}
-
-const planChildren = (
-  references: readonly AiConversationTaskReference[],
-  parentId: string,
-): AiConversationTaskReference[] =>
-  references
-    .filter((reference) => reference.parentId === parentId)
-    .sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
-
-function PlanStepRows({
-  references,
-  parentId,
-  depth = 0,
-}: {
-  references: readonly AiConversationTaskReference[];
-  parentId: string;
-  depth?: number;
-}) {
-  return planChildren(references, parentId).map((reference) => {
-    const toolCount = reference.toolCallIds?.length ?? 0;
-    return (
-      <div
-        className={`ai-chat-plan-step is-${reference.state}`}
-        data-task-state={reference.state}
-        data-task-depth={depth}
-        key={reference.id}
-      >
-        <div className="ai-chat-plan-step-line">
-          <span className="ai-chat-plan-step-marker" aria-hidden="true" />
-          <div className="ai-chat-plan-step-content">
-            <strong>{reference.title}</strong>
-            {reference.detail ? <small>{reference.detail}</small> : null}
-            {toolCount ? <small>{toolCount} linked tool {toolCount === 1 ? 'call' : 'calls'}</small> : null}
-          </div>
-        </div>
-        <PlanStepRows references={references} parentId={reference.id} depth={depth + 1} />
-      </div>
-    );
-  });
-}
-
-export function AiChatTaskPlanCard({
-  plan,
-  references,
-}: {
-  plan: AiConversationTaskReference;
-  references: readonly AiConversationTaskReference[];
-}) {
-  const state = taskActivityStateFor(plan);
-  const steps = references.filter((reference) => reference.planId === plan.id && reference.id !== plan.id);
-  const leaves = steps.filter((reference) => !steps.some((candidate) => candidate.parentId === reference.id));
-  const completed = leaves.filter((reference) => reference.state === 'completed').length;
-  const active = leaves.find((reference) => reference.state === 'in_progress');
-  const summary = active
-    ? `Working on ${active.title}`
-    : state === 'complete'
-      ? 'Plan completed.'
-      : state === 'error'
-        ? 'Plan stopped on a failed step.'
-        : state === 'cancelled'
-          ? 'Plan was cancelled.'
-          : 'Plan ready to run.';
-  const metadata = leaves.length ? `${completed}/${leaves.length} steps complete` : undefined;
-
-  return (
-    <UiAgentTaskCard
-      className="ai-chat-task-card ai-chat-task-plan-card"
-      defaultExpanded={state === 'running' || state === 'error'}
-      details={
-        <div className="ai-chat-plan-steps">
-          <PlanStepRows references={references} parentId={plan.id} />
-        </div>
-      }
-      metadata={metadata}
-      state={state}
-      summary={summary}
-      title={plan.title}
     />
   );
 }
