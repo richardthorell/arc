@@ -196,7 +196,7 @@ const batchOperationToEditApply = (
     case 'entity.setBaseColor':
       return {
         action: 'setMaterial',
-        value: { guid, path: materialParameterPath('Base Color', 'vec4', 'color', operation.color) },
+        value: { guid, path: materialParameterPath('Base Color', 'vec3', 'color', operation.color) },
       };
     case 'entity.setFlow':
       return {
