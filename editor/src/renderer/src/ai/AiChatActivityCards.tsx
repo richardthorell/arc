@@ -160,7 +160,9 @@ function PlanStepRows({
             ) : null}
           </div>
         </div>
-        {reference.children?.length ? <PlanStepRows references={reference.children} depth={depth + 1} /> : null}
+        {reference.children?.length ? (
+          <PlanStepRows references={reference.children} depth={depth + 1} />
+        ) : null}
       </div>
     );
   });
