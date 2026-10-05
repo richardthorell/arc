@@ -64,9 +64,9 @@ beforeEach(() => {
         nodes: [
           {
             id: 'base-color',
-            type: 'colorRgb',
+            type: 'colorRgba',
             position: [0, 0],
-            values: { value: [0.82, 0.84, 0.78] },
+            values: { value: [0.82, 0.84, 0.78, 1] },
             parameter: { exposed: true, name: 'Base Color' },
           },
           {
@@ -85,7 +85,23 @@ beforeEach(() => {
           },
           { id: 'material-output', type: 'output', position: [300, 0], values: {} },
         ],
-        connections: [],
+        connections: [
+          {
+            id: 'base-color-output',
+            from: { nodeId: 'base-color', pin: 'rgb' },
+            to: { nodeId: 'material-output', pin: 'baseColor' },
+          },
+          {
+            id: 'roughness-output',
+            from: { nodeId: 'roughness', pin: 'value' },
+            to: { nodeId: 'material-output', pin: 'roughness' },
+          },
+          {
+            id: 'albedo-output',
+            from: { nodeId: 'albedo', pin: 'rgb' },
+            to: { nodeId: 'material-output', pin: 'emissive' },
+          },
+        ],
       },
     }),
   });
