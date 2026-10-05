@@ -150,6 +150,43 @@ const withLinkedCalls = (task: AiTaskProgress, calls: readonly AiToolCall[], pro
   toolCallIds: [...new Set([...(task.toolCallIds ?? []), ...calls.map((call) => call.id)])],
 });
 
+const agentControlTools = new Set(['edit.begin', 'edit.request', 'edit.commit', 'edit.cancel']);
+
+const failedPlanTask = (
+  roots: ReadonlyMap<string, AiTaskProgress>,
+): { root: AiTaskProgress; task: AiTaskProgress } | undefined => {
+  const candidates = [...roots.values()].reverse();
+  for (const root of candidates) {
+    const failed = [...flattenTaskTree(root)]
+      .reverse()
+      .find((task) => task.id !== root.id && task.state === 'failed' && !task.children?.length);
+    if (failed) return { root, task: failed };
+  }
+  return undefined;
+};
+
+const deriveContainerState = (children: readonly AiTaskProgress[]): AiTaskProgress['state'] => {
+  if (children.some((child) => child.state === 'failed')) return 'failed';
+  if (children.some((child) => child.state === 'in_progress')) return 'in_progress';
+  if (children.some((child) => child.state === 'planned')) {
+    return children.some((child) => child.state === 'completed') ? 'in_progress' : 'planned';
+  }
+  if (children.length && children.every((child) => child.state === 'cancelled')) return 'cancelled';
+  return 'completed';
+};
+
+const deriveTaskTreeStates = (task: AiTaskProgress): AiTaskProgress => {
+  if (!task.children?.length) return task;
+  const children = task.children.map(deriveTaskTreeStates);
+  return { ...task, children, state: deriveContainerState(children) };
+};
+
+const withoutTaskDetail = (task: AiTaskProgress): AiTaskProgress => {
+  const copy = { ...task };
+  delete copy.detail;
+  return copy;
+};
+
 export async function* runAiAgentToolLoop(
   request: AiRuntimeRequest,
   execute: AiAgentModelExecutor,
@@ -293,15 +330,40 @@ export async function* runAiAgentToolLoop(
 
     if (!executionCalls.length) continue;
 
-    const planned = activePlanTask(planRoots);
+    let planned = activePlanTask(planRoots);
+    let recoveringPlanTask = false;
+    const hasSemanticExecution = executionCalls.some((call) => !agentControlTools.has(call.name));
+
+    if (!planned && planRoots.size && hasSemanticExecution) {
+      const failed = failedPlanTask(planRoots);
+      if (failed) {
+        let recoveringRoot = mapTaskTree(failed.root, failed.task.id, (task) => ({
+          ...withoutTaskDetail(withLinkedCalls(task, executionCalls, providerStep)),
+          state: 'in_progress',
+        }));
+        recoveringRoot = deriveTaskTreeStates(recoveringRoot);
+        planRoots.set(recoveringRoot.id, recoveringRoot);
+        planned = {
+          root: recoveringRoot,
+          task: flattenTaskTree(recoveringRoot).find((task) => task.id === failed.task.id)!,
+        };
+        recoveringPlanTask = true;
+        yield { type: 'task-update', task: recoveringRoot };
+      }
+    }
+
     let genericTask: AiTaskProgress | undefined;
-    if (planned) {
+    if (planned && !recoveringPlanTask) {
       const linkedRoot = mapTaskTree(planned.root, planned.task.id, (task) =>
         withLinkedCalls(task, executionCalls, providerStep),
       );
       planRoots.set(linkedRoot.id, linkedRoot);
+      planned = {
+        root: linkedRoot,
+        task: flattenTaskTree(linkedRoot).find((task) => task.id === planned!.task.id)!,
+      };
       yield { type: 'task-update', task: linkedRoot };
-    } else {
+    } else if (!planned && !planRoots.size && hasSemanticExecution) {
       genericTask = taskForCalls(providerStep, executionCalls, 'in_progress');
       yield { type: 'task-update', task: genericTask };
     }
@@ -328,9 +390,17 @@ export async function* runAiAgentToolLoop(
         state: 'failed',
         detail: `Failed while running ${failedResult.name}`,
       }));
-      failedRoot = { ...failedRoot, state: 'failed' };
+      failedRoot = deriveTaskTreeStates(failedRoot);
       planRoots.set(failedRoot.id, failedRoot);
       yield { type: 'task-update', task: failedRoot };
+    } else if (planned && recoveringPlanTask) {
+      let recoveredRoot = mapTaskTree(planRoots.get(planned.root.id)!, planned.task.id, (task) => ({
+        ...withoutTaskDetail(task),
+        state: 'completed',
+      }));
+      recoveredRoot = deriveTaskTreeStates(recoveredRoot);
+      planRoots.set(recoveredRoot.id, recoveredRoot);
+      yield { type: 'task-update', task: recoveredRoot };
     } else if (genericTask) {
       yield {
         type: 'task-update',

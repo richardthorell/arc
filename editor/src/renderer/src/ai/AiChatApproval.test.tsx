@@ -32,7 +32,7 @@ const pendingApproval: AiAgentApprovalRequest = {
 afterEach(() => cleanup());
 
 describe('AiChatPanel approvals', () => {
-  it('renders the exact pending harness request in chat and approves it from the card', async () => {
+  it('shows ask-mode approval as compact awaiting progress and approves it', async () => {
     const onApproveRequest = vi.fn(async () => true);
     render(
       <AiChatPanel
@@ -49,11 +49,39 @@ describe('AiChatPanel approvals', () => {
     fireEvent.click(screen.getByLabelText('Start conversation'));
 
     await waitFor(() => expect(screen.getByRole('alertdialog', { name: 'AI editor action approval' })).toBeVisible());
+    expect(screen.getByText('Awaiting approval')).toBeVisible();
     expect(screen.getByText('Create cube above Floor')).toBeVisible();
     expect(screen.getByLabelText('Agent approval mode')).toHaveTextContent('Ask');
 
     fireEvent.click(screen.getByRole('button', { name: /Allow/u }));
     await waitFor(() => expect(onApproveRequest).toHaveBeenCalledWith('request-1'));
+  });
+
+  it('keeps denial wired to the harness coordinator so the agent receives the denied result', async () => {
+    const onDenyRequest = vi.fn(async () => true);
+    render(
+      <AiChatPanel
+        approvalMode="ask"
+        onApproveRequest={vi.fn(async () => true)}
+        onDenyRequest={onDenyRequest}
+        pendingApproval={pendingApproval}
+        provider={provider}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Start a conversation'), { target: { value: 'Create a cube' } });
+    fireEvent.click(screen.getByLabelText('Start conversation'));
+
+    await waitFor(() => expect(screen.getByRole('alertdialog', { name: 'AI editor action approval' })).toBeVisible());
+    fireEvent.click(screen.getByRole('button', { name: /Deny/u }));
+    await waitFor(() => expect(onDenyRequest).toHaveBeenCalledWith('request-1'));
+  });
+
+  it('does not render pending approval UI in auto mode', () => {
+    render(<AiChatPanel approvalMode="auto" pendingApproval={pendingApproval} provider={provider} />);
+
+    expect(screen.queryByRole('alertdialog', { name: 'AI editor action approval' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Awaiting approval')).not.toBeInTheDocument();
   });
 
   it('offers auto approve next to the model control', async () => {

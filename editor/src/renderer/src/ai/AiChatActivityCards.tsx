@@ -3,12 +3,11 @@ import {
   UiAgentAssetCard,
   UiAgentCardActionRow,
   UiAgentCardCopyAction,
-  UiAgentTaskCard,
   UiAgentToolCard,
   UiAgentViewportCard,
   type UiAgentActivityState,
 } from '../ui';
-import './aiChatTaskPlan.css';
+import { AiChatLiveProgress } from './AiChatLiveProgress';
 
 const detailCharacterLimit = 1800;
 
@@ -45,29 +44,12 @@ const activityStateFor = (reference: AiConversationToolReference): UiAgentActivi
   return 'complete';
 };
 
-const taskActivityStateFor = (reference: AiConversationTaskReference): UiAgentActivityState => {
-  if (reference.state === 'planned') return 'pending';
-  if (reference.state === 'in_progress') return 'running';
-  if (reference.state === 'failed') return 'error';
-  if (reference.state === 'cancelled') return 'cancelled';
-  return 'complete';
-};
-
 const activitySummaryFor = (reference: AiConversationToolReference): string => {
   if (reference.summary?.trim()) return reference.summary.trim();
   if (reference.state === 'pending') return 'ARC is running this editor operation.';
   if (reference.state === 'error') return 'The editor operation did not complete.';
   if (reference.state === 'cancelled') return 'The editor operation was cancelled.';
   return 'The editor operation completed.';
-};
-
-const taskSummaryFor = (reference: AiConversationTaskReference): string => {
-  if (reference.detail?.trim()) return reference.detail.trim();
-  if (reference.state === 'planned') return 'Waiting to start.';
-  if (reference.state === 'in_progress') return 'ARC is working on this task.';
-  if (reference.state === 'failed') return 'This task did not complete.';
-  if (reference.state === 'cancelled') return 'This task was cancelled.';
-  return 'Task completed.';
 };
 
 const durationLabel = (reference: { startedAt?: string; completedAt?: string }): string | undefined => {
@@ -120,117 +102,15 @@ function ToolDetails({ reference }: { reference: AiConversationToolReference }) 
   );
 }
 
-const flattenPlanReferences = (reference: AiConversationTaskReference): AiConversationTaskReference[] => {
-  const result: AiConversationTaskReference[] = [reference];
-  const collect = (children: readonly AiConversationTaskReference[] | undefined) => {
-    for (const child of children ?? []) {
-      result.push(child);
-      collect(child.children);
-    }
-  };
-  collect(reference.children);
-  return result;
-};
-
-function PlanStepRows({
-  references,
-  depth = 0,
-}: {
-  references: readonly AiConversationTaskReference[];
-  depth?: number;
-}) {
-  return references.map((reference) => {
-    const toolCount = reference.toolCallIds?.length ?? 0;
-    return (
-      <div
-        className={`ai-chat-plan-step is-${reference.state}`}
-        data-task-state={reference.state}
-        data-task-depth={depth}
-        key={reference.id}
-      >
-        <div className="ai-chat-plan-step-line">
-          <span className="ai-chat-plan-step-marker" aria-hidden="true" />
-          <div className="ai-chat-plan-step-content">
-            <strong>{reference.title}</strong>
-            {reference.detail ? <small>{reference.detail}</small> : null}
-            {toolCount ? (
-              <small>
-                {toolCount} linked tool {toolCount === 1 ? 'call' : 'calls'}
-              </small>
-            ) : null}
-          </div>
-        </div>
-        {reference.children?.length ? <PlanStepRows references={reference.children} depth={depth + 1} /> : null}
-      </div>
-    );
-  });
-}
-
 export function AiChatTaskPlanCard({ plan }: { plan: AiConversationTaskReference }) {
-  const state = taskActivityStateFor(plan);
-  const leaves = flattenPlanReferences(plan)
-    .slice(1)
-    .filter((reference) => !reference.children?.length);
-  const completed = leaves.filter((reference) => reference.state === 'completed').length;
-  const active = leaves.find((reference) => reference.state === 'in_progress');
-  const summary = active
-    ? `Working on ${active.title}`
-    : state === 'complete'
-      ? 'Plan completed.'
-      : state === 'error'
-        ? 'Plan stopped on a failed step.'
-        : state === 'cancelled'
-          ? 'Plan was cancelled.'
-          : 'Plan ready to run.';
-  const metadata = leaves.length ? `${completed}/${leaves.length} steps complete` : undefined;
-
-  return (
-    <UiAgentTaskCard
-      className="ai-chat-task-card ai-chat-task-plan-card"
-      defaultExpanded={state === 'running' || state === 'error'}
-      details={
-        <div className="ai-chat-plan-steps">
-          <PlanStepRows references={plan.children ?? []} />
-        </div>
-      }
-      metadata={metadata}
-      state={state}
-      summary={summary}
-      title={plan.title}
-    />
-  );
+  return <AiChatLiveProgress tasks={[plan]} />;
 }
 
 export function AiChatTaskActivityCard({ reference }: { reference: AiConversationTaskReference }) {
-  if (reference.children?.length) return <AiChatTaskPlanCard plan={reference} />;
-
-  const state = taskActivityStateFor(reference);
-  const duration = durationLabel(reference);
-  const toolCount = reference.toolCallIds?.length ?? 0;
-  const metadata = [
-    reference.step !== undefined ? `Step ${reference.step + 1}` : undefined,
-    toolCount ? `${toolCount} tool ${toolCount === 1 ? 'call' : 'calls'}` : undefined,
-    duration,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  const details = toolCount ? (
-    <div className="ai-chat-task-tool-links">
-      <div className="ai-chat-tool-detail-label">Linked tool calls</div>
-      <code>{reference.toolCallIds!.join(', ')}</code>
-    </div>
-  ) : undefined;
-
-  return (
-    <UiAgentTaskCard
-      className="ai-chat-task-card"
-      defaultExpanded={state === 'error' || state === 'cancelled'}
-      details={details}
-      metadata={metadata || undefined}
-      state={state}
-      summary={taskSummaryFor(reference)}
-      title={reference.title}
-    />
+  return reference.children?.length ? (
+    <AiChatTaskPlanCard plan={reference} />
+  ) : (
+    <AiChatLiveProgress tasks={[reference]} />
   );
 }
 

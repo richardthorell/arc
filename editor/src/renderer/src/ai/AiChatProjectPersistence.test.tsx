@@ -190,7 +190,6 @@ describe('AiChatPanel project persistence', () => {
     fireEvent.change(screen.getByLabelText('Start a conversation'), { target: { value: 'Create a capsule' } });
     fireEvent.click(screen.getByLabelText('Start conversation'));
 
-    await waitFor(() => expect(screen.getByText('Configure capsule')).toBeInTheDocument());
     await waitFor(() =>
       expect(loadAiConversationStore(projectA).conversations[0]?.messages[1]?.taskReferences?.[0]).toMatchObject({
         id: 'agent-step-0',
@@ -200,12 +199,16 @@ describe('AiChatPanel project persistence', () => {
         toolCallIds: ['call-capsule'],
       }),
     );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Show tasks' })).toBeVisible());
+    fireEvent.click(screen.getByRole('button', { name: 'Show tasks' }));
+    expect(screen.getByText('Configure capsule')).toBeInTheDocument();
 
     first.unmount();
     render(<AiChatPanel projectGuid={projectA} provider={taskProvider} />);
 
+    expect(screen.queryByText('Configure capsule')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show tasks' }));
     expect(screen.getByText('Configure capsule')).toBeInTheDocument();
-    const taskCard = screen.getByText('Configure capsule').closest('[data-activity-kind="task"]');
-    expect(taskCard).toHaveAttribute('data-activity-state', 'complete');
+    expect(screen.getByText('Configure capsule').closest('[data-progress-state="complete"]')).toBeInTheDocument();
   });
 });

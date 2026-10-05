@@ -1,0 +1,139 @@
+.ai-chat-assistant-turn > .ui-agent-activity-card-tool,
+.ai-chat-assistant-turn > .ui-agent-activity-card-asset,
+.ai-chat-assistant-turn > .ui-agent-activity-card-viewport {
+  display: none;
+}
+
+.ai-chat-task-progress-shell {
+  position: relative;
+  width: min(100%, 680px);
+  max-width: 82%;
+}
+
+.ai-chat-task-progress-shell.is-terminal:not(.is-expanded) {
+  min-height: 0;
+}
+
+.ai-chat-task-list-toggle {
+  position: absolute;
+  z-index: 6;
+  top: -29px;
+  left: 26px;
+}
+
+.ai-chat-live-progress {
+  display: grid;
+  width: 100%;
+  gap: 7px;
+  padding: 2px 0;
+  color: var(--arc-color-text-muted);
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-sm);
+}
+
+.ai-chat-live-progress-row {
+  display: grid;
+  grid-template-columns: 14px minmax(0, auto) auto;
+  align-items: center;
+  justify-content: start;
+  gap: 8px;
+  min-height: 20px;
+}
+
+.ai-chat-live-progress-indicator {
+  display: inline-flex;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-radius: 50%;
+}
+
+.ai-chat-live-progress-row.is-working .ai-chat-live-progress-indicator {
+  border-color: color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: var(--arc-color-text-strong);
+  animation: ai-chat-progress-spin 720ms linear infinite;
+}
+
+.ai-chat-live-progress-row.is-working .ai-chat-live-progress-label {
+  color: var(--arc-color-text-strong);
+}
+
+.ai-chat-live-progress-row.is-complete {
+  color: var(--arc-color-text-muted);
+}
+
+.ai-chat-live-progress-row.is-complete .ai-chat-live-progress-indicator {
+  border-color: transparent;
+  color: var(--arc-color-success);
+}
+
+.ai-chat-live-progress-row.is-complete .ai-chat-live-progress-label {
+  color: var(--arc-color-text-muted);
+}
+
+.ai-chat-live-progress-row.is-failed,
+.ai-chat-live-progress-row.is-failed .ai-chat-live-progress-label {
+  color: var(--arc-color-danger);
+}
+
+.ai-chat-live-progress-row.is-failed .ai-chat-live-progress-indicator {
+  border-color: transparent;
+  color: var(--arc-color-danger);
+}
+
+.ai-chat-live-progress-row.is-waiting {
+  opacity: 0.62;
+}
+
+.ai-chat-live-progress-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: ai-chat-progress-label-in 320ms ease-out both;
+}
+
+.ai-chat-live-progress-state {
+  color: var(--arc-color-text-dim);
+  font-size: var(--arc-text-xs);
+}
+
+@keyframes ai-chat-progress-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ai-chat-progress-label-in {
+  0% {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+    transform: translateY(2px);
+  }
+
+  45% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-chat-live-progress-row.is-working .ai-chat-live-progress-indicator,
+  .ai-chat-live-progress-label {
+    animation: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .ai-chat-task-progress-shell {
+    max-width: 88%;
+  }
+}
