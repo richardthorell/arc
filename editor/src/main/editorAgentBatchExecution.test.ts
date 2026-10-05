@@ -33,11 +33,11 @@ class BatchHost implements AgentHarnessHost {
     revision?: number,
   ): Promise<AgentHostResponse> {
     this.commands.push({ type, payload, edit, revision });
+    const nextRevision = (revision ?? 4) + 1;
     if (type === 'entity.create')
-      return response({ entity: { index: 9, generation: 1 }, guid: 'created-cube-guid' }, 5);
-    if (type === 'entity.setTransform') return response({ entity: { index: 9, generation: 1 } }, 6);
-    if (type === 'entity.rename') return response({ entity: { index: 9, generation: 1 } }, 7);
-    if (type === 'entity.setMaterial') return response({ entity: { index: 9, generation: 1 } }, revision === 7 ? 8 : 5);
+      return response({ entity: { index: 9, generation: 1 }, guid: 'created-cube-guid' }, nextRevision);
+    if (type === 'entity.setTransform' || type === 'entity.rename' || type === 'entity.setMaterial')
+      return response({ entity: { index: 9, generation: 1 } }, nextRevision);
     return response({}, revision ?? 4);
   }
 
@@ -179,7 +179,7 @@ describe('EditorAgentHarness editor.applyBatch', () => {
     const materialCommand = host.commands.find((command) => command.type === 'entity.setMaterial');
     expect(materialCommand?.payload).toMatchObject({
       entity: { index: 9, generation: 1 },
-      material: 'materials/red_capsule.arcmat',
+      path: 'materials/red_capsule.arcmat',
     });
 
     await harness.invoke('edit.commit', { editSessionId: session.id, expectedSceneRevision: 8 }, 'writer');
