@@ -1,7 +1,12 @@
-import { useState } from 'react';
-
 import type { AiConversationToolReference } from '../../../common/aiConversationTypes';
-import { UiAgentAssetCard, UiAgentToolCard, UiAgentViewportCard, type UiAgentActivityState } from '../ui';
+import {
+  UiAgentAssetCard,
+  UiAgentCardActionRow,
+  UiAgentCardCopyAction,
+  UiAgentToolCard,
+  UiAgentViewportCard,
+  type UiAgentActivityState,
+} from '../ui';
 
 const detailCharacterLimit = 1800;
 
@@ -20,6 +25,16 @@ const formattedResult = (value: string): string => {
   const parsed = parsedResult(value);
   return typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2);
 };
+
+const toolDebugJson = (reference: AiConversationToolReference): string =>
+  JSON.stringify(
+    {
+      ...(reference.arguments && Object.keys(reference.arguments).length ? { arguments: reference.arguments } : {}),
+      ...(reference.resultContent ? { result: parsedResult(reference.resultContent) } : {}),
+    },
+    null,
+    2,
+  );
 
 const activityStateFor = (reference: AiConversationToolReference): UiAgentActivityState => {
   if (reference.state === 'pending') return 'running';
@@ -48,25 +63,11 @@ const durationLabel = (reference: AiConversationToolReference): string | undefin
 };
 
 function ToolDetails({ reference }: { reference: AiConversationToolReference }) {
-  const [copied, setCopied] = useState(false);
-  const hasArguments = Boolean(reference.arguments && Object.keys(reference.arguments).length);
-  const argumentsText = hasArguments ? JSON.stringify(reference.arguments, null, 2) : null;
+  const argumentsText =
+    reference.arguments && Object.keys(reference.arguments).length
+      ? JSON.stringify(reference.arguments, null, 2)
+      : null;
   const resultText = reference.resultContent ? formattedResult(reference.resultContent) : null;
-  const copyPayload = JSON.stringify(
-    {
-      ...(hasArguments ? { arguments: reference.arguments } : {}),
-      ...(reference.resultContent ? { result: parsedResult(reference.resultContent) } : {}),
-    },
-    null,
-    2,
-  );
-
-  const copyResult = async () => {
-    if (!resultText || !navigator.clipboard?.writeText) return;
-    await navigator.clipboard.writeText(copyPayload);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
-  };
 
   if (!argumentsText && !resultText && !reference.resultTruncated && !reference.errorCode) return undefined;
 
@@ -82,9 +83,6 @@ function ToolDetails({ reference }: { reference: AiConversationToolReference }) 
         <section className="ai-chat-tool-detail-section">
           <div className="ai-chat-tool-detail-label">Result</div>
           <pre>{boundedText(resultText)}</pre>
-          <button className="ai-chat-tool-copy-json" type="button" onClick={() => void copyResult()}>
-            {copied ? 'Copied' : 'Copy JSON'}
-          </button>
         </section>
       ) : null}
       {reference.resultTruncated ? (
@@ -110,12 +108,18 @@ export function AiChatToolActivityCard({ reference }: { reference: AiConversatio
   const metadata = [reference.step !== undefined ? `Step ${reference.step + 1}` : undefined, duration]
     .filter(Boolean)
     .join(' · ');
+  const footerActions = (
+    <UiAgentCardActionRow>
+      <UiAgentCardCopyAction label="Copy tool JSON" value={toolDebugJson(reference)} />
+    </UiAgentCardActionRow>
+  );
   const shared = {
     title: reference.name,
     subtitle: reference.operation && reference.operation !== reference.name ? reference.operation : undefined,
     summary: activitySummaryFor(reference),
     metadata: metadata || undefined,
     details,
+    footerActions,
     state,
     defaultExpanded: state === 'error',
   } as const;

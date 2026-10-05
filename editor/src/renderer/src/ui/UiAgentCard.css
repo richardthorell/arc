@@ -12,6 +12,10 @@
   color: var(--arc-color-text);
 }
 
+.ui-agent-card[data-has-footer-actions='true'] {
+  margin-bottom: 24px;
+}
+
 .ui-agent-card[data-tone='agent'] {
   --ui-agent-card-background: color-mix(in srgb, var(--arc-color-bg-panel) 88%, #31596b 12%);
   --ui-agent-card-border: color-mix(in srgb, var(--arc-color-border-subtle) 70%, #4d8198 30%);
@@ -87,7 +91,8 @@
 
 .ui-agent-card-header,
 .ui-agent-card-content,
-.ui-agent-card-timestamp {
+.ui-agent-card-timestamp,
+.ui-agent-card-footer-actions {
   position: relative;
   z-index: 2;
 }
@@ -160,6 +165,59 @@
 
 .ui-agent-card[data-side='right'] .ui-agent-card-timestamp {
   justify-content: flex-end;
+}
+
+.ui-agent-card-footer-actions {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  height: 20px;
+  z-index: 4;
+}
+
+.ui-agent-card-action-row {
+  display: flex;
+  width: 100%;
+  height: 20px;
+  align-items: center;
+  gap: 2px;
+  transition: opacity 120ms ease;
+}
+
+.ui-agent-card-action-row[data-align='left'] {
+  justify-content: flex-start;
+}
+
+.ui-agent-card-action-row[data-align='right'] {
+  justify-content: flex-end;
+}
+
+.ui-agent-card:not(:hover):not(:focus-within)
+  > .ui-agent-card-footer-actions
+  .ui-agent-card-action-row[data-reveal-on-hover='true'] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ui-agent-card-action-button {
+  display: inline-grid;
+  width: 24px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  place-items: center;
+  background: transparent;
+  color: var(--arc-color-text-dim);
+  cursor: pointer;
+}
+
+.ui-agent-card-action-button:hover,
+.ui-agent-card-action-button:focus-visible {
+  background: color-mix(in srgb, var(--arc-color-bg-hover) 76%, transparent);
+  color: var(--arc-color-text-strong);
+  outline: none;
 }
 
 .ui-agent-text-card-content {
