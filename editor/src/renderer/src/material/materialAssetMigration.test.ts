@@ -72,6 +72,40 @@ describe('material asset migration', () => {
     expect(graph.connections.some((connection) => connection.to.pin === 'anisotropy')).toBe(true);
   });
 
+  it('migrates identical legacy inputs deterministically and is idempotent after upgrade', () => {
+    const legacy = {
+      version: 3,
+      name: 'Deterministic Legacy',
+      domain: 'surface',
+      blendMode: 'masked',
+      surface: {
+        baseColor: { r: 0.15, g: 0.35, b: 0.55, a: 0.8 },
+        metallic: 0.25,
+        roughness: 0.45,
+        alphaCutoff: 0.3,
+      },
+      textures: {
+        baseColor: 'Textures/base.png',
+        metallicRoughness: 'Textures/surface.png',
+        normal: 'Textures/normal.png',
+      },
+      graph: null,
+    };
+
+    const first = upgradeMaterialAsset(structuredClone(legacy));
+    const second = upgradeMaterialAsset(structuredClone(legacy));
+
+    expect(first.upgraded).toBe(true);
+    expect(second.upgraded).toBe(true);
+    expect(first.asset).toEqual(second.asset);
+    expect(materialGraphFromAsset(first.asset)).toEqual(materialGraphFromAsset(second.asset));
+
+    const repeated = upgradeMaterialAsset(first.asset);
+    expect(repeated.upgraded).toBe(false);
+    expect(repeated.sourceVersion).toBe(currentMaterialAuthoringVersion);
+    expect(repeated.asset).toBe(first.asset);
+  });
+
   it('keeps an existing legacy graph while upgrading only its authoring envelope', () => {
     const graph = createDefaultMaterialGraph();
     const result = upgradeMaterialAsset({
