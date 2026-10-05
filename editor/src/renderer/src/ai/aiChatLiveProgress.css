@@ -4,10 +4,26 @@
   display: none;
 }
 
-.ai-chat-live-progress {
-  display: grid;
+.ai-chat-task-progress-shell {
+  position: relative;
   width: min(100%, 680px);
   max-width: 82%;
+}
+
+.ai-chat-task-progress-shell.is-terminal:not(.is-expanded) {
+  min-height: 0;
+}
+
+.ai-chat-task-list-toggle {
+  position: absolute;
+  z-index: 6;
+  top: -29px;
+  left: 26px;
+}
+
+.ai-chat-live-progress {
+  display: grid;
+  width: 100%;
   gap: 7px;
   padding: 2px 0;
   color: var(--arc-color-text-muted);
@@ -117,7 +133,7 @@
 }
 
 @media (max-width: 760px) {
-  .ai-chat-live-progress {
+  .ai-chat-task-progress-shell {
     max-width: 88%;
   }
 }
