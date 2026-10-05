@@ -3,7 +3,9 @@ import { z } from 'zod';
 import type { AiJsonObject, AiJsonValue, AiToolDefinition } from '../common/aiRuntimeTypes';
 import { assertAiToolInvocationAllowed, type AiToolSecurityDescriptor } from '../common/aiSecurityPolicy';
 import type { BuiltInAgentCapabilities, BuiltInAgentToolExecutionResult } from '../common/builtInAgentTypes';
-import { agentEditActions, type AgentHarnessMethod } from './agentHarnessContract';
+import { agentEditorBatchRequestSchema } from './agentEditorBatch';
+import { agentEditActions, type AgentEditAction, type AgentHarnessMethod } from './agentHarnessContract';
+import { agentEditValueSchema, validateAgentEditValue } from './agentEditToolSchemas';
 import type { BuiltInAgentAdapter } from './builtInAgentAdapter';
 
 export const BUILT_IN_AGENT_TOOL_RESULT_MAX_BYTES = 64 * 1024;
@@ -251,9 +253,16 @@ const registryEntries = [
         editSessionId: z.string().min(1),
         expectedSceneRevision: z.number().int().positive(),
         action: z.enum(agentEditActions),
-        value: z.record(z.string(), z.unknown()),
+        value: agentEditValueSchema,
       })
       .strict(),
+    mutating: true,
+  },
+  {
+    method: 'editor.applyBatch',
+    description:
+      'Apply multiple validated editor mutations in one active transaction. Use tempId to reference entities created earlier in the same batch.',
+    schema: agentEditorBatchRequestSchema,
     mutating: true,
   },
   {
@@ -386,13 +395,29 @@ export class BuiltInAgentToolRegistry {
       throw new Error(`Invalid arguments for ${name}${path}: ${issue?.message ?? 'schema validation failed'}`);
     }
     const params = toJsonObject(parsed.data, 'tool arguments');
+    let invokeParams = params;
     if (entry.method === 'edit.apply') {
       const action = params.action;
       if (typeof action !== 'string' || !capabilities.editActions.includes(action))
         throw new Error(`Edit action '${String(action)}' is not available from EditorAgentHarness`);
+      try {
+        invokeParams = {
+          ...params,
+          value: toJsonValue(validateAgentEditValue(action as AgentEditAction, params.value), 'tool arguments.value'),
+        };
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          const issue = error.issues[0];
+          const path = issue?.path.length ? `.${issue.path.join('.')}` : '';
+          throw new Error(
+            `Invalid arguments for edit.apply at value${path}: ${issue?.message ?? 'schema validation failed'}`,
+          );
+        }
+        throw error;
+      }
     }
 
-    return serializeToolResult(name, entry.method, await this.adapter.invoke(entry.method, params));
+    return serializeToolResult(name, entry.method, await this.adapter.invoke(entry.method, invokeParams));
   }
 }
 
