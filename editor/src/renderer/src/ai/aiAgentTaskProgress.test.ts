@@ -100,11 +100,11 @@ describe('AI agent task progress', () => {
   it('keeps model-authored plans grouped, semantic, and local to the runtime', async () => {
     let providerTurn = 0;
     const execute = vi.fn(() =>
-      (async function* () {
+      (async function* (): AsyncGenerator<AiRuntimeStreamEvent> {
         ++providerTurn;
         if (providerTurn === 1) {
           yield {
-            type: 'tool-call' as const,
+            type: 'tool-call',
             call: {
               id: 'plan-1',
               name: 'agent.updatePlan',
@@ -127,15 +127,15 @@ describe('AI agent task progress', () => {
             },
           };
           yield {
-            type: 'tool-call' as const,
+            type: 'tool-call',
             call: { id: 'mutate', name: 'editor.applyBatch', arguments: { operations: [] } },
           };
-          yield { type: 'done' as const, finishReason: 'tool_calls' as const };
+          yield { type: 'done', finishReason: 'tool_calls' };
           return;
         }
         if (providerTurn === 2) {
           yield {
-            type: 'tool-call' as const,
+            type: 'tool-call',
             call: {
               id: 'plan-2',
               name: 'agent.updatePlan',
@@ -157,10 +157,10 @@ describe('AI agent task progress', () => {
               },
             },
           };
-          yield { type: 'done' as const, finishReason: 'tool_calls' as const };
+          yield { type: 'done', finishReason: 'tool_calls' };
           return;
         }
-        yield { type: 'done' as const, finishReason: 'stop' as const };
+        yield { type: 'done', finishReason: 'stop' };
       })(),
     );
     const invokeTool = vi.fn(async (call: AiToolCall) => ({
