@@ -87,6 +87,7 @@ import { SearchPanel } from '../search/SearchPanel';
 import { SettingsDialog } from '../settings/SettingsDialog';
 import { VersionControlPanel } from '../versionControl/VersionControlPanel';
 import { ContentBrowserPanel as ContentBrowserV2 } from '../content/ContentBrowserPanel';
+import { assetPresentationStatus } from '../content/assetPresentation';
 import { flowDocumentPlaySource, loadFlowDocument } from '../flow/flowDocumentState';
 
 import './workbench.css';
@@ -1011,7 +1012,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         scope: asset.scope,
         readOnly: asset.readOnly,
         kind: assetKindFromHost(asset.kind),
-        status: asset.state === 'unknown' ? 'missing' : asset.state,
+        status: assetPresentationStatus(asset),
         guid: asset.guid,
         typeId: asset.typeId,
         importerId: asset.importerId,

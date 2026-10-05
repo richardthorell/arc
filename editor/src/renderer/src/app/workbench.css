@@ -1029,9 +1029,16 @@
   flex: 0 0 auto;
 }
 
-.content-toolbar-select-type,
+.content-toolbar-select-type {
+  width: 132px;
+}
+
+.content-toolbar-select-tag {
+  width: 112px;
+}
+
 .content-toolbar-select-state {
-  width: 108px;
+  width: 104px;
 }
 
 .content-toolbar-select-sort {
@@ -1149,6 +1156,9 @@
 }
 .asset-state.ready {
   background: #35b66b;
+}
+.asset-state.source {
+  background: #5a9fd8;
 }
 .asset-state.failed,
 .asset-state.missing {

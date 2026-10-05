@@ -6,6 +6,7 @@ import {
   assetPresentationIcon,
   assetPresentationKind,
   assetPresentationLabel,
+  assetPresentationStatus,
 } from './assetPresentation';
 
 const asset = (path: string, kind: AssetItem['kind'] = 'scene') => ({ kind, path });
@@ -41,5 +42,54 @@ describe('model asset presentation', () => {
     expect(assetPresentationLabel(value)).toBe('Water Preset');
     expect(assetPresentationIcon(value)).toBe('settings');
     expect(assetDragType(value)).toBe('water');
+  });
+});
+
+describe('built-in source asset presentation', () => {
+  it('distinguishes engine shader source from assignable material assets', () => {
+    expect(
+      assetPresentationLabel({
+        kind: 'shader',
+        path: 'builtin/shaders/default_unlit.frag',
+        scope: 'builtin',
+        readOnly: true,
+      }),
+    ).toBe('Engine Shader Source');
+    expect(assetPresentationLabel({ kind: 'shader', path: 'Content/Shaders/custom.frag' })).toBe('Shader');
+  });
+
+  it('presents immutable built-in materials and shaders as source instead of stale', () => {
+    const common = {
+      state: 'stale' as const,
+      scope: 'builtin' as const,
+      readOnly: true,
+      residency: 'source' as const,
+      hasLastGood: false,
+    };
+    expect(assetPresentationStatus({ ...common, kind: 'material' })).toBe('source');
+    expect(assetPresentationStatus({ ...common, kind: 'shader' })).toBe('source');
+  });
+
+  it('keeps project assets and import-dependent built-ins stale', () => {
+    expect(
+      assetPresentationStatus({
+        kind: 'material',
+        state: 'stale',
+        scope: 'project',
+        readOnly: false,
+        residency: 'source',
+        hasLastGood: false,
+      }),
+    ).toBe('stale');
+    expect(
+      assetPresentationStatus({
+        kind: 'texture',
+        state: 'stale',
+        scope: 'builtin',
+        readOnly: true,
+        residency: 'source',
+        hasLastGood: false,
+      }),
+    ).toBe('stale');
   });
 });

@@ -54,7 +54,7 @@ export type AssetItem = {
     | 'water'
     | 'folder'
     | 'unknown';
-  status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'stale' | 'importing' | 'failed' | 'missing';
+  status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'source' | 'stale' | 'importing' | 'failed' | 'missing';
   guid?: string;
   typeId?: string;
   importerId?: string;

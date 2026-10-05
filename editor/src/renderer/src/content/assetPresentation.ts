@@ -3,6 +3,12 @@ import type { AssetItem } from '../services/editorHostTypes';
 
 export type AssetPresentationKind = AssetItem['kind'] | 'model';
 
+type AssetPresentationSource = Pick<AssetItem, 'kind' | 'path'> & Partial<Pick<AssetItem, 'scope' | 'readOnly'>>;
+
+type AssetStatusSource = Pick<AssetItem, 'kind' | 'scope' | 'readOnly' | 'residency' | 'hasLastGood'> & {
+  state: 'unknown' | 'queued' | 'importing' | 'ready' | 'stale' | 'failed';
+};
+
 const modelExtensions = new Set(['fbx', 'glb', 'gltf', 'obj']);
 
 export const assetExtension = (asset: Pick<AssetItem, 'path'>) =>
@@ -17,12 +23,32 @@ export const assetPresentationKind = (asset: Pick<AssetItem, 'kind' | 'path'>): 
   return asset.kind;
 };
 
-export const assetPresentationLabel = (asset: Pick<AssetItem, 'kind' | 'path'>) => {
+export const assetPresentationLabel = (asset: AssetPresentationSource) => {
   const kind = assetPresentationKind(asset);
   if (kind === 'model') return 'Model';
   if (kind === 'flow') return 'Flow Graph';
   if (kind === 'water') return 'Water Preset';
+  if (kind === 'shader' && asset.scope === 'builtin' && asset.readOnly) return 'Engine Shader Source';
   return kind.charAt(0).toLocaleUpperCase() + kind.slice(1);
+};
+
+/**
+ * Built-in materials and shaders are shipped as immutable source files. They
+ * are usable directly by the editor/build pipeline and cannot be reimported by
+ * the user, so presenting their registry state as stale is misleading.
+ */
+export const assetPresentationStatus = (asset: AssetStatusSource): AssetItem['status'] => {
+  if (asset.state === 'unknown') return 'missing';
+  if (
+    asset.state === 'stale' &&
+    asset.scope === 'builtin' &&
+    asset.readOnly &&
+    asset.residency === 'source' &&
+    !asset.hasLastGood &&
+    (asset.kind === 'material' || asset.kind === 'shader')
+  )
+    return 'source';
+  return asset.state;
 };
 
 export const assetPresentationIcon = (asset: Pick<AssetItem, 'kind' | 'path'>): DocumentTypeIconKind => {

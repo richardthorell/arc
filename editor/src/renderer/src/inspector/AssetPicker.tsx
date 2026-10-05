@@ -15,7 +15,7 @@ export type AssetPickerItem = {
   path: string;
   sourcePath?: string;
   kind: string;
-  status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'stale' | 'importing' | 'failed' | 'missing';
+  status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'source' | 'stale' | 'importing' | 'failed' | 'missing';
   scope?: 'builtin' | 'project' | 'user' | 'organization' | 'procedural';
   readOnly?: boolean;
   textureDimension?: '2d' | 'cube' | '3d';
