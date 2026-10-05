@@ -30,8 +30,7 @@ export function summarizeHierarchySelection(
   const staleIds = selectedIds.filter((id) => !byId.has(id));
 
   const commonParentId = valid[0]?.parentId ?? null;
-  const hasCommonParent =
-    valid.length > 0 && valid.every((entry) => entry.parentId === commonParentId);
+  const hasCommonParent = valid.length > 0 && valid.every((entry) => entry.parentId === commonParentId);
 
   let label = 'No selection';
   if (valid.length === 1) {

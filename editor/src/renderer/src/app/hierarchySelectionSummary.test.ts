@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  summarizeHierarchySelection,
-  type HierarchySelectionEntry,
-} from './hierarchySelectionSummary';
+import { summarizeHierarchySelection, type HierarchySelectionEntry } from './hierarchySelectionSummary';
 
 const entries: readonly HierarchySelectionEntry[] = [
   { id: 'root', parentId: null, label: 'Root' },
