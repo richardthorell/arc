@@ -34,19 +34,38 @@ describe('AiChatToolActivityCard', () => {
     expect(screen.getByRole('button', { name: 'Copy JSON' })).toBeVisible();
   });
 
-  it('copies the complete formatted result JSON', async () => {
+  it('copies arguments and the complete result together as JSON', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText },
     });
-    const resultContent = JSON.stringify({ sceneRevision: 42, entity: { index: 4, generation: 1 } });
-    render(<AiChatToolActivityCard reference={reference({ resultContent })} />);
+    const arguments_ = { expectedSceneRevision: 2, operations: [{ type: 'entity.create', kind: 'capsule' }] };
+    const result = { sceneRevision: 3, entity: { index: 4, generation: 1 } };
+    render(
+      <AiChatToolActivityCard
+        reference={reference({
+          arguments: arguments_,
+          resultContent: JSON.stringify(result),
+        })}
+      />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Expand details' }));
     fireEvent.click(screen.getByRole('button', { name: 'Copy JSON' }));
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith(JSON.stringify(JSON.parse(resultContent), null, 2)));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        JSON.stringify(
+          {
+            arguments: arguments_,
+            result,
+          },
+          null,
+          2,
+        ),
+      ),
+    );
     expect(screen.getByRole('button', { name: 'Copied' })).toBeVisible();
   });
 
