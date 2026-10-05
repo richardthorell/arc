@@ -19,9 +19,7 @@ export type ShaderExternalChangeInput = {
  * external change becomes an explicit conflict so callers can ask the user
  * which version to keep instead of silently overwriting either side.
  */
-export const classifyShaderExternalChange = (
-  input: ShaderExternalChangeInput,
-): ShaderExternalChangeDecision => {
+export const classifyShaderExternalChange = (input: ShaderExternalChangeInput): ShaderExternalChangeDecision => {
   const diskChanged =
     input.diskSource !== input.confirmedSource ||
     (input.confirmedModifiedAt.length > 0 && input.diskModifiedAt !== input.confirmedModifiedAt);
