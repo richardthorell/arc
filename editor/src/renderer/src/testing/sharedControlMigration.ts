@@ -19,8 +19,5 @@ export const findNativeControlViolations = (source: string): NativeControlViolat
     return match ? [{ control, index: match.index }] : [];
   });
 
-export const formatNativeControlViolations = (
-  fileName: string,
-  violations: NativeControlViolation[],
-): string =>
+export const formatNativeControlViolations = (fileName: string, violations: NativeControlViolation[]): string =>
   violations.map(({ control }) => `${fileName} should use a shared Ui control instead of <${control}>`).join('\n');

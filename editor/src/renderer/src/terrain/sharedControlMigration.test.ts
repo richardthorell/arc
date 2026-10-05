@@ -19,10 +19,7 @@ describe('terrain shared control migration', () => {
     for (const fileName of terrainSurfaces) {
       const violations = findNativeControlViolations(readSurface(fileName));
 
-      expect(
-        violations,
-        formatNativeControlViolations(fileName, violations),
-      ).toEqual([]);
+      expect(violations, formatNativeControlViolations(fileName, violations)).toEqual([]);
     }
   });
 
