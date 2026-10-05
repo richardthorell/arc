@@ -78,12 +78,7 @@ const resolveBatchMaterial = (target: AgentBatchMaterialTarget, created: Readonl
   return path;
 };
 
-const materialParameterPath = (
-  name: string,
-  type: string,
-  kind: string,
-  value: readonly number[],
-): string => {
+const materialParameterPath = (name: string, type: string, kind: string, value: readonly number[]): string => {
   const payload = JSON.stringify({ name, type, kind, value: [...value] });
   return `${materialParameterCommandPrefix}${Buffer.from(payload, 'utf8').toString('hex')}/0`;
 };
