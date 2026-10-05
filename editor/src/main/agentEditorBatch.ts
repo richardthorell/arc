@@ -3,6 +3,7 @@ import { z } from 'zod';
 const entityGuid = z.string().min(1);
 const tempId = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/u, 'tempId must be a simple local identifier');
 const vector3 = z.tuple([z.number(), z.number(), z.number()]);
+const vector4 = z.tuple([z.number(), z.number(), z.number(), z.number()]);
 const quaternion = z.tuple([z.number(), z.number(), z.number(), z.number()]);
 const jsonRecord = z.record(z.string(), z.unknown());
 
@@ -12,6 +13,13 @@ export const agentBatchEntityTargetSchema = z.union([
 ]);
 
 export type AgentBatchEntityTarget = z.infer<typeof agentBatchEntityTargetSchema>;
+
+export const agentBatchMaterialTargetSchema = z.union([
+  z.object({ path: z.string().min(1) }).strict(),
+  z.object({ tempId }).strict(),
+]);
+
+export type AgentBatchMaterialTarget = z.infer<typeof agentBatchMaterialTargetSchema>;
 
 const entityCreate = z
   .object({
@@ -48,7 +56,12 @@ const entitySetRenderLayer = z
   })
   .strict();
 const entitySetMaterial = z
-  .object({ type: z.literal('entity.setMaterial'), target: agentBatchEntityTargetSchema, path: z.string().min(1) })
+  .object({
+    type: z.literal('entity.setMaterial'),
+    target: agentBatchEntityTargetSchema,
+    path: z.string().min(1).optional(),
+    material: agentBatchMaterialTargetSchema.optional(),
+  })
   .strict();
 const entitySetFlow = z
   .object({
@@ -77,6 +90,17 @@ const entityPatchComponent = z
     fields: jsonRecord,
   })
   .strict();
+const materialCreate = z
+  .object({
+    type: z.literal('material.create'),
+    tempId,
+    path: z.string().min(1),
+    name: z.string().min(1).optional(),
+    baseColor: vector4,
+    metallic: z.number().min(0).max(1).optional(),
+    roughness: z.number().min(0).max(1).optional(),
+  })
+  .strict();
 
 export const agentEditorBatchOperationSchema = z.discriminatedUnion('type', [
   entityCreate,
@@ -93,17 +117,18 @@ export const agentEditorBatchOperationSchema = z.discriminatedUnion('type', [
   entityOnly('entity.duplicate'),
   entityReparent,
   entityPatchComponent,
+  materialCreate,
 ]);
 
 export type AgentEditorBatchOperation = z.infer<typeof agentEditorBatchOperationSchema>;
 
-const referencedTempIds = (operation: AgentEditorBatchOperation): string[] => {
+const referencedEntityTempIds = (operation: AgentEditorBatchOperation): string[] => {
   const references: string[] = [];
   const add = (target: AgentBatchEntityTarget | undefined) => {
     if (target && 'tempId' in target) references.push(target.tempId);
   };
   if (operation.type === 'entity.create') add(operation.parent);
-  else {
+  else if (operation.type !== 'material.create') {
     add(operation.target);
     if (operation.type === 'entity.reparent') add(operation.parent);
   }
@@ -118,10 +143,11 @@ export const agentEditorBatchRequestSchema = z
   })
   .strict()
   .superRefine((request, context) => {
-    const available = new Set<string>();
+    const entities = new Set<string>();
+    const materials = new Set<string>();
     for (const [index, operation] of request.operations.entries()) {
-      for (const reference of referencedTempIds(operation)) {
-        if (!available.has(reference)) {
+      for (const reference of referencedEntityTempIds(operation)) {
+        if (!entities.has(reference)) {
           context.addIssue({
             code: 'custom',
             path: ['operations', index],
@@ -129,15 +155,42 @@ export const agentEditorBatchRequestSchema = z
           });
         }
       }
+      if (operation.type === 'entity.setMaterial') {
+        if (Boolean(operation.path) === Boolean(operation.material)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['operations', index],
+            message: 'entity.setMaterial requires exactly one of path or material',
+          });
+        }
+        if (operation.material && 'tempId' in operation.material && !materials.has(operation.material.tempId)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['operations', index, 'material'],
+            message: `tempId '${operation.material.tempId}' must reference a material created earlier in this batch`,
+          });
+        }
+      }
       if (operation.type === 'entity.create' && operation.tempId) {
-        if (available.has(operation.tempId)) {
+        if (entities.has(operation.tempId) || materials.has(operation.tempId)) {
           context.addIssue({
             code: 'custom',
             path: ['operations', index, 'tempId'],
             message: `tempId '${operation.tempId}' is already defined`,
           });
         } else {
-          available.add(operation.tempId);
+          entities.add(operation.tempId);
+        }
+      }
+      if (operation.type === 'material.create') {
+        if (entities.has(operation.tempId) || materials.has(operation.tempId)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['operations', index, 'tempId'],
+            message: `tempId '${operation.tempId}' is already defined`,
+          });
+        } else {
+          materials.add(operation.tempId);
         }
       }
     }

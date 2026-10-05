@@ -29,6 +29,45 @@ describe('agent editor batch contract', () => {
     ]);
   });
 
+  it('accepts material creation and assignment through a material tempId', () => {
+    const parsed = parseAgentEditorBatchRequest({
+      editSessionId: 'edit-1',
+      expectedSceneRevision: 4,
+      operations: [
+        { type: 'entity.create', tempId: 'capsule', kind: 'capsule' },
+        { type: 'entity.rename', target: { tempId: 'capsule' }, name: 'Red Capsule' },
+        {
+          type: 'entity.setTransform',
+          target: { tempId: 'capsule' },
+          transform: {
+            position: [0, 0, 0],
+            rotation: [0, 0, 0, 1],
+            scale: [5, 5, 5],
+          },
+        },
+        {
+          type: 'material.create',
+          tempId: 'redMaterial',
+          path: 'materials/red_capsule.arcmat',
+          baseColor: [1, 0, 0, 1],
+        },
+        {
+          type: 'entity.setMaterial',
+          target: { tempId: 'capsule' },
+          material: { tempId: 'redMaterial' },
+        },
+      ],
+    });
+
+    expect(parsed.operations.map((operation) => operation.type)).toEqual([
+      'entity.create',
+      'entity.rename',
+      'entity.setTransform',
+      'material.create',
+      'entity.setMaterial',
+    ]);
+  });
+
   it('rejects forward and duplicate tempId references before execution', () => {
     expect(() =>
       parseAgentEditorBatchRequest({
@@ -41,6 +80,27 @@ describe('agent editor batch contract', () => {
         ],
       }),
     ).toThrow(/tempId/);
+
+    expect(() =>
+      parseAgentEditorBatchRequest({
+        editSessionId: 'edit-1',
+        expectedSceneRevision: 4,
+        operations: [
+          { type: 'entity.create', tempId: 'capsule', kind: 'capsule' },
+          {
+            type: 'entity.setMaterial',
+            target: { tempId: 'capsule' },
+            material: { tempId: 'redMaterial' },
+          },
+          {
+            type: 'material.create',
+            tempId: 'redMaterial',
+            path: 'materials/red_capsule.arcmat',
+            baseColor: [1, 0, 0, 1],
+          },
+        ],
+      }),
+    ).toThrow(/material created earlier/);
   });
 
   it('rejects malformed operation payloads instead of accepting generic objects', () => {

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { EditorAgentHarness, type AgentHarnessHost, type AgentHostResponse } from './editorAgentHarness';
+import {
+  EditorAgentHarness,
+  type AgentAssetWorkspace,
+  type AgentHarnessHost,
+  type AgentHostResponse,
+} from './editorAgentHarness';
 
 const response = (payload: unknown = {}, sceneRevision = 4): AgentHostResponse => ({
   kind: 'response',
@@ -28,10 +33,11 @@ class BatchHost implements AgentHarnessHost {
     revision?: number,
   ): Promise<AgentHostResponse> {
     this.commands.push({ type, payload, edit, revision });
+    const nextRevision = (revision ?? 4) + 1;
     if (type === 'entity.create')
-      return response({ entity: { index: 9, generation: 1 }, guid: 'created-cube-guid' }, 5);
-    if (type === 'entity.setTransform') return response({ entity: { index: 9, generation: 1 } }, 6);
-    if (type === 'entity.rename') return response({ entity: { index: 9, generation: 1 } }, 7);
+      return response({ entity: { index: 9, generation: 1 }, guid: 'created-cube-guid' }, nextRevision);
+    if (type === 'entity.setTransform' || type === 'entity.rename' || type === 'entity.setMaterial')
+      return response({ entity: { index: 9, generation: 1 } }, nextRevision);
     return response({}, revision ?? 4);
   }
 
@@ -43,6 +49,22 @@ class BatchHost implements AgentHarnessHost {
       });
     }
     return response({ entities: [], totalEntityCount: 0 });
+  }
+}
+
+class MemoryAssetWorkspace implements AgentAssetWorkspace {
+  readonly files = new Map<string, string>();
+
+  async exists(path: string): Promise<boolean> {
+    return this.files.has(path);
+  }
+
+  async create(path: string, contents: string): Promise<void> {
+    this.files.set(path, contents);
+  }
+
+  async remove(path: string): Promise<void> {
+    this.files.delete(path);
   }
 }
 
@@ -101,6 +123,95 @@ describe('EditorAgentHarness editor.applyBatch', () => {
 
     await harness.invoke('edit.commit', { editSessionId: session.id, expectedSceneRevision: 7 }, 'writer');
     expect(host.commands.at(-1)?.type).toBe('history.commitTransaction');
+  });
+
+  it('creates and binds a semantic material in the same batch and keeps it on commit', async () => {
+    const host = new BatchHost();
+    const assets = new MemoryAssetWorkspace();
+    const harness = new EditorAgentHarness(host, { assets });
+    const session = await beginApprovedEdit(harness);
+
+    const result = (await harness.invoke(
+      'editor.applyBatch',
+      {
+        editSessionId: session.id,
+        expectedSceneRevision: 4,
+        operations: [
+          { type: 'entity.create', tempId: 'capsule', kind: 'capsule' },
+          { type: 'entity.rename', target: { tempId: 'capsule' }, name: 'Red Capsule' },
+          {
+            type: 'entity.setTransform',
+            target: { tempId: 'capsule' },
+            transform: { position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [5, 5, 5] },
+          },
+          {
+            type: 'material.create',
+            tempId: 'redMaterial',
+            path: 'materials/red_capsule.arcmat',
+            baseColor: [1, 0, 0, 1],
+          },
+          {
+            type: 'entity.setMaterial',
+            target: { tempId: 'capsule' },
+            material: { tempId: 'redMaterial' },
+          },
+        ],
+      },
+      'writer',
+    )) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      operationCount: 5,
+      expectedSceneRevision: 8,
+      created: {
+        capsule: { kind: 'entity', guid: 'created-cube-guid' },
+        redMaterial: { kind: 'material', path: 'materials/red_capsule.arcmat' },
+      },
+    });
+
+    const material = JSON.parse(assets.files.get('materials/red_capsule.arcmat') ?? '{}') as {
+      graph?: { nodes?: Array<{ id?: string; type?: string; values?: { value?: unknown } }> };
+    };
+    expect(material.graph?.nodes?.find((node) => node.id === 'base-color')).toMatchObject({
+      type: 'colorRgba',
+      values: { value: [1, 0, 0, 1] },
+    });
+    const materialCommand = host.commands.find((command) => command.type === 'entity.setMaterial');
+    expect(materialCommand?.payload).toMatchObject({
+      entity: { index: 9, generation: 1 },
+      path: 'materials/red_capsule.arcmat',
+    });
+
+    await harness.invoke('edit.commit', { editSessionId: session.id, expectedSceneRevision: 8 }, 'writer');
+    expect(assets.files.has('materials/red_capsule.arcmat')).toBe(true);
+  });
+
+  it('removes a batch-created material when the transaction is cancelled', async () => {
+    const host = new BatchHost();
+    const assets = new MemoryAssetWorkspace();
+    const harness = new EditorAgentHarness(host, { assets });
+    const session = await beginApprovedEdit(harness);
+
+    await harness.invoke(
+      'editor.applyBatch',
+      {
+        editSessionId: session.id,
+        expectedSceneRevision: 4,
+        operations: [
+          {
+            type: 'material.create',
+            tempId: 'temporaryMaterial',
+            path: 'materials/temporary.arcmat',
+            baseColor: [0, 1, 0, 1],
+          },
+        ],
+      },
+      'writer',
+    );
+    expect(assets.files.has('materials/temporary.arcmat')).toBe(true);
+
+    await harness.invoke('edit.cancel', { editSessionId: session.id }, 'writer');
+    expect(assets.files.has('materials/temporary.arcmat')).toBe(false);
   });
 
   it('validates the complete tempId dependency graph before mutating', async () => {
