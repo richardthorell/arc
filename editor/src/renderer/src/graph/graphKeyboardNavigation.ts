@@ -10,11 +10,7 @@ function isFiniteNode(node: GraphNavigationNode): boolean {
   return Number.isFinite(node.x) && Number.isFinite(node.y);
 }
 
-function isInDirection(
-  dx: number,
-  dy: number,
-  direction: GraphNavigationDirection,
-): boolean {
+function isInDirection(dx: number, dy: number, direction: GraphNavigationDirection): boolean {
   switch (direction) {
     case 'left':
       return dx < 0;
@@ -27,11 +23,7 @@ function isInDirection(
   }
 }
 
-function directionalScore(
-  dx: number,
-  dy: number,
-  direction: GraphNavigationDirection,
-): number {
+function directionalScore(dx: number, dy: number, direction: GraphNavigationDirection): number {
   const primary = direction === 'left' || direction === 'right' ? Math.abs(dx) : Math.abs(dy);
   const secondary = direction === 'left' || direction === 'right' ? Math.abs(dy) : Math.abs(dx);
 
@@ -72,10 +64,7 @@ export function findGraphNavigationTarget(
     }
 
     const score = directionalScore(dx, dy, direction);
-    if (
-      score < bestScore ||
-      (score === bestScore && best !== null && candidate.id.localeCompare(best.id) < 0)
-    ) {
+    if (score < bestScore || (score === bestScore && best !== null && candidate.id.localeCompare(best.id) < 0)) {
       best = candidate;
       bestScore = score;
     }
