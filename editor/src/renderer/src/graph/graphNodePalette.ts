@@ -18,6 +18,11 @@ export interface GraphNodePaletteQuery {
   pin?: GraphNodePalettePinContext;
 }
 
+export interface GraphNodePaletteGroup<TKind extends string = string> {
+  category: string;
+  descriptors: GraphNodePaletteDescriptor<TKind>[];
+}
+
 export type GraphNodePaletteMovement = 'next' | 'previous' | 'first' | 'last';
 
 export interface GraphNodePaletteCreationExecutor<TKind extends string, TResult> {
@@ -71,6 +76,33 @@ export function queryGraphNodePalette<TKind extends string>(
       if (name !== 0) return name;
       return left.kind.localeCompare(right.kind);
     });
+}
+
+/**
+ * Groups an already-filtered palette result set without changing its order.
+ *
+ * Keeping grouping in the shared layer gives Material, Flow, and future graph
+ * domains the same category presentation while keyboard selection can continue
+ * to operate on the original flat result order. Uncategorized nodes use a
+ * stable shared label rather than forcing each domain to invent one.
+ */
+export function groupGraphNodePaletteResults<TKind extends string>(
+  descriptors: readonly GraphNodePaletteDescriptor<TKind>[],
+  uncategorizedLabel = 'Other',
+): GraphNodePaletteGroup<TKind>[] {
+  const groups: GraphNodePaletteGroup<TKind>[] = [];
+
+  for (const descriptor of descriptors) {
+    const category = descriptor.category?.trim() || uncategorizedLabel;
+    const previous = groups[groups.length - 1];
+    if (previous?.category === category) {
+      previous.descriptors.push(descriptor);
+    } else {
+      groups.push({ category, descriptors: [descriptor] });
+    }
+  }
+
+  return groups;
 }
 
 /**
