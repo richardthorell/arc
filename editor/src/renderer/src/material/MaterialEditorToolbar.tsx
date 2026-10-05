@@ -11,6 +11,7 @@ import {
   UiToggleButton,
   UiToolbarGroup,
 } from '../ui';
+import { buildEditorToolbarLayout } from '../ui/editorToolbarLayout';
 import {
   compileMaterialDocument,
   reloadMaterialDocument,
@@ -57,12 +58,11 @@ export function MaterialEditorToolbar({ document }: { document: EditorDocument }
           ? { label: 'Compiled', icon: <Check size={13} />, tone: 'success' }
           : { label: 'Compile', icon: <Zap size={13} />, tone: 'idle' };
 
-  return (
-    <UiEditorToolbar
-      aria-label="Material editor toolbar"
-      className="material-document-toolbar"
-      ref={toolbarRef}
-      left={
+  const toolbarLayout = buildEditorToolbarLayout([
+    {
+      id: 'document-actions',
+      section: 'left' as const,
+      value: (
         <UiToolbarGroup aria-label="Material document actions">
           <UiButton
             disabled={busy || document.readOnly || !document.dirty}
@@ -103,67 +103,86 @@ export function MaterialEditorToolbar({ document }: { document: EditorDocument }
             variant="toolbar"
           />
         </UiToolbarGroup>
-      }
-      center={
-        !customShader ? (
-          <UiToolbarGroup aria-label="Material preview controls">
-            <UiToggleButton
-              aria-label="Live Update"
-              checked={state.liveUpdate}
-              className="material-toolbar-live-toggle"
-              label="Live Update"
-              onCheckedChange={(enabled) => setMaterialLiveUpdate(document, enabled)}
-            />
-          </UiToolbarGroup>
-        ) : undefined
-      }
-      right={
-        !customShader ? (
-          <UiToolbarGroup aria-label="Material view controls">
-            <span className="material-toolbar-menu material-toolbar-view-menu">
-              <UiButton
-                aria-expanded={viewOpen}
-                aria-haspopup="menu"
-                onClick={() => setViewOpen((open) => !open)}
-                variant="toolbar"
-              >
-                <Eye size={13} /> View <ChevronDown aria-hidden="true" size={12} />
-              </UiButton>
-              {viewOpen && (
-                <UiContextMenu aria-label="Material graph view options" className="material-toolbar-popup" width={210}>
-                  <UiContextMenuItem
-                    leading={menuCheck(state.showGrid)}
-                    onClick={() => {
-                      setViewOpen(false);
-                      setMaterialGraphView(document, { showGrid: !state.showGrid });
-                    }}
+      ),
+    },
+    ...(!customShader
+      ? [
+          {
+            id: 'preview-controls',
+            section: 'center' as const,
+            value: (
+              <UiToolbarGroup aria-label="Material preview controls">
+                <UiToggleButton
+                  aria-label="Live Update"
+                  checked={state.liveUpdate}
+                  className="material-toolbar-live-toggle"
+                  label="Live Update"
+                  onCheckedChange={(enabled) => setMaterialLiveUpdate(document, enabled)}
+                />
+              </UiToolbarGroup>
+            ),
+          },
+          {
+            id: 'view-controls',
+            section: 'right' as const,
+            value: (
+              <UiToolbarGroup aria-label="Material view controls">
+                <span className="material-toolbar-menu material-toolbar-view-menu">
+                  <UiButton
+                    aria-expanded={viewOpen}
+                    aria-haspopup="menu"
+                    onClick={() => setViewOpen((open) => !open)}
+                    variant="toolbar"
                   >
-                    Show Grid
-                  </UiContextMenuItem>
-                  <UiContextMenuItem
-                    leading={menuCheck(state.dimUnrelated)}
-                    onClick={() => {
-                      setViewOpen(false);
-                      setMaterialGraphView(document, { dimUnrelated: !state.dimUnrelated });
-                    }}
-                  >
-                    Dim Unrelated
-                  </UiContextMenuItem>
-                  <UiContextMenuItem
-                    leading={menuCheck(state.showStats)}
-                    onClick={() => {
-                      setViewOpen(false);
-                      setMaterialGraphView(document, { showStats: !state.showStats });
-                    }}
-                  >
-                    Stats Overlay
-                  </UiContextMenuItem>
-                </UiContextMenu>
-              )}
-            </span>
-          </UiToolbarGroup>
-        ) : undefined
-      }
+                    <Eye size={13} /> View <ChevronDown aria-hidden="true" size={12} />
+                  </UiButton>
+                  {viewOpen && (
+                    <UiContextMenu aria-label="Material graph view options" className="material-toolbar-popup" width={210}>
+                      <UiContextMenuItem
+                        leading={menuCheck(state.showGrid)}
+                        onClick={() => {
+                          setViewOpen(false);
+                          setMaterialGraphView(document, { showGrid: !state.showGrid });
+                        }}
+                      >
+                        Show Grid
+                      </UiContextMenuItem>
+                      <UiContextMenuItem
+                        leading={menuCheck(state.dimUnrelated)}
+                        onClick={() => {
+                          setViewOpen(false);
+                          setMaterialGraphView(document, { dimUnrelated: !state.dimUnrelated });
+                        }}
+                      >
+                        Dim Unrelated
+                      </UiContextMenuItem>
+                      <UiContextMenuItem
+                        leading={menuCheck(state.showStats)}
+                        onClick={() => {
+                          setViewOpen(false);
+                          setMaterialGraphView(document, { showStats: !state.showStats });
+                        }}
+                      >
+                        Stats Overlay
+                      </UiContextMenuItem>
+                    </UiContextMenu>
+                  )}
+                </span>
+              </UiToolbarGroup>
+            ),
+          },
+        ]
+      : []),
+  ]);
+
+  return (
+    <UiEditorToolbar
+      aria-label="Material editor toolbar"
+      className="material-document-toolbar"
+      ref={toolbarRef}
+      left={toolbarLayout.left.map((item) => item.value)}
+      center={toolbarLayout.center.map((item) => item.value)}
+      right={toolbarLayout.right.map((item) => item.value)}
     />
   );
 }
