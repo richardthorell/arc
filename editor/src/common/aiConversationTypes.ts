@@ -39,6 +39,9 @@ export type AiConversationTaskReference = {
   step?: number;
   toolCallIds?: string[];
   detail?: string;
+  planId?: string;
+  parentId?: string;
+  order?: number;
   startedAt?: string;
   completedAt?: string;
 };
