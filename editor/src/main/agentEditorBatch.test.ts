@@ -29,6 +29,34 @@ describe('agent editor batch contract', () => {
     ]);
   });
 
+  it('accepts a base-color override without creating a new material asset', () => {
+    const parsed = parseAgentEditorBatchRequest({
+      editSessionId: 'edit-1',
+      expectedSceneRevision: 4,
+      operations: [
+        { type: 'entity.create', tempId: 'capsule', kind: 'capsule' },
+        { type: 'entity.rename', target: { tempId: 'capsule' }, name: 'Green Capsule' },
+        {
+          type: 'entity.setTransform',
+          target: { tempId: 'capsule' },
+          transform: {
+            position: [0, 0, 0],
+            rotation: [0, 0, 0, 1],
+            scale: [5, 5, 5],
+          },
+        },
+        { type: 'entity.setBaseColor', target: { tempId: 'capsule' }, color: [0.1, 0.8, 0.1, 1] },
+      ],
+    });
+
+    expect(parsed.operations.map((operation) => operation.type)).toEqual([
+      'entity.create',
+      'entity.rename',
+      'entity.setTransform',
+      'entity.setBaseColor',
+    ]);
+  });
+
   it('accepts material creation and assignment through a material tempId', () => {
     const parsed = parseAgentEditorBatchRequest({
       editSessionId: 'edit-1',
