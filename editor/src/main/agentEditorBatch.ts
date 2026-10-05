@@ -63,6 +63,16 @@ const entitySetMaterial = z
     material: agentBatchMaterialTargetSchema.optional(),
   })
   .strict();
+const entitySetBaseColor = z
+  .object({
+    type: z.literal('entity.setBaseColor'),
+    target: agentBatchEntityTargetSchema,
+    color: vector4,
+  })
+  .strict()
+  .describe(
+    'Override the Base Color parameter on the entity current material instance. Prefer this for simple entity color requests instead of creating a new material asset.',
+  );
 const entitySetFlow = z
   .object({
     type: z.literal('entity.setFlow'),
@@ -74,6 +84,9 @@ const entitySetFlow = z
   .strict();
 const entityOnly = <T extends string>(type: T) =>
   z.object({ type: z.literal(type), target: agentBatchEntityTargetSchema }).strict();
+const entitySnapToFloor = entityOnly('entity.snapToFloor').describe(
+  'Snap an entity onto a queryable surface below it. Use only when the user explicitly requests floor/surface placement or that placement is required by the task.',
+);
 const entityReparent = z
   .object({
     type: z.literal('entity.reparent'),
@@ -100,7 +113,10 @@ const materialCreate = z
     metallic: z.number().min(0).max(1).optional(),
     roughness: z.number().min(0).max(1).optional(),
   })
-  .strict();
+  .strict()
+  .describe(
+    'Create a new reusable material asset. Do not use for a simple entity color change when entity.setBaseColor can reuse the current material.',
+  );
 
 export const agentEditorBatchOperationSchema = z.discriminatedUnion('type', [
   entityCreate,
@@ -111,8 +127,9 @@ export const agentEditorBatchOperationSchema = z.discriminatedUnion('type', [
   entitySetTransform,
   entitySetRenderLayer,
   entitySetMaterial,
+  entitySetBaseColor,
   entitySetFlow,
-  entityOnly('entity.snapToFloor'),
+  entitySnapToFloor,
   entityOnly('entity.delete'),
   entityOnly('entity.duplicate'),
   entityReparent,
