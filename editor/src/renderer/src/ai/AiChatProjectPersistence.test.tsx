@@ -204,8 +204,9 @@ describe('AiChatPanel project persistence', () => {
     first.unmount();
     render(<AiChatPanel projectGuid={projectA} provider={taskProvider} />);
 
+    expect(screen.queryByText('Configure capsule')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show tasks' }));
     expect(screen.getByText('Configure capsule')).toBeInTheDocument();
-    const taskCard = screen.getByText('Configure capsule').closest('[data-activity-kind="task"]');
-    expect(taskCard).toHaveAttribute('data-activity-state', 'complete');
+    expect(screen.getByText('Configure capsule').closest('[data-progress-state="complete"]')).toBeInTheDocument();
   });
 });
