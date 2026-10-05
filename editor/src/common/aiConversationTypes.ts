@@ -1,4 +1,9 @@
-import type { AiImageContentPart, AiJsonObject, AiToolResultErrorCode } from './aiRuntimeTypes';
+import type {
+  AiImageContentPart,
+  AiJsonObject,
+  AiTaskProgressState,
+  AiToolResultErrorCode,
+} from './aiRuntimeTypes';
 
 export const AI_CONVERSATION_STORE_VERSION = 1 as const;
 export type AiConversationStoreVersion = typeof AI_CONVERSATION_STORE_VERSION;
@@ -32,6 +37,17 @@ export type AiConversationToolReference = {
   completedAt?: string;
 };
 
+export type AiConversationTaskReference = {
+  id: string;
+  title: string;
+  state: AiTaskProgressState;
+  step?: number;
+  toolCallIds?: string[];
+  detail?: string;
+  startedAt?: string;
+  completedAt?: string;
+};
+
 export type AiConversationMessage = {
   id: string;
   role: AiConversationRole;
@@ -42,6 +58,7 @@ export type AiConversationMessage = {
   modelLabel?: string;
   contextReferences?: AiConversationContextReference[];
   toolReferences?: AiConversationToolReference[];
+  taskReferences?: AiConversationTaskReference[];
 };
 
 export type AiConversationSummary = {
