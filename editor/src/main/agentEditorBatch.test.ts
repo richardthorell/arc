@@ -22,7 +22,13 @@ describe('agent editor batch contract', () => {
           { type: 'entity.rename', target: { tempId: 'cube' }, name: 'Large Cube' },
         ],
       }),
-    ).toMatchObject({ operations: [{ type: 'entity.create' }, { type: 'entity.setTransform' }] });
+    ).toMatchObject({
+      operations: [
+        { type: 'entity.create' },
+        { type: 'entity.setTransform' },
+        { type: 'entity.rename' },
+      ],
+    });
   });
 
   it('rejects forward and duplicate tempId references before execution', () => {
