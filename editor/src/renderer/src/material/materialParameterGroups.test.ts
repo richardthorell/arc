@@ -4,6 +4,7 @@ import {
   assignMaterialParameterGroup,
   DEFAULT_MATERIAL_PARAMETER_GROUP_ID,
   groupMaterialParameters,
+  normalizeMaterialParameterMetadata,
   renameMaterialParameterGroup,
   reorderMaterialParameter,
 } from './materialParameterGroups';
@@ -54,6 +55,32 @@ describe('groupMaterialParameters', () => {
 });
 
 describe('material parameter metadata editing', () => {
+  it('normalizes group labels and compacts authored order for persistence', () => {
+    const parameters = [
+      { id: 'roughness', name: 'Roughness', group: ' Surface ', order: 8, description: 'Help' },
+      { id: 'tint', name: 'Tint', group: 'surface', order: 2 },
+      { id: 'emissive', name: 'Emissive', group: '  ', order: 9 },
+    ];
+
+    const normalized = normalizeMaterialParameterMetadata(parameters);
+
+    expect(normalized).toEqual([
+      { id: 'roughness', name: 'Roughness', group: 'Surface', order: 1, description: 'Help' },
+      { id: 'tint', name: 'Tint', group: 'Surface', order: 0 },
+      { id: 'emissive', name: 'Emissive', group: undefined, order: 0 },
+    ]);
+    expect(parameters[0]?.group).toBe(' Surface ');
+  });
+
+  it('uses the first authored spelling for case-equivalent groups', () => {
+    expect(
+      normalizeMaterialParameterMetadata([
+        { id: 'a', name: 'A', group: 'SURFACE' },
+        { id: 'b', name: 'B', group: 'surface' },
+      ]).map((parameter) => parameter.group),
+    ).toEqual(['SURFACE', 'SURFACE']);
+  });
+
   it('assigns a trimmed group by stable id and resets stale order', () => {
     const parameters = [
       { id: 'roughness', name: 'Roughness', group: 'Surface', order: 4 },

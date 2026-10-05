@@ -30,6 +30,14 @@ function sameGroup(left: string | undefined, right: string | undefined): boolean
   return normalizeGroup(left).id === normalizeGroup(right).id;
 }
 
+function compareMaterialParameters<T extends MaterialParameterDescriptor>(left: T, right: T): number {
+  const order = (left.order ?? 0) - (right.order ?? 0);
+  if (order !== 0) return order;
+  const name = left.name.localeCompare(right.name);
+  if (name !== 0) return name;
+  return left.id.localeCompare(right.id);
+}
+
 /**
  * Groups material parameters for authoring without making presentation metadata
  * part of parameter identity. Ordering is deterministic so save/load and graph
@@ -54,22 +62,49 @@ export function groupMaterialParameters<T extends MaterialParameterDescriptor>(
     }
   }
 
-  const compareParameters = (left: T, right: T): number => {
-    const order = (left.order ?? 0) - (right.order ?? 0);
-    if (order !== 0) return order;
-    const name = left.name.localeCompare(right.name);
-    if (name !== 0) return name;
-    return left.id.localeCompare(right.id);
-  };
-
   for (const group of groups.values()) {
-    group.parameters.sort(compareParameters);
+    group.parameters.sort(compareMaterialParameters);
   }
 
   return [...groups.values()].sort((left, right) => {
     if (left.id === DEFAULT_MATERIAL_PARAMETER_GROUP_ID) return -1;
     if (right.id === DEFAULT_MATERIAL_PARAMETER_GROUP_ID) return 1;
     return left.label.localeCompare(right.label) || left.id.localeCompare(right.id);
+  });
+}
+
+/**
+ * Normalizes authored group labels and compact ordering into a stable save shape.
+ * Parameter identity and unrelated metadata are preserved. This lets authoring
+ * surfaces persist deterministic metadata without depending on incidental edit
+ * history or whitespace/casing differences in group labels.
+ */
+export function normalizeMaterialParameterMetadata<T extends MaterialParameterDescriptor>(
+  parameters: readonly T[],
+): T[] {
+  const normalizedGroupLabels = new Map<string, string | undefined>();
+  for (const parameter of parameters) {
+    const normalized = normalizeGroup(parameter.group);
+    if (!normalizedGroupLabels.has(normalized.id)) {
+      normalizedGroupLabels.set(
+        normalized.id,
+        normalized.id === DEFAULT_MATERIAL_PARAMETER_GROUP_ID ? undefined : normalized.label,
+      );
+    }
+  }
+
+  const orderById = new Map<string, number>();
+  for (const group of groupMaterialParameters(parameters)) {
+    group.parameters.forEach((parameter, index) => orderById.set(parameter.id, index));
+  }
+
+  return parameters.map((parameter) => {
+    const normalized = normalizeGroup(parameter.group);
+    return {
+      ...parameter,
+      group: normalizedGroupLabels.get(normalized.id),
+      order: orderById.get(parameter.id),
+    };
   });
 }
 
