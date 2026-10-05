@@ -69,14 +69,17 @@ export function AiChatLiveProgress({ tasks, tools, showIdle = false }: AiChatLiv
   useEffect(() => {
     const turn = shellRef.current?.closest('.ai-chat-assistant-turn');
     const card = turn?.querySelector<HTMLElement>('.ai-chat-agent-card');
-    if (!card) return;
+    if (!card) {
+      setMessageStreaming(hasActiveWork);
+      return;
+    }
 
     const update = () => setMessageStreaming(card.dataset.state === 'streaming');
     update();
     const observer = new MutationObserver(update);
     observer.observe(card, { attributes: true, attributeFilter: ['data-state'] });
     return () => observer.disconnect();
-  }, []);
+  }, [hasActiveWork]);
 
   const terminal = !messageStreaming;
 
