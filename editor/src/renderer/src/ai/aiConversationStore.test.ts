@@ -60,6 +60,17 @@ const conversation = (id: string, content = 'Hello'): AiStoredConversation => ({
           completedAt: '2026-10-01T20:00:00.500Z',
         },
       ],
+      taskReferences: [
+        {
+          id: 'agent-step-0',
+          title: 'Inspect cabin',
+          state: 'completed',
+          step: 0,
+          toolCallIds: ['call-1'],
+          startedAt: '2026-10-01T20:00:00.200Z',
+          completedAt: '2026-10-01T20:00:00.500Z',
+        },
+      ],
     },
   ],
 });
@@ -88,13 +99,15 @@ describe('AI project conversation store', () => {
     expect(aiProjectConversationStorageKey(projectA)).not.toBe(aiProjectConversationStorageKey(projectB));
   });
 
-  it('persists context, durable tool transcript, summary, and UI-state fields without credentials', () => {
+  it('persists context, tool/task activity, summary, and UI-state fields without credentials', () => {
     const snapshot = saveAiConversationStore(projectA, [conversation('a')], {
       activeConversationId: 'a',
       selectedModelId: 'openai:gpt-5.6-sol',
     });
     const serialized = localStorage.getItem(aiProjectConversationStorageKey(projectA)) ?? '';
-    const tool = snapshot.conversations[0].messages[1].toolReferences?.[0];
+    const assistant = snapshot.conversations[0].messages[1];
+    const tool = assistant.toolReferences?.[0];
+    const task = assistant.taskReferences?.[0];
 
     expect(snapshot.conversations[0].summary?.text).toBe('Summary');
     expect(snapshot.conversations[0].pinnedContext?.[0].stableId).toBe('asset-guid');
@@ -105,16 +118,24 @@ describe('AI project conversation store', () => {
       resultContent: '{"name":"Cabin"}',
       resultTruncated: false,
     });
+    expect(task).toMatchObject({
+      id: 'agent-step-0',
+      title: 'Inspect cabin',
+      state: 'completed',
+      toolCallIds: ['call-1'],
+    });
     expect(serialized).not.toContain('apiKey');
     expect(serialized).not.toContain('credential');
     expect(serialized).not.toContain('secret');
   });
 
-  it('marks interrupted streaming messages and pending tools as interrupted when reopening a project', () => {
+  it('marks interrupted streaming messages, pending tools, and live tasks as interrupted when reopening a project', () => {
     const interrupted = conversation('streaming');
     interrupted.messages[1].state = 'streaming';
     interrupted.messages[1].toolReferences![0]!.state = 'pending';
     interrupted.messages[1].toolReferences![0]!.resultContent = undefined;
+    interrupted.messages[1].taskReferences![0]!.state = 'in_progress';
+    interrupted.messages[1].taskReferences![0]!.completedAt = undefined;
     saveAiConversationStore(projectA, [interrupted], {});
 
     const restored = loadAiConversationStore(projectA).conversations[0].messages[1];
@@ -122,6 +143,10 @@ describe('AI project conversation store', () => {
     expect(restored.toolReferences?.[0]).toMatchObject({
       state: 'cancelled',
       summary: 'Interrupted when the editor closed',
+    });
+    expect(restored.taskReferences?.[0]).toMatchObject({
+      state: 'cancelled',
+      detail: 'Interrupted when the editor closed',
     });
   });
 
