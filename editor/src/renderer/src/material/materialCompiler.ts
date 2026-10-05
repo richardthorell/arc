@@ -74,17 +74,54 @@ export type MaterialGraphEditImpact = 'none' | 'parameter-values' | 'shader';
 const sameParameterMetadata = (before: MaterialGraphNode, after: MaterialGraphNode): boolean =>
   JSON.stringify(before.parameter ?? null) === JSON.stringify(after.parameter ?? null);
 
-const isExistingExposedParameter = (before: MaterialGraphNode, after: MaterialGraphNode): boolean =>
-  before.parameter?.exposed === true &&
-  after.parameter?.exposed === true &&
-  before.parameter.name === after.parameter.name;
+const parameterNodeTypes = new Set<MaterialGraphNodeType>([
+  'constant',
+  'vector2',
+  'vector3',
+  'vector4',
+  'colorRgb',
+  'colorRgba',
+  'textureSample',
+  'textureSample2D',
+]);
+
+const contributingMaterialNodeIds = (graph: MaterialGraph): Set<string> => {
+  const incoming = new Map<string, string[]>();
+  for (const connection of graph.connections) {
+    const sources = incoming.get(connection.to.nodeId) ?? [];
+    sources.push(connection.from.nodeId);
+    incoming.set(connection.to.nodeId, sources);
+  }
+
+  const contributing = new Set<string>();
+  const pending = graph.nodes.filter((node) => node.type === 'output').map((node) => node.id);
+  while (pending.length > 0) {
+    const nodeId = pending.pop()!;
+    if (contributing.has(nodeId)) continue;
+    contributing.add(nodeId);
+    pending.push(...(incoming.get(nodeId) ?? []));
+  }
+  return contributing;
+};
+
+const effectiveExposedParameterNodeIds = (graph: MaterialGraph): Set<string> => {
+  const contributing = contributingMaterialNodeIds(graph);
+  return new Set(
+    graph.nodes
+      .filter(
+        (node) =>
+          node.parameter?.exposed === true && parameterNodeTypes.has(node.type) && contributing.has(node.id),
+      )
+      .map((node) => node.id),
+  );
+};
 
 /**
  * Classify an authored graph edit before deciding whether shader compilation is required.
  *
- * Only value changes on already-exposed parameters are safe to treat as runtime parameter
- * updates. Topology, node identity/type, parameter metadata, and viewport-independent authored
- * structure remain shader-affecting and must go through the authoritative native compiler.
+ * Only value changes on already-exposed, effective parameters are safe to treat as runtime
+ * parameter updates. Topology, node identity/type, parameter metadata, and viewport-independent
+ * authored structure remain shader-affecting and must go through the authoritative native compiler.
  */
 export const materialGraphEditImpact = (before: MaterialGraph, after: MaterialGraph): MaterialGraphEditImpact => {
   if (before === after || JSON.stringify(before) === JSON.stringify(after)) return 'none';
@@ -95,6 +132,8 @@ export const materialGraphEditImpact = (before: MaterialGraph, after: MaterialGr
   const afterConnections = JSON.stringify(after.connections);
   if (beforeConnections !== afterConnections) return 'shader';
 
+  const beforeParameters = effectiveExposedParameterNodeIds(before);
+  const afterParameters = effectiveExposedParameterNodeIds(after);
   const beforeById = new Map(before.nodes.map((node) => [node.id, node]));
   let changedParameterValue = false;
   for (const node of after.nodes) {
@@ -104,7 +143,7 @@ export const materialGraphEditImpact = (before: MaterialGraph, after: MaterialGr
     if (previous.position[0] !== node.position[0] || previous.position[1] !== node.position[1]) return 'shader';
 
     if (JSON.stringify(previous.values) !== JSON.stringify(node.values)) {
-      if (!isExistingExposedParameter(previous, node)) return 'shader';
+      if (!beforeParameters.has(node.id) || !afterParameters.has(node.id)) return 'shader';
       changedParameterValue = true;
     }
   }
@@ -125,14 +164,16 @@ export type MaterialEditorParameter = {
 /**
  * Return authored exposed-parameter metadata for the inspector.
  *
- * This is deliberately not compiler output. Type checking, reachability, parameter IDs, layout,
- * diagnostics, and shader generation are owned exclusively by the native compiler.
+ * Only value-source nodes that contribute to Material Output are useful runtime parameters.
+ * Disconnected nodes and operation/utility nodes are deliberately omitted so the editor never
+ * presents controls that cannot affect the material result.
  */
-export const materialEditorParameters = (graph: MaterialGraph): MaterialEditorParameter[] =>
-  graph.nodes.flatMap((node) => {
-    if (!node.parameter?.exposed || node.type === 'output') return [];
+export const materialEditorParameters = (graph: MaterialGraph): MaterialEditorParameter[] => {
+  const effectiveParameters = effectiveExposedParameterNodeIds(graph);
+  return graph.nodes.flatMap((node) => {
+    if (!effectiveParameters.has(node.id) || !node.parameter) return [];
     const type: MaterialGraphValueType =
-      node.type === 'textureSample'
+      node.type === 'textureSample' || node.type === 'textureSample2D'
         ? 'texture2d'
         : node.type === 'vector2'
           ? 'vec2'
@@ -142,7 +183,7 @@ export const materialEditorParameters = (graph: MaterialGraph): MaterialEditorPa
               ? 'vec4'
               : 'float';
     const editorKind: MaterialEditorParameterKind =
-      node.type === 'textureSample'
+      node.type === 'textureSample' || node.type === 'textureSample2D'
         ? 'texture'
         : node.type === 'colorRgb' || node.type === 'colorRgba'
           ? 'color'
@@ -159,3 +200,4 @@ export const materialEditorParameters = (graph: MaterialGraph): MaterialEditorPa
       },
     ];
   });
+};
