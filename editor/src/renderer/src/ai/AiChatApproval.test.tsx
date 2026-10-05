@@ -32,7 +32,7 @@ const pendingApproval: AiAgentApprovalRequest = {
 afterEach(() => cleanup());
 
 describe('AiChatPanel approvals', () => {
-  it('keeps ask-mode approval actionable while the live progress treatment owns its presentation', async () => {
+  it('shows ask-mode approval as compact awaiting progress and approves it', async () => {
     const onApproveRequest = vi.fn(async () => true);
     render(
       <AiChatPanel
@@ -49,6 +49,7 @@ describe('AiChatPanel approvals', () => {
     fireEvent.click(screen.getByLabelText('Start conversation'));
 
     await waitFor(() => expect(screen.getByRole('alertdialog', { name: 'AI editor action approval' })).toBeVisible());
+    expect(screen.getByText('Awaiting approval')).toBeVisible();
     expect(screen.getByText('Create cube above Floor')).toBeVisible();
     expect(screen.getByLabelText('Agent approval mode')).toHaveTextContent('Ask');
 
@@ -70,6 +71,13 @@ describe('AiChatPanel approvals', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Deny/u }));
     await waitFor(() => expect(onDenyRequest).toHaveBeenCalledWith('request-1'));
+  });
+
+  it('does not render pending approval UI in auto mode', () => {
+    render(<AiChatPanel approvalMode="auto" pendingApproval={pendingApproval} provider={provider} />);
+
+    expect(screen.queryByRole('alertdialog', { name: 'AI editor action approval' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Awaiting approval')).not.toBeInTheDocument();
   });
 
   it('offers auto approve next to the model control', async () => {
