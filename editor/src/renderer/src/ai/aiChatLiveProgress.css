@@ -1,3 +1,9 @@
+.ai-chat-assistant-turn > .ui-agent-activity-card-tool,
+.ai-chat-assistant-turn > .ui-agent-activity-card-asset,
+.ai-chat-assistant-turn > .ui-agent-activity-card-viewport {
+  display: none;
+}
+
 .ai-chat-live-progress {
   display: grid;
   width: min(100%, 680px);
