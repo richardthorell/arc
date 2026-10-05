@@ -45,8 +45,8 @@ describe('AI agent task progress', () => {
     }));
 
     const events = await collect(runAiAgentToolLoop(request, execute, invokeTool));
-    const tasks = events.filter((event): event is Extract<AiRuntimeStreamEvent, { type: 'task-update' }> =>
-      event.type === 'task-update',
+    const tasks = events.filter(
+      (event): event is Extract<AiRuntimeStreamEvent, { type: 'task-update' }> => event.type === 'task-update',
     );
 
     expect(tasks).toHaveLength(2);

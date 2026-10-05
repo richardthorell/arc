@@ -1,9 +1,4 @@
-import type {
-  AiImageContentPart,
-  AiJsonObject,
-  AiTaskProgressState,
-  AiToolResultErrorCode,
-} from './aiRuntimeTypes';
+import type { AiImageContentPart, AiJsonObject, AiTaskProgressState, AiToolResultErrorCode } from './aiRuntimeTypes';
 
 export const AI_CONVERSATION_STORE_VERSION = 1 as const;
 export type AiConversationStoreVersion = typeof AI_CONVERSATION_STORE_VERSION;

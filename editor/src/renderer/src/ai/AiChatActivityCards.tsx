@@ -1,7 +1,4 @@
-import type {
-  AiConversationTaskReference,
-  AiConversationToolReference,
-} from '../../../common/aiConversationTypes';
+import type { AiConversationTaskReference, AiConversationToolReference } from '../../../common/aiConversationTypes';
 import {
   UiAgentAssetCard,
   UiAgentCardActionRow,
