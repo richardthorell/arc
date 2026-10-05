@@ -3,36 +3,53 @@ import type { AiTaskProgress, AiTaskProgressState } from '../../../common/aiRunt
 
 const terminalTaskStates = new Set<AiTaskProgressState>(['completed', 'failed', 'cancelled']);
 
+const resolvedTaskState = (
+  task: AiTaskProgress,
+  existing: AiConversationTaskReference | undefined,
+): AiTaskProgressState => {
+  if (existing && terminalTaskStates.has(existing.state)) return existing.state;
+  return task.state;
+};
+
 const toConversationTaskReference = (
   task: AiTaskProgress,
   timestamp: string,
   existing?: AiConversationTaskReference,
+  blockedByFailure = false,
 ): AiConversationTaskReference => {
   const existingChildren = new Map((existing?.children ?? []).map((child) => [child.id, child]));
-  const startedAt = existing?.startedAt ?? (task.state === 'planned' ? undefined : timestamp);
+  const state = blockedByFailure && existing?.state === 'planned' ? 'cancelled' : resolvedTaskState(task, existing);
+  const startedAt = existing?.startedAt ?? (state === 'planned' ? undefined : timestamp);
+
+  let childBlocked = false;
+  const children = task.children?.map((child) => {
+    const existingChild = existingChildren.get(child.id);
+    const next = toConversationTaskReference(child, timestamp, existingChild, childBlocked);
+    if (next.state === 'failed') childBlocked = true;
+    return next;
+  });
+
   return {
     id: task.id,
     title: task.title,
-    state: task.state,
+    state,
     ...(task.agentStep !== undefined ? { step: task.agentStep } : {}),
     ...(task.toolCallIds
       ? { toolCallIds: [...task.toolCallIds] }
       : existing?.toolCallIds
         ? { toolCallIds: [...existing.toolCallIds] }
         : {}),
-    ...(task.detail ? { detail: task.detail } : {}),
+    ...(state === existing?.state && existing?.detail
+      ? { detail: existing.detail }
+      : task.detail
+        ? { detail: task.detail }
+        : {}),
     ...(task.planId ? { planId: task.planId } : {}),
     ...(task.parentId ? { parentId: task.parentId } : {}),
     ...(task.order !== undefined ? { order: task.order } : {}),
-    ...(task.children?.length
-      ? {
-          children: task.children.map((child) =>
-            toConversationTaskReference(child, timestamp, existingChildren.get(child.id)),
-          ),
-        }
-      : {}),
+    ...(children?.length ? { children } : {}),
     ...(startedAt ? { startedAt } : {}),
-    ...(terminalTaskStates.has(task.state) ? { completedAt: timestamp } : {}),
+    ...(terminalTaskStates.has(state) ? { completedAt: existing?.completedAt ?? timestamp } : {}),
   };
 };
 
