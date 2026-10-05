@@ -32,7 +32,7 @@ const pendingApproval: AiAgentApprovalRequest = {
 afterEach(() => cleanup());
 
 describe('AiChatPanel approvals', () => {
-  it('renders the exact pending harness request in chat and approves it from the card', async () => {
+  it('keeps ask-mode approval actionable while the live progress treatment owns its presentation', async () => {
     const onApproveRequest = vi.fn(async () => true);
     render(
       <AiChatPanel
@@ -54,6 +54,22 @@ describe('AiChatPanel approvals', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Allow/u }));
     await waitFor(() => expect(onApproveRequest).toHaveBeenCalledWith('request-1'));
+  });
+
+  it('keeps denial wired to the harness coordinator so the agent receives the denied result', async () => {
+    const onDenyRequest = vi.fn(async () => true);
+    render(
+      <AiChatPanel
+        approvalMode="ask"
+        onApproveRequest={vi.fn(async () => true)}
+        onDenyRequest={onDenyRequest}
+        pendingApproval={pendingApproval}
+        provider={provider}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Deny/u }));
+    await waitFor(() => expect(onDenyRequest).toHaveBeenCalledWith('request-1'));
   });
 
   it('offers auto approve next to the model control', async () => {
