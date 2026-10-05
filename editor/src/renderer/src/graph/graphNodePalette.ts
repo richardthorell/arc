@@ -18,7 +18,7 @@ export interface GraphNodePaletteQuery {
   pin?: GraphNodePalettePinContext;
 }
 
-export interface GraphNodePaletteGroup<TKind extends string = string> {
+export interface GraphNodePaletteResultGroup<TKind extends string = string> {
   category: string;
   descriptors: GraphNodePaletteDescriptor<TKind>[];
 }
@@ -89,8 +89,8 @@ export function queryGraphNodePalette<TKind extends string>(
 export function groupGraphNodePaletteResults<TKind extends string>(
   descriptors: readonly GraphNodePaletteDescriptor<TKind>[],
   uncategorizedLabel = 'Other',
-): GraphNodePaletteGroup<TKind>[] {
-  const groups: GraphNodePaletteGroup<TKind>[] = [];
+): GraphNodePaletteResultGroup<TKind>[] {
+  const groups: GraphNodePaletteResultGroup<TKind>[] = [];
 
   for (const descriptor of descriptors) {
     const category = descriptor.category?.trim() || uncategorizedLabel;
