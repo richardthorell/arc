@@ -292,6 +292,34 @@ describe('AI agent task progress', () => {
     });
   });
 
+  it('only recovers a failed persisted task when a new tool call proves a retry', () => {
+    const failed = recordConversationTaskUpdate(
+      undefined,
+      { id: 'build', title: 'Build two trees', state: 'failed', toolCallIds: ['mutate-1'] },
+      '2026-10-05T05:00:00Z',
+    );
+    const modelOnly = recordConversationTaskUpdate(
+      failed,
+      { id: 'build', title: 'Build two trees', state: 'completed', toolCallIds: ['mutate-1'] },
+      '2026-10-05T05:00:01Z',
+    );
+    expect(modelOnly[0]?.state).toBe('failed');
+
+    const retrying = recordConversationTaskUpdate(
+      modelOnly,
+      { id: 'build', title: 'Build two trees', state: 'in_progress', toolCallIds: ['mutate-1', 'mutate-2'] },
+      '2026-10-05T05:00:02Z',
+    );
+    expect(retrying[0]?.state).toBe('in_progress');
+
+    const completed = recordConversationTaskUpdate(
+      retrying,
+      { id: 'build', title: 'Build two trees', state: 'completed', toolCallIds: ['mutate-1', 'mutate-2'] },
+      '2026-10-05T05:00:03Z',
+    );
+    expect(completed[0]?.state).toBe('completed');
+  });
+
   it('updates a persisted task reference in place instead of appending progress spam', () => {
     const started = recordConversationTaskUpdate(
       undefined,
