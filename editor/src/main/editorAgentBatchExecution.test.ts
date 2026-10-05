@@ -143,7 +143,7 @@ describe('EditorAgentHarness editor.applyBatch', () => {
             target: { tempId: 'capsule' },
             transform: { position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [5, 5, 5] },
           },
-          { type: 'entity.setBaseColor', target: { tempId: 'capsule' }, color: [0.1, 0.8, 0.1, 1] },
+          { type: 'entity.setBaseColor', target: { tempId: 'capsule' }, color: [0.1, 0.8, 0.1] },
         ],
       },
       'writer',
@@ -170,9 +170,9 @@ describe('EditorAgentHarness editor.applyBatch', () => {
     const encoded = path.slice(prefix.length, -2);
     expect(JSON.parse(Buffer.from(encoded, 'hex').toString('utf8'))).toEqual({
       name: 'Base Color',
-      type: 'vec4',
+      type: 'vec3',
       kind: 'color',
-      value: [0.1, 0.8, 0.1, 1],
+      value: [0.1, 0.8, 0.1],
     });
 
     await harness.invoke('edit.commit', { editSessionId: session.id, expectedSceneRevision: 8 }, 'writer');
