@@ -114,7 +114,11 @@ export function AiChatTaskPlanCard({ plan }: { plan: AiConversationTaskReference
 
 export function AiChatTaskActivityCard({ reference }: { reference: AiConversationTaskReference }) {
   if (!taskIsLive(reference)) return null;
-  return reference.children?.length ? <AiChatTaskPlanCard plan={reference} /> : <AiChatLiveProgress tasks={[reference]} />;
+  return reference.children?.length ? (
+    <AiChatTaskPlanCard plan={reference} />
+  ) : (
+    <AiChatLiveProgress tasks={[reference]} />
+  );
 }
 
 export function AiChatToolActivityCard({ reference }: { reference: AiConversationToolReference }) {
