@@ -47,7 +47,7 @@ const planStepSchema: AiJsonObject = {
 export const aiAgentPlanToolDefinition: AiToolDefinition = {
   name: AI_AGENT_PLAN_TOOL_NAME,
   description:
-    'Publish or update a semantic execution plan for multi-step ARC work. Reuse the same planId and stable step ids across updates. Use concise user-facing titles, mark exactly the active step in_progress, and keep completed/failed/cancelled history instead of deleting finished steps.',
+    'Publish or update a semantic execution plan for multi-step ARC work. Reuse the same planId and stable step ids across updates. Use concise user-facing titles, mark exactly the active step in_progress, and retain completed/failed/cancelled steps instead of deleting history.',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
@@ -132,15 +132,20 @@ export const parseAgentPlan = (argumentsValue: AiJsonObject): ParsedPlan => {
   return plan;
 };
 
-const planState = (steps: readonly ParsedStep[]): AiTaskProgressState => {
-  const flat: ParsedStep[] = [];
+const flattenParsedSteps = (steps: readonly ParsedStep[]): ParsedStep[] => {
+  const result: ParsedStep[] = [];
   const collect = (entries: readonly ParsedStep[]) => {
     for (const entry of entries) {
-      flat.push(entry);
+      result.push(entry);
       if (entry.children) collect(entry.children);
     }
   };
   collect(steps);
+  return result;
+};
+
+const planState = (steps: readonly ParsedStep[]): AiTaskProgressState => {
+  const flat = flattenParsedSteps(steps);
   if (flat.some((step) => step.state === 'failed')) return 'failed';
   if (flat.some((step) => step.state === 'in_progress')) return 'in_progress';
   if (flat.length && flat.every((step) => step.state === 'completed')) return 'completed';
@@ -148,34 +153,50 @@ const planState = (steps: readonly ParsedStep[]): AiTaskProgressState => {
   return 'planned';
 };
 
-export const taskUpdatesForAgentPlan = (plan: ParsedPlan, agentStep: number): AiTaskProgress[] => {
-  const result: AiTaskProgress[] = [
-    {
-      id: plan.planId,
-      title: plan.title,
-      state: planState(plan.steps),
-      agentStep,
-      planId: plan.planId,
-      order: 0,
-    },
-  ];
-  const append = (steps: readonly ParsedStep[], parentId: string) => {
-    steps.forEach((step, index) => {
-      result.push({
-        id: step.id,
-        title: step.title,
-        state: step.state,
-        agentStep,
-        planId: plan.planId,
-        parentId,
-        order: index,
-        ...(step.detail ? { detail: step.detail } : {}),
-      });
-      if (step.children) append(step.children, step.id);
-    });
+const taskForStep = (step: ParsedStep, planId: string, agentStep: number): AiTaskProgress => ({
+  id: step.id,
+  title: step.title,
+  state: step.state,
+  agentStep,
+  planId,
+  ...(step.detail ? { detail: step.detail } : {}),
+  ...(step.children?.length
+    ? { children: step.children.map((child) => taskForStep(child, planId, agentStep)) }
+    : {}),
+});
+
+export const taskTreeForAgentPlan = (plan: ParsedPlan, agentStep: number): AiTaskProgress => ({
+  id: plan.planId,
+  title: plan.title,
+  state: planState(plan.steps),
+  agentStep,
+  planId: plan.planId,
+  children: plan.steps.map((step) => taskForStep(step, plan.planId, agentStep)),
+});
+
+export const flattenTaskTree = (root: AiTaskProgress): AiTaskProgress[] => {
+  const result: AiTaskProgress[] = [root];
+  const collect = (children: readonly AiTaskProgress[] | undefined) => {
+    for (const child of children ?? []) {
+      result.push(child);
+      collect(child.children);
+    }
   };
-  append(plan.steps, plan.planId);
+  collect(root.children);
   return result;
+};
+
+export const mapTaskTree = (
+  root: AiTaskProgress,
+  taskId: string,
+  update: (task: AiTaskProgress) => AiTaskProgress,
+): AiTaskProgress => {
+  if (root.id === taskId) return update(root);
+  if (!root.children?.length) return root;
+  return {
+    ...root,
+    children: root.children.map((child) => mapTaskTree(child, taskId, update)),
+  };
 };
 
 export const agentPlanToolResult = (call: AiToolCall, taskCount: number): AiToolResult => ({
