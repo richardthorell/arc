@@ -44,6 +44,8 @@ describe('AiChatPanel response retry', () => {
     await waitFor(() => expect(screen.getByText('Recovered response.')).toBeVisible());
     expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
     expect(attempts).toBe(2);
-    expect(screen.getAllByText('Create something')).toHaveLength(1);
+    const userCards = document.querySelectorAll('.ai-chat-user-card');
+    expect(userCards).toHaveLength(1);
+    expect(userCards[0]).toHaveTextContent('Create something');
   });
 });
