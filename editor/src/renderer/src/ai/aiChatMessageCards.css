@@ -242,9 +242,106 @@
   border-bottom: 0;
 }
 
+.ai-chat-approval-card:has(.ai-chat-approval-auto),
+.ai-chat-approval-outcome.is-approved {
+  display: none;
+}
+
+.ai-chat-approval-card.ui-agent-card,
+.ai-chat-approval-outcome.is-denied.ui-agent-card {
+  --ui-agent-card-background: transparent;
+  --ui-agent-card-border: transparent;
+
+  width: min(100%, 680px);
+  max-width: 82%;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.ai-chat-approval-card .ui-agent-card-header,
+.ai-chat-approval-outcome.is-denied .ui-agent-card-header {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 24px;
+  gap: 8px;
+  padding: 2px 0;
+  background: transparent;
+}
+
+.ai-chat-approval-card .ui-agent-card-header::before {
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 1.5px solid color-mix(in srgb, var(--arc-color-text-muted) 28%, transparent);
+  border-top-color: var(--arc-color-text-strong);
+  border-radius: 50%;
+  animation: ai-chat-progress-spin 720ms linear infinite;
+  content: '';
+}
+
+.ai-chat-approval-card .ui-agent-card-icon,
+.ai-chat-approval-outcome.is-denied .ui-agent-card-icon,
+.ai-chat-approval-card .ui-agent-activity-status,
+.ai-chat-approval-outcome.is-denied .ui-agent-activity-status,
 .ai-chat-approval-card .ui-agent-card-content,
-.ai-chat-approval-outcome .ui-agent-card-content {
-  padding: 11px 13px 10px;
+.ai-chat-approval-outcome.is-denied .ui-agent-card-content {
+  display: none;
+}
+
+.ai-chat-approval-card .ui-agent-card-heading,
+.ai-chat-approval-outcome.is-denied .ui-agent-card-heading {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ai-chat-approval-card .ui-agent-card-heading strong,
+.ai-chat-approval-outcome.is-denied .ui-agent-card-heading strong {
+  font-size: 0;
+  line-height: 1;
+}
+
+.ai-chat-approval-card .ui-agent-card-heading strong::after {
+  color: var(--arc-color-text-strong);
+  content: 'Awaiting approval';
+  font-size: var(--arc-text-sm);
+  font-weight: 600;
+}
+
+.ai-chat-approval-card .ui-agent-card-heading small,
+.ai-chat-approval-outcome.is-denied .ui-agent-card-heading small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--arc-color-text-muted);
+  font-size: var(--arc-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-chat-approval-card .ui-agent-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-chat-approval-outcome.is-denied .ui-agent-card-header {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ai-chat-approval-outcome.is-denied .ui-agent-card-heading strong::after {
+  color: var(--arc-color-danger);
+  content: 'Declined';
+  font-size: var(--arc-text-sm);
+  font-weight: 600;
+}
+
+.ai-chat-approval-outcome.is-denied .ui-agent-card-actions {
+  display: none;
 }
 
 .ai-chat-response-error-card {
@@ -270,8 +367,16 @@
   opacity: 1;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .ai-chat-approval-card .ui-agent-card-header::before {
+    animation: none;
+  }
+}
+
 @media (max-width: 760px) {
-  .ai-chat-assistant-turn > .ui-agent-activity-card {
+  .ai-chat-assistant-turn > .ui-agent-activity-card,
+  .ai-chat-approval-card.ui-agent-card,
+  .ai-chat-approval-outcome.is-denied.ui-agent-card {
     max-width: 88%;
   }
 }
