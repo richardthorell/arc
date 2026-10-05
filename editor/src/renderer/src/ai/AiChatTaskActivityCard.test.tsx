@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { AiChatTaskActivityCard } from './AiChatActivityCards';
@@ -9,7 +9,7 @@ import { AiChatTaskActivityCard } from './AiChatActivityCards';
 afterEach(cleanup);
 
 describe('AiChatTaskActivityCard', () => {
-  it('shows a compact live row while a task is active and removes it when complete', () => {
+  it('collapses completed task history behind a Show tasks action', async () => {
     const { container, rerender } = render(
       <AiChatTaskActivityCard
         reference={{
@@ -42,7 +42,13 @@ describe('AiChatTaskActivityCard', () => {
       />,
     );
 
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Show tasks' })).toBeVisible());
     expect(screen.queryByRole('status', { name: 'AI progress' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show tasks' }));
+    expect(screen.getByRole('button', { name: 'Hide tasks' })).toBeVisible();
+    expect(screen.getByText('Applying editor changes')).toBeVisible();
+    expect(container.querySelector('[data-progress-state="complete"] svg')).toBeInTheDocument();
   });
 
   it('keeps completed plan steps checked while the spinner advances to the next row', () => {
@@ -108,7 +114,7 @@ describe('AiChatTaskActivityCard', () => {
     expect(container.querySelectorAll('[data-progress-state="waiting"]')).toHaveLength(0);
   });
 
-  it('keeps a failed task visible with a red X when no task is active', () => {
+  it('opens failed task history by default with a red X and no fake active row', () => {
     const { container } = render(
       <AiChatTaskActivityCard
         reference={{
@@ -119,19 +125,20 @@ describe('AiChatTaskActivityCard', () => {
           children: [
             { id: 'inspect', title: 'Inspect scene', state: 'completed' },
             { id: 'create', title: 'Create capsule', state: 'failed', detail: 'Editor operation failed' },
-            { id: 'verify', title: 'Verify result', state: 'planned' },
+            { id: 'verify', title: 'Verify result', state: 'cancelled' },
           ],
         }}
       />,
     );
 
+    expect(screen.getByRole('button', { name: 'Hide tasks' })).toBeVisible();
     expect(screen.getByText('Inspect scene')).toBeVisible();
     expect(screen.getByText('Create capsule')).toBeVisible();
-    expect(screen.getByText('Verify result')).toBeVisible();
+    expect(screen.queryByText('Verify result')).not.toBeInTheDocument();
     expect(container.querySelectorAll('[data-progress-state="complete"]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-progress-state="failed"]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-progress-state="working"]')).toHaveLength(0);
-    expect(container.querySelectorAll('[data-progress-state="waiting"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-progress-state="waiting"]')).toHaveLength(0);
     expect(container.querySelector('[data-progress-state="failed"] svg')).toBeInTheDocument();
   });
 });
