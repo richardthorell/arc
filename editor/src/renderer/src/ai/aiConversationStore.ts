@@ -3,6 +3,7 @@ import {
   type AiConversationContextReference,
   type AiConversationMessage,
   type AiConversationStoreSnapshot,
+  type AiConversationTaskReference,
   type AiConversationToolReference,
   type AiConversationUiState,
   type AiStoredConversation,
@@ -24,6 +25,8 @@ const isOptionalNonnegativeInteger = (value: unknown): value is number | undefin
   value === undefined || (Number.isSafeInteger(value) && Number(value) >= 0);
 const isOptionalObject = (value: unknown): value is Record<string, unknown> | undefined =>
   value === undefined || (value !== null && typeof value === 'object' && !Array.isArray(value));
+const isOptionalStringArray = (value: unknown): value is string[] | undefined =>
+  value === undefined || (Array.isArray(value) && value.every((item) => typeof item === 'string'));
 
 const isContextReference = (value: unknown): value is AiConversationContextReference => {
   if (!value || typeof value !== 'object') return false;
@@ -63,6 +66,25 @@ const isToolReference = (value: unknown): value is AiConversationToolReference =
   );
 };
 
+const isTaskReference = (value: unknown): value is AiConversationTaskReference => {
+  if (!value || typeof value !== 'object') return false;
+  const reference = value as Partial<AiConversationTaskReference>;
+  return (
+    typeof reference.id === 'string' &&
+    typeof reference.title === 'string' &&
+    (reference.state === 'planned' ||
+      reference.state === 'in_progress' ||
+      reference.state === 'completed' ||
+      reference.state === 'failed' ||
+      reference.state === 'cancelled') &&
+    isOptionalNonnegativeInteger(reference.step) &&
+    isOptionalStringArray(reference.toolCallIds) &&
+    isOptionalString(reference.detail) &&
+    isOptionalString(reference.startedAt) &&
+    isOptionalString(reference.completedAt)
+  );
+};
+
 const isMessage = (value: unknown): value is AiConversationMessage => {
   if (!value || typeof value !== 'object') return false;
   const message = value as Partial<AiConversationMessage>;
@@ -77,7 +99,9 @@ const isMessage = (value: unknown): value is AiConversationMessage => {
     (message.contextReferences === undefined ||
       (Array.isArray(message.contextReferences) && message.contextReferences.every(isContextReference))) &&
     (message.toolReferences === undefined ||
-      (Array.isArray(message.toolReferences) && message.toolReferences.every(isToolReference)))
+      (Array.isArray(message.toolReferences) && message.toolReferences.every(isToolReference))) &&
+    (message.taskReferences === undefined ||
+      (Array.isArray(message.taskReferences) && message.taskReferences.every(isTaskReference)))
   );
 };
 
@@ -114,6 +138,16 @@ const normalizeMessage = (message: AiConversationMessage): AiConversationMessage
             ...reference,
             state: 'cancelled' as const,
             summary: 'Interrupted when the editor closed',
+            completedAt: timestamp,
+          }
+        : { ...reference },
+    ),
+    taskReferences: message.taskReferences?.map((reference) =>
+      reference.state === 'planned' || reference.state === 'in_progress'
+        ? {
+            ...reference,
+            state: 'cancelled' as const,
+            detail: 'Interrupted when the editor closed',
             completedAt: timestamp,
           }
         : { ...reference },
