@@ -48,4 +48,44 @@ describe('AiChatTaskActivityCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Expand details' }));
     expect(screen.getByText('create, rename')).toBeVisible();
   });
+
+  it('renders a semantic plan as one grouped card with nested steps', () => {
+    const { container } = render(
+      <AiChatTaskActivityCard
+        reference={{
+          id: 'capsule-plan',
+          planId: 'capsule-plan',
+          title: 'Create green capsule',
+          state: 'in_progress',
+          children: [
+            { id: 'inspect', title: 'Inspect scene', state: 'completed' },
+            {
+              id: 'build',
+              title: 'Build capsule',
+              state: 'in_progress',
+              children: [
+                {
+                  id: 'create',
+                  title: 'Create capsule',
+                  state: 'in_progress',
+                  toolCallIds: ['batch-1'],
+                },
+                { id: 'verify', title: 'Verify result', state: 'planned' },
+              ],
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(container.querySelectorAll('[data-activity-kind="task"]')).toHaveLength(1);
+    expect(screen.getByText('Create green capsule')).toBeVisible();
+    expect(screen.getByText('Working on Create capsule')).toBeVisible();
+    expect(screen.getByText('1/3 steps complete')).toBeVisible();
+    expect(screen.getByText('Inspect scene')).toBeVisible();
+    expect(screen.getByText('Build capsule')).toBeVisible();
+    expect(screen.getByText('Create capsule')).toBeVisible();
+    expect(screen.getByText('Verify result')).toBeVisible();
+    expect(screen.getByText('1 linked tool call')).toBeVisible();
+  });
 });
