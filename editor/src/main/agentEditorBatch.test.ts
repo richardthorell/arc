@@ -45,7 +45,7 @@ describe('agent editor batch contract', () => {
             scale: [5, 5, 5],
           },
         },
-        { type: 'entity.setBaseColor', target: { tempId: 'capsule' }, color: [0.1, 0.8, 0.1, 1] },
+        { type: 'entity.setBaseColor', target: { tempId: 'capsule' }, color: [0.1, 0.8, 0.1] },
       ],
     });
 
