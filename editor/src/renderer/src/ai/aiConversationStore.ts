@@ -80,6 +80,11 @@ const isTaskReference = (value: unknown): value is AiConversationTaskReference =
     isOptionalNonnegativeInteger(reference.step) &&
     isOptionalStringArray(reference.toolCallIds) &&
     isOptionalString(reference.detail) &&
+    isOptionalString(reference.planId) &&
+    isOptionalString(reference.parentId) &&
+    isOptionalNonnegativeInteger(reference.order) &&
+    (reference.children === undefined ||
+      (Array.isArray(reference.children) && reference.children.every(isTaskReference))) &&
     isOptionalString(reference.startedAt) &&
     isOptionalString(reference.completedAt)
   );
@@ -126,6 +131,23 @@ const isConversation = (value: unknown): value is AiStoredConversation => {
   );
 };
 
+const interruptTaskReference = (
+  reference: AiConversationTaskReference,
+  timestamp: string,
+): AiConversationTaskReference => ({
+  ...reference,
+  ...(reference.state === 'planned' || reference.state === 'in_progress'
+    ? {
+        state: 'cancelled' as const,
+        detail: 'Interrupted when the editor closed',
+        completedAt: timestamp,
+      }
+    : {}),
+  ...(reference.children?.length
+    ? { children: reference.children.map((child) => interruptTaskReference(child, timestamp)) }
+    : {}),
+});
+
 const normalizeMessage = (message: AiConversationMessage): AiConversationMessage => {
   if (message.state !== 'streaming') return { ...message };
   const timestamp = new Date().toISOString();
@@ -142,16 +164,7 @@ const normalizeMessage = (message: AiConversationMessage): AiConversationMessage
           }
         : { ...reference },
     ),
-    taskReferences: message.taskReferences?.map((reference) =>
-      reference.state === 'planned' || reference.state === 'in_progress'
-        ? {
-            ...reference,
-            state: 'cancelled' as const,
-            detail: 'Interrupted when the editor closed',
-            completedAt: timestamp,
-          }
-        : { ...reference },
-    ),
+    taskReferences: message.taskReferences?.map((reference) => interruptTaskReference(reference, timestamp)),
   };
 };
 
