@@ -42,6 +42,7 @@ export type AiConversationTaskReference = {
   planId?: string;
   parentId?: string;
   order?: number;
+  children?: AiConversationTaskReference[];
   startedAt?: string;
   completedAt?: string;
 };
