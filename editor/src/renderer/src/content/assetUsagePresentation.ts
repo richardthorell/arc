@@ -22,9 +22,9 @@ export const describeAssetUsages = (index: AssetDependencyIndex, assetId: string
   const directReferences = findAssetUsages(index, assetId);
   const directAssetIds = [...new Set(directReferences.map((reference) => reference.sourceAssetId))].sort();
   const directAssetIdSet = new Set(directAssetIds);
-  const transitiveAssetIds = findTransitiveDependentAssetIds(index, assetId).filter(
-    (dependentAssetId) => !directAssetIdSet.has(dependentAssetId),
-  );
+  const transitiveAssetIds = findTransitiveDependentAssetIds(index, assetId)
+    .filter((dependentAssetId) => !directAssetIdSet.has(dependentAssetId))
+    .sort();
 
   return {
     assetId,
