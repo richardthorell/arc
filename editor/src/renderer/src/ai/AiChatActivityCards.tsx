@@ -87,7 +87,8 @@ function ToolDetails({ reference }: { reference: AiConversationToolReference }) 
       ) : null}
       {reference.resultTruncated ? (
         <div className="ai-chat-tool-detail-note">
-          Result was truncated{reference.originalBytes ? ` from ${reference.originalBytes.toLocaleString()} bytes` : ''}.
+          Result was truncated{reference.originalBytes ? ` from ${reference.originalBytes.toLocaleString()} bytes` : ''}
+          .
         </div>
       ) : null}
       {reference.errorCode ? (
