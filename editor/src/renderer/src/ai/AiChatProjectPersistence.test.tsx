@@ -131,4 +131,81 @@ describe('AiChatPanel project persistence', () => {
       operation: 'scene.findEntities',
     });
   });
+
+  it('renders task updates in place and restores their final state after reopening', async () => {
+    const taskProvider: AiModelProvider = {
+      id: 'openai:tasks',
+      providerId: 'openai',
+      modelId: 'tasks',
+      label: 'Task Agent',
+      configured: true,
+      capabilities: { streaming: true, tools: true, inputModalities: ['text'] },
+      async *stream(request) {
+        if (request.metadata?.purpose === 'conversation-caption') {
+          yield { type: 'delta', text: 'Capsule build' };
+          yield { type: 'done', finishReason: 'stop' };
+          return;
+        }
+        yield {
+          type: 'task-update',
+          task: {
+            id: 'agent-step-0',
+            title: 'Configure capsule',
+            state: 'in_progress',
+            agentStep: 0,
+            toolCallIds: ['call-capsule'],
+          },
+        };
+        yield {
+          type: 'tool-call',
+          call: { id: 'call-capsule', name: 'editor.applyBatch', arguments: { operations: [] } },
+          agentStep: 0,
+        };
+        yield {
+          type: 'tool-result',
+          result: {
+            toolCallId: 'call-capsule',
+            name: 'editor.applyBatch',
+            operation: 'editor.applyBatch',
+            content: '{"operationCount":1}',
+          },
+          agentStep: 0,
+        };
+        yield {
+          type: 'task-update',
+          task: {
+            id: 'agent-step-0',
+            title: 'Configure capsule',
+            state: 'completed',
+            agentStep: 0,
+            toolCallIds: ['call-capsule'],
+          },
+        };
+        yield { type: 'delta', text: 'Capsule configured.' };
+        yield { type: 'done', finishReason: 'stop' };
+      },
+    };
+
+    const first = render(<AiChatPanel projectGuid={projectA} provider={taskProvider} />);
+    fireEvent.change(screen.getByLabelText('Start a conversation'), { target: { value: 'Create a capsule' } });
+    fireEvent.click(screen.getByLabelText('Start conversation'));
+
+    await waitFor(() => expect(screen.getByText('Configure capsule')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(loadAiConversationStore(projectA).conversations[0]?.messages[1]?.taskReferences?.[0]).toMatchObject({
+        id: 'agent-step-0',
+        title: 'Configure capsule',
+        state: 'completed',
+        step: 0,
+        toolCallIds: ['call-capsule'],
+      }),
+    );
+
+    first.unmount();
+    render(<AiChatPanel projectGuid={projectA} provider={taskProvider} />);
+
+    expect(screen.getByText('Configure capsule')).toBeInTheDocument();
+    const taskCard = screen.getByText('Configure capsule').closest('[data-activity-kind="task"]');
+    expect(taskCard).toHaveAttribute('data-activity-state', 'complete');
+  });
 });
