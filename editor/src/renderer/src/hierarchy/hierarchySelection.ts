@@ -40,19 +40,14 @@ export function updateHierarchySelection(
   }
 
   if (options.toggle) {
-    return current.includes(targetId)
-      ? current.filter((id) => id !== targetId)
-      : [...current, targetId];
+    return current.includes(targetId) ? current.filter((id) => id !== targetId) : [...current, targetId];
   }
 
   return [targetId];
 }
 
 /** Removes stale entities while preserving the user's selection order. */
-export function reconcileHierarchySelection(
-  selection: HierarchySelection,
-  existingIds: Iterable<string>,
-): string[] {
+export function reconcileHierarchySelection(selection: HierarchySelection, existingIds: Iterable<string>): string[] {
   const existing = new Set(existingIds);
   return unique(selection).filter((id) => existing.has(id));
 }

@@ -14,15 +14,15 @@ describe('updateHierarchySelection', () => {
       'light',
       'player',
     ]);
-    expect(updateHierarchySelection(['camera', 'light'], 'camera', visible, { toggle: true })).toEqual([
-      'light',
-    ]);
+    expect(updateHierarchySelection(['camera', 'light'], 'camera', visible, { toggle: true })).toEqual(['light']);
   });
 
   it('selects a contiguous range in visible hierarchy order', () => {
-    expect(
-      updateHierarchySelection(['root'], 'light', visible, { range: true, anchorId: 'camera' }),
-    ).toEqual(['camera', 'player', 'light']);
+    expect(updateHierarchySelection(['root'], 'light', visible, { range: true, anchorId: 'camera' })).toEqual([
+      'camera',
+      'player',
+      'light',
+    ]);
   });
 
   it('adds a range when toggle and range modifiers are combined', () => {
@@ -36,17 +36,14 @@ describe('updateHierarchySelection', () => {
   });
 
   it('falls back to a plain target selection when the range anchor is not visible', () => {
-    expect(
-      updateHierarchySelection(['root'], 'light', visible, { range: true, anchorId: 'hidden-child' }),
-    ).toEqual(['light']);
+    expect(updateHierarchySelection(['root'], 'light', visible, { range: true, anchorId: 'hidden-child' })).toEqual([
+      'light',
+    ]);
   });
 });
 
 describe('reconcileHierarchySelection', () => {
   it('drops deleted entities and duplicate selection entries deterministically', () => {
-    expect(reconcileHierarchySelection(['player', 'deleted', 'player', 'light'], visible)).toEqual([
-      'player',
-      'light',
-    ]);
+    expect(reconcileHierarchySelection(['player', 'deleted', 'player', 'light'], visible)).toEqual(['player', 'light']);
   });
 });
