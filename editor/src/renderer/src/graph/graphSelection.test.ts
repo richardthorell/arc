@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  clearGraphSelection,
   createGraphClipboardSnapshot,
   createGraphSelection,
   navigateGraphSelection,
   reconcileGraphSelection,
   remapGraphClipboardSnapshot,
+  selectAllGraphNodes,
   selectGraphMarquee,
   selectGraphNode,
   selectGraphRange,
@@ -20,6 +22,16 @@ describe('graphSelection', () => {
     selection = selectGraphNode(selection, 'a', true);
     expect([...selection.ids]).toEqual(['b']);
     expect(selection.anchor).toBe('a');
+  });
+
+  it('selects all nodes deterministically and clears selection', () => {
+    const selection = selectAllGraphNodes(['b', 'a', 'b', '', 'c']);
+    expect([...selection.ids]).toEqual(['b', 'a', 'c']);
+    expect(selection.anchor).toBe('b');
+
+    const cleared = clearGraphSelection();
+    expect([...cleared.ids]).toEqual([]);
+    expect(cleared.anchor).toBeNull();
   });
 
   it('reconciles stale selection and anchor after graph mutations', () => {
@@ -63,6 +75,19 @@ describe('graphSelection', () => {
       height: -50,
     });
     expect([...reverse.ids]).toEqual(['a', 'b']);
+  });
+
+  it('ignores invalid selectable geometry and handles invalid marquees safely', () => {
+    const initial = createGraphSelection(['existing'], 'existing');
+    const selectable = [
+      { id: 'valid', bounds: { x: 0, y: 0, width: 10, height: 10 } },
+      { id: 'invalid', bounds: { x: Number.NaN, y: 0, width: 10, height: 10 } },
+    ];
+    expect([...selectGraphMarquee(initial, selectable, { x: -1, y: -1, width: 20, height: 20 }).ids]).toEqual([
+      'valid',
+    ]);
+    expect([...selectGraphMarquee(initial, selectable, { x: 0, y: 0, width: Number.NaN, height: 20 }).ids]).toEqual([]);
+    expect(selectGraphMarquee(initial, selectable, { x: 0, y: 0, width: Number.NaN, height: 20 }, true)).toBe(initial);
   });
 
   it('supports additive marquee selection while preserving the existing anchor', () => {

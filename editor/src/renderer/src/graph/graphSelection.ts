@@ -35,6 +35,15 @@ export function createGraphSelection(
   return { ids: new Set(ids), anchor };
 }
 
+export function clearGraphSelection(): GraphSelectionState {
+  return createGraphSelection();
+}
+
+export function selectAllGraphNodes(orderedIds: readonly GraphSelectionId[]): GraphSelectionState {
+  const ids = [...new Set(orderedIds.filter((id) => id.length > 0))];
+  return createGraphSelection(ids, ids[0] ?? null);
+}
+
 export function reconcileGraphSelection(
   selection: GraphSelectionState,
   orderedIds: readonly GraphSelectionId[],
@@ -88,6 +97,10 @@ function normalizeRect(rect: GraphSelectionRect): GraphSelectionRect {
   };
 }
 
+function isFiniteRect(rect: GraphSelectionRect): boolean {
+  return [rect.x, rect.y, rect.width, rect.height].every(Number.isFinite);
+}
+
 function rectsIntersect(a: GraphSelectionRect, b: GraphSelectionRect): boolean {
   const left = Math.max(a.x, b.x);
   const top = Math.max(a.y, b.y);
@@ -102,11 +115,14 @@ export function selectGraphMarquee(
   marquee: GraphSelectionRect,
   additive = false,
 ): GraphSelectionState {
+  if (!isFiniteRect(marquee)) return additive ? selection : clearGraphSelection();
+
   const normalizedMarquee = normalizeRect(marquee);
   const ids = additive ? new Set(selection.ids) : new Set<GraphSelectionId>();
   let anchor = additive ? selection.anchor : null;
 
   for (const item of selectable) {
+    if (!item.id || !isFiniteRect(item.bounds)) continue;
     if (!rectsIntersect(normalizedMarquee, normalizeRect(item.bounds))) continue;
     ids.add(item.id);
     anchor ??= item.id;
