@@ -56,7 +56,11 @@ describe('AI agent tool loop', () => {
 
     const events = await collect(runAiAgentToolLoop(request(), execute, invokeTool));
 
-    expect(invokeTool).toHaveBeenCalledWith({ id: 'call-1', name: 'scene.findEntities', arguments: { search: 'Floor' } });
+    expect(invokeTool).toHaveBeenCalledWith({
+      id: 'call-1',
+      name: 'scene.findEntities',
+      arguments: { search: 'Floor' },
+    });
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ type: 'tool-call' }),
@@ -74,7 +78,10 @@ describe('AI agent tool loop', () => {
       (async function* () {
         const resultMessage = runtimeRequest.messages.find((message) => message.role === 'tool');
         if (!resultMessage) {
-          yield { type: 'tool-call' as const, call: { id: 'call-1', name: 'scene.findEntities', arguments: { search: 'Floor' } } };
+          yield {
+            type: 'tool-call' as const,
+            call: { id: 'call-1', name: 'scene.findEntities', arguments: { search: 'Floor' } },
+          };
           yield { type: 'done' as const, finishReason: 'tool_calls' as const };
           return;
         }
@@ -94,7 +101,10 @@ describe('AI agent tool loop', () => {
 
     expect(events).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ type: 'tool-result', result: expect.objectContaining({ isError: true, errorCode: 'tool_error' }) }),
+        expect.objectContaining({
+          type: 'tool-result',
+          result: expect.objectContaining({ isError: true, errorCode: 'tool_error' }),
+        }),
         { type: 'delta', text: 'I could not inspect the floor.' },
       ]),
     );
@@ -141,7 +151,10 @@ describe('AI agent tool loop', () => {
       (async function* () {
         const resultMessage = runtimeRequest.messages.find((message) => message.role === 'tool');
         if (!resultMessage) {
-          yield { type: 'tool-call' as const, call: { id: 'call-edit', name: 'edit.begin', arguments: { label: 'Rename floor' } } };
+          yield {
+            type: 'tool-call' as const,
+            call: { id: 'call-edit', name: 'edit.begin', arguments: { label: 'Rename floor' } },
+          };
           yield { type: 'done' as const, finishReason: 'tool_calls' as const };
           return;
         }
@@ -163,7 +176,10 @@ describe('AI agent tool loop', () => {
     const invokeTool = vi.fn();
     const execute = () =>
       (async function* () {
-        yield { type: 'tool-call' as const, call: { id: 'call-1', name: 'scene.findEntities', arguments: { search: 'Floor' } } };
+        yield {
+          type: 'tool-call' as const,
+          call: { id: 'call-1', name: 'scene.findEntities', arguments: { search: 'Floor' } },
+        };
         yield { type: 'done' as const, finishReason: 'tool_calls' as const };
       })();
     const iterator = runAiAgentToolLoop(request(controller.signal), execute, invokeTool)[Symbol.asyncIterator]();
@@ -180,7 +196,10 @@ describe('AI agent tool loop', () => {
       (async function* () {
         ++providerCall;
         if (providerCall <= 2) {
-          yield { type: 'tool-call' as const, call: { id: `call-${providerCall}`, name: 'scene.findEntities', arguments: { search: 'Floor' } } };
+          yield {
+            type: 'tool-call' as const,
+            call: { id: `call-${providerCall}`, name: 'scene.findEntities', arguments: { search: 'Floor' } },
+          };
           yield { type: 'done' as const, finishReason: 'tool_calls' as const };
           return;
         }
@@ -207,22 +226,37 @@ describe('AI agent tool loop', () => {
     const execute = () =>
       (async function* () {
         ++call;
-        yield { type: 'tool-call' as const, call: { id: `call-${call}`, name: 'scene.findEntities', arguments: { search: 'Floor' } } };
+        yield {
+          type: 'tool-call' as const,
+          call: { id: `call-${call}`, name: 'scene.findEntities', arguments: { search: 'Floor' } },
+        };
         yield { type: 'done' as const, finishReason: 'tool_calls' as const };
       })();
-    const invokeTool = vi.fn(async () => ({ name: 'scene.findEntities', operation: 'scene.findEntities', content: '{}', truncated: false, originalBytes: 2 }));
+    const invokeTool = vi.fn(async () => ({
+      name: 'scene.findEntities',
+      operation: 'scene.findEntities',
+      content: '{}',
+      truncated: false,
+      originalBytes: 2,
+    }));
 
     const events = await collect(runAiAgentToolLoop(request(), execute, invokeTool, { maximumSteps: 2 }));
 
     expect(invokeTool).toHaveBeenCalledTimes(2);
-    expect(events.at(-1)).toMatchObject({ type: 'error', code: 'tool', message: 'AI agent reached the maximum of 2 tool steps' });
+    expect(events.at(-1)).toMatchObject({
+      type: 'error',
+      code: 'tool',
+      message: 'AI agent reached the maximum of 2 tool steps',
+    });
   });
 
   it('aborts a provider step that exceeds the configured timeout', async () => {
     vi.useFakeTimers();
     const execute = (runtimeRequest: AiRuntimeRequest) =>
       (async function* () {
-        await new Promise<void>((resolve) => runtimeRequest.signal?.addEventListener('abort', () => resolve(), { once: true }));
+        await new Promise<void>((resolve) =>
+          runtimeRequest.signal?.addEventListener('abort', () => resolve(), { once: true }),
+        );
       })();
     const iterator = runAiAgentToolLoop(request(), execute, vi.fn(), { stepTimeoutMs: 25 })[Symbol.asyncIterator]();
 
@@ -230,6 +264,10 @@ describe('AI agent tool loop', () => {
     await vi.advanceTimersByTimeAsync(25);
     const event = await pending;
 
-    expect(event.value).toMatchObject({ type: 'error', code: 'provider', message: 'AI agent step 1 exceeded the 25 ms timeout' });
+    expect(event.value).toMatchObject({
+      type: 'error',
+      code: 'provider',
+      message: 'AI agent step 1 exceeded the 25 ms timeout',
+    });
   });
 });
