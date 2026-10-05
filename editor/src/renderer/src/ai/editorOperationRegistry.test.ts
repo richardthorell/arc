@@ -34,6 +34,17 @@ describe('EditorOperationRegistry', () => {
     });
 
     expect(registry.list().map((operation) => operation.id)).toEqual(['asset.inspect', 'terrain.scatter']);
+
+    registry.register({
+      id: 'terrain.scatterVegetation',
+      description: 'Scatter terrain vegetation',
+      schema,
+      mutating: true,
+      batchable: true,
+      owner: 'terrain',
+      execute: () => undefined,
+    });
+    expect(registry.has('terrain.scatterVegetation')).toBe(true);
   });
 
   it('rejects duplicate, unnamespaced, and unknown operations', async () => {
