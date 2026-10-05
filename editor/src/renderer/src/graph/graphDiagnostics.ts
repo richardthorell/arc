@@ -31,6 +31,12 @@ export type GraphDiagnosticOverlay = {
   diagnostics: GraphDiagnostic[];
 };
 
+export type GraphDiagnosticNavigationTarget = {
+  nodeId: string;
+  pinId?: string;
+  connectionId?: string;
+};
+
 const severityRank: Record<GraphDiagnosticSeverity, number> = {
   error: 0,
   warning: 1,
@@ -44,6 +50,22 @@ export const graphDiagnosticNodeId = (diagnostic: GraphDiagnostic): string | und
       return diagnostic.target.nodeId;
     case 'connection':
       return diagnostic.target.targetNodeId ?? diagnostic.target.sourceNodeId;
+  }
+};
+
+export const graphDiagnosticNavigationTarget = (
+  diagnostic: GraphDiagnostic,
+): GraphDiagnosticNavigationTarget | undefined => {
+  switch (diagnostic.target.kind) {
+    case 'node':
+      return { nodeId: diagnostic.target.nodeId };
+    case 'pin':
+      return { nodeId: diagnostic.target.nodeId, pinId: diagnostic.target.pinId };
+    case 'connection': {
+      const nodeId = diagnostic.target.targetNodeId ?? diagnostic.target.sourceNodeId;
+      if (!nodeId) return undefined;
+      return { nodeId, connectionId: diagnostic.target.connectionId };
+    }
   }
 };
 

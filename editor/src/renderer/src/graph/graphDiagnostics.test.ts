@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildGraphDiagnosticOverlays,
+  graphDiagnosticNavigationTarget,
   graphDiagnosticNodeId,
   graphDiagnosticsForNode,
   graphDiagnosticTargetKey,
@@ -42,6 +43,35 @@ describe('graphDiagnostics', () => {
         target: { kind: 'connection', connectionId: 'wire-1', sourceNodeId: 'source', targetNodeId: 'target' },
       }),
     ).toBe('target');
+  });
+
+  it('builds precise navigation targets without making domains own jump semantics', () => {
+    expect(graphDiagnosticNavigationTarget(diagnostics[1])).toEqual({ nodeId: 'node-a' });
+    expect(graphDiagnosticNavigationTarget(diagnostics[0])).toEqual({ nodeId: 'node-b', pinId: 'input' });
+    expect(
+      graphDiagnosticNavigationTarget({
+        id: 'connection',
+        severity: 'error',
+        message: 'Invalid connection',
+        target: { kind: 'connection', connectionId: 'wire-1', sourceNodeId: 'source', targetNodeId: 'target' },
+      }),
+    ).toEqual({ nodeId: 'target', connectionId: 'wire-1' });
+    expect(
+      graphDiagnosticNavigationTarget({
+        id: 'source-connection',
+        severity: 'warning',
+        message: 'Connection has only a source anchor',
+        target: { kind: 'connection', connectionId: 'wire-2', sourceNodeId: 'source' },
+      }),
+    ).toEqual({ nodeId: 'source', connectionId: 'wire-2' });
+    expect(
+      graphDiagnosticNavigationTarget({
+        id: 'orphan-connection',
+        severity: 'warning',
+        message: 'Connection has no node anchor',
+        target: { kind: 'connection', connectionId: 'wire-3' },
+      }),
+    ).toBeUndefined();
   });
 
   it('builds stable target keys for domain-neutral overlay selection', () => {
