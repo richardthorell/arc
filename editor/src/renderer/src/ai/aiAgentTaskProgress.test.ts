@@ -212,6 +212,86 @@ describe('AI agent task progress', () => {
     });
   });
 
+  it('keeps retries and commit cleanup inside one semantic plan', async () => {
+    let providerTurn = 0;
+    let mutationAttempt = 0;
+    const execute = () =>
+      (async function* (): AsyncGenerator<AiRuntimeStreamEvent> {
+        ++providerTurn;
+        if (providerTurn === 1) {
+          yield {
+            type: 'tool-call',
+            call: {
+              id: 'plan',
+              name: 'agent.updatePlan',
+              arguments: {
+                planId: 'trees-plan',
+                title: 'Build two trees',
+                steps: [
+                  { id: 'inspect', title: 'Inspect primitive options', state: 'completed' },
+                  { id: 'build', title: 'Build two trees', state: 'in_progress' },
+                ],
+              },
+            },
+          };
+          yield {
+            type: 'tool-call',
+            call: { id: 'mutate-1', name: 'editor.applyBatch', arguments: { operations: [] } },
+          };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        if (providerTurn === 2) {
+          yield {
+            type: 'tool-call',
+            call: { id: 'mutate-2', name: 'editor.applyBatch', arguments: { operations: [] } },
+          };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        if (providerTurn === 3) {
+          yield {
+            type: 'tool-call',
+            call: { id: 'commit', name: 'edit.commit', arguments: { editSessionId: 'edit-1' } },
+          };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        yield { type: 'done', finishReason: 'stop' };
+      })();
+
+    const invokeTool = vi.fn(async (call: AiToolCall) => {
+      if (call.name === 'editor.applyBatch') {
+        ++mutationAttempt;
+        if (mutationAttempt === 1) throw new Error('transient mutation failure');
+      }
+      return {
+        name: call.name,
+        operation: call.name,
+        content: '{}',
+        truncated: false,
+        originalBytes: 2,
+      };
+    });
+
+    const events = await collect(runAiAgentToolLoop(request, execute, invokeTool));
+    const tasks = events.filter(
+      (event): event is Extract<AiRuntimeStreamEvent, { type: 'task-update' }> => event.type === 'task-update',
+    );
+
+    expect(tasks.length).toBeGreaterThan(0);
+    expect(tasks.every((event) => event.task.id === 'trees-plan')).toBe(true);
+    expect(tasks.some((event) => event.task.id.startsWith('agent-step-'))).toBe(false);
+    expect(tasks.at(-1)?.task).toMatchObject({
+      id: 'trees-plan',
+      state: 'completed',
+      children: [
+        { id: 'inspect', state: 'completed' },
+        { id: 'build', state: 'completed', toolCallIds: ['mutate-1', 'mutate-2'] },
+      ],
+    });
+  });
+
   it('updates a persisted task reference in place instead of appending progress spam', () => {
     const started = recordConversationTaskUpdate(
       undefined,
