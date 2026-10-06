@@ -116,6 +116,24 @@
   font-size: var(--arc-text-xs);
 }
 
+.ai-chat-task-diagnostics-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--arc-color-text-dim);
+  font: inherit;
+  font-size: var(--arc-text-xs);
+  cursor: pointer;
+}
+
+.ai-chat-task-diagnostics-button:hover {
+  color: var(--arc-color-text-muted);
+}
+
 @keyframes ai-chat-progress-spin {
   to {
     transform: rotate(360deg);
