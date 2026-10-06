@@ -78,7 +78,15 @@ describe('asset source bridge provenance publication', () => {
       version: 1,
       importedFiles: ['Content/External/polyhaven/rock_01/rock.glb'],
       importedAssetIds: ['asset-guid-1'],
-      provenance,
+      provenance: {
+        sourceId: 'polyhaven',
+        sourceAssetId: 'rock_01',
+        sourceHash: provenance.sourceHash,
+        recipe: {
+          version: 1,
+          logicalPaths: ['4k/albedo.jpg', '4k/rock.glb'],
+        },
+      },
     });
     expect(sidecar).not.toHaveProperty('logicalPaths');
     expect(serializedSidecar.endsWith('\n')).toBe(true);
