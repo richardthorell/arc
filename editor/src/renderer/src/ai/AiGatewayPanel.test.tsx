@@ -18,6 +18,7 @@ afterEach(() => {
   cleanup();
   localStorage.removeItem(aiConversationStorageKey);
   resetSettingsDialogRequest();
+  Reflect.deleteProperty(window, 'arc');
   vi.useRealTimers();
 });
 
@@ -175,6 +176,27 @@ describe('AiChatPanel', () => {
     expect(screen.getByRole('region', { name: 'Conversations' })).toBeInTheDocument();
     expect(screen.getByLabelText('Model')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open conversation Cabin material polish' })).toBeInTheDocument();
+  });
+
+  it('clears stale built-in AI edit authority before each user turn', async () => {
+    const revoke = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: { aiGateway: { revoke } },
+    });
+
+    render(<AiChatPanel persistConversations={false} provider={configuredProvider} />);
+
+    fireEvent.change(screen.getByLabelText('Start a conversation'), { target: { value: 'Create something' } });
+    fireEvent.click(screen.getByLabelText('Start conversation'));
+
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith('arc.builtin-ai'));
+    await waitFor(() => expect(screen.getByText('Hello from ARC.')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText('Chat prompt'), { target: { value: 'Change it' } });
+    fireEvent.click(screen.getByLabelText('Send prompt'));
+
+    await waitFor(() => expect(revoke).toHaveBeenCalledTimes(2));
   });
 
   it('sends with Enter while Shift+Enter remains available for multiline prompts', async () => {
