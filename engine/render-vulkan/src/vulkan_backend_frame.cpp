@@ -906,6 +906,7 @@ void vulkan_render_backend::ensure_viewport(std::uint32_t width, std::uint32_t h
 
 void vulkan_render_backend::destroy_viewport() noexcept
 {
+    destroy_forward_scene_resources();
     if (viewport_sampler_ != VK_NULL_HANDLE)
     {
         vkDestroySampler(device_, viewport_sampler_, nullptr);
