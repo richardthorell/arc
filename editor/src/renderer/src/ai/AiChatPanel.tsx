@@ -508,8 +508,20 @@ export function AiChatPanel({
       }
 
       if (!completed && !controller.signal.aborted) {
-        completed = true;
-        updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({ ...message, state: 'complete' }));
+        const timestamp = new Date().toISOString();
+        const messageText = 'The AI response ended before the agent reported completion.';
+        updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
+          ...message,
+          content: message.content || messageText,
+          state: 'error',
+          toolReferences: finishPendingConversationTools(message.toolReferences, 'error', messageText, timestamp),
+          taskReferences: finishPendingConversationTasks(message.taskReferences, 'failed', messageText, timestamp),
+          taskDiagnostics: [
+            ...(message.taskDiagnostics ?? []),
+            diagnosticLine('runtime-error', 'code=unexpected_stream_end retryable=false'),
+          ],
+        }));
+        return { completed: false, text: responseText };
       }
       return { completed: completed && !controller.signal.aborted, text: responseText };
     } catch (error) {
