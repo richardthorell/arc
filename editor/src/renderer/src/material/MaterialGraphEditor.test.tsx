@@ -172,7 +172,9 @@ describe('MaterialGraphEditor', () => {
       'ui-node-card',
       'material-graph-node-colorRgba',
     );
-    expect(screen.getByRole('button', { name: 'Open Color color picker' })).toBeEnabled();
+    const baseColor = screen.getAllByText('Color', { selector: '.ui-node-card-title' })[0]!.closest('article');
+    expect(baseColor).not.toBeNull();
+    expect(within(baseColor!).getByRole('button', { name: 'Open Color color picker' })).toBeEnabled();
   });
 
   it('uses the material graph domain to protect the output node from deletion', () => {
