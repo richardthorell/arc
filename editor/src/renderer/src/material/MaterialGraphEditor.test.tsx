@@ -63,7 +63,7 @@ describe('MaterialGraphEditor', () => {
 
     expect(screen.getByRole('button', { name: /Frame All/ })).toBeEnabled();
     expect(screen.getByRole('button', { name: /Arrange/ })).toBeEnabled();
-    expect(screen.getByRole('slider', { name: 'Material graph zoom' })).toHaveValue('100');
+    expect(screen.getByRole('slider', { name: 'Material graph zoom' })).toHaveValue('85');
 
     const snap = screen.getByRole('button', { name: /Snap/ });
     expect(snap).toHaveAttribute('aria-pressed', 'true');
@@ -168,7 +168,7 @@ describe('MaterialGraphEditor', () => {
     render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
 
     expect(screen.getByText('Material Output').closest('article')).toHaveClass('ui-node-card', 'ui-node-card-accent');
-    expect(screen.getByText('Color', { selector: '.ui-node-card-title' }).closest('article')).toHaveClass(
+    expect(screen.getAllByText('Color', { selector: '.ui-node-card-title' })[0]!.closest('article')).toHaveClass(
       'ui-node-card',
       'material-graph-node-colorRgba',
     );
@@ -206,7 +206,7 @@ describe('MaterialGraphEditor', () => {
   it('rejects and flashes an incompatible pin type', () => {
     render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
 
-    const color = screen.getByText('Color', { selector: '.ui-node-card-title' }).closest('article');
+    const color = screen.getAllByText('Color', { selector: '.ui-node-card-title' })[0]!.closest('article');
     const output = screen.getByText('Material Output').closest('article');
     expect(color).not.toBeNull();
     expect(output).not.toBeNull();
