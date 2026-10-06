@@ -91,9 +91,7 @@ describe('Material asset creation', () => {
       ),
     ).toBe(true);
     expect(
-      graph.connections.some(
-        (connection) => connection.to.nodeId === output?.id && connection.to.pin === 'emissive',
-      ),
+      graph.connections.some((connection) => connection.to.nodeId === output?.id && connection.to.pin === 'emissive'),
     ).toBe(true);
   });
 });

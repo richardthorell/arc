@@ -125,7 +125,6 @@ describe('native material compiler editor adapter', () => {
     );
   });
 
-
   it('keeps topology and parameter metadata changes on the shader compile path', () => {
     const before = createDefaultMaterialGraph();
     const topology = structuredClone(before);
