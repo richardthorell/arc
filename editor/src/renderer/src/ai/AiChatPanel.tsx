@@ -852,10 +852,12 @@ export function AiChatPanel({
               <AiContextChips references={pendingContext} onRemove={removePendingContext} />
               <textarea
                 aria-label="Chat prompt"
+                autoCorrect="off"
                 disabled={!activeProvider || streaming}
                 placeholder={activeProvider ? 'Ask anything...' : 'The model for this conversation is unavailable'}
                 value={prompt}
                 rows={3}
+                spellCheck={false}
                 onChange={(event) => setPrompt(event.target.value)}
                 onKeyDown={handleComposerKeyDown}
               />
@@ -934,10 +936,12 @@ export function AiChatPanel({
                   <AiContextChips references={pendingContext} onRemove={removePendingContext} />
                   <textarea
                     aria-label="Start a conversation"
+                    autoCorrect="off"
                     disabled={streaming}
                     placeholder="Ask anything..."
                     value={prompt}
                     rows={3}
+                    spellCheck={false}
                     onChange={(event) => setPrompt(event.target.value)}
                     onKeyDown={handleComposerKeyDown}
                   />
