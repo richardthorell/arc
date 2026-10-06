@@ -650,7 +650,7 @@ export function MaterialGraphEditor({
     const query = nodeSearch.trim().toLocaleLowerCase();
     return materialGraphDomain
       .getNodeDefinitions()
-      .filter((definition) => definition.type !== 'output' && definition.type !== 'colorRgb')
+      .filter((definition) => definition.type !== 'output')
       .filter(
         (definition) =>
           !query ||
