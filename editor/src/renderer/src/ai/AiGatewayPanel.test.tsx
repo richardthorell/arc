@@ -187,13 +187,17 @@ describe('AiChatPanel', () => {
 
     render(<AiChatPanel persistConversations={false} provider={configuredProvider} />);
 
-    fireEvent.change(screen.getByLabelText('Start a conversation'), { target: { value: 'Create something' } });
+    fireEvent.change(screen.getByLabelText('Start a conversation'), {
+      target: { value: 'Create something' },
+    });
     fireEvent.click(screen.getByLabelText('Start conversation'));
 
     await waitFor(() => expect(revoke).toHaveBeenCalledWith('arc.builtin-ai'));
     await waitFor(() => expect(screen.getByText('Hello from ARC.')).toBeInTheDocument());
 
-    fireEvent.change(screen.getByLabelText('Chat prompt'), { target: { value: 'Change it' } });
+    fireEvent.change(screen.getByLabelText('Chat prompt'), {
+      target: { value: 'Change it' },
+    });
     fireEvent.click(screen.getByLabelText('Send prompt'));
 
     await waitFor(() => expect(revoke).toHaveBeenCalledTimes(2));
