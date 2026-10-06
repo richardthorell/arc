@@ -68,6 +68,12 @@ const taskDiagnosticSnapshot = (task: AiTaskProgress): string => {
 const diagnosticLine = (kind: string, detail: string): string =>
   `${new Date().toISOString()} ${kind} ${detail}`;
 
+const diagnosticToolError = (content: unknown): string => {
+  if (typeof content !== 'string') return '';
+  const compact = content.replace(/\s+/gu, ' ').trim();
+  return compact ? ` message="${compact.slice(0, 320)}"` : '';
+};
+
 const approvalModeOptions: ReadonlyArray<UiDropdownOption<AiAgentApprovalMode>> = [
   { value: 'ask', label: 'Ask', icon: <ShieldCheck aria-hidden="true" size={13} /> },
   { value: 'auto', label: 'Auto approve', icon: <Zap aria-hidden="true" size={13} /> },
@@ -467,7 +473,7 @@ export function AiChatPanel({
               ...(message.taskDiagnostics ?? []),
               diagnosticLine(
                 'tool-result',
-                `step=${event.agentStep ?? '-'} name=${event.result.name} id=${event.result.toolCallId} status=${event.result.isError ? 'error' : 'ok'} retryable=${event.result.retryable ? 'true' : 'false'} code=${event.result.errorCode ?? '-'}`,
+                `step=${event.agentStep ?? '-'} name=${event.result.name} id=${event.result.toolCallId} status=${event.result.isError ? 'error' : 'ok'} retryable=${event.result.retryable ? 'true' : 'false'} code=${event.result.errorCode ?? '-'}${event.result.isError ? diagnosticToolError(event.result.content) : ''}`,
               ),
             ],
           }));
