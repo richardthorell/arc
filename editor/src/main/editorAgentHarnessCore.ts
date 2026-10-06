@@ -565,6 +565,8 @@ export class EditorAgentHarness {
           worldEpoch: this.worldEpoch,
           frameRevision: this.frameRevision,
         };
+      case 'agent.presentChoices':
+        return params;
       case 'scene.overview':
         return this.expect(
           await this.host.query('gateway.sceneEntities', {

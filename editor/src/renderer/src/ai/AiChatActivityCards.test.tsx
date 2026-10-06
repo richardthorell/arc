@@ -70,6 +70,33 @@ describe('AiChatToolActivityCard', () => {
     expect(screen.getByRole('button', { name: 'Copied' })).toBeVisible();
   });
 
+  it('renders agent.presentChoices as an interactive asset choice card', () => {
+    const onChoice = vi.fn();
+    render(
+      <AiChatToolActivityCard
+        onChoice={onChoice}
+        reference={reference({
+          name: 'agent.presentChoices',
+          operation: 'agent.presentChoices',
+          arguments: {
+            title: 'Choose a rock',
+            prompt: 'Pick one before placement.',
+            selection: 'single',
+            options: [
+              { uri: 'arc://asset/rock-a', label: 'Granite Rock 03', reason: 'Closest silhouette.' },
+              { uri: 'arc://asset/rock-b', label: 'Cliff Rock Large', reason: 'Larger foreground shape.' },
+            ],
+          },
+          resultContent: '{"ok":true}',
+        })}
+      />,
+    );
+
+    expect(screen.getByText('Choose a rock')).toBeVisible();
+    expect(screen.getByText('Pick one before placement.')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Use this' })).toBeDisabled();
+  });
+
   it('specializes asset, viewport, and error tool activity', () => {
     const { container, rerender } = render(
       <AiChatToolActivityCard reference={reference({ name: 'assets.list', operation: 'assets.list' })} />,

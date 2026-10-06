@@ -24,6 +24,12 @@ export type {
   UiAgentActivityState,
   UiAgentStructuredCardProps,
 } from './UiAgentActivityCard';
+export { UiAgentAssetChoiceCard, UiAgentChoiceCard } from './UiAgentChoiceCard';
+export type {
+  UiAgentAssetChoiceCardProps,
+  UiAgentAssetChoiceOption,
+  UiAgentChoiceCardProps,
+} from './UiAgentChoiceCard';
 export { UiButton } from './UiButton';
 export { UiColorControl } from './UiColorControl';
 export type { UiColorControlProps } from './UiColorControl';

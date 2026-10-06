@@ -1,6 +1,7 @@
 import type { AiConversationTaskReference, AiConversationToolReference } from '../../../common/aiConversationTypes';
 import {
   UiAgentAssetCard,
+  UiAgentAssetChoiceCard,
   UiAgentCardActionRow,
   UiAgentCardCopyAction,
   UiAgentToolCard,
@@ -10,6 +11,40 @@ import {
 import { AiChatLiveProgress } from './AiChatLiveProgress';
 
 const detailCharacterLimit = 1800;
+
+type AssetChoicePayload = {
+  title: string;
+  prompt?: string;
+  options: Array<{ uri: string; label: string; reason?: string }>;
+};
+
+const assetChoicePayload = (reference: AiConversationToolReference): AssetChoicePayload | null => {
+  if (reference.name !== 'agent.presentChoices' || !reference.arguments) return null;
+  const title = reference.arguments.title;
+  const prompt = reference.arguments.prompt;
+  const selection = reference.arguments.selection;
+  const options = reference.arguments.options;
+  if (typeof title !== 'string' || (selection !== undefined && selection !== 'single') || !Array.isArray(options))
+    return null;
+
+  const parsedOptions: AssetChoicePayload['options'] = [];
+  for (const option of options) {
+    if (!option || typeof option !== 'object' || Array.isArray(option)) return null;
+    const record = option as Record<string, unknown>;
+    if (typeof record.uri !== 'string' || typeof record.label !== 'string') return null;
+    parsedOptions.push({
+      uri: record.uri,
+      label: record.label,
+      ...(typeof record.reason === 'string' ? { reason: record.reason } : {}),
+    });
+  }
+  if (parsedOptions.length < 2) return null;
+  return {
+    title,
+    ...(typeof prompt === 'string' ? { prompt } : {}),
+    options: parsedOptions,
+  };
+};
 
 const boundedText = (value: string): string =>
   value.length <= detailCharacterLimit ? value : `${value.slice(0, detailCharacterLimit)}\n…`;
@@ -114,7 +149,31 @@ export function AiChatTaskActivityCard({ reference }: { reference: AiConversatio
   );
 }
 
-export function AiChatToolActivityCard({ reference }: { reference: AiConversationToolReference }) {
+export function AiChatToolActivityCard({
+  reference,
+  onChoice,
+  choiceDisabled = false,
+}: {
+  reference: AiConversationToolReference;
+  onChoice?: (uri: string, label: string) => void;
+  choiceDisabled?: boolean;
+}) {
+  const choice = assetChoicePayload(reference);
+  if (choice && reference.state === 'complete') {
+    return (
+      <UiAgentAssetChoiceCard
+        disabled={choiceDisabled || !onChoice}
+        options={choice.options}
+        prompt={choice.prompt}
+        title={choice.title}
+        onChoose={(uri) => {
+          const selected = choice.options.find((option) => option.uri === uri);
+          if (selected) onChoice?.(selected.uri, selected.label);
+        }}
+      />
+    );
+  }
+
   const state = activityStateFor(reference);
   const details = <ToolDetails reference={reference} />;
   const duration = durationLabel(reference);

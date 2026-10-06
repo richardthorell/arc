@@ -674,6 +674,32 @@ export function AiChatPanel({
     if (result.completed) setPendingContext([]);
   };
 
+  const submitAssetChoice = async (uri: string, label: string) => {
+    if (!activeConversation || !activeProvider || streaming) return;
+
+    historyPinnedToBottomRef.current = true;
+    const userMessage = createAiMessage('user', `Use [${label}](${uri}).`);
+    const assistantMessage: AiChatMessage = {
+      ...createAiMessage('assistant', '', 'streaming'),
+      modelId: activeProvider.id,
+      modelLabel: activeProvider.label,
+    };
+    const requestMessages = [...activeConversation.messages, userMessage];
+
+    setConversations((current) =>
+      current.map((conversation) =>
+        conversation.id === activeConversation.id
+          ? {
+              ...conversation,
+              updatedAt: new Date().toISOString(),
+              messages: [...conversation.messages, userMessage, assistantMessage],
+            }
+          : conversation,
+      ),
+    );
+    await streamResponse(activeConversation.id, activeProvider, activeConversation, requestMessages, assistantMessage);
+  };
+
   const retryFailedResponse = async (messageId: string) => {
     if (!activeConversation || streaming) return;
     const messageIndex = activeConversation.messages.findIndex((message) => message.id === messageId);
@@ -776,7 +802,14 @@ export function AiChatPanel({
     const approval = renderApprovalOutcome(reference);
     if (approval) return approval;
     if (reference.name === 'edit.request') return null;
-    return <AiChatToolActivityCard key={`tool-${reference.toolCallId}`} reference={reference} />;
+    return (
+      <AiChatToolActivityCard
+        choiceDisabled={streaming}
+        key={`tool-${reference.toolCallId}`}
+        reference={reference}
+        onChoice={(uri, label) => void submitAssetChoice(uri, label)}
+      />
+    );
   };
 
   const renderMessages = (conversation: AiConversation) => (
