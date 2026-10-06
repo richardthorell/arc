@@ -12,6 +12,7 @@ export type AssetPickerItem = {
   guid?: string;
   typeId?: string;
   name: string;
+  title?: string;
   path: string;
   sourcePath?: string;
   kind: string;
@@ -51,7 +52,7 @@ const extensionOf = (path: string) => {
 };
 const basenameOf = (path: string) => path.split(/[\\/]/).pop() || path;
 const displayNameOf = (asset?: AssetPickerItem, fallback = '') => {
-  const raw = asset?.name || basenameOf(fallback);
+  const raw = asset?.title?.trim() || asset?.name || basenameOf(fallback);
   const extension = extensionOf(asset?.path || fallback);
   return extension && raw.toLocaleLowerCase().endsWith(extension)
     ? raw.slice(0, Math.max(0, raw.length - extension.length))
@@ -416,6 +417,7 @@ export function MaterialPicker({
       guid: asset.guid,
       typeId: asset.typeId,
       name: asset.name,
+      title: asset.title,
       path: asset.path,
       kind: 'material',
       status: asset.status,
@@ -543,7 +545,7 @@ function AssetPickerPopover({
   const [createError, setCreateError] = useState('');
   const [creating, setCreating] = useState(false);
   const shown = assets.filter((asset) =>
-    `${asset.name} ${asset.path}`.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()),
+    `${asset.title ?? ''} ${asset.name} ${asset.path}`.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()),
   );
 
   useLayoutEffect(() => {

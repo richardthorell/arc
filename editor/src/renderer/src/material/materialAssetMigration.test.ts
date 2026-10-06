@@ -72,6 +72,25 @@ describe('material asset migration', () => {
     expect(graph.connections.some((connection) => connection.to.pin === 'anisotropy')).toBe(true);
   });
 
+  it('renames the canonical legacy Default Phong identity while preserving its compatibility shader reference', () => {
+    const result = upgradeMaterialAsset({
+      version: 3,
+      name: 'Default Phong',
+      shader: 'arc/default_phong',
+      domain: 'surface',
+      blendMode: 'opaque',
+      shadingModel: 'standard',
+      graph: null,
+    });
+
+    expect(result.upgraded).toBe(true);
+    expect(result.asset.name).toBe('Standard Lit');
+    expect(result.asset).not.toHaveProperty('shader');
+    expect(result.asset.migrationMetadata).toMatchObject({
+      legacyShader: 'arc/default_phong',
+    });
+  });
+
   it('migrates identical legacy inputs deterministically and is idempotent after upgrade', () => {
     const legacy = {
       version: 3,

@@ -10,7 +10,8 @@ describe('material parameter authoring metadata', () => {
     expect(
       materialAuthoringParameters(graph).map(({ name, group, sortOrder }) => ({ name, group, sortOrder })),
     ).toEqual([
-      { name: 'Base Color', group: 'Parameters', sortOrder: 0 },
+      { name: 'Base Color Texture', group: 'Parameters', sortOrder: 0 },
+      { name: 'Base Color Tint', group: 'Parameters', sortOrder: 0 },
       { name: 'Metallic', group: 'Parameters', sortOrder: 0 },
       { name: 'Roughness', group: 'Parameters', sortOrder: 0 },
     ]);
@@ -51,7 +52,8 @@ describe('material parameter authoring metadata', () => {
       })),
     ).toEqual([
       { name: 'Detail', group: 'Detail', description: undefined, sortOrder: 0 },
-      { name: 'Base Color', group: 'Parameters', description: undefined, sortOrder: 0 },
+      { name: 'Base Color Texture', group: 'Parameters', description: undefined, sortOrder: 0 },
+      { name: 'Base Color Tint', group: 'Parameters', description: undefined, sortOrder: 0 },
       { name: 'Metallic', group: 'Surface', description: undefined, sortOrder: 10 },
       { name: 'Roughness', group: 'Surface', description: 'Microsurface response', sortOrder: 20 },
     ]);
@@ -61,7 +63,7 @@ describe('material parameter authoring metadata', () => {
     const graph = createDefaultMaterialGraph();
     for (const node of graph.nodes) {
       if (node.parameter)
-        Object.assign(node.parameter, { group: node.parameter.name === 'Base Color' ? 'Color' : 'Surface' });
+        Object.assign(node.parameter, { group: node.parameter.name.startsWith('Base Color') ? 'Color' : 'Surface' });
     }
 
     expect(
@@ -70,7 +72,13 @@ describe('material parameter authoring metadata', () => {
         parameters: group.parameters.map((parameter) => ({ name: parameter.name, type: parameter.type })),
       })),
     ).toEqual([
-      { name: 'Color', parameters: [{ name: 'Base Color', type: 'vec4' }] },
+      {
+        name: 'Color',
+        parameters: [
+          { name: 'Base Color Texture', type: 'texture2d' },
+          { name: 'Base Color Tint', type: 'vec4' },
+        ],
+      },
       {
         name: 'Surface',
         parameters: [

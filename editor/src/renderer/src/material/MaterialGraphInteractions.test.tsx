@@ -68,17 +68,23 @@ describe('materialConnectionFlowIds', () => {
 
 describe('MaterialGraphWithInteractions', () => {
   it('shows animated flow direction and highlights both endpoint sockets on hover', () => {
-    const { container } = render(
-      <MaterialGraphWithInteractions document={document} graph={createDefaultMaterialGraph()} />,
+    const graph = createDefaultMaterialGraph();
+    const baseColorConnection = graph.connections.find(
+      (connection) => connection.to.nodeId === 'material-output' && connection.to.pin === 'baseColor',
     );
-    const wire = container.querySelector<SVGPathElement>('.material-wire-hit');
+    expect(baseColorConnection).toBeDefined();
+
+    const { container } = render(<MaterialGraphWithInteractions document={document} graph={graph} />);
+    const wire = container.querySelector<SVGPathElement>(
+      `[data-material-wire-id="${baseColorConnection!.id}"] .material-wire-hit`,
+    );
     expect(wire).not.toBeNull();
 
     fireEvent.pointerEnter(wire!, { clientX: 160, clientY: 120 });
 
-    expect(screen.getByRole('tooltip')).toHaveTextContent('Vector3 • Color.rgb → Base Color');
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Numeric • Multiply.result → Base Color');
     expect(container.querySelectorAll('.material-wire-chevron')).toHaveLength(0);
-    expect(container.querySelectorAll('.material-wire-flow-texture')).toHaveLength(3);
+    expect(container.querySelectorAll('.material-wire-flow-texture')).toHaveLength(5);
     const interaction = wire!.closest('.material-wire-interaction');
     expect(interaction).toHaveClass('is-flow', 'is-primary');
     const flowTexture = interaction!.querySelector('.material-wire-flow-texture');
@@ -87,11 +93,11 @@ describe('MaterialGraphWithInteractions', () => {
     expect(flowTexture).toHaveAttribute('d', wirePath!);
     expect(container.querySelectorAll('.material-wire-endpoint-cap.is-primary')).toHaveLength(2);
 
-    const color = screen.getByText('Color', { selector: '.ui-node-card-title' }).closest('article');
+    const multiply = screen.getByText('Multiply', { selector: '.ui-node-card-title' }).closest('article');
     const output = screen.getByText('Material Output').closest('article');
-    expect(color).not.toBeNull();
+    expect(multiply).not.toBeNull();
     expect(output).not.toBeNull();
-    expect(within(color!).getByRole('button', { name: 'RGB' })).toHaveClass('is-wire-endpoint');
+    expect(within(multiply!).getByRole('button', { name: 'Result' })).toHaveClass('is-wire-endpoint');
     expect(within(output!).getByRole('button', { name: 'Base Color' })).toHaveClass('is-wire-endpoint');
   });
 

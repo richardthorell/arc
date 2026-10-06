@@ -32,28 +32,24 @@ describe('native material compiler editor adapter', () => {
   it('derives exposed parameter presentation metadata without creating editor IR', () => {
     const graph = createDefaultMaterialGraph();
     expect(materialEditorParameters(graph).map((parameter) => parameter.name)).toEqual([
-      'Base Color',
+      'Base Color Tint',
+      'Base Color Texture',
       'Metallic',
       'Roughness',
     ]);
   });
 
-  it('exposes connected Texture Sample parameters as texture2d values', () => {
+  it('exposes the default Base Color Texture as a texture2d parameter', () => {
     const graph = createDefaultMaterialGraph();
-    const texture = createMaterialNode('textureSample', [160, 160], { texture: 'Content/Textures/albedo.png' });
-    texture.parameter = { exposed: true, name: 'Albedo' };
-    graph.nodes.push(texture);
-    graph.connections.push({
-      id: 'texture-to-base-color',
-      from: { nodeId: texture.id, pin: 'rgb' },
-      to: { nodeId: 'material-output', pin: 'baseColor' },
-    });
+    const texture = graph.nodes.find((node) => node.parameter?.name === 'Base Color Texture');
 
+    expect(texture).toBeDefined();
     expect(materialEditorParameters(graph)).toContainEqual(
       expect.objectContaining({
-        nodeId: texture.id,
-        name: 'Albedo',
+        nodeId: texture!.id,
+        name: 'Base Color Texture',
         type: 'texture2d',
+        editorKind: 'texture',
       }),
     );
   });
@@ -74,7 +70,7 @@ describe('native material compiler editor adapter', () => {
     const graph = createDefaultMaterialGraph();
     expect(materialEditorParameters(graph)).toContainEqual(
       expect.objectContaining({
-        name: 'Base Color',
+        name: 'Base Color Tint',
         nodeType: 'colorRgba',
         type: 'vec4',
         editorKind: 'color',
@@ -86,6 +82,16 @@ describe('native material compiler editor adapter', () => {
     const before = createDefaultMaterialGraph();
     const after = structuredClone(before);
     after.nodes[0].values = { ...after.nodes[0].values, value: [0.2, 0.3, 0.4, 1] };
+
+    expect(materialGraphEditImpact(before, after)).toBe('parameter-values');
+  });
+
+  it('treats assigning the default Base Color Texture as a parameter-only edit', () => {
+    const before = createDefaultMaterialGraph();
+    const after = structuredClone(before);
+    const texture = after.nodes.find((node) => node.parameter?.name === 'Base Color Texture');
+    expect(texture).toBeDefined();
+    texture!.values = { ...texture!.values, texture: 'Content/Textures/wall.png' };
 
     expect(materialGraphEditImpact(before, after)).toBe('parameter-values');
   });

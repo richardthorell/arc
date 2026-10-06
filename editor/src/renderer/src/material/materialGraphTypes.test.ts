@@ -15,11 +15,33 @@ describe('material graph schema', () => {
     expect(graph.version).toBe(1);
     expect(graph.nodes.find((node) => node.type === 'output')?.id).toBe('material-output');
     expect(graph.nodes.filter((node) => node.parameter?.exposed).map((node) => node.parameter?.name)).toEqual([
-      'Base Color',
+      'Base Color Tint',
+      'Base Color Texture',
       'Metallic',
       'Roughness',
     ]);
-    expect(graph.connections).toHaveLength(3);
+    const tint = graph.nodes.find((node) => node.parameter?.name === 'Base Color Tint');
+    const texture = graph.nodes.find((node) => node.parameter?.name === 'Base Color Texture');
+    const multiply = graph.nodes.find((node) => node.type === 'multiply');
+    expect(tint?.type).toBe('colorRgba');
+    expect(texture).toMatchObject({ type: 'textureSample2D', values: { texture: '', dimension: '2d' } });
+    expect(multiply).toBeDefined();
+    expect(
+      graph.connections.some(
+        (connection) => connection.from.nodeId === texture?.id && connection.to.nodeId === multiply?.id,
+      ),
+    ).toBe(true);
+    expect(
+      graph.connections.some(
+        (connection) => connection.from.nodeId === tint?.id && connection.to.nodeId === multiply?.id,
+      ),
+    ).toBe(true);
+    expect(
+      graph.connections.some(
+        (connection) => connection.from.nodeId === multiply?.id && connection.to.nodeId === 'material-output',
+      ),
+    ).toBe(true);
+    expect(graph.connections).toHaveLength(5);
   });
 
   it('defines texture sample UV input and channel outputs', () => {

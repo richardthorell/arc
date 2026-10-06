@@ -190,6 +190,36 @@ describe('AssetPicker', () => {
     await waitFor(() => expect(container.querySelector('.asset-reference-main img')).not.toBeNull());
   });
 
+  it('uses asset metadata titles for built-in material display names', async () => {
+    render(
+      <MaterialPicker
+        assets={[
+          {
+            id: 'standard-lit-guid',
+            guid: 'standard-lit-guid',
+            name: 'default_phong.arcmat',
+            title: 'Standard Lit',
+            path: 'materials/default_phong.arcmat',
+            kind: 'material',
+            status: 'ready',
+            scope: 'builtin',
+            readOnly: true,
+          },
+        ]}
+        label="Material"
+        value="materials/default_phong.arcmat"
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Standard Lit')).toBeVisible();
+    expect(screen.queryByText('default_phong')).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Choose Material asset' }));
+    expect(screen.getByRole('button', { name: 'Select Standard Lit' })).toBeVisible();
+  });
+
   it('creates and assigns a new material from the real project content root', async () => {
     const onChange = vi.fn();
     render(

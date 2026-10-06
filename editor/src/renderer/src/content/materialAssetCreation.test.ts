@@ -1,0 +1,79 @@
+import { describe, expect, it } from 'vitest';
+
+import type { MaterialAssetJson } from '../material/materialGraphTypes';
+import { buildAssetCreation } from './assetCreation';
+
+const project = {
+  root: 'D:/Project',
+  assetRoot: 'D:/Project/Content',
+};
+
+describe('Material asset creation', () => {
+  it('creates a texture-ready Standard Lit graph without requiring manual texture nodes', () => {
+    const definition = buildAssetCreation(project, {
+      kind: 'material',
+      name: 'Wall',
+      folder: 'Content/Materials',
+    });
+
+    expect(definition.asset).toMatchObject({
+      name: 'Wall.arcmat',
+      path: 'Content/Materials/Wall.arcmat',
+      kind: 'material',
+      scope: 'project',
+      status: 'ready',
+    });
+
+    const asset = JSON.parse(definition.contents) as MaterialAssetJson;
+    expect(asset).toMatchObject({
+      version: 4,
+      name: 'Wall',
+      domain: 'surface',
+      blendMode: 'opaque',
+      shadingModel: 'standard',
+    });
+
+    const graph = asset.graph!;
+    const tint = graph.nodes.find((node) => node.parameter?.name === 'Base Color Tint');
+    const texture = graph.nodes.find((node) => node.parameter?.name === 'Base Color Texture');
+    const multiply = graph.nodes.find((node) => node.type === 'multiply');
+    const output = graph.nodes.find((node) => node.type === 'output');
+
+    expect(tint).toMatchObject({
+      type: 'colorRgba',
+      values: { value: [0.78, 0.8, 0.84, 1] },
+    });
+    expect(texture).toMatchObject({
+      type: 'textureSample2D',
+      values: { texture: '', dimension: '2d' },
+    });
+    expect(multiply).toBeDefined();
+    expect(output).toBeDefined();
+    expect(
+      graph.connections.some((connection) => connection.to.nodeId === texture?.id && connection.to.pin === 'uv'),
+    ).toBe(false);
+    expect(
+      graph.connections.some(
+        (connection) =>
+          connection.from.nodeId === texture?.id &&
+          connection.from.pin === 'rgb' &&
+          connection.to.nodeId === multiply?.id,
+      ),
+    ).toBe(true);
+    expect(
+      graph.connections.some(
+        (connection) =>
+          connection.from.nodeId === tint?.id && connection.from.pin === 'rgb' && connection.to.nodeId === multiply?.id,
+      ),
+    ).toBe(true);
+    expect(
+      graph.connections.some(
+        (connection) =>
+          connection.from.nodeId === multiply?.id &&
+          connection.from.pin === 'result' &&
+          connection.to.nodeId === output?.id &&
+          connection.to.pin === 'baseColor',
+      ),
+    ).toBe(true);
+  });
+});
