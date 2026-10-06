@@ -1227,6 +1227,10 @@ private:
 
     bool draw_runtime_material_gbuffer(VkCommandBuffer command_buffer, const virtual_cluster_draw& draw);
 
+    bool draw_runtime_material_forward(VkCommandBuffer command_buffer, const draw_mesh_event& draw);
+
+    bool draw_runtime_material_forward(VkCommandBuffer command_buffer, const virtual_cluster_draw& draw);
+
     void destroy_mesh_pipeline() noexcept;
 
     void destroy_white_texture() noexcept;
