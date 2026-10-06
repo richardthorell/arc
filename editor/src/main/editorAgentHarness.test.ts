@@ -161,6 +161,24 @@ describe('EditorAgentHarness', () => {
     );
   });
 
+  it('passes agent choice payloads through without native editor work', async () => {
+    const host = new MockHost();
+    const harness = new EditorAgentHarness(host);
+    const payload = {
+      title: 'Choose a rock',
+      prompt: 'Pick one before placement.',
+      selection: 'single',
+      options: [
+        { uri: 'arc://asset/rock-a', label: 'Rock A' },
+        { uri: 'arc://asset/rock-b', label: 'Rock B' },
+      ],
+    };
+
+    await expect(harness.invoke('agent.presentChoices', payload, 'reader')).resolves.toEqual(payload);
+    expect(host.commands).toHaveLength(0);
+    expect(host.queries).toHaveLength(0);
+  });
+
   it('reports native authority revisions on GUID-first reads', async () => {
     const host = new MockHost();
     const gateway = new EditorAgentHarness(host);
