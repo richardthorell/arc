@@ -943,8 +943,8 @@ export class EditorAgentHarness {
     return {
       operation: 'configure-apply-settle-capture',
       requested: {
-        renderOptions: Object.keys(requestedOptions).length > 0 ? requestedOptions : undefined,
-        camera: Object.keys(movement).length > 0 ? movement : undefined,
+        ...(Object.keys(requestedOptions).length > 0 ? { renderOptions: requestedOptions } : {}),
+        ...(Object.keys(movement).length > 0 ? { camera: movement } : {}),
         settleFrames: waitFrames,
       },
       effective: {
@@ -957,10 +957,10 @@ export class EditorAgentHarness {
         capturedFrame: Number(capture.frameIndex ?? 0),
         finalFrame: Number(after.frameIndex ?? 0),
       },
-      renderOptions,
+      ...(renderOptions !== undefined ? { renderOptions } : {}),
       renderer,
       capture,
-      comparison,
+      ...(comparison !== undefined ? { comparison } : {}),
       anomalies: [
         ...this.collectDiagnosticAnomalies(renderer, capture),
         ...this.cameraAnomalies(asObject(capture.camera)),
