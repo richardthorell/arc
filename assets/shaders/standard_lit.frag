@@ -114,7 +114,7 @@ vec3 material_clear_coat_normal(arc_material_inputs material_input, vec3 fallbac
     return normalize(mat3(t, b, fallback) * mapped);
 }
 
-arc_material_surface arc_evaluate_standard_lit_material(arc_material_inputs material_input)
+arc_material_surface arc_evaluate_legacy_material(arc_material_inputs material_input)
 {
     arc_material_surface material = arc_default_material_surface(material_input);
     vec4 sampled_base = has_texture(1.0) ? arc_sample_texture_2d(base_texture, material_input.uv0, 0u) : vec4(1.0);
@@ -157,7 +157,7 @@ arc_material_surface arc_evaluate_standard_lit_material(arc_material_inputs mate
 
 arc_material_surface arc_evaluate_material(arc_material_inputs material_input)
 {
-    return arc_evaluate_standard_lit_material(material_input);
+    return arc_evaluate_legacy_material(material_input);
 }
 
 void main()
