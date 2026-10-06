@@ -456,6 +456,123 @@ describe('AI agent task progress', () => {
     });
   });
 
+  it('keeps a failed middle step active while recovering and preserves the final step', async () => {
+    let providerTurn = 0;
+    let decorateAttempt = 0;
+    const execute = () =>
+      (async function* (): AsyncGenerator<AiRuntimeStreamEvent> {
+        ++providerTurn;
+        if (providerTurn === 1) {
+          yield {
+            type: 'tool-call',
+            call: {
+              id: 'plan',
+              name: 'agent.updatePlan',
+              arguments: {
+                planId: 'playground-plan',
+                title: 'Build playground',
+                steps: [
+                  { id: 'layout', title: 'Lay out playground', state: 'in_progress' },
+                  { id: 'decorate', title: 'Add colorful props', state: 'planned' },
+                  { id: 'tag', title: 'Tag result', state: 'planned' },
+                ],
+              },
+            },
+          };
+          yield {
+            type: 'tool-call',
+            call: { id: 'layout-tool', name: 'editor.applyBatch', arguments: { operations: [] } },
+          };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        if (providerTurn === 2 || providerTurn === 3) {
+          yield {
+            type: 'tool-call',
+            call: {
+              id: `decorate-${providerTurn}`,
+              name: 'editor.applyBatch',
+              arguments: { operations: [] },
+            },
+          };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        if (providerTurn === 4) {
+          yield {
+            type: 'tool-call',
+            call: { id: 'tag-tool', name: 'editor.applyBatch', arguments: { operations: [] } },
+          };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        yield {
+          type: 'tool-call',
+          call: {
+            id: 'final-plan',
+            name: 'agent.updatePlan',
+            arguments: {
+              planId: 'playground-plan',
+              title: 'Build playground',
+              steps: [
+                { id: 'layout', title: 'Lay out playground', state: 'completed' },
+                { id: 'decorate', title: 'Add colorful props', state: 'completed' },
+                { id: 'tag', title: 'Tag result', state: 'completed' },
+              ],
+            },
+          },
+        };
+        yield { type: 'done', finishReason: 'tool_calls' };
+      })();
+
+    const invokeTool = vi.fn(async (call: AiToolCall) => {
+      if (call.id.startsWith('decorate-')) {
+        ++decorateAttempt;
+        if (decorateAttempt === 1) throw new Error('temporary editor mutation failure');
+      }
+      return {
+        name: call.name,
+        operation: call.name,
+        content: '{}',
+        truncated: false,
+        originalBytes: 2,
+      };
+    });
+
+    const events = await collect(runAiAgentToolLoop(request, execute, invokeTool, { maximumSteps: 6 }));
+    const tasks = events.filter(
+      (event): event is Extract<AiRuntimeStreamEvent, { type: 'task-update' }> => event.type === 'task-update',
+    );
+
+    expect(tasks.some((event) => flattenState(event.task).includes('failed'))).toBe(false);
+
+    const retrying = tasks.find((event) =>
+      event.task.children?.some(
+        (step) => step.id === 'decorate' && step.state === 'in_progress' && step.detail?.startsWith('Retrying after '),
+      ),
+    );
+    expect(retrying?.task.children).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'layout', state: 'completed' }),
+        expect.objectContaining({ id: 'decorate', state: 'in_progress' }),
+        expect.objectContaining({ id: 'tag', state: 'planned' }),
+      ]),
+    );
+
+    const recovered = tasks.find((event) =>
+      event.task.children?.some((step) => step.id === 'decorate' && step.state === 'completed') &&
+      event.task.children?.some((step) => step.id === 'tag' && step.state === 'in_progress'),
+    );
+    expect(recovered).toBeDefined();
+    expect(tasks.at(-1)?.task.children).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'layout', state: 'completed' }),
+        expect.objectContaining({ id: 'decorate', state: 'completed' }),
+        expect.objectContaining({ id: 'tag', state: 'completed' }),
+      ]),
+    );
+  });
+
   it('only recovers a failed persisted task when a new tool call proves a retry', () => {
     const failed = recordConversationTaskUpdate(
       undefined,
