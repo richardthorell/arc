@@ -7,16 +7,6 @@ namespace arc::render::vulkan::backend_detail
 {
 void vulkan_render_backend::destroy_mesh_pipeline() noexcept
 {
-    if (water_surface_pipeline_ != VK_NULL_HANDLE)
-    {
-        vkDestroyPipeline(device_, water_surface_pipeline_, nullptr);
-        water_surface_pipeline_ = VK_NULL_HANDLE;
-    }
-    if (water_surface_pipeline_layout_ != VK_NULL_HANDLE)
-    {
-        vkDestroyPipelineLayout(device_, water_surface_pipeline_layout_, nullptr);
-        water_surface_pipeline_layout_ = VK_NULL_HANDLE;
-    }
     const auto destroy_debug_pipeline = [&](VkPipeline& pipeline)
     {
         if (pipeline == VK_NULL_HANDLE) return;
