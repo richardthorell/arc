@@ -346,7 +346,7 @@ describe('AI agent task progress', () => {
     });
   });
 
-  it('advances plan steps after successful tool turns and preserves omitted completed history', async () => {
+  it('advances plan steps when the next semantic tool turn begins and preserves omitted completed history', async () => {
     let providerTurn = 0;
     const execute = () =>
       (async function* (): AsyncGenerator<AiRuntimeStreamEvent> {
@@ -418,6 +418,12 @@ describe('AI agent task progress', () => {
     const tasks = events.filter(
       (event): event is Extract<AiRuntimeStreamEvent, { type: 'task-update' }> => event.type === 'task-update',
     );
+
+    const firstTurnStates = tasks
+      .filter((event) => event.task.children?.some((step) => step.id === 'layout' && step.toolCallIds?.includes('layout-tool')))
+      .map((event) => event.task.children?.find((step) => step.id === 'layout')?.state);
+    expect(firstTurnStates).toContain('in_progress');
+    expect(firstTurnStates).not.toContain('completed');
 
     const afterLayout = tasks.find((event) =>
       event.task.children?.some((step) => step.id === 'layout' && step.state === 'completed') &&
