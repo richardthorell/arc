@@ -72,7 +72,6 @@ describe('material asset migration', () => {
     expect(graph.connections.some((connection) => connection.to.pin === 'anisotropy')).toBe(true);
   });
 
-
   it('migrates identical legacy inputs deterministically and is idempotent after upgrade', () => {
     const legacy = {
       version: 3,
