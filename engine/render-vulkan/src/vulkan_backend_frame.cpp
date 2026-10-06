@@ -1793,6 +1793,8 @@ void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool
                     continue;
                 }
 
+                if (!material_is_terrain(draw) && draw_runtime_material_forward(command_buffer, draw)) continue;
+
                 draw_with_pipeline(draw, material_is_terrain(draw) && draw.material_attribute_texture.valid() &&
                                                  terrain_surface_pipeline_ != VK_NULL_HANDLE
                                              ? terrain_surface_pipeline_
@@ -1813,6 +1815,8 @@ void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool
                 if (material_alpha_mode_for(draw.draw) == material_alpha_mode::blend) continue;
 
                 if (deferred_rendered && !material_requires_forward(draw.draw)) continue;
+
+                if (!material_is_terrain(draw.draw) && draw_runtime_material_forward(command_buffer, draw)) continue;
 
                 draw_virtual_with_pipeline(draw, material_is_terrain(draw.draw) &&
                                                          draw.draw.material_attribute_texture.valid() &&
@@ -1841,7 +1845,7 @@ void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool
             {
                 if (water_surface_pipeline_ != VK_NULL_HANDLE && water_simulation_for(draw->object_id))
                     draw_with_pipeline(*draw, water_surface_pipeline_);
-                else
+                else if (!draw_runtime_material_forward(command_buffer, *draw))
                     draw_with_pipeline(*draw, mesh_transparent_pipeline_ != VK_NULL_HANDLE ? mesh_transparent_pipeline_
                                                                                            : mesh_pipeline_);
             }
