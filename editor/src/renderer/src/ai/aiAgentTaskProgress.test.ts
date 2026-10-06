@@ -187,7 +187,7 @@ describe('AI agent task progress', () => {
     });
   });
 
-  it('keeps retryable revision conflicts in progress instead of flashing failed', async () => {
+  it('keeps retryable revision conflicts provisional until the agent finishes', async () => {
     let providerTurn = 0;
     const execute = () =>
       (async function* (): AsyncGenerator<AiRuntimeStreamEvent> {
@@ -228,11 +228,17 @@ describe('AI agent task progress', () => {
       (event): event is Extract<AiRuntimeStreamEvent, { type: 'task-update' }> => event.type === 'task-update',
     );
 
-    expect(tasks.some((event) => flattenState(event.task).includes('failed'))).toBe(false);
+    expect(
+      tasks.some((event) =>
+        event.task.children?.some(
+          (step) => step.id === 'apply' && step.state === 'in_progress' && step.detail === 'Retrying after editor.applyBatch',
+        ),
+      ),
+    ).toBe(true);
     expect(tasks.at(-1)?.task).toMatchObject({
       id: 'scene-plan',
-      state: 'in_progress',
-      children: [{ id: 'apply', state: 'in_progress', detail: 'Retrying after editor.applyBatch' }],
+      state: 'failed',
+      children: [{ id: 'apply', state: 'failed', detail: 'Failed while running editor.applyBatch' }],
     });
   });
 
@@ -531,12 +537,14 @@ describe('AI agent task progress', () => {
       (event): event is Extract<AiRuntimeStreamEvent, { type: 'task-update' }> => event.type === 'task-update',
     );
 
-    const beforePlanTransition = tasks.filter((event) =>
-      event.task.children?.some((step) => step.id === 'layout' && step.toolCallIds?.length),
-    );
     expect(
-      beforePlanTransition.every((event) =>
-        event.task.children?.some((step) => step.id === 'layout' && step.state === 'in_progress'),
+      tasks.some((event) =>
+        event.task.children?.some(
+          (step) =>
+            step.id === 'layout' &&
+            step.state === 'in_progress' &&
+            step.toolCallIds?.includes('inspect-tool'),
+        ),
       ),
     ).toBe(true);
 
@@ -740,19 +748,23 @@ describe('AI agent task progress', () => {
           yield { type: 'done', finishReason: 'tool_calls' };
           return;
         }
-        yield {
-          type: 'tool-call',
-          call: {
-            id: 'final-plan',
-            name: 'agent.updatePlan',
-            arguments: {
-              planId: 'verify-plan',
-              title: 'Verify result',
-              steps: [{ id: 'verify', title: 'Verify result', state: 'completed' }],
+        if (providerTurn === 3) {
+          yield {
+            type: 'tool-call',
+            call: {
+              id: 'final-plan',
+              name: 'agent.updatePlan',
+              arguments: {
+                planId: 'verify-plan',
+                title: 'Verify result',
+                steps: [{ id: 'verify', title: 'Verify result', state: 'completed' }],
+              },
             },
-          },
-        };
-        yield { type: 'done', finishReason: 'tool_calls' };
+          };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        yield { type: 'done', finishReason: 'stop' };
       })();
 
     const invokeTool = vi.fn(async (call: AiToolCall) => ({
