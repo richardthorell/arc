@@ -573,6 +573,189 @@ describe('AI agent task progress', () => {
     );
   });
 
+  it('does not advance a task for edit control calls before the semantic mutation begins', async () => {
+    let providerTurn = 0;
+    const execute = () =>
+      (async function* (): AsyncGenerator<AiRuntimeStreamEvent> {
+        ++providerTurn;
+        if (providerTurn === 1) {
+          yield {
+            type: 'tool-call',
+            call: {
+              id: 'plan',
+              name: 'agent.updatePlan',
+              arguments: {
+                planId: 'robot-plan',
+                title: 'Build robot',
+                steps: [
+                  { id: 'design', title: 'Design robot', state: 'completed' },
+                  { id: 'build', title: 'Build robot', state: 'in_progress' },
+                  { id: 'verify', title: 'Verify robot', state: 'planned' },
+                ],
+              },
+            },
+          };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        const calls: Record<number, AiToolCall> = {
+          2: { id: 'request', name: 'edit.request', arguments: {} },
+          3: { id: 'begin', name: 'edit.begin', arguments: {} },
+          4: { id: 'apply', name: 'editor.applyBatch', arguments: { operations: [] } },
+          5: { id: 'inspect', name: 'scene.getEntity', arguments: {} },
+        };
+        const call = calls[providerTurn];
+        if (call) {
+          yield { type: 'tool-call', call };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        yield { type: 'done', finishReason: 'stop' };
+      })();
+
+    const invokeTool = vi.fn(async (call: AiToolCall) => ({
+      name: call.name,
+      operation: call.name,
+      content: '{}',
+      truncated: false,
+      originalBytes: 2,
+    }));
+
+    const events = await collect(runAiAgentToolLoop(request, execute, invokeTool));
+    const tasks = events.filter(
+      (event): event is Extract<AiRuntimeStreamEvent, { type: 'task-update' }> => event.type === 'task-update',
+    );
+
+    const beforeApply = tasks.filter((event) =>
+      event.task.children?.some((step) => step.id === 'build' && step.state === 'in_progress'),
+    );
+    expect(beforeApply.some((event) =>
+      event.task.children?.some((step) => step.id === 'build' && step.toolCallIds?.includes('request')),
+    )).toBe(false);
+    expect(beforeApply.some((event) =>
+      event.task.children?.some((step) => step.id === 'build' && step.toolCallIds?.includes('begin')),
+    )).toBe(false);
+
+    const applyLinked = tasks.find((event) =>
+      event.task.children?.some(
+        (step) => step.id === 'build' && step.state === 'in_progress' && step.toolCallIds?.includes('apply'),
+      ),
+    );
+    expect(applyLinked).toBeDefined();
+
+    const verifyActive = tasks.find((event) =>
+      event.task.children?.some((step) => step.id === 'build' && step.state === 'completed') &&
+      event.task.children?.some((step) => step.id === 'verify' && step.state === 'in_progress'),
+    );
+    expect(verifyActive).toBeDefined();
+  });
+
+  it('keeps the final task active across additional semantic verification turns', async () => {
+    let providerTurn = 0;
+    const execute = () =>
+      (async function* (): AsyncGenerator<AiRuntimeStreamEvent> {
+        ++providerTurn;
+        if (providerTurn === 1) {
+          yield {
+            type: 'tool-call',
+            call: {
+              id: 'plan',
+              name: 'agent.updatePlan',
+              arguments: {
+                planId: 'verify-plan',
+                title: 'Verify result',
+                steps: [{ id: 'verify', title: 'Verify result', state: 'in_progress' }],
+              },
+            },
+          };
+          yield {
+            type: 'tool-call',
+            call: { id: 'inspect-1', name: 'scene.getEntity', arguments: {} },
+          };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        if (providerTurn === 2) {
+          yield {
+            type: 'tool-call',
+            call: { id: 'inspect-2', name: 'viewport.debug', arguments: {} },
+          };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        yield {
+          type: 'tool-call',
+          call: {
+            id: 'final-plan',
+            name: 'agent.updatePlan',
+            arguments: {
+              planId: 'verify-plan',
+              title: 'Verify result',
+              steps: [{ id: 'verify', title: 'Verify result', state: 'completed' }],
+            },
+          },
+        };
+        yield { type: 'done', finishReason: 'tool_calls' };
+      })();
+
+    const invokeTool = vi.fn(async (call: AiToolCall) => ({
+      name: call.name,
+      operation: call.name,
+      content: '{}',
+      truncated: false,
+      originalBytes: 2,
+    }));
+
+    const events = await collect(runAiAgentToolLoop(request, execute, invokeTool));
+    const tasks = events.filter(
+      (event): event is Extract<AiRuntimeStreamEvent, { type: 'task-update' }> => event.type === 'task-update',
+    );
+
+    const secondInspect = tasks.find((event) =>
+      event.task.children?.some(
+        (step) => step.id === 'verify' && step.state === 'in_progress' && step.toolCallIds?.includes('inspect-2'),
+      ),
+    );
+    expect(secondInspect).toBeDefined();
+    expect(tasks.filter((event) => event.task.children?.some((step) => step.id === 'verify' && step.state === 'completed')))
+      .toHaveLength(1);
+  });
+
+  it('does not spend the semantic tool budget on edit control-only turns', async () => {
+    let providerTurn = 0;
+    const execute = () =>
+      (async function* (): AsyncGenerator<AiRuntimeStreamEvent> {
+        ++providerTurn;
+        const calls: AiToolCall[] = [
+          { id: 'request', name: 'edit.request', arguments: {} },
+          { id: 'begin', name: 'edit.begin', arguments: {} },
+          { id: 'commit', name: 'edit.commit', arguments: {} },
+          { id: 'observe-1', name: 'scene.overview', arguments: {} },
+          { id: 'observe-2', name: 'viewport.observe', arguments: {} },
+        ];
+        const call = calls[providerTurn - 1];
+        if (call) {
+          yield { type: 'tool-call', call };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        yield { type: 'done', finishReason: 'stop' };
+      })();
+
+    const invokeTool = vi.fn(async (call: AiToolCall) => ({
+      name: call.name,
+      operation: call.name,
+      content: '{}',
+      truncated: false,
+      originalBytes: 2,
+    }));
+
+    const events = await collect(runAiAgentToolLoop(request, execute, invokeTool, { maximumSteps: 2 }));
+
+    expect(events.some((event) => event.type === 'error' && event.message.includes('maximum of 2 tool steps'))).toBe(false);
+    expect(invokeTool).toHaveBeenCalledTimes(5);
+  });
+
   it('only recovers a failed persisted task when a new tool call proves a retry', () => {
     const failed = recordConversationTaskUpdate(
       undefined,
