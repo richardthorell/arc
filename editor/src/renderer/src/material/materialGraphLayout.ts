@@ -35,7 +35,6 @@ export const materialNodeWidth = (type: MaterialGraphNodeType) => {
       return 252;
     case 'vector4':
       return 286;
-    case 'colorRgb':
     case 'colorRgba':
       return 300;
     case 'textureSample':
@@ -58,7 +57,6 @@ const editableValueNode = (node: MaterialGraphNode) =>
   node.type === 'vector2' ||
   node.type === 'vector3' ||
   node.type === 'vector4' ||
-  node.type === 'colorRgb' ||
   node.type === 'colorRgba';
 
 export const materialNodeHeight = (node: MaterialGraphNode) => {
