@@ -22,9 +22,6 @@ export type AiContextPickerCandidate = {
   generation?: number;
 };
 
-const asRecord = (value: unknown): Record<string, unknown> | null =>
-  value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-
 const jsonRevision = (revision: AiContextRevision): AiJsonObject => ({
   ...(revision.sceneRevision !== undefined ? { sceneRevision: revision.sceneRevision } : {}),
   ...(revision.worldEpoch !== undefined ? { worldEpoch: revision.worldEpoch } : {}),
