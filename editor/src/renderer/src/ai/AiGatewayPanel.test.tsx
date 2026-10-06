@@ -112,6 +112,8 @@ describe('AiChatPanel', () => {
     expect(screen.queryByRole('region', { name: 'Active conversation' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Start a conversation')).toBeEnabled();
     expect(screen.getByLabelText('Start a conversation')).toHaveAttribute('placeholder', 'Ask anything...');
+    expect(screen.getByLabelText('Start a conversation')).toHaveAttribute('autocorrect', 'off');
+    expect(screen.getByLabelText('Start a conversation')).toHaveAttribute('spellcheck', 'false');
     expect(screen.getByRole('button', { name: 'Add context' })).toBeInTheDocument();
 
     const modelDropdown = screen.getByLabelText('Model');
@@ -223,6 +225,8 @@ describe('AiChatPanel', () => {
 
     fireEvent.change(screen.getByLabelText('Chat prompt'), { target: { value: 'Suggest a polish pass' } });
     expect(screen.getByLabelText('Chat prompt')).toHaveAttribute('placeholder', 'Ask anything...');
+    expect(screen.getByLabelText('Chat prompt')).toHaveAttribute('autocorrect', 'off');
+    expect(screen.getByLabelText('Chat prompt')).toHaveAttribute('spellcheck', 'false');
     expect(screen.getByLabelText('Send prompt')).toBeEnabled();
     fireEvent.click(screen.getByLabelText('Send prompt'));
 
