@@ -84,7 +84,7 @@ describe('MaterialGraphWithInteractions', () => {
 
     expect(screen.getByRole('tooltip')).toHaveTextContent('Numeric • Multiply.result → Base Color');
     expect(container.querySelectorAll('.material-wire-chevron')).toHaveLength(0);
-    expect(container.querySelectorAll('.material-wire-flow-texture')).toHaveLength(5);
+    expect(container.querySelectorAll('.material-wire-flow-texture')).toHaveLength(graph.connections.length);
     const interaction = wire!.closest('.material-wire-interaction');
     expect(interaction).toHaveClass('is-flow', 'is-primary');
     const flowTexture = interaction!.querySelector('.material-wire-flow-texture');
@@ -133,7 +133,7 @@ describe('MaterialGraphWithInteractions', () => {
 
   it('softly marks compatible sockets and tints incompatible sockets while connecting', () => {
     render(<MaterialGraphWithInteractions document={document} graph={createDefaultMaterialGraph()} />);
-    const color = screen.getByText('Color', { selector: '.ui-node-card-title' }).closest('article');
+    const color = screen.getAllByText('Color', { selector: '.ui-node-card-title' })[0]!.closest('article');
     const output = screen.getByText('Material Output').closest('article');
     expect(color).not.toBeNull();
     expect(output).not.toBeNull();
