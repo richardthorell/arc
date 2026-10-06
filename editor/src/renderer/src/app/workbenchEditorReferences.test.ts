@@ -64,6 +64,32 @@ describe('createWorkbenchEditorReferenceController', () => {
     expect(focusSelectedEntity).toHaveBeenCalledTimes(1);
   });
 
+  it('loads asset thumbnails through the ARC resource registry', async () => {
+    const resources = {
+      read: vi.fn(async (uri: string) => ({
+        uri: {} as never,
+        mediaType: 'image/png',
+        dataUrl: 'data:image/png;base64,material-thumb',
+      })),
+    };
+    const controller = createWorkbenchEditorReferenceController({
+      getProject: () => project,
+      selectEntity: vi.fn(),
+      focusSelectedEntity: vi.fn(),
+      selectAsset: vi.fn(),
+      openAsset: vi.fn(),
+      resources,
+    });
+    const reference = { kind: 'asset' as const, id: 'material-guid' };
+
+    await expect(Promise.resolve(controller.resolve(reference))).resolves.toMatchObject({
+      label: 'Brushed Metal',
+      subtitle: 'Material',
+      thumbnailUrl: 'data:image/png;base64,material-thumb',
+    });
+    expect(resources.read).toHaveBeenCalledWith('arc://asset/material-guid/thumbnail?size=64');
+  });
+
   it('resolves asset GUIDs and opens the asset only for focus', async () => {
     const selectAsset = vi.fn();
     const openAsset = vi.fn();
