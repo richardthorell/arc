@@ -1,3 +1,5 @@
+import { arcUri, parseArcUri } from './arcUri';
+
 export type EditorReferenceKind = 'entity' | 'asset' | 'scene';
 
 export type EditorReference = {
@@ -20,23 +22,15 @@ export type EditorReferenceController = {
   highlight?: (reference: EditorReference, active: boolean) => void | Promise<void>;
 };
 
-const editorReferencePattern = /^arc:\/\/(entity|asset|scene)\/([^/?#]+)$/u;
-
 export const parseEditorReference = (value: string): EditorReference | null => {
-  const match = editorReferencePattern.exec(value.trim());
-  if (!match) return null;
-
-  try {
-    const id = decodeURIComponent(match[2]);
-    if (!id.trim()) return null;
-    return { kind: match[1] as EditorReferenceKind, id };
-  } catch {
-    return null;
-  }
+  const parsed = parseArcUri(value);
+  if (!parsed || parsed.path.length || parsed.query.size) return null;
+  if (parsed.kind !== 'entity' && parsed.kind !== 'asset' && parsed.kind !== 'scene') return null;
+  return { kind: parsed.kind, id: parsed.id };
 };
 
 export const editorReferenceUri = (reference: EditorReference): string =>
-  `arc://${reference.kind}/${encodeURIComponent(reference.id)}`;
+  arcUri({ kind: reference.kind, id: reference.id });
 
 export type EditorReferenceHandlers = {
   resolveEntity?: (
