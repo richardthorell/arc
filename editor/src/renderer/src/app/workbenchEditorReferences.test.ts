@@ -66,8 +66,8 @@ describe('createWorkbenchEditorReferenceController', () => {
 
   it('loads asset thumbnails through the ARC resource registry', async () => {
     const resources = {
-      read: vi.fn(async (uri: string) => ({
-        uri: {} as never,
+      read: vi.fn(async () => ({
+        uri: { kind: 'asset', id: 'material-guid', path: ['thumbnail'], query: new Map() },
         mediaType: 'image/png',
         dataUrl: 'data:image/png;base64,material-thumb',
       })),
