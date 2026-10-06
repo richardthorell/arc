@@ -541,7 +541,7 @@ private:
 
     struct gpu_ocean_simulation
     {
-        water_render_instance instance;
+        fluid_surface_render_instance instance;
         water::ocean_simulation_profile profile;
         std::array<gpu_ocean_cascade, water::maximum_ocean_cascades> cascades;
         gpu_buffer surface_metadata;
@@ -1568,7 +1568,7 @@ private:
     std::vector<virtual_cluster_draw> frame_virtual_draws_;
     std::vector<draw_mesh_event> frame_shadow_draws_;
     std::vector<virtual_cluster_draw> frame_virtual_shadow_draws_;
-    std::vector<water_render_instance> frame_waters_;
+    std::vector<fluid_surface_render_instance> frame_fluid_surfaces_;
     std::vector<directional_light_event> frame_directional_lights_;
     std::vector<point_light_event> frame_point_lights_;
     std::vector<spot_light_event> frame_spot_lights_;
