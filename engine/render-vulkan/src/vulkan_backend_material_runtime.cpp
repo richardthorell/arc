@@ -28,6 +28,16 @@ texture_dimension material_texture_dimension(shader_parameter_type type) noexcep
     }
 }
 
+bool is_forward_scene_resource(const shader_resource_descriptor& resource) noexcept
+{
+    if (resource.set != 2u) return false;
+    return resource.name == "arcForwardLighting" || resource.name == "arcForwardDirectionalShadowMap" ||
+           resource.name == "arcForwardDirectionalShadowSampler" || resource.name == "arcForwardLocalShadowAtlas" ||
+           resource.name == "arcForwardLocalShadowSampler" || resource.name == "arcForwardSceneColor" ||
+           resource.name == "arcForwardSceneColorSampler" || resource.name == "arcForwardShadows" ||
+           resource.name == "arcForwardScene";
+}
+
 std::string_view material_texture_type_name(shader_parameter_type type) noexcept
 {
     switch (type)
@@ -42,11 +52,218 @@ std::string_view material_texture_type_name(shader_parameter_type type) noexcept
 }
 } // namespace
 
+bool vulkan_render_backend::ensure_forward_scene_resources()
+{
+    const auto frame_count = frame_resource_count();
+    const auto* directional = active_directional_shadow_light();
+    auto shadow_settings_value =
+        directional ? directional->shadow : shadow_settings{.enabled = false, .resolution = 2048};
+    shadow_settings_value.resolution = std::min(std::bit_ceil(std::max(shadow_settings_value.resolution, 1u)),
+                                                resolved_config_.directional_shadow_resolution);
+    if (!ensure_shadow_resources(shadow_settings_value) || !ensure_local_shadow_resources() ||
+        !ensure_shadow_uniform_buffers())
+        return false;
+
+    if (forward_scene_descriptor_set_layout_ != VK_NULL_HANDLE &&
+        forward_scene_descriptor_sets_.size() == frame_count && forward_scene_uniform_buffers_.size() == frame_count &&
+        forward_scene_color_.width == viewport_width_ && forward_scene_color_.height == viewport_height_)
+    {
+        update_forward_scene_resources();
+        return true;
+    }
+
+    wait_for_in_flight_frames();
+    destroy_forward_scene_resources();
+
+    const std::array bindings{
+        VkDescriptorSetLayoutBinding{0u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{1u, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{2u, VK_DESCRIPTOR_TYPE_SAMPLER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{3u, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{4u, VK_DESCRIPTOR_TYPE_SAMPLER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{5u, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{6u, VK_DESCRIPTOR_TYPE_SAMPLER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{7u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{8u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}};
+    const VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0u,
+                                                 static_cast<std::uint32_t>(bindings.size()), bindings.data()};
+    if (vkCreateDescriptorSetLayout(device_, &layout, nullptr, &forward_scene_descriptor_set_layout_) != VK_SUCCESS)
+        return false;
+
+    const std::array pool_sizes{VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, frame_count},
+                                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, frame_count * 3u},
+                                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLER, frame_count * 3u},
+                                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, frame_count * 2u}};
+    const VkDescriptorPoolCreateInfo pool{
+        VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, nullptr,          0u, frame_count,
+        static_cast<std::uint32_t>(pool_sizes.size()), pool_sizes.data()};
+    if (vkCreateDescriptorPool(device_, &pool, nullptr, &forward_scene_descriptor_pool_) != VK_SUCCESS) return false;
+
+    forward_scene_descriptor_sets_.resize(frame_count);
+    std::vector<VkDescriptorSetLayout> layouts(frame_count, forward_scene_descriptor_set_layout_);
+    const VkDescriptorSetAllocateInfo allocation{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr,
+                                                 forward_scene_descriptor_pool_, frame_count, layouts.data()};
+    if (vkAllocateDescriptorSets(device_, &allocation, forward_scene_descriptor_sets_.data()) != VK_SUCCESS)
+        return false;
+
+    forward_scene_uniform_buffers_.resize(frame_count);
+    for (auto& buffer : forward_scene_uniform_buffers_)
+        if (!create_buffer(sizeof(forward_scene_uniform_data), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                           VMA_MEMORY_USAGE_CPU_TO_GPU, buffer))
+            return false;
+
+    VkSamplerCreateInfo sampler{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+    sampler.magFilter = VK_FILTER_LINEAR;
+    sampler.minFilter = VK_FILTER_LINEAR;
+    sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    sampler.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler.maxLod = 0.0f;
+    if (vkCreateSampler(device_, &sampler, nullptr, &forward_scene_sampler_) != VK_SUCCESS) return false;
+
+    if (!ensure_graph_image(forward_scene_color_, viewport_width_, viewport_height_, scene_color_format_,
+                            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT))
+        return false;
+
+    update_forward_scene_resources();
+    return true;
+}
+
+void vulkan_render_backend::update_forward_scene_resources()
+{
+    const auto slot = current_frame_slot();
+    if (slot >= forward_scene_descriptor_sets_.size() || slot >= forward_scene_uniform_buffers_.size() ||
+        slot >= shadow_uniform_buffers_.size() || light_buffer_.buffer == VK_NULL_HANDLE ||
+        shadow_atlas_.array_view == VK_NULL_HANDLE || shadow_atlas_.sampler == VK_NULL_HANDLE ||
+        local_shadow_atlas_.view == VK_NULL_HANDLE || local_shadow_atlas_.sampler == VK_NULL_HANDLE ||
+        forward_scene_color_.view == VK_NULL_HANDLE || forward_scene_sampler_ == VK_NULL_HANDLE)
+        return;
+
+    forward_scene_uniform_data scene{};
+    scene.camera_position_viewport_width[0] = frame_camera_.position[0];
+    scene.camera_position_viewport_width[1] = frame_camera_.position[1];
+    scene.camera_position_viewport_width[2] = frame_camera_.position[2];
+    scene.camera_position_viewport_width[3] = static_cast<float>(viewport_width_);
+    if (frame_environment_.fog.enabled)
+    {
+        scene.fog_color_density[0] = frame_environment_.fog.color[0];
+        scene.fog_color_density[1] = frame_environment_.fog.color[1];
+        scene.fog_color_density[2] = frame_environment_.fog.color[2];
+        scene.fog_color_density[3] = frame_environment_.fog.density;
+        scene.fog_params_viewport_height[0] = frame_environment_.fog.start_distance;
+        scene.fog_params_viewport_height[1] = frame_environment_.fog.height_falloff;
+        scene.fog_params_viewport_height[2] = frame_environment_.fog.max_opacity;
+    }
+    scene.fog_params_viewport_height[3] = static_cast<float>(viewport_height_);
+
+    void* mapped{};
+    auto& scene_buffer = forward_scene_uniform_buffers_[slot];
+    if (vmaMapMemory(allocator_, scene_buffer.allocation, &mapped) == VK_SUCCESS)
+    {
+        std::memcpy(mapped, &scene, sizeof(scene));
+        vmaFlushAllocation(allocator_, scene_buffer.allocation, 0, sizeof(scene));
+        vmaUnmapMemory(allocator_, scene_buffer.allocation);
+    }
+
+    const VkDescriptorBufferInfo light_info{light_buffer_.buffer, 0u, sizeof(scene_lighting_data)};
+    const VkDescriptorImageInfo directional_image{VK_NULL_HANDLE, shadow_atlas_.array_view,
+                                                  VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL};
+    const VkDescriptorImageInfo directional_sampler{shadow_atlas_.sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED};
+    const VkDescriptorImageInfo local_image{VK_NULL_HANDLE, local_shadow_atlas_.view,
+                                            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL};
+    const VkDescriptorImageInfo local_sampler{local_shadow_atlas_.sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED};
+    const VkDescriptorImageInfo scene_image{VK_NULL_HANDLE, forward_scene_color_.view,
+                                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+    const VkDescriptorImageInfo scene_sampler{forward_scene_sampler_, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED};
+    const VkDescriptorBufferInfo shadow_info{shadow_uniform_buffers_[slot].buffer, 0u, sizeof(shadow_uniform_data)};
+    const VkDescriptorBufferInfo scene_info{scene_buffer.buffer, 0u, sizeof(forward_scene_uniform_data)};
+
+    std::array<VkWriteDescriptorSet, 9> writes{};
+    const auto set = forward_scene_descriptor_sets_[slot];
+    for (std::uint32_t binding = 0u; binding < writes.size(); ++binding)
+    {
+        writes[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[binding].dstSet = set;
+        writes[binding].dstBinding = binding;
+        writes[binding].descriptorCount = 1u;
+    }
+    writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    writes[0].pBufferInfo = &light_info;
+    writes[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    writes[1].pImageInfo = &directional_image;
+    writes[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    writes[2].pImageInfo = &directional_sampler;
+    writes[3].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    writes[3].pImageInfo = &local_image;
+    writes[4].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    writes[4].pImageInfo = &local_sampler;
+    writes[5].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    writes[5].pImageInfo = &scene_image;
+    writes[6].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    writes[6].pImageInfo = &scene_sampler;
+    writes[7].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writes[7].pBufferInfo = &shadow_info;
+    writes[8].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writes[8].pBufferInfo = &scene_info;
+    vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0u, nullptr);
+}
+
+VkDescriptorSet vulkan_render_backend::current_forward_scene_descriptor_set() const noexcept
+{
+    const auto slot = current_frame_slot();
+    return slot < forward_scene_descriptor_sets_.size() ? forward_scene_descriptor_sets_[slot] : VK_NULL_HANDLE;
+}
+
+void vulkan_render_backend::destroy_forward_scene_resources() noexcept
+{
+    for (auto& buffer : forward_scene_uniform_buffers_)
+        destroy_buffer(buffer);
+    forward_scene_uniform_buffers_.clear();
+    forward_scene_descriptor_sets_.clear();
+    destroy_graph_image(forward_scene_color_);
+    if (forward_scene_sampler_ != VK_NULL_HANDLE) vkDestroySampler(device_, forward_scene_sampler_, nullptr);
+    if (forward_scene_descriptor_pool_ != VK_NULL_HANDLE)
+        vkDestroyDescriptorPool(device_, forward_scene_descriptor_pool_, nullptr);
+    if (forward_scene_descriptor_set_layout_ != VK_NULL_HANDLE)
+        vkDestroyDescriptorSetLayout(device_, forward_scene_descriptor_set_layout_, nullptr);
+    forward_scene_sampler_ = VK_NULL_HANDLE;
+    forward_scene_descriptor_pool_ = VK_NULL_HANDLE;
+    forward_scene_descriptor_set_layout_ = VK_NULL_HANDLE;
+}
+
+bool vulkan_render_backend::capture_forward_scene_color(VkCommandBuffer command_buffer)
+{
+    if (!ensure_forward_scene_resources() || scene_color_.image == VK_NULL_HANDLE ||
+        forward_scene_color_.image == VK_NULL_HANDLE)
+        return false;
+
+    transition_shadow_atlas(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+    transition_local_shadow_atlas(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+    transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    transition_graph_image(command_buffer, forward_scene_color_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    const VkImageCopy copy{{VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u},
+                           {0, 0, 0},
+                           {VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u},
+                           {0, 0, 0},
+                           {viewport_width_, viewport_height_, 1u}};
+    vkCmdCopyImage(command_buffer, scene_color_.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, forward_scene_color_.image,
+                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1u, &copy);
+    transition_graph_image(command_buffer, forward_scene_color_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    update_forward_scene_resources();
+    return true;
+}
+
 void vulkan_render_backend::destroy_material_runtime(gpu_material_runtime& runtime) noexcept
 {
     if (runtime.gbuffer_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device_, runtime.gbuffer_pipeline, nullptr);
     if (runtime.forward_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device_, runtime.forward_pipeline, nullptr);
+    if (runtime.water_forward_pipeline != VK_NULL_HANDLE)
+        vkDestroyPipeline(device_, runtime.water_forward_pipeline, nullptr);
     if (runtime.pipeline_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(device_, runtime.pipeline_layout, nullptr);
+    if (runtime.water_pipeline_layout != VK_NULL_HANDLE)
+        vkDestroyPipelineLayout(device_, runtime.water_pipeline_layout, nullptr);
     if (runtime.descriptor_pool != VK_NULL_HANDLE) vkDestroyDescriptorPool(device_, runtime.descriptor_pool, nullptr);
     if (runtime.descriptor_set_layout != VK_NULL_HANDLE)
         vkDestroyDescriptorSetLayout(device_, runtime.descriptor_set_layout, nullptr);
@@ -324,8 +541,10 @@ bool vulkan_render_backend::create_runtime_material_descriptors(gpu_material& ma
     resources.reserve(reflection.resources.size());
     for (const auto& resource : reflection.resources)
     {
+        if (is_forward_scene_resource(resource)) continue;
         if (resource.set != 0u)
-            return reject_runtime_material(material, "compiled preview resources must currently use descriptor set 0");
+            return reject_runtime_material(material,
+                                           "compiled Material ABI contains an unsupported engine resource set");
         const auto descriptor_type = runtime_descriptor_type(resource.kind);
         if (descriptor_type == VK_DESCRIPTOR_TYPE_MAX_ENUM)
             return reject_runtime_material(material,
@@ -565,12 +784,19 @@ bool vulkan_render_backend::create_runtime_forward_pipeline(gpu_material& materi
 
     VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0u,
                              sizeof(mesh_push_constants)};
-    VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    if (material.runtime.descriptor_set_layout != VK_NULL_HANDLE)
+    if (!ensure_forward_scene_resources())
     {
-        layout.setLayoutCount = 1u;
-        layout.pSetLayouts = &material.runtime.descriptor_set_layout;
+        vkDestroyShaderModule(device_, vert, nullptr);
+        vkDestroyShaderModule(device_, frag, nullptr);
+        return reject_runtime_material(material, "failed to create forward scene resources");
     }
+    const VkDescriptorSetLayout material_layout = material.runtime.descriptor_set_layout != VK_NULL_HANDLE
+                                                      ? material.runtime.descriptor_set_layout
+                                                      : white_descriptor_set_layout_;
+    const std::array set_layouts{material_layout, white_descriptor_set_layout_, forward_scene_descriptor_set_layout_};
+    VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    layout.setLayoutCount = static_cast<std::uint32_t>(set_layouts.size());
+    layout.pSetLayouts = set_layouts.data();
     layout.pushConstantRangeCount = 1u;
     layout.pPushConstantRanges = &push;
     if (vkCreatePipelineLayout(device_, &layout, nullptr, &material.runtime.pipeline_layout) != VK_SUCCESS)
@@ -667,6 +893,166 @@ bool vulkan_render_backend::create_runtime_forward_pipeline(gpu_material& materi
     return true;
 }
 
+bool vulkan_render_backend::ensure_runtime_water_forward_pipeline(gpu_material& material)
+{
+    if (!ensure_runtime_forward_pipeline(material)) return false;
+    if (material.runtime.water_forward_pipeline != VK_NULL_HANDLE &&
+        material.runtime.water_pipeline_layout != VK_NULL_HANDLE)
+        return true;
+    if (water_surface_descriptor_set_layout_ == VK_NULL_HANDLE || !ensure_forward_scene_resources()) return false;
+
+    const auto* pass = runtime_material_pass(material, material_pass::forward);
+    if (pass == nullptr || pass->compiled.bytecode.empty()) return false;
+
+    const auto vertex_shader =
+        create_shader_module(builtin::water_surface_vert_spv, std::size(builtin::water_surface_vert_spv));
+    const auto fragment_shader = create_shader_module(pass->compiled.bytecode);
+    if (vertex_shader == VK_NULL_HANDLE || fragment_shader == VK_NULL_HANDLE)
+    {
+        if (vertex_shader != VK_NULL_HANDLE) vkDestroyShaderModule(device_, vertex_shader, nullptr);
+        if (fragment_shader != VK_NULL_HANDLE) vkDestroyShaderModule(device_, fragment_shader, nullptr);
+        return false;
+    }
+
+    const VkDescriptorSetLayout material_layout = material.runtime.descriptor_set_layout != VK_NULL_HANDLE
+                                                      ? material.runtime.descriptor_set_layout
+                                                      : white_descriptor_set_layout_;
+    const std::array set_layouts{material_layout, water_surface_descriptor_set_layout_,
+                                 forward_scene_descriptor_set_layout_};
+    const VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0u,
+                                   sizeof(mesh_push_constants)};
+    const VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                                            nullptr,
+                                            0u,
+                                            static_cast<std::uint32_t>(set_layouts.size()),
+                                            set_layouts.data(),
+                                            1u,
+                                            &push};
+    if (vkCreatePipelineLayout(device_, &layout, nullptr, &material.runtime.water_pipeline_layout) != VK_SUCCESS)
+    {
+        vkDestroyShaderModule(device_, vertex_shader, nullptr);
+        vkDestroyShaderModule(device_, fragment_shader, nullptr);
+        return false;
+    }
+
+    const std::array stages{
+        VkPipelineShaderStageCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0u,
+                                        VK_SHADER_STAGE_VERTEX_BIT, vertex_shader, "main", nullptr},
+        VkPipelineShaderStageCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0u,
+                                        VK_SHADER_STAGE_FRAGMENT_BIT, fragment_shader, "main", nullptr}};
+    const VkVertexInputBindingDescription binding{0u, sizeof(mesh_vertex), VK_VERTEX_INPUT_RATE_VERTEX};
+    const std::array attributes{
+        VkVertexInputAttributeDescription{0u, 0u, VK_FORMAT_R32G32B32_SFLOAT, offsetof(mesh_vertex, position)},
+        VkVertexInputAttributeDescription{1u, 0u, VK_FORMAT_R32G32B32_SFLOAT, offsetof(mesh_vertex, normal)},
+        VkVertexInputAttributeDescription{2u, 0u, VK_FORMAT_R32G32_SFLOAT, offsetof(mesh_vertex, texcoord)},
+        VkVertexInputAttributeDescription{3u, 0u, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(mesh_vertex, color)},
+        VkVertexInputAttributeDescription{4u, 0u, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(mesh_vertex, tangent)}};
+    const VkPipelineVertexInputStateCreateInfo vertex_input{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+                                                            nullptr,
+                                                            0u,
+                                                            1u,
+                                                            &binding,
+                                                            static_cast<std::uint32_t>(attributes.size()),
+                                                            attributes.data()};
+    const VkPipelineInputAssemblyStateCreateInfo input_assembly{
+        VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO, nullptr, 0u, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        VK_FALSE};
+    const VkPipelineViewportStateCreateInfo viewport{
+        VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO, nullptr, 0u, 1u, nullptr, 1u, nullptr};
+    const VkPipelineRasterizationStateCreateInfo raster{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+                                                        nullptr,
+                                                        0u,
+                                                        VK_FALSE,
+                                                        VK_FALSE,
+                                                        VK_POLYGON_MODE_FILL,
+                                                        VK_CULL_MODE_NONE,
+                                                        VK_FRONT_FACE_COUNTER_CLOCKWISE,
+                                                        VK_FALSE,
+                                                        0.0f,
+                                                        0.0f,
+                                                        0.0f,
+                                                        1.0f};
+    const VkPipelineMultisampleStateCreateInfo multisample{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+                                                           nullptr,
+                                                           0u,
+                                                           VK_SAMPLE_COUNT_1_BIT,
+                                                           VK_FALSE,
+                                                           0.0f,
+                                                           nullptr,
+                                                           VK_FALSE,
+                                                           VK_FALSE};
+    const VkPipelineDepthStencilStateCreateInfo depth{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+                                                      nullptr,
+                                                      0u,
+                                                      VK_TRUE,
+                                                      VK_FALSE,
+                                                      VK_COMPARE_OP_LESS_OR_EQUAL,
+                                                      VK_FALSE,
+                                                      VK_FALSE,
+                                                      {},
+                                                      {},
+                                                      0.0f,
+                                                      1.0f};
+    const VkPipelineColorBlendAttachmentState color_attachment{VK_TRUE,
+                                                               VK_BLEND_FACTOR_SRC_ALPHA,
+                                                               VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+                                                               VK_BLEND_OP_ADD,
+                                                               VK_BLEND_FACTOR_ONE,
+                                                               VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+                                                               VK_BLEND_OP_ADD,
+                                                               VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                                                   VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT};
+    const VkPipelineColorBlendStateCreateInfo color_blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+                                                          nullptr,
+                                                          0u,
+                                                          VK_FALSE,
+                                                          VK_LOGIC_OP_COPY,
+                                                          1u,
+                                                          &color_attachment,
+                                                          {0.0f, 0.0f, 0.0f, 0.0f}};
+    const std::array dynamic_states{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    const VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, nullptr, 0u,
+                                                   static_cast<std::uint32_t>(dynamic_states.size()),
+                                                   dynamic_states.data()};
+    const VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+                                                  nullptr,
+                                                  0u,
+                                                  1u,
+                                                  &scene_color_format_,
+                                                  depth_format_,
+                                                  VK_FORMAT_UNDEFINED};
+    const VkGraphicsPipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+                                                &rendering,
+                                                0u,
+                                                static_cast<std::uint32_t>(stages.size()),
+                                                stages.data(),
+                                                &vertex_input,
+                                                &input_assembly,
+                                                nullptr,
+                                                &viewport,
+                                                &raster,
+                                                &multisample,
+                                                &depth,
+                                                &color_blend,
+                                                &dynamic,
+                                                material.runtime.water_pipeline_layout,
+                                                VK_NULL_HANDLE,
+                                                0u,
+                                                VK_NULL_HANDLE,
+                                                -1};
+    const auto result = vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1u, &pipeline, nullptr,
+                                                  &material.runtime.water_forward_pipeline);
+    vkDestroyShaderModule(device_, vertex_shader, nullptr);
+    vkDestroyShaderModule(device_, fragment_shader, nullptr);
+    if (result != VK_SUCCESS)
+    {
+        vkDestroyPipelineLayout(device_, material.runtime.water_pipeline_layout, nullptr);
+        material.runtime.water_pipeline_layout = VK_NULL_HANDLE;
+        return false;
+    }
+    return true;
+}
+
 bool vulkan_render_backend::ensure_runtime_gbuffer_pipeline(gpu_material& material)
 {
     const auto* program = material.data.runtime_program.get();
@@ -679,7 +1065,10 @@ bool vulkan_render_backend::ensure_runtime_gbuffer_pipeline(gpu_material& materi
         return true;
 
     if (material.runtime.gbuffer_pipeline != VK_NULL_HANDLE || material.runtime.forward_pipeline != VK_NULL_HANDLE ||
-        material.runtime.pipeline_layout != VK_NULL_HANDLE || material.runtime.descriptor_pool != VK_NULL_HANDLE ||
+        material.runtime.water_forward_pipeline != VK_NULL_HANDLE ||
+        material.runtime.pipeline_layout != VK_NULL_HANDLE ||
+        material.runtime.water_pipeline_layout != VK_NULL_HANDLE ||
+        material.runtime.descriptor_pool != VK_NULL_HANDLE ||
         material.runtime.descriptor_set_layout != VK_NULL_HANDLE || !material.runtime.parameter_buffers.empty() ||
         !material.runtime.frame_buffers.empty())
     {
@@ -718,7 +1107,10 @@ bool vulkan_render_backend::ensure_runtime_forward_pipeline(gpu_material& materi
         return true;
 
     if (material.runtime.gbuffer_pipeline != VK_NULL_HANDLE || material.runtime.forward_pipeline != VK_NULL_HANDLE ||
-        material.runtime.pipeline_layout != VK_NULL_HANDLE || material.runtime.descriptor_pool != VK_NULL_HANDLE ||
+        material.runtime.water_forward_pipeline != VK_NULL_HANDLE ||
+        material.runtime.pipeline_layout != VK_NULL_HANDLE ||
+        material.runtime.water_pipeline_layout != VK_NULL_HANDLE ||
+        material.runtime.descriptor_pool != VK_NULL_HANDLE ||
         material.runtime.descriptor_set_layout != VK_NULL_HANDLE || !material.runtime.parameter_buffers.empty() ||
         !material.runtime.frame_buffers.empty())
     {

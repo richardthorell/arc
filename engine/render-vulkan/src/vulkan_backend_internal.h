@@ -308,6 +308,14 @@ struct shadow_uniform_data
     float configuration[4]{};
 };
 
+struct alignas(16) forward_scene_uniform_data
+{
+    float camera_position_viewport_width[4]{};
+    float fog_color_density[4]{};
+    float fog_params_viewport_height[4]{};
+};
+static_assert(sizeof(forward_scene_uniform_data) == 48);
+
 struct gpu_scope_record
 {
     std::string name;
@@ -763,7 +771,9 @@ private:
     {
         VkPipeline gbuffer_pipeline{};
         VkPipeline forward_pipeline{};
+        VkPipeline water_forward_pipeline{};
         VkPipelineLayout pipeline_layout{};
+        VkPipelineLayout water_pipeline_layout{};
         VkDescriptorSetLayout descriptor_set_layout{};
         VkDescriptorPool descriptor_pool{};
         std::vector<VkDescriptorSet> descriptor_sets;
@@ -1128,8 +1138,6 @@ private:
 
     bool ensure_water_compute_resources();
 
-    bool ensure_water_surface_pipeline();
-
     bool synchronize_water_simulations(std::uint64_t frame_index);
 
     void destroy_ocean_simulation(gpu_ocean_simulation& simulation) noexcept;
@@ -1231,6 +1239,9 @@ private:
 
     bool draw_runtime_material_forward(VkCommandBuffer command_buffer, const virtual_cluster_draw& draw);
 
+    bool draw_runtime_water_forward(VkCommandBuffer command_buffer, const draw_mesh_event& draw,
+                                    const gpu_ocean_simulation& simulation);
+
     void destroy_mesh_pipeline() noexcept;
 
     void destroy_white_texture() noexcept;
@@ -1271,6 +1282,18 @@ private:
     bool ensure_runtime_gbuffer_pipeline(gpu_material& material);
 
     bool ensure_runtime_forward_pipeline(gpu_material& material);
+
+    bool ensure_runtime_water_forward_pipeline(gpu_material& material);
+
+    bool ensure_forward_scene_resources();
+
+    void update_forward_scene_resources();
+
+    bool capture_forward_scene_color(VkCommandBuffer command_buffer);
+
+    void destroy_forward_scene_resources() noexcept;
+
+    VkDescriptorSet current_forward_scene_descriptor_set() const noexcept;
 
     void destroy_virtual_shadow_resources(vulkan_virtual_shadow_resources& resources) noexcept;
 
@@ -1561,6 +1584,12 @@ private:
     bool frame_shadows_enabled_{true};
     bool frame_fxaa_enabled_{};
     gpu_buffer light_buffer_;
+    VkDescriptorSetLayout forward_scene_descriptor_set_layout_{};
+    VkDescriptorPool forward_scene_descriptor_pool_{};
+    std::vector<VkDescriptorSet> forward_scene_descriptor_sets_;
+    std::vector<gpu_buffer> forward_scene_uniform_buffers_;
+    VkSampler forward_scene_sampler_{};
+    graph_image forward_scene_color_{};
     gpu_buffer gpu_scene_visibility_buffer_;
     gpu_buffer gpu_scene_transform_buffer_;
     std::array<gpu_resource_table_buffer, 7> gpu_resource_tables_;
@@ -1691,8 +1720,6 @@ private:
     VkPipelineLayout terrain_surface_pipeline_layout_{};
     VkPipeline mesh_pipeline_{};
     VkPipeline mesh_transparent_pipeline_{};
-    VkPipelineLayout water_surface_pipeline_layout_{};
-    VkPipeline water_surface_pipeline_{};
     VkPipeline mesh_wire_pipeline_{};
     VkPipeline selection_mask_pipeline_{};
     VkPipeline terrain_surface_pipeline_{};

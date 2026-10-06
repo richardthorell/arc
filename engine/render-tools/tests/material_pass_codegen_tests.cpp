@@ -168,7 +168,13 @@ TEST_CASE("canonical forward pass evaluates generic PBR transmission from the Ma
     REQUIRE(forward);
 
     const auto& source = forward.value().source;
-    REQUIRE(source.find("struct ArcForwardLightingContext") != std::string::npos);
+    REQUIRE(source.find("StructuredBuffer<ArcForwardLightingData> arcForwardLighting : register(t0, space2)") !=
+            std::string::npos);
+    REQUIRE(source.find("arcForwardDirectionalShadowMap") != std::string::npos);
+    REQUIRE(source.find("arcForwardLocalShadowAtlas") != std::string::npos);
+    REQUIRE(source.find("arcForwardSceneColor") != std::string::npos);
+    REQUIRE(source.find("arcForwardShadows") != std::string::npos);
+    REQUIRE(source.find("arcForwardScene") != std::string::npos);
     REQUIRE(source.find("arcForwardF0FromIor") != std::string::npos);
     REQUIRE(source.find("arcForwardFresnelSchlick") != std::string::npos);
     REQUIRE(source.find("arcForwardBeerLambert") != std::string::npos);
@@ -176,7 +182,7 @@ TEST_CASE("canonical forward pass evaluates generic PBR transmission from the Ma
     REQUIRE(source.find("surface.attenuationColor") != std::string::npos);
     REQUIRE(source.find("surface.attenuationDistance") != std::string::npos);
     REQUIRE(source.find("surface.transmission") != std::string::npos);
-    REQUIRE(source.find("arcEvaluateForwardSurface(surface, surfaceInput, lighting)") != std::string::npos);
+    REQUIRE(source.find("arcEvaluateForwardSurface(surface, surfaceInput, passInput)") != std::string::npos);
     REQUIRE(source.find("water") == std::string::npos);
 }
 

@@ -126,6 +126,11 @@ void vulkan_render_backend::transition_graph_image(VkCommandBuffer command_buffe
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
         src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
     }
+    else if (image.layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+    {
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    }
     else if (image.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
     {
         barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
@@ -160,6 +165,11 @@ void vulkan_render_backend::transition_graph_image(VkCommandBuffer command_buffe
     else if (new_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
     {
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        dst_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    }
+    else if (new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+    {
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         dst_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
     }
     else if (new_layout == VK_IMAGE_LAYOUT_GENERAL)
@@ -896,6 +906,7 @@ void vulkan_render_backend::ensure_viewport(std::uint32_t width, std::uint32_t h
 
 void vulkan_render_backend::destroy_viewport() noexcept
 {
+    destroy_forward_scene_resources();
     if (viewport_sampler_ != VK_NULL_HANDLE)
     {
         vkDestroySampler(device_, viewport_sampler_, nullptr);
@@ -1654,6 +1665,9 @@ void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool
         const bool deferred_rendered =
             resolved_config_.path == render_path::deferred && render_deferred_scene(command_buffer);
 
+        if (!capture_forward_scene_color(command_buffer))
+            arc::diagnostics::warn("render.vulkan",
+                                   "Initial forward scene-color snapshot unavailable; transmission may be degraded");
         transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         transition_depth(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
         color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
@@ -1692,17 +1706,7 @@ void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool
                 }
                 VkPipelineLayout pipeline_layout = mesh_pipeline_layout_;
                 VkDescriptorSet material_descriptor_set = material_descriptor_set_for(draw);
-                if (pipeline == water_surface_pipeline_)
-                {
-                    const auto* simulation = water_simulation_for(draw.object_id);
-                    if (!simulation || simulation->surface_descriptor == VK_NULL_HANDLE) return;
-                    const std::array descriptor_sets{material_descriptor_set, simulation->surface_descriptor};
-                    pipeline_layout = water_surface_pipeline_layout_;
-                    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0,
-                                            static_cast<std::uint32_t>(descriptor_sets.size()), descriptor_sets.data(),
-                                            0, nullptr);
-                }
-                else if (pipeline == terrain_surface_pipeline_)
+                if (pipeline == terrain_surface_pipeline_)
                 {
                     const auto attributes = material_attribute_descriptor_set_for(draw.material_attribute_texture);
                     if (attributes == VK_NULL_HANDLE) return;
@@ -1825,6 +1829,15 @@ void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool
                                                      : mesh_pipeline_);
             }
 
+            cmd_end_rendering(command_buffer);
+            if (!capture_forward_scene_color(command_buffer))
+                arc::diagnostics::warn("render.vulkan",
+                                       "Forward scene-color snapshot unavailable; transmission will use fallback data");
+            color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+            depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+            cmd_begin_rendering(command_buffer, &rendering);
+            set_viewport_and_scissor(command_buffer);
+
             const bool bindless_transparent_drawn = draw_gpu_bindless_batch(command_buffer, true);
             std::vector<const draw_mesh_event*> transparent_draws;
             for (const auto& draw : frame_draws_)
@@ -1843,9 +1856,10 @@ void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool
                       });
             for (const auto* draw : transparent_draws)
             {
-                if (water_surface_pipeline_ != VK_NULL_HANDLE && water_simulation_for(draw->object_id))
-                    draw_with_pipeline(*draw, water_surface_pipeline_);
-                else if (!draw_runtime_material_forward(command_buffer, *draw))
+                if (const auto* simulation = water_simulation_for(draw->object_id);
+                    simulation && draw_runtime_water_forward(command_buffer, *draw, *simulation))
+                    continue;
+                if (!draw_runtime_material_forward(command_buffer, *draw))
                     draw_with_pipeline(*draw, mesh_transparent_pipeline_ != VK_NULL_HANDLE ? mesh_transparent_pipeline_
                                                                                            : mesh_pipeline_);
             }

@@ -6,12 +6,16 @@ layout(location = 2) in vec2 in_texcoord;
 layout(location = 3) in vec4 in_color;
 layout(location = 4) in vec4 in_tangent;
 
+// Keep these locations aligned with ArcMaterialPassInput/gbuffer.vert so Water can share compiled forward fragments.
 layout(location = 0) out vec3 out_normal;
 layout(location = 1) out vec3 out_world_position;
 layout(location = 2) out vec4 out_color;
 layout(location = 3) out vec2 out_texcoord;
-layout(location = 4) out float out_view_depth;
-layout(location = 5) out vec4 out_tangent;
+layout(location = 4) out vec4 out_tangent;
+layout(location = 5) out vec4 out_clip_position;
+layout(location = 6) out vec4 out_previous_clip_position;
+layout(location = 7) flat out uint out_object_id;
+layout(location = 8) out vec3 out_view_ws;
 
 layout(push_constant) uniform mesh_constants
 {
@@ -105,8 +109,11 @@ void main()
     out_world_position = world_position.xyz;
     out_color = vec4(in_color.rgb * mix(1.0, 5.0, smoothstep(0.0, 1.0, foam)), in_color.a);
     out_texcoord = in_texcoord;
-    out_view_depth = length(constants.camera_position.xyz - world_position.xyz);
     out_tangent = vec4(normalize(vec3(1.0, combined_slope.x, 0.0)), in_tangent.w);
     mat4 view_projection = constants.model_view_projection * inverse(constants.model);
-    gl_Position = view_projection * world_position;
+    out_clip_position = view_projection * world_position;
+    out_previous_clip_position = out_clip_position;
+    out_object_id = uint(constants.fog_params.w);
+    out_view_ws = normalize(constants.camera_position.xyz - world_position.xyz);
+    gl_Position = out_clip_position;
 }
