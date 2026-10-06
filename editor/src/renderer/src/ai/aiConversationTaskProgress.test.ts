@@ -58,6 +58,38 @@ describe('AI conversation task progress', () => {
     });
   });
 
+  it('replaces earlier generic fallback tasks when a semantic plan arrives', () => {
+    const fallback = recordConversationTaskUpdate(
+      undefined,
+      {
+        id: 'agent-step-0',
+        title: 'Run 3 editor operations',
+        state: 'completed',
+        toolCallIds: ['call-1', 'call-2', 'call-3'],
+      },
+      '2026-10-05T22:00:00Z',
+    );
+
+    const planned = recordConversationTaskUpdate(
+      fallback,
+      {
+        id: 'playground-plan',
+        planId: 'playground-plan',
+        title: 'Build playground',
+        state: 'in_progress',
+        children: [{ id: 'arrange', title: 'Design a fun arrangement', state: 'in_progress' }],
+      },
+      '2026-10-05T22:00:01Z',
+    );
+
+    expect(planned).toHaveLength(1);
+    expect(planned[0]).toMatchObject({
+      id: 'playground-plan',
+      planId: 'playground-plan',
+      children: [{ id: 'arrange', title: 'Design a fun arrangement' }],
+    });
+  });
+
   it('does not persist edit.cancel as a user-facing fallback task', () => {
     const current = recordConversationTaskUpdate(
       undefined,
