@@ -4,6 +4,7 @@ import type {
   AiConversationContextReference,
   AiConversationToolReference,
 } from '../../../common/aiConversationTypes';
+import { BUILT_IN_AGENT_CLIENT_ID } from '../../../common/builtInAgentTypes';
 import type { AiTaskProgress } from '../../../common/aiRuntimeTypes';
 import { requestSettingsDialogOpen } from '../settings/settingsDialogRoute';
 import {
@@ -72,6 +73,11 @@ const diagnosticToolError = (content: unknown): string => {
   if (typeof content !== 'string') return '';
   const compact = content.replace(/\s+/gu, ' ').trim();
   return compact ? ` message="${compact.slice(0, 320)}"` : '';
+};
+
+const resetBuiltInAgentAuthority = async (): Promise<void> => {
+  if (typeof window === 'undefined' || !window.arc?.aiGateway?.revoke) return;
+  await window.arc.aiGateway.revoke(BUILT_IN_AGENT_CLIENT_ID);
 };
 
 const approvalModeOptions: ReadonlyArray<UiDropdownOption<AiAgentApprovalMode>> = [
@@ -351,6 +357,7 @@ export function AiChatPanel({
 
     activeStreamRef.current = null;
     activeStream.controller.abort();
+    void resetBuiltInAgentAuthority().catch(() => undefined);
     const timestamp = new Date().toISOString();
     updateAssistantMessage(activeStream.conversationId, activeStream.messageId, (message) => ({
       ...message,
@@ -390,6 +397,9 @@ export function AiChatPanel({
     let responseText = '';
     let completed = false;
     try {
+      await resetBuiltInAgentAuthority();
+      if (controller.signal.aborted) return { completed: false, text: responseText };
+
       const contextPlan = await prepareAiContextBudget({
         conversation: { ...requestConversation, messages: requestMessages },
         messages: requestMessages,
