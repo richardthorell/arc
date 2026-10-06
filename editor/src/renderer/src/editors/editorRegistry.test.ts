@@ -107,7 +107,9 @@ describe('editor registry asset routing', () => {
         ...material,
         id: 'builtin-material-guid',
         guid: 'builtin-material-guid',
-        path: 'builtin/materials/default.arcmat',
+        name: 'default_phong.arcmat',
+        title: 'Standard Lit',
+        path: 'builtin/materials/default_phong.arcmat',
         scope: 'builtin',
         readOnly: false,
       },
@@ -116,6 +118,7 @@ describe('editor registry asset routing', () => {
 
     expect(target?.document).toMatchObject({
       id: 'material:builtin-material-guid',
+      title: 'Standard Lit',
       assetScope: 'builtin',
       readOnly: true,
     });
