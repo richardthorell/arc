@@ -138,27 +138,33 @@ export function UiAgentAssetChoiceCard({
   onChoose,
 }: UiAgentAssetChoiceCardProps) {
   const [selectedUri, setSelectedUri] = useState<string | null>(null);
+  const [confirmedUri, setConfirmedUri] = useState<string | null>(null);
   const selected = options.find((option) => option.uri === selectedUri) ?? null;
+  const confirmed = confirmedUri !== null;
 
   useEffect(() => {
     if (selectedUri && !options.some((option) => option.uri === selectedUri)) setSelectedUri(null);
-  }, [options, selectedUri]);
+    if (confirmedUri && !options.some((option) => option.uri === confirmedUri)) setConfirmedUri(null);
+  }, [confirmedUri, options, selectedUri]);
 
   return (
     <div data-agent-choice-kind="asset">
       <UiAgentChoiceCard
-        confirmDisabled={!selected}
+        confirmDisabled={!selected || confirmed}
+        confirmLabel={confirmed ? 'Selected' : 'Use this'}
         disabled={disabled}
         prompt={prompt}
         title={title}
         onConfirm={() => {
-          if (selected) onChoose(selected.uri);
+          if (!selected || confirmed) return;
+          setConfirmedUri(selected.uri);
+          onChoose(selected.uri);
         }}
       >
         <div className="ui-agent-asset-choice-grid">
           {options.map((option) => (
             <AssetChoiceOption
-              disabled={disabled}
+              disabled={disabled || confirmed}
               key={option.uri}
               option={option}
               selected={option.uri === selectedUri}
