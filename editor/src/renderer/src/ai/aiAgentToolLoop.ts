@@ -321,6 +321,17 @@ export async function* runAiAgentToolLoop(
     if (terminalError) return;
 
     if (!sawDone || finishReason !== 'tool_calls') {
+      const unresolved = activePlanTask(planRoots);
+      if (unresolved?.task.detail?.startsWith('Retrying after ')) {
+        let failedRoot = mapTaskTree(unresolved.root, unresolved.task.id, (task) => ({
+          ...task,
+          state: 'failed',
+          detail: task.detail?.replace(/^Retrying after /u, 'Failed while running '),
+        }));
+        failedRoot = deriveTaskTreeStates(failedRoot);
+        planRoots.set(failedRoot.id, failedRoot);
+        yield { type: 'task-update', task: failedRoot };
+      }
       yield { type: 'done', finishReason: sawDone ? finishReason : 'unknown' };
       return;
     }
@@ -400,6 +411,7 @@ export async function* runAiAgentToolLoop(
     }
 
     let genericTask: AiTaskProgress | undefined;
+    const retryingPlanTask = Boolean(planned?.task.detail?.startsWith('Retrying after '));
     if (planned && !recoveringPlanTask) {
       if (hasSemanticExecution && shouldAdvanceForNewSemanticTurn(planned.task)) {
         const advancedRoot = advanceCompletedPlanTask(planRoots.get(planned.root.id)!, planned.task.id);
@@ -445,17 +457,15 @@ export async function* runAiAgentToolLoop(
     }
 
     if (planned && failedResult) {
-      let failedRoot = mapTaskTree(planRoots.get(planned.root.id)!, planned.task.id, (task) => ({
+      let retryingRoot = mapTaskTree(planRoots.get(planned.root.id)!, planned.task.id, (task) => ({
         ...task,
-        state: failedResult.retryable ? 'in_progress' : 'failed',
-        detail: failedResult.retryable
-          ? `Retrying after ${failedResult.name}`
-          : `Failed while running ${failedResult.name}`,
+        state: 'in_progress',
+        detail: `Retrying after ${failedResult.name}`,
       }));
-      failedRoot = deriveTaskTreeStates(failedRoot);
-      planRoots.set(failedRoot.id, failedRoot);
-      yield { type: 'task-update', task: failedRoot };
-    } else if (planned && recoveringPlanTask) {
+      retryingRoot = deriveTaskTreeStates(retryingRoot);
+      planRoots.set(retryingRoot.id, retryingRoot);
+      yield { type: 'task-update', task: retryingRoot };
+    } else if (planned && (recoveringPlanTask || retryingPlanTask)) {
       const recoveredRoot = advanceCompletedPlanTask(planRoots.get(planned.root.id)!, planned.task.id);
       planRoots.set(recoveredRoot.id, recoveredRoot);
       yield { type: 'task-update', task: recoveredRoot };
