@@ -435,12 +435,15 @@ export async function* runAiAgentToolLoop(
     }
 
     let failedResult: AiToolResult | undefined;
+    let failedSemanticResult: AiToolResult | undefined;
+    const semanticCallIds = new Set(semanticExecutionCalls.map((call) => call.id));
     for (let index = 0; index < executionCalls.length; ++index) {
       if (request.signal?.aborted) return;
       const call = executionCalls[index]!;
       const result = await executeTool(call, invokeTool, request.signal);
       if (request.signal?.aborted) return;
       if (result.isError && !failedResult) failedResult = result;
+      if (result.isError && semanticCallIds.has(call.id) && !failedSemanticResult) failedSemanticResult = result;
       yield { type: 'tool-result', result, agentStep: providerStep };
       messages.push({
         id: runtimeMessageId('agent-tool', providerStep, index),
@@ -450,11 +453,11 @@ export async function* runAiAgentToolLoop(
       });
     }
 
-    if (planned && failedResult) {
+    if (planned && failedSemanticResult) {
       let retryingRoot = mapTaskTree(planRoots.get(planned.root.id)!, planned.task.id, (task) => ({
         ...task,
         state: 'in_progress',
-        detail: `Retrying after ${failedResult.name}`,
+        detail: `Retrying after ${failedSemanticResult.name}`,
       }));
       retryingRoot = deriveTaskTreeStates(retryingRoot);
       planRoots.set(retryingRoot.id, retryingRoot);
