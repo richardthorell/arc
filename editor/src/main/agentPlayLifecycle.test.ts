@@ -24,9 +24,7 @@ describe('agent Play lifecycle contract', () => {
       expectedState: 'paused',
       scope: 'play-world',
     });
-    expect(() => planPlayLifecycleCommand('stopped', { kind: 'pause' })).toThrow(
-      'Pause requires a running Play World',
-    );
+    expect(() => planPlayLifecycleCommand('stopped', { kind: 'pause' })).toThrow('Pause requires a running Play World');
   });
 
   it('makes stop explicitly terminate an active Play World', () => {
@@ -35,9 +33,7 @@ describe('agent Play lifecycle contract', () => {
       expectedState: 'stopped',
       scope: 'play-world',
     });
-    expect(() => planPlayLifecycleCommand('stopped', { kind: 'stop' })).toThrow(
-      'Play is already stopped',
-    );
+    expect(() => planPlayLifecycleCommand('stopped', { kind: 'stop' })).toThrow('Play is already stopped');
   });
 
   it('only steps fixed positive tick counts while paused', () => {
@@ -60,8 +56,6 @@ describe('agent Play lifecycle contract', () => {
   });
 
   it('rejects duplicate play while already running', () => {
-    expect(() => planPlayLifecycleCommand('playing', { kind: 'play' })).toThrow(
-      'Play is already running',
-    );
+    expect(() => planPlayLifecycleCommand('playing', { kind: 'play' })).toThrow('Play is already running');
   });
 });
