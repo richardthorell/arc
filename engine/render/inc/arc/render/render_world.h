@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arc/render/exposure.h>
+#include <arc/render/fluid_surface.h>
 #include <arc/render/events.h>
 #include <arc/render/gpu_scene.h>
 #include <arc/render/handles.h>
@@ -11,7 +12,6 @@
 #include <arc/geometric/box.h>
 #include <arc/math/matrix.h>
 #include <arc/math/vector.h>
-#include <arc/water/water_types.h>
 
 #include <cstdint>
 #include <string>
@@ -337,28 +337,6 @@ struct world_environment_data
     std::string fallback_reason;
 };
 
-/** @brief Backend-neutral, frame-immutable Water instance resolved from scene authoring state. */
-struct water_render_instance
-{
-    render_object_id object_id{};
-    water::water_body_type type{water::water_body_type::ocean};
-    material_handle material{};
-    /** Authored entity position before camera-relative placement. */
-    math::vector3f position{};
-    /** Snapped world-space origin used to place the generated Ocean grid for this view. */
-    math::vector3f surface_origin{};
-    water::water_runtime_settings settings;
-    float water_level{};
-    float visible_distance{20000.0f};
-    float finest_grid_cell_size{};
-    std::uint32_t grid_ring_count{8u};
-    std::int32_t priority{};
-    bool follow_camera{true};
-    bool shoreline_enabled{true};
-    bool underwater_enabled{true};
-    std::string label;
-};
-
 /**
  * @brief Extracted vegetation metadata for simple generated foliage.
  */
@@ -491,7 +469,7 @@ struct render_world_packet
     std::vector<irradiance_probe_data> irradiance_probes;
     std::vector<baked_lighting_data> baked_lighting;
     world_environment_data environment;
-    std::vector<water_render_instance> waters;
+    std::vector<fluid_surface_render_instance> fluid_surfaces;
     std::vector<vegetation_render_data> vegetation;
     std::vector<decal_render_data> decals;
     std::vector<render_item> items;
