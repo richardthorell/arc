@@ -26,6 +26,18 @@ readback buffer and consumed only after that frame's fence signals. CPU translat
 space generations and coordinates, and rejects stale work before cache allocation. Overflow is observable and never
 replaces the independently generated coarse correctness pages.
 
+Dirty physical pages carry an immutable render token containing their address-space generation, physical-page
+generation, content revision, and cache work revision. Vulkan uploads a bounded page list and culls conventional GPU
+Scene instances against each page-local light frustum. Culling preserves shadow distance, render-layer, mobility,
+masked-material, and two-sided semantics and emits one fixed indirect range per page. The CPU may establish the
+bounded page viewport and scissor, but it never submits individual casters.
+
+Static and dynamic page passes clear and rasterize only their scheduled guarded atlas tiles through the shared
+bindless depth-material path. Page work counters are copied to per-frame readback storage. A page becomes resident
+only after the submitting frame's fence has signaled and the exact render token still matches; overflow, unsupported
+casters, failed raster setup, and stale completions leave the page dirty for retry. Partial depth is never published.
+Virtual-geometry casters remain deferred to the shared traversal work in issue #482.
+
 The resolved renderer configuration owns the physical-pool contract. It selects D16 when depth attachment and sampled
 image support are both available, otherwise D32, and derives one square atlas extent from the memory budget and
 adapter image limit. The CPU cache, render graph, and backend consume that exact format, extent, and capacity; they do
@@ -38,6 +50,11 @@ disabled until caster rendering and sampling are initialized successfully. Execu
 for directional, point, and spot lights so an incomplete local-light path cannot disable or accidentally enable another
 topology.
 
+M3 supplies caster culling and physical-page depth, but does not make VSM selectable. Guard replication, directional
+page lookup, resident-ancestor sampling, and lighting integration are the M4 boundary; normal profile resolution keeps
+all executable VSM light capabilities disabled until that end-to-end path is complete.
+
 The Lighting panel exposes address-space count, page capacity and residency, rendered/reused pages, evictions, parent
 fallbacks, failed requests, receiver samples, raw/compacted/duplicate/stale/overflow requests, and physical memory.
-These values describe executed work rather than requested features.
+It also reports accepted and rejected casters, indirect draws, overflowed pages, and stale render completions. These
+values describe executed work rather than requested features.
