@@ -47,9 +47,9 @@ bool vulkan_render_backend::ensure_mesh_pipeline()
     }
 
     VkShaderModule vert =
-        create_shader_module(builtin::default_phong_vert_spv, std::size(builtin::default_phong_vert_spv));
+        create_shader_module(builtin::standard_lit_vert_spv, std::size(builtin::standard_lit_vert_spv));
     VkShaderModule frag =
-        create_shader_module(builtin::default_phong_frag_spv, std::size(builtin::default_phong_frag_spv));
+        create_shader_module(builtin::standard_lit_frag_spv, std::size(builtin::standard_lit_frag_spv));
     if (vert == VK_NULL_HANDLE || frag == VK_NULL_HANDLE) return false;
 
     VkPushConstantRange push{};
