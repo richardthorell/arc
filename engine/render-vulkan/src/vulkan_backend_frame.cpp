@@ -126,6 +126,11 @@ void vulkan_render_backend::transition_graph_image(VkCommandBuffer command_buffe
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
         src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
     }
+    else if (image.layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+    {
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    }
     else if (image.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
     {
         barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
@@ -160,6 +165,11 @@ void vulkan_render_backend::transition_graph_image(VkCommandBuffer command_buffe
     else if (new_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
     {
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        dst_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    }
+    else if (new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+    {
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         dst_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
     }
     else if (new_layout == VK_IMAGE_LAYOUT_GENERAL)
