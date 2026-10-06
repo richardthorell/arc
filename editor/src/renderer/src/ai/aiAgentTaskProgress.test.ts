@@ -75,9 +75,18 @@ describe('AI agent task progress', () => {
       (async function* (): AsyncGenerator<AiRuntimeStreamEvent> {
         ++providerTurn;
         if (providerTurn === 1) {
-          yield { type: 'tool-call', call: { id: 'capabilities', name: 'agent.capabilities', arguments: {} } };
-          yield { type: 'tool-call', call: { id: 'schemas', name: 'scene.componentSchemas', arguments: {} } };
-          yield { type: 'tool-call', call: { id: 'viewport', name: 'viewport.state', arguments: {} } };
+          yield {
+            type: 'tool-call',
+            call: { id: 'capabilities', name: 'agent.capabilities', arguments: {} },
+          };
+          yield {
+            type: 'tool-call',
+            call: { id: 'schemas', name: 'scene.componentSchemas', arguments: {} },
+          };
+          yield {
+            type: 'tool-call',
+            call: { id: 'viewport', name: 'viewport.state', arguments: {} },
+          };
           yield { type: 'done', finishReason: 'tool_calls' };
           return;
         }
@@ -119,7 +128,10 @@ describe('AI agent task progress', () => {
   it('emits a terminal error when provider turns are exhausted', async () => {
     const execute = () =>
       (async function* (): AsyncGenerator<AiRuntimeStreamEvent> {
-        yield { type: 'tool-call', call: { id: crypto.randomUUID(), name: 'edit.request', arguments: {} } };
+        yield {
+          type: 'tool-call',
+          call: { id: crypto.randomUUID(), name: 'edit.request', arguments: {} },
+        };
         yield { type: 'done', finishReason: 'tool_calls' };
       })();
 
@@ -131,15 +143,17 @@ describe('AI agent task progress', () => {
       originalBytes: 2,
     }));
 
-    const events = await collect(runAiAgentToolLoop(request, execute, invokeTool, { maximumSteps: 1 }));
+    const events = await collect(
+      runAiAgentToolLoop(request, execute, invokeTool, { maximumSteps: 1 }),
+    );
     expect(events.at(-1)).toMatchObject({
       type: 'error',
       code: 'tool',
       retryable: false,
     });
-    expect((events.at(-1) as Extract<AiRuntimeStreamEvent, { type: 'error' }>).message).toContain(
-      'provider-turn safety allowance',
-    );
+    expect(
+      (events.at(-1) as Extract<AiRuntimeStreamEvent, { type: 'error' }>).message,
+    ).toContain('provider-turn safety allowance');
   });
 
   it('marks the task failed while retaining the linked tool calls when one operation fails', async () => {
@@ -466,7 +480,11 @@ describe('AI agent task progress', () => {
         if (providerTurn === 2) {
           yield {
             type: 'tool-call',
-            call: { id: 'layout-tool', name: 'editor.applyBatch', arguments: { operations: [] } },
+            call: {
+              id: 'layout-tool',
+              name: 'editor.applyBatch',
+              arguments: { operations: [] },
+            },
           };
           yield { type: 'done', finishReason: 'tool_calls' };
           return;
@@ -564,7 +582,11 @@ describe('AI agent task progress', () => {
         if (providerTurn === 2 || providerTurn === 3) {
           yield {
             type: 'tool-call',
-            call: { id: `decorate-${providerTurn}`, name: 'editor.applyBatch', arguments: { operations: [] } },
+            call: {
+              id: `decorate-${providerTurn}`,
+              name: 'editor.applyBatch',
+              arguments: { operations: [] },
+            },
           };
           yield { type: 'done', finishReason: 'tool_calls' };
           return;
@@ -593,7 +615,13 @@ describe('AI agent task progress', () => {
         ++attempt;
         if (attempt === 1) throw new Error('temporary editor mutation failure');
       }
-      return { name: call.name, operation: call.name, content: '{}', truncated: false, originalBytes: 2 };
+      return {
+        name: call.name,
+        operation: call.name,
+        content: '{}',
+        truncated: false,
+        originalBytes: 2,
+      };
     });
 
     const events = await collect(runAiAgentToolLoop(request, execute, invokeTool));
@@ -671,7 +699,9 @@ describe('AI agent task progress', () => {
     );
 
     expect(
-      tasks.some((event) => event.task.children?.some((step) => step.id === 'verify' && step.state === 'in_progress')),
+      tasks.some((event) =>
+        event.task.children?.some((step) => step.id === 'verify' && step.state === 'in_progress'),
+      ),
     ).toBe(false);
     expect(tasks.at(-1)?.task.children).toEqual(
       expect.arrayContaining([
@@ -749,7 +779,9 @@ describe('AI agent task progress', () => {
     );
     expect(secondInspect).toBeDefined();
     expect(
-      tasks.filter((event) => event.task.children?.some((step) => step.id === 'verify' && step.state === 'completed')),
+      tasks.filter((event) =>
+        event.task.children?.some((step) => step.id === 'verify' && step.state === 'completed'),
+      ),
     ).toHaveLength(1);
   });
 
@@ -782,7 +814,9 @@ describe('AI agent task progress', () => {
       originalBytes: 2,
     }));
 
-    const events = await collect(runAiAgentToolLoop(request, execute, invokeTool, { maximumSteps: 2 }));
+    const events = await collect(
+      runAiAgentToolLoop(request, execute, invokeTool, { maximumSteps: 2 }),
+    );
 
     expect(events.some((event) => event.type === 'error' && event.message.includes('maximum of 2 tool steps'))).toBe(
       false,
