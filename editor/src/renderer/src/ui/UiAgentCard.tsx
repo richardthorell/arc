@@ -119,6 +119,7 @@ export const UiAgentCard = forwardRef<HTMLElement, UiAgentCardProps>(function Ui
 export type UiAgentTextCardProps = Omit<UiAgentCardProps, 'children'> & {
   text: string;
   renderText?: (text: string) => ReactNode;
+  streamingPlaceholder?: ReactNode;
 };
 
 export function UiAgentTextCard({
@@ -128,9 +129,10 @@ export function UiAgentTextCard({
   side = 'none',
   tone = 'neutral',
   footerActions,
+  streamingPlaceholder = '…',
   ...props
 }: UiAgentTextCardProps) {
-  const content = text ? (renderText ? renderText(text) : text) : state === 'streaming' ? '…' : '';
+  const content = text ? (renderText ? renderText(text) : text) : state === 'streaming' ? streamingPlaceholder : '';
   const actionRow = (
     <UiAgentCardActionRow align={side === 'right' ? 'right' : 'left'} revealOnHover={tone === 'user'}>
       <UiAgentCardCopyAction label="Copy message" value={text} />
