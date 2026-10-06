@@ -266,7 +266,9 @@ describe('AiChatPanel', () => {
       },
     ];
 
-    render(<AiChatPanel conversationLabel="Playground" initialMessages={initialMessages} provider={configuredProvider} />);
+    render(
+      <AiChatPanel conversationLabel="Playground" initialMessages={initialMessages} provider={configuredProvider} />,
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Open conversation Playground' }));
 
     expect(screen.getAllByRole('status', { name: 'AI progress' })).toHaveLength(1);
