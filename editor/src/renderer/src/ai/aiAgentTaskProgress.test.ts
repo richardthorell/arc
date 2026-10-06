@@ -138,7 +138,7 @@ describe('AI agent task progress', () => {
       retryable: false,
     });
     expect((events.at(-1) as Extract<AiRuntimeStreamEvent, { type: 'error' }>).message).toContain(
-      'provider-turn allowance',
+      'provider-turn safety allowance',
     );
   });
 
