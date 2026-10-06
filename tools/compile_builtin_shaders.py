@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import hashlib
 import json
 import pathlib
@@ -154,11 +153,6 @@ def main() -> int:
                 f"{args.header} is stale; regenerate with tools/compile_builtin_shaders.py --write",
                 file=sys.stderr,
             )
-            encoded = base64.b64encode(expected.encode("utf-8")).decode("ascii")
-            chunk_size = 8000
-            chunks = [encoded[offset : offset + chunk_size] for offset in range(0, len(encoded), chunk_size)]
-            for index, chunk in enumerate(chunks):
-                print(f"ARC_EXPECTED_HEADER_CHUNK {index + 1}/{len(chunks)} {chunk}", file=sys.stderr)
             return 1
     manifest_path = args.output_dir / "manifest.json"
     manifest_path.write_text(
