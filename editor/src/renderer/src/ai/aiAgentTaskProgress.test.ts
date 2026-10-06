@@ -346,6 +346,110 @@ describe('AI agent task progress', () => {
     });
   });
 
+  it('advances plan steps after successful tool turns and preserves omitted completed history', async () => {
+    let providerTurn = 0;
+    const execute = () =>
+      (async function* (): AsyncGenerator<AiRuntimeStreamEvent> {
+        ++providerTurn;
+        if (providerTurn === 1) {
+          yield {
+            type: 'tool-call',
+            call: {
+              id: 'plan-1',
+              name: 'agent.updatePlan',
+              arguments: {
+                planId: 'playground-plan',
+                title: 'Build playground',
+                steps: [
+                  { id: 'layout', title: 'Lay out the playground', state: 'in_progress' },
+                  { id: 'decorate', title: 'Add colorful props', state: 'planned' },
+                  { id: 'tag', title: 'Tag the result', state: 'planned' },
+                ],
+              },
+            },
+          };
+          yield {
+            type: 'tool-call',
+            call: { id: 'layout-tool', name: 'editor.applyBatch', arguments: { operations: [] } },
+          };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        if (providerTurn === 2) {
+          yield {
+            type: 'tool-call',
+            call: { id: 'decorate-tool', name: 'editor.applyBatch', arguments: { operations: [] } },
+          };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        if (providerTurn === 3) {
+          yield {
+            type: 'tool-call',
+            call: {
+              id: 'plan-2',
+              name: 'agent.updatePlan',
+              arguments: {
+                planId: 'playground-plan',
+                title: 'Build playground',
+                steps: [{ id: 'tag', title: 'Tag the result', state: 'in_progress' }],
+              },
+            },
+          };
+          yield {
+            type: 'tool-call',
+            call: { id: 'tag-tool', name: 'editor.applyBatch', arguments: { operations: [] } },
+          };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        yield { type: 'done', finishReason: 'stop' };
+      })();
+
+    const invokeTool = vi.fn(async (call: AiToolCall) => ({
+      name: call.name,
+      operation: call.name,
+      content: '{}',
+      truncated: false,
+      originalBytes: 2,
+    }));
+
+    const events = await collect(runAiAgentToolLoop(request, execute, invokeTool));
+    const tasks = events.filter(
+      (event): event is Extract<AiRuntimeStreamEvent, { type: 'task-update' }> => event.type === 'task-update',
+    );
+
+    const afterLayout = tasks.find((event) =>
+      event.task.children?.some((step) => step.id === 'layout' && step.state === 'completed') &&
+      event.task.children?.some((step) => step.id === 'decorate' && step.state === 'in_progress'),
+    );
+    expect(afterLayout).toBeDefined();
+
+    const afterDecorate = tasks.find((event) =>
+      event.task.children?.some((step) => step.id === 'decorate' && step.state === 'completed') &&
+      event.task.children?.some((step) => step.id === 'tag' && step.state === 'in_progress'),
+    );
+    expect(afterDecorate).toBeDefined();
+
+    const partialPlanUpdate = tasks.find(
+      (event) =>
+        event.task.children?.some((step) => step.id === 'tag' && step.state === 'in_progress') &&
+        event.task.children?.some((step) => step.id === 'layout') &&
+        event.task.children?.some((step) => step.id === 'decorate'),
+    );
+    expect(partialPlanUpdate?.task.children).toHaveLength(3);
+
+    expect(tasks.at(-1)?.task).toMatchObject({
+      id: 'playground-plan',
+      state: 'completed',
+      children: [
+        { id: 'layout', state: 'completed' },
+        { id: 'decorate', state: 'completed' },
+        { id: 'tag', state: 'completed' },
+      ],
+    });
+  });
+
   it('only recovers a failed persisted task when a new tool call proves a retry', () => {
     const failed = recordConversationTaskUpdate(
       undefined,
