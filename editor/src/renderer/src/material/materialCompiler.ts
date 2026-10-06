@@ -79,7 +79,6 @@ const parameterNodeTypes = new Set<MaterialGraphNodeType>([
   'vector2',
   'vector3',
   'vector4',
-  'colorRgb',
   'colorRgba',
   'textureSample',
   'textureSample2D',
@@ -178,7 +177,7 @@ export const materialEditorParameters = (graph: MaterialGraph): MaterialEditorPa
         ? 'texture2d'
         : node.type === 'vector2'
           ? 'vec2'
-          : node.type === 'vector3' || node.type === 'colorRgb'
+          : node.type === 'vector3'
             ? 'vec3'
             : node.type === 'vector4' || node.type === 'colorRgba'
               ? 'vec4'
@@ -186,7 +185,7 @@ export const materialEditorParameters = (graph: MaterialGraph): MaterialEditorPa
     const editorKind: MaterialEditorParameterKind =
       node.type === 'textureSample' || node.type === 'textureSample2D'
         ? 'texture'
-        : node.type === 'colorRgb' || node.type === 'colorRgba'
+        : node.type === 'colorRgba'
           ? 'color'
           : type === 'float'
             ? 'scalar'
