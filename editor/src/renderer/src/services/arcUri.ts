@@ -18,7 +18,8 @@ const decodeSegment = (value: string): string | null => {
 
 export const parseArcUri = (value: string): ArcUri | null => {
   const trimmed = value.trim();
-  if (!trimmed.startsWith('arc://')) return null;
+  const authority = /^arc:\/\/([^/]+)\//u.exec(trimmed)?.[1];
+  if (!authority || !resourceKindPattern.test(authority)) return null;
 
   let parsed: URL;
   try {
@@ -27,7 +28,7 @@ export const parseArcUri = (value: string): ArcUri | null => {
     return null;
   }
 
-  if (parsed.protocol !== 'arc:' || !resourceKindPattern.test(parsed.hostname)) return null;
+  if (parsed.protocol !== 'arc:' || parsed.hostname !== authority) return null;
   const segments = parsed.pathname
     .split('/')
     .filter(Boolean)
@@ -55,7 +56,10 @@ export const arcUri = (
     return encodeURIComponent(segment);
   });
   const params = new URLSearchParams();
-  const entries = resource.query instanceof Map ? [...resource.query.entries()] : Object.entries(resource.query ?? {});
+  const entries =
+    resource.query instanceof Map
+      ? [...resource.query.entries()]
+      : Object.entries((resource.query ?? {}) as Record<string, string>);
   for (const [key, value] of entries.sort(([left], [right]) => left.localeCompare(right))) {
     if (!key) throw new Error('ARC URI query keys must be non-empty');
     params.set(key, value);
