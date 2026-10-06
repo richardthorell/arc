@@ -346,7 +346,7 @@ describe('AI agent task progress', () => {
     });
   });
 
-  it('advances plan steps when the next semantic tool turn begins and preserves omitted completed history', async () => {
+  it('keeps semantic progress on the active task until an explicit plan update moves it', async () => {
     let providerTurn = 0;
     const execute = () =>
       (async function* (): AsyncGenerator<AiRuntimeStreamEvent> {
@@ -368,6 +368,10 @@ describe('AI agent task progress', () => {
               },
             },
           };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        if (providerTurn === 2) {
           yield {
             type: 'tool-call',
             call: { id: 'layout-tool', name: 'editor.applyBatch', arguments: { operations: [] } },
@@ -375,15 +379,15 @@ describe('AI agent task progress', () => {
           yield { type: 'done', finishReason: 'tool_calls' };
           return;
         }
-        if (providerTurn === 2) {
+        if (providerTurn === 3) {
           yield {
             type: 'tool-call',
-            call: { id: 'decorate-tool', name: 'editor.applyBatch', arguments: { operations: [] } },
+            call: { id: 'inspect-tool', name: 'scene.overview', arguments: {} },
           };
           yield { type: 'done', finishReason: 'tool_calls' };
           return;
         }
-        if (providerTurn === 3) {
+        if (providerTurn === 4) {
           yield {
             type: 'tool-call',
             call: {
@@ -392,13 +396,13 @@ describe('AI agent task progress', () => {
               arguments: {
                 planId: 'playground-plan',
                 title: 'Build playground',
-                steps: [{ id: 'tag', title: 'Tag the result', state: 'in_progress' }],
+                steps: [
+                  { id: 'layout', title: 'Lay out the playground', state: 'completed' },
+                  { id: 'decorate', title: 'Add colorful props', state: 'in_progress' },
+                  { id: 'tag', title: 'Tag the result', state: 'planned' },
+                ],
               },
             },
-          };
-          yield {
-            type: 'tool-call',
-            call: { id: 'tag-tool', name: 'editor.applyBatch', arguments: { operations: [] } },
           };
           yield { type: 'done', finishReason: 'tool_calls' };
           return;
@@ -419,46 +423,27 @@ describe('AI agent task progress', () => {
       (event): event is Extract<AiRuntimeStreamEvent, { type: 'task-update' }> => event.type === 'task-update',
     );
 
-    const firstTurnStates = tasks
-      .filter((event) => event.task.children?.some((step) => step.id === 'layout' && step.toolCallIds?.includes('layout-tool')))
-      .map((event) => event.task.children?.find((step) => step.id === 'layout')?.state);
-    expect(firstTurnStates).toContain('in_progress');
-    expect(firstTurnStates).not.toContain('completed');
-
-    const afterLayout = tasks.find((event) =>
-      event.task.children?.some((step) => step.id === 'layout' && step.state === 'completed') &&
-      event.task.children?.some((step) => step.id === 'decorate' && step.state === 'in_progress'),
+    const beforePlanTransition = tasks.filter((event) =>
+      event.task.children?.some((step) => step.id === 'layout' && step.toolCallIds?.length),
     );
-    expect(afterLayout).toBeDefined();
-
-    const afterDecorate = tasks.find((event) =>
-      event.task.children?.some((step) => step.id === 'decorate' && step.state === 'completed') &&
-      event.task.children?.some((step) => step.id === 'tag' && step.state === 'in_progress'),
-    );
-    expect(afterDecorate).toBeDefined();
-
-    const partialPlanUpdate = tasks.find(
-      (event) =>
-        event.task.children?.some((step) => step.id === 'tag' && step.state === 'in_progress') &&
-        event.task.children?.some((step) => step.id === 'layout') &&
-        event.task.children?.some((step) => step.id === 'decorate'),
-    );
-    expect(partialPlanUpdate?.task.children).toHaveLength(3);
+    expect(beforePlanTransition.every((event) =>
+      event.task.children?.some((step) => step.id === 'layout' && step.state === 'in_progress'),
+    )).toBe(true);
 
     expect(tasks.at(-1)?.task).toMatchObject({
       id: 'playground-plan',
-      state: 'completed',
+      state: 'in_progress',
       children: [
         { id: 'layout', state: 'completed' },
-        { id: 'decorate', state: 'completed' },
-        { id: 'tag', state: 'completed' },
+        { id: 'decorate', state: 'in_progress' },
+        { id: 'tag', state: 'planned' },
       ],
     });
   });
 
-  it('keeps a failed middle step active while recovering and preserves the final step', async () => {
+  it('keeps a failed middle step active through recovery until the model publishes the transition', async () => {
     let providerTurn = 0;
-    let decorateAttempt = 0;
+    let attempt = 0;
     const execute = () =>
       (async function* (): AsyncGenerator<AiRuntimeStreamEvent> {
         ++providerTurn;
@@ -472,16 +457,12 @@ describe('AI agent task progress', () => {
                 planId: 'playground-plan',
                 title: 'Build playground',
                 steps: [
-                  { id: 'layout', title: 'Lay out playground', state: 'in_progress' },
-                  { id: 'decorate', title: 'Add colorful props', state: 'planned' },
+                  { id: 'layout', title: 'Lay out playground', state: 'completed' },
+                  { id: 'decorate', title: 'Add colorful props', state: 'in_progress' },
                   { id: 'tag', title: 'Tag result', state: 'planned' },
                 ],
               },
             },
-          };
-          yield {
-            type: 'tool-call',
-            call: { id: 'layout-tool', name: 'editor.applyBatch', arguments: { operations: [] } },
           };
           yield { type: 'done', finishReason: 'tool_calls' };
           return;
@@ -489,19 +470,7 @@ describe('AI agent task progress', () => {
         if (providerTurn === 2 || providerTurn === 3) {
           yield {
             type: 'tool-call',
-            call: {
-              id: `decorate-${providerTurn}`,
-              name: 'editor.applyBatch',
-              arguments: { operations: [] },
-            },
-          };
-          yield { type: 'done', finishReason: 'tool_calls' };
-          return;
-        }
-        if (providerTurn === 4) {
-          yield {
-            type: 'tool-call',
-            call: { id: 'tag-tool', name: 'editor.applyBatch', arguments: { operations: [] } },
+            call: { id: `decorate-${providerTurn}`, name: 'editor.applyBatch', arguments: { operations: [] } },
           };
           yield { type: 'done', finishReason: 'tool_calls' };
           return;
@@ -509,7 +478,7 @@ describe('AI agent task progress', () => {
         yield {
           type: 'tool-call',
           call: {
-            id: 'final-plan',
+            id: 'plan-recovered',
             name: 'agent.updatePlan',
             arguments: {
               planId: 'playground-plan',
@@ -517,7 +486,7 @@ describe('AI agent task progress', () => {
               steps: [
                 { id: 'layout', title: 'Lay out playground', state: 'completed' },
                 { id: 'decorate', title: 'Add colorful props', state: 'completed' },
-                { id: 'tag', title: 'Tag result', state: 'completed' },
+                { id: 'tag', title: 'Tag result', state: 'in_progress' },
               ],
             },
           },
@@ -527,53 +496,34 @@ describe('AI agent task progress', () => {
 
     const invokeTool = vi.fn(async (call: AiToolCall) => {
       if (call.id.startsWith('decorate-')) {
-        ++decorateAttempt;
-        if (decorateAttempt === 1) throw new Error('temporary editor mutation failure');
+        ++attempt;
+        if (attempt === 1) throw new Error('temporary editor mutation failure');
       }
-      return {
-        name: call.name,
-        operation: call.name,
-        content: '{}',
-        truncated: false,
-        originalBytes: 2,
-      };
+      return { name: call.name, operation: call.name, content: '{}', truncated: false, originalBytes: 2 };
     });
 
-    const events = await collect(runAiAgentToolLoop(request, execute, invokeTool, { maximumSteps: 6 }));
+    const events = await collect(runAiAgentToolLoop(request, execute, invokeTool));
     const tasks = events.filter(
       (event): event is Extract<AiRuntimeStreamEvent, { type: 'task-update' }> => event.type === 'task-update',
     );
 
-    expect(tasks.some((event) => flattenState(event.task).includes('failed'))).toBe(false);
-
-    const retrying = tasks.find((event) =>
+    const afterSuccessfulRetry = tasks.find((event) =>
       event.task.children?.some(
-        (step) => step.id === 'decorate' && step.state === 'in_progress' && step.detail?.startsWith('Retrying after '),
+        (step) => step.id === 'decorate' && step.toolCallIds?.includes('decorate-3') && step.state === 'in_progress',
       ),
     );
-    expect(retrying?.task.children).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: 'layout', state: 'completed' }),
-        expect.objectContaining({ id: 'decorate', state: 'in_progress' }),
-        expect.objectContaining({ id: 'tag', state: 'planned' }),
-      ]),
-    );
+    expect(afterSuccessfulRetry).toBeDefined();
 
-    const recovered = tasks.find((event) =>
-      event.task.children?.some((step) => step.id === 'decorate' && step.state === 'completed') &&
-      event.task.children?.some((step) => step.id === 'tag' && step.state === 'in_progress'),
-    );
-    expect(recovered).toBeDefined();
-    expect(tasks.at(-1)?.task.children).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: 'layout', state: 'completed' }),
-        expect.objectContaining({ id: 'decorate', state: 'completed' }),
-        expect.objectContaining({ id: 'tag', state: 'completed' }),
-      ]),
-    );
+    expect(tasks.at(-1)?.task).toMatchObject({
+      children: [
+        { id: 'layout', state: 'completed' },
+        { id: 'decorate', state: 'completed' },
+        { id: 'tag', state: 'in_progress' },
+      ],
+    });
   });
 
-  it('does not advance a task for edit control calls before the semantic mutation begins', async () => {
+  it('does not advance a task for edit control or recovery inspection calls', async () => {
     let providerTurn = 0;
     const execute = () =>
       (async function* (): AsyncGenerator<AiRuntimeStreamEvent> {
@@ -602,7 +552,7 @@ describe('AI agent task progress', () => {
           2: { id: 'request', name: 'edit.request', arguments: {} },
           3: { id: 'begin', name: 'edit.begin', arguments: {} },
           4: { id: 'apply', name: 'editor.applyBatch', arguments: { operations: [] } },
-          5: { id: 'inspect', name: 'scene.getEntity', arguments: {} },
+          5: { id: 'inspect', name: 'scene.overview', arguments: {} },
         };
         const call = calls[providerTurn];
         if (call) {
@@ -626,28 +576,15 @@ describe('AI agent task progress', () => {
       (event): event is Extract<AiRuntimeStreamEvent, { type: 'task-update' }> => event.type === 'task-update',
     );
 
-    const beforeApply = tasks.filter((event) =>
-      event.task.children?.some((step) => step.id === 'build' && step.state === 'in_progress'),
-    );
-    expect(beforeApply.some((event) =>
-      event.task.children?.some((step) => step.id === 'build' && step.toolCallIds?.includes('request')),
-    )).toBe(false);
-    expect(beforeApply.some((event) =>
-      event.task.children?.some((step) => step.id === 'build' && step.toolCallIds?.includes('begin')),
-    )).toBe(false);
-
-    const applyLinked = tasks.find((event) =>
-      event.task.children?.some(
-        (step) => step.id === 'build' && step.state === 'in_progress' && step.toolCallIds?.includes('apply'),
-      ),
-    );
-    expect(applyLinked).toBeDefined();
-
-    const verifyActive = tasks.find((event) =>
-      event.task.children?.some((step) => step.id === 'build' && step.state === 'completed') &&
+    expect(tasks.some((event) =>
       event.task.children?.some((step) => step.id === 'verify' && step.state === 'in_progress'),
+    )).toBe(false);
+    expect(tasks.at(-1)?.task.children).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'build', state: 'in_progress' }),
+        expect.objectContaining({ id: 'verify', state: 'planned' }),
+      ]),
     );
-    expect(verifyActive).toBeDefined();
   });
 
   it('keeps the final task active across additional semantic verification turns', async () => {
