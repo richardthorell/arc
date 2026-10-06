@@ -46,7 +46,11 @@ void vulkan_render_backend::destroy_material_runtime(gpu_material_runtime& runti
 {
     if (runtime.gbuffer_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device_, runtime.gbuffer_pipeline, nullptr);
     if (runtime.forward_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device_, runtime.forward_pipeline, nullptr);
+    if (runtime.water_forward_pipeline != VK_NULL_HANDLE)
+        vkDestroyPipeline(device_, runtime.water_forward_pipeline, nullptr);
     if (runtime.pipeline_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(device_, runtime.pipeline_layout, nullptr);
+    if (runtime.water_pipeline_layout != VK_NULL_HANDLE)
+        vkDestroyPipelineLayout(device_, runtime.water_pipeline_layout, nullptr);
     if (runtime.descriptor_pool != VK_NULL_HANDLE) vkDestroyDescriptorPool(device_, runtime.descriptor_pool, nullptr);
     if (runtime.descriptor_set_layout != VK_NULL_HANDLE)
         vkDestroyDescriptorSetLayout(device_, runtime.descriptor_set_layout, nullptr);
@@ -667,6 +671,165 @@ bool vulkan_render_backend::create_runtime_forward_pipeline(gpu_material& materi
     return true;
 }
 
+bool vulkan_render_backend::ensure_runtime_water_forward_pipeline(gpu_material& material)
+{
+    if (!ensure_runtime_forward_pipeline(material)) return false;
+    if (material.runtime.water_forward_pipeline != VK_NULL_HANDLE &&
+        material.runtime.water_pipeline_layout != VK_NULL_HANDLE)
+        return true;
+    if (water_surface_descriptor_set_layout_ == VK_NULL_HANDLE) return false;
+
+    const auto* pass = runtime_material_pass(material, material_pass::forward);
+    if (pass == nullptr || pass->compiled.bytecode.empty()) return false;
+
+    const auto vertex_shader =
+        create_shader_module(builtin::water_surface_vert_spv, std::size(builtin::water_surface_vert_spv));
+    const auto fragment_shader = create_shader_module(pass->compiled.bytecode);
+    if (vertex_shader == VK_NULL_HANDLE || fragment_shader == VK_NULL_HANDLE)
+    {
+        if (vertex_shader != VK_NULL_HANDLE) vkDestroyShaderModule(device_, vertex_shader, nullptr);
+        if (fragment_shader != VK_NULL_HANDLE) vkDestroyShaderModule(device_, fragment_shader, nullptr);
+        return false;
+    }
+
+    const VkDescriptorSetLayout material_layout =
+        material.runtime.descriptor_set_layout != VK_NULL_HANDLE ? material.runtime.descriptor_set_layout
+                                                                 : white_descriptor_set_layout_;
+    const std::array set_layouts{material_layout, water_surface_descriptor_set_layout_};
+    const VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0u,
+                                   sizeof(mesh_push_constants)};
+    const VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                                            nullptr,
+                                            0u,
+                                            static_cast<std::uint32_t>(set_layouts.size()),
+                                            set_layouts.data(),
+                                            1u,
+                                            &push};
+    if (vkCreatePipelineLayout(device_, &layout, nullptr, &material.runtime.water_pipeline_layout) != VK_SUCCESS)
+    {
+        vkDestroyShaderModule(device_, vertex_shader, nullptr);
+        vkDestroyShaderModule(device_, fragment_shader, nullptr);
+        return false;
+    }
+
+    const std::array stages{
+        VkPipelineShaderStageCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0u,
+                                        VK_SHADER_STAGE_VERTEX_BIT, vertex_shader, "main", nullptr},
+        VkPipelineShaderStageCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0u,
+                                        VK_SHADER_STAGE_FRAGMENT_BIT, fragment_shader, "main", nullptr}};
+    const VkVertexInputBindingDescription binding{0u, sizeof(mesh_vertex), VK_VERTEX_INPUT_RATE_VERTEX};
+    const std::array attributes{
+        VkVertexInputAttributeDescription{0u, 0u, VK_FORMAT_R32G32B32_SFLOAT, offsetof(mesh_vertex, position)},
+        VkVertexInputAttributeDescription{1u, 0u, VK_FORMAT_R32G32B32_SFLOAT, offsetof(mesh_vertex, normal)},
+        VkVertexInputAttributeDescription{2u, 0u, VK_FORMAT_R32G32_SFLOAT, offsetof(mesh_vertex, texcoord)},
+        VkVertexInputAttributeDescription{3u, 0u, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(mesh_vertex, color)},
+        VkVertexInputAttributeDescription{4u, 0u, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(mesh_vertex, tangent)}};
+    const VkPipelineVertexInputStateCreateInfo vertex_input{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+                                                            nullptr,
+                                                            0u,
+                                                            1u,
+                                                            &binding,
+                                                            static_cast<std::uint32_t>(attributes.size()),
+                                                            attributes.data()};
+    const VkPipelineInputAssemblyStateCreateInfo input_assembly{
+        VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO, nullptr, 0u, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        VK_FALSE};
+    const VkPipelineViewportStateCreateInfo viewport{
+        VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO, nullptr, 0u, 1u, nullptr, 1u, nullptr};
+    const VkPipelineRasterizationStateCreateInfo raster{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+                                                        nullptr,
+                                                        0u,
+                                                        VK_FALSE,
+                                                        VK_FALSE,
+                                                        VK_POLYGON_MODE_FILL,
+                                                        VK_CULL_MODE_NONE,
+                                                        VK_FRONT_FACE_COUNTER_CLOCKWISE,
+                                                        VK_FALSE,
+                                                        0.0f,
+                                                        0.0f,
+                                                        0.0f,
+                                                        1.0f};
+    const VkPipelineMultisampleStateCreateInfo multisample{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+                                                           nullptr,
+                                                           0u,
+                                                           VK_SAMPLE_COUNT_1_BIT,
+                                                           VK_FALSE,
+                                                           0.0f,
+                                                           nullptr,
+                                                           VK_FALSE,
+                                                           VK_FALSE};
+    const VkPipelineDepthStencilStateCreateInfo depth{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+                                                      nullptr,
+                                                      0u,
+                                                      VK_TRUE,
+                                                      VK_FALSE,
+                                                      VK_COMPARE_OP_LESS_OR_EQUAL,
+                                                      VK_FALSE,
+                                                      VK_FALSE,
+                                                      {},
+                                                      {},
+                                                      0.0f,
+                                                      1.0f};
+    const VkPipelineColorBlendAttachmentState color_attachment{VK_TRUE,
+                                                               VK_BLEND_FACTOR_SRC_ALPHA,
+                                                               VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+                                                               VK_BLEND_OP_ADD,
+                                                               VK_BLEND_FACTOR_ONE,
+                                                               VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+                                                               VK_BLEND_OP_ADD,
+                                                               VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                                                   VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT};
+    const VkPipelineColorBlendStateCreateInfo color_blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+                                                          nullptr,
+                                                          0u,
+                                                          VK_FALSE,
+                                                          VK_LOGIC_OP_COPY,
+                                                          1u,
+                                                          &color_attachment,
+                                                          {0.0f, 0.0f, 0.0f, 0.0f}};
+    const std::array dynamic_states{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    const VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, nullptr, 0u,
+                                                   static_cast<std::uint32_t>(dynamic_states.size()),
+                                                   dynamic_states.data()};
+    const VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+                                                  nullptr,
+                                                  0u,
+                                                  1u,
+                                                  &scene_color_format_,
+                                                  depth_format_,
+                                                  VK_FORMAT_UNDEFINED};
+    const VkGraphicsPipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+                                                &rendering,
+                                                0u,
+                                                static_cast<std::uint32_t>(stages.size()),
+                                                stages.data(),
+                                                &vertex_input,
+                                                &input_assembly,
+                                                nullptr,
+                                                &viewport,
+                                                &raster,
+                                                &multisample,
+                                                &depth,
+                                                &color_blend,
+                                                &dynamic,
+                                                material.runtime.water_pipeline_layout,
+                                                VK_NULL_HANDLE,
+                                                0u,
+                                                VK_NULL_HANDLE,
+                                                -1};
+    const auto result = vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1u, &pipeline, nullptr,
+                                                  &material.runtime.water_forward_pipeline);
+    vkDestroyShaderModule(device_, vertex_shader, nullptr);
+    vkDestroyShaderModule(device_, fragment_shader, nullptr);
+    if (result != VK_SUCCESS)
+    {
+        vkDestroyPipelineLayout(device_, material.runtime.water_pipeline_layout, nullptr);
+        material.runtime.water_pipeline_layout = VK_NULL_HANDLE;
+        return false;
+    }
+    return true;
+}
+
 bool vulkan_render_backend::ensure_runtime_gbuffer_pipeline(gpu_material& material)
 {
     const auto* program = material.data.runtime_program.get();
@@ -679,7 +842,8 @@ bool vulkan_render_backend::ensure_runtime_gbuffer_pipeline(gpu_material& materi
         return true;
 
     if (material.runtime.gbuffer_pipeline != VK_NULL_HANDLE || material.runtime.forward_pipeline != VK_NULL_HANDLE ||
-        material.runtime.pipeline_layout != VK_NULL_HANDLE || material.runtime.descriptor_pool != VK_NULL_HANDLE ||
+        material.runtime.water_forward_pipeline != VK_NULL_HANDLE || material.runtime.pipeline_layout != VK_NULL_HANDLE ||
+        material.runtime.water_pipeline_layout != VK_NULL_HANDLE || material.runtime.descriptor_pool != VK_NULL_HANDLE ||
         material.runtime.descriptor_set_layout != VK_NULL_HANDLE || !material.runtime.parameter_buffers.empty() ||
         !material.runtime.frame_buffers.empty())
     {
@@ -718,7 +882,8 @@ bool vulkan_render_backend::ensure_runtime_forward_pipeline(gpu_material& materi
         return true;
 
     if (material.runtime.gbuffer_pipeline != VK_NULL_HANDLE || material.runtime.forward_pipeline != VK_NULL_HANDLE ||
-        material.runtime.pipeline_layout != VK_NULL_HANDLE || material.runtime.descriptor_pool != VK_NULL_HANDLE ||
+        material.runtime.water_forward_pipeline != VK_NULL_HANDLE || material.runtime.pipeline_layout != VK_NULL_HANDLE ||
+        material.runtime.water_pipeline_layout != VK_NULL_HANDLE || material.runtime.descriptor_pool != VK_NULL_HANDLE ||
         material.runtime.descriptor_set_layout != VK_NULL_HANDLE || !material.runtime.parameter_buffers.empty() ||
         !material.runtime.frame_buffers.empty())
     {
