@@ -218,7 +218,7 @@ bool vulkan_render_backend::ensure_water_surface_pipeline()
     const auto vertex_shader =
         create_shader_module(builtin::water_surface_vert_spv, std::size(builtin::water_surface_vert_spv));
     const auto fragment_shader =
-        create_shader_module(builtin::default_phong_frag_spv, std::size(builtin::default_phong_frag_spv));
+        create_shader_module(builtin::material_forward_frag_spv, std::size(builtin::material_forward_frag_spv));
     if (vertex_shader == VK_NULL_HANDLE || fragment_shader == VK_NULL_HANDLE)
     {
         if (vertex_shader != VK_NULL_HANDLE) vkDestroyShaderModule(device_, vertex_shader, nullptr);
