@@ -49,9 +49,7 @@ describe('built-in Unlit material', () => {
     expect(
       graph.connections.some(
         (connection) =>
-          connection.from.nodeId === texture?.id &&
-          connection.from.pin === 'a' &&
-          connection.to.pin === 'b',
+          connection.from.nodeId === texture?.id && connection.from.pin === 'a' && connection.to.pin === 'b',
       ),
     ).toBe(true);
 
