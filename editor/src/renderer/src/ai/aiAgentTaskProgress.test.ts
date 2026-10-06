@@ -10,11 +10,6 @@ const collect = async (stream: AsyncIterable<AiRuntimeStreamEvent>): Promise<AiR
   return events;
 };
 
-const flattenState = (task: Extract<AiRuntimeStreamEvent, { type: 'task-update' }>['task']): string[] => [
-  task.state,
-  ...(task.children?.flatMap(flattenState) ?? []),
-];
-
 const request: AiRuntimeRequest = {
   conversationId: 'task-progress',
   messages: [{ id: 'user', role: 'user', content: 'Create and configure an entity' }],
