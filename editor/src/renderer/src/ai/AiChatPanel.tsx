@@ -84,6 +84,20 @@ const formatMessageTime = (createdAt: string) => {
   return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(timestamp);
 };
 
+function AiChatWorkingStatus() {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return <span className="ai-chat-working-status">Working {elapsedSeconds}s…</span>;
+}
+
 const approvalOutcome = (
   reference: AiConversationToolReference,
 ): { state: 'approved' | 'denied'; label: string } | null => {
@@ -715,6 +729,7 @@ export function AiChatPanel({
                   renderText={renderAiChatMessageText}
                   side="left"
                   state={message.state}
+                  streamingPlaceholder={<AiChatWorkingStatus />}
                   text={message.content}
                   timestamp={timestamp}
                   tone="agent"
