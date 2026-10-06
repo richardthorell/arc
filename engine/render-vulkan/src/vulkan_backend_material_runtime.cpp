@@ -45,6 +45,7 @@ std::string_view material_texture_type_name(shader_parameter_type type) noexcept
 void vulkan_render_backend::destroy_material_runtime(gpu_material_runtime& runtime) noexcept
 {
     if (runtime.gbuffer_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device_, runtime.gbuffer_pipeline, nullptr);
+    if (runtime.forward_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device_, runtime.forward_pipeline, nullptr);
     if (runtime.pipeline_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(device_, runtime.pipeline_layout, nullptr);
     if (runtime.descriptor_pool != VK_NULL_HANDLE) vkDestroyDescriptorPool(device_, runtime.descriptor_pool, nullptr);
     if (runtime.descriptor_set_layout != VK_NULL_HANDLE)
@@ -62,18 +63,26 @@ bool vulkan_render_backend::reject_runtime_material(gpu_material& material, std:
     destroy_material_runtime(material.runtime);
     material.runtime.generation = generation;
     material.runtime.failed = true;
-    arc::diagnostics::warn("render.vulkan", "Compiled Material ABI G-buffer fallback for '" + material.data.name +
+    arc::diagnostics::warn("render.vulkan", "Compiled Material ABI fallback for '" + material.data.name +
                                                 "': " + std::move(reason));
     return false;
 }
 
-const material_runtime_pass* vulkan_render_backend::runtime_gbuffer_pass(const gpu_material& material) const noexcept
+namespace
+{
+const material_runtime_pass* runtime_material_pass(const gpu_material& material, material_pass requested) noexcept
 {
     if (!material.data.runtime_program) return nullptr;
     const auto& program = *material.data.runtime_program;
     if (!material_runtime_program_compatible(program)) return nullptr;
-    const auto found = std::ranges::find(program.passes, material_pass::gbuffer, &material_runtime_pass::pass);
+    const auto found = std::ranges::find(program.passes, requested, &material_runtime_pass::pass);
     return found == program.passes.end() ? nullptr : &*found;
+}
+} // namespace
+
+const material_runtime_pass* vulkan_render_backend::runtime_gbuffer_pass(const gpu_material& material) const noexcept
+{
+    return runtime_material_pass(material, material_pass::gbuffer);
 }
 
 bool vulkan_render_backend::update_runtime_parameter_buffer(gpu_buffer& buffer, const material_descriptor& material,
@@ -177,8 +186,11 @@ bool vulkan_render_backend::update_runtime_material_buffers(gpu_material& materi
             !update_runtime_frame_buffer(material.runtime.frame_buffers[slot]))
             return false;
     }
-    if (material.data.runtime_program->uses_texture_sampling && !update_runtime_texture_descriptors(material, slot))
-        return false;
+    if (material.data.runtime_program->uses_texture_sampling)
+    {
+        const auto* pass = runtime_material_pass(material, material.runtime.descriptor_pass);
+        if (pass == nullptr || !update_runtime_texture_descriptors(material, slot, *pass)) return false;
+    }
     return true;
 }
 
@@ -215,13 +227,12 @@ VkDescriptorType vulkan_render_backend::runtime_descriptor_type(shader_resource_
     }
 }
 
-bool vulkan_render_backend::update_runtime_texture_descriptors(gpu_material& material, std::uint32_t frame_slot)
+bool vulkan_render_backend::update_runtime_texture_descriptors(gpu_material& material, std::uint32_t frame_slot,
+                                                                const material_runtime_pass& pass)
 {
     if (!material.data.runtime_program || frame_slot >= material.runtime.descriptor_sets.size()) return false;
-    const auto* pass = runtime_gbuffer_pass(material);
-    if (pass == nullptr) return false;
 
-    const auto& resources = pass->compiled.reflection.resources;
+    const auto& resources = pass.compiled.reflection.resources;
     std::vector<std::vector<VkDescriptorImageInfo>> image_infos(resources.size());
     std::vector<VkWriteDescriptorSet> writes;
     writes.reserve(resources.size());
@@ -309,6 +320,7 @@ bool vulkan_render_backend::update_runtime_texture_descriptors(gpu_material& mat
 bool vulkan_render_backend::create_runtime_material_descriptors(gpu_material& material,
                                                                 const material_runtime_pass& pass)
 {
+    material.runtime.descriptor_pass = pass.pass;
     const auto& reflection = pass.compiled.reflection;
     std::vector<const shader_resource_descriptor*> resources;
     resources.reserve(reflection.resources.size());
@@ -429,7 +441,7 @@ bool vulkan_render_backend::create_runtime_material_descriptors(gpu_material& ma
         }
         if (!writes.empty())
             vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0u, nullptr);
-        if (!update_runtime_texture_descriptors(material, slot))
+        if (!update_runtime_texture_descriptors(material, slot, pass))
             return reject_runtime_material(material, "failed to update Material ABI texture descriptors");
     }
     return true;
@@ -542,6 +554,122 @@ bool vulkan_render_backend::create_runtime_gbuffer_pipeline(gpu_material& materi
     return true;
 }
 
+bool vulkan_render_backend::create_runtime_forward_pipeline(gpu_material& material,
+                                                            const material_runtime_pass& pass)
+{
+    VkShaderModule vert = create_shader_module(builtin::gbuffer_vert_spv, std::size(builtin::gbuffer_vert_spv));
+    VkShaderModule frag = create_shader_module(pass.compiled.bytecode);
+    if (vert == VK_NULL_HANDLE || frag == VK_NULL_HANDLE)
+    {
+        if (vert != VK_NULL_HANDLE) vkDestroyShaderModule(device_, vert, nullptr);
+        if (frag != VK_NULL_HANDLE) vkDestroyShaderModule(device_, frag, nullptr);
+        return reject_runtime_material(material, "failed to create compiled forward Material ABI shader module");
+    }
+
+    VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0u,
+                             sizeof(mesh_push_constants)};
+    VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    if (material.runtime.descriptor_set_layout != VK_NULL_HANDLE)
+    {
+        layout.setLayoutCount = 1u;
+        layout.pSetLayouts = &material.runtime.descriptor_set_layout;
+    }
+    layout.pushConstantRangeCount = 1u;
+    layout.pPushConstantRanges = &push;
+    if (vkCreatePipelineLayout(device_, &layout, nullptr, &material.runtime.pipeline_layout) != VK_SUCCESS)
+    {
+        vkDestroyShaderModule(device_, vert, nullptr);
+        vkDestroyShaderModule(device_, frag, nullptr);
+        return reject_runtime_material(material, "failed to create compiled forward Material ABI pipeline layout");
+    }
+
+    std::array<VkPipelineShaderStageCreateInfo, 2> stages{};
+    stages[0] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+    stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    stages[0].module = vert;
+    stages[0].pName = "main";
+    stages[1] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+    stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    stages[1].module = frag;
+    stages[1].pName = "main";
+
+    VkVertexInputBindingDescription binding{0u, sizeof(mesh_vertex), VK_VERTEX_INPUT_RATE_VERTEX};
+    const std::array<VkVertexInputAttributeDescription, 5> attributes{
+        VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(mesh_vertex, position)},
+        VkVertexInputAttributeDescription{1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(mesh_vertex, normal)},
+        VkVertexInputAttributeDescription{2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(mesh_vertex, texcoord)},
+        VkVertexInputAttributeDescription{3, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(mesh_vertex, color)},
+        VkVertexInputAttributeDescription{4, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(mesh_vertex, tangent)}};
+    VkPipelineVertexInputStateCreateInfo vertex_input{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+    vertex_input.vertexBindingDescriptionCount = 1u;
+    vertex_input.pVertexBindingDescriptions = &binding;
+    vertex_input.vertexAttributeDescriptionCount = static_cast<std::uint32_t>(attributes.size());
+    vertex_input.pVertexAttributeDescriptions = attributes.data();
+
+    VkPipelineInputAssemblyStateCreateInfo input_assembly{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+    input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    VkPipelineViewportStateCreateInfo viewport{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+    viewport.viewportCount = 1u;
+    viewport.scissorCount = 1u;
+    VkPipelineRasterizationStateCreateInfo raster{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+    raster.polygonMode = VK_POLYGON_MODE_FILL;
+    raster.cullMode = material.data.double_sided ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
+    raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    raster.lineWidth = 1.0f;
+    VkPipelineMultisampleStateCreateInfo multisample{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+    multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    VkPipelineDepthStencilStateCreateInfo depth{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+    depth.depthTestEnable = VK_TRUE;
+    depth.depthWriteEnable = material.data.alpha_mode == material_alpha_mode::blend ? VK_FALSE : VK_TRUE;
+    depth.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+
+    VkPipelineColorBlendAttachmentState attachment{};
+    attachment.blendEnable = material.data.alpha_mode == material_alpha_mode::blend ? VK_TRUE : VK_FALSE;
+    attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    attachment.colorBlendOp = VK_BLEND_OP_ADD;
+    attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+    attachment.colorWriteMask =
+        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    VkPipelineColorBlendStateCreateInfo color_blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+    color_blend.attachmentCount = 1u;
+    color_blend.pAttachments = &attachment;
+
+    const std::array<VkDynamicState, 2> dynamic_states{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+    dynamic.dynamicStateCount = static_cast<std::uint32_t>(dynamic_states.size());
+    dynamic.pDynamicStates = dynamic_states.data();
+
+    VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
+    rendering.colorAttachmentCount = 1u;
+    rendering.pColorAttachmentFormats = &scene_color_format_;
+    rendering.depthAttachmentFormat = depth_format_;
+
+    VkGraphicsPipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+    pipeline.pNext = &rendering;
+    pipeline.stageCount = static_cast<std::uint32_t>(stages.size());
+    pipeline.pStages = stages.data();
+    pipeline.pVertexInputState = &vertex_input;
+    pipeline.pInputAssemblyState = &input_assembly;
+    pipeline.pViewportState = &viewport;
+    pipeline.pRasterizationState = &raster;
+    pipeline.pMultisampleState = &multisample;
+    pipeline.pDepthStencilState = &depth;
+    pipeline.pColorBlendState = &color_blend;
+    pipeline.pDynamicState = &dynamic;
+    pipeline.layout = material.runtime.pipeline_layout;
+    const auto result = vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1u, &pipeline, nullptr,
+                                                  &material.runtime.forward_pipeline);
+    vkDestroyShaderModule(device_, vert, nullptr);
+    vkDestroyShaderModule(device_, frag, nullptr);
+    if (result != VK_SUCCESS)
+        return reject_runtime_material(material, "failed to create compiled Material ABI forward pipeline: " +
+                                                     describe_vk_result(result));
+    return true;
+}
+
 bool vulkan_render_backend::ensure_runtime_gbuffer_pipeline(gpu_material& material)
 {
     const auto* program = material.data.runtime_program.get();
@@ -577,6 +705,39 @@ bool vulkan_render_backend::ensure_runtime_gbuffer_pipeline(gpu_material& materi
     if (!create_runtime_gbuffer_pipeline(material, *pass)) return false;
     arc::diagnostics::debug("render.vulkan",
                             "Using compiled Material ABI G-buffer pass for '" + material.data.name + "'");
+    return true;
+}
+
+bool vulkan_render_backend::ensure_runtime_forward_pipeline(gpu_material& material)
+{
+    const auto* program = material.data.runtime_program.get();
+    if (program == nullptr) return false;
+    if (material.runtime.failed && material.runtime.generation == program->generation) return false;
+    if (material.runtime.forward_pipeline != VK_NULL_HANDLE && material.runtime.generation == program->generation &&
+        material.runtime.descriptor_pass == material_pass::forward &&
+        (material.runtime.descriptor_set_layout == VK_NULL_HANDLE ||
+         material.runtime.descriptor_sets.size() == frame_resource_count()))
+        return true;
+
+    if (material.runtime.gbuffer_pipeline != VK_NULL_HANDLE || material.runtime.forward_pipeline != VK_NULL_HANDLE ||
+        material.runtime.pipeline_layout != VK_NULL_HANDLE || material.runtime.descriptor_pool != VK_NULL_HANDLE ||
+        material.runtime.descriptor_set_layout != VK_NULL_HANDLE || !material.runtime.parameter_buffers.empty() ||
+        !material.runtime.frame_buffers.empty())
+    {
+        wait_for_in_flight_frames();
+        destroy_material_runtime(material.runtime);
+    }
+    material.runtime.generation = program->generation;
+
+    if (!material_runtime_program_compatible(*program))
+        return reject_runtime_material(material, "unsupported compiled Material ABI contract version");
+    const auto* pass = runtime_material_pass(material, material_pass::forward);
+    if (pass == nullptr || pass->compiled.bytecode.empty())
+        return reject_runtime_material(material, "compiled material does not provide an executable forward pass");
+    if (!create_runtime_material_descriptors(material, *pass)) return false;
+    if (!create_runtime_forward_pipeline(material, *pass)) return false;
+    arc::diagnostics::debug("render.vulkan",
+                            "Using compiled Material ABI forward pass for '" + material.data.name + "'");
     return true;
 }
 
