@@ -257,15 +257,15 @@ struct ArcForwardSceneData
     float4 fogParamsViewportHeight;
 };
 
-[[vk::binding(0, 2)]] StructuredBuffer<ArcForwardLightingData> arcForwardLighting;
-[[vk::binding(1, 2)]] Texture2DArray<float> arcForwardDirectionalShadowMap;
-[[vk::binding(2, 2)]] SamplerComparisonState arcForwardDirectionalShadowSampler;
-[[vk::binding(3, 2)]] Texture2D<float> arcForwardLocalShadowAtlas;
-[[vk::binding(4, 2)]] SamplerComparisonState arcForwardLocalShadowSampler;
-[[vk::binding(5, 2)]] Texture2D<float4> arcForwardSceneColor;
-[[vk::binding(6, 2)]] SamplerState arcForwardSceneColorSampler;
-[[vk::binding(7, 2)]] ConstantBuffer<ArcForwardShadowData> arcForwardShadows;
-[[vk::binding(8, 2)]] ConstantBuffer<ArcForwardSceneData> arcForwardScene;
+StructuredBuffer<ArcForwardLightingData> arcForwardLighting : register(t0, space2);
+Texture2DArray<float> arcForwardDirectionalShadowMap : register(t1, space2);
+SamplerComparisonState arcForwardDirectionalShadowSampler : register(s2, space2);
+Texture2D<float> arcForwardLocalShadowAtlas : register(t3, space2);
+SamplerComparisonState arcForwardLocalShadowSampler : register(s4, space2);
+Texture2D<float4> arcForwardSceneColor : register(t5, space2);
+SamplerState arcForwardSceneColorSampler : register(s6, space2);
+ConstantBuffer<ArcForwardShadowData> arcForwardShadows : register(b7, space2);
+ConstantBuffer<ArcForwardSceneData> arcForwardScene : register(b8, space2);
 
 static const float ARC_FORWARD_PI = 3.14159265358979323846;
 
@@ -405,7 +405,8 @@ int arcForwardShadowCascade(float cameraDistance)
     return -1;
 }
 
-float arcForwardSampleDirectionalCascade(int cascade, float3 worldPosition, float3 surfaceNormal,
+)";
+    source << R"(float arcForwardSampleDirectionalCascade(int cascade, float3 worldPosition, float3 surfaceNormal,
                                          float3 lightDirection)
 {
     float4 lightClip = mul(arcForwardShadows.lightViewProjection[cascade], float4(worldPosition, 1.0));
