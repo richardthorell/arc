@@ -68,9 +68,8 @@ bool vulkan_render_backend::reject_runtime_material(gpu_material& material, std:
     return false;
 }
 
-namespace
-{
-const material_runtime_pass* runtime_material_pass(const gpu_material& material, material_pass requested) noexcept
+const material_runtime_pass* vulkan_render_backend::runtime_material_pass(const gpu_material& material,
+                                                                          material_pass requested) const noexcept
 {
     if (!material.data.runtime_program) return nullptr;
     const auto& program = *material.data.runtime_program;
@@ -78,7 +77,6 @@ const material_runtime_pass* runtime_material_pass(const gpu_material& material,
     const auto found = std::ranges::find(program.passes, requested, &material_runtime_pass::pass);
     return found == program.passes.end() ? nullptr : &*found;
 }
-} // namespace
 
 const material_runtime_pass* vulkan_render_backend::runtime_gbuffer_pass(const gpu_material& material) const noexcept
 {
@@ -676,12 +674,13 @@ bool vulkan_render_backend::ensure_runtime_gbuffer_pipeline(gpu_material& materi
     if (program == nullptr) return false;
     if (material.runtime.failed && material.runtime.generation == program->generation) return false;
     if (material.runtime.gbuffer_pipeline != VK_NULL_HANDLE && material.runtime.generation == program->generation &&
+        material.runtime.descriptor_pass == material_pass::gbuffer &&
         (material.runtime.descriptor_set_layout == VK_NULL_HANDLE ||
          material.runtime.descriptor_sets.size() == frame_resource_count()))
         return true;
 
-    if (material.runtime.gbuffer_pipeline != VK_NULL_HANDLE || material.runtime.pipeline_layout != VK_NULL_HANDLE ||
-        material.runtime.descriptor_pool != VK_NULL_HANDLE ||
+    if (material.runtime.gbuffer_pipeline != VK_NULL_HANDLE || material.runtime.forward_pipeline != VK_NULL_HANDLE ||
+        material.runtime.pipeline_layout != VK_NULL_HANDLE || material.runtime.descriptor_pool != VK_NULL_HANDLE ||
         material.runtime.descriptor_set_layout != VK_NULL_HANDLE || !material.runtime.parameter_buffers.empty() ||
         !material.runtime.frame_buffers.empty())
     {
