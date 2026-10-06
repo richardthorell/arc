@@ -70,18 +70,14 @@ const color3 = (value: LegacyColor | undefined, fallback: [number, number, numbe
   finite(value?.b, fallback[2]),
 ];
 
-const normalizeLegacyColorRgbGraph = (
-  value: unknown,
-): { graph: MaterialGraph | undefined; upgraded: boolean } => {
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    return { graph: undefined, upgraded: false };
+const normalizeLegacyColorRgbGraph = (value: unknown): { graph: MaterialGraph | undefined; upgraded: boolean } => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { graph: undefined, upgraded: false };
 
   const graph = structuredClone(value) as {
     nodes?: unknown[];
     connections?: unknown[];
   };
-  if (!Array.isArray(graph.nodes) || !Array.isArray(graph.connections))
-    return { graph: undefined, upgraded: false };
+  if (!Array.isArray(graph.nodes) || !Array.isArray(graph.connections)) return { graph: undefined, upgraded: false };
 
   const migratedNodeIds = new Set<string>();
   let upgraded = false;
