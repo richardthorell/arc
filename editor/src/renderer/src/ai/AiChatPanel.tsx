@@ -63,8 +63,7 @@ const taskDiagnosticSnapshot = (task: AiTaskProgress): string => {
   return rows.join(' | ');
 };
 
-const diagnosticLine = (kind: string, detail: string): string =>
-  `${new Date().toISOString()} ${kind} ${detail}`;
+const diagnosticLine = (kind: string, detail: string): string => `${new Date().toISOString()} ${kind} ${detail}`;
 
 const diagnosticToolError = (content: unknown): string => {
   if (typeof content !== 'string') return '';
@@ -458,10 +457,7 @@ export function AiChatPanel({
             toolReferences: recordConversationToolCall(message.toolReferences, event.call, event.agentStep, timestamp),
             taskDiagnostics: [
               ...(message.taskDiagnostics ?? []),
-              diagnosticLine(
-                'tool-call',
-                `step=${event.agentStep ?? '-'} name=${event.call.name} id=${event.call.id}`,
-              ),
+              diagnosticLine('tool-call', `step=${event.agentStep ?? '-'} name=${event.call.name} id=${event.call.id}`),
             ],
           }));
           continue;
@@ -528,18 +524,8 @@ export function AiChatPanel({
           ...message,
           content: message.content || messageText,
           state: 'error',
-          toolReferences: finishPendingConversationTools(
-            message.toolReferences,
-            'error',
-            messageText,
-            timestamp,
-          ),
-          taskReferences: finishPendingConversationTasks(
-            message.taskReferences,
-            'failed',
-            messageText,
-            timestamp,
-          ),
+          toolReferences: finishPendingConversationTools(message.toolReferences, 'error', messageText, timestamp),
+          taskReferences: finishPendingConversationTasks(message.taskReferences, 'failed', messageText, timestamp),
           taskDiagnostics: [
             ...(message.taskDiagnostics ?? []),
             diagnosticLine('runtime-error', 'code=unexpected_stream_end retryable=false'),

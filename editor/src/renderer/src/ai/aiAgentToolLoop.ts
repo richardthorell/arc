@@ -131,9 +131,7 @@ const preserveRuntimeTaskData = (previous: AiTaskProgress | undefined, next: AiT
     if (!old) {
       return {
         ...task,
-        ...(task.children?.length
-          ? { children: task.children.map((child) => merge(undefined, child)) }
-          : {}),
+        ...(task.children?.length ? { children: task.children.map((child) => merge(undefined, child)) } : {}),
       };
     }
 
@@ -430,11 +428,7 @@ export async function* runAiAgentToolLoop(
         task: flattenTaskTree(linkedRoot).find((task) => task.id === planned!.task.id)!,
       };
       yield { type: 'task-update', task: linkedRoot };
-    } else if (
-      !planned &&
-      !planRoots.size &&
-      semanticExecutionCalls.some((call) => genericTaskTools.has(call.name))
-    ) {
+    } else if (!planned && !planRoots.size && semanticExecutionCalls.some((call) => genericTaskTools.has(call.name))) {
       const genericCalls = semanticExecutionCalls.filter((call) => genericTaskTools.has(call.name));
       genericTask = taskForCalls(providerStep, genericCalls, 'in_progress');
       yield { type: 'task-update', task: genericTask };

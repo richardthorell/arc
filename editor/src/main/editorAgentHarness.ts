@@ -353,9 +353,7 @@ export class EditorAgentHarness extends EditorAgentHarnessCore {
       await this.removeBatchCreatedAssets(request.editSessionId);
 
       if (cancelFailure) {
-        throw new Error(
-          `Batch failed: ${message}. Automatic transaction cancellation also failed: ${cancelFailure}`,
-        );
+        throw new Error(`Batch failed: ${message}. Automatic transaction cancellation also failed: ${cancelFailure}`);
       }
       throw new Error(
         `Batch failed and the edit transaction was cancelled: ${message}. Begin a new edit session before retrying.`,
