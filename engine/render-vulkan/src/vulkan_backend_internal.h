@@ -769,6 +769,7 @@ private:
         std::vector<VkDescriptorSet> descriptor_sets;
         std::vector<gpu_buffer> parameter_buffers;
         std::vector<gpu_buffer> frame_buffers;
+        material_pass descriptor_pass{material_pass::gbuffer};
         std::uint64_t generation{};
         bool failed{};
     };
@@ -1251,7 +1252,8 @@ private:
 
     VkDescriptorType runtime_descriptor_type(shader_resource_kind kind) const noexcept;
 
-    bool update_runtime_texture_descriptors(gpu_material& material, std::uint32_t frame_slot);
+    bool update_runtime_texture_descriptors(gpu_material& material, std::uint32_t frame_slot,
+                                            const material_runtime_pass& pass);
 
     bool create_runtime_material_descriptors(gpu_material& material, const material_runtime_pass& pass);
 
