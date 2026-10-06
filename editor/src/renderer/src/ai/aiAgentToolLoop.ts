@@ -387,8 +387,10 @@ export async function* runAiAgentToolLoop(
     if (planned && failedResult) {
       let failedRoot = mapTaskTree(planRoots.get(planned.root.id)!, planned.task.id, (task) => ({
         ...task,
-        state: 'failed',
-        detail: `Failed while running ${failedResult.name}`,
+        state: failedResult.retryable ? 'in_progress' : 'failed',
+        detail: failedResult.retryable
+          ? `Retrying after ${failedResult.name}`
+          : `Failed while running ${failedResult.name}`,
       }));
       failedRoot = deriveTaskTreeStates(failedRoot);
       planRoots.set(failedRoot.id, failedRoot);
@@ -407,8 +409,12 @@ export async function* runAiAgentToolLoop(
         task: taskForCalls(
           providerStep,
           executionCalls,
-          failedResult ? 'failed' : 'completed',
-          failedResult ? `Failed while running ${failedResult.name}` : undefined,
+          failedResult ? (failedResult.retryable ? 'in_progress' : 'failed') : 'completed',
+          failedResult
+            ? failedResult.retryable
+              ? `Retrying after ${failedResult.name}`
+              : `Failed while running ${failedResult.name}`
+            : undefined,
         ),
       };
     }
