@@ -11,6 +11,22 @@ import type { BuiltInAgentAdapter } from './builtInAgentAdapter';
 export const BUILT_IN_AGENT_TOOL_RESULT_MAX_BYTES = 64 * 1024;
 const maximumResultPreviewCharacters = 16 * 1024;
 
+const agentChoiceOption = z
+  .object({
+    uri: z.string().regex(/^arc:\/\/asset\/[^/?#]+$/u),
+    label: z.string().min(1).max(120),
+    reason: z.string().min(1).max(240).optional(),
+  })
+  .strict();
+const agentChoices = z
+  .object({
+    title: z.string().min(1).max(120),
+    prompt: z.string().min(1).max(280).optional(),
+    selection: z.literal('single').default('single'),
+    options: z.array(agentChoiceOption).min(2).max(8),
+  })
+  .strict();
+
 const vector3 = z.tuple([z.number(), z.number(), z.number()]);
 const empty = z.object({}).strict();
 const captureOptions = z
@@ -90,6 +106,12 @@ const registryEntries = [
     method: 'agent.capabilities',
     description: 'Describe the editor operations and edit actions currently available to the built-in ARC agent.',
     schema: empty,
+  },
+  {
+    method: 'agent.presentChoices',
+    description:
+      'Present 2-8 visual project asset choices to the user when their selection is needed before continuing. Each option must use an authoritative arc://asset/<guid> reference from project context or tool results. Do not invent GUIDs. After calling this tool, wait for the user selection before taking dependent action.',
+    schema: agentChoices,
   },
   {
     method: 'scene.overview',
