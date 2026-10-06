@@ -113,16 +113,37 @@ const executeTool = async (
 
 const preserveRuntimeTaskData = (previous: AiTaskProgress | undefined, next: AiTaskProgress): AiTaskProgress => {
   if (!previous) return next;
-  const previousById = new Map(flattenTaskTree(previous).map((task) => [task.id, task]));
-  const merge = (task: AiTaskProgress): AiTaskProgress => {
-    const old = previousById.get(task.id);
+
+  const merge = (old: AiTaskProgress | undefined, task: AiTaskProgress): AiTaskProgress => {
+    if (!old) {
+      return {
+        ...task,
+        ...(task.children?.length ? { children: task.children.map((child) => merge(undefined, child)) } : {}),
+      };
+    }
+
+    const nextChildren = new Map((task.children ?? []).map((child) => [child.id, child]));
+    const previousChildren = old.children ?? [];
+    const mergedChildren = [
+      ...previousChildren.map((child) => merge(child, nextChildren.get(child.id) ?? child)),
+      ...(task.children ?? [])
+        .filter((child) => !previousChildren.some((previousChild) => previousChild.id === child.id))
+        .map((child) => merge(undefined, child)),
+    ];
+
+    const preserveTerminalState =
+      (old.state === 'completed' || old.state === 'cancelled') &&
+      (task.state === 'planned' || task.state === 'in_progress');
+
     return {
       ...task,
-      ...(old?.toolCallIds?.length ? { toolCallIds: old.toolCallIds } : {}),
-      ...(task.children?.length ? { children: task.children.map(merge) } : {}),
+      state: preserveTerminalState ? old.state : task.state,
+      ...(old.toolCallIds?.length ? { toolCallIds: old.toolCallIds } : {}),
+      ...(mergedChildren.length ? { children: mergedChildren } : {}),
     };
   };
-  return merge(next);
+
+  return merge(previous, next);
 };
 
 const activePlanTask = (
@@ -185,6 +206,29 @@ const withoutTaskDetail = (task: AiTaskProgress): AiTaskProgress => {
   const copy = { ...task };
   delete copy.detail;
   return copy;
+};
+
+const advanceCompletedPlanTask = (
+  root: AiTaskProgress,
+  completedTaskId: string,
+): AiTaskProgress => {
+  let nextRoot = mapTaskTree(root, completedTaskId, (task) => ({
+    ...withoutTaskDetail(task),
+    state: 'completed',
+  }));
+
+  const flat = flattenTaskTree(nextRoot);
+  const nextPlanned = flat.find(
+    (task) => task.id !== nextRoot.id && task.state === 'planned' && !task.children?.length,
+  );
+  if (nextPlanned) {
+    nextRoot = mapTaskTree(nextRoot, nextPlanned.id, (task) => ({
+      ...withoutTaskDetail(task),
+      state: 'in_progress',
+    }));
+  }
+
+  return deriveTaskTreeStates(nextRoot);
 };
 
 export async function* runAiAgentToolLoop(
@@ -395,14 +439,10 @@ export async function* runAiAgentToolLoop(
       failedRoot = deriveTaskTreeStates(failedRoot);
       planRoots.set(failedRoot.id, failedRoot);
       yield { type: 'task-update', task: failedRoot };
-    } else if (planned && recoveringPlanTask) {
-      let recoveredRoot = mapTaskTree(planRoots.get(planned.root.id)!, planned.task.id, (task) => ({
-        ...withoutTaskDetail(task),
-        state: 'completed',
-      }));
-      recoveredRoot = deriveTaskTreeStates(recoveredRoot);
-      planRoots.set(recoveredRoot.id, recoveredRoot);
-      yield { type: 'task-update', task: recoveredRoot };
+    } else if (planned) {
+      const advancedRoot = advanceCompletedPlanTask(planRoots.get(planned.root.id)!, planned.task.id);
+      planRoots.set(advancedRoot.id, advancedRoot);
+      yield { type: 'task-update', task: advancedRoot };
     } else if (genericTask) {
       yield {
         type: 'task-update',
