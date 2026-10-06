@@ -392,11 +392,15 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
         return {};
     }
 
-    auto generated =
-        render::tools::generate_material_pass_slang(evaluator.value(), material, render::material_pass::gbuffer);
+    const auto pass = render::material_supports_pass(material, render::material_pass::gbuffer)
+                          ? render::material_pass::gbuffer
+                          : render::material_pass::forward;
+    const auto pass_name = pass == render::material_pass::gbuffer ? "gbuffer" : "forward";
+    auto generated = render::tools::generate_material_pass_slang(evaluator.value(), material, pass);
     if (!generated)
     {
-        diagnostics.push_back("Compiled Material ABI G-buffer generation failed: " + generated.error().message);
+        diagnostics.push_back("Compiled Material ABI " + std::string(pass_name) +
+                              " generation failed: " + generated.error().message);
         return {};
     }
 
@@ -408,7 +412,7 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
         return {};
     }
 
-    render::shader_compile_request request{.source_path = material.name + ".preview.gbuffer.generated.slang",
+    render::shader_compile_request request{.source_path = material.name + ".preview." + pass_name + ".generated.slang",
                                            .source_override = generated.value().source,
                                            .entry_point = generated.value().entry_point,
                                            .profile = "spirv_1_5",
@@ -417,7 +421,7 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
                                            .stage = render::shader_stage::fragment,
                                            .target = render::shader_target::spirv,
                                            .optimization = render::shader_optimization::development,
-                                           .required_passes = {render::material_pass::gbuffer},
+                                           .required_passes = {pass},
                                            .generated_line_nodes = generated.value().generated_line_nodes,
                                            .generate_debug_information = true};
     auto compiled = compiler.compile(request);
@@ -475,7 +479,7 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
         std::memcpy(program->parameter_defaults.data() + parameter.offset, authored->default_value.data(), bytes);
     }
 
-    program->passes.push_back({.pass = render::material_pass::gbuffer,
+    program->passes.push_back({.pass = pass,
                                .permutation = generated.value().permutation,
                                .compiled = std::move(compiled).value()});
     return program;
@@ -592,12 +596,18 @@ material_preview_descriptor_result realize_material_preview_descriptor(std::stri
         std::erase_if(
             result.diagnostics, [](const std::string& diagnostic)
             { return diagnostic.find("until compiled runtime pass binding is available") != std::string::npos; });
-        result.diagnostics.push_back("Compiled Material ABI G-buffer preview pass is active");
+        const auto pass = result.material.runtime_program->passes.front().pass;
+        result.diagnostics.push_back(pass == render::material_pass::gbuffer
+                                         ? "Compiled Material ABI G-buffer preview pass is active"
+                                         : "Compiled Material ABI forward preview pass is active");
     }
 
     result.succeeded = true;
     result.message =
-        result.material.runtime_program ? "Material preview realized through compiled Material ABI G-buffer pass"
+        result.material.runtime_program
+            ? (result.material.runtime_program->passes.front().pass == render::material_pass::gbuffer
+                   ? "Material preview realized through compiled Material ABI G-buffer pass"
+                   : "Material preview realized through compiled Material ABI forward pass")
         : result.diagnostics.empty()    ? "Material preview realized from native Material IR"
                                      : "Material preview realized from native Material IR with dynamic-output defaults";
     return result;
