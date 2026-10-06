@@ -73,10 +73,10 @@ void hash_combine(std::uint64_t& seed, std::uint64_t value) noexcept
     seed ^= value + 0x9e3779b97f4a7c15ull + (seed << 6u) + (seed >> 2u);
 }
 
-std::uint64_t water_settings_signature(const water_render_instance& instance) noexcept
+std::uint64_t water_settings_signature(const fluid_surface_render_instance& instance) noexcept
 {
     std::uint64_t result{0x4152435741544552ull};
-    const auto& simulation = instance.settings.simulation;
+    const auto& simulation = instance.water.settings.simulation;
     hash_combine(result, std::bit_cast<std::uint32_t>(simulation.wind_speed));
     hash_combine(result, std::bit_cast<std::uint32_t>(simulation.wind_direction[0]));
     hash_combine(result, std::bit_cast<std::uint32_t>(simulation.wind_direction[1]));
@@ -84,10 +84,10 @@ std::uint64_t water_settings_signature(const water_render_instance& instance) no
     hash_combine(result, std::bit_cast<std::uint32_t>(simulation.wave_amplitude));
     hash_combine(result, std::bit_cast<std::uint32_t>(simulation.choppiness));
     hash_combine(result, simulation.seed);
-    hash_combine(result, static_cast<std::uint64_t>(instance.settings.quality));
-    hash_combine(result, instance.settings.foam.enabled ? 1u : 0u);
-    hash_combine(result, std::bit_cast<std::uint32_t>(instance.settings.foam.threshold));
-    hash_combine(result, std::bit_cast<std::uint32_t>(instance.settings.foam.decay));
+    hash_combine(result, static_cast<std::uint64_t>(instance.water.settings.quality));
+    hash_combine(result, instance.water.settings.foam.enabled ? 1u : 0u);
+    hash_combine(result, std::bit_cast<std::uint32_t>(instance.water.settings.foam.threshold));
+    hash_combine(result, std::bit_cast<std::uint32_t>(instance.water.settings.foam.decay));
     return result;
 }
 
@@ -222,7 +222,7 @@ bool vulkan_render_backend::synchronize_water_simulations(std::uint64_t frame_in
 {
     auto& profile = last_profile_.water;
     profile = {};
-    if (frame_waters_.empty())
+    if (frame_fluid_surfaces_.empty())
     {
         const bool has_expired = std::ranges::any_of(ocean_simulations_, [frame_index](const auto& entry)
                                                      { return frame_index > entry.second.last_seen_frame + 4u; });
@@ -274,9 +274,9 @@ bool vulkan_render_backend::synchronize_water_simulations(std::uint64_t frame_in
     bool succeeded = true;
     bool waited_for_rebuild{};
     std::unordered_set<std::uint64_t> active_keys;
-    for (const auto& instance : frame_waters_)
+    for (const auto& instance : frame_fluid_surfaces_)
     {
-        if (instance.type != water::water_body_type::ocean) continue;
+        if (!instance.is_water() || instance.water.type != water::water_body_type::ocean) continue;
         const auto key = water_object_key(instance.object_id);
         active_keys.insert(key);
         const auto signature = water_settings_signature(instance);
@@ -295,7 +295,7 @@ bool vulkan_render_backend::synchronize_water_simulations(std::uint64_t frame_in
         if (inserted)
         {
             simulation.instance = instance;
-            simulation.profile = water::ocean_profile(instance.settings.quality);
+            simulation.profile = water::ocean_profile(instance.water.settings.quality);
             simulation.settings_signature = signature;
             bool initialized = true;
             for (std::uint32_t cascade_index = 0u; cascade_index < simulation.profile.cascade_count; ++cascade_index)
@@ -303,7 +303,7 @@ bool vulkan_render_backend::synchronize_water_simulations(std::uint64_t frame_in
                 auto& cascade = simulation.cascades[cascade_index];
                 const auto& descriptor = simulation.profile.cascades[cascade_index];
                 const auto initial = water::initialize_ocean_spectrum(
-                    water::make_ocean_spectrum_parameters(instance.settings.simulation), descriptor, cascade_index);
+                    water::make_ocean_spectrum_parameters(instance.water.settings.simulation), descriptor, cascade_index);
                 std::vector<gpu_complex> packed_initial(initial.size());
                 std::ranges::transform(initial, packed_initial.begin(),
                                        [](const auto& value) { return gpu_complex{value.real(), value.imag()}; });
@@ -388,7 +388,7 @@ bool vulkan_render_backend::synchronize_water_simulations(std::uint64_t frame_in
             std::max(profile.update_interval_frames, simulation.profile.update_interval_frames);
         profile.foam_update_interval_frames =
             std::max(profile.foam_update_interval_frames, simulation.profile.foam_update_interval_frames);
-        profile.foam_history = profile.foam_history || simulation.instance.settings.foam.enabled;
+        profile.foam_history = profile.foam_history || simulation.instance.water.settings.foam.enabled;
         profile.simulation_memory_bytes += sizeof(gpu_water_surface_metadata);
         for (std::uint32_t index = 0u; index < simulation.profile.cascade_count; ++index)
         {
@@ -437,7 +437,7 @@ void vulkan_render_backend::dispatch_water_spectrum_update(VkCommandBuffer comma
             const auto& descriptor = simulation.profile.cascades[index];
             const auto& cascade = simulation.cascades[index];
             const water_spectrum_push_constants constants{descriptor.resolution, descriptor.physical_length,
-                                                          simulation.instance.settings.simulation.choppiness,
+                                                          simulation.instance.water.settings.simulation.choppiness,
                                                           static_cast<float>(frame_simulation_time_seconds_)};
             vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, water_compute_pipeline_layout_, 0u,
                                     1u, &cascade.spectrum_descriptor, 0u, nullptr);
@@ -526,9 +526,9 @@ void vulkan_render_backend::dispatch_water_foam_update(VkCommandBuffer command_b
                 : 0.0;
         const float retention =
             simulation.foam_initialized
-                ? std::exp(-std::max(0.0f, simulation.instance.settings.foam.decay) * static_cast<float>(elapsed))
+                ? std::exp(-std::max(0.0f, simulation.instance.water.settings.foam.decay) * static_cast<float>(elapsed))
                 : 0.0f;
-        std::uint32_t configuration = simulation.instance.settings.foam.enabled ? 1u : 0u;
+        std::uint32_t configuration = simulation.instance.water.settings.foam.enabled ? 1u : 0u;
         if (simulation.foam_initialized) configuration |= 2u;
         if (generate_foam) configuration |= 4u;
 
@@ -537,7 +537,7 @@ void vulkan_render_backend::dispatch_water_foam_update(VkCommandBuffer command_b
             const auto& descriptor = simulation.profile.cascades[index];
             const auto& cascade = simulation.cascades[index];
             const water_foam_push_constants constants{
-                descriptor.resolution, std::clamp(simulation.instance.settings.foam.threshold, 0.0f, 1.0f), retention,
+                descriptor.resolution, std::clamp(simulation.instance.water.settings.foam.threshold, 0.0f, 1.0f), retention,
                 configuration};
             vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, water_compute_pipeline_layout_, 0u,
                                     1u, &cascade.finalize_descriptor, 0u, nullptr);
