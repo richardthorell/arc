@@ -46,7 +46,6 @@ const assetChoicePayload = (reference: AiConversationToolReference): AssetChoice
   };
 };
 
-
 const boundedText = (value: string): string =>
   value.length <= detailCharacterLimit ? value : `${value.slice(0, detailCharacterLimit)}\n…`;
 
