@@ -231,6 +231,9 @@ const advanceCompletedPlanTask = (
   return deriveTaskTreeStates(nextRoot);
 };
 
+const shouldAdvanceForNewSemanticTurn = (task: AiTaskProgress): boolean =>
+  Boolean(task.toolCallIds?.length) && !task.detail?.startsWith('Retrying after ');
+
 export async function* runAiAgentToolLoop(
   request: AiRuntimeRequest,
   execute: AiAgentModelExecutor,
@@ -398,8 +401,21 @@ export async function* runAiAgentToolLoop(
 
     let genericTask: AiTaskProgress | undefined;
     if (planned && !recoveringPlanTask) {
+      if (hasSemanticExecution && shouldAdvanceForNewSemanticTurn(planned.task)) {
+        const advancedRoot = advanceCompletedPlanTask(planRoots.get(planned.root.id)!, planned.task.id);
+        planRoots.set(advancedRoot.id, advancedRoot);
+        yield { type: 'task-update', task: advancedRoot };
+
+        const advanced = activePlanTask(planRoots);
+        if (advanced) planned = advanced;
+      }
+
       const linkedRoot = mapTaskTree(planned.root, planned.task.id, (task) =>
-        withLinkedCalls(task, executionCalls, providerStep),
+        withLinkedCalls(
+          task.detail?.startsWith('Retrying after ') ? withoutTaskDetail(task) : task,
+          executionCalls,
+          providerStep,
+        ),
       );
       planRoots.set(linkedRoot.id, linkedRoot);
       planned = {
@@ -439,10 +455,10 @@ export async function* runAiAgentToolLoop(
       failedRoot = deriveTaskTreeStates(failedRoot);
       planRoots.set(failedRoot.id, failedRoot);
       yield { type: 'task-update', task: failedRoot };
-    } else if (planned) {
-      const advancedRoot = advanceCompletedPlanTask(planRoots.get(planned.root.id)!, planned.task.id);
-      planRoots.set(advancedRoot.id, advancedRoot);
-      yield { type: 'task-update', task: advancedRoot };
+    } else if (planned && recoveringPlanTask) {
+      const recoveredRoot = advanceCompletedPlanTask(planRoots.get(planned.root.id)!, planned.task.id);
+      planRoots.set(recoveredRoot.id, recoveredRoot);
+      yield { type: 'task-update', task: recoveredRoot };
     } else if (genericTask) {
       yield {
         type: 'task-update',
