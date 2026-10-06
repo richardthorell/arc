@@ -426,19 +426,19 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
             return {};
         }
 
-        render::shader_compile_request request{
-            .source_path = material.name + ".preview." + pass_name + ".generated.slang",
-            .source_override = generated.value().source,
-            .entry_point = generated.value().entry_point,
-            .profile = "spirv_1_5",
-            .library_version = "arc-material-preview/1",
-            .domain = render::shader_domain::surface,
-            .stage = render::shader_stage::fragment,
-            .target = render::shader_target::spirv,
-            .optimization = render::shader_optimization::development,
-            .required_passes = {pass},
-            .generated_line_nodes = generated.value().generated_line_nodes,
-            .generate_debug_information = true};
+        render::shader_compile_request request{.source_path =
+                                                   material.name + ".preview." + pass_name + ".generated.slang",
+                                               .source_override = generated.value().source,
+                                               .entry_point = generated.value().entry_point,
+                                               .profile = "spirv_1_5",
+                                               .library_version = "arc-material-preview/1",
+                                               .domain = render::shader_domain::surface,
+                                               .stage = render::shader_stage::fragment,
+                                               .target = render::shader_target::spirv,
+                                               .optimization = render::shader_optimization::development,
+                                               .required_passes = {pass},
+                                               .generated_line_nodes = generated.value().generated_line_nodes,
+                                               .generate_debug_information = true};
         auto compiled = compiler.compile(request);
         if (!compiled)
         {
@@ -462,8 +462,8 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
                                                          &render::shader_parameter_descriptor::name);
                 if (reflected == compiled.value().reflection.parameters.end())
                 {
-                    diagnostics.push_back("Compiled Material ABI reflection is missing parameter field '" +
-                                          field_name + "'");
+                    diagnostics.push_back("Compiled Material ABI reflection is missing parameter field '" + field_name +
+                                          "'");
                     return {};
                 }
 
@@ -493,9 +493,8 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
             }
         }
 
-        program->passes.push_back({.pass = pass,
-                                   .permutation = generated.value().permutation,
-                                   .compiled = std::move(compiled).value()});
+        program->passes.push_back(
+            {.pass = pass, .permutation = generated.value().permutation, .compiled = std::move(compiled).value()});
     }
 
     if (program->passes.empty())
@@ -631,12 +630,10 @@ material_preview_descriptor_result realize_material_preview_descriptor(std::stri
         std::erase_if(
             result.diagnostics, [](const std::string& diagnostic)
             { return diagnostic.find("until compiled runtime pass binding is available") != std::string::npos; });
-        const bool has_gbuffer =
-            std::ranges::any_of(result.material.runtime_program->passes,
-                                [](const auto& value) { return value.pass == render::material_pass::gbuffer; });
-        const bool has_forward =
-            std::ranges::any_of(result.material.runtime_program->passes,
-                                [](const auto& value) { return value.pass == render::material_pass::forward; });
+        const bool has_gbuffer = std::ranges::any_of(result.material.runtime_program->passes, [](const auto& value)
+                                                     { return value.pass == render::material_pass::gbuffer; });
+        const bool has_forward = std::ranges::any_of(result.material.runtime_program->passes, [](const auto& value)
+                                                     { return value.pass == render::material_pass::forward; });
         result.diagnostics.push_back(has_gbuffer && has_forward
                                          ? "Compiled Material ABI G-buffer and forward preview passes are active"
                                      : has_forward ? "Compiled Material ABI forward preview pass is active"

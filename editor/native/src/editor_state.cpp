@@ -156,14 +156,15 @@ void remember_builtin_asset_root(editor_scene_state& scene, const std::filesyste
 void remember_builtin_asset_roots(editor_scene_state& scene, const editor_asset_state& assets)
 {
     remember_builtin_asset_root(scene, assets.root);
-    for (const auto& root : assets.builtin_roots) remember_builtin_asset_root(scene, root);
+    for (const auto& root : assets.builtin_roots)
+        remember_builtin_asset_root(scene, root);
 }
 
 const render::material_descriptor* water_material_base(const editor_scene_state& scene,
                                                        render::material_handle material)
 {
-    const auto found = std::ranges::find(scene.water_material_bases, material,
-                                         [](const auto& value) { return value.first; });
+    const auto found =
+        std::ranges::find(scene.water_material_bases, material, [](const auto& value) { return value.first; });
     return found == scene.water_material_bases.end() ? nullptr : &found->second;
 }
 
@@ -699,17 +700,15 @@ bool synchronize_water_render_material(editor_scene_state& scene, render::render
     if (!water || !mesh_renderer || !mesh_renderer->material.valid()) return false;
 
     if (const auto* base = water_material_base(scene, mesh_renderer->material))
-        return renderer.update_material(
-            mesh_renderer->material,
-            render::apply_water_material_appearance(*base, water->settings.appearance, "Water"));
+        return renderer.update_material(mesh_renderer->material, render::apply_water_material_appearance(
+                                                                     *base, water->settings.appearance, "Water"));
 
-    const auto library_record =
-        std::ranges::find(scene.material_library.materials, mesh_renderer->material,
-                          [](const editor_material_record& value) { return value.material; });
+    const auto library_record = std::ranges::find(scene.material_library.materials, mesh_renderer->material,
+                                                  [](const editor_material_record& value) { return value.material; });
     if (library_record != scene.material_library.materials.end())
     {
-        auto updated =
-            render::apply_water_material_appearance(library_record->asset.material, water->settings.appearance, "Water");
+        auto updated = render::apply_water_material_appearance(library_record->asset.material,
+                                                               water->settings.appearance, "Water");
         const auto unique_material = renderer.create_material(std::move(updated));
         if (!unique_material.valid()) return false;
         scene.water_material_bases.emplace_back(unique_material, library_record->asset.material);
