@@ -22,6 +22,11 @@ import { AssetSourceRegistry } from '../main/assetSources/assetSourceRegistry';
 import { PolyHavenAssetSource } from '../main/assetSources/polyHavenAssetSource';
 import { isSupportedModelPath } from './externalModelImport';
 import { isSupportedTexturePath } from './externalTextureImport';
+import {
+  createRemoteImportProvenance,
+  createRemoteImportProvenanceSidecar,
+  serializeRemoteImportProvenanceSidecar,
+} from './remoteAssetProvenance';
 
 type Invoke = <T>(channel: string, ...args: unknown[]) => Promise<T>;
 type ProgressCallback = (progress: ArcAssetImportProgress) => void;
@@ -501,14 +506,17 @@ export const createAssetSourceBridge = (invoke: Invoke) => {
         });
         const importedAssetIds = await waitForImportedAssets(invoke, importedFiles, signal);
 
-        const provenance = {
-          sourceId: request.sourceId,
-          sourceAssetId: request.assetId,
-          importedAt: new Date().toISOString(),
-          license: asset.license,
-          sourceUrl: `${source.registry.list().find((entry) => entry.id === request.sourceId)?.homepage ?? ''}/a/${request.assetId}`,
-          sourceRevision: typeof asset.metadata.filesHash === 'string' ? asset.metadata.filesHash : undefined,
-        };
+        const sourceDescriptor = source.registry.list().find((entry) => entry.id === request.sourceId);
+        const provenance = createRemoteImportProvenance(
+          asset,
+          { logicalPaths: selected.map((file) => file.logicalPath) },
+          selected,
+          {
+            importedAt: new Date().toISOString(),
+            sourceHomepage: sourceDescriptor?.homepage,
+          },
+        );
+        const provenanceSidecar = createRemoteImportProvenanceSidecar(provenance, importedFiles, importedAssetIds);
         provenancePath = ensureContained(
           roots.savedRoot,
           path.join(
@@ -521,15 +529,7 @@ export const createAssetSourceBridge = (invoke: Invoke) => {
         );
         await mkdir(path.dirname(provenancePath), { recursive: true });
         throwIfAborted(signal);
-        await writeFile(
-          provenancePath,
-          JSON.stringify(
-            { provenance, importedFiles, importedAssetIds, logicalPaths: selected.map((file) => file.logicalPath) },
-            null,
-            2,
-          ),
-          'utf8',
-        );
+        await writeFile(provenancePath, serializeRemoteImportProvenanceSidecar(provenanceSidecar), 'utf8');
 
         onProgress?.({
           phase: 'complete',
