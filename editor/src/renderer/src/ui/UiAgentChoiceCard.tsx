@@ -1,5 +1,5 @@
 import { Check, FileBox } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useEditorReferenceController } from '../services/EditorReferenceContext';
 import { parseEditorReference, type ResolvedEditorReference } from '../services/editorReferences';
@@ -34,7 +34,7 @@ function AssetChoiceOption({
   onSelect: () => void;
 }) {
   const controller = useEditorReferenceController();
-  const reference = parseEditorReference(option.uri);
+  const reference = useMemo(() => parseEditorReference(option.uri), [option.uri]);
   const [resolved, setResolved] = useState<ResolvedEditorReference | null>(null);
 
   useEffect(() => {
