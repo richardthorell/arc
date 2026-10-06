@@ -49,9 +49,9 @@ describe('Material asset creation', () => {
     });
     expect(multiply).toBeDefined();
     expect(output).toBeDefined();
-    expect(graph.connections.some((connection) => connection.to.nodeId === texture?.id && connection.to.pin === 'uv')).toBe(
-      false,
-    );
+    expect(
+      graph.connections.some((connection) => connection.to.nodeId === texture?.id && connection.to.pin === 'uv'),
+    ).toBe(false);
     expect(
       graph.connections.some(
         (connection) =>
