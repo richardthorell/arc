@@ -1,0 +1,12 @@
+{
+  "format": "arc.asset-meta",
+  "formatVersion": 1,
+  "guid": "7f76ac2c-5fc2-4f56-b0c5-8df5ed8b8b61",
+  "importer": "a7ca55e7-0000-0002-0000-000000000003",
+  "settings": {},
+  "settingsVersion": 1,
+  "subassets": [],
+  "type": "a7ca55e7-0000-0001-0000-000000000003",
+  "title": "Unlit",
+  "description": "Lighting-independent texture-ready surface with color tint and alpha controls."
+}
