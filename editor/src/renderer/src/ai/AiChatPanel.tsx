@@ -1,6 +1,10 @@
 import { Asterisk, ArrowLeft, Bot, Plus, Send, ShieldCheck, Sparkles, Square, Zap } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import type { AiConversationContextReference, AiConversationToolReference } from '../../../common/aiConversationTypes';
+import type {
+  AiConversationContextReference,
+  AiConversationToolReference,
+} from '../../../common/aiConversationTypes';
+import type { AiTaskProgress } from '../../../common/aiRuntimeTypes';
 import { requestSettingsDialogOpen } from '../settings/settingsDialogRoute';
 import {
   UiAgentErrorCard,
@@ -48,6 +52,21 @@ import './aiChatMessageCards.css';
 
 const openAiConnectivitySettings = () => requestSettingsDialogOpen('editorPreferences', 'ai.providers');
 const chatBottomThreshold = 48;
+
+const taskDiagnosticSnapshot = (task: AiTaskProgress): string => {
+  const rows: string[] = [];
+  const visit = (entry: AiTaskProgress, depth: number) => {
+    const calls = entry.toolCallIds?.length ? ` tools=[${entry.toolCallIds.join(',')}]` : '';
+    const detail = entry.detail ? ` detail="${entry.detail}"` : '';
+    rows.push(`${'  '.repeat(depth)}${entry.id}:${entry.state}${calls}${detail}`);
+    for (const child of entry.children ?? []) visit(child, depth + 1);
+  };
+  visit(task, 0);
+  return rows.join(' | ');
+};
+
+const diagnosticLine = (kind: string, detail: string): string =>
+  `${new Date().toISOString()} ${kind} ${detail}`;
 
 const approvalModeOptions: ReadonlyArray<UiDropdownOption<AiAgentApprovalMode>> = [
   { value: 'ask', label: 'Ask', icon: <ShieldCheck aria-hidden="true" size={13} /> },
@@ -410,6 +429,10 @@ export function AiChatPanel({
           updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
             ...message,
             taskReferences: recordConversationTaskUpdate(message.taskReferences, event.task, timestamp),
+            taskDiagnostics: [
+              ...(message.taskDiagnostics ?? []),
+              diagnosticLine('task-update', taskDiagnosticSnapshot(event.task)),
+            ],
           }));
           continue;
         }
@@ -418,6 +441,13 @@ export function AiChatPanel({
           updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
             ...message,
             toolReferences: recordConversationToolCall(message.toolReferences, event.call, event.agentStep, timestamp),
+            taskDiagnostics: [
+              ...(message.taskDiagnostics ?? []),
+              diagnosticLine(
+                'tool-call',
+                `step=${event.agentStep ?? '-'} name=${event.call.name} id=${event.call.id}`,
+              ),
+            ],
           }));
           continue;
         }
@@ -431,6 +461,13 @@ export function AiChatPanel({
               event.agentStep,
               timestamp,
             ),
+            taskDiagnostics: [
+              ...(message.taskDiagnostics ?? []),
+              diagnosticLine(
+                'tool-result',
+                `step=${event.agentStep ?? '-'} name=${event.result.name} id=${event.result.toolCallId} status=${event.result.isError ? 'error' : 'ok'} retryable=${event.result.retryable ? 'true' : 'false'} code=${event.result.errorCode ?? '-'}`,
+              ),
+            ],
           }));
           continue;
         }
@@ -442,12 +479,23 @@ export function AiChatPanel({
             state: 'error',
             toolReferences: finishPendingConversationTools(message.toolReferences, 'error', event.message, timestamp),
             taskReferences: finishPendingConversationTasks(message.taskReferences, 'failed', event.message, timestamp),
+            taskDiagnostics: [
+              ...(message.taskDiagnostics ?? []),
+              diagnosticLine('runtime-error', `code=${event.code ?? '-'} retryable=${event.retryable ? 'true' : 'false'}`),
+            ],
           }));
           return { completed: false, text: responseText };
         }
         if (event.type === 'done') {
           completed = true;
-          updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({ ...message, state: 'complete' }));
+          updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
+            ...message,
+            state: 'complete',
+            taskDiagnostics: [
+              ...(message.taskDiagnostics ?? []),
+              diagnosticLine('done', `finish=${event.finishReason ?? '-'}`),
+            ],
+          }));
         }
       }
 
@@ -612,6 +660,7 @@ export function AiChatPanel({
       modelLabel: model.label,
       toolReferences: undefined,
       taskReferences: undefined,
+      taskDiagnostics: undefined,
     };
     const requestConversation: AiConversation = { ...activeConversation, messages: requestMessages };
 
@@ -736,7 +785,9 @@ export function AiChatPanel({
                   tone="agent"
                 />
               )}
-              {message.taskReferences?.length ? <AiChatLiveProgress tasks={message.taskReferences} /> : null}
+              {message.taskReferences?.length ? (
+                <AiChatLiveProgress diagnostics={message.taskDiagnostics} tasks={message.taskReferences} />
+              ) : null}
               {message.toolReferences?.map(renderToolActivity)}
             </div>
           );
