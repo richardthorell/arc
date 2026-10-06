@@ -49,7 +49,9 @@ export const agentEditValueSchemas = {
   setMaterial: z
     .object({ guid: entityGuid, path: z.string().min(1) })
     .strict()
-    .describe('setMaterial: target entity guid and project-relative material path'),
+    .describe(
+      'setMaterial: target entity guid and project-relative material path; prefer binding an existing project material when suitable instead of authoring a duplicate',
+    ),
   setFlow: z
     .object({
       guid: entityGuid,
@@ -86,7 +88,9 @@ export const agentEditValueSchemas = {
       source: z.string().optional(),
     })
     .strict()
-    .describe('createAsset: asset kind and project-relative path, with definition or source as appropriate'),
+    .describe(
+      'createAsset: create a new reusable project asset only after suitable project-local assets and lightweight overrides have been considered, unless the user explicitly requested a new reusable asset',
+    ),
   createPrefab: z
     .object({ rootGuid: entityGuid, path: z.string().min(1) })
     .strict()

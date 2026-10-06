@@ -125,6 +125,51 @@ describe('EditorAgentHarness editor.applyBatch', () => {
     expect(host.commands.at(-1)?.type).toBe('history.commitTransaction');
   });
 
+  it('reuses an existing project material without creating a duplicate asset', async () => {
+    const host = new BatchHost();
+    const assets = new MemoryAssetWorkspace();
+    assets.files.set('materials/brushed_metal.arcmat', '{"version":4,"name":"Brushed Metal"}\n');
+    const harness = new EditorAgentHarness(host, { assets });
+    const session = await beginApprovedEdit(harness);
+
+    const result = (await harness.invoke(
+      'editor.applyBatch',
+      {
+        editSessionId: session.id,
+        expectedSceneRevision: 4,
+        operations: [
+          { type: 'entity.create', tempId: 'cube', kind: 'cube' },
+          {
+            type: 'entity.setMaterial',
+            target: { tempId: 'cube' },
+            path: 'materials/brushed_metal.arcmat',
+          },
+        ],
+      },
+      'writer',
+    )) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      operationCount: 2,
+      expectedSceneRevision: 6,
+      created: { cube: { kind: 'entity', guid: 'created-cube-guid' } },
+    });
+    expect(assets.files).toEqual(
+      new Map([['materials/brushed_metal.arcmat', '{"version":4,"name":"Brushed Metal"}\n']]),
+    );
+    expect(host.commands.map((command) => command.type)).toEqual([
+      'history.beginTransaction',
+      'entity.create',
+      'entity.setMaterial',
+    ]);
+    expect(host.commands.at(-1)?.payload).toMatchObject({
+      path: 'materials/brushed_metal.arcmat',
+    });
+
+    await harness.invoke('edit.commit', { editSessionId: session.id, expectedSceneRevision: 6 }, 'writer');
+    expect(assets.files.size).toBe(1);
+  });
+
   it('creates a green scaled capsule by overriding the existing material base color', async () => {
     const host = new BatchHost();
     const harness = new EditorAgentHarness(host);

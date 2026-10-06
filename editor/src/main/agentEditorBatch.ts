@@ -115,7 +115,7 @@ const materialCreate = z
   })
   .strict()
   .describe(
-    'Create a new reusable material asset. Do not use for a simple entity color change when entity.setBaseColor can reuse the current material.',
+    'Create a new reusable material asset only after the authoritative project inventory has no suitable material and a lightweight override cannot satisfy the request, unless the user explicitly requested a new reusable material. Do not use for a simple entity color change when entity.setBaseColor can reuse the current material.',
   );
 
 export const agentEditorBatchOperationSchema = z.discriminatedUnion('type', [

@@ -75,6 +75,24 @@ describe('resolveAiRuntimeInstructions', () => {
     ]);
   });
 
+  it('states the project-asset reuse order before new authoring or external import', () => {
+    const resolution = resolveAiRuntimeInstructions(request('Use a material for this object'), sources([]));
+    const base = resolution.request.messages.find((message) => message.id === 'arc-instructions:base');
+    const serialized = JSON.stringify(base);
+
+    expect(serialized).toContain('Inspect the supplied ARC assets context first');
+    expect(serialized).toContain('assets.list');
+    expect(serialized).toContain('entity.setBaseColor');
+    expect(serialized).toContain('Create a new project asset only when no suitable local asset');
+    expect(serialized).toContain('Search for or import external content only after suitable project-local options');
+    expect(serialized.indexOf('Inspect the supplied ARC assets context first')).toBeLessThan(
+      serialized.indexOf('Create a new project asset only when no suitable local asset'),
+    );
+    expect(serialized.indexOf('Create a new project asset only when no suitable local asset')).toBeLessThan(
+      serialized.indexOf('Search for or import external content only after suitable project-local options'),
+    );
+  });
+
   it('treats declared tools as advisory until the request actually exposes them', () => {
     const renderer = skill('renderer-diagnostics', 'Debug renderer viewport diagnostics.', [
       'viewport.read',
