@@ -58,6 +58,7 @@ export type AiConversationMessage = {
   contextReferences?: AiConversationContextReference[];
   toolReferences?: AiConversationToolReference[];
   taskReferences?: AiConversationTaskReference[];
+  taskDiagnostics?: string[];
 };
 
 export type AiConversationSummary = {
