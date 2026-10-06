@@ -73,12 +73,15 @@ function AssetChoiceOption({
 }) {
   const controller = useEditorReferenceController();
   const reference = useMemo(() => parseEditorReference(option.uri), [option.uri]);
-  const [resolved, setResolved] = useState<ResolvedEditorReference | null>(null);
+  const [resolved, setResolved] = useState<ResolvedEditorReference | null | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
-    setResolved(null);
-    if (!reference || reference.kind !== 'asset' || !controller) return () => undefined;
+    setResolved(undefined);
+    if (!reference || reference.kind !== 'asset' || !controller) {
+      setResolved(null);
+      return () => undefined;
+    }
 
     void Promise.resolve(controller.resolve(reference)).then((value) => {
       if (!cancelled) setResolved(value);
@@ -88,7 +91,8 @@ function AssetChoiceOption({
     };
   }, [controller, option.uri, reference]);
 
-  const unavailable = !reference || reference.kind !== 'asset' || resolved?.disabled;
+  const unavailable =
+    !controller || !reference || reference.kind !== 'asset' || resolved === undefined || resolved === null || resolved.disabled;
   const label = resolved?.label ?? option.label;
   const subtitle = resolved?.subtitle ?? 'Asset';
 
