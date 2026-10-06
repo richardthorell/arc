@@ -23,7 +23,8 @@ import {
   type AiConversation,
   type AiModelProvider,
 } from './aiChat';
-import { AiChatTaskActivityCard, AiChatToolActivityCard } from './AiChatActivityCards';
+import { AiChatToolActivityCard } from './AiChatActivityCards';
+import { AiChatLiveProgress } from './AiChatLiveProgress';
 import { AiChatApprovalDeclined, AiChatApprovalPrompt } from './AiChatApprovalStatus';
 import { renderAiChatMessageText } from './AiChatMessageText';
 import { AiContextChips, AiContextPicker } from './AiContextPickerView';
@@ -735,9 +736,7 @@ export function AiChatPanel({
                   tone="agent"
                 />
               )}
-              {message.taskReferences?.map((reference) => (
-                <AiChatTaskActivityCard key={`task-${reference.id}`} reference={reference} />
-              ))}
+              {message.taskReferences?.length ? <AiChatLiveProgress tasks={message.taskReferences} /> : null}
               {message.toolReferences?.map(renderToolActivity)}
             </div>
           );
