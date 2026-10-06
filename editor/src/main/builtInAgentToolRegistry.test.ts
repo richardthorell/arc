@@ -98,6 +98,54 @@ describe('BuiltInAgentToolRegistry', () => {
     );
   });
 
+  it('validates visual asset choice payloads before exposing them to chat', async () => {
+    const snapshot = capabilities(['agent.presentChoices']);
+    const { adapter, invoke } = fakeAdapter(snapshot);
+    const registry = new BuiltInAgentToolRegistry(adapter);
+
+    const definition = (await registry.definitions())[0];
+    expect(definition).toMatchObject({
+      name: 'agent.presentChoices',
+      description: expect.stringContaining('visual project asset choices'),
+    });
+
+    await expect(
+      registry.invoke('agent.presentChoices', {
+        title: 'Choose a rock',
+        options: [{ uri: 'arc://asset/rock-a', label: 'Only one' }],
+      }),
+    ).rejects.toThrow('Invalid arguments for agent.presentChoices');
+
+    await expect(
+      registry.invoke('agent.presentChoices', {
+        title: 'Choose a rock',
+        options: [
+          { uri: 'arc://entity/entity-a', label: 'Wrong kind' },
+          { uri: 'arc://asset/rock-b', label: 'Rock B' },
+        ],
+      }),
+    ).rejects.toThrow('Invalid arguments for agent.presentChoices');
+    expect(invoke).not.toHaveBeenCalled();
+
+    await registry.invoke('agent.presentChoices', {
+      title: 'Choose a rock',
+      prompt: 'Pick one before placement.',
+      options: [
+        { uri: 'arc://asset/rock-a', label: 'Rock A', reason: 'Closest silhouette.' },
+        { uri: 'arc://asset/rock-b', label: 'Rock B' },
+      ],
+    });
+    expect(invoke).toHaveBeenCalledWith('agent.presentChoices', {
+      title: 'Choose a rock',
+      prompt: 'Pick one before placement.',
+      selection: 'single',
+      options: [
+        { uri: 'arc://asset/rock-a', label: 'Rock A', reason: 'Closest silhouette.' },
+        { uri: 'arc://asset/rock-b', label: 'Rock B' },
+      ],
+    });
+  });
+
   it('validates arguments before invoking the harness operation', async () => {
     const { adapter, invoke } = fakeAdapter(capabilities(['scene.getEntity']));
     const registry = new BuiltInAgentToolRegistry(adapter);
