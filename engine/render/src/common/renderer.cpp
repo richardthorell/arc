@@ -245,6 +245,7 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
     result.virtual_shadow_budget_bytes = profile.virtual_shadow_budget_bytes;
     result.virtual_shadow_page_render_budget = profile.virtual_shadow_page_render_budget;
     result.virtual_shadow_request_capacity = profile.virtual_shadow_request_capacity;
+    result.virtual_shadow_caster_capacity_per_page = profile.virtual_shadow_caster_capacity_per_page;
     if (capabilities.resource_limits.maximum_storage_buffer_range != 0u)
     {
         const auto maximum_requests =
@@ -252,6 +253,11 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
             std::max(sizeof(gpu_virtual_shadow_request_slot), sizeof(gpu_virtual_shadow_page_request));
         result.virtual_shadow_request_capacity = static_cast<std::uint32_t>(
             std::min<std::uint64_t>(result.virtual_shadow_request_capacity, maximum_requests));
+        const auto render_page_count = std::max(result.virtual_shadow_page_render_budget, 1u);
+        const auto maximum_casters_per_page = capabilities.resource_limits.maximum_storage_buffer_range /
+                                              sizeof(gpu_virtual_shadow_caster_draw) / render_page_count;
+        result.virtual_shadow_caster_capacity_per_page = static_cast<std::uint32_t>(
+            std::min<std::uint64_t>(result.virtual_shadow_caster_capacity_per_page, maximum_casters_per_page));
     }
     if (capabilities.memory_budget != 0 && result.virtual_shadow_budget_bytes != 0)
         result.virtual_shadow_budget_bytes =
@@ -354,6 +360,7 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
     }
     const bool virtual_shadow_common = optional_features && result.quality == render_quality_tier::ultra &&
                                        gpu_driven && result.virtual_shadow_pool.valid() &&
+                                       result.virtual_shadow_caster_capacity_per_page != 0u &&
                                        capabilities.virtual_shadow_allocation && capabilities.virtual_shadow_feedback &&
                                        capabilities.virtual_shadow_rendering && capabilities.virtual_shadow_sampling &&
                                        capabilities.compute_shaders && capabilities.storage_buffers;

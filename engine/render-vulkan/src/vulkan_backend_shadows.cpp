@@ -12,24 +12,40 @@ void vulkan_render_backend::destroy_virtual_shadow_resources(vulkan_virtual_shad
     destroy_buffer(resources.request_slots);
     destroy_buffer(resources.compact_requests);
     destroy_buffer(resources.feedback_header);
+    destroy_buffer(resources.render_pages);
+    destroy_buffer(resources.page_work);
+    destroy_buffer(resources.caster_draws);
     for (auto& frame : resources.feedback_frames)
     {
         destroy_buffer(frame.requests);
         destroy_buffer(frame.header);
     }
+    for (auto& frame : resources.render_feedback_frames)
+        destroy_buffer(frame.work);
     if (resources.marking_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device_, resources.marking_pipeline, nullptr);
     if (resources.compaction_pipeline != VK_NULL_HANDLE)
         vkDestroyPipeline(device_, resources.compaction_pipeline, nullptr);
+    if (resources.caster_culling_pipeline != VK_NULL_HANDLE)
+        vkDestroyPipeline(device_, resources.caster_culling_pipeline, nullptr);
+    if (resources.depth_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device_, resources.depth_pipeline, nullptr);
     if (resources.marking_pipeline_layout != VK_NULL_HANDLE)
         vkDestroyPipelineLayout(device_, resources.marking_pipeline_layout, nullptr);
     if (resources.compaction_pipeline_layout != VK_NULL_HANDLE)
         vkDestroyPipelineLayout(device_, resources.compaction_pipeline_layout, nullptr);
+    if (resources.caster_culling_pipeline_layout != VK_NULL_HANDLE)
+        vkDestroyPipelineLayout(device_, resources.caster_culling_pipeline_layout, nullptr);
+    if (resources.depth_pipeline_layout != VK_NULL_HANDLE)
+        vkDestroyPipelineLayout(device_, resources.depth_pipeline_layout, nullptr);
     if (resources.descriptor_pool != VK_NULL_HANDLE)
         vkDestroyDescriptorPool(device_, resources.descriptor_pool, nullptr);
     if (resources.marking_descriptor_set_layout != VK_NULL_HANDLE)
         vkDestroyDescriptorSetLayout(device_, resources.marking_descriptor_set_layout, nullptr);
     if (resources.compaction_descriptor_set_layout != VK_NULL_HANDLE)
         vkDestroyDescriptorSetLayout(device_, resources.compaction_descriptor_set_layout, nullptr);
+    if (resources.caster_culling_descriptor_pool != VK_NULL_HANDLE)
+        vkDestroyDescriptorPool(device_, resources.caster_culling_descriptor_pool, nullptr);
+    if (resources.caster_culling_descriptor_set_layout != VK_NULL_HANDLE)
+        vkDestroyDescriptorSetLayout(device_, resources.caster_culling_descriptor_set_layout, nullptr);
     if (resources.sampler != VK_NULL_HANDLE) vkDestroySampler(device_, resources.sampler, nullptr);
     if (resources.static_view != VK_NULL_HANDLE) vkDestroyImageView(device_, resources.static_view, nullptr);
     if (resources.dynamic_view != VK_NULL_HANDLE) vkDestroyImageView(device_, resources.dynamic_view, nullptr);
@@ -69,14 +85,18 @@ bool vulkan_render_backend::ensure_virtual_shadow_resources()
         static_cast<VkDeviceSize>(resolved_config_.virtual_shadow_page_table_entry_capacity) *
         sizeof(gpu_virtual_shadow_page_table_entry);
     const std::uint32_t request_capacity = resolved_config_.virtual_shadow_request_capacity;
-    if (request_capacity == 0u) return false;
+    const std::uint32_t render_page_capacity = resolved_config_.virtual_shadow_page_render_budget;
+    const std::uint32_t caster_capacity_per_page = resolved_config_.virtual_shadow_caster_capacity_per_page;
+    if (request_capacity == 0u || render_page_capacity == 0u || caster_capacity_per_page == 0u) return false;
     if (virtual_shadow_resources_.static_image != VK_NULL_HANDLE &&
         virtual_shadow_resources_.physical_page_capacity == page_capacity &&
         virtual_shadow_resources_.atlas_extent == atlas_extent &&
         virtual_shadow_resources_.address_space_capacity == address_space_capacity &&
         virtual_shadow_resources_.view_capacity == view_capacity &&
         virtual_shadow_resources_.page_table_capacity == page_table_capacity &&
-        virtual_shadow_resources_.request_capacity == request_capacity)
+        virtual_shadow_resources_.request_capacity == request_capacity &&
+        virtual_shadow_resources_.render_page_capacity == render_page_capacity &&
+        virtual_shadow_resources_.caster_capacity_per_page == caster_capacity_per_page)
         return true;
 
     retire_virtual_shadow_resources();
@@ -149,6 +169,12 @@ bool vulkan_render_backend::ensure_virtual_shadow_resources()
         static_cast<VkDeviceSize>(request_capacity) * sizeof(gpu_virtual_shadow_request_slot);
     const VkDeviceSize compact_request_bytes =
         static_cast<VkDeviceSize>(request_capacity) * sizeof(gpu_virtual_shadow_page_request);
+    const VkDeviceSize render_page_bytes =
+        static_cast<VkDeviceSize>(render_page_capacity) * sizeof(gpu_virtual_shadow_render_page_record);
+    const VkDeviceSize page_work_bytes =
+        static_cast<VkDeviceSize>(render_page_capacity) * sizeof(gpu_virtual_shadow_page_work);
+    const VkDeviceSize caster_draw_bytes = static_cast<VkDeviceSize>(render_page_capacity) * caster_capacity_per_page *
+                                           sizeof(gpu_virtual_shadow_caster_draw);
     if (!create_buffer(resources.address_space_capacity, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                        VMA_MEMORY_USAGE_CPU_TO_GPU, resources.address_spaces) ||
         !create_buffer(resources.view_capacity, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU,
@@ -162,7 +188,15 @@ bool vulkan_render_backend::ensure_virtual_shadow_resources()
         !create_buffer(sizeof(gpu_virtual_shadow_feedback_header),
                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                       VMA_MEMORY_USAGE_GPU_ONLY, resources.feedback_header))
+                       VMA_MEMORY_USAGE_GPU_ONLY, resources.feedback_header) ||
+        !create_buffer(render_page_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU,
+                       resources.render_pages) ||
+        !create_buffer(page_work_bytes,
+                       VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+                           VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                       VMA_MEMORY_USAGE_GPU_ONLY, resources.page_work) ||
+        !create_buffer(caster_draw_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
+                       VMA_MEMORY_USAGE_GPU_ONLY, resources.caster_draws))
     {
         destroy_virtual_shadow_resources(resources);
         return false;
@@ -192,6 +226,39 @@ bool vulkan_render_backend::ensure_virtual_shadow_resources()
     descriptor_layout.pBindings = compaction_bindings.data();
     if (vkCreateDescriptorSetLayout(device_, &descriptor_layout, nullptr,
                                     &resources.compaction_descriptor_set_layout) != VK_SUCCESS)
+    {
+        destroy_virtual_shadow_resources(resources);
+        return false;
+    }
+    const std::array caster_bindings{
+        VkDescriptorSetLayoutBinding{0u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}};
+    descriptor_layout.bindingCount = static_cast<std::uint32_t>(caster_bindings.size());
+    descriptor_layout.pBindings = caster_bindings.data();
+    if (vkCreateDescriptorSetLayout(device_, &descriptor_layout, nullptr,
+                                    &resources.caster_culling_descriptor_set_layout) != VK_SUCCESS)
+    {
+        destroy_virtual_shadow_resources(resources);
+        return false;
+    }
+    const VkDescriptorPoolSize caster_pool_size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                                static_cast<std::uint32_t>(caster_bindings.size())};
+    VkDescriptorPoolCreateInfo caster_pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+    caster_pool.maxSets = 1u;
+    caster_pool.poolSizeCount = 1u;
+    caster_pool.pPoolSizes = &caster_pool_size;
+    if (vkCreateDescriptorPool(device_, &caster_pool, nullptr, &resources.caster_culling_descriptor_pool) != VK_SUCCESS)
+    {
+        destroy_virtual_shadow_resources(resources);
+        return false;
+    }
+    VkDescriptorSetAllocateInfo caster_allocation{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    caster_allocation.descriptorPool = resources.caster_culling_descriptor_pool;
+    caster_allocation.descriptorSetCount = 1u;
+    caster_allocation.pSetLayouts = &resources.caster_culling_descriptor_set_layout;
+    if (vkAllocateDescriptorSets(device_, &caster_allocation, &resources.caster_culling_descriptor_set) != VK_SUCCESS)
     {
         destroy_virtual_shadow_resources(resources);
         return false;
@@ -264,7 +331,11 @@ bool vulkan_render_backend::ensure_virtual_shadow_resources()
         !create_compute_pipeline(builtin::virtual_shadow_request_compaction_comp_spv,
                                  resources.compaction_descriptor_set_layout,
                                  sizeof(virtual_shadow_compaction_push_constants), resources.compaction_pipeline_layout,
-                                 resources.compaction_pipeline))
+                                 resources.compaction_pipeline) ||
+        !create_compute_pipeline(builtin::virtual_shadow_caster_cull_comp_spv,
+                                 resources.caster_culling_descriptor_set_layout,
+                                 sizeof(virtual_shadow_caster_culling_push_constants),
+                                 resources.caster_culling_pipeline_layout, resources.caster_culling_pipeline))
     {
         destroy_virtual_shadow_resources(resources);
         return false;
@@ -287,6 +358,8 @@ bool vulkan_render_backend::ensure_virtual_shadow_resources()
     resources.atlas_extent = atlas_extent;
     resources.physical_page_capacity = page_capacity;
     resources.request_capacity = request_capacity;
+    resources.render_page_capacity = render_page_capacity;
+    resources.caster_capacity_per_page = caster_capacity_per_page;
     virtual_shadow_resources_ = resources;
     return true;
 }
@@ -309,6 +382,22 @@ bool vulkan_render_backend::ensure_virtual_shadow_feedback_frame(virtual_shadow_
                        VMA_MEMORY_USAGE_GPU_TO_CPU, frame.header))
         return false;
     frame.request_capacity = capacity;
+    return true;
+}
+
+bool vulkan_render_backend::ensure_virtual_shadow_render_feedback_frame(virtual_shadow_render_feedback_frame& frame)
+{
+    const auto capacity = resolved_config_.virtual_shadow_page_render_budget;
+    if (frame.page_capacity != capacity)
+    {
+        destroy_buffer(frame.work);
+        frame = {};
+    }
+    if (frame.work.buffer == VK_NULL_HANDLE &&
+        !create_buffer(static_cast<VkDeviceSize>(capacity) * sizeof(gpu_virtual_shadow_page_work),
+                       VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU, frame.work))
+        return false;
+    frame.page_capacity = capacity;
     return true;
 }
 
@@ -348,6 +437,49 @@ void vulkan_render_backend::collect_virtual_shadow_feedback(std::uint32_t frame_
     frame.submitted_frame = 0u;
 }
 
+void vulkan_render_backend::collect_virtual_shadow_render_feedback(std::uint32_t frame_slot)
+{
+    auto& resources = virtual_shadow_resources_;
+    if (!virtual_shadow_cache_ || frame_slot >= resources.render_feedback_frames.size()) return;
+    auto& frame = resources.render_feedback_frames[frame_slot];
+    if (frame.submitted_frame == 0u || frame.work.buffer == VK_NULL_HANDLE || frame.tokens.empty()) return;
+
+    const auto count = std::min<std::size_t>(frame.tokens.size(), frame.page_capacity);
+    std::vector<gpu_virtual_shadow_page_work> work(count);
+    void* mapped{};
+    if (vmaMapMemory(allocator_, frame.work.allocation, &mapped) != VK_SUCCESS) return;
+    const auto byte_size = static_cast<VkDeviceSize>(count) * sizeof(gpu_virtual_shadow_page_work);
+    vmaInvalidateAllocation(allocator_, frame.work.allocation, 0u, byte_size);
+    std::memcpy(work.data(), mapped, static_cast<std::size_t>(byte_size));
+    vmaUnmapMemory(allocator_, frame.work.allocation);
+
+    auto& profile = last_profile_.shadows;
+    std::uint32_t rendered_pages{};
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        const auto& counters = work[index];
+        profile.virtual_caster_count += counters.caster_count;
+        profile.virtual_caster_frustum_rejected += counters.frustum_rejected;
+        profile.virtual_caster_mobility_rejected += counters.mobility_rejected;
+        profile.virtual_caster_distance_rejected += counters.distance_rejected;
+        profile.virtual_unsupported_casters += counters.unsupported_casters;
+        profile.virtual_indirect_draws += counters.caster_count;
+        const bool overflowed =
+            counters.overflow_count != 0u || counters.caster_count > resources.caster_capacity_per_page;
+        profile.virtual_caster_overflow_pages += overflowed ? 1u : 0u;
+        const bool eligible = index < frame.eligible.size() && frame.eligible[index] != 0u;
+        const bool succeeded = eligible && !overflowed && counters.unsupported_casters == 0u;
+        if (!virtual_shadow_cache_->complete_render(frame.tokens[index], succeeded))
+            ++profile.virtual_stale_render_completions;
+        else if (succeeded)
+            ++rendered_pages;
+    }
+    profile.virtual_rendered_pages += rendered_pages;
+    frame.tokens.clear();
+    frame.eligible.clear();
+    frame.submitted_frame = 0u;
+}
+
 std::uint64_t vulkan_render_backend::virtual_shadow_light_key(shadow_light_kind kind, render_object_id object) noexcept
 {
     std::uint64_t key = light_shadow_key(object);
@@ -358,6 +490,10 @@ std::uint64_t vulkan_render_backend::virtual_shadow_light_key(shadow_light_kind 
 void vulkan_render_backend::prepare_virtual_shadow_cache(std::uint64_t frame_index)
 {
     pending_virtual_shadow_pages_.clear();
+    pending_virtual_shadow_page_records_.clear();
+    pending_virtual_shadow_tokens_.clear();
+    virtual_shadow_culling_dispatched_ = false;
+    virtual_shadow_layers_rendered_.fill(false);
     if (!resolved_config_.features.virtual_shadow_maps || !virtual_shadow_cache_) return;
 
     std::vector<virtual_shadow_page_request> requests = std::move(completed_virtual_shadow_feedback_.requests);
@@ -475,10 +611,72 @@ void vulkan_render_backend::prepare_virtual_shadow_cache(std::uint64_t frame_ind
     pending_virtual_shadow_pages_ = result.render_pages;
     if (pending_virtual_shadow_pages_.size() > resolved_config_.virtual_shadow_page_render_budget)
         pending_virtual_shadow_pages_.resize(resolved_config_.virtual_shadow_page_render_budget);
+    if (!ensure_virtual_shadow_resources())
+    {
+        pending_virtual_shadow_pages_.clear();
+        return;
+    }
+
+    const auto snapshot = virtual_shadow_cache_->gpu_snapshot();
+    std::vector<virtual_shadow_page_mapping> valid_pages;
+    valid_pages.reserve(pending_virtual_shadow_pages_.size());
+    pending_virtual_shadow_page_records_.reserve(pending_virtual_shadow_pages_.size());
+    pending_virtual_shadow_tokens_.reserve(pending_virtual_shadow_pages_.size());
     for (const auto& mapping : pending_virtual_shadow_pages_)
     {
-        const bool marked = virtual_shadow_cache_->set_in_flight(mapping.key, true);
-        (void)marked; // A concurrent invalidation may have retired the request before submission.
+        const auto address_index = mapping.key.address_space.index;
+        if (address_index >= snapshot.address_spaces.size()) continue;
+        const auto& address = snapshot.address_spaces[address_index];
+        if (address.generation != mapping.key.address_space.generation) continue;
+        const auto level_count = address.topology & 0xffffu;
+        const auto view_index =
+            address.view_base + mapping.key.coordinate.face * level_count + mapping.key.coordinate.level;
+        if (view_index >= snapshot.views.size()) continue;
+        const auto& packed_view = snapshot.views[view_index];
+        virtual_shadow_view_descriptor view{};
+        for (std::uint32_t row = 0; row < 4u; ++row)
+            for (std::uint32_t column = 0; column < 4u; ++column)
+                view.world_to_shadow_clip(row, column) = packed_view.world_to_shadow_clip[row * 4u + column];
+        view.snapped_origin = {packed_view.snapped_origin_world_units[0], packed_view.snapped_origin_world_units[1],
+                               packed_view.snapped_origin_world_units[2]};
+        view.world_units_per_texel = packed_view.snapped_origin_world_units[3];
+        view.pages_per_axis = packed_view.pages_per_axis;
+        view.face = static_cast<std::uint16_t>(packed_view.face);
+        view.level = static_cast<std::uint16_t>(packed_view.level);
+        const auto record_index = static_cast<std::uint32_t>(pending_virtual_shadow_page_records_.size());
+        auto record = encode_virtual_shadow_render_page(
+            mapping, view, view_index, resolved_config_.virtual_shadow_pool.pages_per_axis,
+            record_index * resolved_config_.virtual_shadow_caster_capacity_per_page,
+            resolved_config_.virtual_shadow_caster_capacity_per_page, frame_index);
+        if (const auto* descriptor = virtual_shadow_cache_->address_space(mapping.key.address_space))
+            record.work[3] = static_cast<std::uint32_t>(descriptor->mobility);
+        valid_pages.push_back(mapping);
+        pending_virtual_shadow_page_records_.push_back(record);
+        pending_virtual_shadow_tokens_.push_back(make_virtual_shadow_page_render_token(mapping));
+    }
+    pending_virtual_shadow_pages_ = std::move(valid_pages);
+    if (!pending_virtual_shadow_page_records_.empty())
+    {
+        auto& destination = virtual_shadow_resources_.render_pages;
+        void* mapped{};
+        const auto byte_size = static_cast<VkDeviceSize>(pending_virtual_shadow_page_records_.size()) *
+                               sizeof(gpu_virtual_shadow_render_page_record);
+        if (destination.allocation == VK_NULL_HANDLE ||
+            vmaMapMemory(allocator_, destination.allocation, &mapped) != VK_SUCCESS)
+        {
+            pending_virtual_shadow_pages_.clear();
+            pending_virtual_shadow_page_records_.clear();
+            pending_virtual_shadow_tokens_.clear();
+            return;
+        }
+        std::memcpy(mapped, pending_virtual_shadow_page_records_.data(), static_cast<std::size_t>(byte_size));
+        vmaFlushAllocation(allocator_, destination.allocation, 0u, byte_size);
+        vmaUnmapMemory(allocator_, destination.allocation);
+        for (const auto& mapping : pending_virtual_shadow_pages_)
+        {
+            const bool marked = virtual_shadow_cache_->set_in_flight(mapping.key, true);
+            (void)marked;
+        }
     }
 
     const auto stats = virtual_shadow_cache_->statistics();
@@ -536,8 +734,108 @@ void vulkan_render_backend::transition_virtual_shadow_image(VkCommandBuffer comm
     current_layout = new_layout;
 }
 
-void vulkan_render_backend::clear_virtual_shadow_render_pages(VkCommandBuffer command_buffer,
-                                                              virtual_shadow_page_layer layer)
+bool vulkan_render_backend::ensure_virtual_shadow_depth_pipeline()
+{
+    auto& resources = virtual_shadow_resources_;
+    if (resources.depth_pipeline != VK_NULL_HANDLE) return true;
+    if (resources.format == VK_FORMAT_UNDEFINED || !ensure_gpu_bindless_pipelines() ||
+        gpu_bindless_descriptor_set_layout_ == VK_NULL_HANDLE)
+        return false;
+
+    const auto vertex_shader =
+        create_shader_module(builtin::virtual_shadow_depth_vert_spv, std::size(builtin::virtual_shadow_depth_vert_spv));
+    const auto fragment_shader =
+        create_shader_module(builtin::virtual_shadow_depth_frag_spv, std::size(builtin::virtual_shadow_depth_frag_spv));
+    if (vertex_shader == VK_NULL_HANDLE || fragment_shader == VK_NULL_HANDLE)
+    {
+        if (vertex_shader != VK_NULL_HANDLE) vkDestroyShaderModule(device_, vertex_shader, nullptr);
+        if (fragment_shader != VK_NULL_HANDLE) vkDestroyShaderModule(device_, fragment_shader, nullptr);
+        return false;
+    }
+
+    VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT, 0u, sizeof(float) * 16u};
+    VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    layout.setLayoutCount = 1u;
+    layout.pSetLayouts = &gpu_bindless_descriptor_set_layout_;
+    layout.pushConstantRangeCount = 1u;
+    layout.pPushConstantRanges = &push;
+    if (vkCreatePipelineLayout(device_, &layout, nullptr, &resources.depth_pipeline_layout) != VK_SUCCESS)
+    {
+        vkDestroyShaderModule(device_, vertex_shader, nullptr);
+        vkDestroyShaderModule(device_, fragment_shader, nullptr);
+        return false;
+    }
+
+    std::array<VkPipelineShaderStageCreateInfo, 2> stages{};
+    stages[0] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+    stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    stages[0].module = vertex_shader;
+    stages[0].pName = "main";
+    stages[1] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+    stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    stages[1].module = fragment_shader;
+    stages[1].pName = "main";
+
+    const VkVertexInputBindingDescription binding{0u, sizeof(mesh_vertex), VK_VERTEX_INPUT_RATE_VERTEX};
+    const std::array attributes{
+        VkVertexInputAttributeDescription{0u, 0u, VK_FORMAT_R32G32B32_SFLOAT, offsetof(mesh_vertex, position)},
+        VkVertexInputAttributeDescription{1u, 0u, VK_FORMAT_R32G32B32_SFLOAT, offsetof(mesh_vertex, normal)},
+        VkVertexInputAttributeDescription{2u, 0u, VK_FORMAT_R32G32_SFLOAT, offsetof(mesh_vertex, texcoord)},
+        VkVertexInputAttributeDescription{3u, 0u, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(mesh_vertex, color)},
+        VkVertexInputAttributeDescription{4u, 0u, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(mesh_vertex, tangent)},
+    };
+    VkPipelineVertexInputStateCreateInfo vertex_input{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+    vertex_input.vertexBindingDescriptionCount = 1u;
+    vertex_input.pVertexBindingDescriptions = &binding;
+    vertex_input.vertexAttributeDescriptionCount = static_cast<std::uint32_t>(attributes.size());
+    vertex_input.pVertexAttributeDescriptions = attributes.data();
+    VkPipelineInputAssemblyStateCreateInfo input{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+    input.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    VkPipelineViewportStateCreateInfo viewport{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+    viewport.viewportCount = 1u;
+    viewport.scissorCount = 1u;
+    VkPipelineRasterizationStateCreateInfo raster{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+    raster.polygonMode = VK_POLYGON_MODE_FILL;
+    raster.cullMode = VK_CULL_MODE_NONE;
+    raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    raster.depthBiasEnable = VK_TRUE;
+    raster.depthBiasConstantFactor = 1.25f;
+    raster.depthBiasSlopeFactor = 1.75f;
+    raster.lineWidth = 1.0f;
+    VkPipelineMultisampleStateCreateInfo multisample{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+    multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    VkPipelineDepthStencilStateCreateInfo depth{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+    depth.depthTestEnable = VK_TRUE;
+    depth.depthWriteEnable = VK_TRUE;
+    depth.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    const std::array dynamic_states{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+    dynamic.dynamicStateCount = static_cast<std::uint32_t>(dynamic_states.size());
+    dynamic.pDynamicStates = dynamic_states.data();
+    VkPipelineColorBlendStateCreateInfo blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+    VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
+    rendering.depthAttachmentFormat = resources.format;
+    VkGraphicsPipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+    pipeline.pNext = &rendering;
+    pipeline.stageCount = static_cast<std::uint32_t>(stages.size());
+    pipeline.pStages = stages.data();
+    pipeline.pVertexInputState = &vertex_input;
+    pipeline.pInputAssemblyState = &input;
+    pipeline.pViewportState = &viewport;
+    pipeline.pRasterizationState = &raster;
+    pipeline.pMultisampleState = &multisample;
+    pipeline.pDepthStencilState = &depth;
+    pipeline.pColorBlendState = &blend;
+    pipeline.pDynamicState = &dynamic;
+    pipeline.layout = resources.depth_pipeline_layout;
+    const auto result =
+        vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1u, &pipeline, nullptr, &resources.depth_pipeline);
+    vkDestroyShaderModule(device_, vertex_shader, nullptr);
+    vkDestroyShaderModule(device_, fragment_shader, nullptr);
+    return result == VK_SUCCESS;
+}
+
+void vulkan_render_backend::render_virtual_shadow_pages(VkCommandBuffer command_buffer, virtual_shadow_page_layer layer)
 {
     auto& resources = virtual_shadow_resources_;
     VkImage image = layer == virtual_shadow_page_layer::static_depth ? resources.static_image : resources.dynamic_image;
@@ -545,7 +843,12 @@ void vulkan_render_backend::clear_virtual_shadow_render_pages(VkCommandBuffer co
         layer == virtual_shadow_page_layer::static_depth ? resources.static_view : resources.dynamic_view;
     auto& layout =
         layer == virtual_shadow_page_layer::static_depth ? resources.static_layout : resources.dynamic_layout;
-    if (image == VK_NULL_HANDLE || view == VK_NULL_HANDLE || pending_virtual_shadow_pages_.empty()) return;
+    if (!virtual_shadow_culling_dispatched_ || image == VK_NULL_HANDLE || view == VK_NULL_HANDLE ||
+        pending_virtual_shadow_page_records_.empty() || gpu_bindless_descriptor_set_ == VK_NULL_HANDLE ||
+        shared_geometry_buffers_.vertices.buffer == VK_NULL_HANDLE ||
+        shared_geometry_buffers_.indices.buffer == VK_NULL_HANDLE || !ensure_virtual_shadow_depth_pipeline())
+        return;
+
     transition_virtual_shadow_image(command_buffer, image, layout, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
     VkRenderingAttachmentInfo depth_attachment{};
     depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -559,47 +862,128 @@ void vulkan_render_backend::clear_virtual_shadow_render_pages(VkCommandBuffer co
     rendering.layerCount = 1;
     rendering.pDepthAttachment = &depth_attachment;
     cmd_begin_rendering(command_buffer, &rendering);
-    const std::uint32_t physical_extent = virtual_shadow_page_texels + virtual_shadow_page_guard_texels * 2u;
-    const std::uint32_t pages_per_axis = resources.atlas_extent / physical_extent;
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, resources.depth_pipeline);
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, resources.depth_pipeline_layout, 0u, 1u,
+                            &gpu_bindless_descriptor_set_, 0u, nullptr);
+    const VkDeviceSize vertex_offset{};
+    vkCmdBindVertexBuffers(command_buffer, 0u, 1u, &shared_geometry_buffers_.vertices.buffer, &vertex_offset);
+    vkCmdBindIndexBuffer(command_buffer, shared_geometry_buffers_.indices.buffer, 0u, VK_INDEX_TYPE_UINT32);
+
+    constexpr std::uint32_t physical_extent = virtual_shadow_physical_page_texels;
     VkClearAttachment attachment{};
     attachment.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
     attachment.clearValue.depthStencil.depth = 1.0f;
-    for (const auto& mapping : pending_virtual_shadow_pages_)
+    bool rendered{};
+    for (std::size_t page_index = 0; page_index < pending_virtual_shadow_page_records_.size(); ++page_index)
     {
-        if (mapping.key.layer != layer || !mapping.physical_page.valid()) continue;
-        const std::uint32_t x = mapping.physical_page.index % pages_per_axis;
-        const std::uint32_t y = mapping.physical_page.index / pages_per_axis;
+        const auto& record = pending_virtual_shadow_page_records_[page_index];
+        if (record.work[2] != static_cast<std::uint32_t>(layer)) continue;
+        const std::uint32_t x = record.virtual_page[3] & 0xffffu;
+        const std::uint32_t y = record.virtual_page[3] >> 16u;
         VkClearRect rect{};
         rect.rect.offset = {static_cast<std::int32_t>(x * physical_extent),
                             static_cast<std::int32_t>(y * physical_extent)};
         rect.rect.extent = {physical_extent, physical_extent};
         rect.layerCount = 1;
         vkCmdClearAttachments(command_buffer, 1, &attachment, 1, &rect);
+
+        VkViewport page_viewport{};
+        page_viewport.x = static_cast<float>(x * physical_extent + virtual_shadow_page_guard_texels);
+        page_viewport.y = static_cast<float>(y * physical_extent + virtual_shadow_page_guard_texels);
+        page_viewport.width = static_cast<float>(virtual_shadow_page_texels);
+        page_viewport.height = static_cast<float>(virtual_shadow_page_texels);
+        page_viewport.minDepth = 0.0f;
+        page_viewport.maxDepth = 1.0f;
+        const VkRect2D page_scissor{{static_cast<std::int32_t>(x * physical_extent + virtual_shadow_page_guard_texels),
+                                     static_cast<std::int32_t>(y * physical_extent + virtual_shadow_page_guard_texels)},
+                                    {virtual_shadow_page_texels, virtual_shadow_page_texels}};
+        vkCmdSetViewport(command_buffer, 0u, 1u, &page_viewport);
+        vkCmdSetScissor(command_buffer, 0u, 1u, &page_scissor);
+        vkCmdPushConstants(command_buffer, resources.depth_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0u,
+                           sizeof(record.world_to_page_clip), record.world_to_page_clip);
+        const auto command_offset = static_cast<VkDeviceSize>(record.work[0]) * sizeof(gpu_virtual_shadow_caster_draw);
+        const auto count_offset = static_cast<VkDeviceSize>(page_index) * sizeof(gpu_virtual_shadow_page_work) +
+                                  offsetof(gpu_virtual_shadow_page_work, caster_count);
+        vkCmdDrawIndexedIndirectCount(command_buffer, resources.caster_draws.buffer, command_offset,
+                                      resources.page_work.buffer, count_offset, record.work[1],
+                                      sizeof(gpu_virtual_shadow_caster_draw));
+        rendered = true;
     }
     cmd_end_rendering(command_buffer);
+    virtual_shadow_layers_rendered_[static_cast<std::size_t>(layer)] = rendered;
 }
 
-void vulkan_render_backend::publish_virtual_shadow_pages(VkCommandBuffer command_buffer)
+void vulkan_render_backend::schedule_virtual_shadow_page_completion(VkCommandBuffer command_buffer)
 {
-    if (!virtual_shadow_cache_) return;
-    for (const auto& mapping : pending_virtual_shadow_pages_)
+    auto& resources = virtual_shadow_resources_;
+    if (!virtual_shadow_cache_ || pending_virtual_shadow_tokens_.empty()) return;
+    const auto fail_pending = [&]()
     {
-        const bool published = virtual_shadow_cache_->publish(mapping.key, mapping.content_revision);
-        (void)published; // Stale generations are intentionally discarded instead of being published.
+        for (const auto& token : pending_virtual_shadow_tokens_)
+        {
+            const bool completed = virtual_shadow_cache_->complete_render(token, false);
+            (void)completed;
+        }
+        pending_virtual_shadow_pages_.clear();
+        pending_virtual_shadow_page_records_.clear();
+        pending_virtual_shadow_tokens_.clear();
+    };
+    if (!virtual_shadow_culling_dispatched_ || resources.page_work.buffer == VK_NULL_HANDLE)
+    {
+        fail_pending();
+        return;
     }
-    last_profile_.shadows.virtual_rendered_pages = static_cast<std::uint32_t>(pending_virtual_shadow_pages_.size());
-    pending_virtual_shadow_pages_.clear();
+    const auto feedback_frame_count = std::max(frame_resource_count(), 3u);
+    if (resources.render_feedback_frames.size() < feedback_frame_count)
+        resources.render_feedback_frames.resize(feedback_frame_count);
+    auto& frame = resources.render_feedback_frames[active_frame_index_ % feedback_frame_count];
+    if (!ensure_virtual_shadow_render_feedback_frame(frame))
+    {
+        fail_pending();
+        return;
+    }
 
-    upload_virtual_shadow_tables();
+    VkBufferMemoryBarrier transfer_barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    transfer_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+    transfer_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    transfer_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    transfer_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    transfer_barrier.buffer = resources.page_work.buffer;
+    transfer_barrier.size = VK_WHOLE_SIZE;
+    vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, nullptr, 1u, &transfer_barrier, 0u, nullptr);
+    const auto work_bytes =
+        static_cast<VkDeviceSize>(pending_virtual_shadow_tokens_.size()) * sizeof(gpu_virtual_shadow_page_work);
+    const VkBufferCopy work_copy{.size = work_bytes};
+    vkCmdCopyBuffer(command_buffer, resources.page_work.buffer, frame.work.buffer, 1u, &work_copy);
+    VkBufferMemoryBarrier host_barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    host_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    host_barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    host_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    host_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    host_barrier.buffer = frame.work.buffer;
+    host_barrier.size = work_bytes;
+    vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0u, 0u, nullptr,
+                         1u, &host_barrier, 0u, nullptr);
+    frame.tokens = pending_virtual_shadow_tokens_;
+    frame.eligible.resize(frame.tokens.size());
+    for (std::size_t index = 0; index < frame.tokens.size(); ++index)
+    {
+        const auto layer = pending_virtual_shadow_page_records_[index].work[2];
+        frame.eligible[index] =
+            layer < virtual_shadow_layers_rendered_.size() && virtual_shadow_layers_rendered_[layer] ? 1u : 0u;
+    }
+    frame.submitted_frame = last_profile_.frame_index;
+    pending_virtual_shadow_pages_.clear();
+    pending_virtual_shadow_page_records_.clear();
+    pending_virtual_shadow_tokens_.clear();
+
     transition_virtual_shadow_image(command_buffer, virtual_shadow_resources_.static_image,
                                     virtual_shadow_resources_.static_layout,
                                     VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
     transition_virtual_shadow_image(command_buffer, virtual_shadow_resources_.dynamic_image,
                                     virtual_shadow_resources_.dynamic_layout,
                                     VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
-    const auto stats = virtual_shadow_cache_->statistics();
-    last_profile_.shadows.virtual_resident_pages = stats.resident_pages;
-    last_profile_.shadows.virtual_dirty_pages = stats.dirty_pages;
 }
 
 void vulkan_render_backend::upload_virtual_shadow_tables()
@@ -630,6 +1014,88 @@ void vulkan_render_backend::upload_virtual_shadow_tables()
         upload(snapshot.page_table, virtual_shadow_resources_.page_table,
                virtual_shadow_resources_.page_table_capacity))
         virtual_shadow_resources_.uploaded_page_table_revision = snapshot.page_table_revision;
+}
+
+void vulkan_render_backend::dispatch_virtual_shadow_caster_culling(VkCommandBuffer command_buffer)
+{
+    virtual_shadow_culling_dispatched_ = false;
+    auto& resources = virtual_shadow_resources_;
+    if (pending_virtual_shadow_page_records_.empty() || gpu_scene_capacity_ == 0u ||
+        gpu_scene_visibility_buffer_.buffer == VK_NULL_HANDLE || resources.render_pages.buffer == VK_NULL_HANDLE ||
+        resources.page_work.buffer == VK_NULL_HANDLE || resources.caster_draws.buffer == VK_NULL_HANDLE ||
+        resources.caster_culling_pipeline == VK_NULL_HANDLE ||
+        resources.caster_culling_descriptor_set == VK_NULL_HANDLE)
+        return;
+
+    const std::array buffer_infos{VkDescriptorBufferInfo{gpu_scene_visibility_buffer_.buffer, 0u, VK_WHOLE_SIZE},
+                                  VkDescriptorBufferInfo{resources.render_pages.buffer, 0u, VK_WHOLE_SIZE},
+                                  VkDescriptorBufferInfo{resources.page_work.buffer, 0u, VK_WHOLE_SIZE},
+                                  VkDescriptorBufferInfo{resources.caster_draws.buffer, 0u, VK_WHOLE_SIZE}};
+    std::array<VkWriteDescriptorSet, buffer_infos.size()> writes{};
+    for (std::uint32_t binding = 0u; binding < writes.size(); ++binding)
+    {
+        writes[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[binding].dstSet = resources.caster_culling_descriptor_set;
+        writes[binding].dstBinding = binding;
+        writes[binding].descriptorCount = 1u;
+        writes[binding].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[binding].pBufferInfo = &buffer_infos[binding];
+    }
+    vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0u, nullptr);
+
+    const std::array buffers{resources.render_pages.buffer, gpu_scene_visibility_buffer_.buffer,
+                             resources.page_work.buffer, resources.caster_draws.buffer};
+    std::array<VkBufferMemoryBarrier, buffers.size()> input_barriers{};
+    for (std::size_t index = 0; index < buffers.size(); ++index)
+    {
+        auto& barrier = input_barriers[index];
+        barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT |
+                                VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.buffer = buffers[index];
+        barrier.size = VK_WHOLE_SIZE;
+    }
+    vkCmdPipelineBarrier(command_buffer,
+                         VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT |
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, nullptr,
+                         static_cast<std::uint32_t>(input_barriers.size()), input_barriers.data(), 0u, nullptr);
+
+    virtual_shadow_caster_culling_push_constants constants{};
+    constants.counts[0] = static_cast<std::uint32_t>(pending_virtual_shadow_page_records_.size());
+    constants.counts[1] = gpu_scene_capacity_;
+    constants.counts[2] = resources.caster_capacity_per_page;
+    constants.counts[3] = ~0u;
+    constants.camera_position[0] = frame_camera_.position[0];
+    constants.camera_position[1] = frame_camera_.position[1];
+    constants.camera_position[2] = frame_camera_.position[2];
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, resources.caster_culling_pipeline);
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, resources.caster_culling_pipeline_layout,
+                            0u, 1u, &resources.caster_culling_descriptor_set, 0u, nullptr);
+    vkCmdPushConstants(command_buffer, resources.caster_culling_pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0u,
+                       sizeof(constants), &constants);
+    vkCmdDispatch(command_buffer, constants.counts[0], 1u, 1u);
+
+    const std::array outputs{resources.page_work.buffer, resources.caster_draws.buffer};
+    std::array<VkBufferMemoryBarrier, outputs.size()> output_barriers{};
+    for (std::size_t index = 0; index < outputs.size(); ++index)
+    {
+        auto& barrier = output_barriers[index];
+        barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.buffer = outputs[index];
+        barrier.size = VK_WHOLE_SIZE;
+    }
+    vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, nullptr,
+                         static_cast<std::uint32_t>(output_barriers.size()), output_barriers.data(), 0u, nullptr);
+    virtual_shadow_culling_dispatched_ = true;
 }
 
 void vulkan_render_backend::dispatch_virtual_shadow_page_marking(VkCommandBuffer command_buffer)
@@ -1104,7 +1570,7 @@ void vulkan_render_backend::execute_compiled_graph(VkCommandBuffer command_buffe
     bool point_shadows_executed{};
     bool spot_shadows_executed{};
     bool gpu_visibility_executed{};
-    bool virtual_shadow_pages_published{};
+    bool virtual_shadow_completion_scheduled{};
     frame_fxaa_enabled_ = std::any_of(last_profile_.graph.passes.begin(), last_profile_.graph.passes.end(),
                                       [](const auto& pass) { return pass.builtin == builtin_render_pass::fxaa; });
 
@@ -1119,15 +1585,18 @@ void vulkan_render_backend::execute_compiled_graph(VkCommandBuffer command_buffe
                 prepare_virtual_shadow_cache(last_profile_.frame_index);
                 dispatch_virtual_shadow_page_marking(command_buffer);
                 break;
+            case builtin_render_pass::virtual_shadow_caster_culling:
+                dispatch_virtual_shadow_caster_culling(command_buffer);
+                break;
             case builtin_render_pass::virtual_shadow_static_render:
-                clear_virtual_shadow_render_pages(command_buffer, virtual_shadow_page_layer::static_depth);
+                render_virtual_shadow_pages(command_buffer, virtual_shadow_page_layer::static_depth);
                 break;
             case builtin_render_pass::virtual_shadow_dynamic_render:
-                clear_virtual_shadow_render_pages(command_buffer, virtual_shadow_page_layer::dynamic_depth);
+                render_virtual_shadow_pages(command_buffer, virtual_shadow_page_layer::dynamic_depth);
                 break;
             case builtin_render_pass::virtual_shadow_page_table_publication:
-                publish_virtual_shadow_pages(command_buffer);
-                virtual_shadow_pages_published = true;
+                schedule_virtual_shadow_page_completion(command_buffer);
+                virtual_shadow_completion_scheduled = true;
                 break;
             case builtin_render_pass::virtual_shadow_feedback_readback:
                 copy_virtual_shadow_feedback(command_buffer);
@@ -1247,7 +1716,7 @@ void vulkan_render_backend::execute_compiled_graph(VkCommandBuffer command_buffe
         transition_shadow_atlas(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
     if (!point_shadows_executed && !spot_shadows_executed)
         transition_local_shadow_atlas(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
-    if (resolved_config_.features.virtual_shadow_maps && !virtual_shadow_pages_published)
+    if (resolved_config_.features.virtual_shadow_maps && !virtual_shadow_completion_scheduled)
     {
         transition_virtual_shadow_image(command_buffer, virtual_shadow_resources_.static_image,
                                         virtual_shadow_resources_.static_layout,

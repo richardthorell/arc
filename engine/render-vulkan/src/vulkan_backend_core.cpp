@@ -458,6 +458,7 @@ bool vulkan_render_backend::render_native_viewport_frame(std::uint32_t width, st
     collect_gpu_visibility_feedback(swapchain_.frame_index);
     collect_virtual_geometry_feedback(swapchain_.frame_index);
     collect_virtual_shadow_feedback(swapchain_.frame_index);
+    collect_virtual_shadow_render_feedback(swapchain_.frame_index);
     collect_timestamp_results();
     collect_object_pick_result();
     collect_frame_capture_result();
@@ -890,6 +891,7 @@ surface_frame_result vulkan_render_backend::render_shared_viewport_frame(shared_
     collect_gpu_visibility_feedback(slot_index);
     collect_virtual_geometry_feedback(slot_index);
     collect_virtual_shadow_feedback(slot_index);
+    collect_virtual_shadow_render_feedback(slot_index);
     collect_timestamp_results();
     collect_object_pick_result();
     collect_frame_capture_result();

@@ -39,6 +39,8 @@ inline constexpr std::uint32_t default_virtual_shadow_address_space_capacity = 2
 inline constexpr std::uint32_t default_virtual_shadow_view_capacity = 4096;
 /** @brief Default upper bound for receiver requests emitted and returned per frame. */
 inline constexpr std::uint32_t default_virtual_shadow_request_capacity = 65536;
+/** @brief Default bounded number of conventional casters retained for each dirty VSM page. */
+inline constexpr std::uint32_t default_virtual_shadow_caster_capacity_per_page = 512;
 inline constexpr std::uint32_t invalid_virtual_shadow_index = 0xffffffffu;
 
 /** @brief Physical depth format selected for the VSM page pool. */
@@ -294,6 +296,42 @@ struct alignas(16) gpu_virtual_shadow_request_slot
     gpu_virtual_shadow_page_request request{};
 };
 
+/** @brief Immutable GPU work descriptor for one dirty physical page. */
+struct alignas(16) gpu_virtual_shadow_render_page_record
+{
+    float world_to_page_clip[16]{};
+    std::uint32_t address_physical[4]{}; // Address index/generation, physical index/generation.
+    std::uint32_t virtual_page[4]{};     // Packed xy/topology, view index, packed atlas tile.
+    std::uint32_t work[4]{};             // Draw offset/capacity, layer, flags.
+    std::uint32_t revision[4]{};         // Content revision and frame index, low/high words.
+};
+
+/** @brief GPU-written bounded culling counters for one render page. */
+struct alignas(16) gpu_virtual_shadow_page_work
+{
+    std::uint32_t caster_count{};
+    std::uint32_t frustum_rejected{};
+    std::uint32_t mobility_rejected{};
+    std::uint32_t distance_rejected{};
+    std::uint32_t unsupported_casters{};
+    std::uint32_t overflow_count{};
+    std::uint32_t reserved0{};
+    std::uint32_t reserved1{};
+};
+
+/** @brief Backend-neutral layout matching one indexed indirect caster draw. */
+struct alignas(16) gpu_virtual_shadow_caster_draw
+{
+    std::uint32_t index_count{};
+    std::uint32_t instance_count{};
+    std::uint32_t first_index{};
+    std::int32_t vertex_offset{};
+    std::uint32_t first_instance{};
+    std::uint32_t page_index{};
+    std::uint32_t flags{};
+    std::uint32_t reserved{};
+};
+
 static_assert(sizeof(gpu_virtual_shadow_address_space_record) == 48);
 static_assert(sizeof(gpu_virtual_shadow_view_record) == 96);
 static_assert(sizeof(gpu_virtual_shadow_physical_mapping) == 16);
@@ -301,11 +339,17 @@ static_assert(sizeof(gpu_virtual_shadow_page_table_entry) == 32);
 static_assert(sizeof(gpu_virtual_shadow_page_request) == 48);
 static_assert(sizeof(gpu_virtual_shadow_feedback_header) == 32);
 static_assert(sizeof(gpu_virtual_shadow_request_slot) == 64);
+static_assert(sizeof(gpu_virtual_shadow_render_page_record) == 128);
+static_assert(sizeof(gpu_virtual_shadow_page_work) == 32);
+static_assert(sizeof(gpu_virtual_shadow_caster_draw) == 32);
 static_assert(std::is_standard_layout_v<gpu_virtual_shadow_address_space_record>);
 static_assert(std::is_standard_layout_v<gpu_virtual_shadow_view_record>);
 static_assert(std::is_standard_layout_v<gpu_virtual_shadow_page_table_entry>);
 static_assert(std::is_standard_layout_v<gpu_virtual_shadow_page_request>);
 static_assert(std::is_standard_layout_v<gpu_virtual_shadow_request_slot>);
+static_assert(std::is_standard_layout_v<gpu_virtual_shadow_render_page_record>);
+static_assert(std::is_standard_layout_v<gpu_virtual_shadow_page_work>);
+static_assert(std::is_standard_layout_v<gpu_virtual_shadow_caster_draw>);
 
 /** @brief Borrowed cache-owned tables for a backend upload. */
 struct virtual_shadow_gpu_snapshot
@@ -351,6 +395,8 @@ struct virtual_shadow_page_mapping
     std::uint64_t content_revision{};
     std::uint64_t last_used_frame{};
     virtual_shadow_invalidation_reason dirty_reason{virtual_shadow_invalidation_reason::newly_allocated};
+    /** Monotonic cache-owned revision used to reject stale render completion. */
+    std::uint64_t work_revision{};
     bool resident{};
     bool pinned{};
     bool in_flight{};
@@ -360,6 +406,35 @@ struct virtual_shadow_page_mapping
         return dirty_reason != virtual_shadow_invalidation_reason::none;
     }
 };
+
+/** @brief Immutable identity captured when a dirty page is scheduled for rendering. */
+struct virtual_shadow_page_render_token
+{
+    virtual_shadow_page_key key{};
+    virtual_shadow_physical_page_handle physical_page{};
+    std::uint64_t content_revision{};
+    std::uint64_t work_revision{};
+};
+
+[[nodiscard]] constexpr virtual_shadow_page_render_token
+make_virtual_shadow_page_render_token(const virtual_shadow_page_mapping& mapping) noexcept
+{
+    return {.key = mapping.key,
+            .physical_page = mapping.physical_page,
+            .content_revision = mapping.content_revision,
+            .work_revision = mapping.work_revision};
+}
+
+/** @brief Build the page-local clip projection used by culling and depth rasterization. */
+[[nodiscard]] math::matrix4f virtual_shadow_page_view_projection(const virtual_shadow_view_descriptor& view,
+                                                                 virtual_shadow_page_coordinate coordinate) noexcept;
+
+/** @brief Encode one scheduled page into the shared GPU culling/raster ABI. */
+[[nodiscard]] gpu_virtual_shadow_render_page_record
+encode_virtual_shadow_render_page(const virtual_shadow_page_mapping& mapping,
+                                  const virtual_shadow_view_descriptor& view, std::uint32_t view_index,
+                                  std::uint32_t atlas_pages_per_axis, std::uint32_t work_offset,
+                                  std::uint32_t work_capacity, std::uint64_t frame_index) noexcept;
 
 /** @brief Aggregate state for tooling and renderer diagnostics. */
 struct virtual_shadow_cache_statistics
@@ -444,6 +519,8 @@ public:
     [[nodiscard]] std::span<const virtual_shadow_page_mapping> mappings() const noexcept;
 
     [[nodiscard]] bool publish(const virtual_shadow_page_key& key, std::uint64_t content_revision) noexcept;
+    /** @brief Complete an asynchronously rendered page only when every captured identity still matches. */
+    [[nodiscard]] bool complete_render(const virtual_shadow_page_render_token& token, bool succeeded) noexcept;
     [[nodiscard]] bool set_in_flight(const virtual_shadow_page_key& key, bool in_flight) noexcept;
     std::uint32_t invalidate(virtual_shadow_address_space_handle handle, virtual_shadow_invalidation_reason reason,
                              std::optional<virtual_shadow_page_coordinate> coordinate = std::nullopt) noexcept;
@@ -491,6 +568,7 @@ private:
     std::uint64_t address_space_revision_{1};
     std::uint64_t view_revision_{1};
     std::uint64_t page_table_revision_{1};
+    std::uint64_t next_work_revision_{1};
     virtual_shadow_cache_statistics cumulative_{};
 };
 

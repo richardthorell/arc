@@ -47,6 +47,8 @@ gpu_scene_dirty changed_fields(const gpu_scene_instance& previous, const gpu_sce
         dirty = dirty | gpu_scene_dirty::transform;
     if (!bounds_equal(previous.world_bounds, current.world_bounds) ||
         previous.maximum_draw_distance != current.maximum_draw_distance ||
+        previous.maximum_shadow_distance != current.maximum_shadow_distance ||
+        previous.shadow_lod_bias != current.shadow_lod_bias ||
         previous.geometry_error_scale != current.geometry_error_scale)
         dirty = dirty | gpu_scene_dirty::bounds;
     if (previous.mesh != current.mesh || previous.virtual_mesh != current.virtual_mesh ||
@@ -57,7 +59,7 @@ gpu_scene_dirty changed_fields(const gpu_scene_instance& previous, const gpu_sce
         previous.material_attribute_texture != current.material_attribute_texture)
         dirty = dirty | gpu_scene_dirty::material;
     if (previous.flags != current.flags || previous.render_layer_mask != current.render_layer_mask ||
-        previous.object_id != current.object_id)
+        previous.mobility != current.mobility || previous.object_id != current.object_id)
         dirty = dirty | gpu_scene_dirty::flags;
     return dirty;
 }

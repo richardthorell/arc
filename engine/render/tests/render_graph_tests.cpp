@@ -464,6 +464,8 @@ TEST_CASE("Ultra virtual shadow graph declares page feedback cache and lighting 
     config.virtual_shadow_view_capacity = 32;
     config.virtual_shadow_page_table_entry_capacity = 128;
     config.virtual_shadow_request_capacity = 512;
+    config.virtual_shadow_page_render_budget = 7;
+    config.virtual_shadow_caster_capacity_per_page = 13;
 
     auto graph = make_scene_draw_graph("vsm", config, true);
     const auto compiled_result = graph.compile();
@@ -509,12 +511,20 @@ TEST_CASE("Ultra virtual shadow graph declares page feedback cache and lighting 
     const auto* views = resource("virtual_shadow_views");
     const auto* page_table = resource("virtual_shadow_page_table");
     const auto* readback = resource("virtual_shadow_feedback_readback");
+    const auto* render_pages = resource("virtual_shadow_render_pages");
+    const auto* page_work = resource("virtual_shadow_page_work");
+    const auto* page_casters = resource("virtual_shadow_page_casters");
+    const auto* render_feedback = resource("virtual_shadow_render_feedback_readback");
     REQUIRE(static_pages != nullptr);
     REQUIRE(dynamic_pages != nullptr);
     REQUIRE(address_spaces != nullptr);
     REQUIRE(views != nullptr);
     REQUIRE(page_table != nullptr);
     REQUIRE(readback != nullptr);
+    REQUIRE(render_pages != nullptr);
+    REQUIRE(page_work != nullptr);
+    REQUIRE(page_casters != nullptr);
+    REQUIRE(render_feedback != nullptr);
     REQUIRE(readback->byte_size == config.virtual_shadow_request_capacity * sizeof(gpu_virtual_shadow_page_request));
     REQUIRE(static_pages->format == render_format::d16_unorm);
     REQUIRE(static_pages->extent.width == config.virtual_shadow_pool.atlas_extent);
@@ -529,9 +539,29 @@ TEST_CASE("Ultra virtual shadow graph declares page feedback cache and lighting 
     REQUIRE(views->byte_size == config.virtual_shadow_view_capacity * sizeof(gpu_virtual_shadow_view_record));
     REQUIRE(page_table->byte_size ==
             config.virtual_shadow_page_table_entry_capacity * sizeof(gpu_virtual_shadow_page_table_entry));
+    REQUIRE(render_pages->byte_size ==
+            config.virtual_shadow_page_render_budget * sizeof(gpu_virtual_shadow_render_page_record));
+    REQUIRE(page_work->byte_size == config.virtual_shadow_page_render_budget * sizeof(gpu_virtual_shadow_page_work));
+    REQUIRE(page_casters->byte_size == config.virtual_shadow_page_render_budget *
+                                           config.virtual_shadow_caster_capacity_per_page *
+                                           sizeof(gpu_virtual_shadow_caster_draw));
+    REQUIRE(render_feedback->byte_size ==
+            config.virtual_shadow_page_render_budget * sizeof(gpu_virtual_shadow_page_work));
     REQUIRE(page_table->lifetime == render_resource_lifetime_class::per_world);
     REQUIRE(readback->memory == render_memory_class::readback);
     REQUIRE(readback->exported);
+    REQUIRE(render_feedback->memory == render_memory_class::readback);
+    REQUIRE(render_feedback->exported);
+
+    const auto reads_resource_as = [&](std::size_t index, std::string_view name, render_resource_usage usage)
+    {
+        return std::any_of(compiled.passes[index].reads.begin(), compiled.passes[index].reads.end(),
+                           [=](const auto& access) { return access.resource == name && access.usage == usage; });
+    };
+    REQUIRE(reads_resource_as(static_render, "virtual_shadow_page_casters", render_resource_usage::indirect_buffer));
+    REQUIRE(reads_resource_as(static_render, "virtual_shadow_page_work", render_resource_usage::indirect_buffer));
+    REQUIRE(reads_resource_as(dynamic_render, "virtual_shadow_page_casters", render_resource_usage::indirect_buffer));
+    REQUIRE(reads_resource_as(publication, "virtual_shadow_page_work", render_resource_usage::transfer_src));
 }
 
 TEST_CASE("environment lighting graph schedules scalable IBL generation")

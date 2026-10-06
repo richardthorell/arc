@@ -15,6 +15,8 @@ packed_gpu_scene_instance vulkan_render_backend::pack_gpu_scene_instance(const g
         result.visibility.bounds_min[component] = source.world_bounds.min[component];
         result.visibility.bounds_max[component] = source.world_bounds.max[component];
     }
+    result.visibility.bounds_min[3] = source.maximum_shadow_distance;
+    result.visibility.bounds_max[3] = source.shadow_lod_bias;
     resource_handle geometry{};
     switch (source.geometry_kind)
     {
@@ -34,6 +36,7 @@ packed_gpu_scene_instance vulkan_render_backend::pack_gpu_scene_instance(const g
     result.visibility.material_flags[1] = source.material.generation;
     result.visibility.material_flags[2] = source.render_layer_mask;
     result.visibility.material_flags[3] = static_cast<std::uint32_t>(source.flags);
+    result.visibility.material_flags[3] |= static_cast<std::uint32_t>(source.mobility) << 16u;
     result.visibility.draw_metadata[3] = source.object_id.valid() ? source.object_id.index + 1u : 0u;
     if (source.geometry_kind == gpu_scene_geometry_kind::mesh ||
         source.geometry_kind == gpu_scene_geometry_kind::skinned_mesh)

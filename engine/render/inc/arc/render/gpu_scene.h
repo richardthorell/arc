@@ -5,6 +5,7 @@
 #include <arc/math/vector.h>
 #include <arc/render/gpu_driven.h>
 #include <arc/render/handles.h>
+#include <arc/render/shadow.h>
 #include <arc/render/virtual_mesh.h>
 
 #include <cstddef>
@@ -114,6 +115,12 @@ struct gpu_scene_instance
     gpu_scene_instance_flag flags{gpu_scene_instance_flag::none};
     /** Maximum camera distance in metres; zero disables distance culling. */
     float maximum_draw_distance{};
+    /** Maximum camera distance at which this instance casts shadows; zero disables the limit. */
+    float maximum_shadow_distance{};
+    /** Authored shadow-only LOD bias retained by GPU-driven shadow views. */
+    float shadow_lod_bias{};
+    /** Mobility class used to split cached static and dynamic shadow depth. */
+    render_mobility mobility{render_mobility::movable};
     /** Authored multiplier applied to geometry error thresholds. */
     float geometry_error_scale{1.0f};
     /** Monotonic instance content revision. */
