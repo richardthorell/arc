@@ -15,6 +15,7 @@ import type {
   ArcAssetSearchResult,
   ArcAssetSourceDescriptor,
   ArcAssetSourceQuery,
+  ArcRemoteAsset,
   ArcRemoteAssetKind,
 } from '../common/assetSourceTypes';
 import type { ArcProjectBrowserSnapshot } from '../common/projectTypes';
@@ -84,6 +85,33 @@ const sleep = async (milliseconds: number, signal: AbortSignal): Promise<void> =
     };
     signal.addEventListener('abort', onAbort, { once: true });
   });
+};
+
+export type BuildRemoteImportProvenanceRecordInput = {
+  asset: ArcRemoteAsset;
+  selectedFiles: readonly ArcAssetDownloadFile[];
+  importedFiles: readonly string[];
+  importedAssetIds: readonly string[];
+  importedAt: string;
+  sourceHomepage?: string;
+};
+
+export const buildRemoteImportProvenanceRecord = ({
+  asset,
+  selectedFiles,
+  importedFiles,
+  importedAssetIds,
+  importedAt,
+  sourceHomepage,
+}: BuildRemoteImportProvenanceRecordInput) => {
+  const provenance = createRemoteImportProvenance(
+    asset,
+    { logicalPaths: selectedFiles.map((file) => file.logicalPath) },
+    selectedFiles,
+    { importedAt, sourceHomepage },
+  );
+  const sidecar = createRemoteImportProvenanceSidecar(provenance, importedFiles, importedAssetIds);
+  return { provenance, serializedSidecar: serializeRemoteImportProvenanceSidecar(sidecar) };
 };
 
 export const remoteFileName = (file: ArcAssetDownloadFile): string => {
@@ -507,16 +535,14 @@ export const createAssetSourceBridge = (invoke: Invoke) => {
         const importedAssetIds = await waitForImportedAssets(invoke, importedFiles, signal);
 
         const sourceDescriptor = source.registry.list().find((entry) => entry.id === request.sourceId);
-        const provenance = createRemoteImportProvenance(
+        const { provenance, serializedSidecar } = buildRemoteImportProvenanceRecord({
           asset,
-          { logicalPaths: selected.map((file) => file.logicalPath) },
-          selected,
-          {
-            importedAt: new Date().toISOString(),
-            sourceHomepage: sourceDescriptor?.homepage,
-          },
-        );
-        const provenanceSidecar = createRemoteImportProvenanceSidecar(provenance, importedFiles, importedAssetIds);
+          selectedFiles: selected,
+          importedFiles,
+          importedAssetIds,
+          importedAt: new Date().toISOString(),
+          sourceHomepage: sourceDescriptor?.homepage,
+        });
         provenancePath = ensureContained(
           roots.savedRoot,
           path.join(
@@ -529,7 +555,7 @@ export const createAssetSourceBridge = (invoke: Invoke) => {
         );
         await mkdir(path.dirname(provenancePath), { recursive: true });
         throwIfAborted(signal);
-        await writeFile(provenancePath, serializeRemoteImportProvenanceSidecar(provenanceSidecar), 'utf8');
+        await writeFile(provenancePath, serializedSidecar, 'utf8');
 
         onProgress?.({
           phase: 'complete',
