@@ -93,7 +93,9 @@ describe('BuiltInAgentToolRegistry', () => {
 
     const editSchema = JSON.stringify(edit?.inputSchema);
     expect(editSchema).toContain('prefer binding an existing project material');
-    expect(editSchema).toContain('only after suitable project-local assets and lightweight overrides have been considered');
+    expect(editSchema).toContain(
+      'only after suitable project-local assets and lightweight overrides have been considered',
+    );
   });
 
   it('validates arguments before invoking the harness operation', async () => {
