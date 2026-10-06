@@ -56,8 +56,10 @@ bool vulkan_render_backend::ensure_forward_scene_resources()
 {
     const auto frame_count = frame_resource_count();
     const auto* directional = active_directional_shadow_light();
-    const shadow_settings shadow_settings_value =
+    auto shadow_settings_value =
         directional ? directional->shadow : shadow_settings{.enabled = false, .resolution = 2048};
+    shadow_settings_value.resolution = std::min(
+        std::bit_ceil(std::max(shadow_settings_value.resolution, 1u)), resolved_config_.directional_shadow_resolution);
     if (!ensure_shadow_resources(shadow_settings_value) || !ensure_local_shadow_resources() ||
         !ensure_shadow_uniform_buffers())
         return false;
