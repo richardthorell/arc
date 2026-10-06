@@ -283,63 +283,84 @@ export class EditorAgentHarness extends EditorAgentHarnessCore {
     let expectedSceneRevision = request.expectedSceneRevision;
     let authority: Record<string, unknown> = {};
 
-    for (const [index, operation] of request.operations.entries()) {
-      if (operation.type === 'material.create') {
-        const workspace = this.assetWorkspace;
-        if (!workspace) throw new Error('Asset authoring is not available in this editor session');
-        if (await workspace.exists(operation.path)) throw new Error(`Asset already exists: ${operation.path}`);
-        await workspace.create(operation.path, materialContents(operation));
-        this.trackBatchCreatedAsset(request.editSessionId, clientId, operation.path);
-        createdMaterials.set(operation.tempId, operation.path);
-        createdResources[operation.tempId] = { kind: 'material', path: operation.path };
-        if (Object.keys(authority).length === 0)
-          authority = asObject(await super.invoke('scene.overview', {}, clientId));
-        const result = {
-          created: true,
-          asset: { kind: 'material', path: operation.path },
-          sceneRevision: expectedSceneRevision,
-          worldEpoch: authority.worldEpoch,
-          frameRevision: authority.frameRevision,
-        };
+    try {
+      for (const [index, operation] of request.operations.entries()) {
+        if (operation.type === 'material.create') {
+          const workspace = this.assetWorkspace;
+          if (!workspace) throw new Error('Asset authoring is not available in this editor session');
+          if (await workspace.exists(operation.path)) throw new Error(`Asset already exists: ${operation.path}`);
+          await workspace.create(operation.path, materialContents(operation));
+          this.trackBatchCreatedAsset(request.editSessionId, clientId, operation.path);
+          createdMaterials.set(operation.tempId, operation.path);
+          createdResources[operation.tempId] = { kind: 'material', path: operation.path };
+          if (Object.keys(authority).length === 0)
+            authority = asObject(await super.invoke('scene.overview', {}, clientId));
+          const result = {
+            created: true,
+            asset: { kind: 'material', path: operation.path },
+            sceneRevision: expectedSceneRevision,
+            worldEpoch: authority.worldEpoch,
+            frameRevision: authority.frameRevision,
+          };
+          results.push({ index, type: operation.type, result });
+          continue;
+        }
+
+        const edit = batchOperationToEditApply(operation, createdEntities, createdMaterials);
+        const result = asObject(
+          await super.invoke(
+            'edit.apply',
+            {
+              editSessionId: request.editSessionId,
+              expectedSceneRevision,
+              action: edit.action,
+              value: edit.value,
+            },
+            clientId,
+          ),
+        );
+        expectedSceneRevision = requireSceneRevision(result.sceneRevision);
+        authority = result;
+
+        if (operation.type === 'entity.create' && operation.tempId) {
+          const guid = requireGuid(result.guid);
+          createdEntities.set(operation.tempId, guid);
+          createdResources[operation.tempId] = { kind: 'entity', guid };
+        }
+
         results.push({ index, type: operation.type, result });
-        continue;
       }
 
-      const edit = batchOperationToEditApply(operation, createdEntities, createdMaterials);
-      const result = asObject(
-        await super.invoke(
-          'edit.apply',
-          {
-            editSessionId: request.editSessionId,
-            expectedSceneRevision,
-            action: edit.action,
-            value: edit.value,
-          },
-          clientId,
-        ),
+      return {
+        editSessionId: request.editSessionId,
+        operationCount: request.operations.length,
+        results,
+        created: createdResources,
+        expectedSceneRevision,
+        sceneRevision: expectedSceneRevision,
+        worldEpoch: authority.worldEpoch,
+        frameRevision: authority.frameRevision,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      let cancelFailure: string | undefined;
+      try {
+        await super.invoke('edit.cancel', { editSessionId: request.editSessionId }, clientId);
+      } catch (cancelError) {
+        cancelFailure = cancelError instanceof Error ? cancelError.message : String(cancelError);
+        await this.invalidateAuthority('editor.applyBatch failure cleanup');
+      }
+      await this.removeBatchCreatedAssets(request.editSessionId);
+
+      if (cancelFailure) {
+        throw new Error(
+          `Batch failed: ${message}. Automatic transaction cancellation also failed: ${cancelFailure}`,
+        );
+      }
+      throw new Error(
+        `Batch failed and the edit transaction was cancelled: ${message}. Begin a new edit session before retrying.`,
       );
-      expectedSceneRevision = requireSceneRevision(result.sceneRevision);
-      authority = result;
-
-      if (operation.type === 'entity.create' && operation.tempId) {
-        const guid = requireGuid(result.guid);
-        createdEntities.set(operation.tempId, guid);
-        createdResources[operation.tempId] = { kind: 'entity', guid };
-      }
-
-      results.push({ index, type: operation.type, result });
     }
-
-    return {
-      editSessionId: request.editSessionId,
-      operationCount: request.operations.length,
-      results,
-      created: createdResources,
-      expectedSceneRevision,
-      sceneRevision: expectedSceneRevision,
-      worldEpoch: authority.worldEpoch,
-      frameRevision: authority.frameRevision,
-    };
   }
 
   private trackBatchCreatedAsset(editSessionId: string, clientId: string, path: string): void {
