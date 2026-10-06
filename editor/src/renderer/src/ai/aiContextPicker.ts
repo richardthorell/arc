@@ -7,7 +7,7 @@ import type {
   AiProjectContextSnapshot,
 } from '../../../common/aiContextTypes';
 import type { AiJsonObject } from '../../../common/aiRuntimeTypes';
-import type { AiContextProvider } from './aiProjectContextService';
+export { createAiAssetContextProvider } from './aiProjectContextService';
 
 export type AiContextPickerKind = 'selection' | 'scene' | 'workspace' | 'viewport' | 'diagnostics' | 'entity' | 'asset';
 
@@ -24,10 +24,6 @@ export type AiContextPickerCandidate = {
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-
-const stringValue = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
-const numberValue = (value: unknown): number | undefined =>
-  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
 const jsonRevision = (revision: AiContextRevision): AiJsonObject => ({
   ...(revision.sceneRevision !== undefined ? { sceneRevision: revision.sceneRevision } : {}),
@@ -267,46 +263,3 @@ export const captureAiViewportReference = (
     },
   };
 };
-
-export const createAiAssetContextProvider = (): AiContextProvider => ({
-  id: 'assets',
-  async collect({ environment, projectGuid }) {
-    if (!projectGuid) return { status: 'unavailable' };
-    const raw = await environment.hostQuery('project.assets', {});
-    const response = asRecord(raw);
-    if (!response) return { status: 'unavailable' };
-    if (response.succeeded === false)
-      return {
-        status: 'error',
-        error: stringValue(response.error) ?? 'project.assets query failed',
-      };
-    const payload = asRecord(response.payload);
-    const assets = Array.isArray(payload?.assets)
-      ? payload.assets.flatMap((value) => {
-          const asset = asRecord(value);
-          const guid = stringValue(asset?.guid);
-          if (!asset || !guid) return [];
-          return [
-            {
-              guid,
-              path: stringValue(asset.path) ?? '',
-              name: stringValue(asset.name) ?? '',
-              typeId: stringValue(asset.typeId) ?? '',
-              state: stringValue(asset.state) ?? '',
-              ...(numberValue(asset.generation) !== undefined ? { generation: numberValue(asset.generation) } : {}),
-            },
-          ];
-        })
-      : [];
-    const revision: AiContextRevision = {
-      sceneRevision: numberValue(response.sceneRevision),
-      worldEpoch: numberValue(response.worldEpoch),
-      frameRevision: numberValue(response.frameRevision),
-    };
-    return {
-      status: 'ready',
-      data: { assets },
-      ...(Object.values(revision).some((value) => value !== undefined) ? { revision } : {}),
-    };
-  },
-});
