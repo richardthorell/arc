@@ -83,9 +83,12 @@ describe('renderAiChatMessageText', () => {
       </EditorReferenceProvider>,
     );
 
-    const reference = screen.getByRole('button', { name: /asset reference: Brushed Metal/u });
+    const reference = screen.getByRole('button', { name: /asset reference:/u });
     expect(reference).toBeInTheDocument();
-    await waitFor(() => expect(reference.querySelector('img')).toHaveAttribute('src', 'data:image/png;base64,thumb'));
+    await waitFor(() => {
+      expect(reference).toHaveAccessibleName('asset reference: Brushed Metal');
+      expect(reference.querySelector('img')).toHaveAttribute('src', 'data:image/png;base64,thumb');
+    });
     expect(controller.resolve).toHaveBeenCalledWith({ kind: 'asset', id: 'material-guid' });
   });
 
