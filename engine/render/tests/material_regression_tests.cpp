@@ -1,4 +1,5 @@
 #include <arc/render/material.h>
+#include <arc/render/water_material.h>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -150,6 +151,73 @@ TEST_CASE("material instances bake numeric overrides into isolated runtime param
     REQUIRE(read_parameter_float(*cool.value().runtime_program, 16) == Catch::Approx(0.1f));
     REQUIRE(read_parameter_float(*cool.value().runtime_program, 20) == Catch::Approx(0.4f));
     REQUIRE(read_parameter_float(*cool.value().runtime_program, 24) == Catch::Approx(1.0f));
+}
+
+TEST_CASE("Water appearance preserves compiled forward material programs")
+{
+    auto runtime = std::make_shared<arc::render::material_runtime_program>();
+    runtime->parameter_block_size = 48;
+    runtime->parameter_defaults.resize(runtime->parameter_block_size);
+    runtime->parameters = {
+        {.id = arc::render::make_shader_parameter_id("roughness"),
+         .name = "Roughness",
+         .type = arc::render::shader_parameter_type::float32,
+         .offset = 0,
+         .size = 4},
+        {.id = arc::render::make_shader_parameter_id("transmission"),
+         .name = "Transmission",
+         .type = arc::render::shader_parameter_type::float32,
+         .offset = 4,
+         .size = 4},
+        {.id = arc::render::make_shader_parameter_id("ior"),
+         .name = "Index of Refraction",
+         .type = arc::render::shader_parameter_type::float32,
+         .offset = 8,
+         .size = 4},
+        {.id = arc::render::make_shader_parameter_id("attenuation-color"),
+         .name = "Attenuation Color",
+         .type = arc::render::shader_parameter_type::float4,
+         .offset = 16,
+         .size = 16},
+        {.id = arc::render::make_shader_parameter_id("attenuation-distance"),
+         .name = "Attenuation Distance",
+         .type = arc::render::shader_parameter_type::float32,
+         .offset = 32,
+         .size = 4},
+    };
+    arc::render::material_runtime_pass forward;
+    forward.pass = arc::render::material_pass::forward;
+    forward.compiled.bytecode = {1u, 2u, 3u, 4u};
+    runtime->passes.push_back(std::move(forward));
+
+    arc::render::material_descriptor authored;
+    authored.runtime_program = runtime;
+    authored.alpha_mode = arc::render::material_alpha_mode::blend;
+    authored.shading_model = arc::render::material_shading_model::transmission;
+    authored.render_path = arc::render::material_render_path::clustered_forward;
+
+    arc::water::water_appearance_settings appearance;
+    appearance.absorption = {0.4f, 0.2f, 0.1f};
+    appearance.roughness = 0.17f;
+    appearance.refraction_strength = 0.2f;
+
+    const auto updated = arc::render::apply_water_material_appearance(authored, appearance, "Water");
+    REQUIRE(updated.runtime_program);
+    REQUIRE(updated.runtime_program != runtime);
+    REQUIRE(updated.runtime_program->passes.size() == 1u);
+    REQUIRE(updated.runtime_program->passes.front().pass == arc::render::material_pass::forward);
+    REQUIRE(updated.runtime_program->passes.front().compiled.bytecode.size() == 4u);
+
+    CHECK(updated.roughness == Catch::Approx(0.17f));
+    CHECK(updated.transmission_factor == Catch::Approx(0.7f));
+    CHECK(updated.index_of_refraction == Catch::Approx(1.333f));
+    CHECK(read_parameter_float(*updated.runtime_program, 0) == Catch::Approx(0.17f));
+    CHECK(read_parameter_float(*updated.runtime_program, 4) == Catch::Approx(0.7f));
+    CHECK(read_parameter_float(*updated.runtime_program, 8) == Catch::Approx(1.333f));
+    CHECK(read_parameter_float(*updated.runtime_program, 16) == Catch::Approx(updated.attenuation_color[0]));
+    CHECK(read_parameter_float(*updated.runtime_program, 20) == Catch::Approx(updated.attenuation_color[1]));
+    CHECK(read_parameter_float(*updated.runtime_program, 24) == Catch::Approx(updated.attenuation_color[2]));
+    CHECK(read_parameter_float(*updated.runtime_program, 32) == Catch::Approx(updated.attenuation_distance));
 }
 
 TEST_CASE("representative advanced material preserves the shader permutation contract")
