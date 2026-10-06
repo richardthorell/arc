@@ -20,6 +20,7 @@ import {
 export const AI_AGENT_MAX_STEPS = 10;
 export const AI_AGENT_STEP_TIMEOUT_MS = 60_000;
 const additionalPlanTurns = 4;
+const providerTurnMultiplier = 3;
 
 export type AiAgentModelExecutor = (request: AiRuntimeRequest) => AsyncIterable<AiRuntimeStreamEvent>;
 export type AiAgentToolInvoker = (call: AiToolCall, signal?: AbortSignal) => Promise<BuiltInAgentToolExecutionResult>;
@@ -244,9 +245,11 @@ export async function* runAiAgentToolLoop(
   const planRoots = new Map<string, AiTaskProgress>();
   let toolSteps = 0;
 
-  // Plan-only provider turns do not consume the editor-tool budget. A small extra
-  // allowance lets the model publish/revise a plan without stealing mutation turns.
-  for (let providerStep = 0; providerStep <= maximumSteps + additionalPlanTurns; ++providerStep) {
+  // Provider round-trips include planning, approval/control, recovery, and semantic
+  // work. Only semantic work consumes toolSteps, so keep a larger independent
+  // safety ceiling here instead of letting control/recovery turns exhaust the run.
+  const maximumProviderTurns = maximumSteps * providerTurnMultiplier + additionalPlanTurns;
+  for (let providerStep = 0; providerStep < maximumProviderTurns; ++providerStep) {
     if (request.signal?.aborted) return;
 
     const controller = new AbortController();
@@ -492,7 +495,7 @@ export async function* runAiAgentToolLoop(
   yield {
     type: 'error',
     code: 'tool',
-    message: `AI agent exhausted its provider-turn allowance before producing a final response`,
+    message: `AI agent exhausted its provider-turn safety allowance before producing a final response`,
     retryable: false,
   };
 }
