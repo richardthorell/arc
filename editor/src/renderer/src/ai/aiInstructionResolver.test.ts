@@ -103,6 +103,17 @@ describe('resolveAiRuntimeInstructions', () => {
     expect(serialized).toContain('authoritative stable ID');
   });
 
+  it('uses visual choice cards only when the user must choose among project assets', () => {
+    const resolution = resolveAiRuntimeInstructions(request('Help me choose a rock model'), sources([]));
+    const base = resolution.request.messages.find((message) => message.id === 'arc-instructions:base');
+    const serialized = JSON.stringify(base);
+
+    expect(serialized).toContain('agent.presentChoices');
+    expect(serialized).toContain('2-8 option single-choice set');
+    expect(serialized).toContain('wait for the user');
+    expect(serialized).toContain('Do not use a choice card when one option is clearly correct');
+  });
+
   it('treats declared tools as advisory until the request actually exposes them', () => {
     const renderer = skill('renderer-diagnostics', 'Debug renderer viewport diagnostics.', [
       'viewport.read',
