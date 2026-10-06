@@ -38,10 +38,7 @@ const thumbnailSize = (value: string | undefined): number | null => {
   return Number.isSafeInteger(size) && size >= 32 && size <= 512 ? size : null;
 };
 
-const resourceAsset = async (
-  environment: ArcAssetResourceEnvironment,
-  uri: ArcUri,
-): Promise<ArcAssetRecord | null> => {
+const resourceAsset = async (environment: ArcAssetResourceEnvironment, uri: ArcUri): Promise<ArcAssetRecord | null> => {
   const wanted = normalizedId(uri.id);
   return (await environment.listAssets()).find((asset) => normalizedId(asset.guid) === wanted) ?? null;
 };
@@ -90,11 +87,16 @@ export const createWindowArcAssetResourceEnvironment = (): ArcAssetResourceEnvir
   async listAssets() {
     if (!window.arc?.host) return [];
     const response = (await window.arc.host.query('project.assets')) as HostResponse<AssetInventory>;
-    return response.succeeded ? (response.payload?.assets ?? []).filter((asset) => Boolean(asset.guid && asset.path)) : [];
+    return response.succeeded
+      ? (response.payload?.assets ?? []).filter((asset) => Boolean(asset.guid && asset.path))
+      : [];
   },
   async loadThumbnail(path, maxSize) {
     if (!window.arc?.host) return null;
-    const response = (await window.arc.host.query('asset.thumbnail', { path, maxSize })) as HostResponse<AssetThumbnail>;
+    const response = (await window.arc.host.query('asset.thumbnail', {
+      path,
+      maxSize,
+    })) as HostResponse<AssetThumbnail>;
     return response.succeeded ? (response.payload ?? null) : null;
   },
 });

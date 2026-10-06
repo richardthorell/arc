@@ -29,10 +29,7 @@ export const parseArcUri = (value: string): ArcUri | null => {
   }
 
   if (parsed.protocol !== 'arc:' || parsed.hostname !== authority) return null;
-  const segments = parsed.pathname
-    .split('/')
-    .filter(Boolean)
-    .map(decodeSegment);
+  const segments = parsed.pathname.split('/').filter(Boolean).map(decodeSegment);
   if (!segments.length || segments.some((segment) => segment === null)) return null;
 
   const [id, ...path] = segments as string[];
@@ -46,7 +43,10 @@ export const parseArcUri = (value: string): ArcUri | null => {
 };
 
 export const arcUri = (
-  resource: Pick<ArcUri, 'kind' | 'id'> & { path?: readonly string[]; query?: ReadonlyMap<string, string> | Record<string, string> },
+  resource: Pick<ArcUri, 'kind' | 'id'> & {
+    path?: readonly string[];
+    query?: ReadonlyMap<string, string> | Record<string, string>;
+  },
 ): string => {
   if (!resourceKindPattern.test(resource.kind) || !resource.id.trim())
     throw new Error('ARC URI requires a valid resource kind and stable resource ID');
