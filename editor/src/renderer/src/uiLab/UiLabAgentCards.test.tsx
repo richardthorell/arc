@@ -13,6 +13,7 @@ describe('UiLabAgentCards', () => {
     const { container } = render(<UiLabAgentCards />);
 
     expect(screen.getByLabelText('AI response card gallery')).toBeVisible();
+    expect(container.querySelector('[data-agent-choice-kind="asset"]')).toBeInTheDocument();
     for (const kind of ['task', 'tool', 'approval', 'diff', 'viewport', 'asset', 'error']) {
       expect(container.querySelector(`[data-activity-kind="${kind}"]`)).toBeInTheDocument();
     }
