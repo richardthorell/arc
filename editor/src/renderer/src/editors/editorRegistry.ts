@@ -189,7 +189,7 @@ const materialRegistration: EditorRegistration = {
   createDocument: (asset) => ({
     id: `material:${asset.guid ?? asset.path}`,
     kind: 'material',
-    title: asset.name,
+    title: asset.title?.trim() || asset.name,
     path: asset.sourcePath ?? asset.path,
     assetId: asset.id,
     assetGuid: asset.guid,
