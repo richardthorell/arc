@@ -82,7 +82,7 @@ describe('MaterialGraphWithInteractions', () => {
 
     fireEvent.pointerEnter(wire!, { clientX: 160, clientY: 120 });
 
-    expect(screen.getByRole('tooltip')).toHaveTextContent('Vector3 • Multiply.result → Base Color');
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Numeric • Multiply.result → Base Color');
     expect(container.querySelectorAll('.material-wire-chevron')).toHaveLength(0);
     expect(container.querySelectorAll('.material-wire-flow-texture')).toHaveLength(3);
     const interaction = wire!.closest('.material-wire-interaction');
