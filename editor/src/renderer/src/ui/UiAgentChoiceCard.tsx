@@ -1,0 +1,140 @@
+import { Check, FileBox } from 'lucide-react';
+import { useEffect, useState } from 'react';
+
+import { useEditorReferenceController } from '../services/EditorReferenceContext';
+import { parseEditorReference, type ResolvedEditorReference } from '../services/editorReferences';
+import { UiAgentCard } from './UiAgentCard';
+import { UiButton } from './UiButton';
+
+import './UiAgentChoiceCard.css';
+
+export type UiAgentAssetChoiceOption = {
+  uri: string;
+  label: string;
+  reason?: string;
+};
+
+export type UiAgentAssetChoiceCardProps = {
+  title: string;
+  prompt?: string;
+  options: readonly UiAgentAssetChoiceOption[];
+  disabled?: boolean;
+  onChoose: (uri: string) => void;
+};
+
+function AssetChoiceOption({
+  option,
+  selected,
+  disabled,
+  onSelect,
+}: {
+  option: UiAgentAssetChoiceOption;
+  selected: boolean;
+  disabled?: boolean;
+  onSelect: () => void;
+}) {
+  const controller = useEditorReferenceController();
+  const reference = parseEditorReference(option.uri);
+  const [resolved, setResolved] = useState<ResolvedEditorReference | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setResolved(null);
+    if (!reference || reference.kind !== 'asset' || !controller) return () => undefined;
+
+    void Promise.resolve(controller.resolve(reference)).then((value) => {
+      if (!cancelled) setResolved(value);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [controller, option.uri, reference]);
+
+  const unavailable = !reference || reference.kind !== 'asset' || resolved?.disabled;
+  const label = resolved?.label ?? option.label;
+  const subtitle = resolved?.subtitle ?? 'Asset';
+
+  return (
+    <button
+      aria-label={`Choose ${label}`}
+      aria-pressed={selected}
+      className="ui-agent-asset-choice-option"
+      data-selected={selected ? 'true' : 'false'}
+      disabled={disabled || unavailable}
+      type="button"
+      onClick={onSelect}
+      onDoubleClick={() => {
+        if (reference && controller?.focus) void controller.focus(reference);
+      }}
+    >
+      <span className="ui-agent-asset-choice-preview">
+        {resolved?.thumbnailUrl ? (
+          <img src={resolved.thumbnailUrl} alt="" aria-hidden="true" />
+        ) : (
+          <FileBox aria-hidden="true" size={24} />
+        )}
+        {selected ? (
+          <span className="ui-agent-asset-choice-check" aria-hidden="true">
+            <Check size={12} />
+          </span>
+        ) : null}
+      </span>
+      <span className="ui-agent-asset-choice-copy">
+        <strong>{label}</strong>
+        <small>{subtitle}</small>
+        {option.reason ? <span>{option.reason}</span> : null}
+      </span>
+    </button>
+  );
+}
+
+export function UiAgentAssetChoiceCard({
+  title,
+  prompt,
+  options,
+  disabled = false,
+  onChoose,
+}: UiAgentAssetChoiceCardProps) {
+  const [selectedUri, setSelectedUri] = useState<string | null>(null);
+  const selected = options.find((option) => option.uri === selectedUri) ?? null;
+
+  useEffect(() => {
+    if (selectedUri && !options.some((option) => option.uri === selectedUri)) setSelectedUri(null);
+  }, [options, selectedUri]);
+
+  return (
+    <UiAgentCard
+      className="ui-agent-choice-card"
+      data-agent-choice-kind="asset"
+      side="none"
+      subtitle="Choose one"
+      title={title}
+      tone="neutral"
+    >
+      {prompt ? <p className="ui-agent-choice-prompt">{prompt}</p> : null}
+      <div className="ui-agent-asset-choice-grid">
+        {options.map((option) => (
+          <AssetChoiceOption
+            disabled={disabled}
+            key={option.uri}
+            option={option}
+            selected={option.uri === selectedUri}
+            onSelect={() => setSelectedUri(option.uri)}
+          />
+        ))}
+      </div>
+      <div className="ui-agent-choice-actions">
+        <UiButton
+          disabled={disabled || !selected}
+          type="button"
+          variant="primary"
+          onClick={() => {
+            if (selected) onChoose(selected.uri);
+          }}
+        >
+          Use this
+        </UiButton>
+      </div>
+    </UiAgentCard>
+  );
+}
