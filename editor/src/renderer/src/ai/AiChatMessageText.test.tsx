@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { EditorReferenceProvider } from '../services/EditorReferenceContext';
 import { renderAiChatMessageText } from './AiChatMessageText';
 
 afterEach(() => {
@@ -61,6 +62,40 @@ describe('renderAiChatMessageText', () => {
     expect(link).toHaveAttribute('href', 'https://platform.openai.com/settings/organization/billing/');
     expect(link).toHaveAttribute('title', 'Ctrl+click to open link');
     expect(screen.getByText(/\.$/u)).toBeInTheDocument();
+  });
+
+  it('renders valid ARC Markdown links as editor references with resolved thumbnails', async () => {
+    const controller = {
+      resolve: vi.fn(async () => ({
+        reference: { kind: 'asset' as const, id: 'material-guid' },
+        label: 'Brushed Metal',
+        subtitle: 'Material',
+        thumbnailUrl: 'data:image/png;base64,thumb',
+      })),
+      activate: vi.fn(),
+      focus: vi.fn(),
+      highlight: vi.fn(),
+    };
+
+    render(
+      <EditorReferenceProvider controller={controller}>
+        <div>{renderAiChatMessageText('Used [Brushed Metal](arc://asset/material-guid).')}</div>
+      </EditorReferenceProvider>,
+    );
+
+    const reference = screen.getByRole('button', { name: /asset reference: Brushed Metal/u });
+    expect(reference).toBeInTheDocument();
+    await waitFor(() =>
+      expect(reference.querySelector('img')).toHaveAttribute('src', 'data:image/png;base64,thumb'),
+    );
+    expect(controller.resolve).toHaveBeenCalledWith({ kind: 'asset', id: 'material-guid' });
+  });
+
+  it('keeps malformed or unsupported ARC Markdown links inert', () => {
+    render(<div>{renderAiChatMessageText('[Bad](arc://component/entity/type) [Missing](arc://asset/)')}</div>);
+
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getByText('[Bad](arc://component/entity/type) [Missing](arc://asset/)')).toBeInTheDocument();
   });
 
   it('renders Markdown links with the existing deliberate external-navigation behavior', () => {
