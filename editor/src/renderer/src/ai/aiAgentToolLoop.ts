@@ -231,8 +231,16 @@ const advanceCompletedPlanTask = (
   return deriveTaskTreeStates(nextRoot);
 };
 
-const shouldAdvanceForNewSemanticTurn = (task: AiTaskProgress): boolean =>
-  Boolean(task.toolCallIds?.length) && !task.detail?.startsWith('Retrying after ');
+const hasNextPlannedLeaf = (root: AiTaskProgress, currentTaskId: string): boolean => {
+  const flat = flattenTaskTree(root);
+  const currentIndex = flat.findIndex((task) => task.id === currentTaskId);
+  return flat.slice(currentIndex + 1).some((task) => task.state === 'planned' && !task.children?.length);
+};
+
+const shouldAdvanceForNewSemanticTurn = (root: AiTaskProgress, task: AiTaskProgress): boolean =>
+  Boolean(task.toolCallIds?.length) &&
+  !task.detail?.startsWith('Retrying after ') &&
+  hasNextPlannedLeaf(root, task.id);
 
 export async function* runAiAgentToolLoop(
   request: AiRuntimeRequest,
@@ -348,7 +356,8 @@ export async function* runAiAgentToolLoop(
 
     const planCalls = calls.filter((call) => call.name === AI_AGENT_PLAN_TOOL_NAME);
     const executionCalls = calls.filter((call) => call.name !== AI_AGENT_PLAN_TOOL_NAME);
-    if (executionCalls.length && toolSteps >= maximumSteps) {
+    const semanticExecutionCalls = executionCalls.filter((call) => !agentControlTools.has(call.name));
+    if (semanticExecutionCalls.length && toolSteps >= maximumSteps) {
       yield {
         type: 'error',
         code: 'tool',
@@ -390,13 +399,13 @@ export async function* runAiAgentToolLoop(
 
     let planned = activePlanTask(planRoots);
     let recoveringPlanTask = false;
-    const hasSemanticExecution = executionCalls.some((call) => !agentControlTools.has(call.name));
+    const hasSemanticExecution = semanticExecutionCalls.length > 0;
 
     if (!planned && planRoots.size && hasSemanticExecution) {
       const failed = failedPlanTask(planRoots);
       if (failed) {
         let recoveringRoot = mapTaskTree(failed.root, failed.task.id, (task) => ({
-          ...withoutTaskDetail(withLinkedCalls(task, executionCalls, providerStep)),
+          ...withoutTaskDetail(withLinkedCalls(task, semanticExecutionCalls, providerStep)),
           state: 'in_progress',
         }));
         recoveringRoot = deriveTaskTreeStates(recoveringRoot);
@@ -413,7 +422,7 @@ export async function* runAiAgentToolLoop(
     let genericTask: AiTaskProgress | undefined;
     const retryingPlanTask = Boolean(planned?.task.detail?.startsWith('Retrying after '));
     if (planned && !recoveringPlanTask) {
-      if (hasSemanticExecution && shouldAdvanceForNewSemanticTurn(planned.task)) {
+      if (hasSemanticExecution && shouldAdvanceForNewSemanticTurn(planned.root, planned.task)) {
         const advancedRoot = advanceCompletedPlanTask(planRoots.get(planned.root.id)!, planned.task.id);
         planRoots.set(advancedRoot.id, advancedRoot);
         yield { type: 'task-update', task: advancedRoot };
@@ -425,7 +434,7 @@ export async function* runAiAgentToolLoop(
       const linkedRoot = mapTaskTree(planned.root, planned.task.id, (task) =>
         withLinkedCalls(
           task.detail?.startsWith('Retrying after ') ? withoutTaskDetail(task) : task,
-          executionCalls,
+          semanticExecutionCalls,
           providerStep,
         ),
       );
@@ -436,7 +445,7 @@ export async function* runAiAgentToolLoop(
       };
       yield { type: 'task-update', task: linkedRoot };
     } else if (!planned && !planRoots.size && hasSemanticExecution) {
-      genericTask = taskForCalls(providerStep, executionCalls, 'in_progress');
+      genericTask = taskForCalls(providerStep, semanticExecutionCalls, 'in_progress');
       yield { type: 'task-update', task: genericTask };
     }
 
@@ -484,6 +493,6 @@ export async function* runAiAgentToolLoop(
         ),
       };
     }
-    ++toolSteps;
+    if (hasSemanticExecution) ++toolSteps;
   }
 }
