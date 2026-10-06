@@ -234,6 +234,46 @@ describe('AiChatPanel', () => {
     await waitFor(() => expect(screen.getByText('Hello from ARC.')).toBeInTheDocument());
   });
 
+  it('renders one progress list when a response contains multiple task roots', () => {
+    const initialMessages: readonly AiChatMessage[] = [
+      {
+        id: 'user',
+        role: 'user',
+        content: 'Build a playground',
+        createdAt: '2026-10-05T22:00:00Z',
+        state: 'complete',
+      },
+      {
+        id: 'assistant',
+        role: 'assistant',
+        content: '',
+        createdAt: '2026-10-05T22:00:01Z',
+        state: 'streaming',
+        taskReferences: [
+          {
+            id: 'agent-step-0',
+            title: 'Run 3 editor operations',
+            state: 'completed',
+          },
+          {
+            id: 'playground-plan',
+            planId: 'playground-plan',
+            title: 'Build playground',
+            state: 'in_progress',
+            children: [{ id: 'arrange', title: 'Design a fun arrangement', state: 'in_progress' }],
+          },
+        ],
+      },
+    ];
+
+    render(<AiChatPanel conversationLabel="Playground" initialMessages={initialMessages} provider={configuredProvider} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Open conversation Playground' }));
+
+    expect(screen.getAllByRole('status', { name: 'AI progress' })).toHaveLength(1);
+    expect(screen.getByText('Run 3 editor operations')).toBeVisible();
+    expect(screen.getByText('Design a fun arrangement')).toBeVisible();
+  });
+
   it('turns the round send action into a stop action while a response streams', async () => {
     let releaseStream: (() => void) | undefined;
     let streamSignal: AbortSignal | undefined;
