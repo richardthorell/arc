@@ -72,7 +72,6 @@ describe('material asset migration', () => {
     expect(graph.connections.some((connection) => connection.to.pin === 'anisotropy')).toBe(true);
   });
 
-
   it('renames the canonical legacy Default Phong identity while preserving its compatibility shader reference', () => {
     const result = upgradeMaterialAsset({
       version: 3,
