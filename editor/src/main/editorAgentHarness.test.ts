@@ -525,7 +525,9 @@ describe('EditorAgentHarness', () => {
       settleFrames: 2,
     });
     expect(Object.values(result).some((value) => value === undefined)).toBe(false);
-    expect(Object.values(result.requested as Record<string, unknown>).some((value) => value === undefined)).toBe(false);
+    expect(
+      Object.values(result.requested as Record<string, unknown>).some((value) => value === undefined),
+    ).toBe(false);
   });
 
   it('inspects remembered pixels and compares captures without another renderer readback', async () => {
