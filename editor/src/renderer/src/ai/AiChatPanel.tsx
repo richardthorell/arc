@@ -82,6 +82,7 @@ const cloneConversation = (conversation: AiConversation): AiConversation => ({
       ...reference,
       ...(reference.toolCallIds ? { toolCallIds: [...reference.toolCallIds] } : {}),
     })),
+    taskDiagnostics: message.taskDiagnostics ? [...message.taskDiagnostics] : undefined,
   })),
 });
 
@@ -360,6 +361,7 @@ export function AiChatPanel({
         'Cancelled by user',
         timestamp,
       ),
+      taskDiagnostics: [...(message.taskDiagnostics ?? []), diagnosticLine('cancelled', 'by=user')],
     }));
     setStreaming(false);
   };
@@ -514,6 +516,10 @@ export function AiChatPanel({
           state: 'error',
           toolReferences: finishPendingConversationTools(message.toolReferences, 'error', messageText, timestamp),
           taskReferences: finishPendingConversationTasks(message.taskReferences, 'failed', messageText, timestamp),
+          taskDiagnostics: [
+            ...(message.taskDiagnostics ?? []),
+            diagnosticLine('exception', `type=${error instanceof Error ? error.name : 'unknown'}`),
+          ],
         }));
       }
       return { completed: false, text: responseText };
