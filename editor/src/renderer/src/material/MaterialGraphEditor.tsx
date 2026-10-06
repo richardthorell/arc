@@ -112,7 +112,6 @@ const editableValueNode = (node: MaterialGraphNode) =>
   node.type === 'vector2' ||
   node.type === 'vector3' ||
   node.type === 'vector4' ||
-  node.type === 'colorRgb' ||
   node.type === 'colorRgba';
 
 const pinY = (node: MaterialGraphNode, pin: string, output: boolean) => {
@@ -202,16 +201,15 @@ function MaterialNodeValueEditor({
     );
   }
 
-  if (node.type === 'colorRgb' || node.type === 'colorRgba') {
+  if (node.type === 'colorRgba') {
     const color = colorValue(node.values.value);
     return (
       <UiColorControl
-        allowAlpha={node.type === 'colorRgba'}
-        label={node.type === 'colorRgba' ? 'Color' : 'Legacy RGB color'}
+        allowAlpha
+        label="Color"
         onCommit={(next) => {
           if (readOnly) return;
-          const tuple = node.type === 'colorRgba' ? [next.x, next.y, next.z, next.w] : [next.x, next.y, next.z];
-          onChange(nextNodeValue(node, tuple));
+          onChange(nextNodeValue(node, [next.x, next.y, next.z, next.w]));
         }}
         value={color}
       />
