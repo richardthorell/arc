@@ -28,6 +28,23 @@ constexpr std::string_view material_graph = R"({
   ]
 })";
 
+
+constexpr std::string_view transmission_material_shader = R"(
+ArcSurfaceData arc_evaluate_material(ArcSurfaceInput input)
+{
+    ArcSurfaceData surface = arcDefaultSurface(input.normalWS);
+    surface.baseColor = float3(0.08, 0.22, 0.28);
+    surface.roughness = 0.08;
+    surface.opacity = 0.72;
+    surface.transmission = 0.82;
+    surface.thickness = 6.0;
+    surface.indexOfRefraction = 1.333;
+    surface.attenuationColor = float3(0.65, 0.88, 0.92);
+    surface.attenuationDistance = 12.0;
+    return surface;
+}
+)";
+
 constexpr std::string_view custom_material_shader = R"(
 ArcSurfaceData arc_evaluate_material(ArcSurfaceInput input)
 {
@@ -133,6 +150,60 @@ TEST_CASE("handwritten Material Shaders use the same engine pass composer")
     REQUIRE(gbuffer.value().source.find("arc_evaluate_material(arcMakeMaterialSurfaceInput(passInput))") !=
             std::string::npos);
     REQUIRE(gbuffer.value().source.find("surface.opacity < surface.alphaCutoff") != std::string::npos);
+}
+
+TEST_CASE("canonical forward pass evaluates generic PBR transmission from the Material ABI")
+{
+    const auto evaluator =
+        arc::render::tools::make_custom_material_evaluator(transmission_material_shader, "materials/glass.slang");
+    REQUIRE(evaluator);
+
+    arc::render::material_descriptor material;
+    material.shading_model = arc::render::material_shading_model::transmission;
+    material.render_path = arc::render::material_render_path::clustered_forward;
+    material.deferred_compatible = false;
+    material.alpha_mode = arc::render::material_alpha_mode::blend;
+
+    const auto forward = arc::render::tools::generate_material_pass_slang(evaluator.value(), material,
+                                                                          arc::render::material_pass::forward);
+    REQUIRE(forward);
+
+    const auto& source = forward.value().source;
+    REQUIRE(source.find("struct ArcForwardLightingContext") != std::string::npos);
+    REQUIRE(source.find("arcForwardF0FromIor") != std::string::npos);
+    REQUIRE(source.find("arcForwardFresnelSchlick") != std::string::npos);
+    REQUIRE(source.find("arcForwardBeerLambert") != std::string::npos);
+    REQUIRE(source.find("surface.thickness") != std::string::npos);
+    REQUIRE(source.find("surface.attenuationColor") != std::string::npos);
+    REQUIRE(source.find("surface.attenuationDistance") != std::string::npos);
+    REQUIRE(source.find("surface.transmission") != std::string::npos);
+    REQUIRE(source.find("arcEvaluateForwardSurface(surface, surfaceInput, lighting)") != std::string::npos);
+    REQUIRE(source.find("water") == std::string::npos);
+}
+
+TEST_CASE("generic transmission material forward source compiles with pinned Slang")
+{
+    arc::render::tools::slang_shader_compiler compiler;
+    if (!compiler.available())
+    {
+        SUCCEED("Pinned slangc is optional for this unit test environment");
+        return;
+    }
+
+    const auto evaluator =
+        arc::render::tools::make_custom_material_evaluator(transmission_material_shader, "materials/glass.slang");
+    REQUIRE(evaluator);
+
+    arc::render::material_descriptor material;
+    material.shading_model = arc::render::material_shading_model::transmission;
+    material.render_path = arc::render::material_render_path::clustered_forward;
+    material.deferred_compatible = false;
+    material.alpha_mode = arc::render::material_alpha_mode::blend;
+
+    const auto forward = arc::render::tools::generate_material_pass_slang(evaluator.value(), material,
+                                                                          arc::render::material_pass::forward);
+    REQUIRE(forward);
+    require_compiles(compiler, forward.value(), arc::render::material_pass::forward);
 }
 
 TEST_CASE("handwritten Material Shaders cannot own render-pass entry points")
