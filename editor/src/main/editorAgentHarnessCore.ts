@@ -461,7 +461,18 @@ export class EditorAgentHarness {
 
   async revokeClient(clientId: string): Promise<void> {
     if (this.activeEdit?.clientId === clientId) {
-      await this.cancelEdit(this.activeEdit.id, clientId);
+      const active = this.activeEdit;
+      try {
+        await this.cancelEdit(active.id, clientId);
+      } catch {
+        try {
+          await this.host.command('history.cancelTransaction', { id: active.transactionId });
+        } catch {
+          // A stale native transaction must not keep the built-in AI client wedged.
+        }
+        this.stagedAssets.delete(active.id);
+        this.activeEdit = null;
+      }
     }
     this.approvedClients.delete(clientId);
     for (const request of this.editRequests.values()) {
