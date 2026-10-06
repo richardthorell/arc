@@ -92,7 +92,12 @@ function AssetChoiceOption({
   }, [controller, option.uri, reference]);
 
   const unavailable =
-    !controller || !reference || reference.kind !== 'asset' || resolved === undefined || resolved === null || resolved.disabled;
+    !controller ||
+    !reference ||
+    reference.kind !== 'asset' ||
+    resolved === undefined ||
+    resolved === null ||
+    resolved.disabled;
   const label = resolved?.label ?? option.label;
   const subtitle = resolved?.subtitle ?? 'Asset';
 
