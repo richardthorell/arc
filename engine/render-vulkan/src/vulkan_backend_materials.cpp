@@ -348,14 +348,17 @@ bool vulkan_render_backend::draw_runtime_material_forward(VkCommandBuffer comman
     if (!ensure_runtime_forward_pipeline(material) || !update_runtime_material_buffers(material)) return false;
 
     vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.forward_pipeline);
-    if (material.runtime.descriptor_set_layout != VK_NULL_HANDLE)
-    {
-        const auto slot = current_frame_slot();
-        if (slot >= material.runtime.descriptor_sets.size()) return false;
-        const auto descriptor_set = material.runtime.descriptor_sets[slot];
-        vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.pipeline_layout, 0, 1,
-                                &descriptor_set, 0, nullptr);
-    }
+    const auto slot = current_frame_slot();
+    if (slot >= white_descriptor_sets_.size()) return false;
+    const auto material_set = material.runtime.descriptor_set_layout != VK_NULL_HANDLE
+                                  ? (slot < material.runtime.descriptor_sets.size() ? material.runtime.descriptor_sets[slot]
+                                                                                   : VK_NULL_HANDLE)
+                                  : white_descriptor_sets_[slot];
+    const auto forward_set = current_forward_scene_descriptor_set();
+    if (material_set == VK_NULL_HANDLE || forward_set == VK_NULL_HANDLE) return false;
+    const std::array descriptor_sets{material_set, white_descriptor_sets_[slot], forward_set};
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.pipeline_layout, 0,
+                            static_cast<std::uint32_t>(descriptor_sets.size()), descriptor_sets.data(), 0, nullptr);
     draw_indexed_mesh(command_buffer, draw, material.runtime.pipeline_layout,
                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true, false);
     return true;
@@ -370,16 +373,46 @@ bool vulkan_render_backend::draw_runtime_material_forward(VkCommandBuffer comman
     if (!ensure_runtime_forward_pipeline(material) || !update_runtime_material_buffers(material)) return false;
 
     vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.forward_pipeline);
-    if (material.runtime.descriptor_set_layout != VK_NULL_HANDLE)
-    {
-        const auto slot = current_frame_slot();
-        if (slot >= material.runtime.descriptor_sets.size()) return false;
-        const auto descriptor_set = material.runtime.descriptor_sets[slot];
-        vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.pipeline_layout, 0, 1,
-                                &descriptor_set, 0, nullptr);
-    }
+    const auto slot = current_frame_slot();
+    if (slot >= white_descriptor_sets_.size()) return false;
+    const auto material_set = material.runtime.descriptor_set_layout != VK_NULL_HANDLE
+                                  ? (slot < material.runtime.descriptor_sets.size() ? material.runtime.descriptor_sets[slot]
+                                                                                   : VK_NULL_HANDLE)
+                                  : white_descriptor_sets_[slot];
+    const auto forward_set = current_forward_scene_descriptor_set();
+    if (material_set == VK_NULL_HANDLE || forward_set == VK_NULL_HANDLE) return false;
+    const std::array descriptor_sets{material_set, white_descriptor_sets_[slot], forward_set};
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.pipeline_layout, 0,
+                            static_cast<std::uint32_t>(descriptor_sets.size()), descriptor_sets.data(), 0, nullptr);
     draw_indexed_virtual_cluster(command_buffer, draw, material.runtime.pipeline_layout,
                                  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true, false);
+    return true;
+}
+
+bool vulkan_render_backend::draw_runtime_water_forward(VkCommandBuffer command_buffer, const draw_mesh_event& draw,
+                                                       const gpu_ocean_simulation& simulation)
+{
+    if (simulation.surface_descriptor == VK_NULL_HANDLE) return false;
+    const auto found = materials_.find(resource_key(draw.material));
+    if (found == materials_.end() || !found->second.data.runtime_program) return false;
+    auto& material = found->second;
+    if (!ensure_runtime_water_forward_pipeline(material) || !update_runtime_material_buffers(material)) return false;
+
+    const auto slot = current_frame_slot();
+    if (slot >= white_descriptor_sets_.size()) return false;
+    const auto material_set = material.runtime.descriptor_set_layout != VK_NULL_HANDLE
+                                  ? (slot < material.runtime.descriptor_sets.size() ? material.runtime.descriptor_sets[slot]
+                                                                                   : VK_NULL_HANDLE)
+                                  : white_descriptor_sets_[slot];
+    const auto forward_set = current_forward_scene_descriptor_set();
+    if (material_set == VK_NULL_HANDLE || forward_set == VK_NULL_HANDLE) return false;
+
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.water_forward_pipeline);
+    const std::array descriptor_sets{material_set, simulation.surface_descriptor, forward_set};
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.water_pipeline_layout, 0,
+                            static_cast<std::uint32_t>(descriptor_sets.size()), descriptor_sets.data(), 0, nullptr);
+    draw_indexed_mesh(command_buffer, draw, material.runtime.water_pipeline_layout,
+                      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true, false);
     return true;
 }
 
