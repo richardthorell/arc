@@ -28,13 +28,7 @@ export function UiAgentChoiceCard({
   onConfirm,
 }: UiAgentChoiceCardProps) {
   return (
-    <UiAgentCard
-      className="ui-agent-choice-card"
-      side="none"
-      subtitle="Choose one"
-      title={title}
-      tone="neutral"
-    >
+    <UiAgentCard className="ui-agent-choice-card" side="none" subtitle="Choose one" title={title} tone="neutral">
       {prompt ? <p className="ui-agent-choice-prompt">{prompt}</p> : null}
       {children}
       <div className="ui-agent-choice-actions">

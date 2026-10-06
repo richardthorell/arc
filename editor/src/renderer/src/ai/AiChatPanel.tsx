@@ -697,13 +697,7 @@ export function AiChatPanel({
           : conversation,
       ),
     );
-    await streamResponse(
-      activeConversation.id,
-      activeProvider,
-      activeConversation,
-      requestMessages,
-      assistantMessage,
-    );
+    await streamResponse(activeConversation.id, activeProvider, activeConversation, requestMessages, assistantMessage);
   };
 
   const retryFailedResponse = async (messageId: string) => {
