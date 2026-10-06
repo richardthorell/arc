@@ -1,4 +1,4 @@
-import { Check, ListChecks, X } from 'lucide-react';
+import { ListChecks, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { AiConversationTaskReference, AiConversationToolReference } from '../../../common/aiConversationTypes';
 import './aiChatLiveProgress.css';
@@ -117,7 +117,6 @@ export function AiChatLiveProgress({ tasks, tools, showIdle = false }: AiChatLiv
           {visibleRows.map((row) => (
             <div className={`ai-chat-live-progress-row is-${row.state}`} data-progress-state={row.state} key={row.id}>
               <span className="ai-chat-live-progress-indicator" aria-hidden="true">
-                {row.state === 'complete' ? <Check size={11} strokeWidth={2.4} /> : null}
                 {row.state === 'failed' ? <X size={11} strokeWidth={2.4} /> : null}
               </span>
               <span className="ai-chat-live-progress-label" key={`${row.id}:${row.title}`}>
