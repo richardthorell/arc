@@ -1,5 +1,8 @@
 import type { MouseEvent, ReactNode } from 'react';
 
+import { parseEditorReference } from '../services/editorReferences';
+import { UiEditorReference } from '../ui/UiEditorReference';
+
 const bareUrlPattern = /https?:\/\/[^\s<>"']+/giu;
 const trailingUrlPunctuation = /[.,!?;:)}\]]+$/u;
 const fencedCodePattern = /^```([^\s`]*)\s*$/u;
@@ -80,7 +83,15 @@ const renderInlineMarkdown = (text: string, keyPrefix: string): ReactNode[] => {
         index: markdownLink.index,
         length: markdownLink[0].length,
         node: (key) => {
-          const href = safeHttpUrl(markdownLink[2]);
+          const rawHref = markdownLink[2];
+          const reference = parseEditorReference(rawHref);
+          if (reference)
+            return (
+              <UiEditorReference href={rawHref} key={key}>
+                {renderInlineMarkdown(markdownLink[1], `${key}-label`)}
+              </UiEditorReference>
+            );
+          const href = safeHttpUrl(rawHref);
           return href ? linkNode(href, renderInlineMarkdown(markdownLink[1], `${key}-label`), key) : markdownLink[0];
         },
       });

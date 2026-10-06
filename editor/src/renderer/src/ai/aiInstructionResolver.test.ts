@@ -93,6 +93,16 @@ describe('resolveAiRuntimeInstructions', () => {
     );
   });
 
+  it('teaches the model to emit stable ARC Markdown references without guessing IDs', () => {
+    const resolution = resolveAiRuntimeInstructions(request('Tell me which material you used'), sources([]));
+    const base = resolution.request.messages.find((message) => message.id === 'arc-instructions:base');
+    const serialized = JSON.stringify(base);
+
+    expect(serialized).toContain('[Brushed Metal](arc://asset/<guid>)');
+    expect(serialized).toContain('Never invent a GUID');
+    expect(serialized).toContain('authoritative stable ID');
+  });
+
   it('treats declared tools as advisory until the request actually exposes them', () => {
     const renderer = skill('renderer-diagnostics', 'Debug renderer viewport diagnostics.', [
       'viewport.read',
