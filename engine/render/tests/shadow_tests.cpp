@@ -452,10 +452,32 @@ TEST_CASE("virtual shadow render pages encode deterministic page projections and
     CHECK(encoded.work[1] == 512);
     CHECK(encoded.revision[0] == 0x9abcdef0u);
     CHECK(encoded.revision[1] == 0x12345678u);
-    CHECK(encoded.world_to_page_clip[0] == Catch::Approx(4.0f));
-    CHECK(encoded.world_to_page_clip[3] == Catch::Approx(1.0f));
-    CHECK(encoded.world_to_page_clip[5] == Catch::Approx(4.0f));
-    CHECK(encoded.world_to_page_clip[7] == Catch::Approx(-1.0f));
+    constexpr float guarded_scale = static_cast<float>(arc::render::virtual_shadow_page_texels) /
+                                    static_cast<float>(arc::render::virtual_shadow_physical_page_texels);
+    CHECK(encoded.world_to_page_clip[0] == Catch::Approx(4.0f * guarded_scale));
+    CHECK(encoded.world_to_page_clip[3] == Catch::Approx(guarded_scale));
+    CHECK(encoded.world_to_page_clip[5] == Catch::Approx(4.0f * guarded_scale));
+    CHECK(encoded.world_to_page_clip[7] == Catch::Approx(-guarded_scale));
+}
+
+TEST_CASE("virtual shadow guarded page projection preserves the logical 128 texel region")
+{
+    arc::render::virtual_shadow_view_descriptor view{};
+    view.world_to_shadow_clip = arc::math::identity<float, 4>();
+    view.pages_per_axis = 2;
+    const auto logical = arc::render::virtual_shadow_page_view_projection(view, {1, 0, 0, 0});
+    const auto guarded = arc::render::virtual_shadow_guarded_page_view_projection(view, {1, 0, 0, 0});
+    constexpr float scale = static_cast<float>(arc::render::virtual_shadow_page_texels) /
+                            static_cast<float>(arc::render::virtual_shadow_physical_page_texels);
+    for (std::uint32_t column = 0; column < 4; ++column)
+    {
+        CHECK(guarded(0, column) == Catch::Approx(logical(0, column) * scale));
+        CHECK(guarded(1, column) == Catch::Approx(logical(1, column) * scale));
+        CHECK(guarded(2, column) == Catch::Approx(logical(2, column)));
+        CHECK(guarded(3, column) == Catch::Approx(logical(3, column)));
+    }
+    CHECK((1.0f - scale) * 0.5f * arc::render::virtual_shadow_physical_page_texels ==
+          Catch::Approx(static_cast<float>(arc::render::virtual_shadow_page_guard_texels)));
 }
 
 TEST_CASE("directional virtual shadow views are stable equal-grid clip levels")

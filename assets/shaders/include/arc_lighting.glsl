@@ -13,6 +13,9 @@ struct directional_light_data
     vec4 direction_intensity;
     vec4 color_flags;
     vec4 source_shape;
+    uvec4 shadow_identity;
+    uvec4 shadow_routing;
+    vec4 shadow_parameters;
 };
 
 struct point_light_data

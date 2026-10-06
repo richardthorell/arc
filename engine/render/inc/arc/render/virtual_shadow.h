@@ -429,6 +429,17 @@ make_virtual_shadow_page_render_token(const virtual_shadow_page_mapping& mapping
 [[nodiscard]] math::matrix4f virtual_shadow_page_view_projection(const virtual_shadow_view_descriptor& view,
                                                                  virtual_shadow_page_coordinate coordinate) noexcept;
 
+/**
+ * @brief Expand a logical page projection to cover the guarded physical tile.
+ *
+ * The central 128x128 texels retain the logical page projection while the
+ * surrounding texels cover the neighbouring receiver footprint needed by
+ * filtered sampling. Culling and rasterization must consume this same matrix.
+ */
+[[nodiscard]] math::matrix4f
+virtual_shadow_guarded_page_view_projection(const virtual_shadow_view_descriptor& view,
+                                            virtual_shadow_page_coordinate coordinate) noexcept;
+
 /** @brief Encode one scheduled page into the shared GPU culling/raster ABI. */
 [[nodiscard]] gpu_virtual_shadow_render_page_record
 encode_virtual_shadow_render_page(const virtual_shadow_page_mapping& mapping,

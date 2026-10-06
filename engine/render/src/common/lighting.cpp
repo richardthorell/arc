@@ -335,7 +335,14 @@ scene_lighting_data pack_scene_lighting(const std::vector<directional_light_even
         data.directional_lights[index] = {
             .direction_intensity = {light.direction[0], light.direction[1], light.direction[2], light.intensity},
             .color_flags = {light.color[0], light.color[1], light.color[2], light.casts_shadows ? 1.0f : 0.0f},
-            .source_shape = {std::max(light.source_angle, 0.0f), 0.0f, 0.0f, 0.0f}};
+            .source_shape = {std::max(light.source_angle, 0.0f), 0.0f, 0.0f, 0.0f},
+            .shadow_identity = {light.object_id.index, light.object_id.generation,
+                                std::numeric_limits<std::uint32_t>::max(), 0u},
+            .shadow_routing = {static_cast<std::uint32_t>(directional_shadow_representation::none),
+                               static_cast<std::uint32_t>(light.shadow.filter),
+                               std::numeric_limits<std::uint32_t>::max(), 0u},
+            .shadow_parameters = {std::clamp(light.shadow.strength, 0.0f, 1.0f),
+                                  std::max(light.shadow.bias, 0.0f), std::max(light.shadow.normal_bias, 0.0f), 0.0f}};
     }
 
     for (std::uint32_t index = 0; index < data.point_count; ++index)

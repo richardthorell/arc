@@ -10,6 +10,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -93,6 +94,14 @@ enum class environment_generation_state : std::uint8_t
     fallback
 };
 
+/** @brief Executable representation selected for one packed directional light. */
+enum class directional_shadow_representation : std::uint32_t
+{
+    none,
+    conventional,
+    virtualized
+};
+
 /**
  * @brief Renderer environment source and v1 prefilter outputs.
  */
@@ -122,13 +131,22 @@ struct environment_descriptor
 /**
  * @brief Packed directional light data suitable for GPU upload.
  */
-struct directional_light_data
+struct alignas(16) directional_light_data
 {
     math::vector4f direction_intensity{0.0f, -1.0f, 0.0f, 0.0f};
     math::vector4f color_flags{1.0f, 1.0f, 1.0f, 0.0f};
     /** x = angular source diameter in radians; remaining lanes reserved for source-shape evolution. */
     math::vector4f source_shape{};
+    /** Object index/generation followed by VSM address-space index/generation. */
+    math::vector4u shadow_identity{0u, 0u, std::numeric_limits<std::uint32_t>::max(), 0u};
+    /** Representation, filter, conventional slot, and reserved flags. */
+    math::vector4u shadow_routing{static_cast<std::uint32_t>(directional_shadow_representation::none), 0u,
+                                  std::numeric_limits<std::uint32_t>::max(), 0u};
+    /** Strength, constant depth bias, normal bias, and reserved. */
+    math::vector4f shadow_parameters{0.0f, 0.0f, 0.0f, 0.0f};
 };
+
+static_assert(sizeof(directional_light_data) == 96);
 
 /**
  * @brief Packed point light data suitable for GPU upload.

@@ -138,7 +138,7 @@ resolve_virtual_shadow_physical_pool(std::uint64_t budget_bytes, std::uint32_t m
 }
 
 math::matrix4f virtual_shadow_page_view_projection(const virtual_shadow_view_descriptor& view,
-                                                   virtual_shadow_page_coordinate coordinate) noexcept
+                                                    virtual_shadow_page_coordinate coordinate) noexcept
 {
     auto result = view.world_to_shadow_clip;
     const float page_scale = static_cast<float>(std::max(view.pages_per_axis, 1u));
@@ -156,6 +156,20 @@ math::matrix4f virtual_shadow_page_view_projection(const virtual_shadow_view_des
     return result;
 }
 
+math::matrix4f virtual_shadow_guarded_page_view_projection(const virtual_shadow_view_descriptor& view,
+                                                            virtual_shadow_page_coordinate coordinate) noexcept
+{
+    auto result = virtual_shadow_page_view_projection(view, coordinate);
+    constexpr float logical_to_physical = static_cast<float>(virtual_shadow_page_texels) /
+                                          static_cast<float>(virtual_shadow_physical_page_texels);
+    for (std::uint32_t column = 0; column < 4u; ++column)
+    {
+        result(0, column) *= logical_to_physical;
+        result(1, column) *= logical_to_physical;
+    }
+    return result;
+}
+
 gpu_virtual_shadow_render_page_record
 encode_virtual_shadow_render_page(const virtual_shadow_page_mapping& mapping,
                                   const virtual_shadow_view_descriptor& view, std::uint32_t view_index,
@@ -163,7 +177,7 @@ encode_virtual_shadow_render_page(const virtual_shadow_page_mapping& mapping,
                                   std::uint32_t work_capacity, std::uint64_t frame_index) noexcept
 {
     gpu_virtual_shadow_render_page_record result{};
-    const auto page_projection = virtual_shadow_page_view_projection(view, mapping.key.coordinate);
+    const auto page_projection = virtual_shadow_guarded_page_view_projection(view, mapping.key.coordinate);
     for (std::uint32_t row = 0; row < 4u; ++row)
         for (std::uint32_t column = 0; column < 4u; ++column)
             result.world_to_page_clip[row * 4u + column] = page_projection(row, column);
