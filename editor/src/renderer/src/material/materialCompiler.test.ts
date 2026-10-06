@@ -36,6 +36,9 @@ describe('native material compiler editor adapter', () => {
       'Base Color Texture',
       'Metallic',
       'Roughness',
+      'Emissive Color',
+      'Emissive Texture',
+      'Emissive Strength',
     ]);
   });
 
@@ -95,6 +98,33 @@ describe('native material compiler editor adapter', () => {
 
     expect(materialGraphEditImpact(before, after)).toBe('parameter-values');
   });
+
+  it('treats Standard Lit emissive controls as parameter-only edits', () => {
+    const before = createDefaultMaterialGraph();
+    const after = structuredClone(before);
+    const texture = after.nodes.find((node) => node.parameter?.name === 'Emissive Texture');
+    const color = after.nodes.find((node) => node.parameter?.name === 'Emissive Color');
+    const strength = after.nodes.find((node) => node.parameter?.name === 'Emissive Strength');
+    expect(texture).toBeDefined();
+    expect(color).toBeDefined();
+    expect(strength).toBeDefined();
+
+    texture!.values = { ...texture!.values, texture: 'Content/Textures/sign_emissive.png' };
+    color!.values = { ...color!.values, value: [0.2, 0.8, 1, 1] };
+    strength!.values = { ...strength!.values, value: 4 };
+
+    expect(materialGraphEditImpact(before, after)).toBe('parameter-values');
+    expect(materialEditorParameters(after)).toContainEqual(
+      expect.objectContaining({ name: 'Emissive Texture', type: 'texture2d', editorKind: 'texture' }),
+    );
+    expect(materialEditorParameters(after)).toContainEqual(
+      expect.objectContaining({ name: 'Emissive Color', type: 'vec4', editorKind: 'color' }),
+    );
+    expect(materialEditorParameters(after)).toContainEqual(
+      expect.objectContaining({ name: 'Emissive Strength', type: 'float' }),
+    );
+  });
+
 
   it('keeps topology and parameter metadata changes on the shader compile path', () => {
     const before = createDefaultMaterialGraph();
