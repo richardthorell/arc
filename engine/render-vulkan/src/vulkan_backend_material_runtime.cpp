@@ -28,6 +28,16 @@ texture_dimension material_texture_dimension(shader_parameter_type type) noexcep
     }
 }
 
+bool is_forward_scene_resource(const shader_resource_descriptor& resource) noexcept
+{
+    if (resource.set != 2u) return false;
+    return resource.name == "arcForwardLighting" || resource.name == "arcForwardDirectionalShadowMap" ||
+           resource.name == "arcForwardDirectionalShadowSampler" || resource.name == "arcForwardLocalShadowAtlas" ||
+           resource.name == "arcForwardLocalShadowSampler" || resource.name == "arcForwardSceneColor" ||
+           resource.name == "arcForwardSceneColorSampler" || resource.name == "arcForwardShadows" ||
+           resource.name == "arcForwardScene";
+}
+
 std::string_view material_texture_type_name(shader_parameter_type type) noexcept
 {
     switch (type)
@@ -537,8 +547,10 @@ bool vulkan_render_backend::create_runtime_material_descriptors(gpu_material& ma
     resources.reserve(reflection.resources.size());
     for (const auto& resource : reflection.resources)
     {
+        if (is_forward_scene_resource(resource)) continue;
         if (resource.set != 0u)
-            return reject_runtime_material(material, "compiled preview resources must currently use descriptor set 0");
+            return reject_runtime_material(material,
+                                           "compiled Material ABI contains an unsupported engine resource set");
         const auto descriptor_type = runtime_descriptor_type(resource.kind);
         if (descriptor_type == VK_DESCRIPTOR_TYPE_MAX_ENUM)
             return reject_runtime_material(material,
