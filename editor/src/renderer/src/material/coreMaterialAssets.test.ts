@@ -8,7 +8,9 @@ import { materialGraphFromAsset, type MaterialAssetJson } from './materialGraphT
 import { materialGraphOutputConnected, materialRenderPathLabel } from './materialSettingsPresentation';
 
 const readBuiltIn = (name: string) =>
-  JSON.parse(fs.readFileSync(path.resolve(process.cwd(), '..', 'assets', 'materials', name), 'utf8')) as MaterialAssetJson;
+  JSON.parse(
+    fs.readFileSync(path.resolve(process.cwd(), '..', 'assets', 'materials', name), 'utf8'),
+  ) as MaterialAssetJson;
 
 describe('core built-in material families', () => {
   it('ships a texture-ready Glass transmission material', () => {
