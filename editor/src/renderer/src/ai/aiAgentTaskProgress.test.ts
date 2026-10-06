@@ -231,7 +231,10 @@ describe('AI agent task progress', () => {
     expect(
       tasks.some((event) =>
         event.task.children?.some(
-          (step) => step.id === 'apply' && step.state === 'in_progress' && step.detail === 'Retrying after editor.applyBatch',
+          (step) =>
+            step.id === 'apply' &&
+            step.state === 'in_progress' &&
+            step.detail === 'Retrying after editor.applyBatch',
         ),
       ),
     ).toBe(true);
