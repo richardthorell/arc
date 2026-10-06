@@ -1,6 +1,7 @@
 import {
   UiAgentApprovalCard,
   UiAgentAssetCard,
+  UiAgentAssetChoiceCard,
   UiAgentDiffCard,
   UiAgentErrorCard,
   UiAgentTaskCard,
@@ -8,8 +9,26 @@ import {
   UiAgentViewportCard,
   UiButton,
 } from '../ui';
+import { EditorReferenceProvider } from '../services/EditorReferenceContext';
 
 import './UiLabAgentCards.css';
+
+const preview = (label: string) =>
+  `data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120"><rect width="160" height="120" fill="#24282d"/><text x="80" y="64" fill="#b9c0c7" font-family="sans-serif" font-size="14" text-anchor="middle">${label}</text></svg>`,
+  )}`;
+
+const choiceReferenceController = {
+  resolve: async (reference: { kind: 'entity' | 'asset' | 'scene'; id: string }) => ({
+    reference,
+    label: reference.id === 'rock-a' ? 'Granite Rock 03' : 'Cliff Rock Large',
+    subtitle: 'Model',
+    thumbnailUrl: preview(reference.id === 'rock-a' ? 'Granite Rock' : 'Cliff Rock'),
+  }),
+  activate: async () => undefined,
+  focus: async () => undefined,
+};
+
 
 export function UiLabAgentCards() {
   return (
@@ -79,6 +98,18 @@ export function UiLabAgentCards() {
         summary="Reused the existing cabin model instead of rebuilding it from primitives."
         title="SM_Cabin"
       />
+
+      <EditorReferenceProvider controller={choiceReferenceController}>
+        <UiAgentAssetChoiceCard
+          title="Choose a rock model"
+          prompt="I found two suitable project assets. Pick one before I place it."
+          options={[
+            { uri: 'arc://asset/rock-a', label: 'Granite Rock 03', reason: 'Closest silhouette to the reference.' },
+            { uri: 'arc://asset/rock-b', label: 'Cliff Rock Large', reason: 'Better for a larger foreground shape.' },
+          ]}
+          onChoose={() => undefined}
+        />
+      </EditorReferenceProvider>
 
       <UiAgentErrorCard
         actions={
