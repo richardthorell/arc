@@ -98,7 +98,8 @@ material_descriptor apply_water_material_appearance(material_descriptor material
 
     if (instance.overrides.empty()) return material;
     auto applied = resolve_material_instance(definition, instance);
-    return applied ? std::move(applied).value() : material;
+    if (!applied) return material;
+    return std::move(applied).value();
 }
 
 } // namespace arc::render
