@@ -66,7 +66,10 @@ bool vulkan_render_backend::ensure_forward_scene_resources()
         forward_scene_descriptor_sets_.size() == frame_count &&
         forward_scene_uniform_buffers_.size() == frame_count &&
         forward_scene_color_.width == viewport_width_ && forward_scene_color_.height == viewport_height_)
+    {
+        update_forward_scene_resources();
         return true;
+    }
 
     wait_for_in_flight_frames();
     destroy_forward_scene_resources();
@@ -246,6 +249,8 @@ bool vulkan_render_backend::capture_forward_scene_color(VkCommandBuffer command_
         forward_scene_color_.image == VK_NULL_HANDLE)
         return false;
 
+    transition_shadow_atlas(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+    transition_local_shadow_atlas(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
     transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     transition_graph_image(command_buffer, forward_scene_color_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     const VkImageCopy copy{{VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u},
