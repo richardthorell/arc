@@ -168,7 +168,7 @@ TEST_CASE("canonical forward pass evaluates generic PBR transmission from the Ma
     REQUIRE(forward);
 
     const auto& source = forward.value().source;
-    REQUIRE(source.find("[[vk::binding(0, 2)]] StructuredBuffer<ArcForwardLightingData>") != std::string::npos);
+    REQUIRE(source.find("StructuredBuffer<ArcForwardLightingData> arcForwardLighting : register(t0, space2)") !=\n            std::string::npos);
     REQUIRE(source.find("arcForwardDirectionalShadowMap") != std::string::npos);
     REQUIRE(source.find("arcForwardLocalShadowAtlas") != std::string::npos);
     REQUIRE(source.find("arcForwardSceneColor") != std::string::npos);
