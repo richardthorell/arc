@@ -683,19 +683,12 @@ bool vulkan_render_backend::create_runtime_gbuffer_pipeline(gpu_material& materi
 
     VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0u,
                              sizeof(mesh_push_constants)};
-    if (!ensure_forward_scene_resources())
-    {
-        vkDestroyShaderModule(device_, vert, nullptr);
-        vkDestroyShaderModule(device_, frag, nullptr);
-        return reject_runtime_material(material, "failed to create forward scene resources");
-    }
-    const VkDescriptorSetLayout material_layout =
-        material.runtime.descriptor_set_layout != VK_NULL_HANDLE ? material.runtime.descriptor_set_layout
-                                                                 : white_descriptor_set_layout_;
-    const std::array set_layouts{material_layout, white_descriptor_set_layout_, forward_scene_descriptor_set_layout_};
     VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    layout.setLayoutCount = static_cast<std::uint32_t>(set_layouts.size());
-    layout.pSetLayouts = set_layouts.data();
+    if (material.runtime.descriptor_set_layout != VK_NULL_HANDLE)
+    {
+        layout.setLayoutCount = 1u;
+        layout.pSetLayouts = &material.runtime.descriptor_set_layout;
+    }
     layout.pushConstantRangeCount = 1u;
     layout.pPushConstantRanges = &push;
     if (vkCreatePipelineLayout(device_, &layout, nullptr, &material.runtime.pipeline_layout) != VK_SUCCESS)
@@ -797,12 +790,19 @@ bool vulkan_render_backend::create_runtime_forward_pipeline(gpu_material& materi
 
     VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0u,
                              sizeof(mesh_push_constants)};
-    VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    if (material.runtime.descriptor_set_layout != VK_NULL_HANDLE)
+    if (!ensure_forward_scene_resources())
     {
-        layout.setLayoutCount = 1u;
-        layout.pSetLayouts = &material.runtime.descriptor_set_layout;
+        vkDestroyShaderModule(device_, vert, nullptr);
+        vkDestroyShaderModule(device_, frag, nullptr);
+        return reject_runtime_material(material, "failed to create forward scene resources");
     }
+    const VkDescriptorSetLayout material_layout =
+        material.runtime.descriptor_set_layout != VK_NULL_HANDLE ? material.runtime.descriptor_set_layout
+                                                                 : white_descriptor_set_layout_;
+    const std::array set_layouts{material_layout, white_descriptor_set_layout_, forward_scene_descriptor_set_layout_};
+    VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    layout.setLayoutCount = static_cast<std::uint32_t>(set_layouts.size());
+    layout.pSetLayouts = set_layouts.data();
     layout.pushConstantRangeCount = 1u;
     layout.pPushConstantRanges = &push;
     if (vkCreatePipelineLayout(device_, &layout, nullptr, &material.runtime.pipeline_layout) != VK_SUCCESS)
