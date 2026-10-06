@@ -1665,6 +1665,9 @@ void vulkan_render_backend::render_viewport(VkCommandBuffer command_buffer, bool
         const bool deferred_rendered =
             resolved_config_.path == render_path::deferred && render_deferred_scene(command_buffer);
 
+        if (!capture_forward_scene_color(command_buffer))
+            arc::diagnostics::warn("render.vulkan",
+                                   "Initial forward scene-color snapshot unavailable; transmission may be degraded");
         transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         transition_depth(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
         color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
