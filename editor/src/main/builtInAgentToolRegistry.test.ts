@@ -78,6 +78,24 @@ describe('BuiltInAgentToolRegistry', () => {
     );
   });
 
+  it('describes authoritative asset discovery and reuse before authoring', () => {
+    const definitions = builtInAgentToolDefinitions(
+      capabilities(['assets.list', 'edit.apply', 'editor.applyBatch'], ['setMaterial', 'createAsset']),
+    );
+    const assets = definitions.find((tool) => tool.name === 'assets.list');
+    const edit = definitions.find((tool) => tool.name === 'edit.apply');
+    const batch = definitions.find((tool) => tool.name === 'editor.applyBatch');
+
+    expect(assets?.description).toContain('authoritative project-local asset inventory');
+    expect(assets?.description).toContain('before creating or importing reusable content');
+    expect(batch?.description).toContain('Prefer existing asset bindings and lightweight overrides');
+    expect(batch?.description).toContain('material.create only when no suitable project asset or override');
+
+    const editSchema = JSON.stringify(edit?.inputSchema);
+    expect(editSchema).toContain('prefer binding an existing project material');
+    expect(editSchema).toContain('only after suitable project-local assets and lightweight overrides have been considered');
+  });
+
   it('validates arguments before invoking the harness operation', async () => {
     const { adapter, invoke } = fakeAdapter(capabilities(['scene.getEntity']));
     const registry = new BuiltInAgentToolRegistry(adapter);
