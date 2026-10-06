@@ -1139,8 +1139,6 @@ private:
 
     bool ensure_water_compute_resources();
 
-    bool ensure_water_surface_pipeline();
-
     bool synchronize_water_simulations(std::uint64_t frame_index);
 
     void destroy_ocean_simulation(gpu_ocean_simulation& simulation) noexcept;
@@ -1723,8 +1721,6 @@ private:
     VkPipelineLayout terrain_surface_pipeline_layout_{};
     VkPipeline mesh_pipeline_{};
     VkPipeline mesh_transparent_pipeline_{};
-    VkPipelineLayout water_surface_pipeline_layout_{};
-    VkPipeline water_surface_pipeline_{};
     VkPipeline mesh_wire_pipeline_{};
     VkPipeline selection_mask_pipeline_{};
     VkPipeline terrain_surface_pipeline_{};
