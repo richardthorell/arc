@@ -28,7 +28,6 @@ constexpr std::string_view material_graph = R"({
   ]
 })";
 
-
 constexpr std::string_view transmission_material_shader = R"(
 ArcSurfaceData arc_evaluate_material(ArcSurfaceInput input)
 {
