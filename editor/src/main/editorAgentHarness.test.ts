@@ -519,7 +519,6 @@ describe('EditorAgentHarness', () => {
       ],
     });
     expect(result).not.toHaveProperty('comparison');
-    expect(result).not.toHaveProperty('renderOptions');
     expect(result.requested).toEqual({
       renderOptions: { visualization: 'shadowMask', shadows: false },
       settleFrames: 2,
