@@ -762,12 +762,14 @@ private:
     struct gpu_material_runtime
     {
         VkPipeline gbuffer_pipeline{};
+        VkPipeline forward_pipeline{};
         VkPipelineLayout pipeline_layout{};
         VkDescriptorSetLayout descriptor_set_layout{};
         VkDescriptorPool descriptor_pool{};
         std::vector<VkDescriptorSet> descriptor_sets;
         std::vector<gpu_buffer> parameter_buffers;
         std::vector<gpu_buffer> frame_buffers;
+        material_pass descriptor_pass{material_pass::gbuffer};
         std::uint64_t generation{};
         bool failed{};
     };
@@ -1225,6 +1227,10 @@ private:
 
     bool draw_runtime_material_gbuffer(VkCommandBuffer command_buffer, const virtual_cluster_draw& draw);
 
+    bool draw_runtime_material_forward(VkCommandBuffer command_buffer, const draw_mesh_event& draw);
+
+    bool draw_runtime_material_forward(VkCommandBuffer command_buffer, const virtual_cluster_draw& draw);
+
     void destroy_mesh_pipeline() noexcept;
 
     void destroy_white_texture() noexcept;
@@ -1236,6 +1242,9 @@ private:
     void destroy_material_runtime(gpu_material_runtime& runtime) noexcept;
 
     bool reject_runtime_material(gpu_material& material, std::string reason);
+
+    const material_runtime_pass* runtime_material_pass(const gpu_material& material,
+                                                       material_pass requested) const noexcept;
 
     const material_runtime_pass* runtime_gbuffer_pass(const gpu_material& material) const noexcept;
 
@@ -1250,13 +1259,18 @@ private:
 
     VkDescriptorType runtime_descriptor_type(shader_resource_kind kind) const noexcept;
 
-    bool update_runtime_texture_descriptors(gpu_material& material, std::uint32_t frame_slot);
+    bool update_runtime_texture_descriptors(gpu_material& material, std::uint32_t frame_slot,
+                                            const material_runtime_pass& pass);
 
     bool create_runtime_material_descriptors(gpu_material& material, const material_runtime_pass& pass);
 
     bool create_runtime_gbuffer_pipeline(gpu_material& material, const material_runtime_pass& pass);
 
+    bool create_runtime_forward_pipeline(gpu_material& material, const material_runtime_pass& pass);
+
     bool ensure_runtime_gbuffer_pipeline(gpu_material& material);
+
+    bool ensure_runtime_forward_pipeline(gpu_material& material);
 
     void destroy_virtual_shadow_resources(vulkan_virtual_shadow_resources& resources) noexcept;
 

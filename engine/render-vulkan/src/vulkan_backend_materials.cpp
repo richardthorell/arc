@@ -340,4 +340,47 @@ bool vulkan_render_backend::draw_runtime_material_gbuffer(VkCommandBuffer comman
     return true;
 }
 
+bool vulkan_render_backend::draw_runtime_material_forward(VkCommandBuffer command_buffer, const draw_mesh_event& draw)
+{
+    const auto found = materials_.find(resource_key(draw.material));
+    if (found == materials_.end() || !found->second.data.runtime_program) return false;
+    auto& material = found->second;
+    if (!ensure_runtime_forward_pipeline(material) || !update_runtime_material_buffers(material)) return false;
+
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.forward_pipeline);
+    if (material.runtime.descriptor_set_layout != VK_NULL_HANDLE)
+    {
+        const auto slot = current_frame_slot();
+        if (slot >= material.runtime.descriptor_sets.size()) return false;
+        const auto descriptor_set = material.runtime.descriptor_sets[slot];
+        vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.pipeline_layout, 0, 1,
+                                &descriptor_set, 0, nullptr);
+    }
+    draw_indexed_mesh(command_buffer, draw, material.runtime.pipeline_layout,
+                      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true, false);
+    return true;
+}
+
+bool vulkan_render_backend::draw_runtime_material_forward(VkCommandBuffer command_buffer,
+                                                          const virtual_cluster_draw& draw)
+{
+    const auto found = materials_.find(resource_key(draw.draw.material));
+    if (found == materials_.end() || !found->second.data.runtime_program) return false;
+    auto& material = found->second;
+    if (!ensure_runtime_forward_pipeline(material) || !update_runtime_material_buffers(material)) return false;
+
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.forward_pipeline);
+    if (material.runtime.descriptor_set_layout != VK_NULL_HANDLE)
+    {
+        const auto slot = current_frame_slot();
+        if (slot >= material.runtime.descriptor_sets.size()) return false;
+        const auto descriptor_set = material.runtime.descriptor_sets[slot];
+        vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.pipeline_layout, 0, 1,
+                                &descriptor_set, 0, nullptr);
+    }
+    draw_indexed_virtual_cluster(command_buffer, draw, material.runtime.pipeline_layout,
+                                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true, false);
+    return true;
+}
+
 } // namespace arc::render::vulkan::backend_detail
