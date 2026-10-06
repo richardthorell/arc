@@ -350,10 +350,10 @@ bool vulkan_render_backend::draw_runtime_material_forward(VkCommandBuffer comman
     vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.forward_pipeline);
     const auto slot = current_frame_slot();
     if (slot >= white_descriptor_sets_.size()) return false;
-    const auto material_set = material.runtime.descriptor_set_layout != VK_NULL_HANDLE
-                                  ? (slot < material.runtime.descriptor_sets.size() ? material.runtime.descriptor_sets[slot]
-                                                                                   : VK_NULL_HANDLE)
-                                  : white_descriptor_sets_[slot];
+    const auto material_set =
+        material.runtime.descriptor_set_layout != VK_NULL_HANDLE
+            ? (slot < material.runtime.descriptor_sets.size() ? material.runtime.descriptor_sets[slot] : VK_NULL_HANDLE)
+            : white_descriptor_sets_[slot];
     const auto forward_set = current_forward_scene_descriptor_set();
     if (material_set == VK_NULL_HANDLE || forward_set == VK_NULL_HANDLE) return false;
     const std::array descriptor_sets{material_set, white_descriptor_sets_[slot], forward_set};
@@ -375,10 +375,10 @@ bool vulkan_render_backend::draw_runtime_material_forward(VkCommandBuffer comman
     vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.forward_pipeline);
     const auto slot = current_frame_slot();
     if (slot >= white_descriptor_sets_.size()) return false;
-    const auto material_set = material.runtime.descriptor_set_layout != VK_NULL_HANDLE
-                                  ? (slot < material.runtime.descriptor_sets.size() ? material.runtime.descriptor_sets[slot]
-                                                                                   : VK_NULL_HANDLE)
-                                  : white_descriptor_sets_[slot];
+    const auto material_set =
+        material.runtime.descriptor_set_layout != VK_NULL_HANDLE
+            ? (slot < material.runtime.descriptor_sets.size() ? material.runtime.descriptor_sets[slot] : VK_NULL_HANDLE)
+            : white_descriptor_sets_[slot];
     const auto forward_set = current_forward_scene_descriptor_set();
     if (material_set == VK_NULL_HANDLE || forward_set == VK_NULL_HANDLE) return false;
     const std::array descriptor_sets{material_set, white_descriptor_sets_[slot], forward_set};
@@ -400,10 +400,10 @@ bool vulkan_render_backend::draw_runtime_water_forward(VkCommandBuffer command_b
 
     const auto slot = current_frame_slot();
     if (slot >= white_descriptor_sets_.size()) return false;
-    const auto material_set = material.runtime.descriptor_set_layout != VK_NULL_HANDLE
-                                  ? (slot < material.runtime.descriptor_sets.size() ? material.runtime.descriptor_sets[slot]
-                                                                                   : VK_NULL_HANDLE)
-                                  : white_descriptor_sets_[slot];
+    const auto material_set =
+        material.runtime.descriptor_set_layout != VK_NULL_HANDLE
+            ? (slot < material.runtime.descriptor_sets.size() ? material.runtime.descriptor_sets[slot] : VK_NULL_HANDLE)
+            : white_descriptor_sets_[slot];
     const auto forward_set = current_forward_scene_descriptor_set();
     if (material_set == VK_NULL_HANDLE || forward_set == VK_NULL_HANDLE) return false;
 

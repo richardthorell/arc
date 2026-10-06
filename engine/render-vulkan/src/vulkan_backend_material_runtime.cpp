@@ -58,15 +58,14 @@ bool vulkan_render_backend::ensure_forward_scene_resources()
     const auto* directional = active_directional_shadow_light();
     auto shadow_settings_value =
         directional ? directional->shadow : shadow_settings{.enabled = false, .resolution = 2048};
-    shadow_settings_value.resolution = std::min(
-        std::bit_ceil(std::max(shadow_settings_value.resolution, 1u)), resolved_config_.directional_shadow_resolution);
+    shadow_settings_value.resolution = std::min(std::bit_ceil(std::max(shadow_settings_value.resolution, 1u)),
+                                                resolved_config_.directional_shadow_resolution);
     if (!ensure_shadow_resources(shadow_settings_value) || !ensure_local_shadow_resources() ||
         !ensure_shadow_uniform_buffers())
         return false;
 
     if (forward_scene_descriptor_set_layout_ != VK_NULL_HANDLE &&
-        forward_scene_descriptor_sets_.size() == frame_count &&
-        forward_scene_uniform_buffers_.size() == frame_count &&
+        forward_scene_descriptor_sets_.size() == frame_count && forward_scene_uniform_buffers_.size() == frame_count &&
         forward_scene_color_.width == viewport_width_ && forward_scene_color_.height == viewport_height_)
     {
         update_forward_scene_resources();
@@ -86,35 +85,24 @@ bool vulkan_render_backend::ensure_forward_scene_resources()
         VkDescriptorSetLayoutBinding{6u, VK_DESCRIPTOR_TYPE_SAMPLER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
         VkDescriptorSetLayoutBinding{7u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
         VkDescriptorSetLayoutBinding{8u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}};
-    const VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                                                  nullptr,
-                                                  0u,
-                                                  static_cast<std::uint32_t>(bindings.size()),
-                                                  bindings.data()};
+    const VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0u,
+                                                 static_cast<std::uint32_t>(bindings.size()), bindings.data()};
     if (vkCreateDescriptorSetLayout(device_, &layout, nullptr, &forward_scene_descriptor_set_layout_) != VK_SUCCESS)
         return false;
 
-    const std::array pool_sizes{
-        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, frame_count},
-        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, frame_count * 3u},
-        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLER, frame_count * 3u},
-        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, frame_count * 2u}};
-    const VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-                                          nullptr,
-                                          0u,
-                                          frame_count,
-                                          static_cast<std::uint32_t>(pool_sizes.size()),
-                                          pool_sizes.data()};
-    if (vkCreateDescriptorPool(device_, &pool, nullptr, &forward_scene_descriptor_pool_) != VK_SUCCESS)
-        return false;
+    const std::array pool_sizes{VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, frame_count},
+                                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, frame_count * 3u},
+                                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLER, frame_count * 3u},
+                                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, frame_count * 2u}};
+    const VkDescriptorPoolCreateInfo pool{
+        VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, nullptr,          0u, frame_count,
+        static_cast<std::uint32_t>(pool_sizes.size()), pool_sizes.data()};
+    if (vkCreateDescriptorPool(device_, &pool, nullptr, &forward_scene_descriptor_pool_) != VK_SUCCESS) return false;
 
     forward_scene_descriptor_sets_.resize(frame_count);
     std::vector<VkDescriptorSetLayout> layouts(frame_count, forward_scene_descriptor_set_layout_);
-    const VkDescriptorSetAllocateInfo allocation{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-                                                  nullptr,
-                                                  forward_scene_descriptor_pool_,
-                                                  frame_count,
-                                                  layouts.data()};
+    const VkDescriptorSetAllocateInfo allocation{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr,
+                                                 forward_scene_descriptor_pool_, frame_count, layouts.data()};
     if (vkAllocateDescriptorSets(device_, &allocation, forward_scene_descriptor_sets_.data()) != VK_SUCCESS)
         return false;
 
@@ -135,8 +123,7 @@ bool vulkan_render_backend::ensure_forward_scene_resources()
     if (vkCreateSampler(device_, &sampler, nullptr, &forward_scene_sampler_) != VK_SUCCESS) return false;
 
     if (!ensure_graph_image(forward_scene_color_, viewport_width_, viewport_height_, scene_color_format_,
-                            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-                            VK_IMAGE_ASPECT_COLOR_BIT))
+                            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT))
         return false;
 
     update_forward_scene_resources();
@@ -181,13 +168,13 @@ void vulkan_render_backend::update_forward_scene_resources()
 
     const VkDescriptorBufferInfo light_info{light_buffer_.buffer, 0u, sizeof(scene_lighting_data)};
     const VkDescriptorImageInfo directional_image{VK_NULL_HANDLE, shadow_atlas_.array_view,
-                                                   VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL};
+                                                  VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL};
     const VkDescriptorImageInfo directional_sampler{shadow_atlas_.sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED};
     const VkDescriptorImageInfo local_image{VK_NULL_HANDLE, local_shadow_atlas_.view,
-                                             VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL};
+                                            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL};
     const VkDescriptorImageInfo local_sampler{local_shadow_atlas_.sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED};
     const VkDescriptorImageInfo scene_image{VK_NULL_HANDLE, forward_scene_color_.view,
-                                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+                                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
     const VkDescriptorImageInfo scene_sampler{forward_scene_sampler_, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED};
     const VkDescriptorBufferInfo shadow_info{shadow_uniform_buffers_[slot].buffer, 0u, sizeof(shadow_uniform_data)};
     const VkDescriptorBufferInfo scene_info{scene_buffer.buffer, 0u, sizeof(forward_scene_uniform_data)};
@@ -260,8 +247,8 @@ bool vulkan_render_backend::capture_forward_scene_color(VkCommandBuffer command_
                            {VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u},
                            {0, 0, 0},
                            {viewport_width_, viewport_height_, 1u}};
-    vkCmdCopyImage(command_buffer, scene_color_.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                   forward_scene_color_.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1u, &copy);
+    vkCmdCopyImage(command_buffer, scene_color_.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, forward_scene_color_.image,
+                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1u, &copy);
     transition_graph_image(command_buffer, forward_scene_color_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     update_forward_scene_resources();
@@ -803,9 +790,9 @@ bool vulkan_render_backend::create_runtime_forward_pipeline(gpu_material& materi
         vkDestroyShaderModule(device_, frag, nullptr);
         return reject_runtime_material(material, "failed to create forward scene resources");
     }
-    const VkDescriptorSetLayout material_layout =
-        material.runtime.descriptor_set_layout != VK_NULL_HANDLE ? material.runtime.descriptor_set_layout
-                                                                 : white_descriptor_set_layout_;
+    const VkDescriptorSetLayout material_layout = material.runtime.descriptor_set_layout != VK_NULL_HANDLE
+                                                      ? material.runtime.descriptor_set_layout
+                                                      : white_descriptor_set_layout_;
     const std::array set_layouts{material_layout, white_descriptor_set_layout_, forward_scene_descriptor_set_layout_};
     VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     layout.setLayoutCount = static_cast<std::uint32_t>(set_layouts.size());
@@ -927,9 +914,9 @@ bool vulkan_render_backend::ensure_runtime_water_forward_pipeline(gpu_material& 
         return false;
     }
 
-    const VkDescriptorSetLayout material_layout =
-        material.runtime.descriptor_set_layout != VK_NULL_HANDLE ? material.runtime.descriptor_set_layout
-                                                                 : white_descriptor_set_layout_;
+    const VkDescriptorSetLayout material_layout = material.runtime.descriptor_set_layout != VK_NULL_HANDLE
+                                                      ? material.runtime.descriptor_set_layout
+                                                      : white_descriptor_set_layout_;
     const std::array set_layouts{material_layout, water_surface_descriptor_set_layout_,
                                  forward_scene_descriptor_set_layout_};
     const VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0u,
@@ -1078,8 +1065,10 @@ bool vulkan_render_backend::ensure_runtime_gbuffer_pipeline(gpu_material& materi
         return true;
 
     if (material.runtime.gbuffer_pipeline != VK_NULL_HANDLE || material.runtime.forward_pipeline != VK_NULL_HANDLE ||
-        material.runtime.water_forward_pipeline != VK_NULL_HANDLE || material.runtime.pipeline_layout != VK_NULL_HANDLE ||
-        material.runtime.water_pipeline_layout != VK_NULL_HANDLE || material.runtime.descriptor_pool != VK_NULL_HANDLE ||
+        material.runtime.water_forward_pipeline != VK_NULL_HANDLE ||
+        material.runtime.pipeline_layout != VK_NULL_HANDLE ||
+        material.runtime.water_pipeline_layout != VK_NULL_HANDLE ||
+        material.runtime.descriptor_pool != VK_NULL_HANDLE ||
         material.runtime.descriptor_set_layout != VK_NULL_HANDLE || !material.runtime.parameter_buffers.empty() ||
         !material.runtime.frame_buffers.empty())
     {
@@ -1118,8 +1107,10 @@ bool vulkan_render_backend::ensure_runtime_forward_pipeline(gpu_material& materi
         return true;
 
     if (material.runtime.gbuffer_pipeline != VK_NULL_HANDLE || material.runtime.forward_pipeline != VK_NULL_HANDLE ||
-        material.runtime.water_forward_pipeline != VK_NULL_HANDLE || material.runtime.pipeline_layout != VK_NULL_HANDLE ||
-        material.runtime.water_pipeline_layout != VK_NULL_HANDLE || material.runtime.descriptor_pool != VK_NULL_HANDLE ||
+        material.runtime.water_forward_pipeline != VK_NULL_HANDLE ||
+        material.runtime.pipeline_layout != VK_NULL_HANDLE ||
+        material.runtime.water_pipeline_layout != VK_NULL_HANDLE ||
+        material.runtime.descriptor_pool != VK_NULL_HANDLE ||
         material.runtime.descriptor_set_layout != VK_NULL_HANDLE || !material.runtime.parameter_buffers.empty() ||
         !material.runtime.frame_buffers.empty())
     {

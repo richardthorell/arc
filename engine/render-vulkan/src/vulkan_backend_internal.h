@@ -316,7 +316,6 @@ struct alignas(16) forward_scene_uniform_data
 };
 static_assert(sizeof(forward_scene_uniform_data) == 48);
 
-
 struct gpu_scope_record
 {
     std::string name;
