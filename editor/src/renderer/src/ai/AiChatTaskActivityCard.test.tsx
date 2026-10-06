@@ -48,10 +48,10 @@ describe('AiChatTaskActivityCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show tasks' }));
     expect(screen.getByRole('button', { name: 'Hide tasks' })).toBeVisible();
     expect(screen.getByText('Applying editor changes')).toBeVisible();
-    expect(container.querySelector('[data-progress-state="complete"] svg')).toBeInTheDocument();
+    expect(container.querySelector('[data-progress-state="complete"] svg')).not.toBeInTheDocument();
   });
 
-  it('keeps completed plan steps checked while the spinner advances to the next row', () => {
+  it('keeps completed plan steps as rings while the larger spinner advances to the next row', () => {
     const { container, rerender } = render(
       <AiChatTaskActivityCard
         reference={{
@@ -81,7 +81,7 @@ describe('AiChatTaskActivityCard', () => {
     expect(container.querySelectorAll('[data-progress-state="complete"]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-progress-state="working"]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-progress-state="waiting"]')).toHaveLength(1);
-    expect(container.querySelector('[data-progress-state="complete"] svg')).toBeInTheDocument();
+    expect(container.querySelector('[data-progress-state="complete"] svg')).not.toBeInTheDocument();
 
     rerender(
       <AiChatTaskActivityCard

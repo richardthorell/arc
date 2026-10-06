@@ -461,7 +461,18 @@ export class EditorAgentHarness {
 
   async revokeClient(clientId: string): Promise<void> {
     if (this.activeEdit?.clientId === clientId) {
-      await this.cancelEdit(this.activeEdit.id, clientId);
+      const active = this.activeEdit;
+      try {
+        await this.cancelEdit(active.id, clientId);
+      } catch {
+        try {
+          await this.host.command('history.cancelTransaction', { id: active.transactionId });
+        } catch {
+          // A stale native transaction must not keep the built-in AI client wedged.
+        }
+        this.stagedAssets.delete(active.id);
+        this.activeEdit = null;
+      }
     }
     this.approvedClients.delete(clientId);
     for (const request of this.editRequests.values()) {
@@ -943,8 +954,8 @@ export class EditorAgentHarness {
     return {
       operation: 'configure-apply-settle-capture',
       requested: {
-        renderOptions: Object.keys(requestedOptions).length > 0 ? requestedOptions : undefined,
-        camera: Object.keys(movement).length > 0 ? movement : undefined,
+        ...(Object.keys(requestedOptions).length > 0 ? { renderOptions: requestedOptions } : {}),
+        ...(Object.keys(movement).length > 0 ? { camera: movement } : {}),
         settleFrames: waitFrames,
       },
       effective: {
@@ -957,10 +968,10 @@ export class EditorAgentHarness {
         capturedFrame: Number(capture.frameIndex ?? 0),
         finalFrame: Number(after.frameIndex ?? 0),
       },
-      renderOptions,
+      ...(renderOptions !== undefined ? { renderOptions } : {}),
       renderer,
       capture,
-      comparison,
+      ...(comparison !== undefined ? { comparison } : {}),
       anomalies: [
         ...this.collectDiagnosticAnomalies(renderer, capture),
         ...this.cameraAnomalies(asObject(capture.camera)),

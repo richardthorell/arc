@@ -1,6 +1,8 @@
 import { Asterisk, ArrowLeft, Bot, Plus, Send, ShieldCheck, Sparkles, Square, Zap } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { AiConversationContextReference, AiConversationToolReference } from '../../../common/aiConversationTypes';
+import { BUILT_IN_AGENT_CLIENT_ID } from '../../../common/builtInAgentTypes';
+import type { AiTaskProgress } from '../../../common/aiRuntimeTypes';
 import { requestSettingsDialogOpen } from '../settings/settingsDialogRoute';
 import {
   UiAgentErrorCard,
@@ -23,7 +25,8 @@ import {
   type AiConversation,
   type AiModelProvider,
 } from './aiChat';
-import { AiChatTaskActivityCard, AiChatToolActivityCard } from './AiChatActivityCards';
+import { AiChatToolActivityCard } from './AiChatActivityCards';
+import { AiChatLiveProgress } from './AiChatLiveProgress';
 import { AiChatApprovalDeclined, AiChatApprovalPrompt } from './AiChatApprovalStatus';
 import { renderAiChatMessageText } from './AiChatMessageText';
 import { AiContextChips, AiContextPicker } from './AiContextPickerView';
@@ -48,6 +51,31 @@ import './aiChatMessageCards.css';
 const openAiConnectivitySettings = () => requestSettingsDialogOpen('editorPreferences', 'ai.providers');
 const chatBottomThreshold = 48;
 
+const taskDiagnosticSnapshot = (task: AiTaskProgress): string => {
+  const rows: string[] = [];
+  const visit = (entry: AiTaskProgress, depth: number) => {
+    const calls = entry.toolCallIds?.length ? ` tools=[${entry.toolCallIds.join(',')}]` : '';
+    const detail = entry.detail ? ` detail="${entry.detail}"` : '';
+    rows.push(`${'  '.repeat(depth)}${entry.id}:${entry.state}${calls}${detail}`);
+    for (const child of entry.children ?? []) visit(child, depth + 1);
+  };
+  visit(task, 0);
+  return rows.join(' | ');
+};
+
+const diagnosticLine = (kind: string, detail: string): string => `${new Date().toISOString()} ${kind} ${detail}`;
+
+const diagnosticToolError = (content: unknown): string => {
+  if (typeof content !== 'string') return '';
+  const compact = content.replace(/\s+/gu, ' ').trim();
+  return compact ? ` message="${compact.slice(0, 320)}"` : '';
+};
+
+const resetBuiltInAgentAuthority = async (): Promise<void> => {
+  if (typeof window === 'undefined' || !window.arc?.aiGateway?.revoke) return;
+  await window.arc.aiGateway.revoke(BUILT_IN_AGENT_CLIENT_ID);
+};
+
 const approvalModeOptions: ReadonlyArray<UiDropdownOption<AiAgentApprovalMode>> = [
   { value: 'ask', label: 'Ask', icon: <ShieldCheck aria-hidden="true" size={13} /> },
   { value: 'auto', label: 'Auto approve', icon: <Zap aria-hidden="true" size={13} /> },
@@ -62,6 +90,7 @@ const cloneConversation = (conversation: AiConversation): AiConversation => ({
       ...reference,
       ...(reference.toolCallIds ? { toolCallIds: [...reference.toolCallIds] } : {}),
     })),
+    taskDiagnostics: message.taskDiagnostics ? [...message.taskDiagnostics] : undefined,
   })),
 });
 
@@ -83,6 +112,20 @@ const formatMessageTime = (createdAt: string) => {
   if (Number.isNaN(timestamp.getTime())) return '';
   return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(timestamp);
 };
+
+function AiChatWorkingStatus() {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return <span className="ai-chat-working-status">Working {elapsedSeconds}s…</span>;
+}
 
 const approvalOutcome = (
   reference: AiConversationToolReference,
@@ -310,6 +353,7 @@ export function AiChatPanel({
 
     activeStreamRef.current = null;
     activeStream.controller.abort();
+    void resetBuiltInAgentAuthority().catch(() => undefined);
     const timestamp = new Date().toISOString();
     updateAssistantMessage(activeStream.conversationId, activeStream.messageId, (message) => ({
       ...message,
@@ -326,6 +370,7 @@ export function AiChatPanel({
         'Cancelled by user',
         timestamp,
       ),
+      taskDiagnostics: [...(message.taskDiagnostics ?? []), diagnosticLine('cancelled', 'by=user')],
     }));
     setStreaming(false);
   };
@@ -348,6 +393,9 @@ export function AiChatPanel({
     let responseText = '';
     let completed = false;
     try {
+      await resetBuiltInAgentAuthority();
+      if (controller.signal.aborted) return { completed: false, text: responseText };
+
       const contextPlan = await prepareAiContextBudget({
         conversation: { ...requestConversation, messages: requestMessages },
         messages: requestMessages,
@@ -395,6 +443,10 @@ export function AiChatPanel({
           updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
             ...message,
             taskReferences: recordConversationTaskUpdate(message.taskReferences, event.task, timestamp),
+            taskDiagnostics: [
+              ...(message.taskDiagnostics ?? []),
+              diagnosticLine('task-update', taskDiagnosticSnapshot(event.task)),
+            ],
           }));
           continue;
         }
@@ -403,6 +455,10 @@ export function AiChatPanel({
           updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
             ...message,
             toolReferences: recordConversationToolCall(message.toolReferences, event.call, event.agentStep, timestamp),
+            taskDiagnostics: [
+              ...(message.taskDiagnostics ?? []),
+              diagnosticLine('tool-call', `step=${event.agentStep ?? '-'} name=${event.call.name} id=${event.call.id}`),
+            ],
           }));
           continue;
         }
@@ -416,6 +472,17 @@ export function AiChatPanel({
               event.agentStep,
               timestamp,
             ),
+            taskDiagnostics: [
+              ...(message.taskDiagnostics ?? []),
+              diagnosticLine(
+                'tool-result',
+                `step=${event.agentStep ?? '-'} name=${event.result.name} id=${event.result.toolCallId} status=${
+                  event.result.isError ? 'error' : 'ok'
+                } retryable=${event.result.retryable ? 'true' : 'false'} code=${
+                  event.result.errorCode ?? '-'
+                }${event.result.isError ? diagnosticToolError(event.result.content) : ''}`,
+              ),
+            ],
           }));
           continue;
         }
@@ -427,18 +494,44 @@ export function AiChatPanel({
             state: 'error',
             toolReferences: finishPendingConversationTools(message.toolReferences, 'error', event.message, timestamp),
             taskReferences: finishPendingConversationTasks(message.taskReferences, 'failed', event.message, timestamp),
+            taskDiagnostics: [
+              ...(message.taskDiagnostics ?? []),
+              diagnosticLine(
+                'runtime-error',
+                `code=${event.code ?? '-'} retryable=${event.retryable ? 'true' : 'false'}`,
+              ),
+            ],
           }));
           return { completed: false, text: responseText };
         }
         if (event.type === 'done') {
           completed = true;
-          updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({ ...message, state: 'complete' }));
+          updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
+            ...message,
+            state: 'complete',
+            taskDiagnostics: [
+              ...(message.taskDiagnostics ?? []),
+              diagnosticLine('done', `finish=${event.finishReason ?? '-'}`),
+            ],
+          }));
         }
       }
 
       if (!completed && !controller.signal.aborted) {
-        completed = true;
-        updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({ ...message, state: 'complete' }));
+        const timestamp = new Date().toISOString();
+        const messageText = 'The AI response ended before the agent reported completion.';
+        updateAssistantMessage(conversationId, assistantMessage.id, (message) => ({
+          ...message,
+          content: message.content || messageText,
+          state: 'error',
+          toolReferences: finishPendingConversationTools(message.toolReferences, 'error', messageText, timestamp),
+          taskReferences: finishPendingConversationTasks(message.taskReferences, 'failed', messageText, timestamp),
+          taskDiagnostics: [
+            ...(message.taskDiagnostics ?? []),
+            diagnosticLine('runtime-error', 'code=unexpected_stream_end retryable=false'),
+          ],
+        }));
+        return { completed: false, text: responseText };
       }
       return { completed: completed && !controller.signal.aborted, text: responseText };
     } catch (error) {
@@ -451,6 +544,10 @@ export function AiChatPanel({
           state: 'error',
           toolReferences: finishPendingConversationTools(message.toolReferences, 'error', messageText, timestamp),
           taskReferences: finishPendingConversationTasks(message.taskReferences, 'failed', messageText, timestamp),
+          taskDiagnostics: [
+            ...(message.taskDiagnostics ?? []),
+            diagnosticLine('exception', `type=${error instanceof Error ? error.name : 'unknown'}`),
+          ],
         }));
       }
       return { completed: false, text: responseText };
@@ -597,6 +694,7 @@ export function AiChatPanel({
       modelLabel: model.label,
       toolReferences: undefined,
       taskReferences: undefined,
+      taskDiagnostics: undefined,
     };
     const requestConversation: AiConversation = { ...activeConversation, messages: requestMessages };
 
@@ -715,14 +813,15 @@ export function AiChatPanel({
                   renderText={renderAiChatMessageText}
                   side="left"
                   state={message.state}
+                  streamingPlaceholder={<AiChatWorkingStatus />}
                   text={message.content}
                   timestamp={timestamp}
                   tone="agent"
                 />
               )}
-              {message.taskReferences?.map((reference) => (
-                <AiChatTaskActivityCard key={`task-${reference.id}`} reference={reference} />
-              ))}
+              {message.taskReferences?.length ? (
+                <AiChatLiveProgress diagnostics={message.taskDiagnostics} tasks={message.taskReferences} />
+              ) : null}
               {message.toolReferences?.map(renderToolActivity)}
             </div>
           );
@@ -852,10 +951,12 @@ export function AiChatPanel({
               <AiContextChips references={pendingContext} onRemove={removePendingContext} />
               <textarea
                 aria-label="Chat prompt"
+                autoCorrect="off"
                 disabled={!activeProvider || streaming}
                 placeholder={activeProvider ? 'Ask anything...' : 'The model for this conversation is unavailable'}
                 value={prompt}
                 rows={3}
+                spellCheck={false}
                 onChange={(event) => setPrompt(event.target.value)}
                 onKeyDown={handleComposerKeyDown}
               />
@@ -934,10 +1035,12 @@ export function AiChatPanel({
                   <AiContextChips references={pendingContext} onRemove={removePendingContext} />
                   <textarea
                     aria-label="Start a conversation"
+                    autoCorrect="off"
                     disabled={streaming}
                     placeholder="Ask anything..."
                     value={prompt}
                     rows={3}
+                    spellCheck={false}
                     onChange={(event) => setPrompt(event.target.value)}
                     onKeyDown={handleComposerKeyDown}
                   />

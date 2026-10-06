@@ -52,6 +52,25 @@ class BatchHost implements AgentHarnessHost {
   }
 }
 
+class FailingMaterialBatchHost extends BatchHost {
+  override async command(
+    type: string,
+    payload: Record<string, unknown> = {},
+    edit?: Record<string, unknown>,
+    revision?: number,
+  ): Promise<AgentHostResponse> {
+    if (type === 'entity.setMaterial') {
+      this.commands.push({ type, payload, edit, revision });
+      return {
+        ...response({}, revision ?? 4),
+        succeeded: false,
+        error: 'material could not be loaded',
+      };
+    }
+    return super.command(type, payload, edit, revision);
+  }
+}
+
 class MemoryAssetWorkspace implements AgentAssetWorkspace {
   readonly files = new Map<string, string>();
 
@@ -311,6 +330,41 @@ describe('EditorAgentHarness editor.applyBatch', () => {
 
     await harness.invoke('edit.cancel', { editSessionId: session.id }, 'writer');
     expect(assets.files.has('materials/temporary.arcmat')).toBe(false);
+  });
+
+  it('cancels the active transaction immediately when a batch operation fails', async () => {
+    const host = new FailingMaterialBatchHost();
+    const harness = new EditorAgentHarness(host);
+    const session = await beginApprovedEdit(harness);
+
+    await expect(
+      harness.invoke(
+        'editor.applyBatch',
+        {
+          editSessionId: session.id,
+          expectedSceneRevision: 4,
+          operations: [
+            { type: 'entity.create', tempId: 'cube', kind: 'cube' },
+            {
+              type: 'entity.setMaterial',
+              target: { tempId: 'cube' },
+              path: 'materials/missing.arcmat',
+            },
+          ],
+        },
+        'writer',
+      ),
+    ).rejects.toThrow(/Batch failed and the edit transaction was cancelled: material could not be loaded/);
+
+    expect(host.commands.map((command) => command.type)).toEqual([
+      'history.beginTransaction',
+      'entity.create',
+      'entity.setMaterial',
+      'history.cancelTransaction',
+    ]);
+
+    const nextSession = await beginApprovedEdit(harness);
+    expect(nextSession.id).not.toBe(session.id);
   });
 
   it('validates the complete tempId dependency graph before mutating', async () => {

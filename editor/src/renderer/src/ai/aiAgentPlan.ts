@@ -47,7 +47,7 @@ const planStepSchema: AiJsonObject = {
 export const aiAgentPlanToolDefinition: AiToolDefinition = {
   name: AI_AGENT_PLAN_TOOL_NAME,
   description:
-    'Publish or update a semantic execution plan for multi-step ARC work. Reuse the same planId and stable step ids across updates. Use concise user-facing titles, mark exactly the active step in_progress, and retain completed/failed/cancelled steps instead of deleting history.',
+    'Publish or update a semantic execution plan for multi-step ARC work. Reuse the same planId and stable step ids across updates. Use concise user-facing titles, mark exactly the active step in_progress, and retain completed/failed/cancelled steps instead of deleting history. The runtime does not infer semantic task completion from tool calls: publish an update before beginning a new semantic phase, marking the previous phase completed and the next phase in_progress. After recovery/retry work, publish the corrected task state explicitly.',
   inputSchema: {
     type: 'object',
     additionalProperties: false,

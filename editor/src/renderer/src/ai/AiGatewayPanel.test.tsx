@@ -18,6 +18,7 @@ afterEach(() => {
   cleanup();
   localStorage.removeItem(aiConversationStorageKey);
   resetSettingsDialogRequest();
+  Reflect.deleteProperty(window, 'arc');
   vi.useRealTimers();
 });
 
@@ -112,6 +113,8 @@ describe('AiChatPanel', () => {
     expect(screen.queryByRole('region', { name: 'Active conversation' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Start a conversation')).toBeEnabled();
     expect(screen.getByLabelText('Start a conversation')).toHaveAttribute('placeholder', 'Ask anything...');
+    expect(screen.getByLabelText('Start a conversation')).toHaveAttribute('autocorrect', 'off');
+    expect(screen.getByLabelText('Start a conversation')).toHaveAttribute('spellcheck', 'false');
     expect(screen.getByRole('button', { name: 'Add context' })).toBeInTheDocument();
 
     const modelDropdown = screen.getByLabelText('Model');
@@ -175,6 +178,31 @@ describe('AiChatPanel', () => {
     expect(screen.getByRole('button', { name: 'Open conversation Cabin material polish' })).toBeInTheDocument();
   });
 
+  it('clears stale built-in AI edit authority before each user turn', async () => {
+    const revoke = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: { aiGateway: { revoke } },
+    });
+
+    render(<AiChatPanel persistConversations={false} provider={configuredProvider} />);
+
+    fireEvent.change(screen.getByLabelText('Start a conversation'), {
+      target: { value: 'Create something' },
+    });
+    fireEvent.click(screen.getByLabelText('Start conversation'));
+
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith('arc.builtin-ai'));
+    await waitFor(() => expect(screen.getByText('Hello from ARC.')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText('Chat prompt'), {
+      target: { value: 'Change it' },
+    });
+    fireEvent.click(screen.getByLabelText('Send prompt'));
+
+    await waitFor(() => expect(revoke).toHaveBeenCalledTimes(2));
+  });
+
   it('sends with Enter while Shift+Enter remains available for multiline prompts', async () => {
     render(<AiChatPanel persistConversations={false} provider={configuredProvider} />);
 
@@ -223,11 +251,108 @@ describe('AiChatPanel', () => {
 
     fireEvent.change(screen.getByLabelText('Chat prompt'), { target: { value: 'Suggest a polish pass' } });
     expect(screen.getByLabelText('Chat prompt')).toHaveAttribute('placeholder', 'Ask anything...');
+    expect(screen.getByLabelText('Chat prompt')).toHaveAttribute('autocorrect', 'off');
+    expect(screen.getByLabelText('Chat prompt')).toHaveAttribute('spellcheck', 'false');
     expect(screen.getByLabelText('Send prompt')).toBeEnabled();
     fireEvent.click(screen.getByLabelText('Send prompt'));
 
     expect(screen.getByText('Suggest a polish pass')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Hello from ARC.')).toBeInTheDocument());
+  });
+
+  it('renders one progress list when a response contains multiple task roots', () => {
+    const initialMessages: readonly AiChatMessage[] = [
+      {
+        id: 'user',
+        role: 'user',
+        content: 'Build a playground',
+        createdAt: '2026-10-05T22:00:00Z',
+        state: 'complete',
+      },
+      {
+        id: 'assistant',
+        role: 'assistant',
+        content: '',
+        createdAt: '2026-10-05T22:00:01Z',
+        state: 'streaming',
+        taskReferences: [
+          {
+            id: 'agent-step-0',
+            title: 'Run 3 editor operations',
+            state: 'completed',
+          },
+          {
+            id: 'playground-plan',
+            planId: 'playground-plan',
+            title: 'Build playground',
+            state: 'in_progress',
+            children: [{ id: 'arrange', title: 'Design a fun arrangement', state: 'in_progress' }],
+          },
+        ],
+      },
+    ];
+
+    render(
+      <AiChatPanel conversationLabel="Playground" initialMessages={initialMessages} provider={configuredProvider} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open conversation Playground' }));
+
+    expect(screen.getAllByRole('status', { name: 'AI progress' })).toHaveLength(1);
+    expect(screen.getByText('Run 3 editor operations')).toBeVisible();
+    expect(screen.getByText('Design a fun arrangement')).toBeVisible();
+  });
+
+  it('copies persisted task diagnostics for sharing', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    const initialMessages: readonly AiChatMessage[] = [
+      {
+        id: 'user',
+        role: 'user',
+        content: 'Build a playground',
+        createdAt: '2026-10-05T22:00:00Z',
+        state: 'complete',
+      },
+      {
+        id: 'assistant',
+        role: 'assistant',
+        content: 'Done.',
+        createdAt: '2026-10-05T22:00:01Z',
+        state: 'complete',
+        taskReferences: [
+          {
+            id: 'playground-plan',
+            planId: 'playground-plan',
+            title: 'Build playground',
+            state: 'completed',
+            children: [
+              { id: 'layout', title: 'Lay out playground', state: 'completed' },
+              { id: 'decorate', title: 'Add props', state: 'completed' },
+            ],
+          },
+        ],
+        taskDiagnostics: [
+          '2026-10-05T22:00:01Z task-update playground-plan:in_progress | layout:in_progress | decorate:planned',
+          '2026-10-05T22:00:02Z tool-result step=1 name=editor.applyBatch id=call-1 status=ok retryable=false code=-',
+        ],
+      },
+    ];
+
+    render(
+      <AiChatPanel conversationLabel="Diagnostics" initialMessages={initialMessages} provider={configuredProvider} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open conversation Diagnostics' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy task diagnostics' }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining('ARC AI task diagnostics\n2026-10-05T22:00:01Z task-update'),
+      ),
+    );
   });
 
   it('turns the round send action into a stop action while a response streams', async () => {

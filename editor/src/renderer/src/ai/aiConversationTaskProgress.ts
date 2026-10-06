@@ -74,11 +74,18 @@ export const recordConversationTaskUpdate = (
   const current = references ?? [];
   if (!task.planId && hiddenFallbackTaskTitles.has(task.title)) return current.map((reference) => ({ ...reference }));
 
-  const index = current.findIndex((reference) => reference.id === task.id);
-  const existing = index >= 0 ? current[index] : undefined;
+  // Once the model publishes a semantic plan, it becomes the single user-facing
+  // task history for this response. Earlier agent-step tasks are only a fallback
+  // for responses that never publish a plan and should not survive beside it.
+  const normalizedCurrent = task.planId
+    ? current.filter((reference) => Boolean(reference.planId) || reference.id === task.id)
+    : current;
+
+  const index = normalizedCurrent.findIndex((reference) => reference.id === task.id);
+  const existing = index >= 0 ? normalizedCurrent[index] : undefined;
   const next = toConversationTaskReference(task, timestamp, existing);
-  if (index < 0) return [...current, next];
-  return current.map((reference, candidate) => (candidate === index ? next : { ...reference }));
+  if (index < 0) return [...normalizedCurrent, next];
+  return normalizedCurrent.map((reference, candidate) => (candidate === index ? next : { ...reference }));
 };
 
 const finishTask = (

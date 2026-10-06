@@ -41,6 +41,21 @@ describe('UiAgentCard', () => {
     expect(screen.getByRole('button', { name: 'Copy message' })).toBeVisible();
   });
 
+  it('supports a custom placeholder while streaming before text arrives', () => {
+    render(
+      <UiAgentTextCard
+        side="left"
+        state="streaming"
+        streamingPlaceholder={<span>Working 3s…</span>}
+        text=""
+        tone="agent"
+      />,
+    );
+
+    expect(screen.getByText('Working 3s…')).toBeInTheDocument();
+    expect(screen.queryByText('…')).not.toBeInTheDocument();
+  });
+
   it('right-aligns user actions and marks them for hover reveal', () => {
     const { container } = render(<UiAgentTextCard side="right" text="My prompt" tone="user" />);
 

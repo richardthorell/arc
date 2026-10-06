@@ -20,6 +20,7 @@ import {
 export const AI_AGENT_MAX_STEPS = 10;
 export const AI_AGENT_STEP_TIMEOUT_MS = 60_000;
 const additionalPlanTurns = 4;
+const providerTurnMultiplier = 3;
 
 export type AiAgentModelExecutor = (request: AiRuntimeRequest) => AsyncIterable<AiRuntimeStreamEvent>;
 export type AiAgentToolInvoker = (call: AiToolCall, signal?: AbortSignal) => Promise<BuiltInAgentToolExecutionResult>;
@@ -67,9 +68,21 @@ const normalizedToolFailure = (call: AiToolCall, error: unknown): AiToolResult =
       operation: call.name,
       content:
         `ARC tool revision conflict: ${message}. ` +
-        'Refresh authoritative scene state with scene.overview. If an edit session is still active, use the revision reported by that session or cancel and begin a new transaction before retrying the mutation.',
+        'Refresh authoritative scene state with scene.overview. If an edit session is still active, use the revision ' +
+        'reported by that session or cancel and begin a new transaction before retrying the mutation.',
       isError: true,
       errorCode: 'revision_conflict',
+      retryable: true,
+    };
+  }
+  if (isRecoverableBatchAbort(call, message)) {
+    return {
+      toolCallId: call.id,
+      name: call.name,
+      operation: call.name,
+      content: `ARC tool recoverable error: ${message}`,
+      isError: true,
+      errorCode: 'tool_error',
       retryable: true,
     };
   }
@@ -113,16 +126,37 @@ const executeTool = async (
 
 const preserveRuntimeTaskData = (previous: AiTaskProgress | undefined, next: AiTaskProgress): AiTaskProgress => {
   if (!previous) return next;
-  const previousById = new Map(flattenTaskTree(previous).map((task) => [task.id, task]));
-  const merge = (task: AiTaskProgress): AiTaskProgress => {
-    const old = previousById.get(task.id);
+
+  const merge = (old: AiTaskProgress | undefined, task: AiTaskProgress): AiTaskProgress => {
+    if (!old) {
+      return {
+        ...task,
+        ...(task.children?.length ? { children: task.children.map((child) => merge(undefined, child)) } : {}),
+      };
+    }
+
+    const nextChildren = new Map((task.children ?? []).map((child) => [child.id, child]));
+    const previousChildren = old.children ?? [];
+    const mergedChildren = [
+      ...previousChildren.map((child) => merge(child, nextChildren.get(child.id) ?? child)),
+      ...(task.children ?? [])
+        .filter((child) => !previousChildren.some((previousChild) => previousChild.id === child.id))
+        .map((child) => merge(undefined, child)),
+    ];
+
+    const preserveTerminalState =
+      (old.state === 'completed' || old.state === 'cancelled') &&
+      (task.state === 'planned' || task.state === 'in_progress');
+
     return {
       ...task,
-      ...(old?.toolCallIds?.length ? { toolCallIds: old.toolCallIds } : {}),
-      ...(task.children?.length ? { children: task.children.map(merge) } : {}),
+      state: preserveTerminalState ? old.state : task.state,
+      ...(old.toolCallIds?.length ? { toolCallIds: old.toolCallIds } : {}),
+      ...(mergedChildren.length ? { children: mergedChildren } : {}),
     };
   };
-  return merge(next);
+
+  return merge(previous, next);
 };
 
 const activePlanTask = (
@@ -151,6 +185,19 @@ const withLinkedCalls = (task: AiTaskProgress, calls: readonly AiToolCall[], pro
 });
 
 const agentControlTools = new Set(['edit.begin', 'edit.request', 'edit.commit', 'edit.cancel']);
+const genericTaskTools = new Set([
+  'edit.apply',
+  'editor.applyBatch',
+  'history.undo',
+  'history.redo',
+  'selection.set',
+  'selection.clear',
+  'viewport.move',
+  'viewport.setRenderOptions',
+]);
+
+const isRecoverableBatchAbort = (call: AiToolCall, message: string): boolean =>
+  call.name === 'editor.applyBatch' && /batch failed and the edit transaction was cancelled/iu.test(message);
 
 const failedPlanTask = (
   roots: ReadonlyMap<string, AiTaskProgress>,
@@ -199,9 +246,11 @@ export async function* runAiAgentToolLoop(
   const planRoots = new Map<string, AiTaskProgress>();
   let toolSteps = 0;
 
-  // Plan-only provider turns do not consume the editor-tool budget. A small extra
-  // allowance lets the model publish/revise a plan without stealing mutation turns.
-  for (let providerStep = 0; providerStep <= maximumSteps + additionalPlanTurns; ++providerStep) {
+  // Provider round-trips include planning, approval/control, recovery, and semantic
+  // work. Only semantic work consumes toolSteps, so keep a larger independent
+  // safety ceiling here instead of letting control/recovery turns exhaust the run.
+  const maximumProviderTurns = maximumSteps * providerTurnMultiplier + additionalPlanTurns;
+  for (let providerStep = 0; providerStep < maximumProviderTurns; ++providerStep) {
     if (request.signal?.aborted) return;
 
     const controller = new AbortController();
@@ -274,6 +323,17 @@ export async function* runAiAgentToolLoop(
     if (terminalError) return;
 
     if (!sawDone || finishReason !== 'tool_calls') {
+      const unresolved = activePlanTask(planRoots);
+      if (unresolved?.task.detail?.startsWith('Retrying after ')) {
+        let failedRoot = mapTaskTree(unresolved.root, unresolved.task.id, (task) => ({
+          ...task,
+          state: 'failed',
+          detail: task.detail?.replace(/^Retrying after /u, 'Failed while running '),
+        }));
+        failedRoot = deriveTaskTreeStates(failedRoot);
+        planRoots.set(failedRoot.id, failedRoot);
+        yield { type: 'task-update', task: failedRoot };
+      }
       yield { type: 'done', finishReason: sawDone ? finishReason : 'unknown' };
       return;
     }
@@ -290,7 +350,8 @@ export async function* runAiAgentToolLoop(
 
     const planCalls = calls.filter((call) => call.name === AI_AGENT_PLAN_TOOL_NAME);
     const executionCalls = calls.filter((call) => call.name !== AI_AGENT_PLAN_TOOL_NAME);
-    if (executionCalls.length && toolSteps >= maximumSteps) {
+    const semanticExecutionCalls = executionCalls.filter((call) => !agentControlTools.has(call.name));
+    if (semanticExecutionCalls.length && toolSteps >= maximumSteps) {
       yield {
         type: 'error',
         code: 'tool',
@@ -332,13 +393,13 @@ export async function* runAiAgentToolLoop(
 
     let planned = activePlanTask(planRoots);
     let recoveringPlanTask = false;
-    const hasSemanticExecution = executionCalls.some((call) => !agentControlTools.has(call.name));
+    const hasSemanticExecution = semanticExecutionCalls.length > 0;
 
     if (!planned && planRoots.size && hasSemanticExecution) {
       const failed = failedPlanTask(planRoots);
       if (failed) {
         let recoveringRoot = mapTaskTree(failed.root, failed.task.id, (task) => ({
-          ...withoutTaskDetail(withLinkedCalls(task, executionCalls, providerStep)),
+          ...withoutTaskDetail(withLinkedCalls(task, semanticExecutionCalls, providerStep)),
           state: 'in_progress',
         }));
         recoveringRoot = deriveTaskTreeStates(recoveringRoot);
@@ -353,9 +414,13 @@ export async function* runAiAgentToolLoop(
     }
 
     let genericTask: AiTaskProgress | undefined;
-    if (planned && !recoveringPlanTask) {
+    if (planned && !recoveringPlanTask && hasSemanticExecution) {
       const linkedRoot = mapTaskTree(planned.root, planned.task.id, (task) =>
-        withLinkedCalls(task, executionCalls, providerStep),
+        withLinkedCalls(
+          task.detail?.startsWith('Retrying after ') ? withoutTaskDetail(task) : task,
+          semanticExecutionCalls,
+          providerStep,
+        ),
       );
       planRoots.set(linkedRoot.id, linkedRoot);
       planned = {
@@ -363,18 +428,24 @@ export async function* runAiAgentToolLoop(
         task: flattenTaskTree(linkedRoot).find((task) => task.id === planned!.task.id)!,
       };
       yield { type: 'task-update', task: linkedRoot };
-    } else if (!planned && !planRoots.size && hasSemanticExecution) {
-      genericTask = taskForCalls(providerStep, executionCalls, 'in_progress');
+    } else if (!planned && !planRoots.size && semanticExecutionCalls.some((call) => genericTaskTools.has(call.name))) {
+      const genericCalls = semanticExecutionCalls.filter((call) => genericTaskTools.has(call.name));
+      genericTask = taskForCalls(providerStep, genericCalls, 'in_progress');
       yield { type: 'task-update', task: genericTask };
     }
 
     let failedResult: AiToolResult | undefined;
+    let failedSemanticResult: AiToolResult | undefined;
+    const semanticCallIds = new Set(semanticExecutionCalls.map((call) => call.id));
     for (let index = 0; index < executionCalls.length; ++index) {
       if (request.signal?.aborted) return;
       const call = executionCalls[index]!;
       const result = await executeTool(call, invokeTool, request.signal);
       if (request.signal?.aborted) return;
       if (result.isError && !failedResult) failedResult = result;
+      if (result.isError && semanticCallIds.has(call.id) && !failedSemanticResult) {
+        failedSemanticResult = result;
+      }
       yield { type: 'tool-result', result, agentStep: providerStep };
       messages.push({
         id: runtimeMessageId('agent-tool', providerStep, index),
@@ -384,21 +455,20 @@ export async function* runAiAgentToolLoop(
       });
     }
 
-    if (planned && failedResult) {
-      let failedRoot = mapTaskTree(planRoots.get(planned.root.id)!, planned.task.id, (task) => ({
+    if (planned && failedSemanticResult) {
+      let retryingRoot = mapTaskTree(planRoots.get(planned.root.id)!, planned.task.id, (task) => ({
         ...task,
-        state: 'failed',
-        detail: `Failed while running ${failedResult.name}`,
+        state: 'in_progress',
+        detail: `Retrying after ${failedSemanticResult.name}`,
       }));
-      failedRoot = deriveTaskTreeStates(failedRoot);
-      planRoots.set(failedRoot.id, failedRoot);
-      yield { type: 'task-update', task: failedRoot };
+      retryingRoot = deriveTaskTreeStates(retryingRoot);
+      planRoots.set(retryingRoot.id, retryingRoot);
+      yield { type: 'task-update', task: retryingRoot };
     } else if (planned && recoveringPlanTask) {
-      let recoveredRoot = mapTaskTree(planRoots.get(planned.root.id)!, planned.task.id, (task) => ({
+      const recoveredRoot = mapTaskTree(planRoots.get(planned.root.id)!, planned.task.id, (task) => ({
         ...withoutTaskDetail(task),
-        state: 'completed',
+        state: 'in_progress',
       }));
-      recoveredRoot = deriveTaskTreeStates(recoveredRoot);
       planRoots.set(recoveredRoot.id, recoveredRoot);
       yield { type: 'task-update', task: recoveredRoot };
     } else if (genericTask) {
@@ -406,12 +476,25 @@ export async function* runAiAgentToolLoop(
         type: 'task-update',
         task: taskForCalls(
           providerStep,
-          executionCalls,
-          failedResult ? 'failed' : 'completed',
-          failedResult ? `Failed while running ${failedResult.name}` : undefined,
+          genericTask.toolCallIds?.length
+            ? executionCalls.filter((call) => genericTask!.toolCallIds!.includes(call.id))
+            : executionCalls,
+          failedResult ? (failedResult.retryable ? 'in_progress' : 'failed') : 'completed',
+          failedResult
+            ? failedResult.retryable
+              ? `Retrying after ${failedResult.name}`
+              : `Failed while running ${failedResult.name}`
+            : undefined,
         ),
       };
     }
-    ++toolSteps;
+    if (hasSemanticExecution) ++toolSteps;
   }
+
+  yield {
+    type: 'error',
+    code: 'tool',
+    message: `AI agent exhausted its provider-turn safety allowance before producing a final response`,
+    retryable: false,
+  };
 }
