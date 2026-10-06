@@ -1,9 +1,6 @@
 import { Asterisk, ArrowLeft, Bot, Plus, Send, ShieldCheck, Sparkles, Square, Zap } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import type {
-  AiConversationContextReference,
-  AiConversationToolReference,
-} from '../../../common/aiConversationTypes';
+import type { AiConversationContextReference, AiConversationToolReference } from '../../../common/aiConversationTypes';
 import { BUILT_IN_AGENT_CLIENT_ID } from '../../../common/builtInAgentTypes';
 import type { AiTaskProgress } from '../../../common/aiRuntimeTypes';
 import { requestSettingsDialogOpen } from '../settings/settingsDialogRoute';
@@ -66,8 +63,7 @@ const taskDiagnosticSnapshot = (task: AiTaskProgress): string => {
   return rows.join(' | ');
 };
 
-const diagnosticLine = (kind: string, detail: string): string =>
-  `${new Date().toISOString()} ${kind} ${detail}`;
+const diagnosticLine = (kind: string, detail: string): string => `${new Date().toISOString()} ${kind} ${detail}`;
 
 const diagnosticToolError = (content: unknown): string => {
   if (typeof content !== 'string') return '';
@@ -461,10 +457,7 @@ export function AiChatPanel({
             toolReferences: recordConversationToolCall(message.toolReferences, event.call, event.agentStep, timestamp),
             taskDiagnostics: [
               ...(message.taskDiagnostics ?? []),
-              diagnosticLine(
-                'tool-call',
-                `step=${event.agentStep ?? '-'} name=${event.call.name} id=${event.call.id}`,
-              ),
+              diagnosticLine('tool-call', `step=${event.agentStep ?? '-'} name=${event.call.name} id=${event.call.id}`),
             ],
           }));
           continue;
@@ -499,7 +492,10 @@ export function AiChatPanel({
             taskReferences: finishPendingConversationTasks(message.taskReferences, 'failed', event.message, timestamp),
             taskDiagnostics: [
               ...(message.taskDiagnostics ?? []),
-              diagnosticLine('runtime-error', `code=${event.code ?? '-'} retryable=${event.retryable ? 'true' : 'false'}`),
+              diagnosticLine(
+                'runtime-error',
+                `code=${event.code ?? '-'} retryable=${event.retryable ? 'true' : 'false'}`,
+              ),
             ],
           }));
           return { completed: false, text: responseText };

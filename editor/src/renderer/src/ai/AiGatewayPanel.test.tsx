@@ -338,7 +338,9 @@ describe('AiChatPanel', () => {
       },
     ];
 
-    render(<AiChatPanel conversationLabel="Diagnostics" initialMessages={initialMessages} provider={configuredProvider} />);
+    render(
+      <AiChatPanel conversationLabel="Diagnostics" initialMessages={initialMessages} provider={configuredProvider} />,
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Open conversation Diagnostics' }));
     fireEvent.click(screen.getByRole('button', { name: 'Copy task diagnostics' }));
 

@@ -518,9 +518,11 @@ describe('AI agent task progress', () => {
     const beforePlanTransition = tasks.filter((event) =>
       event.task.children?.some((step) => step.id === 'layout' && step.toolCallIds?.length),
     );
-    expect(beforePlanTransition.every((event) =>
-      event.task.children?.some((step) => step.id === 'layout' && step.state === 'in_progress'),
-    )).toBe(true);
+    expect(
+      beforePlanTransition.every((event) =>
+        event.task.children?.some((step) => step.id === 'layout' && step.state === 'in_progress'),
+      ),
+    ).toBe(true);
 
     expect(tasks.at(-1)?.task).toMatchObject({
       id: 'playground-plan',
@@ -668,9 +670,9 @@ describe('AI agent task progress', () => {
       (event): event is Extract<AiRuntimeStreamEvent, { type: 'task-update' }> => event.type === 'task-update',
     );
 
-    expect(tasks.some((event) =>
-      event.task.children?.some((step) => step.id === 'verify' && step.state === 'in_progress'),
-    )).toBe(false);
+    expect(
+      tasks.some((event) => event.task.children?.some((step) => step.id === 'verify' && step.state === 'in_progress')),
+    ).toBe(false);
     expect(tasks.at(-1)?.task.children).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: 'build', state: 'in_progress' }),
@@ -746,8 +748,9 @@ describe('AI agent task progress', () => {
       ),
     );
     expect(secondInspect).toBeDefined();
-    expect(tasks.filter((event) => event.task.children?.some((step) => step.id === 'verify' && step.state === 'completed')))
-      .toHaveLength(1);
+    expect(
+      tasks.filter((event) => event.task.children?.some((step) => step.id === 'verify' && step.state === 'completed')),
+    ).toHaveLength(1);
   });
 
   it('does not spend the semantic tool budget on edit control-only turns', async () => {
@@ -781,7 +784,9 @@ describe('AI agent task progress', () => {
 
     const events = await collect(runAiAgentToolLoop(request, execute, invokeTool, { maximumSteps: 2 }));
 
-    expect(events.some((event) => event.type === 'error' && event.message.includes('maximum of 2 tool steps'))).toBe(false);
+    expect(events.some((event) => event.type === 'error' && event.message.includes('maximum of 2 tool steps'))).toBe(
+      false,
+    );
     expect(invokeTool).toHaveBeenCalledTimes(5);
   });
 
