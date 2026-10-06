@@ -18,14 +18,14 @@ Small default assets used by the editor and renderer bring-up live here.
   menu or Content Browser. GLB is imported through the current static mesh path.
   FBX is recognized and reports a clear unsupported diagnostic unless the
   optional `ufbx` dependency is enabled and wired for static scene conversion.
-- `shaders/default_phong.vert`, `shaders/default_phong.frag`, and
+- `shaders/standard_lit.vert`, `shaders/standard_lit.frag`, and
   `shaders/shadow_depth.vert` are the readable sources for the current
-  Phong-and-shadow bring-up shaders.
+  Standard Lit and shadow shaders.
 - `ASSET_LICENSES.md` records third-party asset sources and licenses.
 
 These are development assets for editor smoke testing, not the final engine asset
 database. The renderer currently uses checked-in/generated shader data for
 bootstrap reliability while the shader compiler and hot-reload path matures.
-Some material presets use future-facing shader names such as `arc/terrain_phong`
+Some material presets use future-facing shader names such as `arc/terrain`
 or `arc/water_preview`; these are safe metadata labels for now and fall back to
 the current renderer material path until dedicated shader variants exist.

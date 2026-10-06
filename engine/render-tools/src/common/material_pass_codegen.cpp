@@ -176,12 +176,128 @@ void append_gbuffer(std::ostringstream& source, const material_descriptor& mater
            "}\n";
 }
 
+void append_forward_lighting_library(std::ostringstream& source)
+{
+    source << R"(struct ArcForwardLightingContext
+{
+    float3 lightDirectionWS;
+    float3 lightRadiance;
+    float3 environmentRadiance;
+};
+
+float3 arcForwardF0FromIor(float ior)
+{
+    float ratio = (ior - 1.0) / max(ior + 1.0, 1e-4);
+    return float3(ratio * ratio);
+}
+
+float3 arcForwardFresnelSchlick(float cosTheta, float3 f0)
+{
+    float factor = pow(saturate(1.0 - cosTheta), 5.0);
+    return f0 + (1.0 - f0) * factor;
+}
+
+float arcForwardD_GGX(float nDotH, float roughness)
+{
+    float alpha = max(roughness * roughness, 0.002);
+    float alpha2 = alpha * alpha;
+    float denominator = nDotH * nDotH * (alpha2 - 1.0) + 1.0;
+    return alpha2 / max(3.14159265358979323846 * denominator * denominator, 1e-6);
+}
+
+float arcForwardV_SmithGGXCorrelated(float nDotV, float nDotL, float roughness)
+{
+    float alpha2 = pow(max(roughness, 0.02), 4.0);
+    float gv = nDotL * sqrt(max(nDotV * nDotV * (1.0 - alpha2) + alpha2, 1e-6));
+    float gl = nDotV * sqrt(max(nDotL * nDotL * (1.0 - alpha2) + alpha2, 1e-6));
+    return 0.5 / max(gv + gl, 1e-5);
+}
+
+float arcForwardBurleyDiffuse(float nDotV, float nDotL, float lDotH, float roughness)
+{
+    float energyBias = lerp(0.0, 0.5, roughness);
+    float energyFactor = lerp(1.0, 1.0 / 1.51, roughness);
+    float fd90 = energyBias + 2.0 * lDotH * lDotH * roughness;
+    float lightScatter = 1.0 + (fd90 - 1.0) * pow(1.0 - nDotL, 5.0);
+    float viewScatter = 1.0 + (fd90 - 1.0) * pow(1.0 - nDotV, 5.0);
+    return lightScatter * viewScatter * energyFactor / 3.14159265358979323846;
+}
+
+float3 arcForwardBeerLambert(float3 attenuationColor, float distance, float attenuationDistance)
+{
+    if (attenuationDistance <= 0.0) return float3(1.0);
+    float3 coefficient = -log(max(attenuationColor, float3(1e-4))) / attenuationDistance;
+    return exp(-coefficient * max(distance, 0.0));
+}
+
+ArcForwardLightingContext arcDefaultForwardLightingContext()
+{
+    ArcForwardLightingContext context;
+    context.lightDirectionWS = normalize(float3(0.35, 0.85, 0.40));
+    context.lightRadiance = float3(3.0);
+    context.environmentRadiance = float3(0.18);
+    return context;
+}
+
+float3 arcEvaluateForwardSurface(ArcSurfaceData surface, ArcSurfaceInput input, ArcForwardLightingContext context)
+{
+    float3 normalWS = normalize(surface.normalWS);
+    float3 viewWS = normalize(input.viewWS);
+    float3 lightWS = normalize(context.lightDirectionWS);
+    float3 halfWS = normalize(viewWS + lightWS);
+    float nDotV = saturate(dot(normalWS, viewWS));
+    float nDotL = saturate(dot(normalWS, lightWS));
+    float nDotH = saturate(dot(normalWS, halfWS));
+    float lDotH = saturate(dot(lightWS, halfWS));
+    float roughness = clamp(surface.roughness, 0.04, 1.0);
+    float metallic = saturate(surface.metallic);
+    float transmission = saturate(surface.transmission) * (1.0 - metallic);
+
+    float3 dielectricF0 = arcForwardF0FromIor(max(surface.indexOfRefraction, 1.0001));
+    float3 f0 = lerp(dielectricF0, surface.baseColor, metallic);
+    float3 fresnel = arcForwardFresnelSchlick(nDotV, f0);
+    float distribution = arcForwardD_GGX(nDotH, roughness);
+    float visibility = arcForwardV_SmithGGXCorrelated(nDotV, nDotL, roughness);
+    float3 specular = distribution * visibility * arcForwardFresnelSchlick(lDotH, f0);
+
+    float diffuseWeight = (1.0 - metallic) * (1.0 - transmission);
+    float3 diffuse = surface.baseColor * diffuseWeight *
+                     arcForwardBurleyDiffuse(nDotV, nDotL, lDotH, roughness);
+
+    float3 direct = (diffuse + specular) * context.lightRadiance * nDotL;
+    float3 environmentDiffuse = surface.baseColor * context.environmentRadiance * diffuseWeight *
+                                surface.ambientOcclusion;
+    float3 environmentReflection = context.environmentRadiance * fresnel * lerp(1.0, 0.35, roughness);
+
+    float transmissionDistance = max(surface.thickness, 0.0);
+    float3 attenuation = arcForwardBeerLambert(surface.attenuationColor, transmissionDistance,
+                                               surface.attenuationDistance);
+    float3 transmitted = context.environmentRadiance * attenuation * (1.0 - fresnel) * transmission;
+
+    float clearCoat = saturate(surface.clearCoat);
+    float coatRoughness = clamp(surface.clearCoatRoughness, 0.04, 1.0);
+    float coatDistribution = arcForwardD_GGX(nDotH, coatRoughness);
+    float coatVisibility = arcForwardV_SmithGGXCorrelated(nDotV, nDotL, coatRoughness);
+    float3 coatFresnel = arcForwardFresnelSchlick(lDotH, float3(0.04));
+    float3 clearCoatSpecular = clearCoat * coatDistribution * coatVisibility * coatFresnel *
+                               context.lightRadiance * nDotL;
+
+    return direct + environmentDiffuse + environmentReflection + transmitted + clearCoatSpecular +
+           surface.emissiveRadiance;
+}
+)";
+}
+
 void append_forward(std::ostringstream& source, const material_descriptor& material)
 {
+    append_forward_lighting_library(source);
     source << "[shader(\"fragment\")] float4 main(ArcMaterialPassInput passInput) : SV_Target0\n"
               "{\n";
     append_surface_evaluation(source, material.alpha_mode);
-    source << "    return float4(surface.baseColor + surface.emissiveRadiance, surface.opacity);\n"
+    source << "    ArcSurfaceInput surfaceInput = arcMakeMaterialSurfaceInput(passInput);\n"
+              "    ArcForwardLightingContext lighting = arcDefaultForwardLightingContext();\n"
+              "    float3 color = arcEvaluateForwardSurface(surface, surfaceInput, lighting);\n"
+              "    return float4(color, surface.opacity);\n"
               "}\n";
 }
 
