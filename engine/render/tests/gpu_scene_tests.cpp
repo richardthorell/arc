@@ -154,7 +154,11 @@ TEST_CASE("GPU Scene preparation consolidates conventional and virtual instances
 {
     using namespace arc::render;
     render_world_packet packet;
-    packet.items.push_back({.mesh = {.index = 1u, .generation = 2u}, .object_id = {.index = 3u, .generation = 4u}});
+    packet.items.push_back({.mesh = {.index = 1u, .generation = 2u},
+                            .object_id = {.index = 3u, .generation = 4u},
+                            .mobility = render_mobility::stationary,
+                            .shadow_lod_bias = 1.5f,
+                            .maximum_shadow_distance = 80.0f});
     packet.virtual_items.push_back(
         {.mesh = {.index = 5u, .generation = 6u}, .root_node = 7u, .object_id = {.index = 8u, .generation = 9u}});
 
@@ -164,6 +168,9 @@ TEST_CASE("GPU Scene preparation consolidates conventional and virtual instances
     REQUIRE(packet.gpu_scene_submissions.size() == 2u);
     CHECK(packet.gpu_scene_submissions[0].source == gpu_scene_submission_source::conventional);
     CHECK(packet.gpu_scene_submissions[0].instance.geometry_kind == gpu_scene_geometry_kind::mesh);
+    CHECK(packet.gpu_scene_submissions[0].instance.mobility == render_mobility::stationary);
+    CHECK(packet.gpu_scene_submissions[0].instance.shadow_lod_bias == Catch::Approx(1.5f));
+    CHECK(packet.gpu_scene_submissions[0].instance.maximum_shadow_distance == Catch::Approx(80.0f));
     CHECK(packet.gpu_scene_submissions[1].source == gpu_scene_submission_source::virtual_geometry);
     CHECK(packet.gpu_scene_submissions[1].instance.geometry_kind == gpu_scene_geometry_kind::virtual_mesh);
 

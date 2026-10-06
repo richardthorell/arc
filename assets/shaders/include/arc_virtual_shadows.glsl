@@ -46,6 +46,39 @@ struct ArcVirtualShadowRequestSlot
     ArcVirtualShadowPageRequest request;
 };
 
+struct ArcVirtualShadowRenderPage
+{
+    float worldToPageClip[16];
+    uvec4 addressPhysical;
+    uvec4 virtualPage;
+    uvec4 work;
+    uvec4 revision;
+};
+
+struct ArcVirtualShadowPageWork
+{
+    uint casterCount;
+    uint frustumRejected;
+    uint mobilityRejected;
+    uint distanceRejected;
+    uint unsupportedCasters;
+    uint overflowCount;
+    uint reserved0;
+    uint reserved1;
+};
+
+struct ArcVirtualShadowCasterDraw
+{
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    int vertexOffset;
+    uint firstInstance;
+    uint pageIndex;
+    uint flags;
+    uint reserved;
+};
+
 uint arcVirtualShadowLevelCount(ArcVirtualShadowAddressSpace addressSpace)
 {
     return addressSpace.identityTopology.w & 0xffffu;
@@ -81,6 +114,23 @@ vec4 arcVirtualShadowTransform(ArcVirtualShadowView view, vec3 worldPosition)
                     position),
                 dot(vec4(view.worldToShadowClip[12], view.worldToShadowClip[13], view.worldToShadowClip[14],
                          view.worldToShadowClip[15]),
+                    position));
+}
+
+vec4 arcVirtualShadowPageTransform(ArcVirtualShadowRenderPage page, vec3 worldPosition)
+{
+    vec4 position = vec4(worldPosition, 1.0);
+    return vec4(dot(vec4(page.worldToPageClip[0], page.worldToPageClip[1], page.worldToPageClip[2],
+                         page.worldToPageClip[3]),
+                    position),
+                dot(vec4(page.worldToPageClip[4], page.worldToPageClip[5], page.worldToPageClip[6],
+                         page.worldToPageClip[7]),
+                    position),
+                dot(vec4(page.worldToPageClip[8], page.worldToPageClip[9], page.worldToPageClip[10],
+                         page.worldToPageClip[11]),
+                    position),
+                dot(vec4(page.worldToPageClip[12], page.worldToPageClip[13], page.worldToPageClip[14],
+                         page.worldToPageClip[15]),
                     position));
 }
 

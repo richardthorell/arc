@@ -85,6 +85,9 @@ void prepare_gpu_scene_submissions(render_world_packet& packet)
                           .flags = instance_flags(item.visible, item.selected, item.transparent, item.casts_shadows,
                                                   item.receives_shadows),
                           .maximum_draw_distance = item.maximum_draw_distance,
+                          .maximum_shadow_distance = item.maximum_shadow_distance,
+                          .shadow_lod_bias = item.shadow_lod_bias,
+                          .mobility = item.mobility,
                           .geometry_error_scale = item.geometry_error_scale,
                           .geometry_kind = geometry_kind},
              .instance_id = item.instance_id,
@@ -109,6 +112,9 @@ void prepare_gpu_scene_submissions(render_world_packet& packet)
                           .flags = instance_flags(item.visible, item.selected, false, item.casts_shadows,
                                                   item.receives_shadows),
                           .maximum_draw_distance = item.maximum_draw_distance,
+                          .maximum_shadow_distance = item.maximum_shadow_distance,
+                          .shadow_lod_bias = item.shadow_lod_bias,
+                          .mobility = item.mobility,
                           .geometry_error_scale = item.geometry_error_scale,
                           .geometry_kind = gpu_scene_geometry_kind::virtual_mesh},
              .instance_id = item.instance_id,
@@ -406,23 +412,21 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                 .kind = render_resource_kind::buffer,
                                 .byte_size = maximum_virtual_shadow_requests * virtual_shadow_request_stride,
                                 .element_stride = virtual_shadow_request_stride});
-        virtual_shadow_render_pages =
-            graph.add_resource({.name = "virtual_shadow_render_pages",
-                                .kind = render_resource_kind::buffer,
-                                .byte_size = maximum_virtual_shadow_render_pages *
-                                             sizeof(gpu_virtual_shadow_render_page_record),
-                                .element_stride = sizeof(gpu_virtual_shadow_render_page_record)});
+        virtual_shadow_render_pages = graph.add_resource(
+            {.name = "virtual_shadow_render_pages",
+             .kind = render_resource_kind::buffer,
+             .byte_size = maximum_virtual_shadow_render_pages * sizeof(gpu_virtual_shadow_render_page_record),
+             .element_stride = sizeof(gpu_virtual_shadow_render_page_record)});
         virtual_shadow_page_work =
             graph.add_resource({.name = "virtual_shadow_page_work",
                                 .kind = render_resource_kind::buffer,
-                                .byte_size = maximum_virtual_shadow_render_pages *
-                                             sizeof(gpu_virtual_shadow_page_work),
+                                .byte_size = maximum_virtual_shadow_render_pages * sizeof(gpu_virtual_shadow_page_work),
                                 .element_stride = sizeof(gpu_virtual_shadow_page_work)});
-        virtual_shadow_casters = graph.add_resource({.name = "virtual_shadow_page_casters",
-                                                     .kind = render_resource_kind::buffer,
-                                                     .byte_size = maximum_virtual_shadow_casters *
-                                                                  sizeof(gpu_virtual_shadow_caster_draw),
-                                                     .element_stride = sizeof(gpu_virtual_shadow_caster_draw)});
+        virtual_shadow_casters =
+            graph.add_resource({.name = "virtual_shadow_page_casters",
+                                .kind = render_resource_kind::buffer,
+                                .byte_size = maximum_virtual_shadow_casters * sizeof(gpu_virtual_shadow_caster_draw),
+                                .element_stride = sizeof(gpu_virtual_shadow_caster_draw)});
         virtual_shadow_feedback =
             graph.add_resource({.name = "virtual_shadow_feedback_readback",
                                 .kind = render_resource_kind::buffer,
@@ -436,8 +440,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
         virtual_shadow_render_feedback =
             graph.add_resource({.name = "virtual_shadow_render_feedback_readback",
                                 .kind = render_resource_kind::buffer,
-                                .byte_size = maximum_virtual_shadow_render_pages *
-                                             sizeof(gpu_virtual_shadow_page_work),
+                                .byte_size = maximum_virtual_shadow_render_pages * sizeof(gpu_virtual_shadow_page_work),
                                 .element_stride = sizeof(gpu_virtual_shadow_page_work),
                                 .memory = render_memory_class::readback,
                                 .lifetime = render_resource_lifetime_class::per_world,
