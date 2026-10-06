@@ -178,12 +178,96 @@ void append_gbuffer(std::ostringstream& source, const material_descriptor& mater
 
 void append_forward_lighting_library(std::ostringstream& source)
 {
-    source << R"(struct ArcForwardLightingContext
+    source << R"(struct ArcForwardDirectionalLight
 {
-    float3 lightDirectionWS;
-    float3 lightRadiance;
-    float3 environmentRadiance;
+    float4 directionIntensity;
+    float4 colorFlags;
 };
+
+struct ArcForwardPointLight
+{
+    float4 positionRange;
+    float4 colorIntensity;
+    float4 objectIdShadow;
+    float4 shadowParameters;
+};
+
+struct ArcForwardSpotLight
+{
+    float4 positionRange;
+    float4 directionInnerAngle;
+    float4 colorIntensity;
+    float4 params;
+    float4 objectIdShadow;
+    float4 shadowParameters;
+};
+
+struct ArcForwardAreaLight
+{
+    float4 positionShape;
+    float4 directionTwoSided;
+    float4 tangentWidth;
+    float4 colorIntensity;
+    float4 dimensionsShadow;
+};
+
+struct ArcForwardLocalShadowFace
+{
+    float4x4 lightViewProjection;
+    float4 atlasRect;
+    float4 parameters;
+};
+
+struct ArcForwardLightingData
+{
+    ArcForwardDirectionalLight directionalLights[4];
+    ArcForwardPointLight pointLights[64];
+    ArcForwardSpotLight spotLights[64];
+    ArcForwardAreaLight areaLights[32];
+    ArcForwardLocalShadowFace localShadowFaces[144];
+    float4 ambientColorIntensity;
+    uint directionalCount;
+    uint pointCount;
+    uint spotCount;
+    uint areaCount;
+    uint skippedDirectionalCount;
+    uint skippedPointCount;
+    uint skippedSpotCount;
+    uint skippedAreaCount;
+    uint localShadowFaceCount;
+    uint localShadowPadding0;
+    uint localShadowPadding1;
+    uint localShadowPadding2;
+};
+
+struct ArcForwardShadowData
+{
+    float4x4 lightViewProjection[4];
+    float4 cascadeSplits;
+    float4 params;
+    float4 cascadeTexelSize;
+    float4 cascadeBlendStarts;
+    float4 configuration;
+};
+
+struct ArcForwardSceneData
+{
+    float4 cameraPositionViewportWidth;
+    float4 fogColorDensity;
+    float4 fogParamsViewportHeight;
+};
+
+[[vk::binding(0, 2)]] StructuredBuffer<ArcForwardLightingData> arcForwardLighting;
+[[vk::binding(1, 2)]] Texture2DArray<float> arcForwardDirectionalShadowMap;
+[[vk::binding(2, 2)]] SamplerComparisonState arcForwardDirectionalShadowSampler;
+[[vk::binding(3, 2)]] Texture2D<float> arcForwardLocalShadowAtlas;
+[[vk::binding(4, 2)]] SamplerComparisonState arcForwardLocalShadowSampler;
+[[vk::binding(5, 2)]] Texture2D<float4> arcForwardSceneColor;
+[[vk::binding(6, 2)]] SamplerState arcForwardSceneColorSampler;
+[[vk::binding(7, 2)]] ConstantBuffer<ArcForwardShadowData> arcForwardShadows;
+[[vk::binding(8, 2)]] ConstantBuffer<ArcForwardSceneData> arcForwardScene;
+
+static const float ARC_FORWARD_PI = 3.14159265358979323846;
 
 float3 arcForwardF0FromIor(float ior)
 {
@@ -202,7 +286,7 @@ float arcForwardD_GGX(float nDotH, float roughness)
     float alpha = max(roughness * roughness, 0.002);
     float alpha2 = alpha * alpha;
     float denominator = nDotH * nDotH * (alpha2 - 1.0) + 1.0;
-    return alpha2 / max(3.14159265358979323846 * denominator * denominator, 1e-6);
+    return alpha2 / max(ARC_FORWARD_PI * denominator * denominator, 1e-6);
 }
 
 float arcForwardV_SmithGGXCorrelated(float nDotV, float nDotL, float roughness)
@@ -220,7 +304,7 @@ float arcForwardBurleyDiffuse(float nDotV, float nDotL, float lDotH, float rough
     float fd90 = energyBias + 2.0 * lDotH * lDotH * roughness;
     float lightScatter = 1.0 + (fd90 - 1.0) * pow(1.0 - nDotL, 5.0);
     float viewScatter = 1.0 + (fd90 - 1.0) * pow(1.0 - nDotV, 5.0);
-    return lightScatter * viewScatter * energyFactor / 3.14159265358979323846;
+    return lightScatter * viewScatter * energyFactor / ARC_FORWARD_PI;
 }
 
 float3 arcForwardBeerLambert(float3 attenuationColor, float distance, float attenuationDistance)
@@ -230,60 +314,245 @@ float3 arcForwardBeerLambert(float3 attenuationColor, float distance, float atte
     return exp(-coefficient * max(distance, 0.0));
 }
 
-ArcForwardLightingContext arcDefaultForwardLightingContext()
-{
-    ArcForwardLightingContext context;
-    context.lightDirectionWS = normalize(float3(0.35, 0.85, 0.40));
-    context.lightRadiance = float3(3.0);
-    context.environmentRadiance = float3(0.18);
-    return context;
-}
-
-float3 arcEvaluateForwardSurface(ArcSurfaceData surface, ArcSurfaceInput input, ArcForwardLightingContext context)
+float3 arcForwardEvaluateLight(ArcSurfaceData surface, float3 viewWS, float3 lightWS, float3 radiance,
+                               float visibility)
 {
     float3 normalWS = normalize(surface.normalWS);
-    float3 viewWS = normalize(input.viewWS);
-    float3 lightWS = normalize(context.lightDirectionWS);
     float3 halfWS = normalize(viewWS + lightWS);
     float nDotV = saturate(dot(normalWS, viewWS));
     float nDotL = saturate(dot(normalWS, lightWS));
     float nDotH = saturate(dot(normalWS, halfWS));
     float lDotH = saturate(dot(lightWS, halfWS));
+    if (nDotL <= 0.0 || visibility <= 0.0) return float3(0.0);
+
     float roughness = clamp(surface.roughness, 0.04, 1.0);
     float metallic = saturate(surface.metallic);
     float transmission = saturate(surface.transmission) * (1.0 - metallic);
-
     float3 dielectricF0 = arcForwardF0FromIor(max(surface.indexOfRefraction, 1.0001));
     float3 f0 = lerp(dielectricF0, surface.baseColor, metallic);
-    float3 fresnel = arcForwardFresnelSchlick(nDotV, f0);
     float distribution = arcForwardD_GGX(nDotH, roughness);
-    float visibility = arcForwardV_SmithGGXCorrelated(nDotV, nDotL, roughness);
-    float3 specular = distribution * visibility * arcForwardFresnelSchlick(lDotH, f0);
-
+    float visibilityTerm = arcForwardV_SmithGGXCorrelated(nDotV, nDotL, roughness);
+    float3 specular = distribution * visibilityTerm * arcForwardFresnelSchlick(lDotH, f0);
     float diffuseWeight = (1.0 - metallic) * (1.0 - transmission);
     float3 diffuse = surface.baseColor * diffuseWeight *
                      arcForwardBurleyDiffuse(nDotV, nDotL, lDotH, roughness);
-
-    float3 direct = (diffuse + specular) * context.lightRadiance * nDotL;
-    float3 environmentDiffuse = surface.baseColor * context.environmentRadiance * diffuseWeight *
-                                surface.ambientOcclusion;
-    float3 environmentReflection = context.environmentRadiance * fresnel * lerp(1.0, 0.35, roughness);
-
-    float transmissionDistance = max(surface.thickness, 0.0);
-    float3 attenuation = arcForwardBeerLambert(surface.attenuationColor, transmissionDistance,
-                                               surface.attenuationDistance);
-    float3 transmitted = context.environmentRadiance * attenuation * (1.0 - fresnel) * transmission;
 
     float clearCoat = saturate(surface.clearCoat);
     float coatRoughness = clamp(surface.clearCoatRoughness, 0.04, 1.0);
     float coatDistribution = arcForwardD_GGX(nDotH, coatRoughness);
     float coatVisibility = arcForwardV_SmithGGXCorrelated(nDotV, nDotL, coatRoughness);
     float3 coatFresnel = arcForwardFresnelSchlick(lDotH, float3(0.04));
-    float3 clearCoatSpecular = clearCoat * coatDistribution * coatVisibility * coatFresnel *
-                               context.lightRadiance * nDotL;
+    float3 coat = clearCoat * coatDistribution * coatVisibility * coatFresnel;
+    return (diffuse + specular + coat) * radiance * nDotL * visibility;
+}
 
-    return direct + environmentDiffuse + environmentReflection + transmitted + clearCoatSpecular +
-           surface.emissiveRadiance;
+uint arcForwardPointShadowFace(float3 direction)
+{
+    float3 absoluteDirection = abs(direction);
+    if (absoluteDirection.x >= absoluteDirection.y && absoluteDirection.x >= absoluteDirection.z)
+        return direction.x >= 0.0 ? 0u : 1u;
+    if (absoluteDirection.y >= absoluteDirection.z)
+        return direction.y >= 0.0 ? 2u : 3u;
+    return direction.z >= 0.0 ? 4u : 5u;
+}
+
+float arcForwardSampleLocalShadowFace(uint faceIndex, float3 worldPosition)
+{
+    ArcForwardLightingData lighting = arcForwardLighting[0];
+    if (faceIndex >= min(lighting.localShadowFaceCount, 144u)) return 1.0;
+    ArcForwardLocalShadowFace face = lighting.localShadowFaces[faceIndex];
+    float4 clip = mul(face.lightViewProjection, float4(worldPosition, 1.0));
+    if (clip.w <= 0.0) return 1.0;
+    float3 projected = clip.xyz / clip.w;
+    float2 uv = projected.xy * 0.5 + 0.5;
+    if (projected.z <= 0.0 || projected.z >= 1.0 || any(uv < 0.0) || any(uv > 1.0)) return 1.0;
+    float2 atlasUv = face.atlasRect.xy + uv * face.atlasRect.zw;
+    float comparison = projected.z - face.parameters.y;
+    float texel = face.parameters.x;
+    float result = 0.0;
+    [unroll]
+    for (int y = -1; y <= 1; ++y)
+        [unroll]
+        for (int x = -1; x <= 1; ++x)
+            result += arcForwardLocalShadowAtlas.SampleCmpLevelZero(
+                arcForwardLocalShadowSampler, atlasUv + float2(x, y) * texel, comparison);
+    return result / 9.0;
+}
+
+float arcForwardPointShadow(ArcForwardPointLight light, float3 worldPosition)
+{
+    int firstFace = int(light.shadowParameters.x + 0.5);
+    if (firstFace < 0 || light.shadowParameters.y < 5.5) return 1.0;
+    uint face = arcForwardPointShadowFace(worldPosition - light.positionRange.xyz);
+    float sampled = arcForwardSampleLocalShadowFace(uint(firstFace) + face, worldPosition);
+    return lerp(1.0, sampled, saturate(light.shadowParameters.z));
+}
+
+float arcForwardSpotShadow(ArcForwardSpotLight light, float3 worldPosition)
+{
+    int face = int(light.shadowParameters.x + 0.5);
+    if (face < 0) return 1.0;
+    float sampled = arcForwardSampleLocalShadowFace(uint(face), worldPosition);
+    return lerp(1.0, sampled, saturate(light.shadowParameters.z));
+}
+
+int arcForwardShadowCascade(float cameraDistance)
+{
+    int cascadeCount = clamp(int(arcForwardShadows.configuration.x + 0.5), 0, 4);
+    [unroll]
+    for (int cascade = 0; cascade < 4; ++cascade)
+        if (cascade < cascadeCount && cameraDistance <= arcForwardShadows.cascadeSplits[cascade]) return cascade;
+    return -1;
+}
+
+float arcForwardSampleDirectionalCascade(int cascade, float3 worldPosition, float3 surfaceNormal,
+                                         float3 lightDirection)
+{
+    float4 lightClip = mul(arcForwardShadows.lightViewProjection[cascade], float4(worldPosition, 1.0));
+    float3 projected = lightClip.xyz / max(abs(lightClip.w), 1e-6);
+    float2 uv = projected.xy * 0.5 + 0.5;
+    if (any(uv < 0.0) || any(uv > 1.0) || projected.z < 0.0 || projected.z > 1.0) return 1.0;
+    float normalBias = arcForwardShadows.params.z *
+                       saturate(1.0 - dot(normalize(surfaceNormal), normalize(lightDirection)));
+    float compareDepth = projected.z - arcForwardShadows.params.y - normalBias;
+    return min(
+        arcForwardDirectionalShadowMap.SampleCmpLevelZero(
+            arcForwardDirectionalShadowSampler, float3(uv, float(cascade)), compareDepth),
+        arcForwardDirectionalShadowMap.SampleCmpLevelZero(
+            arcForwardDirectionalShadowSampler, float3(uv, float(cascade + 4)), compareDepth));
+}
+
+float arcForwardDirectionalShadow(float3 worldPosition, float3 surfaceNormal, float3 lightDirection)
+{
+    if (arcForwardShadows.params.x <= 0.0 || arcForwardShadows.configuration.x < 0.5) return 1.0;
+    float3 cameraPosition = arcForwardScene.cameraPositionViewportWidth.xyz;
+    float3 cameraForward = normalize(arcForwardShadows.configuration.yzw);
+    float cameraDepth = max(dot(worldPosition - cameraPosition, cameraForward), 0.0);
+    int cascade = arcForwardShadowCascade(cameraDepth);
+    if (cascade < 0) return 1.0;
+    float visibility = arcForwardSampleDirectionalCascade(cascade, worldPosition, surfaceNormal, lightDirection);
+    int cascadeCount = clamp(int(arcForwardShadows.configuration.x + 0.5), 0, 4);
+    if (cascade + 1 < cascadeCount)
+    {
+        float blendStart = arcForwardShadows.cascadeBlendStarts[cascade];
+        float blendEnd = arcForwardShadows.cascadeSplits[cascade];
+        float blend = smoothstep(blendStart, max(blendEnd, blendStart + 1e-5), cameraDepth);
+        if (blend > 0.0)
+            visibility = lerp(
+                visibility,
+                arcForwardSampleDirectionalCascade(cascade + 1, worldPosition, surfaceNormal, lightDirection),
+                blend);
+    }
+    return lerp(1.0 - arcForwardShadows.params.x, 1.0, visibility);
+}
+
+float3 arcEvaluateForwardSurface(ArcSurfaceData surface, ArcSurfaceInput input, ArcMaterialPassInput passInput)
+{
+    ArcForwardLightingData lighting = arcForwardLighting[0];
+    float3 viewWS = normalize(input.viewWS);
+    float3 direct = float3(0.0);
+
+    [loop]
+    for (uint index = 0u; index < min(lighting.directionalCount, 4u); ++index)
+    {
+        float3 lightWS = normalize(-lighting.directionalLights[index].directionIntensity.xyz);
+        float3 radiance = lighting.directionalLights[index].colorFlags.rgb *
+                          lighting.directionalLights[index].directionIntensity.w;
+        float shadow = index == 0u
+                           ? arcForwardDirectionalShadow(input.positionWS, surface.normalWS, lightWS)
+                           : 1.0;
+        direct += arcForwardEvaluateLight(surface, viewWS, lightWS, radiance, shadow);
+    }
+
+    [loop]
+    for (uint index = 0u; index < min(lighting.pointCount, 64u); ++index)
+    {
+        ArcForwardPointLight light = lighting.pointLights[index];
+        float3 toLight = light.positionRange.xyz - input.positionWS;
+        float distanceSquared = max(dot(toLight, toLight), 1e-4);
+        float distanceToLight = sqrt(distanceSquared);
+        float normalizedRange = saturate(distanceToLight / max(light.positionRange.w, 1e-4));
+        float cutoff = 1.0 - pow(normalizedRange, 4.0);
+        float3 radiance = light.colorIntensity.rgb * light.colorIntensity.w * cutoff * cutoff / distanceSquared;
+        direct += arcForwardEvaluateLight(surface, viewWS, toLight / distanceToLight, radiance,
+                                          arcForwardPointShadow(light, input.positionWS));
+    }
+
+    [loop]
+    for (uint index = 0u; index < min(lighting.spotCount, 64u); ++index)
+    {
+        ArcForwardSpotLight light = lighting.spotLights[index];
+        float3 toLight = light.positionRange.xyz - input.positionWS;
+        float distanceSquared = max(dot(toLight, toLight), 1e-4);
+        float distanceToLight = sqrt(distanceSquared);
+        float3 lightWS = toLight / distanceToLight;
+        float normalizedRange = saturate(distanceToLight / max(light.positionRange.w, 1e-4));
+        float cutoff = 1.0 - pow(normalizedRange, 4.0);
+        float cone = smoothstep(cos(light.params.x), cos(light.directionInnerAngle.w),
+                                dot(-lightWS, normalize(light.directionInnerAngle.xyz)));
+        float3 radiance = light.colorIntensity.rgb * light.colorIntensity.w *
+                          cutoff * cutoff * cone / distanceSquared;
+        direct += arcForwardEvaluateLight(surface, viewWS, lightWS, radiance,
+                                          arcForwardSpotShadow(light, input.positionWS));
+    }
+
+    [loop]
+    for (uint index = 0u; index < min(lighting.areaCount, 32u); ++index)
+    {
+        ArcForwardAreaLight light = lighting.areaLights[index];
+        float3 toLight = light.positionShape.xyz - input.positionWS;
+        float distanceSquared = max(dot(toLight, toLight), 1e-4);
+        float distanceToLight = sqrt(distanceSquared);
+        float3 lightWS = toLight / distanceToLight;
+        float facing = dot(normalize(light.directionTwoSided.xyz), -lightWS);
+        facing = light.directionTwoSided.w > 0.5 ? abs(facing) : max(facing, 0.0);
+        float width = max(light.tangentWidth.w, 1e-4);
+        float height = max(light.dimensionsShadow.y, 1e-4);
+        float area = light.positionShape.w > 0.5 ? ARC_FORWARD_PI * width * height * 0.25 : width * height;
+        float3 radiance = light.colorIntensity.rgb * light.colorIntensity.w *
+                          min(area * facing / distanceSquared, 2.0 * ARC_FORWARD_PI);
+        direct += arcForwardEvaluateLight(surface, viewWS, lightWS, radiance, 1.0);
+    }
+
+    float roughness = clamp(surface.roughness, 0.04, 1.0);
+    float metallic = saturate(surface.metallic);
+    float transmission = saturate(surface.transmission) * (1.0 - metallic);
+    float nDotV = saturate(dot(normalize(surface.normalWS), viewWS));
+    float3 dielectricF0 = arcForwardF0FromIor(max(surface.indexOfRefraction, 1.0001));
+    float3 f0 = lerp(dielectricF0, surface.baseColor, metallic);
+    float3 fresnel = arcForwardFresnelSchlick(nDotV, f0);
+    float3 ambientRadiance = lighting.ambientColorIntensity.rgb * lighting.ambientColorIntensity.w;
+    float diffuseWeight = (1.0 - metallic) * (1.0 - transmission);
+    float3 ambient = surface.baseColor * ambientRadiance * diffuseWeight * surface.ambientOcclusion;
+    float3 reflection = ambientRadiance * fresnel * lerp(1.0, 0.35, roughness);
+
+    float2 viewportSize = max(
+        float2(arcForwardScene.cameraPositionViewportWidth.w, arcForwardScene.fogParamsViewportHeight.w),
+        float2(1.0));
+    float2 screenUv = passInput.clipPosition.xy / max(abs(passInput.clipPosition.w), 1e-5) * float2(0.5, -0.5) + 0.5;
+    float eta = 1.0 / max(surface.indexOfRefraction, 1.0001);
+    float2 refractOffset = normalize(surface.normalWS).xz * (1.0 - eta) *
+                           max(surface.thickness, 0.02) / viewportSize;
+    float3 sceneTransmission = arcForwardSceneColor.SampleLevel(
+        arcForwardSceneColorSampler, saturate(screenUv + refractOffset), 0.0).rgb;
+    float3 attenuation = arcForwardBeerLambert(surface.attenuationColor, max(surface.thickness, 0.0),
+                                               surface.attenuationDistance);
+    float3 transmitted = sceneTransmission * attenuation * (1.0 - fresnel) * transmission;
+
+    float3 color = direct + ambient + reflection + transmitted + surface.emissiveRadiance;
+    float density = arcForwardScene.fogColorDensity.w;
+    if (density > 0.0)
+    {
+        float distanceFromCamera = length(arcForwardScene.cameraPositionViewportWidth.xyz - input.positionWS);
+        float startDistance = max(arcForwardScene.fogParamsViewportHeight.x, 0.0);
+        float heightFalloff = max(arcForwardScene.fogParamsViewportHeight.y, 0.0);
+        float maxOpacity = saturate(arcForwardScene.fogParamsViewportHeight.z);
+        float distanceTerm = max(distanceFromCamera - startDistance, 0.0) * density;
+        float heightTerm = exp(-max(input.positionWS.y, 0.0) * heightFalloff);
+        float fogAmount = clamp(1.0 - exp(-distanceTerm * heightTerm), 0.0, maxOpacity);
+        color = lerp(color, arcForwardScene.fogColorDensity.rgb, fogAmount);
+    }
+    return color;
 }
 )";
 }
@@ -295,8 +564,7 @@ void append_forward(std::ostringstream& source, const material_descriptor& mater
               "{\n";
     append_surface_evaluation(source, material.alpha_mode);
     source << "    ArcSurfaceInput surfaceInput = arcMakeMaterialSurfaceInput(passInput);\n"
-              "    ArcForwardLightingContext lighting = arcDefaultForwardLightingContext();\n"
-              "    float3 color = arcEvaluateForwardSurface(surface, surfaceInput, lighting);\n"
+              "    float3 color = arcEvaluateForwardSurface(surface, surfaceInput, passInput);\n"
               "    return float4(color, surface.opacity);\n"
               "}\n";
 }
