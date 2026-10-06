@@ -106,7 +106,8 @@ const isMessage = (value: unknown): value is AiConversationMessage => {
     (message.toolReferences === undefined ||
       (Array.isArray(message.toolReferences) && message.toolReferences.every(isToolReference))) &&
     (message.taskReferences === undefined ||
-      (Array.isArray(message.taskReferences) && message.taskReferences.every(isTaskReference)))
+      (Array.isArray(message.taskReferences) && message.taskReferences.every(isTaskReference))) &&
+    isOptionalStringArray(message.taskDiagnostics)
   );
 };
 
