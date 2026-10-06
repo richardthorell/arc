@@ -308,6 +308,15 @@ struct shadow_uniform_data
     float configuration[4]{};
 };
 
+struct alignas(16) forward_scene_uniform_data
+{
+    float camera_position_viewport_width[4]{};
+    float fog_color_density[4]{};
+    float fog_params_viewport_height[4]{};
+};
+static_assert(sizeof(forward_scene_uniform_data) == 48);
+
+
 struct gpu_scope_record
 {
     std::string name;
@@ -1279,6 +1288,16 @@ private:
 
     bool ensure_runtime_water_forward_pipeline(gpu_material& material);
 
+    bool ensure_forward_scene_resources();
+
+    void update_forward_scene_resources();
+
+    bool capture_forward_scene_color(VkCommandBuffer command_buffer);
+
+    void destroy_forward_scene_resources() noexcept;
+
+    VkDescriptorSet current_forward_scene_descriptor_set() const noexcept;
+
     void destroy_virtual_shadow_resources(vulkan_virtual_shadow_resources& resources) noexcept;
 
     void retire_virtual_shadow_resources();
@@ -1568,6 +1587,12 @@ private:
     bool frame_shadows_enabled_{true};
     bool frame_fxaa_enabled_{};
     gpu_buffer light_buffer_;
+    VkDescriptorSetLayout forward_scene_descriptor_set_layout_{};
+    VkDescriptorPool forward_scene_descriptor_pool_{};
+    std::vector<VkDescriptorSet> forward_scene_descriptor_sets_;
+    std::vector<gpu_buffer> forward_scene_uniform_buffers_;
+    VkSampler forward_scene_sampler_{};
+    graph_image forward_scene_color_{};
     gpu_buffer gpu_scene_visibility_buffer_;
     gpu_buffer gpu_scene_transform_buffer_;
     std::array<gpu_resource_table_buffer, 7> gpu_resource_tables_;
