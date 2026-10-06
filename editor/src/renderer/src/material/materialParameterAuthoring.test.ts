@@ -12,6 +12,9 @@ describe('material parameter authoring metadata', () => {
     ).toEqual([
       { name: 'Base Color Texture', group: 'Parameters', sortOrder: 0 },
       { name: 'Base Color Tint', group: 'Parameters', sortOrder: 0 },
+      { name: 'Emissive Color', group: 'Parameters', sortOrder: 0 },
+      { name: 'Emissive Strength', group: 'Parameters', sortOrder: 0 },
+      { name: 'Emissive Texture', group: 'Parameters', sortOrder: 0 },
       { name: 'Metallic', group: 'Parameters', sortOrder: 0 },
       { name: 'Roughness', group: 'Parameters', sortOrder: 0 },
     ]);
@@ -54,6 +57,9 @@ describe('material parameter authoring metadata', () => {
       { name: 'Detail', group: 'Detail', description: undefined, sortOrder: 0 },
       { name: 'Base Color Texture', group: 'Parameters', description: undefined, sortOrder: 0 },
       { name: 'Base Color Tint', group: 'Parameters', description: undefined, sortOrder: 0 },
+      { name: 'Emissive Color', group: 'Parameters', description: undefined, sortOrder: 0 },
+      { name: 'Emissive Strength', group: 'Parameters', description: undefined, sortOrder: 0 },
+      { name: 'Emissive Texture', group: 'Parameters', description: undefined, sortOrder: 0 },
       { name: 'Metallic', group: 'Surface', description: undefined, sortOrder: 10 },
       { name: 'Roughness', group: 'Surface', description: 'Microsurface response', sortOrder: 20 },
     ]);
@@ -63,7 +69,13 @@ describe('material parameter authoring metadata', () => {
     const graph = createDefaultMaterialGraph();
     for (const node of graph.nodes) {
       if (node.parameter)
-        Object.assign(node.parameter, { group: node.parameter.name.startsWith('Base Color') ? 'Color' : 'Surface' });
+        Object.assign(node.parameter, {
+          group: node.parameter.name.startsWith('Base Color')
+            ? 'Color'
+            : node.parameter.name.startsWith('Emissive')
+              ? 'Emission'
+              : 'Surface',
+        });
     }
 
     expect(
@@ -77,6 +89,14 @@ describe('material parameter authoring metadata', () => {
         parameters: [
           { name: 'Base Color Texture', type: 'texture2d' },
           { name: 'Base Color Tint', type: 'vec4' },
+        ],
+      },
+      {
+        name: 'Emission',
+        parameters: [
+          { name: 'Emissive Color', type: 'vec4' },
+          { name: 'Emissive Strength', type: 'float' },
+          { name: 'Emissive Texture', type: 'texture2d' },
         ],
       },
       {
