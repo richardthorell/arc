@@ -306,6 +306,25 @@ describe('AI agent task progress', () => {
         if (providerTurn === 3) {
           yield {
             type: 'tool-call',
+            call: {
+              id: 'plan-complete',
+              name: 'agent.updatePlan',
+              arguments: {
+                planId: 'trees-plan',
+                title: 'Build two trees',
+                steps: [
+                  { id: 'inspect', title: 'Inspect primitive options', state: 'completed' },
+                  { id: 'build', title: 'Build two trees', state: 'completed' },
+                ],
+              },
+            },
+          };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        if (providerTurn === 4) {
+          yield {
+            type: 'tool-call',
             call: { id: 'commit', name: 'edit.commit', arguments: { editSessionId: 'edit-1' } },
           };
           yield { type: 'done', finishReason: 'tool_calls' };
