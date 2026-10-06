@@ -38,6 +38,10 @@
   justify-content: start;
   gap: 8px;
   min-height: 20px;
+  font-size: 1em;
+  transition:
+    min-height 180ms ease,
+    font-size 180ms ease;
 }
 
 .ai-chat-live-progress-indicator {
@@ -49,9 +53,20 @@
   justify-content: center;
   border: 1.5px solid color-mix(in srgb, currentColor 28%, transparent);
   border-radius: 50%;
+  transition:
+    width 180ms ease,
+    height 180ms ease,
+    border-color 180ms ease;
+}
+
+.ai-chat-live-progress-row.is-working {
+  min-height: 23px;
+  font-size: 1.08em;
 }
 
 .ai-chat-live-progress-row.is-working .ai-chat-live-progress-indicator {
+  width: 12px;
+  height: 12px;
   border-color: color-mix(in srgb, currentColor 28%, transparent);
   border-top-color: var(--arc-color-text-strong);
   animation: ai-chat-progress-spin 720ms linear infinite;
@@ -66,7 +81,7 @@
 }
 
 .ai-chat-live-progress-row.is-complete .ai-chat-live-progress-indicator {
-  border-color: transparent;
+  border-color: var(--arc-color-success);
   color: var(--arc-color-success);
 }
 
@@ -126,6 +141,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .ai-chat-live-progress-row,
+  .ai-chat-live-progress-indicator {
+    transition: none;
+  }
+
   .ai-chat-live-progress-row.is-working .ai-chat-live-progress-indicator,
   .ai-chat-live-progress-label {
     animation: none;
