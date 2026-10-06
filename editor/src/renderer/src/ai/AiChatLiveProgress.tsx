@@ -1,4 +1,4 @@
-import { ListChecks, X } from 'lucide-react';
+import { Check, Copy, ListChecks, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { AiConversationTaskReference, AiConversationToolReference } from '../../../common/aiConversationTypes';
 import './aiChatLiveProgress.css';
@@ -14,6 +14,7 @@ type ProgressRow = {
 type AiChatLiveProgressProps = {
   tasks?: readonly AiConversationTaskReference[];
   tools?: readonly AiConversationToolReference[];
+  diagnostics?: readonly string[];
   showIdle?: boolean;
 };
 
@@ -55,7 +56,7 @@ const collectPendingTools = (references: readonly AiConversationToolReference[] 
       state: 'working' as const,
     }));
 
-export function AiChatLiveProgress({ tasks, tools, showIdle = false }: AiChatLiveProgressProps) {
+export function AiChatLiveProgress({ tasks, tools, diagnostics, showIdle = false }: AiChatLiveProgressProps) {
   const taskRows = collectRunnableTasks(tasks);
   const rows = taskRows.length ? taskRows : collectPendingTools(tools);
   const visibleRows = rows.length ? rows : [{ id: 'idle', title: 'Thinking…', state: 'working' as const }];
@@ -64,6 +65,7 @@ export function AiChatLiveProgress({ tasks, tools, showIdle = false }: AiChatLiv
   const shellRef = useRef<HTMLDivElement | null>(null);
   const [messageStreaming, setMessageStreaming] = useState(hasActiveWork);
   const [expanded, setExpanded] = useState(hasFailure || hasActiveWork);
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   const wasTerminalRef = useRef(false);
 
   useEffect(() => {
@@ -96,6 +98,13 @@ export function AiChatLiveProgress({ tasks, tools, showIdle = false }: AiChatLiv
   if (!rows.length && !showIdle) return null;
 
   const toggleLabel = expanded ? 'Hide tasks' : 'Show tasks';
+  const copyDiagnostics = async () => {
+    if (!diagnostics?.length || !navigator.clipboard?.writeText) return;
+    await navigator.clipboard.writeText(['ARC AI task diagnostics', ...diagnostics].join('\n'));
+    setDiagnosticsCopied(true);
+    window.setTimeout(() => setDiagnosticsCopied(false), 1200);
+  };
+
   return (
     <div
       className={`ai-chat-task-progress-shell${terminal ? ' is-terminal' : ''}${expanded ? ' is-expanded' : ''}`}
@@ -126,6 +135,18 @@ export function AiChatLiveProgress({ tasks, tools, showIdle = false }: AiChatLiv
             </div>
           ))}
         </div>
+      ) : null}
+      {diagnostics?.length ? (
+        <button
+          aria-label={diagnosticsCopied ? 'Diagnostics copied' : 'Copy task diagnostics'}
+          className="ai-chat-task-diagnostics-button"
+          title={diagnosticsCopied ? 'Diagnostics copied' : 'Copy task diagnostics'}
+          type="button"
+          onClick={() => void copyDiagnostics()}
+        >
+          {diagnosticsCopied ? <Check aria-hidden="true" size={12} /> : <Copy aria-hidden="true" size={12} />}
+          <span>{diagnosticsCopied ? 'Copied' : 'Copy diagnostics'}</span>
+        </button>
       ) : null}
     </div>
   );
