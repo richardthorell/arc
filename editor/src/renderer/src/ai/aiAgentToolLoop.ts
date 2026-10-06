@@ -68,7 +68,8 @@ const normalizedToolFailure = (call: AiToolCall, error: unknown): AiToolResult =
       operation: call.name,
       content:
         `ARC tool revision conflict: ${message}. ` +
-        'Refresh authoritative scene state with scene.overview. If an edit session is still active, use the revision reported by that session or cancel and begin a new transaction before retrying the mutation.',
+        'Refresh authoritative scene state with scene.overview. If an edit session is still active, use the revision ' +
+        'reported by that session or cancel and begin a new transaction before retrying the mutation.',
       isError: true,
       errorCode: 'revision_conflict',
       retryable: true,
@@ -130,7 +131,9 @@ const preserveRuntimeTaskData = (previous: AiTaskProgress | undefined, next: AiT
     if (!old) {
       return {
         ...task,
-        ...(task.children?.length ? { children: task.children.map((child) => merge(undefined, child)) } : {}),
+        ...(task.children?.length
+          ? { children: task.children.map((child) => merge(undefined, child)) }
+          : {}),
       };
     }
 
@@ -427,7 +430,11 @@ export async function* runAiAgentToolLoop(
         task: flattenTaskTree(linkedRoot).find((task) => task.id === planned!.task.id)!,
       };
       yield { type: 'task-update', task: linkedRoot };
-    } else if (!planned && !planRoots.size && semanticExecutionCalls.some((call) => genericTaskTools.has(call.name))) {
+    } else if (
+      !planned &&
+      !planRoots.size &&
+      semanticExecutionCalls.some((call) => genericTaskTools.has(call.name))
+    ) {
       const genericCalls = semanticExecutionCalls.filter((call) => genericTaskTools.has(call.name));
       genericTask = taskForCalls(providerStep, genericCalls, 'in_progress');
       yield { type: 'task-update', task: genericTask };
@@ -442,7 +449,9 @@ export async function* runAiAgentToolLoop(
       const result = await executeTool(call, invokeTool, request.signal);
       if (request.signal?.aborted) return;
       if (result.isError && !failedResult) failedResult = result;
-      if (result.isError && semanticCallIds.has(call.id) && !failedSemanticResult) failedSemanticResult = result;
+      if (result.isError && semanticCallIds.has(call.id) && !failedSemanticResult) {
+        failedSemanticResult = result;
+      }
       yield { type: 'tool-result', result, agentStep: providerStep };
       messages.push({
         id: runtimeMessageId('agent-tool', providerStep, index),
