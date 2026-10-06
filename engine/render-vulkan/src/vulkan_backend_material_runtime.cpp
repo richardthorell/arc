@@ -63,8 +63,8 @@ bool vulkan_render_backend::reject_runtime_material(gpu_material& material, std:
     destroy_material_runtime(material.runtime);
     material.runtime.generation = generation;
     material.runtime.failed = true;
-    arc::diagnostics::warn("render.vulkan", "Compiled Material ABI fallback for '" + material.data.name +
-                                                "': " + std::move(reason));
+    arc::diagnostics::warn("render.vulkan",
+                           "Compiled Material ABI fallback for '" + material.data.name + "': " + std::move(reason));
     return false;
 }
 
@@ -226,7 +226,7 @@ VkDescriptorType vulkan_render_backend::runtime_descriptor_type(shader_resource_
 }
 
 bool vulkan_render_backend::update_runtime_texture_descriptors(gpu_material& material, std::uint32_t frame_slot,
-                                                                const material_runtime_pass& pass)
+                                                               const material_runtime_pass& pass)
 {
     if (!material.data.runtime_program || frame_slot >= material.runtime.descriptor_sets.size()) return false;
 
@@ -552,8 +552,7 @@ bool vulkan_render_backend::create_runtime_gbuffer_pipeline(gpu_material& materi
     return true;
 }
 
-bool vulkan_render_backend::create_runtime_forward_pipeline(gpu_material& material,
-                                                            const material_runtime_pass& pass)
+bool vulkan_render_backend::create_runtime_forward_pipeline(gpu_material& material, const material_runtime_pass& pass)
 {
     VkShaderModule vert = create_shader_module(builtin::gbuffer_vert_spv, std::size(builtin::gbuffer_vert_spv));
     VkShaderModule frag = create_shader_module(pass.compiled.bytecode);

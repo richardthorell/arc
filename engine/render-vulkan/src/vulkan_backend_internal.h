@@ -1244,7 +1244,7 @@ private:
     bool reject_runtime_material(gpu_material& material, std::string reason);
 
     const material_runtime_pass* runtime_material_pass(const gpu_material& material,
-                                                      material_pass requested) const noexcept;
+                                                       material_pass requested) const noexcept;
 
     const material_runtime_pass* runtime_gbuffer_pass(const gpu_material& material) const noexcept;
 
