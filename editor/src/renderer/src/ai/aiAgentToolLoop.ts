@@ -73,6 +73,17 @@ const normalizedToolFailure = (call: AiToolCall, error: unknown): AiToolResult =
       retryable: true,
     };
   }
+  if (isRecoverableBatchAbort(call, message)) {
+    return {
+      toolCallId: call.id,
+      name: call.name,
+      operation: call.name,
+      content: `ARC tool recoverable error: ${message}`,
+      isError: true,
+      errorCode: 'tool_error',
+      retryable: true,
+    };
+  }
   return {
     toolCallId: call.id,
     name: call.name,
@@ -172,6 +183,19 @@ const withLinkedCalls = (task: AiTaskProgress, calls: readonly AiToolCall[], pro
 });
 
 const agentControlTools = new Set(['edit.begin', 'edit.request', 'edit.commit', 'edit.cancel']);
+const genericTaskTools = new Set([
+  'edit.apply',
+  'editor.applyBatch',
+  'history.undo',
+  'history.redo',
+  'selection.set',
+  'selection.clear',
+  'viewport.move',
+  'viewport.setRenderOptions',
+]);
+
+const isRecoverableBatchAbort = (call: AiToolCall, message: string): boolean =>
+  call.name === 'editor.applyBatch' && /batch failed and the edit transaction was cancelled/iu.test(message);
 
 const failedPlanTask = (
   roots: ReadonlyMap<string, AiTaskProgress>,
@@ -400,8 +424,13 @@ export async function* runAiAgentToolLoop(
         task: flattenTaskTree(linkedRoot).find((task) => task.id === planned!.task.id)!,
       };
       yield { type: 'task-update', task: linkedRoot };
-    } else if (!planned && !planRoots.size && hasSemanticExecution) {
-      genericTask = taskForCalls(providerStep, semanticExecutionCalls, 'in_progress');
+    } else if (
+      !planned &&
+      !planRoots.size &&
+      semanticExecutionCalls.some((call) => genericTaskTools.has(call.name))
+    ) {
+      const genericCalls = semanticExecutionCalls.filter((call) => genericTaskTools.has(call.name));
+      genericTask = taskForCalls(providerStep, genericCalls, 'in_progress');
       yield { type: 'task-update', task: genericTask };
     }
 
@@ -442,7 +471,9 @@ export async function* runAiAgentToolLoop(
         type: 'task-update',
         task: taskForCalls(
           providerStep,
-          executionCalls,
+          genericTask.toolCallIds?.length
+            ? executionCalls.filter((call) => genericTask!.toolCallIds!.includes(call.id))
+            : executionCalls,
           failedResult ? (failedResult.retryable ? 'in_progress' : 'failed') : 'completed',
           failedResult
             ? failedResult.retryable
@@ -454,4 +485,11 @@ export async function* runAiAgentToolLoop(
     }
     if (hasSemanticExecution) ++toolSteps;
   }
+
+  yield {
+    type: 'error',
+    code: 'tool',
+    message: `AI agent exhausted its provider-turn allowance before producing a final response`,
+    retryable: false,
+  };
 }
