@@ -389,6 +389,77 @@ TEST_CASE("virtual shadow GPU feedback is generation safe deterministic and boun
     CHECK(translated.requests[0].light_priority == 200);
 }
 
+TEST_CASE("virtual shadow render completion rejects stale physical and work generations")
+{
+    constexpr std::uint64_t page_pair_bytes =
+        static_cast<std::uint64_t>(arc::render::virtual_shadow_physical_page_texels) *
+        arc::render::virtual_shadow_physical_page_texels * 4u;
+    arc::render::virtual_shadow_cache cache(page_pair_bytes * 2u);
+    const auto light = cache.create_address_space({.light_kind = arc::render::shadow_light_kind::spot,
+                                                   .virtual_resolution = arc::render::virtual_shadow_page_texels,
+                                                   .level_count = 1});
+    REQUIRE(light);
+    const arc::render::virtual_shadow_page_request request{
+        .key = {.address_space = *light, .coordinate = {0, 0, 0, 0}},
+        .frame_index = 1,
+        .content_revision = 7};
+    auto result = cache.resolve_requests(std::span{&request, 1}, 1);
+    REQUIRE(result.render_pages.size() == 1);
+    const auto stale = arc::render::make_virtual_shadow_page_render_token(result.render_pages.front());
+    REQUIRE(cache.set_in_flight(stale.key, true));
+    REQUIRE(cache.invalidate(*light, arc::render::virtual_shadow_invalidation_reason::caster_transform) == 1);
+    REQUIRE_FALSE(cache.complete_render(stale, true));
+    REQUIRE(cache.find(stale.key)->dirty());
+
+    result = cache.resolve_requests(std::span{&request, 1}, 2);
+    REQUIRE(result.render_pages.size() == 1);
+    const auto retry = arc::render::make_virtual_shadow_page_render_token(result.render_pages.front());
+    REQUIRE(cache.set_in_flight(retry.key, true));
+    REQUIRE(cache.complete_render(retry, false));
+    REQUIRE(cache.find(retry.key)->dirty());
+    REQUIRE_FALSE(cache.find(retry.key)->in_flight);
+
+    result = cache.resolve_requests(std::span{&request, 1}, 3);
+    REQUIRE(result.render_pages.size() == 1);
+    const auto completed = arc::render::make_virtual_shadow_page_render_token(result.render_pages.front());
+    REQUIRE(cache.set_in_flight(completed.key, true));
+    REQUIRE(cache.complete_render(completed, true));
+    REQUIRE(cache.find(completed.key)->resident);
+    REQUIRE_FALSE(cache.find(completed.key)->dirty());
+}
+
+TEST_CASE("virtual shadow render pages encode deterministic page projections and work ranges")
+{
+    arc::render::virtual_shadow_view_descriptor view{};
+    view.world_to_shadow_clip = arc::math::identity<float, 4>();
+    view.pages_per_axis = 4;
+    view.face = 2;
+    view.level = 1;
+    const arc::render::virtual_shadow_page_mapping mapping{
+        .key = {.address_space = {3, 9},
+                .coordinate = {1, 2, 1, 2},
+                .layer = arc::render::virtual_shadow_page_layer::dynamic_depth},
+        .physical_page = {18, 4},
+        .content_revision = 0x123456789abcdef0ull,
+        .work_revision = 5};
+    const auto encoded = arc::render::encode_virtual_shadow_render_page(mapping, view, 17, 8, 1024, 512, 33);
+    CHECK(encoded.address_physical[0] == 3);
+    CHECK(encoded.address_physical[1] == 9);
+    CHECK(encoded.address_physical[2] == 18);
+    CHECK(encoded.address_physical[3] == 4);
+    CHECK(encoded.virtual_page[2] == 17);
+    CHECK((encoded.virtual_page[3] & 0xffffu) == 2);
+    CHECK((encoded.virtual_page[3] >> 16u) == 2);
+    CHECK(encoded.work[0] == 1024);
+    CHECK(encoded.work[1] == 512);
+    CHECK(encoded.revision[0] == 0x9abcdef0u);
+    CHECK(encoded.revision[1] == 0x12345678u);
+    CHECK(encoded.world_to_page_clip[0] == Catch::Approx(4.0f));
+    CHECK(encoded.world_to_page_clip[3] == Catch::Approx(1.0f));
+    CHECK(encoded.world_to_page_clip[5] == Catch::Approx(4.0f));
+    CHECK(encoded.world_to_page_clip[7] == Catch::Approx(-1.0f));
+}
+
 TEST_CASE("directional virtual shadow views are stable equal-grid clip levels")
 {
     const arc::render::virtual_shadow_address_space_descriptor descriptor{

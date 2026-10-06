@@ -137,6 +137,59 @@ resolve_virtual_shadow_physical_pool(std::uint64_t budget_bytes, std::uint32_t m
     return result;
 }
 
+math::matrix4f virtual_shadow_page_view_projection(const virtual_shadow_view_descriptor& view,
+                                                    virtual_shadow_page_coordinate coordinate) noexcept
+{
+    auto result = view.world_to_shadow_clip;
+    const float page_scale = static_cast<float>(std::max(view.pages_per_axis, 1u));
+    const float page_x = static_cast<float>(coordinate.x);
+    const float page_y = static_cast<float>(coordinate.y);
+    const float x_offset = page_scale - page_x * 2.0f - 1.0f;
+    const float y_offset = page_scale - page_y * 2.0f - 1.0f;
+    for (std::uint32_t column = 0; column < 4u; ++column)
+    {
+        result(0, column) = page_scale * view.world_to_shadow_clip(0, column) +
+                            x_offset * view.world_to_shadow_clip(3, column);
+        result(1, column) = page_scale * view.world_to_shadow_clip(1, column) +
+                            y_offset * view.world_to_shadow_clip(3, column);
+    }
+    return result;
+}
+
+gpu_virtual_shadow_render_page_record encode_virtual_shadow_render_page(
+    const virtual_shadow_page_mapping& mapping, const virtual_shadow_view_descriptor& view, std::uint32_t view_index,
+    std::uint32_t atlas_pages_per_axis, std::uint32_t work_offset, std::uint32_t work_capacity,
+    std::uint64_t frame_index) noexcept
+{
+    gpu_virtual_shadow_render_page_record result{};
+    const auto page_projection = virtual_shadow_page_view_projection(view, mapping.key.coordinate);
+    for (std::uint32_t row = 0; row < 4u; ++row)
+        for (std::uint32_t column = 0; column < 4u; ++column)
+            result.world_to_page_clip[row * 4u + column] = page_projection(row, column);
+    result.address_physical[0] = mapping.key.address_space.index;
+    result.address_physical[1] = mapping.key.address_space.generation;
+    result.address_physical[2] = mapping.physical_page.index;
+    result.address_physical[3] = mapping.physical_page.generation;
+    result.virtual_page[0] = static_cast<std::uint32_t>(mapping.key.coordinate.x) |
+                             (static_cast<std::uint32_t>(mapping.key.coordinate.y) << 16u);
+    result.virtual_page[1] = static_cast<std::uint32_t>(mapping.key.coordinate.level) |
+                             (static_cast<std::uint32_t>(mapping.key.coordinate.face) << 8u) |
+                             (static_cast<std::uint32_t>(mapping.key.layer) << 16u);
+    result.virtual_page[2] = view_index;
+    const auto safe_axis = std::max(atlas_pages_per_axis, 1u);
+    const auto atlas_x = mapping.physical_page.index % safe_axis;
+    const auto atlas_y = mapping.physical_page.index / safe_axis;
+    result.virtual_page[3] = atlas_x | (atlas_y << 16u);
+    result.work[0] = work_offset;
+    result.work[1] = work_capacity;
+    result.work[2] = static_cast<std::uint32_t>(mapping.key.layer);
+    result.revision[0] = static_cast<std::uint32_t>(mapping.content_revision);
+    result.revision[1] = static_cast<std::uint32_t>(mapping.content_revision >> 32u);
+    result.revision[2] = static_cast<std::uint32_t>(frame_index);
+    result.revision[3] = static_cast<std::uint32_t>(frame_index >> 32u);
+    return result;
+}
+
 struct virtual_shadow_cache::address_space_slot
 {
     virtual_shadow_address_space_descriptor descriptor{};
@@ -623,8 +676,13 @@ virtual_shadow_cache::resolve_requests(std::span<const virtual_shadow_page_reque
             mapping->last_used_frame = frame_index;
             mapping->pinned = mapping->pinned || request.coarse_page;
             if (mapping->content_revision != request.content_revision)
+            {
+                mapping->content_revision = request.content_revision;
                 mapping->dirty_reason = virtual_shadow_invalidation_reason::geometry;
-            if (mapping->dirty()) result.render_pages.push_back(*mapping);
+                mapping->work_revision = next_work_revision_++;
+                mapping->in_flight = false;
+            }
+            if (mapping->dirty() && !mapping->in_flight) result.render_pages.push_back(*mapping);
             ++result.cache_hits;
             ++cumulative_.cache_hits;
             continue;
@@ -650,6 +708,7 @@ virtual_shadow_cache::resolve_requests(std::span<const virtual_shadow_page_reque
                                             .content_revision = request.content_revision,
                                             .last_used_frame = frame_index,
                                             .dirty_reason = virtual_shadow_invalidation_reason::newly_allocated,
+                                            .work_revision = next_work_revision_++,
                                             .resident = false,
                                             .pinned = request.coarse_page};
         const auto insertion = std::lower_bound(mappings_.begin(), mappings_.end(), mapping.key,
@@ -778,6 +837,21 @@ bool virtual_shadow_cache::publish(const virtual_shadow_page_key& key, std::uint
     return true;
 }
 
+bool virtual_shadow_cache::complete_render(const virtual_shadow_page_render_token& token, bool succeeded) noexcept
+{
+    auto* mapping = find_mutable(token.key);
+    if (!mapping || mapping->physical_page != token.physical_page ||
+        mapping->content_revision != token.content_revision || mapping->work_revision != token.work_revision)
+        return false;
+    mapping->in_flight = false;
+    if (!succeeded) return true;
+    mapping->resident = true;
+    mapping->dirty_reason = virtual_shadow_invalidation_reason::none;
+    publish_gpu_mapping(*mapping);
+    ++page_table_revision_;
+    return true;
+}
+
 bool virtual_shadow_cache::set_in_flight(const virtual_shadow_page_key& key, bool in_flight) noexcept
 {
     auto* mapping = find_mutable(key);
@@ -797,6 +871,8 @@ std::uint32_t virtual_shadow_cache::invalidate(virtual_shadow_address_space_hand
         if (!same_address_space(mapping.key.address_space, handle)) continue;
         if (coordinate && mapping.key.coordinate != *coordinate) continue;
         mapping.dirty_reason = reason;
+        mapping.work_revision = next_work_revision_++;
+        mapping.in_flight = false;
         ++count;
     }
     return count;

@@ -333,11 +333,17 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
     render_graph_resource_handle virtual_shadow_requests{};
     render_graph_resource_handle virtual_shadow_compacted_requests{};
     render_graph_resource_handle virtual_shadow_render_pages{};
+    render_graph_resource_handle virtual_shadow_page_work{};
     render_graph_resource_handle virtual_shadow_casters{};
     render_graph_resource_handle virtual_shadow_feedback{};
+    render_graph_resource_handle virtual_shadow_render_feedback{};
     if (config.features.virtual_shadow_maps && config.virtual_shadow_pool.valid())
     {
         const auto maximum_virtual_shadow_requests = static_cast<std::uint64_t>(config.virtual_shadow_request_capacity);
+        const auto maximum_virtual_shadow_render_pages =
+            static_cast<std::uint64_t>(config.virtual_shadow_page_render_budget);
+        const auto maximum_virtual_shadow_casters =
+            maximum_virtual_shadow_render_pages * config.virtual_shadow_caster_capacity_per_page;
         constexpr std::uint64_t virtual_shadow_request_stride = sizeof(gpu_virtual_shadow_page_request);
         constexpr std::uint64_t virtual_shadow_mapping_stride = sizeof(gpu_virtual_shadow_page_table_entry);
         const auto shadow_format = config.virtual_shadow_pool.format == virtual_shadow_depth_format::d16_unorm
@@ -403,12 +409,20 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
         virtual_shadow_render_pages =
             graph.add_resource({.name = "virtual_shadow_render_pages",
                                 .kind = render_resource_kind::buffer,
-                                .byte_size = maximum_virtual_shadow_requests * virtual_shadow_mapping_stride,
-                                .element_stride = virtual_shadow_mapping_stride});
+                                .byte_size = maximum_virtual_shadow_render_pages *
+                                             sizeof(gpu_virtual_shadow_render_page_record),
+                                .element_stride = sizeof(gpu_virtual_shadow_render_page_record)});
+        virtual_shadow_page_work =
+            graph.add_resource({.name = "virtual_shadow_page_work",
+                                .kind = render_resource_kind::buffer,
+                                .byte_size = maximum_virtual_shadow_render_pages *
+                                             sizeof(gpu_virtual_shadow_page_work),
+                                .element_stride = sizeof(gpu_virtual_shadow_page_work)});
         virtual_shadow_casters = graph.add_resource({.name = "virtual_shadow_page_casters",
                                                      .kind = render_resource_kind::buffer,
-                                                     .byte_size = 64ull * 1024ull * 1024ull,
-                                                     .element_stride = 16});
+                                                     .byte_size = maximum_virtual_shadow_casters *
+                                                                  sizeof(gpu_virtual_shadow_caster_draw),
+                                                     .element_stride = sizeof(gpu_virtual_shadow_caster_draw)});
         virtual_shadow_feedback =
             graph.add_resource({.name = "virtual_shadow_feedback_readback",
                                 .kind = render_resource_kind::buffer,
@@ -417,6 +431,17 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                 .memory = render_memory_class::readback,
                                 .lifetime = render_resource_lifetime_class::per_world,
                                 .persistent_key = "shadow.virtual.feedback",
+                                .exported = true,
+                                .persistent = true});
+        virtual_shadow_render_feedback =
+            graph.add_resource({.name = "virtual_shadow_render_feedback_readback",
+                                .kind = render_resource_kind::buffer,
+                                .byte_size = maximum_virtual_shadow_render_pages *
+                                             sizeof(gpu_virtual_shadow_page_work),
+                                .element_stride = sizeof(gpu_virtual_shadow_page_work),
+                                .memory = render_memory_class::readback,
+                                .lifetime = render_resource_lifetime_class::per_world,
+                                .persistent_key = "shadow.virtual.render_feedback",
                                 .exported = true,
                                 .persistent = true});
     }
@@ -1236,11 +1261,21 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                         .writes = {{.handle = virtual_shadow_casters,
                                     .kind = render_resource_kind::buffer,
                                     .usage = render_resource_usage::storage_buffer,
+                                    .write = true},
+                                   {.handle = virtual_shadow_page_work,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
                                     .write = true}}});
         graph.add_pass({.name = "virtual shadow static page rendering",
                         .kind = render_pass_kind::custom,
                         .builtin = builtin_render_pass::virtual_shadow_static_render,
                         .reads = {{.handle = virtual_shadow_casters,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::indirect_buffer},
+                                  {.handle = virtual_shadow_page_work,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::indirect_buffer},
+                                  {.handle = virtual_shadow_render_pages,
                                    .kind = render_resource_kind::buffer,
                                    .usage = render_resource_usage::storage_buffer}},
                         .writes = {{.handle = virtual_shadow_static_pages,
@@ -1252,6 +1287,12 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                         .kind = render_pass_kind::custom,
                         .builtin = builtin_render_pass::virtual_shadow_dynamic_render,
                         .reads = {{.handle = virtual_shadow_casters,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::indirect_buffer},
+                                  {.handle = virtual_shadow_page_work,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::indirect_buffer},
+                                  {.handle = virtual_shadow_render_pages,
                                    .kind = render_resource_kind::buffer,
                                    .usage = render_resource_usage::storage_buffer}},
                         .writes = {{.handle = virtual_shadow_dynamic_pages,
@@ -1279,10 +1320,13 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                         .builtin = builtin_render_pass::virtual_shadow_page_table_publication,
                         .reads = {{.handle = virtual_shadow_render_pages,
                                    .kind = render_resource_kind::buffer,
-                                   .usage = render_resource_usage::storage_buffer}},
-                        .writes = {{.handle = virtual_shadow_page_table,
+                                   .usage = render_resource_usage::transfer_src},
+                                  {.handle = virtual_shadow_page_work,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::transfer_src}},
+                        .writes = {{.handle = virtual_shadow_render_feedback,
                                     .kind = render_resource_kind::buffer,
-                                    .usage = render_resource_usage::storage_buffer,
+                                    .usage = render_resource_usage::transfer_dst,
                                     .write = true}}});
         graph.add_pass({.name = "virtual shadow feedback readback",
                         .queue = render_queue_type::transfer,

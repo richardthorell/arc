@@ -128,6 +128,7 @@ struct render_quality_profile
     std::uint64_t virtual_shadow_budget_bytes{};
     std::uint32_t virtual_shadow_page_render_budget{};
     std::uint32_t virtual_shadow_request_capacity{default_virtual_shadow_request_capacity};
+    std::uint32_t virtual_shadow_caster_capacity_per_page{default_virtual_shadow_caster_capacity_per_page};
     float target_frame_time_ms{default_target_frame_time_ms};
     float geometry_error_threshold{1.0f};
     float minimum_geometry_error_threshold{0.5f};
@@ -263,6 +264,7 @@ inline constexpr render_quality_profile ultra_render_quality_profile{
     .virtual_shadow_budget_bytes = 512ull * 1024ull * 1024ull,
     .virtual_shadow_page_render_budget = 2048,
     .virtual_shadow_request_capacity = default_virtual_shadow_request_capacity,
+    .virtual_shadow_caster_capacity_per_page = default_virtual_shadow_caster_capacity_per_page,
     .target_frame_time_ms = 1000.0f / 30.0f,
     .geometry_error_threshold = 0.5f,
     .minimum_geometry_error_threshold = 0.25f,
@@ -567,6 +569,7 @@ struct resolved_render_config
     std::uint64_t virtual_shadow_budget_bytes{};
     std::uint32_t virtual_shadow_page_render_budget{};
     std::uint32_t virtual_shadow_request_capacity{default_virtual_shadow_request_capacity};
+    std::uint32_t virtual_shadow_caster_capacity_per_page{default_virtual_shadow_caster_capacity_per_page};
     virtual_shadow_physical_pool_layout virtual_shadow_pool{};
     std::uint32_t virtual_shadow_address_space_capacity{default_virtual_shadow_address_space_capacity};
     std::uint32_t virtual_shadow_page_table_entry_capacity{static_cast<std::uint32_t>(
@@ -979,6 +982,14 @@ struct render_shadow_profile
     std::uint32_t virtual_duplicate_requests{};
     std::uint32_t virtual_stale_requests{};
     std::uint32_t virtual_request_overflow{};
+    std::uint32_t virtual_caster_count{};
+    std::uint32_t virtual_caster_frustum_rejected{};
+    std::uint32_t virtual_caster_mobility_rejected{};
+    std::uint32_t virtual_caster_distance_rejected{};
+    std::uint32_t virtual_unsupported_casters{};
+    std::uint32_t virtual_caster_overflow_pages{};
+    std::uint32_t virtual_stale_render_completions{};
+    std::uint32_t virtual_indirect_draws{};
     std::uint64_t virtual_memory_bytes{};
     std::string fallback_reason;
 };
