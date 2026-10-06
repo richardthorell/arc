@@ -42,6 +42,215 @@ std::string_view material_texture_type_name(shader_parameter_type type) noexcept
 }
 } // namespace
 
+bool vulkan_render_backend::ensure_forward_scene_resources()
+{
+    const auto frame_count = frame_resource_count();
+    const auto* directional = active_directional_shadow_light();
+    const shadow_settings shadow_settings_value =
+        directional ? directional->shadow : shadow_settings{.enabled = false, .resolution = 2048};
+    if (!ensure_shadow_resources(shadow_settings_value) || !ensure_local_shadow_resources() ||
+        !ensure_shadow_uniform_buffers())
+        return false;
+
+    if (forward_scene_descriptor_set_layout_ != VK_NULL_HANDLE &&
+        forward_scene_descriptor_sets_.size() == frame_count &&
+        forward_scene_uniform_buffers_.size() == frame_count &&
+        forward_scene_color_.width == viewport_width_ && forward_scene_color_.height == viewport_height_)
+        return true;
+
+    wait_for_in_flight_frames();
+    destroy_forward_scene_resources();
+
+    const std::array bindings{
+        VkDescriptorSetLayoutBinding{0u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{1u, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{2u, VK_DESCRIPTOR_TYPE_SAMPLER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{3u, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{4u, VK_DESCRIPTOR_TYPE_SAMPLER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{5u, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{6u, VK_DESCRIPTOR_TYPE_SAMPLER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{7u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        VkDescriptorSetLayoutBinding{8u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}};
+    const VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                                                  nullptr,
+                                                  0u,
+                                                  static_cast<std::uint32_t>(bindings.size()),
+                                                  bindings.data()};
+    if (vkCreateDescriptorSetLayout(device_, &layout, nullptr, &forward_scene_descriptor_set_layout_) != VK_SUCCESS)
+        return false;
+
+    const std::array pool_sizes{
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, frame_count},
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, frame_count * 3u},
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLER, frame_count * 3u},
+        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, frame_count * 2u}};
+    const VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                                          nullptr,
+                                          0u,
+                                          frame_count,
+                                          static_cast<std::uint32_t>(pool_sizes.size()),
+                                          pool_sizes.data()};
+    if (vkCreateDescriptorPool(device_, &pool, nullptr, &forward_scene_descriptor_pool_) != VK_SUCCESS)
+        return false;
+
+    forward_scene_descriptor_sets_.resize(frame_count);
+    std::vector<VkDescriptorSetLayout> layouts(frame_count, forward_scene_descriptor_set_layout_);
+    const VkDescriptorSetAllocateInfo allocation{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                                                  nullptr,
+                                                  forward_scene_descriptor_pool_,
+                                                  frame_count,
+                                                  layouts.data()};
+    if (vkAllocateDescriptorSets(device_, &allocation, forward_scene_descriptor_sets_.data()) != VK_SUCCESS)
+        return false;
+
+    forward_scene_uniform_buffers_.resize(frame_count);
+    for (auto& buffer : forward_scene_uniform_buffers_)
+        if (!create_buffer(sizeof(forward_scene_uniform_data), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                           VMA_MEMORY_USAGE_CPU_TO_GPU, buffer))
+            return false;
+
+    VkSamplerCreateInfo sampler{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+    sampler.magFilter = VK_FILTER_LINEAR;
+    sampler.minFilter = VK_FILTER_LINEAR;
+    sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    sampler.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler.maxLod = 0.0f;
+    if (vkCreateSampler(device_, &sampler, nullptr, &forward_scene_sampler_) != VK_SUCCESS) return false;
+
+    if (!ensure_graph_image(forward_scene_color_, viewport_width_, viewport_height_, scene_color_format_,
+                            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                            VK_IMAGE_ASPECT_COLOR_BIT))
+        return false;
+
+    update_forward_scene_resources();
+    return true;
+}
+
+void vulkan_render_backend::update_forward_scene_resources()
+{
+    const auto slot = current_frame_slot();
+    if (slot >= forward_scene_descriptor_sets_.size() || slot >= forward_scene_uniform_buffers_.size() ||
+        slot >= shadow_uniform_buffers_.size() || light_buffer_.buffer == VK_NULL_HANDLE ||
+        shadow_atlas_.array_view == VK_NULL_HANDLE || shadow_atlas_.sampler == VK_NULL_HANDLE ||
+        local_shadow_atlas_.view == VK_NULL_HANDLE || local_shadow_atlas_.sampler == VK_NULL_HANDLE ||
+        forward_scene_color_.view == VK_NULL_HANDLE || forward_scene_sampler_ == VK_NULL_HANDLE)
+        return;
+
+    forward_scene_uniform_data scene{};
+    scene.camera_position_viewport_width[0] = frame_camera_.position[0];
+    scene.camera_position_viewport_width[1] = frame_camera_.position[1];
+    scene.camera_position_viewport_width[2] = frame_camera_.position[2];
+    scene.camera_position_viewport_width[3] = static_cast<float>(viewport_width_);
+    if (frame_environment_.fog.enabled)
+    {
+        scene.fog_color_density[0] = frame_environment_.fog.color[0];
+        scene.fog_color_density[1] = frame_environment_.fog.color[1];
+        scene.fog_color_density[2] = frame_environment_.fog.color[2];
+        scene.fog_color_density[3] = frame_environment_.fog.density;
+        scene.fog_params_viewport_height[0] = frame_environment_.fog.start_distance;
+        scene.fog_params_viewport_height[1] = frame_environment_.fog.height_falloff;
+        scene.fog_params_viewport_height[2] = frame_environment_.fog.max_opacity;
+    }
+    scene.fog_params_viewport_height[3] = static_cast<float>(viewport_height_);
+
+    void* mapped{};
+    auto& scene_buffer = forward_scene_uniform_buffers_[slot];
+    if (vmaMapMemory(allocator_, scene_buffer.allocation, &mapped) == VK_SUCCESS)
+    {
+        std::memcpy(mapped, &scene, sizeof(scene));
+        vmaFlushAllocation(allocator_, scene_buffer.allocation, 0, sizeof(scene));
+        vmaUnmapMemory(allocator_, scene_buffer.allocation);
+    }
+
+    const VkDescriptorBufferInfo light_info{light_buffer_.buffer, 0u, sizeof(scene_lighting_data)};
+    const VkDescriptorImageInfo directional_image{VK_NULL_HANDLE, shadow_atlas_.array_view,
+                                                   VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL};
+    const VkDescriptorImageInfo directional_sampler{shadow_atlas_.sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED};
+    const VkDescriptorImageInfo local_image{VK_NULL_HANDLE, local_shadow_atlas_.view,
+                                             VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL};
+    const VkDescriptorImageInfo local_sampler{local_shadow_atlas_.sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED};
+    const VkDescriptorImageInfo scene_image{VK_NULL_HANDLE, forward_scene_color_.view,
+                                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+    const VkDescriptorImageInfo scene_sampler{forward_scene_sampler_, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED};
+    const VkDescriptorBufferInfo shadow_info{shadow_uniform_buffers_[slot].buffer, 0u, sizeof(shadow_uniform_data)};
+    const VkDescriptorBufferInfo scene_info{scene_buffer.buffer, 0u, sizeof(forward_scene_uniform_data)};
+
+    std::array<VkWriteDescriptorSet, 9> writes{};
+    const auto set = forward_scene_descriptor_sets_[slot];
+    for (std::uint32_t binding = 0u; binding < writes.size(); ++binding)
+    {
+        writes[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[binding].dstSet = set;
+        writes[binding].dstBinding = binding;
+        writes[binding].descriptorCount = 1u;
+    }
+    writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    writes[0].pBufferInfo = &light_info;
+    writes[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    writes[1].pImageInfo = &directional_image;
+    writes[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    writes[2].pImageInfo = &directional_sampler;
+    writes[3].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    writes[3].pImageInfo = &local_image;
+    writes[4].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    writes[4].pImageInfo = &local_sampler;
+    writes[5].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    writes[5].pImageInfo = &scene_image;
+    writes[6].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    writes[6].pImageInfo = &scene_sampler;
+    writes[7].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writes[7].pBufferInfo = &shadow_info;
+    writes[8].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writes[8].pBufferInfo = &scene_info;
+    vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0u, nullptr);
+}
+
+VkDescriptorSet vulkan_render_backend::current_forward_scene_descriptor_set() const noexcept
+{
+    const auto slot = current_frame_slot();
+    return slot < forward_scene_descriptor_sets_.size() ? forward_scene_descriptor_sets_[slot] : VK_NULL_HANDLE;
+}
+
+void vulkan_render_backend::destroy_forward_scene_resources() noexcept
+{
+    for (auto& buffer : forward_scene_uniform_buffers_)
+        destroy_buffer(buffer);
+    forward_scene_uniform_buffers_.clear();
+    forward_scene_descriptor_sets_.clear();
+    destroy_graph_image(forward_scene_color_);
+    if (forward_scene_sampler_ != VK_NULL_HANDLE) vkDestroySampler(device_, forward_scene_sampler_, nullptr);
+    if (forward_scene_descriptor_pool_ != VK_NULL_HANDLE)
+        vkDestroyDescriptorPool(device_, forward_scene_descriptor_pool_, nullptr);
+    if (forward_scene_descriptor_set_layout_ != VK_NULL_HANDLE)
+        vkDestroyDescriptorSetLayout(device_, forward_scene_descriptor_set_layout_, nullptr);
+    forward_scene_sampler_ = VK_NULL_HANDLE;
+    forward_scene_descriptor_pool_ = VK_NULL_HANDLE;
+    forward_scene_descriptor_set_layout_ = VK_NULL_HANDLE;
+}
+
+bool vulkan_render_backend::capture_forward_scene_color(VkCommandBuffer command_buffer)
+{
+    if (!ensure_forward_scene_resources() || scene_color_.image == VK_NULL_HANDLE ||
+        forward_scene_color_.image == VK_NULL_HANDLE)
+        return false;
+
+    transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    transition_graph_image(command_buffer, forward_scene_color_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    const VkImageCopy copy{{VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u},
+                           {0, 0, 0},
+                           {VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u},
+                           {0, 0, 0},
+                           {viewport_width_, viewport_height_, 1u}};
+    vkCmdCopyImage(command_buffer, scene_color_.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   forward_scene_color_.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1u, &copy);
+    transition_graph_image(command_buffer, forward_scene_color_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    update_forward_scene_resources();
+    return true;
+}
+
 void vulkan_render_backend::destroy_material_runtime(gpu_material_runtime& runtime) noexcept
 {
     if (runtime.gbuffer_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device_, runtime.gbuffer_pipeline, nullptr);
