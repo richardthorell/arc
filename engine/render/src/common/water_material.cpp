@@ -79,7 +79,7 @@ material_descriptor apply_water_material_appearance(material_descriptor material
         const auto id = make_shader_parameter_id(stable_id);
         const auto parameter = std::ranges::find(definition.parameter_layout, id, &shader_parameter_descriptor::id);
         if (parameter == definition.parameter_layout.end() || parameter->type != type) return;
-        instance.overrides.push_back({.id = id, .name = std::string(display_name), .value = std::move(value)});
+        instance.overrides.push_back({.id = id, .name = std::string(display_name), .value = value});
     };
 
     append_if_present("base-color", "Base Color", shader_parameter_type::float4,
