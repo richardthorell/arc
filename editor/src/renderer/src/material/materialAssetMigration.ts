@@ -404,10 +404,6 @@ export const upgradeMaterialAsset = (asset: MaterialAssetJson): MaterialAssetUpg
   else delete upgraded.shaderPath;
 
   const legacyShader = stringValue(asset.shader);
-  if (legacyShader === 'arc/default_phong' && stringValue(asset.name).toLocaleLowerCase() === 'default phong') {
-    upgraded.name = 'Standard Lit';
-  }
-
   const legacyTextures = recordValue<LegacyTextures>(asset.textures);
   const legacyHeightTexture = stringValue(legacyTextures.height);
   const parallaxHeightScale = finite(recordValue<LegacyAdvanced>(asset.advanced).parallaxHeightScale, 0);
