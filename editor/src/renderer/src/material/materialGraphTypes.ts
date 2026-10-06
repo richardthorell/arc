@@ -20,7 +20,6 @@ export type MaterialGraphNodeType =
   | 'vector2'
   | 'vector3'
   | 'vector4'
-  | 'colorRgb'
   | 'colorRgba'
   | 'textureSample'
   | 'textureSample2D'
@@ -268,15 +267,6 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     inputs: [],
     outputs: [pin('value', 'Value', 'vec4')],
     defaultValues: { value: [0, 0, 0, 0] },
-  },
-  colorRgb: {
-    type: 'colorRgb',
-    title: 'Legacy Color (RGB)',
-    category: 'Values',
-    subcategory: 'Colors',
-    inputs: [],
-    outputs: [pin('value', 'RGB', 'vec3')],
-    defaultValues: { value: [0.78, 0.8, 0.84] },
   },
   colorRgba: {
     type: 'colorRgba',
