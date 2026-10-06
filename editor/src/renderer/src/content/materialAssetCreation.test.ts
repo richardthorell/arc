@@ -60,9 +60,7 @@ describe('Material asset creation', () => {
     expect(
       graph.connections.some(
         (connection) =>
-          connection.from.nodeId === tint?.id &&
-          connection.from.pin === 'rgb' &&
-          connection.to.nodeId === multiply?.id,
+          connection.from.nodeId === tint?.id && connection.from.pin === 'rgb' && connection.to.nodeId === multiply?.id,
       ),
     ).toBe(true);
     expect(
