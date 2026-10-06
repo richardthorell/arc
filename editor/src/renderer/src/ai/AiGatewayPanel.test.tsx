@@ -276,6 +276,57 @@ describe('AiChatPanel', () => {
     expect(screen.getByText('Design a fun arrangement')).toBeVisible();
   });
 
+  it('copies persisted task diagnostics for sharing', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    const initialMessages: readonly AiChatMessage[] = [
+      {
+        id: 'user',
+        role: 'user',
+        content: 'Build a playground',
+        createdAt: '2026-10-05T22:00:00Z',
+        state: 'complete',
+      },
+      {
+        id: 'assistant',
+        role: 'assistant',
+        content: 'Done.',
+        createdAt: '2026-10-05T22:00:01Z',
+        state: 'complete',
+        taskReferences: [
+          {
+            id: 'playground-plan',
+            planId: 'playground-plan',
+            title: 'Build playground',
+            state: 'completed',
+            children: [
+              { id: 'layout', title: 'Lay out playground', state: 'completed' },
+              { id: 'decorate', title: 'Add props', state: 'completed' },
+            ],
+          },
+        ],
+        taskDiagnostics: [
+          '2026-10-05T22:00:01Z task-update playground-plan:in_progress | layout:in_progress | decorate:planned',
+          '2026-10-05T22:00:02Z tool-result step=1 name=editor.applyBatch id=call-1 status=ok retryable=false code=-',
+        ],
+      },
+    ];
+
+    render(<AiChatPanel conversationLabel="Diagnostics" initialMessages={initialMessages} provider={configuredProvider} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Open conversation Diagnostics' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy task diagnostics' }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining('ARC AI task diagnostics\n2026-10-05T22:00:01Z task-update'),
+      ),
+    );
+  });
+
   it('turns the round send action into a stop action while a response streams', async () => {
     let releaseStream: (() => void) | undefined;
     let streamSignal: AbortSignal | undefined;
