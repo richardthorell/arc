@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AiContextCollectionEvent } from '../../../common/aiContextTypes';
 import {
   AiProjectContextService,
+  createAiAssetContextProvider,
   sanitizeAiContextValue,
   type AiContextProvider,
   type AiProjectContextEnvironment,
@@ -65,6 +66,23 @@ describe('AiProjectContextService', () => {
       if (type === 'workspace.documents') {
         return { succeeded: true, payload: { active: 'material-guid', documents: [{ guid: 'material-guid' }] } };
       }
+      if (type === 'project.assets') {
+        return {
+          succeeded: true,
+          payload: {
+            assets: [
+              {
+                guid: 'material-guid',
+                name: 'Hero Material',
+                typeId: 'material',
+                path: 'Content/Materials/Hero.arcmat',
+                scope: 'project',
+                generation: 4,
+              },
+            ],
+          },
+        };
+      }
       if (type === 'gateway.diagnostics') return { succeeded: true, payload: { diagnostics: [] } };
       if (type === 'viewport.state') {
         return { succeeded: true, frameRevision: 44, payload: { viewportId: 'viewport-1', camera: { fov: 60 } } };
@@ -88,6 +106,7 @@ describe('AiProjectContextService', () => {
       'scene',
       'selection',
       'workspace',
+      'assets',
       'diagnostics',
       'viewport',
       'recentChanges',
@@ -96,6 +115,7 @@ describe('AiProjectContextService', () => {
       'scene.hierarchy',
       'entity.selected',
       'workspace.documents',
+      'project.assets',
       'gateway.diagnostics',
       'viewport.state',
     ]);
@@ -109,6 +129,20 @@ describe('AiProjectContextService', () => {
     expect(sectionData(context, 'project')).toMatchObject({
       guid: 'project-a',
       defaultScene: { guid: 'scene-guid', pathHint: 'Content/Main.arcscene' },
+    });
+    expect(sectionData(context, 'assets')).toMatchObject({
+      totalCount: 1,
+      returnedCount: 1,
+      omittedCount: 0,
+      assets: [
+        {
+          guid: 'material-guid',
+          path: 'Content/Materials/Hero.arcmat',
+          typeId: 'material',
+          scope: 'project',
+          generation: 4,
+        },
+      ],
     });
     expect(context.estimatedCost.approximateTokens).toBeGreaterThan(0);
   });
@@ -152,6 +186,76 @@ describe('AiProjectContextService', () => {
       expect.objectContaining({ type: 'context.invalidated', providerIds: expect.arrayContaining(['scene']) }),
     );
     expect(first.collectionId).not.toBe(second.collectionId);
+    service.dispose();
+  });
+
+  it('bounds asset inventory deterministically and refreshes it after asset changes', async () => {
+    let hostEvent: ((event: AiProjectContextHostEvent) => void) | undefined;
+    const query = vi.fn(async (type: string) => {
+      if (type !== 'project.assets') throw new Error(`Unexpected query ${type}`);
+      return {
+        succeeded: true,
+        payload: {
+          assets: [
+            { guid: 'z-guid', name: 'Zed', typeId: 'texture', path: 'Content/Z.png', scope: 'project' },
+            { guid: 'b-guid', name: 'Beta', typeId: 'material', path: 'Content/B.arcmat', scope: 'project' },
+            { guid: 'a-guid', name: 'Alpha', typeId: 'material', path: 'Content/A.arcmat', scope: 'project' },
+          ],
+        },
+      };
+    });
+    const service = new AiProjectContextService(
+      {
+        projectSnapshot: async () => projectSnapshot('project-a'),
+        hostQuery: query,
+        subscribeHostEvents: (listener) => {
+          hostEvent = listener;
+          return () => {
+            hostEvent = undefined;
+          };
+        },
+        now: () => 4_000,
+      },
+      { providers: [createAiAssetContextProvider(2)], maxAgeMs: 60_000 },
+    );
+
+    const first = await service.collect();
+    const assets = first.sections[0];
+    expect(assets).toMatchObject({ id: 'assets', status: 'ready', truncated: true });
+    expect(assets?.data).toEqual({
+      assets: [
+        {
+          guid: 'a-guid',
+          name: 'Alpha',
+          path: 'Content/A.arcmat',
+          scope: 'project',
+          state: '',
+          typeId: 'material',
+        },
+        {
+          guid: 'b-guid',
+          generation: undefined,
+          name: 'Beta',
+          path: 'Content/B.arcmat',
+          scope: 'project',
+          state: '',
+          typeId: 'material',
+        },
+      ],
+      totalCount: 3,
+      returnedCount: 2,
+      omittedCount: 1,
+      byType: [
+        { typeId: 'material', count: 2 },
+        { typeId: 'texture', count: 1 },
+      ],
+    });
+
+    await service.collect();
+    expect(query).toHaveBeenCalledTimes(1);
+    hostEvent?.({ sequence: 12, type: 'asset_renamed', message: 'Asset renamed' });
+    await service.collect();
+    expect(query).toHaveBeenCalledTimes(2);
     service.dispose();
   });
 

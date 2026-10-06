@@ -232,6 +232,53 @@ describe('AI context budgeting', () => {
     expect(plan.messages.some((candidate) => candidate.id === 'arc-context:pinned')).toBe(false);
   });
 
+  it('includes compact asset inventory automatically and reports provider truncation', async () => {
+    const snapshot = contextSnapshot({ sceneRevision: 4, worldEpoch: 2 });
+    const assetData = {
+      assets: [
+        {
+          guid: 'material-guid',
+          name: 'Hero Material',
+          typeId: 'material',
+          path: 'Content/Materials/Hero.arcmat',
+          scope: 'project',
+          state: 'ready',
+        },
+      ],
+      totalCount: 12,
+      returnedCount: 1,
+      omittedCount: 11,
+      byType: [{ typeId: 'material', count: 12 }],
+    };
+    const assets = section('assets', assetData, snapshot.revision);
+    assets.truncated = true;
+    snapshot.sections.push(assets);
+    snapshot.estimatedCost.characters += assets.estimatedCost.characters;
+    snapshot.estimatedCost.approximateTokens += assets.estimatedCost.approximateTokens;
+
+    const source: AiProjectContextSource = {
+      async collect() {
+        return snapshot;
+      },
+    };
+    const plan = await prepareAiContextBudget({
+      conversation: conversation([message('latest', 'user', 'Use the existing hero material')]),
+      modelCapabilities: modelCapabilities(4_000, 512),
+      projectGuid: 'project-a',
+      projectContextSource: source,
+    });
+
+    const assetMessage = plan.messages.find((candidate) => candidate.id === 'arc-context:auto:assets');
+    expect(JSON.stringify(assetMessage)).toContain('material-guid');
+    expect(plan.diagnostics.decisions).toContainEqual(
+      expect.objectContaining({
+        id: 'automatic:assets',
+        included: true,
+        reason: 'included from truncated provider inventory',
+      }),
+    );
+  });
+
   it('refreshes cached automatic context when its freshness age crosses policy', async () => {
     const cached = contextSnapshot({ sceneRevision: 9, worldEpoch: 2 }, { entities: [] }, 'project-a', 5_000);
     const fresh = contextSnapshot({ sceneRevision: 9, worldEpoch: 2 }, { entities: [] }, 'project-a', 0);

@@ -28,6 +28,7 @@ export type AiContextProviderResult = {
   data?: unknown;
   error?: string;
   revision?: AiContextRevision;
+  truncated?: boolean;
 };
 
 export type AiContextProviderContext = {
@@ -53,12 +54,15 @@ export type AiProjectContextServiceOptions = {
   providers?: readonly AiContextProvider[];
   maxAgeMs?: number;
   recentChangeLimit?: number;
+  assetLimit?: number;
   limits?: Partial<AiContextLimits>;
 };
 
 export type AiProjectContextCollectOptions = {
   forceRefresh?: boolean;
 };
+
+const defaultAssetLimit = 96;
 
 const defaultLimits: AiContextLimits = {
   maxDepth: 8,
@@ -140,6 +144,74 @@ const stableHostValue = (value: unknown, seen = new WeakMap<object, unknown>()):
   return result;
 };
 
+export const createAiAssetContextProvider = (assetLimit = defaultAssetLimit): AiContextProvider => ({
+  id: 'assets',
+  async collect({ environment, projectGuid }) {
+    if (!projectGuid) return { status: 'unavailable' };
+    const raw = await environment.hostQuery('project.assets', {});
+    const response = asRecord(raw);
+    if (!response) return { status: 'unavailable' };
+    if (response.succeeded === false) {
+      return {
+        status: 'error',
+        error: stringValue(response.error) ?? 'project.assets query failed',
+        revision: hostRevision(response),
+      };
+    }
+
+    const payload = asRecord(response.payload);
+    const inventory = Array.isArray(payload?.assets)
+      ? payload.assets.flatMap((value) => {
+          const asset = asRecord(value);
+          const guid = stringValue(asset?.guid)?.trim();
+          if (!asset || !guid) return [];
+          return [
+            {
+              guid,
+              name: stringValue(asset.name) ?? '',
+              typeId: stringValue(asset.typeId) ?? '',
+              path: stringValue(asset.path) ?? '',
+              scope: stringValue(asset.scope) ?? '',
+              state: stringValue(asset.state) ?? '',
+              ...(numberValue(asset.generation) !== undefined ? { generation: numberValue(asset.generation) } : {}),
+            },
+          ];
+        })
+      : [];
+    inventory.sort(
+      (left, right) =>
+        left.typeId.localeCompare(right.typeId) ||
+        left.path.localeCompare(right.path) ||
+        left.name.localeCompare(right.name) ||
+        left.guid.localeCompare(right.guid),
+    );
+
+    const limit = Math.max(1, Math.floor(assetLimit));
+    const assets = inventory.slice(0, limit);
+    const typeCounts = new Map<string, number>();
+    for (const asset of inventory) {
+      const type = asset.typeId || 'unknown';
+      typeCounts.set(type, (typeCounts.get(type) ?? 0) + 1);
+    }
+    const byType = [...typeCounts.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([typeId, count]) => ({ typeId, count }));
+
+    return {
+      status: 'ready',
+      data: {
+        assets,
+        totalCount: inventory.length,
+        returnedCount: assets.length,
+        omittedCount: Math.max(0, inventory.length - assets.length),
+        byType,
+      },
+      revision: hostRevision(response),
+      truncated: inventory.length > assets.length,
+    };
+  },
+});
+
 const collectHostQuery = async (
   context: AiContextProviderContext,
   queryType: string,
@@ -163,7 +235,7 @@ const collectHostQuery = async (
   };
 };
 
-export const createDefaultAiContextProviders = (): AiContextProvider[] => [
+export const createDefaultAiContextProviders = (assetLimit = defaultAssetLimit): AiContextProvider[] => [
   {
     id: 'project',
     collect: async ({ projectSnapshot }) => {
@@ -183,6 +255,7 @@ export const createDefaultAiContextProviders = (): AiContextProvider[] => [
     id: 'workspace',
     collect: (context) => collectHostQuery(context, 'workspace.documents'),
   },
+  createAiAssetContextProvider(assetLimit),
   {
     id: 'diagnostics',
     collect: (context) => collectHostQuery(context, 'gateway.diagnostics'),
@@ -305,6 +378,7 @@ const invalidatedProviderIds = (event: AiProjectContextHostEvent): AiContextSect
     ids.add('selection');
   }
   if (type.includes('asset')) {
+    ids.add('assets');
     ids.add('workspace');
     ids.add('diagnostics');
   }
@@ -333,7 +407,8 @@ export class AiProjectContextService {
     private readonly environment: AiProjectContextEnvironment,
     options: AiProjectContextServiceOptions = {},
   ) {
-    this.providers = options.providers ?? createDefaultAiContextProviders();
+    this.providers =
+      options.providers ?? createDefaultAiContextProviders(Math.max(1, options.assetLimit ?? defaultAssetLimit));
     this.maxAgeMs = Math.max(0, options.maxAgeMs ?? 750);
     this.recentChangeLimit = Math.max(1, options.recentChangeLimit ?? 24);
     this.limits = { ...defaultLimits, ...options.limits };
@@ -469,7 +544,7 @@ export class AiProjectContextService {
       status,
       data: sanitized?.value,
       error: result.error,
-      truncated: sanitized?.truncated ?? false,
+      truncated: result.truncated === true || (sanitized?.truncated ?? false),
       freshness: {
         capturedAt: new Date(completedAt).toISOString(),
         ageMs: 0,

@@ -83,6 +83,7 @@ const messageOverheadTokens = 8;
 const automaticSectionPriority: ReadonlyArray<AiContextSection['id']> = [
   'project',
   'selection',
+  'assets',
   'workspace',
   'scene',
   'diagnostics',
@@ -608,7 +609,11 @@ export const prepareAiContextBudget = async (options: AiContextBudgetOptions): P
         origin: 'automatic',
         estimatedTokens: cost,
         included: true,
-        reason: cost < section.estimatedCost.approximateTokens ? 'included with deterministic truncation' : 'included',
+        reason: section.truncated
+          ? 'included from truncated provider inventory'
+          : cost < section.estimatedCost.approximateTokens
+            ? 'included with deterministic truncation'
+            : 'included',
       });
     }
   } else if (projectContext) {
