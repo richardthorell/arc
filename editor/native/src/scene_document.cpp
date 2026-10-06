@@ -1462,6 +1462,8 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
     loaded.mesh_entity = {};
     loaded.terrain_entity = {};
     loaded.water_entity = {};
+    loaded.water_material = {};
+    loaded.water_material_bases.clear();
     loaded.vegetation_entity = {};
     loaded.primitive_entities.clear();
     loaded.imported_scene_entities.clear();
