@@ -762,6 +762,7 @@ private:
     struct gpu_material_runtime
     {
         VkPipeline gbuffer_pipeline{};
+        VkPipeline forward_pipeline{};
         VkPipelineLayout pipeline_layout{};
         VkDescriptorSetLayout descriptor_set_layout{};
         VkDescriptorPool descriptor_pool{};
@@ -1256,7 +1257,11 @@ private:
 
     bool create_runtime_gbuffer_pipeline(gpu_material& material, const material_runtime_pass& pass);
 
+    bool create_runtime_forward_pipeline(gpu_material& material, const material_runtime_pass& pass);
+
     bool ensure_runtime_gbuffer_pipeline(gpu_material& material);
+
+    bool ensure_runtime_forward_pipeline(gpu_material& material);
 
     void destroy_virtual_shadow_resources(vulkan_virtual_shadow_resources& resources) noexcept;
 
