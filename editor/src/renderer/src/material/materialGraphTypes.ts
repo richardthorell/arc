@@ -490,21 +490,34 @@ export const createMaterialNode = (
 });
 
 export const createDefaultMaterialGraph = (): MaterialGraph => {
-  const baseColor = createMaterialNode('colorRgba', [80, 120], { value: [0.78, 0.8, 0.84, 1] });
-  baseColor.parameter = { exposed: true, name: 'Base Color' };
-  const metallic = createMaterialNode('constant', [80, 290], { value: 0 });
+  const baseColorTint = createMaterialNode('colorRgba', [80, 80], { value: [0.78, 0.8, 0.84, 1] });
+  baseColorTint.parameter = { exposed: true, name: 'Base Color Tint' };
+  const baseColorTexture = createMaterialNode('textureSample2D', [80, 240]);
+  baseColorTexture.parameter = { exposed: true, name: 'Base Color Texture' };
+  const baseColorMultiply = createMaterialNode('multiply', [360, 160]);
+  const metallic = createMaterialNode('constant', [80, 420], { value: 0 });
   metallic.parameter = { exposed: true, name: 'Metallic' };
-  const roughness = createMaterialNode('constant', [80, 420], { value: 0.62 });
+  const roughness = createMaterialNode('constant', [80, 550], { value: 0.62 });
   roughness.parameter = { exposed: true, name: 'Roughness' };
-  const output = createMaterialNode('output', [520, 210]);
+  const output = createMaterialNode('output', [650, 240]);
 
   return {
     version: 1,
-    nodes: [baseColor, metallic, roughness, output],
+    nodes: [baseColorTint, baseColorTexture, baseColorMultiply, metallic, roughness, output],
     connections: [
       {
         id: materialGraphId('connection'),
-        from: { nodeId: baseColor.id, pin: 'rgb' },
+        from: { nodeId: baseColorTint.id, pin: 'rgb' },
+        to: { nodeId: baseColorMultiply.id, pin: 'a' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: baseColorTexture.id, pin: 'rgb' },
+        to: { nodeId: baseColorMultiply.id, pin: 'b' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: baseColorMultiply.id, pin: 'result' },
         to: { nodeId: output.id, pin: 'baseColor' },
       },
       {
