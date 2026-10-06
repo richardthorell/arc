@@ -1,4 +1,7 @@
 import { flattenScene, type AssetItem, type ProjectSnapshot, type SceneEntity } from '../services/editorHostTypes';
+import type { ArcResourceRegistry } from '../services/arcResourceRegistry';
+import { createWindowArcResourceRegistry } from '../services/arcResources';
+import { arcUri } from '../services/arcUri';
 import {
   createEditorReferenceController,
   type EditorReferenceController,
@@ -15,6 +18,7 @@ export type WorkbenchEditorReferenceActions = {
   selectScene?: (sceneGuid: string) => void | Promise<void>;
   highlightEntity?: (entity: SceneEntity, active: boolean) => void | Promise<void>;
   highlightAsset?: (asset: AssetItem, active: boolean) => void | Promise<void>;
+  resources?: Pick<ArcResourceRegistry, 'read'>;
 };
 
 const titleCase = (value: string) =>
@@ -41,15 +45,22 @@ export const createWorkbenchEditorReferenceController = (
 ): EditorReferenceController => {
   const entity = (guid: string) => findReferencedEntity(actions.getProject(), guid);
   const asset = (guid: string) => findReferencedAsset(actions.getProject(), guid);
+  const resources = actions.resources ?? (typeof window !== 'undefined' ? createWindowArcResourceRegistry() : undefined);
 
   return createEditorReferenceController({
     resolveEntity: (guid) => {
       const value = entity(guid);
       return value ? resolvedEntity(value) : null;
     },
-    resolveAsset: (guid) => {
+    resolveAsset: async (guid) => {
       const value = asset(guid);
-      return value ? resolvedAsset(value) : null;
+      if (!value) return null;
+      const resolved = resolvedAsset(value);
+      if (!resources) return resolved;
+      const thumbnail = await resources.read(
+        arcUri({ kind: 'asset', id: guid, path: ['thumbnail'], query: { size: '64' } }),
+      );
+      return thumbnail?.dataUrl ? { ...resolved, thumbnailUrl: thumbnail.dataUrl } : resolved;
     },
     resolveScene: (guid) => {
       const scene = actions.getActiveScene?.();
