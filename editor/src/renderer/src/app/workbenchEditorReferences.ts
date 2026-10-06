@@ -45,7 +45,8 @@ export const createWorkbenchEditorReferenceController = (
 ): EditorReferenceController => {
   const entity = (guid: string) => findReferencedEntity(actions.getProject(), guid);
   const asset = (guid: string) => findReferencedAsset(actions.getProject(), guid);
-  const resources = actions.resources ?? (typeof window !== 'undefined' ? createWindowArcResourceRegistry() : undefined);
+  const resources =
+    actions.resources ?? (typeof window !== 'undefined' ? createWindowArcResourceRegistry() : undefined);
 
   return createEditorReferenceController({
     resolveEntity: (guid) => {
