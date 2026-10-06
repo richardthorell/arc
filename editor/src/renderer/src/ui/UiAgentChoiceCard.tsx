@@ -1,5 +1,5 @@
 import { Check, FileBox } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { useEditorReferenceController } from '../services/EditorReferenceContext';
 import { parseEditorReference, type ResolvedEditorReference } from '../services/editorReferences';
@@ -7,6 +7,44 @@ import { UiAgentCard } from './UiAgentCard';
 import { UiButton } from './UiButton';
 
 import './UiAgentChoiceCard.css';
+
+export type UiAgentChoiceCardProps = {
+  title: string;
+  prompt?: string;
+  children: ReactNode;
+  confirmDisabled?: boolean;
+  disabled?: boolean;
+  confirmLabel?: string;
+  onConfirm: () => void;
+};
+
+export function UiAgentChoiceCard({
+  title,
+  prompt,
+  children,
+  confirmDisabled = false,
+  disabled = false,
+  confirmLabel = 'Use this',
+  onConfirm,
+}: UiAgentChoiceCardProps) {
+  return (
+    <UiAgentCard
+      className="ui-agent-choice-card"
+      side="none"
+      subtitle="Choose one"
+      title={title}
+      tone="neutral"
+    >
+      {prompt ? <p className="ui-agent-choice-prompt">{prompt}</p> : null}
+      {children}
+      <div className="ui-agent-choice-actions">
+        <UiButton disabled={disabled || confirmDisabled} type="button" variant="primary" onClick={onConfirm}>
+          {confirmLabel}
+        </UiButton>
+      </div>
+    </UiAgentCard>
+  );
+}
 
 export type UiAgentAssetChoiceOption = {
   uri: string;
@@ -103,38 +141,28 @@ export function UiAgentAssetChoiceCard({
   }, [options, selectedUri]);
 
   return (
-    <UiAgentCard
-      className="ui-agent-choice-card"
-      data-agent-choice-kind="asset"
-      side="none"
-      subtitle="Choose one"
-      title={title}
-      tone="neutral"
-    >
-      {prompt ? <p className="ui-agent-choice-prompt">{prompt}</p> : null}
-      <div className="ui-agent-asset-choice-grid">
-        {options.map((option) => (
-          <AssetChoiceOption
-            disabled={disabled}
-            key={option.uri}
-            option={option}
-            selected={option.uri === selectedUri}
-            onSelect={() => setSelectedUri(option.uri)}
-          />
-        ))}
-      </div>
-      <div className="ui-agent-choice-actions">
-        <UiButton
-          disabled={disabled || !selected}
-          type="button"
-          variant="primary"
-          onClick={() => {
-            if (selected) onChoose(selected.uri);
-          }}
-        >
-          Use this
-        </UiButton>
-      </div>
-    </UiAgentCard>
+    <div data-agent-choice-kind="asset">
+      <UiAgentChoiceCard
+        confirmDisabled={!selected}
+        disabled={disabled}
+        prompt={prompt}
+        title={title}
+        onConfirm={() => {
+          if (selected) onChoose(selected.uri);
+        }}
+      >
+        <div className="ui-agent-asset-choice-grid">
+          {options.map((option) => (
+            <AssetChoiceOption
+              disabled={disabled}
+              key={option.uri}
+              option={option}
+              selected={option.uri === selectedUri}
+              onSelect={() => setSelectedUri(option.uri)}
+            />
+          ))}
+        </div>
+      </UiAgentChoiceCard>
+    </div>
   );
 }
