@@ -10,6 +10,11 @@ const collect = async (stream: AsyncIterable<AiRuntimeStreamEvent>): Promise<AiR
   return events;
 };
 
+const flattenState = (task: Extract<AiRuntimeStreamEvent, { type: 'task-update' }>['task']): string[] => [
+  task.state,
+  ...(task.children?.flatMap(flattenState) ?? []),
+];
+
 const request: AiRuntimeRequest = {
   conversationId: 'task-progress',
   messages: [{ id: 'user', role: 'user', content: 'Create and configure an entity' }],
@@ -94,6 +99,55 @@ describe('AI agent task progress', () => {
       id: 'agent-step-0',
       toolCallIds: ['broken'],
       detail: 'Failed while running editor.applyBatch',
+    });
+  });
+
+  it('keeps retryable revision conflicts in progress instead of flashing failed', async () => {
+    let providerTurn = 0;
+    const execute = () =>
+      (async function* (): AsyncGenerator<AiRuntimeStreamEvent> {
+        ++providerTurn;
+        if (providerTurn === 1) {
+          yield {
+            type: 'tool-call',
+            call: {
+              id: 'plan',
+              name: 'agent.updatePlan',
+              arguments: {
+                planId: 'scene-plan',
+                title: 'Edit scene',
+                steps: [{ id: 'apply', title: 'Apply scene changes', state: 'in_progress' }],
+              },
+            },
+          };
+          yield {
+            type: 'tool-call',
+            call: {
+              id: 'mutate-1',
+              name: 'editor.applyBatch',
+              arguments: { expectedSceneRevision: 1, operations: [] },
+            },
+          };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        yield { type: 'done', finishReason: 'stop' };
+      })();
+
+    const events = await collect(
+      runAiAgentToolLoop(request, execute, async () => {
+        throw new Error('Edit session expects scene revision 2');
+      }),
+    );
+    const tasks = events.filter(
+      (event): event is Extract<AiRuntimeStreamEvent, { type: 'task-update' }> => event.type === 'task-update',
+    );
+
+    expect(tasks.some((event) => flattenState(event.task).includes('failed'))).toBe(false);
+    expect(tasks.at(-1)?.task).toMatchObject({
+      id: 'scene-plan',
+      state: 'in_progress',
+      children: [{ id: 'apply', state: 'in_progress', detail: 'Retrying after editor.applyBatch' }],
     });
   });
 
