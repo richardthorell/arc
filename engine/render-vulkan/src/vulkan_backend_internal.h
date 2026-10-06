@@ -763,7 +763,9 @@ private:
     {
         VkPipeline gbuffer_pipeline{};
         VkPipeline forward_pipeline{};
+        VkPipeline water_forward_pipeline{};
         VkPipelineLayout pipeline_layout{};
+        VkPipelineLayout water_pipeline_layout{};
         VkDescriptorSetLayout descriptor_set_layout{};
         VkDescriptorPool descriptor_pool{};
         std::vector<VkDescriptorSet> descriptor_sets;
@@ -1231,6 +1233,9 @@ private:
 
     bool draw_runtime_material_forward(VkCommandBuffer command_buffer, const virtual_cluster_draw& draw);
 
+    bool draw_runtime_water_forward(VkCommandBuffer command_buffer, const draw_mesh_event& draw,
+                                    const gpu_ocean_simulation& simulation);
+
     void destroy_mesh_pipeline() noexcept;
 
     void destroy_white_texture() noexcept;
@@ -1271,6 +1276,8 @@ private:
     bool ensure_runtime_gbuffer_pipeline(gpu_material& material);
 
     bool ensure_runtime_forward_pipeline(gpu_material& material);
+
+    bool ensure_runtime_water_forward_pipeline(gpu_material& material);
 
     void destroy_virtual_shadow_resources(vulkan_virtual_shadow_resources& resources) noexcept;
 
