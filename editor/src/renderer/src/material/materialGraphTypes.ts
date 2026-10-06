@@ -499,11 +499,31 @@ export const createDefaultMaterialGraph = (): MaterialGraph => {
   metallic.parameter = { exposed: true, name: 'Metallic' };
   const roughness = createMaterialNode('constant', [80, 550], { value: 0.62 });
   roughness.parameter = { exposed: true, name: 'Roughness' };
-  const output = createMaterialNode('output', [650, 240]);
+  const emissiveColor = createMaterialNode('colorRgba', [80, 720], { value: [1, 1, 1, 1] });
+  emissiveColor.parameter = { exposed: true, name: 'Emissive Color' };
+  const emissiveTexture = createMaterialNode('textureSample2D', [80, 880]);
+  emissiveTexture.parameter = { exposed: true, name: 'Emissive Texture' };
+  const emissiveStrength = createMaterialNode('constant', [80, 1040], { value: 0 });
+  emissiveStrength.parameter = { exposed: true, name: 'Emissive Strength' };
+  const emissiveColorMultiply = createMaterialNode('multiply', [360, 800]);
+  const emissiveStrengthMultiply = createMaterialNode('multiply', [560, 800]);
+  const output = createMaterialNode('output', [820, 340]);
 
   return {
     version: 1,
-    nodes: [baseColorTint, baseColorTexture, baseColorMultiply, metallic, roughness, output],
+    nodes: [
+      baseColorTint,
+      baseColorTexture,
+      baseColorMultiply,
+      metallic,
+      roughness,
+      emissiveColor,
+      emissiveTexture,
+      emissiveStrength,
+      emissiveColorMultiply,
+      emissiveStrengthMultiply,
+      output,
+    ],
     connections: [
       {
         id: materialGraphId('connection'),
@@ -530,8 +550,33 @@ export const createDefaultMaterialGraph = (): MaterialGraph => {
         from: { nodeId: roughness.id, pin: 'value' },
         to: { nodeId: output.id, pin: 'roughness' },
       },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: emissiveColor.id, pin: 'rgb' },
+        to: { nodeId: emissiveColorMultiply.id, pin: 'a' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: emissiveTexture.id, pin: 'rgb' },
+        to: { nodeId: emissiveColorMultiply.id, pin: 'b' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: emissiveColorMultiply.id, pin: 'result' },
+        to: { nodeId: emissiveStrengthMultiply.id, pin: 'a' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: emissiveStrength.id, pin: 'value' },
+        to: { nodeId: emissiveStrengthMultiply.id, pin: 'b' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: emissiveStrengthMultiply.id, pin: 'result' },
+        to: { nodeId: output.id, pin: 'emissive' },
+      },
     ],
-    viewport: { x: 40, y: 40, zoom: 1 },
+    viewport: { x: 40, y: 40, zoom: 0.85 },
   };
 };
 

@@ -37,6 +37,9 @@ describe('Material asset creation', () => {
     const tint = graph.nodes.find((node) => node.parameter?.name === 'Base Color Tint');
     const texture = graph.nodes.find((node) => node.parameter?.name === 'Base Color Texture');
     const multiply = graph.nodes.find((node) => node.type === 'multiply');
+    const emissiveColor = graph.nodes.find((node) => node.parameter?.name === 'Emissive Color');
+    const emissiveTexture = graph.nodes.find((node) => node.parameter?.name === 'Emissive Texture');
+    const emissiveStrength = graph.nodes.find((node) => node.parameter?.name === 'Emissive Strength');
     const output = graph.nodes.find((node) => node.type === 'output');
 
     expect(tint).toMatchObject({
@@ -46,6 +49,18 @@ describe('Material asset creation', () => {
     expect(texture).toMatchObject({
       type: 'textureSample2D',
       values: { texture: '', dimension: '2d' },
+    });
+    expect(emissiveColor).toMatchObject({
+      type: 'colorRgba',
+      values: { value: [1, 1, 1, 1] },
+    });
+    expect(emissiveTexture).toMatchObject({
+      type: 'textureSample2D',
+      values: { texture: '', dimension: '2d' },
+    });
+    expect(emissiveStrength).toMatchObject({
+      type: 'constant',
+      values: { value: 0 },
     });
     expect(multiply).toBeDefined();
     expect(output).toBeDefined();
@@ -74,6 +89,9 @@ describe('Material asset creation', () => {
           connection.to.nodeId === output?.id &&
           connection.to.pin === 'baseColor',
       ),
+    ).toBe(true);
+    expect(
+      graph.connections.some((connection) => connection.to.nodeId === output?.id && connection.to.pin === 'emissive'),
     ).toBe(true);
   });
 });

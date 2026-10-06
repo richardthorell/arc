@@ -19,6 +19,9 @@ describe('material graph schema', () => {
       'Base Color Texture',
       'Metallic',
       'Roughness',
+      'Emissive Color',
+      'Emissive Texture',
+      'Emissive Strength',
     ]);
     const tint = graph.nodes.find((node) => node.parameter?.name === 'Base Color Tint');
     const texture = graph.nodes.find((node) => node.parameter?.name === 'Base Color Texture');
@@ -41,7 +44,23 @@ describe('material graph schema', () => {
         (connection) => connection.from.nodeId === multiply?.id && connection.to.nodeId === 'material-output',
       ),
     ).toBe(true);
-    expect(graph.connections).toHaveLength(5);
+    const emissiveColor = graph.nodes.find((node) => node.parameter?.name === 'Emissive Color');
+    const emissiveTexture = graph.nodes.find((node) => node.parameter?.name === 'Emissive Texture');
+    const emissiveStrength = graph.nodes.find((node) => node.parameter?.name === 'Emissive Strength');
+    expect(emissiveColor).toMatchObject({ type: 'colorRgba', values: { value: [1, 1, 1, 1] } });
+    expect(emissiveTexture).toMatchObject({ type: 'textureSample2D', values: { texture: '', dimension: '2d' } });
+    expect(emissiveStrength).toMatchObject({ type: 'constant', values: { value: 0 } });
+    expect(
+      graph.connections.some(
+        (connection) => connection.from.nodeId === emissiveStrength?.id && connection.to.nodeId !== 'material-output',
+      ),
+    ).toBe(true);
+    expect(
+      graph.connections.some(
+        (connection) => connection.to.nodeId === 'material-output' && connection.to.pin === 'emissive',
+      ),
+    ).toBe(true);
+    expect(graph.connections).toHaveLength(10);
   });
 
   it('defines texture sample UV input and channel outputs', () => {
