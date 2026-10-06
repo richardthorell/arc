@@ -400,9 +400,7 @@ TEST_CASE("virtual shadow render completion rejects stale physical and work gene
                                                    .level_count = 1});
     REQUIRE(light);
     const arc::render::virtual_shadow_page_request request{
-        .key = {.address_space = *light, .coordinate = {0, 0, 0, 0}},
-        .frame_index = 1,
-        .content_revision = 7};
+        .key = {.address_space = *light, .coordinate = {0, 0, 0, 0}}, .frame_index = 1, .content_revision = 7};
     auto result = cache.resolve_requests(std::span{&request, 1}, 1);
     REQUIRE(result.render_pages.size() == 1);
     const auto stale = arc::render::make_virtual_shadow_page_render_token(result.render_pages.front());

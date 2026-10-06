@@ -430,10 +430,11 @@ make_virtual_shadow_page_render_token(const virtual_shadow_page_mapping& mapping
                                                                  virtual_shadow_page_coordinate coordinate) noexcept;
 
 /** @brief Encode one scheduled page into the shared GPU culling/raster ABI. */
-[[nodiscard]] gpu_virtual_shadow_render_page_record encode_virtual_shadow_render_page(
-    const virtual_shadow_page_mapping& mapping, const virtual_shadow_view_descriptor& view, std::uint32_t view_index,
-    std::uint32_t atlas_pages_per_axis, std::uint32_t work_offset, std::uint32_t work_capacity,
-    std::uint64_t frame_index) noexcept;
+[[nodiscard]] gpu_virtual_shadow_render_page_record
+encode_virtual_shadow_render_page(const virtual_shadow_page_mapping& mapping,
+                                  const virtual_shadow_view_descriptor& view, std::uint32_t view_index,
+                                  std::uint32_t atlas_pages_per_axis, std::uint32_t work_offset,
+                                  std::uint32_t work_capacity, std::uint64_t frame_index) noexcept;
 
 /** @brief Aggregate state for tooling and renderer diagnostics. */
 struct virtual_shadow_cache_statistics
