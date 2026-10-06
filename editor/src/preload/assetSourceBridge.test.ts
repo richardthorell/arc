@@ -35,7 +35,6 @@ describe('asset source bridge import operations', () => {
   });
 });
 
-
 describe('asset source bridge provenance publication', () => {
   it('persists the canonical sidecar for the exact resolved import selection', () => {
     const asset: ArcRemoteAsset = {
