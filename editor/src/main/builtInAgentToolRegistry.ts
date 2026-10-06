@@ -149,7 +149,8 @@ const registryEntries = [
   },
   {
     method: 'assets.list',
-    description: 'List the authoritative project-local asset inventory for reuse decisions and validated scene/material bindings. Inspect this before creating or importing reusable content when the supplied asset context is insufficient.',
+    description:
+      'List the authoritative project-local asset inventory for reuse decisions and validated scene/material bindings. Inspect this before creating or importing reusable content when the supplied asset context is insufficient.',
     schema: empty,
   },
   {
