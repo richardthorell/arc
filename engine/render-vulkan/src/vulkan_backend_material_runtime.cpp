@@ -683,12 +683,19 @@ bool vulkan_render_backend::create_runtime_gbuffer_pipeline(gpu_material& materi
 
     VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0u,
                              sizeof(mesh_push_constants)};
-    VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    if (material.runtime.descriptor_set_layout != VK_NULL_HANDLE)
+    if (!ensure_forward_scene_resources())
     {
-        layout.setLayoutCount = 1u;
-        layout.pSetLayouts = &material.runtime.descriptor_set_layout;
+        vkDestroyShaderModule(device_, vert, nullptr);
+        vkDestroyShaderModule(device_, frag, nullptr);
+        return reject_runtime_material(material, "failed to create forward scene resources");
     }
+    const VkDescriptorSetLayout material_layout =
+        material.runtime.descriptor_set_layout != VK_NULL_HANDLE ? material.runtime.descriptor_set_layout
+                                                                 : white_descriptor_set_layout_;
+    const std::array set_layouts{material_layout, white_descriptor_set_layout_, forward_scene_descriptor_set_layout_};
+    VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    layout.setLayoutCount = static_cast<std::uint32_t>(set_layouts.size());
+    layout.pSetLayouts = set_layouts.data();
     layout.pushConstantRangeCount = 1u;
     layout.pPushConstantRanges = &push;
     if (vkCreatePipelineLayout(device_, &layout, nullptr, &material.runtime.pipeline_layout) != VK_SUCCESS)
@@ -898,7 +905,7 @@ bool vulkan_render_backend::ensure_runtime_water_forward_pipeline(gpu_material& 
     if (material.runtime.water_forward_pipeline != VK_NULL_HANDLE &&
         material.runtime.water_pipeline_layout != VK_NULL_HANDLE)
         return true;
-    if (water_surface_descriptor_set_layout_ == VK_NULL_HANDLE) return false;
+    if (water_surface_descriptor_set_layout_ == VK_NULL_HANDLE || !ensure_forward_scene_resources()) return false;
 
     const auto* pass = runtime_material_pass(material, material_pass::forward);
     if (pass == nullptr || pass->compiled.bytecode.empty()) return false;
@@ -916,7 +923,8 @@ bool vulkan_render_backend::ensure_runtime_water_forward_pipeline(gpu_material& 
     const VkDescriptorSetLayout material_layout =
         material.runtime.descriptor_set_layout != VK_NULL_HANDLE ? material.runtime.descriptor_set_layout
                                                                  : white_descriptor_set_layout_;
-    const std::array set_layouts{material_layout, water_surface_descriptor_set_layout_};
+    const std::array set_layouts{material_layout, water_surface_descriptor_set_layout_,
+                                 forward_scene_descriptor_set_layout_};
     const VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0u,
                                    sizeof(mesh_push_constants)};
     const VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
