@@ -93,7 +93,7 @@ describe('MaterialGraphWithInteractions', () => {
     expect(flowTexture).toHaveAttribute('d', wirePath!);
     expect(container.querySelectorAll('.material-wire-endpoint-cap.is-primary')).toHaveLength(2);
 
-    const multiply = screen.getByText('Multiply', { selector: '.ui-node-card-title' }).closest('article');
+    const multiply = screen.getAllByText('Multiply', { selector: '.ui-node-card-title' })[0]!.closest('article');
     const output = screen.getByText('Material Output').closest('article');
     expect(multiply).not.toBeNull();
     expect(output).not.toBeNull();
