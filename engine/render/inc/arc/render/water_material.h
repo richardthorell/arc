@@ -17,4 +17,15 @@ namespace arc::render
 [[nodiscard]] material_descriptor make_water_material(const water::water_appearance_settings& appearance,
                                                       std::string name = "Water");
 
+/**
+ * @brief Apply resolved Water appearance to an authored/compiled Water material.
+ *
+ * The authored material remains the shader/evaluator authority. This updates the descriptor-side Water policy and,
+ * when matching built-in Water parameters are reflected by the runtime program, applies the same values to the
+ * compiled Material ABI parameter block without discarding compiled passes or texture bindings.
+ */
+[[nodiscard]] material_descriptor apply_water_material_appearance(material_descriptor material,
+                                                                  const water::water_appearance_settings& appearance,
+                                                                  std::string name = "Water");
+
 } // namespace arc::render

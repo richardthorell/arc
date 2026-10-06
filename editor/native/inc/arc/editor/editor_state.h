@@ -13,6 +13,7 @@
 #include <mutex>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace arc::editor
@@ -91,6 +92,10 @@ struct editor_scene_state
     // Original known-component objects are retained so future fields survive
     // editing, history, duplication, prefab operations, and resaving.
     std::vector<preserved_component_record> preserved_component_records;
+    /** Built-in asset roots retained so world-feature helpers can resolve authored engine assets. */
+    std::vector<std::filesystem::path> builtin_asset_roots;
+    /** Per-Water authored material bases used to preserve compiled pass programs across appearance updates. */
+    std::vector<std::pair<render::material_handle, render::material_descriptor>> water_material_bases;
     editor_material_library material_library;
     material_editor_state material_editor;
     scene::render_scene_result last_render;

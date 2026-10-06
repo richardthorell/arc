@@ -392,38 +392,11 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
         return {};
     }
 
-    auto generated =
-        render::tools::generate_material_pass_slang(evaluator.value(), material, render::material_pass::gbuffer);
-    if (!generated)
-    {
-        diagnostics.push_back("Compiled Material ABI G-buffer generation failed: " + generated.error().message);
-        return {};
-    }
-
     render::tools::slang_shader_compiler compiler;
     if (!compiler.available())
     {
         diagnostics.push_back(
             "Pinned Slang compiler is unavailable; native preview is using static Material ABI defaults");
-        return {};
-    }
-
-    render::shader_compile_request request{.source_path = material.name + ".preview.gbuffer.generated.slang",
-                                           .source_override = generated.value().source,
-                                           .entry_point = generated.value().entry_point,
-                                           .profile = "spirv_1_5",
-                                           .library_version = "arc-material-preview/1",
-                                           .domain = render::shader_domain::surface,
-                                           .stage = render::shader_stage::fragment,
-                                           .target = render::shader_target::spirv,
-                                           .optimization = render::shader_optimization::development,
-                                           .required_passes = {render::material_pass::gbuffer},
-                                           .generated_line_nodes = generated.value().generated_line_nodes,
-                                           .generate_debug_information = true};
-    auto compiled = compiler.compile(request);
-    if (!compiled)
-    {
-        diagnostics.push_back("Compiled Material ABI preview shader compilation failed: " + compiled.error().message);
         return {};
     }
 
@@ -438,28 +411,96 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
                                              .type = texture.type,
                                              .dimension_slot = texture.dimension_slot});
 
-    for (const auto& authored_parameter : evaluator.value().parameters)
+    const std::array candidate_passes{render::material_pass::gbuffer, render::material_pass::forward};
+    bool parameter_layout_initialized{};
+    for (const auto pass : candidate_passes)
     {
-        if (authored_parameter.type == render::shader_parameter_type::texture_2d ||
-            authored_parameter.type == render::shader_parameter_type::texture_cube ||
-            authored_parameter.type == render::shader_parameter_type::texture_3d ||
-            authored_parameter.type == render::shader_parameter_type::sampler)
-            continue;
+        if (!render::material_supports_pass(material, pass)) continue;
 
-        const auto field_name = "arc_param_" + std::to_string(authored_parameter.id.representation());
-        const auto reflected = std::ranges::find(compiled.value().reflection.parameters, field_name,
-                                                 &render::shader_parameter_descriptor::name);
-        if (reflected == compiled.value().reflection.parameters.end())
+        const auto pass_name = pass == render::material_pass::gbuffer ? "gbuffer" : "forward";
+        auto generated = render::tools::generate_material_pass_slang(evaluator.value(), material, pass);
+        if (!generated)
         {
-            diagnostics.push_back("Compiled Material ABI reflection is missing parameter field '" + field_name + "'");
+            diagnostics.push_back("Compiled Material ABI " + std::string(pass_name) +
+                                  " generation failed: " + generated.error().message);
             return {};
         }
 
-        auto parameter = authored_parameter;
-        parameter.offset = reflected->offset;
-        parameter.size = reflected->size;
-        program->parameter_block_size = std::max(program->parameter_block_size, parameter.offset + parameter.size);
-        program->parameters.push_back(std::move(parameter));
+        render::shader_compile_request request{.source_path =
+                                                   material.name + ".preview." + pass_name + ".generated.slang",
+                                               .source_override = generated.value().source,
+                                               .entry_point = generated.value().entry_point,
+                                               .profile = "spirv_1_5",
+                                               .library_version = "arc-material-preview/1",
+                                               .domain = render::shader_domain::surface,
+                                               .stage = render::shader_stage::fragment,
+                                               .target = render::shader_target::spirv,
+                                               .optimization = render::shader_optimization::development,
+                                               .required_passes = {pass},
+                                               .generated_line_nodes = generated.value().generated_line_nodes,
+                                               .generate_debug_information = true};
+        auto compiled = compiler.compile(request);
+        if (!compiled)
+        {
+            diagnostics.push_back("Compiled Material ABI " + std::string(pass_name) +
+                                  " shader compilation failed: " + compiled.error().message);
+            return {};
+        }
+
+        if (!parameter_layout_initialized)
+        {
+            for (const auto& authored_parameter : evaluator.value().parameters)
+            {
+                if (authored_parameter.type == render::shader_parameter_type::texture_2d ||
+                    authored_parameter.type == render::shader_parameter_type::texture_cube ||
+                    authored_parameter.type == render::shader_parameter_type::texture_3d ||
+                    authored_parameter.type == render::shader_parameter_type::sampler)
+                    continue;
+
+                const auto field_name = "arc_param_" + std::to_string(authored_parameter.id.representation());
+                const auto reflected = std::ranges::find(compiled.value().reflection.parameters, field_name,
+                                                         &render::shader_parameter_descriptor::name);
+                if (reflected == compiled.value().reflection.parameters.end())
+                {
+                    diagnostics.push_back("Compiled Material ABI reflection is missing parameter field '" + field_name +
+                                          "'");
+                    return {};
+                }
+
+                auto parameter = authored_parameter;
+                parameter.offset = reflected->offset;
+                parameter.size = reflected->size;
+                program->parameter_block_size =
+                    std::max(program->parameter_block_size, parameter.offset + parameter.size);
+                program->parameters.push_back(std::move(parameter));
+            }
+            parameter_layout_initialized = true;
+        }
+        else
+        {
+            for (const auto& parameter : program->parameters)
+            {
+                const auto field_name = "arc_param_" + std::to_string(parameter.id.representation());
+                const auto reflected = std::ranges::find(compiled.value().reflection.parameters, field_name,
+                                                         &render::shader_parameter_descriptor::name);
+                if (reflected == compiled.value().reflection.parameters.end() ||
+                    reflected->offset != parameter.offset || reflected->size != parameter.size)
+                {
+                    diagnostics.push_back("Compiled Material ABI parameter layout differs between raster passes for '" +
+                                          parameter.name + "'");
+                    return {};
+                }
+            }
+        }
+
+        program->passes.push_back(
+            {.pass = pass, .permutation = generated.value().permutation, .compiled = std::move(compiled).value()});
+    }
+
+    if (program->passes.empty())
+    {
+        diagnostics.push_back("Material has no supported raster pass for native preview");
+        return {};
     }
 
     program->parameter_defaults.assign(program->parameter_block_size, std::byte{});
@@ -475,9 +516,6 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
         std::memcpy(program->parameter_defaults.data() + parameter.offset, authored->default_value.data(), bytes);
     }
 
-    program->passes.push_back({.pass = render::material_pass::gbuffer,
-                               .permutation = generated.value().permutation,
-                               .compiled = std::move(compiled).value()});
     return program;
 }
 
@@ -592,12 +630,19 @@ material_preview_descriptor_result realize_material_preview_descriptor(std::stri
         std::erase_if(
             result.diagnostics, [](const std::string& diagnostic)
             { return diagnostic.find("until compiled runtime pass binding is available") != std::string::npos; });
-        result.diagnostics.push_back("Compiled Material ABI G-buffer preview pass is active");
+        const bool has_gbuffer = std::ranges::any_of(result.material.runtime_program->passes, [](const auto& value)
+                                                     { return value.pass == render::material_pass::gbuffer; });
+        const bool has_forward = std::ranges::any_of(result.material.runtime_program->passes, [](const auto& value)
+                                                     { return value.pass == render::material_pass::forward; });
+        result.diagnostics.push_back(has_gbuffer && has_forward
+                                         ? "Compiled Material ABI G-buffer and forward preview passes are active"
+                                     : has_forward ? "Compiled Material ABI forward preview pass is active"
+                                                   : "Compiled Material ABI G-buffer preview pass is active");
     }
 
     result.succeeded = true;
     result.message =
-        result.material.runtime_program ? "Material preview realized through compiled Material ABI G-buffer pass"
+        result.material.runtime_program ? "Material preview realized through compiled Material ABI raster passes"
         : result.diagnostics.empty()    ? "Material preview realized from native Material IR"
                                      : "Material preview realized from native Material IR with dynamic-output defaults";
     return result;

@@ -145,12 +145,55 @@ render::texture_handle load_first_texture(editor_scene_state& scene, render::ren
     return {};
 }
 
+void remember_builtin_asset_root(editor_scene_state& scene, const std::filesystem::path& root)
+{
+    if (root.empty()) return;
+    const auto normalized = root.lexically_normal();
+    if (std::ranges::find(scene.builtin_asset_roots, normalized) == scene.builtin_asset_roots.end())
+        scene.builtin_asset_roots.push_back(normalized);
+}
+
+void remember_builtin_asset_roots(editor_scene_state& scene, const editor_asset_state& assets)
+{
+    remember_builtin_asset_root(scene, assets.root);
+    for (const auto& root : assets.builtin_roots)
+        remember_builtin_asset_root(scene, root);
+}
+
+const render::material_descriptor* water_material_base(const editor_scene_state& scene,
+                                                       render::material_handle material)
+{
+    const auto found =
+        std::ranges::find(scene.water_material_bases, material, [](const auto& value) { return value.first; });
+    return found == scene.water_material_bases.end() ? nullptr : &found->second;
+}
+
 render::material_handle create_water_material(editor_scene_state& scene, render::renderer& renderer)
 {
-    const auto material =
-        renderer.create_material(render::make_water_material(water::water_appearance_settings{}, "Default Water"));
-    if (!scene.water_material.valid()) scene.water_material = material;
-    return material;
+    const water::water_appearance_settings appearance{};
+    for (const auto& builtin_root : scene.builtin_asset_roots)
+    {
+        const auto authored_path = builtin_root / "materials" / "water_preview.arcmat";
+        if (!std::filesystem::is_regular_file(authored_path)) continue;
+
+        material_asset authored;
+        const auto template_handle =
+            load_material_for_editor(scene.material_library, renderer, builtin_root, authored_path, &authored);
+        if (!template_handle.valid()) continue;
+
+        auto material = render::apply_water_material_appearance(authored.material, appearance, "Default Water");
+        const auto handle = renderer.create_material(material);
+        if (!handle.valid()) continue;
+        scene.water_material_bases.emplace_back(handle, std::move(authored.material));
+        if (!scene.water_material.valid()) scene.water_material = handle;
+        return handle;
+    }
+
+    auto material = render::make_water_material(appearance, "Default Water");
+    const auto handle = renderer.create_material(material);
+    if (handle.valid()) scene.water_material_bases.emplace_back(handle, std::move(material));
+    if (!scene.water_material.valid()) scene.water_material = handle;
+    return handle;
 }
 
 render::material_handle ensure_vegetation_material(editor_scene_state& scene, render::renderer& renderer)
@@ -322,6 +365,7 @@ editor_asset_state load_default_editor_assets(const std::filesystem::path& asset
 render::material_handle create_default_primitive_material(editor_scene_state& scene, render::renderer& renderer,
                                                           const editor_asset_state& editor_assets)
 {
+    remember_builtin_asset_roots(scene, editor_assets);
     scene.primitive_material_asset = {};
     for (const auto& builtin_root : editor_assets.builtin_roots)
     {
@@ -345,6 +389,7 @@ render::material_handle create_default_primitive_material(editor_scene_state& sc
 render::material_handle create_default_floor_material(editor_scene_state& scene, render::renderer& renderer,
                                                       const editor_asset_state& editor_assets)
 {
+    remember_builtin_asset_roots(scene, editor_assets);
     scene.floor_material_asset = {};
     for (const auto& builtin_root : editor_assets.builtin_roots)
     {
@@ -369,6 +414,7 @@ render::material_handle create_default_floor_material(editor_scene_state& scene,
 render::material_handle create_default_terrain_material(editor_scene_state& scene, render::renderer& renderer,
                                                         const std::filesystem::path& asset_root)
 {
+    remember_builtin_asset_root(scene, asset_root);
     material_asset authored;
     const auto authored_path = asset_root / "materials" / "layered_terrain.arcmat";
     const auto authored_handle =
@@ -650,8 +696,26 @@ bool synchronize_terrain_render_resource(editor_scene_state& scene, render::rend
 bool synchronize_water_render_material(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity)
 {
     const auto* water = scene.scene.try_get<scene::water_component>(entity);
-    const auto* mesh_renderer = scene.scene.try_get<scene::mesh_renderer_component>(entity);
+    auto* mesh_renderer = scene.scene.try_get<scene::mesh_renderer_component>(entity);
     if (!water || !mesh_renderer || !mesh_renderer->material.valid()) return false;
+
+    if (const auto* base = water_material_base(scene, mesh_renderer->material))
+        return renderer.update_material(mesh_renderer->material, render::apply_water_material_appearance(
+                                                                     *base, water->settings.appearance, "Water"));
+
+    const auto library_record = std::ranges::find(scene.material_library.materials, mesh_renderer->material,
+                                                  [](const editor_material_record& value) { return value.material; });
+    if (library_record != scene.material_library.materials.end())
+    {
+        auto updated = render::apply_water_material_appearance(library_record->asset.material,
+                                                               water->settings.appearance, "Water");
+        const auto unique_material = renderer.create_material(std::move(updated));
+        if (!unique_material.valid()) return false;
+        scene.water_material_bases.emplace_back(unique_material, library_record->asset.material);
+        mesh_renderer->material = unique_material;
+        return true;
+    }
+
     return renderer.update_material(mesh_renderer->material,
                                     render::make_water_material(water->settings.appearance, "Water"));
 }

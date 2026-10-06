@@ -63,6 +63,40 @@ TEST_CASE("material preview realizes authored base color through native Material
     }
 }
 
+TEST_CASE("transmission material preview compiles the canonical forward pass")
+{
+    const std::string source = R"({
+  "version": 4,
+  "name": "Preview Transmission",
+  "domain": "surface",
+  "blendMode": "blend",
+  "shadingModel": "transmission",
+  "doubleSided": true,
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {"id":"output","type":"output","position":[0,0],"values":{}},
+      {"id":"base","type":"colorRgba","position":[0,0],"values":{"value":[0.1,0.3,0.4,1.0]}},
+      {"id":"transmission","type":"constant","position":[0,0],"values":{"value":0.8}}
+    ],
+    "connections": [
+      {"id":"base-output","from":{"nodeId":"base","pin":"rgb"},"to":{"nodeId":"output","pin":"baseColor"}},
+      {"id":"transmission-output","from":{"nodeId":"transmission","pin":"value"},"to":{"nodeId":"output","pin":"transmission"}}
+    ]
+  }
+})";
+
+    const auto result = arc::editor::realize_material_preview_descriptor(source, "Preview Transmission");
+    REQUIRE(result.succeeded);
+    CHECK(result.material.render_path == arc::render::material_render_path::clustered_forward);
+    if (result.material.runtime_program)
+    {
+        REQUIRE(result.material.runtime_program->passes.size() == 1u);
+        CHECK(result.material.runtime_program->passes.front().pass == arc::render::material_pass::forward);
+        CHECK_FALSE(result.material.runtime_program->passes.front().compiled.bytecode.empty());
+    }
+}
+
 TEST_CASE("material thumbnail renderer uses graph-realized surface values")
 {
     const auto source_path = std::filesystem::temp_directory_path() / "arc-preview-red-thumbnail.arcmat";
