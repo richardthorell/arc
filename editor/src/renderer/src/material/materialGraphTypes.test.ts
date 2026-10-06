@@ -63,6 +63,11 @@ describe('material graph schema', () => {
     expect(graph.connections).toHaveLength(10);
   });
 
+  it('exposes only the modern Color node for authoring', () => {
+    expect(materialNodeDefinitions).toHaveProperty('colorRgba');
+    expect(materialNodeDefinitions).not.toHaveProperty('colorRgb');
+  });
+
   it('defines texture sample UV input and channel outputs', () => {
     expect(materialNodeDefinitions.textureSample.inputs.map((pin) => [pin.id, pin.type])).toEqual([['uv', 'vec2']]);
     expect(materialNodeDefinitions.textureSample.outputs.map((pin) => [pin.id, pin.type])).toEqual([

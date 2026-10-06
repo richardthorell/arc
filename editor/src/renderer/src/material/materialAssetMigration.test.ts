@@ -125,6 +125,54 @@ describe('material asset migration', () => {
     expect(repeated.asset).toBe(first.asset);
   });
 
+  it('migrates legacy Color RGB nodes to modern Color nodes without changing graph intent', () => {
+    const result = upgradeMaterialAsset({
+      version: currentMaterialAuthoringVersion,
+      name: 'Legacy Color Graph',
+      graph: {
+        version: 1,
+        nodes: [
+          { id: 'material-output', type: 'output', position: [500, 120], values: {} },
+          {
+            id: 'legacy-color',
+            type: 'colorRgb',
+            position: [80, 120],
+            values: { value: [0.2, 0.4, 0.8] },
+            parameter: { exposed: true, name: 'Tint' },
+          },
+        ],
+        connections: [
+          {
+            id: 'legacy-color-output',
+            from: { nodeId: 'legacy-color', pin: 'value' },
+            to: { nodeId: 'material-output', pin: 'baseColor' },
+          },
+        ],
+      },
+    } as unknown as Parameters<typeof upgradeMaterialAsset>[0]);
+
+    expect(result.upgraded).toBe(true);
+    expect(result.sourceVersion).toBe(currentMaterialAuthoringVersion);
+
+    const graph = materialGraphFromAsset(result.asset);
+    expect(graph.nodes.find((node) => node.id === 'legacy-color')).toMatchObject({
+      type: 'colorRgba',
+      values: { value: [0.2, 0.4, 0.8, 1] },
+      parameter: { exposed: true, name: 'Tint' },
+    });
+    expect(graph.connections).toContainEqual(
+      expect.objectContaining({
+        from: { nodeId: 'legacy-color', pin: 'rgb' },
+        to: { nodeId: 'material-output', pin: 'baseColor' },
+      }),
+    );
+    expect(graph.nodes.some((node) => (node.type as string) === 'colorRgb')).toBe(false);
+
+    const repeated = upgradeMaterialAsset(result.asset);
+    expect(repeated.upgraded).toBe(false);
+    expect(repeated.asset).toBe(result.asset);
+  });
+
   it('keeps an existing legacy graph while upgrading only its authoring envelope', () => {
     const graph = createDefaultMaterialGraph();
     const result = upgradeMaterialAsset({

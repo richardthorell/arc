@@ -70,6 +70,52 @@ const color3 = (value: LegacyColor | undefined, fallback: [number, number, numbe
   finite(value?.b, fallback[2]),
 ];
 
+const normalizeLegacyColorRgbGraph = (value: unknown): { graph: MaterialGraph | undefined; upgraded: boolean } => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { graph: undefined, upgraded: false };
+
+  const graph = structuredClone(value) as {
+    nodes?: unknown[];
+    connections?: unknown[];
+  };
+  if (!Array.isArray(graph.nodes) || !Array.isArray(graph.connections)) return { graph: undefined, upgraded: false };
+
+  const migratedNodeIds = new Set<string>();
+  let upgraded = false;
+  for (const rawNode of graph.nodes) {
+    if (!rawNode || typeof rawNode !== 'object' || Array.isArray(rawNode)) continue;
+    const node = rawNode as Record<string, unknown>;
+    if (node.type !== 'colorRgb') continue;
+
+    node.type = 'colorRgba';
+    const values = recordValue<Record<string, unknown>>(node.values);
+    const legacyValue = Array.isArray(values.value) ? values.value : [];
+    values.value = [
+      finite(legacyValue[0], 0.78),
+      finite(legacyValue[1], 0.8),
+      finite(legacyValue[2], 0.84),
+      finite(legacyValue[3], 1),
+    ];
+    node.values = values;
+    if (typeof node.id === 'string') migratedNodeIds.add(node.id);
+    upgraded = true;
+  }
+
+  if (upgraded) {
+    for (const rawConnection of graph.connections) {
+      if (!rawConnection || typeof rawConnection !== 'object' || Array.isArray(rawConnection)) continue;
+      const connection = rawConnection as { from?: unknown };
+      if (!connection.from || typeof connection.from !== 'object' || Array.isArray(connection.from)) continue;
+      const from = connection.from as Record<string, unknown>;
+      if (typeof from.nodeId === 'string' && migratedNodeIds.has(from.nodeId) && from.pin === 'value') from.pin = 'rgb';
+    }
+  }
+
+  return {
+    graph: isMaterialGraph(graph) ? cloneMaterialGraph(graph) : undefined,
+    upgraded,
+  };
+};
+
 const legacyMaterialGraph = (asset: MaterialAssetJson): MaterialGraph => {
   const surface = recordValue<LegacySurface>(asset.surface);
   const advanced = recordValue<LegacyAdvanced>(asset.advanced);
@@ -335,10 +381,19 @@ export const upgradeMaterialAsset = (asset: MaterialAssetJson): MaterialAssetUpg
   if (!Number.isInteger(sourceVersion) || sourceVersion < 1 || sourceVersion > currentMaterialAuthoringVersion)
     throw new Error(`Unsupported material authoring schema v${String(sourceVersion)}`);
 
-  if (sourceVersion === currentMaterialAuthoringVersion) return { asset, sourceVersion, upgraded: false };
+  const normalizedExistingGraph = normalizeLegacyColorRgbGraph(asset.graph);
+  if (sourceVersion === currentMaterialAuthoringVersion) {
+    if (!normalizedExistingGraph.upgraded || !normalizedExistingGraph.graph)
+      return { asset, sourceVersion, upgraded: false };
+    return {
+      asset: { ...asset, graph: normalizedExistingGraph.graph },
+      sourceVersion,
+      upgraded: true,
+    };
+  }
 
   const shaderPath = stringValue(asset.shaderPath);
-  const existingGraph = isMaterialGraph(asset.graph) ? cloneMaterialGraph(asset.graph) : undefined;
+  const existingGraph = normalizedExistingGraph.graph;
   const graph = shaderPath ? null : (existingGraph ?? legacyMaterialGraph(asset));
   const upgraded: MaterialAssetJson = {
     ...asset,
