@@ -1,3 +1,4 @@
+import { EditorReferenceProvider } from '../services/EditorReferenceContext';
 import {
   UiAgentApprovalCard,
   UiAgentAssetCard,
@@ -9,7 +10,6 @@ import {
   UiAgentViewportCard,
   UiButton,
 } from '../ui';
-import { EditorReferenceProvider } from '../services/EditorReferenceContext';
 
 import './UiLabAgentCards.css';
 
@@ -28,7 +28,6 @@ const choiceReferenceController = {
   activate: async () => undefined,
   focus: async () => undefined,
 };
-
 
 export function UiLabAgentCards() {
   return (
@@ -104,8 +103,16 @@ export function UiLabAgentCards() {
           title="Choose a rock model"
           prompt="I found two suitable project assets. Pick one before I place it."
           options={[
-            { uri: 'arc://asset/rock-a', label: 'Granite Rock 03', reason: 'Closest silhouette to the reference.' },
-            { uri: 'arc://asset/rock-b', label: 'Cliff Rock Large', reason: 'Better for a larger foreground shape.' },
+            {
+              uri: 'arc://asset/rock-a',
+              label: 'Granite Rock 03',
+              reason: 'Closest silhouette to the reference.',
+            },
+            {
+              uri: 'arc://asset/rock-b',
+              label: 'Cliff Rock Large',
+              reason: 'Better for a larger foreground shape.',
+            },
           ]}
           onChoose={() => undefined}
         />
