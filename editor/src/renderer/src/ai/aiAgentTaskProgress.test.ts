@@ -69,6 +69,79 @@ describe('AI agent task progress', () => {
     });
   });
 
+  it('does not flash a generic task for pre-plan discovery reads', async () => {
+    let providerTurn = 0;
+    const execute = () =>
+      (async function* (): AsyncGenerator<AiRuntimeStreamEvent> {
+        ++providerTurn;
+        if (providerTurn === 1) {
+          yield { type: 'tool-call', call: { id: 'capabilities', name: 'agent.capabilities', arguments: {} } };
+          yield { type: 'tool-call', call: { id: 'schemas', name: 'scene.componentSchemas', arguments: {} } };
+          yield { type: 'tool-call', call: { id: 'viewport', name: 'viewport.state', arguments: {} } };
+          yield { type: 'done', finishReason: 'tool_calls' };
+          return;
+        }
+        yield {
+          type: 'tool-call',
+          call: {
+            id: 'plan',
+            name: 'agent.updatePlan',
+            arguments: {
+              planId: 'scene-plan',
+              title: 'Build scene',
+              steps: [
+                { id: 'design', title: 'Design scene', state: 'completed' },
+                { id: 'build', title: 'Build scene', state: 'in_progress' },
+              ],
+            },
+          },
+        };
+        yield { type: 'done', finishReason: 'tool_calls' };
+      })();
+
+    const invokeTool = vi.fn(async (call: AiToolCall) => ({
+      name: call.name,
+      operation: call.name,
+      content: '{}',
+      truncated: false,
+      originalBytes: 2,
+    }));
+
+    const events = await collect(runAiAgentToolLoop(request, execute, invokeTool));
+    const tasks = events.filter(
+      (event): event is Extract<AiRuntimeStreamEvent, { type: 'task-update' }> => event.type === 'task-update',
+    );
+
+    expect(tasks.some((event) => event.task.id.startsWith('agent-step-'))).toBe(false);
+    expect(tasks.some((event) => event.task.id === 'scene-plan')).toBe(true);
+  });
+
+  it('emits a terminal error when provider turns are exhausted', async () => {
+    const execute = () =>
+      (async function* (): AsyncGenerator<AiRuntimeStreamEvent> {
+        yield { type: 'tool-call', call: { id: crypto.randomUUID(), name: 'edit.request', arguments: {} } };
+        yield { type: 'done', finishReason: 'tool_calls' };
+      })();
+
+    const invokeTool = vi.fn(async (call: AiToolCall) => ({
+      name: call.name,
+      operation: call.name,
+      content: '{}',
+      truncated: false,
+      originalBytes: 2,
+    }));
+
+    const events = await collect(runAiAgentToolLoop(request, execute, invokeTool, { maximumSteps: 1 }));
+    expect(events.at(-1)).toMatchObject({
+      type: 'error',
+      code: 'tool',
+      retryable: false,
+    });
+    expect((events.at(-1) as Extract<AiRuntimeStreamEvent, { type: 'error' }>).message).toContain(
+      'provider-turn allowance',
+    );
+  });
+
   it('marks the task failed while retaining the linked tool calls when one operation fails', async () => {
     let providerTurn = 0;
     const execute = () =>
