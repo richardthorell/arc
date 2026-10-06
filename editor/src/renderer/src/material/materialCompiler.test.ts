@@ -86,6 +86,16 @@ describe('native material compiler editor adapter', () => {
     expect(materialGraphEditImpact(before, after)).toBe('parameter-values');
   });
 
+  it('treats assigning the default Base Color Texture as a parameter-only edit', () => {
+    const before = createDefaultMaterialGraph();
+    const after = structuredClone(before);
+    const texture = after.nodes.find((node) => node.parameter?.name === 'Base Color Texture');
+    expect(texture).toBeDefined();
+    texture!.values = { ...texture!.values, texture: 'Content/Textures/wall.png' };
+
+    expect(materialGraphEditImpact(before, after)).toBe('parameter-values');
+  });
+
   it('keeps topology and parameter metadata changes on the shader compile path', () => {
     const before = createDefaultMaterialGraph();
     const topology = structuredClone(before);
