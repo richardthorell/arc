@@ -527,6 +527,7 @@ struct host_water_snapshot
     std::uint8_t body_type{};
     std::string preset_guid;
     std::string preset_path;
+    std::uint32_t preset_override_mask{};
     std::string material_guid;
     std::string material_path;
     float water_level{};
