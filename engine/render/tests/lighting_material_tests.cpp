@@ -25,7 +25,8 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
     std::vector<arc::render::directional_light_event> directional;
     for (std::uint32_t index = 0; index < arc::render::max_directional_lights + 2; ++index)
     {
-        directional.push_back({.direction = {0.0f, -1.0f, 0.0f},
+        directional.push_back({.object_id = {index + 10u, 7u},
+                               .direction = {0.0f, -1.0f, 0.0f},
                                .color = {1.0f, 1.0f, 1.0f},
                                .intensity = static_cast<float>(index + 1),
                                .label = "sun",
@@ -61,6 +62,12 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
     REQUIRE(data.skipped_directional_count == 2);
     REQUIRE(data.directional_lights[0].direction_intensity[3] == Catch::Approx(6.0f));
     REQUIRE(data.directional_lights[0].source_shape[0] == Catch::Approx(0.00465f));
+    REQUIRE(data.directional_lights[0].shadow_identity[0] == 15u);
+    REQUIRE(data.directional_lights[0].shadow_identity[1] == 7u);
+    REQUIRE(data.directional_lights[0].shadow_routing[0] ==
+            static_cast<std::uint32_t>(arc::render::directional_shadow_representation::none));
+    STATIC_REQUIRE(sizeof(arc::render::directional_light_data) == 96);
+    STATIC_REQUIRE(alignof(arc::render::directional_light_data) == 16);
     REQUIRE(data.point_count == 2);
     REQUIRE(data.point_lights[0].color_intensity[3] == Catch::Approx(80.0f / (4.0f * arc::math::pi<float>)));
     REQUIRE(data.point_lights[0].object_id_shadow[0] == Catch::Approx(17.0f));

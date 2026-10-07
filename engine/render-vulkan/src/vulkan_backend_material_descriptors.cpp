@@ -231,7 +231,7 @@ void vulkan_render_backend::update_material_descriptor_set(VkDescriptorSet descr
     shadow_buffer.offset = 0;
     shadow_buffer.range = sizeof(shadow_uniform_data);
 
-    std::array<VkWriteDescriptorSet, material_image_bindings.size() + 3u> writes{};
+    std::array<VkWriteDescriptorSet, material_image_bindings.size() + 8u> writes{};
     for (std::uint32_t image_index = 0; image_index < image_infos.size(); ++image_index)
     {
         writes[image_index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -261,14 +261,65 @@ void vulkan_render_backend::update_material_descriptor_set(VkDescriptorSet descr
     VkDescriptorBufferInfo parameter_buffer{};
     parameter_buffer.buffer = material_parameters->buffer;
     parameter_buffer.range = sizeof(material_uniform_data);
-    auto& parameter_write = writes.back();
+    auto& parameter_write = writes[material_image_bindings.size() + 2u];
     parameter_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     parameter_write.dstSet = descriptor_set;
     parameter_write.dstBinding = material_parameters_binding;
     parameter_write.descriptorCount = 1;
     parameter_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     parameter_write.pBufferInfo = &parameter_buffer;
-    vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
+
+    const auto& virtual_shadows = virtual_shadow_resources_;
+    const auto fallback_buffer = light_buffer_.buffer;
+    const std::array<VkDescriptorBufferInfo, 3> virtual_shadow_buffers{
+        VkDescriptorBufferInfo{virtual_shadows.address_spaces.buffer != VK_NULL_HANDLE
+                                   ? virtual_shadows.address_spaces.buffer
+                                   : fallback_buffer,
+                               0u, VK_WHOLE_SIZE},
+        VkDescriptorBufferInfo{virtual_shadows.views.buffer != VK_NULL_HANDLE ? virtual_shadows.views.buffer
+                                                                              : fallback_buffer,
+                               0u, VK_WHOLE_SIZE},
+        VkDescriptorBufferInfo{virtual_shadows.page_table.buffer != VK_NULL_HANDLE ? virtual_shadows.page_table.buffer
+                                                                                   : fallback_buffer,
+                               0u, VK_WHOLE_SIZE}};
+    const VkDescriptorImageInfo fallback_shadow{local_shadow_atlas_.sampler, local_shadow_atlas_.view,
+                                                VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL};
+    const std::array<VkDescriptorImageInfo, 2> virtual_shadow_images{
+        virtual_shadows.static_view != VK_NULL_HANDLE
+            ? VkDescriptorImageInfo{virtual_shadows.sampler, virtual_shadows.static_view,
+                                    VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL}
+            : fallback_shadow,
+        virtual_shadows.dynamic_view != VK_NULL_HANDLE
+            ? VkDescriptorImageInfo{virtual_shadows.sampler, virtual_shadows.dynamic_view,
+                                    VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL}
+            : fallback_shadow};
+    constexpr std::array virtual_shadow_buffer_bindings{material_virtual_shadow_address_binding,
+                                                        material_virtual_shadow_view_binding,
+                                                        material_virtual_shadow_page_table_binding};
+    for (std::size_t index = 0; index < virtual_shadow_buffers.size(); ++index)
+    {
+        auto& write = writes[material_image_bindings.size() + 3u + index];
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = descriptor_set;
+        write.dstBinding = virtual_shadow_buffer_bindings[index];
+        write.descriptorCount = 1;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        write.pBufferInfo = &virtual_shadow_buffers[index];
+    }
+    constexpr std::array virtual_shadow_image_bindings{material_virtual_shadow_static_binding,
+                                                       material_virtual_shadow_dynamic_binding};
+    for (std::size_t index = 0; index < virtual_shadow_images.size(); ++index)
+    {
+        auto& write = writes[material_image_bindings.size() + 6u + index];
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = descriptor_set;
+        write.dstBinding = virtual_shadow_image_bindings[index];
+        write.descriptorCount = 1;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        write.pImageInfo = &virtual_shadow_images[index];
+    }
+    const auto write_count = capabilities_.virtual_shadow_sampling ? writes.size() : writes.size() - 5u;
+    vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(write_count), writes.data(), 0, nullptr);
 }
 
 void vulkan_render_backend::update_material_descriptor_sets(gpu_material& material)
@@ -347,22 +398,26 @@ bool vulkan_render_backend::ensure_white_texture()
     for (std::uint32_t binding_index = 0; binding_index < material_binding_count; ++binding_index)
     {
         bindings[binding_index].binding = binding_index;
+        const bool virtual_shadow_buffer = binding_index >= material_virtual_shadow_address_binding &&
+                                           binding_index <= material_virtual_shadow_page_table_binding;
         bindings[binding_index].descriptorType =
             binding_index == material_shadow_data_binding || binding_index == material_parameters_binding
                 ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
-            : binding_index == material_light_data_binding ? VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
-                                                           : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            : binding_index == material_light_data_binding || virtual_shadow_buffer
+                ? VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         bindings[binding_index].descriptorCount = 1;
-        bindings[binding_index].stageFlags = binding_index == material_shadow_data_binding ||
-                                                     binding_index == material_light_data_binding ||
-                                                     binding_index == material_parameters_binding
-                                                 ? VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT
-                                                 : VK_SHADER_STAGE_FRAGMENT_BIT;
+        bindings[binding_index].stageFlags =
+            binding_index == material_shadow_data_binding || binding_index == material_light_data_binding ||
+                    binding_index == material_parameters_binding || virtual_shadow_buffer
+                ? VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT
+                : VK_SHADER_STAGE_FRAGMENT_BIT;
     }
 
     VkDescriptorSetLayoutCreateInfo layout{};
     layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
+    layout.bindingCount = capabilities_.virtual_shadow_sampling ? static_cast<std::uint32_t>(bindings.size())
+                                                                : material_virtual_shadow_address_binding;
     layout.pBindings = bindings.data();
     if (vkCreateDescriptorSetLayout(device_, &layout, nullptr, &white_descriptor_set_layout_) != VK_SUCCESS)
         return false;
@@ -482,11 +537,11 @@ bool vulkan_render_backend::ensure_white_texture()
     std::array<VkDescriptorPoolSize, 3> pool_sizes{};
     pool_sizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     pool_sizes[0].descriptorCount =
-        static_cast<std::uint32_t>(material_image_bindings.size()) * material_descriptor_set_capacity;
+        static_cast<std::uint32_t>(material_image_bindings.size() + 2u) * material_descriptor_set_capacity;
     pool_sizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     pool_sizes[1].descriptorCount = material_descriptor_set_capacity * 2u;
     pool_sizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    pool_sizes[2].descriptorCount = material_descriptor_set_capacity;
+    pool_sizes[2].descriptorCount = material_descriptor_set_capacity * 4u;
     VkDescriptorPoolCreateInfo descriptor_pool{};
     descriptor_pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     descriptor_pool.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;

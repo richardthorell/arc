@@ -145,9 +145,9 @@ bool vulkan_render_backend::ensure_virtual_shadow_resources()
 
     VkSamplerCreateInfo sampler{};
     sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    const bool linear_filter =
-        (selected_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) != 0;
-    sampler.magFilter = linear_filter ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+    // The shared helper implements exact 1/9/25-tap kernels. Hardware bilinear
+    // comparison would filter even the explicitly unfiltered mode.
+    sampler.magFilter = VK_FILTER_NEAREST;
     sampler.minFilter = sampler.magFilter;
     sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
     sampler.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
@@ -467,9 +467,11 @@ void vulkan_render_backend::collect_virtual_shadow_render_feedback(std::uint32_t
         const bool overflowed =
             counters.overflow_count != 0u || counters.caster_count > resources.caster_capacity_per_page;
         profile.virtual_caster_overflow_pages += overflowed ? 1u : 0u;
-        const bool eligible = index < frame.eligible.size() && frame.eligible[index] != 0u;
-        const bool succeeded = eligible && !overflowed && counters.unsupported_casters == 0u;
-        if (!virtual_shadow_cache_->complete_render(frame.tokens[index], succeeded))
+        const auto ready = index < frame.eligible.size() ? frame.eligible[index] : 0u;
+        const bool raster_ready = (ready & 1u) != 0u && !overflowed && counters.unsupported_casters == 0u;
+        const bool guards_ready = (ready & 2u) != 0u;
+        const bool succeeded = raster_ready && guards_ready;
+        if (!virtual_shadow_cache_->complete_render(frame.tokens[index], raster_ready, guards_ready))
             ++profile.virtual_stale_render_completions;
         else if (succeeded)
             ++rendered_pages;
@@ -493,7 +495,9 @@ void vulkan_render_backend::prepare_virtual_shadow_cache(std::uint64_t frame_ind
     pending_virtual_shadow_page_records_.clear();
     pending_virtual_shadow_tokens_.clear();
     virtual_shadow_culling_dispatched_ = false;
+    virtual_shadow_tables_ready_ = false;
     virtual_shadow_layers_rendered_.fill(false);
+    virtual_shadow_layers_guarded_.fill(false);
     if (!resolved_config_.features.virtual_shadow_maps || !virtual_shadow_cache_) return;
 
     std::vector<virtual_shadow_page_request> requests = std::move(completed_virtual_shadow_feedback_.requests);
@@ -557,9 +561,8 @@ void vulkan_render_backend::prepare_virtual_shadow_cache(std::uint64_t frame_ind
         }
     };
 
-    for (const auto& light : frame_directional_lights_)
+    if (const auto* light = active_directional_shadow_light(); light != nullptr)
     {
-        if (!light.enabled || !light.casts_shadows) continue;
         const virtual_shadow_address_space_descriptor descriptor{.light_kind = shadow_light_kind::directional,
                                                                  .virtual_resolution = 16384u,
                                                                  .level_count = virtual_shadow_directional_clip_levels};
@@ -570,8 +573,8 @@ void vulkan_render_backend::prepare_virtual_shadow_cache(std::uint64_t frame_ind
                 {.inverse_view_projection = frame_camera_.unjittered_inverse_view_projection,
                  .near_plane = frame_camera_.near_plane,
                  .far_plane = frame_camera_.far_plane},
-                frame_camera_.position, light.direction, resolved_config_.directional_shadow_distance);
-        append_light(descriptor, light.object_id, light.mobility, light.shadow, views);
+                frame_camera_.position, light->direction, resolved_config_.directional_shadow_distance);
+        append_light(descriptor, light->object_id, light->mobility, light->shadow, views);
     }
     for (const auto& light : frame_point_lights_)
     {
@@ -614,6 +617,15 @@ void vulkan_render_backend::prepare_virtual_shadow_cache(std::uint64_t frame_ind
     if (!ensure_virtual_shadow_resources())
     {
         pending_virtual_shadow_pages_.clear();
+        return;
+    }
+    // Configuration precedes scene uploads; build the depth pipeline only once
+    // the authoritative geometry/material tables exist. Lighting stays on CSM
+    // until every descriptor and pipeline needed by this frame is executable.
+    if (!ensure_virtual_shadow_depth_pipeline())
+    {
+        pending_virtual_shadow_pages_.clear();
+        last_profile_.shadows.fallback_reason = "VSM caster pipeline unavailable; using conventional shadows";
         return;
     }
 
@@ -691,7 +703,32 @@ void vulkan_render_backend::prepare_virtual_shadow_cache(std::uint64_t frame_ind
     profile.virtual_parent_fallbacks = stats.parent_fallbacks;
     profile.virtual_failed_requests = stats.failed_requests;
     profile.virtual_memory_bytes = stats.physical_memory_bytes;
-    upload_virtual_shadow_tables();
+    virtual_shadow_tables_ready_ = upload_virtual_shadow_tables();
+    if (!virtual_shadow_tables_ready_)
+    {
+        last_profile_.shadows.fallback_reason = "VSM table upload failed; using conventional shadows";
+        return;
+    }
+
+    if (const auto* light = active_directional_shadow_light(); light != nullptr)
+    {
+        const auto key = virtual_shadow_light_key(shadow_light_kind::directional, light->object_id);
+        const auto state = virtual_shadow_lights_.find(key);
+        if (state != virtual_shadow_lights_.end())
+        {
+            for (std::uint32_t index = 0; index < frame_lighting_.directional_count; ++index)
+            {
+                auto& packed = frame_lighting_.directional_lights[index];
+                if (packed.shadow_identity[0] != light->object_id.index ||
+                    packed.shadow_identity[1] != light->object_id.generation)
+                    continue;
+                packed.shadow_identity[2] = state->second.address_space.index;
+                packed.shadow_identity[3] = state->second.address_space.generation;
+                packed.shadow_routing[0] = static_cast<std::uint32_t>(directional_shadow_representation::virtualized);
+                break;
+            }
+        }
+    }
 }
 
 void vulkan_render_backend::transition_virtual_shadow_image(VkCommandBuffer command_buffer, VkImage image,
@@ -713,7 +750,7 @@ void vulkan_render_backend::transition_virtual_shadow_image(VkCommandBuffer comm
     if (current_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
     {
         barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        source_stage = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        source_stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
     }
     else if (current_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL)
     {
@@ -888,15 +925,15 @@ void vulkan_render_backend::render_virtual_shadow_pages(VkCommandBuffer command_
         vkCmdClearAttachments(command_buffer, 1, &attachment, 1, &rect);
 
         VkViewport page_viewport{};
-        page_viewport.x = static_cast<float>(x * physical_extent + virtual_shadow_page_guard_texels);
-        page_viewport.y = static_cast<float>(y * physical_extent + virtual_shadow_page_guard_texels);
-        page_viewport.width = static_cast<float>(virtual_shadow_page_texels);
-        page_viewport.height = static_cast<float>(virtual_shadow_page_texels);
+        page_viewport.x = static_cast<float>(x * physical_extent);
+        page_viewport.y = static_cast<float>(y * physical_extent);
+        page_viewport.width = static_cast<float>(physical_extent);
+        page_viewport.height = static_cast<float>(physical_extent);
         page_viewport.minDepth = 0.0f;
         page_viewport.maxDepth = 1.0f;
-        const VkRect2D page_scissor{{static_cast<std::int32_t>(x * physical_extent + virtual_shadow_page_guard_texels),
-                                     static_cast<std::int32_t>(y * physical_extent + virtual_shadow_page_guard_texels)},
-                                    {virtual_shadow_page_texels, virtual_shadow_page_texels}};
+        const VkRect2D page_scissor{
+            {static_cast<std::int32_t>(x * physical_extent), static_cast<std::int32_t>(y * physical_extent)},
+            {physical_extent, physical_extent}};
         vkCmdSetViewport(command_buffer, 0u, 1u, &page_viewport);
         vkCmdSetScissor(command_buffer, 0u, 1u, &page_scissor);
         vkCmdPushConstants(command_buffer, resources.depth_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0u,
@@ -911,6 +948,19 @@ void vulkan_render_backend::render_virtual_shadow_pages(VkCommandBuffer command_
     }
     cmd_end_rendering(command_buffer);
     virtual_shadow_layers_rendered_[static_cast<std::size_t>(layer)] = rendered;
+}
+
+void vulkan_render_backend::prepare_virtual_shadow_page_guards(VkCommandBuffer command_buffer)
+{
+    auto& resources = virtual_shadow_resources_;
+    if (resources.static_image != VK_NULL_HANDLE)
+        transition_virtual_shadow_image(command_buffer, resources.static_image, resources.static_layout,
+                                        VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+    if (resources.dynamic_image != VK_NULL_HANDLE)
+        transition_virtual_shadow_image(command_buffer, resources.dynamic_image, resources.dynamic_layout,
+                                        VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+    for (std::size_t layer = 0; layer < virtual_shadow_layers_guarded_.size(); ++layer)
+        virtual_shadow_layers_guarded_[layer] = virtual_shadow_layers_rendered_[layer];
 }
 
 void vulkan_render_backend::schedule_virtual_shadow_page_completion(VkCommandBuffer command_buffer)
@@ -970,8 +1020,10 @@ void vulkan_render_backend::schedule_virtual_shadow_page_completion(VkCommandBuf
     for (std::size_t index = 0; index < frame.tokens.size(); ++index)
     {
         const auto layer = pending_virtual_shadow_page_records_[index].work[2];
-        frame.eligible[index] =
-            layer < virtual_shadow_layers_rendered_.size() && virtual_shadow_layers_rendered_[layer] ? 1u : 0u;
+        frame.eligible[index] = layer < virtual_shadow_layers_rendered_.size()
+                                    ? static_cast<std::uint8_t>((virtual_shadow_layers_rendered_[layer] ? 1u : 0u) |
+                                                                (virtual_shadow_layers_guarded_[layer] ? 2u : 0u))
+                                    : 0u;
     }
     frame.submitted_frame = last_profile_.frame_index;
     pending_virtual_shadow_pages_.clear();
@@ -986,9 +1038,9 @@ void vulkan_render_backend::schedule_virtual_shadow_page_completion(VkCommandBuf
                                     VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
 }
 
-void vulkan_render_backend::upload_virtual_shadow_tables()
+bool vulkan_render_backend::upload_virtual_shadow_tables()
 {
-    if (!virtual_shadow_cache_) return;
+    if (!virtual_shadow_cache_) return false;
     const auto snapshot = virtual_shadow_cache_->gpu_snapshot();
     const auto upload = [&](const auto& values, gpu_buffer& destination, VkDeviceSize capacity) -> bool
     {
@@ -1014,13 +1066,16 @@ void vulkan_render_backend::upload_virtual_shadow_tables()
         upload(snapshot.page_table, virtual_shadow_resources_.page_table,
                virtual_shadow_resources_.page_table_capacity))
         virtual_shadow_resources_.uploaded_page_table_revision = snapshot.page_table_revision;
+    return virtual_shadow_resources_.uploaded_address_space_revision == snapshot.address_space_revision &&
+           virtual_shadow_resources_.uploaded_view_revision == snapshot.view_revision &&
+           virtual_shadow_resources_.uploaded_page_table_revision == snapshot.page_table_revision;
 }
 
 void vulkan_render_backend::dispatch_virtual_shadow_caster_culling(VkCommandBuffer command_buffer)
 {
     virtual_shadow_culling_dispatched_ = false;
     auto& resources = virtual_shadow_resources_;
-    if (pending_virtual_shadow_page_records_.empty() || gpu_scene_capacity_ == 0u ||
+    if (!virtual_shadow_tables_ready_ || pending_virtual_shadow_page_records_.empty() || gpu_scene_capacity_ == 0u ||
         gpu_scene_visibility_buffer_.buffer == VK_NULL_HANDLE || resources.render_pages.buffer == VK_NULL_HANDLE ||
         resources.page_work.buffer == VK_NULL_HANDLE || resources.caster_draws.buffer == VK_NULL_HANDLE ||
         resources.caster_culling_pipeline == VK_NULL_HANDLE ||
@@ -1102,7 +1157,7 @@ void vulkan_render_backend::dispatch_virtual_shadow_page_marking(VkCommandBuffer
 {
     virtual_shadow_feedback_pending_ = false;
     auto& resources = virtual_shadow_resources_;
-    if (!resolved_config_.features.virtual_shadow_maps || !virtual_shadow_cache_ ||
+    if (!resolved_config_.features.virtual_shadow_maps || !virtual_shadow_tables_ready_ || !virtual_shadow_cache_ ||
         resources.marking_pipeline == VK_NULL_HANDLE || resources.compaction_pipeline == VK_NULL_HANDLE)
         return;
 
@@ -1582,7 +1637,6 @@ void vulkan_render_backend::execute_compiled_graph(VkCommandBuffer command_buffe
         switch (pass.builtin)
         {
             case builtin_render_pass::virtual_shadow_page_marking:
-                prepare_virtual_shadow_cache(last_profile_.frame_index);
                 dispatch_virtual_shadow_page_marking(command_buffer);
                 break;
             case builtin_render_pass::virtual_shadow_caster_culling:
@@ -1593,6 +1647,9 @@ void vulkan_render_backend::execute_compiled_graph(VkCommandBuffer command_buffe
                 break;
             case builtin_render_pass::virtual_shadow_dynamic_render:
                 render_virtual_shadow_pages(command_buffer, virtual_shadow_page_layer::dynamic_depth);
+                break;
+            case builtin_render_pass::virtual_shadow_border_replication:
+                prepare_virtual_shadow_page_guards(command_buffer);
                 break;
             case builtin_render_pass::virtual_shadow_page_table_publication:
                 schedule_virtual_shadow_page_completion(command_buffer);
@@ -1729,6 +1786,12 @@ void vulkan_render_backend::execute_compiled_graph(VkCommandBuffer command_buffe
 
 void vulkan_render_backend::prepare_frame_gpu_resources()
 {
+    // Fence feedback must be collected before scheduling the next generation.
+    if (resolved_config_.features.virtual_shadow_maps)
+    {
+        prepare_virtual_shadow_cache(last_profile_.frame_index);
+        update_light_buffer();
+    }
     update_dynamic_mesh_vertices();
     if (!resolved_config_.features.gpu_skinning || !ensure_gpu_skinning_pipeline()) update_cpu_skinned_vertices();
     if (!virtual_meshes_.empty() && !ensure_virtual_geometry_raster_resources())

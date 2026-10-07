@@ -57,7 +57,12 @@ constexpr std::uint32_t terrain_surface_binding = 11u;
 constexpr std::uint32_t material_light_data_binding = 15u;
 constexpr std::uint32_t material_parameters_binding = 16u;
 constexpr std::uint32_t material_local_shadow_binding = 17u;
-constexpr std::uint32_t material_binding_count = 18u;
+constexpr std::uint32_t material_virtual_shadow_address_binding = 18u;
+constexpr std::uint32_t material_virtual_shadow_view_binding = 19u;
+constexpr std::uint32_t material_virtual_shadow_page_table_binding = 20u;
+constexpr std::uint32_t material_virtual_shadow_static_binding = 21u;
+constexpr std::uint32_t material_virtual_shadow_dynamic_binding = 22u;
+constexpr std::uint32_t material_binding_count = 23u;
 constexpr std::uint32_t material_descriptor_set_capacity = 12288u;
 constexpr std::uint32_t directional_shadow_layer_count = directional_shadow_cascade_count * 2u;
 constexpr VkDeviceSize upload_staging_capacity = 64u * 1024u * 1024u;
@@ -1316,7 +1321,7 @@ private:
 
     void prepare_virtual_shadow_cache(std::uint64_t frame_index);
 
-    void upload_virtual_shadow_tables();
+    bool upload_virtual_shadow_tables();
 
     void dispatch_virtual_shadow_page_marking(VkCommandBuffer command_buffer);
 
@@ -1330,6 +1335,8 @@ private:
     bool ensure_virtual_shadow_depth_pipeline();
 
     void render_virtual_shadow_pages(VkCommandBuffer command_buffer, virtual_shadow_page_layer layer);
+
+    void prepare_virtual_shadow_page_guards(VkCommandBuffer command_buffer);
 
     void schedule_virtual_shadow_page_completion(VkCommandBuffer command_buffer);
 
@@ -1708,7 +1715,9 @@ private:
     bool last_static_shadow_cache_hit_{};
     bool virtual_shadow_feedback_pending_{};
     bool virtual_shadow_culling_dispatched_{};
+    bool virtual_shadow_tables_ready_{};
     std::array<bool, 2> virtual_shadow_layers_rendered_{};
+    std::array<bool, 2> virtual_shadow_layers_guarded_{};
 
     VkDescriptorSetLayout white_descriptor_set_layout_{};
     VkDescriptorPool white_descriptor_pool_{};

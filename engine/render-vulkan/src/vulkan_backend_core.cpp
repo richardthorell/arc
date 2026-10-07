@@ -244,6 +244,7 @@ void vulkan_render_backend::configure(const resolved_render_config& config)
         if (!ensure_virtual_shadow_resources())
         {
             resolved_config_.features.virtual_shadow_maps = false;
+            resolved_config_.features.virtual_shadow_lights = {};
             resolved_config_.features.virtual_shadow_virtual_geometry = false;
             resolved_config_.fallback_reasons.emplace_back(
                 "Vulkan could not allocate the virtual shadow page pool; using conventional shadows");

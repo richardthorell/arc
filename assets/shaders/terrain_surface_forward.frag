@@ -5,6 +5,7 @@
 #include "include/arc_texture_sampling.glsl"
 #define ARC_LIGHT_BUFFER_BINDING 15
 #include "include/arc_lighting.glsl"
+#include "include/arc_shadows.glsl"
 
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec3 in_world_position;
@@ -60,7 +61,10 @@ void main()
         vec3(0.16, 0.19, 0.22),
         vec3(0.16, 0.19, 0.22) * mix(0.35, 1.0, 1.0 - surface.perceptual_roughness),
         vec2(1.0 - 0.5 * surface.perceptual_roughness, 0.04));
-    vec3 lit = ambient + arc_evaluate_scene_lights(surface, view_dir, in_world_position, 1.0);
+    int shadow_cascade = -1;
+    vec4 shadow = arc_scene_directional_shadow_visibility(
+        in_world_position, surface.normal, constants.camera_position.xyz, shadow_cascade);
+    vec3 lit = ambient + arc_evaluate_scene_lights(surface, view_dir, in_world_position, shadow);
     float fog = constants.fog_color_density.w > 0.0 ? clamp(1.0 - exp(-max(in_view_depth - constants.fog_params.x, 0.0) * constants.fog_color_density.w), 0.0, constants.fog_params.z) : 0.0;
     out_color = vec4(mix(lit, constants.fog_color_density.rgb, fog), 1.0);
 }

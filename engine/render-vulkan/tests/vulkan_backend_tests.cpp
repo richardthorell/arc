@@ -145,6 +145,38 @@ TEST_CASE("Vulkan backend creation either succeeds or reports a reason")
     }
 }
 
+TEST_CASE("Vulkan directional VSM allocation preserves explicit conventional fallback")
+{
+    using namespace arc::render;
+    auto created = vulkan::create_vulkan_backend();
+    if (!created)
+    {
+        SKIP("Vulkan adapter unavailable: " << created.error().message);
+    }
+    auto& backend = *created.value();
+    const auto& caps = backend.capabilities();
+    REQUIRE_FALSE(caps.virtual_shadow_lights.point);
+    REQUIRE_FALSE(caps.virtual_shadow_lights.spot);
+    REQUIRE_FALSE(caps.virtual_shadow_virtual_geometry);
+    if (!caps.virtual_shadow_lights.directional) SKIP("Adapter lacks the complete directional VSM capability set");
+    auto config = resolve_render_config({.quality = render_quality_tier::ultra}, caps);
+    REQUIRE(config.features.virtual_shadow_maps);
+    config.virtual_shadow_pool = resolve_virtual_shadow_physical_pool(1024u * 1024u, caps.max_texture_dimension_2d,
+                                                                      caps.virtual_shadow_depth_formats);
+    config.virtual_shadow_request_capacity = 64;
+    config.virtual_shadow_page_render_budget = 4;
+    config.virtual_shadow_caster_capacity_per_page = 16;
+    backend.configure(config);
+    REQUIRE(backend.last_frame_profile().configuration.features.virtual_shadow_lights.directional);
+    // An invalid resolved allocation contract must never leave the sampling path enabled.
+    config.virtual_shadow_pool = {};
+    backend.configure(config);
+    const auto failed = backend.last_frame_profile().configuration;
+    CHECK_FALSE(failed.features.virtual_shadow_maps);
+    CHECK_FALSE(failed.features.virtual_shadow_lights.any());
+    CHECK_FALSE(failed.fallback_reasons.empty());
+}
+
 TEST_CASE("Vulkan surface callbacks receive the backend instance procedure resolver")
 {
     if (!arc::render::vulkan::vulkan_loader_available())

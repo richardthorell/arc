@@ -169,7 +169,7 @@ bool vulkan_render_backend::ensure_gbuffer_descriptor_set()
 
     if (gbuffer_descriptor_set_layout_ == VK_NULL_HANDLE)
     {
-        std::array<VkDescriptorSetLayoutBinding, 13> bindings{};
+        std::array<VkDescriptorSetLayoutBinding, 18> bindings{};
         for (std::uint32_t index = 0; index < 7; ++index)
         {
             bindings[index].binding = index;
@@ -201,10 +201,24 @@ bool vulkan_render_backend::ensure_gbuffer_descriptor_set()
         bindings[12].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         bindings[12].descriptorCount = 1;
         bindings[12].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        for (std::uint32_t binding = 13; binding <= 15; ++binding)
+        {
+            bindings[binding].binding = binding;
+            bindings[binding].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            bindings[binding].descriptorCount = 1;
+            bindings[binding].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        }
+        for (std::uint32_t binding = 16; binding <= 17; ++binding)
+        {
+            bindings[binding].binding = binding;
+            bindings[binding].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            bindings[binding].descriptorCount = 1;
+            bindings[binding].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        }
 
         VkDescriptorSetLayoutCreateInfo layout{};
         layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
+        layout.bindingCount = capabilities_.virtual_shadow_sampling ? static_cast<std::uint32_t>(bindings.size()) : 13u;
         layout.pBindings = bindings.data();
         if (vkCreateDescriptorSetLayout(device_, &layout, nullptr, &gbuffer_descriptor_set_layout_) != VK_SUCCESS)
             return false;
@@ -213,8 +227,8 @@ bool vulkan_render_backend::ensure_gbuffer_descriptor_set()
     if (gbuffer_descriptor_pool_ == VK_NULL_HANDLE)
     {
         std::array<VkDescriptorPoolSize, 3> pool_sizes{
-            VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10},
-            VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2},
+            VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 12},
+            VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5},
             VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1}};
         VkDescriptorPoolCreateInfo pool{};
         pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -328,6 +342,55 @@ void vulkan_render_backend::update_gbuffer_descriptor_set()
     clustered_write.pBufferInfo = &clustered;
     const std::array buffer_writes{light_write, shadow_write, clustered_write};
     vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(buffer_writes.size()), buffer_writes.data(), 0, nullptr);
+
+    const auto& virtual_shadows = virtual_shadow_resources_;
+    const auto fallback_buffer = light_buffer_.buffer;
+    const std::array<VkDescriptorBufferInfo, 3> virtual_shadow_buffers{
+        VkDescriptorBufferInfo{virtual_shadows.address_spaces.buffer != VK_NULL_HANDLE
+                                   ? virtual_shadows.address_spaces.buffer
+                                   : fallback_buffer,
+                               0u, VK_WHOLE_SIZE},
+        VkDescriptorBufferInfo{virtual_shadows.views.buffer != VK_NULL_HANDLE ? virtual_shadows.views.buffer
+                                                                              : fallback_buffer,
+                               0u, VK_WHOLE_SIZE},
+        VkDescriptorBufferInfo{virtual_shadows.page_table.buffer != VK_NULL_HANDLE ? virtual_shadows.page_table.buffer
+                                                                                   : fallback_buffer,
+                               0u, VK_WHOLE_SIZE}};
+    const VkDescriptorImageInfo fallback_virtual_shadow{local_shadow_atlas_.sampler, local_shadow_atlas_.view,
+                                                        VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL};
+    const std::array<VkDescriptorImageInfo, 2> virtual_shadow_images{
+        virtual_shadows.static_view != VK_NULL_HANDLE
+            ? VkDescriptorImageInfo{virtual_shadows.sampler, virtual_shadows.static_view,
+                                    VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL}
+            : fallback_virtual_shadow,
+        virtual_shadows.dynamic_view != VK_NULL_HANDLE
+            ? VkDescriptorImageInfo{virtual_shadows.sampler, virtual_shadows.dynamic_view,
+                                    VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL}
+            : fallback_virtual_shadow};
+    std::array<VkWriteDescriptorSet, 5> virtual_shadow_writes{};
+    for (std::size_t index = 0; index < virtual_shadow_buffers.size(); ++index)
+    {
+        auto& write = virtual_shadow_writes[index];
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = gbuffer_descriptor_set_;
+        write.dstBinding = static_cast<std::uint32_t>(13u + index);
+        write.descriptorCount = 1;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        write.pBufferInfo = &virtual_shadow_buffers[index];
+    }
+    for (std::size_t index = 0; index < virtual_shadow_images.size(); ++index)
+    {
+        auto& write = virtual_shadow_writes[3u + index];
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = gbuffer_descriptor_set_;
+        write.dstBinding = static_cast<std::uint32_t>(16u + index);
+        write.descriptorCount = 1;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        write.pImageInfo = &virtual_shadow_images[index];
+    }
+    if (capabilities_.virtual_shadow_sampling)
+        vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(virtual_shadow_writes.size()),
+                               virtual_shadow_writes.data(), 0, nullptr);
 }
 
 bool vulkan_render_backend::ensure_deferred_pipeline()
@@ -338,7 +401,10 @@ bool vulkan_render_backend::ensure_deferred_pipeline()
     VkShaderModule vert =
         create_shader_module(builtin::deferred_lighting_vert_spv, std::size(builtin::deferred_lighting_vert_spv));
     VkShaderModule frag =
-        create_shader_module(builtin::deferred_lighting_frag_spv, std::size(builtin::deferred_lighting_frag_spv));
+        capabilities_.virtual_shadow_sampling
+            ? create_shader_module(builtin::deferred_lighting_frag_spv, std::size(builtin::deferred_lighting_frag_spv))
+            : create_shader_module(builtin::deferred_lighting_conventional_frag_spv,
+                                   std::size(builtin::deferred_lighting_conventional_frag_spv));
     if (vert == VK_NULL_HANDLE || frag == VK_NULL_HANDLE) return false;
 
     VkPushConstantRange push{};

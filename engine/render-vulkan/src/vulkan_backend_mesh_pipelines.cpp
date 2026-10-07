@@ -226,8 +226,12 @@ bool vulkan_render_backend::ensure_mesh_pipeline()
 
     if (result == VK_SUCCESS)
     {
-        VkShaderModule terrain_surface_frag = create_shader_module(
-            builtin::terrain_surface_forward_frag_spv, std::size(builtin::terrain_surface_forward_frag_spv));
+        VkShaderModule terrain_surface_frag =
+            capabilities_.virtual_shadow_sampling
+                ? create_shader_module(builtin::terrain_surface_forward_frag_spv,
+                                       std::size(builtin::terrain_surface_forward_frag_spv))
+                : create_shader_module(builtin::terrain_surface_forward_conventional_frag_spv,
+                                       std::size(builtin::terrain_surface_forward_conventional_frag_spv));
         if (terrain_surface_frag != VK_NULL_HANDLE)
         {
             stages[0].module = vert;
