@@ -4174,6 +4174,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                                                ? std::optional<assets::asset_guid>{assets::asset_guid{}}
                                                : assets::parse_asset_guid(value.material_guid);
                 if (!preset_guid || !material_guid) return fail("Water asset reference has an invalid GUID", entity);
+                if (value.preset_override_mask > scene::water_preset_override_all)
+                    return fail("Water preset override mask is invalid", entity);
 
                 for (const auto target : targets)
                 {
@@ -4181,6 +4183,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     component.type = preset.body_type;
                     component.preset.guid = *preset_guid;
                     component.preset.path_hint = value.preset_path;
+                    component.preset_overrides = value.preset_override_mask;
                     component.material.guid = *material_guid;
                     component.material.path_hint = value.material_path;
                     component.water_level = value.water_level;
@@ -7447,6 +7450,7 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
         water_snapshot.body_type = static_cast<std::uint8_t>(water->type);
         water_snapshot.preset_guid = water->preset.guid.valid() ? assets::to_string(water->preset.guid) : std::string{};
         water_snapshot.preset_path = water->preset.path_hint;
+        water_snapshot.preset_override_mask = water->preset_overrides;
         water_snapshot.material_guid =
             water->material.guid.valid() ? assets::to_string(water->material.guid) : std::string{};
         water_snapshot.material_path = water->material.path_hint;
