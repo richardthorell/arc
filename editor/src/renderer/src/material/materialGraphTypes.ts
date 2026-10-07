@@ -692,15 +692,32 @@ export const isMaterialGraph = (value: unknown): value is MaterialGraph => {
   return (
     graph.version === 1 &&
     Array.isArray(graph.nodes) &&
-    graph.nodes.every(
-      (node) =>
-        Boolean(node) &&
-        typeof node.id === 'string' &&
-        materialNodeTypes.has(node.type) &&
-        Array.isArray(node.position) &&
-        node.position.length === 2 &&
-        node.position.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate)),
-    ) &&
+    graph.nodes.every((node) => {
+      if (
+        !node ||
+        typeof node.id !== 'string' ||
+        !materialNodeTypes.has(node.type) ||
+        !Array.isArray(node.position) ||
+        node.position.length !== 2 ||
+        !node.position.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate))
+      )
+        return false;
+
+      if (node.type !== 'constant') return true;
+      const min = node.values?.min;
+      const max = node.values?.max;
+      if (min === undefined && max === undefined) return true;
+      if (
+        typeof min !== 'number' ||
+        !Number.isFinite(min) ||
+        typeof max !== 'number' ||
+        !Number.isFinite(max) ||
+        min > max
+      )
+        return false;
+      const scalar = node.values?.value;
+      return typeof scalar === 'number' && Number.isFinite(scalar) && scalar >= min && scalar <= max;
+    }) &&
     Array.isArray(graph.connections)
   );
 };
