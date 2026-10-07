@@ -8,6 +8,7 @@ type FieldBase<TContext> = {
   label: string;
   ariaLabel?: string;
   path: string;
+  section?: string;
   visible?: (context: TContext) => boolean;
   tooltip?: string;
   resetValue?: unknown;
