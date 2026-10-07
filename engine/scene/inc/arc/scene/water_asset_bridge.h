@@ -20,16 +20,16 @@ struct [[nodiscard]] water_preset_binding_result
 /**
  * @brief Validate and atomically apply preset-owned state to a Water component.
  *
- * Instance-owned placement, material, visibility, shoreline/underwater toggles, query settings, and priority are
- * intentionally preserved. Only body type and water_runtime_settings are preset-owned.
+ * Body type, shape, placement, material, visibility, feature toggles, query settings, and priority remain
+ * instance-owned. The preset supplies simulation, foam, appearance, and quality values unless a field is overridden.
  */
 [[nodiscard]] bool apply_water_preset(water_component& component, const water::water_preset& preset);
 
 /**
  * @brief Resolve, load, and apply the preset referenced by a Water component.
  *
- * Body placement and feature toggles remain authored per component. The preset owns body type, simulation, foam,
- * appearance, and quality settings.
+ * Body type/shape and feature toggles remain authored per component. The preset supplies simulation, foam,
+ * appearance, and quality defaults while preserving explicit component overrides.
  */
 [[nodiscard]] water_preset_binding_result refresh_water_preset_binding(water_component& component,
                                                                        assets::asset_manager& manager);
