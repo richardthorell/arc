@@ -29,15 +29,17 @@ void vulkan_render_backend::update_clustered_light_buffer()
     if (frame_clustered_lights_.gpu_words.empty()) return;
     const VkDeviceSize required_size =
         static_cast<VkDeviceSize>(frame_clustered_lights_.gpu_words.size() * sizeof(std::uint32_t));
-    if (clustered_light_buffer_.buffer == VK_NULL_HANDLE || clustered_light_buffer_.size < required_size)
+    if (clustered_light_buffer_.buffer == VK_NULL_HANDLE || clustered_light_buffer_size_ < required_size)
     {
         if (clustered_light_buffer_.buffer != VK_NULL_HANDLE) destroy_buffer(clustered_light_buffer_);
+        clustered_light_buffer_size_ = 0u;
         if (!create_buffer(required_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU,
                            clustered_light_buffer_))
         {
             arc::diagnostics::warn("render.vulkan", "Failed to allocate clustered light-list buffer");
             return;
         }
+        clustered_light_buffer_size_ = required_size;
     }
 
     void* mapped{};
