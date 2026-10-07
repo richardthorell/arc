@@ -491,8 +491,7 @@ bool vulkan_render_backend::update_runtime_texture_descriptors(gpu_material& mat
                     return reject_runtime_material(material,
                                                    "compiled Material ABI texture binding table is incomplete");
 
-                VkImageView view =
-                    binding->semantic == texture_semantic::normal ? neutral_normal_view_ : white_view_;
+                VkImageView view = binding->semantic == texture_semantic::normal ? neutral_normal_view_ : white_view_;
                 const auto handle = runtime_texture_handle(material, binding->slot);
                 if (!handle.valid())
                 {
