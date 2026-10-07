@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import pathlib
@@ -149,6 +150,13 @@ def main() -> int:
     if args.check:
         actual = args.header.read_text(encoding="utf-8")
         if actual.replace("\r\n", "\n") != expected:
+            for compiled_name, compiled_data in compiled:
+                if compiled_name == "deferred_lighting_frag_spv":
+                    print(
+                        "ARC_DEFERRED_SHADER_BASE64=" + base64.b64encode(compiled_data).decode("ascii"),
+                        file=sys.stderr,
+                    )
+                    break
             print(
                 f"{args.header} is stale; regenerate with tools/compile_builtin_shaders.py --write",
                 file=sys.stderr,
