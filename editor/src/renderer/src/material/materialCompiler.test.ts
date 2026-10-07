@@ -38,6 +38,7 @@ describe('native material compiler editor adapter', () => {
       'Roughness',
       'Metallic Roughness Texture',
       'Ambient Occlusion Texture',
+      'Normal Texture',
       'Emissive Color',
       'Emissive Texture',
       'Emissive Strength',
