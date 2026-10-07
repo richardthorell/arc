@@ -512,6 +512,16 @@ struct host_terrain_snapshot
     std::array<std::string, 4> layer_base_color_paths{};
 };
 
+struct host_water_shape_point
+{
+    host_vec3 position{};
+    float width{6.0f};
+    float depth{2.0f};
+    float flow{};
+
+    friend constexpr bool operator==(const host_water_shape_point&, const host_water_shape_point&) noexcept = default;
+};
+
 struct host_water_snapshot
 {
     std::uint8_t body_type{};
@@ -546,8 +556,10 @@ struct host_water_snapshot
     bool buoyancy_enabled{true};
     std::uint8_t quality{2u};
     std::int32_t priority{};
+    bool shape_closed{};
+    std::vector<host_water_shape_point> shape_points;
 
-    friend constexpr bool operator==(const host_water_snapshot&, const host_water_snapshot&) noexcept = default;
+    friend bool operator==(const host_water_snapshot&, const host_water_snapshot&) noexcept = default;
 };
 
 struct host_flow_snapshot
