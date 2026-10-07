@@ -511,7 +511,20 @@ bool vulkan_render_backend::update_runtime_texture_descriptors(gpu_material& mat
                             return reject_runtime_material(
                                 material, std::string(material_texture_type_name(*expected_type)) +
                                               " material binding received a texture with incompatible dimensionality");
-                        view = found->second.view;
+                        if (binding->semantic != texture_semantic::generic_color &&
+                            !valid_texture_color_space(binding->semantic, found->second.data.color_space))
+                        {
+                            const auto diagnostic_key =
+                                resource_key(handle) ^ (static_cast<std::uint64_t>(binding->semantic) << 56u);
+                            if (texture_semantic_diagnostics_.insert(diagnostic_key).second)
+                                arc::diagnostics::warn(
+                                    "render.vulkan",
+                                    "Texture '" + found->second.data.name +
+                                        "' has a color space incompatible with its compiled material semantic; "
+                                        "binding the semantic fallback");
+                        }
+                        else
+                            view = found->second.view;
                     }
                 }
                 infos[dimension_slot] = {VK_NULL_HANDLE, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
