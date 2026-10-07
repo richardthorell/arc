@@ -195,7 +195,8 @@ asset_reference dependency_from_path(const asset_import_context& context, std::s
             mounted_root = mounted_root.parent_path();
         }
         const auto resolved =
-            context.metadata.type == asset_types::material || context.metadata.type == asset_types::material_instance
+            context.metadata.type == asset_types::material || context.metadata.type == asset_types::material_function ||
+                    context.metadata.type == asset_types::material_instance
                 ? mounted_root / authored
                 : context.source_path.parent_path() / authored;
         const auto relative_to_mount = resolved.lexically_normal().lexically_relative(mounted_root);
@@ -219,7 +220,9 @@ asset_reference dependency_from_path(const asset_import_context& context, std::s
     std::filesystem::path resolved;
     if (already_rooted)
         resolved = context.project_root / authored;
-    else if (context.metadata.type == asset_types::material || context.metadata.type == asset_types::material_instance)
+    else if (context.metadata.type == asset_types::material ||
+             context.metadata.type == asset_types::material_function ||
+             context.metadata.type == asset_types::material_instance)
         resolved = configured_asset_root / authored;
     else
         resolved = context.source_path.parent_path() / authored;
@@ -338,8 +341,8 @@ public:
              .bytes = std::vector<std::byte>(context.source_bytes.begin(), context.source_bytes.end()),
              .residency = asset_residency::derived});
         if (context.metadata.type == asset_types::scene || context.metadata.type == asset_types::prefab ||
-            context.metadata.type == asset_types::material || context.metadata.type == asset_types::material_instance ||
-            context.source_path.extension() == ".gltf")
+            context.metadata.type == asset_types::material || context.metadata.type == asset_types::material_function ||
+            context.metadata.type == asset_types::material_instance || context.source_path.extension() == ".gltf")
         {
             const auto document = nlohmann::json::parse(reinterpret_cast<const char*>(context.source_bytes.data()),
                                                         reinterpret_cast<const char*>(context.source_bytes.data()) +
@@ -365,6 +368,9 @@ std::vector<std::unique_ptr<asset_importer>> default_importers()
                                                             std::vector<std::string>{".arcprefab"}));
     result.push_back(std::make_unique<source_blob_importer>(importer_ids::material, asset_types::material,
                                                             "ARC Material", std::vector<std::string>{".arcmat"}));
+    result.push_back(std::make_unique<source_blob_importer>(
+        importer_ids::material_function, asset_types::material_function, "ARC Material Function",
+        std::vector<std::string>{".arcmatfn"}));
     result.push_back(std::make_unique<source_blob_importer>(importer_ids::material_instance,
                                                             asset_types::material_instance, "ARC Material Instance",
                                                             std::vector<std::string>{".arcmatinst"}));
