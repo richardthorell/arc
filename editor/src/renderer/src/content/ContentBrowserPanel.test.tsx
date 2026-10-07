@@ -344,11 +344,14 @@ describe('ContentBrowserPanel', () => {
     expect(asset.domain).toBe('surface');
     expect(asset.graph.version).toBe(1);
     expect(asset.graph.nodes.some((node: { type: string }) => node.type === 'output')).toBe(true);
-    expect(asset.graph.connections).toHaveLength(17);
+    expect(asset.graph.connections).toHaveLength(23);
     expect(
       asset.graph.nodes.some(
         (node: { parameter?: { name?: string } }) => node.parameter?.name === 'Base Color Texture',
       ),
+    ).toBe(true);
+    expect(
+      asset.graph.nodes.some((node: { parameter?: { name?: string } }) => node.parameter?.name === 'Clear Coat Texture'),
     ).toBe(true);
     expect(
       asset.graph.nodes.some((node: { parameter?: { name?: string } }) => node.parameter?.name === 'Emissive Texture'),
