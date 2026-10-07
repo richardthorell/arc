@@ -753,7 +753,6 @@ TEST_CASE("Water preset application updates only preset-owned state")
     CHECK(component.priority == 9);
     CHECK(component.material.path_hint == "project/materials/custom_water.arcmat");
 
-    const auto inherited = component;
     component.preset_overrides = 0u;
     REQUIRE(arc::scene::apply_water_preset(component, preset));
     CHECK(component.settings.simulation.wind_speed == Catch::Approx(4.0f));
