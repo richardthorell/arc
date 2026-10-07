@@ -692,8 +692,9 @@ private:
                 break;
             }
             case material_ir_node_kind::normal_map:
-                expression = "normalize(lerp(float3(0.0,0.0,1.0)," + input(node.id, "texture", "float3(0.5,0.5,1.0)") +
-                             "*2.0-1.0," + number(node.strength) + "))";
+                expression = "arcNormalMapToWorld(normalize(lerp(float3(0.0,0.0,1.0)," +
+                             input(node.id, "texture", "float3(0.5,0.5,1.0)") + "*2.0-1.0," +
+                             number(node.strength) + ")),input)";
                 break;
             case material_ir_node_kind::saturate:
                 expression = "saturate(" + input_as(node.id, "value", "0.0", type) + ')';
@@ -789,6 +790,16 @@ void append_material_abi(source_builder& source)
     source.append("    float4 vertexColor;");
     source.append("    float3 viewWS;");
     source.append("};");
+    source.append("float3 arcNormalMapToWorld(float3 tangentNormal, ArcSurfaceInput input)");
+    source.append("{");
+    source.append("    float3 normalWS = normalize(input.normalWS);");
+    source.append("    float3 tangentWS = input.tangentWS.xyz - normalWS * dot(normalWS, input.tangentWS.xyz);");
+    source.append("    float tangentLengthSquared = dot(tangentWS, tangentWS);");
+    source.append("    tangentWS = tangentLengthSquared > 1e-8 ? tangentWS * rsqrt(tangentLengthSquared) : float3(1.0,0.0,0.0);");
+    source.append("    float handedness = abs(input.tangentWS.w) > 1e-6 ? sign(input.tangentWS.w) : 1.0;");
+    source.append("    float3 bitangentWS = normalize(cross(normalWS, tangentWS)) * handedness;");
+    source.append("    return normalize(tangentWS * tangentNormal.x + bitangentWS * tangentNormal.y + normalWS * tangentNormal.z);");
+    source.append("}");
     source.append("struct ArcSurfaceData");
     source.append("{");
     source.append("    float3 baseColor;");
