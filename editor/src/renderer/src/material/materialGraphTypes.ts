@@ -485,19 +485,28 @@ export const createDefaultMaterialGraph = (): MaterialGraph => {
   const baseColorTexture = createMaterialNode('textureSample2D', [80, 240]);
   baseColorTexture.parameter = { exposed: true, name: 'Base Color Texture' };
   const baseColorMultiply = createMaterialNode('multiply', [360, 160]);
-  const metallic = createMaterialNode('constant', [80, 420], { value: 0 });
+
+  const metallic = createMaterialNode('constant', [80, 440], { value: 0 });
   metallic.parameter = { exposed: true, name: 'Metallic' };
-  const roughness = createMaterialNode('constant', [80, 550], { value: 0.62 });
+  const roughness = createMaterialNode('constant', [80, 570], { value: 0.62 });
   roughness.parameter = { exposed: true, name: 'Roughness' };
-  const emissiveColor = createMaterialNode('colorRgba', [80, 720], { value: [1, 1, 1, 1] });
+  const metallicRoughnessTexture = createMaterialNode('textureSample2D', [80, 700]);
+  metallicRoughnessTexture.parameter = { exposed: true, name: 'Metallic Roughness Texture' };
+  const metallicMultiply = createMaterialNode('multiply', [360, 460]);
+  const roughnessMultiply = createMaterialNode('multiply', [360, 610]);
+
+  const ambientOcclusionTexture = createMaterialNode('textureSample2D', [80, 860]);
+  ambientOcclusionTexture.parameter = { exposed: true, name: 'Ambient Occlusion Texture' };
+
+  const emissiveColor = createMaterialNode('colorRgba', [80, 1040], { value: [1, 1, 1, 1] });
   emissiveColor.parameter = { exposed: true, name: 'Emissive Color' };
-  const emissiveTexture = createMaterialNode('textureSample2D', [80, 880]);
+  const emissiveTexture = createMaterialNode('textureSample2D', [80, 1200]);
   emissiveTexture.parameter = { exposed: true, name: 'Emissive Texture' };
-  const emissiveStrength = createMaterialNode('constant', [80, 1040], { value: 0 });
+  const emissiveStrength = createMaterialNode('constant', [80, 1360], { value: 0 });
   emissiveStrength.parameter = { exposed: true, name: 'Emissive Strength' };
-  const emissiveColorMultiply = createMaterialNode('multiply', [360, 800]);
-  const emissiveStrengthMultiply = createMaterialNode('multiply', [560, 800]);
-  const output = createMaterialNode('output', [820, 340]);
+  const emissiveColorMultiply = createMaterialNode('multiply', [360, 1120]);
+  const emissiveStrengthMultiply = createMaterialNode('multiply', [560, 1120]);
+  const output = createMaterialNode('output', [820, 500]);
 
   return {
     version: 1,
@@ -507,6 +516,10 @@ export const createDefaultMaterialGraph = (): MaterialGraph => {
       baseColorMultiply,
       metallic,
       roughness,
+      metallicRoughnessTexture,
+      metallicMultiply,
+      roughnessMultiply,
+      ambientOcclusionTexture,
       emissiveColor,
       emissiveTexture,
       emissiveStrength,
@@ -533,12 +546,37 @@ export const createDefaultMaterialGraph = (): MaterialGraph => {
       {
         id: materialGraphId('connection'),
         from: { nodeId: metallic.id, pin: 'value' },
+        to: { nodeId: metallicMultiply.id, pin: 'a' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: metallicRoughnessTexture.id, pin: 'b' },
+        to: { nodeId: metallicMultiply.id, pin: 'b' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: metallicMultiply.id, pin: 'result' },
         to: { nodeId: output.id, pin: 'metallic' },
       },
       {
         id: materialGraphId('connection'),
         from: { nodeId: roughness.id, pin: 'value' },
+        to: { nodeId: roughnessMultiply.id, pin: 'a' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: metallicRoughnessTexture.id, pin: 'g' },
+        to: { nodeId: roughnessMultiply.id, pin: 'b' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: roughnessMultiply.id, pin: 'result' },
         to: { nodeId: output.id, pin: 'roughness' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: ambientOcclusionTexture.id, pin: 'r' },
+        to: { nodeId: output.id, pin: 'ao' },
       },
       {
         id: materialGraphId('connection'),
@@ -566,7 +604,7 @@ export const createDefaultMaterialGraph = (): MaterialGraph => {
         to: { nodeId: output.id, pin: 'emissive' },
       },
     ],
-    viewport: { x: 40, y: 40, zoom: 0.85 },
+    viewport: { x: 40, y: 40, zoom: 0.78 },
   };
 };
 
