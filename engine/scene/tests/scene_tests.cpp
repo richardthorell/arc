@@ -749,15 +749,19 @@ TEST_CASE("render scene snaps selected Ocean geometry to the camera-relative Wat
     REQUIRE(frame.events.size() == 1);
     const auto& packet = *std::get<arc::render::render_world_event>(frame.events[0].payload).packet;
     CHECK(packet.simulation_time_seconds == Catch::Approx(42.25));
-    REQUIRE(packet.waters.size() == 1);
+    REQUIRE(packet.fluid_surfaces.size() == 1);
     REQUIRE(packet.items.size() == 1);
 
-    const auto& instance = packet.waters.front();
+    const auto& instance = packet.fluid_surfaces.front();
     CHECK(instance.material == material);
-    CHECK(instance.water_level == Catch::Approx(5.0f));
-    CHECK(instance.follow_camera);
-    CHECK(std::abs(instance.surface_origin[0] - camera_transform.position[0]) < instance.finest_grid_cell_size);
-    CHECK(std::abs(instance.surface_origin[2] - camera_transform.position[2]) < instance.finest_grid_cell_size);
+    CHECK(instance.is_water());
+    CHECK(instance.water.water_level == Catch::Approx(5.0f));
+    CHECK(instance.water.follow_camera);
+    CHECK(instance.channels.displacement);
+    CHECK(instance.channels.normals);
+    CHECK(instance.channels.velocity);
+    CHECK(std::abs(instance.surface_origin[0] - camera_transform.position[0]) < instance.water.finest_grid_cell_size);
+    CHECK(std::abs(instance.surface_origin[2] - camera_transform.position[2]) < instance.water.finest_grid_cell_size);
     CHECK(instance.surface_origin[1] == Catch::Approx(5.0f));
     const auto rendered_origin = arc::math::transform_point(packet.items.front().model, arc::math::vector3f{});
     CHECK(rendered_origin[0] == Catch::Approx(instance.surface_origin[0]));

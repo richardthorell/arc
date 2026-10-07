@@ -687,21 +687,27 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
             if (water.type == ::arc::water::water_body_type::ocean && water.follow_camera)
                 surface_origin = render::water_ocean_grid_origin(world_packet.camera.position, level, grid_cell_size);
             const auto* mesh_renderer = scene.try_get<mesh_renderer_component>(value);
-            world_packet.waters.push_back(
+            world_packet.fluid_surfaces.push_back(
                 {.object_id = render::make_render_object_id(value.index, value.generation),
-                 .type = water.type,
                  .material = mesh_renderer ? mesh_renderer->material : render::material_handle{},
                  .position = transform.position,
                  .surface_origin = surface_origin,
-                 .settings = water.settings,
-                 .water_level = level,
-                 .visible_distance = water.visible_distance,
-                 .finest_grid_cell_size = grid_cell_size,
-                 .grid_ring_count = grid.ring_count,
-                 .priority = water.priority,
-                 .follow_camera = water.follow_camera,
-                 .shoreline_enabled = water.shoreline_enabled,
-                 .underwater_enabled = water.underwater_enabled,
+                 .source_kind = render::fluid_surface_source_kind::water,
+                 .channels = {.displacement = true,
+                              .normals = true,
+                              .velocity = true,
+                              .foam = water.settings.foam.enabled,
+                              .thickness = true},
+                 .water = {.type = water.type,
+                           .settings = water.settings,
+                           .water_level = level,
+                           .visible_distance = water.visible_distance,
+                           .finest_grid_cell_size = grid_cell_size,
+                           .grid_ring_count = grid.ring_count,
+                           .priority = water.priority,
+                           .follow_camera = water.follow_camera,
+                           .shoreline_enabled = water.shoreline_enabled,
+                           .underwater_enabled = water.underwater_enabled},
                  .label = entity_label(scene, value)});
             if (entity_selected(scene, value))
             {
