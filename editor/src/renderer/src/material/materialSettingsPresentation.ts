@@ -2,7 +2,7 @@ import type { MaterialBlendMode, MaterialDomain, MaterialGraph, MaterialShadingM
 
 export type MaterialRenderPathLabel = 'Deferred' | 'Clustered Forward' | 'Terrain Renderer';
 
-const forwardFeaturePins = ['clearCoat', 'sheen', 'transmission', 'subsurface', 'anisotropy'] as const;
+const forwardFeaturePins = ['clearCoatNormal', 'sheen', 'transmission', 'subsurface', 'anisotropy'] as const;
 
 export const materialGraphOutputConnected = (graph: MaterialGraph, pin: string): boolean => {
   const output = graph.nodes.find((node) => node.type === 'output');
