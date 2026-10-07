@@ -203,29 +203,54 @@ export function InspectorComponentCard<TContext extends object>({
         field.label
       );
 
+    const fieldControl = (
+      <SchemaField
+        assets={assets}
+        context={context}
+        field={field}
+        linked={linked}
+        thumbnailProvider={thumbnailProvider}
+        onToggleLinked={() =>
+          setUnlinkedFields((current) => {
+            const next = new Set(current);
+            if (next.has(field.path)) next.delete(field.path);
+            else next.add(field.path);
+            return next;
+          })
+        }
+        onValue={fieldValue}
+        onAction={(action) => onAction?.(action)}
+      />
+    );
+    const inheritanceActive = field.inheritance?.active(context) ?? false;
+    const inheritedOverride = inheritanceActive && (field.inheritance?.overridden(context) ?? false);
+
     propertyFields.push({
       id: field.id,
       label,
       align: field.type === 'asset' || field.type === 'assetPreview' ? 'start' : 'center',
       tooltip: field.tooltip,
-      control: (
-        <SchemaField
-          assets={assets}
-          context={context}
-          field={field}
-          linked={linked}
-          thumbnailProvider={thumbnailProvider}
-          onToggleLinked={() =>
-            setUnlinkedFields((current) => {
-              const next = new Set(current);
-              if (next.has(field.path)) next.delete(field.path);
-              else next.add(field.path);
-              return next;
-            })
-          }
-          onValue={fieldValue}
-          onAction={(action) => onAction?.(action)}
-        />
+      description: inheritanceActive
+        ? inheritedOverride
+          ? 'Override'
+          : `From ${field.inheritance?.sourceLabel}`
+        : undefined,
+      control: inheritanceActive ? (
+        <div className="inspector-inherited-property-control">
+          {fieldControl}
+          {inheritedOverride && (
+            <UiButton
+              className="inspector-inherited-property-revert"
+              onClick={() => onAction?.(field.inheritance!.revertAction)}
+              type="button"
+              variant="ghost"
+            >
+              Revert
+            </UiButton>
+          )}
+        </div>
+      ) : (
+        fieldControl
       ),
     });
 

@@ -132,6 +132,7 @@ const waterSnapshot = (): InspectorEntitySnapshot => ({
     bodyType: 'ocean',
     presetGuid: '',
     presetPath: 'water/Open Ocean.arcwater',
+    presetOverrideMask: 0,
     materialGuid: '',
     materialPath: '',
     waterLevel: 0,

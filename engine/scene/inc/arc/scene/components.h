@@ -631,6 +631,30 @@ struct water_shape_contract
     std::vector<water_shape_point> points;
 };
 
+enum class water_preset_override : std::uint32_t
+{
+    wind_speed = 1u << 0u,
+    wind_direction = 1u << 1u,
+    fetch_length = 1u << 2u,
+    wave_amplitude = 1u << 3u,
+    choppiness = 1u << 4u,
+    foam_enabled = 1u << 5u,
+    foam_threshold = 1u << 6u,
+    foam_decay = 1u << 7u,
+    absorption = 1u << 8u,
+    scattering = 1u << 9u,
+    roughness = 1u << 10u,
+    refraction_strength = 1u << 11u,
+    quality = 1u << 12u
+};
+
+inline constexpr std::uint32_t water_preset_override_mask(water_preset_override value) noexcept
+{
+    return static_cast<std::uint32_t>(value);
+}
+
+inline constexpr std::uint32_t water_preset_override_all = (1u << 13u) - 1u;
+
 /** @brief Persistent first-class Water authoring intent. Runtime/GPU state lives in the Water systems. */
 struct water_component
 {
@@ -638,6 +662,7 @@ struct water_component
     assets::asset_reference preset{.expected_type = assets::asset_types::water_preset};
     assets::asset_reference material{.expected_type = assets::asset_types::material};
     water::water_runtime_settings settings;
+    std::uint32_t preset_overrides{};
     water_shape_contract shape;
     float water_level{};
     bool enabled{true};

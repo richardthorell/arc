@@ -1,6 +1,7 @@
 import type { InspectorEntitySnapshot } from './inspectorTypes';
 import type { PropertyComponentSchema, PropertyFieldSchema } from './propertySchema';
 import { generatedEcsComponents } from './generatedEcsMetadata';
+import { waterPresetFieldIsOverridden, waterPresetInheritanceActive } from './waterPresetOverrides';
 export { getPathValue, setPathValue } from './propertySchema';
 
 export type InspectorComponentId = string;
@@ -37,6 +38,12 @@ const generatedTitle = (canonicalName: string, fallback: string) =>
   generatedEcsComponents.find((component) => component.canonicalName === canonicalName)?.displayName ?? fallback;
 
 const legacyUnit = { value: 'unitless', label: 'Legacy Unitless' };
+const waterPresetInheritance = (path: string) => ({
+  active: (snapshot: InspectorEntitySnapshot) => waterPresetInheritanceActive(snapshot, path),
+  overridden: (snapshot: InspectorEntitySnapshot) => waterPresetFieldIsOverridden(snapshot, path),
+  sourceLabel: 'Water Preset',
+  revertAction: `water.revertPresetOverride:${path}`,
+});
 const commonLightFieldsFor = (unitOptions: Array<{ value: string; label: string }>): InspectorFieldSchema[] => [
   { id: 'enabled', label: 'Enabled', path: 'light.enabled', type: 'boolean' },
   { id: 'color', label: 'Color', path: 'light.color', type: 'color', precision: 2, min: 0, max: 1 },
@@ -891,6 +898,21 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         allowEmpty: true,
       },
       {
+        id: 'presetOverrides',
+        label: 'Preset Values',
+        section: 'Body',
+        path: 'water.presetOverrideMask',
+        type: 'actions',
+        visible: (snapshot) => Boolean(snapshot.water?.presetPath),
+        actions: [
+          {
+            id: 'water.revertPresetOverrides',
+            label: 'Revert All Overrides',
+            disabled: (snapshot) => !snapshot.water?.presetOverrideMask,
+          },
+        ],
+      },
+      {
         id: 'waterLevel',
         label: 'Water Level',
         section: 'Body',
@@ -914,6 +936,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         label: 'Wind Speed',
         section: 'Waves',
         path: 'water.windSpeed',
+        inheritance: waterPresetInheritance('water.windSpeed'),
         type: 'number',
         visible: (snapshot) => snapshot.water?.bodyType === 'ocean',
         precision: 1,
@@ -927,6 +950,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         label: 'Wind Direction X',
         section: 'Waves',
         path: 'water.windDirectionX',
+        inheritance: waterPresetInheritance('water.windDirectionX'),
         type: 'number',
         visible: (snapshot) => snapshot.water?.bodyType === 'ocean',
         precision: 2,
@@ -938,6 +962,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         label: 'Wind Direction Z',
         section: 'Waves',
         path: 'water.windDirectionY',
+        inheritance: waterPresetInheritance('water.windDirectionY'),
         type: 'number',
         visible: (snapshot) => snapshot.water?.bodyType === 'ocean',
         precision: 2,
@@ -949,6 +974,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         label: 'Fetch Length',
         section: 'Waves',
         path: 'water.fetchLength',
+        inheritance: waterPresetInheritance('water.fetchLength'),
         type: 'number',
         visible: (snapshot) => snapshot.water?.bodyType === 'ocean',
         precision: 0,
@@ -962,6 +988,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         label: 'Wave Amplitude',
         section: 'Waves',
         path: 'water.waveAmplitude',
+        inheritance: waterPresetInheritance('water.waveAmplitude'),
         type: 'number',
         visible: (snapshot) => snapshot.water?.bodyType === 'ocean',
         precision: 2,
@@ -975,6 +1002,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         label: 'Choppiness',
         section: 'Waves',
         path: 'water.choppiness',
+        inheritance: waterPresetInheritance('water.choppiness'),
         type: 'number',
         visible: (snapshot) => snapshot.water?.bodyType === 'ocean',
         precision: 2,
@@ -997,6 +1025,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         label: 'Absorption',
         section: 'Appearance',
         path: 'water.absorption',
+        inheritance: waterPresetInheritance('water.absorption'),
         type: 'vector3',
         precision: 3,
         step: 0.01,
@@ -1007,6 +1036,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         label: 'Scattering',
         section: 'Appearance',
         path: 'water.scattering',
+        inheritance: waterPresetInheritance('water.scattering'),
         type: 'vector3',
         precision: 3,
         step: 0.01,
@@ -1017,6 +1047,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         label: 'Roughness',
         section: 'Appearance',
         path: 'water.roughness',
+        inheritance: waterPresetInheritance('water.roughness'),
         type: 'number',
         precision: 2,
         step: 0.05,
@@ -1029,6 +1060,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         label: 'Refraction Strength',
         section: 'Appearance',
         path: 'water.refractionStrength',
+        inheritance: waterPresetInheritance('water.refractionStrength'),
         type: 'number',
         precision: 2,
         step: 0.05,
@@ -1053,6 +1085,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         label: 'Quality',
         section: 'Performance',
         path: 'water.quality',
+        inheritance: waterPresetInheritance('water.quality'),
         type: 'enum',
         visible: (snapshot) => snapshot.water?.bodyType === 'ocean',
         options: [

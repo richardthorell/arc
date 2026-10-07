@@ -875,7 +875,7 @@ TEST_CASE("explicit Water Body creation establishes Ocean Lake and River authori
     CHECK(water_body_count == 3u);
 }
 
-TEST_CASE("Water component version 3 shape contract survives scene save and reload")
+TEST_CASE("Water component version 4 preset overrides survive scene save and reload")
 {
     const auto root =
         std::filesystem::temp_directory_path() /
@@ -903,6 +903,7 @@ TEST_CASE("Water component version 3 shape contract survives scene save and relo
     authored.settings.appearance.absorption = {0.20f, 0.07f, 0.03f};
     authored.settings.appearance.refraction_strength = 0.08f;
     authored.settings.quality = arc::water::water_quality::ultra;
+    authored.preset_overrides = arc::scene::water_preset_override_mask(arc::scene::water_preset_override::roughness);
     REQUIRE(authored.shape.closed);
     REQUIRE(authored.shape.points.size() == 4u);
     authored.shape.points[0].position = {-14.0f, 0.0f, -8.0f};
@@ -914,7 +915,7 @@ TEST_CASE("Water component version 3 shape contract survives scene save and relo
         std::ifstream input(path, std::ios::binary);
         const std::string document((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
         CHECK(document.find("\"Water\"") != std::string::npos);
-        CHECK(document.find("\"version\": 3") != std::string::npos);
+        CHECK(document.find("\"version\": 4") != std::string::npos);
         CHECK(document.find("Open Ocean.arcwater") != std::string::npos);
     }
 
@@ -931,6 +932,8 @@ TEST_CASE("Water component version 3 shape contract survives scene save and relo
     CHECK(loaded.settings.appearance.absorption[0] == Catch::Approx(0.20f));
     CHECK(loaded.settings.appearance.refraction_strength == Catch::Approx(0.08f));
     CHECK(loaded.settings.quality == arc::water::water_quality::ultra);
+    CHECK(loaded.preset_overrides ==
+          arc::scene::water_preset_override_mask(arc::scene::water_preset_override::roughness));
     CHECK(loaded.shape.closed);
     REQUIRE(loaded.shape.points.size() == 4u);
     CHECK(loaded.shape.points[0].position[0] == Catch::Approx(-14.0f));
@@ -1071,13 +1074,21 @@ TEST_CASE("built-in Water presets are discovered and drive Ocean defaults")
     auto storm = *ocean.water;
     storm.preset_guid.clear();
     storm.preset_path = "builtin/water/presets/storm.arcwater";
+    storm.wind_speed = 18.0f;
+    storm.preset_override_mask = arc::scene::water_preset_override_mask(arc::scene::water_preset_override::wind_speed);
     REQUIRE(host->execute(arc::editor::host_set_water_command{.entity = ocean.entity, .water = storm}).succeeded);
     const auto configured = host->selected_entity_snapshot();
     REQUIRE(configured.water.has_value());
     CHECK(configured.water->preset_path == "builtin/water/presets/storm.arcwater");
-    CHECK(configured.water->wind_speed == Catch::Approx(28.0f));
+    CHECK(configured.water->wind_speed == Catch::Approx(18.0f));
     CHECK(configured.water->wave_amplitude == Catch::Approx(5.0f));
     CHECK(configured.water->quality == 3u);
+
+    auto reverted = *configured.water;
+    reverted.preset_override_mask = 0u;
+    REQUIRE(host->execute(arc::editor::host_set_water_command{.entity = ocean.entity, .water = reverted}).succeeded);
+    REQUIRE(host->selected_entity_snapshot().water.has_value());
+    CHECK(host->selected_entity_snapshot().water->wind_speed == Catch::Approx(28.0f));
 
     std::filesystem::remove_all(root, error);
 }

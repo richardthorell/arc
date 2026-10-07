@@ -59,6 +59,29 @@ describe('Water inspector truthfulness', () => {
     expect(sectionFor('priority')).toBe('Performance');
   });
 
+  it('marks preset-owned fields as inherited while body and shape remain instance-owned', () => {
+    expect(waterSchema).toBeDefined();
+    const inherited = new Set(waterSchema?.fields.filter((field) => field.inheritance).map((field) => field.id));
+    for (const id of [
+      'windSpeed',
+      'windDirectionX',
+      'windDirectionY',
+      'fetchLength',
+      'waveAmplitude',
+      'choppiness',
+      'absorption',
+      'scattering',
+      'roughness',
+      'refractionStrength',
+      'quality',
+    ])
+      expect(inherited.has(id)).toBe(true);
+
+    expect(inherited.has('bodyType')).toBe(false);
+    expect(inherited.has('waterLevel')).toBe(false);
+    expect(inherited.has('material')).toBe(false);
+  });
+
   it('shows spectral Ocean controls only for the Ocean provider', () => {
     expect(waterSchema).toBeDefined();
     for (const id of [

@@ -12,6 +12,12 @@ type FieldBase<TContext> = {
   visible?: (context: TContext) => boolean;
   tooltip?: string;
   resetValue?: unknown;
+  inheritance?: {
+    active: (context: TContext) => boolean;
+    overridden: (context: TContext) => boolean;
+    sourceLabel: string;
+    revertAction: string;
+  };
 };
 
 export type Vector3FieldSchema<TContext = object> = FieldBase<TContext> & {

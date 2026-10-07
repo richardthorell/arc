@@ -132,6 +132,7 @@ export type InspectorWater = {
   bodyType: 'ocean' | 'lake' | 'river';
   presetGuid: string;
   presetPath: string;
+  presetOverrideMask: number;
   materialGuid: string;
   materialPath: string;
   waterLevel: number;
@@ -363,6 +364,7 @@ const hostSelectedEntitySchema = z.object({
       bodyType: z.enum(['ocean', 'lake', 'river']),
       presetGuid: z.string(),
       presetPath: z.string(),
+      presetOverrideMask: z.number().int().nonnegative().max(0x1fff).default(0),
       materialGuid: z.string(),
       materialPath: z.string(),
       waterLevel: finiteNumber,
