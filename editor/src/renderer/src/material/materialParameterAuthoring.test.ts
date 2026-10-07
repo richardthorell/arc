@@ -18,6 +18,7 @@ describe('material parameter authoring metadata', () => {
       { name: 'Emissive Texture', group: 'Parameters', sortOrder: 0 },
       { name: 'Metallic', group: 'Parameters', sortOrder: 0 },
       { name: 'Metallic Roughness Texture', group: 'Parameters', sortOrder: 0 },
+      { name: 'Normal Texture', group: 'Parameters', sortOrder: 0 },
       { name: 'Roughness', group: 'Parameters', sortOrder: 0 },
     ]);
   });
@@ -64,6 +65,7 @@ describe('material parameter authoring metadata', () => {
       { name: 'Emissive Strength', group: 'Parameters', description: undefined, sortOrder: 0 },
       { name: 'Emissive Texture', group: 'Parameters', description: undefined, sortOrder: 0 },
       { name: 'Metallic Roughness Texture', group: 'Parameters', description: undefined, sortOrder: 0 },
+      { name: 'Normal Texture', group: 'Parameters', description: undefined, sortOrder: 0 },
       { name: 'Metallic', group: 'Surface', description: undefined, sortOrder: 10 },
       { name: 'Roughness', group: 'Surface', description: 'Microsurface response', sortOrder: 20 },
     ]);
@@ -109,6 +111,7 @@ describe('material parameter authoring metadata', () => {
           { name: 'Ambient Occlusion Texture', type: 'texture2d' },
           { name: 'Metallic', type: 'float' },
           { name: 'Metallic Roughness Texture', type: 'texture2d' },
+          { name: 'Normal Texture', type: 'texture2d' },
           { name: 'Roughness', type: 'float' },
         ],
       },
