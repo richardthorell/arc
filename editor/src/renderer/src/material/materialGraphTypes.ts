@@ -526,7 +526,10 @@ const materialFunctionPins = (value: unknown): MaterialFunctionPin[] =>
         if (
           typeof pinValue.id !== 'string' ||
           typeof pinValue.name !== 'string' ||
-          (pinValue.type !== 'float' && pinValue.type !== 'vec2' && pinValue.type !== 'vec3' && pinValue.type !== 'vec4')
+          (pinValue.type !== 'float' &&
+            pinValue.type !== 'vec2' &&
+            pinValue.type !== 'vec3' &&
+            pinValue.type !== 'vec4')
         )
           return [];
         return [{ id: pinValue.id, name: pinValue.name, type: pinValue.type, default: pinValue.default }];
@@ -814,9 +817,7 @@ export const materialNodeDefinition = (node: MaterialGraphNode): MaterialNodeDef
 
   if (node.type === 'functionInput') {
     const type =
-      node.values.valueType === 'vec2' ||
-      node.values.valueType === 'vec3' ||
-      node.values.valueType === 'vec4'
+      node.values.valueType === 'vec2' || node.values.valueType === 'vec3' || node.values.valueType === 'vec4'
         ? node.values.valueType
         : 'float';
     const label = typeof node.values.name === 'string' && node.values.name.trim() ? node.values.name : 'Input';
@@ -831,8 +832,7 @@ export const materialNodeDefinition = (node: MaterialGraphNode): MaterialNodeDef
   if (node.type === 'functionCall') {
     const inputs = materialFunctionPins(node.values.inputPins);
     const outputs = materialFunctionPins(node.values.outputPins);
-    const title =
-      typeof node.values.name === 'string' && node.values.name.trim() ? node.values.name : definition.title;
+    const title = typeof node.values.name === 'string' && node.values.name.trim() ? node.values.name : definition.title;
     return {
       ...definition,
       title,

@@ -131,10 +131,12 @@ export const resolveRegisteredEditorAsset = async (
       });
       if (registered && payload) {
         const resolved = registeredAssetFromHost(asset, registered, payload);
-        if (asset.kind === 'material' ||
-      asset.kind === 'materialFunction' ||
-      asset.kind === 'shader' ||
-      asset.kind === 'flow') {
+        if (
+          asset.kind === 'material' ||
+          asset.kind === 'materialFunction' ||
+          asset.kind === 'shader' ||
+          asset.kind === 'flow'
+        ) {
           console.info('[material-flow] asset registration resolved', {
             kind: asset.kind,
             authoredPath: asset.path,
@@ -218,8 +220,7 @@ const materialFunctionRegistration: EditorRegistration = {
   icon: Circle,
   allowMultiple: true,
   closeable: true,
-  canOpenAsset: (asset) =>
-    asset.kind === 'materialFunction' || asset.path.toLocaleLowerCase().endsWith('.arcmatfn'),
+  canOpenAsset: (asset) => asset.kind === 'materialFunction' || asset.path.toLocaleLowerCase().endsWith('.arcmatfn'),
   createDocument: (asset) => ({
     id: `material-function:${asset.guid ?? asset.path}`,
     kind: 'materialFunction',

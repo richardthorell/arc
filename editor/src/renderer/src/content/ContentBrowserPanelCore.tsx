@@ -633,8 +633,8 @@ export function ContentBrowserPanel({
           : createKind === 'materialFunction'
             ? { kind: 'materialFunction', name: createName, folder: createFolder }
             : createKind === 'flow'
-            ? { kind: 'flow', name: createName, folder: createFolder }
-            : { kind: 'shader', name: createName, folder: createFolder, template: shaderTemplate };
+              ? { kind: 'flow', name: createName, folder: createFolder }
+              : { kind: 'shader', name: createName, folder: createFolder, template: shaderTemplate };
       const definition = buildAssetCreation(project, request);
       if (project.assets.some((asset) => normalizedPath(asset.path) === normalizedPath(definition.asset.path))) {
         throw new Error(`An asset already exists at ${definition.asset.path}`);
@@ -1146,7 +1146,8 @@ export function ContentBrowserPanel({
           >
             <header>
               <strong id="content-create-title">
-                Create {createKind === 'material'
+                Create{' '}
+                {createKind === 'material'
                   ? 'Material'
                   : createKind === 'materialFunction'
                     ? 'Material Function'

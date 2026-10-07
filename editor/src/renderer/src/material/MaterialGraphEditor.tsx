@@ -189,7 +189,10 @@ function MaterialFunctionCallEditor({
               label:
                 typeof asset.title === 'string' && asset.title.trim()
                   ? asset.title
-                  : sourcePath.split('/').at(-1)?.replace(/\.arcmatfn$/i, '') ?? sourcePath,
+                  : (sourcePath
+                      .split('/')
+                      .at(-1)
+                      ?.replace(/\.arcmatfn$/i, '') ?? sourcePath),
               path,
               sourcePath,
               scope: asset.scope === 'builtin' ? ('builtin' as const) : ('project' as const),

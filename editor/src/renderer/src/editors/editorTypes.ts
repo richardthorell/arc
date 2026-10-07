@@ -4,14 +4,7 @@ import type { AssetItem } from '../services/editorHostTypes';
 import type { WorkbenchIcon } from '../app/workbenchTypes';
 
 export type EditorDocumentKind =
-  | 'level'
-  | 'shader'
-  | 'material'
-  | 'materialFunction'
-  | 'flow'
-  | 'texture'
-  | 'model'
-  | 'skeleton';
+  'level' | 'shader' | 'material' | 'materialFunction' | 'flow' | 'texture' | 'model' | 'skeleton';
 
 export type EditorDocument = {
   id: string;

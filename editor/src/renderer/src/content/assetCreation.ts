@@ -90,8 +90,8 @@ export const buildAssetCreation = (
       : request.kind === 'materialFunction'
         ? `${JSON.stringify(createDefaultMaterialFunction(name), null, 2)}\n`
         : request.kind === 'flow'
-        ? `${JSON.stringify(createFlowAsset(name), null, 2)}\n`
-        : shaderTemplateSource(request.template);
+          ? `${JSON.stringify(createFlowAsset(name), null, 2)}\n`
+          : shaderTemplateSource(request.template);
 
   if (
     request.kind === 'material' ||

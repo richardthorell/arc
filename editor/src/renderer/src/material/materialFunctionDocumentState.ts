@@ -90,7 +90,12 @@ const subscribe = (documentId: string, listener: () => void) => {
 const serialize = (asset: MaterialFunctionAssetJson, graph: MaterialGraph) =>
   `${JSON.stringify({ ...asset, graph: cloneMaterialGraph(graph) }, null, 2)}\n`;
 
-const setDirty = (document: EditorDocument, asset: MaterialFunctionAssetJson, graph: MaterialGraph, confirmed: string) =>
+const setDirty = (
+  document: EditorDocument,
+  asset: MaterialFunctionAssetJson,
+  graph: MaterialGraph,
+  confirmed: string,
+) =>
   updateEditorDocumentInStore(document.id, {
     dirty: !document.readOnly && serialize(asset, graph) !== confirmed,
   });
@@ -100,7 +105,8 @@ const parseFunction = (value: unknown, document: EditorDocument): MaterialFuncti
   const candidate = value as Partial<MaterialFunctionAssetJson>;
   if (candidate.kind !== 'materialFunction' || candidate.version !== 1)
     throw new Error('Material Function must use materialFunction schema v1');
-  if (typeof candidate.name !== 'string' || !candidate.name.trim()) throw new Error('Material Function requires a name');
+  if (typeof candidate.name !== 'string' || !candidate.name.trim())
+    throw new Error('Material Function requires a name');
   if (!Array.isArray(candidate.inputs) || !Array.isArray(candidate.outputs) || candidate.outputs.length === 0)
     throw new Error('Material Function requires input/output arrays and at least one output');
   if (!isMaterialGraph(candidate.graph)) throw new Error('Material Function contains an invalid graph');

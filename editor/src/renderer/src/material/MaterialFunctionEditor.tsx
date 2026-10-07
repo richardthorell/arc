@@ -44,9 +44,7 @@ const syncBoundaryNodes = (
   );
 
   for (const [index, input] of inputs.entries()) {
-    const existing = next.nodes.find(
-      (node) => node.type === 'functionInput' && node.values.input === input.id,
-    );
+    const existing = next.nodes.find((node) => node.type === 'functionInput' && node.values.input === input.id);
     if (existing) {
       existing.values = { input: input.id, name: input.name, valueType: input.type };
     } else {
@@ -95,11 +93,7 @@ export function MaterialFunctionEditor({ document }: { document: EditorDocument 
     });
   };
 
-  const updatePin = (
-    direction: 'inputs' | 'outputs',
-    id: string,
-    patch: Partial<MaterialFunctionPin>,
-  ) => {
+  const updatePin = (direction: 'inputs' | 'outputs', id: string, patch: Partial<MaterialFunctionPin>) => {
     const inputs =
       direction === 'inputs'
         ? state.asset.inputs.map((pin) => (pin.id === id ? { ...pin, ...patch } : pin))
@@ -127,10 +121,7 @@ export function MaterialFunctionEditor({ document }: { document: EditorDocument 
   );
 
   return (
-    <section
-      className="material-editor"
-      style={{ gridTemplateColumns: 'minmax(520px, 1fr) 5px 420px' }}
-    >
+    <section className="material-editor" style={{ gridTemplateColumns: 'minmax(520px, 1fr) 5px 420px' }}>
       <div className="material-editor-graph-region">
         <MaterialGraphEditor
           document={document}

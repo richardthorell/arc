@@ -96,7 +96,6 @@ describe('Material asset creation', () => {
   });
 });
 
-
 describe('Material Function asset creation', () => {
   it('creates an editable typed function graph with stable boundary nodes', () => {
     const definition = buildAssetCreation(project, {
