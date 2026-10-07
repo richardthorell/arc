@@ -13,6 +13,7 @@ import { cameraHostPayload, hostEntityKey, lightHostPayload, transformHostPayloa
 import { InspectorComponentCard } from './InspectorComponentCard';
 import { SkeletonInspector } from './SkeletonInspector';
 import { inspectorLocalToWorld, inspectorWorldToLocal } from './transformSpace';
+import { waterPresetOverrideForPath } from './waterPresetOverrides';
 
 import './inspector.css';
 
@@ -359,13 +360,30 @@ export function InspectorPanel({
         transactionLabel,
       );
     } else if (component === 'water' && next.water) {
-      const normalizedWater =
-        path === 'water.bodyType' ? { ...next.water, ...defaultWaterShape(next.water.bodyType) } : next.water;
+      let normalizedWater = next.water;
+      if (path === 'water.bodyType') {
+        normalizedWater = {
+          ...normalizedWater,
+          ...defaultWaterShape(normalizedWater.bodyType),
+          presetGuid: '',
+          presetPath: '',
+          presetOverrideMask: 0,
+        };
+      } else if (path === 'water.presetPath') {
+        normalizedWater = {
+          ...normalizedWater,
+          presetGuid: '',
+          presetOverrideMask: next.water.presetPath ? (draft?.water?.presetPath ? next.water.presetOverrideMask : 0) : 0,
+        };
+      } else {
+        const overrideBit = waterPresetOverrideForPath[path];
+        if (overrideBit && normalizedWater.presetPath)
+          normalizedWater = { ...normalizedWater, presetOverrideMask: normalizedWater.presetOverrideMask | overrideBit };
+      }
       const normalizedNext =
         normalizedWater === next.water ? next : ({ ...next, water: normalizedWater } as InspectorEntitySnapshot);
       const water = {
         ...normalizedWater,
-        presetGuid: path === 'water.presetPath' ? '' : normalizedWater.presetGuid,
         materialGuid: path === 'water.materialPath' ? '' : normalizedWater.materialGuid,
         absorption: [normalizedWater.absorption.x, normalizedWater.absorption.y, normalizedWater.absorption.z],
         scattering: [normalizedWater.scattering.x, normalizedWater.scattering.y, normalizedWater.scattering.z],
@@ -423,6 +441,22 @@ export function InspectorPanel({
 
   const runComponentAction = (component: InspectorComponentId, action: string) => {
     if (!draft) return;
+    if (component === 'water' && draft.water && action.startsWith('water.revertPresetOverride:')) {
+      const path = action.slice('water.revertPresetOverride:'.length);
+      const bit = waterPresetOverrideForPath[path];
+      if (!bit) return;
+      const next = {
+        ...draft,
+        water: { ...draft.water, presetOverrideMask: draft.water.presetOverrideMask & ~bit },
+      };
+      updateComponent('water', 'water.presetOverrideMask', next, true);
+      return;
+    }
+    if (component === 'water' && draft.water && action === 'water.revertPresetOverrides') {
+      const next = { ...draft, water: { ...draft.water, presetOverrideMask: 0 } };
+      updateComponent('water', 'water.presetOverrideMask', next, true);
+      return;
+    }
     const componentKey: Partial<Record<InspectorComponentId, keyof InspectorEntitySnapshot>> = {
       transform: 'transform',
       camera: 'camera',
