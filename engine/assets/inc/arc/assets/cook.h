@@ -60,6 +60,7 @@ inline constexpr cook_processor_id collision{0xa7ca55e700000003ull, 0x0000000000
 inline constexpr cook_processor_id navigation{0xa7ca55e700000003ull, 0x000000000000000aull};
 inline constexpr cook_processor_id audio{0xa7ca55e700000003ull, 0x000000000000000bull};
 inline constexpr cook_processor_id material_instance{0xa7ca55e700000003ull, 0x000000000000000cull};
+inline constexpr cook_processor_id material_function{0xa7ca55e700000003ull, 0x000000000000000dull};
 } // namespace cook_processor_ids
 
 namespace artifact_schemas
@@ -76,6 +77,7 @@ inline constexpr artifact_schema_id surface_cards{0xa7ca55e700000004ull, 0x00000
 inline constexpr artifact_schema_id mesh_distance_field{0xa7ca55e700000004ull, 0x000000000000000aull};
 inline constexpr artifact_schema_id material_instance{0xa7ca55e700000004ull, 0x000000000000000bull};
 inline constexpr artifact_schema_id terrain_manifest{0xa7ca55e700000004ull, 0x000000000000000cull};
+inline constexpr artifact_schema_id material_function{0xa7ca55e700000004ull, 0x000000000000000dull};
 } // namespace artifact_schemas
 
 enum class cook_platform : std::uint8_t
