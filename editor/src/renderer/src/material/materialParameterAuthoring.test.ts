@@ -10,12 +10,14 @@ describe('material parameter authoring metadata', () => {
     expect(
       materialAuthoringParameters(graph).map(({ name, group, sortOrder }) => ({ name, group, sortOrder })),
     ).toEqual([
+      { name: 'Ambient Occlusion Texture', group: 'Parameters', sortOrder: 0 },
       { name: 'Base Color Texture', group: 'Parameters', sortOrder: 0 },
       { name: 'Base Color Tint', group: 'Parameters', sortOrder: 0 },
       { name: 'Emissive Color', group: 'Parameters', sortOrder: 0 },
       { name: 'Emissive Strength', group: 'Parameters', sortOrder: 0 },
       { name: 'Emissive Texture', group: 'Parameters', sortOrder: 0 },
       { name: 'Metallic', group: 'Parameters', sortOrder: 0 },
+      { name: 'Metallic Roughness Texture', group: 'Parameters', sortOrder: 0 },
       { name: 'Roughness', group: 'Parameters', sortOrder: 0 },
     ]);
   });
@@ -55,11 +57,13 @@ describe('material parameter authoring metadata', () => {
       })),
     ).toEqual([
       { name: 'Detail', group: 'Detail', description: undefined, sortOrder: 0 },
+      { name: 'Ambient Occlusion Texture', group: 'Parameters', description: undefined, sortOrder: 0 },
       { name: 'Base Color Texture', group: 'Parameters', description: undefined, sortOrder: 0 },
       { name: 'Base Color Tint', group: 'Parameters', description: undefined, sortOrder: 0 },
       { name: 'Emissive Color', group: 'Parameters', description: undefined, sortOrder: 0 },
       { name: 'Emissive Strength', group: 'Parameters', description: undefined, sortOrder: 0 },
       { name: 'Emissive Texture', group: 'Parameters', description: undefined, sortOrder: 0 },
+      { name: 'Metallic Roughness Texture', group: 'Parameters', description: undefined, sortOrder: 0 },
       { name: 'Metallic', group: 'Surface', description: undefined, sortOrder: 10 },
       { name: 'Roughness', group: 'Surface', description: 'Microsurface response', sortOrder: 20 },
     ]);
@@ -102,7 +106,9 @@ describe('material parameter authoring metadata', () => {
       {
         name: 'Surface',
         parameters: [
+          { name: 'Ambient Occlusion Texture', type: 'texture2d' },
           { name: 'Metallic', type: 'float' },
+          { name: 'Metallic Roughness Texture', type: 'texture2d' },
           { name: 'Roughness', type: 'float' },
         ],
       },
