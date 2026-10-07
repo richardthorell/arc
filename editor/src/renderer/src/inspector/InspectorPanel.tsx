@@ -373,12 +373,19 @@ export function InspectorPanel({
         normalizedWater = {
           ...normalizedWater,
           presetGuid: '',
-          presetOverrideMask: next.water.presetPath ? (draft?.water?.presetPath ? next.water.presetOverrideMask : 0) : 0,
+          presetOverrideMask: next.water.presetPath
+            ? draft?.water?.presetPath
+              ? next.water.presetOverrideMask
+              : 0
+            : 0,
         };
       } else {
         const overrideBit = waterPresetOverrideForPath[path];
         if (overrideBit && normalizedWater.presetPath)
-          normalizedWater = { ...normalizedWater, presetOverrideMask: normalizedWater.presetOverrideMask | overrideBit };
+          normalizedWater = {
+            ...normalizedWater,
+            presetOverrideMask: normalizedWater.presetOverrideMask | overrideBit,
+          };
       }
       const normalizedNext =
         normalizedWater === next.water ? next : ({ ...next, water: normalizedWater } as InspectorEntitySnapshot);

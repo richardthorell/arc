@@ -61,9 +61,7 @@ describe('Water inspector truthfulness', () => {
 
   it('marks preset-owned fields as inherited while body and shape remain instance-owned', () => {
     expect(waterSchema).toBeDefined();
-    const inherited = new Set(
-      waterSchema?.fields.filter((field) => field.inheritance).map((field) => field.id),
-    );
+    const inherited = new Set(waterSchema?.fields.filter((field) => field.inheritance).map((field) => field.id));
     for (const id of [
       'windSpeed',
       'windDirectionX',

@@ -903,8 +903,7 @@ TEST_CASE("Water component version 4 preset overrides survive scene save and rel
     authored.settings.appearance.absorption = {0.20f, 0.07f, 0.03f};
     authored.settings.appearance.refraction_strength = 0.08f;
     authored.settings.quality = arc::water::water_quality::ultra;
-    authored.preset_overrides =
-        arc::scene::water_preset_override_mask(arc::scene::water_preset_override::roughness);
+    authored.preset_overrides = arc::scene::water_preset_override_mask(arc::scene::water_preset_override::roughness);
     REQUIRE(authored.shape.closed);
     REQUIRE(authored.shape.points.size() == 4u);
     authored.shape.points[0].position = {-14.0f, 0.0f, -8.0f};
@@ -1076,8 +1075,7 @@ TEST_CASE("built-in Water presets are discovered and drive Ocean defaults")
     storm.preset_guid.clear();
     storm.preset_path = "builtin/water/presets/storm.arcwater";
     storm.wind_speed = 18.0f;
-    storm.preset_override_mask =
-        arc::scene::water_preset_override_mask(arc::scene::water_preset_override::wind_speed);
+    storm.preset_override_mask = arc::scene::water_preset_override_mask(arc::scene::water_preset_override::wind_speed);
     REQUIRE(host->execute(arc::editor::host_set_water_command{.entity = ocean.entity, .water = storm}).succeeded);
     const auto configured = host->selected_entity_snapshot();
     REQUIRE(configured.water.has_value());

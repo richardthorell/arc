@@ -653,8 +653,7 @@ inline constexpr std::uint32_t water_preset_override_mask(water_preset_override 
     return static_cast<std::uint32_t>(value);
 }
 
-inline constexpr std::uint32_t water_preset_override_all =
-    (1u << 13u) - 1u;
+inline constexpr std::uint32_t water_preset_override_all = (1u << 13u) - 1u;
 
 /** @brief Persistent first-class Water authoring intent. Runtime/GPU state lives in the Water systems. */
 struct water_component

@@ -24,12 +24,10 @@ bool apply_water_preset(water_component& component, const water::water_preset& p
         component.settings.simulation.choppiness = preset.settings.simulation.choppiness;
     component.settings.simulation.seed = preset.settings.simulation.seed;
 
-    if (inherits(water_preset_override::foam_enabled))
-        component.settings.foam.enabled = preset.settings.foam.enabled;
+    if (inherits(water_preset_override::foam_enabled)) component.settings.foam.enabled = preset.settings.foam.enabled;
     if (inherits(water_preset_override::foam_threshold))
         component.settings.foam.threshold = preset.settings.foam.threshold;
-    if (inherits(water_preset_override::foam_decay))
-        component.settings.foam.decay = preset.settings.foam.decay;
+    if (inherits(water_preset_override::foam_decay)) component.settings.foam.decay = preset.settings.foam.decay;
 
     if (inherits(water_preset_override::absorption))
         component.settings.appearance.absorption = preset.settings.appearance.absorption;
@@ -88,7 +86,7 @@ water_preset_binding_result refresh_water_preset_binding(water_component& compon
     if (!apply_water_preset(component, *preset))
     {
         result.message = component.type == preset->body_type ? "Water preset payload failed validation"
-                                                               : "Water preset body type does not match the Water Body";
+                                                             : "Water preset body type does not match the Water Body";
         return result;
     }
 

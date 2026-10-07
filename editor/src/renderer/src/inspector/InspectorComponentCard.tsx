@@ -230,7 +230,11 @@ export function InspectorComponentCard<TContext extends object>({
       label,
       align: field.type === 'asset' || field.type === 'assetPreview' ? 'start' : 'center',
       tooltip: field.tooltip,
-      description: inheritanceActive ? (inheritedOverride ? 'Override' : `From ${field.inheritance?.sourceLabel}`) : undefined,
+      description: inheritanceActive
+        ? inheritedOverride
+          ? 'Override'
+          : `From ${field.inheritance?.sourceLabel}`
+        : undefined,
       control: inheritanceActive ? (
         <div className="inspector-inherited-property-control">
           {fieldControl}

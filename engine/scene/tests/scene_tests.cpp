@@ -733,8 +733,7 @@ TEST_CASE("Water preset application updates only preset-owned state")
     preset.settings.quality = arc::water::water_quality::medium;
 
     component.settings.simulation.wind_speed = 9.0f;
-    component.preset_overrides =
-        arc::scene::water_preset_override_mask(arc::scene::water_preset_override::wind_speed);
+    component.preset_overrides = arc::scene::water_preset_override_mask(arc::scene::water_preset_override::wind_speed);
 
     REQUIRE(arc::scene::apply_water_preset(component, preset));
     CHECK(component.type == arc::water::water_body_type::lake);
