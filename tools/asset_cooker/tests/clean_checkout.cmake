@@ -2,6 +2,19 @@ if(NOT DEFINED ARC_COOK OR NOT DEFINED ARC_SOURCE_ROOT OR NOT DEFINED ARC_TEST_R
     message(FATAL_ERROR "clean checkout cook test is missing required paths")
 endif()
 
+if(NOT DEFINED ARC_COOK_COLD_TIMEOUT)
+    set(ARC_COOK_COLD_TIMEOUT 180)
+endif()
+if(NOT DEFINED ARC_COOK_WARM_TIMEOUT)
+    set(ARC_COOK_WARM_TIMEOUT 90)
+endif()
+if(NOT DEFINED ARC_COOK_PACKAGE_TIMEOUT)
+    set(ARC_COOK_PACKAGE_TIMEOUT 120)
+endif()
+if(NOT DEFINED ARC_COOK_VERIFY_TIMEOUT)
+    set(ARC_COOK_VERIFY_TIMEOUT 60)
+endif()
+
 file(REMOVE_RECURSE "${ARC_TEST_ROOT}")
 file(MAKE_DIRECTORY "${ARC_TEST_ROOT}/assets/fixtures")
 
@@ -81,7 +94,7 @@ set(astc_output "${output}/astc")
 set(bc_manifest "${bc_output}/windows-x64-vulkan.arccookmanifest")
 set(astc_manifest "${astc_output}/windows-x64-vulkan.arccookmanifest")
 
-message(STATUS "arc-cook-clean-checkout: starting cold cook (timeout: 180s)")
+message(STATUS "arc-cook-clean-checkout: starting cold cook (timeout: ${ARC_COOK_COLD_TIMEOUT}s)")
 execute_process(
     COMMAND "${ARC_COOK}" cook --project "${ARC_TEST_ROOT}"
         --root assets/fixtures/persistence_fixture.arcscene
@@ -89,7 +102,7 @@ execute_process(
     RESULT_VARIABLE first_result
     OUTPUT_VARIABLE first_output
     ERROR_VARIABLE first_error
-    TIMEOUT 180
+    TIMEOUT ${ARC_COOK_COLD_TIMEOUT}
 )
 if(NOT first_result EQUAL 0)
     message(FATAL_ERROR "clean checkout cook failed (${first_result}):\n${first_output}\n${first_error}")
@@ -109,7 +122,7 @@ if(astc_family_index EQUAL -1)
     message(FATAL_ERROR "ASTC cook manifest does not declare the ASTC texture family")
 endif()
 
-message(STATUS "arc-cook-clean-checkout: starting warm cache cook (timeout: 90s)")
+message(STATUS "arc-cook-clean-checkout: starting warm cache cook (timeout: ${ARC_COOK_WARM_TIMEOUT}s)")
 execute_process(
     COMMAND "${ARC_COOK}" cook --project "${ARC_TEST_ROOT}"
         --root assets/fixtures/persistence_fixture.arcscene
@@ -117,14 +130,14 @@ execute_process(
     RESULT_VARIABLE second_result
     OUTPUT_VARIABLE second_output
     ERROR_VARIABLE second_error
-    TIMEOUT 90
+    TIMEOUT ${ARC_COOK_WARM_TIMEOUT}
 )
 if(NOT second_result EQUAL 0 OR NOT second_output MATCHES "\"cooked\":0")
     message(FATAL_ERROR "incremental cook was not a complete cache hit (${second_result}):\n${second_output}\n${second_error}")
 endif()
 message(STATUS "arc-cook-clean-checkout: warm cache cook completed")
 
-message(STATUS "arc-cook-clean-checkout: starting package (timeout: 120s)")
+message(STATUS "arc-cook-clean-checkout: starting package (timeout: ${ARC_COOK_PACKAGE_TIMEOUT}s)")
 execute_process(
     COMMAND "${ARC_COOK}" package --project "${ARC_TEST_ROOT}"
         --root assets/fixtures/persistence_fixture.arcscene
@@ -132,7 +145,7 @@ execute_process(
     RESULT_VARIABLE package_result
     OUTPUT_VARIABLE package_output
     ERROR_VARIABLE package_error
-    TIMEOUT 120
+    TIMEOUT ${ARC_COOK_PACKAGE_TIMEOUT}
 )
 if(NOT package_result EQUAL 0)
     message(FATAL_ERROR "clean checkout package failed (${package_result}):\n${package_output}\n${package_error}")
@@ -144,14 +157,14 @@ if(NOT bc_packages OR NOT astc_packages)
     message(FATAL_ERROR "multi-output package did not publish package chunks for both texture families")
 endif()
 
-message(STATUS "arc-cook-clean-checkout: starting verification (timeout: 60s)")
+message(STATUS "arc-cook-clean-checkout: starting verification (timeout: ${ARC_COOK_VERIFY_TIMEOUT}s)")
 execute_process(
     COMMAND "${ARC_COOK}" verify --project "${ARC_TEST_ROOT}"
         --output "${output}" --json
     RESULT_VARIABLE verify_result
     OUTPUT_VARIABLE verify_output
     ERROR_VARIABLE verify_error
-    TIMEOUT 60
+    TIMEOUT ${ARC_COOK_VERIFY_TIMEOUT}
 )
 if(NOT verify_result EQUAL 0)
     message(FATAL_ERROR "clean checkout package verification failed (${verify_result}):\n${verify_output}\n${verify_error}")
