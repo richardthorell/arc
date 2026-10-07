@@ -409,7 +409,8 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
         program->texture_bindings.push_back({.slot = texture.slot,
                                              .parameter_id = texture.parameter_id,
                                              .type = texture.type,
-                                             .dimension_slot = texture.dimension_slot});
+                                             .dimension_slot = texture.dimension_slot,
+                                             .semantic = texture.semantic});
 
     const std::array candidate_passes{render::material_pass::gbuffer, render::material_pass::forward};
     bool parameter_layout_initialized{};
