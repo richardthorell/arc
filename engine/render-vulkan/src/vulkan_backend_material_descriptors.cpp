@@ -136,7 +136,7 @@ void vulkan_render_backend::update_material_descriptor_set(VkDescriptorSet descr
                                      std::optional<texture_semantic> expected = std::nullopt)
     {
         sampler = white_sampler_;
-        view = white_view_;
+        view = expected == texture_semantic::normal ? neutral_normal_view_ : white_view_;
         if (!handle.valid()) return;
         if (const auto found = textures_.find(resource_key(handle)); found != textures_.end())
         {
