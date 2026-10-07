@@ -96,8 +96,8 @@ void main()
     surface.metallic = arc_saturate(material.x);
     surface.perceptual_roughness = clamp(material.y, 0.04, 1.0);
     surface.occlusion = normal_ao.w;
-    surface.clear_coat = 0.0;
-    surface.clear_coat_roughness = 0.0;
+    surface.clear_coat = arc_saturate(material.z);
+    surface.clear_coat_roughness = clamp(material.w, 0.04, 1.0);
     surface.anisotropy = 0.0;
 
     int shadow_cascade = -1;
