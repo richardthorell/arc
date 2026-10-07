@@ -100,8 +100,7 @@ TEST_CASE("clustered local-light grid is screen/depth aware and bounded")
     REQUIRE(grid.point_light_references > 0u);
     REQUIRE(grid.point_light_references < grid.cluster_count * lighting.point_count);
     REQUIRE(grid.gpu_words.size() ==
-            arc::render::clustered_light_header_words +
-                grid.cluster_count * (1u + config.maximum_lights_per_cluster));
+            arc::render::clustered_light_header_words + grid.cluster_count * (1u + config.maximum_lights_per_cluster));
 
     const std::uint32_t record_words = 1u + config.maximum_lights_per_cluster;
     for (std::uint32_t cluster = 0u; cluster < grid.cluster_count; ++cluster)

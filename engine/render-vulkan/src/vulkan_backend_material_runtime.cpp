@@ -136,10 +136,10 @@ void vulkan_render_backend::update_forward_scene_resources()
     const auto slot = current_frame_slot();
     if (slot >= forward_scene_descriptor_sets_.size() || slot >= forward_scene_uniform_buffers_.size() ||
         slot >= shadow_uniform_buffers_.size() || light_buffer_.buffer == VK_NULL_HANDLE ||
-        clustered_light_buffer_.buffer == VK_NULL_HANDLE ||
-        shadow_atlas_.array_view == VK_NULL_HANDLE || shadow_atlas_.sampler == VK_NULL_HANDLE ||
-        local_shadow_atlas_.view == VK_NULL_HANDLE || local_shadow_atlas_.sampler == VK_NULL_HANDLE ||
-        forward_scene_color_.view == VK_NULL_HANDLE || forward_scene_sampler_ == VK_NULL_HANDLE)
+        clustered_light_buffer_.buffer == VK_NULL_HANDLE || shadow_atlas_.array_view == VK_NULL_HANDLE ||
+        shadow_atlas_.sampler == VK_NULL_HANDLE || local_shadow_atlas_.view == VK_NULL_HANDLE ||
+        local_shadow_atlas_.sampler == VK_NULL_HANDLE || forward_scene_color_.view == VK_NULL_HANDLE ||
+        forward_scene_sampler_ == VK_NULL_HANDLE)
         return;
 
     forward_scene_uniform_data scene{};

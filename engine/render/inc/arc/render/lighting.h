@@ -216,16 +216,15 @@ struct clustered_light_grid
 
 /** @brief Encode one local-light index for a clustered list. */
 [[nodiscard]] constexpr std::uint32_t encode_clustered_light_reference(clustered_light_kind kind,
-                                                                      std::uint32_t index) noexcept
+                                                                       std::uint32_t index) noexcept
 {
-    return (static_cast<std::uint32_t>(kind) << clustered_light_kind_shift) |
-           (index & clustered_light_index_mask);
+    return (static_cast<std::uint32_t>(kind) << clustered_light_kind_shift) | (index & clustered_light_index_mask);
 }
 
 /** @brief Build deterministic screen/depth-aware local-light lists shared by Deferred and Forward+. */
 [[nodiscard]] clustered_light_grid build_clustered_light_grid(const scene_lighting_data& lighting,
-                                                               const clustered_light_grid_view& view,
-                                                               clustered_light_grid_config config = {});
+                                                              const clustered_light_grid_view& view,
+                                                              clustered_light_grid_config config = {});
 
 /**
  * @brief One directional shadow cascade in packed renderer form.

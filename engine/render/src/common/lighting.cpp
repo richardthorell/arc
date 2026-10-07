@@ -292,9 +292,8 @@ clustered_light_grid build_clustered_light_grid(const scene_lighting_data& light
     result.cluster_count = result.tiles_x * result.tiles_y * result.config.depth_slices;
 
     const std::uint32_t record_words = 1u + result.config.maximum_lights_per_cluster;
-    result.gpu_words.assign(clustered_light_header_words +
-                                static_cast<std::size_t>(result.cluster_count) * record_words,
-                            0u);
+    result.gpu_words.assign(
+        clustered_light_header_words + static_cast<std::size_t>(result.cluster_count) * record_words, 0u);
     auto& words = result.gpu_words;
     words[0] = result.config.tile_size_pixels;
     words[1] = result.tiles_x;
@@ -331,8 +330,8 @@ clustered_light_grid build_clustered_light_grid(const scene_lighting_data& light
         }
     };
 
-    const auto append_sphere = [&](const math::vector3f& center, float radius, std::uint32_t reference,
-                                   clustered_light_kind kind)
+    const auto append_sphere =
+        [&](const math::vector3f& center, float radius, std::uint32_t reference, clustered_light_kind kind)
     {
         radius = std::max(radius, 0.001f);
         const auto dx = center[0] - view.camera_position[0];
@@ -363,18 +362,18 @@ clustered_light_grid build_clustered_light_grid(const scene_lighting_data& light
                 const float max_px = (std::clamp(ndc_x + ndc_radius_x, -1.0f, 1.0f) * 0.5f + 0.5f) * width;
                 const float min_py = (0.5f - std::clamp(ndc_y + ndc_radius_y, -1.0f, 1.0f) * 0.5f) * height;
                 const float max_py = (0.5f - std::clamp(ndc_y - ndc_radius_y, -1.0f, 1.0f) * 0.5f) * height;
-                min_tile_x = std::min(static_cast<std::uint32_t>(std::max(min_px, 0.0f)) /
-                                          result.config.tile_size_pixels,
-                                      result.tiles_x - 1u);
-                max_tile_x = std::min(static_cast<std::uint32_t>(std::max(max_px, 0.0f)) /
-                                          result.config.tile_size_pixels,
-                                      result.tiles_x - 1u);
-                min_tile_y = std::min(static_cast<std::uint32_t>(std::max(min_py, 0.0f)) /
-                                          result.config.tile_size_pixels,
-                                      result.tiles_y - 1u);
-                max_tile_y = std::min(static_cast<std::uint32_t>(std::max(max_py, 0.0f)) /
-                                          result.config.tile_size_pixels,
-                                      result.tiles_y - 1u);
+                min_tile_x =
+                    std::min(static_cast<std::uint32_t>(std::max(min_px, 0.0f)) / result.config.tile_size_pixels,
+                             result.tiles_x - 1u);
+                max_tile_x =
+                    std::min(static_cast<std::uint32_t>(std::max(max_px, 0.0f)) / result.config.tile_size_pixels,
+                             result.tiles_x - 1u);
+                min_tile_y =
+                    std::min(static_cast<std::uint32_t>(std::max(min_py, 0.0f)) / result.config.tile_size_pixels,
+                             result.tiles_y - 1u);
+                max_tile_y =
+                    std::min(static_cast<std::uint32_t>(std::max(max_py, 0.0f)) / result.config.tile_size_pixels,
+                             result.tiles_y - 1u);
             }
         }
 
@@ -392,18 +391,19 @@ clustered_light_grid build_clustered_light_grid(const scene_lighting_data& light
     };
 
     for (std::uint32_t index = 0u; index < std::min(lighting.point_count, max_point_lights); ++index)
-        append_sphere(math::vector3f{lighting.point_lights[index].position_range[0], lighting.point_lights[index].position_range[1],
-                       lighting.point_lights[index].position_range[2]},
+        append_sphere(math::vector3f{lighting.point_lights[index].position_range[0],
+                                     lighting.point_lights[index].position_range[1],
+                                     lighting.point_lights[index].position_range[2]},
                       lighting.point_lights[index].position_range[3],
                       encode_clustered_light_reference(clustered_light_kind::point, index),
                       clustered_light_kind::point);
 
     for (std::uint32_t index = 0u; index < std::min(lighting.spot_count, max_spot_lights); ++index)
-        append_sphere(math::vector3f{lighting.spot_lights[index].position_range[0], lighting.spot_lights[index].position_range[1],
-                       lighting.spot_lights[index].position_range[2]},
+        append_sphere(math::vector3f{lighting.spot_lights[index].position_range[0],
+                                     lighting.spot_lights[index].position_range[1],
+                                     lighting.spot_lights[index].position_range[2]},
                       lighting.spot_lights[index].position_range[3],
-                      encode_clustered_light_reference(clustered_light_kind::spot, index),
-                      clustered_light_kind::spot);
+                      encode_clustered_light_reference(clustered_light_kind::spot, index), clustered_light_kind::spot);
 
     for (std::uint32_t index = 0u; index < std::min(lighting.area_count, max_area_lights); ++index)
     {

@@ -183,19 +183,17 @@ render_submit_result vulkan_render_backend::submit(const render_frame_packet& pa
     }
     update_environment_profile(lighting_environment);
     clustered_light_grid_config clustered_config{};
-    clustered_config.maximum_lights_per_cluster =
-        resolved_config_.quality == render_quality_tier::low ? 32u : 64u;
-    frame_clustered_lights_ = build_clustered_light_grid(
-        frame_lighting_,
-        {.view = frame_camera_.view,
-         .projection = frame_camera_.projection,
-         .view_projection = frame_camera_.view_projection,
-         .camera_position = frame_camera_.position,
-         .near_plane = frame_camera_.near_plane,
-         .far_plane = frame_camera_.far_plane,
-         .viewport_width = std::max(viewport_width_, 1u),
-         .viewport_height = std::max(viewport_height_, 1u)},
-        clustered_config);
+    clustered_config.maximum_lights_per_cluster = resolved_config_.quality == render_quality_tier::low ? 32u : 64u;
+    frame_clustered_lights_ = build_clustered_light_grid(frame_lighting_,
+                                                         {.view = frame_camera_.view,
+                                                          .projection = frame_camera_.projection,
+                                                          .view_projection = frame_camera_.view_projection,
+                                                          .camera_position = frame_camera_.position,
+                                                          .near_plane = frame_camera_.near_plane,
+                                                          .far_plane = frame_camera_.far_plane,
+                                                          .viewport_width = std::max(viewport_width_, 1u),
+                                                          .viewport_height = std::max(viewport_height_, 1u)},
+                                                         clustered_config);
     last_profile_.clustered_lights = make_clustered_light_profile();
     update_shadow_profile(packet.frame_index);
     last_profile_.temporal = {.enabled = resolved_config_.features.temporal_antialiasing,
