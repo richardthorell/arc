@@ -1202,6 +1202,7 @@ private:
     void collect_virtual_geometry_feedback(std::uint32_t frame_index);
 
     void update_light_buffer();
+    void update_clustered_light_buffer();
 
     void warn_about_skipped_lights(const scene_lighting_data& lighting);
 
@@ -1577,6 +1578,7 @@ private:
     std::vector<debug_overlay_line> frame_debug_overlay_lines_;
     std::vector<debug_overlay_triangle> frame_debug_overlay_triangles_;
     scene_lighting_data frame_lighting_;
+    clustered_light_grid frame_clustered_lights_;
     world_environment_data frame_environment_;
     render_camera frame_camera_;
     bool frame_camera_valid_{};
@@ -1584,6 +1586,7 @@ private:
     bool frame_shadows_enabled_{true};
     bool frame_fxaa_enabled_{};
     gpu_buffer light_buffer_;
+    gpu_buffer clustered_light_buffer_;
     VkDescriptorSetLayout forward_scene_descriptor_set_layout_{};
     VkDescriptorPool forward_scene_descriptor_pool_{};
     std::vector<VkDescriptorSet> forward_scene_descriptor_sets_;
