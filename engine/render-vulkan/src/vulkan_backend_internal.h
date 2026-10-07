@@ -1587,6 +1587,7 @@ private:
     bool frame_fxaa_enabled_{};
     gpu_buffer light_buffer_;
     gpu_buffer clustered_light_buffer_;
+    VkDeviceSize clustered_light_buffer_size_{};
     VkDescriptorSetLayout forward_scene_descriptor_set_layout_{};
     VkDescriptorPool forward_scene_descriptor_pool_{};
     std::vector<VkDescriptorSet> forward_scene_descriptor_sets_;
