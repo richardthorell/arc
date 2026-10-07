@@ -44,6 +44,29 @@ const defaultLayerMask = 1;
 const environmentLayerMask = 2;
 const proceduralParameterPrefix = '__arc_primitive_parameter__/';
 
+const defaultWaterShape = (bodyType: 'ocean' | 'lake' | 'river') => {
+  if (bodyType === 'lake')
+    return {
+      shapeClosed: true,
+      shapePoints: [
+        { position: { x: -10, y: 0, z: -10 }, width: 0, depth: 2, flow: 0 },
+        { position: { x: 10, y: 0, z: -10 }, width: 0, depth: 2, flow: 0 },
+        { position: { x: 10, y: 0, z: 10 }, width: 0, depth: 2, flow: 0 },
+        { position: { x: -10, y: 0, z: 10 }, width: 0, depth: 2, flow: 0 },
+      ],
+    };
+  if (bodyType === 'river')
+    return {
+      shapeClosed: false,
+      shapePoints: [
+        { position: { x: -12, y: 0, z: 0 }, width: 6, depth: 1.5, flow: 1 },
+        { position: { x: 0, y: 0, z: 0 }, width: 6, depth: 1.5, flow: 1 },
+        { position: { x: 12, y: 0, z: 0 }, width: 6, depth: 1.5, flow: 1 },
+      ],
+    };
+  return { shapeClosed: false, shapePoints: [] };
+};
+
 function entityPayload(snapshot: InspectorEntitySnapshot) {
   return (snapshot.selectionCount ?? 1) > 1
     ? { entity: snapshot.entity, applyToSelection: true }
@@ -336,17 +359,25 @@ export function InspectorPanel({
         transactionLabel,
       );
     } else if (component === 'water' && next.water) {
+      const normalizedWater =
+        path === 'water.bodyType' ? { ...next.water, ...defaultWaterShape(next.water.bodyType) } : next.water;
+      const normalizedNext =
+        normalizedWater === next.water ? next : ({ ...next, water: normalizedWater } as InspectorEntitySnapshot);
       const water = {
-        ...next.water,
-        presetGuid: path === 'water.presetPath' ? '' : next.water.presetGuid,
-        materialGuid: path === 'water.materialPath' ? '' : next.water.materialGuid,
-        absorption: [next.water.absorption.x, next.water.absorption.y, next.water.absorption.z],
-        scattering: [next.water.scattering.x, next.water.scattering.y, next.water.scattering.z],
+        ...normalizedWater,
+        presetGuid: path === 'water.presetPath' ? '' : normalizedWater.presetGuid,
+        materialGuid: path === 'water.materialPath' ? '' : normalizedWater.materialGuid,
+        absorption: [normalizedWater.absorption.x, normalizedWater.absorption.y, normalizedWater.absorption.z],
+        scattering: [normalizedWater.scattering.x, normalizedWater.scattering.y, normalizedWater.scattering.z],
+        shapePoints: normalizedWater.shapePoints.map((point) => ({
+          ...point,
+          position: [point.position.x, point.position.y, point.position.z],
+        })),
       };
       void runMutation(
-        next,
+        normalizedNext,
         'water.update',
-        { ...entityPayload(next), water },
+        { ...entityPayload(normalizedNext), water },
         settled,
         transactionKey,
         transactionLabel,
