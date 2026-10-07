@@ -2004,10 +2004,9 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                         value.shape.points.clear();
                         value.shape.points.reserve(shape.at("points").size());
                         for (const auto& point : shape.at("points"))
-                            value.shape.points.push_back({read_vector3(point.at("position")),
-                                                          point.at("width").get<float>(),
-                                                          point.at("depth").get<float>(),
-                                                          point.at("flow").get<float>()});
+                            value.shape.points.push_back(
+                                {read_vector3(point.at("position")), point.at("width").get<float>(),
+                                 point.at("depth").get<float>(), point.at("flow").get<float>()});
                     }
                 }
                 if (!synchronize_water_render_material(loaded, renderer, entity))
