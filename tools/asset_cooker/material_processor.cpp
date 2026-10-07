@@ -263,8 +263,8 @@ bool graph_output_connected(const render::tools::material_graph_descriptor& grap
 void apply_graph_render_features(render::material_descriptor& material,
                                  const render::tools::material_graph_descriptor& graph) noexcept
 {
-    material.clear_coat_factor =
-        graph_output_connected(graph, render::tools::material_surface_output::clear_coat) ? 1.0f : 0.0f;
+    if (graph_output_connected(graph, render::tools::material_surface_output::clear_coat_normal))
+        material.deferred_compatible = false;
     material.sheen_factor = graph_output_connected(graph, render::tools::material_surface_output::sheen) ? 1.0f : 0.0f;
     material.transmission_factor =
         graph_output_connected(graph, render::tools::material_surface_output::transmission) ? 1.0f : 0.0f;
