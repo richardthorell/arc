@@ -3109,6 +3109,32 @@ host_response arc_host::execute(const host_command_envelope& command)
                 std::string source = payload.source;
                 std::unordered_map<std::uint32_t, std::string> graph_line_nodes;
                 std::vector<render::shader_parameter_descriptor> graph_parameters;
+                if (payload.domain == "materialFunction")
+                {
+                    auto validated =
+                        render::tools::validate_material_function_json(payload.source, source_path->generic_string());
+                    nlohmann::json response;
+                    response["diagnostics"] = nlohmann::json::array();
+                    if (!validated)
+                    {
+                        response["succeeded"] = false;
+                        response["message"] = validated.error().message;
+                        response["diagnostics"].push_back(
+                            {{"severity", "error"},
+                             {"code", "material-function-validation"},
+                             {"message", validated.error().message},
+                             {"path", source_path->generic_string()},
+                             {"line", 0},
+                             {"column", 0},
+                             {"graphNode", ""}});
+                    }
+                    else
+                    {
+                        response["succeeded"] = true;
+                        response["message"] = "Material Function validated successfully";
+                    }
+                    return success(response.dump());
+                }
                 if (payload.domain == "materialGraph")
                 {
                     auto lowered = render::tools::lower_material_graph_json(payload.source);
