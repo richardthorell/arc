@@ -11,7 +11,10 @@ import {
 
 const materialDefinitions = () =>
   (Object.values(materialNodeDefinitions) as Array<(typeof materialNodeDefinitions)[MaterialGraphNodeType]>).filter(
-    (definition) => definition.type !== 'textureSample',
+    (definition) =>
+      definition.type !== 'textureSample' &&
+      definition.type !== 'functionInput' &&
+      definition.type !== 'functionOutput',
   );
 
 const numericPinTypes = new Set<MaterialGraphPinType>(['float', 'vec2', 'vec3', 'vec4', 'numeric']);
@@ -42,5 +45,5 @@ export const materialGraphDomain: GraphDomain<
       return { allowed: false, reason: `Cannot connect ${from.pin.type} to ${to.pin.type}.` };
     return { allowed: true };
   },
-  canDeleteNode: (node) => node.type !== 'output',
+  canDeleteNode: (node) => node.type !== 'output' && node.type !== 'functionInput' && node.type !== 'functionOutput',
 };
