@@ -761,7 +761,7 @@ TEST_CASE("render scene snaps selected Ocean geometry to the camera-relative Wat
     CHECK(instance.channels.normals);
     CHECK(instance.channels.velocity);
     CHECK(std::abs(instance.surface_origin[0] - camera_transform.position[0]) < instance.water.finest_grid_cell_size);
-    CHECK(std::abs(instance.surface_origin[2] - camera_transform.position[2]) < instance.finest_grid_cell_size);
+    CHECK(std::abs(instance.surface_origin[2] - camera_transform.position[2]) < instance.water.finest_grid_cell_size);
     CHECK(instance.surface_origin[1] == Catch::Approx(5.0f));
     const auto rendered_origin = arc::math::transform_point(packet.items.front().model, arc::math::vector3f{});
     CHECK(rendered_origin[0] == Catch::Approx(instance.surface_origin[0]));
