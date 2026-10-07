@@ -1237,8 +1237,8 @@
 .inspector-property-section-heading {
   margin: 8px 0 2px;
   padding-top: 6px;
-  border-top: 1px solid var(--arc-color-border-subtle);
-  color: var(--arc-color-text-secondary);
+  border-top: 1px solid var(--inspector-border-soft);
+  color: var(--inspector-text-muted);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
