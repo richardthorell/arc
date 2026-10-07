@@ -102,6 +102,19 @@ describe('native material compiler editor adapter', () => {
     expect(materialGraphEditImpact(before, after)).toBe('parameter-values');
   });
 
+  it('treats assigning the Standard Lit Normal Texture as a parameter-only edit', () => {
+    const before = createDefaultMaterialGraph();
+    const after = structuredClone(before);
+    const texture = after.nodes.find((node) => node.parameter?.name === 'Normal Texture');
+    expect(texture).toBeDefined();
+    texture!.values = { ...texture!.values, texture: 'Content/Textures/wall_normal.png' };
+
+    expect(materialGraphEditImpact(before, after)).toBe('parameter-values');
+    expect(materialEditorParameters(after)).toContainEqual(
+      expect.objectContaining({ name: 'Normal Texture', type: 'texture2d', editorKind: 'texture' }),
+    );
+  });
+
   it('treats Standard Lit emissive controls as parameter-only edits', () => {
     const before = createDefaultMaterialGraph();
     const after = structuredClone(before);
