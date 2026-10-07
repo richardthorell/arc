@@ -24,6 +24,29 @@ void vulkan_render_backend::update_light_buffer()
     vmaUnmapMemory(allocator_, light_buffer_.allocation);
 }
 
+void vulkan_render_backend::update_clustered_light_buffer()
+{
+    if (frame_clustered_lights_.gpu_words.empty()) return;
+    const VkDeviceSize required_size =
+        static_cast<VkDeviceSize>(frame_clustered_lights_.gpu_words.size() * sizeof(std::uint32_t));
+    if (clustered_light_buffer_.buffer == VK_NULL_HANDLE || clustered_light_buffer_.size < required_size)
+    {
+        if (clustered_light_buffer_.buffer != VK_NULL_HANDLE) destroy_buffer(clustered_light_buffer_);
+        if (!create_buffer(required_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU,
+                           clustered_light_buffer_))
+        {
+            arc::diagnostics::warn("render.vulkan", "Failed to allocate clustered light-list buffer");
+            return;
+        }
+    }
+
+    void* mapped{};
+    if (vmaMapMemory(allocator_, clustered_light_buffer_.allocation, &mapped) != VK_SUCCESS) return;
+    std::memcpy(mapped, frame_clustered_lights_.gpu_words.data(), static_cast<std::size_t>(required_size));
+    vmaFlushAllocation(allocator_, clustered_light_buffer_.allocation, 0, required_size);
+    vmaUnmapMemory(allocator_, clustered_light_buffer_.allocation);
+}
+
 void vulkan_render_backend::warn_about_skipped_lights(const scene_lighting_data& lighting)
 {
     if (lighting.skipped_directional_count > 0)
