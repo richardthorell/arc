@@ -190,7 +190,10 @@ enum class host_create_entity_kind : std::uint8_t
     capsule,
     world_environment,
     terrain,
-    water,
+    ocean,
+    lake,
+    river,
+    water, // legacy alias for Ocean
     grass_patch,
     decal
 };
