@@ -7,6 +7,12 @@ import { FlowEditorToolbar } from '../flow/FlowEditorToolbar';
 import { disposeFlowDocument, saveFlowDocument } from '../flow/flowDocumentState';
 import { MaterialEditor } from '../material/MaterialEditor';
 import { MaterialEditorToolbar } from '../material/MaterialEditorToolbar';
+import { MaterialFunctionEditor } from '../material/MaterialFunctionEditor';
+import { MaterialFunctionEditorToolbar } from '../material/MaterialFunctionEditorToolbar';
+import {
+  disposeMaterialFunctionDocument,
+  saveMaterialFunctionDocument,
+} from '../material/materialFunctionDocumentState';
 import { disposeMaterialDocument, saveMaterialDocument } from '../material/materialDocumentState';
 import { ModelEditor, ModelEditorToolbar } from '../model/ModelEditor';
 import { SkeletonAssetEditor, SkeletonAssetEditorToolbar } from '../model/SkeletonAssetEditor';
@@ -125,7 +131,10 @@ export const resolveRegisteredEditorAsset = async (
       });
       if (registered && payload) {
         const resolved = registeredAssetFromHost(asset, registered, payload);
-        if (asset.kind === 'material' || asset.kind === 'shader' || asset.kind === 'flow') {
+        if (asset.kind === 'material' ||
+      asset.kind === 'materialFunction' ||
+      asset.kind === 'shader' ||
+      asset.kind === 'flow') {
           console.info('[material-flow] asset registration resolved', {
             kind: asset.kind,
             authoredPath: asset.path,
@@ -201,6 +210,31 @@ const materialRegistration: EditorRegistration = {
   renderToolbar: (document) => createElement(MaterialEditorToolbar, { document }),
   save: saveMaterialDocument,
   onClosed: (document) => disposeMaterialDocument(document.id),
+};
+
+const materialFunctionRegistration: EditorRegistration = {
+  kind: 'materialFunction',
+  title: 'Material Function Editor',
+  icon: Circle,
+  allowMultiple: true,
+  closeable: true,
+  canOpenAsset: (asset) =>
+    asset.kind === 'materialFunction' || asset.path.toLocaleLowerCase().endsWith('.arcmatfn'),
+  createDocument: (asset) => ({
+    id: `material-function:${asset.guid ?? asset.path}`,
+    kind: 'materialFunction',
+    title: asset.title?.trim() || asset.name,
+    path: asset.sourcePath ?? asset.path,
+    assetId: asset.id,
+    assetGuid: asset.guid,
+    assetScope: asset.scope,
+    dirty: false,
+    readOnly: asset.scope === 'builtin' || Boolean(asset.readOnly),
+  }),
+  render: (document) => createElement(MaterialFunctionEditor, { document }),
+  renderToolbar: (document) => createElement(MaterialFunctionEditorToolbar, { document }),
+  save: saveMaterialFunctionDocument,
+  onClosed: (document) => disposeMaterialFunctionDocument(document.id),
 };
 
 const flowRegistration: EditorRegistration = {
@@ -293,6 +327,7 @@ export const createEditorRegistry = (registrations: EditorRegistrySeed): EditorR
     level: { ...registrations.level, icon: Globe2 },
     shader: registrations.shader ?? shaderRegistration,
     material: registrations.material ?? materialRegistration,
+    materialFunction: registrations.materialFunction ?? materialFunctionRegistration,
     flow: registrations.flow ?? flowRegistration,
     texture: registrations.texture ?? textureRegistration,
     model: registrations.model ?? modelRegistration,
