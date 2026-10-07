@@ -16,7 +16,7 @@ const nodePaddingTop = 9;
 const nodePaddingBottom = 8;
 const parameterEditorHeight = 38;
 const valueEditorHeight = 38;
-const rangedScalarEditorExtraHeight = 54;
+const rangedScalarEditorExtraHeight = 72;
 const textureEditorHeight = 62;
 
 const framePadding = {
