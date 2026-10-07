@@ -884,6 +884,75 @@ TEST_CASE("render scene snaps selected Ocean geometry to the camera-relative Wat
     CHECK(packet.debug_overlay.lines.size() >= 26u);
 }
 
+TEST_CASE("selected finite Water bodies expose their authored Lake and River contracts in the viewport")
+{
+    const auto render = [](arc::water::water_body_type type)
+    {
+        arc::ecs::world scene;
+        arc::render::renderer renderer;
+
+        const auto camera = scene.create();
+        arc::scene::transform_component camera_transform;
+        camera_transform.position = {0.0f, 16.0f, 24.0f};
+        scene.emplace<arc::scene::transform_component>(camera, camera_transform);
+        scene.emplace<arc::scene::camera_component>(camera);
+
+        const auto water_entity = scene.create();
+        arc::scene::transform_component transform;
+        transform.position = {4.0f, 2.0f, -3.0f};
+        scene.emplace<arc::scene::transform_component>(water_entity, transform);
+        scene.emplace<arc::scene::selection_component>(water_entity, true);
+
+        arc::scene::water_component water;
+        water.type = type;
+        water.follow_camera = false;
+        water.water_level = 3.0f;
+        if (type == arc::water::water_body_type::lake)
+        {
+            water.shape.closed = true;
+            water.shape.points = {{{-5.0f, 0.0f, -4.0f}, 0.0f, 2.0f, 0.0f},
+                                  {{5.0f, 0.0f, -4.0f}, 0.0f, 3.0f, 0.0f},
+                                  {{5.0f, 0.0f, 4.0f}, 0.0f, 4.0f, 0.0f},
+                                  {{-5.0f, 0.0f, 4.0f}, 0.0f, 2.5f, 0.0f}};
+        }
+        else
+        {
+            water.shape.closed = false;
+            water.shape.points = {{{-6.0f, 0.0f, 0.0f}, 4.0f, 1.5f, 1.0f},
+                                  {{0.0f, 0.0f, 0.0f}, 6.0f, 2.0f, 2.0f},
+                                  {{8.0f, 0.0f, 3.0f}, 8.0f, 2.5f, 0.5f}};
+        }
+        scene.emplace<arc::scene::water_component>(water_entity, water);
+
+        REQUIRE(arc::scene::render_scene(scene, renderer, 1280, 720).water_count == 1);
+        const auto frame = renderer.frame_queue().commit(1);
+        REQUIRE(frame.events.size() == 1);
+        return std::get<arc::render::render_world_event>(frame.events.front().payload).packet->debug_overlay.lines;
+    };
+
+    const auto lake = render(arc::water::water_body_type::lake);
+    CHECK(lake.size() == 18u);
+    const auto has_lake_edge = std::any_of(
+        lake.begin(), lake.end(), [](const auto& line)
+        {
+            return line.start[0] == Catch::Approx(-1.0f) && line.start[1] == Catch::Approx(5.0f) &&
+                   line.start[2] == Catch::Approx(-7.0f) && line.end[0] == Catch::Approx(9.0f) &&
+                   line.end[1] == Catch::Approx(5.0f) && line.end[2] == Catch::Approx(-7.0f);
+        });
+    CHECK(has_lake_edge);
+
+    const auto river = render(arc::water::water_body_type::river);
+    CHECK(river.size() == 25u);
+    const auto has_width_marker = std::any_of(
+        river.begin(), river.end(), [](const auto& line)
+        {
+            return line.start[0] == Catch::Approx(-2.0f) && line.start[1] == Catch::Approx(5.0f) &&
+                   line.start[2] == Catch::Approx(-5.0f) && line.end[0] == Catch::Approx(-2.0f) &&
+                   line.end[1] == Catch::Approx(5.0f) && line.end[2] == Catch::Approx(-1.0f);
+        });
+    CHECK(has_width_marker);
+}
+
 TEST_CASE("mesh renderer keeps conventional fallback when virtual geometry is unavailable")
 {
     arc::ecs::world scene;
