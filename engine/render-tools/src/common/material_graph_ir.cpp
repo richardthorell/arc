@@ -386,9 +386,8 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
         const bool has_minimum = values.contains("min");
         const bool has_maximum = values.contains("max");
         if (*kind == material_ir_node_kind::constant && has_minimum != has_maximum)
-            return material_graph_compile_result::failure(
-                {.code = shader_compile_error_code::validation_failed,
-                 .message = "Scalar range requires both min and max: " + id});
+            return material_graph_compile_result::failure({.code = shader_compile_error_code::validation_failed,
+                                                           .message = "Scalar range requires both min and max: " + id});
 
         material_ir_node node{.id = id,
                               .kind = *kind,
@@ -406,9 +405,8 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
         {
             if (!values.contains("value") || !values["value"].is_number() || !values["min"].is_number() ||
                 !values["max"].is_number() || node.minimum > node.maximum)
-                return material_graph_compile_result::failure(
-                    {.code = shader_compile_error_code::validation_failed,
-                     .message = "Scalar range is invalid: " + id});
+                return material_graph_compile_result::failure({.code = shader_compile_error_code::validation_failed,
+                                                               .message = "Scalar range is invalid: " + id});
             const float value = node.literal.values[0];
             if (value < node.minimum || value > node.maximum)
                 return material_graph_compile_result::failure(

@@ -125,7 +125,8 @@ TEST_CASE("native material graph compiler preserves valid Scalar authoring range
     const auto result = arc::render::tools::compile_material_graph_json(graph);
     REQUIRE(result);
     const auto& nodes = result.value().ir.nodes;
-    const auto found = std::find_if(nodes.begin(), nodes.end(), [](const auto& node) { return node.id == "roughness"; });
+    const auto found =
+        std::find_if(nodes.begin(), nodes.end(), [](const auto& node) { return node.id == "roughness"; });
     REQUIRE(found != nodes.end());
     CHECK(found->has_range);
     CHECK(found->minimum == 0.0f);
