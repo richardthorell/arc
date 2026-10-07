@@ -75,6 +75,42 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
     REQUIRE(prefiltered.ambient_color_intensity[3] == Catch::Approx(0.75f));
 }
 
+TEST_CASE("clustered local-light grid is screen/depth aware and bounded")
+{
+    std::vector<arc::render::point_light_event> points{
+        {.position = {0.0f, 0.0f, -5.0f}, .intensity = 10.0f, .range = 1.0f},
+        {.position = {50.0f, 0.0f, -5.0f}, .intensity = 10.0f, .range = 1.0f}};
+    const auto lighting = arc::render::pack_scene_lighting({}, points, {});
+
+    arc::render::clustered_light_grid_view view{};
+    view.viewport_width = 128u;
+    view.viewport_height = 64u;
+    view.near_plane = 0.1f;
+    view.far_plane = 100.0f;
+
+    arc::render::clustered_light_grid_config config{};
+    config.tile_size_pixels = 32u;
+    config.depth_slices = 4u;
+    config.maximum_lights_per_cluster = 1u;
+    const auto grid = arc::render::build_clustered_light_grid(lighting, view, config);
+
+    REQUIRE(grid.tiles_x == 4u);
+    REQUIRE(grid.tiles_y == 2u);
+    REQUIRE(grid.cluster_count == 32u);
+    REQUIRE(grid.point_light_references > 0u);
+    REQUIRE(grid.point_light_references < grid.cluster_count * lighting.point_count);
+    REQUIRE(grid.gpu_words.size() ==
+            arc::render::clustered_light_header_words +
+                grid.cluster_count * (1u + config.maximum_lights_per_cluster));
+
+    const std::uint32_t record_words = 1u + config.maximum_lights_per_cluster;
+    for (std::uint32_t cluster = 0u; cluster < grid.cluster_count; ++cluster)
+    {
+        const auto base = arc::render::clustered_light_header_words + cluster * record_words;
+        REQUIRE(grid.gpu_words[base] <= config.maximum_lights_per_cluster);
+    }
+}
+
 TEST_CASE("light unit and temperature helpers provide stable defaults")
 {
     REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::unitless, 2.0f, 4.0f) ==
