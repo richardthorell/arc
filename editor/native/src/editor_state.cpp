@@ -734,9 +734,9 @@ ecs::entity add_water_to_scene(editor_scene_state& scene, render::renderer& rend
     const auto entity = scene.scene.create();
     if (!scene.water_entity.valid()) scene.water_entity = entity;
 
-    const char* label = type == water::water_body_type::lake  ? "Lake"
+    const char* label = type == water::water_body_type::lake    ? "Lake"
                         : type == water::water_body_type::river ? "River"
-                                                               : "Ocean";
+                                                                : "Ocean";
     add_selectable_common(scene, entity, label, "Environment");
 
     scene::transform_component transform;

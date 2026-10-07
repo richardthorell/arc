@@ -130,17 +130,7 @@ type HostSceneSnapshot = {
 };
 
 type BasicEntityKind =
-  | 'empty'
-  | 'plane'
-  | 'cube'
-  | 'sphere'
-  | 'cylinder'
-  | 'cone'
-  | 'capsule'
-  | 'terrain'
-  | 'ocean'
-  | 'lake'
-  | 'river';
+  'empty' | 'plane' | 'cube' | 'sphere' | 'cylinder' | 'cone' | 'capsule' | 'terrain' | 'ocean' | 'lake' | 'river';
 
 type SceneDocumentState = Omit<HostSceneSnapshot, 'entities'>;
 
@@ -887,8 +877,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           command === 'entity.createLake' ||
           command === 'entity.createRiver'
         ) {
-          const kind =
-            command === 'entity.createLake' ? 'lake' : command === 'entity.createRiver' ? 'river' : 'ocean';
+          const kind = command === 'entity.createLake' ? 'lake' : command === 'entity.createRiver' ? 'river' : 'ocean';
           response = (await window.arc.host.command('entity.create', {
             kind,
             ...(selectedSnapshot ? { parent: selectedSnapshot.entity } : {}),
