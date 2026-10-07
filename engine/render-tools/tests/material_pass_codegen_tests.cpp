@@ -113,6 +113,8 @@ TEST_CASE("Material IR composes deterministic engine-owned pass shaders")
     REQUIRE(source.find("SV_Target0") != std::string::npos);
     REQUIRE(source.find("SV_Target5") != std::string::npos);
     REQUIRE(source.find("output.motion = arcMaterialMotion(passInput)") != std::string::npos);
+    REQUIRE(source.find("saturate(surface.clearCoat)") != std::string::npos);
+    REQUIRE(source.find("clamp(surface.clearCoatRoughness, 0.04, 1.0)") != std::string::npos);
     REQUIRE(source.find("struct ArcCompilerInput") == std::string::npos);
     REQUIRE(first.value().generated_line_nodes.size() == 3);
 }
