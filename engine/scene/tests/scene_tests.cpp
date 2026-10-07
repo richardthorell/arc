@@ -713,6 +713,7 @@ TEST_CASE("render scene culling uses transformed dirty local bounds")
 TEST_CASE("Water preset application updates only preset-owned state")
 {
     arc::scene::water_component component;
+    component.type = arc::water::water_body_type::lake;
     component.water_level = 7.0f;
     component.visible_distance = 1234.0f;
     component.follow_camera = false;
@@ -731,9 +732,13 @@ TEST_CASE("Water preset application updates only preset-owned state")
     preset.settings.appearance.roughness = 0.12f;
     preset.settings.quality = arc::water::water_quality::medium;
 
+    component.settings.simulation.wind_speed = 9.0f;
+    component.preset_overrides =
+        arc::scene::water_preset_override_mask(arc::scene::water_preset_override::wind_speed);
+
     REQUIRE(arc::scene::apply_water_preset(component, preset));
     CHECK(component.type == arc::water::water_body_type::lake);
-    CHECK(component.settings.simulation.wind_speed == Catch::Approx(4.0f));
+    CHECK(component.settings.simulation.wind_speed == Catch::Approx(9.0f));
     CHECK_FALSE(component.settings.foam.enabled);
     CHECK(component.settings.appearance.roughness == Catch::Approx(0.12f));
     CHECK(component.settings.quality == arc::water::water_quality::medium);
@@ -748,6 +753,11 @@ TEST_CASE("Water preset application updates only preset-owned state")
     CHECK(component.priority == 9);
     CHECK(component.material.path_hint == "project/materials/custom_water.arcmat");
 
+    const auto inherited = component;
+    component.preset_overrides = 0u;
+    REQUIRE(arc::scene::apply_water_preset(component, preset));
+    CHECK(component.settings.simulation.wind_speed == Catch::Approx(4.0f));
+
     const auto before = component;
     preset.settings.simulation.wind_direction = {0.0f, 0.0f};
     REQUIRE_FALSE(arc::scene::apply_water_preset(component, preset));
@@ -757,6 +767,12 @@ TEST_CASE("Water preset application updates only preset-owned state")
           Catch::Approx(before.settings.simulation.wind_direction[0]));
     CHECK(component.settings.simulation.wind_direction[1] ==
           Catch::Approx(before.settings.simulation.wind_direction[1]));
+
+    auto ocean_preset = preset;
+    ocean_preset.settings.simulation.wind_direction = {1.0f, 0.0f};
+    ocean_preset.body_type = arc::water::water_body_type::ocean;
+    REQUIRE_FALSE(arc::scene::apply_water_preset(component, ocean_preset));
+    CHECK(component.type == arc::water::water_body_type::lake);
 }
 
 TEST_CASE("Fluid Surface channels reflect implemented Water providers")
@@ -1411,7 +1427,7 @@ TEST_CASE("Water persistence migrations cover every schema version")
     water.schema_version = 1;
 
     const auto target_version = arc::ecs::component_metadata<arc::scene::water_component>().schema_version;
-    REQUIRE(target_version == 3);
+    REQUIRE(target_version == 4);
     REQUIRE(migrations.migrate(water, target_version));
     REQUIRE(water.schema_version == target_version);
 }
