@@ -5,6 +5,14 @@
 namespace arc::scene
 {
 
+bool apply_water_preset(water_component& component, const water::water_preset& preset)
+{
+    if (!water::validate_water_preset(preset).valid()) return false;
+    component.type = preset.body_type;
+    component.settings = preset.settings;
+    return true;
+}
+
 water_preset_binding_result refresh_water_preset_binding(water_component& component, assets::asset_manager& manager)
 {
     water_preset_binding_result result;
@@ -47,8 +55,11 @@ water_preset_binding_result refresh_water_preset_binding(water_component& compon
     component.preset.expected_type = assets::asset_types::water_preset;
     if (const auto snapshot = manager.find(loaded.asset.resolved_guid()))
         component.preset.path_hint = assets::normalize_asset_path(snapshot->source_path);
-    component.type = preset->body_type;
-    component.settings = preset->settings;
+    if (!apply_water_preset(component, *preset))
+    {
+        result.message = "Water preset payload failed validation";
+        return result;
+    }
 
     result.succeeded = true;
     result.bound = true;
