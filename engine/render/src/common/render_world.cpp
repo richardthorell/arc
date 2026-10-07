@@ -1303,7 +1303,10 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                     .usage = render_resource_usage::depth_attachment,
                                     .write = true,
                                     .load_op = render_load_op::load}}});
-        graph.add_pass({.name = "virtual shadow border replication",
+        // Guard texels are rasterized with the expanded page projection. This
+        // boundary establishes sampled-depth visibility before completion can
+        // authorize publication; it does not copy unrelated neighbouring tiles.
+        graph.add_pass({.name = "virtual shadow guard preparation",
                         .queue = compute_queue,
                         .kind = render_pass_kind::compute,
                         .builtin = builtin_render_pass::virtual_shadow_border_replication,
@@ -1321,7 +1324,10 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                         .queue = compute_queue,
                         .kind = render_pass_kind::compute,
                         .builtin = builtin_render_pass::virtual_shadow_page_table_publication,
-                        .reads = {{.handle = virtual_shadow_render_pages,
+                        .reads = {{.handle = virtual_shadow_page_table,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer},
+                                  {.handle = virtual_shadow_render_pages,
                                    .kind = render_resource_kind::buffer,
                                    .usage = render_resource_usage::transfer_src},
                                   {.handle = virtual_shadow_page_work,

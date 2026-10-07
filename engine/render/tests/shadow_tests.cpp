@@ -426,6 +426,138 @@ TEST_CASE("virtual shadow render completion rejects stale physical and work gene
     REQUIRE_FALSE(cache.find(completed.key)->dirty());
 }
 
+TEST_CASE("virtual shadow replacement retains published depth until raster and guards both complete")
+{
+    using namespace arc::render;
+    constexpr std::uint64_t pair_bytes = virtual_shadow_physical_page_texels * virtual_shadow_physical_page_texels * 4u;
+    virtual_shadow_cache cache(pair_bytes * 4u);
+    const auto light = cache.create_address_space(
+        {.light_kind = shadow_light_kind::spot, .virtual_resolution = virtual_shadow_page_texels, .level_count = 1});
+    REQUIRE(light);
+    virtual_shadow_page_request request{.key = {.address_space = *light}, .content_revision = 7};
+    auto result = cache.resolve_requests(std::span{&request, 1}, 1);
+    REQUIRE(result.render_pages.size() == 1);
+    const auto original = result.render_pages[0].physical_page;
+    REQUIRE(cache.publish(request.key, 7));
+    const auto dense = cache.dense_page_index(request.key);
+    REQUIRE(dense);
+    const auto published = [&] { return cache.gpu_snapshot().page_table[*dense].static_depth; };
+
+    request.content_revision = 8;
+    result = cache.resolve_requests(std::span{&request, 1}, 2);
+    REQUIRE(result.render_pages.size() == 1);
+    const auto replacement = result.render_pages[0].physical_page;
+    REQUIRE(replacement != original);
+    auto token = make_virtual_shadow_page_render_token(result.render_pages[0]);
+    CHECK(published().physical_page == original.index);
+    REQUIRE(cache.set_in_flight(request.key, true));
+    REQUIRE(cache.complete_render(token, true, false));
+    CHECK(published().physical_page == original.index);
+    CHECK(published().content_revision_low == 7);
+    CHECK(cache.find(request.key)->dirty());
+    CHECK(cache.find(request.key)->resident);
+
+    result = cache.resolve_requests(std::span{&request, 1}, 3);
+    REQUIRE(result.render_pages.size() == 1);
+    CHECK(result.render_pages[0].physical_page == replacement);
+    REQUIRE(cache.set_in_flight(request.key, true));
+    REQUIRE(cache.complete_render(token, false, true));
+    CHECK(published().physical_page == original.index);
+    REQUIRE(cache.set_in_flight(request.key, true));
+    REQUIRE(cache.complete_render(token, true, true));
+    CHECK(published().physical_page == replacement.index);
+    CHECK(published().content_revision_low == 8);
+    CHECK_FALSE(cache.find(request.key)->retained_physical_page.valid());
+    CHECK_FALSE(cache.complete_render(token, true, true));
+}
+
+TEST_CASE("virtual shadow directional lookup reprojects layers independently and bounds filter taps")
+{
+    using namespace arc::render;
+    constexpr std::uint64_t pair_bytes = virtual_shadow_physical_page_texels * virtual_shadow_physical_page_texels * 4u;
+    virtual_shadow_cache cache(pair_bytes * 4u);
+    const auto light =
+        cache.create_address_space({.light_kind = shadow_light_kind::directional, .virtual_resolution = 256});
+    REQUIRE(light);
+    std::array<virtual_shadow_view_descriptor, virtual_shadow_directional_clip_levels> views{};
+    for (std::uint16_t level = 0; level < views.size(); ++level)
+    {
+        views[level].world_to_shadow_clip = arc::math::identity<float, 4>();
+        views[level].pages_per_axis = 2;
+        views[level].level = level;
+    }
+    views[1].world_to_shadow_clip(0, 3) = -1.0f;
+    REQUIRE(cache.update_address_space_views(*light, views));
+    const virtual_shadow_page_request fine{.key = {*light, {1, 1, 0, 0}, virtual_shadow_page_layer::static_depth},
+                                           .content_revision = 1};
+    const virtual_shadow_page_request coarse{.key = {*light, {0, 1, 1, 0}, virtual_shadow_page_layer::dynamic_depth},
+                                             .content_revision = 2};
+    const std::array requests{fine, coarse};
+    REQUIRE(cache.resolve_requests(requests, 1).render_pages.size() == 2);
+    REQUIRE(cache.publish(fine.key, 1));
+    REQUIRE(cache.publish(coarse.key, 2));
+    const auto sample = [&](virtual_shadow_page_layer layer, arc::math::vector2f tap = {})
+    {
+        return resolve_directional_virtual_shadow_sample(cache.gpu_snapshot(), *light, {0.1f, 0.1f, 0.5f}, layer,
+                                                         cache.physical_pool_layout(), tap);
+    };
+    REQUIRE(sample(virtual_shadow_page_layer::static_depth));
+    REQUIRE(sample(virtual_shadow_page_layer::dynamic_depth));
+    CHECK(sample(virtual_shadow_page_layer::static_depth)->level == 0);
+    CHECK(sample(virtual_shadow_page_layer::dynamic_depth)->level == 1);
+    CHECK(sample(virtual_shadow_page_layer::dynamic_depth)->depth == Catch::Approx(0.5f));
+    const auto pool = cache.physical_pool_layout();
+    for (const auto layer : {virtual_shadow_page_layer::static_depth, virtual_shadow_page_layer::dynamic_depth})
+    {
+        for (float offset : {-1000.0f, -2.0f, 0.0f, 2.0f, 1000.0f})
+        {
+            const auto location = sample(layer, {offset, offset});
+            REQUIRE(location);
+            const auto physical = location->mapping.physical_page;
+            CHECK(location->atlas_uv[0] * pool.atlas_extent >= (physical % pool.pages_per_axis) * 136u + 0.5f);
+            CHECK(location->atlas_uv[0] * pool.atlas_extent <= (physical % pool.pages_per_axis + 1u) * 136u - 0.5f);
+            CHECK(location->atlas_uv[1] * pool.atlas_extent >= (physical / pool.pages_per_axis) * 136u + 0.5f);
+            CHECK(location->atlas_uv[1] * pool.atlas_extent <= (physical / pool.pages_per_axis + 1u) * 136u - 0.5f);
+        }
+    }
+    auto stale = *light;
+    ++stale.generation;
+    CHECK_FALSE(resolve_directional_virtual_shadow_sample(cache.gpu_snapshot(), stale, {0.1f, 0.1f, 0.5f},
+                                                          virtual_shadow_page_layer::static_depth, pool));
+    // Any changed view invalidates depth and work made under the old projections.
+    REQUIRE(cache.invalidate(*light, virtual_shadow_invalidation_reason::geometry) == 2);
+    const auto retry = cache.resolve_requests(requests, 2);
+    REQUIRE_FALSE(retry.render_pages.empty());
+    const auto token = make_virtual_shadow_page_render_token(retry.render_pages.front());
+    REQUIRE(cache.set_in_flight(token.key, true));
+    views[0].world_to_shadow_clip(0, 3) += 0.1f;
+    REQUIRE(cache.update_address_space_views(*light, views));
+    CHECK_FALSE(cache.complete_render(token, true, true));
+    CHECK_FALSE(sample(virtual_shadow_page_layer::static_depth));
+    CHECK_FALSE(sample(virtual_shadow_page_layer::dynamic_depth));
+}
+
+TEST_CASE("virtual shadow refresh with no spare tile preserves the resident mapping")
+{
+    using namespace arc::render;
+    constexpr std::uint64_t pair_bytes = virtual_shadow_physical_page_texels * virtual_shadow_physical_page_texels * 4u;
+    virtual_shadow_cache cache(pair_bytes);
+    const auto light = cache.create_address_space(
+        {.light_kind = shadow_light_kind::spot, .virtual_resolution = virtual_shadow_page_texels, .level_count = 1});
+    REQUIRE(light);
+    virtual_shadow_page_request request{.key = {.address_space = *light}, .content_revision = 1};
+    REQUIRE(cache.resolve_requests(std::span{&request, 1}, 1).render_pages.size() == 1);
+    REQUIRE(cache.publish(request.key, 1));
+    request.content_revision = 2;
+    const auto result = cache.resolve_requests(std::span{&request, 1}, 2);
+    CHECK(result.render_pages.empty());
+    CHECK(result.failed_requests == 1);
+    REQUIRE(cache.find_resident_or_ancestor(request.key));
+    const auto dense = cache.dense_page_index(request.key);
+    REQUIRE(dense);
+    CHECK(cache.gpu_snapshot().page_table[*dense].static_depth.content_revision_low == 1);
+}
+
 TEST_CASE("virtual shadow render pages encode deterministic page projections and work ranges")
 {
     arc::render::virtual_shadow_view_descriptor view{};

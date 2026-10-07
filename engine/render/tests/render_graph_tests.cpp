@@ -486,6 +486,7 @@ TEST_CASE("Ultra virtual shadow graph declares page feedback cache and lighting 
     const auto static_render = pass_index(builtin_render_pass::virtual_shadow_static_render);
     const auto dynamic_render = pass_index(builtin_render_pass::virtual_shadow_dynamic_render);
     const auto publication = pass_index(builtin_render_pass::virtual_shadow_page_table_publication);
+    const auto guards = pass_index(builtin_render_pass::virtual_shadow_border_replication);
     const auto feedback = pass_index(builtin_render_pass::virtual_shadow_feedback_readback);
     const auto lighting = pass_index(builtin_render_pass::deferred_lighting);
     REQUIRE(marking < allocation);
@@ -494,6 +495,9 @@ TEST_CASE("Ultra virtual shadow graph declares page feedback cache and lighting 
     REQUIRE(culling < dynamic_render);
     REQUIRE(static_render < publication);
     REQUIRE(dynamic_render < publication);
+    REQUIRE(static_render < guards);
+    REQUIRE(dynamic_render < guards);
+    REQUIRE(guards < publication);
     REQUIRE(publication < lighting);
     REQUIRE(feedback < compiled.passes.size());
     REQUIRE(pass_index(builtin_render_pass::screen_space_shadow) < lighting);
