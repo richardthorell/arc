@@ -264,7 +264,7 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                              name == "VirtualMeshRenderer" || name == "Vegetation" || name == "DirectionalLight" ||
                              name == "PointLight" || name == "SpotLight" || name == "AreaLight" ||
                              name == "PrefabInstance" || name == "Flow";
-    const bool supports_v3 = name == "Terrain" || name == "Camera" || name == "MeshRenderer" ||
+    const bool supports_v3 = name == "Terrain" || name == "Water" || name == "Camera" || name == "MeshRenderer" ||
                              name == "DirectionalLight" || name == "PointLight" || name == "SpotLight" ||
                              name == "AreaLight";
     const bool supports_v4 = name == "MeshRenderer" || name == "Terrain";
@@ -554,6 +554,30 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
             !value["queriesEnabled"].is_boolean() || !value.contains("buoyancyEnabled") ||
             !value["buoyancyEnabled"].is_boolean())
             return fail("has invalid Water feature settings");
+        if (component_version >= 3u)
+        {
+            if (!value.contains("shape") || !value["shape"].is_object())
+                return fail("has no valid Water shape contract");
+            const auto& shape = value["shape"];
+            if (!shape.contains("closed") || !shape["closed"].is_boolean() || !shape.contains("points") ||
+                !shape["points"].is_array() || shape["points"].size() > 4096u)
+                return fail("has invalid Water shape metadata");
+            for (const auto& point : shape["points"])
+            {
+                if (!point.is_object() || !point.contains("position") || !finite_array(point["position"], 3) ||
+                    !finite_number(point, "width") || point["width"].get<double>() < 0.0 ||
+                    !finite_number(point, "depth") || point["depth"].get<double>() < 0.0 ||
+                    !finite_number(point, "flow"))
+                    return fail("has an invalid Water shape point");
+            }
+            const auto type = value["type"].get<int>();
+            if (type == 0 && (shape["closed"].get<bool>() || !shape["points"].empty()))
+                return fail("Ocean must not persist a finite shape");
+            if (type == 1 && (!shape["closed"].get<bool>() || shape["points"].size() < 3u))
+                return fail("Lake requires a closed boundary with at least three points");
+            if (type == 2 && (shape["closed"].get<bool>() || shape["points"].size() < 2u))
+                return fail("River requires an open path with at least two points");
+        }
         return true;
     }
     if (name == "Vegetation")
@@ -1148,7 +1172,14 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                               {"graph", serialize_asset_reference(component->graph, project_root)},
                               {"enabled", component->enabled}};
     if (const auto* component = state.scene.try_get<scene::water_component>(value))
-        components["Water"] = {{"version", 2},
+    {
+        json shape_points = json::array();
+        for (const auto& point : component->shape.points)
+            shape_points.push_back({{"position", vector3(point.position)},
+                                    {"width", point.width},
+                                    {"depth", point.depth},
+                                    {"flow", point.flow_speed}});
+        components["Water"] = {{"version", 3},
                                {"type", static_cast<std::uint8_t>(component->type)},
                                {"preset", serialize_asset_reference(component->preset, project_root)},
                                {"material", serialize_asset_reference(component->material, project_root)},
@@ -1157,6 +1188,7 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                                {"followCamera", component->follow_camera},
                                {"visibleDistance", component->visible_distance},
                                {"priority", component->priority},
+                               {"shape", {{"closed", component->shape.closed}, {"points", std::move(shape_points)}}},
                                {"simulation",
                                 {{"windSpeed", component->settings.simulation.wind_speed},
                                  {"windDirection", vector2(component->settings.simulation.wind_direction)},
@@ -1182,6 +1214,7 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                                {"queriesEnabled", component->queries_enabled},
                                {"buoyancyEnabled", component->buoyancy_enabled},
                                {"quality", static_cast<std::uint8_t>(component->settings.quality)}};
+    }
     if (const auto* component = state.scene.try_get<scene::vegetation_component>(value))
         components["Vegetation"] = {{"version", 2},
                                     {"enabled", component->enabled},
@@ -1964,6 +1997,18 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                     value.buoyancy_enabled = source.at("buoyancyEnabled").get<bool>();
                     value.settings.quality =
                         static_cast<water::water_quality>(source.at("quality").get<std::uint8_t>());
+                    if (source.value("version", 1u) >= 3u)
+                    {
+                        const auto& shape = source.at("shape");
+                        value.shape.closed = shape.at("closed").get<bool>();
+                        value.shape.points.clear();
+                        value.shape.points.reserve(shape.at("points").size());
+                        for (const auto& point : shape.at("points"))
+                            value.shape.points.push_back({read_vector3(point.at("position")),
+                                                          point.at("width").get<float>(),
+                                                          point.at("depth").get<float>(),
+                                                          point.at("flow").get<float>()});
+                    }
                 }
                 if (!synchronize_water_render_material(loaded, renderer, entity))
                     throw std::runtime_error("water optical material could not be restored");
