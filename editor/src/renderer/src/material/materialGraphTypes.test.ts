@@ -19,6 +19,8 @@ describe('material graph schema', () => {
       'Base Color Texture',
       'Metallic',
       'Roughness',
+      'Metallic Roughness Texture',
+      'Ambient Occlusion Texture',
       'Emissive Color',
       'Emissive Texture',
       'Emissive Strength',
@@ -44,6 +46,41 @@ describe('material graph schema', () => {
         (connection) => connection.from.nodeId === multiply?.id && connection.to.nodeId === 'material-output',
       ),
     ).toBe(true);
+    const metallicRoughnessTexture = graph.nodes.find((node) => node.parameter?.name === 'Metallic Roughness Texture');
+    const ambientOcclusionTexture = graph.nodes.find((node) => node.parameter?.name === 'Ambient Occlusion Texture');
+    expect(metallicRoughnessTexture).toMatchObject({
+      type: 'textureSample2D',
+      values: { texture: '', dimension: '2d' },
+    });
+    expect(ambientOcclusionTexture).toMatchObject({
+      type: 'textureSample2D',
+      values: { texture: '', dimension: '2d' },
+    });
+    expect(
+      graph.connections.some(
+        (connection) =>
+          connection.from.nodeId === metallicRoughnessTexture?.id &&
+          connection.from.pin === 'b' &&
+          connection.to.nodeId !== 'material-output',
+      ),
+    ).toBe(true);
+    expect(
+      graph.connections.some(
+        (connection) =>
+          connection.from.nodeId === metallicRoughnessTexture?.id &&
+          connection.from.pin === 'g' &&
+          connection.to.nodeId !== 'material-output',
+      ),
+    ).toBe(true);
+    expect(
+      graph.connections.some(
+        (connection) =>
+          connection.from.nodeId === ambientOcclusionTexture?.id &&
+          connection.from.pin === 'r' &&
+          connection.to.pin === 'ao',
+      ),
+    ).toBe(true);
+
     const emissiveColor = graph.nodes.find((node) => node.parameter?.name === 'Emissive Color');
     const emissiveTexture = graph.nodes.find((node) => node.parameter?.name === 'Emissive Texture');
     const emissiveStrength = graph.nodes.find((node) => node.parameter?.name === 'Emissive Strength');
@@ -60,7 +97,7 @@ describe('material graph schema', () => {
         (connection) => connection.to.nodeId === 'material-output' && connection.to.pin === 'emissive',
       ),
     ).toBe(true);
-    expect(graph.connections).toHaveLength(10);
+    expect(graph.connections).toHaveLength(15);
   });
 
   it('exposes only the modern Color node for authoring', () => {

@@ -13,6 +13,50 @@ const readBuiltIn = (name: string) =>
   ) as MaterialAssetJson;
 
 describe('core built-in material families', () => {
+  it('ships Standard Lit with neutral optional surface maps', () => {
+    const asset = readBuiltIn('standard_lit.arcmat');
+    expect(asset).toMatchObject({
+      version: 4,
+      name: 'Standard Lit',
+      domain: 'surface',
+      blendMode: 'opaque',
+      shadingModel: 'standard',
+      doubleSided: false,
+    });
+
+    const graph = materialGraphFromAsset(asset);
+    expect(materialEditorParameters(graph).map((parameter) => parameter.name)).toEqual([
+      'Base Color Tint',
+      'Base Color Texture',
+      'Metallic',
+      'Roughness',
+      'Metallic Roughness Texture',
+      'Ambient Occlusion Texture',
+      'Emissive Color',
+      'Emissive Texture',
+      'Emissive Strength',
+    ]);
+    expect(materialGraphOutputConnected(graph, 'metallic')).toBe(true);
+    expect(materialGraphOutputConnected(graph, 'roughness')).toBe(true);
+    expect(materialGraphOutputConnected(graph, 'ao')).toBe(true);
+
+    const packed = graph.nodes.find((node) => node.parameter?.name === 'Metallic Roughness Texture');
+    const ao = graph.nodes.find((node) => node.parameter?.name === 'Ambient Occlusion Texture');
+    expect(packed).toMatchObject({ type: 'textureSample2D', values: { texture: '', dimension: '2d' } });
+    expect(ao).toMatchObject({ type: 'textureSample2D', values: { texture: '', dimension: '2d' } });
+    expect(
+      graph.connections.some((connection) => connection.from.nodeId === packed?.id && connection.from.pin === 'b'),
+    ).toBe(true);
+    expect(
+      graph.connections.some((connection) => connection.from.nodeId === packed?.id && connection.from.pin === 'g'),
+    ).toBe(true);
+    expect(
+      graph.connections.some(
+        (connection) => connection.from.nodeId === ao?.id && connection.from.pin === 'r' && connection.to.pin === 'ao',
+      ),
+    ).toBe(true);
+  });
+
   it('ships a texture-ready Glass transmission material', () => {
     const asset = readBuiltIn('glass.arcmat');
     expect(asset).toMatchObject({
