@@ -32,10 +32,12 @@ import {
 } from '../ui';
 import { materialGraphDomain } from './materialGraphDomain';
 import {
+  clampMaterialScalarValue,
   cloneMaterialGraph,
   createMaterialNode,
   materialGraphId,
   isMaterialTextureSampleNodeType,
+  materialScalarRange,
   materialNodeCategoryOrder,
   materialNodeSubcategoryOrder,
   type MaterialGraph,
@@ -161,19 +163,103 @@ function MaterialNodeValueEditor({
   readOnly: boolean;
   onChange: (node: MaterialGraphNode) => void;
 }) {
-  if (node.type === 'constant')
+  if (node.type === 'constant') {
+    const value = typeof node.values.value === 'number' && Number.isFinite(node.values.value) ? node.values.value : 0;
+    const range = materialScalarRange(node);
+    const setValue = (nextValue: number) => onChange(nextNodeValue(node, clampMaterialScalarValue(nextValue, range)));
+    const setRange = (min: number, max: number) => {
+      const nextRange = { min: Math.min(min, max), max: Math.max(min, max) };
+      onChange({
+        ...node,
+        values: {
+          ...node.values,
+          ...nextRange,
+          value: clampMaterialScalarValue(value, nextRange),
+        },
+      });
+    };
+
     return (
-      <label className="material-node-inline-value">
-        Value
-        <input
-          disabled={readOnly}
-          type="number"
-          step="0.01"
-          value={typeof node.values.value === 'number' ? node.values.value : 0}
-          onChange={(event) => onChange(nextNodeValue(node, Number(event.target.value)))}
-        />
-      </label>
+      <div className="material-node-scalar-value">
+        <label className="material-node-inline-value">
+          Value
+          <input
+            aria-label="Scalar value"
+            disabled={readOnly}
+            max={range?.max}
+            min={range?.min}
+            type="number"
+            step="0.01"
+            value={value}
+            onChange={(event) => setValue(Number(event.target.value))}
+          />
+        </label>
+        {range && (
+          <UiSlider
+            aria-label="Scalar range value"
+            disabled={readOnly}
+            min={range.min}
+            max={range.max}
+            step={Math.max(0.001, (range.max - range.min) / 100)}
+            value={value}
+            onValueChange={setValue}
+          />
+        )}
+        <label className="material-node-range-toggle">
+          <input
+            checked={Boolean(range)}
+            disabled={readOnly}
+            type="checkbox"
+            onChange={(event) => {
+              if (event.target.checked) {
+                const nextRange = { min: 0, max: 1 };
+                onChange({
+                  ...node,
+                  values: {
+                    ...node.values,
+                    ...nextRange,
+                    value: clampMaterialScalarValue(value, nextRange),
+                  },
+                });
+                return;
+              }
+              const values = { ...node.values };
+              delete values.min;
+              delete values.max;
+              onChange({ ...node, values });
+            }}
+          />
+          <span>Range</span>
+        </label>
+        {range && (
+          <div className="material-node-range-bounds">
+            <label>
+              Min
+              <input
+                aria-label="Scalar minimum"
+                disabled={readOnly}
+                type="number"
+                step="0.01"
+                value={range.min}
+                onChange={(event) => setRange(Number(event.target.value), range.max)}
+              />
+            </label>
+            <label>
+              Max
+              <input
+                aria-label="Scalar maximum"
+                disabled={readOnly}
+                type="number"
+                step="0.01"
+                value={range.max}
+                onChange={(event) => setRange(range.min, Number(event.target.value))}
+              />
+            </label>
+          </div>
+        )}
+      </div>
     );
+  }
 
   if (node.type === 'vector2' || node.type === 'vector3' || node.type === 'vector4') {
     const size = node.type === 'vector2' ? 2 : node.type === 'vector3' ? 3 : 4;

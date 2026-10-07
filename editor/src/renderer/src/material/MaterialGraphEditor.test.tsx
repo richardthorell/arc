@@ -81,7 +81,7 @@ describe('MaterialGraphEditor', () => {
     const valuesMenu = screen.getByRole('menu', { name: 'Values material node categories' });
     fireEvent.mouseEnter(within(valuesMenu).getByRole('menuitem', { name: /Constants/ }));
     const constantsMenu = screen.getByRole('menu', { name: 'Constants material nodes' });
-    const item = within(constantsMenu).getByRole('menuitem', { name: 'Constant' });
+    const item = within(constantsMenu).getByRole('menuitem', { name: 'Scalar' });
 
     materialState.replaceMaterialGraphViewport.mockClear();
     fireEvent.wheel(item, { clientX: 80, clientY: 100, deltaY: 120 });
@@ -163,6 +163,41 @@ describe('MaterialGraphEditor', () => {
     materialState.replaceMaterialGraph.mockClear();
     fireEvent.wheel(menu, { clientX: 240, clientY: 200, deltaY: -120 });
     expect(materialState.replaceMaterialGraph).not.toHaveBeenCalled();
+  });
+
+  it('shows a slider for ranged Scalars and keeps unrestricted Scalars numeric-only', () => {
+    const graph = createDefaultMaterialGraph();
+    const ranged = createMaterialNode('constant', [900, 500], { value: 0.4, min: 0, max: 1 });
+    graph.nodes.push(ranged);
+
+    const { container } = render(<MaterialGraphEditor document={document} graph={graph} />);
+
+    const rangedNode = container.querySelector<HTMLElement>(`[data-node-id="${ranged.id}"]`);
+    expect(rangedNode).not.toBeNull();
+    expect(within(rangedNode!).getByRole('slider', { name: 'Scalar range value' })).toHaveValue('0.4');
+    expect(within(rangedNode!).getByRole('spinbutton', { name: 'Scalar minimum' })).toHaveValue(0);
+    expect(within(rangedNode!).getByRole('spinbutton', { name: 'Scalar maximum' })).toHaveValue(1);
+
+    const unrestricted = graph.nodes.find((node) => node.type === 'constant' && node.id !== ranged.id);
+    const unrestrictedNode = container.querySelector<HTMLElement>(`[data-node-id="${unrestricted!.id}"]`);
+    expect(unrestrictedNode).not.toBeNull();
+    expect(within(unrestrictedNode!).queryByRole('slider', { name: 'Scalar range value' })).not.toBeInTheDocument();
+  });
+
+  it('enabling a Scalar range creates hard 0..1 bounds and clamps the authored value', () => {
+    const graph = createDefaultMaterialGraph();
+    const scalar = createMaterialNode('constant', [900, 500], { value: 2 });
+    graph.nodes.push(scalar);
+
+    const { container } = render(<MaterialGraphEditor document={document} graph={graph} />);
+    const scalarNode = container.querySelector<HTMLElement>(`[data-node-id="${scalar.id}"]`);
+    expect(scalarNode).not.toBeNull();
+
+    fireEvent.click(within(scalarNode!).getByRole('checkbox', { name: /Range/ }));
+    expect(materialState.replaceMaterialGraph).toHaveBeenCalled();
+    const nextGraph = materialState.replaceMaterialGraph.mock.calls.at(-1)![1];
+    const nextScalar = nextGraph.nodes.find((node: { id: string }) => node.id === scalar.id);
+    expect(nextScalar.values).toMatchObject({ value: 1, min: 0, max: 1 });
   });
 
   it('renders the default base color as a dedicated color node with a picker', () => {

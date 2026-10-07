@@ -234,7 +234,7 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
   },
   constant: {
     type: 'constant',
-    title: 'Constant',
+    title: 'Scalar',
     category: 'Values',
     subcategory: 'Constants',
     inputs: [],
@@ -450,6 +450,20 @@ export const materialGraphId = (prefix: string) =>
 
 export const cloneMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
   JSON.parse(JSON.stringify(graph)) as MaterialGraph;
+
+export type MaterialScalarRange = { min: number; max: number };
+
+export const materialScalarRange = (node: MaterialGraphNode): MaterialScalarRange | null => {
+  if (node.type !== 'constant') return null;
+  const min = node.values.min;
+  const max = node.values.max;
+  if (typeof min !== 'number' || !Number.isFinite(min) || typeof max !== 'number' || !Number.isFinite(max) || min > max)
+    return null;
+  return { min, max };
+};
+
+export const clampMaterialScalarValue = (value: number, range: MaterialScalarRange | null) =>
+  range ? Math.min(range.max, Math.max(range.min, value)) : value;
 
 /**
  * Fingerprint only graph data that can change generated material code or runtime bindings.
@@ -678,15 +692,32 @@ export const isMaterialGraph = (value: unknown): value is MaterialGraph => {
   return (
     graph.version === 1 &&
     Array.isArray(graph.nodes) &&
-    graph.nodes.every(
-      (node) =>
-        Boolean(node) &&
-        typeof node.id === 'string' &&
-        materialNodeTypes.has(node.type) &&
-        Array.isArray(node.position) &&
-        node.position.length === 2 &&
-        node.position.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate)),
-    ) &&
+    graph.nodes.every((node) => {
+      if (
+        !node ||
+        typeof node.id !== 'string' ||
+        !materialNodeTypes.has(node.type) ||
+        !Array.isArray(node.position) ||
+        node.position.length !== 2 ||
+        !node.position.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate))
+      )
+        return false;
+
+      if (node.type !== 'constant') return true;
+      const min = node.values?.min;
+      const max = node.values?.max;
+      if (min === undefined && max === undefined) return true;
+      if (
+        typeof min !== 'number' ||
+        !Number.isFinite(min) ||
+        typeof max !== 'number' ||
+        !Number.isFinite(max) ||
+        min > max
+      )
+        return false;
+      const scalar = node.values?.value;
+      return typeof scalar === 'number' && Number.isFinite(scalar) && scalar >= min && scalar <= max;
+    }) &&
     Array.isArray(graph.connections)
   );
 };

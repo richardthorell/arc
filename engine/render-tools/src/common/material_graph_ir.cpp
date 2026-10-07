@@ -383,6 +383,12 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
 
         const auto values = authored_node.value("values", json::object());
         const auto parameter = authored_node.value("parameter", json::object());
+        const bool has_minimum = values.contains("min");
+        const bool has_maximum = values.contains("max");
+        if (*kind == material_ir_node_kind::constant && has_minimum != has_maximum)
+            return material_graph_compile_result::failure({.code = shader_compile_error_code::validation_failed,
+                                                           .message = "Scalar range requires both min and max: " + id});
+
         material_ir_node node{.id = id,
                               .kind = *kind,
                               .math_operation = node_math_operation(type).value_or(material_math_operation::none),
@@ -390,9 +396,23 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
                               .strength = number(values.value("strength", json{}), 1.0f),
                               .minimum = number(values.value("min", json{}), 0.0f),
                               .maximum = number(values.value("max", json{}), 1.0f),
+                              .has_range = *kind == material_ir_node_kind::constant && has_minimum && has_maximum,
                               .exposed_parameter = parameter.value("exposed", false),
                               .parameter_id = make_shader_parameter_id(id),
                               .parameter_name = parameter.value("name", id)};
+
+        if (node.has_range)
+        {
+            if (!values.contains("value") || !values["value"].is_number() || !values["min"].is_number() ||
+                !values["max"].is_number() || node.minimum > node.maximum)
+                return material_graph_compile_result::failure({.code = shader_compile_error_code::validation_failed,
+                                                               .message = "Scalar range is invalid: " + id});
+            const float value = node.literal.values[0];
+            if (value < node.minimum || value > node.maximum)
+                return material_graph_compile_result::failure(
+                    {.code = shader_compile_error_code::validation_failed,
+                     .message = "Scalar value is outside its authored range: " + id});
+        }
 
         if (*kind == material_ir_node_kind::texture_sample)
         {

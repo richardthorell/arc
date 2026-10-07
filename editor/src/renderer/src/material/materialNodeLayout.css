@@ -111,3 +111,53 @@
   width: 100%;
   font-size: 10px;
 }
+
+.material-graph-node > .material-node-scalar-value,
+.ui-lab-material-node > .material-node-scalar-value {
+  min-width: 0;
+  grid-column: 2;
+  grid-row: 3;
+  box-sizing: border-box;
+  display: grid;
+  gap: 6px;
+  margin: 7px 0 6px;
+  padding-inline: var(--material-node-control-inset);
+}
+
+.material-node-scalar-value > .material-node-inline-value {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.material-node-scalar-value > .material-node-inline-value > input {
+  width: 100%;
+}
+
+.material-node-range-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--inspector-text-muted, #8e9aa3);
+  font-size: 10px;
+}
+
+.material-node-range-bounds {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.material-node-range-bounds label {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: var(--inspector-text-muted, #8e9aa3);
+  font-size: 9px;
+}
+
+.material-node-range-bounds input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}

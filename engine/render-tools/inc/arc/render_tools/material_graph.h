@@ -138,6 +138,7 @@ struct material_ir_node
     float strength{1.0f};
     float minimum{};
     float maximum{1.0f};
+    bool has_range{};
     bool exposed_parameter{};
     shader_parameter_id parameter_id{};
     std::string parameter_name;

@@ -2,6 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <string_view>
@@ -106,6 +107,85 @@ TEST_CASE("native material graph compiler emits deterministic backend-neutral IR
     const auto* roughness = find_output(descriptor, arc::render::tools::material_surface_output::roughness);
     REQUIRE(roughness != nullptr);
     REQUIRE_FALSE(roughness->connected);
+}
+
+TEST_CASE("native material graph compiler preserves valid Scalar authoring ranges")
+{
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"roughness","type":"constant","values":{"value":0.45,"min":0.0,"max":1.0}}
+      ],
+      "connections":[
+        {"id":"1","from":{"nodeId":"roughness","pin":"value"},"to":{"nodeId":"out","pin":"roughness"}}
+      ]
+    })";
+
+    const auto result = arc::render::tools::compile_material_graph_json(graph);
+    REQUIRE(result);
+    const auto& nodes = result.value().ir.nodes;
+    const auto found =
+        std::find_if(nodes.begin(), nodes.end(), [](const auto& node) { return node.id == "roughness"; });
+    REQUIRE(found != nodes.end());
+    CHECK(found->has_range);
+    CHECK(found->minimum == 0.0f);
+    CHECK(found->maximum == 1.0f);
+    CHECK(found->literal.values[0] == 0.45f);
+}
+
+TEST_CASE("native material graph compiler rejects invalid Scalar authoring ranges")
+{
+    SECTION("requires both bounds")
+    {
+        constexpr std::string_view graph = R"({
+          "version":1,
+          "nodes":[
+            {"id":"out","type":"output","values":{}},
+            {"id":"scalar","type":"constant","values":{"value":0.5,"min":0.0}}
+          ],
+          "connections":[
+            {"id":"1","from":{"nodeId":"scalar","pin":"value"},"to":{"nodeId":"out","pin":"roughness"}}
+          ]
+        })";
+        const auto result = arc::render::tools::compile_material_graph_json(graph);
+        REQUIRE_FALSE(result);
+        CHECK(result.error().message.find("requires both min and max") != std::string::npos);
+    }
+
+    SECTION("rejects inverted bounds")
+    {
+        constexpr std::string_view graph = R"({
+          "version":1,
+          "nodes":[
+            {"id":"out","type":"output","values":{}},
+            {"id":"scalar","type":"constant","values":{"value":0.5,"min":1.0,"max":0.0}}
+          ],
+          "connections":[
+            {"id":"1","from":{"nodeId":"scalar","pin":"value"},"to":{"nodeId":"out","pin":"roughness"}}
+          ]
+        })";
+        const auto result = arc::render::tools::compile_material_graph_json(graph);
+        REQUIRE_FALSE(result);
+        CHECK(result.error().message.find("range is invalid") != std::string::npos);
+    }
+
+    SECTION("rejects values outside the authored range")
+    {
+        constexpr std::string_view graph = R"({
+          "version":1,
+          "nodes":[
+            {"id":"out","type":"output","values":{}},
+            {"id":"scalar","type":"constant","values":{"value":1.5,"min":0.0,"max":1.0}}
+          ],
+          "connections":[
+            {"id":"1","from":{"nodeId":"scalar","pin":"value"},"to":{"nodeId":"out","pin":"roughness"}}
+          ]
+        })";
+        const auto result = arc::render::tools::compile_material_graph_json(graph);
+        REQUIRE_FALSE(result);
+        CHECK(result.error().message.find("outside its authored range") != std::string::npos);
+    }
 }
 
 TEST_CASE("material graph texture semantics propagate to descriptor bindings")
