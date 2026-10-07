@@ -182,6 +182,20 @@ render_submit_result vulkan_render_backend::submit(const render_frame_packet& pa
         }
     }
     update_environment_profile(lighting_environment);
+    clustered_light_grid_config clustered_config{};
+    clustered_config.maximum_lights_per_cluster =
+        resolved_config_.quality == render_quality_tier::low ? 32u : 64u;
+    frame_clustered_lights_ = build_clustered_light_grid(
+        frame_lighting_,
+        {.view = frame_camera_.view,
+         .projection = frame_camera_.projection,
+         .view_projection = frame_camera_.view_projection,
+         .camera_position = frame_camera_.position,
+         .near_plane = frame_camera_.near_plane,
+         .far_plane = frame_camera_.far_plane,
+         .viewport_width = std::max(viewport_width_, 1u),
+         .viewport_height = std::max(viewport_height_, 1u)},
+        clustered_config);
     last_profile_.clustered_lights = make_clustered_light_profile();
     update_shadow_profile(packet.frame_index);
     last_profile_.temporal = {.enabled = resolved_config_.features.temporal_antialiasing,
@@ -191,6 +205,7 @@ render_submit_result vulkan_render_backend::submit(const render_frame_packet& pa
                               .jitter = frame_camera_.jitter,
                               .reset_reason = frame_camera_.camera_cut ? "camera cut, resize, or world change" : ""};
     update_light_buffer();
+    update_clustered_light_buffer();
     warn_about_skipped_lights(frame_lighting_);
 
     std::ostringstream message;
@@ -358,15 +373,16 @@ void vulkan_render_backend::append_render_world(const render_world_event& event)
 clustered_light_grid_profile vulkan_render_backend::make_clustered_light_profile() const noexcept
 {
     clustered_light_grid_profile profile{};
-    const std::uint32_t width = std::max(1u, viewport_width_);
-    const std::uint32_t height = std::max(1u, viewport_height_);
-    profile.tiles_x = (width + profile.tile_size_pixels - 1u) / profile.tile_size_pixels;
-    profile.tiles_y = (height + profile.tile_size_pixels - 1u) / profile.tile_size_pixels;
-    profile.cluster_count = profile.tiles_x * profile.tiles_y * profile.depth_slices;
-    profile.point_light_references = frame_lighting_.point_count * profile.depth_slices;
-    profile.spot_light_references = frame_lighting_.spot_count * profile.depth_slices;
-    profile.overflow_count = frame_lighting_.skipped_point_count + frame_lighting_.skipped_spot_count;
-    profile.available = true;
+    profile.tile_size_pixels = frame_clustered_lights_.config.tile_size_pixels;
+    profile.tiles_x = frame_clustered_lights_.tiles_x;
+    profile.tiles_y = frame_clustered_lights_.tiles_y;
+    profile.depth_slices = frame_clustered_lights_.config.depth_slices;
+    profile.cluster_count = frame_clustered_lights_.cluster_count;
+    profile.point_light_references = frame_clustered_lights_.point_light_references;
+    profile.spot_light_references = frame_clustered_lights_.spot_light_references;
+    profile.overflow_count = frame_clustered_lights_.overflow_count + frame_lighting_.skipped_point_count +
+                             frame_lighting_.skipped_spot_count + frame_lighting_.skipped_area_count;
+    profile.available = !frame_clustered_lights_.gpu_words.empty();
     return profile;
 }
 
