@@ -158,8 +158,14 @@ TEST_CASE("Vulkan directional VSM allocation preserves explicit conventional fal
     REQUIRE_FALSE(caps.virtual_shadow_lights.point);
     REQUIRE_FALSE(caps.virtual_shadow_lights.spot);
     REQUIRE_FALSE(caps.virtual_shadow_virtual_geometry);
-    if (!caps.virtual_shadow_lights.directional) SKIP("Adapter lacks the complete directional VSM capability set");
     auto config = resolve_render_config({.quality = render_quality_tier::ultra}, caps);
+    if (!caps.virtual_shadow_lights.directional)
+    {
+        REQUIRE_FALSE(config.features.virtual_shadow_maps);
+        backend.configure(config);
+        REQUIRE_FALSE(backend.last_frame_profile().configuration.features.virtual_shadow_lights.any());
+        return;
+    }
     REQUIRE(config.features.virtual_shadow_maps);
     config.virtual_shadow_pool = resolve_virtual_shadow_physical_pool(1024u * 1024u, caps.max_texture_dimension_2d,
                                                                       caps.virtual_shadow_depth_formats);

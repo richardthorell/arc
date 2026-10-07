@@ -47,10 +47,16 @@ and render tokens until M5 introduces scrolling/overlap reuse.
 
 Directional lights carry stable object identity, resolved representation, VSM address identity, filter mode, strength,
 and biases. The existing single shadow-producing directional-light limit remains; sorting the lighting array does not
-change which light owns the shadow. Deferred, forward, and transparent lighting use one shared lookup. Each required
+change which light owns the shadow. Deferred and terrain forward lighting use one shared lookup. Each required
 static/dynamic layer independently reprojects through coarser directional clips. Missing layers use conventional
 cascades. Layer comparisons are combined before averaging bounded 1/9/25-tap filters; PCSS currently uses the 25-tap
 kernel. Atlas coordinates are clamped to the selected physical tile.
+
+The canonical compiled Slang forward/transparent and Water passes use the same directional-light record layout and
+per-light routing, but currently retain conventional cascade sampling. Directional VSM auto-selection remains disabled
+until these material passes also use the shared M4 lookup; resource support alone must not enable a partial path.
+The engine-owned compiled material pass contract is v2 and code generation is v5. Old compiled programs must be
+rebuilt rather than interpreted with the new lighting-buffer stride; authoring and package container schemas are unchanged.
 
 The resolved renderer configuration owns the physical-pool contract. It selects D16 when depth attachment and sampled
 image support are both available, otherwise D32, and derives one square atlas extent from the memory budget and

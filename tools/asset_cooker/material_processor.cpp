@@ -674,9 +674,15 @@ public:
 
     std::string toolchain_fingerprint() const override
     {
-        return "arc.material-cooker/13;arc-material-package/4;arc-material-authoring/5;arc-material-ir/1;"
-               "arc-material-codegen/3;arc-material-function/1;arc-material-pass-contract/1;"
-               "arc-material-pass-codegen/2;arc-custom-material-shader/1;" +
+        return "arc.material-cooker/" + std::to_string(descriptor_.version) + ";arc-material-package/" +
+               std::to_string(render::tools::material_package_version) + ";arc-material-authoring/" +
+               std::to_string(render::tools::material_authoring_version) + ";arc-material-ir/" +
+               std::to_string(render::tools::material_ir_version) + ";arc-material-codegen/" +
+               std::to_string(render::tools::material_shader_codegen_version) + ";arc-material-function/" +
+               std::to_string(render::tools::material_function_version) + ";arc-material-pass-contract/" +
+               std::to_string(render::material_pass_contract_version) + ";arc-material-pass-codegen/" +
+               std::to_string(render::tools::material_pass_codegen_version) + ";arc-custom-material-shader/" +
+               std::to_string(render::tools::custom_material_shader_version) + ";" +
                std::string(compiler_.fingerprint());
     }
 

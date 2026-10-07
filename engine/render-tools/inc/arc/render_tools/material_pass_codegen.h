@@ -18,7 +18,7 @@ namespace arc::render::tools
 {
 
 /** @brief Version of the engine material/pass Slang composition layer. */
-inline constexpr std::uint32_t material_pass_codegen_version = 4;
+inline constexpr std::uint32_t material_pass_codegen_version = 5;
 /** @brief Version of the handwritten Material Shader evaluator contract. */
 inline constexpr std::uint32_t custom_material_shader_version = 1;
 

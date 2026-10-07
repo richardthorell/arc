@@ -353,9 +353,12 @@ struct material_runtime_texture_binding
     texture_semantic semantic{texture_semantic::generic_color};
 };
 
+/** @brief Engine-owned pass/resource ABI; v2 adds per-light directional shadow routing. */
+inline constexpr std::uint32_t material_pass_contract_version = 2;
+
 struct material_runtime_program
 {
-    std::uint32_t contract_version{1};
+    std::uint32_t contract_version{material_pass_contract_version};
     std::uint32_t material_abi{2};
     std::uint64_t generation{1};
     std::vector<material_runtime_pass> passes;

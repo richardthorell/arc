@@ -83,6 +83,8 @@ TEST_CASE("compiled material programs never silently fall back when a pass is un
 
     program.contract_version = arc::render::material_pass_contract_version + 1;
     REQUIRE_FALSE(arc::render::material_program_supports_pass(program, arc::render::material_pass::gbuffer));
+    program.contract_version = 1;
+    REQUIRE_FALSE(arc::render::material_program_supports_pass(program, arc::render::material_pass::gbuffer));
 }
 
 TEST_CASE("compiled routing accepts every raster material pass produced by the cooker")
@@ -120,6 +122,10 @@ TEST_CASE("runtime material compatibility follows the current pass contract and 
     REQUIRE(program.contract_version == arc::render::material_pass_contract_version);
     REQUIRE(program.material_abi == arc::render::material_abi_version);
     REQUIRE(arc::render::material_runtime_program_compatible(program));
+
+    program.contract_version = 1;
+    REQUIRE_FALSE(arc::render::material_runtime_program_compatible(program));
+    program.contract_version = arc::render::material_pass_contract_version;
 
     ++program.material_abi;
     REQUIRE_FALSE(arc::render::material_runtime_program_compatible(program));

@@ -182,6 +182,9 @@ void append_forward_lighting_library(std::ostringstream& source)
 {
     float4 directionIntensity;
     float4 colorFlags;
+    uint4 shadowIdentity;
+    uint4 shadowRouting;
+    float4 shadowParameters;
 };
 
 struct ArcForwardPointLight
@@ -477,7 +480,7 @@ float3 arcEvaluateForwardSurface(ArcSurfaceData surface, ArcSurfaceInput input, 
         float3 lightWS = normalize(-lighting.directionalLights[index].directionIntensity.xyz);
         float3 radiance = lighting.directionalLights[index].colorFlags.rgb *
                           lighting.directionalLights[index].directionIntensity.w;
-        float shadow = index == 0u
+        float shadow = lighting.directionalLights[index].shadowRouting.x != 0u
                            ? arcForwardDirectionalShadow(input.positionWS, surface.normalWS, lightWS)
                            : 1.0;
         direct += arcForwardEvaluateLight(surface, viewWS, lightWS, radiance, shadow);
@@ -697,7 +700,7 @@ material_pass_codegen_result generate_material_pass_slang(const material_evaluat
     if (pass == material_pass::ray_hit)
         return material_pass_codegen_result::failure(
             {.code = shader_compile_error_code::validation_failed,
-             .message = "ray-hit material composition is not implemented by material pass contract v1"});
+             .message = "ray-hit material composition is not implemented by the current material pass contract"});
 
     std::ostringstream pass_source;
     pass_source << evaluator.source;

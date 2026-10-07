@@ -341,8 +341,8 @@ scene_lighting_data pack_scene_lighting(const std::vector<directional_light_even
             .shadow_routing = {static_cast<std::uint32_t>(directional_shadow_representation::none),
                                static_cast<std::uint32_t>(light.shadow.filter),
                                std::numeric_limits<std::uint32_t>::max(), 0u},
-            .shadow_parameters = {std::clamp(light.shadow.strength, 0.0f, 1.0f),
-                                  std::max(light.shadow.bias, 0.0f), std::max(light.shadow.normal_bias, 0.0f), 0.0f}};
+            .shadow_parameters = {std::clamp(light.shadow.strength, 0.0f, 1.0f), std::max(light.shadow.bias, 0.0f),
+                                  std::max(light.shadow.normal_bias, 0.0f), 0.0f}};
     }
 
     for (std::uint32_t index = 0; index < data.point_count; ++index)

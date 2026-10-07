@@ -16,9 +16,6 @@
 namespace arc::render
 {
 
-/** @brief Version of the backend-neutral material/pass composition contract. */
-inline constexpr std::uint32_t material_pass_contract_version = 1;
-
 /**
  * @brief Complete backend-neutral identity of one material render-pass permutation.
  *

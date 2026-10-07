@@ -247,6 +247,16 @@ TEST_CASE("material package v4 round trips deterministic compiled pass bindings 
     REQUIRE(arc::render::tools::serialize_material_package_v4(reversed) == bytes);
 }
 
+TEST_CASE("material packages reject the obsolete directional lighting pass ABI")
+{
+    auto package = compiled_package();
+    package.compiled.contract_version = 1;
+    const auto bytes = arc::render::tools::serialize_material_package_v4(package);
+    const auto decoded = arc::render::tools::deserialize_material_package_v4(bytes);
+    REQUIRE_FALSE(decoded);
+    REQUIRE(decoded.error().code == arc::render::tools::material_asset_error_code::unsupported_version);
+}
+
 TEST_CASE("surface material package v4 rejects missing compiled passes")
 {
     arc::render::tools::material_package_v4 package;

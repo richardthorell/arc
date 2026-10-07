@@ -351,11 +351,11 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
         capabilities.shader_draw_parameters && dynamic_rendering.dynamicRendering == VK_TRUE;
     // Preserve the conventional descriptor layout on minimum-limit adapters.
     capabilities.virtual_shadow_sampling =
-        capabilities.virtual_shadow_allocation && properties.limits.maxPerStageDescriptorSamplers >= 17u &&
-        properties.limits.maxPerStageDescriptorSampledImages >= 17u &&
-        properties.limits.maxDescriptorSetSamplers >= 17u && properties.limits.maxDescriptorSetSampledImages >= 17u &&
+        capabilities.virtual_shadow_allocation && properties.limits.maxPerStageDescriptorSamplers >= 18u &&
+        properties.limits.maxPerStageDescriptorSampledImages >= 18u &&
+        properties.limits.maxDescriptorSetSamplers >= 18u && properties.limits.maxDescriptorSetSampledImages >= 18u &&
         properties.limits.maxPerStageDescriptorStorageBuffers >= 4u &&
-        properties.limits.maxDescriptorSetStorageBuffers >= 4u && properties.limits.maxPerStageResources >= 23u;
+        properties.limits.maxDescriptorSetStorageBuffers >= 4u && properties.limits.maxPerStageResources >= 24u;
     capabilities.virtual_shadow_lights.point = false;
     capabilities.virtual_shadow_lights.spot = false;
     capabilities.virtual_shadow_virtual_geometry = false;
@@ -387,9 +387,9 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.virtual_shadow_rendering = capabilities.virtual_shadow_rendering &&
                                             capabilities.bindless_geometry_tables &&
                                             capabilities.bindless_material_tables;
-    capabilities.virtual_shadow_lights.directional = capabilities.virtual_shadow_feedback &&
-                                                     capabilities.virtual_shadow_rendering &&
-                                                     capabilities.virtual_shadow_sampling;
+    // The canonical compiled forward/Water material passes still sample cascades.
+    // Keep auto-selection conventional until they share the M4 VSM lookup.
+    capabilities.virtual_shadow_lights.directional = false;
     const bool complete_virtual_geometry_compute =
         capabilities.bindless_material_tables && capabilities.hzb_occlusion && capabilities.transfer_queue &&
         supports_storage_sampled(VK_FORMAT_R16G16B16A16_SFLOAT) && supports_storage_sampled(VK_FORMAT_R16G16_SFLOAT) &&
