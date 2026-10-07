@@ -604,7 +604,7 @@ export const createDefaultMaterialGraph = (): MaterialGraph => {
         to: { nodeId: output.id, pin: 'emissive' },
       },
     ],
-    viewport: { x: 40, y: 40, zoom: 0.78 },
+    viewport: { x: 40, y: 40, zoom: 0.85 },
   };
 };
 
