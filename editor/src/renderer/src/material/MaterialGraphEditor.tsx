@@ -26,6 +26,7 @@ import {
   UiContextMenuItem,
   UiIconButton,
   UiNodeCard,
+  UiSelect,
   UiSlider,
   UiTextInput,
   type UiColorValue,
@@ -38,6 +39,7 @@ import {
   isMaterialTextureSampleNodeType,
   materialNodeCategoryOrder,
   materialNodeSubcategoryOrder,
+  type MaterialFunctionAssetJson,
   type MaterialGraph,
   type MaterialGraphConnection,
   type MaterialGraphNode,
@@ -152,6 +154,104 @@ const colorValue = (value: unknown): UiColorValue => {
   };
 };
 
+type MaterialFunctionAssetOption = {
+  label: string;
+  path: string;
+  sourcePath: string;
+  scope: 'builtin' | 'project';
+};
+
+function MaterialFunctionCallEditor({
+  node,
+  readOnly,
+  onChange,
+}: {
+  node: MaterialGraphNode;
+  readOnly: boolean;
+  onChange: (node: MaterialGraphNode) => void;
+}) {
+  const [functions, setFunctions] = useState<MaterialFunctionAssetOption[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.arc.host
+      .query('project.assets')
+      .then((response: unknown) => {
+        if (cancelled || !response || typeof response !== 'object') return;
+        const payload = (response as { payload?: { assets?: Array<Record<string, unknown>> } }).payload;
+        const next = (payload?.assets ?? []).flatMap((asset) => {
+          if (asset.kind !== 'materialFunction') return [];
+          const path = typeof asset.path === 'string' ? asset.path : '';
+          const sourcePath = typeof asset.sourcePath === 'string' ? asset.sourcePath : path;
+          if (!sourcePath) return [];
+          return [
+            {
+              label:
+                typeof asset.title === 'string' && asset.title.trim()
+                  ? asset.title
+                  : sourcePath.split('/').at(-1)?.replace(/\.arcmatfn$/i, '') ?? sourcePath,
+              path,
+              sourcePath,
+              scope: asset.scope === 'builtin' ? ('builtin' as const) : ('project' as const),
+            },
+          ];
+        });
+        next.sort((left, right) => left.label.localeCompare(right.label));
+        setFunctions(next);
+      })
+      .catch(() => {
+        if (!cancelled) setFunctions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedPath = typeof node.values.path === 'string' ? node.values.path : '';
+  const options = [
+    { value: '', label: 'Select function…' },
+    ...functions.map((asset) => ({ value: asset.sourcePath, label: asset.label })),
+  ];
+
+  return (
+    <div className="material-node-inline-value">
+      <UiSelect
+        ariaLabel="Material Function"
+        disabled={readOnly}
+        options={options}
+        value={selectedPath}
+        onValueChange={(value) => {
+          const asset = functions.find((candidate) => candidate.sourcePath === value);
+          if (!asset) {
+            onChange({
+              ...node,
+              values: { ...node.values, path: '', name: 'Material Function', inputPins: [], outputPins: [] },
+            });
+            return;
+          }
+          void window.arc.projects
+            .readText(asset.sourcePath, asset.scope)
+            .then((file) => {
+              const parsed = JSON.parse(file.text) as MaterialFunctionAssetJson;
+              if (parsed.kind !== 'materialFunction' || parsed.version !== 1) return;
+              onChange({
+                ...node,
+                values: {
+                  ...node.values,
+                  path: asset.sourcePath,
+                  name: parsed.name,
+                  inputPins: parsed.inputs,
+                  outputPins: parsed.outputs,
+                },
+              });
+            })
+            .catch(() => undefined);
+        }}
+      />
+    </div>
+  );
+}
+
 function MaterialNodeValueEditor({
   node,
   readOnly,
@@ -218,6 +318,9 @@ function MaterialNodeValueEditor({
 
   if (isMaterialTextureSampleNodeType(node.type))
     return <MaterialTextureSampleEditor node={node} readOnly={readOnly} onChange={onChange} />;
+
+  if (node.type === 'functionCall')
+    return <MaterialFunctionCallEditor node={node} readOnly={readOnly} onChange={onChange} />;
 
   if (node.type === 'normalMap')
     return (
@@ -415,7 +518,7 @@ export function MaterialGraphEditor({
         ...viewport,
         ...patch,
       }),
-    [document, viewport],
+    [commitViewport, viewport],
   );
 
   const frameAll = useCallback(() => {
@@ -423,7 +526,7 @@ export function MaterialGraphEditor({
     if (!rect || rect.width <= 0 || rect.height <= 0 || graph.nodes.length === 0) return false;
     commitViewport(frameMaterialGraphViewport(graph, rect.width, rect.height));
     return true;
-  }, [commitGraph, document, graph]);
+  }, [commitViewport, graph]);
 
   const setZoomAroundCenter = useCallback(
     (requestedZoom: number) => {
@@ -450,7 +553,7 @@ export function MaterialGraphEditor({
     if (rect && rect.width > 0 && rect.height > 0)
       arranged.viewport = frameMaterialGraphViewport(arranged, rect.width, rect.height);
     commitGraph(arranged, { message: 'Auto-arranged material graph' });
-  }, [document, graph]);
+  }, [commitGraph, document, graph]);
 
   useLayoutEffect(() => {
     if (!loaded || autoFramedDocumentRef.current === document.id || graph.nodes.length === 0) return;
