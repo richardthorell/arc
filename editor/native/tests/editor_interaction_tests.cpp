@@ -776,7 +776,7 @@ TEST_CASE("editor can add a selected primitive mesh entity")
     REQUIRE(scene.scene.get<arc::scene::mesh_renderer_component>(entity).material == scene.primitive_material);
 }
 
-TEST_CASE("editor primitives bind the authored built-in default phong material")
+TEST_CASE("editor primitives bind the authored built-in Standard Lit material")
 {
     const auto root = std::filesystem::temp_directory_path() /
                       ("arc_editor_default_primitive_material_" +
@@ -784,8 +784,8 @@ TEST_CASE("editor primitives bind the authored built-in default phong material")
     const auto builtin_root = root / "builtin";
     std::filesystem::create_directories(builtin_root / "materials");
 
-    auto authored = arc::editor::make_default_material_asset("Default Phong");
-    authored.path = builtin_root / "materials" / "default_phong.arcmat";
+    auto authored = arc::editor::make_default_material_asset("Standard Lit");
+    authored.path = builtin_root / "materials" / "standard_lit.arcmat";
     authored.material.base_color = {0.82f, 0.84f, 0.78f, 1.0f};
     authored.material.roughness = 0.62f;
     std::string message;
@@ -800,9 +800,9 @@ TEST_CASE("editor primitives bind the authored built-in default phong material")
     REQUIRE(default_material.valid());
     REQUIRE(scene.primitive_material == default_material);
     REQUIRE(scene.primitive_material_asset.expected_type == arc::assets::asset_types::material);
-    REQUIRE(scene.primitive_material_asset.path_hint == "builtin/materials/default_phong.arcmat");
+    REQUIRE(scene.primitive_material_asset.path_hint == "builtin/materials/standard_lit.arcmat");
     REQUIRE(scene.material_library.materials.size() == 1);
-    REQUIRE(scene.material_library.materials.front().asset.name == "Default Phong");
+    REQUIRE(scene.material_library.materials.front().asset.name == "Standard Lit");
 
     const auto entity = arc::editor::add_primitive_to_scene(scene, renderer, arc::editor::editor_primitive_type::cube);
     REQUIRE(scene.scene.alive(entity));
@@ -810,7 +810,7 @@ TEST_CASE("editor primitives bind the authored built-in default phong material")
     const auto* binding = arc::editor::find_asset_binding(scene, arc::editor::entity_guid_of(scene, entity));
     REQUIRE(binding != nullptr);
     REQUIRE(binding->material.expected_type == arc::assets::asset_types::material);
-    REQUIRE(binding->material.path_hint == "builtin/materials/default_phong.arcmat");
+    REQUIRE(binding->material.path_hint == "builtin/materials/standard_lit.arcmat");
 
     std::error_code cleanup_error;
     std::filesystem::remove_all(root, cleanup_error);
