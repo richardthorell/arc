@@ -266,8 +266,25 @@ Texture2D<float4> arcForwardSceneColor : register(t5, space2);
 SamplerState arcForwardSceneColorSampler : register(s6, space2);
 ConstantBuffer<ArcForwardShadowData> arcForwardShadows : register(b7, space2);
 ConstantBuffer<ArcForwardSceneData> arcForwardScene : register(b8, space2);
+StructuredBuffer<uint> arcForwardClusterWords : register(t9, space2);
 
 static const float ARC_FORWARD_PI = 3.14159265358979323846;
+
+uint arcForwardClusterIndex(float2 screenUv, float3 worldPosition)
+{
+    uint tilesX = max(arcForwardClusterWords[1], 1u);
+    uint tilesY = max(arcForwardClusterWords[2], 1u);
+    uint slices = max(arcForwardClusterWords[3], 1u);
+    uint tileX = min(uint(saturate(screenUv.x) * float(tilesX)), tilesX - 1u);
+    uint tileY = min(uint(saturate(screenUv.y) * float(tilesY)), tilesY - 1u);
+    float nearPlane = max(asfloat(arcForwardClusterWords[6]), 0.001);
+    float farPlane = max(asfloat(arcForwardClusterWords[7]), nearPlane + 0.001);
+    float cameraDistance = clamp(length(worldPosition - arcForwardScene.cameraPositionViewportWidth.xyz),
+                                 nearPlane, farPlane);
+    float normalized = log(cameraDistance / nearPlane) / log(farPlane / nearPlane);
+    uint slice = min(uint(max(normalized, 0.0) * float(slices)), slices - 1u);
+    return (slice * tilesY + tileY) * tilesX + tileX;
+}
 
 float3 arcForwardF0FromIor(float ior)
 {
@@ -466,54 +483,68 @@ float3 arcEvaluateForwardSurface(ArcSurfaceData surface, ArcSurfaceInput input, 
         direct += arcForwardEvaluateLight(surface, viewWS, lightWS, radiance, shadow);
     }
 
-    [loop]
-    for (uint index = 0u; index < min(lighting.pointCount, 64u); ++index)
-    {
-        ArcForwardPointLight light = lighting.pointLights[index];
-        float3 toLight = light.positionRange.xyz - input.positionWS;
-        float distanceSquared = max(dot(toLight, toLight), 1e-4);
-        float distanceToLight = sqrt(distanceSquared);
-        float normalizedRange = saturate(distanceToLight / max(light.positionRange.w, 1e-4));
-        float cutoff = 1.0 - pow(normalizedRange, 4.0);
-        float3 radiance = light.colorIntensity.rgb * light.colorIntensity.w * cutoff * cutoff / distanceSquared;
-        direct += arcForwardEvaluateLight(surface, viewWS, toLight / distanceToLight, radiance,
-                                          arcForwardPointShadow(light, input.positionWS));
-    }
+    float2 clusterScreenUv =
+        passInput.clipPosition.xy / max(abs(passInput.clipPosition.w), 1e-5) * float2(0.5, -0.5) + 0.5;
+    uint cluster = arcForwardClusterIndex(clusterScreenUv, input.positionWS);
+    uint maximumReferences = max(arcForwardClusterWords[4], 1u);
+    uint recordWords = 1u + maximumReferences;
+    uint record = 12u + cluster * recordWords;
+    uint localCount = min(arcForwardClusterWords[record], maximumReferences);
 
     [loop]
-    for (uint index = 0u; index < min(lighting.spotCount, 64u); ++index)
+    for (uint localIndex = 0u; localIndex < localCount; ++localIndex)
     {
-        ArcForwardSpotLight light = lighting.spotLights[index];
-        float3 toLight = light.positionRange.xyz - input.positionWS;
-        float distanceSquared = max(dot(toLight, toLight), 1e-4);
-        float distanceToLight = sqrt(distanceSquared);
-        float3 lightWS = toLight / distanceToLight;
-        float normalizedRange = saturate(distanceToLight / max(light.positionRange.w, 1e-4));
-        float cutoff = 1.0 - pow(normalizedRange, 4.0);
-        float cone = smoothstep(cos(light.params.x), cos(light.directionInnerAngle.w),
-                                dot(-lightWS, normalize(light.directionInnerAngle.xyz)));
-        float3 radiance = light.colorIntensity.rgb * light.colorIntensity.w *
-                          cutoff * cutoff * cone / distanceSquared;
-        direct += arcForwardEvaluateLight(surface, viewWS, lightWS, radiance,
-                                          arcForwardSpotShadow(light, input.positionWS));
-    }
-
-    [loop]
-    for (uint index = 0u; index < min(lighting.areaCount, 32u); ++index)
-    {
-        ArcForwardAreaLight light = lighting.areaLights[index];
-        float3 toLight = light.positionShape.xyz - input.positionWS;
-        float distanceSquared = max(dot(toLight, toLight), 1e-4);
-        float distanceToLight = sqrt(distanceSquared);
-        float3 lightWS = toLight / distanceToLight;
-        float facing = dot(normalize(light.directionTwoSided.xyz), -lightWS);
-        facing = light.directionTwoSided.w > 0.5 ? abs(facing) : max(facing, 0.0);
-        float width = max(light.tangentWidth.w, 1e-4);
-        float height = max(light.dimensionsShadow.y, 1e-4);
-        float area = light.positionShape.w > 0.5 ? ARC_FORWARD_PI * width * height * 0.25 : width * height;
-        float3 radiance = light.colorIntensity.rgb * light.colorIntensity.w *
-                          min(area * facing / distanceSquared, 2.0 * ARC_FORWARD_PI);
-        direct += arcForwardEvaluateLight(surface, viewWS, lightWS, radiance, 1.0);
+        uint reference = arcForwardClusterWords[record + 1u + localIndex];
+        uint kind = reference >> 30u;
+        uint index = reference & 0x3fffffffu;
+        if (kind == 0u && index < min(lighting.pointCount, 64u))
+        {
+            ArcForwardPointLight light = lighting.pointLights[index];
+            float3 toLight = light.positionRange.xyz - input.positionWS;
+            float distanceSquared = max(dot(toLight, toLight), 1e-4);
+            float distanceToLight = sqrt(distanceSquared);
+            float normalizedRange = saturate(distanceToLight / max(light.positionRange.w, 1e-4));
+            float cutoff = 1.0 - pow(normalizedRange, 4.0);
+            float3 radiance = light.colorIntensity.rgb * light.colorIntensity.w * cutoff * cutoff / distanceSquared;
+            direct += arcForwardEvaluateLight(surface, viewWS, toLight / distanceToLight, radiance,
+                                              arcForwardPointShadow(light, input.positionWS));
+        }
+        else if (kind == 1u && index < min(lighting.spotCount, 64u))
+        {
+            ArcForwardSpotLight light = lighting.spotLights[index];
+            float3 toLight = light.positionRange.xyz - input.positionWS;
+            float distanceSquared = max(dot(toLight, toLight), 1e-4);
+            float distanceToLight = sqrt(distanceSquared);
+            float3 lightWS = toLight / distanceToLight;
+            float normalizedRange = saturate(distanceToLight / max(light.positionRange.w, 1e-4));
+            float cutoff = 1.0 - pow(normalizedRange, 4.0);
+            float outerCosine = cos(light.params.x);
+            float innerCosine = cos(light.directionInnerAngle.w);
+            float cone = smoothstep(outerCosine, max(innerCosine, outerCosine + 1e-5),
+                                    dot(-lightWS, normalize(light.directionInnerAngle.xyz)));
+            float3 radiance = light.colorIntensity.rgb * light.colorIntensity.w *
+                              cutoff * cutoff * cone / distanceSquared;
+            direct += arcForwardEvaluateLight(surface, viewWS, lightWS, radiance,
+                                              arcForwardSpotShadow(light, input.positionWS));
+        }
+        else if (kind == 2u && index < min(lighting.areaCount, 32u))
+        {
+            ArcForwardAreaLight light = lighting.areaLights[index];
+            float3 toLight = light.positionShape.xyz - input.positionWS;
+            float distanceSquared = max(dot(toLight, toLight), 1e-4);
+            float distanceToLight = sqrt(distanceSquared);
+            float3 lightWS = toLight / distanceToLight;
+            float facing = dot(normalize(light.directionTwoSided.xyz), -lightWS);
+            facing = light.directionTwoSided.w > 0.5 ? abs(facing) : max(facing, 0.0);
+            float width = max(light.tangentWidth.w, 1e-4);
+            float height = max(light.dimensionsShadow.y, 1e-4);
+            float area = light.positionShape.w > 0.5
+                             ? ARC_FORWARD_PI * width * height * 0.25
+                             : width * height;
+            float3 radiance = light.colorIntensity.rgb * light.colorIntensity.w *
+                              min(area * facing / distanceSquared, 2.0 * ARC_FORWARD_PI);
+            direct += arcForwardEvaluateLight(surface, viewWS, lightWS, radiance, 1.0);
+        }
     }
 
     float roughness = clamp(surface.roughness, 0.04, 1.0);
