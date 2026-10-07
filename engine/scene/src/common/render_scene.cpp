@@ -218,20 +218,21 @@ void append_water_authoring_overlay(render::debug_overlay_stream& stream, const 
         tangent = math::normalize(tangent);
         const math::vector3f side{-tangent[2], 0.0f, tangent[0]};
         const float half_width = point.width * 0.5f;
-        line(world_point(point.position - side * half_width), world_point(point.position + side * half_width),
+        line(world_point(math::sub(point.position, math::mul(side, half_width))),
+             world_point(math::add(point.position, math::mul(side, half_width))),
              metadata_color);
 
         if (std::abs(point.flow_speed) > 1.0e-4f)
         {
             const float direction = point.flow_speed < 0.0f ? -1.0f : 1.0f;
             const float arrow_length = std::max(0.5f, std::min(3.0f, std::abs(point.flow_speed)));
-            const auto tip_local = point.position + tangent * (direction * arrow_length);
+            const auto tip_local = math::add(point.position, math::mul(tangent, direction * arrow_length));
             const auto tip = world_point(tip_local);
             line(position, tip, flow_color, render::debug_overlay_depth_mode::always);
-            const auto back = tangent * (direction * -0.28f * arrow_length);
-            const auto wing = side * (0.14f * arrow_length);
-            line(tip, world_point(tip_local + back + wing), flow_color, render::debug_overlay_depth_mode::always);
-            line(tip, world_point(tip_local + back - wing), flow_color, render::debug_overlay_depth_mode::always);
+            const auto back = math::mul(tangent, direction * -0.28f * arrow_length);
+            const auto wing = math::mul(side, 0.14f * arrow_length);
+            line(tip, world_point(math::add(tip_local, math::add(back, wing))), flow_color, render::debug_overlay_depth_mode::always);
+            line(tip, world_point(math::sub(math::add(tip_local, back), wing)), flow_color, render::debug_overlay_depth_mode::always);
         }
     }
 
