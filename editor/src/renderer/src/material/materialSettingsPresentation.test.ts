@@ -66,9 +66,9 @@ describe('material settings presentation', () => {
     const output = featureGraph.nodes.find((node) => node.type === 'output');
     const source = featureGraph.nodes.find((node) => node.type === 'constant');
     featureGraph.connections.push({
-      id: 'test-clear-coat',
+      id: 'test-clear-coat-normal',
       from: { nodeId: source!.id, pin: 'value' },
-      to: { nodeId: output!.id, pin: 'clearCoat' },
+      to: { nodeId: output!.id, pin: 'clearCoatNormal' },
     });
     expect(
       materialRenderPathLabel({
