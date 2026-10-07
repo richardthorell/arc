@@ -142,6 +142,35 @@ describe('material graph schema', () => {
     expect(graph.connections).toHaveLength(23);
   });
 
+  it('presents scalar constants as Scalar while keeping the stable serialized type', () => {
+    expect(materialNodeDefinitions.constant.title).toBe('Scalar');
+  });
+
+  it('accepts valid Scalar ranges and rejects malformed persisted ranges', () => {
+    const graph = createDefaultMaterialGraph();
+    const scalar = graph.nodes.find((node) => node.type === 'constant');
+    expect(scalar).toBeDefined();
+
+    scalar!.values = { ...scalar!.values, value: 0.5, min: 0, max: 1 };
+    expect(isMaterialGraph(graph)).toBe(true);
+
+    const inverted = JSON.parse(JSON.stringify(graph));
+    inverted.nodes.find((node: { type: string }) => node.type === 'constant').values = {
+      value: 0.5,
+      min: 1,
+      max: 0,
+    };
+    expect(isMaterialGraph(inverted)).toBe(false);
+
+    const outside = JSON.parse(JSON.stringify(graph));
+    outside.nodes.find((node: { type: string }) => node.type === 'constant').values = {
+      value: 2,
+      min: 0,
+      max: 1,
+    };
+    expect(isMaterialGraph(outside)).toBe(false);
+  });
+
   it('exposes only the modern Color node for authoring', () => {
     expect(materialNodeDefinitions).toHaveProperty('colorRgba');
     expect(materialNodeDefinitions).not.toHaveProperty('colorRgb');
