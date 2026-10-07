@@ -338,7 +338,7 @@ bool vulkan_render_backend::ensure_white_texture()
         return false;
 
     if (white_descriptor_set_layout_ != VK_NULL_HANDLE && white_descriptor_pool_ != VK_NULL_HANDLE &&
-        white_view_ != VK_NULL_HANDLE && white_sampler_ != VK_NULL_HANDLE)
+        white_view_ != VK_NULL_HANDLE && neutral_normal_view_ != VK_NULL_HANDLE && white_sampler_ != VK_NULL_HANDLE)
     {
         return ensure_white_descriptor_sets();
     }
@@ -382,16 +382,21 @@ bool vulkan_render_backend::ensure_white_texture()
     allocation.usage = VMA_MEMORY_USAGE_GPU_ONLY;
     if (vmaCreateImage(allocator_, &image, &allocation, &white_image_, &white_allocation_, nullptr) != VK_SUCCESS)
         return false;
+    if (vmaCreateImage(allocator_, &image, &allocation, &neutral_normal_image_, &neutral_normal_allocation_, nullptr) !=
+        VK_SUCCESS)
+        return false;
 
     VkImageViewCreateInfo view{};
     view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    view.image = white_image_;
     view.viewType = VK_IMAGE_VIEW_TYPE_2D;
     view.format = VK_FORMAT_R8G8B8A8_UNORM;
     view.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     view.subresourceRange.levelCount = 1;
     view.subresourceRange.layerCount = 1;
+    view.image = white_image_;
     if (vkCreateImageView(device_, &view, nullptr, &white_view_) != VK_SUCCESS) return false;
+    view.image = neutral_normal_image_;
+    if (vkCreateImageView(device_, &view, nullptr, &neutral_normal_view_) != VK_SUCCESS) return false;
 
     VkSamplerCreateInfo sampler{};
     sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -403,13 +408,13 @@ bool vulkan_render_backend::ensure_white_texture()
     sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     if (vkCreateSampler(device_, &sampler, nullptr, &white_sampler_) != VK_SUCCESS) return false;
 
-    const std::uint32_t white = 0xffffffffu;
+    constexpr std::array<std::uint32_t, 2> fallback_pixels{0xffffffffu, 0xffff8080u};
     gpu_buffer staging;
-    if (!create_buffer(sizeof(white), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, staging))
+    if (!create_buffer(sizeof(fallback_pixels), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, staging))
         return false;
     void* mapped{};
     vmaMapMemory(allocator_, staging.allocation, &mapped);
-    std::memcpy(mapped, &white, sizeof(white));
+    std::memcpy(mapped, fallback_pixels.data(), sizeof(fallback_pixels));
     vmaUnmapMemory(allocator_, staging.allocation);
 
     VkCommandPool pool{};
@@ -430,19 +435,23 @@ bool vulkan_render_backend::ensure_white_texture()
     begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(command_buffer, &begin);
 
-    VkImageMemoryBarrier to_copy{};
-    to_copy.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    to_copy.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    to_copy.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    to_copy.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    to_copy.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    to_copy.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    to_copy.image = white_image_;
-    to_copy.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    to_copy.subresourceRange.levelCount = 1;
-    to_copy.subresourceRange.layerCount = 1;
+    std::array<VkImageMemoryBarrier, 2> to_copy{};
+    for (auto& barrier : to_copy)
+    {
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.levelCount = 1;
+        barrier.subresourceRange.layerCount = 1;
+    }
+    to_copy[0].image = white_image_;
+    to_copy[1].image = neutral_normal_image_;
     vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0,
-                         nullptr, 0, nullptr, 1, &to_copy);
+                         nullptr, 0, nullptr, static_cast<std::uint32_t>(to_copy.size()), to_copy.data());
 
     VkBufferImageCopy copy{};
     copy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -450,14 +459,20 @@ bool vulkan_render_backend::ensure_white_texture()
     copy.imageExtent = {1, 1, 1};
     vkCmdCopyBufferToImage(command_buffer, staging.buffer, white_image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
                            &copy);
+    copy.bufferOffset = sizeof(std::uint32_t);
+    vkCmdCopyBufferToImage(command_buffer, staging.buffer, neutral_normal_image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                           1, &copy);
 
-    VkImageMemoryBarrier to_shader = to_copy;
-    to_shader.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    to_shader.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    to_shader.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    to_shader.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    auto to_shader = to_copy;
+    for (auto& barrier : to_shader)
+    {
+        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    }
     vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0,
-                         nullptr, 0, nullptr, 1, &to_shader);
+                         nullptr, 0, nullptr, static_cast<std::uint32_t>(to_shader.size()), to_shader.data());
     vkEndCommandBuffer(command_buffer);
 
     submit_upload_commands(command_buffer);
