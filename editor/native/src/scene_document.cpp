@@ -267,7 +267,7 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
     const bool supports_v3 = name == "Terrain" || name == "Water" || name == "Camera" || name == "MeshRenderer" ||
                              name == "DirectionalLight" || name == "PointLight" || name == "SpotLight" ||
                              name == "AreaLight";
-    const bool supports_v4 = name == "MeshRenderer" || name == "Terrain";
+    const bool supports_v4 = name == "MeshRenderer" || name == "Terrain" || name == "Water";
     const bool supports_v5 = name == "MeshRenderer";
     if (component_version != 1u && !(supports_v2 && component_version == 2u) &&
         !(supports_v3 && component_version == 3u) && !(supports_v4 && component_version == 4u) &&
@@ -554,6 +554,10 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
             !value["queriesEnabled"].is_boolean() || !value.contains("buoyancyEnabled") ||
             !value["buoyancyEnabled"].is_boolean())
             return fail("has invalid Water feature settings");
+        if (component_version >= 4u &&
+            (!value.contains("presetOverrides") || !value["presetOverrides"].is_number_unsigned() ||
+             value["presetOverrides"].get<std::uint32_t>() > scene::water_preset_override_all))
+            return fail("has invalid Water preset override metadata");
         if (component_version >= 3u)
         {
             if (!value.contains("shape") || !value["shape"].is_object())
@@ -1179,7 +1183,7 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                                     {"width", point.width},
                                     {"depth", point.depth},
                                     {"flow", point.flow_speed}});
-        components["Water"] = {{"version", 3},
+        components["Water"] = {{"version", 4},
                                {"type", static_cast<std::uint8_t>(component->type)},
                                {"preset", serialize_asset_reference(component->preset, project_root)},
                                {"material", serialize_asset_reference(component->material, project_root)},
@@ -1188,6 +1192,7 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                                {"followCamera", component->follow_camera},
                                {"visibleDistance", component->visible_distance},
                                {"priority", component->priority},
+                               {"presetOverrides", component->preset_overrides},
                                {"shape", {{"closed", component->shape.closed}, {"points", std::move(shape_points)}}},
                                {"simulation",
                                 {{"windSpeed", component->settings.simulation.wind_speed},
@@ -1967,6 +1972,7 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                     value.follow_camera = source.at("followCamera").get<bool>();
                     value.visible_distance = source.at("visibleDistance").get<float>();
                     value.priority = source.at("priority").get<std::int32_t>();
+                    value.preset_overrides = source.value("presetOverrides", std::uint32_t{});
 
                     const auto& simulation = source.at("simulation");
                     value.settings.simulation.wind_speed = simulation.at("windSpeed").get<float>();
