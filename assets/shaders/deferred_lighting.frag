@@ -14,21 +14,6 @@ layout(std430, set = 0, binding = 12) readonly buffer arc_clustered_light_buffer
     uint words[];
 } clustered_lights;
 
-uint arc_cluster_index(vec2 uv, vec3 world_position)
-{
-    uint tiles_x = max(clustered_lights.words[1], 1u);
-    uint tiles_y = max(clustered_lights.words[2], 1u);
-    uint slices = max(clustered_lights.words[3], 1u);
-    uint tile_x = min(uint(clamp(uv.x, 0.0, 0.999999) * float(tiles_x)), tiles_x - 1u);
-    uint tile_y = min(uint(clamp(uv.y, 0.0, 0.999999) * float(tiles_y)), tiles_y - 1u);
-    float near_plane = max(uintBitsToFloat(clustered_lights.words[6]), 0.001);
-    float far_plane = max(uintBitsToFloat(clustered_lights.words[7]), near_plane + 0.001);
-    float distance_to_camera = clamp(length(world_position - constants.camera_position.xyz), near_plane, far_plane);
-    float normalized = log(distance_to_camera / near_plane) / log(far_plane / near_plane);
-    uint slice = min(uint(max(normalized, 0.0) * float(slices)), slices - 1u);
-    return (slice * tiles_y + tile_y) * tiles_x + tile_x;
-}
-
 layout(location = 0) in vec2 in_uv;
 layout(location = 0) out vec4 out_color;
 
@@ -49,6 +34,22 @@ layout(push_constant) uniform deferred_constants
     vec4 light_color;
     vec4 ambient_visualization;
 } constants;
+
+uint arc_cluster_index(vec2 uv, vec3 world_position)
+{
+    uint tiles_x = max(clustered_lights.words[1], 1u);
+    uint tiles_y = max(clustered_lights.words[2], 1u);
+    uint slices = max(clustered_lights.words[3], 1u);
+    uint tile_x = min(uint(clamp(uv.x, 0.0, 0.999999) * float(tiles_x)), tiles_x - 1u);
+    uint tile_y = min(uint(clamp(uv.y, 0.0, 0.999999) * float(tiles_y)), tiles_y - 1u);
+    float near_plane = max(uintBitsToFloat(clustered_lights.words[6]), 0.001);
+    float far_plane = max(uintBitsToFloat(clustered_lights.words[7]), near_plane + 0.001);
+    float distance_to_camera = clamp(length(world_position - constants.camera_position.xyz), near_plane, far_plane);
+    float normalized = log(distance_to_camera / near_plane) / log(far_plane / near_plane);
+    uint slice = min(uint(max(normalized, 0.0) * float(slices)), slices - 1u);
+    return (slice * tiles_y + tile_y) * tiles_x + tile_x;
+}
+
 
 vec3 reconstruct_world_position(vec2 uv, float depth)
 {
