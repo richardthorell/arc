@@ -61,7 +61,10 @@ export type MaterialGraphNodeType =
   | 'sign'
   | 'distance'
   | 'length'
-  | 'normalMap';
+  | 'normalMap'
+  | 'functionInput'
+  | 'functionOutput'
+  | 'functionCall';
 
 export type MaterialGraphPosition = [number, number];
 
@@ -102,6 +105,23 @@ export type MaterialGraph = {
   viewport?: MaterialGraphViewport;
 };
 
+export type MaterialFunctionPin = {
+  id: string;
+  name: string;
+  type: Exclude<MaterialGraphValueType, 'texture2d'>;
+  default?: number | number[];
+};
+
+export type MaterialFunctionAssetJson = {
+  kind: 'materialFunction';
+  version: 1;
+  name: string;
+  description?: string;
+  inputs: MaterialFunctionPin[];
+  outputs: MaterialFunctionPin[];
+  graph: MaterialGraph;
+};
+
 export type MaterialAssetJson = Record<string, unknown> & {
   version?: number;
   name?: string;
@@ -120,7 +140,7 @@ export type MaterialNodePin = {
   type: MaterialGraphPinType;
 };
 
-export type MaterialNodeCategory = 'Output' | 'Values' | 'Textures' | 'Math' | 'Utility';
+export type MaterialNodeCategory = 'Output' | 'Values' | 'Textures' | 'Math' | 'Utility' | 'Functions';
 export type MaterialNodeSubcategory =
   | 'Surface'
   | 'Constants'
@@ -134,7 +154,9 @@ export type MaterialNodeSubcategory =
   | 'Comparison'
   | 'Measurement'
   | 'Coordinates'
-  | 'Animation';
+  | 'Animation'
+  | 'Composition'
+  | 'Boundary';
 
 export type MaterialNodeDefinition = {
   type: MaterialGraphNodeType;
@@ -185,7 +207,7 @@ const binaryMath = (
   defaultValues: {},
 });
 
-export const materialNodeCategoryOrder: MaterialNodeCategory[] = ['Values', 'Textures', 'Math', 'Utility'];
+export const materialNodeCategoryOrder: MaterialNodeCategory[] = ['Values', 'Textures', 'Functions', 'Math', 'Utility'];
 
 export const materialNodeSubcategoryOrder: Record<
   Exclude<MaterialNodeCategory, 'Output'>,
@@ -195,6 +217,7 @@ export const materialNodeSubcategoryOrder: Record<
   Textures: ['Sampling'],
   Math: ['Arithmetic', 'Rounding', 'Exponential', 'Trigonometry', 'Range & Interpolation', 'Comparison', 'Measurement'],
   Utility: ['Coordinates', 'Animation'],
+  Functions: ['Composition', 'Boundary'],
 };
 
 export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNodeDefinition> = {
@@ -442,6 +465,33 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     outputs: [pin('normal', 'Normal', 'vec3')],
     defaultValues: { strength: 1 },
   },
+  functionInput: {
+    type: 'functionInput',
+    title: 'Function Input',
+    category: 'Functions',
+    subcategory: 'Boundary',
+    inputs: [],
+    outputs: [pin('value', 'Value', 'float')],
+    defaultValues: { input: '', name: 'Input', valueType: 'float' },
+  },
+  functionOutput: {
+    type: 'functionOutput',
+    title: 'Function Output',
+    category: 'Output',
+    subcategory: 'Boundary',
+    inputs: [],
+    outputs: [],
+    defaultValues: { pins: [] },
+  },
+  functionCall: {
+    type: 'functionCall',
+    title: 'Material Function',
+    category: 'Functions',
+    subcategory: 'Composition',
+    inputs: [],
+    outputs: [],
+    defaultValues: { path: '', name: 'Material Function', inputPins: [], outputPins: [] },
+  },
 };
 
 let generatedId = 0;
@@ -467,6 +517,58 @@ export const materialGraphCompileFingerprint = (graph: MaterialGraph): string =>
     })),
     connections: graph.connections,
   });
+
+const materialFunctionPins = (value: unknown): MaterialFunctionPin[] =>
+  Array.isArray(value)
+    ? value.flatMap((candidate) => {
+        if (!candidate || typeof candidate !== 'object') return [];
+        const pinValue = candidate as Partial<MaterialFunctionPin>;
+        if (
+          typeof pinValue.id !== 'string' ||
+          typeof pinValue.name !== 'string' ||
+          (pinValue.type !== 'float' && pinValue.type !== 'vec2' && pinValue.type !== 'vec3' && pinValue.type !== 'vec4')
+        )
+          return [];
+        return [{ id: pinValue.id, name: pinValue.name, type: pinValue.type, default: pinValue.default }];
+      })
+    : [];
+
+export const createDefaultMaterialFunction = (name: string): MaterialFunctionAssetJson => {
+  const input: MaterialFunctionPin = { id: 'value', name: 'Value', type: 'vec3' };
+  const output: MaterialFunctionPin = { id: 'result', name: 'Result', type: 'vec3' };
+  const inputNode: MaterialGraphNode = {
+    id: 'function-input-value',
+    type: 'functionInput',
+    position: [80, 120],
+    values: { input: input.id, name: input.name, valueType: input.type },
+  };
+  const outputNode: MaterialGraphNode = {
+    id: 'function-output',
+    type: 'functionOutput',
+    position: [520, 120],
+    values: { pins: [output] },
+  };
+  return {
+    kind: 'materialFunction',
+    version: 1,
+    name,
+    description: '',
+    inputs: [input],
+    outputs: [output],
+    graph: {
+      version: 1,
+      nodes: [inputNode, outputNode],
+      connections: [
+        {
+          id: materialGraphId('connection'),
+          from: { nodeId: inputNode.id, pin: 'value' },
+          to: { nodeId: outputNode.id, pin: output.id },
+        },
+      ],
+      viewport: { x: 40, y: 40, zoom: 1 },
+    },
+  };
+};
 
 export const createMaterialNode = (
   type: MaterialGraphNodeType,
@@ -709,6 +811,36 @@ export const materialTextureDimension = (node: MaterialGraphNode): MaterialTextu
 
 export const materialNodeDefinition = (node: MaterialGraphNode): MaterialNodeDefinition => {
   const definition = materialNodeDefinitions[node.type];
+
+  if (node.type === 'functionInput') {
+    const type =
+      node.values.valueType === 'vec2' ||
+      node.values.valueType === 'vec3' ||
+      node.values.valueType === 'vec4'
+        ? node.values.valueType
+        : 'float';
+    const label = typeof node.values.name === 'string' && node.values.name.trim() ? node.values.name : 'Input';
+    return { ...definition, title: label, outputs: [pin('value', label, type)] };
+  }
+
+  if (node.type === 'functionOutput') {
+    const pins = materialFunctionPins(node.values.pins);
+    return { ...definition, inputs: pins.map((value) => pin(value.id, value.name, value.type)) };
+  }
+
+  if (node.type === 'functionCall') {
+    const inputs = materialFunctionPins(node.values.inputPins);
+    const outputs = materialFunctionPins(node.values.outputPins);
+    const title =
+      typeof node.values.name === 'string' && node.values.name.trim() ? node.values.name : definition.title;
+    return {
+      ...definition,
+      title,
+      inputs: inputs.map((value) => pin(value.id, value.name, value.type)),
+      outputs: outputs.map((value) => pin(value.id, value.name, value.type)),
+    };
+  }
+
   if (node.type !== 'textureSample') return definition;
 
   const dimension = materialTextureDimension(node);
