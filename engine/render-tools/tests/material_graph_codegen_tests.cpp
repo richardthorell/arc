@@ -83,6 +83,32 @@ TEST_CASE("Material IR codegen deterministically implements the full material AB
                                 [](const auto& entry) { return entry.second == "z-texture"; }));
 }
 
+TEST_CASE("Material IR codegen transforms tangent-space normal maps into world space")
+{
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"normal-texture","type":"textureSample2D","values":{"semantic":"normal"}},
+        {"id":"normal-map","type":"normalMap","values":{"strength":1.0}}
+      ],
+      "connections":[
+        {"id":"1","from":{"nodeId":"normal-texture","pin":"rgb"},
+         "to":{"nodeId":"normal-map","pin":"texture"}},
+        {"id":"2","from":{"nodeId":"normal-map","pin":"normal"},
+         "to":{"nodeId":"out","pin":"normal"}}
+      ]
+    })";
+
+    const auto compilation = arc::render::tools::compile_material_graph_json(graph);
+    REQUIRE(compilation);
+    const auto generated = arc::render::tools::generate_material_slang(compilation.value());
+    REQUIRE(generated);
+    REQUIRE(generated.value().source.find("float3 arcNormalMapToWorld") != std::string::npos);
+    REQUIRE(generated.value().source.find("arcNormalMapToWorld(") != std::string::npos);
+    REQUIRE(generated.value().source.find("surface.normalWS = arc_node_normal_map_normal") != std::string::npos);
+}
+
 TEST_CASE("Material IR generated source compiles with the pinned Slang toolchain")
 {
     arc::render::tools::slang_shader_compiler compiler;

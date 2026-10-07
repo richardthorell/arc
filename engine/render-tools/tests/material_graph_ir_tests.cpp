@@ -108,6 +108,51 @@ TEST_CASE("native material graph compiler emits deterministic backend-neutral IR
     REQUIRE_FALSE(roughness->connected);
 }
 
+TEST_CASE("material graph texture semantics propagate to descriptor bindings")
+{
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"normal-texture","type":"textureSample2D","values":{"semantic":"normal"},
+         "parameter":{"exposed":true,"name":"Normal Texture"}},
+        {"id":"normal-map","type":"normalMap","values":{"strength":1.0}}
+      ],
+      "connections":[
+        {"id":"1","from":{"nodeId":"normal-texture","pin":"rgb"},
+         "to":{"nodeId":"normal-map","pin":"texture"}},
+        {"id":"2","from":{"nodeId":"normal-map","pin":"normal"},
+         "to":{"nodeId":"out","pin":"normal"}}
+      ]
+    })";
+
+    const auto result = arc::render::tools::compile_material_graph_json(graph);
+    REQUIRE(result);
+    REQUIRE(result.value().descriptor.textures.size() == 1);
+    const auto& texture = result.value().descriptor.textures.front();
+    REQUIRE(texture.parameter_name == "Normal Texture");
+    REQUIRE(texture.semantic == arc::render::texture_semantic::normal);
+    REQUIRE(result.value().descriptor.requirements.uses_normal_mapping);
+}
+
+TEST_CASE("material graph rejects unknown texture semantics")
+{
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"texture","type":"textureSample2D","values":{"semantic":"not-a-semantic"}}
+      ],
+      "connections":[
+        {"id":"1","from":{"nodeId":"texture","pin":"rgb"},"to":{"nodeId":"out","pin":"baseColor"}}
+      ]
+    })";
+
+    const auto result = arc::render::tools::compile_material_graph_json(graph);
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().message.find("unsupported material texture semantic") != std::string::npos);
+}
+
 TEST_CASE("material descriptor excludes unreachable nodes and assigns texture slots by stable node ID")
 {
     constexpr std::string_view graph = R"({

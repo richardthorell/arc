@@ -40,7 +40,8 @@ describe('MaterialGraphEditor', () => {
 
   it('applies toolbar-controlled graph view options', () => {
     const graph = createDefaultMaterialGraph();
-    graph.nodes.push(createMaterialNode('normalMap', [980, 720]));
+    const isolated = createMaterialNode('normalMap', [980, 720]);
+    graph.nodes.push(isolated);
 
     const { container } = render(
       <MaterialGraphEditor document={document} graph={graph} showGrid={false} dimUnrelated />,
@@ -53,7 +54,7 @@ describe('MaterialGraphEditor', () => {
     expect(output).not.toBeNull();
     fireEvent.pointerDown(output!, { button: 0 });
 
-    const isolatedNode = screen.getByText('Normal Map').closest('article');
+    const isolatedNode = container.querySelector<HTMLElement>(`[data-node-id="${isolated.id}"]`);
     expect(isolatedNode).toHaveClass('is-unrelated');
     expect(container.querySelectorAll('.material-graph-node.is-unrelated').length).toBeGreaterThan(0);
   });
@@ -192,10 +193,11 @@ describe('MaterialGraphEditor', () => {
 
   it('rejects and flashes a self connection', () => {
     const graph = createDefaultMaterialGraph();
-    graph.nodes.push(createMaterialNode('normalMap', [320, 520]));
-    render(<MaterialGraphEditor document={document} graph={graph} />);
+    const selfConnected = createMaterialNode('normalMap', [320, 520]);
+    graph.nodes.push(selfConnected);
+    const { container } = render(<MaterialGraphEditor document={document} graph={graph} />);
 
-    const normalMap = screen.getByText('Normal Map').closest('article');
+    const normalMap = container.querySelector<HTMLElement>(`[data-node-id="${selfConnected.id}"]`);
     expect(normalMap).not.toBeNull();
     fireEvent.pointerDown(within(normalMap!).getByRole('button', { name: 'Normal' }), { button: 0 });
     materialState.replaceMaterialGraph.mockClear();

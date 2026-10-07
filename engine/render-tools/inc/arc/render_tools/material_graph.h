@@ -5,6 +5,7 @@
  * @brief Backend-neutral native material graph IR, reusable functions, descriptor compiler, and shader code generation.
  */
 
+#include <arc/render/material.h>
 #include <arc/render/material_abi.h>
 #include <arc/render/shader.h>
 
@@ -133,6 +134,7 @@ struct material_ir_node
     material_math_operation math_operation{material_math_operation::none};
     material_ir_literal literal;
     shader_parameter_type texture_type{shader_parameter_type::texture_2d};
+    texture_semantic texture_semantic_value{texture_semantic::generic_color};
     float strength{1.0f};
     float minimum{};
     float maximum{1.0f};
@@ -218,6 +220,7 @@ struct material_texture_binding
     std::string parameter_name;
     shader_parameter_type type{shader_parameter_type::texture_2d};
     std::uint32_t dimension_slot{};
+    texture_semantic semantic{texture_semantic::generic_color};
 };
 
 /** @brief Runtime/input capabilities required by a compiled material graph. */

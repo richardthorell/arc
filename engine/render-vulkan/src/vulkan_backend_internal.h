@@ -1712,6 +1712,9 @@ private:
     VkImage white_image_{};
     VmaAllocation white_allocation_{};
     VkImageView white_view_{};
+    VkImage neutral_normal_image_{};
+    VmaAllocation neutral_normal_allocation_{};
+    VkImageView neutral_normal_view_{};
     VkSampler white_sampler_{};
     VkPipelineLayout mesh_pipeline_layout_{};
     VkDescriptorSetLayout material_attribute_descriptor_set_layout_{};

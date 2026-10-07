@@ -38,6 +38,7 @@ describe('native material compiler editor adapter', () => {
       'Roughness',
       'Metallic Roughness Texture',
       'Ambient Occlusion Texture',
+      'Normal Texture',
       'Emissive Color',
       'Emissive Texture',
       'Emissive Strength',
@@ -99,6 +100,19 @@ describe('native material compiler editor adapter', () => {
     texture!.values = { ...texture!.values, texture: 'Content/Textures/wall.png' };
 
     expect(materialGraphEditImpact(before, after)).toBe('parameter-values');
+  });
+
+  it('treats assigning the Standard Lit Normal Texture as a parameter-only edit', () => {
+    const before = createDefaultMaterialGraph();
+    const after = structuredClone(before);
+    const texture = after.nodes.find((node) => node.parameter?.name === 'Normal Texture');
+    expect(texture).toBeDefined();
+    texture!.values = { ...texture!.values, texture: 'Content/Textures/wall_normal.png' };
+
+    expect(materialGraphEditImpact(before, after)).toBe('parameter-values');
+    expect(materialEditorParameters(after)).toContainEqual(
+      expect.objectContaining({ name: 'Normal Texture', type: 'texture2d', editorKind: 'texture' }),
+    );
   });
 
   it('treats Standard Lit emissive controls as parameter-only edits', () => {

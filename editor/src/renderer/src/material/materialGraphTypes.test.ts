@@ -21,6 +21,7 @@ describe('material graph schema', () => {
       'Roughness',
       'Metallic Roughness Texture',
       'Ambient Occlusion Texture',
+      'Normal Texture',
       'Emissive Color',
       'Emissive Texture',
       'Emissive Strength',
@@ -81,6 +82,22 @@ describe('material graph schema', () => {
       ),
     ).toBe(true);
 
+    const normalTexture = graph.nodes.find((node) => node.parameter?.name === 'Normal Texture');
+    expect(normalTexture).toMatchObject({
+      type: 'textureSample2D',
+      values: { texture: '', dimension: '2d', semantic: 'normal' },
+    });
+    expect(
+      graph.connections.some(
+        (connection) => connection.from.nodeId === normalTexture?.id && connection.to.nodeId !== 'material-output',
+      ),
+    ).toBe(true);
+    expect(
+      graph.connections.some(
+        (connection) => connection.to.nodeId === 'material-output' && connection.to.pin === 'normal',
+      ),
+    ).toBe(true);
+
     const emissiveColor = graph.nodes.find((node) => node.parameter?.name === 'Emissive Color');
     const emissiveTexture = graph.nodes.find((node) => node.parameter?.name === 'Emissive Texture');
     const emissiveStrength = graph.nodes.find((node) => node.parameter?.name === 'Emissive Strength');
@@ -97,7 +114,7 @@ describe('material graph schema', () => {
         (connection) => connection.to.nodeId === 'material-output' && connection.to.pin === 'emissive',
       ),
     ).toBe(true);
-    expect(graph.connections).toHaveLength(15);
+    expect(graph.connections).toHaveLength(17);
   });
 
   it('exposes only the modern Color node for authoring', () => {
