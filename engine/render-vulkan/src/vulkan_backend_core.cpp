@@ -179,6 +179,8 @@ vulkan_render_backend::~vulkan_render_backend()
     for (auto& buffer : debug_overlay_buffers_)
         destroy_buffer(buffer.vertices);
     destroy_buffer(light_buffer_);
+    destroy_buffer(clustered_light_buffer_);
+    clustered_light_buffer_size_ = 0u;
     destroy_buffer(exposure_buffer_);
     destroy_buffer(gpu_scene_visibility_buffer_);
     destroy_buffer(gpu_scene_transform_buffer_);
