@@ -463,33 +463,56 @@ bool water_value(std::string_view json, std::string_view key, host_water_snapsho
         {"ocean", std::uint8_t{0}}, {"lake", std::uint8_t{1}}, {"river", std::uint8_t{2}}};
     static constexpr std::pair<std::string_view, std::uint8_t> quality_levels[]{
         {"low", std::uint8_t{0}}, {"medium", std::uint8_t{1}}, {"high", std::uint8_t{2}}, {"ultra", std::uint8_t{3}}};
-    return parse_enum(object, "bodyType", body_types, std::size(body_types), out.body_type) &&
-           string_value(object, "presetGuid", out.preset_guid) && string_value(object, "presetPath", out.preset_path) &&
-           string_value(object, "materialGuid", out.material_guid) &&
-           string_value(object, "materialPath", out.material_path) &&
-           number_value(object, "waterLevel", out.water_level) && bool_value(object, "enabled", out.enabled) &&
-           bool_value(object, "followCamera", out.follow_camera) &&
-           number_value(object, "visibleDistance", out.visible_distance) &&
-           number_value(object, "windSpeed", out.wind_speed) &&
-           number_value(object, "windDirectionX", out.wind_direction_x) &&
-           number_value(object, "windDirectionY", out.wind_direction_y) &&
-           number_value(object, "fetchLength", out.fetch_length) &&
-           number_value(object, "waveAmplitude", out.wave_amplitude) &&
-           number_value(object, "choppiness", out.choppiness) && bool_value(object, "foamEnabled", out.foam_enabled) &&
-           number_value(object, "foamThreshold", out.foam_threshold) &&
-           number_value(object, "foamDecay", out.foam_decay) && array3_value(object, "absorption", out.absorption) &&
-           array3_value(object, "scattering", out.scattering) && number_value(object, "roughness", out.roughness) &&
-           number_value(object, "refractionStrength", out.refraction_strength) &&
-           bool_value(object, "shorelineEnabled", out.shoreline_enabled) &&
-           number_value(object, "shorelineFoamWidth", out.shoreline_foam_width) &&
-           number_value(object, "shallowWaveDampingDistance", out.shallow_wave_damping_distance) &&
-           number_value(object, "runupDistance", out.runup_distance) &&
-           bool_value(object, "underwaterEnabled", out.underwater_enabled) &&
-           bool_value(object, "causticsEnabled", out.caustics_enabled) &&
-           bool_value(object, "queriesEnabled", out.queries_enabled) &&
-           bool_value(object, "buoyancyEnabled", out.buoyancy_enabled) &&
-           parse_enum(object, "quality", quality_levels, std::size(quality_levels), out.quality) &&
-           number_value(object, "priority", out.priority);
+    const bool valid =
+        parse_enum(object, "bodyType", body_types, std::size(body_types), out.body_type) &&
+        string_value(object, "presetGuid", out.preset_guid) && string_value(object, "presetPath", out.preset_path) &&
+        string_value(object, "materialGuid", out.material_guid) &&
+        string_value(object, "materialPath", out.material_path) &&
+        number_value(object, "waterLevel", out.water_level) && bool_value(object, "enabled", out.enabled) &&
+        bool_value(object, "followCamera", out.follow_camera) &&
+        number_value(object, "visibleDistance", out.visible_distance) &&
+        number_value(object, "windSpeed", out.wind_speed) &&
+        number_value(object, "windDirectionX", out.wind_direction_x) &&
+        number_value(object, "windDirectionY", out.wind_direction_y) &&
+        number_value(object, "fetchLength", out.fetch_length) &&
+        number_value(object, "waveAmplitude", out.wave_amplitude) &&
+        number_value(object, "choppiness", out.choppiness) && bool_value(object, "foamEnabled", out.foam_enabled) &&
+        number_value(object, "foamThreshold", out.foam_threshold) &&
+        number_value(object, "foamDecay", out.foam_decay) && array3_value(object, "absorption", out.absorption) &&
+        array3_value(object, "scattering", out.scattering) && number_value(object, "roughness", out.roughness) &&
+        number_value(object, "refractionStrength", out.refraction_strength) &&
+        bool_value(object, "shorelineEnabled", out.shoreline_enabled) &&
+        number_value(object, "shorelineFoamWidth", out.shoreline_foam_width) &&
+        number_value(object, "shallowWaveDampingDistance", out.shallow_wave_damping_distance) &&
+        number_value(object, "runupDistance", out.runup_distance) &&
+        bool_value(object, "underwaterEnabled", out.underwater_enabled) &&
+        bool_value(object, "causticsEnabled", out.caustics_enabled) &&
+        bool_value(object, "queriesEnabled", out.queries_enabled) &&
+        bool_value(object, "buoyancyEnabled", out.buoyancy_enabled) &&
+        parse_enum(object, "quality", quality_levels, std::size(quality_levels), out.quality) &&
+        number_value(object, "priority", out.priority) && bool_value(object, "shapeClosed", out.shape_closed);
+    if (!valid) return false;
+
+    const auto parsed = nlohmann::json::parse(object, nullptr, false);
+    if (parsed.is_discarded() || !parsed.contains("shapePoints") || !parsed["shapePoints"].is_array()) return false;
+    out.shape_points.clear();
+    out.shape_points.reserve(parsed["shapePoints"].size());
+    for (const auto& point : parsed["shapePoints"])
+    {
+        if (!point.is_object() || !point.contains("position") || !point["position"].is_array() ||
+            point["position"].size() != 3u || !point.contains("width") || !point["width"].is_number() ||
+            !point.contains("depth") || !point["depth"].is_number() || !point.contains("flow") ||
+            !point["flow"].is_number())
+            return false;
+        host_water_shape_point result;
+        result.position = {point["position"][0].get<float>(), point["position"][1].get<float>(),
+                           point["position"][2].get<float>()};
+        result.width = point["width"].get<float>();
+        result.depth = point["depth"].get<float>();
+        result.flow = point["flow"].get<float>();
+        out.shape_points.push_back(result);
+    }
+    return true;
 }
 
 std::string vec3_json(const host_vec3& value)
@@ -1534,7 +1557,16 @@ std::string to_json(const host_water_snapshot& water)
            << ",\"causticsEnabled\":" << bool_json(water.caustics_enabled)
            << ",\"queriesEnabled\":" << bool_json(water.queries_enabled)
            << ",\"buoyancyEnabled\":" << bool_json(water.buoyancy_enabled) << ",\"quality\":" << quote(quality)
-           << ",\"priority\":" << water.priority << '}';
+           << ",\"priority\":" << water.priority << ",\"shapeClosed\":" << bool_json(water.shape_closed)
+           << ",\"shapePoints\":[";
+    for (std::size_t index = 0; index < water.shape_points.size(); ++index)
+    {
+        if (index != 0) stream << ',';
+        const auto& point = water.shape_points[index];
+        stream << "{\"position\":" << vec3_json(point.position) << ",\"width\":" << point.width
+               << ",\"depth\":" << point.depth << ",\"flow\":" << point.flow << '}';
+    }
+    stream << "]}";
     return stream.str();
 }
 
