@@ -16,6 +16,7 @@ const nodePaddingTop = 9;
 const nodePaddingBottom = 8;
 const parameterEditorHeight = 38;
 const valueEditorHeight = 38;
+const rangedScalarEditorExtraHeight = 54;
 const textureEditorHeight = 62;
 
 const framePadding = {
@@ -67,6 +68,8 @@ export const materialNodeHeight = (node: MaterialGraphNode) => {
   if (isMaterialTextureSampleNodeType(node.type)) height += textureEditorHeight;
   else if (editableValueNode(node) || node.type === 'normalMap' || node.type === 'clamp') height += valueEditorHeight;
 
+  if (node.type === 'constant' && typeof node.values.min === 'number' && typeof node.values.max === 'number')
+    height += rangedScalarEditorExtraHeight;
   if (editableValueNode(node)) height += parameterEditorHeight;
   return Math.max(88, height);
 };
