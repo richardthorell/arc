@@ -12,6 +12,7 @@ namespace arc::editor
 {
 
 struct editor_ray;
+struct editor_scene_state;
 
 enum class material_texture_slot
 {
