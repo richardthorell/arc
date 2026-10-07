@@ -466,6 +466,7 @@ bool water_value(std::string_view json, std::string_view key, host_water_snapsho
     const bool valid =
         parse_enum(object, "bodyType", body_types, std::size(body_types), out.body_type) &&
         string_value(object, "presetGuid", out.preset_guid) && string_value(object, "presetPath", out.preset_path) &&
+        number_value(object, "presetOverrideMask", out.preset_override_mask) &&
         string_value(object, "materialGuid", out.material_guid) &&
         string_value(object, "materialPath", out.material_path) &&
         number_value(object, "waterLevel", out.water_level) && bool_value(object, "enabled", out.enabled) &&
@@ -1539,7 +1540,8 @@ std::string to_json(const host_water_snapshot& water)
                                                 : "high";
     std::ostringstream stream;
     stream << "{\"bodyType\":" << quote(body_type) << ",\"presetGuid\":" << quote(water.preset_guid)
-           << ",\"presetPath\":" << quote(water.preset_path) << ",\"materialGuid\":" << quote(water.material_guid)
+           << ",\"presetPath\":" << quote(water.preset_path) << ",\"presetOverrideMask\":"
+           << water.preset_override_mask << ",\"materialGuid\":" << quote(water.material_guid)
            << ",\"materialPath\":" << quote(water.material_path) << ",\"waterLevel\":" << water.water_level
            << ",\"enabled\":" << bool_json(water.enabled) << ",\"followCamera\":" << bool_json(water.follow_camera)
            << ",\"visibleDistance\":" << water.visible_distance << ",\"windSpeed\":" << water.wind_speed
