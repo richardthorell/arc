@@ -260,12 +260,20 @@ export function MaterialGraphEditor({
   loaded = true,
   showGrid = true,
   dimUnrelated = false,
+  onGraphChange,
+  onViewportChange,
+  onUndo,
+  onRedo,
 }: {
   document: EditorDocument;
   graph: MaterialGraph;
   loaded?: boolean;
   showGrid?: boolean;
   dimUnrelated?: boolean;
+  onGraphChange?: (graph: MaterialGraph, options?: { recordHistory?: boolean; message?: string }) => void;
+  onViewportChange?: (viewport: NonNullable<MaterialGraph['viewport']>) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const invalidConnectionNodeRef = useRef<HTMLElement | null>(null);
@@ -285,6 +293,28 @@ export function MaterialGraphEditor({
   const [categoryMenuAnchor, setCategoryMenuAnchor] = useState<MaterialSubmenuAnchor | null>(null);
   const [subcategoryMenuAnchor, setSubcategoryMenuAnchor] = useState<MaterialSubmenuAnchor | null>(null);
   const [snapEnabled, setSnapEnabled] = useState(true);
+  const commitGraph = useCallback(
+    (next: MaterialGraph, options: { recordHistory?: boolean; message?: string } = {}) => {
+      if (onGraphChange) onGraphChange(next, options);
+      else replaceMaterialGraph(document, next, options);
+    },
+    [document, onGraphChange],
+  );
+  const commitViewport = useCallback(
+    (next: NonNullable<MaterialGraph['viewport']>) => {
+      if (onViewportChange) onViewportChange(next);
+      else replaceMaterialGraphViewport(document, next);
+    },
+    [document, onViewportChange],
+  );
+  const undo = useCallback(() => {
+    if (onUndo) onUndo();
+    else undoMaterialGraph(document);
+  }, [document, onUndo]);
+  const redo = useCallback(() => {
+    if (onRedo) onRedo();
+    else redoMaterialGraph(document);
+  }, [document, onRedo]);
   const viewport = useMemo(() => graph.viewport ?? { x: 40, y: 40, zoom: 1 }, [graph.viewport]);
   const relatedNodeIds = useMemo(() => {
     if (!dimUnrelated || selectedNodes.size === 0) return null;
@@ -344,9 +374,9 @@ export function MaterialGraphEditor({
       if (document.readOnly) return;
       const next = cloneMaterialGraph(graph);
       updater(next);
-      replaceMaterialGraph(document, next, { recordHistory });
+      commitGraph(next, { recordHistory });
     },
-    [document, graph],
+    [commitGraph, document, graph],
   );
 
   const graphPoint = useCallback(
@@ -381,7 +411,7 @@ export function MaterialGraphEditor({
 
   const updateViewport = useCallback(
     (patch: Partial<typeof viewport>) =>
-      replaceMaterialGraphViewport(document, {
+      commitViewport({
         ...viewport,
         ...patch,
       }),
@@ -391,9 +421,9 @@ export function MaterialGraphEditor({
   const frameAll = useCallback(() => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0 || rect.height <= 0 || graph.nodes.length === 0) return false;
-    replaceMaterialGraphViewport(document, frameMaterialGraphViewport(graph, rect.width, rect.height));
+    commitViewport(frameMaterialGraphViewport(graph, rect.width, rect.height));
     return true;
-  }, [document, graph]);
+  }, [commitGraph, document, graph]);
 
   const setZoomAroundCenter = useCallback(
     (requestedZoom: number) => {
@@ -419,7 +449,7 @@ export function MaterialGraphEditor({
     const rect = canvasRef.current?.getBoundingClientRect();
     if (rect && rect.width > 0 && rect.height > 0)
       arranged.viewport = frameMaterialGraphViewport(arranged, rect.width, rect.height);
-    replaceMaterialGraph(document, arranged, { message: 'Auto-arranged material graph' });
+    commitGraph(arranged, { message: 'Auto-arranged material graph' });
   }, [document, graph]);
 
   useLayoutEffect(() => {
@@ -457,7 +487,7 @@ export function MaterialGraphEditor({
       }
     };
     const up = () => {
-      if (drag) replaceMaterialGraph(document, graph, { recordHistory: true });
+      if (drag) commitGraph(graph, { recordHistory: true });
       if (box) {
         const bounds = graphSelectionBounds(box);
         setSelectedNodes(
@@ -567,11 +597,11 @@ export function MaterialGraphEditor({
         duplicateSelected();
       } else if (command && event.key.toLocaleLowerCase() === 'z') {
         event.preventDefault();
-        if (event.shiftKey) redoMaterialGraph(document);
-        else undoMaterialGraph(document);
+        if (event.shiftKey) redo();
+        else undo();
       } else if (command && event.key.toLocaleLowerCase() === 'y') {
         event.preventDefault();
-        redoMaterialGraph(document);
+        redo();
       }
     };
     window.addEventListener('keydown', keyDown);
