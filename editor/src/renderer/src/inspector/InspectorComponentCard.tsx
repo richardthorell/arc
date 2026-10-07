@@ -19,7 +19,7 @@ import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
 import { AssetPicker, AssetPreview, FlowPicker, MaterialPicker, PrefabPicker, TexturePicker } from './AssetPicker';
 import { MaterialParameterSubsection } from './MaterialParameterSubsection';
 import { NumberControl, NumberControlLabel } from './InspectorControls';
-import type { InspectorProceduralMesh, Vec3, Vec4 } from './inspectorTypes';
+import type { InspectorProceduralMesh, InspectorWater, Vec3, Vec4 } from './inspectorTypes';
 import { getPathValue } from './propertySchema';
 import type { PropertyComponentSchema, PropertyFieldSchema, VectorAxis } from './propertySchema';
 
@@ -253,6 +253,159 @@ export function InspectorComponentCard<TContext extends object>({
           ),
         });
       }
+    }
+  }
+
+  if (schema.id === 'water') {
+    const water = (context as { water?: InspectorWater | null }).water;
+    if (water && water.bodyType !== 'ocean') {
+      propertyFields.push({
+        id: '__water-shape-heading',
+        label: water.bodyType === 'lake' ? 'Lake Boundary' : 'River Path',
+        fullWidth: true,
+        className: 'inspector-property-section-heading',
+      });
+
+      const pointNumberField = (label: string, min = 0) => ({
+        label,
+        precision: 2,
+        step: 0.25,
+        scrubSensitivity: 0.05,
+        min,
+      });
+
+      water.shapePoints.forEach((point, index) => {
+        propertyFields.push({
+          id: `__water-point-${index}-position`,
+          label: `Point ${index + 1}`,
+          control: (
+            <UiVector3Control
+              label={`Point ${index + 1}`}
+              precision={2}
+              scrubSensitivity={0.05}
+              showLabel={false}
+              step={0.25}
+              value={point.position}
+              onCommit={(axis, value) =>
+                onValue(`water.shapePoints.${index}.position`, { ...point.position, [axis]: value }, true)
+              }
+              onPreview={(axis, value) =>
+                onValue(`water.shapePoints.${index}.position`, { ...point.position, [axis]: value }, false)
+              }
+            />
+          ),
+        });
+        propertyFields.push({
+          id: `__water-point-${index}-width`,
+          label: (
+            <NumberControlLabel
+              field={pointNumberField('Width')}
+              value={point.width}
+              onCommit={(value) => onValue(`water.shapePoints.${index}.width`, value, true)}
+              onPreview={(value) => onValue(`water.shapePoints.${index}.width`, value, false)}
+            />
+          ),
+          control: (
+            <NumberControl
+              field={pointNumberField('Width')}
+              showLabel={false}
+              value={point.width}
+              onCommit={(value) => onValue(`water.shapePoints.${index}.width`, value, true)}
+              onPreview={(value) => onValue(`water.shapePoints.${index}.width`, value, false)}
+            />
+          ),
+        });
+        propertyFields.push({
+          id: `__water-point-${index}-depth`,
+          label: (
+            <NumberControlLabel
+              field={pointNumberField('Depth')}
+              value={point.depth}
+              onCommit={(value) => onValue(`water.shapePoints.${index}.depth`, value, true)}
+              onPreview={(value) => onValue(`water.shapePoints.${index}.depth`, value, false)}
+            />
+          ),
+          control: (
+            <NumberControl
+              field={pointNumberField('Depth')}
+              showLabel={false}
+              value={point.depth}
+              onCommit={(value) => onValue(`water.shapePoints.${index}.depth`, value, true)}
+              onPreview={(value) => onValue(`water.shapePoints.${index}.depth`, value, false)}
+            />
+          ),
+        });
+        propertyFields.push({
+          id: `__water-point-${index}-flow`,
+          label: (
+            <NumberControlLabel
+              field={pointNumberField('Flow', Number.NEGATIVE_INFINITY)}
+              value={point.flow}
+              onCommit={(value) => onValue(`water.shapePoints.${index}.flow`, value, true)}
+              onPreview={(value) => onValue(`water.shapePoints.${index}.flow`, value, false)}
+            />
+          ),
+          control: (
+            <NumberControl
+              field={pointNumberField('Flow', Number.NEGATIVE_INFINITY)}
+              showLabel={false}
+              value={point.flow}
+              onCommit={(value) => onValue(`water.shapePoints.${index}.flow`, value, true)}
+              onPreview={(value) => onValue(`water.shapePoints.${index}.flow`, value, false)}
+            />
+          ),
+        });
+        propertyFields.push({
+          id: `__water-point-${index}-remove`,
+          fullWidth: true,
+          control: (
+            <UiButton
+              disabled={water.shapePoints.length <= (water.bodyType === 'lake' ? 3 : 2)}
+              onClick={() =>
+                onValue(
+                  'water.shapePoints',
+                  water.shapePoints.filter((_, candidate) => candidate !== index),
+                  true,
+                )
+              }
+              type="button"
+            >
+              Remove Point {index + 1}
+            </UiButton>
+          ),
+        });
+      });
+
+      propertyFields.push({
+        id: '__water-shape-add',
+        fullWidth: true,
+        control: (
+          <UiButton
+            onClick={() => {
+              const previous = water.shapePoints.at(-1);
+              const position = previous
+                ? { x: previous.position.x + 4, y: previous.position.y, z: previous.position.z }
+                : { x: 0, y: 0, z: 0 };
+              onValue(
+                'water.shapePoints',
+                [
+                  ...water.shapePoints,
+                  {
+                    position,
+                    width: water.bodyType === 'river' ? (previous?.width ?? 6) : 0,
+                    depth: previous?.depth ?? 2,
+                    flow: water.bodyType === 'river' ? (previous?.flow ?? 1) : 0,
+                  },
+                ],
+                true,
+              );
+            }}
+            type="button"
+          >
+            Add Point
+          </UiButton>
+        ),
+      });
     }
   }
 

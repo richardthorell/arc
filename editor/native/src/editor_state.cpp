@@ -735,9 +735,29 @@ ecs::entity add_water_to_scene(editor_scene_state& scene, render::renderer& rend
     water.type = type;
     water.follow_camera = type == water::water_body_type::ocean;
     if (type == water::water_body_type::ocean)
+    {
         water.preset.path_hint = "builtin/water/presets/open_ocean.arcwater";
+    }
     else if (type == water::water_body_type::lake)
+    {
         water.preset.path_hint = "builtin/water/presets/calm_lake.arcwater";
+        water.shape.closed = true;
+        water.shape.points = {
+            {{-10.0f, 0.0f, -10.0f}, 0.0f, 2.0f, 0.0f},
+            {{10.0f, 0.0f, -10.0f}, 0.0f, 2.0f, 0.0f},
+            {{10.0f, 0.0f, 10.0f}, 0.0f, 2.0f, 0.0f},
+            {{-10.0f, 0.0f, 10.0f}, 0.0f, 2.0f, 0.0f},
+        };
+    }
+    else
+    {
+        water.shape.closed = false;
+        water.shape.points = {
+            {{-12.0f, 0.0f, 0.0f}, 6.0f, 1.5f, 1.0f},
+            {{0.0f, 0.0f, 0.0f}, 6.0f, 1.5f, 1.0f},
+            {{12.0f, 0.0f, 0.0f}, 6.0f, 1.5f, 1.0f},
+        };
+    }
     water.material.path_hint = "builtin/materials/water.arcmat";
 
     scene.scene.emplace<scene::water_component>(entity, water);

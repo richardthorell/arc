@@ -4149,6 +4149,24 @@ host_response arc_host::execute(const host_command_envelope& command)
                     value.shoreline_foam_width < 0.0f || value.shallow_wave_damping_distance < 0.0f ||
                     value.runup_distance < 0.0f)
                     return fail("Water body or shoreline values are outside supported ranges", entity);
+                if (value.shape_points.size() > 4096u)
+                    return fail("Water shape has too many authored points", entity);
+                for (const auto& point : value.shape_points)
+                    if (!std::isfinite(point.position.x) || !std::isfinite(point.position.y) ||
+                        !std::isfinite(point.position.z) || !std::isfinite(point.width) ||
+                        !std::isfinite(point.depth) || !std::isfinite(point.flow) || point.width < 0.0f ||
+                        point.depth < 0.0f)
+                        return fail("Water shape point values are outside supported ranges", entity);
+                if (value.body_type == static_cast<std::uint8_t>(water::water_body_type::ocean) &&
+                    (value.shape_closed || !value.shape_points.empty()))
+                    return fail("Ocean cannot use a finite Water shape", entity);
+                if (value.body_type == static_cast<std::uint8_t>(water::water_body_type::lake) &&
+                    (!value.shape_closed || value.shape_points.size() < 3u))
+                    return fail("Lake requires a closed boundary with at least three points", entity);
+                if (value.body_type == static_cast<std::uint8_t>(water::water_body_type::river) &&
+                    (value.shape_closed || value.shape_points.size() < 2u))
+                    return fail("River requires an open path with at least two points", entity);
+
                 const auto preset_guid = value.preset_guid.empty()
                                              ? std::optional<assets::asset_guid>{assets::asset_guid{}}
                                              : assets::parse_asset_guid(value.preset_guid);
@@ -4170,6 +4188,12 @@ host_response arc_host::execute(const host_command_envelope& command)
                     component.follow_camera = value.follow_camera;
                     component.visible_distance = value.visible_distance;
                     component.settings = preset.settings;
+                    component.shape.closed = value.shape_closed;
+                    component.shape.points.clear();
+                    component.shape.points.reserve(value.shape_points.size());
+                    for (const auto& point : value.shape_points)
+                        component.shape.points.push_back(
+                            {{point.position.x, point.position.y, point.position.z}, point.width, point.depth, point.flow});
                     component.shoreline_enabled = value.shoreline_enabled;
                     component.shoreline_foam_width = value.shoreline_foam_width;
                     component.shallow_wave_damping_distance = value.shallow_wave_damping_distance;
@@ -7455,6 +7479,11 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
         water_snapshot.buoyancy_enabled = water->buoyancy_enabled;
         water_snapshot.quality = static_cast<std::uint8_t>(water->settings.quality);
         water_snapshot.priority = water->priority;
+        water_snapshot.shape_closed = water->shape.closed;
+        water_snapshot.shape_points.reserve(water->shape.points.size());
+        for (const auto& point : water->shape.points)
+            water_snapshot.shape_points.push_back(
+                {{point.position[0], point.position[1], point.position[2]}, point.width, point.depth, point.flow_speed});
         snapshot.water = std::move(water_snapshot);
         add_component_snapshot<scene::water_component>(state_->scene.scene, selected, snapshot.components,
                                                        host_component_kind::water, "Water");

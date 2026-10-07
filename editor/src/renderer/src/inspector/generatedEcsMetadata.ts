@@ -1009,7 +1009,7 @@ export const generatedEcsComponents = [
     "canonicalName": "arc::scene.water_component",
     "displayName": "Water",
     "description": "Reflected scene data for the Water component.",
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "fields": []
   },
   {

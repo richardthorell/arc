@@ -161,6 +161,8 @@ const waterSnapshot = (): InspectorEntitySnapshot => ({
     buoyancyEnabled: true,
     quality: 'high',
     priority: 0,
+    shapeClosed: false,
+    shapePoints: [],
   },
   components: [
     { kind: 'transform', label: 'Transform', editable: true },

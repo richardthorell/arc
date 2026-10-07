@@ -1411,7 +1411,7 @@ TEST_CASE("Water persistence migrations cover every schema version")
     water.schema_version = 1;
 
     const auto target_version = arc::ecs::component_metadata<arc::scene::water_component>().schema_version;
-    REQUIRE(target_version == 2);
+    REQUIRE(target_version == 3);
     REQUIRE(migrations.migrate(water, target_version));
     REQUIRE(water.schema_version == target_version);
 }

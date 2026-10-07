@@ -610,6 +610,27 @@ struct terrain_component
     std::uint64_t content_revision{};
 };
 
+/** @brief One authored point in a finite Water Body shape contract. */
+struct water_shape_point
+{
+    math::vector3f position{};
+    float width{6.0f};
+    float depth{2.0f};
+    float flow_speed{};
+};
+
+/**
+ * @brief Persisted finite Water Body shape. Lake boundaries are closed; River paths are open.
+ *
+ * This is an authoring contract only. Terrain carving, shoreline generation, and production
+ * Lake/River surface geometry consume it in later Water/Terrain milestones.
+ */
+struct water_shape_contract
+{
+    bool closed{};
+    std::vector<water_shape_point> points;
+};
+
 /** @brief Persistent first-class Water authoring intent. Runtime/GPU state lives in the Water systems. */
 struct water_component
 {
@@ -617,6 +638,7 @@ struct water_component
     assets::asset_reference preset{.expected_type = assets::asset_types::water_preset};
     assets::asset_reference material{.expected_type = assets::asset_types::material};
     water::water_runtime_settings settings;
+    water_shape_contract shape;
     float water_level{};
     bool enabled{true};
     bool follow_camera{true};

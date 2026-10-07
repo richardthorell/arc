@@ -845,6 +845,8 @@ TEST_CASE("explicit Water Body creation establishes Ocean Lake and River authori
     CHECK(ocean.water->follow_camera);
     CHECK(ocean.water->preset_path == "builtin/water/presets/open_ocean.arcwater");
     CHECK(ocean.water->material_path == "builtin/materials/water.arcmat");
+    CHECK_FALSE(ocean.water->shape_closed);
+    CHECK(ocean.water->shape_points.empty());
 
     const auto lake = create(arc::editor::host_create_entity_kind::lake);
     CHECK(lake.name == "Lake");
@@ -852,6 +854,9 @@ TEST_CASE("explicit Water Body creation establishes Ocean Lake and River authori
     CHECK_FALSE(lake.water->follow_camera);
     CHECK(lake.water->preset_path == "builtin/water/presets/calm_lake.arcwater");
     CHECK(lake.water->material_path == "builtin/materials/water.arcmat");
+    CHECK(lake.water->shape_closed);
+    REQUIRE(lake.water->shape_points.size() == 4u);
+    CHECK(lake.water->shape_points.front().depth == Catch::Approx(2.0f));
 
     const auto river = create(arc::editor::host_create_entity_kind::river);
     CHECK(river.name == "River");
@@ -859,6 +864,10 @@ TEST_CASE("explicit Water Body creation establishes Ocean Lake and River authori
     CHECK_FALSE(river.water->follow_camera);
     CHECK(river.water->preset_path.empty());
     CHECK(river.water->material_path == "builtin/materials/water.arcmat");
+    CHECK_FALSE(river.water->shape_closed);
+    REQUIRE(river.water->shape_points.size() == 3u);
+    CHECK(river.water->shape_points.front().width == Catch::Approx(6.0f));
+    CHECK(river.water->shape_points.front().flow == Catch::Approx(1.0f));
 
     std::size_t water_body_count{};
     host->scene_state().scene.view<arc::scene::water_component>().each(
@@ -866,7 +875,7 @@ TEST_CASE("explicit Water Body creation establishes Ocean Lake and River authori
     CHECK(water_body_count == 3u);
 }
 
-TEST_CASE("Water component version 2 survives scene save and reload")
+TEST_CASE("Water component version 3 shape contract survives scene save and reload")
 {
     const auto root =
         std::filesystem::temp_directory_path() /
@@ -881,7 +890,7 @@ TEST_CASE("Water component version 2 survives scene save and reload")
     arc::editor::editor_asset_state assets;
     assets.root = root / "assets";
     REQUIRE(host->open_project({.name = "Water Persistence Test", .root = root}, assets).succeeded);
-    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::water})
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::lake})
                 .succeeded);
 
     auto& authored = host->scene_state().scene.get<arc::scene::water_component>(host->scene_state().water_entity);
@@ -894,6 +903,10 @@ TEST_CASE("Water component version 2 survives scene save and reload")
     authored.settings.appearance.absorption = {0.20f, 0.07f, 0.03f};
     authored.settings.appearance.refraction_strength = 0.08f;
     authored.settings.quality = arc::water::water_quality::ultra;
+    REQUIRE(authored.shape.closed);
+    REQUIRE(authored.shape.points.size() == 4u);
+    authored.shape.points[0].position = {-14.0f, 0.0f, -8.0f};
+    authored.shape.points[0].depth = 3.25f;
 
     const auto path = root / "scenes" / "water.arcscene";
     REQUIRE(host->execute(arc::editor::host_save_scene_as_command{.path = path}).succeeded);
@@ -901,14 +914,14 @@ TEST_CASE("Water component version 2 survives scene save and reload")
         std::ifstream input(path, std::ios::binary);
         const std::string document((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
         CHECK(document.find("\"Water\"") != std::string::npos);
-        CHECK(document.find("\"version\": 2") != std::string::npos);
+        CHECK(document.find("\"version\": 3") != std::string::npos);
         CHECK(document.find("Open Ocean.arcwater") != std::string::npos);
     }
 
     REQUIRE(host->execute(arc::editor::host_open_scene_command{.path = path}).succeeded);
     REQUIRE(host->scene_state().scene.alive(host->scene_state().water_entity));
     const auto& loaded = host->scene_state().scene.get<arc::scene::water_component>(host->scene_state().water_entity);
-    CHECK(loaded.type == arc::water::water_body_type::ocean);
+    CHECK(loaded.type == arc::water::water_body_type::lake);
     CHECK(loaded.preset.path_hint == "assets/water/Open Ocean.arcwater");
     CHECK(loaded.water_level == Catch::Approx(2.75f));
     CHECK(loaded.visible_distance == Catch::Approx(32000.0f));
@@ -918,6 +931,10 @@ TEST_CASE("Water component version 2 survives scene save and reload")
     CHECK(loaded.settings.appearance.absorption[0] == Catch::Approx(0.20f));
     CHECK(loaded.settings.appearance.refraction_strength == Catch::Approx(0.08f));
     CHECK(loaded.settings.quality == arc::water::water_quality::ultra);
+    CHECK(loaded.shape.closed);
+    REQUIRE(loaded.shape.points.size() == 4u);
+    CHECK(loaded.shape.points[0].position[0] == Catch::Approx(-14.0f));
+    CHECK(loaded.shape.points[0].depth == Catch::Approx(3.25f));
 
     std::filesystem::remove_all(root, error);
 }
@@ -973,6 +990,44 @@ TEST_CASE("Water Inspector snapshots and validated edits round trip through the 
     REQUIRE_FALSE(
         host->execute(arc::editor::host_set_water_command{.entity = created.entity, .water = invalid}).succeeded);
     CHECK(host->selected_entity_snapshot().water->water_level == Catch::Approx(4.25f));
+}
+
+TEST_CASE("Lake and River shape edits validate and participate in undo redo")
+{
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    REQUIRE(host->open_project({.name = "Water Shape History Test", .root = {}}, assets).succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::lake})
+                .succeeded);
+
+    const auto created = host->selected_entity_snapshot();
+    REQUIRE(created.water.has_value());
+    REQUIRE(created.water->shape_closed);
+    REQUIRE(created.water->shape_points.size() == 4u);
+
+    auto edited = *created.water;
+    edited.shape_points[0].position.x = -18.0f;
+    edited.shape_points[0].depth = 4.0f;
+    REQUIRE(host->execute(arc::editor::host_set_water_command{.entity = created.entity, .water = edited}).succeeded);
+    REQUIRE(host->selected_entity_snapshot().water.has_value());
+    CHECK(host->selected_entity_snapshot().water->shape_points[0].position.x == Catch::Approx(-18.0f));
+
+    REQUIRE(host->execute(arc::editor::host_history_undo_command{}).succeeded);
+    REQUIRE(host->selected_entity_snapshot().water.has_value());
+    CHECK(host->selected_entity_snapshot().water->shape_points[0].position.x ==
+          Catch::Approx(created.water->shape_points[0].position.x));
+
+    REQUIRE(host->execute(arc::editor::host_history_redo_command{}).succeeded);
+    REQUIRE(host->selected_entity_snapshot().water.has_value());
+    CHECK(host->selected_entity_snapshot().water->shape_points[0].position.x == Catch::Approx(-18.0f));
+
+    auto invalid = *host->selected_entity_snapshot().water;
+    invalid.shape_closed = false;
+    REQUIRE_FALSE(
+        host->execute(arc::editor::host_set_water_command{.entity = created.entity, .water = invalid}).succeeded);
+    CHECK(host->selected_entity_snapshot().water->shape_closed);
 }
 
 TEST_CASE("built-in Water presets are discovered and drive Ocean defaults")
