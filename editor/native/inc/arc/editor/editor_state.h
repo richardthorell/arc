@@ -226,7 +226,8 @@ bool synchronize_terrain_render_resource(editor_scene_state& scene, render::rend
 
 bool synchronize_water_render_material(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity);
 
-ecs::entity add_water_to_scene(editor_scene_state& scene, render::renderer& renderer);
+ecs::entity add_water_to_scene(editor_scene_state& scene, render::renderer& renderer,
+                               water::water_body_type type = water::water_body_type::ocean);
 
 ecs::entity add_grass_patch_to_scene(editor_scene_state& scene, render::renderer& renderer);
 
