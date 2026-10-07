@@ -181,7 +181,7 @@ function_source_result material_function_sources(const assets::asset_cook_contex
     std::map<std::string, std::pair<std::filesystem::path, std::string>> pending;
     for (const auto& dependency : context.dependencies)
     {
-        if (dependency.type != assets::asset_types::material) continue;
+        if (dependency.type != assets::asset_types::material_function) continue;
         auto source = read_text_file(dependency.source_path);
         if (!source) return function_source_result::failure(source.error());
         if (!render::tools::is_material_function_json(source.value())) continue;
@@ -274,6 +274,57 @@ void apply_graph_render_features(render::material_descriptor& material,
         graph_output_connected(graph, render::tools::material_surface_output::anisotropy) ? 1.0f : 0.0f;
 }
 
+class material_function_processor final : public assets::asset_cook_processor
+{
+public:
+    material_function_processor()
+    {
+        descriptor_.id = assets::cook_processor_ids::material_function;
+        descriptor_.name = "ARC Material Function";
+        descriptor_.schema = assets::artifact_schemas::material_function;
+        descriptor_.version = 1;
+        descriptor_.schema_version = render::tools::material_function_version;
+        descriptor_.input_types = {assets::asset_types::material_function};
+    }
+
+    const assets::asset_cook_processor_descriptor& descriptor() const noexcept override
+    {
+        return descriptor_;
+    }
+
+    std::string toolchain_fingerprint() const override
+    {
+        return "arc.material-function-cooker/1;arc-material-function/1;arc-material-ir/1";
+    }
+
+    assets::asset_cook_result cook(const assets::asset_cook_context& context) override
+    {
+        const std::string source(reinterpret_cast<const char*>(context.source.bytes.data()),
+                                 context.source.bytes.size());
+        auto validated =
+            render::tools::validate_material_function_json(source, context.source.source_path.generic_string());
+        if (!validated)
+            return {.error = {.code = assets::asset_error_code::import_failed,
+                              .guid = context.asset.guid,
+                              .path = context.source.source_path,
+                              .message = validated.error().message}};
+
+        return {.artifacts = {{.name = context.source.source_path.stem().string(),
+                               .extension = ".arcmatfnc",
+                               .schema = descriptor_.schema,
+                               .schema_version = descriptor_.schema_version,
+                               .bytes = context.source.bytes}},
+                .diagnostics = {{.severity = assets::asset_diagnostic_severity::information,
+                                 .guid = context.asset.guid,
+                                 .category = "material.function",
+                                 .message = "Validated Material Function v" +
+                                            std::to_string(render::tools::material_function_version)}}};
+    }
+
+private:
+    assets::asset_cook_processor_descriptor descriptor_;
+};
+
 class material_processor final : public assets::asset_cook_processor
 {
 public:
@@ -282,7 +333,7 @@ public:
         descriptor_.id = assets::cook_processor_ids::material;
         descriptor_.name = "ARC Material";
         descriptor_.schema = assets::artifact_schemas::material;
-        descriptor_.version = 10;
+        descriptor_.version = 11;
         descriptor_.schema_version = render::tools::material_package_version;
         descriptor_.input_types = {assets::asset_types::material};
     }
@@ -294,7 +345,7 @@ public:
 
     std::string toolchain_fingerprint() const override
     {
-        return "arc.material-cooker/10;arc-material-package/3;arc-material-authoring/4;arc-material-ir/1;"
+        return "arc.material-cooker/11;arc-material-package/3;arc-material-authoring/4;arc-material-ir/1;"
                "arc-material-codegen/3;arc-material-function/1;arc-material-pass-contract/1;"
                "arc-material-pass-codegen/2;arc-custom-material-shader/1;" +
                std::string(compiler_.fingerprint());
@@ -304,27 +355,6 @@ public:
     {
         const std::string source(reinterpret_cast<const char*>(context.source.bytes.data()),
                                  context.source.bytes.size());
-
-        if (render::tools::is_material_function_json(source))
-        {
-            auto validated =
-                render::tools::validate_material_function_json(source, context.source.source_path.generic_string());
-            if (!validated)
-                return {.error = {.code = assets::asset_error_code::import_failed,
-                                  .guid = context.asset.guid,
-                                  .path = context.source.source_path,
-                                  .message = validated.error().message}};
-            return {.artifacts = {{.name = context.source.source_path.stem().string(),
-                                   .extension = ".arcmatfnc",
-                                   .schema = descriptor_.schema,
-                                   .schema_version = render::tools::material_function_version,
-                                   .bytes = context.source.bytes}},
-                    .diagnostics = {{.severity = assets::asset_diagnostic_severity::information,
-                                     .guid = context.asset.guid,
-                                     .category = "material.function",
-                                     .message = "Validated Material/Shader Function v" +
-                                                std::to_string(render::tools::material_function_version)}}};
-        }
 
         auto authored = render::tools::parse_material_authoring_json(source);
         if (!authored)
@@ -519,6 +549,11 @@ private:
 std::unique_ptr<assets::asset_cook_processor> make_material_processor()
 {
     return std::make_unique<material_processor>();
+}
+
+std::unique_ptr<assets::asset_cook_processor> make_material_function_processor()
+{
+    return std::make_unique<material_function_processor>();
 }
 
 } // namespace arc::tools
