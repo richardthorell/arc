@@ -2,6 +2,7 @@
 
 #include <arc/assets/assets.h>
 #include <arc/scene/components.h>
+#include <arc/water/water_asset.h>
 
 #include <string>
 
@@ -15,6 +16,14 @@ struct [[nodiscard]] water_preset_binding_result
     bool bound{};
     std::string message;
 };
+
+/**
+ * @brief Validate and atomically apply preset-owned state to a Water component.
+ *
+ * Instance-owned placement, material, visibility, shoreline/underwater toggles, query settings, and priority are
+ * intentionally preserved. Only body type and water_runtime_settings are preset-owned.
+ */
+[[nodiscard]] bool apply_water_preset(water_component& component, const water::water_preset& preset);
 
 /**
  * @brief Resolve, load, and apply the preset referenced by a Water component.
