@@ -559,7 +559,7 @@ struct host_water_snapshot
     bool shape_closed{};
     std::vector<host_water_shape_point> shape_points;
 
-    friend bool operator==(const host_water_snapshot&, const host_water_snapshot&) noexcept = default;
+    friend bool operator==(const host_water_snapshot&, const host_water_snapshot&) = default;
 };
 
 struct host_flow_snapshot
