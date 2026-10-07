@@ -22,6 +22,9 @@ describe('material graph schema', () => {
       'Metallic Roughness Texture',
       'Ambient Occlusion Texture',
       'Normal Texture',
+      'Clear Coat',
+      'Clear Coat Roughness',
+      'Clear Coat Texture',
       'Emissive Color',
       'Emissive Texture',
       'Emissive Strength',
@@ -98,6 +101,28 @@ describe('material graph schema', () => {
       ),
     ).toBe(true);
 
+    const clearCoat = graph.nodes.find((node) => node.parameter?.name === 'Clear Coat');
+    const clearCoatRoughness = graph.nodes.find((node) => node.parameter?.name === 'Clear Coat Roughness');
+    const clearCoatTexture = graph.nodes.find((node) => node.parameter?.name === 'Clear Coat Texture');
+    expect(clearCoat).toMatchObject({ type: 'constant', values: { value: 0 } });
+    expect(clearCoatRoughness).toMatchObject({ type: 'constant', values: { value: 0.1 } });
+    expect(clearCoatTexture).toMatchObject({
+      type: 'textureSample2D',
+      values: { texture: '', dimension: '2d', semantic: 'clear_coat' },
+    });
+    expect(
+      graph.connections.some(
+        (connection) => connection.from.nodeId === clearCoatTexture?.id && connection.from.pin === 'r',
+      ),
+    ).toBe(true);
+    expect(
+      graph.connections.some(
+        (connection) => connection.from.nodeId === clearCoatTexture?.id && connection.from.pin === 'g',
+      ),
+    ).toBe(true);
+    expect(graph.connections.some((connection) => connection.to.pin === 'clearCoat')).toBe(true);
+    expect(graph.connections.some((connection) => connection.to.pin === 'clearCoatRoughness')).toBe(true);
+
     const emissiveColor = graph.nodes.find((node) => node.parameter?.name === 'Emissive Color');
     const emissiveTexture = graph.nodes.find((node) => node.parameter?.name === 'Emissive Texture');
     const emissiveStrength = graph.nodes.find((node) => node.parameter?.name === 'Emissive Strength');
@@ -114,7 +139,7 @@ describe('material graph schema', () => {
         (connection) => connection.to.nodeId === 'material-output' && connection.to.pin === 'emissive',
       ),
     ).toBe(true);
-    expect(graph.connections).toHaveLength(17);
+    expect(graph.connections).toHaveLength(23);
   });
 
   it('exposes only the modern Color node for authoring', () => {

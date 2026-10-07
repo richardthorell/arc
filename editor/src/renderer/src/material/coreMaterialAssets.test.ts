@@ -33,6 +33,9 @@ describe('core built-in material families', () => {
       'Metallic Roughness Texture',
       'Ambient Occlusion Texture',
       'Normal Texture',
+      'Clear Coat',
+      'Clear Coat Roughness',
+      'Clear Coat Texture',
       'Emissive Color',
       'Emissive Texture',
       'Emissive Strength',
@@ -41,15 +44,35 @@ describe('core built-in material families', () => {
     expect(materialGraphOutputConnected(graph, 'roughness')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'ao')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'normal')).toBe(true);
+    expect(materialGraphOutputConnected(graph, 'clearCoat')).toBe(true);
+    expect(materialGraphOutputConnected(graph, 'clearCoatRoughness')).toBe(true);
+    expect(
+      materialRenderPathLabel({
+        domain: 'surface',
+        blendMode: 'opaque',
+        shadingModel: 'standard',
+        graph,
+        customShader: false,
+      }),
+    ).toBe('Deferred');
 
     const packed = graph.nodes.find((node) => node.parameter?.name === 'Metallic Roughness Texture');
     const ao = graph.nodes.find((node) => node.parameter?.name === 'Ambient Occlusion Texture');
     const normal = graph.nodes.find((node) => node.parameter?.name === 'Normal Texture');
+    const clearCoat = graph.nodes.find((node) => node.parameter?.name === 'Clear Coat');
+    const clearCoatRoughness = graph.nodes.find((node) => node.parameter?.name === 'Clear Coat Roughness');
+    const clearCoatTexture = graph.nodes.find((node) => node.parameter?.name === 'Clear Coat Texture');
     expect(packed).toMatchObject({ type: 'textureSample2D', values: { texture: '', dimension: '2d' } });
     expect(ao).toMatchObject({ type: 'textureSample2D', values: { texture: '', dimension: '2d' } });
     expect(normal).toMatchObject({
       type: 'textureSample2D',
       values: { texture: '', dimension: '2d', semantic: 'normal' },
+    });
+    expect(clearCoat).toMatchObject({ type: 'constant', values: { value: 0 } });
+    expect(clearCoatRoughness).toMatchObject({ type: 'constant', values: { value: 0.1 } });
+    expect(clearCoatTexture).toMatchObject({
+      type: 'textureSample2D',
+      values: { texture: '', dimension: '2d', semantic: 'clear_coat' },
     });
     expect(
       graph.connections.some((connection) => connection.from.nodeId === packed?.id && connection.from.pin === 'b'),

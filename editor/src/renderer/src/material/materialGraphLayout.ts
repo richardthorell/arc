@@ -124,7 +124,10 @@ export const frameMaterialGraphViewport = (
   const availableWidth = Math.max(1, canvasWidth - framePadding.left - framePadding.right);
   const availableHeight = Math.max(1, canvasHeight - framePadding.top - framePadding.bottom);
   const fittedZoom = Math.min(1, availableWidth / bounds.width, availableHeight / bounds.height);
-  const zoom = clampGraphZoom(fittedZoom);
+  // Fit All must be able to frame the complete authored graph even when it grows
+  // beyond the normal interactive zoom floor. User-driven zoom still uses the
+  // shared 35% minimum; framing may temporarily go lower to preserve its contract.
+  const zoom = clampGraphZoom(fittedZoom, 0.1, 1);
 
   return {
     x: framePadding.left + (availableWidth - bounds.width * zoom) / 2 - bounds.left * zoom,

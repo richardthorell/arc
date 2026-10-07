@@ -502,15 +502,24 @@ export const createDefaultMaterialGraph = (): MaterialGraph => {
   normalTexture.parameter = { exposed: true, name: 'Normal Texture' };
   const normalMap = createMaterialNode('normalMap', [400, 1020]);
 
-  const emissiveColor = createMaterialNode('colorRgba', [80, 1200], { value: [1, 1, 1, 1] });
+  const clearCoat = createMaterialNode('constant', [80, 1200], { value: 0 });
+  clearCoat.parameter = { exposed: true, name: 'Clear Coat' };
+  const clearCoatRoughness = createMaterialNode('constant', [80, 1330], { value: 0.1 });
+  clearCoatRoughness.parameter = { exposed: true, name: 'Clear Coat Roughness' };
+  const clearCoatTexture = createMaterialNode('textureSample2D', [80, 1460], { semantic: 'clear_coat' });
+  clearCoatTexture.parameter = { exposed: true, name: 'Clear Coat Texture' };
+  const clearCoatMultiply = createMaterialNode('multiply', [400, 1210]);
+  const clearCoatRoughnessMultiply = createMaterialNode('multiply', [400, 1360]);
+
+  const emissiveColor = createMaterialNode('colorRgba', [80, 1640], { value: [1, 1, 1, 1] });
   emissiveColor.parameter = { exposed: true, name: 'Emissive Color' };
-  const emissiveTexture = createMaterialNode('textureSample2D', [80, 1360]);
+  const emissiveTexture = createMaterialNode('textureSample2D', [80, 1800]);
   emissiveTexture.parameter = { exposed: true, name: 'Emissive Texture' };
-  const emissiveStrength = createMaterialNode('constant', [80, 1520], { value: 0 });
+  const emissiveStrength = createMaterialNode('constant', [80, 1960], { value: 0 });
   emissiveStrength.parameter = { exposed: true, name: 'Emissive Strength' };
-  const emissiveColorMultiply = createMaterialNode('multiply', [400, 1280]);
-  const emissiveStrengthMultiply = createMaterialNode('multiply', [600, 1280]);
-  const output = createMaterialNode('output', [860, 600]);
+  const emissiveColorMultiply = createMaterialNode('multiply', [400, 1720]);
+  const emissiveStrengthMultiply = createMaterialNode('multiply', [600, 1720]);
+  const output = createMaterialNode('output', [900, 760]);
 
   return {
     version: 1,
@@ -526,6 +535,11 @@ export const createDefaultMaterialGraph = (): MaterialGraph => {
       ambientOcclusionTexture,
       normalTexture,
       normalMap,
+      clearCoat,
+      clearCoatRoughness,
+      clearCoatTexture,
+      clearCoatMultiply,
+      clearCoatRoughnessMultiply,
       emissiveColor,
       emissiveTexture,
       emissiveStrength,
@@ -593,6 +607,36 @@ export const createDefaultMaterialGraph = (): MaterialGraph => {
         id: materialGraphId('connection'),
         from: { nodeId: normalMap.id, pin: 'normal' },
         to: { nodeId: output.id, pin: 'normal' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: clearCoat.id, pin: 'value' },
+        to: { nodeId: clearCoatMultiply.id, pin: 'a' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: clearCoatTexture.id, pin: 'r' },
+        to: { nodeId: clearCoatMultiply.id, pin: 'b' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: clearCoatMultiply.id, pin: 'result' },
+        to: { nodeId: output.id, pin: 'clearCoat' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: clearCoatRoughness.id, pin: 'value' },
+        to: { nodeId: clearCoatRoughnessMultiply.id, pin: 'a' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: clearCoatTexture.id, pin: 'g' },
+        to: { nodeId: clearCoatRoughnessMultiply.id, pin: 'b' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: clearCoatRoughnessMultiply.id, pin: 'result' },
+        to: { nodeId: output.id, pin: 'clearCoatRoughness' },
       },
       {
         id: materialGraphId('connection'),

@@ -95,7 +95,11 @@ void main()
 
     out_albedo = vec4(material_color.rgb, material_color.a);
     out_normal = vec4(normal * 0.5 + vec3(0.5), ao);
-    out_material = vec4(metallic, roughness, 1.0, 0.0);
+    out_material = vec4(
+        metallic,
+        roughness,
+        clamp(material_parameters.material_lobes.x, 0.0, 1.0),
+        clamp(material_parameters.material_lobes.y, 0.04, 1.0));
     out_emissive = vec4(emissive, 1.0);
     // Fullscreen texture UVs invert clip-space Y. Store velocity in that
     // texture space so history reprojection cancels camera and TAA jitter.
