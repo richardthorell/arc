@@ -9,6 +9,26 @@
 #define ARC_SHADOW_DATA_BINDING 10
 #include "include/arc_shadows.glsl"
 
+layout(std430, set = 0, binding = 12) readonly buffer arc_clustered_light_buffer
+{
+    uint words[];
+} clustered_lights;
+
+uint arc_cluster_index(vec2 uv, vec3 world_position)
+{
+    uint tiles_x = max(clustered_lights.words[1], 1u);
+    uint tiles_y = max(clustered_lights.words[2], 1u);
+    uint slices = max(clustered_lights.words[3], 1u);
+    uint tile_x = min(uint(clamp(uv.x, 0.0, 0.999999) * float(tiles_x)), tiles_x - 1u);
+    uint tile_y = min(uint(clamp(uv.y, 0.0, 0.999999) * float(tiles_y)), tiles_y - 1u);
+    float near_plane = max(uintBitsToFloat(clustered_lights.words[6]), 0.001);
+    float far_plane = max(uintBitsToFloat(clustered_lights.words[7]), near_plane + 0.001);
+    float distance_to_camera = clamp(length(world_position - constants.camera_position.xyz), near_plane, far_plane);
+    float normalized = log(distance_to_camera / near_plane) / log(far_plane / near_plane);
+    uint slice = min(uint(max(normalized, 0.0) * float(slices)), slices - 1u);
+    return (slice * tiles_y + tile_y) * tiles_x + tile_x;
+}
+
 layout(location = 0) in vec2 in_uv;
 layout(location = 0) out vec4 out_color;
 
@@ -123,85 +143,84 @@ void main()
             radiance,
             index == 0u ? shadow : 1.0);
     }
-    for (uint index = 0u; index < min(lights.point_count, 64u); ++index)
+    uint cluster = arc_cluster_index(in_uv, world_position);
+    uint maximum_references = max(clustered_lights.words[4], 1u);
+    uint record_words = 1u + maximum_references;
+    uint record = 12u + cluster * record_words;
+    uint local_count = min(clustered_lights.words[record], maximum_references);
+    for (uint local_index = 0u; local_index < local_count; ++local_index)
     {
-        point_light_data light = lights.point_lights[index];
-        vec3 to_light = light.position_range.xyz - world_position;
-        float distance_squared = max(dot(to_light, to_light), 1.0e-4);
-        float distance_to_light = sqrt(distance_squared);
-        float normalized_range = clamp(distance_to_light / max(light.position_range.w, 1.0e-4), 0.0, 1.0);
-        float smooth_cutoff = 1.0 - pow(normalized_range, 4.0);
-        float attenuation = smooth_cutoff * smooth_cutoff / distance_squared;
-        direct += evaluate_light(
-            surface,
-            view_direction,
-            to_light / distance_to_light,
-            light.color_intensity.rgb * light.color_intensity.w * attenuation,
-            arc_point_shadow_visibility(light, world_position));
-    }
-    for (uint index = 0u; index < min(lights.spot_count, 64u); ++index)
-    {
-        spot_light_data light = lights.spot_lights[index];
-        vec3 to_light = light.position_range.xyz - world_position;
-        float distance_squared = max(dot(to_light, to_light), 1.0e-4);
-        float distance_to_light = sqrt(distance_squared);
-        vec3 direction_to_light = to_light / distance_to_light;
-        float normalized_range = clamp(distance_to_light / max(light.position_range.w, 1.0e-4), 0.0, 1.0);
-        float smooth_cutoff = 1.0 - pow(normalized_range, 4.0);
-        float outer_cosine = cos(light.params.x);
-        float inner_cosine = cos(light.direction_inner_angle.w);
-        float cone = smoothstep(
-            outer_cosine,
-            max(inner_cosine, outer_cosine + 1.0e-5),
-            dot(-direction_to_light, normalize(light.direction_inner_angle.xyz)));
-        float attenuation = smooth_cutoff * smooth_cutoff * cone / distance_squared;
-        direct += evaluate_light(
-            surface,
-            view_direction,
-            direction_to_light,
-            light.color_intensity.rgb * light.color_intensity.w * attenuation,
-            arc_spot_shadow_visibility(light, world_position));
-    }
-    for (uint index = 0u; index < min(lights.area_count, 32u); ++index)
-    {
-        area_light_data light = lights.area_lights[index];
-        vec3 emitter_normal = normalize(light.direction_two_sided.xyz);
-        vec3 emitter_tangent = normalize(light.tangent_width.xyz);
-        vec3 emitter_bitangent = normalize(cross(emitter_normal, emitter_tangent));
-        float width = max(light.tangent_width.w, 1.0e-4);
-        float height = max(light.dimensions_shadow.y, 1.0e-4);
-        vec3 from_center = world_position - light.position_shape.xyz;
-        vec2 local = vec2(dot(from_center, emitter_tangent), dot(from_center, emitter_bitangent));
-        if (light.position_shape.w > 0.5)
+        uint reference = clustered_lights.words[record + 1u + local_index];
+        uint kind = reference >> 30u;
+        uint index = reference & 0x3fffffffu;
+        if (kind == 0u && index < min(lights.point_count, 64u))
         {
-            vec2 normalized_local = local / vec2(width * 0.5, height * 0.5);
-            float radial = length(normalized_local);
-            if (radial > 1.0)
-                local /= radial;
+            point_light_data light = lights.point_lights[index];
+            vec3 to_light = light.position_range.xyz - world_position;
+            float distance_squared = max(dot(to_light, to_light), 1.0e-4);
+            float distance_to_light = sqrt(distance_squared);
+            float normalized_range = clamp(distance_to_light / max(light.position_range.w, 1.0e-4), 0.0, 1.0);
+            float smooth_cutoff = 1.0 - pow(normalized_range, 4.0);
+            float attenuation = smooth_cutoff * smooth_cutoff / distance_squared;
+            direct += evaluate_light(
+                surface, view_direction, to_light / distance_to_light,
+                light.color_intensity.rgb * light.color_intensity.w * attenuation,
+                arc_point_shadow_visibility(light, world_position));
         }
-        else
-            local = clamp(local, -vec2(width, height) * 0.5, vec2(width, height) * 0.5);
-        vec3 closest_emitter_point = light.position_shape.xyz +
-            emitter_tangent * local.x + emitter_bitangent * local.y;
-        vec3 to_light = closest_emitter_point - world_position;
-        float distance_squared = max(dot(to_light, to_light), 1.0e-4);
-        float distance_to_light = sqrt(distance_squared);
-        vec3 direction_to_light = to_light / distance_to_light;
-        float facing = dot(emitter_normal, -direction_to_light);
-        if (light.direction_two_sided.w > 0.5)
-            facing = abs(facing);
-        else
-            facing = max(facing, 0.0);
-        float area = light.position_shape.w > 0.5
-            ? ARC_PI * width * 0.5 * height * 0.5
-            : width * height;
-        float solid_angle = min(area * facing / distance_squared, 2.0 * ARC_PI);
-        direct += evaluate_light(
-            surface,
-            view_direction,
-            direction_to_light,
-            light.color_intensity.rgb * light.color_intensity.w * solid_angle,
-            1.0);
+        else if (kind == 1u && index < min(lights.spot_count, 64u))
+        {
+            spot_light_data light = lights.spot_lights[index];
+            vec3 to_light = light.position_range.xyz - world_position;
+            float distance_squared = max(dot(to_light, to_light), 1.0e-4);
+            float distance_to_light = sqrt(distance_squared);
+            vec3 direction_to_light = to_light / distance_to_light;
+            float normalized_range = clamp(distance_to_light / max(light.position_range.w, 1.0e-4), 0.0, 1.0);
+            float smooth_cutoff = 1.0 - pow(normalized_range, 4.0);
+            float outer_cosine = cos(light.params.x);
+            float inner_cosine = cos(light.direction_inner_angle.w);
+            float cone = smoothstep(
+                outer_cosine, max(inner_cosine, outer_cosine + 1.0e-5),
+                dot(-direction_to_light, normalize(light.direction_inner_angle.xyz)));
+            float attenuation = smooth_cutoff * smooth_cutoff * cone / distance_squared;
+            direct += evaluate_light(
+                surface, view_direction, direction_to_light,
+                light.color_intensity.rgb * light.color_intensity.w * attenuation,
+                arc_spot_shadow_visibility(light, world_position));
+        }
+        else if (kind == 2u && index < min(lights.area_count, 32u))
+        {
+            area_light_data light = lights.area_lights[index];
+            vec3 emitter_normal = normalize(light.direction_two_sided.xyz);
+            vec3 emitter_tangent = normalize(light.tangent_width.xyz);
+            vec3 emitter_bitangent = normalize(cross(emitter_normal, emitter_tangent));
+            float width = max(light.tangent_width.w, 1.0e-4);
+            float height = max(light.dimensions_shadow.y, 1.0e-4);
+            vec3 from_center = world_position - light.position_shape.xyz;
+            vec2 local = vec2(dot(from_center, emitter_tangent), dot(from_center, emitter_bitangent));
+            if (light.position_shape.w > 0.5)
+            {
+                vec2 normalized_local = local / vec2(width * 0.5, height * 0.5);
+                float radial = length(normalized_local);
+                if (radial > 1.0) local /= radial;
+            }
+            else
+                local = clamp(local, -vec2(width, height) * 0.5, vec2(width, height) * 0.5);
+            vec3 closest_emitter_point =
+                light.position_shape.xyz + emitter_tangent * local.x + emitter_bitangent * local.y;
+            vec3 to_light = closest_emitter_point - world_position;
+            float distance_squared = max(dot(to_light, to_light), 1.0e-4);
+            float distance_to_light = sqrt(distance_squared);
+            vec3 direction_to_light = to_light / distance_to_light;
+            float facing = dot(emitter_normal, -direction_to_light);
+            facing = light.direction_two_sided.w > 0.5 ? abs(facing) : max(facing, 0.0);
+            float area = light.position_shape.w > 0.5
+                ? ARC_PI * width * 0.5 * height * 0.5
+                : width * height;
+            float solid_angle = min(area * facing / distance_squared, 2.0 * ARC_PI);
+            direct += evaluate_light(
+                surface, view_direction, direction_to_light,
+                light.color_intensity.rgb * light.color_intensity.w * solid_angle, 1.0);
+        }
     }
 
     vec3 f0 = mix(vec3(ARC_DIELECTRIC_F0), surface.base_color, surface.metallic);
