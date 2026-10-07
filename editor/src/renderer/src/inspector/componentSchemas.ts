@@ -898,6 +898,21 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         allowEmpty: true,
       },
       {
+        id: 'presetOverrides',
+        label: 'Preset Values',
+        section: 'Body',
+        path: 'water.presetOverrideMask',
+        type: 'actions',
+        visible: (snapshot) => Boolean(snapshot.water?.presetPath),
+        actions: [
+          {
+            id: 'water.revertPresetOverrides',
+            label: 'Revert All Overrides',
+            disabled: (snapshot) => !snapshot.water?.presetOverrideMask,
+          },
+        ],
+      },
+      {
         id: 'waterLevel',
         label: 'Water Level',
         section: 'Body',
