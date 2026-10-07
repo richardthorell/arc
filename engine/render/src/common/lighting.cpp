@@ -252,4 +252,168 @@ std::array<float, directional_shadow_cascade_count> cascade_splits(float near_pl
     return result;
 }
 
+namespace
+{
+
+math::vector4f transform_cluster_point(const math::matrix4f& matrix, const math::vector3f& point) noexcept
+{
+    return {matrix(0, 0) * point[0] + matrix(0, 1) * point[1] + matrix(0, 2) * point[2] + matrix(0, 3),
+            matrix(1, 0) * point[0] + matrix(1, 1) * point[1] + matrix(1, 2) * point[2] + matrix(1, 3),
+            matrix(2, 0) * point[0] + matrix(2, 1) * point[1] + matrix(2, 2) * point[2] + matrix(2, 3),
+            matrix(3, 0) * point[0] + matrix(3, 1) * point[1] + matrix(3, 2) * point[2] + matrix(3, 3)};
+}
+
+std::uint32_t cluster_depth_slice(float distance, float near_plane, float far_plane, std::uint32_t slices) noexcept
+{
+    if (slices <= 1u) return 0u;
+    near_plane = std::max(near_plane, 0.001f);
+    far_plane = std::max(far_plane, near_plane + 0.001f);
+    distance = std::clamp(distance, near_plane, far_plane);
+    const float normalized = std::log(distance / near_plane) / std::log(far_plane / near_plane);
+    return std::min(static_cast<std::uint32_t>(normalized * static_cast<float>(slices)), slices - 1u);
+}
+
+} // namespace
+
+clustered_light_grid build_clustered_light_grid(const scene_lighting_data& lighting,
+                                                const clustered_light_grid_view& view,
+                                                clustered_light_grid_config config)
+{
+    clustered_light_grid result{};
+    result.config.tile_size_pixels = std::max(config.tile_size_pixels, 1u);
+    result.config.depth_slices = std::max(config.depth_slices, 1u);
+    result.config.maximum_lights_per_cluster = std::clamp(config.maximum_lights_per_cluster, 1u, 256u);
+
+    const auto width = std::max(view.viewport_width, 1u);
+    const auto height = std::max(view.viewport_height, 1u);
+    result.tiles_x = (width + result.config.tile_size_pixels - 1u) / result.config.tile_size_pixels;
+    result.tiles_y = (height + result.config.tile_size_pixels - 1u) / result.config.tile_size_pixels;
+    result.cluster_count = result.tiles_x * result.tiles_y * result.config.depth_slices;
+
+    const std::uint32_t record_words = 1u + result.config.maximum_lights_per_cluster;
+    result.gpu_words.assign(clustered_light_header_words +
+                                static_cast<std::size_t>(result.cluster_count) * record_words,
+                            0u);
+    auto& words = result.gpu_words;
+    words[0] = result.config.tile_size_pixels;
+    words[1] = result.tiles_x;
+    words[2] = result.tiles_y;
+    words[3] = result.config.depth_slices;
+    words[4] = result.config.maximum_lights_per_cluster;
+    words[5] = result.cluster_count;
+    words[6] = std::bit_cast<std::uint32_t>(std::max(view.near_plane, 0.001f));
+    words[7] = std::bit_cast<std::uint32_t>(std::max(view.far_plane, view.near_plane + 0.001f));
+
+    const auto append_reference = [&](std::uint32_t cluster, std::uint32_t reference, clustered_light_kind kind)
+    {
+        if (cluster >= result.cluster_count) return;
+        const auto base = clustered_light_header_words + static_cast<std::size_t>(cluster) * record_words;
+        auto& count = words[base];
+        if (count >= result.config.maximum_lights_per_cluster)
+        {
+            ++result.overflow_count;
+            return;
+        }
+        words[base + 1u + count] = reference;
+        ++count;
+        switch (kind)
+        {
+            case clustered_light_kind::point:
+                ++result.point_light_references;
+                break;
+            case clustered_light_kind::spot:
+                ++result.spot_light_references;
+                break;
+            case clustered_light_kind::area:
+                ++result.area_light_references;
+                break;
+        }
+    };
+
+    const auto append_sphere = [&](const math::vector3f& center, float radius, std::uint32_t reference,
+                                   clustered_light_kind kind)
+    {
+        radius = std::max(radius, 0.001f);
+        const auto dx = center[0] - view.camera_position[0];
+        const auto dy = center[1] - view.camera_position[1];
+        const auto dz = center[2] - view.camera_position[2];
+        const float camera_distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+        const float min_distance = std::max(view.near_plane, camera_distance - radius);
+        const float max_distance = std::min(view.far_plane, camera_distance + radius);
+        if (max_distance < view.near_plane || min_distance > view.far_plane) return;
+
+        std::uint32_t min_tile_x = 0u;
+        std::uint32_t max_tile_x = result.tiles_x - 1u;
+        std::uint32_t min_tile_y = 0u;
+        std::uint32_t max_tile_y = result.tiles_y - 1u;
+
+        const auto view_position = transform_cluster_point(view.view, center);
+        const float view_depth = std::max(-view_position[2], view.near_plane);
+        if (camera_distance > radius && view_depth > view.near_plane)
+        {
+            const auto clip = transform_cluster_point(view.view_projection, center);
+            if (clip[3] > 1.0e-5f)
+            {
+                const float ndc_x = clip[0] / clip[3];
+                const float ndc_y = clip[1] / clip[3];
+                const float ndc_radius_x = std::abs(view.projection(0, 0)) * radius / view_depth;
+                const float ndc_radius_y = std::abs(view.projection(1, 1)) * radius / view_depth;
+                const float min_px = (std::clamp(ndc_x - ndc_radius_x, -1.0f, 1.0f) * 0.5f + 0.5f) * width;
+                const float max_px = (std::clamp(ndc_x + ndc_radius_x, -1.0f, 1.0f) * 0.5f + 0.5f) * width;
+                const float min_py = (0.5f - std::clamp(ndc_y + ndc_radius_y, -1.0f, 1.0f) * 0.5f) * height;
+                const float max_py = (0.5f - std::clamp(ndc_y - ndc_radius_y, -1.0f, 1.0f) * 0.5f) * height;
+                min_tile_x = std::min(static_cast<std::uint32_t>(std::max(min_px, 0.0f)) /
+                                          result.config.tile_size_pixels,
+                                      result.tiles_x - 1u);
+                max_tile_x = std::min(static_cast<std::uint32_t>(std::max(max_px, 0.0f)) /
+                                          result.config.tile_size_pixels,
+                                      result.tiles_x - 1u);
+                min_tile_y = std::min(static_cast<std::uint32_t>(std::max(min_py, 0.0f)) /
+                                          result.config.tile_size_pixels,
+                                      result.tiles_y - 1u);
+                max_tile_y = std::min(static_cast<std::uint32_t>(std::max(max_py, 0.0f)) /
+                                          result.config.tile_size_pixels,
+                                      result.tiles_y - 1u);
+            }
+        }
+
+        const auto min_slice =
+            cluster_depth_slice(min_distance, view.near_plane, view.far_plane, result.config.depth_slices);
+        const auto max_slice =
+            cluster_depth_slice(max_distance, view.near_plane, view.far_plane, result.config.depth_slices);
+        for (std::uint32_t slice = min_slice; slice <= max_slice; ++slice)
+            for (std::uint32_t y = min_tile_y; y <= max_tile_y; ++y)
+                for (std::uint32_t x = min_tile_x; x <= max_tile_x; ++x)
+                {
+                    const auto cluster = (slice * result.tiles_y + y) * result.tiles_x + x;
+                    append_reference(cluster, reference, kind);
+                }
+    };
+
+    for (std::uint32_t index = 0u; index < std::min(lighting.point_count, max_point_lights); ++index)
+        append_sphere(lighting.point_lights[index].position_range.xyz(),
+                      lighting.point_lights[index].position_range[3],
+                      encode_clustered_light_reference(clustered_light_kind::point, index),
+                      clustered_light_kind::point);
+
+    for (std::uint32_t index = 0u; index < std::min(lighting.spot_count, max_spot_lights); ++index)
+        append_sphere(lighting.spot_lights[index].position_range.xyz(),
+                      lighting.spot_lights[index].position_range[3],
+                      encode_clustered_light_reference(clustered_light_kind::spot, index),
+                      clustered_light_kind::spot);
+
+    for (std::uint32_t index = 0u; index < std::min(lighting.area_count, max_area_lights); ++index)
+    {
+        const auto reference = encode_clustered_light_reference(clustered_light_kind::area, index);
+        for (std::uint32_t cluster = 0u; cluster < result.cluster_count; ++cluster)
+            append_reference(cluster, reference, clustered_light_kind::area);
+    }
+
+    words[8] = result.point_light_references;
+    words[9] = result.spot_light_references;
+    words[10] = result.area_light_references;
+    words[11] = result.overflow_count;
+    return result;
+}
+
 } // namespace arc::render
