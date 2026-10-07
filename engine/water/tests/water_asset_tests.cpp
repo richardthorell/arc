@@ -12,8 +12,18 @@ TEST_CASE("Water presets round trip through the versioned asset format")
     preset.name = "North Atlantic";
     preset.settings.simulation.wind_speed = 17.0f;
     preset.settings.simulation.wind_direction = {0.82f, 0.57f};
+    preset.settings.simulation.fetch_length = 42000.0f;
+    preset.settings.simulation.wave_amplitude = 1.25f;
+    preset.settings.simulation.choppiness = 1.4f;
     preset.settings.simulation.seed = 1337;
+    preset.settings.foam.enabled = false;
+    preset.settings.foam.threshold = 0.73f;
+    preset.settings.foam.decay = 0.22f;
+    preset.settings.appearance.absorption = {0.31f, 0.12f, 0.04f};
+    preset.settings.appearance.scattering = {0.03f, 0.11f, 0.15f};
     preset.settings.appearance.roughness = 0.06f;
+    preset.settings.appearance.refraction_strength = 0.18f;
+    preset.settings.quality = arc::water::water_quality::ultra;
 
     const auto encoded = arc::water::write_water_asset_json(preset, false);
     REQUIRE(encoded.has_value());
@@ -23,8 +33,27 @@ TEST_CASE("Water presets round trip through the versioned asset format")
     CHECK(decoded.value().body_type == arc::water::water_body_type::ocean);
     CHECK(decoded.value().settings.simulation.wind_speed == 17.0f);
     CHECK(decoded.value().settings.simulation.wind_direction[0] == 0.82f);
+    CHECK(decoded.value().settings.simulation.wind_direction[1] == 0.57f);
+    CHECK(decoded.value().settings.simulation.fetch_length == 42000.0f);
+    CHECK(decoded.value().settings.simulation.wave_amplitude == 1.25f);
+    CHECK(decoded.value().settings.simulation.choppiness == 1.4f);
     CHECK(decoded.value().settings.simulation.seed == 1337);
+    CHECK_FALSE(decoded.value().settings.foam.enabled);
+    CHECK(decoded.value().settings.foam.threshold == 0.73f);
+    CHECK(decoded.value().settings.foam.decay == 0.22f);
+    CHECK(decoded.value().settings.appearance.absorption[0] == 0.31f);
+    CHECK(decoded.value().settings.appearance.absorption[1] == 0.12f);
+    CHECK(decoded.value().settings.appearance.absorption[2] == 0.04f);
+    CHECK(decoded.value().settings.appearance.scattering[0] == 0.03f);
+    CHECK(decoded.value().settings.appearance.scattering[1] == 0.11f);
+    CHECK(decoded.value().settings.appearance.scattering[2] == 0.15f);
     CHECK(decoded.value().settings.appearance.roughness == 0.06f);
+    CHECK(decoded.value().settings.appearance.refraction_strength == 0.18f);
+    CHECK(decoded.value().settings.quality == arc::water::water_quality::ultra);
+
+    const auto reencoded = arc::water::write_water_asset_json(decoded.value(), false);
+    REQUIRE(reencoded.has_value());
+    CHECK(reencoded.value() == encoded.value());
 }
 
 TEST_CASE("Water preset codec rejects unsupported versions")
