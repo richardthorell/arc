@@ -76,6 +76,11 @@ describe('core built-in material families', () => {
     });
 
     const graph = materialGraphFromAsset(asset);
+    const normalTexture = graph.nodes.find((node) => node.parameter?.name === 'Normal Texture');
+    expect(normalTexture).toMatchObject({
+      type: 'textureSample2D',
+      values: { texture: '', dimension: '2d', semantic: 'normal' },
+    });
     const parameters = materialEditorParameters(graph).map((parameter) => parameter.name);
     expect(parameters).toEqual([
       'Base Color Tint',
@@ -87,7 +92,9 @@ describe('core built-in material families', () => {
       'Attenuation Color',
       'Attenuation Distance',
       'Opacity',
+      'Normal Texture',
     ]);
+    expect(materialGraphOutputConnected(graph, 'normal')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'transmission')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'indexOfRefraction')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'thickness')).toBe(true);
@@ -116,6 +123,11 @@ describe('core built-in material families', () => {
     });
 
     const graph = materialGraphFromAsset(asset);
+    const normalTexture = graph.nodes.find((node) => node.parameter?.name === 'Normal Texture');
+    expect(normalTexture).toMatchObject({
+      type: 'textureSample2D',
+      values: { texture: '', dimension: '2d', semantic: 'normal' },
+    });
     expect(materialEditorParameters(graph).map((parameter) => parameter.name)).toEqual([
       'Base Color Tint',
       'Base Color Texture',
@@ -123,7 +135,9 @@ describe('core built-in material families', () => {
       'Subsurface Color',
       'Subsurface',
       'Thickness',
+      'Normal Texture',
     ]);
+    expect(materialGraphOutputConnected(graph, 'normal')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'subsurfaceColor')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'subsurface')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'thickness')).toBe(true);
