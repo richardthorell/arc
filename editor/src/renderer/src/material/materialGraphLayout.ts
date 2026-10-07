@@ -65,7 +65,13 @@ export const materialNodeHeight = (node: MaterialGraphNode) => {
   let height = headerHeight + nodePaddingTop + pinRows * pinRowHeight + nodePaddingBottom;
 
   if (isMaterialTextureSampleNodeType(node.type)) height += textureEditorHeight;
-  else if (editableValueNode(node) || node.type === 'normalMap' || node.type === 'clamp') height += valueEditorHeight;
+  else if (
+    editableValueNode(node) ||
+    node.type === 'normalMap' ||
+    node.type === 'clamp' ||
+    node.type === 'functionCall'
+  )
+    height += valueEditorHeight;
 
   if (editableValueNode(node)) height += parameterEditorHeight;
   return Math.max(88, height);
