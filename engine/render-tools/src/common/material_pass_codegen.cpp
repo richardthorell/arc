@@ -164,17 +164,16 @@ void append_gbuffer(std::ostringstream& source, const material_descriptor& mater
               "[shader(\"fragment\")] ArcMaterialGBufferOutput main(ArcMaterialPassInput passInput)\n"
               "{\n";
     append_surface_evaluation(source, material.alpha_mode);
-    source
-        << "    ArcMaterialGBufferOutput output;\n"
-           "    output.albedo = float4(surface.baseColor, surface.opacity);\n"
-           "    output.normalAo = float4(normalize(surface.normalWS) * 0.5 + 0.5, surface.ambientOcclusion);\n"
-           "    output.material = float4(saturate(surface.metallic), clamp(surface.roughness, 0.04, 1.0), "
-           "saturate(surface.clearCoat), clamp(surface.clearCoatRoughness, 0.04, 1.0));\n"
-           "    output.emissive = float4(surface.emissiveRadiance, 1.0);\n"
-           "    output.motion = arcMaterialMotion(passInput);\n"
-           "    output.objectId = passInput.objectId;\n"
-           "    return output;\n"
-           "}\n";
+    source << "    ArcMaterialGBufferOutput output;\n"
+              "    output.albedo = float4(surface.baseColor, surface.opacity);\n"
+              "    output.normalAo = float4(normalize(surface.normalWS) * 0.5 + 0.5, surface.ambientOcclusion);\n"
+              "    output.material = float4(saturate(surface.metallic), clamp(surface.roughness, 0.04, 1.0), "
+              "saturate(surface.clearCoat), clamp(surface.clearCoatRoughness, 0.04, 1.0));\n"
+              "    output.emissive = float4(surface.emissiveRadiance, 1.0);\n"
+              "    output.motion = arcMaterialMotion(passInput);\n"
+              "    output.objectId = passInput.objectId;\n"
+              "    return output;\n"
+              "}\n";
 }
 
 void append_forward_lighting_library(std::ostringstream& source)

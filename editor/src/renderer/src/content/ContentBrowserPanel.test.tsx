@@ -351,7 +351,9 @@ describe('ContentBrowserPanel', () => {
       ),
     ).toBe(true);
     expect(
-      asset.graph.nodes.some((node: { parameter?: { name?: string } }) => node.parameter?.name === 'Clear Coat Texture'),
+      asset.graph.nodes.some(
+        (node: { parameter?: { name?: string } }) => node.parameter?.name === 'Clear Coat Texture',
+      ),
     ).toBe(true);
     expect(
       asset.graph.nodes.some((node: { parameter?: { name?: string } }) => node.parameter?.name === 'Emissive Texture'),
