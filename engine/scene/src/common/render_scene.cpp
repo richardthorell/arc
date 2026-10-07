@@ -144,6 +144,109 @@ render::fluid_surface_channels water_fluid_channels_for(const water_component& w
     return channels;
 }
 
+void append_water_authoring_overlay(render::debug_overlay_stream& stream, const transform_component& transform,
+                                    const water_component& water, const math::vector3f& surface_origin,
+                                    const render::water_ocean_grid_descriptor& grid)
+{
+    constexpr math::vector4f level_color{0.10f, 0.78f, 1.0f, 1.0f};
+    constexpr math::vector4f shape_color{0.05f, 0.72f, 0.95f, 0.90f};
+    constexpr math::vector4f point_color{0.35f, 0.90f, 1.0f, 1.0f};
+    constexpr math::vector4f metadata_color{0.20f, 0.58f, 0.82f, 0.78f};
+    constexpr math::vector4f flow_color{0.25f, 1.0f, 0.68f, 0.92f};
+
+    const auto line = [&](const math::vector3f& start, const math::vector3f& end, const math::vector4f& color,
+                          render::debug_overlay_depth_mode depth = render::debug_overlay_depth_mode::tested)
+    { stream.lines.push_back({.start = start, .end = end, .color = color, .depth = depth}); };
+
+    const float grid_cell_size = render::water_ocean_grid_cell_size(grid);
+    const float marker_radius = std::max(0.5f, std::min(4.0f, grid_cell_size * 4.0f));
+    line(surface_origin - math::vector3f{marker_radius, 0.0f, 0.0f},
+         surface_origin + math::vector3f{marker_radius, 0.0f, 0.0f}, level_color,
+         render::debug_overlay_depth_mode::always);
+    line(surface_origin - math::vector3f{0.0f, 0.0f, marker_radius},
+         surface_origin + math::vector3f{0.0f, 0.0f, marker_radius}, level_color,
+         render::debug_overlay_depth_mode::always);
+
+    if (water.type == ::arc::water::water_body_type::ocean)
+    {
+        float half_extent = std::ldexp(water.visible_distance, -static_cast<int>(grid.ring_count));
+        for (std::uint32_t ring = 0; ring < std::min(grid.ring_count + 1u, 6u); ++ring)
+        {
+            const float y = surface_origin[1] + 0.03f;
+            const math::vector3f corners[]{
+                {surface_origin[0] - half_extent, y, surface_origin[2] - half_extent},
+                {surface_origin[0] + half_extent, y, surface_origin[2] - half_extent},
+                {surface_origin[0] + half_extent, y, surface_origin[2] + half_extent},
+                {surface_origin[0] - half_extent, y, surface_origin[2] + half_extent}};
+            const float intensity = 0.35f + static_cast<float>(ring) * 0.08f;
+            for (std::uint32_t edge = 0; edge < 4u; ++edge)
+                line(corners[edge], corners[(edge + 1u) % 4u], {0.08f, intensity, 0.92f, 0.75f});
+            half_extent *= 2.0f;
+        }
+        return;
+    }
+
+    if (water.shape.points.empty()) return;
+
+    auto render_transform = transform;
+    render_transform.position[1] += water.water_level;
+    render_transform.dirty = true;
+    const auto world = local_matrix(render_transform);
+    const auto world_point = [&](const math::vector3f& local) { return math::transform_point(world, local); };
+    const float point_marker = std::max(0.18f, std::min(1.0f, marker_radius * 0.16f));
+
+    for (std::size_t index = 0; index < water.shape.points.size(); ++index)
+    {
+        const auto& point = water.shape.points[index];
+        const auto position = world_point(point.position);
+        line(position - math::vector3f{point_marker, 0.0f, 0.0f},
+             position + math::vector3f{point_marker, 0.0f, 0.0f}, point_color,
+             render::debug_overlay_depth_mode::always);
+        line(position - math::vector3f{0.0f, 0.0f, point_marker},
+             position + math::vector3f{0.0f, 0.0f, point_marker}, point_color,
+             render::debug_overlay_depth_mode::always);
+
+        const auto depth_end = world_point(point.position + math::vector3f{0.0f, -point.depth, 0.0f});
+        line(position, depth_end, metadata_color);
+
+        if (water.type != ::arc::water::water_body_type::river) continue;
+
+        const auto& previous = water.shape.points[index == 0u ? index : index - 1u].position;
+        const auto& next = water.shape.points[index + 1u < water.shape.points.size() ? index + 1u : index].position;
+        auto tangent = math::vector3f{next[0] - previous[0], 0.0f, next[2] - previous[2]};
+        if (math::length_squared(tangent) <= 1.0e-6f) tangent = {1.0f, 0.0f, 0.0f};
+        tangent = math::normalize(tangent);
+        const math::vector3f side{-tangent[2], 0.0f, tangent[0]};
+        const float half_width = point.width * 0.5f;
+        line(world_point(math::sub(point.position, math::mul(side, half_width))),
+             world_point(math::add(point.position, math::mul(side, half_width))),
+             metadata_color);
+
+        if (std::abs(point.flow_speed) > 1.0e-4f)
+        {
+            const float direction = point.flow_speed < 0.0f ? -1.0f : 1.0f;
+            const float arrow_length = std::max(0.5f, std::min(3.0f, std::abs(point.flow_speed)));
+            const auto tip_local = math::add(point.position, math::mul(tangent, direction * arrow_length));
+            const auto tip = world_point(tip_local);
+            line(position, tip, flow_color, render::debug_overlay_depth_mode::always);
+            const auto back = math::mul(tangent, direction * -0.28f * arrow_length);
+            const auto wing = math::mul(side, 0.14f * arrow_length);
+            line(tip, world_point(math::add(tip_local, math::add(back, wing))), flow_color, render::debug_overlay_depth_mode::always);
+            line(tip, world_point(math::sub(math::add(tip_local, back), wing)), flow_color, render::debug_overlay_depth_mode::always);
+        }
+    }
+
+    const std::size_t segment_count =
+        water.type == ::arc::water::water_body_type::lake && water.shape.closed ? water.shape.points.size()
+                                                                                : water.shape.points.size() - 1u;
+    for (std::size_t index = 0; index < segment_count; ++index)
+    {
+        const auto& first = water.shape.points[index].position;
+        const auto& second = water.shape.points[(index + 1u) % water.shape.points.size()].position;
+        line(world_point(first), world_point(second), shape_color);
+    }
+}
+
 void append_mesh_item(ecs::world& scene, render::render_world_packet& packet, render_scene_result& result,
                       const scene_render_editor_options& editor_options, entity value,
                       const transform_component& transform, render::mesh_handle mesh, render::material_handle material,
@@ -721,37 +824,7 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                            .underwater_enabled = water.underwater_enabled},
                  .label = entity_label(scene, value)});
             if (entity_selected(scene, value))
-            {
-                const float marker_radius = std::max(4.0f, grid_cell_size * 4.0f);
-                const math::vector4f level_color{0.10f, 0.78f, 1.0f, 1.0f};
-                world_packet.debug_overlay.lines.push_back(
-                    {.start = surface_origin - math::vector3f{marker_radius, 0.0f, 0.0f},
-                     .end = surface_origin + math::vector3f{marker_radius, 0.0f, 0.0f},
-                     .color = level_color,
-                     .depth = render::debug_overlay_depth_mode::always});
-                world_packet.debug_overlay.lines.push_back(
-                    {.start = surface_origin - math::vector3f{0.0f, 0.0f, marker_radius},
-                     .end = surface_origin + math::vector3f{0.0f, 0.0f, marker_radius},
-                     .color = level_color,
-                     .depth = render::debug_overlay_depth_mode::always});
-                float half_extent = std::ldexp(water.visible_distance, -static_cast<int>(grid.ring_count));
-                for (std::uint32_t ring = 0; ring < std::min(grid.ring_count + 1u, 6u); ++ring)
-                {
-                    const float y = level + 0.03f;
-                    const math::vector3f corners[]{
-                        {surface_origin[0] - half_extent, y, surface_origin[2] - half_extent},
-                        {surface_origin[0] + half_extent, y, surface_origin[2] - half_extent},
-                        {surface_origin[0] + half_extent, y, surface_origin[2] + half_extent},
-                        {surface_origin[0] - half_extent, y, surface_origin[2] + half_extent}};
-                    const float intensity = 0.35f + static_cast<float>(ring) * 0.08f;
-                    for (std::uint32_t edge = 0; edge < 4u; ++edge)
-                        world_packet.debug_overlay.lines.push_back({.start = corners[edge],
-                                                                    .end = corners[(edge + 1u) % 4u],
-                                                                    .color = {0.08f, intensity, 0.92f, 0.75f},
-                                                                    .depth = render::debug_overlay_depth_mode::tested});
-                    half_extent *= 2.0f;
-                }
-            }
+                append_water_authoring_overlay(world_packet.debug_overlay, transform, water, surface_origin, grid);
             ++result.water_count;
         });
 
