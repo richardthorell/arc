@@ -344,7 +344,8 @@ float3 arcForwardEvaluateLight(ArcSurfaceData surface, float3 viewWS, float3 lig
     float coatVisibility = arcForwardV_SmithGGXCorrelated(nDotV, nDotL, coatRoughness);
     float3 coatFresnel = arcForwardFresnelSchlick(lDotH, float3(0.04));
     float3 coat = clearCoat * coatDistribution * coatVisibility * coatFresnel;
-    return (diffuse + specular + coat) * radiance * nDotL * visibility;
+    float3 baseEnergy = 1.0 - clearCoat * coatFresnel;
+    return ((diffuse + specular) * baseEnergy + coat) * radiance * nDotL * visibility;
 }
 
 uint arcForwardPointShadowFace(float3 direction)
@@ -527,6 +528,13 @@ float3 arcEvaluateForwardSurface(ArcSurfaceData surface, ArcSurfaceInput input, 
     float diffuseWeight = (1.0 - metallic) * (1.0 - transmission);
     float3 ambient = surface.baseColor * ambientRadiance * diffuseWeight * surface.ambientOcclusion;
     float3 reflection = ambientRadiance * fresnel * lerp(1.0, 0.35, roughness);
+    float clearCoat = saturate(surface.clearCoat);
+    float coatRoughness = clamp(surface.clearCoatRoughness, 0.04, 1.0);
+    float3 coatFresnel = arcForwardFresnelSchlick(nDotV, float3(0.04));
+    float3 coatReflection = ambientRadiance * coatFresnel * clearCoat * lerp(1.0, 0.35, coatRoughness);
+    float3 coatBaseEnergy = 1.0 - clearCoat * coatFresnel;
+    ambient *= coatBaseEnergy;
+    reflection = reflection * coatBaseEnergy + coatReflection;
 
     float2 viewportSize = max(
         float2(arcForwardScene.cameraPositionViewportWidth.w, arcForwardScene.fogParamsViewportHeight.w),
