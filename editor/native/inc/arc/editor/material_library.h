@@ -97,9 +97,8 @@ bool apply_material_asset_to_entity(editor_material_library& library, render::re
                                     ecs::world& scene, ecs::entity entity, std::string* message = nullptr);
 
 /** Apply one texture override through the editor's material-instance path. */
-bool apply_material_instance_texture_override(editor_scene_state& scene, render::renderer& renderer,
-                                              ecs::entity entity, std::string_view parameter_name,
-                                              std::string_view texture_path);
+bool apply_material_instance_texture_override(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity,
+                                              std::string_view parameter_name, std::string_view texture_path);
 
 ecs::entity apply_material_asset_to_viewport_hit(editor_material_library& library, render::renderer& renderer,
                                                  const std::filesystem::path& asset_root,

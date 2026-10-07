@@ -427,9 +427,8 @@ bool apply_material_edit(editor_scene_state& scene, render::renderer& renderer, 
 
 } // namespace
 
-bool apply_material_instance_texture_override(editor_scene_state& scene, render::renderer& renderer,
-                                              ecs::entity entity, std::string_view parameter_name,
-                                              std::string_view texture_path)
+bool apply_material_instance_texture_override(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity,
+                                              std::string_view parameter_name, std::string_view texture_path)
 {
     if (parameter_name.empty() || texture_path.empty()) return false;
     material_parameter_edit edit;
