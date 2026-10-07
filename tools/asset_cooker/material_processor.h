@@ -10,4 +10,7 @@ namespace arc::tools
 /** Create the first-class material cooker registered by arc_asset_cooker. */
 [[nodiscard]] std::unique_ptr<assets::asset_cook_processor> make_material_processor();
 
+/** Create the first-class Material Function cooker registered by arc_asset_cooker. */
+[[nodiscard]] std::unique_ptr<assets::asset_cook_processor> make_material_function_processor();
+
 } // namespace arc::tools

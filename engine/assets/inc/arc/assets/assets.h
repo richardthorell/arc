@@ -103,6 +103,7 @@ inline constexpr asset_type_id navigation{0xa7ca55e700000001ull, 0x0000000000000
 inline constexpr asset_type_id audio_clip{0xa7ca55e700000001ull, 0x000000000000000dull};
 inline constexpr asset_type_id material_instance{0xa7ca55e700000001ull, 0x000000000000000eull};
 inline constexpr asset_type_id flow_graph{0xa7ca55e700000001ull, 0x000000000000000full};
+inline constexpr asset_type_id material_function{0xa7ca55e700000001ull, 0x0000000000000011ull};
 inline constexpr asset_type_id unknown{0xa7ca55e700000001ull, 0xffffffffffffffffull};
 } // namespace asset_types
 
@@ -124,6 +125,7 @@ inline constexpr asset_importer_id audio{0xa7ca55e700000002ull, 0x00000000000000
 inline constexpr asset_importer_id material_instance{0xa7ca55e700000002ull, 0x000000000000000eull};
 inline constexpr asset_importer_id obj{0xa7ca55e700000002ull, 0x000000000000000full};
 inline constexpr asset_importer_id flow{0xa7ca55e700000002ull, 0x0000000000000010ull};
+inline constexpr asset_importer_id material_function{0xa7ca55e700000002ull, 0x0000000000000012ull};
 } // namespace importer_ids
 
 namespace fallback_assets

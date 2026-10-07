@@ -112,7 +112,9 @@ TEST_CASE("asset identifiers and SHA-256 hashes are stable")
     REQUIRE(guid.valid());
     REQUIRE(parse_asset_guid(to_string(guid)) == guid);
     REQUIRE(parse_asset_type_id(to_string(asset_types::material)) == asset_types::material);
+    REQUIRE(parse_asset_type_id(to_string(asset_types::material_function)) == asset_types::material_function);
     REQUIRE(parse_asset_importer_id(to_string(importer_ids::material)) == importer_ids::material);
+    REQUIRE(parse_asset_importer_id(to_string(importer_ids::material_function)) == importer_ids::material_function);
     REQUIRE_FALSE(parse_asset_guid("not-a-guid"));
 
     constexpr std::string_view abc = "abc";
@@ -143,6 +145,64 @@ TEST_CASE("Flow graph paths classify as immutable source assets")
     REQUIRE(uppercase.has_value());
     CHECK(uppercase->first == asset_types::flow_graph);
     CHECK(uppercase->second == importer_ids::flow);
+}
+
+TEST_CASE("Material Function source assets have a distinct first-class classification")
+{
+    using namespace arc::assets;
+
+    const auto function = classify_asset_path("Content/MaterialFunctions/Checker.arcmatfn");
+    REQUIRE(function);
+    CHECK(function->first == asset_types::material_function);
+    CHECK(function->second == importer_ids::material_function);
+
+    const auto uppercase = classify_asset_path("Content/MaterialFunctions/Checker.ARCMATFN");
+    REQUIRE(uppercase);
+    CHECK(uppercase->first == asset_types::material_function);
+    CHECK(uppercase->second == importer_ids::material_function);
+}
+
+TEST_CASE("Material and nested Material Function dependencies are reverse indexed")
+{
+    using namespace arc::assets;
+    temporary_project project;
+
+    project.write(
+        "functions/base.arcmatfn",
+        R"({"kind":"materialFunction","version":1,"name":"Base","inputs":[],"outputs":[{"id":"color","name":"Color","type":"float3"}],"graph":{"version":1,"nodes":[{"id":"out","type":"functionOutput","values":{}}],"connections":[]}})");
+    project.write(
+        "functions/checker.arcmatfn",
+        R"({"kind":"materialFunction","version":1,"name":"Checker","inputs":[],"outputs":[{"id":"color","name":"Color","type":"float3"}],"graph":{"version":1,"nodes":[{"id":"nested","type":"functionCall","values":{"path":"functions/base.arcmatfn"}},{"id":"out","type":"functionOutput","values":{}}],"connections":[]}})");
+    project.write(
+        "materials/uses_checker.arcmat",
+        R"({"version":4,"graph":{"version":1,"nodes":[{"id":"fn","type":"functionCall","values":{"path":"functions/checker.arcmatfn"}},{"id":"out","type":"output","values":{}}],"connections":[]}})");
+
+    asset_fixture fixture(project);
+    const auto material = fixture.manager.find("assets/materials/uses_checker.arcmat");
+    const auto checker = fixture.manager.find("assets/functions/checker.arcmatfn");
+    const auto base = fixture.manager.find("assets/functions/base.arcmatfn");
+    REQUIRE(material);
+    REQUIRE(checker);
+    REQUIRE(base);
+    REQUIRE(checker->type == asset_types::material_function);
+    REQUIRE(checker->importer == importer_ids::material_function);
+
+    const auto checker_loaded =
+        fixture.manager
+            .load<source_asset_data>(
+                {.reference = {checker->guid, asset_types::material_function, "assets/functions/checker.arcmatfn"}})
+            .get();
+    REQUIRE(checker_loaded.succeeded());
+    REQUIRE(fixture.manager.dependencies(checker->guid) == std::vector<asset_guid>{base->guid});
+    REQUIRE(fixture.manager.reverse_dependencies(base->guid) == std::vector<asset_guid>{checker->guid});
+
+    const auto material_loaded = fixture.manager
+                                     .load<source_asset_data>({.reference = {material->guid, asset_types::material,
+                                                                             "assets/materials/uses_checker.arcmat"}})
+                                     .get();
+    REQUIRE(material_loaded.succeeded());
+    REQUIRE(fixture.manager.dependencies(material->guid) == std::vector<asset_guid>{checker->guid});
+    REQUIRE(fixture.manager.reverse_dependencies(checker->guid) == std::vector<asset_guid>{material->guid});
 }
 
 TEST_CASE("asset metadata round trips stable subasset identities")
