@@ -1193,7 +1193,13 @@ struct render_water_profile
     bool gpu_simulation{};
     bool deterministic_initial_spectrum{};
     bool foam_history{};
+    /** All active Water Fluid Surfaces submitted this frame. */
     std::uint32_t active_body_count{};
+    std::uint32_t ocean_body_count{};
+    std::uint32_t lake_body_count{};
+    std::uint32_t river_body_count{};
+    /** Ocean bodies backed by a ready spectral GPU simulation. */
+    std::uint32_t spectral_body_count{};
     std::uint32_t active_cascade_count{};
     std::uint32_t maximum_resolution{};
     std::uint32_t update_interval_frames{1u};
@@ -1204,6 +1210,10 @@ struct render_water_profile
     double spectrum_update_milliseconds{};
     double inverse_fft_milliseconds{};
     double foam_update_milliseconds{};
+    /** Stable tool-facing description of the active Water simulation mix. */
+    std::string simulation_mode;
+    /** Material/render path expected for Water surface shading. */
+    std::string render_path;
     std::string fallback_reason;
 };
 
