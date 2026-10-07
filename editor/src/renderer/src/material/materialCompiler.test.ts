@@ -39,6 +39,9 @@ describe('native material compiler editor adapter', () => {
       'Metallic Roughness Texture',
       'Ambient Occlusion Texture',
       'Normal Texture',
+      'Clear Coat',
+      'Clear Coat Roughness',
+      'Clear Coat Texture',
       'Emissive Color',
       'Emissive Texture',
       'Emissive Strength',
@@ -113,6 +116,23 @@ describe('native material compiler editor adapter', () => {
     expect(materialEditorParameters(after)).toContainEqual(
       expect.objectContaining({ name: 'Normal Texture', type: 'texture2d', editorKind: 'texture' }),
     );
+  });
+
+  it('treats Standard Lit clear coat controls as parameter-only edits', () => {
+    const before = createDefaultMaterialGraph();
+    const after = structuredClone(before);
+    const factor = after.nodes.find((node) => node.parameter?.name === 'Clear Coat');
+    const roughness = after.nodes.find((node) => node.parameter?.name === 'Clear Coat Roughness');
+    const texture = after.nodes.find((node) => node.parameter?.name === 'Clear Coat Texture');
+    expect(factor).toBeDefined();
+    expect(roughness).toBeDefined();
+    expect(texture).toBeDefined();
+
+    factor!.values = { ...factor!.values, value: 0.8 };
+    roughness!.values = { ...roughness!.values, value: 0.15 };
+    texture!.values = { ...texture!.values, texture: 'Content/Textures/car_clearcoat.png' };
+
+    expect(materialGraphEditImpact(before, after)).toBe('parameter-values');
   });
 
   it('treats Standard Lit emissive controls as parameter-only edits', () => {
