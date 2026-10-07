@@ -1249,3 +1249,23 @@
   padding-top: 0;
   border-top: 0;
 }
+
+
+.inspector-inherited-property-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.inspector-inherited-property-control > :first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.inspector-inherited-property-revert {
+  flex: 0 0 auto;
+  height: var(--inspector-control-height);
+  padding-inline: 7px;
+  font-size: 10px;
+}
