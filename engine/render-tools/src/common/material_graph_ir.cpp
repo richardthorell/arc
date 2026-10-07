@@ -404,7 +404,8 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
 
         if (node.has_range)
         {
-            if (!values["min"].is_number() || !values["max"].is_number() || node.minimum > node.maximum)
+            if (!values.contains("value") || !values["value"].is_number() || !values["min"].is_number() ||
+                !values["max"].is_number() || node.minimum > node.maximum)
                 return material_graph_compile_result::failure(
                     {.code = shader_compile_error_code::validation_failed,
                      .message = "Scalar range is invalid: " + id});
