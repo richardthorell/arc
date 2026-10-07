@@ -3,6 +3,7 @@
 #include <arc/math/constants.h>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 
 namespace arc::render
@@ -391,13 +392,15 @@ clustered_light_grid build_clustered_light_grid(const scene_lighting_data& light
     };
 
     for (std::uint32_t index = 0u; index < std::min(lighting.point_count, max_point_lights); ++index)
-        append_sphere(lighting.point_lights[index].position_range.xyz(),
+        append_sphere(math::vector3f{lighting.point_lights[index].position_range[0], lighting.point_lights[index].position_range[1],
+                       lighting.point_lights[index].position_range[2]},
                       lighting.point_lights[index].position_range[3],
                       encode_clustered_light_reference(clustered_light_kind::point, index),
                       clustered_light_kind::point);
 
     for (std::uint32_t index = 0u; index < std::min(lighting.spot_count, max_spot_lights); ++index)
-        append_sphere(lighting.spot_lights[index].position_range.xyz(),
+        append_sphere(math::vector3f{lighting.spot_lights[index].position_range[0], lighting.spot_lights[index].position_range[1],
+                       lighting.spot_lights[index].position_range[2]},
                       lighting.spot_lights[index].position_range[3],
                       encode_clustered_light_reference(clustered_light_kind::spot, index),
                       clustered_light_kind::spot);
