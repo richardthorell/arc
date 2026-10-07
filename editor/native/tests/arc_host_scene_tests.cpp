@@ -821,6 +821,51 @@ TEST_CASE("legacy Flow paths migrate to schema v2 GUID references")
     std::filesystem::remove_all(root, error);
 }
 
+TEST_CASE("explicit Water Body creation establishes Ocean Lake and River authoring defaults")
+{
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    assets.root = std::filesystem::path{ARC_SOURCE_ROOT} / "assets";
+    assets.builtin_roots = {assets.root};
+    REQUIRE(host->open_project({.name = "Water Body Creation Test", .root = {}}, assets).succeeded);
+
+    const auto create = [&](arc::editor::host_create_entity_kind kind)
+    {
+        REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = kind}).succeeded);
+        const auto snapshot = host->selected_entity_snapshot();
+        REQUIRE(snapshot.water.has_value());
+        return snapshot;
+    };
+
+    const auto ocean = create(arc::editor::host_create_entity_kind::ocean);
+    CHECK(ocean.name == "Ocean");
+    CHECK(ocean.water->body_type == 0u);
+    CHECK(ocean.water->follow_camera);
+    CHECK(ocean.water->preset_path == "builtin/water/presets/open_ocean.arcwater");
+    CHECK(ocean.water->material_path == "builtin/materials/water.arcmat");
+
+    const auto lake = create(arc::editor::host_create_entity_kind::lake);
+    CHECK(lake.name == "Lake");
+    CHECK(lake.water->body_type == 1u);
+    CHECK_FALSE(lake.water->follow_camera);
+    CHECK(lake.water->preset_path == "builtin/water/presets/calm_lake.arcwater");
+    CHECK(lake.water->material_path == "builtin/materials/water.arcmat");
+
+    const auto river = create(arc::editor::host_create_entity_kind::river);
+    CHECK(river.name == "River");
+    CHECK(river.water->body_type == 2u);
+    CHECK_FALSE(river.water->follow_camera);
+    CHECK(river.water->preset_path.empty());
+    CHECK(river.water->material_path == "builtin/materials/water.arcmat");
+
+    std::size_t water_body_count{};
+    host->scene_state().scene.view<arc::scene::water_component>().each(
+        [&](arc::ecs::entity, const arc::scene::water_component&) { ++water_body_count; });
+    CHECK(water_body_count == 3u);
+}
+
 TEST_CASE("Water component version 2 survives scene save and reload")
 {
     const auto root =
