@@ -32,6 +32,7 @@ describe('core built-in material families', () => {
       'Roughness',
       'Metallic Roughness Texture',
       'Ambient Occlusion Texture',
+      'Normal Texture',
       'Emissive Color',
       'Emissive Texture',
       'Emissive Strength',
@@ -39,11 +40,17 @@ describe('core built-in material families', () => {
     expect(materialGraphOutputConnected(graph, 'metallic')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'roughness')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'ao')).toBe(true);
+    expect(materialGraphOutputConnected(graph, 'normal')).toBe(true);
 
     const packed = graph.nodes.find((node) => node.parameter?.name === 'Metallic Roughness Texture');
     const ao = graph.nodes.find((node) => node.parameter?.name === 'Ambient Occlusion Texture');
+    const normal = graph.nodes.find((node) => node.parameter?.name === 'Normal Texture');
     expect(packed).toMatchObject({ type: 'textureSample2D', values: { texture: '', dimension: '2d' } });
     expect(ao).toMatchObject({ type: 'textureSample2D', values: { texture: '', dimension: '2d' } });
+    expect(normal).toMatchObject({
+      type: 'textureSample2D',
+      values: { texture: '', dimension: '2d', semantic: 'normal' },
+    });
     expect(
       graph.connections.some((connection) => connection.from.nodeId === packed?.id && connection.from.pin === 'b'),
     ).toBe(true);
