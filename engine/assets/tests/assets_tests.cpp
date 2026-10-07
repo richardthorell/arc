@@ -167,12 +167,15 @@ TEST_CASE("Material and nested Material Function dependencies are reverse indexe
     using namespace arc::assets;
     temporary_project project;
 
-    project.write("functions/base.arcmatfn",
-                  R"({"kind":"materialFunction","version":1,"name":"Base","inputs":[],"outputs":[{"id":"color","name":"Color","type":"float3"}],"graph":{"version":1,"nodes":[{"id":"out","type":"functionOutput","values":{}}],"connections":[]}})");
-    project.write("functions/checker.arcmatfn",
-                  R"({"kind":"materialFunction","version":1,"name":"Checker","inputs":[],"outputs":[{"id":"color","name":"Color","type":"float3"}],"graph":{"version":1,"nodes":[{"id":"nested","type":"functionCall","values":{"path":"functions/base.arcmatfn"}},{"id":"out","type":"functionOutput","values":{}}],"connections":[]}})");
-    project.write("materials/uses_checker.arcmat",
-                  R"({"version":4,"graph":{"version":1,"nodes":[{"id":"fn","type":"functionCall","values":{"path":"functions/checker.arcmatfn"}},{"id":"out","type":"output","values":{}}],"connections":[]}})");
+    project.write(
+        "functions/base.arcmatfn",
+        R"({"kind":"materialFunction","version":1,"name":"Base","inputs":[],"outputs":[{"id":"color","name":"Color","type":"float3"}],"graph":{"version":1,"nodes":[{"id":"out","type":"functionOutput","values":{}}],"connections":[]}})");
+    project.write(
+        "functions/checker.arcmatfn",
+        R"({"kind":"materialFunction","version":1,"name":"Checker","inputs":[],"outputs":[{"id":"color","name":"Color","type":"float3"}],"graph":{"version":1,"nodes":[{"id":"nested","type":"functionCall","values":{"path":"functions/base.arcmatfn"}},{"id":"out","type":"functionOutput","values":{}}],"connections":[]}})");
+    project.write(
+        "materials/uses_checker.arcmat",
+        R"({"version":4,"graph":{"version":1,"nodes":[{"id":"fn","type":"functionCall","values":{"path":"functions/checker.arcmatfn"}},{"id":"out","type":"output","values":{}}],"connections":[]}})");
 
     asset_fixture fixture(project);
     const auto material = fixture.manager.find("assets/materials/uses_checker.arcmat");
@@ -186,18 +189,17 @@ TEST_CASE("Material and nested Material Function dependencies are reverse indexe
 
     const auto checker_loaded =
         fixture.manager
-            .load<source_asset_data>({.reference = {checker->guid, asset_types::material_function,
-                                                    "assets/functions/checker.arcmatfn"}})
+            .load<source_asset_data>(
+                {.reference = {checker->guid, asset_types::material_function, "assets/functions/checker.arcmatfn"}})
             .get();
     REQUIRE(checker_loaded.succeeded());
     REQUIRE(fixture.manager.dependencies(checker->guid) == std::vector<asset_guid>{base->guid});
     REQUIRE(fixture.manager.reverse_dependencies(base->guid) == std::vector<asset_guid>{checker->guid});
 
-    const auto material_loaded =
-        fixture.manager
-            .load<source_asset_data>(
-                {.reference = {material->guid, asset_types::material, "assets/materials/uses_checker.arcmat"}})
-            .get();
+    const auto material_loaded = fixture.manager
+                                     .load<source_asset_data>({.reference = {material->guid, asset_types::material,
+                                                                             "assets/materials/uses_checker.arcmat"}})
+                                     .get();
     REQUIRE(material_loaded.succeeded());
     REQUIRE(fixture.manager.dependencies(material->guid) == std::vector<asset_guid>{checker->guid});
     REQUIRE(fixture.manager.reverse_dependencies(checker->guid) == std::vector<asset_guid>{material->guid});

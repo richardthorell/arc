@@ -370,9 +370,9 @@ std::vector<std::unique_ptr<asset_importer>> default_importers()
                                                             std::vector<std::string>{".arcprefab"}));
     result.push_back(std::make_unique<source_blob_importer>(importer_ids::material, asset_types::material,
                                                             "ARC Material", std::vector<std::string>{".arcmat"}));
-    result.push_back(std::make_unique<source_blob_importer>(
-        importer_ids::material_function, asset_types::material_function, "ARC Material Function",
-        std::vector<std::string>{".arcmatfn"}));
+    result.push_back(std::make_unique<source_blob_importer>(importer_ids::material_function,
+                                                            asset_types::material_function, "ARC Material Function",
+                                                            std::vector<std::string>{".arcmatfn"}));
     result.push_back(std::make_unique<source_blob_importer>(importer_ids::material_instance,
                                                             asset_types::material_instance, "ARC Material Instance",
                                                             std::vector<std::string>{".arcmatinst"}));
