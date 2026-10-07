@@ -129,6 +129,21 @@ render::water_ocean_grid_descriptor water_grid_descriptor_for(const water_compon
     return grid;
 }
 
+render::fluid_surface_channels water_fluid_channels_for(const water_component& water) noexcept
+{
+    render::fluid_surface_channels channels;
+    channels.normals = true;
+    if (water.type == ::arc::water::water_body_type::ocean)
+    {
+        channels.displacement = true;
+        channels.velocity = true;
+        channels.foam = water.settings.foam.enabled;
+    }
+    // Water currently supplies optical thickness through the Material ABI, not a per-surface depth/thickness field.
+    channels.thickness = false;
+    return channels;
+}
+
 void append_mesh_item(ecs::world& scene, render::render_world_packet& packet, render_scene_result& result,
                       const scene_render_editor_options& editor_options, entity value,
                       const transform_component& transform, render::mesh_handle mesh, render::material_handle material,
@@ -693,11 +708,7 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                  .position = transform.position,
                  .surface_origin = surface_origin,
                  .source_kind = render::fluid_surface_source_kind::water,
-                 .channels = {.displacement = true,
-                              .normals = true,
-                              .velocity = true,
-                              .foam = water.settings.foam.enabled,
-                              .thickness = true},
+                 .channels = water_fluid_channels_for(water),
                  .water = {.type = water.type,
                            .settings = water.settings,
                            .water_level = level,

@@ -710,6 +710,105 @@ TEST_CASE("render scene culling uses transformed dirty local bounds")
     REQUIRE(world_event.packet->visible_items.size() == 1);
 }
 
+TEST_CASE("Water preset application updates only preset-owned state")
+{
+    arc::scene::water_component component;
+    component.water_level = 7.0f;
+    component.visible_distance = 1234.0f;
+    component.follow_camera = false;
+    component.shoreline_enabled = false;
+    component.underwater_enabled = false;
+    component.queries_enabled = false;
+    component.buoyancy_enabled = false;
+    component.priority = 9;
+    component.material.path_hint = "project/materials/custom_water.arcmat";
+
+    arc::water::water_preset preset;
+    preset.name = "Lake";
+    preset.body_type = arc::water::water_body_type::lake;
+    preset.settings.simulation.wind_speed = 4.0f;
+    preset.settings.foam.enabled = false;
+    preset.settings.appearance.roughness = 0.12f;
+    preset.settings.quality = arc::water::water_quality::medium;
+
+    REQUIRE(arc::scene::apply_water_preset(component, preset));
+    CHECK(component.type == arc::water::water_body_type::lake);
+    CHECK(component.settings.simulation.wind_speed == Catch::Approx(4.0f));
+    CHECK_FALSE(component.settings.foam.enabled);
+    CHECK(component.settings.appearance.roughness == Catch::Approx(0.12f));
+    CHECK(component.settings.quality == arc::water::water_quality::medium);
+
+    CHECK(component.water_level == Catch::Approx(7.0f));
+    CHECK(component.visible_distance == Catch::Approx(1234.0f));
+    CHECK_FALSE(component.follow_camera);
+    CHECK_FALSE(component.shoreline_enabled);
+    CHECK_FALSE(component.underwater_enabled);
+    CHECK_FALSE(component.queries_enabled);
+    CHECK_FALSE(component.buoyancy_enabled);
+    CHECK(component.priority == 9);
+    CHECK(component.material.path_hint == "project/materials/custom_water.arcmat");
+
+    const auto before = component;
+    preset.settings.simulation.wind_direction = {0.0f, 0.0f};
+    REQUIRE_FALSE(arc::scene::apply_water_preset(component, preset));
+    CHECK(component.type == before.type);
+    CHECK(component.settings.simulation.wind_speed == Catch::Approx(before.settings.simulation.wind_speed));
+    CHECK(component.settings.simulation.wind_direction[0] ==
+          Catch::Approx(before.settings.simulation.wind_direction[0]));
+    CHECK(component.settings.simulation.wind_direction[1] ==
+          Catch::Approx(before.settings.simulation.wind_direction[1]));
+}
+
+TEST_CASE("Fluid Surface channels reflect implemented Water providers")
+{
+    const auto render_water = [](arc::water::water_body_type type, bool foam_enabled)
+    {
+        arc::ecs::world scene;
+        arc::render::renderer renderer;
+
+        const auto camera = scene.create();
+        scene.emplace<arc::scene::transform_component>(camera);
+        scene.emplace<arc::scene::camera_component>(camera);
+
+        const auto water_entity = scene.create();
+        scene.emplace<arc::scene::transform_component>(water_entity);
+        arc::scene::water_component water;
+        water.type = type;
+        water.follow_camera = false;
+        water.settings.foam.enabled = foam_enabled;
+        scene.emplace<arc::scene::water_component>(water_entity, water);
+
+        const auto result = arc::scene::render_scene(scene, renderer, 640, 480);
+        REQUIRE(result.water_count == 1);
+        const auto frame = renderer.frame_queue().commit(1);
+        REQUIRE(frame.events.size() == 1);
+        const auto& packet = *std::get<arc::render::render_world_event>(frame.events[0].payload).packet;
+        REQUIRE(packet.fluid_surfaces.size() == 1);
+        return packet.fluid_surfaces.front().channels;
+    };
+
+    const auto ocean = render_water(arc::water::water_body_type::ocean, true);
+    CHECK(ocean.displacement);
+    CHECK(ocean.normals);
+    CHECK(ocean.velocity);
+    CHECK(ocean.foam);
+    CHECK_FALSE(ocean.thickness);
+
+    const auto lake = render_water(arc::water::water_body_type::lake, true);
+    CHECK_FALSE(lake.displacement);
+    CHECK(lake.normals);
+    CHECK_FALSE(lake.velocity);
+    CHECK_FALSE(lake.foam);
+    CHECK_FALSE(lake.thickness);
+
+    const auto river = render_water(arc::water::water_body_type::river, true);
+    CHECK_FALSE(river.displacement);
+    CHECK(river.normals);
+    CHECK_FALSE(river.velocity);
+    CHECK_FALSE(river.foam);
+    CHECK_FALSE(river.thickness);
+}
+
 TEST_CASE("render scene snaps selected Ocean geometry to the camera-relative Water contract")
 {
     arc::ecs::world scene;
