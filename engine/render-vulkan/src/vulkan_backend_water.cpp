@@ -222,11 +222,31 @@ bool vulkan_render_backend::synchronize_water_simulations(std::uint64_t frame_in
 {
     auto& profile = last_profile_.water;
     profile = {};
-    if (frame_fluid_surfaces_.empty())
+    profile.render_path = "material_pass::forward";
+
+    for (const auto& instance : frame_fluid_surfaces_)
+    {
+        if (!instance.is_water()) continue;
+        ++profile.active_body_count;
+        switch (instance.water.type)
+        {
+            case water::water_body_type::ocean:
+                ++profile.ocean_body_count;
+                break;
+            case water::water_body_type::lake:
+                ++profile.lake_body_count;
+                break;
+            case water::water_body_type::river:
+                ++profile.river_body_count;
+                break;
+        }
+    }
+
+    const auto release_expired_oceans = [&]()
     {
         const bool has_expired = std::ranges::any_of(ocean_simulations_, [frame_index](const auto& entry)
                                                      { return frame_index > entry.second.last_seen_frame + 4u; });
-        if (!has_expired) return true;
+        if (!has_expired) return;
         wait_for_in_flight_frames();
         for (auto iterator = ocean_simulations_.begin(); iterator != ocean_simulations_.end();)
         {
@@ -238,12 +258,30 @@ bool vulkan_render_backend::synchronize_water_simulations(std::uint64_t frame_in
             destroy_ocean_simulation(iterator->second);
             iterator = ocean_simulations_.erase(iterator);
         }
+    };
+
+    if (profile.active_body_count == 0u)
+    {
+        profile.render_path.clear();
+        release_expired_oceans();
         return true;
     }
+
     profile.enabled = true;
+    if (profile.ocean_body_count == 0u)
+    {
+        profile.simulation_mode = "flat-baseline";
+        release_expired_oceans();
+        return true;
+    }
+
     profile.deterministic_initial_spectrum = true;
+    profile.simulation_mode = profile.lake_body_count > 0u || profile.river_body_count > 0u
+                                  ? "mixed-spectral-and-flat"
+                                  : "spectral-ocean-gpu";
     if (!ensure_water_compute_resources())
     {
+        profile.simulation_mode = "flat-w0-fallback";
         profile.fallback_reason = "Vulkan spectral Water compute pipelines are unavailable; using the flat W0 surface";
         return false;
     }
@@ -383,7 +421,7 @@ bool vulkan_render_backend::synchronize_water_simulations(std::uint64_t frame_in
         simulation.instance = instance;
         simulation.last_seen_frame = frame_index;
         if (!simulation.ready) continue;
-        ++profile.active_body_count;
+        ++profile.spectral_body_count;
         profile.active_cascade_count += simulation.profile.cascade_count;
         profile.update_interval_frames =
             std::max(profile.update_interval_frames, simulation.profile.update_interval_frames);
@@ -417,7 +455,11 @@ bool vulkan_render_backend::synchronize_water_simulations(std::uint64_t frame_in
         destroy_ocean_simulation(iterator->second);
         iterator = ocean_simulations_.erase(iterator);
     }
-    profile.gpu_simulation = profile.active_body_count > 0u;
+    profile.gpu_simulation = profile.spectral_body_count > 0u;
+    if (!succeeded && profile.spectral_body_count == 0u)
+        profile.simulation_mode = "flat-w0-fallback";
+    else if (profile.spectral_body_count < profile.ocean_body_count)
+        profile.simulation_mode = "mixed-spectral-and-flat";
     return succeeded;
 }
 
