@@ -538,8 +538,8 @@ void vulkan_render_backend::dispatch_water_foam_update(VkCommandBuffer command_b
             const auto& descriptor = simulation.profile.cascades[index];
             const auto& cascade = simulation.cascades[index];
             const water_foam_push_constants constants{
-                descriptor.resolution,
-                std::clamp(simulation.instance.water.settings.foam.threshold, 0.0f, 1.0f), retention, configuration};
+                descriptor.resolution, std::clamp(simulation.instance.water.settings.foam.threshold, 0.0f, 1.0f),
+                retention, configuration};
             vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, water_compute_pipeline_layout_, 0u,
                                     1u, &cascade.finalize_descriptor, 0u, nullptr);
             vkCmdPushConstants(command_buffer, water_compute_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0u,

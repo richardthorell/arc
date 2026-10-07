@@ -327,7 +327,8 @@ void vulkan_render_backend::append_render_world(const render_world_event& event)
     frame_camera_valid_ = true;
     frame_environment_ = packet.environment;
     frame_simulation_time_seconds_ = packet.simulation_time_seconds;
-    frame_fluid_surfaces_.insert(frame_fluid_surfaces_.end(), packet.fluid_surfaces.begin(), packet.fluid_surfaces.end());
+    frame_fluid_surfaces_.insert(frame_fluid_surfaces_.end(), packet.fluid_surfaces.begin(),
+                                 packet.fluid_surfaces.end());
     frame_shadows_enabled_ = packet.shadows_enabled;
     last_profile_.virtual_geometry.enabled = resolved_config_.features.virtual_geometry;
     last_profile_.virtual_geometry.raster_path = resolved_config_.features.virtual_geometry_path;
