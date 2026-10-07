@@ -363,7 +363,11 @@ export const openAssetEditorDocument = (asset: AssetItem, registry: EditorRegist
   if (!target || !registry) return false;
 
   const needsCanonicalProjectIdentity =
-    asset.scope !== 'builtin' && (asset.kind === 'material' || asset.kind === 'shader' || asset.kind === 'flow');
+    asset.scope !== 'builtin' &&
+    (asset.kind === 'material' ||
+      asset.kind === 'materialFunction' ||
+      asset.kind === 'shader' ||
+      asset.kind === 'flow');
   if (!needsCanonicalProjectIdentity || typeof window === 'undefined' || !window.arc?.host?.query) {
     openEditorDocumentInStore(target.document, target.registration.allowMultiple);
     return true;
