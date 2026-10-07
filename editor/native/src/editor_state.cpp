@@ -160,6 +160,24 @@ void remember_builtin_asset_roots(editor_scene_state& scene, const editor_asset_
         remember_builtin_asset_root(scene, root);
 }
 
+bool assign_runtime_texture(render::material_descriptor& material, std::string_view parameter_name,
+                            render::texture_handle texture)
+{
+    if (!material.runtime_program || !texture.valid()) return false;
+
+    const auto parameter = std::ranges::find(material.runtime_program->parameters, parameter_name,
+                                             &render::shader_parameter_descriptor::name);
+    if (parameter == material.runtime_program->parameters.end()) return false;
+
+    const auto binding = std::ranges::find(material.runtime_program->texture_bindings, parameter->id,
+                                           &render::material_runtime_texture_binding::parameter_id);
+    if (binding == material.runtime_program->texture_bindings.end()) return false;
+
+    if (material.runtime_textures.size() <= binding->slot) material.runtime_textures.resize(binding->slot + 1u);
+    material.runtime_textures[binding->slot] = texture;
+    return true;
+}
+
 const render::material_descriptor* water_material_base(const editor_scene_state& scene,
                                                        render::material_handle material)
 {
@@ -369,7 +387,7 @@ render::material_handle create_default_primitive_material(editor_scene_state& sc
     scene.primitive_material_asset = {};
     for (const auto& builtin_root : editor_assets.builtin_roots)
     {
-        const auto authored_path = builtin_root / "materials" / "default_phong.arcmat";
+        const auto authored_path = builtin_root / "materials" / "standard_lit.arcmat";
         if (!std::filesystem::is_regular_file(authored_path)) continue;
 
         material_asset authored;
@@ -379,7 +397,7 @@ render::material_handle create_default_primitive_material(editor_scene_state& sc
 
         scene.primitive_material = authored_handle;
         scene.primitive_material_asset.expected_type = assets::asset_types::material;
-        scene.primitive_material_asset.path_hint = "builtin/materials/default_phong.arcmat";
+        scene.primitive_material_asset.path_hint = "builtin/materials/standard_lit.arcmat";
         return authored_handle;
     }
 
@@ -393,18 +411,34 @@ render::material_handle create_default_floor_material(editor_scene_state& scene,
     scene.floor_material_asset = {};
     for (const auto& builtin_root : editor_assets.builtin_roots)
     {
-        const auto authored_path = builtin_root / "materials" / "default_checker_floor.arcmat";
-        if (!std::filesystem::is_regular_file(authored_path)) continue;
+        const auto standard_lit_path = builtin_root / "materials" / "standard_lit.arcmat";
+        const auto checker_path = builtin_root / "textures" / "editor" / "default_checker_floor.png";
+        if (!std::filesystem::is_regular_file(standard_lit_path) || !std::filesystem::is_regular_file(checker_path))
+            continue;
 
         material_asset authored;
-        const auto authored_handle =
-            load_material_for_editor(scene.material_library, renderer, builtin_root, authored_path, &authored);
-        if (!authored_handle.valid()) continue;
+        const auto standard_lit =
+            load_material_for_editor(scene.material_library, renderer, builtin_root, standard_lit_path, &authored);
+        if (!standard_lit.valid()) continue;
 
-        scene.floor_material = authored_handle;
+        auto loaded_checker = render::load_texture_asset(checker_path);
+        if (!loaded_checker.succeeded()) continue;
+        const auto checker = renderer.create_texture(std::move(loaded_checker.texture));
+        if (!checker.valid()) continue;
+        scene.default_textures.push_back(checker);
+
+        auto material = authored.material;
+        material.name = "Default Checker Floor";
+        material.base_color_texture = checker;
+        if (!assign_runtime_texture(material, "Base Color Texture", checker)) continue;
+
+        const auto floor_material = renderer.create_material(material);
+        if (!floor_material.valid()) continue;
+
+        scene.floor_material = floor_material;
         scene.floor_material_asset.expected_type = assets::asset_types::material;
-        scene.floor_material_asset.path_hint = "builtin/materials/default_checker_floor.arcmat";
-        return authored_handle;
+        scene.floor_material_asset.path_hint = "builtin/materials/standard_lit.arcmat";
+        return floor_material;
     }
 
     scene.floor_material = ensure_default_material(scene, renderer);
@@ -415,22 +449,6 @@ render::material_handle create_default_terrain_material(editor_scene_state& scen
                                                         const std::filesystem::path& asset_root)
 {
     remember_builtin_asset_root(scene, asset_root);
-    material_asset authored;
-    const auto authored_path = asset_root / "materials" / "layered_terrain.arcmat";
-    const auto authored_handle =
-        load_material_for_editor(scene.material_library, renderer, asset_root, authored_path, &authored);
-    if (authored_handle.valid() && authored.material.domain == render::material_domain::terrain)
-    {
-        scene.terrain_material = authored_handle;
-        scene.terrain_material_descriptor = authored.material;
-        for (std::size_t layer = 0; layer < authored.terrain_layers.size(); ++layer)
-        {
-            scene.terrain_layer_paths[layer] =
-                resolve_material_texture_path(asset_root, authored.terrain_layers[layer].base_color);
-        }
-        return authored_handle;
-    }
-
     render::material_descriptor material;
     material.name = "ARC Layered Terrain";
     material.domain = render::material_domain::terrain;
