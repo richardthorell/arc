@@ -224,6 +224,22 @@ void main()
         ambient_diffuse,
         ambient_specular,
         vec2(1.0 - 0.5 * surface.perceptual_roughness, 0.04));
+    if (surface.clear_coat > 0.0)
+    {
+        float coat_n_dot_v = max(dot(surface.clear_coat_normal, view_direction), 0.0);
+        vec3 coat_fresnel = arc_fresnel_schlick_roughness(
+            coat_n_dot_v, vec3(ARC_DIELECTRIC_F0), surface.clear_coat_roughness);
+        vec3 coat_specular = constants.ambient_visualization.rgb *
+            mix(0.35, 1.0, 1.0 - surface.clear_coat_roughness);
+        if (constants.light_color.w > 0.5)
+        {
+            vec3 coat_reflected = reflect(-view_direction, surface.clear_coat_normal);
+            coat_specular = sample_environment(coat_reflected, surface.clear_coat_roughness);
+        }
+        vec3 base_energy = vec3(1.0) - surface.clear_coat * coat_fresnel;
+        ambient = ambient * base_energy +
+            coat_specular * coat_fresnel * surface.clear_coat * surface.occlusion;
+    }
     vec3 lit = ambient + direct + emissive;
 
     int mode = int(constants.ambient_visualization.w + 0.5);
