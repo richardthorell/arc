@@ -165,8 +165,8 @@ bool assign_runtime_texture(render::material_descriptor& material, std::string_v
 {
     if (!material.runtime_program || !texture.valid()) return false;
 
-    const auto parameter =
-        std::ranges::find(material.runtime_program->parameters, parameter_name, &render::shader_parameter_descriptor::name);
+    const auto parameter = std::ranges::find(material.runtime_program->parameters, parameter_name,
+                                             &render::shader_parameter_descriptor::name);
     if (parameter == material.runtime_program->parameters.end()) return false;
 
     const auto binding = std::ranges::find(material.runtime_program->texture_bindings, parameter->id,
