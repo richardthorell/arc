@@ -39,7 +39,7 @@ Prefer an existing reusable material over creating a new graph when it already r
 
 Use **Standard Lit** for ordinary opaque metallic/roughness PBR surfaces. It is ARC's general-purpose default material and should be the first choice for common textured or solid-color objects.
 
-Use specialized material families only when the requested rendering behavior requires them, such as Unlit, Foliage, Water, Terrain, Transmission/Glass, or Subsurface.
+Use specialized material families or systems only when the requested rendering behavior requires them, such as Unlit, Water, Terrain, Transmission/Glass, or Subsurface. Foliage should use the existing Standard Lit, Transmission, or Subsurface capabilities unless ARC gains dedicated foliage rendering behavior.
 
 Do not create a new shader merely to apply a texture or change a common surface parameter.
 
