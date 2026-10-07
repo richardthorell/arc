@@ -834,6 +834,12 @@ const char* to_string(host_create_entity_kind value) noexcept
             return "worldEnvironment";
         case host_create_entity_kind::terrain:
             return "terrain";
+        case host_create_entity_kind::ocean:
+            return "ocean";
+        case host_create_entity_kind::lake:
+            return "lake";
+        case host_create_entity_kind::river:
+            return "river";
         case host_create_entity_kind::water:
             return "water";
         case host_create_entity_kind::grass_patch:
@@ -2526,6 +2532,9 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             {"capsule", host_create_entity_kind::capsule},
             {"worldEnvironment", host_create_entity_kind::world_environment},
             {"terrain", host_create_entity_kind::terrain},
+            {"ocean", host_create_entity_kind::ocean},
+            {"lake", host_create_entity_kind::lake},
+            {"river", host_create_entity_kind::river},
             {"water", host_create_entity_kind::water},
             {"grassPatch", host_create_entity_kind::grass_patch},
             {"decal", host_create_entity_kind::decal}};
