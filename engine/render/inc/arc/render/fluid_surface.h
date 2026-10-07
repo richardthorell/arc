@@ -1,7 +1,6 @@
 #pragma once
 
 #include <arc/render/handles.h>
-#include <arc/render/events.h>
 #include <arc/math/vector.h>
 #include <arc/water/water_types.h>
 
