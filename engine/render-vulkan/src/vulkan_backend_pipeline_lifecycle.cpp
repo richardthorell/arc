@@ -191,6 +191,17 @@ void vulkan_render_backend::destroy_white_texture() noexcept
         vkDestroySampler(device_, white_sampler_, nullptr);
         white_sampler_ = VK_NULL_HANDLE;
     }
+    if (neutral_normal_view_ != VK_NULL_HANDLE)
+    {
+        vkDestroyImageView(device_, neutral_normal_view_, nullptr);
+        neutral_normal_view_ = VK_NULL_HANDLE;
+    }
+    if (neutral_normal_image_ != VK_NULL_HANDLE)
+    {
+        vmaDestroyImage(allocator_, neutral_normal_image_, neutral_normal_allocation_);
+        neutral_normal_image_ = VK_NULL_HANDLE;
+        neutral_normal_allocation_ = VK_NULL_HANDLE;
+    }
     if (white_view_ != VK_NULL_HANDLE)
     {
         vkDestroyImageView(device_, white_view_, nullptr);
