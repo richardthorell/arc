@@ -121,6 +121,13 @@ export type InspectorTerrain = {
   layers: Array<{ name: string; baseColorPath: string }>;
 };
 
+export type InspectorWaterShapePoint = {
+  position: Vec3;
+  width: number;
+  depth: number;
+  flow: number;
+};
+
 export type InspectorWater = {
   bodyType: 'ocean' | 'lake' | 'river';
   presetGuid: string;
@@ -154,6 +161,8 @@ export type InspectorWater = {
   buoyancyEnabled: boolean;
   quality: 'low' | 'medium' | 'high' | 'ultra';
   priority: number;
+  shapeClosed: boolean;
+  shapePoints: InspectorWaterShapePoint[];
 };
 
 export type InspectorPrefab = {
@@ -383,6 +392,17 @@ const hostSelectedEntitySchema = z.object({
       buoyancyEnabled: z.boolean(),
       quality: z.enum(['low', 'medium', 'high', 'ultra']),
       priority: z.number().int(),
+      shapeClosed: z.boolean().default(false),
+      shapePoints: z
+        .array(
+          z.object({
+            position: vec3Tuple,
+            width: finiteNumber.nonnegative(),
+            depth: finiteNumber.nonnegative(),
+            flow: finiteNumber,
+          }),
+        )
+        .default([]),
     })
     .nullable()
     .default(null),
@@ -515,6 +535,10 @@ export function parseSelectedEntitySnapshot(value: unknown): InspectorEntitySnap
           ...parsed.water,
           absorption: tupleToVec3(parsed.water.absorption),
           scattering: tupleToVec3(parsed.water.scattering),
+          shapePoints: parsed.water.shapePoints.map((point) => ({
+            ...point,
+            position: tupleToVec3(point.position),
+          })),
         }
       : null,
   };
