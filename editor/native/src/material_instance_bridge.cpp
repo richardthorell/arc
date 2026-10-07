@@ -12,6 +12,7 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -157,6 +158,24 @@ std::string_view material_parameter_kind_name(material_parameter_edit_kind kind)
     return {};
 }
 
+bool material_parameter_edit_metadata_matches(render::shader_parameter_type type,
+                                              material_parameter_edit_kind kind) noexcept
+{
+    switch (kind)
+    {
+        case material_parameter_edit_kind::scalar:
+            return type == render::shader_parameter_type::float32;
+        case material_parameter_edit_kind::vector:
+            return type == render::shader_parameter_type::float2 || type == render::shader_parameter_type::float3 ||
+                   type == render::shader_parameter_type::float4;
+        case material_parameter_edit_kind::color:
+            return type == render::shader_parameter_type::float3 || type == render::shader_parameter_type::float4;
+        case material_parameter_edit_kind::texture:
+            return type == render::shader_parameter_type::texture_2d;
+    }
+    return false;
+}
+
 std::optional<material_parameter_edit> parse_material_parameter(std::string_view parameter)
 {
     if (!parameter.starts_with(material_parameter_prefix)) return std::nullopt;
@@ -171,7 +190,7 @@ std::optional<material_parameter_edit> parse_material_parameter(std::string_view
     const auto kind = payload.contains("kind") && payload["kind"].is_string()
                           ? material_parameter_kind_from_string(payload["kind"].get<std::string>())
                           : std::nullopt;
-    if (!type || !kind) return std::nullopt;
+    if (!type || !kind || !material_parameter_edit_metadata_matches(*type, *kind)) return std::nullopt;
 
     material_parameter_edit edit;
     edit.name = payload["name"].get<std::string>();
@@ -226,8 +245,8 @@ void store_persisted_overrides(editor_scene_state& scene, ecs::entity_guid entit
 json edit_to_json(const material_parameter_edit& edit)
 {
     json value = {{"name", edit.name},
-                  {"type", material_parameter_type_name(edit.type)},
-                  {"kind", material_parameter_kind_name(edit.kind)}};
+                  {"type", std::string(material_parameter_type_name(edit.type))},
+                  {"kind", std::string(material_parameter_kind_name(edit.kind))}};
     if (!edit.value.empty()) value["value"] = edit.value;
     if (edit.kind == material_parameter_edit_kind::texture) value["texture"] = edit.texture;
     return value;
