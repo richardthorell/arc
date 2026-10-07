@@ -967,8 +967,13 @@ const char* create_entity_kind_label(host_create_entity_kind kind) noexcept
             return "World Environment";
         case host_create_entity_kind::terrain:
             return "Terrain";
+        case host_create_entity_kind::ocean:
         case host_create_entity_kind::water:
             return "Ocean";
+        case host_create_entity_kind::lake:
+            return "Lake";
+        case host_create_entity_kind::river:
+            return "River";
         case host_create_entity_kind::grass_patch:
             return "Grass Patch";
         case host_create_entity_kind::decal:
@@ -3491,8 +3496,18 @@ host_response arc_host::execute(const host_command_envelope& command)
                     case host_create_entity_kind::terrain:
                         created = add_terrain_to_scene(state_->scene, *state_->renderer);
                         break;
+                    case host_create_entity_kind::ocean:
                     case host_create_entity_kind::water:
-                        created = add_water_to_scene(state_->scene, *state_->renderer);
+                        created = add_water_to_scene(state_->scene, *state_->renderer,
+                                                     water::water_body_type::ocean);
+                        break;
+                    case host_create_entity_kind::lake:
+                        created = add_water_to_scene(state_->scene, *state_->renderer,
+                                                     water::water_body_type::lake);
+                        break;
+                    case host_create_entity_kind::river:
+                        created = add_water_to_scene(state_->scene, *state_->renderer,
+                                                     water::water_body_type::river);
                         break;
                     case host_create_entity_kind::grass_patch:
                         created = add_grass_patch_to_scene(state_->scene, *state_->renderer);
@@ -3505,10 +3520,14 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const std::string label = create_entity_kind_label(payload.kind);
                 if (!created.valid()) return fail("Failed to create entity: " + label);
 
-                if (payload.kind == host_create_entity_kind::water)
+                const bool created_water =
+                    payload.kind == host_create_entity_kind::ocean || payload.kind == host_create_entity_kind::lake ||
+                    payload.kind == host_create_entity_kind::river || payload.kind == host_create_entity_kind::water;
+                if (created_water)
                 {
                     auto& component = state_->scene.scene.get<scene::water_component>(created);
-                    if (state_->asset_registry)
+                    if (state_->asset_registry &&
+                        (component.preset.guid.valid() || !component.preset.path_hint.empty()))
                     {
                         const auto binding = scene::refresh_water_preset_binding(component, *state_->asset_registry);
                         if (!binding.succeeded)

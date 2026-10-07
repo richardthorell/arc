@@ -191,7 +191,7 @@ render::material_handle create_water_material(editor_scene_state& scene, render:
     const water::water_appearance_settings appearance{};
     for (const auto& builtin_root : scene.builtin_asset_roots)
     {
-        const auto authored_path = builtin_root / "materials" / "water_preview.arcmat";
+        const auto authored_path = builtin_root / "materials" / "water.arcmat";
         if (!std::filesystem::is_regular_file(authored_path)) continue;
 
         material_asset authored;
@@ -738,8 +738,11 @@ bool synchronize_water_render_material(editor_scene_state& scene, render::render
                                     render::make_water_material(water->settings.appearance, "Water"));
 }
 
-ecs::entity add_water_to_scene(editor_scene_state& scene, render::renderer& renderer)
+ecs::entity add_water_to_scene(editor_scene_state& scene, render::renderer& renderer, water::water_body_type type)
 {
+    // W2 establishes first-class body authoring before W4/W5 add production Lake/River geometry.
+    // Use the existing Water surface grid as the temporary render proxy so every body is visible/selectable
+    // without requiring artists to create a mesh manually.
     auto mesh = render::make_water_ocean_grid();
     const auto local_bounds = bounds_for_mesh(mesh);
     const auto mesh_handle = renderer.create_mesh(mesh);
@@ -747,13 +750,25 @@ ecs::entity add_water_to_scene(editor_scene_state& scene, render::renderer& rend
 
     const auto material = create_water_material(scene, renderer);
     const auto entity = scene.scene.create();
-    scene.water_entity = entity;
-    add_selectable_common(scene, entity, "Ocean", "Environment");
+    if (!scene.water_entity.valid()) scene.water_entity = entity;
+
+    const char* label = type == water::water_body_type::lake    ? "Lake"
+                        : type == water::water_body_type::river ? "River"
+                                                                : "Ocean";
+    add_selectable_common(scene, entity, label, "Environment");
+
     scene::transform_component transform;
     transform.position = defaults::default_water_position;
+
     scene::water_component water;
-    water.preset.path_hint = "builtin/water/presets/open_ocean.arcwater";
-    water.material.path_hint = "builtin/materials/water_preview.arcmat";
+    water.type = type;
+    water.follow_camera = type == water::water_body_type::ocean;
+    if (type == water::water_body_type::ocean)
+        water.preset.path_hint = "builtin/water/presets/open_ocean.arcwater";
+    else if (type == water::water_body_type::lake)
+        water.preset.path_hint = "builtin/water/presets/calm_lake.arcwater";
+    water.material.path_hint = "builtin/materials/water.arcmat";
+
     scene.scene.emplace<scene::water_component>(entity, water);
     scene.scene.emplace<scene::bounds_component>(entity, local_bounds, local_bounds, true);
     scene.scene.emplace<scene::transform_component>(entity, transform);

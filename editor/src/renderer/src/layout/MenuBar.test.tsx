@@ -37,6 +37,28 @@ describe('MenuBar', () => {
     expect(onCommand).toHaveBeenLastCalledWith('view.commandPalette');
   });
 
+  it('routes Water Body creation through stable editor commands', () => {
+    const onCommand = vi.fn();
+    render(<MenuBar projectTitle="Scene" onCommand={onCommand} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Entity' }));
+    const water = screen.getByRole('menuitem', { name: 'Water' });
+    fireEvent.pointerEnter(water.parentElement as HTMLElement);
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Ocean' }));
+    expect(onCommand).toHaveBeenLastCalledWith('entity.createOcean');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Entity' }));
+    fireEvent.pointerEnter(screen.getByRole('menuitem', { name: 'Water' }).parentElement as HTMLElement);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Lake' }));
+    expect(onCommand).toHaveBeenLastCalledWith('entity.createLake');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Entity' }));
+    fireEvent.pointerEnter(screen.getByRole('menuitem', { name: 'Water' }).parentElement as HTMLElement);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'River' }));
+    expect(onCommand).toHaveBeenLastCalledWith('entity.createRiver');
+  });
+
   it('routes editor preferences and project settings through the settings modal host', () => {
     const onCommand = vi.fn();
     render(<MenuBar projectTitle="Scene" onCommand={onCommand} />);

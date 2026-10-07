@@ -108,6 +108,14 @@ const baseMenuCommands: Partial<Record<MenuItem, MenuEntry[]>> = {
             placeholder('Capsule'),
           ],
         },
+        {
+          label: 'Water',
+          children: [
+            { label: 'Ocean', command: 'entity.createOcean' },
+            { label: 'Lake', command: 'entity.createLake' },
+            { label: 'River', command: 'entity.createRiver' },
+          ],
+        },
       ],
     },
     placeholder('Create Child Entity', { icon: Plus }),
