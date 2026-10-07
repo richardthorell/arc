@@ -4180,38 +4180,40 @@ host_response arc_host::execute(const host_command_envelope& command)
                 for (const auto target : targets)
                 {
                     auto& component = state_->scene.scene.get<scene::water_component>(target);
-                    component.type = preset.body_type;
-                    component.preset.guid = *preset_guid;
-                    component.preset.path_hint = value.preset_path;
-                    component.preset_overrides = value.preset_override_mask;
-                    component.material.guid = *material_guid;
-                    component.material.path_hint = value.material_path;
-                    component.water_level = value.water_level;
-                    component.enabled = value.enabled;
-                    component.follow_camera = value.follow_camera;
-                    component.visible_distance = value.visible_distance;
-                    component.settings = preset.settings;
-                    component.shape.closed = value.shape_closed;
-                    component.shape.points.clear();
-                    component.shape.points.reserve(value.shape_points.size());
+                    auto staged = component;
+                    staged.type = preset.body_type;
+                    staged.preset.guid = *preset_guid;
+                    staged.preset.path_hint = value.preset_path;
+                    staged.preset_overrides = value.preset_override_mask;
+                    staged.material.guid = *material_guid;
+                    staged.material.path_hint = value.material_path;
+                    staged.water_level = value.water_level;
+                    staged.enabled = value.enabled;
+                    staged.follow_camera = value.follow_camera;
+                    staged.visible_distance = value.visible_distance;
+                    staged.settings = preset.settings;
+                    staged.shape.closed = value.shape_closed;
+                    staged.shape.points.clear();
+                    staged.shape.points.reserve(value.shape_points.size());
                     for (const auto& point : value.shape_points)
-                        component.shape.points.push_back(
+                        staged.shape.points.push_back(
                             {{point.position.x, point.position.y, point.position.z}, point.width, point.depth, point.flow});
-                    component.shoreline_enabled = value.shoreline_enabled;
-                    component.shoreline_foam_width = value.shoreline_foam_width;
-                    component.shallow_wave_damping_distance = value.shallow_wave_damping_distance;
-                    component.runup_distance = value.runup_distance;
-                    component.underwater_enabled = value.underwater_enabled;
-                    component.caustics_enabled = value.caustics_enabled;
-                    component.queries_enabled = value.queries_enabled;
-                    component.buoyancy_enabled = value.buoyancy_enabled;
-                    component.priority = value.priority;
+                    staged.shoreline_enabled = value.shoreline_enabled;
+                    staged.shoreline_foam_width = value.shoreline_foam_width;
+                    staged.shallow_wave_damping_distance = value.shallow_wave_damping_distance;
+                    staged.runup_distance = value.runup_distance;
+                    staged.underwater_enabled = value.underwater_enabled;
+                    staged.caustics_enabled = value.caustics_enabled;
+                    staged.queries_enabled = value.queries_enabled;
+                    staged.buoyancy_enabled = value.buoyancy_enabled;
+                    staged.priority = value.priority;
                     if (state_->asset_registry &&
-                        (component.preset.guid.valid() || !component.preset.path_hint.empty()))
+                        (staged.preset.guid.valid() || !staged.preset.path_hint.empty()))
                     {
-                        const auto binding = scene::refresh_water_preset_binding(component, *state_->asset_registry);
+                        const auto binding = scene::refresh_water_preset_binding(staged, *state_->asset_registry);
                         if (!binding.succeeded) return fail(binding.message, entity);
                     }
+                    component = std::move(staged);
                     if (!synchronize_water_render_material(state_->scene, *state_->renderer, target))
                         return fail("Water optical material could not be updated", entity);
                 }
