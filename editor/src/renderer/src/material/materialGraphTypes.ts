@@ -234,7 +234,7 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
   },
   constant: {
     type: 'constant',
-    title: 'Constant',
+    title: 'Scalar',
     category: 'Values',
     subcategory: 'Constants',
     inputs: [],
@@ -450,6 +450,20 @@ export const materialGraphId = (prefix: string) =>
 
 export const cloneMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
   JSON.parse(JSON.stringify(graph)) as MaterialGraph;
+
+export type MaterialScalarRange = { min: number; max: number };
+
+export const materialScalarRange = (node: MaterialGraphNode): MaterialScalarRange | null => {
+  if (node.type !== 'constant') return null;
+  const min = node.values.min;
+  const max = node.values.max;
+  if (typeof min !== 'number' || !Number.isFinite(min) || typeof max !== 'number' || !Number.isFinite(max) || min > max)
+    return null;
+  return { min, max };
+};
+
+export const clampMaterialScalarValue = (value: number, range: MaterialScalarRange | null) =>
+  range ? Math.min(range.max, Math.max(range.min, value)) : value;
 
 /**
  * Fingerprint only graph data that can change generated material code or runtime bindings.
