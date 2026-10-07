@@ -46,12 +46,8 @@ describe('material graph schema', () => {
         (connection) => connection.from.nodeId === multiply?.id && connection.to.nodeId === 'material-output',
       ),
     ).toBe(true);
-    const metallicRoughnessTexture = graph.nodes.find(
-      (node) => node.parameter?.name === 'Metallic Roughness Texture',
-    );
-    const ambientOcclusionTexture = graph.nodes.find(
-      (node) => node.parameter?.name === 'Ambient Occlusion Texture',
-    );
+    const metallicRoughnessTexture = graph.nodes.find((node) => node.parameter?.name === 'Metallic Roughness Texture');
+    const ambientOcclusionTexture = graph.nodes.find((node) => node.parameter?.name === 'Ambient Occlusion Texture');
     expect(metallicRoughnessTexture).toMatchObject({
       type: 'textureSample2D',
       values: { texture: '', dimension: '2d' },

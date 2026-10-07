@@ -45,14 +45,10 @@ describe('core built-in material families', () => {
     expect(packed).toMatchObject({ type: 'textureSample2D', values: { texture: '', dimension: '2d' } });
     expect(ao).toMatchObject({ type: 'textureSample2D', values: { texture: '', dimension: '2d' } });
     expect(
-      graph.connections.some(
-        (connection) => connection.from.nodeId === packed?.id && connection.from.pin === 'b',
-      ),
+      graph.connections.some((connection) => connection.from.nodeId === packed?.id && connection.from.pin === 'b'),
     ).toBe(true);
     expect(
-      graph.connections.some(
-        (connection) => connection.from.nodeId === packed?.id && connection.from.pin === 'g',
-      ),
+      graph.connections.some((connection) => connection.from.nodeId === packed?.id && connection.from.pin === 'g'),
     ).toBe(true);
     expect(
       graph.connections.some(
