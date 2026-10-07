@@ -209,6 +209,23 @@ std::optional<shader_parameter_type> texture_parameter_type(std::string_view dim
     return std::nullopt;
 }
 
+std::optional<texture_semantic> parse_texture_semantic(std::string_view semantic) noexcept
+{
+    if (semantic.empty() || semantic == "generic_color") return texture_semantic::generic_color;
+    if (semantic == "base_color") return texture_semantic::base_color;
+    if (semantic == "emissive") return texture_semantic::emissive;
+    if (semantic == "normal") return texture_semantic::normal;
+    if (semantic == "metallic_roughness") return texture_semantic::metallic_roughness;
+    if (semantic == "occlusion") return texture_semantic::occlusion;
+    if (semantic == "clear_coat") return texture_semantic::clear_coat;
+    if (semantic == "anisotropy") return texture_semantic::anisotropy;
+    if (semantic == "thickness") return texture_semantic::thickness;
+    if (semantic == "transmission") return texture_semantic::transmission;
+    if (semantic == "lightmap") return texture_semantic::lightmap;
+    if (semantic == "environment") return texture_semantic::environment;
+    return std::nullopt;
+}
+
 shader_parameter_type parameter_type(const material_ir_node& node) noexcept
 {
     switch (node.kind)
@@ -389,6 +406,12 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
                     {.code = shader_compile_error_code::validation_failed,
                      .message = "unsupported material texture sample dimension: " + values.value("dimension", "")});
             node.texture_type = *texture_type;
+            const auto semantic = parse_texture_semantic(values.value("semantic", ""));
+            if (!semantic)
+                return material_graph_compile_result::failure(
+                    {.code = shader_compile_error_code::validation_failed,
+                     .message = "unsupported material texture semantic: " + values.value("semantic", "")});
+            node.texture_semantic_value = *semantic;
         }
 
         if (*kind == material_ir_node_kind::function_call)
@@ -537,7 +560,8 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
                      .parameter_id = node.exposed_parameter ? node.parameter_id : shader_parameter_id{},
                      .parameter_name = node.exposed_parameter ? node.parameter_name : std::string{},
                      .type = node.texture_type,
-                     .dimension_slot = dimension_slot});
+                     .dimension_slot = dimension_slot,
+                     .semantic = node.texture_semantic_value});
                 break;
             }
             case material_ir_node_kind::normal_map:
