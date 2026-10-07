@@ -33,6 +33,32 @@ describe('Water inspector truthfulness', () => {
       expect(ids.has(id)).toBe(false);
   });
 
+  it('groups working Water controls into authoring sections', () => {
+    expect(waterSchema).toBeDefined();
+
+    const sectionFor = (id: string) => waterSchema?.fields.find((field) => field.id === id)?.section;
+    expect(sectionFor('enabled')).toBe('Body');
+    expect(sectionFor('bodyType')).toBe('Body');
+    expect(sectionFor('preset')).toBe('Body');
+    expect(sectionFor('waterLevel')).toBe('Body');
+    expect(sectionFor('followCamera')).toBe('Body');
+
+    expect(sectionFor('windSpeed')).toBe('Waves');
+    expect(sectionFor('fetchLength')).toBe('Waves');
+    expect(sectionFor('waveAmplitude')).toBe('Waves');
+    expect(sectionFor('choppiness')).toBe('Waves');
+
+    expect(sectionFor('material')).toBe('Appearance');
+    expect(sectionFor('absorption')).toBe('Appearance');
+    expect(sectionFor('scattering')).toBe('Appearance');
+    expect(sectionFor('roughness')).toBe('Appearance');
+    expect(sectionFor('refractionStrength')).toBe('Appearance');
+
+    expect(sectionFor('visibleDistance')).toBe('Performance');
+    expect(sectionFor('quality')).toBe('Performance');
+    expect(sectionFor('priority')).toBe('Performance');
+  });
+
   it('shows spectral Ocean controls only for the Ocean provider', () => {
     expect(waterSchema).toBeDefined();
     for (const id of [

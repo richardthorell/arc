@@ -175,7 +175,19 @@ export function InspectorComponentCard<TContext extends object>({
     );
   }
 
+  let currentSection: string | undefined;
+
   for (const field of visibleFields) {
+    if (field.section && field.section !== currentSection) {
+      currentSection = field.section;
+      propertyFields.push({
+        id: `__section-${field.section.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+        label: field.section,
+        fullWidth: true,
+        className: 'inspector-property-section-heading',
+      });
+    }
+
     const linked = field.type === 'vector3' && Boolean(field.linked) && !unlinkedFields.has(field.path);
     const value = getPathValue(context, field.path);
     const fieldValue = (next: unknown, settled: boolean) => onValue(field.path, next, settled);

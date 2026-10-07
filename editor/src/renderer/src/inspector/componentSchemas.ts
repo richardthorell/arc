@@ -867,10 +867,11 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
     id: 'water',
     title: generatedTitle('arc::scene.water_component', 'Water'),
     fields: [
-      { id: 'enabled', label: 'Enabled', path: 'water.enabled', type: 'boolean' },
+      { id: 'enabled', label: 'Enabled', path: 'water.enabled', type: 'boolean', section: 'Body' },
       {
         id: 'bodyType',
         label: 'Body Type',
+        section: 'Body',
         path: 'water.bodyType',
         type: 'enum',
         options: [
@@ -882,6 +883,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
       {
         id: 'preset',
         label: 'Water Preset',
+        section: 'Body',
         path: 'water.presetPath',
         type: 'asset',
         assetKind: 'asset',
@@ -889,17 +891,9 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         allowEmpty: true,
       },
       {
-        id: 'material',
-        label: 'Surface Material',
-        path: 'water.materialPath',
-        type: 'asset',
-        assetKind: 'material',
-        allowedExtensions: ['.arcmat'],
-        allowEmpty: true,
-      },
-      {
         id: 'waterLevel',
         label: 'Water Level',
+        section: 'Body',
         path: 'water.waterLevel',
         type: 'number',
         precision: 2,
@@ -910,24 +904,15 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
       {
         id: 'followCamera',
         label: 'Follow Camera',
+        section: 'Body',
         path: 'water.followCamera',
         type: 'boolean',
         visible: (snapshot) => snapshot.water?.bodyType === 'ocean',
       },
       {
-        id: 'visibleDistance',
-        label: 'Visible Distance',
-        path: 'water.visibleDistance',
-        type: 'number',
-        precision: 0,
-        step: 100,
-        scrubSensitivity: 10,
-        min: 1,
-        unit: ' m',
-      },
-      {
         id: 'windSpeed',
         label: 'Wind Speed',
+        section: 'Waves',
         path: 'water.windSpeed',
         type: 'number',
         visible: (snapshot) => snapshot.water?.bodyType === 'ocean',
@@ -940,6 +925,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
       {
         id: 'windDirectionX',
         label: 'Wind Direction X',
+        section: 'Waves',
         path: 'water.windDirectionX',
         type: 'number',
         visible: (snapshot) => snapshot.water?.bodyType === 'ocean',
@@ -950,6 +936,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
       {
         id: 'windDirectionY',
         label: 'Wind Direction Z',
+        section: 'Waves',
         path: 'water.windDirectionY',
         type: 'number',
         visible: (snapshot) => snapshot.water?.bodyType === 'ocean',
@@ -960,6 +947,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
       {
         id: 'fetchLength',
         label: 'Fetch Length',
+        section: 'Waves',
         path: 'water.fetchLength',
         type: 'number',
         visible: (snapshot) => snapshot.water?.bodyType === 'ocean',
@@ -972,6 +960,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
       {
         id: 'waveAmplitude',
         label: 'Wave Amplitude',
+        section: 'Waves',
         path: 'water.waveAmplitude',
         type: 'number',
         visible: (snapshot) => snapshot.water?.bodyType === 'ocean',
@@ -984,6 +973,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
       {
         id: 'choppiness',
         label: 'Choppiness',
+        section: 'Waves',
         path: 'water.choppiness',
         type: 'number',
         visible: (snapshot) => snapshot.water?.bodyType === 'ocean',
@@ -993,8 +983,19 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         min: 0,
       },
       {
+        id: 'material',
+        label: 'Surface Material',
+        section: 'Appearance',
+        path: 'water.materialPath',
+        type: 'asset',
+        assetKind: 'material',
+        allowedExtensions: ['.arcmat'],
+        allowEmpty: true,
+      },
+      {
         id: 'absorption',
         label: 'Absorption',
+        section: 'Appearance',
         path: 'water.absorption',
         type: 'vector3',
         precision: 3,
@@ -1004,6 +1005,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
       {
         id: 'scattering',
         label: 'Scattering',
+        section: 'Appearance',
         path: 'water.scattering',
         type: 'vector3',
         precision: 3,
@@ -1013,6 +1015,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
       {
         id: 'roughness',
         label: 'Roughness',
+        section: 'Appearance',
         path: 'water.roughness',
         type: 'number',
         precision: 2,
@@ -1024,6 +1027,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
       {
         id: 'refractionStrength',
         label: 'Refraction Strength',
+        section: 'Appearance',
         path: 'water.refractionStrength',
         type: 'number',
         precision: 2,
@@ -1033,8 +1037,21 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         max: 1,
       },
       {
+        id: 'visibleDistance',
+        label: 'Visible Distance',
+        section: 'Performance',
+        path: 'water.visibleDistance',
+        type: 'number',
+        precision: 0,
+        step: 100,
+        scrubSensitivity: 10,
+        min: 1,
+        unit: ' m',
+      },
+      {
         id: 'quality',
         label: 'Quality',
+        section: 'Performance',
         path: 'water.quality',
         type: 'enum',
         visible: (snapshot) => snapshot.water?.bodyType === 'ocean',
@@ -1048,6 +1065,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
       {
         id: 'priority',
         label: 'Priority',
+        section: 'Performance',
         path: 'water.priority',
         type: 'number',
         precision: 0,
