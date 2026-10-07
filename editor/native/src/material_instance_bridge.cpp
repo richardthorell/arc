@@ -29,11 +29,19 @@ constexpr std::string_view instance_name_marker = "__arc_instance_overrides__";
 constexpr std::string_view mesh_renderer_component_name = "MeshRenderer";
 constexpr std::string_view persisted_override_field = "materialParameterOverrides";
 
+enum class material_parameter_edit_kind : std::uint8_t
+{
+    scalar,
+    vector,
+    color,
+    texture
+};
+
 struct material_parameter_edit
 {
     std::string name;
-    std::string type;
-    std::string kind;
+    render::shader_parameter_type type{render::shader_parameter_type::float32};
+    material_parameter_edit_kind kind{material_parameter_edit_kind::scalar};
     std::vector<float> value;
     std::string texture;
     bool reset{};
@@ -95,6 +103,60 @@ std::string encode_hex(std::string_view text)
     return result;
 }
 
+std::optional<render::shader_parameter_type> material_parameter_type_from_string(std::string_view value) noexcept
+{
+    if (value == "float") return render::shader_parameter_type::float32;
+    if (value == "vec2") return render::shader_parameter_type::float2;
+    if (value == "vec3") return render::shader_parameter_type::float3;
+    if (value == "vec4") return render::shader_parameter_type::float4;
+    if (value == "texture2d") return render::shader_parameter_type::texture_2d;
+    return std::nullopt;
+}
+
+std::string_view material_parameter_type_name(render::shader_parameter_type type) noexcept
+{
+    switch (type)
+    {
+        case render::shader_parameter_type::float32:
+            return "float";
+        case render::shader_parameter_type::float2:
+            return "vec2";
+        case render::shader_parameter_type::float3:
+            return "vec3";
+        case render::shader_parameter_type::float4:
+            return "vec4";
+        case render::shader_parameter_type::texture_2d:
+            return "texture2d";
+        default:
+            return {};
+    }
+}
+
+std::optional<material_parameter_edit_kind> material_parameter_kind_from_string(std::string_view value) noexcept
+{
+    if (value == "scalar") return material_parameter_edit_kind::scalar;
+    if (value == "vector") return material_parameter_edit_kind::vector;
+    if (value == "color") return material_parameter_edit_kind::color;
+    if (value == "texture") return material_parameter_edit_kind::texture;
+    return std::nullopt;
+}
+
+std::string_view material_parameter_kind_name(material_parameter_edit_kind kind) noexcept
+{
+    switch (kind)
+    {
+        case material_parameter_edit_kind::scalar:
+            return "scalar";
+        case material_parameter_edit_kind::vector:
+            return "vector";
+        case material_parameter_edit_kind::color:
+            return "color";
+        case material_parameter_edit_kind::texture:
+            return "texture";
+    }
+    return {};
+}
+
 std::optional<material_parameter_edit> parse_material_parameter(std::string_view parameter)
 {
     if (!parameter.starts_with(material_parameter_prefix)) return std::nullopt;
@@ -103,10 +165,18 @@ std::optional<material_parameter_edit> parse_material_parameter(std::string_view
     const auto payload = json::parse(*decoded, nullptr, false);
     if (!payload.is_object() || !payload.contains("name") || !payload["name"].is_string()) return std::nullopt;
 
+    const auto type = payload.contains("type") && payload["type"].is_string()
+                          ? material_parameter_type_from_string(payload["type"].get<std::string>())
+                          : std::nullopt;
+    const auto kind = payload.contains("kind") && payload["kind"].is_string()
+                          ? material_parameter_kind_from_string(payload["kind"].get<std::string>())
+                          : std::nullopt;
+    if (!type || !kind) return std::nullopt;
+
     material_parameter_edit edit;
     edit.name = payload["name"].get<std::string>();
-    edit.type = payload.value("type", std::string{});
-    edit.kind = payload.value("kind", std::string{});
+    edit.type = *type;
+    edit.kind = *kind;
     edit.texture = payload.value("texture", std::string{});
     edit.reset = payload.value("reset", false);
     if (const auto found = payload.find("value"); found != payload.end())
@@ -155,9 +225,11 @@ void store_persisted_overrides(editor_scene_state& scene, ecs::entity_guid entit
 
 json edit_to_json(const material_parameter_edit& edit)
 {
-    json value = {{"name", edit.name}, {"type", edit.type}, {"kind", edit.kind}};
+    json value = {{"name", edit.name},
+                  {"type", material_parameter_type_name(edit.type)},
+                  {"kind", material_parameter_kind_name(edit.kind)}};
     if (!edit.value.empty()) value["value"] = edit.value;
-    if (edit.kind == "texture") value["texture"] = edit.texture;
+    if (edit.kind == material_parameter_edit_kind::texture) value["texture"] = edit.texture;
     return value;
 }
 
@@ -433,8 +505,8 @@ bool apply_material_instance_texture_override(editor_scene_state& scene, render:
     if (parameter_name.empty() || texture_path.empty()) return false;
     material_parameter_edit edit;
     edit.name = std::string(parameter_name);
-    edit.type = "texture2d";
-    edit.kind = "texture";
+    edit.type = render::shader_parameter_type::texture_2d;
+    edit.kind = material_parameter_edit_kind::texture;
     edit.texture = std::string(texture_path);
     return apply_material_edit(scene, renderer, entity, edit);
 }
