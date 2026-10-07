@@ -75,6 +75,27 @@ export const commandRegistry: Record<CommandId, CommandRegistration> = {
     enabled: (context) => context.canRedo,
     disabledReason: () => 'There is nothing to redo',
   },
+  'entity.createOcean': {
+    id: 'entity.createOcean',
+    label: 'Create Ocean',
+    description: 'Create an Ocean Water Body.',
+    category: 'Entity',
+    enabled: (context) => context.projectOpen,
+  },
+  'entity.createLake': {
+    id: 'entity.createLake',
+    label: 'Create Lake',
+    description: 'Create a Lake Water Body.',
+    category: 'Entity',
+    enabled: (context) => context.projectOpen,
+  },
+  'entity.createRiver': {
+    id: 'entity.createRiver',
+    label: 'Create River',
+    description: 'Create a River Water Body.',
+    category: 'Entity',
+    enabled: (context) => context.projectOpen,
+  },
   'entity.duplicate': {
     id: 'entity.duplicate',
     label: 'Duplicate Entity',
