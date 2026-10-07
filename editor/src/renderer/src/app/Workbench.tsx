@@ -129,7 +129,18 @@ type HostSceneSnapshot = {
   entities: HostSceneEntity[];
 };
 
-type BasicEntityKind = 'empty' | 'plane' | 'cube' | 'sphere' | 'cylinder' | 'cone' | 'capsule' | 'terrain' | 'water';
+type BasicEntityKind =
+  | 'empty'
+  | 'plane'
+  | 'cube'
+  | 'sphere'
+  | 'cylinder'
+  | 'cone'
+  | 'capsule'
+  | 'terrain'
+  | 'ocean'
+  | 'lake'
+  | 'river';
 
 type SceneDocumentState = Omit<HostSceneSnapshot, 'entities'>;
 
@@ -260,6 +271,9 @@ const playWorldBlockedCommands = new Set<CommandId>([
   'file.importScene',
   'edit.undo',
   'edit.redo',
+  'entity.createOcean',
+  'entity.createLake',
+  'entity.createRiver',
   'entity.duplicate',
   'entity.delete',
   'viewport.translate',
@@ -868,6 +882,17 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           response = (await window.arc.host.command('history.undo')) as HostResponse;
         } else if (command === 'edit.redo') {
           response = (await window.arc.host.command('history.redo')) as HostResponse;
+        } else if (
+          command === 'entity.createOcean' ||
+          command === 'entity.createLake' ||
+          command === 'entity.createRiver'
+        ) {
+          const kind =
+            command === 'entity.createLake' ? 'lake' : command === 'entity.createRiver' ? 'river' : 'ocean';
+          response = (await window.arc.host.command('entity.create', {
+            kind,
+            ...(selectedSnapshot ? { parent: selectedSnapshot.entity } : {}),
+          })) as HostResponse;
         } else if (command === 'entity.duplicate' && selectedSnapshot) {
           response = (await window.arc.host.command('entity.duplicate', {
             entity: selectedSnapshot.entity,
@@ -950,6 +975,9 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
             command === 'file.saveAs' ||
             command === 'edit.undo' ||
             command === 'edit.redo' ||
+            command === 'entity.createOcean' ||
+            command === 'entity.createLake' ||
+            command === 'entity.createRiver' ||
             command === 'entity.duplicate' ||
             command === 'entity.delete' ||
             command === 'viewport.snapToFloor';
@@ -1972,7 +2000,11 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   );
 }
 
-function PrimitivePreview({ kind }: { kind: Exclude<BasicEntityKind, 'empty' | 'terrain' | 'water'> }) {
+function PrimitivePreview({
+  kind,
+}: {
+  kind: Exclude<BasicEntityKind, 'empty' | 'terrain' | 'ocean' | 'lake' | 'river'>;
+}) {
   const fillId = `primitive-fill-${kind}`;
   const common = { fill: `url(#${fillId})`, stroke: '#8fc8ff', strokeWidth: 1.35 };
   return (
@@ -2173,17 +2205,20 @@ export function ExplorerPanel({
               <Mountain size={16} /> Terrain...
             </button>
             <div className="primitive-palette-heading">Water</div>
-            <button
-              className="primitive-palette-empty"
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                onCreateEntity('water');
-                setCreateMenuOpen(false);
-              }}
-            >
-              <Waves size={16} /> Ocean
-            </button>
+            {(['ocean', 'lake', 'river'] as const).map((kind) => (
+              <button
+                className="primitive-palette-empty"
+                key={kind}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  onCreateEntity(kind);
+                  setCreateMenuOpen(false);
+                }}
+              >
+                <Waves size={16} /> {kind[0].toUpperCase() + kind.slice(1)}
+              </button>
+            ))}
           </section>
         )}
         <label className="hierarchy-search">
