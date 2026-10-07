@@ -22,12 +22,28 @@ install(TARGETS arc-cook
     COMPONENT tools)
 
 if(BUILD_TESTING)
+    if(ARC_ENABLE_COVERAGE)
+        set(ARC_COOK_COLD_TIMEOUT 360)
+        set(ARC_COOK_WARM_TIMEOUT 180)
+        set(ARC_COOK_PACKAGE_TIMEOUT 240)
+        set(ARC_COOK_VERIFY_TIMEOUT 120)
+    else()
+        set(ARC_COOK_COLD_TIMEOUT 180)
+        set(ARC_COOK_WARM_TIMEOUT 90)
+        set(ARC_COOK_PACKAGE_TIMEOUT 120)
+        set(ARC_COOK_VERIFY_TIMEOUT 60)
+    endif()
+
     add_test(
         NAME arc-cook-clean-checkout
         COMMAND "${CMAKE_COMMAND}"
             -DARC_COOK=$<TARGET_FILE:arc-cook>
             -DARC_SOURCE_ROOT=${CMAKE_SOURCE_DIR}
             -DARC_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/clean-checkout
+            -DARC_COOK_COLD_TIMEOUT=${ARC_COOK_COLD_TIMEOUT}
+            -DARC_COOK_WARM_TIMEOUT=${ARC_COOK_WARM_TIMEOUT}
+            -DARC_COOK_PACKAGE_TIMEOUT=${ARC_COOK_PACKAGE_TIMEOUT}
+            -DARC_COOK_VERIFY_TIMEOUT=${ARC_COOK_VERIFY_TIMEOUT}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/clean_checkout.cmake
     )
     set_tests_properties(arc-cook-clean-checkout PROPERTIES

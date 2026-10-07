@@ -427,6 +427,18 @@ bool apply_material_edit(editor_scene_state& scene, render::renderer& renderer, 
 
 } // namespace
 
+bool apply_material_instance_texture_override(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity,
+                                              std::string_view parameter_name, std::string_view texture_path)
+{
+    if (parameter_name.empty() || texture_path.empty()) return false;
+    material_parameter_edit edit;
+    edit.name = std::string(parameter_name);
+    edit.type = "texture2d";
+    edit.kind = "texture";
+    edit.texture = std::string(texture_path);
+    return apply_material_edit(scene, renderer, entity, edit);
+}
+
 procedural_mesh_component* ensure_procedural_or_material_parameter_component(editor_scene_state& scene,
                                                                              ecs::entity entity)
 {

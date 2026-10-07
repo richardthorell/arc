@@ -160,24 +160,6 @@ void remember_builtin_asset_roots(editor_scene_state& scene, const editor_asset_
         remember_builtin_asset_root(scene, root);
 }
 
-bool assign_runtime_texture(render::material_descriptor& material, std::string_view parameter_name,
-                            render::texture_handle texture)
-{
-    if (!material.runtime_program || !texture.valid()) return false;
-
-    const auto parameter = std::ranges::find(material.runtime_program->parameters, parameter_name,
-                                             &render::shader_parameter_descriptor::name);
-    if (parameter == material.runtime_program->parameters.end()) return false;
-
-    const auto binding = std::ranges::find(material.runtime_program->texture_bindings, parameter->id,
-                                           &render::material_runtime_texture_binding::parameter_id);
-    if (binding == material.runtime_program->texture_bindings.end()) return false;
-
-    if (material.runtime_textures.size() <= binding->slot) material.runtime_textures.resize(binding->slot + 1u);
-    material.runtime_textures[binding->slot] = texture;
-    return true;
-}
-
 const render::material_descriptor* water_material_base(const editor_scene_state& scene,
                                                        render::material_handle material)
 {
@@ -412,33 +394,17 @@ render::material_handle create_default_floor_material(editor_scene_state& scene,
     for (const auto& builtin_root : editor_assets.builtin_roots)
     {
         const auto standard_lit_path = builtin_root / "materials" / "standard_lit.arcmat";
-        const auto checker_path = builtin_root / "textures" / "editor" / "default_checker_floor.png";
-        if (!std::filesystem::is_regular_file(standard_lit_path) || !std::filesystem::is_regular_file(checker_path))
-            continue;
+        if (!std::filesystem::is_regular_file(standard_lit_path)) continue;
 
         material_asset authored;
         const auto standard_lit =
             load_material_for_editor(scene.material_library, renderer, builtin_root, standard_lit_path, &authored);
         if (!standard_lit.valid()) continue;
 
-        auto loaded_checker = render::load_texture_asset(checker_path);
-        if (!loaded_checker.succeeded()) continue;
-        const auto checker = renderer.create_texture(std::move(loaded_checker.texture));
-        if (!checker.valid()) continue;
-        scene.default_textures.push_back(checker);
-
-        auto material = authored.material;
-        material.name = "Default Checker Floor";
-        material.base_color_texture = checker;
-        if (!assign_runtime_texture(material, "Base Color Texture", checker)) continue;
-
-        const auto floor_material = renderer.create_material(material);
-        if (!floor_material.valid()) continue;
-
-        scene.floor_material = floor_material;
+        scene.floor_material = standard_lit;
         scene.floor_material_asset.expected_type = assets::asset_types::material;
         scene.floor_material_asset.path_hint = "builtin/materials/standard_lit.arcmat";
-        return floor_material;
+        return standard_lit;
     }
 
     scene.floor_material = ensure_default_material(scene, renderer);
@@ -632,6 +598,11 @@ ecs::entity add_default_floor_to_scene(editor_scene_state& scene, render::render
                                     .source_kind = "primitive",
                                     .subresource = primitive_type_name(editor_primitive_type::plane),
                                     .material = scene.floor_material_asset});
+    if (scene.floor_material_asset.expected_type == assets::asset_types::material &&
+        !apply_material_instance_texture_override(scene, renderer, entity, "Base Color Texture",
+                                                  "textures/editor/default_checker_floor.png"))
+        arc::diagnostics::warn("editor.materials",
+                               "Default floor checker override could not be applied; using Standard Lit defaults");
     scene.primitive_entities.push_back(entity);
     select_entity(scene.scene, entity, scene.selected_entity);
     return entity;
