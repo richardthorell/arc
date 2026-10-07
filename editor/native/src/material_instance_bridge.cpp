@@ -184,18 +184,25 @@ std::optional<material_parameter_edit> parse_material_parameter(std::string_view
     const auto payload = json::parse(*decoded, nullptr, false);
     if (!payload.is_object() || !payload.contains("name") || !payload["name"].is_string()) return std::nullopt;
 
-    const auto type = payload.contains("type") && payload["type"].is_string()
-                          ? material_parameter_type_from_string(payload["type"].get<std::string>())
-                          : std::nullopt;
-    const auto kind = payload.contains("kind") && payload["kind"].is_string()
-                          ? material_parameter_kind_from_string(payload["kind"].get<std::string>())
-                          : std::nullopt;
-    if (!type || !kind || !material_parameter_edit_metadata_matches(*type, *kind)) return std::nullopt;
+    const auto type_found = payload.find("type");
+    const auto kind_found = payload.find("kind");
+    if (type_found == payload.end() || !type_found->is_string() || kind_found == payload.end() ||
+        !kind_found->is_string())
+        return std::nullopt;
+
+    const auto type = material_parameter_type_from_string(type_found->get<std::string>());
+    if (!type.has_value()) return std::nullopt;
+    const auto kind = material_parameter_kind_from_string(kind_found->get<std::string>());
+    if (!kind.has_value()) return std::nullopt;
+
+    const auto typed_type = type.value();
+    const auto typed_kind = kind.value();
+    if (!material_parameter_edit_metadata_matches(typed_type, typed_kind)) return std::nullopt;
 
     material_parameter_edit edit;
     edit.name = payload["name"].get<std::string>();
-    edit.type = *type;
-    edit.kind = *kind;
+    edit.type = typed_type;
+    edit.kind = typed_kind;
     edit.texture = payload.value("texture", std::string{});
     edit.reset = payload.value("reset", false);
     if (const auto found = payload.find("value"); found != payload.end())
