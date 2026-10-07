@@ -276,9 +276,8 @@ bool vulkan_render_backend::synchronize_water_simulations(std::uint64_t frame_in
     }
 
     profile.deterministic_initial_spectrum = true;
-    profile.simulation_mode = profile.lake_body_count > 0u || profile.river_body_count > 0u
-                                  ? "mixed-spectral-and-flat"
-                                  : "spectral-ocean-gpu";
+    profile.simulation_mode = profile.lake_body_count > 0u || profile.river_body_count > 0u ? "mixed-spectral-and-flat"
+                                                                                            : "spectral-ocean-gpu";
     if (!ensure_water_compute_resources())
     {
         profile.simulation_mode = "flat-w0-fallback";
