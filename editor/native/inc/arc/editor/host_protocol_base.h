@@ -190,12 +190,12 @@ enum class host_create_entity_kind : std::uint8_t
     capsule,
     world_environment,
     terrain,
+    water, // legacy creation token; equivalent to Ocean
+    grass_patch,
+    decal,
     ocean,
     lake,
-    river,
-    water, // legacy alias for Ocean
-    grass_patch,
-    decal
+    river
 };
 
 enum class host_camera_projection : std::uint8_t
