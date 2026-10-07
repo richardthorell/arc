@@ -1,5 +1,4 @@
 import type { InspectorEntitySnapshot } from './inspectorTypes';
-        visible: (snapshot) => snapshot.water?.bodyType === 'ocean',
 import type { PropertyComponentSchema, PropertyFieldSchema } from './propertySchema';
 import { generatedEcsComponents } from './generatedEcsMetadata';
 export { getPathValue, setPathValue } from './propertySchema';
@@ -1038,6 +1037,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         label: 'Quality',
         path: 'water.quality',
         type: 'enum',
+        visible: (snapshot) => snapshot.water?.bodyType === 'ocean',
         options: [
           { value: 'low', label: 'Low' },
           { value: 'medium', label: 'Medium' },
