@@ -312,6 +312,180 @@ struct endpoint
 
 using endpoint_result = core::result<endpoint, shader_compile_error>;
 
+struct slot_specialization
+{
+    json graph;
+    std::vector<material_function_slot_descriptor> descriptors;
+    std::uint64_t key{};
+};
+
+using slot_specialization_result = core::result<slot_specialization, shader_compile_error>;
+
+const material_function_pin* find_pin(const std::vector<material_function_pin>& pins, std::string_view id)
+{
+    const auto found = std::ranges::find(pins, id, &material_function_pin::id);
+    return found == pins.end() ? nullptr : &*found;
+}
+
+bool function_slot_compatible(const parsed_material_function& base, const parsed_material_function& replacement,
+                              std::string& reason)
+{
+    for (const auto& input : base.inputs)
+    {
+        if (input.has_default) continue;
+        const auto* candidate = find_pin(replacement.inputs, input.id);
+        if (!candidate || candidate->type != input.type)
+        {
+            reason = "replacement is missing required input '" + input.id + "' with the slot's type";
+            return false;
+        }
+    }
+
+    for (const auto& output : base.outputs)
+    {
+        const auto* candidate = find_pin(replacement.outputs, output.id);
+        if (!candidate || candidate->type != output.type)
+        {
+            reason = "replacement is missing output '" + output.id + "' with the slot's type";
+            return false;
+        }
+    }
+
+    for (const auto& input : replacement.inputs)
+    {
+        if (find_pin(base.inputs, input.id)) continue;
+        if (!input.has_default)
+        {
+            reason = "replacement introduces required input '" + input.id + "'";
+            return false;
+        }
+    }
+    return true;
+}
+
+std::uint64_t hash_specialization(std::span<const material_function_slot_descriptor> slots) noexcept
+{
+    constexpr std::uint64_t offset = 14695981039346656037ull;
+    constexpr std::uint64_t prime = 1099511628211ull;
+    std::uint64_t hash = offset;
+    const auto append = [&](std::string_view value)
+    {
+        for (const auto byte : value)
+        {
+            hash ^= static_cast<unsigned char>(byte);
+            hash *= prime;
+        }
+        hash ^= 0xffu;
+        hash *= prime;
+    };
+    for (const auto& slot : slots)
+    {
+        append(slot.id);
+        append(slot.selected_function_identity);
+    }
+    return slots.empty() ? 0 : hash;
+}
+
+slot_specialization_result
+specialize_function_slots(json graph, const std::map<std::string, parsed_material_function>& functions,
+                          std::span<const material_function_slot_override> overrides)
+{
+    std::map<std::string, std::string> selections;
+    for (const auto& override_value : overrides)
+    {
+        if (override_value.slot_id.empty() || override_value.function_path.empty() ||
+            !selections.emplace(override_value.slot_id, normalize_path(override_value.function_path)).second)
+            return slot_specialization_result::failure(
+                validation_error("Material Function Slot overrides contain an invalid or duplicate slot id"));
+    }
+
+    std::set<std::string> authored_slots;
+    std::vector<material_function_slot_descriptor> descriptors;
+    json extra_nodes = json::array();
+    json extra_connections = json::array();
+
+    for (auto& node : graph["nodes"])
+    {
+        if (!node.is_object() || node.value("type", "") != "functionSlot") continue;
+        const auto node_id = node.value("id", "");
+        auto values = node.value("values", json::object());
+        const auto slot_id = values.value("slotId", "");
+        const auto slot_name = values.value("name", slot_id);
+        const auto default_path = values.value("path", "");
+        if (node_id.empty() || slot_id.empty() || slot_name.empty() || default_path.empty() ||
+            !authored_slots.insert(slot_id).second)
+            return slot_specialization_result::failure(
+                validation_error("Material Function Slot has a missing or duplicate stable slot id"));
+
+        const auto* base = find_function(functions, default_path);
+        if (!base)
+            return slot_specialization_result::failure(
+                validation_error("Material Function Slot '" + slot_id + "' has a missing or ambiguous default function"));
+
+        const auto selected_it = selections.find(slot_id);
+        const auto selected_path = selected_it == selections.end() ? normalize_path(default_path) : selected_it->second;
+        const auto* selected = find_function(functions, selected_path);
+        if (!selected)
+            return slot_specialization_result::failure(
+                validation_error("Material Function Slot '" + slot_id + "' selects a missing or ambiguous function"));
+
+        std::string compatibility_reason;
+        if (!function_slot_compatible(*base, *selected, compatibility_reason))
+            return slot_specialization_result::failure(
+                validation_error("Material Function Slot '" + slot_id + "' is incompatible: " + compatibility_reason));
+
+        material_function_slot_descriptor descriptor{
+            .id = slot_id,
+            .name = slot_name,
+            .default_function_path = base->path,
+            .selected_function_path = selected->path,
+            .selected_function_identity = selected->identity.empty() ? selected->path : selected->identity,
+            .inputs = base->inputs,
+            .outputs = base->outputs};
+
+        for (const auto& input : selected->inputs)
+        {
+            if (find_pin(base->inputs, input.id)) continue;
+            const auto parameter_node_id =
+                concatenate({"slot::", slot_id, "::", descriptor.selected_function_identity, "::", input.id});
+            auto parameter_node = default_node(parameter_node_id, input);
+            parameter_node["parameter"] =
+                json{{"exposed", true}, {"name", concatenate({slot_name, " / ", input.name})}};
+            extra_nodes.push_back(std::move(parameter_node));
+            extra_connections.push_back(
+                json{{"id", concatenate({"slot-parameter::", slot_id, "::", input.id})},
+                     {"from", json{{"nodeId", parameter_node_id}, {"pin", "value"}}},
+                     {"to", json{{"nodeId", node_id}, {"pin", input.id}}}});
+            descriptor.selected_parameters.push_back(
+                {.pin_id = input.id, .parameter_id = make_shader_parameter_id(parameter_node_id)});
+        }
+
+        values["path"] = selected->path;
+        values["name"] = selected->name;
+        node["type"] = "functionCall";
+        node["values"] = std::move(values);
+        descriptors.push_back(std::move(descriptor));
+    }
+
+    for (const auto& [slot_id, selection] : selections)
+    {
+        static_cast<void>(selection);
+        if (!authored_slots.contains(slot_id))
+            return slot_specialization_result::failure(
+                validation_error("Material Function Slot override references unknown slot '" + slot_id + "'"));
+    }
+
+    for (auto& node : extra_nodes)
+        graph["nodes"].push_back(std::move(node));
+    for (auto& connection : extra_connections)
+        graph["connections"].push_back(std::move(connection));
+
+    std::ranges::sort(descriptors, {}, &material_function_slot_descriptor::id);
+    const auto key = hash_specialization(descriptors);
+    return slot_specialization_result::success(
+        {.graph = std::move(graph), .descriptors = std::move(descriptors), .key = key});
+}
+
 graph_expand_result expand_graph(json graph, const std::map<std::string, parsed_material_function>& functions,
                                  std::vector<std::string>& stack);
 
