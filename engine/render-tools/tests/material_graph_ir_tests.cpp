@@ -205,7 +205,8 @@ TEST_CASE("Material Output exposes normalized semantic ranges")
     const auto result = arc::render::tools::compile_material_graph_json(graph);
     REQUIRE(result);
 
-    const auto* roughness = find_output(result.value().descriptor, arc::render::tools::material_surface_output::roughness);
+    const auto* roughness =
+        find_output(result.value().descriptor, arc::render::tools::material_surface_output::roughness);
     REQUIRE(roughness != nullptr);
     CHECK(roughness->has_expected_range);
     CHECK(roughness->minimum == 0.0f);

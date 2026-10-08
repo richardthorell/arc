@@ -628,9 +628,8 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
                     const auto& scalar = source->second;
                     const bool authored_range_mismatch =
                         scalar.has_range && (scalar.minimum < output.minimum || scalar.maximum > output.maximum);
-                    const bool literal_mismatch =
-                        !scalar.has_range &&
-                        (scalar.literal.values[0] < output.minimum || scalar.literal.values[0] > output.maximum);
+                    const bool literal_mismatch = !scalar.has_range && (scalar.literal.values[0] < output.minimum ||
+                                                                        scalar.literal.values[0] > output.maximum);
                     if (authored_range_mismatch || literal_mismatch)
                     {
                         compilation.diagnostics.push_back(
