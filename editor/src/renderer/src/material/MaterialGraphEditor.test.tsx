@@ -38,6 +38,35 @@ describe('MaterialGraphEditor', () => {
     expect(container.querySelectorAll('[data-graph-pin-key]').length).toBeGreaterThan(0);
   });
 
+  it('renders shared diagnostic details and focuses the affected node', () => {
+    const graph = createDefaultMaterialGraph();
+    const roughness = graph.nodes.find((node) => node.parameter?.name === 'Roughness');
+    expect(roughness).toBeDefined();
+
+    const { container } = render(
+      <MaterialGraphEditor
+        diagnostics={[
+          {
+            id: 'range-warning',
+            severity: 'warning',
+            message: 'Roughness can produce 0..1.4, outside the expected 0..1 range',
+            target: { kind: 'node', nodeId: roughness!.id },
+          },
+        ]}
+        document={document}
+        graph={graph}
+      />,
+    );
+
+    const node = container.querySelector<HTMLElement>(`[data-node-id="${roughness!.id}"]`);
+    expect(node).not.toBeNull();
+    const badge = within(node!).getByRole('button', { name: 'Warning: 1 graph diagnostic' });
+    expect(within(node!).getByRole('tooltip')).toHaveTextContent('Roughness can produce 0..1.4');
+
+    fireEvent.click(badge);
+    expect(node).toHaveClass('is-selected');
+  });
+
   it('applies toolbar-controlled graph view options', () => {
     const graph = createDefaultMaterialGraph();
     const isolated = createMaterialNode('normalMap', [980, 720]);
