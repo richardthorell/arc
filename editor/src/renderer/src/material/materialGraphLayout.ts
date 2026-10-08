@@ -70,7 +70,8 @@ export const materialNodeHeight = (node: MaterialGraphNode) => {
     editableValueNode(node) ||
     node.type === 'normalMap' ||
     node.type === 'clamp' ||
-    node.type === 'functionCall'
+    node.type === 'functionCall' ||
+    node.type === 'functionSlot'
   )
     height += valueEditorHeight;
 
