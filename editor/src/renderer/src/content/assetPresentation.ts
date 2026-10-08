@@ -25,12 +25,18 @@ export const assetPresentationKind = (asset: Pick<AssetItem, 'kind' | 'path'>): 
 };
 
 const normalizeBuiltinAssetPath = (path: string) => {
-  const normalized = path.replaceAll('\\', '/').replace(/^\/+|\/+$/gu, '').toLocaleLowerCase();
+  const normalized = path
+    .replaceAll('\\', '/')
+    .replace(/^\/+|\/+$/gu, '')
+    .toLocaleLowerCase();
   return normalized.replace(/^(?:engine|builtin|assets)\//u, '');
 };
 
 const builtinContentIncludes = builtinContentManifest.include.map((entry) =>
-  entry.replaceAll('\\', '/').replace(/^\/+|\/+$/gu, '').toLocaleLowerCase(),
+  entry
+    .replaceAll('\\', '/')
+    .replace(/^\/+|\/+$/gu, '')
+    .toLocaleLowerCase(),
 );
 
 /**
@@ -38,9 +44,7 @@ const builtinContentIncludes = builtinContentManifest.include.map((entry) =>
  * view of every registered built-in resource. Internal renderer/compiler/test
  * assets remain registered and usable without appearing in the Content Browser.
  */
-export const isContentBrowserAssetVisible = (
-  asset: Pick<AssetItem, 'path'> & Partial<Pick<AssetItem, 'scope'>>,
-) => {
+export const isContentBrowserAssetVisible = (asset: Pick<AssetItem, 'path'> & Partial<Pick<AssetItem, 'scope'>>) => {
   if (asset.scope !== 'builtin') return true;
 
   const path = normalizeBuiltinAssetPath(asset.path);

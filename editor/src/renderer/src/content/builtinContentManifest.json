@@ -1,7 +1,4 @@
 {
   "version": 1,
-  "include": [
-    "materials/",
-    "water/presets/"
-  ]
+  "include": ["materials/", "water/presets/"]
 }
