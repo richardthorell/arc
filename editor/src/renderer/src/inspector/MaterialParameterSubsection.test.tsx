@@ -73,7 +73,7 @@ beforeEach(() => {
             id: 'roughness',
             type: 'constant',
             position: [0, 100],
-            values: { value: 0.62 },
+            values: { value: 0.62, min: 0, max: 1 },
             parameter: { exposed: true, name: 'Roughness' },
           },
           {
@@ -125,6 +125,7 @@ describe('MaterialPicker exported parameters', () => {
     expect(readText).toHaveBeenCalledWith(material.path, 'builtin');
     expect(screen.getByRole('button', { name: 'Open Base Color color picker' })).toBeVisible();
     expect(screen.getByLabelText('Roughness')).toHaveValue('0.620');
+    expect(screen.getByRole('slider', { name: 'Roughness slider' })).toHaveValue('0.62');
     expect(screen.getByRole('button', { name: 'Choose Albedo asset' })).toHaveTextContent('default');
   });
 
