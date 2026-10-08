@@ -210,6 +210,9 @@ struct material_surface_output_binding
     bool connected{};
     std::string source_node;
     std::string source_pin;
+    bool has_expected_range{};
+    float minimum{};
+    float maximum{};
 };
 
 /** @brief Deterministic texture slot assigned to one reachable texture-sample node. */
