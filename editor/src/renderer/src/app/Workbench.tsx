@@ -54,7 +54,15 @@ import { LevelEditor } from '../editors/level/LevelEditor';
 import { LevelEditorToolbar } from '../editors/level/LevelEditorToolbar';
 import { flattenScene } from '../services/editorHostTypes';
 import type { AssetItem, ConsoleEvent, ProjectSnapshot, SceneEntity } from '../services/editorHostTypes';
-import { UiContextMenu, UiContextMenuItem, UiIconButton, UiPanel, UiTab, UiTabs, UiTreeRow } from '../ui';
+import {
+  UiContextMenu,
+  UiContextMenuItem,
+  UiIconButton,
+  UiPanel,
+  UiTab,
+  UiTabs,
+  UiTreeRow,
+} from '../ui';
 import { ViewportPanel } from '../viewport/ViewportPanel';
 import { WorldEnvironmentInspector } from '../environment/WorldEnvironmentInspector';
 import type { HostWorldEnvironment } from '../environment/environmentTypes';
