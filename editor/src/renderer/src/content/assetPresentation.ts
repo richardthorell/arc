@@ -27,6 +27,7 @@ export const assetPresentationLabel = (asset: AssetPresentationSource) => {
   const kind = assetPresentationKind(asset);
   if (kind === 'model') return 'Model';
   if (kind === 'flow') return 'Flow Graph';
+  if (kind === 'materialFunction') return 'Material Function';
   if (kind === 'water') return 'Water Preset';
   if (kind === 'shader' && asset.scope === 'builtin' && asset.readOnly) return 'Engine Shader Source';
   return kind.charAt(0).toLocaleUpperCase() + kind.slice(1);
@@ -45,7 +46,7 @@ export const assetPresentationStatus = (asset: AssetStatusSource): AssetItem['st
     asset.readOnly &&
     asset.residency === 'source' &&
     !asset.hasLastGood &&
-    (asset.kind === 'material' || asset.kind === 'shader')
+    (asset.kind === 'material' || asset.kind === 'materialFunction' || asset.kind === 'shader')
   )
     return 'source';
   return asset.state;
@@ -56,6 +57,7 @@ export const assetPresentationIcon = (asset: Pick<AssetItem, 'kind' | 'path'>): 
   if (kind === 'model') return 'mesh';
   if (kind === 'flow') return 'script';
   if (kind === 'environment') return 'image';
+  if (kind === 'materialFunction') return 'material';
   if (kind === 'water' || kind === 'unknown') return 'settings';
   return kind;
 };

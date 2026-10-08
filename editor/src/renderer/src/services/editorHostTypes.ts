@@ -46,6 +46,7 @@ export type AssetItem = {
     | 'scene'
     | 'mesh'
     | 'material'
+    | 'materialFunction'
     | 'flow'
     | 'texture'
     | 'environment'

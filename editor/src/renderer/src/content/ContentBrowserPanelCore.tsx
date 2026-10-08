@@ -83,7 +83,7 @@ type Props = {
   thumbnailProvider: AssetThumbnailProvider;
 };
 
-type CreateKind = 'material' | 'flow' | 'shader';
+type CreateKind = 'material' | 'materialFunction' | 'flow' | 'shader';
 type CreateContextMenu = { x: number; y: number; folder: string };
 type LocalBrowserSource = 'project' | 'builtin';
 type FolderTreeNode = {
@@ -116,6 +116,7 @@ const assetTypeOptions: Array<{ value: AssetPresentationKind | 'all'; label: str
   { value: 'scene', label: 'Scene' },
   { value: 'model', label: 'Model' },
   { value: 'material', label: 'Material' },
+  { value: 'materialFunction', label: 'Material Function' },
   { value: 'flow', label: 'Flow Graph' },
   { value: 'texture', label: 'Texture' },
   { value: 'environment', label: 'Environment' },
@@ -597,7 +598,15 @@ export function ContentBrowserPanel({
     setCreateContextMenu(null);
     setCreateKind(nextKind);
     setCreateFolder(targetFolder);
-    setCreateName(nextKind === 'material' ? 'New Material' : nextKind === 'flow' ? 'New Flow' : 'New Shader');
+    setCreateName(
+      nextKind === 'material'
+        ? 'New Material'
+        : nextKind === 'materialFunction'
+          ? 'New Material Function'
+          : nextKind === 'flow'
+            ? 'New Flow'
+            : 'New Shader',
+    );
     setShaderTemplate('surface');
     setCreateError('');
   };
@@ -621,9 +630,11 @@ export function ContentBrowserPanel({
       const request: AssetCreationRequest =
         createKind === 'material'
           ? { kind: 'material', name: createName, folder: createFolder }
-          : createKind === 'flow'
-            ? { kind: 'flow', name: createName, folder: createFolder }
-            : { kind: 'shader', name: createName, folder: createFolder, template: shaderTemplate };
+          : createKind === 'materialFunction'
+            ? { kind: 'materialFunction', name: createName, folder: createFolder }
+            : createKind === 'flow'
+              ? { kind: 'flow', name: createName, folder: createFolder }
+              : { kind: 'shader', name: createName, folder: createFolder, template: shaderTemplate };
       const definition = buildAssetCreation(project, request);
       if (project.assets.some((asset) => normalizedPath(asset.path) === normalizedPath(definition.asset.path))) {
         throw new Error(`An asset already exists at ${definition.asset.path}`);
@@ -631,7 +642,7 @@ export function ContentBrowserPanel({
       const created = await window.arc.projects.createAsset({
         path: definition.asset.path,
         text: definition.contents,
-        kind: definition.asset.kind as 'material' | 'flow' | 'shader',
+        kind: definition.asset.kind as 'material' | 'materialFunction' | 'flow' | 'shader',
       });
       const registered = {
         ...definition.asset,
@@ -664,14 +675,25 @@ export function ContentBrowserPanel({
       aria-label="Create asset"
       {...(context && createContextMenu ? { style: { left: createContextMenu.x, top: createContextMenu.y } } : {})}
     >
-      <button role="menuitem" onClick={() => beginCreate('material', targetFolder)}>
+      <button aria-label="Material" role="menuitem" onClick={() => beginCreate('material', targetFolder)}>
         <span className="content-create-type-icon material" aria-hidden="true" />
         <span>
           <strong>Material</strong>
           <small>PBR material graph</small>
         </span>
       </button>
-      <button role="menuitem" onClick={() => beginCreate('flow', targetFolder)}>
+      <button
+        aria-label="Material Function"
+        role="menuitem"
+        onClick={() => beginCreate('materialFunction', targetFolder)}
+      >
+        <span className="content-create-type-icon material" aria-hidden="true" />
+        <span>
+          <strong>Material Function</strong>
+          <small>Reusable typed material graph fragment</small>
+        </span>
+      </button>
+      <button aria-label="Flow Graph" role="menuitem" onClick={() => beginCreate('flow', targetFolder)}>
         <span className="content-create-type-icon shader" aria-hidden="true">
           {'⇢'}
         </span>
@@ -680,7 +702,7 @@ export function ContentBrowserPanel({
           <small>Gameplay logic graph</small>
         </span>
       </button>
-      <button role="menuitem" onClick={() => beginCreate('shader', targetFolder)}>
+      <button aria-label="Shader" role="menuitem" onClick={() => beginCreate('shader', targetFolder)}>
         <span className="content-create-type-icon shader" aria-hidden="true">
           {'</>'}
         </span>
@@ -1128,7 +1150,14 @@ export function ContentBrowserPanel({
           >
             <header>
               <strong id="content-create-title">
-                Create {createKind === 'material' ? 'Material' : createKind === 'flow' ? 'Flow Graph' : 'Shader'}
+                Create{' '}
+                {createKind === 'material'
+                  ? 'Material'
+                  : createKind === 'materialFunction'
+                    ? 'Material Function'
+                    : createKind === 'flow'
+                      ? 'Flow Graph'
+                      : 'Shader'}
               </strong>
               <small>{createFolder || contentRoot}</small>
             </header>
@@ -1167,7 +1196,15 @@ export function ContentBrowserPanel({
               <button type="submit" disabled={creating || !createName.trim()}>
                 {creating
                   ? 'Creating…'
-                  : `Create ${createKind === 'material' ? 'Material' : createKind === 'flow' ? 'Flow Graph' : 'Shader'}`}
+                  : `Create ${
+                      createKind === 'material'
+                        ? 'Material'
+                        : createKind === 'materialFunction'
+                          ? 'Material Function'
+                          : createKind === 'flow'
+                            ? 'Flow Graph'
+                            : 'Shader'
+                    }`}
               </button>
             </footer>
           </form>

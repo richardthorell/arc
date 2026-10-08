@@ -1109,7 +1109,7 @@ void app.whenReady().then(async () => {
     if (!projectService?.active()?.writable) throw new Error('The active project is read-only');
     if (typeof request?.path !== 'string' || typeof request?.text !== 'string')
       throw new Error('Asset creation request is invalid');
-    if (!['material', 'flow', 'shader'].includes(String(request.kind)))
+    if (!['material', 'materialFunction', 'flow', 'shader'].includes(String(request.kind)))
       throw new Error('Asset creation kind is unsupported');
     if (Buffer.byteLength(request.text, 'utf8') > 8 * 1024 * 1024) throw new Error('Authored asset is too large');
 

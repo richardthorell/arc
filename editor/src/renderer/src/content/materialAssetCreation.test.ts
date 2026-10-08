@@ -95,3 +95,38 @@ describe('Material asset creation', () => {
     ).toBe(true);
   });
 });
+
+describe('Material Function asset creation', () => {
+  it('creates an editable typed function graph with stable boundary nodes', () => {
+    const definition = buildAssetCreation(project, {
+      kind: 'materialFunction',
+      name: 'Checker',
+      folder: 'Content/MaterialFunctions',
+    });
+
+    expect(definition.asset).toMatchObject({
+      name: 'Checker.arcmatfn',
+      path: 'Content/MaterialFunctions/Checker.arcmatfn',
+      kind: 'materialFunction',
+      scope: 'project',
+      status: 'ready',
+    });
+
+    const asset = JSON.parse(definition.contents);
+    expect(asset).toMatchObject({
+      kind: 'materialFunction',
+      version: 1,
+      name: 'Checker',
+      inputs: [{ id: 'value', name: 'Value', type: 'vec3' }],
+      outputs: [{ id: 'result', name: 'Result', type: 'vec3' }],
+    });
+    expect(asset.graph.nodes.some((node: { type: string }) => node.type === 'functionInput')).toBe(true);
+    expect(asset.graph.nodes.some((node: { type: string }) => node.type === 'functionOutput')).toBe(true);
+    expect(
+      asset.graph.connections.some(
+        (connection: { from: { pin: string }; to: { pin: string } }) =>
+          connection.from.pin === 'value' && connection.to.pin === 'result',
+      ),
+    ).toBe(true);
+  });
+});
