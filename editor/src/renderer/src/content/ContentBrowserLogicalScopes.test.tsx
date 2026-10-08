@@ -212,7 +212,7 @@ describe('ContentBrowserPanel logical scopes', () => {
     const view = renderBrowser(project);
 
     expect(view.getByText('Project Rock')).toBeInTheDocument();
-    fireEvent.click(view.getByText('Props'));
+    fireEvent.click(view.getByRole('button', { name: 'Props' }));
     expect(view.getByText('Project Rock')).toBeInTheDocument();
 
     fireEvent.click(view.getByRole('button', { name: 'Built-in Read only' }));
