@@ -1,0 +1,479 @@
+{
+  "kind": "materialFunction",
+  "version": 1,
+  "name": "Noise",
+  "description": "Deterministic world-space procedural color noise.",
+  "inputs": [
+    {
+      "id": "baseColor",
+      "name": "Base Color",
+      "type": "vec3"
+    },
+    {
+      "id": "scale",
+      "name": "Scale",
+      "type": "float",
+      "default": 1
+    },
+    {
+      "id": "seed",
+      "name": "Seed",
+      "type": "float",
+      "default": 0
+    },
+    {
+      "id": "contrast",
+      "name": "Contrast",
+      "type": "float",
+      "default": 1
+    },
+    {
+      "id": "colorA",
+      "name": "Color A",
+      "type": "vec3",
+      "default": [
+        0.15,
+        0.15,
+        0.15
+      ]
+    },
+    {
+      "id": "colorB",
+      "name": "Color B",
+      "type": "vec3",
+      "default": [
+        0.85,
+        0.85,
+        0.85
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "id": "color",
+      "name": "Color",
+      "type": "vec3"
+    }
+  ],
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "input-baseColor",
+        "type": "functionInput",
+        "position": [
+          40,
+          40
+        ],
+        "values": {
+          "input": "baseColor",
+          "name": "Base Color",
+          "valueType": "vec3"
+        }
+      },
+      {
+        "id": "input-scale",
+        "type": "functionInput",
+        "position": [
+          40,
+          170
+        ],
+        "values": {
+          "input": "scale",
+          "name": "Scale",
+          "valueType": "float"
+        }
+      },
+      {
+        "id": "input-seed",
+        "type": "functionInput",
+        "position": [
+          40,
+          290
+        ],
+        "values": {
+          "input": "seed",
+          "name": "Seed",
+          "valueType": "float"
+        }
+      },
+      {
+        "id": "input-contrast",
+        "type": "functionInput",
+        "position": [
+          40,
+          410
+        ],
+        "values": {
+          "input": "contrast",
+          "name": "Contrast",
+          "valueType": "float"
+        }
+      },
+      {
+        "id": "input-colorA",
+        "type": "functionInput",
+        "position": [
+          40,
+          540
+        ],
+        "values": {
+          "input": "colorA",
+          "name": "Color A",
+          "valueType": "vec3"
+        }
+      },
+      {
+        "id": "input-colorB",
+        "type": "functionInput",
+        "position": [
+          40,
+          660
+        ],
+        "values": {
+          "input": "colorB",
+          "name": "Color B",
+          "valueType": "vec3"
+        }
+      },
+      {
+        "id": "world-position",
+        "type": "worldPosition",
+        "position": [
+          300,
+          250
+        ],
+        "values": {}
+      },
+      {
+        "id": "noise-vector",
+        "type": "vector3",
+        "position": [
+          300,
+          430
+        ],
+        "values": {
+          "value": [
+            12.9898,
+            78.233,
+            37.719
+          ]
+        }
+      },
+      {
+        "id": "scaled-position",
+        "type": "multiply",
+        "position": [
+          510,
+          250
+        ],
+        "values": {}
+      },
+      {
+        "id": "project",
+        "type": "dot",
+        "position": [
+          700,
+          300
+        ],
+        "values": {}
+      },
+      {
+        "id": "seeded",
+        "type": "add",
+        "position": [
+          880,
+          300
+        ],
+        "values": {}
+      },
+      {
+        "id": "sine",
+        "type": "sine",
+        "position": [
+          1060,
+          300
+        ],
+        "values": {}
+      },
+      {
+        "id": "large",
+        "type": "constant",
+        "position": [
+          1060,
+          430
+        ],
+        "values": {
+          "value": 43758.5453
+        }
+      },
+      {
+        "id": "amplified",
+        "type": "multiply",
+        "position": [
+          1240,
+          300
+        ],
+        "values": {}
+      },
+      {
+        "id": "fraction",
+        "type": "frac",
+        "position": [
+          1420,
+          300
+        ],
+        "values": {}
+      },
+      {
+        "id": "contrasted",
+        "type": "power",
+        "position": [
+          1600,
+          300
+        ],
+        "values": {}
+      },
+      {
+        "id": "noise-color",
+        "type": "lerp",
+        "position": [
+          1780,
+          480
+        ],
+        "values": {}
+      },
+      {
+        "id": "tinted-color",
+        "type": "multiply",
+        "position": [
+          1980,
+          480
+        ],
+        "values": {}
+      },
+      {
+        "id": "function-output",
+        "type": "functionOutput",
+        "position": [
+          2170,
+          480
+        ],
+        "values": {
+          "pins": [
+            {
+              "id": "color",
+              "name": "Color",
+              "type": "vec3"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "scale-pos-a",
+        "from": {
+          "nodeId": "world-position",
+          "pin": "position"
+        },
+        "to": {
+          "nodeId": "scaled-position",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "scale-pos-b",
+        "from": {
+          "nodeId": "input-scale",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "scaled-position",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "dot-a",
+        "from": {
+          "nodeId": "scaled-position",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "project",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "dot-b",
+        "from": {
+          "nodeId": "noise-vector",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "project",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "seed-a",
+        "from": {
+          "nodeId": "project",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "seeded",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "seed-b",
+        "from": {
+          "nodeId": "input-seed",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "seeded",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "sin",
+        "from": {
+          "nodeId": "seeded",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "sine",
+          "pin": "value"
+        }
+      },
+      {
+        "id": "amp-a",
+        "from": {
+          "nodeId": "sine",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "amplified",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "amp-b",
+        "from": {
+          "nodeId": "large",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "amplified",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "frac",
+        "from": {
+          "nodeId": "amplified",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "fraction",
+          "pin": "value"
+        }
+      },
+      {
+        "id": "pow-base",
+        "from": {
+          "nodeId": "fraction",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "contrasted",
+          "pin": "base"
+        }
+      },
+      {
+        "id": "pow-exp",
+        "from": {
+          "nodeId": "input-contrast",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "contrasted",
+          "pin": "exponent"
+        }
+      },
+      {
+        "id": "lerp-a",
+        "from": {
+          "nodeId": "input-colorA",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "noise-color",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "lerp-b",
+        "from": {
+          "nodeId": "input-colorB",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "noise-color",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "lerp-t",
+        "from": {
+          "nodeId": "contrasted",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "noise-color",
+          "pin": "t"
+        }
+      },
+      {
+        "id": "tint-a",
+        "from": {
+          "nodeId": "noise-color",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "tinted-color",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "tint-b",
+        "from": {
+          "nodeId": "input-baseColor",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "tinted-color",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "out",
+        "from": {
+          "nodeId": "tinted-color",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "function-output",
+          "pin": "color"
+        }
+      }
+    ],
+    "viewport": {
+      "x": 20,
+      "y": 20,
+      "zoom": 0.62
+    }
+  }
+}
