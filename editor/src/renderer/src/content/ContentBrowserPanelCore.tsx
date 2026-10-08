@@ -1173,9 +1173,7 @@ export function ContentBrowserPanel({
                       : undefined
                   }
                   onDrop={
-                    browserSource === 'project'
-                      ? (event) => importDroppedFiles(event, childFolder.path)
-                      : undefined
+                    browserSource === 'project' ? (event) => importDroppedFiles(event, childFolder.path) : undefined
                   }
                 >
                   <span className="content-folder-card-icon" aria-hidden="true">

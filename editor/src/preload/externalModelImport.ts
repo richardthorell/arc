@@ -24,11 +24,7 @@ const ensureUniqueDestination = (directory: string, fileName: string): string =>
   return candidate;
 };
 
-const normalizedProjectFolder = (
-  projectRoot: string,
-  contentRoot: string,
-  requestedFolder?: string,
-): string => {
+const normalizedProjectFolder = (projectRoot: string, contentRoot: string, requestedFolder?: string): string => {
   const relative = (requestedFolder?.trim() || `${contentRoot}/Models`).replaceAll('\\', '/').replace(/^\/+/, '');
   if (!relative || relative === '..' || relative.startsWith('../') || path.isAbsolute(relative))
     throw new Error('Model import destination must be project-relative');

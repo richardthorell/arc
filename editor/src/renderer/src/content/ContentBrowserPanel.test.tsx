@@ -15,7 +15,9 @@ const createAsset = vi.fn().mockImplementation(async ({ path, kind }: { path: st
 }));
 const readText = vi.fn().mockRejectedValue(new Error('missing metadata'));
 const writeText = vi.fn().mockResolvedValue({ succeeded: true });
-const importModel = vi.fn().mockResolvedValue({ path: 'Content/imported.glb', sourcePath: 'D:/Test/Content/imported.glb' });
+const importModel = vi
+  .fn()
+  .mockResolvedValue({ path: 'Content/imported.glb', sourcePath: 'D:/Test/Content/imported.glb' });
 const importTexture = vi
   .fn()
   .mockResolvedValue({ path: 'Content/imported.png', sourcePath: 'D:/Test/Content/imported.png' });
@@ -25,7 +27,9 @@ beforeEach(() => {
   createAsset.mockClear();
   readText.mockReset().mockRejectedValue(new Error('missing metadata'));
   writeText.mockReset().mockResolvedValue({ succeeded: true });
-  importModel.mockReset().mockResolvedValue({ path: 'Content/imported.glb', sourcePath: 'D:/Test/Content/imported.glb' });
+  importModel
+    .mockReset()
+    .mockResolvedValue({ path: 'Content/imported.glb', sourcePath: 'D:/Test/Content/imported.glb' });
   importTexture
     .mockReset()
     .mockResolvedValue({ path: 'Content/imported.png', sourcePath: 'D:/Test/Content/imported.png' });
