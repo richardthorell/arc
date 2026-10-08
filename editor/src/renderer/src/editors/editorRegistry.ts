@@ -399,6 +399,7 @@ export const openAssetEditorDocument = (asset: AssetItem, registry: EditorRegist
   const needsCanonicalProjectIdentity =
     asset.scope !== 'builtin' &&
     (asset.kind === 'material' ||
+      asset.kind === 'materialInstance' ||
       asset.kind === 'materialFunction' ||
       asset.kind === 'shader' ||
       asset.kind === 'flow');
