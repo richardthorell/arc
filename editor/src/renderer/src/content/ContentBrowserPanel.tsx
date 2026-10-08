@@ -6,6 +6,7 @@ import { assetLibraryIdentity } from './assetLibraryIdentity';
 import { assetLibraryScopeViewsForProject } from './assetLibraryScopeSnapshot';
 import type { AssetLibraryScopeId } from './assetLibraryScopes';
 import { ContentBrowserPanel as ContentBrowserPanelCore } from './ContentBrowserPanelCore';
+import { isContentBrowserAssetVisible } from './assetPresentation';
 
 import './contentBrowserScopes.css';
 
@@ -32,10 +33,11 @@ const projectForScope = (
   assetIds: readonly string[],
 ): ProjectSnapshot => {
   const visibleIds = new Set(assetIds);
+  const browserAssets = project.assets.filter(isContentBrowserAssetVisible);
   return {
     ...project,
     assetRoot: logicalRootForScope(project, scope),
-    assets: project.assets.map((asset) => {
+    assets: browserAssets.map((asset) => {
       if (visibleIds.has(assetLibraryIdentity(asset))) return { ...asset, scope: 'project' } as AssetItem;
       if (scope === 'project' && asset.scope === 'builtin') return asset;
       return { ...asset, scope: 'organization' } as AssetItem;
