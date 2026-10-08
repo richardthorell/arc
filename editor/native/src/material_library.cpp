@@ -25,6 +25,7 @@ namespace arc::editor
 namespace
 {
 
+std::filesystem::path canonical_key(const std::filesystem::path& path);
 render::texture_handle ensure_texture(editor_material_library& library, render::renderer& renderer,
                                       const std::filesystem::path& path, render::texture_semantic semantic);
 
