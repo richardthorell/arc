@@ -6,6 +6,7 @@
 #include <array>
 #include <charconv>
 #include <cstring>
+#include <optional>
 #include <set>
 #include <type_traits>
 #include <utility>
