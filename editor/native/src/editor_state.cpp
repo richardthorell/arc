@@ -403,6 +403,8 @@ render::material_handle create_default_floor_material(editor_scene_state& scene,
 
         scene.floor_material = floor;
         scene.floor_material_asset.expected_type = assets::asset_types::material_instance;
+        if (const auto guid = assets::parse_asset_guid("6a8c7339-3a9f-49d5-9d4f-1b5a73d02a91"))
+            scene.floor_material_asset.guid = *guid;
         scene.floor_material_asset.path_hint = "builtin/materials/floor.arcmatinst";
         return floor;
     }
