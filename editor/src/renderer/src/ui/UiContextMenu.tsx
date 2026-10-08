@@ -1,7 +1,8 @@
-import type { ButtonHTMLAttributes, CSSProperties, HTMLAttributes, ReactNode } from 'react';
+import { useEffect, useRef, type ButtonHTMLAttributes, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react';
 
 import { UiButton } from './UiButton';
 import { UiFloatingSurface } from './UiFloatingSurface';
+import { UiSearchInput } from './UiTextInput';
 
 import './UiContextMenu.css';
 
@@ -11,13 +12,42 @@ export type UiContextMenuProps = Omit<HTMLAttributes<HTMLDivElement>, 'children'
   y?: number;
   width?: CSSProperties['width'];
   maxHeight?: CSSProperties['maxHeight'];
+  searchValue?: string;
+  onSearchValueChange?: (value: string) => void;
+  searchPlaceholder?: string;
+  searchAriaLabel?: string;
+  onRequestClose?: () => void;
 };
 
-export function UiContextMenu({ children, className, maxHeight, style, width, x, y, ...props }: UiContextMenuProps) {
+export function UiContextMenu({
+  children,
+  className,
+  maxHeight,
+  onKeyDown,
+  onRequestClose,
+  onSearchValueChange,
+  searchAriaLabel = 'Search menu',
+  searchPlaceholder = 'Search...',
+  searchValue,
+  style,
+  width,
+  x,
+  y,
+  ...props
+}: UiContextMenuProps) {
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const searchable = searchValue !== undefined && onSearchValueChange !== undefined;
+
+  useEffect(() => {
+    if (searchable) searchRef.current?.focus();
+  }, [searchable]);
+
   return (
     <UiFloatingSurface
       {...props}
-      className={['ui-context-menu', className].filter(Boolean).join(' ')}
+      className={['ui-context-menu', searchable ? 'ui-context-menu-searchable' : undefined, className]
+        .filter(Boolean)
+        .join(' ')}
       maxHeight={maxHeight}
       role={props.role ?? 'menu'}
       style={{
@@ -26,7 +56,31 @@ export function UiContextMenu({ children, className, maxHeight, style, width, x,
         ...style,
       }}
       width={width}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          if (searchable && searchValue.length > 0) {
+            onSearchValueChange('');
+            return;
+          }
+          onRequestClose?.();
+          return;
+        }
+        onKeyDown?.(event);
+      }}
     >
+      {searchable && (
+        <div className="ui-context-menu-search">
+          <UiSearchInput
+            ref={searchRef}
+            aria-label={searchAriaLabel}
+            placeholder={searchPlaceholder}
+            value={searchValue}
+            onChange={(event) => onSearchValueChange(event.target.value)}
+          />
+        </div>
+      )}
       {children}
     </UiFloatingSurface>
   );
