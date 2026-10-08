@@ -182,7 +182,7 @@ describe('ContentBrowserPanel logical scopes', () => {
     );
     const view = render(panel(baseProject));
 
-    fireEvent.click(view.getByText('Props'));
+    fireEvent.click(view.getByRole('button', { name: 'Props' }));
     const contentPath = view.getByRole('navigation', { name: 'Content path' });
     expect(within(contentPath).getByRole('button', { name: 'Props' })).toBeInTheDocument();
     expect(view.getByText('Project Rock')).toBeInTheDocument();
@@ -217,7 +217,7 @@ describe('ContentBrowserPanel logical scopes', () => {
 
     fireEvent.click(view.getByRole('button', { name: 'Built-in Read only' }));
     expect(view.getByText('Built-in Grid')).toBeInTheDocument();
-    fireEvent.click(view.getByText('Materials'));
+    fireEvent.click(view.getByRole('button', { name: 'Materials' }));
     expect(view.getByText('Built-in Grid')).toBeInTheDocument();
   });
 });
