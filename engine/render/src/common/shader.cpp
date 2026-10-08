@@ -15,7 +15,7 @@ namespace arc::render
 namespace
 {
 
-constexpr std::string_view package_magic = "ARC_SHADER_2";
+constexpr std::string_view package_magic = "ARC_SHADER_3";
 constexpr std::size_t maximum_package_bytes = 256u * 1024u * 1024u;
 constexpr std::size_t maximum_package_entries = 65'536u;
 
