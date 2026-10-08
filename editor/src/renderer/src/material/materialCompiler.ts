@@ -157,6 +157,7 @@ export type MaterialEditorParameter = {
   type: MaterialGraphValueType;
   nodeType: MaterialGraphNodeType;
   editorKind: MaterialEditorParameterKind;
+  range?: { min: number; max: number };
 };
 
 /**
@@ -197,6 +198,7 @@ export const materialEditorParameters = (graph: MaterialGraph): MaterialEditorPa
         type,
         nodeType: node.type,
         editorKind,
+        ...(node.type === 'constant' && materialScalarRange(node) ? { range: materialScalarRange(node)! } : {}),
       },
     ];
   });
