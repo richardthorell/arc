@@ -692,9 +692,7 @@ void register_processors(asset_cooker& cooker)
     cooker.register_processor(std::make_unique<shader_processor>());
     cooker.register_processor(arc::tools::make_material_processor());
     cooker.register_processor(arc::tools::make_material_function_processor());
-    cooker.register_processor(std::make_unique<document_processor>(
-        asset_types::material_instance, cook_processor_ids::material_instance, artifact_schemas::material_instance,
-        "ARC Material Instance", ".arcmatinstc"));
+    cooker.register_processor(arc::tools::make_material_instance_processor());
     cooker.register_processor(std::make_unique<document_processor>(asset_types::scene, cook_processor_ids::scene,
                                                                    artifact_schemas::scene, "ARC Scene", ".arcscenec",
                                                                    persistence::document_kind::scene));

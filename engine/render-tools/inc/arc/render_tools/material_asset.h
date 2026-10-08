@@ -80,6 +80,80 @@ using material_package_v4_result = core::result<material_package_v4, material_as
 using material_package_v3 = material_package_v4;
 using material_package_v3_result = material_package_v4_result;
 
+/** Current authored Material Instance document version. */
+inline constexpr std::uint32_t material_instance_authoring_version = 1;
+/** Current cooked Material Instance package schema version. */
+inline constexpr std::uint32_t material_instance_package_version = 1;
+/** Stable signature of the cooked Material Instance payload. */
+inline constexpr std::string_view material_instance_package_signature = "ARC_MATERIAL_INSTANCE_1";
+
+/** GUID-backed authored asset reference used by Material Instance documents. */
+struct material_instance_asset_reference
+{
+    std::string guid;
+    std::string path_hint;
+};
+
+/** One stable parameter override stored by a Material Instance asset. */
+struct material_instance_parameter_override_document
+{
+    shader_parameter_id parameter_id{};
+    std::string value_json;
+};
+
+/** Per-selected-function input override authored on a Function Slot selection. */
+struct material_instance_function_input_override_document
+{
+    std::string pin_id;
+    std::string value_json;
+};
+
+/** Compile-time Function Slot selection stored by a Material Instance asset. */
+struct material_instance_function_override_document
+{
+    std::string slot_id;
+    material_instance_asset_reference function;
+    std::vector<material_instance_function_input_override_document> input_overrides;
+};
+
+/** Canonical authored Material Instance document. */
+struct material_instance_authoring_document
+{
+    std::uint32_t version{material_instance_authoring_version};
+    std::string name;
+    material_instance_asset_reference parent;
+    std::vector<material_instance_parameter_override_document> parameter_overrides;
+    std::vector<material_instance_function_override_document> function_overrides;
+    std::string canonical_json;
+};
+
+using material_instance_authoring_result = core::result<material_instance_authoring_document, material_asset_error>;
+
+/** Parse and validate a current-version first-class Material Instance document. */
+[[nodiscard]] material_instance_authoring_result parse_material_instance_authoring_json(std::string_view source);
+
+/**
+ * Cooked Material Instance envelope.
+ *
+ * The nested Material package is the fully specialized parent program. Runtime/editor
+ * loaders can therefore consume the same Material ABI payload as a normal Material,
+ * while authored instance overrides and parent identity remain available separately.
+ */
+struct material_instance_package_v1
+{
+    std::string parent_guid;
+    std::uint64_t function_specialization_key{};
+    material_package_v4 material;
+    std::string canonical_instance_json;
+};
+
+using material_instance_package_v1_result = core::result<material_instance_package_v1, material_asset_error>;
+
+[[nodiscard]] std::vector<std::byte>
+serialize_material_instance_package_v1(const material_instance_package_v1& package);
+[[nodiscard]] material_instance_package_v1_result
+deserialize_material_instance_package_v1(std::span<const std::byte> bytes);
+
 /** Serialize deterministic pass-aware ARC_MATERIAL_4 bytes. */
 [[nodiscard]] std::vector<std::byte> serialize_material_package_v4(const material_package_v4& package);
 

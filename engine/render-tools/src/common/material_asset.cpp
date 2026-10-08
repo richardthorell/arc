@@ -4,7 +4,10 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <cstring>
+#include <optional>
+#include <set>
 #include <type_traits>
 #include <utility>
 
@@ -118,6 +121,29 @@ material_alpha_mode authored_alpha_mode(const json& document)
     return material_alpha_mode::opaque;
 }
 
+std::optional<shader_parameter_id> parse_parameter_id(std::string_view text)
+{
+    if (text.empty()) return std::nullopt;
+    std::uint64_t value{};
+    int base = 10;
+    if (text.size() > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X'))
+    {
+        text.remove_prefix(2);
+        base = 16;
+    }
+    const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value, base);
+    if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size() || value == 0) return std::nullopt;
+    return shader_parameter_id{value};
+}
+
+bool parse_asset_reference(const json& value, material_instance_asset_reference& output)
+{
+    if (!value.is_object()) return false;
+    output.guid = value.value("guid", "");
+    output.path_hint = value.value("pathHint", "");
+    return !output.guid.empty() && !output.path_hint.empty();
+}
+
 } // namespace
 
 material_authoring_result parse_material_authoring_json(std::string_view source)
@@ -184,6 +210,153 @@ material_authoring_result parse_material_authoring_json(std::string_view source)
                                                .alpha_mode = authored_alpha_mode(document),
                                                .double_sided = document.value("doubleSided", false),
                                                .cast_shadows = document.value("castShadows", true)});
+}
+
+material_instance_authoring_result parse_material_instance_authoring_json(std::string_view source)
+{
+    auto document = json::parse(source, nullptr, false);
+    if (document.is_discarded() || !document.is_object())
+        return material_instance_authoring_result::failure(
+            {.code = material_asset_error_code::malformed_json,
+             .message = "Material Instance definition is not valid JSON"});
+
+    if (document.value("version", 0) != static_cast<int>(material_instance_authoring_version))
+        return material_instance_authoring_result::failure(
+            {.code = material_asset_error_code::unsupported_version,
+             .message =
+                 "Material Instance document must use schema v" + std::to_string(material_instance_authoring_version)});
+
+    material_instance_authoring_document result;
+    result.name = document.value("name", "");
+    if (result.name.empty())
+        return material_instance_authoring_result::failure({.code = material_asset_error_code::invalid_document,
+                                                            .message = "Material Instance requires a non-empty name"});
+
+    if (!document.contains("parent") || !parse_asset_reference(document["parent"], result.parent))
+        return material_instance_authoring_result::failure(
+            {.code = material_asset_error_code::invalid_document,
+             .message = "Material Instance requires a GUID-backed parent Material reference"});
+
+    const auto& parameter_overrides =
+        document.contains("parameterOverrides") ? document["parameterOverrides"] : json::array();
+    if (!parameter_overrides.is_array())
+        return material_instance_authoring_result::failure(
+            {.code = material_asset_error_code::invalid_document,
+             .message = "Material Instance parameterOverrides must be an array"});
+
+    std::set<std::uint64_t> parameter_ids;
+    for (const auto& authored : parameter_overrides)
+    {
+        if (!authored.is_object() || !authored.contains("parameterId") || !authored["parameterId"].is_string() ||
+            !authored.contains("value"))
+            return material_instance_authoring_result::failure(
+                {.code = material_asset_error_code::invalid_document,
+                 .message = "Material Instance parameter override is malformed"});
+        const auto parameter_id = parse_parameter_id(authored["parameterId"].get<std::string>());
+        if (!parameter_id || !parameter_ids.insert(parameter_id->value).second)
+            return material_instance_authoring_result::failure(
+                {.code = material_asset_error_code::invalid_document,
+                 .message = "Material Instance contains an invalid or duplicate parameter override"});
+        result.parameter_overrides.push_back({.parameter_id = *parameter_id, .value_json = authored["value"].dump()});
+    }
+
+    const auto& function_overrides =
+        document.contains("functionOverrides") ? document["functionOverrides"] : json::array();
+    if (!function_overrides.is_array())
+        return material_instance_authoring_result::failure(
+            {.code = material_asset_error_code::invalid_document,
+             .message = "Material Instance functionOverrides must be an array"});
+
+    std::set<std::string> slot_ids;
+    for (const auto& authored : function_overrides)
+    {
+        if (!authored.is_object())
+            return material_instance_authoring_result::failure(
+                {.code = material_asset_error_code::invalid_document,
+                 .message = "Material Instance Function Slot override is malformed"});
+        material_instance_function_override_document override_value;
+        override_value.slot_id = authored.value("slotId", "");
+        if (override_value.slot_id.empty() || !slot_ids.insert(override_value.slot_id).second ||
+            !authored.contains("function") || !parse_asset_reference(authored["function"], override_value.function))
+            return material_instance_authoring_result::failure(
+                {.code = material_asset_error_code::invalid_document,
+                 .message = "Material Instance contains an invalid or duplicate Function Slot override"});
+
+        const auto& inputs = authored.contains("inputOverrides") ? authored["inputOverrides"] : json::array();
+        if (!inputs.is_array())
+            return material_instance_authoring_result::failure(
+                {.code = material_asset_error_code::invalid_document,
+                 .message = "Material Instance Function Slot inputOverrides must be an array"});
+        std::set<std::string> pin_ids;
+        for (const auto& input : inputs)
+        {
+            if (!input.is_object() || !input.contains("pinId") || !input["pinId"].is_string() ||
+                !input.contains("value"))
+                return material_instance_authoring_result::failure(
+                    {.code = material_asset_error_code::invalid_document,
+                     .message = "Material Instance Function Slot input override is malformed"});
+            const auto pin_id = input["pinId"].get<std::string>();
+            if (pin_id.empty() || !pin_ids.insert(pin_id).second)
+                return material_instance_authoring_result::failure(
+                    {.code = material_asset_error_code::invalid_document,
+                     .message = "Material Instance contains an invalid or duplicate Function Slot input override"});
+            override_value.input_overrides.push_back({.pin_id = pin_id, .value_json = input["value"].dump()});
+        }
+        result.function_overrides.push_back(std::move(override_value));
+    }
+
+    result.version = material_instance_authoring_version;
+    result.canonical_json = document.dump();
+    return material_instance_authoring_result::success(std::move(result));
+}
+
+std::vector<std::byte> serialize_material_instance_package_v1(const material_instance_package_v1& package)
+{
+    std::vector<std::byte> output;
+    append_string(output, material_instance_package_signature);
+    append_value(output, material_instance_package_version);
+    append_string(output, package.parent_guid);
+    append_value(output, package.function_specialization_key);
+    const auto material_bytes = serialize_material_package_v4(package.material);
+    append_value(output, static_cast<std::uint64_t>(material_bytes.size()));
+    output.insert(output.end(), material_bytes.begin(), material_bytes.end());
+    append_string(output, package.canonical_instance_json);
+    return output;
+}
+
+material_instance_package_v1_result deserialize_material_instance_package_v1(std::span<const std::byte> bytes)
+{
+    package_reader reader(bytes);
+    std::string signature;
+    std::uint32_t version{};
+    material_instance_package_v1 package;
+    std::uint64_t material_size{};
+    if (!reader.string(signature) || signature != material_instance_package_signature || !reader.value(version) ||
+        version != material_instance_package_version || !reader.string(package.parent_guid) ||
+        package.parent_guid.empty() || !reader.value(package.function_specialization_key) ||
+        !reader.value(material_size) || material_size > bytes.size())
+        return material_instance_package_v1_result::failure({.code = material_asset_error_code::corrupt_package,
+                                                             .message = "Material Instance package header is invalid"});
+
+    std::vector<std::byte> material_bytes(static_cast<std::size_t>(material_size));
+    if (!reader.raw(material_bytes))
+        return material_instance_package_v1_result::failure(
+            {.code = material_asset_error_code::corrupt_package,
+             .message = "Material Instance package contains a truncated Material payload"});
+    auto material = deserialize_material_package_v4(material_bytes);
+    if (!material) return material_instance_package_v1_result::failure(material.error());
+    package.material = std::move(material).value();
+
+    if (!reader.string(package.canonical_instance_json) || !reader.complete())
+        return material_instance_package_v1_result::failure(
+            {.code = material_asset_error_code::corrupt_package,
+             .message = "Material Instance package payload is truncated"});
+    auto authored = parse_material_instance_authoring_json(package.canonical_instance_json);
+    if (!authored)
+        return material_instance_package_v1_result::failure(
+            {.code = material_asset_error_code::corrupt_package,
+             .message = "Material Instance package contains an invalid authored document"});
+    return material_instance_package_v1_result::success(std::move(package));
 }
 
 std::vector<std::byte> serialize_material_package_v4(const material_package_v4& package)

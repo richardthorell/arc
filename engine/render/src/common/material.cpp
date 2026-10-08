@@ -154,6 +154,10 @@ material_instance_result resolve_material_instance(const material_definition_des
     std::unordered_set<std::uint64_t> seen;
     material_descriptor result = definition.material;
     if (!instance.name.empty()) result.name = instance.name;
+    const auto& parameter_layout = instance.specialized_parameter_layout.empty()
+                                       ? definition.parameter_layout
+                                       : instance.specialized_parameter_layout;
+    if (instance.specialized_runtime_program) result.runtime_program = instance.specialized_runtime_program;
     for (const auto& override_value : instance.overrides)
     {
         if (!override_value.id.valid())
@@ -167,9 +171,8 @@ material_instance_result resolve_material_instance(const material_definition_des
                  .parameter = override_value.id,
                  .message = "material instance contains a duplicate parameter override"});
 
-        const auto layout =
-            std::ranges::find(definition.parameter_layout, override_value.id, &shader_parameter_descriptor::id);
-        if (layout == definition.parameter_layout.end())
+        const auto layout = std::ranges::find(parameter_layout, override_value.id, &shader_parameter_descriptor::id);
+        if (layout == parameter_layout.end())
             return material_instance_result::failure(
                 {.code = material_instance_error_code::unknown_parameter,
                  .parameter = override_value.id,
