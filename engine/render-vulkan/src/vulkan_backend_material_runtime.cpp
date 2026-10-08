@@ -36,10 +36,9 @@ bool is_forward_scene_resource(const shader_resource_descriptor& resource) noexc
            resource.name == "arcForwardLocalShadowSampler" || resource.name == "arcForwardSceneColor" ||
            resource.name == "arcForwardSceneColorSampler" || resource.name == "arcForwardShadows" ||
            resource.name == "arcForwardScene" || resource.name == "arcForwardClusterWords" ||
-           resource.name == "arcVirtualShadowAddresses" ||
-           resource.name == "arcVirtualShadowViews" || resource.name == "arcVirtualShadowPages" ||
-           resource.name == "arcVirtualShadowStaticAtlas" || resource.name == "arcVirtualShadowDynamicAtlas" ||
-           resource.name == "arcVirtualShadowSampler";
+           resource.name == "arcVirtualShadowAddresses" || resource.name == "arcVirtualShadowViews" ||
+           resource.name == "arcVirtualShadowPages" || resource.name == "arcVirtualShadowStaticAtlas" ||
+           resource.name == "arcVirtualShadowDynamicAtlas" || resource.name == "arcVirtualShadowSampler";
 }
 
 std::string_view material_texture_type_name(shader_parameter_type type) noexcept

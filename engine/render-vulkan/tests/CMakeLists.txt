@@ -37,4 +37,7 @@ if(WIN32)
 endif()
 
 include(Catch)
-catch_discover_tests(arc_render_vulkan_tests)
+# Catch2 returns 4 when a discovered test has only SKIP results (for example,
+# allocation smoke tests on CI without a Vulkan adapter). Preserve that as a
+# skipped CTest result instead of a false failure; assertion failures still fail.
+catch_discover_tests(arc_render_vulkan_tests PROPERTIES SKIP_RETURN_CODE 4)
