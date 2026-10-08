@@ -9,6 +9,7 @@
 #include <arc/scene/scene.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
@@ -22,6 +23,9 @@ namespace arc::editor
 {
 namespace
 {
+
+render::texture_handle ensure_texture(editor_material_library& library, render::renderer& renderer,
+                                      const std::filesystem::path& path, render::texture_semantic semantic);
 
 std::string read_material_text(const std::filesystem::path& path)
 {
@@ -110,7 +114,7 @@ instance_parameter_value(editor_material_library& library, render::renderer& ren
             if (value.is_string())
             {
                 const auto path = resolve_instance_reference_path({}, asset_root, value.get<std::string>());
-                return render::resource_handle{ensure_texture(library, renderer, path)};
+                return render::resource_handle{ensure_texture(library, renderer, path, render::texture_semantic::generic_color)};
             }
             break;
         default:
