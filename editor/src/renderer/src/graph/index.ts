@@ -1,3 +1,4 @@
+export * from './GraphDiagnosticBadge';
 export * from './GraphPrimitives';
 export * from './graphDiagnostics';
 export * from './graphGeometry';
