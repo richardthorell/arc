@@ -64,6 +64,7 @@ export type MaterialGraphNodeType =
   | 'sign'
   | 'distance'
   | 'length'
+  | 'dot'
   | 'normalMap'
   | 'functionInput'
   | 'functionOutput'
@@ -353,7 +354,12 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     category: 'Utility',
     subcategory: 'Coordinates',
     inputs: [],
-    outputs: [pin('position', 'Position', 'vec3')],
+    outputs: [
+      pin('position', 'Position', 'vec3'),
+      pin('x', 'X', 'float'),
+      pin('y', 'Y', 'float'),
+      pin('z', 'Z', 'float'),
+    ],
     defaultValues: {},
   },
   worldNormal: {
@@ -362,7 +368,7 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     category: 'Utility',
     subcategory: 'Coordinates',
     inputs: [],
-    outputs: [pin('normal', 'Normal', 'vec3')],
+    outputs: [pin('normal', 'Normal', 'vec3'), pin('x', 'X', 'float'), pin('y', 'Y', 'float'), pin('z', 'Z', 'float')],
     defaultValues: {},
   },
   vertexColor: {
@@ -492,6 +498,10 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
   },
   length: {
     ...unaryMath('length', 'Length', 'Measurement'),
+    outputs: [pin('result', 'Result', 'float')],
+  },
+  dot: {
+    ...binaryMath('dot', 'Dot Product', 'Measurement'),
     outputs: [pin('result', 'Result', 'float')],
   },
   normalMap: {

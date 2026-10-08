@@ -1,0 +1,415 @@
+{
+  "kind": "materialFunction",
+  "version": 1,
+  "name": "Checker",
+  "description": "World-space XZ checker source with physically meaningful cell sizing.",
+  "inputs": [
+    {
+      "id": "baseColor",
+      "name": "Base Color",
+      "type": "vec3"
+    },
+    {
+      "id": "colorA",
+      "name": "Color A",
+      "type": "vec3",
+      "default": [
+        0.72,
+        0.72,
+        0.72
+      ]
+    },
+    {
+      "id": "colorB",
+      "name": "Color B",
+      "type": "vec3",
+      "default": [
+        0.28,
+        0.28,
+        0.28
+      ]
+    },
+    {
+      "id": "cellSize",
+      "name": "Cell Size",
+      "type": "float",
+      "default": 1
+    }
+  ],
+  "outputs": [
+    {
+      "id": "color",
+      "name": "Color",
+      "type": "vec3"
+    }
+  ],
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "input-baseColor",
+        "type": "functionInput",
+        "position": [
+          40,
+          40
+        ],
+        "values": {
+          "input": "baseColor",
+          "name": "Base Color",
+          "valueType": "vec3"
+        }
+      },
+      {
+        "id": "input-colorA",
+        "type": "functionInput",
+        "position": [
+          40,
+          180
+        ],
+        "values": {
+          "input": "colorA",
+          "name": "Color A",
+          "valueType": "vec3"
+        }
+      },
+      {
+        "id": "input-colorB",
+        "type": "functionInput",
+        "position": [
+          40,
+          300
+        ],
+        "values": {
+          "input": "colorB",
+          "name": "Color B",
+          "valueType": "vec3"
+        }
+      },
+      {
+        "id": "input-cellSize",
+        "type": "functionInput",
+        "position": [
+          40,
+          430
+        ],
+        "values": {
+          "input": "cellSize",
+          "name": "Cell Size",
+          "valueType": "float"
+        }
+      },
+      {
+        "id": "world-position",
+        "type": "worldPosition",
+        "position": [
+          40,
+          590
+        ],
+        "values": {}
+      },
+      {
+        "id": "divide-x",
+        "type": "divide",
+        "position": [
+          280,
+          560
+        ],
+        "values": {}
+      },
+      {
+        "id": "divide-z",
+        "type": "divide",
+        "position": [
+          280,
+          680
+        ],
+        "values": {}
+      },
+      {
+        "id": "floor-x",
+        "type": "floor",
+        "position": [
+          480,
+          560
+        ],
+        "values": {}
+      },
+      {
+        "id": "floor-z",
+        "type": "floor",
+        "position": [
+          480,
+          680
+        ],
+        "values": {}
+      },
+      {
+        "id": "sum-cells",
+        "type": "add",
+        "position": [
+          680,
+          620
+        ],
+        "values": {}
+      },
+      {
+        "id": "two",
+        "type": "constant",
+        "position": [
+          680,
+          760
+        ],
+        "values": {
+          "value": 2
+        }
+      },
+      {
+        "id": "parity",
+        "type": "fmod",
+        "position": [
+          860,
+          650
+        ],
+        "values": {}
+      },
+      {
+        "id": "absolute-parity",
+        "type": "abs",
+        "position": [
+          960,
+          650
+        ],
+        "values": {}
+      },
+      {
+        "id": "checker-color",
+        "type": "lerp",
+        "position": [
+          1140,
+          300
+        ],
+        "values": {}
+      },
+      {
+        "id": "tinted-color",
+        "type": "multiply",
+        "position": [
+          1340,
+          300
+        ],
+        "values": {}
+      },
+      {
+        "id": "function-output",
+        "type": "functionOutput",
+        "position": [
+          1560,
+          300
+        ],
+        "values": {
+          "pins": [
+            {
+              "id": "color",
+              "name": "Color",
+              "type": "vec3"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "x-div-a",
+        "from": {
+          "nodeId": "world-position",
+          "pin": "x"
+        },
+        "to": {
+          "nodeId": "divide-x",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "x-div-b",
+        "from": {
+          "nodeId": "input-cellSize",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "divide-x",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "z-div-a",
+        "from": {
+          "nodeId": "world-position",
+          "pin": "z"
+        },
+        "to": {
+          "nodeId": "divide-z",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "z-div-b",
+        "from": {
+          "nodeId": "input-cellSize",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "divide-z",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "x-floor",
+        "from": {
+          "nodeId": "divide-x",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "floor-x",
+          "pin": "value"
+        }
+      },
+      {
+        "id": "z-floor",
+        "from": {
+          "nodeId": "divide-z",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "floor-z",
+          "pin": "value"
+        }
+      },
+      {
+        "id": "sum-a",
+        "from": {
+          "nodeId": "floor-x",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "sum-cells",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "sum-b",
+        "from": {
+          "nodeId": "floor-z",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "sum-cells",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "parity-a",
+        "from": {
+          "nodeId": "sum-cells",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "parity",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "parity-b",
+        "from": {
+          "nodeId": "two",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "parity",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "absolute-parity-in",
+        "from": {
+          "nodeId": "parity",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "absolute-parity",
+          "pin": "value"
+        }
+      },
+      {
+        "id": "lerp-a",
+        "from": {
+          "nodeId": "input-colorA",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "checker-color",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "lerp-b",
+        "from": {
+          "nodeId": "input-colorB",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "checker-color",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "tint-a",
+        "from": {
+          "nodeId": "checker-color",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "tinted-color",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "tint-b",
+        "from": {
+          "nodeId": "input-baseColor",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "tinted-color",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "out",
+        "from": {
+          "nodeId": "tinted-color",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "function-output",
+          "pin": "color"
+        }
+      },
+      {
+        "id": "lerp-t",
+        "from": {
+          "nodeId": "absolute-parity",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "checker-color",
+          "pin": "t"
+        }
+      }
+    ],
+    "viewport": {
+      "x": 20,
+      "y": 20,
+      "zoom": 0.75
+    }
+  }
+}

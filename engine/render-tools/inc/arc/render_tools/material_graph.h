@@ -25,7 +25,7 @@ namespace arc::render::tools
 inline constexpr std::uint32_t material_ir_version = 1;
 
 /** @brief Version of the deterministic Material IR to Slang generator. */
-inline constexpr std::uint32_t material_shader_codegen_version = 5;
+inline constexpr std::uint32_t material_shader_codegen_version = 6;
 
 /** @brief Version of first-class reusable Material/Shader Function documents. */
 inline constexpr std::uint32_t material_function_version = 1;
@@ -86,7 +86,8 @@ enum class material_math_operation : std::uint8_t
     if_else,
     sign,
     distance,
-    length
+    length,
+    dot
 };
 
 /** @brief Numeric literal carried by a material IR node or function-pin default. */

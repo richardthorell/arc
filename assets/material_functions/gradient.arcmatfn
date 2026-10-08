@@ -1,0 +1,375 @@
+{
+  "kind": "materialFunction",
+  "version": 1,
+  "name": "Gradient",
+  "description": "Directional world-space color gradient.",
+  "inputs": [
+    {
+      "id": "baseColor",
+      "name": "Base Color",
+      "type": "vec3"
+    },
+    {
+      "id": "colorA",
+      "name": "Color A",
+      "type": "vec3",
+      "default": [
+        0.1,
+        0.1,
+        0.1
+      ]
+    },
+    {
+      "id": "colorB",
+      "name": "Color B",
+      "type": "vec3",
+      "default": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "id": "direction",
+      "name": "Direction",
+      "type": "vec3",
+      "default": [
+        1,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "scale",
+      "name": "Scale",
+      "type": "float",
+      "default": 1
+    },
+    {
+      "id": "offset",
+      "name": "Offset",
+      "type": "float",
+      "default": 0
+    }
+  ],
+  "outputs": [
+    {
+      "id": "color",
+      "name": "Color",
+      "type": "vec3"
+    }
+  ],
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "input-baseColor",
+        "type": "functionInput",
+        "position": [
+          40,
+          40
+        ],
+        "values": {
+          "input": "baseColor",
+          "name": "Base Color",
+          "valueType": "vec3"
+        }
+      },
+      {
+        "id": "input-colorA",
+        "type": "functionInput",
+        "position": [
+          40,
+          170
+        ],
+        "values": {
+          "input": "colorA",
+          "name": "Color A",
+          "valueType": "vec3"
+        }
+      },
+      {
+        "id": "input-colorB",
+        "type": "functionInput",
+        "position": [
+          40,
+          290
+        ],
+        "values": {
+          "input": "colorB",
+          "name": "Color B",
+          "valueType": "vec3"
+        }
+      },
+      {
+        "id": "input-direction",
+        "type": "functionInput",
+        "position": [
+          40,
+          430
+        ],
+        "values": {
+          "input": "direction",
+          "name": "Direction",
+          "valueType": "vec3"
+        }
+      },
+      {
+        "id": "input-scale",
+        "type": "functionInput",
+        "position": [
+          40,
+          550
+        ],
+        "values": {
+          "input": "scale",
+          "name": "Scale",
+          "valueType": "float"
+        }
+      },
+      {
+        "id": "input-offset",
+        "type": "functionInput",
+        "position": [
+          40,
+          670
+        ],
+        "values": {
+          "input": "offset",
+          "name": "Offset",
+          "valueType": "float"
+        }
+      },
+      {
+        "id": "world-position",
+        "type": "worldPosition",
+        "position": [
+          300,
+          430
+        ],
+        "values": {}
+      },
+      {
+        "id": "project",
+        "type": "dot",
+        "position": [
+          520,
+          430
+        ],
+        "values": {}
+      },
+      {
+        "id": "scaled",
+        "type": "multiply",
+        "position": [
+          720,
+          430
+        ],
+        "values": {}
+      },
+      {
+        "id": "shifted",
+        "type": "add",
+        "position": [
+          900,
+          430
+        ],
+        "values": {}
+      },
+      {
+        "id": "alpha",
+        "type": "saturate",
+        "position": [
+          1080,
+          430
+        ],
+        "values": {}
+      },
+      {
+        "id": "gradient-color",
+        "type": "lerp",
+        "position": [
+          1260,
+          250
+        ],
+        "values": {}
+      },
+      {
+        "id": "tinted-color",
+        "type": "multiply",
+        "position": [
+          1450,
+          250
+        ],
+        "values": {}
+      },
+      {
+        "id": "function-output",
+        "type": "functionOutput",
+        "position": [
+          1640,
+          250
+        ],
+        "values": {
+          "pins": [
+            {
+              "id": "color",
+              "name": "Color",
+              "type": "vec3"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "dot-a",
+        "from": {
+          "nodeId": "world-position",
+          "pin": "position"
+        },
+        "to": {
+          "nodeId": "project",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "dot-b",
+        "from": {
+          "nodeId": "input-direction",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "project",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "scale-a",
+        "from": {
+          "nodeId": "project",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "scaled",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "scale-b",
+        "from": {
+          "nodeId": "input-scale",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "scaled",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "offset-a",
+        "from": {
+          "nodeId": "scaled",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "shifted",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "offset-b",
+        "from": {
+          "nodeId": "input-offset",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "shifted",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "sat",
+        "from": {
+          "nodeId": "shifted",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "alpha",
+          "pin": "value"
+        }
+      },
+      {
+        "id": "lerp-a",
+        "from": {
+          "nodeId": "input-colorA",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "gradient-color",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "lerp-b",
+        "from": {
+          "nodeId": "input-colorB",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "gradient-color",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "lerp-t",
+        "from": {
+          "nodeId": "alpha",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "gradient-color",
+          "pin": "t"
+        }
+      },
+      {
+        "id": "tint-a",
+        "from": {
+          "nodeId": "gradient-color",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "tinted-color",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "tint-b",
+        "from": {
+          "nodeId": "input-baseColor",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "tinted-color",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "out",
+        "from": {
+          "nodeId": "tinted-color",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "function-output",
+          "pin": "color"
+        }
+      }
+    ],
+    "viewport": {
+      "x": 20,
+      "y": 20,
+      "zoom": 0.72
+    }
+  }
+}
