@@ -612,9 +612,9 @@ export const createDefaultMaterialGraph = (): MaterialGraph => {
   baseColorTexture.parameter = { exposed: true, name: 'Base Color Texture' };
   const baseColorMultiply = createMaterialNode('multiply', [360, 160]);
 
-  const metallic = createMaterialNode('constant', [80, 440], { value: 0 });
+  const metallic = createMaterialNode('constant', [80, 440], { value: 0, min: 0, max: 1 });
   metallic.parameter = { exposed: true, name: 'Metallic' };
-  const roughness = createMaterialNode('constant', [80, 570], { value: 0.62 });
+  const roughness = createMaterialNode('constant', [80, 570], { value: 0.62, min: 0, max: 1 });
   roughness.parameter = { exposed: true, name: 'Roughness' };
   const metallicRoughnessTexture = createMaterialNode('textureSample2D', [80, 700]);
   metallicRoughnessTexture.parameter = { exposed: true, name: 'Metallic Roughness Texture' };
@@ -628,9 +628,9 @@ export const createDefaultMaterialGraph = (): MaterialGraph => {
   normalTexture.parameter = { exposed: true, name: 'Normal Texture' };
   const normalMap = createMaterialNode('normalMap', [400, 1020]);
 
-  const clearCoat = createMaterialNode('constant', [80, 1200], { value: 0 });
+  const clearCoat = createMaterialNode('constant', [80, 1200], { value: 0, min: 0, max: 1 });
   clearCoat.parameter = { exposed: true, name: 'Clear Coat' };
-  const clearCoatRoughness = createMaterialNode('constant', [80, 1330], { value: 0.1 });
+  const clearCoatRoughness = createMaterialNode('constant', [80, 1330], { value: 0.1, min: 0, max: 1 });
   clearCoatRoughness.parameter = { exposed: true, name: 'Clear Coat Roughness' };
   const clearCoatTexture = createMaterialNode('textureSample2D', [80, 1460], { semantic: 'clear_coat' });
   clearCoatTexture.parameter = { exposed: true, name: 'Clear Coat Texture' };
