@@ -71,9 +71,7 @@ export const nativeMaterialCompileResult = (
   return { status: succeeded ? 'succeeded' : 'failed', succeeded, diagnostics };
 };
 
-export const materialGraphDiagnostics = (
-  diagnostics: readonly MaterialCompileDiagnostic[],
-): GraphDiagnostic[] =>
+export const materialGraphDiagnostics = (diagnostics: readonly MaterialCompileDiagnostic[]): GraphDiagnostic[] =>
   diagnostics.flatMap((diagnostic, index) => {
     if (!diagnostic.nodeId) return [];
     return [

@@ -1102,10 +1102,7 @@ export function MaterialGraphEditor({
               }}
             >
               {diagnosticSummary && (
-                <GraphDiagnosticBadge
-                  summary={diagnosticSummary}
-                  onActivate={() => focusDiagnosticNode(node.id)}
-                />
+                <GraphDiagnosticBadge summary={diagnosticSummary} onActivate={() => focusDiagnosticNode(node.id)} />
               )}
               <div className="material-node-pins">
                 <div className="material-node-inputs">
