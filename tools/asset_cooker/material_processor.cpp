@@ -69,7 +69,7 @@ std::string normalized_path(const std::filesystem::path& path)
     return text;
 }
 
-bool path_matches(std::filesystem::path dependency, std::string_view authored)
+bool path_matches(const std::filesystem::path& dependency, std::string_view authored)
 {
     auto dependency_text = normalized_path(dependency);
     auto authored_text = normalized_path(std::filesystem::path(authored));
