@@ -620,7 +620,7 @@ export function MaterialGraphEditor({
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
     };
-  }, [box, document, drag, graph, graphPoint, mutate, pan, snapEnabled, updateViewport]);
+  }, [box, commitGraph, document, drag, graph, graphPoint, mutate, pan, snapEnabled, updateViewport]);
 
   const deleteSelected = () => {
     if (document.readOnly || selectedNodes.size === 0) return;
