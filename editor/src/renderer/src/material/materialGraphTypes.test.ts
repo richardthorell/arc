@@ -176,6 +176,30 @@ describe('material graph schema', () => {
     expect(materialNodeDefinitions).not.toHaveProperty('colorRgb');
   });
 
+  it('defines normalized semantic ranges on bounded Material Output inputs', () => {
+    const output = materialNodeDefinitions.output;
+    const rangeFor = (pin: string) => output.inputs.find((candidate) => candidate.id === pin)?.semanticRange;
+
+    for (const pin of [
+      'metallic',
+      'roughness',
+      'ao',
+      'opacity',
+      'alphaClip',
+      'clearCoat',
+      'clearCoatRoughness',
+      'sheen',
+      'sheenRoughness',
+      'transmission',
+      'subsurface',
+    ])
+      expect(rangeFor(pin)).toEqual({ min: 0, max: 1 });
+
+    expect(rangeFor('indexOfRefraction')).toBeUndefined();
+    expect(rangeFor('thickness')).toBeUndefined();
+    expect(rangeFor('attenuationDistance')).toBeUndefined();
+  });
+
   it('defines texture sample UV input and channel outputs', () => {
     expect(materialNodeDefinitions.textureSample.inputs.map((pin) => [pin.id, pin.type])).toEqual([['uv', 'vec2']]);
     expect(materialNodeDefinitions.textureSample.outputs.map((pin) => [pin.id, pin.type])).toEqual([
