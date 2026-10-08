@@ -63,6 +63,23 @@ describe('native material compiler editor adapter', () => {
     );
   });
 
+  it('projects authored Scalar ranges into exposed parameter metadata', () => {
+    const graph = createDefaultMaterialGraph();
+    const roughness = graph.nodes.find((node) => node.parameter?.name === 'Roughness');
+    expect(roughness).toBeDefined();
+    roughness!.values = { ...roughness!.values, min: 0, max: 1 };
+
+    expect(materialEditorParameters(graph)).toContainEqual(
+      expect.objectContaining({
+        nodeId: roughness!.id,
+        name: 'Roughness',
+        type: 'float',
+        editorKind: 'scalar',
+        range: { min: 0, max: 1 },
+      }),
+    );
+  });
+
   it('omits exposed nodes that cannot affect Material Output', () => {
     const graph = createDefaultMaterialGraph();
     const disconnected = createMaterialNode('constant', [160, 160], { value: 0.5 });
