@@ -393,18 +393,20 @@ render::material_handle create_default_floor_material(editor_scene_state& scene,
     scene.floor_material_asset = {};
     for (const auto& builtin_root : editor_assets.builtin_roots)
     {
-        const auto standard_lit_path = builtin_root / "materials" / "standard_lit.arcmat";
-        if (!std::filesystem::is_regular_file(standard_lit_path)) continue;
+        const auto floor_path = builtin_root / "materials" / "floor.arcmatinst";
+        if (!std::filesystem::is_regular_file(floor_path)) continue;
 
         material_asset authored;
-        const auto standard_lit =
-            load_material_for_editor(scene.material_library, renderer, builtin_root, standard_lit_path, &authored);
-        if (!standard_lit.valid()) continue;
+        const auto floor =
+            load_material_for_editor(scene.material_library, renderer, builtin_root, floor_path, &authored);
+        if (!floor.valid()) continue;
 
-        scene.floor_material = standard_lit;
-        scene.floor_material_asset.expected_type = assets::asset_types::material;
-        scene.floor_material_asset.path_hint = "builtin/materials/standard_lit.arcmat";
-        return standard_lit;
+        scene.floor_material = floor;
+        scene.floor_material_asset.expected_type = assets::asset_types::material_instance;
+        if (const auto guid = assets::parse_asset_guid("6a8c7339-3a9f-49d5-9d4f-1b5a73d02a91"))
+            scene.floor_material_asset.guid = *guid;
+        scene.floor_material_asset.path_hint = "builtin/materials/floor.arcmatinst";
+        return floor;
     }
 
     scene.floor_material = ensure_default_material(scene, renderer);
@@ -598,11 +600,6 @@ ecs::entity add_default_floor_to_scene(editor_scene_state& scene, render::render
                                     .source_kind = "primitive",
                                     .subresource = primitive_type_name(editor_primitive_type::plane),
                                     .material = scene.floor_material_asset});
-    if (scene.floor_material_asset.expected_type == assets::asset_types::material &&
-        !apply_material_instance_texture_override(scene, renderer, entity, "Base Color Texture",
-                                                  "textures/editor/default_checker_floor.png"))
-        arc::diagnostics::warn("editor.materials",
-                               "Default floor checker override could not be applied; using Standard Lit defaults");
     scene.primitive_entities.push_back(entity);
     select_entity(scene.scene, entity, scene.selected_entity);
     return entity;

@@ -1,0 +1,12 @@
+{
+  "format": "arc.asset-meta",
+  "formatVersion": 1,
+  "guid": "6a8c7339-3a9f-49d5-9d4f-1b5a73d02a91",
+  "importer": "a7ca55e7-0000-0002-0000-00000000000e",
+  "settings": {},
+  "settingsVersion": 1,
+  "subassets": [],
+  "type": "a7ca55e7-0000-0001-0000-00000000000e",
+  "title": "Floor",
+  "description": "Reusable Standard Lit floor Material Instance using the built-in world-space Checker source."
+}
