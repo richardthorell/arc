@@ -361,12 +361,12 @@ const arcApi = {
     createAsset: (request: {
       path: string;
       text: string;
-      kind: 'material' | 'materialFunction' | 'flow' | 'shader';
+      kind: 'material' | 'materialInstance' | 'materialFunction' | 'flow' | 'shader';
     }): Promise<{
       guid: string;
       path: string;
       sourcePath: string;
-      kind: 'material' | 'materialFunction' | 'flow' | 'shader';
+      kind: 'material' | 'materialInstance' | 'materialFunction' | 'flow' | 'shader';
       typeId?: string;
       importerId?: string;
       scope?: 'project';
