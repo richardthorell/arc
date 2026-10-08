@@ -385,7 +385,6 @@ export function ContentBrowserPanel({
       assets.filter(
         (asset) =>
           asset.kind === 'material' &&
-          asset.scope !== 'procedural' &&
           Boolean(asset.guid) &&
           Boolean(asset.sourcePath || asset.path),
       ),
