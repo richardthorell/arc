@@ -376,7 +376,7 @@ bool instance_value_matches_parameter(std::string_view value_json, render::shade
             return numeric_array(3);
         case render::shader_parameter_type::float4:
             return numeric_array(4);
-        case render::shader_parameter_type::float4x4:
+        case render::shader_parameter_type::matrix4x4:
             return numeric_array(16);
         case render::shader_parameter_type::texture_2d:
         case render::shader_parameter_type::texture_cube:
