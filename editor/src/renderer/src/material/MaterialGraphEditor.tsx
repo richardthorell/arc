@@ -4,6 +4,7 @@ import { ChevronRight, Copy, Magnet, Plus, RotateCcw, Scan, Search, Trash2, Wand
 
 import type { EditorDocument } from '../editors/editorTypes';
 import {
+  GraphDiagnosticBadge,
   GraphPin,
   GraphSelectionBox,
   GraphViewportLayer,
@@ -16,6 +17,8 @@ import {
   graphSelectionBounds,
   graphSelectionScreenRect,
   measureGraphPinPositions,
+  summarizeGraphDiagnostics,
+  type GraphDiagnostic,
   type GraphPoint,
   type GraphSelection,
 } from '../graph';
@@ -456,6 +459,7 @@ export function MaterialGraphEditor({
   onViewportChange,
   onUndo,
   onRedo,
+  diagnostics = [],
 }: {
   document: EditorDocument;
   graph: MaterialGraph;
@@ -466,6 +470,7 @@ export function MaterialGraphEditor({
   onViewportChange?: (viewport: NonNullable<MaterialGraph['viewport']>) => void;
   onUndo?: () => void;
   onRedo?: () => void;
+  diagnostics?: GraphDiagnostic[];
 }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const invalidConnectionNodeRef = useRef<HTMLElement | null>(null);
@@ -508,6 +513,10 @@ export function MaterialGraphEditor({
     else redoMaterialGraph(document);
   }, [document, onRedo]);
   const viewport = useMemo(() => graph.viewport ?? { x: 40, y: 40, zoom: 1 }, [graph.viewport]);
+  const diagnosticSummaries = useMemo(
+    () => new Map(summarizeGraphDiagnostics(diagnostics).map((summary) => [summary.nodeId, summary])),
+    [diagnostics],
+  );
   const relatedNodeIds = useMemo(() => {
     if (!dimUnrelated || selectedNodes.size === 0) return null;
     const related = new Set(selectedNodes);
@@ -616,6 +625,21 @@ export function MaterialGraphEditor({
     commitViewport(frameMaterialGraphViewport(graph, rect.width, rect.height));
     return true;
   }, [commitViewport, graph]);
+
+  const focusDiagnosticNode = useCallback(
+    (nodeId: string) => {
+      const node = graph.nodes.find((candidate) => candidate.id === nodeId);
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!node || !rect || rect.width <= 0 || rect.height <= 0) return;
+      setSelectedNodes(new Set([nodeId]));
+      commitViewport({
+        x: rect.width / 2 - (node.position[0] + materialNodeWidth(node.type) / 2) * viewport.zoom,
+        y: rect.height / 2 - (node.position[1] + materialNodeHeight(node) / 2) * viewport.zoom,
+        zoom: viewport.zoom,
+      });
+    },
+    [commitViewport, graph.nodes, viewport.zoom],
+  );
 
   const setZoomAroundCenter = useCallback(
     (requestedZoom: number) => {
@@ -1033,6 +1057,7 @@ export function MaterialGraphEditor({
         {graph.nodes.map((node) => {
           const definition = materialGraphDomain.getNodeDefinition(node);
           const selected = selectedNodes.has(node.id);
+          const diagnosticSummary = diagnosticSummaries.get(node.id);
           return (
             <UiNodeCard
               badge={node.parameter?.exposed ? 'P' : undefined}
@@ -1075,6 +1100,12 @@ export function MaterialGraphEditor({
                 setDrag({ start: graphPoint(event.clientX, event.clientY), nodes: origins });
               }}
             >
+              {diagnosticSummary && (
+                <GraphDiagnosticBadge
+                  summary={diagnosticSummary}
+                  onActivate={() => focusDiagnosticNode(node.id)}
+                />
+              )}
               <div className="material-node-pins">
                 <div className="material-node-inputs">
                   {definition.inputs.map((pin) => {
