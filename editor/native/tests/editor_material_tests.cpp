@@ -258,6 +258,80 @@ TEST_CASE("editor material library reuses material handles and saves live update
     REQUIRE(upload.material->roughness == Catch::Approx(0.21f));
 }
 
+TEST_CASE("editor material loader resolves default Material Function Slots from authored paths")
+{
+    const auto root = std::filesystem::temp_directory_path() / "arc_editor_material_function_slot_load";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "materials");
+    std::filesystem::create_directories(root / "material_functions");
+
+    const auto function_path = root / "material_functions" / "default_base_color.arcmatfn";
+    {
+        std::ofstream output(function_path, std::ios::binary | std::ios::trunc);
+        REQUIRE(output.good());
+        output << R"({
+  "kind":"materialFunction",
+  "version":1,
+  "name":"Default Base Color",
+  "inputs":[{"id":"baseColor","name":"Base Color","type":"vec3"}],
+  "outputs":[{"id":"color","name":"Color","type":"vec3"}],
+  "graph":{
+    "version":1,
+    "nodes":[
+      {"id":"input","type":"functionInput","values":{"input":"baseColor","name":"Base Color","valueType":"vec3"}},
+      {"id":"output","type":"functionOutput","values":{"pins":[{"id":"color","name":"Color","type":"vec3"}]}}
+    ],
+    "connections":[
+      {"id":"pass","from":{"nodeId":"input","pin":"value"},"to":{"nodeId":"output","pin":"color"}}
+    ]
+  }
+})";
+    }
+
+    const auto material_path = root / "materials" / "slot_parent.arcmat";
+    {
+        std::ofstream output(material_path, std::ios::binary | std::ios::trunc);
+        REQUIRE(output.good());
+        output << R"({
+  "version":4,
+  "name":"Slot Parent",
+  "domain":"surface",
+  "blendMode":"opaque",
+  "shadingModel":"standard",
+  "doubleSided":false,
+  "graph":{
+    "version":1,
+    "nodes":[
+      {"id":"out","type":"output","values":{}},
+      {"id":"base","type":"vector3","values":{"value":[0.8,0.8,0.8]}},
+      {"id":"source","type":"functionSlot","values":{
+        "slotId":"base-color-source",
+        "name":"Base Color Source",
+        "path":"material_functions/default_base_color.arcmatfn",
+        "inputPins":[{"id":"baseColor","name":"Base Color","type":"vec3"}],
+        "outputPins":[{"id":"color","name":"Color","type":"vec3"}]
+      }}
+    ],
+    "connections":[
+      {"id":"in","from":{"nodeId":"base","pin":"value"},"to":{"nodeId":"source","pin":"baseColor"}},
+      {"id":"out-color","from":{"nodeId":"source","pin":"color"},"to":{"nodeId":"out","pin":"baseColor"}}
+    ]
+  }
+})";
+    }
+
+    arc::render::renderer renderer;
+    arc::editor::editor_material_library library;
+    arc::editor::material_asset loaded;
+    const auto handle = arc::editor::load_material_for_editor(library, renderer, root, material_path, &loaded);
+
+    CHECK(handle.valid());
+    CHECK(loaded.name == "Slot Parent");
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
 TEST_CASE("editor viewport material drop applies to hit entity and ignores misses")
 {
     const auto root = std::filesystem::temp_directory_path() / "arc_editor_viewport_material_drop";
