@@ -130,3 +130,35 @@ describe('Material Function asset creation', () => {
     ).toBe(true);
   });
 });
+
+
+describe('Material Instance asset creation', () => {
+  it('creates a reusable instance with a GUID-backed parent Material reference', () => {
+    const definition = buildAssetCreation(project, {
+      kind: 'materialInstance',
+      name: 'Floor',
+      folder: 'Content/Materials',
+      parent: {
+        guid: '11111111-1111-1111-1111-111111111111',
+        pathHint: 'Engine/Materials/standard_lit.arcmat',
+      },
+    });
+
+    expect(definition.asset).toMatchObject({
+      name: 'Floor.arcmatinst',
+      path: 'Content/Materials/Floor.arcmatinst',
+      kind: 'materialInstance',
+      scope: 'project',
+    });
+    expect(JSON.parse(definition.contents)).toEqual({
+      version: 1,
+      name: 'Floor',
+      parent: {
+        guid: '11111111-1111-1111-1111-111111111111',
+        pathHint: 'Engine/Materials/standard_lit.arcmat',
+      },
+      parameterOverrides: [],
+      functionOverrides: [],
+    });
+  });
+});
