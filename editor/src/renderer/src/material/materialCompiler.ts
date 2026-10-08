@@ -191,6 +191,7 @@ export const materialEditorParameters = (graph: MaterialGraph): MaterialEditorPa
           : type === 'float'
             ? 'scalar'
             : 'vector';
+    const range = node.type === 'constant' ? materialScalarRange(node) : null;
     return [
       {
         nodeId: node.id,
@@ -198,7 +199,7 @@ export const materialEditorParameters = (graph: MaterialGraph): MaterialEditorPa
         type,
         nodeType: node.type,
         editorKind,
-        ...(node.type === 'constant' && materialScalarRange(node) ? { range: materialScalarRange(node)! } : {}),
+        ...(range ? { range } : {}),
       },
     ];
   });
