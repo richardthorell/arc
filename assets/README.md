@@ -2,7 +2,6 @@
 
 Small default assets used by the editor and renderer bring-up live here.
 
-- `models/UAL2_Standard.glb` is the default startup mesh.
 - `environments/` contains small CC0 HDRIs for outdoor lighting, IBL tests, and
   the editor material-preview environment.
 - `textures/terrain/` contains small CC0 terrain material maps for renderer and
@@ -23,8 +22,8 @@ Small default assets used by the editor and renderer bring-up live here.
   Standard Lit and shadow shaders.
 - `ASSET_LICENSES.md` records third-party asset sources and licenses.
 
-These are development assets for editor smoke testing, not the final engine asset
-database. The renderer currently uses checked-in/generated shader data for
+These are engine/editor support assets and curated built-ins, not the final engine asset
+database. Project-template-owned sample content belongs under `templates/` rather than this global built-in tree. The renderer currently uses checked-in/generated shader data for
 bootstrap reliability while the shader compiler and hot-reload path matures.
 Some material presets use future-facing shader names such as `arc/terrain`
 or `arc/water_preview`; these are safe metadata labels for now and fall back to
