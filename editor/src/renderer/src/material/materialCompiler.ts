@@ -1,8 +1,9 @@
-import type {
-  MaterialGraph,
-  MaterialGraphNode,
-  MaterialGraphNodeType,
-  MaterialGraphValueType,
+import {
+  materialScalarRange,
+  type MaterialGraph,
+  type MaterialGraphNode,
+  type MaterialGraphNodeType,
+  type MaterialGraphValueType,
 } from './materialGraphTypes';
 
 /** Diagnostic returned by ARC's native Material IR/compiler pipeline. */
