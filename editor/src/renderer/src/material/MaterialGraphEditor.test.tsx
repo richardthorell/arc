@@ -168,7 +168,8 @@ describe('MaterialGraphEditor', () => {
   it('shows a slider for ranged Scalars and keeps unrestricted Scalars numeric-only', () => {
     const graph = createDefaultMaterialGraph();
     const ranged = createMaterialNode('constant', [900, 500], { value: 0.4, min: 0, max: 1 });
-    graph.nodes.push(ranged);
+    const unrestricted = createMaterialNode('constant', [900, 650], { value: 2 });
+    graph.nodes.push(ranged, unrestricted);
 
     const { container } = render(<MaterialGraphEditor document={document} graph={graph} />);
 
@@ -178,8 +179,7 @@ describe('MaterialGraphEditor', () => {
     expect(within(rangedNode!).getByRole('spinbutton', { name: 'Scalar minimum' })).toHaveValue(0);
     expect(within(rangedNode!).getByRole('spinbutton', { name: 'Scalar maximum' })).toHaveValue(1);
 
-    const unrestricted = graph.nodes.find((node) => node.type === 'constant' && node.id !== ranged.id);
-    const unrestrictedNode = container.querySelector<HTMLElement>(`[data-node-id="${unrestricted!.id}"]`);
+    const unrestrictedNode = container.querySelector<HTMLElement>(`[data-node-id="${unrestricted.id}"]`);
     expect(unrestrictedNode).not.toBeNull();
     expect(within(unrestrictedNode!).queryByRole('slider', { name: 'Scalar range value' })).not.toBeInTheDocument();
   });
