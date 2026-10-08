@@ -328,7 +328,7 @@ describe('ContentBrowserPanel', () => {
     const view = renderBrowser();
     fireEvent.click(view.getByRole('button', { name: 'Props' }));
     fireEvent.click(view.getByRole('button', { name: /Create/ }));
-    fireEvent.click(view.getByRole('menuitem', { name: /Material/ }));
+    fireEvent.click(view.getByRole('menuitem', { name: /^Material$/ }));
     fireEvent.change(view.getByLabelText('Asset name'), { target: { value: 'Rock Material' } });
     fireEvent.click(view.getByRole('button', { name: 'Create Material' }));
 
@@ -383,7 +383,7 @@ describe('ContentBrowserPanel', () => {
     const view = renderBrowser();
     fireEvent.contextMenu(view.getByRole('listbox'), { clientX: 120, clientY: 180 });
     expect(view.getByRole('menu', { name: 'Create asset' })).toBeInTheDocument();
-    expect(view.getByRole('menuitem', { name: /Material/ })).toBeInTheDocument();
+    expect(view.getByRole('menuitem', { name: /^Material$/ })).toBeInTheDocument();
     expect(view.getByRole('menuitem', { name: /Shader/ })).toBeInTheDocument();
   });
 
@@ -401,7 +401,7 @@ describe('ContentBrowserPanel', () => {
     expect(onCommand).toHaveBeenCalledWith('file.importScene');
 
     fireEvent.click(create);
-    fireEvent.click(view.getByRole('menuitem', { name: /Material/ }));
+    fireEvent.click(view.getByRole('menuitem', { name: /^Material$/ }));
     fireEvent.change(view.getByLabelText('Asset name'), { target: { value: 'Engine View Material' } });
     fireEvent.click(view.getByRole('button', { name: 'Create Material' }));
 
