@@ -48,15 +48,9 @@ describe('built-in Floor Material Instance', () => {
     expect(floor?.functionOverrides).toHaveLength(1);
 
     const checkerGuid = checker?.function.guid ?? '';
-    expect(materialFunctionSlotParameterId('base-color-source', checkerGuid, 'colorA')).toBe(
-      '4654449916007669735',
-    );
-    expect(materialFunctionSlotParameterId('base-color-source', checkerGuid, 'colorB')).toBe(
-      '4654451015519297946',
-    );
-    expect(materialFunctionSlotParameterId('base-color-source', checkerGuid, 'cellSize')).toBe(
-      '4459348377896743872',
-    );
+    expect(materialFunctionSlotParameterId('base-color-source', checkerGuid, 'colorA')).toBe('4654449916007669735');
+    expect(materialFunctionSlotParameterId('base-color-source', checkerGuid, 'colorB')).toBe('4654451015519297946');
+    expect(materialFunctionSlotParameterId('base-color-source', checkerGuid, 'cellSize')).toBe('4459348377896743872');
   });
 
   it('is a first-class built-in Material Instance and no longer depends on the checker PNG', () => {
