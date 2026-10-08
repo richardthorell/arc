@@ -15,18 +15,26 @@ const createAsset = vi.fn().mockImplementation(async ({ path, kind }: { path: st
 }));
 const readText = vi.fn().mockRejectedValue(new Error('missing metadata'));
 const writeText = vi.fn().mockResolvedValue({ succeeded: true });
+const importModel = vi.fn().mockResolvedValue({ path: 'Content/imported.glb', sourcePath: 'D:/Test/Content/imported.glb' });
+const importTexture = vi
+  .fn()
+  .mockResolvedValue({ path: 'Content/imported.png', sourcePath: 'D:/Test/Content/imported.png' });
 
 afterEach(cleanup);
 beforeEach(() => {
   createAsset.mockClear();
   readText.mockReset().mockRejectedValue(new Error('missing metadata'));
   writeText.mockReset().mockResolvedValue({ succeeded: true });
+  importModel.mockReset().mockResolvedValue({ path: 'Content/imported.glb', sourcePath: 'D:/Test/Content/imported.glb' });
+  importTexture
+    .mockReset()
+    .mockResolvedValue({ path: 'Content/imported.png', sourcePath: 'D:/Test/Content/imported.png' });
   localStorage.clear();
   Object.defineProperty(window, 'arc', {
     configurable: true,
     value: {
       assetSources: { list: vi.fn().mockResolvedValue([]) },
-      projects: { createAsset, readText, writeText },
+      projects: { createAsset, readText, writeText, importModel, importTexture },
     },
   });
 });
@@ -239,6 +247,57 @@ describe('ContentBrowserPanel', () => {
     expect(view.queryByText('Sky')).not.toBeInTheDocument();
     fireEvent.click(view.getByLabelText('List view'));
     expect(view.getByRole('listbox')).toHaveClass('list');
+  });
+
+  it('shows child folders in the content view and opens them on double-click', () => {
+    const view = renderBrowser();
+
+    const props = view.getByRole('option', { name: 'Open folder Props' });
+    expect(props).toHaveClass('content-folder-card');
+    expect(view.getByRole('option', { name: 'Open folder Environment' })).toBeInTheDocument();
+
+    fireEvent.doubleClick(props);
+    expect(view.getByText('Hero Rock')).toBeInTheDocument();
+    expect(view.queryByRole('option', { name: 'Open folder Environment' })).not.toBeInTheDocument();
+  });
+
+  it('imports dropped models and textures into the currently selected folder', async () => {
+    const view = renderBrowser();
+    fireEvent.click(view.getByRole('button', { name: 'Props' }));
+
+    const model = new File(['model'], 'crate.glb');
+    const texture = new File(['texture'], 'crate.png');
+    fireEvent.drop(view.getByRole('listbox'), {
+      dataTransfer: { files: [model, texture], types: ['Files'], dropEffect: 'none' },
+    });
+
+    await waitFor(() => expect(importModel).toHaveBeenCalledWith(model, 'Content/Props'));
+    expect(importTexture).toHaveBeenCalledWith(texture, 'Content/Props');
+  });
+
+  it('imports dropped files into folder cards without navigating into them', async () => {
+    const view = renderBrowser();
+    const props = view.getByRole('option', { name: 'Open folder Props' });
+    const texture = new File(['texture'], 'crate.png');
+
+    fireEvent.drop(props, {
+      dataTransfer: { files: [texture], types: ['Files'], dropEffect: 'none' },
+    });
+
+    await waitFor(() => expect(importTexture).toHaveBeenCalledWith(texture, 'Content/Props'));
+    expect(view.getByRole('option', { name: 'Open folder Environment' })).toBeInTheDocument();
+  });
+
+  it('imports dropped files into folders in the tree', async () => {
+    const view = renderBrowser();
+    const propsTree = view.getByRole('button', { name: 'Props' });
+    const model = new File(['model'], 'crate.glb');
+
+    fireEvent.drop(propsTree, {
+      dataTransfer: { files: [model], types: ['Files'], dropEffect: 'none' },
+    });
+
+    await waitFor(() => expect(importModel).toHaveBeenCalledWith(model, 'Content/Props'));
   });
 
   it('migrates legacy Favorites and exposes all durable virtual views', async () => {
