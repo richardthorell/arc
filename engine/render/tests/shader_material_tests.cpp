@@ -229,6 +229,30 @@ TEST_CASE("material instances validate stable parameter overrides without changi
     REQUIRE(invalid.error().code == arc::render::material_instance_error_code::incompatible_type);
 }
 
+TEST_CASE("material instances enforce reflected Scalar parameter ranges")
+{
+    const auto roughness = arc::render::make_shader_parameter_id("roughness");
+    arc::render::material_definition_descriptor definition{
+        .material = {.name = "Base"},
+        .parameter_layout = {{.id = roughness,
+                              .name = "roughness",
+                              .type = arc::render::shader_parameter_type::float32,
+                              .size = 4,
+                              .has_range = true,
+                              .minimum = 0.0f,
+                              .maximum = 1.0f}}};
+    arc::render::material_instance_descriptor instance{
+        .parent = {.index = 1, .generation = 1},
+        .overrides = {{.id = roughness, .name = "roughness", .value = 0.65f}}};
+
+    REQUIRE(arc::render::resolve_material_instance(definition, instance));
+
+    instance.overrides.front().value = 1.25f;
+    const auto invalid = arc::render::resolve_material_instance(definition, instance);
+    REQUIRE_FALSE(invalid);
+    REQUIRE(invalid.error().code == arc::render::material_instance_error_code::out_of_range);
+}
+
 TEST_CASE("material routing keeps standard surfaces deferred and custom contracts forward")
 {
     arc::render::material_descriptor material;
