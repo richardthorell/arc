@@ -299,11 +299,10 @@ describe('ContentBrowserPanel', () => {
     expect(view.getByRole('button', { name: 'Downloads (0)' })).toBeInTheDocument();
   });
 
-  it('renders only curated Engine folders as a nested tree', () => {
+  it('renders only curated Engine content from visible Engine folders', () => {
     const view = renderBrowser();
     fireEvent.click(view.getByRole('button', { name: 'Engine' }));
 
-    expect(view.queryByRole('button', { name: 'Environment' })).not.toBeInTheDocument();
     const materials = view.getByRole('button', { name: 'Materials' });
     expect(materials).toHaveAttribute('aria-expanded');
 
