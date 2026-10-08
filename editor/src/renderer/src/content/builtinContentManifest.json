@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "include": [
+    "materials/",
+    "water/presets/",
+    "textures/editor/default_checker_floor.png",
+    "environments/material_preview_studio_4k.exr"
+  ]
+}
