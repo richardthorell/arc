@@ -316,31 +316,40 @@ std::set<std::string> reachable_nodes(const std::string& output_node, const inpu
     return reachable;
 }
 
-constexpr std::array<std::pair<material_surface_output, std::string_view>, 24> surface_outputs{{
+struct surface_output_definition
+{
+    material_surface_output semantic;
+    std::string_view pin;
+    bool has_expected_range{};
+    float minimum{};
+    float maximum{};
+};
+
+constexpr std::array<surface_output_definition, 24> surface_outputs{{
     {material_surface_output::base_color, "baseColor"},
-    {material_surface_output::metallic, "metallic"},
-    {material_surface_output::roughness, "roughness"},
+    {material_surface_output::metallic, "metallic", true, 0.0f, 1.0f},
+    {material_surface_output::roughness, "roughness", true, 0.0f, 1.0f},
     {material_surface_output::normal, "normal"},
     {material_surface_output::clear_coat_normal, "clearCoatNormal"},
     {material_surface_output::tangent, "tangent"},
-    {material_surface_output::ambient_occlusion, "ao"},
+    {material_surface_output::ambient_occlusion, "ao", true, 0.0f, 1.0f},
     {material_surface_output::emissive, "emissive"},
-    {material_surface_output::opacity, "opacity"},
-    {material_surface_output::alpha_cutoff, "alphaClip"},
+    {material_surface_output::opacity, "opacity", true, 0.0f, 1.0f},
+    {material_surface_output::alpha_cutoff, "alphaClip", true, 0.0f, 1.0f},
     {material_surface_output::index_of_refraction, "indexOfRefraction"},
-    {material_surface_output::clear_coat, "clearCoat"},
-    {material_surface_output::clear_coat_roughness, "clearCoatRoughness"},
-    {material_surface_output::sheen, "sheen"},
+    {material_surface_output::clear_coat, "clearCoat", true, 0.0f, 1.0f},
+    {material_surface_output::clear_coat_roughness, "clearCoatRoughness", true, 0.0f, 1.0f},
+    {material_surface_output::sheen, "sheen", true, 0.0f, 1.0f},
     {material_surface_output::sheen_color, "sheenColor"},
-    {material_surface_output::sheen_roughness, "sheenRoughness"},
+    {material_surface_output::sheen_roughness, "sheenRoughness", true, 0.0f, 1.0f},
     {material_surface_output::anisotropy, "anisotropy"},
     {material_surface_output::anisotropy_rotation, "anisotropyRotation"},
-    {material_surface_output::transmission, "transmission"},
+    {material_surface_output::transmission, "transmission", true, 0.0f, 1.0f},
     {material_surface_output::thickness, "thickness"},
     {material_surface_output::attenuation_color, "attenuationColor"},
     {material_surface_output::attenuation_distance, "attenuationDistance"},
     {material_surface_output::subsurface_color, "subsurfaceColor"},
-    {material_surface_output::subsurface, "subsurface"},
+    {material_surface_output::subsurface, "subsurface", true, 0.0f, 1.0f},
 }};
 
 } // namespace
@@ -599,14 +608,41 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
                       [](const shader_parameter_descriptor& parameter) { return parameter.id.representation(); });
 
     compilation.descriptor.outputs.reserve(surface_outputs.size());
-    for (const auto& [semantic, pin] : surface_outputs)
+    for (const auto& output : surface_outputs)
     {
-        material_surface_output_binding binding{.output = semantic};
-        if (const auto found = inputs.find({output_node, std::string(pin)}); found != inputs.end())
+        material_surface_output_binding binding{.output = output.semantic,
+                                                .has_expected_range = output.has_expected_range,
+                                                .minimum = output.minimum,
+                                                .maximum = output.maximum};
+        if (const auto found = inputs.find({output_node, std::string(output.pin)}); found != inputs.end())
         {
             binding.connected = true;
             binding.source_node = found->second.source_node;
             binding.source_pin = found->second.source_pin;
+
+            if (output.has_expected_range)
+            {
+                const auto source = normalized_nodes.find(binding.source_node);
+                if (source != normalized_nodes.end() && source->second.kind == material_ir_node_kind::constant)
+                {
+                    const auto& scalar = source->second;
+                    const bool authored_range_mismatch =
+                        scalar.has_range && (scalar.minimum < output.minimum || scalar.maximum > output.maximum);
+                    const bool literal_mismatch =
+                        !scalar.has_range &&
+                        (scalar.literal.values[0] < output.minimum || scalar.literal.values[0] > output.maximum);
+                    if (authored_range_mismatch || literal_mismatch)
+                    {
+                        compilation.diagnostics.push_back(
+                            {.severity = shader_diagnostic_severity::warning,
+                             .code = "material.output-range",
+                             .message = "Scalar '" + scalar.id + "' does not match the expected " +
+                                        std::to_string(output.minimum) + ".." + std::to_string(output.maximum) +
+                                        " range for Material Output '" + std::string(output.pin) + "'",
+                             .location = {.graph_node_id = scalar.id}});
+                    }
+                }
+            }
         }
         compilation.descriptor.outputs.push_back(std::move(binding));
     }
