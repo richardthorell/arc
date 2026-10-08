@@ -3,6 +3,10 @@ import { RotateCcw } from 'lucide-react';
 
 import { materialEditorParameters, type MaterialEditorParameterKind } from '../material/materialCompiler';
 import {
+  deserializeMaterialInstanceAsset,
+  materialParameterId,
+} from '../material/materialInstancePersistence';
+import {
   materialGraphFromAsset,
   type MaterialAssetJson,
   type MaterialGraphNode,
@@ -161,12 +165,13 @@ export function MaterialParameterSubsection({
     () =>
       assets.find(
         (asset) =>
-          asset.kind === 'material' &&
+          (asset.kind === 'material' || asset.kind === 'materialInstance') &&
           (referenceMode === 'guid' ? (asset.guid || asset.id) === value : asset.path === value),
       ),
     [assets, referenceMode, value],
   );
-  const materialPath = selected?.path ?? (referenceMode === 'path' && /\.arcmat$/i.test(value) ? value : '');
+  const materialPath =
+    selected?.path ?? (referenceMode === 'path' && /\.arcmat(?:inst)?$/i.test(value) ? value : '');
   const materialScope = selected?.scope === 'builtin' ? 'builtin' : 'project';
   const procedural = selected?.scope === 'procedural';
   const [state, setState] = useState<ParameterState>(emptyState);
@@ -192,20 +197,66 @@ export function MaterialParameterSubsection({
           window.arc.host?.query('entity.selected') as Promise<HostResponse<SelectedMaterialSnapshot>> | undefined,
         ]);
         if (!active) return;
-        const asset = JSON.parse(file.text) as MaterialAssetJson;
-        const customShader = typeof asset.shaderPath === 'string' ? asset.shaderPath.trim() : '';
+        let materialAsset: MaterialAssetJson;
+        let instanceDefaults = new Map<string, unknown>();
+        if (selected?.kind === 'materialInstance' || /\.arcmatinst$/i.test(materialPath)) {
+          const instance = deserializeMaterialInstanceAsset(file.text);
+          if (!instance) throw new Error('Material Instance metadata is unavailable');
+          const parent = assets.find(
+            (candidate) =>
+              candidate.kind === 'material' &&
+              ((candidate.guid && candidate.guid === instance.parent.guid) ||
+                candidate.path.replaceAll('\\', '/').toLocaleLowerCase().endsWith(
+                  instance.parent.pathHint.replaceAll('\\', '/').toLocaleLowerCase(),
+                )),
+          );
+          if (!parent) throw new Error('Material Instance parent is unavailable');
+          const parentPath = await projectRelativeMaterialPath(
+            parent.sourcePath || parent.path,
+            parent.scope === 'builtin' ? 'builtin' : 'project',
+          );
+          const parentFile = await window.arc.projects.readText(
+            parentPath,
+            parent.scope === 'builtin' ? 'builtin' : 'project',
+          );
+          materialAsset = JSON.parse(parentFile.text) as MaterialAssetJson;
+          instanceDefaults = new Map(instance.parameterOverrides.map((entry) => [entry.parameterId, entry.value]));
+        } else {
+          materialAsset = JSON.parse(file.text) as MaterialAssetJson;
+        }
+
+        const customShader = typeof materialAsset.shaderPath === 'string' ? materialAsset.shaderPath.trim() : '';
         if (customShader) {
           setState({ status: 'custom', parameters: [] });
           return;
         }
 
-        const graph = materialGraphFromAsset(asset);
+        const graph = materialGraphFromAsset(materialAsset);
         const parameters = materialEditorParameters(graph).map((parameter) => {
           const node = graph.nodes.find((candidate) => candidate.id === parameter.nodeId);
+          const instanceValue = node ? instanceDefaults.get(materialParameterId(node.id)) : undefined;
+          const authoredValues =
+            instanceValue === undefined
+              ? node
+                ? parameterValues(node)
+                : []
+              : typeof instanceValue === 'number'
+                ? [instanceValue]
+                : Array.isArray(instanceValue)
+                  ? instanceValue.map((value) => (typeof value === 'number' ? value : 0))
+                  : [];
+          const authoredTexture =
+            instanceValue === undefined
+              ? node
+                ? parameterTexture(node)
+                : ''
+              : typeof instanceValue === 'string'
+                ? instanceValue
+                : '';
           return {
             ...parameter,
-            values: node ? parameterValues(node) : [],
-            texture: node ? parameterTexture(node) : '',
+            values: authoredValues,
+            texture: authoredTexture,
           };
         });
         setOverrides(
