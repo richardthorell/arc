@@ -152,7 +152,7 @@ describe('ContentBrowserPanel logical scopes', () => {
     fireEvent.click(view.getByRole('button', { name: 'Project Writable' }));
     fireEvent.change(view.getByLabelText('Search assets'), { target: { value: 'deferred lighting' } });
     expect(view.queryByText('Deferred Lighting')).not.toBeInTheDocument();
-    expect(view.queryByRole('button', { name: /Search Results/ })).not.toBeInTheDocument();
+    expect(view.getByText('Search Results (0)')).toBeInTheDocument();
   });
 
   it('keeps configured empty scopes visible and omits unconfigured scopes', () => {
