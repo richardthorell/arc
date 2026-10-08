@@ -5,11 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { materialEditorParameters } from './materialCompiler';
 import { materialFunctionCompatibleWithSlot } from './materialInstanceAuthoring';
-import {
-  materialGraphFromAsset,
-  type MaterialAssetJson,
-  type MaterialFunctionAssetJson,
-} from './materialGraphTypes';
+import { materialGraphFromAsset, type MaterialAssetJson, type MaterialFunctionAssetJson } from './materialGraphTypes';
 import { materialGraphOutputConnected, materialRenderPathLabel } from './materialSettingsPresentation';
 
 const readBuiltIn = (name: string) =>
@@ -119,7 +115,12 @@ describe('core built-in material families', () => {
 
     const slotInputs = baseColorSource?.values.inputPins as MaterialFunctionAssetJson['inputs'];
     const slotOutputs = baseColorSource?.values.outputPins as MaterialFunctionAssetJson['outputs'];
-    for (const functionName of ['default_base_color.arcmatfn', 'checker.arcmatfn', 'gradient.arcmatfn', 'noise.arcmatfn']) {
+    for (const functionName of [
+      'default_base_color.arcmatfn',
+      'checker.arcmatfn',
+      'gradient.arcmatfn',
+      'noise.arcmatfn',
+    ]) {
       expect(
         materialFunctionCompatibleWithSlot(slotInputs, slotOutputs, readBuiltInFunction(functionName)),
         functionName,
