@@ -268,7 +268,7 @@ export function MaterialParameterSubsection({
     return () => {
       active = false;
     };
-  }, [materialPath, materialScope, mixed, procedural, value]);
+  }, [assets, materialPath, materialScope, mixed, procedural, selected?.kind, value]);
 
   const overrideFor = (parameter: DisplayParameter) => overrides.find((entry) => entry.name === parameter.name);
   const effectiveValues = (parameter: DisplayParameter) => overrideFor(parameter)?.value ?? parameter.values;
