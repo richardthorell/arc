@@ -649,10 +649,18 @@ render::material_handle load_material_for_editor(editor_material_library& librar
         asset.path = path;
         asset.material = std::move(resolved).value();
         render::material_handle handle{};
-        if (auto* record = find_record(library, path); record && renderer.material_alive(record->material))
+        if (auto* record = find_record(library, path))
         {
-            handle = record->material;
-            if (!renderer.update_material(handle, asset.material)) return {};
+            if (renderer.material_alive(record->material))
+            {
+                handle = record->material;
+                if (!renderer.update_material(handle, asset.material)) return {};
+            }
+            else
+            {
+                handle = renderer.create_material(asset.material);
+                record->material = handle;
+            }
             record->asset = asset;
         }
         else
