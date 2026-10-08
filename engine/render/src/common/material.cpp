@@ -179,6 +179,20 @@ material_instance_result resolve_material_instance(const material_definition_des
                 {.code = material_instance_error_code::incompatible_type,
                  .parameter = override_value.id,
                  .message = "material instance override type does not match its parent layout"});
+        if (layout->has_range)
+        {
+            if (layout->type != shader_parameter_type::float32)
+                return material_instance_result::failure(
+                    {.code = material_instance_error_code::incompatible_type,
+                     .parameter = override_value.id,
+                     .message = "material parameter range metadata is only valid for scalar float parameters"});
+            const float value = std::get<float>(override_value.value);
+            if (!std::isfinite(value) || value < layout->minimum || value > layout->maximum)
+                return material_instance_result::failure(
+                    {.code = material_instance_error_code::out_of_range,
+                     .parameter = override_value.id,
+                     .message = "material instance override is outside its parent parameter range"});
+        }
 
         const auto existing = std::ranges::find(result.parameters, override_value.id, &material_parameter_override::id);
         if (existing == result.parameters.end())
