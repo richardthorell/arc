@@ -86,7 +86,8 @@ enum class material_math_operation : std::uint8_t
     if_else,
     sign,
     distance,
-    length
+    length,
+    dot
 };
 
 /** @brief Numeric literal carried by a material IR node or function-pin default. */
