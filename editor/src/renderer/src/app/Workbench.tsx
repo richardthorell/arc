@@ -1997,6 +1997,51 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   );
 }
 
+function BasicShapeMenuIcon({
+  kind,
+}: {
+  kind: Exclude<BasicEntityKind, 'empty' | 'terrain' | 'ocean' | 'lake' | 'river'>;
+}) {
+  const common = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round' as const };
+  return (
+    <svg aria-hidden="true" className="hierarchy-create-shape-icon" viewBox="0 0 16 16">
+      {kind === 'cube' && (
+        <>
+          <path {...common} d="m8 2 5 2.8v6.3L8 14l-5-2.9V4.8z" />
+          <path {...common} d="m3 4.8 5 2.8 5-2.8M8 7.6V14" />
+        </>
+      )}
+      {kind === 'sphere' && (
+        <>
+          <circle {...common} cx="8" cy="8" r="5.5" />
+          <path {...common} d="M2.8 8h10.4M8 2.5c2 1.7 2 9.3 0 11M8 2.5c-2 1.7-2 9.3 0 11" />
+        </>
+      )}
+      {kind === 'cylinder' && (
+        <>
+          <ellipse {...common} cx="8" cy="4" rx="4.5" ry="1.8" />
+          <path {...common} d="M3.5 4v7.8M12.5 4v7.8M3.5 11.8c0 1 2 1.8 4.5 1.8s4.5-.8 4.5-1.8" />
+        </>
+      )}
+      {kind === 'cone' && (
+        <>
+          <path {...common} d="M8 2.4 3.4 11.6M8 2.4l4.6 9.2" />
+          <ellipse {...common} cx="8" cy="11.6" rx="4.6" ry="1.8" />
+        </>
+      )}
+      {kind === 'capsule' && (
+        <path {...common} d="M5.2 5a2.8 2.8 0 0 1 5.6 0v6a2.8 2.8 0 0 1-5.6 0z" />
+      )}
+      {kind === 'plane' && (
+        <>
+          <path {...common} d="m2.3 10.5 7-6 4.4 2.6-7 6z" />
+          <path {...common} d="m5 8.2 4.4 2.6M7.3 6.2l4.4 2.6" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 export function ExplorerPanel({
   project,
   selectedEntityId,
@@ -2102,6 +2147,7 @@ export function ExplorerPanel({
                 {(['cube', 'sphere', 'cylinder', 'cone', 'capsule', 'plane'] as const).map((kind) => (
                   <UiContextMenuItem
                     key={kind}
+                    leading={<BasicShapeMenuIcon kind={kind} />}
                     onClick={() => {
                       onCreateEntity(kind);
                       setCreateMenuOpen(false);
