@@ -9,7 +9,7 @@ import type { ProjectSnapshot } from '../services/editorHostTypes';
 afterEach(() => document.body.replaceChildren());
 
 describe('ExplorerPanel', () => {
-  it('renders the entity palette as an in-panel drawer', () => {
+  it('renders entity creation as a compact dropdown context menu', () => {
     const onCreateEntity = vi.fn();
     const project = { scene: [] } as unknown as ProjectSnapshot;
     const view = render(
@@ -30,15 +30,20 @@ describe('ExplorerPanel', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Add entity' }));
-    const palette = screen.getByRole('menu', { name: 'Add entity' });
-    expect(view.container.contains(palette)).toBe(true);
-    expect(
-      palette.compareDocumentPosition(screen.getByRole('textbox', { name: 'Search hierarchy' })) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    const menu = screen.getByRole('menu', { name: 'Add entity' });
+    expect(menu).toHaveClass('ui-context-menu', 'hierarchy-create-dropdown');
+    expect(view.container.querySelector('.hierarchy-create-menu')?.contains(menu)).toBe(true);
+    expect(screen.getByRole('menuitem', { name: 'Empty Entity' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Box' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Terrain...' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Ocean' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('menuitem', { name: 'Box' }));
     expect(onCreateEntity).toHaveBeenCalledWith('cube');
+    expect(screen.queryByRole('menu', { name: 'Add entity' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add entity' }));
+    fireEvent.pointerDown(screen.getByRole('textbox', { name: 'Search hierarchy' }));
     expect(screen.queryByRole('menu', { name: 'Add entity' })).not.toBeInTheDocument();
   });
 
