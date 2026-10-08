@@ -161,6 +161,164 @@ TEST_CASE("Texture Coordinate explicitly supports UV0 only")
     CHECK(result.error().message.find("supports UV0 only") != std::string::npos);
 }
 
+TEST_CASE("Material Function Slots specialize compatible functions and reflect replacement defaults")
+{
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"base","type":"vector3","values":{"value":[0.2,0.4,0.8]}},
+        {"id":"base-color-source","type":"functionSlot",
+         "values":{"slotId":"base-color-source","name":"Base Color Source","path":"functions/default.arcmatfn"}}
+      ],
+      "connections":[
+        {"id":"1","from":{"nodeId":"base","pin":"value"},"to":{"nodeId":"base-color-source","pin":"base"}},
+        {"id":"2","from":{"nodeId":"base-color-source","pin":"result"},"to":{"nodeId":"out","pin":"baseColor"}}
+      ]
+    })";
+
+    constexpr std::string_view default_function = R"({
+      "kind":"materialFunction","version":1,"name":"Default Base Color",
+      "inputs":[{"id":"base","name":"Base","type":"vec3"}],
+      "outputs":[{"id":"result","name":"Result","type":"vec3"}],
+      "graph":{"version":1,
+        "nodes":[
+          {"id":"input-base","type":"functionInput","values":{"input":"base"}},
+          {"id":"function-output","type":"functionOutput","values":{}}
+        ],
+        "connections":[
+          {"id":"1","from":{"nodeId":"input-base","pin":"value"},"to":{"nodeId":"function-output","pin":"result"}}
+        ]}
+    })";
+
+    constexpr std::string_view scaled_function = R"({
+      "kind":"materialFunction","version":1,"name":"Scaled Base Color",
+      "inputs":[
+        {"id":"base","name":"Base","type":"vec3"},
+        {"id":"scale","name":"Scale","type":"float","default":1.0}
+      ],
+      "outputs":[{"id":"result","name":"Result","type":"vec3"}],
+      "graph":{"version":1,
+        "nodes":[
+          {"id":"input-base","type":"functionInput","values":{"input":"base"}},
+          {"id":"input-scale","type":"functionInput","values":{"input":"scale"}},
+          {"id":"multiply","type":"multiply","values":{}},
+          {"id":"function-output","type":"functionOutput","values":{}}
+        ],
+        "connections":[
+          {"id":"1","from":{"nodeId":"input-base","pin":"value"},"to":{"nodeId":"multiply","pin":"a"}},
+          {"id":"2","from":{"nodeId":"input-scale","pin":"value"},"to":{"nodeId":"multiply","pin":"b"}},
+          {"id":"3","from":{"nodeId":"multiply","pin":"result"},"to":{"nodeId":"function-output","pin":"result"}}
+        ]}
+    })";
+
+    const std::array functions{
+        arc::render::tools::material_function_source{
+            .path = "functions/default.arcmatfn", .identity = "function-guid-default", .source = std::string(default_function)},
+        arc::render::tools::material_function_source{
+            .path = "functions/scaled.arcmatfn", .identity = "function-guid-scaled", .source = std::string(scaled_function)},
+    };
+
+    const auto base = arc::render::tools::compile_material_graph_json(graph, functions);
+    REQUIRE(base);
+    REQUIRE(base.value().descriptor.function_slots.size() == 1);
+    const auto& base_slot = base.value().descriptor.function_slots.front();
+    CHECK(base_slot.id == "base-color-source");
+    CHECK(base_slot.selected_function_identity == "function-guid-default");
+    CHECK(base_slot.selected_parameters.empty());
+    CHECK(base.value().function_specialization_key != 0);
+
+    const std::array overrides{arc::render::tools::material_function_slot_override{
+        .slot_id = "base-color-source", .function_path = "functions/scaled.arcmatfn"}};
+    const auto specialized = arc::render::tools::compile_material_graph_json(graph, functions, overrides);
+    REQUIRE(specialized);
+    REQUIRE(specialized.value().descriptor.function_slots.size() == 1);
+    const auto& slot = specialized.value().descriptor.function_slots.front();
+    CHECK(slot.selected_function_identity == "function-guid-scaled");
+    REQUIRE(slot.selected_parameters.size() == 1);
+    CHECK(slot.selected_parameters.front().pin_id == "scale");
+    CHECK(specialized.value().function_specialization_key != base.value().function_specialization_key);
+
+    const auto parameter_id = slot.selected_parameters.front().parameter_id;
+    const auto parameter = std::ranges::find(specialized.value().descriptor.parameters, parameter_id,
+                                             &arc::render::shader_parameter_descriptor::id);
+    REQUIRE(parameter != specialized.value().descriptor.parameters.end());
+    CHECK(parameter->name == "Base Color Source / Scale");
+    CHECK(parameter->type == arc::render::shader_parameter_type::float32);
+
+    const auto repeated = arc::render::tools::compile_material_graph_json(graph, functions, overrides);
+    REQUIRE(repeated);
+    CHECK(repeated.value().function_specialization_key == specialized.value().function_specialization_key);
+    CHECK(repeated.value().descriptor.function_slots == specialized.value().descriptor.function_slots);
+}
+
+TEST_CASE("Material Function Slots reject incompatible and unknown selections")
+{
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"slot","type":"functionSlot",
+         "values":{"slotId":"surface-source","name":"Surface Source","path":"functions/default.arcmatfn"}}
+      ],
+      "connections":[
+        {"id":"1","from":{"nodeId":"slot","pin":"result"},"to":{"nodeId":"out","pin":"baseColor"}}
+      ]
+    })";
+
+    constexpr std::string_view default_function = R"({
+      "kind":"materialFunction","version":1,"name":"Default",
+      "inputs":[],"outputs":[{"id":"result","name":"Result","type":"vec3"}],
+      "graph":{"version":1,
+        "nodes":[
+          {"id":"color","type":"vector3","values":{"value":[1,1,1]}},
+          {"id":"function-output","type":"functionOutput","values":{}}
+        ],
+        "connections":[
+          {"id":"1","from":{"nodeId":"color","pin":"value"},"to":{"nodeId":"function-output","pin":"result"}}
+        ]}
+    })";
+
+    constexpr std::string_view incompatible_function = R"({
+      "kind":"materialFunction","version":1,"name":"Bad",
+      "inputs":[{"id":"required","name":"Required","type":"float"}],
+      "outputs":[{"id":"other","name":"Other","type":"vec3"}],
+      "graph":{"version":1,
+        "nodes":[
+          {"id":"color","type":"vector3","values":{"value":[1,0,0]}},
+          {"id":"function-output","type":"functionOutput","values":{}}
+        ],
+        "connections":[
+          {"id":"1","from":{"nodeId":"color","pin":"value"},"to":{"nodeId":"function-output","pin":"other"}}
+        ]}
+    })";
+
+    const std::array functions{
+        arc::render::tools::material_function_source{
+            .path = "functions/default.arcmatfn", .identity = "default-guid", .source = std::string(default_function)},
+        arc::render::tools::material_function_source{
+            .path = "functions/bad.arcmatfn", .identity = "bad-guid", .source = std::string(incompatible_function)},
+    };
+
+    SECTION("incompatible function")
+    {
+        const std::array overrides{arc::render::tools::material_function_slot_override{
+            .slot_id = "surface-source", .function_path = "functions/bad.arcmatfn"}};
+        const auto result = arc::render::tools::compile_material_graph_json(graph, functions, overrides);
+        REQUIRE_FALSE(result);
+        CHECK(result.error().message.find("incompatible") != std::string::npos);
+    }
+
+    SECTION("unknown slot")
+    {
+        const std::array overrides{arc::render::tools::material_function_slot_override{
+            .slot_id = "missing", .function_path = "functions/default.arcmatfn"}};
+        const auto result = arc::render::tools::compile_material_graph_json(graph, functions, overrides);
+        REQUIRE_FALSE(result);
+        CHECK(result.error().message.find("unknown slot") != std::string::npos);
+    }
+}
+
 TEST_CASE("native material graph compiler preserves valid Scalar authoring ranges")
 {
     constexpr std::string_view graph = R"({
