@@ -332,10 +332,11 @@ std::optional<scalar_range> infer_scalar_range(const std::string& node_id, const
                                                const input_map& inputs, std::set<std::string>& visiting)
 {
     if (!visiting.insert(node_id).second) return std::nullopt;
-    const auto finish = [&](std::optional<scalar_range> result) {
+    const auto finish = [&](std::optional<scalar_range> result)
+    {
         visiting.erase(node_id);
-        if (result && (!std::isfinite(result->minimum) || !std::isfinite(result->maximum) ||
-                       result->minimum > result->maximum))
+        if (result &&
+            (!std::isfinite(result->minimum) || !std::isfinite(result->maximum) || result->minimum > result->maximum))
             return std::optional<scalar_range>{};
         return result;
     };
@@ -344,7 +345,8 @@ std::optional<scalar_range> infer_scalar_range(const std::string& node_id, const
     if (found == nodes.end()) return finish(std::nullopt);
     const auto& node = *found->second;
 
-    const auto input_range = [&](std::string_view pin) -> std::optional<scalar_range> {
+    const auto input_range = [&](std::string_view pin) -> std::optional<scalar_range>
+    {
         const auto input = inputs.find({node.id, std::string(pin)});
         if (input == inputs.end()) return std::nullopt;
         return infer_scalar_range(input->second.source_node, nodes, inputs, visiting);
@@ -370,9 +372,8 @@ std::optional<scalar_range> infer_scalar_range(const std::string& node_id, const
     }
 
     if (node.kind == material_ir_node_kind::add || node.kind == material_ir_node_kind::multiply ||
-        (node.kind == material_ir_node_kind::math &&
-         (node.math_operation == material_math_operation::minimum ||
-          node.math_operation == material_math_operation::maximum)))
+        (node.kind == material_ir_node_kind::math && (node.math_operation == material_math_operation::minimum ||
+                                                      node.math_operation == material_math_operation::maximum)))
     {
         const auto a = input_range("a");
         const auto b = input_range("b");
@@ -389,8 +390,7 @@ std::optional<scalar_range> infer_scalar_range(const std::string& node_id, const
         }
 
         if (node.math_operation == material_math_operation::minimum)
-            return finish(
-                scalar_range{std::min(a->minimum, b->minimum), std::min(a->maximum, b->maximum)});
+            return finish(scalar_range{std::min(a->minimum, b->minimum), std::min(a->maximum, b->maximum)});
         return finish(scalar_range{std::max(a->minimum, b->minimum), std::max(a->maximum, b->maximum)});
     }
 
