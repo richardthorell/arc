@@ -1598,6 +1598,7 @@ private:
     gpu_buffer clustered_light_buffer_;
     VkDeviceSize clustered_light_buffer_size_{};
     VkDescriptorSetLayout forward_scene_descriptor_set_layout_{};
+    VkDescriptorSetLayout forward_empty_descriptor_set_layout_{};
     VkDescriptorPool forward_scene_descriptor_pool_{};
     std::vector<VkDescriptorSet> forward_scene_descriptor_sets_;
     std::vector<gpu_buffer> forward_scene_uniform_buffers_;

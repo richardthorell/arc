@@ -166,149 +166,16 @@ float arc_directional_shadow_visibility(
 }
 
 #ifndef ARC_DISABLE_VIRTUAL_SHADOW_SAMPLING
-bool arc_virtual_shadow_project(
-    ArcVirtualShadowView view,
-    vec3 world_position,
-    out vec3 projected,
-    out uvec2 page,
-    out vec2 page_uv)
+ivec2 arc_virtual_shadow_atlas_extent() { return textureSize(arc_virtual_shadow_static_atlas, 0); }
+uint arc_virtual_shadow_view_count() { return uint(arc_virtual_shadow_views.length()); }
+uint arc_virtual_shadow_page_count() { return uint(arc_virtual_shadow_page_table.length()); }
+uint arc_virtual_shadow_address_count() { return uint(arc_virtual_shadow_addresses.length()); }
+float arc_virtual_shadow_compare(bool dynamic_layer, vec2 uv, float depth)
 {
-    vec4 clip = arcVirtualShadowTransform(view, world_position);
-    if (view.pageRange.y == 0u || abs(clip.w) <= 1.0e-6 || any(isnan(clip)) || any(isinf(clip)))
-        return false;
-    projected = clip.xyz / clip.w;
-    vec2 uv = projected.xy * 0.5 + 0.5;
-    if (projected.z < 0.0 || projected.z > 1.0 ||
-        any(lessThan(uv, vec2(0.0))) || any(greaterThanEqual(uv, vec2(1.0))))
-        return false;
-    vec2 page_position = uv * float(view.pageRange.y);
-    page = uvec2(floor(page_position));
-    page_uv = fract(page_position);
-    return true;
+    return dynamic_layer ? texture(arc_virtual_shadow_dynamic_atlas, vec3(uv, depth))
+                         : texture(arc_virtual_shadow_static_atlas, vec3(uv, depth));
 }
-
-float arc_sample_virtual_shadow_tap(
-    ArcVirtualShadowPhysicalMapping mapping,
-    vec2 page_uv,
-    float receiver_depth,
-    float comparison_bias,
-    ivec2 tap,
-    bool dynamic_layer)
-{
-    ivec2 atlas_size = textureSize(arc_virtual_shadow_static_atlas, 0);
-    uint pages_per_axis = uint(atlas_size.x) / (ARC_VIRTUAL_SHADOW_PAGE_TEXELS +
-                                                ARC_VIRTUAL_SHADOW_PAGE_GUARD_TEXELS * 2u);
-    uint physical_page = mapping.value.x;
-    uvec2 tile = uvec2(physical_page % max(pages_per_axis, 1u),
-                       physical_page / max(pages_per_axis, 1u));
-    vec2 atlas_pixel = vec2(tile * (ARC_VIRTUAL_SHADOW_PAGE_TEXELS +
-                                    ARC_VIRTUAL_SHADOW_PAGE_GUARD_TEXELS * 2u) +
-                            ARC_VIRTUAL_SHADOW_PAGE_GUARD_TEXELS) +
-                       page_uv * float(ARC_VIRTUAL_SHADOW_PAGE_TEXELS);
-    // Projected UVs already describe continuous pixel coordinates; adding a
-    // half texel here would offset the comparison from the raster projection.
-    vec2 tile_min = vec2(tile * 136u) + vec2(0.5);
-    vec2 tile_max = tile_min + vec2(135.0);
-    vec2 atlas_uv = clamp(atlas_pixel + vec2(tap), tile_min, tile_max) / vec2(atlas_size);
-    return dynamic_layer
-        ? texture(arc_virtual_shadow_dynamic_atlas, vec3(atlas_uv, receiver_depth - comparison_bias))
-        : texture(arc_virtual_shadow_static_atlas, vec3(atlas_uv, receiver_depth - comparison_bias));
-}
-
-struct ArcResolvedVirtualShadowLayer
-{
-    ArcVirtualShadowPhysicalMapping mapping;
-    vec2 page_uv;
-    float depth;
-};
-
-bool arc_resolve_virtual_shadow_layer(
-    ArcVirtualShadowAddressSpace address_space,
-    vec3 world_position,
-    bool dynamic_layer,
-    out ArcResolvedVirtualShadowLayer resolved)
-{
-    uint level_count = min(arcVirtualShadowLevelCount(address_space), address_space.ranges.y);
-    for (uint level = 0u; level < level_count; ++level)
-    {
-        uint view_index = arcVirtualShadowViewIndex(address_space, 0u, level);
-        if (view_index >= arc_virtual_shadow_views.length())
-            break;
-        ArcVirtualShadowView view = arc_virtual_shadow_views[view_index];
-        if (view.pageRange.z != 0u || view.pageRange.w != level)
-            continue;
-        vec3 projected;
-        uvec2 page;
-        vec2 page_uv;
-        if (!arc_virtual_shadow_project(view, world_position, projected, page, page_uv))
-            continue;
-        uint dense_index = arcVirtualShadowDensePageIndex(address_space, view, page);
-        if (dense_index < address_space.ranges.z ||
-            dense_index - address_space.ranges.z >= address_space.ranges.w ||
-            dense_index >= arc_virtual_shadow_page_table.length())
-            continue;
-        ArcVirtualShadowPageTableEntry entry = arc_virtual_shadow_page_table[dense_index];
-        ArcVirtualShadowPhysicalMapping mapping = dynamic_layer ? entry.dynamicDepth : entry.staticDepth;
-        uint atlas_axis = uint(textureSize(arc_virtual_shadow_static_atlas, 0).x) / 136u;
-        if (mapping.value.x == ARC_VIRTUAL_SHADOW_INVALID_INDEX || mapping.value.y == 0u ||
-            mapping.value.x >= atlas_axis * atlas_axis)
-            continue;
-        resolved.mapping = mapping;
-        resolved.page_uv = page_uv;
-        resolved.depth = projected.z;
-        return true;
-    }
-    return false;
-}
-
-bool arc_virtual_directional_shadow_visibility(
-    directional_light_data light,
-    vec3 world_position,
-    vec3 surface_normal,
-    vec3 light_direction,
-    out float visibility)
-{
-    uint address_index = light.shadow_identity.z;
-    if (address_index == ARC_VIRTUAL_SHADOW_INVALID_INDEX ||
-        address_index >= arc_virtual_shadow_addresses.length())
-        return false;
-    ArcVirtualShadowAddressSpace address_space = arc_virtual_shadow_addresses[address_index];
-    if (address_space.identityTopology.x != light.shadow_identity.w ||
-        address_space.identityTopology.y != 0u)
-        return false;
-
-    float normal_bias = light.shadow_parameters.z *
-        clamp(1.0 - dot(normalize(surface_normal), normalize(light_direction)), 0.0, 1.0);
-    float comparison_bias = light.shadow_parameters.y + normal_bias;
-    uint mobility = address_space.requestMetadata.x;
-    bool needs_static = mobility != 2u;
-    bool needs_dynamic = mobility != 0u;
-    ArcResolvedVirtualShadowLayer static_layer;
-    ArcResolvedVirtualShadowLayer dynamic_layer;
-    bool static_found = !needs_static || arc_resolve_virtual_shadow_layer(
-        address_space, world_position, false, static_layer);
-    bool dynamic_found = !needs_dynamic || arc_resolve_virtual_shadow_layer(
-        address_space, world_position, true, dynamic_layer);
-    if (!static_found || !dynamic_found)
-        return false;
-    // Combine layers before filtering: min of two independently averaged PCF
-    // results misses disjoint static/dynamic occluders within the footprint.
-    uint filter_mode = light.shadow_routing.y;
-    int radius = filter_mode == 0u ? 0 : (filter_mode == 1u ? 1 : 2);
-    float sampled = 0.0;
-    for (int y = -radius; y <= radius; ++y)
-        for (int x = -radius; x <= radius; ++x)
-        {
-            float static_visibility = needs_static ? arc_sample_virtual_shadow_tap(
-                static_layer.mapping, static_layer.page_uv, static_layer.depth, comparison_bias, ivec2(x, y), false) : 1.0;
-            float dynamic_visibility = needs_dynamic ? arc_sample_virtual_shadow_tap(
-                dynamic_layer.mapping, dynamic_layer.page_uv, dynamic_layer.depth, comparison_bias, ivec2(x, y), true) : 1.0;
-            sampled += min(static_visibility, dynamic_visibility);
-        }
-    sampled /= float((radius * 2 + 1) * (radius * 2 + 1));
-    visibility = mix(1.0 - clamp(light.shadow_parameters.x, 0.0, 1.0), 1.0, sampled);
-    return true;
-}
+#include "arc_virtual_shadow_sampling.shared"
 
 #endif
 

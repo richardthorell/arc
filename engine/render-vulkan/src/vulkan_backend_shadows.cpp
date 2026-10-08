@@ -1789,7 +1789,20 @@ void vulkan_render_backend::prepare_frame_gpu_resources()
     // Fence feedback must be collected before scheduling the next generation.
     if (resolved_config_.features.virtual_shadow_maps)
     {
-        prepare_virtual_shadow_cache(last_profile_.frame_index);
+        // Validate the common scene descriptor path before promoting any light.
+        // Forward opaque, transparent, and Water use this same resource contract.
+        if (ensure_forward_scene_resources())
+            prepare_virtual_shadow_cache(last_profile_.frame_index);
+        else
+        {
+            resolved_config_.features.virtual_shadow_maps = false;
+            resolved_config_.features.virtual_shadow_lights = {};
+            resolved_config_.features.virtual_shadow_virtual_geometry = false;
+            last_profile_.shadows.fallback_reason =
+                "VSM forward scene resources unavailable; using conventional shadows";
+            resolved_config_.fallback_reasons.push_back(last_profile_.shadows.fallback_reason);
+            last_profile_.configuration = resolved_config_;
+        }
         update_light_buffer();
     }
     update_dynamic_mesh_vertices();

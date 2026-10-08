@@ -1,5 +1,7 @@
 #include <arc/render_tools/material_pass_codegen.h>
 
+#include "virtual_shadow_sampling_source.h"
+
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -427,7 +429,26 @@ int arcForwardShadowCascade(float cameraDistance)
 }
 
 )";
-    source << R"(float arcForwardSampleDirectionalCascade(int cascade, float3 worldPosition, float3 surfaceNormal,
+    source << virtual_shadow_sampling_adapter << virtual_shadow_sampling_lookup;
+    source << R"(
+#undef vec2
+#undef vec3
+#undef vec4
+#undef uvec2
+#undef ivec2
+#undef mix
+#undef fract
+#undef lessThan
+#undef greaterThanEqual
+#undef arc_virtual_shadow_addresses
+#undef arc_virtual_shadow_views
+#undef arc_virtual_shadow_page_table
+#undef directional_light_data
+#undef shadow_identity
+#undef shadow_parameters
+#undef shadow_routing
+
+float arcForwardSampleDirectionalCascade(int cascade, float3 worldPosition, float3 surfaceNormal,
                                          float3 lightDirection)
 {
     float4 lightClip = mul(arcForwardShadows.lightViewProjection[cascade], float4(worldPosition, 1.0));
@@ -437,15 +458,35 @@ int arcForwardShadowCascade(float cameraDistance)
     float normalBias = arcForwardShadows.params.z *
                        saturate(1.0 - dot(normalize(surfaceNormal), normalize(lightDirection)));
     float compareDepth = projected.z - arcForwardShadows.params.y - normalBias;
-    return min(
-        arcForwardDirectionalShadowMap.SampleCmpLevelZero(
-            arcForwardDirectionalShadowSampler, float3(uv, float(cascade)), compareDepth),
-        arcForwardDirectionalShadowMap.SampleCmpLevelZero(
-            arcForwardDirectionalShadowSampler, float3(uv, float(cascade + 4)), compareDepth));
+    int filterMode = int(arcForwardShadows.params.w + 0.5);
+    int radius = filterMode == 0 ? 0 : (filterMode >= 2 ? 2 : 1);
+    uint width, height, layers;
+    arcForwardDirectionalShadowMap.GetDimensions(width, height, layers);
+    float visibility = 0.0;
+    for (int y = -radius; y <= radius; ++y)
+        for (int x = -radius; x <= radius; ++x)
+        {
+            float2 sampleUv = uv + float2(x, y) / float(width);
+            visibility += min(
+                arcForwardDirectionalShadowMap.SampleCmpLevelZero(
+                    arcForwardDirectionalShadowSampler, float3(sampleUv, float(cascade)), compareDepth),
+                arcForwardDirectionalShadowMap.SampleCmpLevelZero(
+                    arcForwardDirectionalShadowSampler, float3(sampleUv, float(cascade + 4)), compareDepth));
+        }
+    return visibility / float((radius * 2 + 1) * (radius * 2 + 1));
 }
 
-float arcForwardDirectionalShadow(float3 worldPosition, float3 surfaceNormal, float3 lightDirection)
+float arcForwardDirectionalShadow(ArcForwardDirectionalLight light, float3 worldPosition,
+                                  float3 surfaceNormal, float3 lightDirection)
 {
+    if (light.shadowRouting.x == 0u) return 1.0;
+    if (light.shadowRouting.x == 2u)
+    {
+        float virtualVisibility = 1.0;
+        if (arc_virtual_directional_shadow_visibility(light, worldPosition, surfaceNormal,
+                                                       lightDirection, virtualVisibility))
+            return virtualVisibility;
+    }
     if (arcForwardShadows.params.x <= 0.0 || arcForwardShadows.configuration.x < 0.5) return 1.0;
     float3 cameraPosition = arcForwardScene.cameraPositionViewportWidth.xyz;
     float3 cameraForward = normalize(arcForwardShadows.configuration.yzw);
@@ -481,7 +522,8 @@ float3 arcEvaluateForwardSurface(ArcSurfaceData surface, ArcSurfaceInput input, 
         float3 radiance = lighting.directionalLights[index].colorFlags.rgb *
                           lighting.directionalLights[index].directionIntensity.w;
         float shadow = lighting.directionalLights[index].shadowRouting.x != 0u
-                           ? arcForwardDirectionalShadow(input.positionWS, surface.normalWS, lightWS)
+                           ? arcForwardDirectionalShadow(lighting.directionalLights[index], input.positionWS,
+                                                           surface.normalWS, lightWS)
                            : 1.0;
         direct += arcForwardEvaluateLight(surface, viewWS, lightWS, radiance, shadow);
     }

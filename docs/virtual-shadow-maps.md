@@ -47,15 +47,17 @@ and render tokens until M5 introduces scrolling/overlap reuse.
 
 Directional lights carry stable object identity, resolved representation, VSM address identity, filter mode, strength,
 and biases. The existing single shadow-producing directional-light limit remains; sorting the lighting array does not
-change which light owns the shadow. Deferred and terrain forward lighting use one shared lookup. Each required
+change which light owns the shadow. Deferred, terrain forward, compiled forward, transparent, and Water lighting
+use one shared GLSL/Slang lookup. Each required
 static/dynamic layer independently reprojects through coarser directional clips. Missing layers use conventional
 cascades. Layer comparisons are combined before averaging bounded 1/9/25-tap filters; PCSS currently uses the 25-tap
 kernel. Atlas coordinates are clamped to the selected physical tile.
 
-The canonical compiled Slang forward/transparent and Water passes use the same directional-light record layout and
-per-light routing, but currently retain conventional cascade sampling. Directional VSM auto-selection remains disabled
-until these material passes also use the shared M4 lookup; resource support alone must not enable a partial path.
-The engine-owned compiled material pass contract is v2 and code generation is v5. Old compiled programs must be
+The canonical compiled Slang forward/transparent and Water passes bind the same address/view/page records and
+depth atlases as deferred lighting. The lookup is embedded into the pass composer at build time, not loaded from a
+runtime source-tree path. Empty descriptor layouts replace unused legacy material sets in the forward pipeline.
+Directional VSM routing requires the common scene resources and caster pipeline to be initialized successfully.
+The engine-owned compiled material pass contract is v2 and code generation is v6. Old compiled programs must be
 rebuilt rather than interpreted with the new lighting-buffer stride; authoring and package container schemas are unchanged.
 
 The resolved renderer configuration owns the physical-pool contract. It selects D16 when depth attachment and sampled
@@ -81,3 +83,11 @@ The Lighting panel exposes address-space count, page capacity and residency, ren
 fallbacks, failed requests, receiver samples, raw/compacted/duplicate/stale/overflow requests, and physical memory.
 It also reports accepted and rejected casters, indirect draws, overflowed pages, and stale render completions. These
 values describe executed work rather than requested features.
+
+## Dynamic-lighting roadmap boundary
+
+M4 (#656 / #393) owns directional direct-light visibility, guarded page publication, and conventional fallback.
+It supplies the visibility semantics consumed by #905's later Surface Cache relighting (#930); it does not implement
+another Lighting Scene, GI material evaluator, or Water-specific lighting system. Local-light list construction
+belongs to #913, source-shape/soft-shadow extensions to #915, and GI/reflection integration for Water/Terrain/VG to
+#937. These remain separate work; the directional-light array and local-light selection policy are unchanged here.
