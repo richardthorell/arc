@@ -49,7 +49,9 @@ export const isContentBrowserAssetVisible = (asset: Pick<AssetItem, 'path'> & Pa
   if (asset.scope !== 'builtin') return true;
 
   const path = normalizeBuiltinAssetPath(asset.path);
-  return builtinContentIncludes.some((entry) => (entry.recursive ? path.startsWith(`${entry.path}/`) : path === entry.path));
+  return builtinContentIncludes.some((entry) =>
+    entry.recursive ? path.startsWith(`${entry.path}/`) : path === entry.path,
+  );
 };
 
 export const assetPresentationLabel = (asset: AssetPresentationSource) => {
