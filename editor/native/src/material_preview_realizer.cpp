@@ -527,6 +527,17 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
 
 material_preview_descriptor_result realize_material_preview_descriptor(std::string_view source, std::string_view name)
 {
+    return realize_material_preview_descriptor(source, name,
+                                               std::span<const render::tools::material_function_source>{},
+                                               std::span<const render::tools::material_function_slot_override>{});
+}
+
+material_preview_descriptor_result
+realize_material_preview_descriptor(
+    std::string_view source, std::string_view name,
+    std::span<const render::tools::material_function_source> functions,
+    std::span<const render::tools::material_function_slot_override> slot_overrides)
+{
     material_preview_descriptor_result result;
     auto authored = render::tools::parse_material_authoring_json(source);
     if (!authored)
@@ -546,7 +557,7 @@ material_preview_descriptor_result realize_material_preview_descriptor(std::stri
         return result;
     }
 
-    auto compiled = render::tools::compile_material_graph_json(authored.value().graph_json);
+    auto compiled = render::tools::compile_material_graph_json(authored.value().graph_json, functions, slot_overrides);
     if (!compiled)
     {
         result.message = compiled.error().message;
