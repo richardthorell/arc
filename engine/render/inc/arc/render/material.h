@@ -447,12 +447,21 @@ struct material_definition_descriptor
     std::vector<shader_parameter_descriptor> parameter_layout;
 };
 
-/** @brief Lightweight parameter-only material instance produced from `.arcmatinst`. */
+/**
+ * @brief Reusable Material Instance resolved from a cooked `.arcmatinst`.
+ *
+ * Parameter-only instances leave `specialized_runtime_program` empty and reuse
+ * the parent program. Function Slot specializations provide their cooked program
+ * and reflected layout here; the renderer still receives one normal material.
+ */
 struct material_instance_descriptor
 {
     material_handle parent{};
     std::string name;
     std::vector<material_parameter_override> overrides;
+    std::uint64_t function_specialization_key{};
+    std::shared_ptr<const material_runtime_program> specialized_runtime_program;
+    std::vector<shader_parameter_descriptor> specialized_parameter_layout;
 };
 
 /** @brief Material-instance resolution failure categories. */
