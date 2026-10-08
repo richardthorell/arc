@@ -696,6 +696,11 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
+.hierarchy-create-shape-icon {
+  width: 14px;
+  height: 14px;
+}
+
 .hierarchy-expand {
   display: inline-flex;
   align-items: center;
