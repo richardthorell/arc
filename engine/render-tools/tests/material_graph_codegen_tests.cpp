@@ -219,12 +219,12 @@ TEST_CASE("Material IR codegen reads authored intrinsics from ArcSurfaceInput")
     REQUIRE(generated);
 
     const auto& source = generated.value().source;
-    CHECK(source.find("surface.baseColor = input.positionWS;") != std::string::npos);
-    CHECK(source.find("surface.emissiveRadiance = input.normalWS;") != std::string::npos);
-    CHECK(source.find("surface.subsurfaceColor = input.vertexColor.rgb;") != std::string::npos);
-    CHECK(source.find("input.positionWS") != std::string::npos);
-    CHECK(source.find("input.normalWS") != std::string::npos);
-    CHECK(source.find("input.vertexColor.rgb") != std::string::npos);
+    CHECK(source.find("float3 arc_node_position_position = input.positionWS;") != std::string::npos);
+    CHECK(source.find("float3 arc_node_normal_normal = input.normalWS;") != std::string::npos);
+    CHECK(source.find("float3 arc_node_color_rgb = input.vertexColor.rgb;") != std::string::npos);
+    CHECK(source.find("surface.baseColor = arc_node_position_position;") != std::string::npos);
+    CHECK(source.find("surface.emissiveRadiance = arc_node_normal_normal;") != std::string::npos);
+    CHECK(source.find("surface.subsurfaceColor = arc_node_color_rgb;") != std::string::npos);
 }
 
 TEST_CASE("Material shader codegen rejects incompatible IR or ABI versions")
