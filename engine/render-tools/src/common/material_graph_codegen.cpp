@@ -435,9 +435,9 @@ private:
                     type = material_expression_type::vector3;
                     break;
                 case material_ir_node_kind::vertex_color:
-                    type = pin == "rgba" ? material_expression_type::vector4
+                    type = pin == "rgba"  ? material_expression_type::vector4
                            : pin == "rgb" ? material_expression_type::vector3
-                                         : material_expression_type::scalar;
+                                          : material_expression_type::scalar;
                     break;
                 case material_ir_node_kind::tex_coord:
                     type = material_expression_type::vector2;
@@ -663,13 +663,13 @@ private:
                 expression = "input.normalWS";
                 break;
             case material_ir_node_kind::vertex_color:
-                expression = pin == "rgba" ? "input.vertexColor"
-                           : pin == "rgb" ? "input.vertexColor.rgb"
-                           : pin == "r"   ? "input.vertexColor.r"
-                           : pin == "g"   ? "input.vertexColor.g"
-                           : pin == "b"   ? "input.vertexColor.b"
-                           : pin == "a"   ? "input.vertexColor.a"
-                                          : "input.vertexColor";
+                expression = pin == "rgba"  ? "input.vertexColor"
+                             : pin == "rgb" ? "input.vertexColor.rgb"
+                             : pin == "r"   ? "input.vertexColor.r"
+                             : pin == "g"   ? "input.vertexColor.g"
+                             : pin == "b"   ? "input.vertexColor.b"
+                             : pin == "a"   ? "input.vertexColor.a"
+                                            : "input.vertexColor";
                 break;
             case material_ir_node_kind::tex_coord:
                 expression = "input.uv0";
