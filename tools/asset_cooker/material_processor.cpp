@@ -124,7 +124,7 @@ std::vector<std::string> nested_function_paths(std::string_view source)
     {
         if (value.is_object())
         {
-            if (value.value("type", "") == "functionCall")
+            if (value.value("type", "") == "functionCall" || value.value("type", "") == "functionSlot")
             {
                 const auto values = value.value("values", json::object());
                 const auto path = values.value("path", "");
@@ -179,14 +179,16 @@ using function_source_result = core::result<std::vector<render::tools::material_
 function_source_result material_function_sources(const assets::asset_cook_context& context)
 {
     std::map<std::string, std::pair<std::filesystem::path, std::string>> pending;
+    std::map<std::string, std::string> identities;
     for (const auto& dependency : context.dependencies)
     {
         if (dependency.type != assets::asset_types::material_function) continue;
         auto source = read_text_file(dependency.source_path);
         if (!source) return function_source_result::failure(source.error());
         if (!render::tools::is_material_function_json(source.value())) continue;
-        pending.emplace(normalized_path(dependency.source_path),
-                        std::pair{dependency.source_path, std::move(source).value()});
+        const auto key = normalized_path(dependency.source_path);
+        pending.emplace(key, std::pair{dependency.source_path, std::move(source).value()});
+        identities.emplace(key, to_string(dependency.guid));
     }
 
     std::map<std::string, render::tools::material_function_source> functions;
@@ -197,7 +199,11 @@ function_source_result material_function_sources(const assets::asset_cook_contex
         auto source = std::move(entry.mapped().second);
         const auto key = normalized_path(path);
         if (functions.contains(key)) continue;
-        functions.emplace(key, render::tools::material_function_source{.path = key, .source = source});
+        const auto identity = identities.find(key);
+        functions.emplace(key, render::tools::material_function_source{
+                                   .path = key,
+                                   .identity = identity == identities.end() ? key : identity->second,
+                                   .source = source});
 
         for (const auto& nested : nested_function_paths(source))
         {
