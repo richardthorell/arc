@@ -132,3 +132,24 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+
+.inspector-material-scalar-control {
+  grid-column: 1 / 3;
+  display: grid;
+  grid-template-columns: var(--inspector-row-label) minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.inspector-material-scalar-control > .inspector-property {
+  grid-column: 1 / 3;
+}
+
+.inspector-material-scalar-control > .ui-slider {
+  grid-column: 2;
+  width: 100%;
+  min-width: 0;
+  margin: 0 0 4px;
+}
