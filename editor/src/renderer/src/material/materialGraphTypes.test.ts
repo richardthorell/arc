@@ -249,13 +249,23 @@ describe('material graph schema', () => {
       title: 'World Position',
       category: 'Utility',
       subcategory: 'Coordinates',
-      outputs: [{ id: 'position', label: 'Position', type: 'vec3' }],
+      outputs: [
+        { id: 'position', label: 'Position', type: 'vec3' },
+        { id: 'x', label: 'X', type: 'float' },
+        { id: 'y', label: 'Y', type: 'float' },
+        { id: 'z', label: 'Z', type: 'float' },
+      ],
     });
     expect(materialNodeDefinitions.worldNormal).toMatchObject({
       title: 'World Normal',
       category: 'Utility',
       subcategory: 'Coordinates',
-      outputs: [{ id: 'normal', label: 'Normal', type: 'vec3' }],
+      outputs: [
+        { id: 'normal', label: 'Normal', type: 'vec3' },
+        { id: 'x', label: 'X', type: 'float' },
+        { id: 'y', label: 'Y', type: 'float' },
+        { id: 'z', label: 'Z', type: 'float' },
+      ],
     });
     expect(materialNodeDefinitions.vertexColor.outputs.map((pin) => [pin.id, pin.type])).toEqual([
       ['rgb', 'vec3'],
@@ -269,6 +279,16 @@ describe('material graph schema', () => {
       title: 'Texture Coordinate',
       outputs: [{ id: 'uv', label: 'UV0', type: 'vec2' }],
       defaultValues: { channel: 0 },
+    });
+    expect(materialNodeDefinitions.dot).toMatchObject({
+      title: 'Dot Product',
+      category: 'Math',
+      subcategory: 'Measurement',
+      inputs: [
+        { id: 'a', label: 'A', type: 'numeric' },
+        { id: 'b', label: 'B', type: 'numeric' },
+      ],
+      outputs: [{ id: 'result', label: 'Result', type: 'float' }],
     });
   });
 
