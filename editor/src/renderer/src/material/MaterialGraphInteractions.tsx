@@ -4,7 +4,14 @@ import type { EditorDocument } from '../editors/editorTypes';
 import { graphConnectionPath, graphPinKey, type GraphDiagnostic, type GraphPoint } from '../graph';
 import { materialGraphDomain } from './materialGraphDomain';
 import { MaterialGraphEditor } from './MaterialGraphEditor';
-import type { MaterialGraph, MaterialGraphNode, MaterialGraphPinType, MaterialNodePin } from './materialGraphTypes';
+import {
+  inferMaterialScalarRange,
+  materialScalarRangeFits,
+  type MaterialGraph,
+  type MaterialGraphNode,
+  type MaterialGraphPinType,
+  type MaterialNodePin,
+} from './materialGraphTypes';
 import './materialGraphInteractions.css';
 
 type MaterialPinMetadata = {
@@ -87,7 +94,10 @@ const materialPinTooltip = (metadata: Omit<MaterialPinMetadata, 'key' | 'tooltip
   const direction = metadata.direction === 'input' ? 'Input' : 'Output';
   const type = materialPinTypeLabel(metadata.pin.type);
   const description = materialPinDescriptions[`${metadata.node.type}:${metadata.pin.id}`];
-  return `${direction} · ${type} • ${metadata.pin.label}${description ? ` — ${description}` : ''}`;
+  const expected = metadata.pin.semanticRange
+    ? ` · expected ${metadata.pin.semanticRange.min}..${metadata.pin.semanticRange.max}`
+    : '';
+  return `${direction} · ${type} • ${metadata.pin.label}${expected}${description ? ` — ${description}` : ''}`;
 };
 
 const localPointerPosition = (host: HTMLElement, clientX: number, clientY: number): GraphPoint => {
@@ -175,6 +185,7 @@ export function MaterialGraphWithInteractions({
   const [wires, setWires] = useState<MaterialWireOverlay[]>([]);
   const [hoveredWire, setHoveredWire] = useState<HoveredTooltip | null>(null);
   const [hoveredPin, setHoveredPin] = useState<HoveredTooltip | null>(null);
+  const [connectionSource, setConnectionSource] = useState<MaterialPinMetadata | null>(null);
 
   const editor = useMemo(
     () => (
@@ -305,10 +316,20 @@ export function MaterialGraphWithInteractions({
       const element = elements.get(metadata.key);
       if (!element) continue;
       const show = (event: PointerEvent) => {
+        let text = metadata.tooltip;
+        if (connectionSource && metadata.direction === 'input' && metadata.pin.semanticRange) {
+          const sourceRange = inferMaterialScalarRange(graph, connectionSource.node.id);
+          if (sourceRange) {
+            const expected = metadata.pin.semanticRange;
+            text += materialScalarRangeFits(sourceRange, expected)
+              ? ` · source ${sourceRange.min}..${sourceRange.max} fits`
+              : ` · source ${sourceRange.min}..${sourceRange.max} may exceed expected range`;
+          }
+        }
         setHoveredPin({
           id: metadata.key,
           position: localPointerPosition(host, event.clientX, event.clientY),
-          text: metadata.tooltip,
+          text,
         });
       };
       const hide = () => setHoveredPin((current) => (current?.id === metadata.key ? null : current));
@@ -322,7 +343,7 @@ export function MaterialGraphWithInteractions({
       });
     }
     return () => cleanups.forEach((cleanup) => cleanup());
-  }, [pinMetadata]);
+  }, [connectionSource, graph, pinMetadata]);
 
   const hoveredWireId = hoveredWire?.id;
   const flowWireIds = useMemo(
@@ -377,7 +398,12 @@ export function MaterialGraphWithInteractions({
 
     const clearConnectionTargets = () => {
       for (const element of host.querySelectorAll<HTMLElement>('.material-pin')) {
-        element.classList.remove('is-connection-source', 'is-compatible-target', 'is-incompatible-target');
+        element.classList.remove(
+          'is-connection-source',
+          'is-compatible-target',
+          'is-incompatible-target',
+          'is-semantic-warning-target',
+        );
       }
     };
 
@@ -392,10 +418,12 @@ export function MaterialGraphWithInteractions({
         if (!source) return;
         if (source.direction === 'input') {
           clearConnectionTargets();
+          setConnectionSource(null);
           return;
         }
 
         clearConnectionTargets();
+        setConnectionSource(source);
         pinElement.classList.add('is-connection-source');
         const elements = graphPinElementMap(host);
         for (const metadata of pinMetadata) {
@@ -407,12 +435,20 @@ export function MaterialGraphWithInteractions({
             { node: metadata.node, pin: metadata.pin, direction: 'input' },
           ).allowed;
           targetElement.classList.add(allowed ? 'is-compatible-target' : 'is-incompatible-target');
+          if (allowed && metadata.pin.semanticRange) {
+            const sourceRange = inferMaterialScalarRange(graph, source.node.id);
+            if (sourceRange && !materialScalarRangeFits(sourceRange, metadata.pin.semanticRange))
+              targetElement.classList.add('is-semantic-warning-target');
+          }
         }
         return;
       }
 
       const canvas = host.querySelector<HTMLElement>('.material-graph-canvas');
-      if (target === canvas) clearConnectionTargets();
+      if (target === canvas) {
+        clearConnectionTargets();
+        setConnectionSource(null);
+      }
     };
 
     host.addEventListener('pointerdown', handlePointerDown, true);
@@ -420,7 +456,7 @@ export function MaterialGraphWithInteractions({
       host.removeEventListener('pointerdown', handlePointerDown, true);
       clearConnectionTargets();
     };
-  }, [document.readOnly, pinMetadata, pinMetadataByKey]);
+  }, [document.readOnly, graph, pinMetadata, pinMetadataByKey]);
 
   const tooltip = hoveredWire ?? hoveredPin;
 
