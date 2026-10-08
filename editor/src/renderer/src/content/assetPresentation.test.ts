@@ -59,13 +59,13 @@ describe('Engine Content Browser manifest', () => {
         scope: 'builtin',
         path: 'builtin/textures/editor/default_checker_floor.png',
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isContentBrowserAssetVisible({
         scope: 'builtin',
         path: 'Engine/environments/material_preview_studio_4k.exr',
       }),
-    ).toBe(true);
+    ).toBe(false);
 
     expect(
       isContentBrowserAssetVisible({
