@@ -331,6 +331,142 @@ TEST_CASE("Material Output warns for directly incompatible Scalar domains withou
     }
 }
 
+TEST_CASE("Material Output range diagnostics infer safe scalar math domains")
+{
+    SECTION("Saturate constrains any scalar input to 0..1")
+    {
+        constexpr std::string_view graph = R"({
+          "version":1,
+          "nodes":[
+            {"id":"out","type":"output","values":{}},
+            {"id":"wide","type":"constant","values":{"value":1.0,"min":-5.0,"max":5.0}},
+            {"id":"safe","type":"saturate","values":{}}
+          ],
+          "connections":[
+            {"id":"1","from":{"nodeId":"wide","pin":"value"},"to":{"nodeId":"safe","pin":"value"}},
+            {"id":"2","from":{"nodeId":"safe","pin":"result"},"to":{"nodeId":"out","pin":"roughness"}}
+          ]
+        })";
+
+        const auto result = arc::render::tools::compile_material_graph_json(graph);
+        REQUIRE(result);
+        CHECK(result.value().diagnostics.empty());
+    }
+
+    SECTION("Clamp authored bounds define its output domain")
+    {
+        constexpr std::string_view graph = R"({
+          "version":1,
+          "nodes":[
+            {"id":"out","type":"output","values":{}},
+            {"id":"wide","type":"constant","values":{"value":1.0,"min":-5.0,"max":5.0}},
+            {"id":"safe","type":"clamp","values":{"min":0.1,"max":0.9}}
+          ],
+          "connections":[
+            {"id":"1","from":{"nodeId":"wide","pin":"value"},"to":{"nodeId":"safe","pin":"value"}},
+            {"id":"2","from":{"nodeId":"safe","pin":"result"},"to":{"nodeId":"out","pin":"roughness"}}
+          ]
+        })";
+
+        const auto result = arc::render::tools::compile_material_graph_json(graph);
+        REQUIRE(result);
+        CHECK(result.value().diagnostics.empty());
+    }
+
+    SECTION("One Minus transforms a known range")
+    {
+        constexpr std::string_view graph = R"({
+          "version":1,
+          "nodes":[
+            {"id":"out","type":"output","values":{}},
+            {"id":"source","type":"constant","values":{"value":0.4,"min":0.2,"max":0.8}},
+            {"id":"invert","type":"oneMinus","values":{}}
+          ],
+          "connections":[
+            {"id":"1","from":{"nodeId":"source","pin":"value"},"to":{"nodeId":"invert","pin":"value"}},
+            {"id":"2","from":{"nodeId":"invert","pin":"result"},"to":{"nodeId":"out","pin":"roughness"}}
+          ]
+        })";
+
+        const auto result = arc::render::tools::compile_material_graph_json(graph);
+        REQUIRE(result);
+        CHECK(result.value().diagnostics.empty());
+    }
+
+    SECTION("Add warns when known ranges can leave the semantic domain")
+    {
+        constexpr std::string_view graph = R"({
+          "version":1,
+          "nodes":[
+            {"id":"out","type":"output","values":{}},
+            {"id":"a","type":"constant","values":{"value":0.4,"min":0.0,"max":0.8}},
+            {"id":"b","type":"constant","values":{"value":0.2,"min":0.0,"max":0.5}},
+            {"id":"sum","type":"add","values":{}}
+          ],
+          "connections":[
+            {"id":"1","from":{"nodeId":"a","pin":"value"},"to":{"nodeId":"sum","pin":"a"}},
+            {"id":"2","from":{"nodeId":"b","pin":"value"},"to":{"nodeId":"sum","pin":"b"}},
+            {"id":"3","from":{"nodeId":"sum","pin":"result"},"to":{"nodeId":"out","pin":"roughness"}}
+          ]
+        })";
+
+        const auto result = arc::render::tools::compile_material_graph_json(graph);
+        REQUIRE(result);
+        REQUIRE(result.value().diagnostics.size() == 1);
+        CHECK(result.value().diagnostics.front().code == "material.output-range");
+        CHECK(result.value().diagnostics.front().location.graph_node_id == "sum");
+    }
+
+    SECTION("Multiply accounts for negative extrema")
+    {
+        constexpr std::string_view graph = R"({
+          "version":1,
+          "nodes":[
+            {"id":"out","type":"output","values":{}},
+            {"id":"a","type":"constant","values":{"value":0.0,"min":-1.0,"max":1.0}},
+            {"id":"b","type":"constant","values":{"value":0.5,"min":0.25,"max":0.5}},
+            {"id":"product","type":"multiply","values":{}}
+          ],
+          "connections":[
+            {"id":"1","from":{"nodeId":"a","pin":"value"},"to":{"nodeId":"product","pin":"a"}},
+            {"id":"2","from":{"nodeId":"b","pin":"value"},"to":{"nodeId":"product","pin":"b"}},
+            {"id":"3","from":{"nodeId":"product","pin":"result"},"to":{"nodeId":"out","pin":"metallic"}}
+          ]
+        })";
+
+        const auto result = arc::render::tools::compile_material_graph_json(graph);
+        REQUIRE(result);
+        REQUIRE(result.value().diagnostics.size() == 1);
+        CHECK(result.value().diagnostics.front().location.graph_node_id == "product");
+    }
+
+    SECTION("Min and Max preserve finite known domains")
+    {
+        constexpr std::string_view graph = R"({
+          "version":1,
+          "nodes":[
+            {"id":"out","type":"output","values":{}},
+            {"id":"a","type":"constant","values":{"value":0.2,"min":0.1,"max":0.4}},
+            {"id":"b","type":"constant","values":{"value":0.7,"min":0.6,"max":0.9}},
+            {"id":"lower","type":"min","values":{}},
+            {"id":"upper","type":"max","values":{}}
+          ],
+          "connections":[
+            {"id":"1","from":{"nodeId":"a","pin":"value"},"to":{"nodeId":"lower","pin":"a"}},
+            {"id":"2","from":{"nodeId":"b","pin":"value"},"to":{"nodeId":"lower","pin":"b"}},
+            {"id":"3","from":{"nodeId":"a","pin":"value"},"to":{"nodeId":"upper","pin":"a"}},
+            {"id":"4","from":{"nodeId":"b","pin":"value"},"to":{"nodeId":"upper","pin":"b"}},
+            {"id":"5","from":{"nodeId":"lower","pin":"result"},"to":{"nodeId":"out","pin":"metallic"}},
+            {"id":"6","from":{"nodeId":"upper","pin":"result"},"to":{"nodeId":"out","pin":"roughness"}}
+          ]
+        })";
+
+        const auto result = arc::render::tools::compile_material_graph_json(graph);
+        REQUIRE(result);
+        CHECK(result.value().diagnostics.empty());
+    }
+}
+
 TEST_CASE("material graph texture semantics propagate to descriptor bindings")
 {
     constexpr std::string_view graph = R"({

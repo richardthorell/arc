@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cmath>
 #include <initializer_list>
 #include <map>
 #include <optional>
@@ -319,6 +320,90 @@ std::set<std::string> reachable_nodes(const std::string& output_node, const inpu
     return reachable;
 }
 
+struct scalar_range
+{
+    float minimum{};
+    float maximum{};
+};
+
+using node_lookup = std::map<std::string, const material_ir_node*>;
+
+std::optional<scalar_range> infer_scalar_range(const std::string& node_id, const node_lookup& nodes,
+                                               const input_map& inputs, std::set<std::string>& visiting)
+{
+    if (!visiting.insert(node_id).second) return std::nullopt;
+    const auto finish = [&](std::optional<scalar_range> result)
+    {
+        visiting.erase(node_id);
+        if (result &&
+            (!std::isfinite(result->minimum) || !std::isfinite(result->maximum) || result->minimum > result->maximum))
+            return std::optional<scalar_range>{};
+        return result;
+    };
+
+    const auto found = nodes.find(node_id);
+    if (found == nodes.end()) return finish(std::nullopt);
+    const auto& node = *found->second;
+
+    const auto input_range = [&](std::string_view pin) -> std::optional<scalar_range>
+    {
+        const auto input = inputs.find({node.id, std::string(pin)});
+        if (input == inputs.end()) return std::nullopt;
+        return infer_scalar_range(input->second.source_node, nodes, inputs, visiting);
+    };
+
+    if (node.kind == material_ir_node_kind::constant)
+    {
+        if (node.has_range) return finish(scalar_range{node.minimum, node.maximum});
+        return finish(scalar_range{node.literal.values[0], node.literal.values[0]});
+    }
+
+    if (node.kind == material_ir_node_kind::saturate) return finish(scalar_range{0.0f, 1.0f});
+
+    if (node.kind == material_ir_node_kind::clamp && !inputs.contains({node.id, "min"}) &&
+        !inputs.contains({node.id, "max"}))
+        return finish(scalar_range{node.minimum, node.maximum});
+
+    if (node.kind == material_ir_node_kind::math && node.math_operation == material_math_operation::one_minus)
+    {
+        const auto value = input_range("value");
+        if (!value) return finish(std::nullopt);
+        return finish(scalar_range{1.0f - value->maximum, 1.0f - value->minimum});
+    }
+
+    if (node.kind == material_ir_node_kind::add || node.kind == material_ir_node_kind::multiply ||
+        (node.kind == material_ir_node_kind::math && (node.math_operation == material_math_operation::minimum ||
+                                                      node.math_operation == material_math_operation::maximum)))
+    {
+        const auto a = input_range("a");
+        const auto b = input_range("b");
+        if (!a || !b) return finish(std::nullopt);
+
+        if (node.kind == material_ir_node_kind::add)
+            return finish(scalar_range{a->minimum + b->minimum, a->maximum + b->maximum});
+
+        if (node.kind == material_ir_node_kind::multiply)
+        {
+            const std::array products{a->minimum * b->minimum, a->minimum * b->maximum, a->maximum * b->minimum,
+                                      a->maximum * b->maximum};
+            return finish(scalar_range{*std::ranges::min_element(products), *std::ranges::max_element(products)});
+        }
+
+        if (node.math_operation == material_math_operation::minimum)
+            return finish(scalar_range{std::min(a->minimum, b->minimum), std::min(a->maximum, b->maximum)});
+        return finish(scalar_range{std::max(a->minimum, b->minimum), std::max(a->maximum, b->maximum)});
+    }
+
+    return finish(std::nullopt);
+}
+
+std::optional<scalar_range> infer_scalar_range(const std::string& node_id, const node_lookup& nodes,
+                                               const input_map& inputs)
+{
+    std::set<std::string> visiting;
+    return infer_scalar_range(node_id, nodes, inputs, visiting);
+}
+
 struct surface_output_definition
 {
     material_surface_output semantic;
@@ -623,6 +708,10 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
     std::ranges::sort(compilation.descriptor.parameters, {},
                       [](const shader_parameter_descriptor& parameter) { return parameter.id.representation(); });
 
+    node_lookup compiled_nodes;
+    for (const auto& node : compilation.ir.nodes)
+        compiled_nodes.emplace(node.id, &node);
+
     compilation.descriptor.outputs.reserve(surface_outputs.size());
     for (const auto& output : surface_outputs)
     {
@@ -638,25 +727,17 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
 
             if (output.has_expected_range)
             {
-                const auto source = normalized_nodes.find(binding.source_node);
-                if (source != normalized_nodes.end() && source->second.kind == material_ir_node_kind::constant)
-                {
-                    const auto& scalar = source->second;
-                    const bool authored_range_mismatch =
-                        scalar.has_range && (scalar.minimum < output.minimum || scalar.maximum > output.maximum);
-                    const bool literal_mismatch = !scalar.has_range && (scalar.literal.values[0] < output.minimum ||
-                                                                        scalar.literal.values[0] > output.maximum);
-                    if (authored_range_mismatch || literal_mismatch)
-                    {
-                        compilation.diagnostics.push_back(
-                            {.severity = shader_diagnostic_severity::warning,
-                             .code = "material.output-range",
-                             .message = "Scalar '" + binding.source_node + "' does not match the expected " +
-                                        std::to_string(output.minimum) + ".." + std::to_string(output.maximum) +
-                                        " range for Material Output '" + std::string(output.pin) + "'",
-                             .location = {.graph_node_id = binding.source_node}});
-                    }
-                }
+                const auto inferred = infer_scalar_range(binding.source_node, compiled_nodes, inputs);
+                if (inferred && (inferred->minimum < output.minimum || inferred->maximum > output.maximum))
+                    compilation.diagnostics.push_back(
+                        {.severity = shader_diagnostic_severity::warning,
+                         .code = "material.output-range",
+                         .message = "Value from node '" + binding.source_node + "' can produce " +
+                                    std::to_string(inferred->minimum) + ".." + std::to_string(inferred->maximum) +
+                                    ", outside the expected " + std::to_string(output.minimum) + ".." +
+                                    std::to_string(output.maximum) + " range for Material Output '" +
+                                    std::string(output.pin) + "'",
+                         .location = {.graph_node_id = binding.source_node}});
             }
         }
         compilation.descriptor.outputs.push_back(std::move(binding));
