@@ -447,6 +447,11 @@ public:
         auto authored = render::tools::parse_material_authoring_json(parent_source.value());
         if (!authored) return failure(context, "Material Instance parent is invalid: " + authored.error().message);
 
+        // Value/resource-only instances must reuse the exact cooked parent program.
+        // They never participate in shader specialization or compilation.
+        if (instance.value().function_overrides.empty())
+            return cook_parent_reuse(context, *parent, instance.value());
+
         std::vector<render::tools::material_function_slot_override> slot_overrides;
         slot_overrides.reserve(instance.value().function_overrides.size());
         for (const auto& override_value : instance.value().function_overrides)
@@ -454,11 +459,7 @@ public:
                 {.slot_id = override_value.slot_id, .function_path = override_value.function.path_hint});
 
         if (authored.value().graph_json.empty())
-        {
-            if (!slot_overrides.empty())
-                return failure(context, "Handwritten Material parents cannot expose Material Function Slots");
-            return cook_parent_reuse(context, *parent, instance.value());
-        }
+            return failure(context, "Handwritten Material parents cannot expose Material Function Slots");
 
         assets::asset_cook_context graph_context = context;
         graph_context.source.source_path = parent->source_path;
