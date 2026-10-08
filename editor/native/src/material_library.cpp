@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <fstream>
 #include <optional>
+#include <set>
 #include <sstream>
 
 #include <nlohmann/json.hpp>
@@ -61,6 +62,77 @@ std::filesystem::path resolve_instance_reference_path(const std::filesystem::pat
         if (parent == current) break;
     }
     return (asset_root / hinted).lexically_normal();
+}
+
+bool collect_material_function_paths(std::string_view graph_json, std::vector<std::string>& paths)
+{
+    const auto graph = nlohmann::json::parse(graph_json, nullptr, false);
+    if (graph.is_discarded() || !graph.is_object() || !graph.contains("nodes") || !graph["nodes"].is_array())
+        return false;
+    for (const auto& node : graph["nodes"])
+    {
+        if (!node.is_object()) continue;
+        const auto type = node.value("type", std::string{});
+        if (type != "functionCall" && type != "functionSlot") continue;
+        const auto values = node.value("values", nlohmann::json::object());
+        const auto path = values.value("path", std::string{});
+        if (!path.empty()) paths.push_back(path);
+    }
+    return true;
+}
+
+bool load_instance_function_sources(
+    const std::filesystem::path& parent_path, const std::filesystem::path& asset_root,
+    const render::tools::material_authoring_document& parent,
+    const render::tools::material_instance_authoring_document& instance,
+    std::vector<render::tools::material_function_source>& functions, std::string& message)
+{
+    std::vector<std::string> pending;
+    if (!collect_material_function_paths(parent.graph_json, pending))
+    {
+        message = "Parent Material graph is malformed while resolving Material Functions";
+        return false;
+    }
+    for (const auto& override_value : instance.function_overrides)
+        pending.push_back(override_value.function.path_hint);
+
+    std::set<std::string> visited;
+    for (std::size_t index = 0; index < pending.size(); ++index)
+    {
+        const auto authored_path = pending[index];
+        const auto source_path = resolve_instance_reference_path(parent_path, asset_root, authored_path);
+        auto key = canonical_key(source_path).generic_string();
+        std::transform(key.begin(), key.end(), key.begin(),
+                       [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+        if (!visited.insert(key).second) continue;
+
+        const auto source = read_material_text(source_path);
+        if (source.empty() || !render::tools::is_material_function_json(source))
+        {
+            message = "Material Function could not be loaded: " + source_path.generic_string();
+            return false;
+        }
+
+        std::string identity = key;
+        for (const auto& override_value : instance.function_overrides)
+        {
+            const auto selected = resolve_instance_reference_path(parent_path, asset_root, override_value.function.path_hint);
+            if (canonical_key(selected) == canonical_key(source_path))
+            {
+                identity = override_value.function.guid;
+                break;
+            }
+        }
+
+        functions.push_back(
+            {.path = source_path.generic_string(), .identity = std::move(identity), .source = source});
+
+        const auto document = nlohmann::json::parse(source, nullptr, false);
+        if (document.is_discarded() || !document.is_object()) continue;
+        if (document.contains("graph"))
+            collect_material_function_paths(document["graph"].dump(), pending);
+    }
+    return true;
 }
 
 std::optional<render::material_parameter_value>
@@ -457,44 +529,109 @@ render::material_handle load_material_for_editor(editor_material_library& librar
                                         authored.error().message);
             return {};
         }
-        if (!authored.value().function_overrides.empty())
-        {
-            arc::diagnostics::error(
-                "editor.materials",
-                "Material Instance '" + path.string() +
-                    "' uses Function Slot specialization; editor runtime specialization is not available yet");
-            return {};
-        }
 
         const auto parent_path =
             resolve_instance_reference_path(path, asset_root, authored.value().parent.path_hint);
+        const auto parent_source = read_material_text(parent_path);
+        auto parent_authored = render::tools::parse_material_authoring_json(parent_source);
+        if (!parent_authored)
+        {
+            arc::diagnostics::error("editor.materials",
+                                    "Material Instance parent is invalid: " + parent_path.string());
+            return {};
+        }
+
         material_asset parent_asset;
         const auto parent = load_material_for_editor(library, renderer, asset_root, parent_path, &parent_asset);
-        if (!parent.valid() || !parent_asset.material.runtime_program)
+        if (!parent.valid())
         {
             arc::diagnostics::error("editor.materials",
                                     "Material Instance parent could not be realized: " + parent_path.string());
             return {};
         }
 
+        std::vector<render::tools::material_function_source> functions;
+        std::vector<render::tools::material_function_slot_override> slot_overrides;
+        slot_overrides.reserve(authored.value().function_overrides.size());
+        for (const auto& override_value : authored.value().function_overrides)
+            slot_overrides.push_back(
+                {.slot_id = override_value.slot_id, .function_path = override_value.function.path_hint});
+
+        material_preview_descriptor_result realized;
+        if (parent_authored.value().graph_json.empty())
+        {
+            if (!slot_overrides.empty())
+            {
+                arc::diagnostics::error("editor.materials",
+                                        "Handwritten Material parents cannot expose Material Function Slots");
+                return {};
+            }
+            realized.material = parent_asset.material;
+            realized.succeeded = true;
+        }
+        else
+        {
+            std::string function_message;
+            if (!load_instance_function_sources(parent_path, asset_root, parent_authored.value(), authored.value(),
+                                                functions, function_message))
+            {
+                arc::diagnostics::error("editor.materials", function_message);
+                return {};
+            }
+            realized = realize_material_preview_descriptor(parent_source, authored.value().name, functions,
+                                                           slot_overrides);
+            if (!realized.succeeded)
+            {
+                arc::diagnostics::error("editor.materials",
+                                        "Material Instance specialization failed: " + realized.message);
+                return {};
+            }
+            resolve_material_runtime_textures(library, renderer, asset_root, parent_path, realized.texture_sources,
+                                              realized.material);
+        }
+
+        if (!realized.material.runtime_program)
+        {
+            arc::diagnostics::error("editor.materials",
+                                    "Material Instance requires a compiled runtime parameter layout");
+            return {};
+        }
+
         render::material_instance_descriptor instance;
         instance.parent = parent;
         instance.name = authored.value().name;
+        const auto& layout = realized.material.runtime_program->parameters;
         for (const auto& override_value : authored.value().parameter_overrides)
         {
             const auto parameter =
-                std::ranges::find(parent_asset.material.runtime_program->parameters, override_value.parameter_id,
-                                  &render::shader_parameter_descriptor::id);
-            if (parameter == parent_asset.material.runtime_program->parameters.end()) continue;
+                std::ranges::find(layout, override_value.parameter_id, &render::shader_parameter_descriptor::id);
+            if (parameter == layout.end()) continue;
             auto value = instance_parameter_value(library, renderer, asset_root, *parameter, override_value.value_json);
             if (!value) continue;
             instance.overrides.push_back(
                 {.id = override_value.parameter_id, .name = parameter->name, .value = std::move(*value)});
         }
+        for (const auto& function_override : authored.value().function_overrides)
+        {
+            for (const auto& input_override : function_override.input_overrides)
+            {
+                const auto stable_name = "slot::" + function_override.slot_id + "::" +
+                                         function_override.function.guid + "::" + input_override.pin_id;
+                const auto parameter_id = render::make_shader_parameter_id(stable_name);
+                const auto parameter =
+                    std::ranges::find(layout, parameter_id, &render::shader_parameter_descriptor::id);
+                if (parameter == layout.end()) continue;
+                auto value =
+                    instance_parameter_value(library, renderer, asset_root, *parameter, input_override.value_json);
+                if (!value) continue;
+                instance.overrides.push_back(
+                    {.id = parameter_id, .name = parameter->name, .value = std::move(*value)});
+            }
+        }
 
         render::material_definition_descriptor definition;
-        definition.material = parent_asset.material;
-        definition.parameter_layout = parent_asset.material.runtime_program->parameters;
+        definition.material = realized.material;
+        definition.parameter_layout = layout;
         auto resolved = render::resolve_material_instance(definition, instance);
         if (!resolved)
         {
