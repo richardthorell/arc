@@ -2080,6 +2080,7 @@ export function ExplorerPanel({
   const actorCount = allEntities.length;
   const selectedCount = selectedEntityIds.size;
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [createMenuSearch, setCreateMenuSearch] = useState('');
   const createMenuRef = useRef<HTMLDivElement | null>(null);
   const [kindFilter, setKindFilter] = useState<'all' | SceneEntity['kind']>('all');
   const [onlyVisible, setOnlyVisible] = useState(false);
@@ -2100,23 +2101,31 @@ export function ExplorerPanel({
 
   useEffect(() => {
     if (!createMenuOpen) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setCreateMenuOpen(false);
-    };
     const closeOnPointerDown = (event: PointerEvent) => {
-      if (!createMenuRef.current?.contains(event.target as Node)) setCreateMenuOpen(false);
+      if (!createMenuRef.current?.contains(event.target as Node)) {
+        setCreateMenuOpen(false);
+        setCreateMenuSearch('');
+      }
     };
-    document.addEventListener('keydown', closeOnEscape);
     document.addEventListener('pointerdown', closeOnPointerDown);
     return () => {
-      document.removeEventListener('keydown', closeOnEscape);
       document.removeEventListener('pointerdown', closeOnPointerDown);
     };
   }, [createMenuOpen]);
 
   useEffect(() => {
-    if (readOnly) setCreateMenuOpen(false);
+    if (readOnly) {
+      setCreateMenuOpen(false);
+      setCreateMenuSearch('');
+    }
   }, [readOnly]);
+
+  const createMenuQuery = createMenuSearch.trim().toLocaleLowerCase();
+  const matchesCreateMenu = (label: string) => !createMenuQuery || label.toLocaleLowerCase().includes(createMenuQuery);
+  const basicShapeKinds = (['cube', 'sphere', 'cylinder', 'cone', 'capsule', 'plane'] as const).filter((kind) =>
+    matchesCreateMenu(kind === 'cube' ? 'Box' : kind),
+  );
+  const waterKinds = (['ocean', 'lake', 'river'] as const).filter((kind) => matchesCreateMenu(kind));
 
   return (
     <div className="explorer-view">
@@ -2127,60 +2136,100 @@ export function ExplorerPanel({
               active={createMenuOpen}
               disabled={readOnly}
               label={createMenuOpen ? 'Close add entity menu' : 'Add entity'}
-              onClick={() => setCreateMenuOpen((open) => !open)}
+              onClick={() =>
+                setCreateMenuOpen((open) => {
+                  if (open) setCreateMenuSearch('');
+                  return !open;
+                })
+              }
             >
               <Plus size={13} />
             </UiIconButton>
             {createMenuOpen && (
-              <UiContextMenu className="hierarchy-create-dropdown" aria-label="Add entity" width={220}>
-                <UiContextMenuItem
-                  leading={<Plus size={14} />}
-                  onClick={() => {
-                    onCreateEntity('empty');
-                    setCreateMenuOpen(false);
-                  }}
-                >
-                  Empty Entity
-                </UiContextMenuItem>
-                <div className="hierarchy-create-menu-separator" role="separator" />
-                <div className="hierarchy-create-menu-heading">Basic Shapes</div>
-                {(['cube', 'sphere', 'cylinder', 'cone', 'capsule', 'plane'] as const).map((kind) => (
+              <UiContextMenu
+                className="hierarchy-create-dropdown"
+                aria-label="Add entity"
+                width={220}
+                searchValue={createMenuSearch}
+                onSearchValueChange={setCreateMenuSearch}
+                searchAriaLabel="Search entities"
+                searchPlaceholder="Search entities..."
+                onRequestClose={() => {
+                  setCreateMenuOpen(false);
+                  setCreateMenuSearch('');
+                }}
+              >
+                {matchesCreateMenu('Empty Entity') && (
+                  <UiContextMenuItem
+                    leading={<Plus size={14} />}
+                    onClick={() => {
+                      onCreateEntity('empty');
+                      setCreateMenuOpen(false);
+                      setCreateMenuSearch('');
+                    }}
+                  >
+                    Empty Entity
+                  </UiContextMenuItem>
+                )}
+                {basicShapeKinds.length > 0 && (
+                  <>
+                    <div className="hierarchy-create-menu-separator" role="separator" />
+                    <div className="hierarchy-create-menu-heading">Basic Shapes</div>
+                  </>
+                )}
+                {basicShapeKinds.map((kind) => (
                   <UiContextMenuItem
                     key={kind}
                     leading={<BasicShapeMenuIcon kind={kind} />}
                     onClick={() => {
                       onCreateEntity(kind);
                       setCreateMenuOpen(false);
+                      setCreateMenuSearch('');
                     }}
                   >
                     {kind === 'cube' ? 'Box' : kind[0].toUpperCase() + kind.slice(1)}
                   </UiContextMenuItem>
                 ))}
-                <div className="hierarchy-create-menu-separator" role="separator" />
-                <div className="hierarchy-create-menu-heading">Landscape</div>
-                <UiContextMenuItem
-                  leading={<Mountain size={14} />}
-                  onClick={() => {
-                    onCreateEntity('terrain');
-                    setCreateMenuOpen(false);
-                  }}
-                >
-                  Terrain...
-                </UiContextMenuItem>
-                <div className="hierarchy-create-menu-separator" role="separator" />
-                <div className="hierarchy-create-menu-heading">Water</div>
-                {(['ocean', 'lake', 'river'] as const).map((kind) => (
+                {matchesCreateMenu('Terrain') && (
+                  <>
+                    <div className="hierarchy-create-menu-separator" role="separator" />
+                    <div className="hierarchy-create-menu-heading">Landscape</div>
+                    <UiContextMenuItem
+                      leading={<Mountain size={14} />}
+                      onClick={() => {
+                        onCreateEntity('terrain');
+                        setCreateMenuOpen(false);
+                        setCreateMenuSearch('');
+                      }}
+                    >
+                      Terrain...
+                    </UiContextMenuItem>
+                  </>
+                )}
+                {waterKinds.length > 0 && (
+                  <>
+                    <div className="hierarchy-create-menu-separator" role="separator" />
+                    <div className="hierarchy-create-menu-heading">Water</div>
+                  </>
+                )}
+                {waterKinds.map((kind) => (
                   <UiContextMenuItem
                     key={kind}
                     leading={<Waves size={14} />}
                     onClick={() => {
                       onCreateEntity(kind);
                       setCreateMenuOpen(false);
+                      setCreateMenuSearch('');
                     }}
                   >
                     {kind[0].toUpperCase() + kind.slice(1)}
                   </UiContextMenuItem>
                 ))}
+                {createMenuQuery &&
+                  !matchesCreateMenu('Empty Entity') &&
+                  basicShapeKinds.length === 0 &&
+                  !matchesCreateMenu('Terrain') &&
+                  waterKinds.length === 0 && <div className="hierarchy-create-menu-empty">No entities found</div>}
               </UiContextMenu>
             )}
           </div>
