@@ -1,0 +1,72 @@
+.graph-diagnostic-badge {
+  position: absolute;
+  z-index: 8;
+  top: 5px;
+  right: 6px;
+}
+
+.graph-diagnostic-badge > button {
+  display: inline-flex;
+  min-width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 5px;
+  color: #cbd7dc;
+  border: 1px solid rgba(132, 151, 159, 0.42);
+  border-radius: 10px;
+  background: rgba(18, 27, 32, 0.94);
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+}
+
+.graph-diagnostic-badge.is-warning > button {
+  color: #e2bd6a;
+  border-color: rgba(226, 189, 106, 0.52);
+}
+
+.graph-diagnostic-badge.is-error > button {
+  color: #df747c;
+  border-color: rgba(223, 116, 124, 0.56);
+}
+
+.graph-diagnostic-badge > button:hover,
+.graph-diagnostic-badge > button:focus-visible {
+  background: rgba(29, 40, 46, 0.98);
+  outline: none;
+}
+
+.graph-diagnostic-details {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 5px);
+  right: 0;
+  display: none;
+  width: max-content;
+  max-width: 320px;
+  padding: 7px 9px;
+  color: #dce5e9;
+  border: 1px solid rgba(130, 151, 160, 0.34);
+  border-radius: 5px;
+  background: rgba(10, 17, 21, 0.98);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+  font-size: 10px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.graph-diagnostic-details strong,
+.graph-diagnostic-details span {
+  display: block;
+}
+
+.graph-diagnostic-details span + span {
+  margin-top: 4px;
+}
+
+.graph-diagnostic-badge:hover > .graph-diagnostic-details,
+.graph-diagnostic-badge:focus-within > .graph-diagnostic-details {
+  display: block;
+}
