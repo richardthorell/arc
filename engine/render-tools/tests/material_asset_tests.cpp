@@ -156,6 +156,71 @@ TEST_CASE("material authoring validates compiled implementation field types")
     REQUIRE(empty_shader.error().code == arc::render::tools::material_asset_error_code::invalid_document);
 }
 
+TEST_CASE("Material Instance authoring parses GUID-backed parent and Function Slot overrides")
+{
+    constexpr std::string_view source = R"({
+      "version":1,
+      "name":"Floor",
+      "parent":{"guid":"11111111-1111-1111-1111-111111111111","pathHint":"materials/standard_lit.arcmat"},
+      "parameterOverrides":[{"parameterId":"123","value":0.8}],
+      "functionOverrides":[
+        {
+          "slotId":"base-color-source",
+          "function":{"guid":"22222222-2222-2222-2222-222222222222","pathHint":"material_functions/checker.arcmatfn"},
+          "inputOverrides":[{"pinId":"cell-size","value":1.0}]
+        }
+      ]
+    })";
+
+    const auto parsed = arc::render::tools::parse_material_instance_authoring_json(source);
+    REQUIRE(parsed);
+    CHECK(parsed.value().name == "Floor");
+    CHECK(parsed.value().parent.path_hint == "materials/standard_lit.arcmat");
+    REQUIRE(parsed.value().parameter_overrides.size() == 1);
+    CHECK(parsed.value().parameter_overrides.front().parameter_id == arc::render::shader_parameter_id{123});
+    REQUIRE(parsed.value().function_overrides.size() == 1);
+    CHECK(parsed.value().function_overrides.front().slot_id == "base-color-source");
+    REQUIRE(parsed.value().function_overrides.front().input_overrides.size() == 1);
+    CHECK(parsed.value().function_overrides.front().input_overrides.front().pin_id == "cell-size");
+}
+
+TEST_CASE("Material Instance authoring rejects duplicate stable override identities")
+{
+    constexpr std::string_view source = R"({
+      "version":1,
+      "name":"Bad",
+      "parent":{"guid":"11111111-1111-1111-1111-111111111111","pathHint":"materials/base.arcmat"},
+      "parameterOverrides":[
+        {"parameterId":"42","value":0.2},
+        {"parameterId":"42","value":0.7}
+      ],
+      "functionOverrides":[]
+    })";
+
+    const auto parsed = arc::render::tools::parse_material_instance_authoring_json(source);
+    REQUIRE_FALSE(parsed);
+    CHECK(parsed.error().code == arc::render::tools::material_asset_error_code::invalid_document);
+}
+
+TEST_CASE("Material Instance cooked package round trips specialized parent payload")
+{
+    arc::render::tools::material_instance_package_v1 package;
+    package.parent_guid = "11111111-1111-1111-1111-111111111111";
+    package.function_specialization_key = 0xabcdu;
+    package.canonical_instance_json =
+        R"({"version":1,"name":"Floor","parent":{"guid":"11111111-1111-1111-1111-111111111111","pathHint":"materials/base.arcmat"},"parameterOverrides":[],"functionOverrides":[]})";
+    package.material.canonical_document_json =
+        R"({"version":4,"name":"Base","domain":"terrain","graph":{"version":1,"nodes":[],"connections":[]}})";
+
+    const auto bytes = arc::render::tools::serialize_material_instance_package_v1(package);
+    const auto decoded = arc::render::tools::deserialize_material_instance_package_v1(bytes);
+    REQUIRE(decoded);
+    CHECK(decoded.value().parent_guid == package.parent_guid);
+    CHECK(decoded.value().function_specialization_key == package.function_specialization_key);
+    CHECK(decoded.value().canonical_instance_json == package.canonical_instance_json);
+    CHECK(decoded.value().material.canonical_document_json == package.material.canonical_document_json);
+}
+
 TEST_CASE("material package v4 round trips deterministic compiled pass bindings and parameter ranges")
 {
     const auto package = compiled_package();
