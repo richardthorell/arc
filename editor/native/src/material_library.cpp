@@ -675,7 +675,25 @@ render::material_handle load_material_for_editor(editor_material_library& librar
         return {};
     }
 
-    auto realized = load_material_preview_descriptor(path);
+    material_preview_descriptor_result realized;
+    const auto source = read_material_text(path);
+    const auto authored = render::tools::parse_material_authoring_json(source);
+    if (authored && !authored.value().graph_json.empty())
+    {
+        std::vector<render::tools::material_function_source> functions;
+        render::tools::material_instance_authoring_document no_overrides;
+        std::string function_message;
+        if (!load_instance_function_sources(path, asset_root, authored.value(), no_overrides, functions, function_message))
+        {
+            arc::diagnostics::error("editor.materials", function_message);
+            return {};
+        }
+        realized = realize_material_preview_descriptor(source, path.stem().string(), functions, {});
+    }
+    else
+    {
+        realized = load_material_preview_descriptor(path);
+    }
     const bool legacy_document = !realized.succeeded && realized.message.starts_with("Legacy material field '");
     if (!realized.succeeded && !legacy_document)
     {
