@@ -32,12 +32,13 @@ const normalizeBuiltinAssetPath = (path: string) => {
   return normalized.replace(/^(?:engine|builtin|assets)\//u, '');
 };
 
-const builtinContentIncludes = builtinContentManifest.include.map((entry) =>
-  entry
-    .replaceAll('\\', '/')
-    .replace(/^\/+|\/+$/gu, '')
-    .toLocaleLowerCase(),
-);
+const builtinContentIncludes = builtinContentManifest.include.map((entry) => {
+  const normalized = entry.replaceAll('\\', '/').replace(/^\/+/, '').toLocaleLowerCase();
+  return {
+    path: normalized.replace(/\/+$/u, ''),
+    recursive: normalized.endsWith('/'),
+  };
+});
 
 /**
  * Engine scope is an explicit, opt-in user-facing library rather than a raw
@@ -48,7 +49,7 @@ export const isContentBrowserAssetVisible = (asset: Pick<AssetItem, 'path'> & Pa
   if (asset.scope !== 'builtin') return true;
 
   const path = normalizeBuiltinAssetPath(asset.path);
-  return builtinContentIncludes.some((entry) => (entry.endsWith('/') ? path.startsWith(entry) : path === entry));
+  return builtinContentIncludes.some((entry) => (entry.recursive ? path.startsWith(`${entry.path}/`) : path === entry.path));
 };
 
 export const assetPresentationLabel = (asset: AssetPresentationSource) => {
