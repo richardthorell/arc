@@ -395,6 +395,10 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
 
         const auto values = authored_node.value("values", json::object());
         const auto parameter = authored_node.value("parameter", json::object());
+        if (*kind == material_ir_node_kind::tex_coord && values.value("channel", 0) != 0)
+            return material_graph_compile_result::failure(
+                {.code = shader_compile_error_code::validation_failed,
+                 .message = "Texture Coordinate currently supports UV0 only: " + id});
         const bool has_minimum = values.contains("min");
         const bool has_maximum = values.contains("max");
         if (*kind == material_ir_node_kind::constant && has_minimum != has_maximum)
