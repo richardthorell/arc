@@ -24,16 +24,20 @@ const ensureUniqueDestination = (directory: string, fileName: string): string =>
   return candidate;
 };
 
-const normalizedProjectFolder = (projectRoot: string, requestedFolder?: string): string => {
-  const relative = (requestedFolder?.trim() || 'Content/Models').replaceAll('\\', '/').replace(/^\/+/, '');
+const normalizedProjectFolder = (
+  projectRoot: string,
+  contentRoot: string,
+  requestedFolder?: string,
+): string => {
+  const relative = (requestedFolder?.trim() || `${contentRoot}/Models`).replaceAll('\\', '/').replace(/^\/+/, '');
   if (!relative || relative === '..' || relative.startsWith('../') || path.isAbsolute(relative))
     throw new Error('Model import destination must be project-relative');
   const normalized = path.normalize(relative);
   if (normalized === '..' || normalized.startsWith(`..${path.sep}`))
     throw new Error('Model import destination escapes the project');
   const contentRelative = normalized.replaceAll('\\', '/');
-  if (contentRelative !== 'Content' && !contentRelative.startsWith('Content/'))
-    throw new Error('Models can only be imported into the project Content folder');
+  if (contentRelative !== contentRoot && !contentRelative.startsWith(`${contentRoot}/`))
+    throw new Error('Models can only be imported into the project content folder');
   return path.join(projectRoot, normalized);
 };
 
@@ -50,7 +54,8 @@ export const importExternalModel = (
     throw new Error(`Unsupported model format: ${path.extname(sourcePath) || 'unknown'}`);
 
   const projectRoot = fs.realpathSync(project.projectRoot);
-  const destinationDirectory = normalizedProjectFolder(projectRoot, requestedFolder);
+  const contentRoot = (project.descriptor.paths.content || 'Content').replaceAll('\\', '/').replace(/^\/+|\/+$/g, '');
+  const destinationDirectory = normalizedProjectFolder(projectRoot, contentRoot, requestedFolder);
   fs.mkdirSync(destinationDirectory, { recursive: true });
   const destination = ensureUniqueDestination(destinationDirectory, path.basename(sourcePath));
   fs.copyFileSync(sourcePath, destination, fs.constants.COPYFILE_EXCL);
