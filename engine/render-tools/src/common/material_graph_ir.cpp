@@ -636,10 +636,10 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
                         compilation.diagnostics.push_back(
                             {.severity = shader_diagnostic_severity::warning,
                              .code = "material.output-range",
-                             .message = "Scalar '" + scalar.id + "' does not match the expected " +
+                             .message = "Scalar '" + binding.source_node + "' does not match the expected " +
                                         std::to_string(output.minimum) + ".." + std::to_string(output.maximum) +
                                         " range for Material Output '" + std::string(output.pin) + "'",
-                             .location = {.graph_node_id = scalar.id}});
+                             .location = {.graph_node_id = binding.source_node}});
                     }
                 }
             }
