@@ -47,6 +47,40 @@ describe('ExplorerPanel', () => {
     expect(screen.queryByRole('menu', { name: 'Add entity' })).not.toBeInTheDocument();
   });
 
+  it('filters the Create Entity menu and uses Escape to clear before closing', () => {
+    render(
+      <ExplorerPanel
+        project={{ scene: [] } as unknown as ProjectSnapshot}
+        selectedEntityId=""
+        selectedEntityIds={new Set()}
+        onSelectEntity={vi.fn()}
+        onRenameEntity={vi.fn()}
+        onSetEntityActive={vi.fn()}
+        onMoveEntity={vi.fn()}
+        onCreateEntity={vi.fn()}
+        onDuplicate={vi.fn()}
+        onCreatePrefab={vi.fn()}
+        onInstantiatePrefab={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add entity' }));
+    const search = screen.getByRole('searchbox', { name: 'Search entities' });
+    expect(search).toHaveFocus();
+
+    fireEvent.change(search, { target: { value: 'sph' } });
+    expect(screen.getByRole('menuitem', { name: 'Sphere' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Box' })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(search, { key: 'Escape' });
+    expect(screen.getByRole('searchbox', { name: 'Search entities' })).toHaveValue('');
+    expect(screen.getByRole('menu', { name: 'Add entity' })).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole('searchbox', { name: 'Search entities' }), { key: 'Escape' });
+    expect(screen.queryByRole('menu', { name: 'Add entity' })).not.toBeInTheDocument();
+  });
+
   it('exposes World as a first-class hierarchy inspection target', () => {
     const onSelectEntity = vi.fn();
     render(
