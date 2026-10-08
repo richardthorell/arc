@@ -7,6 +7,7 @@ import {
   assetPresentationKind,
   assetPresentationLabel,
   assetPresentationStatus,
+  isContentBrowserAssetVisible,
 } from './assetPresentation';
 
 const asset = (path: string, kind: AssetItem['kind'] = 'scene') => ({ kind, path });
@@ -42,6 +43,44 @@ describe('model asset presentation', () => {
     expect(assetPresentationLabel(value)).toBe('Water Preset');
     expect(assetPresentationIcon(value)).toBe('settings');
     expect(assetDragType(value)).toBe('water');
+  });
+});
+
+describe('Engine Content Browser manifest', () => {
+  it('exposes only explicitly curated built-in assets', () => {
+    expect(isContentBrowserAssetVisible({ scope: 'builtin', path: 'builtin/materials/glass.arcmat' })).toBe(true);
+    expect(isContentBrowserAssetVisible({ scope: 'builtin', path: 'Engine/Water/Presets/open_ocean.arcwater' })).toBe(
+      true,
+    );
+    expect(
+      isContentBrowserAssetVisible({
+        scope: 'builtin',
+        path: 'builtin/textures/editor/default_checker_floor.png',
+      }),
+    ).toBe(false);
+    expect(
+      isContentBrowserAssetVisible({
+        scope: 'builtin',
+        path: 'Engine/environments/material_preview_studio_4k.exr',
+      }),
+    ).toBe(false);
+
+    expect(
+      isContentBrowserAssetVisible({
+        scope: 'builtin',
+        path: 'builtin/textures/terrain/aerial_grass_rock/aerial_grass_rock_ao_1k.jpg',
+      }),
+    ).toBe(false);
+    expect(isContentBrowserAssetVisible({ scope: 'builtin', path: 'builtin/shaders/include/arc_pbr.glsl' })).toBe(
+      false,
+    );
+    expect(
+      isContentBrowserAssetVisible({ scope: 'builtin', path: 'builtin/fixtures/persistence_fixture.arcscene' }),
+    ).toBe(false);
+  });
+
+  it('never applies the Engine manifest to normal project assets', () => {
+    expect(isContentBrowserAssetVisible({ scope: 'project', path: 'Content/Textures/terrain.png' })).toBe(true);
   });
 });
 

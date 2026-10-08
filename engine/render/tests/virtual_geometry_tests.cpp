@@ -515,10 +515,10 @@ TEST_CASE("virtual geometry material resolve reconstructs perspective-correct we
     REQUIRE(fallback == std::array{1.0f, 0.0f, 0.0f});
 }
 
-TEST_CASE("GLB mesh loader reads checked-in editor startup mesh")
+TEST_CASE("GLB mesh loader reads checked-in Blank 3D starter model")
 {
-    const std::filesystem::path path =
-        std::filesystem::path(ARC_RENDER_TEST_ASSET_ROOT) / "models" / "UAL2_Standard.glb";
+    const auto repository_root = std::filesystem::path(ARC_RENDER_TEST_ASSET_ROOT).parent_path();
+    const auto path = repository_root / "templates" / "blank-3d" / "Content" / "models" / "UAL2_Standard.glb";
     REQUIRE(std::filesystem::exists(path));
 
     const auto result = arc::render::load_gltf_mesh(path);

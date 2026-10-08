@@ -269,10 +269,10 @@ describe('ContentBrowserPanel', () => {
 
   it('turns a live query into a transient cross-scope Search Results view', async () => {
     const view = renderBrowser();
-    fireEvent.change(view.getByLabelText('Search assets'), { target: { value: 'engine sky' } });
+    fireEvent.change(view.getByLabelText('Search assets'), { target: { value: 'engine material' } });
 
     expect(await view.findByRole('button', { name: 'Search Results (1)' })).toBeInTheDocument();
-    expect(view.getByText('Engine Sky Texture')).toBeInTheDocument();
+    expect(view.getByText('Engine Material Texture')).toBeInTheDocument();
     expect(view.queryByText('Hero Rock')).not.toBeInTheDocument();
     expect(localStorage.getItem('arc.content.virtualViews.v1:D:/Test')).not.toContain('search-results');
   });
@@ -299,27 +299,17 @@ describe('ContentBrowserPanel', () => {
     expect(view.getByRole('button', { name: 'Downloads (0)' })).toBeInTheDocument();
   });
 
-  it('renders engine folders as a nested tree without flattening duplicate leaf names', () => {
+  it('renders only curated Engine content from visible Engine folders', () => {
     const view = renderBrowser();
     fireEvent.click(view.getByRole('button', { name: 'Engine' }));
 
-    const environmentFolders = view.getAllByRole('button', { name: 'Environment' });
-    const engineEnvironment = environmentFolders.find((button) => button.hasAttribute('aria-expanded'));
-    expect(engineEnvironment).toBeDefined();
-    expect(view.getByRole('button', { name: 'Materials' })).toBeInTheDocument();
-    expect(view.queryByRole('button', { name: 'Textures' })).not.toBeInTheDocument();
+    const materials = view.getByRole('button', { name: 'Materials' });
+    expect(materials).toHaveAttribute('aria-expanded');
 
-    fireEvent.click(engineEnvironment!);
-    const environmentTextures = view.getByRole('button', { name: 'Textures' });
-    fireEvent.click(environmentTextures);
-    expect(view.getByText('Engine Sky Texture')).toBeInTheDocument();
-    expect(view.queryByText('Engine Material Texture')).not.toBeInTheDocument();
+    fireEvent.click(materials);
+    const textures = view.getByRole('button', { name: 'Textures' });
+    fireEvent.click(textures);
 
-    fireEvent.click(view.getByRole('button', { name: 'Materials' }));
-    const textureFolders = view.getAllByRole('button', { name: 'Textures' });
-    expect(textureFolders).toHaveLength(2);
-
-    fireEvent.click(textureFolders[1]);
     expect(view.getByText('Engine Material Texture')).toBeInTheDocument();
     expect(view.queryByText('Engine Sky Texture')).not.toBeInTheDocument();
   });

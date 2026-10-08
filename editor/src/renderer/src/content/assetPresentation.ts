@@ -1,5 +1,6 @@
 import type { DocumentTypeIconKind } from '../assets/DocumentTypeIcon';
 import type { AssetItem } from '../services/editorHostTypes';
+import builtinContentManifest from './builtinContentManifest.json';
 
 export type AssetPresentationKind = AssetItem['kind'] | 'model';
 
@@ -23,13 +24,35 @@ export const assetPresentationKind = (asset: Pick<AssetItem, 'kind' | 'path'>): 
   return asset.kind;
 };
 
+const normalizeBuiltinAssetPath = (path: string) => {
+  const normalized = path
+    .replaceAll('\\', '/')
+    .replace(/^\/+|\/+$/gu, '')
+    .toLocaleLowerCase();
+  return normalized.replace(/^(?:engine|builtin|assets)\//u, '');
+};
+
+const builtinContentIncludes = builtinContentManifest.include.map((entry) => {
+  const normalized = entry.replaceAll('\\', '/').replace(/^\/+/, '').toLocaleLowerCase();
+  return {
+    path: normalized.replace(/\/+$/u, ''),
+    recursive: normalized.endsWith('/'),
+  };
+});
+
 /**
- * Engine scope is a curated library, not a raw dump of renderer implementation
- * files. Built-in shader sources stay registered for compilation/runtime use but
- * are intentionally hidden from user-facing Content Browser surfaces.
+ * Engine scope is an explicit, opt-in user-facing library rather than a raw
+ * view of every registered built-in resource. Internal renderer/compiler/test
+ * assets remain registered and usable without appearing in the Content Browser.
  */
-export const isContentBrowserAssetVisible = (asset: Pick<AssetItem, 'kind'> & Partial<Pick<AssetItem, 'scope'>>) =>
-  !(asset.scope === 'builtin' && asset.kind === 'shader');
+export const isContentBrowserAssetVisible = (asset: Pick<AssetItem, 'path'> & Partial<Pick<AssetItem, 'scope'>>) => {
+  if (asset.scope !== 'builtin') return true;
+
+  const path = normalizeBuiltinAssetPath(asset.path);
+  return builtinContentIncludes.some((entry) =>
+    entry.recursive ? path.startsWith(`${entry.path}/`) : path === entry.path,
+  );
+};
 
 export const assetPresentationLabel = (asset: AssetPresentationSource) => {
   const kind = assetPresentationKind(asset);
