@@ -69,6 +69,9 @@ std::optional<material_ir_node_kind> node_kind(std::string_view type) noexcept
     if (type == "vector2") return material_ir_node_kind::vector2;
     if (type == "vector3" || type == "colorRgb") return material_ir_node_kind::vector3;
     if (type == "vector4" || type == "colorRgba") return material_ir_node_kind::vector4;
+    if (type == "worldPosition") return material_ir_node_kind::world_position;
+    if (type == "worldNormal") return material_ir_node_kind::world_normal;
+    if (type == "vertexColor") return material_ir_node_kind::vertex_color;
     if (type == "texCoord") return material_ir_node_kind::tex_coord;
     if (type == "time") return material_ir_node_kind::time;
     if (type == "textureSample" || type == "textureSample2D" || type == "textureSampleCube" ||
@@ -561,6 +564,15 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
         {
             case material_ir_node_kind::time:
                 compilation.descriptor.requirements.uses_time = true;
+                break;
+            case material_ir_node_kind::world_position:
+                compilation.descriptor.requirements.uses_position_ws = true;
+                break;
+            case material_ir_node_kind::world_normal:
+                compilation.descriptor.requirements.uses_normal_ws = true;
+                break;
+            case material_ir_node_kind::vertex_color:
+                compilation.descriptor.requirements.uses_vertex_color = true;
                 break;
             case material_ir_node_kind::tex_coord:
                 compilation.descriptor.requirements.uses_uv0 = true;
