@@ -4,6 +4,7 @@
 #include <arc/editor/material_preview_realizer.h>
 #include <arc/diagnostics/diagnostics.h>
 #include <arc/render/primitives.h>
+#include <arc/render_tools/material_asset.h>
 #include <arc/render/texture.h>
 #include <arc/scene/scene.h>
 
@@ -11,12 +12,112 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
 #include <optional>
+#include <sstream>
+
+#include <nlohmann/json.hpp>
 
 namespace arc::editor
 {
 namespace
 {
+
+std::string read_material_text(const std::filesystem::path& path)
+{
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream) return {};
+    std::ostringstream output;
+    output << stream.rdbuf();
+    return output.str();
+}
+
+std::filesystem::path resolve_instance_reference_path(const std::filesystem::path& instance_path,
+                                                      const std::filesystem::path& asset_root,
+                                                      std::string_view path_hint)
+{
+    if (path_hint.empty()) return {};
+    std::filesystem::path hinted{path_hint};
+    if (hinted.is_absolute()) return hinted.lexically_normal();
+
+    const std::array candidates{
+        (asset_root / hinted).lexically_normal(),
+        (instance_path.parent_path() / hinted).lexically_normal(),
+    };
+    std::error_code ec;
+    for (const auto& candidate : candidates)
+        if (std::filesystem::exists(candidate, ec) && !ec) return candidate;
+
+    for (auto current = instance_path.parent_path(); !current.empty(); current = current.parent_path())
+    {
+        const auto candidate = (current / hinted).lexically_normal();
+        ec.clear();
+        if (std::filesystem::exists(candidate, ec) && !ec) return candidate;
+        const auto parent = current.parent_path();
+        if (parent == current) break;
+    }
+    return (asset_root / hinted).lexically_normal();
+}
+
+std::optional<render::material_parameter_value>
+instance_parameter_value(editor_material_library& library, render::renderer& renderer,
+                         const std::filesystem::path& asset_root,
+                         const render::shader_parameter_descriptor& parameter, std::string_view value_json)
+{
+    const auto value = nlohmann::json::parse(value_json, nullptr, false);
+    if (value.is_discarded()) return std::nullopt;
+    const auto number_array = [&](std::size_t count) -> std::optional<std::vector<float>>
+    {
+        if (!value.is_array() || value.size() != count) return std::nullopt;
+        std::vector<float> result;
+        result.reserve(count);
+        for (const auto& component : value)
+        {
+            if (!component.is_number()) return std::nullopt;
+            result.push_back(component.get<float>());
+        }
+        return result;
+    };
+
+    switch (parameter.type)
+    {
+        case render::shader_parameter_type::boolean:
+            if (value.is_boolean()) return value.get<bool>();
+            break;
+        case render::shader_parameter_type::int32:
+            if (value.is_number_integer()) return static_cast<std::int32_t>(value.get<std::int64_t>());
+            break;
+        case render::shader_parameter_type::uint32:
+            if (value.is_number_unsigned()) return static_cast<std::uint32_t>(value.get<std::uint64_t>());
+            if (value.is_number_integer() && value.get<std::int64_t>() >= 0)
+                return static_cast<std::uint32_t>(value.get<std::int64_t>());
+            break;
+        case render::shader_parameter_type::float32:
+            if (value.is_number()) return value.get<float>();
+            break;
+        case render::shader_parameter_type::float2:
+            if (const auto values = number_array(2u)) return math::vector2f{(*values)[0], (*values)[1]};
+            break;
+        case render::shader_parameter_type::float3:
+            if (const auto values = number_array(3u))
+                return math::vector3f{(*values)[0], (*values)[1], (*values)[2]};
+            break;
+        case render::shader_parameter_type::float4:
+            if (const auto values = number_array(4u))
+                return math::vector4f{(*values)[0], (*values)[1], (*values)[2], (*values)[3]};
+            break;
+        case render::shader_parameter_type::texture_2d:
+            if (value.is_string())
+            {
+                const auto path = resolve_instance_reference_path({}, asset_root, value.get<std::string>());
+                return render::resource_handle{ensure_texture(library, renderer, path)};
+            }
+            break;
+        default:
+            break;
+    }
+    return std::nullopt;
+}
 
 std::filesystem::path canonical_key(const std::filesystem::path& path)
 {
@@ -238,7 +339,7 @@ bool is_material_asset_path(const std::filesystem::path& path)
     auto ext = path.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(),
                    [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-    return ext == ".arcmat";
+    return ext == ".arcmat" || ext == ".arcmatinst";
 }
 
 bool is_texture_asset_path(const std::filesystem::path& path)
@@ -336,6 +437,76 @@ render::material_handle load_material_for_editor(editor_material_library& librar
     {
         if (out_asset) *out_asset = record->asset;
         return record->material;
+    }
+
+    auto extension = path.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    if (extension == ".arcmatinst")
+    {
+        const auto source = read_material_text(path);
+        auto authored = render::tools::parse_material_instance_authoring_json(source);
+        if (!authored)
+        {
+            arc::diagnostics::error("editor.materials",
+                                    "Failed to load Material Instance '" + path.string() + "': " +
+                                        authored.error().message);
+            return {};
+        }
+        if (!authored.value().function_overrides.empty())
+        {
+            arc::diagnostics::error(
+                "editor.materials",
+                "Material Instance '" + path.string() +
+                    "' uses Function Slot specialization; editor runtime specialization is not available yet");
+            return {};
+        }
+
+        const auto parent_path =
+            resolve_instance_reference_path(path, asset_root, authored.value().parent.path_hint);
+        material_asset parent_asset;
+        const auto parent = load_material_for_editor(library, renderer, asset_root, parent_path, &parent_asset);
+        if (!parent.valid() || !parent_asset.material.runtime_program)
+        {
+            arc::diagnostics::error("editor.materials",
+                                    "Material Instance parent could not be realized: " + parent_path.string());
+            return {};
+        }
+
+        render::material_instance_descriptor instance;
+        instance.parent = parent;
+        instance.name = authored.value().name;
+        for (const auto& override_value : authored.value().parameter_overrides)
+        {
+            const auto parameter =
+                std::ranges::find(parent_asset.material.runtime_program->parameters, override_value.parameter_id,
+                                  &render::shader_parameter_descriptor::id);
+            if (parameter == parent_asset.material.runtime_program->parameters.end()) continue;
+            auto value = instance_parameter_value(library, renderer, asset_root, *parameter, override_value.value_json);
+            if (!value) continue;
+            instance.overrides.push_back(
+                {.id = override_value.parameter_id, .name = parameter->name, .value = std::move(*value)});
+        }
+
+        render::material_definition_descriptor definition;
+        definition.material = parent_asset.material;
+        definition.parameter_layout = parent_asset.material.runtime_program->parameters;
+        auto resolved = render::resolve_material_instance(definition, instance);
+        if (!resolved)
+        {
+            arc::diagnostics::error("editor.materials",
+                                    "Material Instance could not be resolved: " + resolved.error().message);
+            return {};
+        }
+
+        auto asset = parent_asset;
+        asset.name = authored.value().name;
+        asset.path = path;
+        asset.material = std::move(resolved).value();
+        const auto handle = renderer.create_material(asset.material);
+        library.materials.push_back({canonical_key(path), asset, handle});
+        if (out_asset) *out_asset = asset;
+        return handle;
     }
 
     material_asset asset;
