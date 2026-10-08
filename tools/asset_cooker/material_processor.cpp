@@ -200,10 +200,9 @@ function_source_result material_function_sources(const assets::asset_cook_contex
         const auto key = normalized_path(path);
         if (functions.contains(key)) continue;
         const auto identity = identities.find(key);
-        functions.emplace(key, render::tools::material_function_source{
-                                   .path = key,
-                                   .identity = identity == identities.end() ? key : identity->second,
-                                   .source = source});
+        functions.emplace(
+            key, render::tools::material_function_source{
+                     .path = key, .identity = identity == identities.end() ? key : identity->second, .source = source});
 
         for (const auto& nested : nested_function_paths(source))
         {

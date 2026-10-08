@@ -386,9 +386,9 @@ std::uint64_t hash_specialization(std::span<const material_function_slot_descrip
     return slots.empty() ? 0 : hash;
 }
 
-slot_specialization_result
-specialize_function_slots(json graph, const std::map<std::string, parsed_material_function>& functions,
-                          std::span<const material_function_slot_override> overrides)
+slot_specialization_result specialize_function_slots(json graph,
+                                                     const std::map<std::string, parsed_material_function>& functions,
+                                                     std::span<const material_function_slot_override> overrides)
 {
     std::map<std::string, std::string> selections;
     for (const auto& override_value : overrides)
@@ -419,8 +419,8 @@ specialize_function_slots(json graph, const std::map<std::string, parsed_materia
 
         const auto* base = find_function(functions, default_path);
         if (!base)
-            return slot_specialization_result::failure(
-                validation_error("Material Function Slot '" + slot_id + "' has a missing or ambiguous default function"));
+            return slot_specialization_result::failure(validation_error(
+                "Material Function Slot '" + slot_id + "' has a missing or ambiguous default function"));
 
         const auto selected_it = selections.find(slot_id);
         const auto selected_path = selected_it == selections.end() ? normalize_path(default_path) : selected_it->second;
@@ -452,10 +452,9 @@ specialize_function_slots(json graph, const std::map<std::string, parsed_materia
             parameter_node["parameter"] =
                 json{{"exposed", true}, {"name", concatenate({slot_name, " / ", input.name})}};
             extra_nodes.push_back(std::move(parameter_node));
-            extra_connections.push_back(
-                json{{"id", concatenate({"slot-parameter::", slot_id, "::", input.id})},
-                     {"from", json{{"nodeId", parameter_node_id}, {"pin", "value"}}},
-                     {"to", json{{"nodeId", node_id}, {"pin", input.id}}}});
+            extra_connections.push_back(json{{"id", concatenate({"slot-parameter::", slot_id, "::", input.id})},
+                                             {"from", json{{"nodeId", parameter_node_id}, {"pin", "value"}}},
+                                             {"to", json{{"nodeId", node_id}, {"pin", input.id}}}});
             descriptor.selected_parameters.push_back(
                 {.pin_id = input.id, .parameter_id = make_shader_parameter_id(parameter_node_id)});
         }

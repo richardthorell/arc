@@ -161,7 +161,8 @@ struct material_function_slot_descriptor
     std::vector<material_function_pin> outputs;
     std::vector<material_function_slot_parameter> selected_parameters;
 
-    friend auto operator<=>(const material_function_slot_descriptor&, const material_function_slot_descriptor&) = default;
+    friend auto operator<=>(const material_function_slot_descriptor&,
+                            const material_function_slot_descriptor&) = default;
 };
 
 /** @brief One normalized authored material graph node. */

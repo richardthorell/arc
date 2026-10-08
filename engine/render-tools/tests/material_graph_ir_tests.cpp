@@ -213,10 +213,12 @@ TEST_CASE("Material Function Slots specialize compatible functions and reflect r
     })";
 
     const std::array functions{
-        arc::render::tools::material_function_source{
-            .path = "functions/default.arcmatfn", .identity = "function-guid-default", .source = std::string(default_function)},
-        arc::render::tools::material_function_source{
-            .path = "functions/scaled.arcmatfn", .identity = "function-guid-scaled", .source = std::string(scaled_function)},
+        arc::render::tools::material_function_source{.path = "functions/default.arcmatfn",
+                                                     .identity = "function-guid-default",
+                                                     .source = std::string(default_function)},
+        arc::render::tools::material_function_source{.path = "functions/scaled.arcmatfn",
+                                                     .identity = "function-guid-scaled",
+                                                     .source = std::string(scaled_function)},
     };
 
     const auto base = arc::render::tools::compile_material_graph_json(graph, functions);
