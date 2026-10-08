@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "name": "Floor",
+  "parent": {
+    "guid": "b36d1554-ddb0-4692-8a2c-a7dde15e0456",
+    "pathHint": "materials/standard_lit.arcmat"
+  },
+  "parameterOverrides": [
+    {
+      "parameterId": "17091113340554865608",
+      "value": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "parameterId": "16113330016842241480",
+      "value": 0
+    },
+    {
+      "parameterId": "14293098357166276437",
+      "value": 0.8
+    }
+  ],
+  "functionOverrides": [
+    {
+      "slotId": "base-color-source",
+      "function": {
+        "guid": "76433716-d257-4cc4-974a-921f393a9602",
+        "pathHint": "material_functions/checker.arcmatfn"
+      },
+      "inputOverrides": [
+        {
+          "pinId": "colorA",
+          "value": [
+            0.78,
+            0.78,
+            0.78
+          ]
+        },
+        {
+          "pinId": "colorB",
+          "value": [
+            0.32,
+            0.32,
+            0.32
+          ]
+        },
+        {
+          "pinId": "cellSize",
+          "value": 1
+        }
+      ]
+    }
+  ]
+}
