@@ -55,15 +55,7 @@ import { LevelEditor } from '../editors/level/LevelEditor';
 import { LevelEditorToolbar } from '../editors/level/LevelEditorToolbar';
 import { flattenScene } from '../services/editorHostTypes';
 import type { AssetItem, ConsoleEvent, ProjectSnapshot, SceneEntity } from '../services/editorHostTypes';
-import {
-  UiContextMenu,
-  UiContextMenuItem,
-  UiIconButton,
-  UiPanel,
-  UiTab,
-  UiTabs,
-  UiTreeRow,
-} from '../ui';
+import { UiContextMenu, UiContextMenuItem, UiIconButton, UiPanel, UiTab, UiTabs, UiTreeRow } from '../ui';
 import { ViewportPanel } from '../viewport/ViewportPanel';
 import { WorldEnvironmentInspector } from '../environment/WorldEnvironmentInspector';
 import type { HostWorldEnvironment } from '../environment/environmentTypes';
@@ -2029,9 +2021,7 @@ function BasicShapeMenuIcon({
           <ellipse {...common} cx="8" cy="11.6" rx="4.6" ry="1.8" />
         </>
       )}
-      {kind === 'capsule' && (
-        <path {...common} d="M5.2 5a2.8 2.8 0 0 1 5.6 0v6a2.8 2.8 0 0 1-5.6 0z" />
-      )}
+      {kind === 'capsule' && <path {...common} d="M5.2 5a2.8 2.8 0 0 1 5.6 0v6a2.8 2.8 0 0 1-5.6 0z" />}
       {kind === 'plane' && (
         <>
           <path {...common} d="m2.3 10.5 7-6 4.4 2.6-7 6z" />
