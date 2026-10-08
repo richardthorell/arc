@@ -614,3 +614,45 @@
   opacity: 0.22;
   filter: saturate(0.45);
 }
+
+.material-instance-preview {
+  display: grid;
+  min-height: 320px;
+  place-items: center;
+}
+
+.material-instance-preview img {
+  max-height: min(52vh, 520px);
+  max-width: min(52vw, 520px);
+  object-fit: contain;
+}
+
+.material-instance-property {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.material-instance-property > :is(input:not([type='checkbox']), .ui-select) {
+  min-width: 0;
+  flex: 1;
+}
+
+.material-instance-vector {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100%;
+}
+
+.material-instance-function-slot {
+  border-top: 1px solid var(--ui-border-subtle);
+  padding-top: 6px;
+}
+
+.material-instance-function-slot:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}

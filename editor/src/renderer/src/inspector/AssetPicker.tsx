@@ -411,7 +411,7 @@ export function MaterialPicker({
   showParameters?: boolean;
 }) {
   const openMaterial = (asset: AssetPickerItem) => {
-    if (asset.kind !== 'material' || asset.scope === 'procedural') return;
+    if ((asset.kind !== 'material' && asset.kind !== 'materialInstance') || asset.scope === 'procedural') return;
     openAssetEditorDocument({
       id: asset.id,
       guid: asset.guid,
@@ -419,7 +419,7 @@ export function MaterialPicker({
       name: asset.name,
       title: asset.title,
       path: asset.path,
-      kind: 'material',
+      kind: asset.kind === 'materialInstance' ? 'materialInstance' : 'material',
       status: asset.status,
       scope: asset.scope,
       readOnly: asset.readOnly,
@@ -432,7 +432,7 @@ export function MaterialPicker({
     <>
       <AssetPicker
         {...props}
-        assetKinds={['material']}
+        assetKinds={['material', 'materialInstance']}
         assetTypeLabel="Material"
         createNewLabel="Create New Material…"
         onCreateNew={createMaterial}

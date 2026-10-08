@@ -16,6 +16,7 @@ import {
 import type { ArcAssetSourceDescriptor } from '../../../common/assetSourceTypes';
 import type { CommandId } from '../app/workbenchTypes';
 import { openAssetEditorDocument, openSkeletonEditorDocument } from '../editors/editorRegistry';
+import { materialAssetReference } from '../material/materialInstanceAuthoring';
 import { buildModelSubassets } from '../model/modelSubassets';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import type { AssetItem, ProjectSnapshot } from '../services/editorHostTypes';
@@ -83,7 +84,7 @@ type Props = {
   thumbnailProvider: AssetThumbnailProvider;
 };
 
-type CreateKind = 'material' | 'materialFunction' | 'flow' | 'shader';
+type CreateKind = 'material' | 'materialInstance' | 'materialFunction' | 'flow' | 'shader';
 type CreateContextMenu = { x: number; y: number; folder: string };
 type LocalBrowserSource = 'project' | 'builtin';
 type FolderTreeNode = {
@@ -116,6 +117,7 @@ const assetTypeOptions: Array<{ value: AssetPresentationKind | 'all'; label: str
   { value: 'scene', label: 'Scene' },
   { value: 'model', label: 'Model' },
   { value: 'material', label: 'Material' },
+  { value: 'materialInstance', label: 'Material Instance' },
   { value: 'materialFunction', label: 'Material Function' },
   { value: 'flow', label: 'Flow Graph' },
   { value: 'texture', label: 'Texture' },
@@ -305,6 +307,7 @@ export function ContentBrowserPanel({
   const [createKind, setCreateKind] = useState<CreateKind | null>(null);
   const [createFolder, setCreateFolder] = useState('');
   const [createName, setCreateName] = useState('');
+  const [createParentGuid, setCreateParentGuid] = useState('');
   const [shaderTemplate, setShaderTemplate] = useState<ShaderAssetTemplate>('surface');
   const [createError, setCreateError] = useState('');
   const [creating, setCreating] = useState(false);
@@ -377,6 +380,13 @@ export function ContentBrowserPanel({
 
   const registryAssets = useMemo(() => project?.assets ?? [], [project?.assets]);
   const assets = useMemo(() => applyAssetMetadata(registryAssets, metadataEntries), [metadataEntries, registryAssets]);
+  const materialParents = useMemo(
+    () =>
+      assets.filter(
+        (asset) => asset.kind === 'material' && Boolean(asset.guid) && Boolean(asset.sourcePath || asset.path),
+      ),
+    [assets],
+  );
   const projectAssets = useMemo(() => assets.filter((asset) => (asset.scope ?? 'project') === 'project'), [assets]);
   const builtinAssets = useMemo(() => assets.filter((asset) => asset.scope === 'builtin'), [assets]);
   const searchResultIds = useMemo(
@@ -601,11 +611,16 @@ export function ContentBrowserPanel({
     setCreateName(
       nextKind === 'material'
         ? 'New Material'
-        : nextKind === 'materialFunction'
-          ? 'New Material Function'
-          : nextKind === 'flow'
-            ? 'New Flow'
-            : 'New Shader',
+        : nextKind === 'materialInstance'
+          ? 'New Material Instance'
+          : nextKind === 'materialFunction'
+            ? 'New Material Function'
+            : nextKind === 'flow'
+              ? 'New Flow'
+              : 'New Shader',
+    );
+    setCreateParentGuid((current) =>
+      nextKind === 'materialInstance' ? current || materialParents[0]?.guid || '' : '',
     );
     setShaderTemplate('surface');
     setCreateError('');
@@ -630,11 +645,18 @@ export function ContentBrowserPanel({
       const request: AssetCreationRequest =
         createKind === 'material'
           ? { kind: 'material', name: createName, folder: createFolder }
-          : createKind === 'materialFunction'
-            ? { kind: 'materialFunction', name: createName, folder: createFolder }
-            : createKind === 'flow'
-              ? { kind: 'flow', name: createName, folder: createFolder }
-              : { kind: 'shader', name: createName, folder: createFolder, template: shaderTemplate };
+          : createKind === 'materialInstance'
+            ? (() => {
+                const parent = materialParents.find((asset) => asset.guid === createParentGuid);
+                const reference = parent ? materialAssetReference(parent) : null;
+                if (!reference) throw new Error('Choose a parent Material.');
+                return { kind: 'materialInstance' as const, name: createName, folder: createFolder, parent: reference };
+              })()
+            : createKind === 'materialFunction'
+              ? { kind: 'materialFunction', name: createName, folder: createFolder }
+              : createKind === 'flow'
+                ? { kind: 'flow', name: createName, folder: createFolder }
+                : { kind: 'shader', name: createName, folder: createFolder, template: shaderTemplate };
       const definition = buildAssetCreation(project, request);
       if (project.assets.some((asset) => normalizedPath(asset.path) === normalizedPath(definition.asset.path))) {
         throw new Error(`An asset already exists at ${definition.asset.path}`);
@@ -642,7 +664,7 @@ export function ContentBrowserPanel({
       const created = await window.arc.projects.createAsset({
         path: definition.asset.path,
         text: definition.contents,
-        kind: definition.asset.kind as 'material' | 'materialFunction' | 'flow' | 'shader',
+        kind: definition.asset.kind as 'material' | 'materialInstance' | 'materialFunction' | 'flow' | 'shader',
       });
       const registered = {
         ...definition.asset,
@@ -680,6 +702,17 @@ export function ContentBrowserPanel({
         <span>
           <strong>Material</strong>
           <small>PBR material graph</small>
+        </span>
+      </button>
+      <button
+        aria-label="Material Instance"
+        role="menuitem"
+        onClick={() => beginCreate('materialInstance', targetFolder)}
+      >
+        <span className="content-create-type-icon material" aria-hidden="true" />
+        <span>
+          <strong>Material Instance</strong>
+          <small>Reusable overrides of a parent Material</small>
         </span>
       </button>
       <button
@@ -1153,11 +1186,13 @@ export function ContentBrowserPanel({
                 Create{' '}
                 {createKind === 'material'
                   ? 'Material'
-                  : createKind === 'materialFunction'
-                    ? 'Material Function'
-                    : createKind === 'flow'
-                      ? 'Flow Graph'
-                      : 'Shader'}
+                  : createKind === 'materialInstance'
+                    ? 'Material Instance'
+                    : createKind === 'materialFunction'
+                      ? 'Material Function'
+                      : createKind === 'flow'
+                        ? 'Flow Graph'
+                        : 'Shader'}
               </strong>
               <small>{createFolder || contentRoot}</small>
             </header>
@@ -1171,6 +1206,24 @@ export function ContentBrowserPanel({
                 disabled={creating}
               />
             </label>
+            {createKind === 'materialInstance' && (
+              <label>
+                Parent Material
+                <select
+                  aria-label="Parent Material"
+                  value={createParentGuid}
+                  onChange={(event) => setCreateParentGuid(event.target.value)}
+                  disabled={creating}
+                >
+                  {materialParents.length === 0 && <option value="">No Materials available</option>}
+                  {materialParents.map((asset) => (
+                    <option key={asset.guid ?? asset.id} value={asset.guid ?? ''}>
+                      {asset.title?.trim() || asset.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {createKind === 'shader' && (
               <label>
                 Template
@@ -1193,17 +1246,22 @@ export function ContentBrowserPanel({
               <button type="button" onClick={() => setCreateKind(null)} disabled={creating}>
                 Cancel
               </button>
-              <button type="submit" disabled={creating || !createName.trim()}>
+              <button
+                type="submit"
+                disabled={creating || !createName.trim() || (createKind === 'materialInstance' && !createParentGuid)}
+              >
                 {creating
                   ? 'Creating…'
                   : `Create ${
                       createKind === 'material'
                         ? 'Material'
-                        : createKind === 'materialFunction'
-                          ? 'Material Function'
-                          : createKind === 'flow'
-                            ? 'Flow Graph'
-                            : 'Shader'
+                        : createKind === 'materialInstance'
+                          ? 'Material Instance'
+                          : createKind === 'materialFunction'
+                            ? 'Material Function'
+                            : createKind === 'flow'
+                              ? 'Flow Graph'
+                              : 'Shader'
                     }`}
               </button>
             </footer>

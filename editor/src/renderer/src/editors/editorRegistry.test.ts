@@ -101,6 +101,28 @@ describe('editor registry asset routing', () => {
     });
   });
 
+  it('routes reusable Material Instance assets to the dedicated instance editor', () => {
+    const target = createEditorDocumentForAsset(
+      {
+        ...material,
+        id: 'floor-instance-guid',
+        guid: 'floor-instance-guid',
+        name: 'Floor.arcmatinst',
+        path: 'Content/Materials/Floor.arcmatinst',
+        kind: 'materialInstance',
+      },
+      registry,
+    );
+
+    expect(target?.registration.kind).toBe('materialInstance');
+    expect(target?.document).toMatchObject({
+      id: 'material-instance:floor-instance-guid',
+      kind: 'materialInstance',
+      path: 'Content/Materials/Floor.arcmatinst',
+      assetGuid: 'floor-instance-guid',
+    });
+  });
+
   it('forces built-in materials read-only', () => {
     const target = createEditorDocumentForAsset(
       {

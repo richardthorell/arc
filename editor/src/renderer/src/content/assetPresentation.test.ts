@@ -37,6 +37,14 @@ describe('model asset presentation', () => {
     expect(assetDragType(value)).toBe('mesh');
   });
 
+  it('presents Material Instances as assignable material-family assets', () => {
+    const value = asset('Content/Materials/Floor.arcmatinst', 'materialInstance');
+    expect(assetPresentationKind(value)).toBe('materialInstance');
+    expect(assetPresentationLabel(value)).toBe('Material Instance');
+    expect(assetPresentationIcon(value)).toBe('material');
+    expect(assetDragType(value)).toBe('materialInstance');
+  });
+
   it('presents native Water presets as dedicated authoring assets', () => {
     const value = asset('builtin/water/presets/open_ocean.arcwater', 'water');
     expect(assetPresentationKind(value)).toBe('water');
