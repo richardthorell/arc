@@ -683,7 +683,8 @@ render::material_handle load_material_for_editor(editor_material_library& librar
         std::vector<render::tools::material_function_source> functions;
         render::tools::material_instance_authoring_document no_overrides;
         std::string function_message;
-        if (!load_instance_function_sources(path, asset_root, authored.value(), no_overrides, functions, function_message))
+        if (!load_instance_function_sources(path, asset_root, authored.value(), no_overrides, functions,
+                                            function_message))
         {
             arc::diagnostics::error("editor.materials", function_message);
             return {};
