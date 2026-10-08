@@ -24,6 +24,7 @@ import {
   Settings,
   Trash2,
   Waves,
+  X,
 } from 'lucide-react';
 
 import { activityRegistry, dockPanelIds, getPanel } from './panelRegistry';
