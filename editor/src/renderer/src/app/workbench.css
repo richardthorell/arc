@@ -674,85 +674,38 @@
   position: relative;
 }
 
-.primitive-palette {
-  width: auto;
-  margin: 0 8px 6px;
-  padding: 8px;
-  border: 1px solid #354353;
-  border-radius: 6px;
-  background: #151d25;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+.hierarchy-create-dropdown.ui-context-menu {
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 120;
 }
 
-.primitive-palette-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 27px;
-  padding: 0 2px 5px 8px;
-  color: #dce6f0;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.primitive-palette-empty {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  height: 31px;
-  padding: 0 9px;
-  border: 0;
-  border-radius: 4px;
-  color: #dce6f0;
-  background: transparent;
-  text-align: left;
-}
-
-.primitive-palette-empty:hover {
-  background: #243342;
-}
-
-.primitive-palette-heading {
-  padding: 9px 5px 6px;
-  color: #8290a0;
-  font-size: 11px;
+.hierarchy-create-menu-heading {
+  padding: 7px 10px 4px;
+  color: var(--arc-color-text-subtle);
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
+  pointer-events: none;
 }
 
-.primitive-palette-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(68px, 1fr));
-  gap: 5px;
+.hierarchy-create-menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: rgba(255, 255, 255, 0.08);
 }
 
-.primitive-palette-grid button {
-  display: grid;
-  justify-items: center;
-  gap: 3px;
-  min-width: 0;
-  padding: 7px 4px 6px;
-  border: 1px solid #2c3946;
-  border-radius: 5px;
-  color: #bdc9d5;
-  background: linear-gradient(180deg, #202b36, #19222b);
-  font-size: 11px;
+.hierarchy-create-menu-empty {
+  padding: 10px 12px 12px;
+  color: var(--arc-color-text-subtle);
+  font-size: 12px;
+  text-align: center;
 }
 
-.primitive-palette-grid button:hover,
-.primitive-palette-grid button:focus-visible {
-  color: #f0f7ff;
-  border-color: #4688c8;
-  background: linear-gradient(180deg, #2b4054, #203347);
-  outline: none;
-}
-
-.primitive-preview {
-  width: 58px;
-  height: 58px;
-  filter: drop-shadow(0 5px 6px rgba(0, 0, 0, 0.38));
+.hierarchy-create-shape-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .hierarchy-expand {

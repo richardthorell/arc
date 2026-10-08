@@ -49,6 +49,42 @@ describe('UiContextMenu', () => {
     expect(parentContext).not.toHaveBeenCalled();
   });
 
+  it('focuses searchable menus and clears search before closing on Escape', () => {
+    const onSearchValueChange = vi.fn();
+    const onRequestClose = vi.fn();
+    const { rerender } = render(
+      <UiContextMenu
+        aria-label="Create menu"
+        searchValue="cube"
+        onSearchValueChange={onSearchValueChange}
+        onRequestClose={onRequestClose}
+      >
+        <UiContextMenuItem>Box</UiContextMenuItem>
+      </UiContextMenu>,
+    );
+
+    const search = screen.getByRole('searchbox', { name: 'Search menu' });
+    expect(search).toHaveFocus();
+
+    fireEvent.keyDown(search, { key: 'Escape' });
+    expect(onSearchValueChange).toHaveBeenCalledWith('');
+    expect(onRequestClose).not.toHaveBeenCalled();
+
+    rerender(
+      <UiContextMenu
+        aria-label="Create menu"
+        searchValue=""
+        onSearchValueChange={onSearchValueChange}
+        onRequestClose={onRequestClose}
+      >
+        <UiContextMenuItem>Box</UiContextMenuItem>
+      </UiContextMenu>,
+    );
+
+    fireEvent.keyDown(screen.getByRole('searchbox', { name: 'Search menu' }), { key: 'Escape' });
+    expect(onRequestClose).toHaveBeenCalledTimes(1);
+  });
+
   it('only reserves a leading column when an item has leading content', () => {
     render(
       <UiContextMenu aria-label="Compact menu">

@@ -9,7 +9,7 @@ import type { ProjectSnapshot } from '../services/editorHostTypes';
 afterEach(() => document.body.replaceChildren());
 
 describe('ExplorerPanel', () => {
-  it('renders the entity palette as an in-panel drawer', () => {
+  it('renders entity creation as a compact dropdown context menu', () => {
     const onCreateEntity = vi.fn();
     const project = { scene: [] } as unknown as ProjectSnapshot;
     const view = render(
@@ -30,15 +30,54 @@ describe('ExplorerPanel', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Add entity' }));
-    const palette = screen.getByRole('menu', { name: 'Add entity' });
-    expect(view.container.contains(palette)).toBe(true);
-    expect(
-      palette.compareDocumentPosition(screen.getByRole('textbox', { name: 'Search hierarchy' })) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    const menu = screen.getByRole('menu', { name: 'Add entity' });
+    expect(menu).toHaveClass('ui-context-menu', 'hierarchy-create-dropdown');
+    expect(view.container.querySelector('.hierarchy-create-menu')?.contains(menu)).toBe(true);
+    expect(screen.getByRole('menuitem', { name: 'Empty Entity' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Box' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Terrain...' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Ocean' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('menuitem', { name: 'Box' }));
     expect(onCreateEntity).toHaveBeenCalledWith('cube');
+    expect(screen.queryByRole('menu', { name: 'Add entity' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add entity' }));
+    fireEvent.pointerDown(screen.getByRole('textbox', { name: 'Search hierarchy' }));
+    expect(screen.queryByRole('menu', { name: 'Add entity' })).not.toBeInTheDocument();
+  });
+
+  it('filters the Create Entity menu and uses Escape to clear before closing', () => {
+    render(
+      <ExplorerPanel
+        project={{ scene: [] } as unknown as ProjectSnapshot}
+        selectedEntityId=""
+        selectedEntityIds={new Set()}
+        onSelectEntity={vi.fn()}
+        onRenameEntity={vi.fn()}
+        onSetEntityActive={vi.fn()}
+        onMoveEntity={vi.fn()}
+        onCreateEntity={vi.fn()}
+        onDuplicate={vi.fn()}
+        onCreatePrefab={vi.fn()}
+        onInstantiatePrefab={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add entity' }));
+    const search = screen.getByRole('searchbox', { name: 'Search entities' });
+    expect(search).toHaveFocus();
+
+    fireEvent.change(search, { target: { value: 'sph' } });
+    expect(screen.getByRole('menuitem', { name: 'Sphere' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Box' })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(search, { key: 'Escape' });
+    expect(screen.getByRole('searchbox', { name: 'Search entities' })).toHaveValue('');
+    expect(screen.getByRole('menu', { name: 'Add entity' })).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole('searchbox', { name: 'Search entities' }), { key: 'Escape' });
     expect(screen.queryByRole('menu', { name: 'Add entity' })).not.toBeInTheDocument();
   });
 
