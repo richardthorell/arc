@@ -67,7 +67,8 @@ export type MaterialGraphNodeType =
   | 'normalMap'
   | 'functionInput'
   | 'functionOutput'
-  | 'functionCall';
+  | 'functionCall'
+  | 'functionSlot';
 
 export type MaterialGraphPosition = [number, number];
 
@@ -529,6 +530,15 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     outputs: [],
     defaultValues: { path: '', name: 'Material Function', inputPins: [], outputPins: [] },
   },
+  functionSlot: {
+    type: 'functionSlot',
+    title: 'Function Slot',
+    category: 'Functions',
+    subcategory: 'Composition',
+    inputs: [],
+    outputs: [],
+    defaultValues: { slotId: '', path: '', name: 'Function Slot', inputPins: [], outputPins: [] },
+  },
 };
 
 let generatedId = 0;
@@ -628,12 +638,19 @@ export const createMaterialNode = (
   type: MaterialGraphNodeType,
   position: MaterialGraphPosition,
   values: Record<string, unknown> = {},
-): MaterialGraphNode => ({
-  id: type === 'output' ? 'material-output' : materialGraphId(type),
-  type,
-  position,
-  values: { ...materialNodeDefinitions[type].defaultValues, ...values },
-});
+): MaterialGraphNode => {
+  const id = type === 'output' ? 'material-output' : materialGraphId(type);
+  return {
+    id,
+    type,
+    position,
+    values: {
+      ...materialNodeDefinitions[type].defaultValues,
+      ...(type === 'functionSlot' ? { slotId: `slot-${id}` } : {}),
+      ...values,
+    },
+  };
+};
 
 export const createDefaultMaterialGraph = (): MaterialGraph => {
   const baseColorTint = createMaterialNode('colorRgba', [80, 80], { value: [0.78, 0.8, 0.84, 1] });
@@ -897,7 +914,7 @@ export const materialNodeDefinition = (node: MaterialGraphNode): MaterialNodeDef
     return { ...definition, inputs: pins.map((value) => pin(value.id, value.name, value.type)) };
   }
 
-  if (node.type === 'functionCall') {
+  if (node.type === 'functionCall' || node.type === 'functionSlot') {
     const inputs = materialFunctionPins(node.values.inputPins);
     const outputs = materialFunctionPins(node.values.outputPins);
     const title = typeof node.values.name === 'string' && node.values.name.trim() ? node.values.name : definition.title;

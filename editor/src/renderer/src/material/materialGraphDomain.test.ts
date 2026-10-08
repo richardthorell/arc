@@ -25,6 +25,7 @@ describe('materialGraphDomain', () => {
     expect(definitions.some((definition) => definition.type === 'worldNormal')).toBe(true);
     expect(definitions.some((definition) => definition.type === 'vertexColor')).toBe(true);
     expect(definitions.some((definition) => definition.type === 'texCoord')).toBe(true);
+    expect(definitions.some((definition) => definition.type === 'functionSlot')).toBe(true);
   });
 
   it('keeps material-specific protection and connection rules behind the domain boundary', () => {

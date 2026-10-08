@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createDefaultMaterialGraph,
+  createMaterialNode,
   isMaterialGraph,
   materialGraphCompileFingerprint,
   materialGraphFromAsset,
+  materialNodeDefinition,
   materialNodeDefinitions,
 } from './materialGraphTypes';
 
@@ -198,6 +200,25 @@ describe('material graph schema', () => {
     expect(rangeFor('indexOfRefraction')).toBeUndefined();
     expect(rangeFor('thickness')).toBeUndefined();
     expect(rangeFor('attenuationDistance')).toBeUndefined();
+  });
+
+  it('creates Function Slots with stable selector identity and typed function pins', () => {
+    const slot = createMaterialNode('functionSlot', [20, 30], {
+      name: 'Base Color Source',
+      path: 'functions/default.arcmatfn',
+      inputPins: [{ id: 'base', name: 'Base', type: 'vec3' }],
+      outputPins: [{ id: 'result', name: 'Result', type: 'vec3' }],
+    });
+    expect(slot.values.slotId).toMatch(/^slot-functionSlot-/);
+    expect(materialNodeDefinitions.functionSlot).toMatchObject({
+      title: 'Function Slot',
+      category: 'Functions',
+      subcategory: 'Composition',
+    });
+    const definition = materialNodeDefinition(slot);
+    expect(definition.title).toBe('Base Color Source');
+    expect(definition.inputs).toEqual([{ id: 'base', label: 'Base', type: 'vec3' }]);
+    expect(definition.outputs).toEqual([{ id: 'result', label: 'Result', type: 'vec3' }]);
   });
 
   it('defines backend-neutral material input intrinsics', () => {

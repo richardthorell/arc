@@ -126,7 +126,43 @@ struct material_function_descriptor
 struct material_function_source
 {
     std::string path;
+    /** Stable asset identity when available (normally the Material Function GUID string). */
+    std::string identity;
     std::string source;
+};
+
+/** @brief Compile-time replacement selected for one authored Material Function Slot. */
+struct material_function_slot_override
+{
+    std::string slot_id;
+    std::string function_path;
+
+    friend auto operator<=>(const material_function_slot_override&, const material_function_slot_override&) = default;
+};
+
+/** @brief Reflected parameter introduced by a selected function beyond the slot's base signature. */
+struct material_function_slot_parameter
+{
+    std::string pin_id;
+    shader_parameter_id parameter_id{};
+
+    friend auto operator<=>(const material_function_slot_parameter&, const material_function_slot_parameter&) = default;
+};
+
+/** @brief Resolved metadata for one authored Material Function Slot. */
+struct material_function_slot_descriptor
+{
+    std::string id;
+    std::string name;
+    std::string default_function_path;
+    std::string selected_function_path;
+    std::string selected_function_identity;
+    std::vector<material_function_pin> inputs;
+    std::vector<material_function_pin> outputs;
+    std::vector<material_function_slot_parameter> selected_parameters;
+
+    friend auto operator<=>(const material_function_slot_descriptor&,
+                            const material_function_slot_descriptor&) = default;
 };
 
 /** @brief One normalized authored material graph node. */
@@ -249,6 +285,7 @@ struct material_graph_descriptor
     std::vector<shader_parameter_descriptor> parameters;
     std::vector<material_texture_binding> textures;
     std::vector<material_surface_output_binding> outputs;
+    std::vector<material_function_slot_descriptor> function_slots;
     material_feature_requirements requirements;
 };
 
@@ -257,6 +294,11 @@ struct material_graph_compilation
 {
     material_ir ir;
     material_graph_descriptor descriptor;
+    /**
+     * Hash of resolved Function Slot selections only. Callers combine this with the
+     * parent Material identity when caching reusable Material Instance specializations.
+     */
+    std::uint64_t function_specialization_key{};
     std::vector<shader_diagnostic> diagnostics;
 };
 
@@ -290,6 +332,17 @@ using material_function_validation_result = core::result<std::vector<material_fu
  */
 [[nodiscard]] material_graph_compile_result
 compile_material_graph_json(std::string_view graph_json, std::span<const material_function_source> functions);
+
+/**
+ * @brief Compile a material graph with compile-time Material Function Slot replacements.
+ *
+ * Function Slot selections specialize graph topology before Material IR generation.
+ * Ordinary material parameter values are intentionally absent from this API and do not
+ * participate in `function_specialization_key`.
+ */
+[[nodiscard]] material_graph_compile_result
+compile_material_graph_json(std::string_view graph_json, std::span<const material_function_source> functions,
+                            std::span<const material_function_slot_override> slot_overrides);
 
 /** @brief Validate one first-class Material/Shader Function document and return its public pins. */
 [[nodiscard]] material_function_validation_result validate_material_function_json(std::string_view function_json,
