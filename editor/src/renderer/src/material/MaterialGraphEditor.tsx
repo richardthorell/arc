@@ -629,9 +629,10 @@ export function MaterialGraphEditor({
   const focusDiagnosticNode = useCallback(
     (nodeId: string) => {
       const node = graph.nodes.find((candidate) => candidate.id === nodeId);
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!node || !rect || rect.width <= 0 || rect.height <= 0) return;
+      if (!node) return;
       setSelectedNodes(new Set([nodeId]));
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect || rect.width <= 0 || rect.height <= 0) return;
       commitViewport({
         x: rect.width / 2 - (node.position[0] + materialNodeWidth(node.type) / 2) * viewport.zoom,
         y: rect.height / 2 - (node.position[1] + materialNodeHeight(node) / 2) * viewport.zoom,
