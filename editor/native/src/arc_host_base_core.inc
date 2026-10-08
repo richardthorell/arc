@@ -5183,7 +5183,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto resolved_material = resolve_editor_asset(state_->assets, state_->asset_registry.get(),
                                                                     state_->project.root, payload.path);
                 if (!resolved_material || !is_material_asset_path(resolved_material->path))
-                    return fail("Material must be an .arcmat project or built-in asset", entity);
+                    return fail("Material must be an .arcmat or .arcmatinst project or built-in asset", entity);
                 std::string message;
                 for (const auto target : targets)
                 {
@@ -5194,10 +5194,16 @@ host_response arc_host::execute(const host_command_envelope& command)
                 }
                 ensure_scene_authoring_metadata(state_->scene);
                 const auto registry_path = arc::assets::normalize_asset_path(payload.path);
+                auto material_extension = resolved_material->path.extension().string();
+                std::transform(material_extension.begin(), material_extension.end(), material_extension.begin(),
+                               [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+                const auto expected_material_type = material_extension == ".arcmatinst"
+                                                        ? arc::assets::asset_types::material_instance
+                                                        : arc::assets::asset_types::material;
                 const auto material =
                     state_->asset_registry
-                        ? state_->asset_registry->resolve(registry_path, arc::assets::asset_types::material)
-                        : arc::assets::asset_reference{.expected_type = arc::assets::asset_types::material,
+                        ? state_->asset_registry->resolve(registry_path, expected_material_type)
+                        : arc::assets::asset_reference{.expected_type = expected_material_type,
                                                        .path_hint = registry_path};
                 for (const auto target : targets)
                 {
