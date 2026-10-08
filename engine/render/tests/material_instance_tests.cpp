@@ -95,3 +95,41 @@ TEST_CASE("material instance can reset multiple overrides without reordering sur
     REQUIRE(reset_material_instance_overrides(instance, std::span<const shader_parameter_id>{}) == 0);
     REQUIRE(instance.overrides.size() == 2);
 }
+
+
+TEST_CASE("material instance specialization validates its runtime payload", "[render][material-instance]")
+{
+    material_instance_descriptor instance;
+    instance.parent = material_handle{23};
+    instance.function_specialization_key = 17;
+
+    REQUIRE(validate_material_instance(instance).error == material_instance_validation_error::invalid_specialization);
+
+    instance.specialized_runtime_program = std::make_shared<material_runtime_program>();
+    instance.specialized_parameter_layout.push_back(
+        {.id = shader_parameter_id{701}, .name = "Checker / Scale", .type = shader_parameter_type::float32});
+    REQUIRE(validate_material_instance(instance).valid());
+}
+
+TEST_CASE("material instance resolves overrides against specialized reflected parameters", "[render][material-instance]")
+{
+    material_definition_descriptor parent;
+    parent.material.handle = material_handle{31};
+    parent.parameter_layout.push_back(
+        {.id = shader_parameter_id{101}, .name = "Parent", .type = shader_parameter_type::float32});
+
+    material_instance_descriptor instance;
+    instance.parent = material_handle{31};
+    instance.function_specialization_key = 33;
+    instance.specialized_runtime_program = std::make_shared<material_runtime_program>();
+    instance.specialized_parameter_layout.push_back(
+        {.id = shader_parameter_id{701}, .name = "Checker / Scale", .type = shader_parameter_type::float32});
+    instance.overrides = {make_override(701, 2.0f)};
+
+    const auto resolved = resolve_material_instance(parent, instance);
+    REQUIRE(resolved);
+    REQUIRE(resolved.value().runtime_program == instance.specialized_runtime_program);
+    REQUIRE(resolved.value().parameters.size() == 1);
+    CHECK(resolved.value().parameters.front().id == shader_parameter_id{701});
+    CHECK(std::get<float>(resolved.value().parameters.front().value) == 2.0f);
+}
