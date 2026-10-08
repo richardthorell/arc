@@ -7943,8 +7943,19 @@ std::optional<host_asset_thumbnail_snapshot> arc_host::asset_thumbnail(std::stri
     if (is_material_asset_path(resolved->path))
     {
         material_asset material;
-        std::string message;
-        if (!load_material_asset(resolved->path, resolved->asset_root, material, message)) return std::nullopt;
+        if (extension == ".arcmatinst")
+        {
+            if (!state_->renderer) return std::nullopt;
+            const auto handle =
+                load_material_for_editor(state_->scene.material_library, *state_->renderer, resolved->asset_root,
+                                         resolved->path, &material);
+            if (!handle.valid()) return std::nullopt;
+        }
+        else
+        {
+            std::string message;
+            if (!load_material_asset(resolved->path, resolved->asset_root, material, message)) return std::nullopt;
+        }
         auto rendered = render_material_preview(material, resolved->asset_root, requested_size);
         if (!rendered.succeeded()) return std::nullopt;
         preview = std::move(rendered.texture);
