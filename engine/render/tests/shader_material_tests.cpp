@@ -133,7 +133,10 @@ TEST_CASE("shader packages round trip reflection and reject corruption")
                                     .parameters = {{.id = arc::render::make_shader_parameter_id("baseColor"),
                                                     .name = "baseColor",
                                                     .type = arc::render::shader_parameter_type::float4,
-                                                    .size = 16}},
+                                                    .size = 16,
+                                                    .has_range = true,
+                                                    .minimum = 0.0f,
+                                                    .maximum = 1.0f}},
                                     .passes = {{.pass = arc::render::material_pass::forward,
                                                 .entry_point = arc::render::make_shader_entry_point_id(
                                                     "main", arc::render::shader_stage::fragment)}}},
@@ -155,6 +158,9 @@ TEST_CASE("shader packages round trip reflection and reject corruption")
     REQUIRE(decoded.value().id == package.id);
     REQUIRE(decoded.value().compiled.bytecode == package.compiled.bytecode);
     REQUIRE(decoded.value().compiled.reflection.parameters.front().name == "baseColor");
+    REQUIRE(decoded.value().compiled.reflection.parameters.front().has_range);
+    REQUIRE(decoded.value().compiled.reflection.parameters.front().minimum == 0.0f);
+    REQUIRE(decoded.value().compiled.reflection.parameters.front().maximum == 1.0f);
     REQUIRE(decoded.value().compiled.source_map.front().source.graph_node_id == "base-color");
     REQUIRE(decoded.value().compiled.diagnostics.front().include_stack.front().path == "shared.slang");
 
