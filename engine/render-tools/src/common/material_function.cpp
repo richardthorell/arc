@@ -431,8 +431,8 @@ slot_specialization_result specialize_function_slots(json graph,
 
         std::string compatibility_reason;
         if (!function_slot_compatible(*base, *selected, compatibility_reason))
-            return slot_specialization_result::failure(
-                validation_error("Material Function Slot '" + slot_id + "' is incompatible: " + compatibility_reason));
+            return slot_specialization_result::failure(validation_error(
+                concatenate({"Material Function Slot '", slot_id, "' is incompatible: ", compatibility_reason})));
 
         material_function_slot_descriptor descriptor{
             .id = slot_id,
