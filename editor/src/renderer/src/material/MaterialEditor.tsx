@@ -8,6 +8,7 @@ import type { EditorDocument } from '../editors/editorTypes';
 import { UiPanelCard, UiPanelCardRow, UiSelect, UiToggleButton } from '../ui';
 import { replaceMaterialSettings, useMaterialDocumentState } from './materialDocumentState';
 import { MaterialGraphWithInteractions } from './MaterialGraphInteractions';
+import { materialGraphDiagnostics } from './materialCompiler';
 import type { MaterialBlendMode, MaterialDomain, MaterialShadingModel } from './materialGraphTypes';
 import { materialGraphOutputSource, materialRenderPathLabel } from './materialSettingsPresentation';
 import './materialCustomShader.css';
@@ -214,6 +215,7 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
             loaded={state.loaded}
             showGrid={state.showGrid}
             dimUnrelated={state.dimUnrelated}
+            diagnostics={materialGraphDiagnostics(state.compilation.diagnostics)}
           />
         )}
 
