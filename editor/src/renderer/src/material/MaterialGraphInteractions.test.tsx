@@ -137,7 +137,8 @@ describe('MaterialGraphWithInteractions', () => {
     graph.nodes.push(wide);
 
     render(<MaterialGraphWithInteractions document={document} graph={graph} />);
-    const wideNode = screen.getAllByText('Scalar', { selector: '.ui-node-card-title' })
+    const wideNode = screen
+      .getAllByText('Scalar', { selector: '.ui-node-card-title' })
       .map((title) => title.closest('article'))
       .find((node) => node?.getAttribute('data-node-id') === 'wide');
     const output = screen.getByText('Material Output').closest('article');
