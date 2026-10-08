@@ -44,12 +44,14 @@ describe('core built-in material families', () => {
     expect(materialGraphOutputConnected(graph, 'metallic')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'roughness')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'ao')).toBe(true);
+    expect(editorParameters.find((parameter) => parameter.name === 'Metallic')?.range).toEqual({ min: 0, max: 1 });
     expect(editorParameters.find((parameter) => parameter.name === 'Roughness')?.range).toEqual({ min: 0, max: 1 });
-    expect(editorParameters.find((parameter) => parameter.name === 'Transmission')?.range).toEqual({ min: 0, max: 1 });
-    expect(editorParameters.find((parameter) => parameter.name === 'Opacity')?.range).toEqual({ min: 0, max: 1 });
-    expect(editorParameters.find((parameter) => parameter.name === 'Index of Refraction')?.range).toBeUndefined();
-    expect(editorParameters.find((parameter) => parameter.name === 'Thickness')?.range).toBeUndefined();
-    expect(editorParameters.find((parameter) => parameter.name === 'Attenuation Distance')?.range).toBeUndefined();
+    expect(editorParameters.find((parameter) => parameter.name === 'Clear Coat')?.range).toEqual({ min: 0, max: 1 });
+    expect(editorParameters.find((parameter) => parameter.name === 'Clear Coat Roughness')?.range).toEqual({
+      min: 0,
+      max: 1,
+    });
+    expect(editorParameters.find((parameter) => parameter.name === 'Emissive Strength')?.range).toBeUndefined();
     expect(materialGraphOutputConnected(graph, 'normal')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'clearCoat')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'clearCoatRoughness')).toBe(true);
@@ -125,6 +127,12 @@ describe('core built-in material families', () => {
       'Opacity',
       'Normal Texture',
     ]);
+    expect(editorParameters.find((parameter) => parameter.name === 'Roughness')?.range).toEqual({ min: 0, max: 1 });
+    expect(editorParameters.find((parameter) => parameter.name === 'Transmission')?.range).toEqual({ min: 0, max: 1 });
+    expect(editorParameters.find((parameter) => parameter.name === 'Opacity')?.range).toEqual({ min: 0, max: 1 });
+    expect(editorParameters.find((parameter) => parameter.name === 'Index of Refraction')?.range).toBeUndefined();
+    expect(editorParameters.find((parameter) => parameter.name === 'Thickness')?.range).toBeUndefined();
+    expect(editorParameters.find((parameter) => parameter.name === 'Attenuation Distance')?.range).toBeUndefined();
     expect(materialGraphOutputConnected(graph, 'normal')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'transmission')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'indexOfRefraction')).toBe(true);
@@ -159,7 +167,8 @@ describe('core built-in material families', () => {
       type: 'textureSample2D',
       values: { texture: '', dimension: '2d', semantic: 'normal' },
     });
-    expect(materialEditorParameters(graph).map((parameter) => parameter.name)).toEqual([
+    const editorParameters = materialEditorParameters(graph);
+    expect(editorParameters.map((parameter) => parameter.name)).toEqual([
       'Base Color Tint',
       'Base Color Texture',
       'Roughness',
