@@ -4,13 +4,23 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { materialEditorParameters } from './materialCompiler';
-import { materialGraphFromAsset, type MaterialAssetJson } from './materialGraphTypes';
+import { materialFunctionCompatibleWithSlot } from './materialInstanceAuthoring';
+import {
+  materialGraphFromAsset,
+  type MaterialAssetJson,
+  type MaterialFunctionAssetJson,
+} from './materialGraphTypes';
 import { materialGraphOutputConnected, materialRenderPathLabel } from './materialSettingsPresentation';
 
 const readBuiltIn = (name: string) =>
   JSON.parse(
     fs.readFileSync(path.resolve(process.cwd(), '..', 'assets', 'materials', name), 'utf8'),
   ) as MaterialAssetJson;
+
+const readBuiltInFunction = (name: string) =>
+  JSON.parse(
+    fs.readFileSync(path.resolve(process.cwd(), '..', 'assets', 'material_functions', name), 'utf8'),
+  ) as MaterialFunctionAssetJson;
 
 describe('core built-in material families', () => {
   it('ships Standard Lit with neutral optional surface maps', () => {
@@ -64,6 +74,57 @@ describe('core built-in material families', () => {
         customShader: false,
       }),
     ).toBe('Deferred');
+
+    const baseColorSource = graph.nodes.find((node) => node.id === 'base-color-source');
+    expect(baseColorSource).toMatchObject({
+      type: 'functionSlot',
+      values: {
+        slotId: 'base-color-source',
+        name: 'Base Color Source',
+        path: 'assets/material_functions/default_base_color.arcmatfn',
+        inputPins: [{ id: 'baseColor', name: 'Base Color', type: 'vec3' }],
+        outputPins: [{ id: 'color', name: 'Color', type: 'vec3' }],
+      },
+    });
+    expect(
+      graph.connections.some(
+        (connection) =>
+          connection.from.nodeId === 'base-color-multiply' &&
+          connection.from.pin === 'result' &&
+          connection.to.nodeId === 'base-color-source' &&
+          connection.to.pin === 'baseColor',
+      ),
+    ).toBe(true);
+    expect(
+      graph.connections.some(
+        (connection) =>
+          connection.from.nodeId === 'base-color-source' &&
+          connection.from.pin === 'color' &&
+          connection.to.nodeId === 'material-output' &&
+          connection.to.pin === 'baseColor',
+      ),
+    ).toBe(true);
+    expect(
+      graph.connections.some(
+        (connection) =>
+          connection.from.nodeId === 'base-color-multiply' &&
+          connection.to.nodeId === 'material-output' &&
+          connection.to.pin === 'baseColor',
+      ),
+    ).toBe(false);
+
+    const defaultBaseColor = readBuiltInFunction('default_base_color.arcmatfn');
+    expect(defaultBaseColor.inputs).toEqual([{ id: 'baseColor', name: 'Base Color', type: 'vec3' }]);
+    expect(defaultBaseColor.outputs).toEqual([{ id: 'color', name: 'Color', type: 'vec3' }]);
+
+    const slotInputs = baseColorSource?.values.inputPins as MaterialFunctionAssetJson['inputs'];
+    const slotOutputs = baseColorSource?.values.outputPins as MaterialFunctionAssetJson['outputs'];
+    for (const functionName of ['default_base_color.arcmatfn', 'checker.arcmatfn', 'gradient.arcmatfn', 'noise.arcmatfn']) {
+      expect(
+        materialFunctionCompatibleWithSlot(slotInputs, slotOutputs, readBuiltInFunction(functionName)),
+        functionName,
+      ).toBe(true);
+    }
 
     const packed = graph.nodes.find((node) => node.parameter?.name === 'Metallic Roughness Texture');
     const ao = graph.nodes.find((node) => node.parameter?.name === 'Ambient Occlusion Texture');
