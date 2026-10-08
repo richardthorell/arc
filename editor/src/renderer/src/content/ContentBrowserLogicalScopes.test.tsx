@@ -49,6 +49,16 @@ const baseProject: ProjectSnapshot = {
       readOnly: true,
     },
     {
+      id: 'builtin-shader',
+      guid: 'builtin-shader',
+      name: 'Deferred Lighting',
+      path: 'Engine/Shaders/deferred_lighting.frag',
+      kind: 'shader' as const,
+      status: 'ready' as const,
+      scope: 'builtin' as const,
+      readOnly: true,
+    },
+    {
       id: 'user-brick',
       guid: 'user-brick',
       name: 'User Brick',
@@ -130,6 +140,19 @@ describe('ContentBrowserPanel logical scopes', () => {
     expect(view.queryByText('Project Rock')).not.toBeInTheDocument();
     fireEvent.click(view.getByText('User Brick'));
     expect(onSelectAsset).toHaveBeenCalledWith('user-brick');
+  });
+
+  it('hides internal built-in shader sources from Engine and cross-scope search', () => {
+    const view = renderBrowser();
+
+    fireEvent.click(view.getByRole('button', { name: 'Built-in Read only' }));
+    expect(view.getByText('Built-in Grid')).toBeInTheDocument();
+    expect(view.queryByText('Deferred Lighting')).not.toBeInTheDocument();
+
+    fireEvent.click(view.getByRole('button', { name: 'Project Writable' }));
+    fireEvent.change(view.getByLabelText('Search assets'), { target: { value: 'deferred lighting' } });
+    expect(view.queryByText('Deferred Lighting')).not.toBeInTheDocument();
+    expect(view.getByText('Search Results (0)')).toBeInTheDocument();
   });
 
   it('keeps configured empty scopes visible and omits unconfigured scopes', () => {
