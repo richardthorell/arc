@@ -403,3 +403,68 @@
   font-size: 11px;
   line-height: 1.45;
 }
+
+
+.content-folder-card {
+  display: grid;
+  min-width: 0;
+  border: 1px solid var(--arc-color-border, var(--border, #34383f));
+  border-radius: 5px;
+  background: var(--arc-color-surface-raised, rgb(255 255 255 / 2%));
+  color: var(--arc-color-text, var(--text-secondary, #c7cbd1));
+  cursor: default;
+  text-align: left;
+}
+
+.content-assets.grid .content-folder-card {
+  grid-template-rows: 120px auto auto;
+  gap: 2px;
+  min-height: 173px;
+  padding: 8px 8px 9px;
+}
+
+.content-folder-card:hover,
+.content-folder-card:focus-visible {
+  border-color: var(--arc-color-border-strong, rgb(255 255 255 / 22%));
+  background: rgb(255 255 255 / 4%);
+  outline: none;
+}
+
+.content-folder-card-icon {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  color: var(--arc-color-text-muted, var(--text-muted, #8d939d));
+}
+
+.content-folder-card-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--arc-text-xxs);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-folder-card small {
+  color: var(--arc-color-text-muted, var(--text-muted, #8d939d));
+  font-size: 10px;
+}
+
+.content-assets.list .content-folder-card {
+  grid-template-columns: 30px minmax(0, 1fr) 72px;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 34px;
+  padding: 5px 8px;
+}
+
+.content-assets.list .content-folder-card-icon {
+  justify-content: start;
+}
+
+.content-assets.list .content-folder-card-icon svg {
+  width: 18px;
+  height: 18px;
+}
