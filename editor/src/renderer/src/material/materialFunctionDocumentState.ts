@@ -100,7 +100,7 @@ const setDirty = (
     dirty: !document.readOnly && serialize(asset, graph) !== confirmed,
   });
 
-const parseFunction = (value: unknown, document: EditorDocument): MaterialFunctionAssetJson => {
+const parseFunction = (value: unknown): MaterialFunctionAssetJson => {
   if (!value || typeof value !== 'object') throw new Error('Material Function document must be an object');
   const candidate = value as Partial<MaterialFunctionAssetJson>;
   if (candidate.kind !== 'materialFunction' || candidate.version !== 1)
@@ -131,7 +131,7 @@ export const loadMaterialFunctionDocument = async (document: EditorDocument, for
       document.path,
       document.assetScope === 'builtin' ? 'builtin' : 'project',
     );
-    const asset = parseFunction(JSON.parse(file.text), document);
+    const asset = parseFunction(JSON.parse(file.text));
     const graph = cloneMaterialGraph(asset.graph);
     const confirmed = serialize(asset, graph);
     setState(document.id, {
