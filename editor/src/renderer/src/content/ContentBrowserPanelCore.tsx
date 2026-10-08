@@ -675,21 +675,25 @@ export function ContentBrowserPanel({
       aria-label="Create asset"
       {...(context && createContextMenu ? { style: { left: createContextMenu.x, top: createContextMenu.y } } : {})}
     >
-      <button role="menuitem" onClick={() => beginCreate('material', targetFolder)}>
+      <button aria-label="Material" role="menuitem" onClick={() => beginCreate('material', targetFolder)}>
         <span className="content-create-type-icon material" aria-hidden="true" />
         <span>
           <strong>Material</strong>
           <small>PBR material graph</small>
         </span>
       </button>
-      <button role="menuitem" onClick={() => beginCreate('materialFunction', targetFolder)}>
+      <button
+        aria-label="Material Function"
+        role="menuitem"
+        onClick={() => beginCreate('materialFunction', targetFolder)}
+      >
         <span className="content-create-type-icon material" aria-hidden="true" />
         <span>
           <strong>Material Function</strong>
           <small>Reusable typed material graph fragment</small>
         </span>
       </button>
-      <button role="menuitem" onClick={() => beginCreate('flow', targetFolder)}>
+      <button aria-label="Flow Graph" role="menuitem" onClick={() => beginCreate('flow', targetFolder)}>
         <span className="content-create-type-icon shader" aria-hidden="true">
           {'⇢'}
         </span>
@@ -698,7 +702,7 @@ export function ContentBrowserPanel({
           <small>Gameplay logic graph</small>
         </span>
       </button>
-      <button role="menuitem" onClick={() => beginCreate('shader', targetFolder)}>
+      <button aria-label="Shader" role="menuitem" onClick={() => beginCreate('shader', targetFolder)}>
         <span className="content-create-type-icon shader" aria-hidden="true">
           {'</>'}
         </span>
