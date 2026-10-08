@@ -227,6 +227,35 @@ TEST_CASE("Material IR codegen reads authored intrinsics from ArcSurfaceInput")
     CHECK(source.find("surface.subsurfaceColor = arc_node_color_rgb;") != std::string::npos);
 }
 
+TEST_CASE("Material IR codegen supports intrinsic components and dot products")
+{
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"position","type":"worldPosition","values":{}},
+        {"id":"normal","type":"worldNormal","values":{}},
+        {"id":"dot","type":"dot","values":{}}
+      ],
+      "connections":[
+        {"id":"1","from":{"nodeId":"position","pin":"position"},"to":{"nodeId":"dot","pin":"a"}},
+        {"id":"2","from":{"nodeId":"normal","pin":"normal"},"to":{"nodeId":"dot","pin":"b"}},
+        {"id":"3","from":{"nodeId":"dot","pin":"result"},"to":{"nodeId":"out","pin":"roughness"}},
+        {"id":"4","from":{"nodeId":"position","pin":"x"},"to":{"nodeId":"out","pin":"metallic"}}
+      ]
+    })";
+
+    const auto compilation = arc::render::tools::compile_material_graph_json(graph);
+    REQUIRE(compilation);
+    const auto generated = arc::render::tools::generate_material_slang(compilation.value());
+    REQUIRE(generated);
+
+    const auto& source = generated.value().source;
+    CHECK(source.find("float arc_node_position_x = input.positionWS.x;") != std::string::npos);
+    CHECK(source.find("dot(") != std::string::npos);
+    CHECK(source.find("float arc_node_dot_result") != std::string::npos);
+}
+
 TEST_CASE("Material shader codegen rejects incompatible IR or ABI versions")
 {
     arc::render::tools::material_graph_compilation compilation;
