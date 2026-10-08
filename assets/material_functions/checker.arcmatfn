@@ -173,10 +173,19 @@
         "values": {}
       },
       {
+        "id": "absolute-parity",
+        "type": "abs",
+        "position": [
+          960,
+          650
+        ],
+        "values": {}
+      },
+      {
         "id": "checker-color",
         "type": "lerp",
         "position": [
-          1060,
+          1140,
           300
         ],
         "values": {}
@@ -185,7 +194,7 @@
         "id": "tinted-color",
         "type": "multiply",
         "position": [
-          1260,
+          1340,
           300
         ],
         "values": {}
@@ -194,7 +203,7 @@
         "id": "function-output",
         "type": "functionOutput",
         "position": [
-          1480,
+          1560,
           300
         ],
         "values": {
@@ -320,6 +329,17 @@
         }
       },
       {
+        "id": "absolute-parity-in",
+        "from": {
+          "nodeId": "parity",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "absolute-parity",
+          "pin": "value"
+        }
+      },
+      {
         "id": "lerp-a",
         "from": {
           "nodeId": "input-colorA",
@@ -339,17 +359,6 @@
         "to": {
           "nodeId": "checker-color",
           "pin": "b"
-        }
-      },
-      {
-        "id": "lerp-t",
-        "from": {
-          "nodeId": "parity",
-          "pin": "result"
-        },
-        "to": {
-          "nodeId": "checker-color",
-          "pin": "t"
         }
       },
       {
@@ -383,6 +392,17 @@
         "to": {
           "nodeId": "function-output",
           "pin": "color"
+        }
+      },
+      {
+        "id": "lerp-t",
+        "from": {
+          "nodeId": "absolute-parity",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "checker-color",
+          "pin": "t"
         }
       }
     ],
