@@ -11,6 +11,7 @@ const documentIconKinds: Record<EditorDocumentKind, DocumentTypeIconKind> = {
   level: 'level',
   shader: 'shader',
   material: 'material',
+  materialInstance: 'material',
   materialFunction: 'material',
   flow: 'script',
   texture: 'texture',
