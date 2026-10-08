@@ -383,10 +383,7 @@ export function ContentBrowserPanel({
   const materialParents = useMemo(
     () =>
       assets.filter(
-        (asset) =>
-          asset.kind === 'material' &&
-          Boolean(asset.guid) &&
-          Boolean(asset.sourcePath || asset.path),
+        (asset) => asset.kind === 'material' && Boolean(asset.guid) && Boolean(asset.sourcePath || asset.path),
       ),
     [assets],
   );
@@ -617,10 +614,10 @@ export function ContentBrowserPanel({
         : nextKind === 'materialInstance'
           ? 'New Material Instance'
           : nextKind === 'materialFunction'
-          ? 'New Material Function'
-          : nextKind === 'flow'
-            ? 'New Flow'
-            : 'New Shader',
+            ? 'New Material Function'
+            : nextKind === 'flow'
+              ? 'New Flow'
+              : 'New Shader',
     );
     setCreateParentGuid((current) =>
       nextKind === 'materialInstance' ? current || materialParents[0]?.guid || '' : '',
@@ -657,9 +654,9 @@ export function ContentBrowserPanel({
               })()
             : createKind === 'materialFunction'
               ? { kind: 'materialFunction', name: createName, folder: createFolder }
-            : createKind === 'flow'
-              ? { kind: 'flow', name: createName, folder: createFolder }
-              : { kind: 'shader', name: createName, folder: createFolder, template: shaderTemplate };
+              : createKind === 'flow'
+                ? { kind: 'flow', name: createName, folder: createFolder }
+                : { kind: 'shader', name: createName, folder: createFolder, template: shaderTemplate };
       const definition = buildAssetCreation(project, request);
       if (project.assets.some((asset) => normalizedPath(asset.path) === normalizedPath(definition.asset.path))) {
         throw new Error(`An asset already exists at ${definition.asset.path}`);
@@ -707,7 +704,11 @@ export function ContentBrowserPanel({
           <small>PBR material graph</small>
         </span>
       </button>
-      <button aria-label="Material Instance" role="menuitem" onClick={() => beginCreate('materialInstance', targetFolder)}>
+      <button
+        aria-label="Material Instance"
+        role="menuitem"
+        onClick={() => beginCreate('materialInstance', targetFolder)}
+      >
         <span className="content-create-type-icon material" aria-hidden="true" />
         <span>
           <strong>Material Instance</strong>
@@ -1188,10 +1189,10 @@ export function ContentBrowserPanel({
                   : createKind === 'materialInstance'
                     ? 'Material Instance'
                     : createKind === 'materialFunction'
-                    ? 'Material Function'
-                    : createKind === 'flow'
-                      ? 'Flow Graph'
-                      : 'Shader'}
+                      ? 'Material Function'
+                      : createKind === 'flow'
+                        ? 'Flow Graph'
+                        : 'Shader'}
               </strong>
               <small>{createFolder || contentRoot}</small>
             </header>
@@ -1245,7 +1246,10 @@ export function ContentBrowserPanel({
               <button type="button" onClick={() => setCreateKind(null)} disabled={creating}>
                 Cancel
               </button>
-              <button type="submit" disabled={creating || !createName.trim() || (createKind === 'materialInstance' && !createParentGuid)}>
+              <button
+                type="submit"
+                disabled={creating || !createName.trim() || (createKind === 'materialInstance' && !createParentGuid)}
+              >
                 {creating
                   ? 'Creating…'
                   : `Create ${
@@ -1254,10 +1258,10 @@ export function ContentBrowserPanel({
                         : createKind === 'materialInstance'
                           ? 'Material Instance'
                           : createKind === 'materialFunction'
-                          ? 'Material Function'
-                          : createKind === 'flow'
-                            ? 'Flow Graph'
-                            : 'Shader'
+                            ? 'Material Function'
+                            : createKind === 'flow'
+                              ? 'Flow Graph'
+                              : 'Shader'
                     }`}
               </button>
             </footer>

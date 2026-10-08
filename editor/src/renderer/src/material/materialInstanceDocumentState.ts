@@ -128,7 +128,15 @@ const hostAssets = async (): Promise<AssetItem[]> => {
   if (!response.succeeded) return [];
   return (response.payload?.assets ?? []).flatMap((asset, index) => {
     const path = asset.path ?? '';
-    const kind = asset.kind ?? (path.endsWith('.arcmatinst') ? 'materialInstance' : path.endsWith('.arcmat') ? 'material' : path.endsWith('.arcmatfn') ? 'materialFunction' : 'unknown');
+    const kind =
+      asset.kind ??
+      (path.endsWith('.arcmatinst')
+        ? 'materialInstance'
+        : path.endsWith('.arcmat')
+          ? 'material'
+          : path.endsWith('.arcmatfn')
+            ? 'materialFunction'
+            : 'unknown');
     if (!path && !asset.sourcePath) return [];
     return [
       {
@@ -237,7 +245,12 @@ const restoreHistory = async (document: EditorDocument, historyIndex: number) =>
   const parentChanged =
     asset.parent.guid !== current.asset.parent.guid || asset.parent.pathHint !== current.asset.parent.pathHint;
   const parentModel = parentChanged ? await refreshParentModel(document, asset, current.assets) : current.parentModel;
-  setState(document.id, { asset, parentModel, historyIndex, message: historyIndex < current.historyIndex ? 'Undo Material Instance edit' : 'Redo Material Instance edit' });
+  setState(document.id, {
+    asset,
+    parentModel,
+    historyIndex,
+    message: historyIndex < current.historyIndex ? 'Undo Material Instance edit' : 'Redo Material Instance edit',
+  });
   setDirty(document, asset, current.confirmed);
 };
 
@@ -276,7 +289,9 @@ export const refreshMaterialInstancePreview = async (document: EditorDocument): 
   if (!path) return false;
   setState(document.id, { previewLoading: true });
   try {
-    let response = (await window.arc.host.query('asset.thumbnail', { path, maxSize: 256 })) as HostResponse<{ dataUrl?: string }>;
+    let response = (await window.arc.host.query('asset.thumbnail', { path, maxSize: 256 })) as HostResponse<{
+      dataUrl?: string;
+    }>;
     if ((!response.succeeded || !response.payload?.dataUrl) && current.parentModel) {
       response = (await window.arc.host.query('asset.thumbnail', {
         path: current.parentModel.asset.sourcePath || current.parentModel.asset.path,
@@ -285,7 +300,7 @@ export const refreshMaterialInstancePreview = async (document: EditorDocument): 
     }
     setState(document.id, {
       previewLoading: false,
-      previewDataUrl: response.succeeded ? response.payload?.dataUrl ?? '' : '',
+      previewDataUrl: response.succeeded ? (response.payload?.dataUrl ?? '') : '',
     });
     return response.succeeded && Boolean(response.payload?.dataUrl);
   } catch {
@@ -316,7 +331,8 @@ export const saveMaterialInstanceDocument = async (document: EditorDocument): Pr
 
 export const openMaterialInstanceParent = (document: EditorDocument) => {
   const current = ensureState(document);
-  const parent = current.parentModel?.asset ?? findMaterialInstanceAsset(current.assets, current.asset.parent, 'material');
+  const parent =
+    current.parentModel?.asset ?? findMaterialInstanceAsset(current.assets, current.asset.parent, 'material');
   return parent ?? null;
 };
 

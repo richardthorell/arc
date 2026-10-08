@@ -227,8 +227,7 @@ const materialInstanceRegistration: EditorRegistration = {
   icon: Circle,
   allowMultiple: true,
   closeable: true,
-  canOpenAsset: (asset) =>
-    asset.kind === 'materialInstance' || asset.path.toLocaleLowerCase().endsWith('.arcmatinst'),
+  canOpenAsset: (asset) => asset.kind === 'materialInstance' || asset.path.toLocaleLowerCase().endsWith('.arcmatinst'),
   createDocument: (asset) => ({
     id: `material-instance:${asset.guid ?? asset.path}`,
     kind: 'materialInstance',

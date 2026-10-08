@@ -113,7 +113,8 @@ export function deserializeMaterialInstanceAsset(serialized: string): MaterialIn
   for (const candidateOverride of record.parameterOverrides) {
     if (!candidateOverride || typeof candidateOverride !== 'object' || Array.isArray(candidateOverride)) return null;
     const override = candidateOverride as Record<string, unknown>;
-    if (typeof override.parameterId !== 'string' || !Object.prototype.hasOwnProperty.call(override, 'value')) return null;
+    if (typeof override.parameterId !== 'string' || !Object.prototype.hasOwnProperty.call(override, 'value'))
+      return null;
     const parameterId = override.parameterId.trim();
     if (!parameterId || parameterIds.has(parameterId)) return null;
     parameterIds.add(parameterId);

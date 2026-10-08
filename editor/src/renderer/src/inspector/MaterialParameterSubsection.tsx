@@ -2,10 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 
 import { materialEditorParameters, type MaterialEditorParameterKind } from '../material/materialCompiler';
-import {
-  deserializeMaterialInstanceAsset,
-  materialParameterId,
-} from '../material/materialInstancePersistence';
+import { deserializeMaterialInstanceAsset, materialParameterId } from '../material/materialInstancePersistence';
 import {
   materialGraphFromAsset,
   type MaterialAssetJson,
@@ -170,8 +167,7 @@ export function MaterialParameterSubsection({
       ),
     [assets, referenceMode, value],
   );
-  const materialPath =
-    selected?.path ?? (referenceMode === 'path' && /\.arcmat(?:inst)?$/i.test(value) ? value : '');
+  const materialPath = selected?.path ?? (referenceMode === 'path' && /\.arcmat(?:inst)?$/i.test(value) ? value : '');
   const materialScope = selected?.scope === 'builtin' ? 'builtin' : 'project';
   const procedural = selected?.scope === 'procedural';
   const [state, setState] = useState<ParameterState>(emptyState);
@@ -206,9 +202,10 @@ export function MaterialParameterSubsection({
             (candidate) =>
               candidate.kind === 'material' &&
               ((candidate.guid && candidate.guid === instance.parent.guid) ||
-                candidate.path.replaceAll('\\', '/').toLocaleLowerCase().endsWith(
-                  instance.parent.pathHint.replaceAll('\\', '/').toLocaleLowerCase(),
-                )),
+                candidate.path
+                  .replaceAll('\\', '/')
+                  .toLocaleLowerCase()
+                  .endsWith(instance.parent.pathHint.replaceAll('\\', '/').toLocaleLowerCase())),
           );
           if (!parent) throw new Error('Material Instance parent is unavailable');
           const parentPath = await projectRelativeMaterialPath(

@@ -170,7 +170,9 @@ export function MaterialInstanceEditor({ document }: { document: EditorDocument 
           {state.previewDataUrl ? (
             <img alt={`${state.asset.name} preview`} src={state.previewDataUrl} />
           ) : (
-            <div className="editor-empty-state">{state.previewLoading ? 'Rendering preview…' : 'Preview unavailable'}</div>
+            <div className="editor-empty-state">
+              {state.previewLoading ? 'Rendering preview…' : 'Preview unavailable'}
+            </div>
           )}
         </div>
         {state.message && (
@@ -302,9 +304,7 @@ export function MaterialInstanceEditor({ document }: { document: EditorDocument 
                                                 ),
                                                 { pinId: parameter.pinId, value: parameter.value },
                                               ]
-                                            : entry.inputOverrides.filter(
-                                                (input) => input.pinId !== parameter.pinId,
-                                              ),
+                                            : entry.inputOverrides.filter((input) => input.pinId !== parameter.pinId),
                                         },
                                   ),
                                 }))
@@ -323,9 +323,7 @@ export function MaterialInstanceEditor({ document }: { document: EditorDocument 
                                       : {
                                           ...entry,
                                           inputOverrides: [
-                                            ...entry.inputOverrides.filter(
-                                              (input) => input.pinId !== parameter.pinId,
-                                            ),
+                                            ...entry.inputOverrides.filter((input) => input.pinId !== parameter.pinId),
                                             { pinId: parameter.pinId, value },
                                           ],
                                         },

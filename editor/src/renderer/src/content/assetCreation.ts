@@ -87,10 +87,10 @@ export const buildAssetCreation = (
       : request.kind === 'materialInstance'
         ? 'arcmatinst'
         : request.kind === 'materialFunction'
-        ? 'arcmatfn'
-        : request.kind === 'flow'
-          ? 'arcflow'
-          : 'slang';
+          ? 'arcmatfn'
+          : request.kind === 'flow'
+            ? 'arcflow'
+            : 'slang';
   const path = joinPath(folder, `${name}.${extension}`);
   const contents =
     request.kind === 'material'
@@ -104,10 +104,10 @@ export const buildAssetCreation = (
             functionOverrides: [],
           })
         : request.kind === 'materialFunction'
-        ? `${JSON.stringify(createDefaultMaterialFunction(name), null, 2)}\n`
-        : request.kind === 'flow'
-          ? `${JSON.stringify(createFlowAsset(name), null, 2)}\n`
-          : shaderTemplateSource(request.template);
+          ? `${JSON.stringify(createDefaultMaterialFunction(name), null, 2)}\n`
+          : request.kind === 'flow'
+            ? `${JSON.stringify(createFlowAsset(name), null, 2)}\n`
+            : shaderTemplateSource(request.template);
 
   if (
     request.kind === 'material' ||

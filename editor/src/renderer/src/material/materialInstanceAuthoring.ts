@@ -1,8 +1,5 @@
 import type { AssetItem } from '../services/editorHostTypes';
-import {
-  materialEditorParameters,
-  type MaterialEditorParameterKind,
-} from './materialCompiler';
+import { materialEditorParameters, type MaterialEditorParameterKind } from './materialCompiler';
 import {
   materialGraphFromAsset,
   type MaterialAssetJson,
@@ -169,7 +166,8 @@ export const loadMaterialInstanceParentModel = async (
   const functionSlots: MaterialInstanceFunctionSlot[] = graph.nodes.flatMap((node) => {
     if (node.type !== 'functionSlot') return [];
     const id = typeof node.values.slotId === 'string' ? node.values.slotId.trim() : '';
-    const name = typeof node.values.name === 'string' && node.values.name.trim() ? node.values.name.trim() : 'Function Slot';
+    const name =
+      typeof node.values.name === 'string' && node.values.name.trim() ? node.values.name.trim() : 'Function Slot';
     const defaultPath = typeof node.values.path === 'string' ? node.values.path : '';
     const inputs = Array.isArray(node.values.inputPins) ? (node.values.inputPins as MaterialFunctionPin[]) : [];
     const outputs = Array.isArray(node.values.outputPins) ? (node.values.outputPins as MaterialFunctionPin[]) : [];

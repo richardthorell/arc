@@ -82,11 +82,11 @@ bool collect_material_function_paths(std::string_view graph_json, std::vector<st
     return true;
 }
 
-bool load_instance_function_sources(
-    const std::filesystem::path& parent_path, const std::filesystem::path& asset_root,
-    const render::tools::material_authoring_document& parent,
-    const render::tools::material_instance_authoring_document& instance,
-    std::vector<render::tools::material_function_source>& functions, std::string& message)
+bool load_instance_function_sources(const std::filesystem::path& parent_path, const std::filesystem::path& asset_root,
+                                    const render::tools::material_authoring_document& parent,
+                                    const render::tools::material_instance_authoring_document& instance,
+                                    std::vector<render::tools::material_function_source>& functions,
+                                    std::string& message)
 {
     std::vector<std::string> pending;
     if (!collect_material_function_paths(parent.graph_json, pending))
@@ -117,7 +117,8 @@ bool load_instance_function_sources(
         std::string identity = key;
         for (const auto& override_value : instance.function_overrides)
         {
-            const auto selected = resolve_instance_reference_path(parent_path, asset_root, override_value.function.path_hint);
+            const auto selected =
+                resolve_instance_reference_path(parent_path, asset_root, override_value.function.path_hint);
             if (canonical_key(selected) == canonical_key(source_path))
             {
                 identity = override_value.function.guid;
@@ -125,21 +126,19 @@ bool load_instance_function_sources(
             }
         }
 
-        functions.push_back(
-            {.path = source_path.generic_string(), .identity = std::move(identity), .source = source});
+        functions.push_back({.path = source_path.generic_string(), .identity = std::move(identity), .source = source});
 
         const auto document = nlohmann::json::parse(source, nullptr, false);
         if (document.is_discarded() || !document.is_object()) continue;
-        if (document.contains("graph"))
-            collect_material_function_paths(document["graph"].dump(), pending);
+        if (document.contains("graph")) collect_material_function_paths(document["graph"].dump(), pending);
     }
     return true;
 }
 
 std::optional<render::material_parameter_value>
 instance_parameter_value(editor_material_library& library, render::renderer& renderer,
-                         const std::filesystem::path& asset_root,
-                         const render::shader_parameter_descriptor& parameter, std::string_view value_json)
+                         const std::filesystem::path& asset_root, const render::shader_parameter_descriptor& parameter,
+                         std::string_view value_json)
 {
     const auto value = nlohmann::json::parse(value_json, nullptr, false);
     if (value.is_discarded()) return std::nullopt;
@@ -176,8 +175,7 @@ instance_parameter_value(editor_material_library& library, render::renderer& ren
             if (const auto values = number_array(2u)) return math::vector2f{(*values)[0], (*values)[1]};
             break;
         case render::shader_parameter_type::float3:
-            if (const auto values = number_array(3u))
-                return math::vector3f{(*values)[0], (*values)[1], (*values)[2]};
+            if (const auto values = number_array(3u)) return math::vector3f{(*values)[0], (*values)[1], (*values)[2]};
             break;
         case render::shader_parameter_type::float4:
             if (const auto values = number_array(4u))
@@ -187,7 +185,8 @@ instance_parameter_value(editor_material_library& library, render::renderer& ren
             if (value.is_string())
             {
                 const auto path = resolve_instance_reference_path({}, asset_root, value.get<std::string>());
-                return render::resource_handle{ensure_texture(library, renderer, path, render::texture_semantic::generic_color)};
+                return render::resource_handle{
+                    ensure_texture(library, renderer, path, render::texture_semantic::generic_color)};
             }
             break;
         default:
@@ -528,20 +527,17 @@ render::material_handle load_material_for_editor(editor_material_library& librar
         auto authored = render::tools::parse_material_instance_authoring_json(source);
         if (!authored)
         {
-            arc::diagnostics::error("editor.materials",
-                                    "Failed to load Material Instance '" + path.string() + "': " +
-                                        authored.error().message);
+            arc::diagnostics::error("editor.materials", "Failed to load Material Instance '" + path.string() +
+                                                            "': " + authored.error().message);
             return {};
         }
 
-        const auto parent_path =
-            resolve_instance_reference_path(path, asset_root, authored.value().parent.path_hint);
+        const auto parent_path = resolve_instance_reference_path(path, asset_root, authored.value().parent.path_hint);
         const auto parent_source = read_material_text(parent_path);
         auto parent_authored = render::tools::parse_material_authoring_json(parent_source);
         if (!parent_authored)
         {
-            arc::diagnostics::error("editor.materials",
-                                    "Material Instance parent is invalid: " + parent_path.string());
+            arc::diagnostics::error("editor.materials", "Material Instance parent is invalid: " + parent_path.string());
             return {};
         }
 
@@ -582,8 +578,8 @@ render::material_handle load_material_for_editor(editor_material_library& librar
                 arc::diagnostics::error("editor.materials", function_message);
                 return {};
             }
-            realized = realize_material_preview_descriptor(parent_source, authored.value().name, functions,
-                                                           slot_overrides);
+            realized =
+                realize_material_preview_descriptor(parent_source, authored.value().name, functions, slot_overrides);
             if (!realized.succeeded)
             {
                 arc::diagnostics::error("editor.materials",
@@ -619,8 +615,8 @@ render::material_handle load_material_for_editor(editor_material_library& librar
         {
             for (const auto& input_override : function_override.input_overrides)
             {
-                const auto stable_name = "slot::" + function_override.slot_id + "::" +
-                                         function_override.function.guid + "::" + input_override.pin_id;
+                const auto stable_name = "slot::" + function_override.slot_id + "::" + function_override.function.guid +
+                                         "::" + input_override.pin_id;
                 const auto parameter_id = render::make_shader_parameter_id(stable_name);
                 const auto parameter =
                     std::ranges::find(layout, parameter_id, &render::shader_parameter_descriptor::id);
@@ -628,8 +624,7 @@ render::material_handle load_material_for_editor(editor_material_library& librar
                 auto value =
                     instance_parameter_value(library, renderer, asset_root, *parameter, input_override.value_json);
                 if (!value) continue;
-                instance.overrides.push_back(
-                    {.id = parameter_id, .name = parameter->name, .value = std::move(*value)});
+                instance.overrides.push_back({.id = parameter_id, .name = parameter->name, .value = std::move(*value)});
             }
         }
 

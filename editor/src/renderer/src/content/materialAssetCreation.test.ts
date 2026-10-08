@@ -131,7 +131,6 @@ describe('Material Function asset creation', () => {
   });
 });
 
-
 describe('Material Instance asset creation', () => {
   it('creates a reusable instance with a GUID-backed parent Material reference', () => {
     const definition = buildAssetCreation(project, {

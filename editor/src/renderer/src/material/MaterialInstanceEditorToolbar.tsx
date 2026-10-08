@@ -24,7 +24,10 @@ export function MaterialInstanceEditorToolbar({ document }: { document: EditorDo
       <UiButton disabled={state.previewLoading} onClick={() => void refreshMaterialInstancePreview(document)}>
         {state.previewLoading ? 'Refreshing…' : 'Refresh Preview'}
       </UiButton>
-      <UiButton disabled={document.readOnly || state.saving} onClick={() => void saveMaterialInstanceDocument(document)}>
+      <UiButton
+        disabled={document.readOnly || state.saving}
+        onClick={() => void saveMaterialInstanceDocument(document)}
+      >
         {state.saving ? 'Saving…' : 'Save'}
       </UiButton>
     </div>

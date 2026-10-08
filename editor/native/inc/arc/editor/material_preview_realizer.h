@@ -35,10 +35,9 @@ struct material_preview_descriptor_result
 
 /** @brief Realize a Material with reusable functions and compile-time Function Slot selections. */
 [[nodiscard]] material_preview_descriptor_result
-realize_material_preview_descriptor(
-    std::string_view source, std::string_view name,
-    std::span<const render::tools::material_function_source> functions,
-    std::span<const render::tools::material_function_slot_override> slot_overrides);
+realize_material_preview_descriptor(std::string_view source, std::string_view name,
+                                    std::span<const render::tools::material_function_source> functions,
+                                    std::span<const render::tools::material_function_slot_override> slot_overrides);
 
 /** @brief Read and realize one graph-authored material file for the native Material Preview surface. */
 [[nodiscard]] material_preview_descriptor_result
