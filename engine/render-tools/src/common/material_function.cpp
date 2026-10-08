@@ -710,12 +710,21 @@ material_function_validation_result validate_material_function_json(std::string_
 material_graph_compile_result compile_material_graph_json(std::string_view graph_json,
                                                           std::span<const material_function_source> function_sources)
 {
+    return compile_material_graph_json(graph_json, function_sources,
+                                       std::span<const material_function_slot_override>{});
+}
+
+material_graph_compile_result
+compile_material_graph_json(std::string_view graph_json, std::span<const material_function_source> function_sources,
+                            std::span<const material_function_slot_override> slot_overrides)
+{
     std::map<std::string, parsed_material_function> functions;
     for (const auto& source : function_sources)
     {
         auto parsed = parse_function(source.source, source.path);
         if (!parsed) return material_graph_compile_result::failure(parsed.error());
         auto function = std::move(parsed).value();
+        function.identity = source.identity.empty() ? normalize_path(source.path) : source.identity;
         if (function.path.empty())
             return material_graph_compile_result::failure(
                 validation_error("Material Function source path cannot be empty"));
@@ -725,14 +734,25 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
     }
 
     auto document = json::parse(graph_json, nullptr, false);
-    if (document.is_discarded())
+    if (document.is_discarded() || !document.is_object() || !document.contains("nodes") ||
+        !document["nodes"].is_array() || !document.contains("connections") || !document["connections"].is_array())
         return material_graph_compile_result::failure(
             {.code = shader_compile_error_code::invalid_request, .message = "material graph JSON is malformed"});
 
+    auto specialized = specialize_function_slots(std::move(document), functions, slot_overrides);
+    if (!specialized) return material_graph_compile_result::failure(specialized.error());
+    auto specialization = std::move(specialized).value();
+
     std::vector<std::string> stack;
-    auto expanded = expand_graph(std::move(document), functions, stack);
+    auto expanded = expand_graph(std::move(specialization.graph), functions, stack);
     if (!expanded) return material_graph_compile_result::failure(expanded.error());
-    return compile_material_graph_json(expanded.value().dump());
+    auto compiled = compile_material_graph_json(expanded.value().dump());
+    if (!compiled) return compiled;
+
+    auto result = std::move(compiled).value();
+    result.descriptor.function_slots = std::move(specialization.descriptors);
+    result.function_specialization_key = specialization.key;
+    return material_graph_compile_result::success(std::move(result));
 }
 
 } // namespace arc::render::tools
