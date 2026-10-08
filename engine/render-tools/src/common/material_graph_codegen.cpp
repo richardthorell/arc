@@ -430,6 +430,15 @@ private:
                 case material_ir_node_kind::vector4:
                     type = vector_output_type(expression_type(node.literal.components), pin);
                     break;
+                case material_ir_node_kind::world_position:
+                case material_ir_node_kind::world_normal:
+                    type = material_expression_type::vector3;
+                    break;
+                case material_ir_node_kind::vertex_color:
+                    type = pin == "rgba"  ? material_expression_type::vector4
+                           : pin == "rgb" ? material_expression_type::vector3
+                                          : material_expression_type::scalar;
+                    break;
                 case material_ir_node_kind::tex_coord:
                     type = material_expression_type::vector2;
                     break;
@@ -646,6 +655,21 @@ private:
                 expression = node.exposed_parameter ? "arcMaterialParameters." + parameter_field(node.parameter_id)
                                                     : literal_value(node);
                 expression = vector_output_expression(std::move(expression), node.kind, pin);
+                break;
+            case material_ir_node_kind::world_position:
+                expression = "input.positionWS";
+                break;
+            case material_ir_node_kind::world_normal:
+                expression = "input.normalWS";
+                break;
+            case material_ir_node_kind::vertex_color:
+                expression = pin == "rgba"  ? "input.vertexColor"
+                             : pin == "rgb" ? "input.vertexColor.rgb"
+                             : pin == "r"   ? "input.vertexColor.r"
+                             : pin == "g"   ? "input.vertexColor.g"
+                             : pin == "b"   ? "input.vertexColor.b"
+                             : pin == "a"   ? "input.vertexColor.a"
+                                            : "input.vertexColor";
                 break;
             case material_ir_node_kind::tex_coord:
                 expression = "input.uv0";

@@ -37,6 +37,9 @@ enum class material_ir_node_kind : std::uint8_t
     vector2,
     vector3,
     vector4,
+    world_position,
+    world_normal,
+    vertex_color,
     tex_coord,
     time,
     texture_sample,
@@ -231,6 +234,9 @@ struct material_texture_binding
 struct material_feature_requirements
 {
     bool uses_time{};
+    bool uses_position_ws{};
+    bool uses_normal_ws{};
+    bool uses_vertex_color{};
     bool uses_uv0{};
     bool uses_texture_sampling{};
     bool uses_normal_mapping{};

@@ -25,6 +25,9 @@ export type MaterialGraphNodeType =
   | 'textureSample2D'
   | 'textureSampleCube'
   | 'textureSample3D'
+  | 'worldPosition'
+  | 'worldNormal'
+  | 'vertexColor'
   | 'texCoord'
   | 'time'
   | 'add'
@@ -343,13 +346,40 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     outputs: colorOutputs(),
     defaultValues: { texture: '', dimension: '3d' },
   },
+  worldPosition: {
+    type: 'worldPosition',
+    title: 'World Position',
+    category: 'Utility',
+    subcategory: 'Coordinates',
+    inputs: [],
+    outputs: [pin('position', 'Position', 'vec3')],
+    defaultValues: {},
+  },
+  worldNormal: {
+    type: 'worldNormal',
+    title: 'World Normal',
+    category: 'Utility',
+    subcategory: 'Coordinates',
+    inputs: [],
+    outputs: [pin('normal', 'Normal', 'vec3')],
+    defaultValues: {},
+  },
+  vertexColor: {
+    type: 'vertexColor',
+    title: 'Vertex Color',
+    category: 'Utility',
+    subcategory: 'Coordinates',
+    inputs: [],
+    outputs: colorOutputs(),
+    defaultValues: {},
+  },
   texCoord: {
     type: 'texCoord',
     title: 'Texture Coordinate',
     category: 'Utility',
     subcategory: 'Coordinates',
     inputs: [],
-    outputs: [pin('uv', 'UV', 'vec2')],
+    outputs: [pin('uv', 'UV0', 'vec2')],
     defaultValues: { channel: 0 },
   },
   time: {

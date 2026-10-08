@@ -247,6 +247,9 @@ private:
                 break;
             }
             case material_ir_node_kind::math:
+            case material_ir_node_kind::world_position:
+            case material_ir_node_kind::world_normal:
+            case material_ir_node_kind::vertex_color:
             case material_ir_node_kind::tex_coord:
             case material_ir_node_kind::time:
             case material_ir_node_kind::texture_sample:

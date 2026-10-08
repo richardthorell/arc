@@ -109,6 +109,58 @@ TEST_CASE("native material graph compiler emits deterministic backend-neutral IR
     REQUIRE_FALSE(roughness->connected);
 }
 
+TEST_CASE("material graph exposes backend-neutral surface input intrinsics")
+{
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"position","type":"worldPosition","values":{}},
+        {"id":"normal","type":"worldNormal","values":{}},
+        {"id":"color","type":"vertexColor","values":{}}
+      ],
+      "connections":[
+        {"id":"1","from":{"nodeId":"position","pin":"position"},"to":{"nodeId":"out","pin":"baseColor"}},
+        {"id":"2","from":{"nodeId":"normal","pin":"normal"},"to":{"nodeId":"out","pin":"emissive"}},
+        {"id":"3","from":{"nodeId":"color","pin":"r"},"to":{"nodeId":"out","pin":"metallic"}}
+      ]
+    })";
+
+    const auto result = arc::render::tools::compile_material_graph_json(graph);
+    REQUIRE(result);
+    const auto& compilation = result.value();
+    CHECK(compilation.descriptor.requirements.uses_position_ws);
+    CHECK(compilation.descriptor.requirements.uses_normal_ws);
+    CHECK(compilation.descriptor.requirements.uses_vertex_color);
+    CHECK_FALSE(compilation.descriptor.requirements.uses_uv0);
+
+    const auto find_kind = [&](std::string_view id)
+    {
+        const auto found = std::ranges::find(compilation.ir.nodes, id, &arc::render::tools::material_ir_node::id);
+        REQUIRE(found != compilation.ir.nodes.end());
+        return found->kind;
+    };
+    CHECK(find_kind("position") == arc::render::tools::material_ir_node_kind::world_position);
+    CHECK(find_kind("normal") == arc::render::tools::material_ir_node_kind::world_normal);
+    CHECK(find_kind("color") == arc::render::tools::material_ir_node_kind::vertex_color);
+}
+
+TEST_CASE("Texture Coordinate explicitly supports UV0 only")
+{
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"uv1","type":"texCoord","values":{"channel":1}}
+      ],
+      "connections":[]
+    })";
+
+    const auto result = arc::render::tools::compile_material_graph_json(graph);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().message.find("supports UV0 only") != std::string::npos);
+}
+
 TEST_CASE("native material graph compiler preserves valid Scalar authoring ranges")
 {
     constexpr std::string_view graph = R"({

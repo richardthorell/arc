@@ -19,6 +19,14 @@ describe('materialGraphDomain', () => {
     );
   });
 
+  it('exposes material input intrinsics through the shared node palette', () => {
+    const definitions = materialGraphDomain.getNodeDefinitions();
+    expect(definitions.some((definition) => definition.type === 'worldPosition')).toBe(true);
+    expect(definitions.some((definition) => definition.type === 'worldNormal')).toBe(true);
+    expect(definitions.some((definition) => definition.type === 'vertexColor')).toBe(true);
+    expect(definitions.some((definition) => definition.type === 'texCoord')).toBe(true);
+  });
+
   it('keeps material-specific protection and connection rules behind the domain boundary', () => {
     const source = createMaterialNode('constant', [0, 0]);
     const target = createMaterialNode('multiply', [100, 0]);

@@ -200,6 +200,34 @@ describe('material graph schema', () => {
     expect(rangeFor('attenuationDistance')).toBeUndefined();
   });
 
+  it('defines backend-neutral material input intrinsics', () => {
+    expect(materialNodeDefinitions.worldPosition).toMatchObject({
+      title: 'World Position',
+      category: 'Utility',
+      subcategory: 'Coordinates',
+      outputs: [{ id: 'position', label: 'Position', type: 'vec3' }],
+    });
+    expect(materialNodeDefinitions.worldNormal).toMatchObject({
+      title: 'World Normal',
+      category: 'Utility',
+      subcategory: 'Coordinates',
+      outputs: [{ id: 'normal', label: 'Normal', type: 'vec3' }],
+    });
+    expect(materialNodeDefinitions.vertexColor.outputs.map((pin) => [pin.id, pin.type])).toEqual([
+      ['rgb', 'vec3'],
+      ['r', 'float'],
+      ['g', 'float'],
+      ['b', 'float'],
+      ['a', 'float'],
+      ['rgba', 'vec4'],
+    ]);
+    expect(materialNodeDefinitions.texCoord).toMatchObject({
+      title: 'Texture Coordinate',
+      outputs: [{ id: 'uv', label: 'UV0', type: 'vec2' }],
+      defaultValues: { channel: 0 },
+    });
+  });
+
   it('defines texture sample UV input and channel outputs', () => {
     expect(materialNodeDefinitions.textureSample.inputs.map((pin) => [pin.id, pin.type])).toEqual([['uv', 'vec2']]);
     expect(materialNodeDefinitions.textureSample.outputs.map((pin) => [pin.id, pin.type])).toEqual([
