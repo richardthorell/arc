@@ -130,10 +130,10 @@ TEST_CASE("shader packages round trip reflection and reject corruption")
                                                       .name = "main",
                                                       .stage = arc::render::shader_stage::fragment,
                                                       .profile = "spirv_1_5"}},
-                                    .parameters = {{.id = arc::render::make_shader_parameter_id("baseColor"),
-                                                    .name = "baseColor",
-                                                    .type = arc::render::shader_parameter_type::float4,
-                                                    .size = 16,
+                                    .parameters = {{.id = arc::render::make_shader_parameter_id("roughness"),
+                                                    .name = "roughness",
+                                                    .type = arc::render::shader_parameter_type::float32,
+                                                    .size = 4,
                                                     .has_range = true,
                                                     .minimum = 0.0f,
                                                     .maximum = 1.0f}},
@@ -157,7 +157,7 @@ TEST_CASE("shader packages round trip reflection and reject corruption")
     REQUIRE(decoded);
     REQUIRE(decoded.value().id == package.id);
     REQUIRE(decoded.value().compiled.bytecode == package.compiled.bytecode);
-    REQUIRE(decoded.value().compiled.reflection.parameters.front().name == "baseColor");
+    REQUIRE(decoded.value().compiled.reflection.parameters.front().name == "roughness");
     REQUIRE(decoded.value().compiled.reflection.parameters.front().has_range);
     REQUIRE(decoded.value().compiled.reflection.parameters.front().minimum == 0.0f);
     REQUIRE(decoded.value().compiled.reflection.parameters.front().maximum == 1.0f);
