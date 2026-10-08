@@ -38,6 +38,16 @@ using material_graph_lowering_result = material_shader_codegen_result;
     return generate_material_slang(compilation.value());
 }
 
+/** @brief Lower a graph with reusable functions and compile-time Function Slot selections. */
+[[nodiscard]] inline material_graph_lowering_result
+lower_material_graph_json(std::string_view graph_json, std::span<const material_function_source> functions,
+                          std::span<const material_function_slot_override> slot_overrides = {})
+{
+    auto compilation = compile_material_graph_json(graph_json, functions, slot_overrides);
+    if (!compilation) return material_graph_lowering_result::failure(compilation.error());
+    return generate_material_slang(compilation.value());
+}
+
 /** @brief Configuration for the tools-only Slang command-line adapter. */
 struct slang_compiler_config
 {
