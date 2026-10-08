@@ -510,15 +510,18 @@ render::material_handle load_material_for_editor(editor_material_library& librar
                                                  const std::filesystem::path& asset_root,
                                                  const std::filesystem::path& path, material_asset* out_asset)
 {
-    if (auto* record = find_record(library, path))
-    {
-        if (out_asset) *out_asset = record->asset;
-        return record->material;
-    }
-
     auto extension = path.extension().string();
     std::transform(extension.begin(), extension.end(), extension.begin(),
                    [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    if (extension != ".arcmatinst")
+    {
+        if (auto* record = find_record(library, path))
+        {
+            if (out_asset) *out_asset = record->asset;
+            return record->material;
+        }
+    }
+
     if (extension == ".arcmatinst")
     {
         const auto source = read_material_text(path);
@@ -645,8 +648,18 @@ render::material_handle load_material_for_editor(editor_material_library& librar
         asset.name = authored.value().name;
         asset.path = path;
         asset.material = std::move(resolved).value();
-        const auto handle = renderer.create_material(asset.material);
-        library.materials.push_back({canonical_key(path), asset, handle});
+        render::material_handle handle{};
+        if (auto* record = find_record(library, path); record && renderer.material_alive(record->material))
+        {
+            handle = record->material;
+            if (!renderer.update_material(handle, asset.material)) return {};
+            record->asset = asset;
+        }
+        else
+        {
+            handle = renderer.create_material(asset.material);
+            library.materials.push_back({canonical_key(path), asset, handle});
+        }
         if (out_asset) *out_asset = asset;
         return handle;
     }
