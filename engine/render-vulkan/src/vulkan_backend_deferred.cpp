@@ -169,7 +169,7 @@ bool vulkan_render_backend::ensure_gbuffer_descriptor_set()
 
     if (gbuffer_descriptor_set_layout_ == VK_NULL_HANDLE)
     {
-        std::array<VkDescriptorSetLayoutBinding, 12> bindings{};
+        std::array<VkDescriptorSetLayoutBinding, 13> bindings{};
         for (std::uint32_t index = 0; index < 7; ++index)
         {
             bindings[index].binding = index;
@@ -197,6 +197,10 @@ bool vulkan_render_backend::ensure_gbuffer_descriptor_set()
         bindings[11].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         bindings[11].descriptorCount = 1;
         bindings[11].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        bindings[12].binding = 12;
+        bindings[12].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[12].descriptorCount = 1;
+        bindings[12].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
         VkDescriptorSetLayoutCreateInfo layout{};
         layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -210,7 +214,7 @@ bool vulkan_render_backend::ensure_gbuffer_descriptor_set()
     {
         std::array<VkDescriptorPoolSize, 3> pool_sizes{
             VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10},
-            VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
+            VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2},
             VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1}};
         VkDescriptorPoolCreateInfo pool{};
         pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -233,7 +237,9 @@ bool vulkan_render_backend::ensure_gbuffer_descriptor_set()
 
 void vulkan_render_backend::update_gbuffer_descriptor_set()
 {
-    if (gbuffer_descriptor_set_ == VK_NULL_HANDLE || light_buffer_.buffer == VK_NULL_HANDLE) return;
+    if (gbuffer_descriptor_set_ == VK_NULL_HANDLE || light_buffer_.buffer == VK_NULL_HANDLE ||
+        clustered_light_buffer_.buffer == VK_NULL_HANDLE)
+        return;
 
     std::array<VkDescriptorImageInfo, 10> images{};
     const VkSampler sampler = gbuffer_sampler_ != VK_NULL_HANDLE ? gbuffer_sampler_ : white_sampler_;
@@ -312,7 +318,15 @@ void vulkan_render_backend::update_gbuffer_descriptor_set()
     shadow_write.descriptorCount = 1;
     shadow_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     shadow_write.pBufferInfo = &shadow;
-    const std::array buffer_writes{light_write, shadow_write};
+    VkDescriptorBufferInfo clustered{clustered_light_buffer_.buffer, 0, VK_WHOLE_SIZE};
+    VkWriteDescriptorSet clustered_write{};
+    clustered_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    clustered_write.dstSet = gbuffer_descriptor_set_;
+    clustered_write.dstBinding = 12;
+    clustered_write.descriptorCount = 1;
+    clustered_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    clustered_write.pBufferInfo = &clustered;
+    const std::array buffer_writes{light_write, shadow_write, clustered_write};
     vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(buffer_writes.size()), buffer_writes.data(), 0, nullptr);
 }
 

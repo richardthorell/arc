@@ -155,6 +155,78 @@ struct scene_lighting_data
 };
 
 /**
+ * @brief Encoded local-light kind stored in clustered light-list references.
+ */
+enum class clustered_light_kind : std::uint32_t
+{
+    point = 0u,
+    spot = 1u,
+    area = 2u
+};
+
+inline constexpr std::uint32_t clustered_light_kind_shift = 30u;
+inline constexpr std::uint32_t clustered_light_index_mask = (1u << clustered_light_kind_shift) - 1u;
+inline constexpr std::uint32_t clustered_light_header_words = 12u;
+
+/**
+ * @brief Build policy for the shared Deferred/Forward+ local-light grid.
+ */
+struct clustered_light_grid_config
+{
+    std::uint32_t tile_size_pixels{32};
+    std::uint32_t depth_slices{16};
+    std::uint32_t maximum_lights_per_cluster{64};
+};
+
+/**
+ * @brief Camera/view input used to build screen/depth-aware local-light lists.
+ */
+struct clustered_light_grid_view
+{
+    math::matrix4f view{math::identity<float, 4>()};
+    math::matrix4f projection{math::identity<float, 4>()};
+    math::matrix4f view_projection{math::identity<float, 4>()};
+    math::vector3f camera_position{};
+    float near_plane{0.01f};
+    float far_plane{1000.0f};
+    std::uint32_t viewport_width{1u};
+    std::uint32_t viewport_height{1u};
+};
+
+/**
+ * @brief Packed uint-word buffer consumed identically by Deferred and Forward+ shaders.
+ *
+ * Layout:
+ *   [0..11] header,
+ *   then one fixed-stride record per cluster:
+ *   count followed by maximum_lights_per_cluster encoded light references.
+ */
+struct clustered_light_grid
+{
+    clustered_light_grid_config config{};
+    std::uint32_t tiles_x{};
+    std::uint32_t tiles_y{};
+    std::uint32_t cluster_count{};
+    std::uint32_t point_light_references{};
+    std::uint32_t spot_light_references{};
+    std::uint32_t area_light_references{};
+    std::uint32_t overflow_count{};
+    std::vector<std::uint32_t> gpu_words;
+};
+
+/** @brief Encode one local-light index for a clustered list. */
+[[nodiscard]] constexpr std::uint32_t encode_clustered_light_reference(clustered_light_kind kind,
+                                                                       std::uint32_t index) noexcept
+{
+    return (static_cast<std::uint32_t>(kind) << clustered_light_kind_shift) | (index & clustered_light_index_mask);
+}
+
+/** @brief Build deterministic screen/depth-aware local-light lists shared by Deferred and Forward+. */
+[[nodiscard]] clustered_light_grid build_clustered_light_grid(const scene_lighting_data& lighting,
+                                                              const clustered_light_grid_view& view,
+                                                              clustered_light_grid_config config = {});
+
+/**
  * @brief One directional shadow cascade in packed renderer form.
  */
 struct directional_shadow_cascade_data
