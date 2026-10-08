@@ -31,9 +31,9 @@ std::string read_string(std::span<const std::byte> bytes, std::size_t& cursor)
     return value;
 }
 
-arc::render::tools::material_package_v3 compiled_package()
+arc::render::tools::material_package_v4 compiled_package()
 {
-    arc::render::tools::material_package_v3 package;
+    arc::render::tools::material_package_v4 package;
     package.compiled.package = {.high = 11, .low = 22};
     package.compiled.passes = {
         {.pass = arc::render::material_pass::forward,
@@ -48,7 +48,10 @@ arc::render::tools::material_package_v3 compiled_package()
                                   .name = "Roughness",
                                   .type = arc::render::shader_parameter_type::float32,
                                   .offset = 0,
-                                  .size = 4});
+                                  .size = 4,
+                                  .has_range = true,
+                                  .minimum = 0.0f,
+                                  .maximum = 1.0f});
     package.canonical_document_json = R"({"version":4,"graph":{"version":1,"nodes":[],"connections":[]}})";
     return package;
 }
@@ -153,14 +156,14 @@ TEST_CASE("material authoring validates compiled implementation field types")
     REQUIRE(empty_shader.error().code == arc::render::tools::material_asset_error_code::invalid_document);
 }
 
-TEST_CASE("material package v3 round trips deterministic compiled pass bindings")
+TEST_CASE("material package v4 round trips deterministic compiled pass bindings and parameter ranges")
 {
     const auto package = compiled_package();
-    const auto bytes = arc::render::tools::serialize_material_package_v3(package);
+    const auto bytes = arc::render::tools::serialize_material_package_v4(package);
     std::size_t cursor{};
     REQUIRE(read_string(std::span<const std::byte>(bytes), cursor) == arc::render::tools::material_package_signature);
 
-    const auto decoded = arc::render::tools::deserialize_material_package_v3(bytes);
+    const auto decoded = arc::render::tools::deserialize_material_package_v4(bytes);
     REQUIRE(decoded);
     REQUIRE(decoded.value().compiled.package == package.compiled.package);
     REQUIRE(decoded.value().compiled.passes.size() == 2);
@@ -169,29 +172,32 @@ TEST_CASE("material package v3 round trips deterministic compiled pass bindings"
     REQUIRE(decoded.value().compiled.passes[0].permutation == arc::render::shader_permutation_id{100});
     REQUIRE(decoded.value().compiled.passes[1].permutation == arc::render::shader_permutation_id{200});
     REQUIRE(decoded.value().parameters.size() == 1);
+    REQUIRE(decoded.value().parameters.front().has_range);
+    REQUIRE(decoded.value().parameters.front().minimum == 0.0f);
+    REQUIRE(decoded.value().parameters.front().maximum == 1.0f);
     REQUIRE(decoded.value().canonical_document_json == package.canonical_document_json);
 
     auto reversed = package;
     std::ranges::reverse(reversed.compiled.passes);
-    REQUIRE(arc::render::tools::serialize_material_package_v3(reversed) == bytes);
+    REQUIRE(arc::render::tools::serialize_material_package_v4(reversed) == bytes);
 }
 
-TEST_CASE("surface material package v3 rejects missing compiled passes")
+TEST_CASE("surface material package v4 rejects missing compiled passes")
 {
-    arc::render::tools::material_package_v3 package;
+    arc::render::tools::material_package_v4 package;
     package.canonical_document_json = R"({"version":4,"domain":"surface"})";
-    const auto bytes = arc::render::tools::serialize_material_package_v3(package);
-    const auto decoded = arc::render::tools::deserialize_material_package_v3(bytes);
+    const auto bytes = arc::render::tools::serialize_material_package_v4(package);
+    const auto decoded = arc::render::tools::deserialize_material_package_v4(bytes);
     REQUIRE_FALSE(decoded);
     REQUIRE(decoded.error().code == arc::render::tools::material_asset_error_code::corrupt_package);
 }
 
-TEST_CASE("terrain material package v3 may use the dedicated terrain renderer")
+TEST_CASE("terrain material package v4 may use the dedicated terrain renderer")
 {
-    arc::render::tools::material_package_v3 package;
+    arc::render::tools::material_package_v4 package;
     package.canonical_document_json = R"({"version":4,"domain":"terrain"})";
-    const auto bytes = arc::render::tools::serialize_material_package_v3(package);
-    const auto decoded = arc::render::tools::deserialize_material_package_v3(bytes);
+    const auto bytes = arc::render::tools::serialize_material_package_v4(package);
+    const auto decoded = arc::render::tools::deserialize_material_package_v4(bytes);
     REQUIRE(decoded);
     REQUIRE(decoded.value().compiled.passes.empty());
     REQUIRE_FALSE(decoded.value().compiled.package.valid());

@@ -37,6 +37,9 @@ void append_parameter(std::vector<std::byte>& output, const shader_parameter_des
     append_value(output, parameter.type);
     append_value(output, parameter.offset);
     append_value(output, parameter.size);
+    append_value(output, parameter.has_range);
+    append_value(output, parameter.minimum);
+    append_value(output, parameter.maximum);
 }
 
 class package_reader
@@ -84,7 +87,8 @@ bool read_parameter(package_reader& reader, shader_parameter_descriptor& paramet
 {
     std::uint64_t id{};
     if (!reader.value(id) || !reader.string(parameter.name) || !reader.value(parameter.type) ||
-        !reader.value(parameter.offset) || !reader.value(parameter.size))
+        !reader.value(parameter.offset) || !reader.value(parameter.size) || !reader.value(parameter.has_range) ||
+        !reader.value(parameter.minimum) || !reader.value(parameter.maximum))
         return false;
     parameter.id = {id};
     return parameter.id.valid();
@@ -182,7 +186,7 @@ material_authoring_result parse_material_authoring_json(std::string_view source)
                                                .cast_shadows = document.value("castShadows", true)});
 }
 
-std::vector<std::byte> serialize_material_package_v3(const material_package_v3& package)
+std::vector<std::byte> serialize_material_package_v4(const material_package_v4& package)
 {
     std::vector<std::byte> output;
     append_string(output, material_package_signature);
@@ -209,29 +213,29 @@ std::vector<std::byte> serialize_material_package_v3(const material_package_v3& 
     return output;
 }
 
-material_package_v3_result deserialize_material_package_v3(std::span<const std::byte> bytes)
+material_package_v4_result deserialize_material_package_v4(std::span<const std::byte> bytes)
 {
     package_reader reader(bytes);
     std::string signature;
-    material_package_v3 package;
+    material_package_v4 package;
     if (!reader.string(signature) || signature != material_package_signature ||
         !reader.value(package.compiled.contract_version) || !reader.value(package.compiled.material_abi) ||
         !reader.value(package.compiled.package.high) || !reader.value(package.compiled.package.low))
-        return material_package_v3_result::failure(
+        return material_package_v4_result::failure(
             {.code = material_asset_error_code::corrupt_package, .message = "Material package header is invalid"});
 
     if (package.compiled.contract_version != material_pass_contract_version ||
         package.compiled.material_abi != material_abi_version)
-        return material_package_v3_result::failure(
+        return material_package_v4_result::failure(
             {.code = material_asset_error_code::unsupported_version,
              .message = "Material package uses an unsupported pass contract or Material ABI"});
 
     std::uint32_t pass_count{};
     if (!reader.value(pass_count) || pass_count > 32u)
-        return material_package_v3_result::failure(
+        return material_package_v4_result::failure(
             {.code = material_asset_error_code::corrupt_package, .message = "Material package pass table is invalid"});
     if (pass_count != 0 && !package.compiled.package.valid())
-        return material_package_v3_result::failure(
+        return material_package_v4_result::failure(
             {.code = material_asset_error_code::corrupt_package,
              .message = "Compiled material passes require a valid shader package ID"});
 
@@ -243,13 +247,13 @@ material_package_v3_result deserialize_material_package_v3(std::span<const std::
         std::uint64_t entry_point{};
         if (!reader.value(binding.pass) || !reader.value(permutation) || !reader.value(entry_point) ||
             !reader.raw(binding.build_hash.bytes))
-            return material_package_v3_result::failure({.code = material_asset_error_code::corrupt_package,
+            return material_package_v4_result::failure({.code = material_asset_error_code::corrupt_package,
                                                         .message = "Material package pass entry is invalid"});
         binding.permutation = {permutation};
         binding.entry_point = {entry_point};
         if (!binding.permutation.valid() || !binding.entry_point.valid() ||
             find_material_pass_binding(package.compiled, binding.pass) != nullptr)
-            return material_package_v3_result::failure(
+            return material_package_v4_result::failure(
                 {.code = material_asset_error_code::corrupt_package,
                  .message = "Material package contains an invalid or duplicate pass binding"});
         package.compiled.passes.push_back(binding);
@@ -257,32 +261,32 @@ material_package_v3_result deserialize_material_package_v3(std::span<const std::
 
     std::uint32_t parameter_count{};
     if (!reader.value(parameter_count) || parameter_count > 65'536u)
-        return material_package_v3_result::failure(
+        return material_package_v4_result::failure(
             {.code = material_asset_error_code::corrupt_package, .message = "Material parameter table is invalid"});
     package.parameters.reserve(parameter_count);
     for (std::uint32_t index = 0; index < parameter_count; ++index)
     {
         shader_parameter_descriptor parameter;
         if (!read_parameter(reader, parameter))
-            return material_package_v3_result::failure(
+            return material_package_v4_result::failure(
                 {.code = material_asset_error_code::corrupt_package, .message = "Material parameter entry is invalid"});
         package.parameters.push_back(std::move(parameter));
     }
 
     if (!reader.string(package.canonical_document_json) || !reader.complete())
-        return material_package_v3_result::failure(
+        return material_package_v4_result::failure(
             {.code = material_asset_error_code::corrupt_package, .message = "Material package payload is truncated"});
 
     if (package.compiled.passes.empty())
     {
         const auto document = json::parse(package.canonical_document_json, nullptr, false);
         if (!document.is_object() || document.value("domain", std::string{"surface"}) != "terrain")
-            return material_package_v3_result::failure(
+            return material_package_v4_result::failure(
                 {.code = material_asset_error_code::corrupt_package,
                  .message = "Surface material package must contain compiled pass bindings"});
     }
 
-    return material_package_v3_result::success(std::move(package));
+    return material_package_v4_result::success(std::move(package));
 }
 
 } // namespace arc::render::tools

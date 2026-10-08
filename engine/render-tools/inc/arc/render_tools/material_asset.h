@@ -22,9 +22,9 @@ namespace arc::render::tools
 /** Current authored material document version used by the editor and cooker. */
 inline constexpr std::uint32_t material_authoring_version = 4;
 /** Current cooked ARC material package schema version. */
-inline constexpr std::uint32_t material_package_version = 3;
+inline constexpr std::uint32_t material_package_version = 4;
 /** Stable signature of the pass-aware cooked material payload. */
-inline constexpr std::string_view material_package_signature = "ARC_MATERIAL_3";
+inline constexpr std::string_view material_package_signature = "ARC_MATERIAL_4";
 
 /** Failure category produced while reading an authored or cooked material document. */
 enum class material_asset_error_code : std::uint8_t
@@ -67,20 +67,33 @@ using material_authoring_result = core::result<material_authoring_document, mate
 /** Parse and validate a current-version material with exactly one compiled implementation. */
 [[nodiscard]] material_authoring_result parse_material_authoring_json(std::string_view source);
 
-/** Data stored by the pass-aware ARC_MATERIAL_3 cooked package envelope. */
-struct material_package_v3
+/** Data stored by the pass-aware ARC_MATERIAL_4 cooked package envelope. */
+struct material_package_v4
 {
     material_compiled_program compiled;
     std::vector<shader_parameter_descriptor> parameters;
     std::string canonical_document_json;
 };
 
-using material_package_v3_result = core::result<material_package_v3, material_asset_error>;
+using material_package_v4_result = core::result<material_package_v4, material_asset_error>;
 
-/** Serialize deterministic pass-aware ARC_MATERIAL_3 bytes. */
-[[nodiscard]] std::vector<std::byte> serialize_material_package_v3(const material_package_v3& package);
+using material_package_v3 = material_package_v4;
+using material_package_v3_result = material_package_v4_result;
 
-/** Decode and validate deterministic ARC_MATERIAL_3 bytes. */
-[[nodiscard]] material_package_v3_result deserialize_material_package_v3(std::span<const std::byte> bytes);
+/** Serialize deterministic pass-aware ARC_MATERIAL_4 bytes. */
+[[nodiscard]] std::vector<std::byte> serialize_material_package_v4(const material_package_v4& package);
+
+[[nodiscard]] inline std::vector<std::byte> serialize_material_package_v3(const material_package_v3& package)
+{
+    return serialize_material_package_v4(package);
+}
+
+/** Decode and validate deterministic ARC_MATERIAL_4 bytes. */
+[[nodiscard]] material_package_v4_result deserialize_material_package_v4(std::span<const std::byte> bytes);
+
+[[nodiscard]] inline material_package_v3_result deserialize_material_package_v3(std::span<const std::byte> bytes)
+{
+    return deserialize_material_package_v4(bytes);
+}
 
 } // namespace arc::render::tools

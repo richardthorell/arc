@@ -33,7 +33,7 @@ describe('built-in Unlit material', () => {
       expect.objectContaining({ name: 'Color Texture', type: 'texture2d', editorKind: 'texture' }),
     );
     expect(materialEditorParameters(graph)).toContainEqual(
-      expect.objectContaining({ name: 'Alpha Clip', type: 'float' }),
+      expect.objectContaining({ name: 'Alpha Clip', type: 'float', range: { min: 0, max: 1 } }),
     );
 
     const tint = graph.nodes.find((node) => node.parameter?.name === 'Color Tint');
