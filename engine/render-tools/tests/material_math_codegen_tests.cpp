@@ -154,8 +154,8 @@ TEST_CASE("material math codegen covers the complete core math catalog")
 
     const auto& source = generated.value().source;
     for (const auto intrinsic :
-         {"abs(",  "ceil(",  "floor(",      "round(", "trunc(", "frac(",     "fmod(",  "min(",  "max(",
-          "pow(",  "sqrt(",  "log(",        "log2(",  "log10(", "sin(",      "cos(",   "asin(", "acos(",
+         {"abs(",  "ceil(",  "floor(",      "round(", "trunc(", "frac(",     "fmod(",   "min(",  "max(",
+          "pow(",  "sqrt(",  "log(",        "log2(",  "log10(", "sin(",      "cos(",    "asin(", "acos(",
           "atan(", "atan2(", "smoothstep(", "step(",  "sign(",  "distance(", "length(", "dot("})
         REQUIRE(contains(source, intrinsic));
     REQUIRE(contains(source, "arc_node_oneMinus_result"));

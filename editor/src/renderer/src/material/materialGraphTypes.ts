@@ -368,12 +368,7 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     category: 'Utility',
     subcategory: 'Coordinates',
     inputs: [],
-    outputs: [
-      pin('normal', 'Normal', 'vec3'),
-      pin('x', 'X', 'float'),
-      pin('y', 'Y', 'float'),
-      pin('z', 'Z', 'float'),
-    ],
+    outputs: [pin('normal', 'Normal', 'vec3'), pin('x', 'X', 'float'), pin('y', 'Y', 'float'), pin('z', 'Z', 'float')],
     defaultValues: {},
   },
   vertexColor: {
