@@ -115,7 +115,8 @@ TEST_CASE("native material graph compiler preserves valid Scalar authoring range
       "version":1,
       "nodes":[
         {"id":"out","type":"output","values":{}},
-        {"id":"roughness","type":"constant","values":{"value":0.45,"min":0.0,"max":1.0}}
+        {"id":"roughness","type":"constant","values":{"value":0.45,"min":0.0,"max":1.0},
+         "parameter":{"exposed":true,"name":"Roughness"}}
       ],
       "connections":[
         {"id":"1","from":{"nodeId":"roughness","pin":"value"},"to":{"nodeId":"out","pin":"roughness"}}
@@ -132,6 +133,11 @@ TEST_CASE("native material graph compiler preserves valid Scalar authoring range
     CHECK(found->minimum == 0.0f);
     CHECK(found->maximum == 1.0f);
     CHECK(found->literal.values[0] == 0.45f);
+    const auto* parameter = find_parameter(result.value().descriptor, "Roughness");
+    REQUIRE(parameter != nullptr);
+    CHECK(parameter->has_range);
+    CHECK(parameter->minimum == 0.0f);
+    CHECK(parameter->maximum == 1.0f);
 }
 
 TEST_CASE("native material graph compiler rejects invalid Scalar authoring ranges")
