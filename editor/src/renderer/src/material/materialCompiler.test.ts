@@ -178,6 +178,21 @@ describe('native material compiler editor adapter', () => {
     );
   });
 
+  it('recompiles range metadata edits but keeps in-range Scalar value edits parameter-only', () => {
+    const before = createDefaultMaterialGraph();
+    const roughness = before.nodes.find((node) => node.parameter?.name === 'Roughness');
+    expect(roughness).toBeDefined();
+    roughness!.values = { ...roughness!.values, min: 0, max: 1 };
+
+    const valueEdit = structuredClone(before);
+    valueEdit.nodes.find((node) => node.id === roughness!.id)!.values.value = 0.4;
+    expect(materialGraphEditImpact(before, valueEdit)).toBe('parameter-values');
+
+    const rangeEdit = structuredClone(before);
+    rangeEdit.nodes.find((node) => node.id === roughness!.id)!.values.max = 2;
+    expect(materialGraphEditImpact(before, rangeEdit)).toBe('shader');
+  });
+
   it('keeps topology and parameter metadata changes on the shader compile path', () => {
     const before = createDefaultMaterialGraph();
     const topology = structuredClone(before);
