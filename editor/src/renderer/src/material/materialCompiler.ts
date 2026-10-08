@@ -141,7 +141,10 @@ export const materialGraphEditImpact = (before: MaterialGraph, after: MaterialGr
     if (previous.position[0] !== node.position[0] || previous.position[1] !== node.position[1]) return 'shader';
 
     if (JSON.stringify(previous.values) !== JSON.stringify(node.values)) {
-      if (node.type === 'constant' && (previous.values.min !== node.values.min || previous.values.max !== node.values.max))
+      if (
+        node.type === 'constant' &&
+        (previous.values.min !== node.values.min || previous.values.max !== node.values.max)
+      )
         return 'shader';
       if (!beforeParameters.has(node.id) || !afterParameters.has(node.id)) return 'shader';
       changedParameterValue = true;

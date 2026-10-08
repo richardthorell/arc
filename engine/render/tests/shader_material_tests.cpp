@@ -242,8 +242,7 @@ TEST_CASE("material instances enforce reflected Scalar parameter ranges")
                               .minimum = 0.0f,
                               .maximum = 1.0f}}};
     arc::render::material_instance_descriptor instance{
-        .parent = {.index = 1, .generation = 1},
-        .overrides = {{.id = roughness, .name = "roughness", .value = 0.65f}}};
+        .parent = {.index = 1, .generation = 1}, .overrides = {{.id = roughness, .name = "roughness", .value = 0.65f}}};
 
     REQUIRE(arc::render::resolve_material_instance(definition, instance));
 
