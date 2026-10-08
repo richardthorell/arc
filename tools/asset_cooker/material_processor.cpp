@@ -176,7 +176,8 @@ std::filesystem::path resolve_function_path(const std::filesystem::path& owner, 
 
 using function_source_result = core::result<std::vector<render::tools::material_function_source>, std::string>;
 
-function_source_result material_function_sources(const assets::asset_cook_context& context)
+function_source_result material_function_sources(const assets::asset_cook_context& context,
+                                                std::string_view owner_source = {})
 {
     std::map<std::string, std::pair<std::filesystem::path, std::string>> pending;
     std::map<std::string, std::string> identities;
@@ -189,6 +190,25 @@ function_source_result material_function_sources(const assets::asset_cook_contex
         const auto key = normalized_path(dependency.source_path);
         pending.emplace(key, std::pair{dependency.source_path, std::move(source).value()});
         identities.emplace(key, to_string(dependency.guid));
+    }
+
+    if (!owner_source.empty())
+    {
+        for (const auto& nested : nested_function_paths(owner_source))
+        {
+            const auto nested_path = resolve_function_path(context.source.source_path, nested);
+            const auto nested_key = normalized_path(nested_path);
+            if (pending.contains(nested_key)) continue;
+            auto nested_source = read_text_file(nested_path);
+            if (!nested_source)
+                return function_source_result::failure("Material Function '" + nested +
+                                                       "' could not be loaded from parent Material: " +
+                                                       nested_source.error());
+            if (!render::tools::is_material_function_json(nested_source.value()))
+                return function_source_result::failure("Material Function dependency is not a function document: " +
+                                                       nested_key);
+            pending.emplace(nested_key, std::pair{nested_path, std::move(nested_source).value()});
+        }
     }
 
     std::map<std::string, render::tools::material_function_source> functions;
@@ -379,7 +399,7 @@ public:
 
         if (!authored.value().graph_json.empty())
         {
-            auto functions = material_function_sources(context);
+            auto functions = material_function_sources(context, source);
             if (!functions)
                 return {.error = {.code = assets::asset_error_code::import_failed,
                                   .guid = context.asset.guid,
