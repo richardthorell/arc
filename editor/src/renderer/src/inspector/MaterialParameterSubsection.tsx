@@ -209,7 +209,7 @@ export function MaterialParameterSubsection({
           );
           if (!parent) throw new Error('Material Instance parent is unavailable');
           const parentPath = await projectRelativeMaterialPath(
-            parent.sourcePath || parent.path,
+            parent.path,
             parent.scope === 'builtin' ? 'builtin' : 'project',
           );
           const parentFile = await window.arc.projects.readText(
