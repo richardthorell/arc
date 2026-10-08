@@ -315,7 +315,7 @@ using shader_package_bytes_result = core::result<std::vector<std::byte>, shader_
 /** @brief Return lowercase hexadecimal text for a shader content hash. */
 [[nodiscard]] std::string to_string(const shader_content_hash& hash);
 
-/** @brief Serialize a validated shader package to deterministic ARC_SHADER_2 bytes. */
+/** @brief Serialize a validated shader package to deterministic ARC_SHADER_3 bytes. */
 [[nodiscard]] shader_package_bytes_result serialize_shader_package(const shader_package& package);
 
 /** @brief Decode and validate deterministic ARC_SHADER_2 bytes. */
