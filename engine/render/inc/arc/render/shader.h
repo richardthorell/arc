@@ -175,6 +175,9 @@ struct shader_parameter_descriptor
     std::uint32_t offset{};
     std::uint32_t size{};
     std::vector<std::byte> default_value;
+    bool has_range{};
+    float minimum{};
+    float maximum{};
 };
 
 /** @brief Reflected resource binding independent of a graphics backend. */
@@ -267,7 +270,7 @@ struct shader_compile_output
 /** @brief Immutable cooked shader package containing one target slice. */
 struct shader_package
 {
-    static constexpr std::uint32_t current_version = 2;
+    static constexpr std::uint32_t current_version = 3;
 
     std::uint32_t version{current_version};
     shader_package_id id{};
