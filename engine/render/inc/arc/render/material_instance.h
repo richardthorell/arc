@@ -17,7 +17,8 @@ enum class material_instance_validation_error : std::uint8_t
     none,
     missing_parent,
     invalid_parameter_id,
-    duplicate_parameter_id
+    duplicate_parameter_id,
+    invalid_specialization
 };
 
 struct [[nodiscard]] material_instance_validation_result
@@ -130,6 +131,14 @@ validate_material_instance(const material_instance_descriptor& instance)
         return {material_instance_validation_error::missing_parent,
                 {},
                 "material instance requires a valid parent material"};
+    }
+
+    if (instance.function_specialization_key != 0 &&
+        (!instance.specialized_runtime_program || instance.specialized_parameter_layout.empty()))
+    {
+        return {material_instance_validation_error::invalid_specialization,
+                {},
+                "material instance specialization requires a cooked runtime program and parameter layout"};
     }
 
     std::unordered_set<std::uint64_t> parameter_ids;
