@@ -22,6 +22,7 @@ using json = nlohmann::json;
 struct parsed_material_function
 {
     std::string path;
+    std::string identity;
     std::string name;
     std::string description;
     std::vector<material_function_pin> inputs;
@@ -200,6 +201,9 @@ function_parse_result parse_function(std::string_view source, std::string_view s
             return function_parse_result::failure(
                 validation_error(label + " uses a Material Output node; functions require Function Output"));
         if (type == "functionOutput") ++output_nodes;
+        if (type == "functionSlot")
+            return function_parse_result::failure(
+                validation_error(label + " contains a Function Slot; slots are owned by parent Materials"));
         if (type == "functionInput")
         {
             const auto values = node.value("values", json::object());
