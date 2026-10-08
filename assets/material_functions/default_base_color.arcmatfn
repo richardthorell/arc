@@ -1,0 +1,73 @@
+{
+  "kind": "materialFunction",
+  "version": 1,
+  "name": "Default Base Color",
+  "description": "Pass-through base color source used as the default implementation for composable lit materials.",
+  "inputs": [
+    {
+      "id": "baseColor",
+      "name": "Base Color",
+      "type": "vec3"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "color",
+      "name": "Color",
+      "type": "vec3"
+    }
+  ],
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "input-baseColor",
+        "type": "functionInput",
+        "position": [
+          80,
+          120
+        ],
+        "values": {
+          "input": "baseColor",
+          "name": "Base Color",
+          "valueType": "vec3"
+        }
+      },
+      {
+        "id": "function-output",
+        "type": "functionOutput",
+        "position": [
+          500,
+          120
+        ],
+        "values": {
+          "pins": [
+            {
+              "id": "color",
+              "name": "Color",
+              "type": "vec3"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "base-color-output",
+        "from": {
+          "nodeId": "input-baseColor",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "function-output",
+          "pin": "color"
+        }
+      }
+    ],
+    "viewport": {
+      "x": 40,
+      "y": 40,
+      "zoom": 1
+    }
+  }
+}
