@@ -163,7 +163,7 @@ type MaterialFunctionAssetOption = {
   scope: 'builtin' | 'project';
 };
 
-function MaterialFunctionCallEditor({
+function MaterialFunctionReferenceEditor({
   node,
   readOnly,
   onChange,
@@ -220,8 +220,16 @@ function MaterialFunctionCallEditor({
 
   return (
     <div className="material-node-inline-value">
+      {node.type === 'functionSlot' && (
+        <input
+          aria-label="Function Slot name"
+          disabled={readOnly}
+          value={typeof node.values.name === 'string' ? node.values.name : 'Function Slot'}
+          onChange={(event) => onChange({ ...node, values: { ...node.values, name: event.target.value } })}
+        />
+      )}
       <UiSelect
-        ariaLabel="Material Function"
+        ariaLabel={node.type === 'functionSlot' ? 'Default Material Function' : 'Material Function'}
         disabled={readOnly}
         options={options}
         value={selectedPath}
@@ -230,7 +238,13 @@ function MaterialFunctionCallEditor({
           if (!asset) {
             onChange({
               ...node,
-              values: { ...node.values, path: '', name: 'Material Function', inputPins: [], outputPins: [] },
+              values: {
+                ...node.values,
+                path: '',
+                ...(node.type === 'functionCall' ? { name: 'Material Function' } : { functionName: '' }),
+                inputPins: [],
+                outputPins: [],
+              },
             });
             return;
           }
@@ -244,7 +258,7 @@ function MaterialFunctionCallEditor({
                 values: {
                   ...node.values,
                   path: asset.sourcePath,
-                  name: parsed.name,
+                  ...(node.type === 'functionCall' ? { name: parsed.name } : { functionName: parsed.name }),
                   inputPins: parsed.inputs,
                   outputPins: parsed.outputs,
                 },
@@ -408,8 +422,8 @@ function MaterialNodeValueEditor({
   if (isMaterialTextureSampleNodeType(node.type))
     return <MaterialTextureSampleEditor node={node} readOnly={readOnly} onChange={onChange} />;
 
-  if (node.type === 'functionCall')
-    return <MaterialFunctionCallEditor node={node} readOnly={readOnly} onChange={onChange} />;
+  if (node.type === 'functionCall' || node.type === 'functionSlot')
+    return <MaterialFunctionReferenceEditor node={node} readOnly={readOnly} onChange={onChange} />;
 
   if (node.type === 'normalMap')
     return (
