@@ -1,8 +1,10 @@
 #pragma once
 
 #include <arc/render/material.h>
+#include <arc/render_tools/material_graph.h>
 
 #include <filesystem>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -30,6 +32,13 @@ struct material_preview_descriptor_result
 /** @brief Realize one authored v4 material document through native Material IR for preview use. */
 [[nodiscard]] material_preview_descriptor_result realize_material_preview_descriptor(std::string_view source,
                                                                                      std::string_view name = {});
+
+/** @brief Realize a Material with reusable functions and compile-time Function Slot selections. */
+[[nodiscard]] material_preview_descriptor_result
+realize_material_preview_descriptor(
+    std::string_view source, std::string_view name,
+    std::span<const render::tools::material_function_source> functions,
+    std::span<const render::tools::material_function_slot_override> slot_overrides);
 
 /** @brief Read and realize one graph-authored material file for the native Material Preview surface. */
 [[nodiscard]] material_preview_descriptor_result
