@@ -1095,7 +1095,11 @@ export function MaterialGraphEditor({
                           if (pendingConnection) connectTo({ nodeId: node.id, pin: pin.id });
                         }}
                         pinKey={graphPinKey(node.id, pin.id, false)}
-                        title={`${pin.label} · ${pin.type}`}
+                        title={
+                          pin.semanticRange
+                            ? `${pin.label} · ${pin.type} · expected ${pin.semanticRange.min}..${pin.semanticRange.max}`
+                            : `${pin.label} · ${pin.type}`
+                        }
                       />
                     );
                   })}

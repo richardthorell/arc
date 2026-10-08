@@ -194,6 +194,91 @@ TEST_CASE("native material graph compiler rejects invalid Scalar authoring range
     }
 }
 
+TEST_CASE("Material Output exposes normalized semantic ranges")
+{
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[{"id":"out","type":"output","values":{}}],
+      "connections":[]
+    })";
+
+    const auto result = arc::render::tools::compile_material_graph_json(graph);
+    REQUIRE(result);
+
+    const auto* roughness =
+        find_output(result.value().descriptor, arc::render::tools::material_surface_output::roughness);
+    REQUIRE(roughness != nullptr);
+    CHECK(roughness->has_expected_range);
+    CHECK(roughness->minimum == 0.0f);
+    CHECK(roughness->maximum == 1.0f);
+
+    const auto* ior =
+        find_output(result.value().descriptor, arc::render::tools::material_surface_output::index_of_refraction);
+    REQUIRE(ior != nullptr);
+    CHECK_FALSE(ior->has_expected_range);
+}
+
+TEST_CASE("Material Output warns for directly incompatible Scalar domains without changing shader math")
+{
+    SECTION("authored range extends outside the output semantic")
+    {
+        constexpr std::string_view graph = R"({
+          "version":1,
+          "nodes":[
+            {"id":"out","type":"output","values":{}},
+            {"id":"roughness","type":"constant","values":{"value":0.5,"min":0.0,"max":5.0}}
+          ],
+          "connections":[
+            {"id":"1","from":{"nodeId":"roughness","pin":"value"},"to":{"nodeId":"out","pin":"roughness"}}
+          ]
+        })";
+
+        const auto result = arc::render::tools::compile_material_graph_json(graph);
+        REQUIRE(result);
+        REQUIRE(result.value().diagnostics.size() == 1);
+        CHECK(result.value().diagnostics.front().severity == arc::render::shader_diagnostic_severity::warning);
+        CHECK(result.value().diagnostics.front().code == "material.output-range");
+        CHECK(result.value().diagnostics.front().location.graph_node_id == "roughness");
+    }
+
+    SECTION("unrestricted literal is visibly outside the semantic")
+    {
+        constexpr std::string_view graph = R"({
+          "version":1,
+          "nodes":[
+            {"id":"out","type":"output","values":{}},
+            {"id":"metallic","type":"constant","values":{"value":2.0}}
+          ],
+          "connections":[
+            {"id":"1","from":{"nodeId":"metallic","pin":"value"},"to":{"nodeId":"out","pin":"metallic"}}
+          ]
+        })";
+
+        const auto result = arc::render::tools::compile_material_graph_json(graph);
+        REQUIRE(result);
+        REQUIRE(result.value().diagnostics.size() == 1);
+        CHECK(result.value().diagnostics.front().code == "material.output-range");
+    }
+
+    SECTION("compatible authored range is clean")
+    {
+        constexpr std::string_view graph = R"({
+          "version":1,
+          "nodes":[
+            {"id":"out","type":"output","values":{}},
+            {"id":"roughness","type":"constant","values":{"value":0.5,"min":0.0,"max":1.0}}
+          ],
+          "connections":[
+            {"id":"1","from":{"nodeId":"roughness","pin":"value"},"to":{"nodeId":"out","pin":"roughness"}}
+          ]
+        })";
+
+        const auto result = arc::render::tools::compile_material_graph_json(graph);
+        REQUIRE(result);
+        CHECK(result.value().diagnostics.empty());
+    }
+}
+
 TEST_CASE("material graph texture semantics propagate to descriptor bindings")
 {
     constexpr std::string_view graph = R"({

@@ -25,13 +25,7 @@ export const materialGraphPinTypesCompatible = (from: MaterialGraphPinType, to: 
   return from === to;
 };
 
-export const materialGraphDomain: GraphDomain<
-  MaterialGraphNode,
-  MaterialGraphNodeType,
-  MaterialGraphPinType,
-  MaterialNodeCategory,
-  MaterialNodeSubcategory
-> = {
+export const materialGraphDomain = {
   getNodeDefinition: materialNodeDefinition,
   getNodeDefinitions: materialDefinitions,
   canConnect: (
@@ -45,5 +39,12 @@ export const materialGraphDomain: GraphDomain<
       return { allowed: false, reason: `Cannot connect ${from.pin.type} to ${to.pin.type}.` };
     return { allowed: true };
   },
-  canDeleteNode: (node) => node.type !== 'output' && node.type !== 'functionInput' && node.type !== 'functionOutput',
-};
+  canDeleteNode: (node: MaterialGraphNode) =>
+    node.type !== 'output' && node.type !== 'functionInput' && node.type !== 'functionOutput',
+} satisfies GraphDomain<
+  MaterialGraphNode,
+  MaterialGraphNodeType,
+  MaterialGraphPinType,
+  MaterialNodeCategory,
+  MaterialNodeSubcategory
+>;
