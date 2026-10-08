@@ -203,13 +203,13 @@ const arcAssetDragMime = 'application/x-arc-asset';
 const normalizedAssetPath = (value: string) => value.replaceAll('\\', '/').toLocaleLowerCase();
 const sleep = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
-const importDroppedTexture = async (file: File): Promise<ExternalTextureImportResult> => {
+const importDroppedTexture = async (file: File, destinationFolder?: string): Promise<ExternalTextureImportResult> => {
   const sourcePath = webUtils.getPathForFile(file);
   if (!sourcePath) throw new Error(`Could not resolve dropped file '${file.name}'`);
   const snapshot = (await ipcRenderer.invoke('project:snapshot')) as ArcProjectBrowserSnapshot | null;
   const project = snapshot?.activeProject;
   if (!project) throw new Error('Open an ARC project before importing textures');
-  return importExternalTexture(sourcePath, project);
+  return importExternalTexture(sourcePath, project, destinationFolder);
 };
 
 const importDroppedModel = async (file: File, destinationFolder?: string): Promise<ExternalModelImportResult> => {
@@ -373,7 +373,8 @@ const arcApi = {
       readOnly?: boolean;
       state?: string;
     }> => ipcRenderer.invoke('project:createAsset', request),
-    importTexture: (file: File): Promise<ExternalTextureImportResult> => importDroppedTexture(file),
+    importTexture: (file: File, destinationFolder?: string): Promise<ExternalTextureImportResult> =>
+      importDroppedTexture(file, destinationFolder),
     importModel: (file: File, destinationFolder?: string): Promise<ExternalModelImportResult> =>
       importDroppedModel(file, destinationFolder),
   },

@@ -50,6 +50,7 @@ const uniqueTexturePath = (directory: string, filename: string): string => {
 export const importExternalTexture = (
   sourcePath: string,
   project: ArcProjectCandidate,
+  requestedFolder?: string,
 ): ExternalTextureImportResult => {
   if (!project.writable) throw new Error('The active project is read-only');
   if (!sourcePath || !path.isAbsolute(sourcePath)) throw new Error('Dropped texture path is invalid');
@@ -59,15 +60,17 @@ export const importExternalTexture = (
   if (!sourceStats.isFile()) throw new Error('Dropped texture is not a file');
 
   const contentRoot = normalizeRelativePath(project.descriptor.paths.content || 'Content');
-  const textureDirectoryRelative = normalizeRelativePath(path.posix.join(contentRoot, 'Textures'));
-  const textureDirectory = projectContainedPath(project.projectRoot, textureDirectoryRelative);
+  const requested = normalizeRelativePath(requestedFolder?.trim() || path.posix.join(contentRoot, 'Textures'));
+  if (requested !== contentRoot && !requested.startsWith(`${contentRoot}/`))
+    throw new Error('Textures can only be imported into the project content folder');
+  const textureDirectory = projectContainedPath(project.projectRoot, requested);
   fs.mkdirSync(textureDirectory, { recursive: true });
 
   const destination = uniqueTexturePath(textureDirectory, path.basename(sourcePath));
   fs.copyFileSync(sourcePath, destination, fs.constants.COPYFILE_EXCL);
 
   return {
-    sourcePath,
+    sourcePath: destination,
     path: normalizeRelativePath(path.relative(project.projectRoot, destination)),
   };
 };

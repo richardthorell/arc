@@ -102,7 +102,23 @@ const parentFolder = (path: string) => cleanPath(path).split('/').slice(0, -1).j
 const normalizedPath = (path: string) => cleanPath(path).toLocaleLowerCase();
 const folderKey = (source: LocalBrowserSource, path: string) => `${source}:${normalizedPath(path)}`;
 const modelFileExtensions = new Set(['fbx', 'glb', 'gltf', 'obj']);
-const isModelFile = (file: File) => modelFileExtensions.has(file.name.split('.').at(-1)?.toLocaleLowerCase() ?? '');
+const textureFileExtensions = new Set([
+  'bmp',
+  'dds',
+  'exr',
+  'hdr',
+  'jpeg',
+  'jpg',
+  'png',
+  'psd',
+  'tga',
+  'tif',
+  'tiff',
+  'webp',
+]);
+const fileExtension = (file: File) => file.name.split('.').at(-1)?.toLocaleLowerCase() ?? '';
+const isModelFile = (file: File) => modelFileExtensions.has(fileExtension(file));
+const isTextureFile = (file: File) => textureFileExtensions.has(fileExtension(file));
 const contentTreeWidthStorageKey = 'arc.content.treeWidth';
 const defaultContentTreeWidth = 190;
 const minContentTreeWidth = 140;
@@ -172,6 +188,19 @@ const assetIsWithinFolder = (
   return relative === selected || relative.startsWith(`${selected}/`);
 };
 
+const childFoldersAt = (roots: FolderTreeNode[], folder: string): FolderTreeNode[] => {
+  const normalized = normalizedPath(folder);
+  if (!normalized) return roots;
+
+  let level = roots;
+  for (const segment of cleanPath(folder).split('/').filter(Boolean)) {
+    const found = level.find((node) => node.name.toLocaleLowerCase() === segment.toLocaleLowerCase());
+    if (!found) return [];
+    level = found.children;
+  }
+  return level;
+};
+
 export const buildContentFolderTree = (
   assets: AssetItem[],
   source: LocalBrowserSource,
@@ -217,6 +246,7 @@ function FolderTreeRows({
   expandedFolders,
   onSelect,
   onContextMenu,
+  onDropFiles,
 }: {
   nodes: FolderTreeNode[];
   source: LocalBrowserSource;
@@ -226,6 +256,7 @@ function FolderTreeRows({
   expandedFolders: ReadonlySet<string>;
   onSelect: (source: LocalBrowserSource, path: string, hasChildren: boolean) => void;
   onContextMenu?: (event: React.MouseEvent, path: string) => void;
+  onDropFiles?: (event: React.DragEvent, path: string) => void;
 }) {
   return (
     <>
@@ -242,6 +273,17 @@ function FolderTreeRows({
               aria-expanded={hasChildren ? expanded : undefined}
               onClick={() => onSelect(source, node.path, hasChildren)}
               onContextMenu={(event) => onContextMenu?.(event, node.path)}
+              onDragOver={
+                source === 'project'
+                  ? (event) => {
+                      if (!event.dataTransfer.types.includes('Files')) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      event.dataTransfer.dropEffect = 'copy';
+                    }
+                  : undefined
+              }
+              onDrop={source === 'project' ? (event) => onDropFiles?.(event, node.path) : undefined}
             >
               {hasChildren ? (
                 expanded ? (
@@ -265,6 +307,7 @@ function FolderTreeRows({
                 expandedFolders={expandedFolders}
                 onSelect={onSelect}
                 onContextMenu={onContextMenu}
+                onDropFiles={onDropFiles}
               />
             )}
           </Fragment>
@@ -407,6 +450,11 @@ export function ContentBrowserPanel({
     () => buildContentFolderTree(builtinAssets, 'builtin', contentRootName),
     [builtinAssets, contentRootName],
   );
+  const visibleFolders = useMemo(() => {
+    if (browserSource === 'project') return childFoldersAt(projectFolders, folder);
+    if (browserSource === 'builtin') return childFoldersAt(builtinFolders, folder);
+    return [];
+  }, [browserSource, builtinFolders, folder, projectFolders]);
   const scopedAssets = useMemo(() => {
     if (virtualAssets) return virtualAssets;
     if (browserSource === 'builtin') return builtinAssets;
@@ -505,6 +553,21 @@ export function ContentBrowserPanel({
   const projectFolderPath = (relativePath: string) =>
     relativePath ? `${contentRoot}/${cleanPath(relativePath)}` : contentRoot;
   const creationFolder = browserSource === 'project' ? projectFolderPath(folder) : contentRoot;
+  const importDroppedFiles = (event: React.DragEvent, destinationFolder: string) => {
+    if (!project) return;
+    const files = Array.from(event.dataTransfer.files);
+    const models = files.filter(isModelFile);
+    const textures = files.filter(isTextureFile);
+    if (!models.length && !textures.length) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    const destination = projectFolderPath(destinationFolder);
+    void Promise.all([
+      ...models.map((file) => window.arc.projects.importModel(file, destination)),
+      ...textures.map((file) => window.arc.projects.importTexture(file, destination)),
+    ]).catch((error) => console.error('[ARC] Asset import failed', error));
+  };
   const metadataAsset = metadataAssetId ? (assets.find((asset) => asset.id === metadataAssetId) ?? null) : null;
 
   const select = (asset: AssetItem, additive: boolean) => {
@@ -792,17 +855,14 @@ export function ContentBrowserPanel({
       className="content-browser-v2"
       style={{ '--content-tree-width': `${treeWidth}px` } as React.CSSProperties}
       onClick={() => createContextMenu && setCreateContextMenu(null)}
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => {
-        if (activeOnlineSource || !project) return;
-        const files = Array.from(event.dataTransfer.files).filter(isModelFile);
-        if (!files.length) return;
+      onDragOver={(event) => {
+        if (browserSource !== 'project' || !event.dataTransfer.types.includes('Files')) return;
         event.preventDefault();
-        event.stopPropagation();
-        const destination = projectFolderPath(folder);
-        void Promise.all(files.map((file) => window.arc.projects.importModel(file, destination))).catch((error) =>
-          console.error('[ARC] Model import failed', error),
-        );
+        event.dataTransfer.dropEffect = 'copy';
+      }}
+      onDrop={(event) => {
+        if (activeOnlineSource || browserSource !== 'project') return;
+        importDroppedFiles(event, folder);
       }}
     >
       <aside className="content-folder-tree" role="tree" aria-label="Content folders">
@@ -850,6 +910,13 @@ export function ContentBrowserPanel({
           aria-expanded={projectFolders.length > 0 ? projectRootExpanded : undefined}
           onClick={() => selectSourceRoot('project', projectFolders.length > 0)}
           onContextMenu={(event) => openProjectContextCreate(event, '')}
+          onDragOver={(event) => {
+            if (!event.dataTransfer.types.includes('Files')) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.dataTransfer.dropEffect = 'copy';
+          }}
+          onDrop={(event) => importDroppedFiles(event, '')}
         >
           {projectFolders.length > 0 ? (
             projectRootExpanded ? (
@@ -873,6 +940,7 @@ export function ContentBrowserPanel({
             expandedFolders={expandedFolders}
             onSelect={selectTreeFolder}
             onContextMenu={openProjectContextCreate}
+            onDropFiles={importDroppedFiles}
           />
         )}
         <UiTreeRow
@@ -1084,6 +1152,37 @@ export function ContentBrowserPanel({
                 }
               }}
             >
+              {visibleFolders.map((childFolder) => (
+                <button
+                  aria-label={`Open folder ${childFolder.name}`}
+                  className="content-folder-card"
+                  key={`${browserSource}:${normalizedPath(childFolder.path)}`}
+                  role="option"
+                  type="button"
+                  onDoubleClick={() =>
+                    navigateFolder(browserSource === 'builtin' ? 'builtin' : 'project', childFolder.path)
+                  }
+                  onDragOver={
+                    browserSource === 'project'
+                      ? (event) => {
+                          if (!event.dataTransfer.types.includes('Files')) return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          event.dataTransfer.dropEffect = 'copy';
+                        }
+                      : undefined
+                  }
+                  onDrop={
+                    browserSource === 'project' ? (event) => importDroppedFiles(event, childFolder.path) : undefined
+                  }
+                >
+                  <span className="content-folder-card-icon" aria-hidden="true">
+                    <Folder size={42} />
+                  </span>
+                  <span className="content-folder-card-name">{childFolder.name}</span>
+                  <small>Folder</small>
+                </button>
+              ))}
               {filtered.map((asset) => {
                 const modelSubassets = assetPresentationKind(asset) === 'model' ? buildModelSubassets(asset) : [];
                 const expanded = expandedModels.has(asset.id);
@@ -1139,7 +1238,7 @@ export function ContentBrowserPanel({
                   </Fragment>
                 );
               })}
-              {filtered.length === 0 && (
+              {filtered.length === 0 && visibleFolders.length === 0 && (
                 <div className="content-empty">
                   {browserSource === 'favorites'
                     ? 'No favorite assets yet. Star an asset to add it here.'

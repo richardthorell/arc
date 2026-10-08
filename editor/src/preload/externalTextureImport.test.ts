@@ -82,6 +82,33 @@ describe('external texture import', () => {
     expect(fs.readFileSync(source, 'utf8')).toBe('texture-data');
   });
 
+  it('copies a texture into the requested selected content folder', () => {
+    const project = makeProject();
+    const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-external-source-'));
+    temporaryRoots.push(sourceRoot);
+    const source = path.join(sourceRoot, 'detail.png');
+    fs.writeFileSync(source, 'detail-data');
+
+    const imported = importExternalTexture(source, project, 'Content/Characters/Hero');
+
+    expect(imported.path).toBe('Content/Characters/Hero/detail.png');
+    expect(imported.sourcePath).toBe(path.join(project.projectRoot, imported.path));
+    expect(fs.readFileSync(imported.sourcePath, 'utf8')).toBe('detail-data');
+  });
+
+  it('accepts a configured non-default content root', () => {
+    const project = makeProject();
+    project.descriptor.paths.content = 'GameContent';
+    const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-external-source-'));
+    temporaryRoots.push(sourceRoot);
+    const source = path.join(sourceRoot, 'detail.png');
+    fs.writeFileSync(source, 'detail-data');
+
+    const imported = importExternalTexture(source, project, 'GameContent/Props');
+
+    expect(imported.path).toBe('GameContent/Props/detail.png');
+  });
+
   it('does not overwrite an existing project texture', () => {
     const project = makeProject();
     const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-external-source-'));
