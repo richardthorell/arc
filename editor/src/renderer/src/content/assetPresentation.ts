@@ -23,6 +23,15 @@ export const assetPresentationKind = (asset: Pick<AssetItem, 'kind' | 'path'>): 
   return asset.kind;
 };
 
+/**
+ * Engine scope is a curated library, not a raw dump of renderer implementation
+ * files. Built-in shader sources stay registered for compilation/runtime use but
+ * are intentionally hidden from user-facing Content Browser surfaces.
+ */
+export const isContentBrowserAssetVisible = (
+  asset: Pick<AssetItem, 'kind'> & Partial<Pick<AssetItem, 'scope'>>,
+) => !(asset.scope === 'builtin' && asset.kind === 'shader');
+
 export const assetPresentationLabel = (asset: AssetPresentationSource) => {
   const kind = assetPresentationKind(asset);
   if (kind === 'model') return 'Model';
