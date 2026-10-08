@@ -8,7 +8,7 @@ import {
   type MaterialGraphNode,
   type MaterialGraphValueType,
 } from '../material/materialGraphTypes';
-import { UiColorControl, UiNumericInput } from '../ui';
+import { UiColorControl, UiNumericInput, UiSlider } from '../ui';
 import { TexturePicker } from './AssetPicker';
 import type { HostEntityId, HostResponse, Vec4 } from './inspectorTypes';
 import { NumberControl } from './InspectorControls';
@@ -40,6 +40,7 @@ type DisplayParameter = {
   name: string;
   type: MaterialGraphValueType;
   editorKind: MaterialEditorParameterKind;
+  range?: { min: number; max: number };
   values: number[];
   texture: string;
 };
@@ -133,7 +134,17 @@ const overridesFromMaterialName = (name: string | undefined): InstanceOverride[]
   }
 };
 
-const numericField = (label: string) => ({ label, precision: 3, step: 0.01, scrubSensitivity: 0.005 });
+const numericField = (label: string, range?: { min: number; max: number }) => ({
+  label,
+  precision: 3,
+  step: 0.01,
+  scrubSensitivity: 0.005,
+  min: range?.min,
+  max: range?.max,
+});
+
+const clampParameterValue = (value: number, range?: { min: number; max: number }) =>
+  range ? Math.min(range.max, Math.max(range.min, value)) : value;
 
 export function MaterialParameterSubsection({
   assets,
@@ -335,16 +346,29 @@ export function MaterialParameterSubsection({
                 name: parameter.name,
                 type: parameter.type,
                 kind: parameter.editorKind,
-                value: [next],
+                value: [clampParameterValue(next, parameter.range)],
               });
+              const scalarValue = clampParameterValue(values[0] ?? 0, parameter.range);
               return (
                 <div className="inspector-material-parameter" key={parameter.nodeId}>
-                  <NumberControl
-                    field={numericField(parameter.name)}
-                    value={values[0] ?? 0}
-                    onPreview={(next) => updateLocalOverride(parameter, nextOverride(next))}
-                    onCommit={(next) => void commitOverride(parameter, nextOverride(next))}
-                  />
+                  <div className="inspector-material-scalar-control">
+                    <NumberControl
+                      field={numericField(parameter.name, parameter.range)}
+                      value={scalarValue}
+                      onPreview={(next) => updateLocalOverride(parameter, nextOverride(next))}
+                      onCommit={(next) => void commitOverride(parameter, nextOverride(next))}
+                    />
+                    {parameter.range && (
+                      <UiSlider
+                        aria-label={`${parameter.name} slider`}
+                        min={parameter.range.min}
+                        max={parameter.range.max}
+                        step={Math.max(0.001, (parameter.range.max - parameter.range.min) / 100)}
+                        value={scalarValue}
+                        onValueChange={(next) => void commitOverride(parameter, nextOverride(next))}
+                      />
+                    )}
+                  </div>
                   {reset}
                 </div>
               );
