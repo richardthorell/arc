@@ -461,7 +461,8 @@ enum class material_instance_error_code : std::uint8_t
     invalid_parent,
     duplicate_override,
     unknown_parameter,
-    incompatible_type
+    incompatible_type,
+    out_of_range
 };
 
 /** @brief Structured failure while applying instance overrides. */

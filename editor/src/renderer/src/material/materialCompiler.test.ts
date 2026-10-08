@@ -63,6 +63,23 @@ describe('native material compiler editor adapter', () => {
     );
   });
 
+  it('projects authored Scalar ranges into exposed parameter metadata', () => {
+    const graph = createDefaultMaterialGraph();
+    const roughness = graph.nodes.find((node) => node.parameter?.name === 'Roughness');
+    expect(roughness).toBeDefined();
+    roughness!.values = { ...roughness!.values, min: 0, max: 1 };
+
+    expect(materialEditorParameters(graph)).toContainEqual(
+      expect.objectContaining({
+        nodeId: roughness!.id,
+        name: 'Roughness',
+        type: 'float',
+        editorKind: 'scalar',
+        range: { min: 0, max: 1 },
+      }),
+    );
+  });
+
   it('omits exposed nodes that cannot affect Material Output', () => {
     const graph = createDefaultMaterialGraph();
     const disconnected = createMaterialNode('constant', [160, 160], { value: 0.5 });
@@ -159,6 +176,21 @@ describe('native material compiler editor adapter', () => {
     expect(materialEditorParameters(after)).toContainEqual(
       expect.objectContaining({ name: 'Emissive Strength', type: 'float' }),
     );
+  });
+
+  it('recompiles range metadata edits but keeps in-range Scalar value edits parameter-only', () => {
+    const before = createDefaultMaterialGraph();
+    const roughness = before.nodes.find((node) => node.parameter?.name === 'Roughness');
+    expect(roughness).toBeDefined();
+    roughness!.values = { ...roughness!.values, min: 0, max: 1 };
+
+    const valueEdit = structuredClone(before);
+    valueEdit.nodes.find((node) => node.id === roughness!.id)!.values.value = 0.4;
+    expect(materialGraphEditImpact(before, valueEdit)).toBe('parameter-values');
+
+    const rangeEdit = structuredClone(before);
+    rangeEdit.nodes.find((node) => node.id === roughness!.id)!.values.max = 2;
+    expect(materialGraphEditImpact(before, rangeEdit)).toBe('shader');
   });
 
   it('keeps topology and parameter metadata changes on the shader compile path', () => {

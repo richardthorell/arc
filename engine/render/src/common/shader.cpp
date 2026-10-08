@@ -15,7 +15,7 @@ namespace arc::render
 namespace
 {
 
-constexpr std::string_view package_magic = "ARC_SHADER_2";
+constexpr std::string_view package_magic = "ARC_SHADER_3";
 constexpr std::size_t maximum_package_bytes = 256u * 1024u * 1024u;
 constexpr std::size_t maximum_package_entries = 65'536u;
 
@@ -543,6 +543,9 @@ shader_package_bytes_result serialize_shader_package(const shader_package& packa
         writer.value(parameter.offset);
         writer.value(parameter.size);
         writer.raw(parameter.default_value);
+        writer.value<std::uint8_t>(parameter.has_range ? 1 : 0);
+        writer.raw(std::as_bytes(std::span(&parameter.minimum, 1)));
+        writer.raw(std::as_bytes(std::span(&parameter.maximum, 1)));
     }
     writer.value<std::uint32_t>(static_cast<std::uint32_t>(reflection.resources.size()));
     for (const auto& resource : reflection.resources)
@@ -645,12 +648,20 @@ shader_package_result deserialize_shader_package(std::span<const std::byte> byte
     for (auto& parameter : reflection.parameters)
     {
         std::vector<std::uint8_t> default_bytes;
+        std::vector<std::uint8_t> minimum_bytes;
+        std::vector<std::uint8_t> maximum_bytes;
+        std::uint8_t has_range{};
         if (!reader.value(parameter.id.value) || !reader.string(parameter.name) || !reader.value(parameter.type) ||
-            !reader.value(parameter.offset) || !reader.value(parameter.size) || !reader.raw(default_bytes))
+            !reader.value(parameter.offset) || !reader.value(parameter.size) || !reader.raw(default_bytes) ||
+            !reader.value(has_range) || !reader.raw(minimum_bytes) || !reader.raw(maximum_bytes) ||
+            minimum_bytes.size() != sizeof(float) || maximum_bytes.size() != sizeof(float))
             return shader_package_result::failure(corrupt_package("truncated parameter table"));
         parameter.default_value.resize(default_bytes.size());
         std::transform(default_bytes.begin(), default_bytes.end(), parameter.default_value.begin(),
                        [](std::uint8_t value) { return static_cast<std::byte>(value); });
+        parameter.has_range = has_range != 0;
+        std::memcpy(&parameter.minimum, minimum_bytes.data(), sizeof(float));
+        std::memcpy(&parameter.maximum, maximum_bytes.data(), sizeof(float));
     }
     if (!read_count(count)) return shader_package_result::failure(corrupt_package("invalid resource count"));
     reflection.resources.resize(count);

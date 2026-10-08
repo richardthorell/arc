@@ -1,8 +1,9 @@
-import type {
-  MaterialGraph,
-  MaterialGraphNode,
-  MaterialGraphNodeType,
-  MaterialGraphValueType,
+import {
+  materialScalarRange,
+  type MaterialGraph,
+  type MaterialGraphNode,
+  type MaterialGraphNodeType,
+  type MaterialGraphValueType,
 } from './materialGraphTypes';
 
 /** Diagnostic returned by ARC's native Material IR/compiler pipeline. */
@@ -141,6 +142,11 @@ export const materialGraphEditImpact = (before: MaterialGraph, after: MaterialGr
     if (previous.position[0] !== node.position[0] || previous.position[1] !== node.position[1]) return 'shader';
 
     if (JSON.stringify(previous.values) !== JSON.stringify(node.values)) {
+      if (
+        node.type === 'constant' &&
+        (previous.values.min !== node.values.min || previous.values.max !== node.values.max)
+      )
+        return 'shader';
       if (!beforeParameters.has(node.id) || !afterParameters.has(node.id)) return 'shader';
       changedParameterValue = true;
     }
@@ -157,6 +163,7 @@ export type MaterialEditorParameter = {
   type: MaterialGraphValueType;
   nodeType: MaterialGraphNodeType;
   editorKind: MaterialEditorParameterKind;
+  range?: { min: number; max: number };
 };
 
 /**
@@ -190,6 +197,7 @@ export const materialEditorParameters = (graph: MaterialGraph): MaterialEditorPa
           : type === 'float'
             ? 'scalar'
             : 'vector';
+    const range = node.type === 'constant' ? materialScalarRange(node) : null;
     return [
       {
         nodeId: node.id,
@@ -197,6 +205,7 @@ export const materialEditorParameters = (graph: MaterialGraph): MaterialEditorPa
         type,
         nodeType: node.type,
         editorKind,
+        ...(range ? { range } : {}),
       },
     ];
   });

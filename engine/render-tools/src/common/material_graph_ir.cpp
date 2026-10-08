@@ -542,7 +542,10 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
                                                          .name = node.parameter_name,
                                                          .type = type,
                                                          .size = parameter_size(type),
-                                                         .default_value = parameter_default(node, type)});
+                                                         .default_value = parameter_default(node, type),
+                                                         .has_range = node.has_range,
+                                                         .minimum = node.minimum,
+                                                         .maximum = node.maximum});
         }
 
         switch (node.kind)
