@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { materialEditorParameters, materialGraphEditImpact, nativeMaterialCompileResult } from './materialCompiler';
+import {
+  materialEditorParameters,
+  materialGraphDiagnostics,
+  materialGraphEditImpact,
+  nativeMaterialCompileResult,
+} from './materialCompiler';
 import { createDefaultMaterialGraph, createMaterialNode } from './materialGraphTypes';
 
 describe('native material compiler editor adapter', () => {
@@ -27,6 +32,31 @@ describe('native material compiler editor adapter', () => {
       nodeId: 'multiply-1',
       line: 14,
     });
+  });
+
+  it('projects native node diagnostics into the shared graph model', () => {
+    expect(
+      materialGraphDiagnostics([
+        {
+          severity: 'warning',
+          code: 'material.output-range',
+          nodeId: 'roughness',
+          message: 'Outside expected range',
+        },
+        {
+          severity: 'error',
+          message: 'Global compiler failure',
+        },
+      ]),
+    ).toEqual([
+      {
+        id: 'material:material.output-range:roughness:0',
+        severity: 'warning',
+        message: 'Outside expected range',
+        details: 'material.output-range',
+        target: { kind: 'node', nodeId: 'roughness' },
+      },
+    ]);
   });
 
   it('derives exposed parameter presentation metadata without creating editor IR', () => {
