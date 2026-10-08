@@ -121,7 +121,7 @@ export const materialFunctionCompatibleWithSlot = (
 export const loadMaterialFunctionOptions = async (assets: readonly AssetItem[]) => {
   const options = await Promise.all(
     assets
-      .filter((asset) => asset.kind === 'materialFunction' && asset.scope !== 'procedural')
+      .filter((asset) => asset.kind === 'materialFunction')
       .map(async (asset): Promise<MaterialInstanceFunctionOption | null> => {
         const reference = materialAssetReference(asset);
         if (!reference) return null;
