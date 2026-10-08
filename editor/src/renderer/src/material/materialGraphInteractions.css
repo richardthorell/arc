@@ -174,3 +174,13 @@
   background: rgba(149, 48, 58, 0.34);
   box-shadow: 0 0 0 2px rgba(219, 75, 88, 0.08);
 }
+
+.material-graph-interaction-host .material-pin.is-compatible-target.is-semantic-warning-target {
+  color: #d1ad67;
+}
+
+.material-graph-interaction-host .material-pin.is-compatible-target.is-semantic-warning-target i {
+  border-color: #d9ad59;
+  background: rgba(145, 101, 34, 0.42);
+  box-shadow: 0 0 0 3px rgba(217, 173, 89, 0.1);
+}

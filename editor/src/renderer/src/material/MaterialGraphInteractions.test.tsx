@@ -131,6 +131,32 @@ describe('MaterialGraphWithInteractions', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('Input · Vector3 • Base Color — surface albedo');
   });
 
+  it('shows semantic range expectations and warns without blocking a compatible connection', () => {
+    const graph = createDefaultMaterialGraph();
+    const wide = { ...createMaterialNode('constant', [40, 220], { value: 0.5, min: -2, max: 2 }), id: 'wide' };
+    graph.nodes.push(wide);
+
+    render(<MaterialGraphWithInteractions document={document} graph={graph} />);
+    const wideNode = screen
+      .getAllByText('Scalar', { selector: '.ui-node-card-title' })
+      .map((title) => title.closest('article'))
+      .find((node) => node?.getAttribute('data-node-id') === 'wide');
+    const output = screen.getByText('Material Output').closest('article');
+    expect(wideNode).not.toBeNull();
+    expect(output).not.toBeNull();
+
+    const source = within(wideNode!).getByRole('button', { name: 'Value' });
+    const roughness = within(output!).getByRole('button', { name: 'Roughness' });
+
+    fireEvent.pointerDown(source, { button: 0 });
+
+    expect(roughness).toHaveClass('is-compatible-target', 'is-semantic-warning-target');
+
+    fireEvent.pointerEnter(roughness, { clientX: 480, clientY: 250 });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('expected 0..1');
+    expect(screen.getByRole('tooltip')).toHaveTextContent('source -2..2 may exceed expected range');
+  });
+
   it('softly marks compatible sockets and tints incompatible sockets while connecting', () => {
     render(<MaterialGraphWithInteractions document={document} graph={createDefaultMaterialGraph()} />);
     const color = screen.getAllByText('Color', { selector: '.ui-node-card-title' })[0]!.closest('article');

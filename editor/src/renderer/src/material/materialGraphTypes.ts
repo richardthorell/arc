@@ -562,6 +562,80 @@ export const materialScalarRange = (node: MaterialGraphNode): MaterialScalarRang
 export const clampMaterialScalarValue = (value: number, range: MaterialScalarRange | null) =>
   range ? Math.min(range.max, Math.max(range.min, value)) : value;
 
+const finiteScalar = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+/**
+ * Conservatively infer the scalar domain produced by a material node for authoring feedback.
+ *
+ * This mirrors the native compiler's safe range inference. Unknown/graph-dependent operations
+ * intentionally return null rather than guessing.
+ */
+export const inferMaterialScalarRange = (
+  graph: MaterialGraph,
+  nodeId: string,
+  visiting: Set<string> = new Set(),
+): MaterialScalarRange | null => {
+  if (visiting.has(nodeId)) return null;
+  const node = graph.nodes.find((candidate) => candidate.id === nodeId);
+  if (!node) return null;
+
+  const nextVisiting = new Set(visiting);
+  nextVisiting.add(nodeId);
+  const inputRange = (pin: string) => {
+    const connection = graph.connections.find(
+      (candidate) => candidate.to.nodeId === node.id && candidate.to.pin === pin,
+    );
+    return connection ? inferMaterialScalarRange(graph, connection.from.nodeId, nextVisiting) : null;
+  };
+
+  if (node.type === 'constant') {
+    const authored = materialScalarRange(node);
+    if (authored) return authored;
+    const value = finiteScalar(node.values.value);
+    return value === null ? null : { min: value, max: value };
+  }
+
+  if (node.type === 'saturate') return { min: 0, max: 1 };
+
+  if (node.type === 'clamp') {
+    const graphDrivenMin = graph.connections.some(
+      (connection) => connection.to.nodeId === node.id && connection.to.pin === 'min',
+    );
+    const graphDrivenMax = graph.connections.some(
+      (connection) => connection.to.nodeId === node.id && connection.to.pin === 'max',
+    );
+    if (graphDrivenMin || graphDrivenMax) return null;
+    const min = finiteScalar(node.values.min);
+    const max = finiteScalar(node.values.max);
+    return min !== null && max !== null && min <= max ? { min, max } : null;
+  }
+
+  if (node.type === 'oneMinus') {
+    const value = inputRange('value');
+    return value ? { min: 1 - value.max, max: 1 - value.min } : null;
+  }
+
+  if (node.type === 'add' || node.type === 'multiply' || node.type === 'min' || node.type === 'max') {
+    const a = inputRange('a');
+    const b = inputRange('b');
+    if (!a || !b) return null;
+
+    if (node.type === 'add') return { min: a.min + b.min, max: a.max + b.max };
+    if (node.type === 'multiply') {
+      const products = [a.min * b.min, a.min * b.max, a.max * b.min, a.max * b.max];
+      return { min: Math.min(...products), max: Math.max(...products) };
+    }
+    if (node.type === 'min') return { min: Math.min(a.min, b.min), max: Math.min(a.max, b.max) };
+    return { min: Math.max(a.min, b.min), max: Math.max(a.max, b.max) };
+  }
+
+  return null;
+};
+
+export const materialScalarRangeFits = (source: MaterialScalarRange, expected: MaterialScalarRange) =>
+  source.min >= expected.min && source.max <= expected.max;
+
 /**
  * Fingerprint only graph data that can change generated material code or runtime bindings.
  * Node positions and the editor viewport are deliberately excluded so graph navigation never

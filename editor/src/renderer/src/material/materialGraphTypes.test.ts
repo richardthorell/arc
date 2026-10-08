@@ -3,12 +3,35 @@ import { describe, expect, it } from 'vitest';
 import {
   createDefaultMaterialGraph,
   createMaterialNode,
+  inferMaterialScalarRange,
   isMaterialGraph,
   materialGraphCompileFingerprint,
   materialGraphFromAsset,
   materialNodeDefinition,
   materialNodeDefinitions,
 } from './materialGraphTypes';
+
+describe('material scalar range inference', () => {
+  it('mirrors safe native inference for connection authoring feedback', () => {
+    const wide = { ...createMaterialNode('constant', [0, 0], { value: 0.5, min: -2, max: 2 }), id: 'wide' };
+    const saturate = { ...createMaterialNode('saturate', [200, 0]), id: 'saturate' };
+    const scale = { ...createMaterialNode('constant', [0, 120], { value: 0.5, min: 0.25, max: 0.5 }), id: 'scale' };
+    const multiply = { ...createMaterialNode('multiply', [400, 0]), id: 'multiply' };
+    const graph = {
+      version: 1 as const,
+      nodes: [wide, saturate, scale, multiply],
+      connections: [
+        { id: 'a', from: { nodeId: wide.id, pin: 'value' }, to: { nodeId: saturate.id, pin: 'value' } },
+        { id: 'b', from: { nodeId: saturate.id, pin: 'result' }, to: { nodeId: multiply.id, pin: 'a' } },
+        { id: 'c', from: { nodeId: scale.id, pin: 'value' }, to: { nodeId: multiply.id, pin: 'b' } },
+      ],
+    };
+
+    expect(inferMaterialScalarRange(graph, wide.id)).toEqual({ min: -2, max: 2 });
+    expect(inferMaterialScalarRange(graph, saturate.id)).toEqual({ min: 0, max: 1 });
+    expect(inferMaterialScalarRange(graph, multiply.id)).toEqual({ min: 0, max: 0.5 });
+  });
+});
 
 describe('material graph schema', () => {
   it('creates an editable starter graph', () => {
