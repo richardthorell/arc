@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import type { EditorDocument } from '../editors/editorTypes';
-import { graphConnectionPath, graphPinKey, type GraphPoint } from '../graph';
+import { graphConnectionPath, graphPinKey, type GraphDiagnostic, type GraphPoint } from '../graph';
 import { materialGraphDomain } from './materialGraphDomain';
 import { MaterialGraphEditor } from './MaterialGraphEditor';
 import type { MaterialGraph, MaterialGraphNode, MaterialGraphPinType, MaterialNodePin } from './materialGraphTypes';
@@ -162,12 +162,14 @@ export function MaterialGraphWithInteractions({
   loaded = true,
   showGrid = true,
   dimUnrelated = false,
+  diagnostics = [],
 }: {
   document: EditorDocument;
   graph: MaterialGraph;
   loaded?: boolean;
   showGrid?: boolean;
   dimUnrelated?: boolean;
+  diagnostics?: GraphDiagnostic[];
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [wires, setWires] = useState<MaterialWireOverlay[]>([]);
@@ -182,9 +184,10 @@ export function MaterialGraphWithInteractions({
         loaded={loaded}
         showGrid={showGrid}
         dimUnrelated={dimUnrelated}
+        diagnostics={diagnostics}
       />
     ),
-    [dimUnrelated, document, graph, loaded, showGrid],
+    [diagnostics, dimUnrelated, document, graph, loaded, showGrid],
   );
 
   const pinMetadata = useMemo(() => {
