@@ -61,6 +61,7 @@ std::optional<material_math_operation> node_math_operation(std::string_view type
     if (type == "sign") return material_math_operation::sign;
     if (type == "distance") return material_math_operation::distance;
     if (type == "length") return material_math_operation::length;
+    if (type == "dot") return material_math_operation::dot;
     return std::nullopt;
 }
 
