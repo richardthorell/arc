@@ -894,4 +894,9 @@ std::unique_ptr<assets::asset_cook_processor> make_material_function_processor()
     return std::make_unique<material_function_processor>();
 }
 
+std::unique_ptr<assets::asset_cook_processor> make_material_instance_processor()
+{
+    return std::make_unique<material_instance_processor>();
+}
+
 } // namespace arc::tools
