@@ -4,12 +4,18 @@ import {
   createDefaultMaterialGraph,
   type MaterialAssetJson,
 } from '../material/materialGraphTypes';
+import {
+  MATERIAL_INSTANCE_ASSET_VERSION,
+  serializeMaterialInstanceAsset,
+  type MaterialInstanceAssetReference,
+} from '../material/materialInstancePersistence';
 import type { AssetItem, ProjectSnapshot } from '../services/editorHostTypes';
 
 export type ShaderAssetTemplate = 'surface' | 'unlit' | 'compute' | 'post-process' | 'empty';
 
 export type AssetCreationRequest =
   | { kind: 'material'; name: string; folder: string }
+  | { kind: 'materialInstance'; name: string; folder: string; parent: MaterialInstanceAssetReference }
   | { kind: 'materialFunction'; name: string; folder: string }
   | { kind: 'flow'; name: string; folder: string }
   | { kind: 'shader'; name: string; folder: string; template: ShaderAssetTemplate };
@@ -33,7 +39,7 @@ export const projectAssetRootPath = (project: Pick<ProjectSnapshot, 'root' | 'as
 };
 
 const cleanAssetName = (name: string) => {
-  const value = name.trim().replace(/\.(arcmatfn|arcmat|arcflow|slang|frag|vert|comp)$/i, '');
+  const value = name.trim().replace(/\.(arcmatinst|arcmatfn|arcmat|arcflow|slang|frag|vert|comp)$/i, '');
   if (!value) throw new Error('Enter a name for the asset');
   if (value === '.' || value === '..' || /[<>:"/\\|?*]/.test(value)) {
     throw new Error('Asset names cannot contain path or reserved file-system characters');
@@ -78,7 +84,9 @@ export const buildAssetCreation = (
   const extension =
     request.kind === 'material'
       ? 'arcmat'
-      : request.kind === 'materialFunction'
+      : request.kind === 'materialInstance'
+        ? 'arcmatinst'
+        : request.kind === 'materialFunction'
         ? 'arcmatfn'
         : request.kind === 'flow'
           ? 'arcflow'
@@ -87,7 +95,15 @@ export const buildAssetCreation = (
   const contents =
     request.kind === 'material'
       ? `${JSON.stringify(defaultMaterialAsset(name), null, 2)}\n`
-      : request.kind === 'materialFunction'
+      : request.kind === 'materialInstance'
+        ? serializeMaterialInstanceAsset({
+            version: MATERIAL_INSTANCE_ASSET_VERSION,
+            name,
+            parent: request.parent,
+            parameterOverrides: [],
+            functionOverrides: [],
+          })
+        : request.kind === 'materialFunction'
         ? `${JSON.stringify(createDefaultMaterialFunction(name), null, 2)}\n`
         : request.kind === 'flow'
           ? `${JSON.stringify(createFlowAsset(name), null, 2)}\n`
@@ -95,6 +111,7 @@ export const buildAssetCreation = (
 
   if (
     request.kind === 'material' ||
+    request.kind === 'materialInstance' ||
     request.kind === 'materialFunction' ||
     request.kind === 'flow' ||
     request.kind === 'shader'
