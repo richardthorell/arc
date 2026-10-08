@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createDefaultMaterialGraph,
+  createMaterialNode,
   isMaterialGraph,
   materialGraphCompileFingerprint,
   materialGraphFromAsset,
