@@ -138,6 +138,7 @@ export type MaterialNodePin = {
   id: string;
   label: string;
   type: MaterialGraphPinType;
+  semanticRange?: MaterialScalarRange;
 };
 
 export type MaterialNodeCategory = 'Output' | 'Values' | 'Textures' | 'Math' | 'Utility' | 'Functions';
@@ -168,8 +169,14 @@ export type MaterialNodeDefinition = {
   defaultValues: Record<string, unknown>;
 };
 
-const pin = (id: string, label: string, type: MaterialGraphPinType): MaterialNodePin => ({ id, label, type });
+const pin = (
+  id: string,
+  label: string,
+  type: MaterialGraphPinType,
+  semanticRange?: MaterialScalarRange,
+): MaterialNodePin => ({ id, label, type, ...(semanticRange ? { semanticRange } : {}) });
 const numeric = (id: string, label: string) => pin(id, label, 'numeric');
+const normalized = (id: string, label: string) => pin(id, label, 'float', { min: 0, max: 1 });
 const colorOutputs = (): MaterialNodePin[] => [
   pin('rgb', 'RGB', 'vec3'),
   pin('r', 'R', 'float'),
@@ -228,29 +235,29 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     subcategory: 'Surface',
     inputs: [
       pin('baseColor', 'Base Color', 'vec3'),
-      pin('metallic', 'Metallic', 'float'),
-      pin('roughness', 'Roughness', 'float'),
+      normalized('metallic', 'Metallic'),
+      normalized('roughness', 'Roughness'),
       pin('normal', 'Normal', 'vec3'),
       pin('clearCoatNormal', 'Clear Coat Normal', 'vec3'),
       pin('tangent', 'Tangent', 'vec3'),
-      pin('ao', 'Ambient Occlusion', 'float'),
+      normalized('ao', 'Ambient Occlusion'),
       pin('emissive', 'Emissive', 'vec3'),
-      pin('opacity', 'Opacity', 'float'),
-      pin('alphaClip', 'Alpha Clip', 'float'),
+      normalized('opacity', 'Opacity'),
+      normalized('alphaClip', 'Alpha Clip'),
       pin('indexOfRefraction', 'Index of Refraction', 'float'),
-      pin('clearCoat', 'Clear Coat', 'float'),
-      pin('clearCoatRoughness', 'Clear Coat Roughness', 'float'),
-      pin('sheen', 'Sheen', 'float'),
+      normalized('clearCoat', 'Clear Coat'),
+      normalized('clearCoatRoughness', 'Clear Coat Roughness'),
+      normalized('sheen', 'Sheen'),
       pin('sheenColor', 'Sheen Color', 'vec3'),
-      pin('sheenRoughness', 'Sheen Roughness', 'float'),
+      normalized('sheenRoughness', 'Sheen Roughness'),
       pin('anisotropy', 'Anisotropy', 'float'),
       pin('anisotropyRotation', 'Anisotropy Rotation', 'float'),
-      pin('transmission', 'Transmission', 'float'),
+      normalized('transmission', 'Transmission'),
       pin('thickness', 'Thickness', 'float'),
       pin('attenuationColor', 'Attenuation Color', 'vec3'),
       pin('attenuationDistance', 'Attenuation Distance', 'float'),
       pin('subsurfaceColor', 'Subsurface Color', 'vec3'),
-      pin('subsurface', 'Subsurface', 'float'),
+      normalized('subsurface', 'Subsurface'),
     ],
     outputs: [],
     defaultValues: {},
