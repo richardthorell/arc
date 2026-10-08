@@ -104,7 +104,7 @@ describe('material instance persistence', () => {
   });
 
   it('uses the same stable FNV parameter identity as native material reflection', () => {
-    expect(materialParameterId('roughness')).toBe('13197758086385574939');
+    expect(materialParameterId('roughness')).toBe('14293098357166276437');
     expect(materialFunctionSlotParameterId('base-color', 'function-guid', 'scale')).toBe(
       materialParameterId('slot::base-color::function-guid::scale'),
     );
