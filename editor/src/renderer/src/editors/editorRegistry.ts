@@ -8,6 +8,12 @@ import { disposeFlowDocument, saveFlowDocument } from '../flow/flowDocumentState
 import { MaterialEditor } from '../material/MaterialEditor';
 import { MaterialEditorToolbar } from '../material/MaterialEditorToolbar';
 import { MaterialFunctionEditor } from '../material/MaterialFunctionEditor';
+import { MaterialInstanceEditor } from '../material/MaterialInstanceEditor';
+import { MaterialInstanceEditorToolbar } from '../material/MaterialInstanceEditorToolbar';
+import {
+  disposeMaterialInstanceDocument,
+  saveMaterialInstanceDocument,
+} from '../material/materialInstanceDocumentState';
 import { MaterialFunctionEditorToolbar } from '../material/MaterialFunctionEditorToolbar';
 import {
   disposeMaterialFunctionDocument,
@@ -133,6 +139,7 @@ export const resolveRegisteredEditorAsset = async (
         const resolved = registeredAssetFromHost(asset, registered, payload);
         if (
           asset.kind === 'material' ||
+          asset.kind === 'materialInstance' ||
           asset.kind === 'materialFunction' ||
           asset.kind === 'shader' ||
           asset.kind === 'flow'
@@ -212,6 +219,31 @@ const materialRegistration: EditorRegistration = {
   renderToolbar: (document) => createElement(MaterialEditorToolbar, { document }),
   save: saveMaterialDocument,
   onClosed: (document) => disposeMaterialDocument(document.id),
+};
+
+const materialInstanceRegistration: EditorRegistration = {
+  kind: 'materialInstance',
+  title: 'Material Instance Editor',
+  icon: Circle,
+  allowMultiple: true,
+  closeable: true,
+  canOpenAsset: (asset) =>
+    asset.kind === 'materialInstance' || asset.path.toLocaleLowerCase().endsWith('.arcmatinst'),
+  createDocument: (asset) => ({
+    id: `material-instance:${asset.guid ?? asset.path}`,
+    kind: 'materialInstance',
+    title: asset.title?.trim() || asset.name,
+    path: asset.sourcePath ?? asset.path,
+    assetId: asset.id,
+    assetGuid: asset.guid,
+    assetScope: asset.scope,
+    dirty: false,
+    readOnly: asset.scope === 'builtin' || Boolean(asset.readOnly),
+  }),
+  render: (document) => createElement(MaterialInstanceEditor, { document }),
+  renderToolbar: (document) => createElement(MaterialInstanceEditorToolbar, { document }),
+  save: saveMaterialInstanceDocument,
+  onClosed: (document) => disposeMaterialInstanceDocument(document.id),
 };
 
 const materialFunctionRegistration: EditorRegistration = {
@@ -328,6 +360,7 @@ export const createEditorRegistry = (registrations: EditorRegistrySeed): EditorR
     level: { ...registrations.level, icon: Globe2 },
     shader: registrations.shader ?? shaderRegistration,
     material: registrations.material ?? materialRegistration,
+    materialInstance: registrations.materialInstance ?? materialInstanceRegistration,
     materialFunction: registrations.materialFunction ?? materialFunctionRegistration,
     flow: registrations.flow ?? flowRegistration,
     texture: registrations.texture ?? textureRegistration,
