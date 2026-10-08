@@ -1,3 +1,4 @@
+import type { GraphDiagnostic } from '../graph';
 import {
   materialScalarRange,
   type MaterialGraph,
@@ -69,6 +70,22 @@ export const nativeMaterialCompileResult = (
     diagnostics.push({ severity: 'error', message: payload?.message || fallbackMessage });
   return { status: succeeded ? 'succeeded' : 'failed', succeeded, diagnostics };
 };
+
+export const materialGraphDiagnostics = (
+  diagnostics: readonly MaterialCompileDiagnostic[],
+): GraphDiagnostic[] =>
+  diagnostics.flatMap((diagnostic, index) => {
+    if (!diagnostic.nodeId) return [];
+    return [
+      {
+        id: `material:${diagnostic.code ?? diagnostic.severity}:${diagnostic.nodeId}:${index}`,
+        severity: diagnostic.severity === 'information' ? 'info' : diagnostic.severity,
+        message: diagnostic.message,
+        details: diagnostic.code,
+        target: { kind: 'node' as const, nodeId: diagnostic.nodeId },
+      },
+    ];
+  });
 
 export type MaterialGraphEditImpact = 'none' | 'parameter-values' | 'shader';
 
