@@ -63,7 +63,7 @@ function ValueEditor({
     <div className="material-instance-vector">
       {numbers.map((component, index) => (
         <input
-          aria-label={\`Component \${index + 1}\`}
+          aria-label={`Component ${index + 1}`}
           disabled={disabled}
           key={index}
           step="0.01"
@@ -105,7 +105,7 @@ function ParameterRow({
     <UiPanelCardRow label={parameter.name}>
       <div className="material-instance-property">
         <input
-          aria-label={\`Override \${parameter.name}\`}
+          aria-label={`Override ${parameter.name}`}
           checked={overridden}
           disabled={document.readOnly}
           type="checkbox"
@@ -129,7 +129,7 @@ function ParameterRow({
         />
         {overridden && (
           <button
-            aria-label={\`Reset \${parameter.name}\`}
+            aria-label={`Reset ${parameter.name}`}
             className="inspector-field-reset"
             disabled={document.readOnly}
             onClick={() =>
@@ -168,7 +168,7 @@ export function MaterialInstanceEditor({ document }: { document: EditorDocument 
       <div className="material-editor-preview-region">
         <div className="material-instance-preview">
           {state.previewDataUrl ? (
-            <img alt={\`\${state.asset.name} preview\`} src={state.previewDataUrl} />
+            <img alt={`${state.asset.name} preview`} src={state.previewDataUrl} />
           ) : (
             <div className="editor-empty-state">{state.previewLoading ? 'Rendering preview…' : 'Preview unavailable'}</div>
           )}
@@ -259,7 +259,7 @@ export function MaterialInstanceEditor({ document }: { document: EditorDocument 
                 <div className="material-instance-function-slot" key={slot.id}>
                   <UiPanelCardRow label={slot.name}>
                     <UiSelect
-                      ariaLabel={\`\${slot.name} function\`}
+                      ariaLabel={`${slot.name} function`}
                       disabled={document.readOnly}
                       options={slot.compatibleFunctions.map((option) => ({
                         value: option.reference.guid,
@@ -283,7 +283,7 @@ export function MaterialInstanceEditor({ document }: { document: EditorDocument 
                         <UiPanelCardRow key={parameter.id} label={parameter.name}>
                           <div className="material-instance-property">
                             <input
-                              aria-label={\`Override \${slot.name} \${parameter.name}\`}
+                              aria-label={`Override ${slot.name} ${parameter.name}`}
                               checked={overridden}
                               disabled={document.readOnly || !functionOverride}
                               type="checkbox"
