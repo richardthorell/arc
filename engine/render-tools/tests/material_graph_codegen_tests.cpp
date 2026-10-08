@@ -196,6 +196,37 @@ TEST_CASE("Material IR generated source compiles with the pinned Slang toolchain
     REQUIRE(descriptor_bindings.size() == result.value().reflection.resources.size());
 }
 
+TEST_CASE("Material IR codegen reads authored intrinsics from ArcSurfaceInput")
+{
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"position","type":"worldPosition","values":{}},
+        {"id":"normal","type":"worldNormal","values":{}},
+        {"id":"color","type":"vertexColor","values":{}}
+      ],
+      "connections":[
+        {"id":"1","from":{"nodeId":"position","pin":"position"},"to":{"nodeId":"out","pin":"baseColor"}},
+        {"id":"2","from":{"nodeId":"normal","pin":"normal"},"to":{"nodeId":"out","pin":"emissive"}},
+        {"id":"3","from":{"nodeId":"color","pin":"rgb"},"to":{"nodeId":"out","pin":"subsurfaceColor"}}
+      ]
+    })";
+
+    const auto compilation = arc::render::tools::compile_material_graph_json(graph);
+    REQUIRE(compilation);
+    const auto generated = arc::render::tools::generate_material_slang(compilation.value());
+    REQUIRE(generated);
+
+    const auto& source = generated.value().source;
+    CHECK(source.find("surface.baseColor = input.positionWS;") != std::string::npos);
+    CHECK(source.find("surface.emissiveRadiance = input.normalWS;") != std::string::npos);
+    CHECK(source.find("surface.subsurfaceColor = input.vertexColor.rgb;") != std::string::npos);
+    CHECK(source.find("input.positionWS") != std::string::npos);
+    CHECK(source.find("input.normalWS") != std::string::npos);
+    CHECK(source.find("input.vertexColor.rgb") != std::string::npos);
+}
+
 TEST_CASE("Material shader codegen rejects incompatible IR or ABI versions")
 {
     arc::render::tools::material_graph_compilation compilation;
