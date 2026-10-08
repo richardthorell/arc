@@ -149,7 +149,8 @@ struct material_instance_package_v1
 
 using material_instance_package_v1_result = core::result<material_instance_package_v1, material_asset_error>;
 
-[[nodiscard]] std::vector<std::byte> serialize_material_instance_package_v1(const material_instance_package_v1& package);
+[[nodiscard]] std::vector<std::byte>
+serialize_material_instance_package_v1(const material_instance_package_v1& package);
 [[nodiscard]] material_instance_package_v1_result
 deserialize_material_instance_package_v1(std::span<const std::byte> bytes);
 

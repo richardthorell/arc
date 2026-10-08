@@ -177,7 +177,7 @@ std::filesystem::path resolve_function_path(const std::filesystem::path& owner, 
 using function_source_result = core::result<std::vector<render::tools::material_function_source>, std::string>;
 
 function_source_result material_function_sources(const assets::asset_cook_context& context,
-                                                std::string_view owner_source = {})
+                                                 std::string_view owner_source = {})
 {
     std::map<std::string, std::pair<std::filesystem::path, std::string>> pending;
     std::map<std::string, std::string> identities;
@@ -201,9 +201,9 @@ function_source_result material_function_sources(const assets::asset_cook_contex
             if (pending.contains(nested_key)) continue;
             auto nested_source = read_text_file(nested_path);
             if (!nested_source)
-                return function_source_result::failure("Material Function '" + nested +
-                                                       "' could not be loaded from parent Material: " +
-                                                       nested_source.error());
+                return function_source_result::failure(
+                    "Material Function '" + nested +
+                    "' could not be loaded from parent Material: " + nested_source.error());
             if (!render::tools::is_material_function_json(nested_source.value()))
                 return function_source_result::failure("Material Function dependency is not a function document: " +
                                                        nested_key);
@@ -381,25 +381,22 @@ bool instance_value_matches_parameter(std::string_view value_json, render::shade
         case render::shader_parameter_type::texture_2d:
         case render::shader_parameter_type::texture_cube:
         case render::shader_parameter_type::texture_3d:
-            return value.is_string() ||
-                   (value.is_object() && value.contains("guid") && value["guid"].is_string() &&
-                    value.contains("pathHint") && value["pathHint"].is_string());
+            return value.is_string() || (value.is_object() && value.contains("guid") && value["guid"].is_string() &&
+                                         value.contains("pathHint") && value["pathHint"].is_string());
         default:
             return false;
     }
 }
 
-const assets::asset_snapshot*
-find_instance_parent(const assets::asset_cook_context& context,
-                     const render::tools::material_instance_authoring_document& instance)
+const assets::asset_snapshot* find_instance_parent(const assets::asset_cook_context& context,
+                                                   const render::tools::material_instance_authoring_document& instance)
 {
-    const auto found = std::ranges::find_if(
-        context.dependencies,
-        [&](const assets::asset_snapshot& dependency)
-        {
-            return dependency.type == assets::asset_types::material &&
-                   assets::to_string(dependency.guid) == instance.parent.guid;
-        });
+    const auto found = std::ranges::find_if(context.dependencies,
+                                            [&](const assets::asset_snapshot& dependency)
+                                            {
+                                                return dependency.type == assets::asset_types::material &&
+                                                       assets::to_string(dependency.guid) == instance.parent.guid;
+                                            });
     return found == context.dependencies.end() ? nullptr : &*found;
 }
 
@@ -433,24 +430,23 @@ public:
         const std::string source(reinterpret_cast<const char*>(context.source.bytes.data()),
                                  context.source.bytes.size());
         auto instance = render::tools::parse_material_instance_authoring_json(source);
-        if (!instance)
-            return failure(context, instance.error().message);
+        if (!instance) return failure(context, instance.error().message);
 
         const auto* parent = find_instance_parent(context, instance.value());
         if (!parent)
-            return failure(context,
-                           "Material Instance parent is missing, is not a Material, or does not match the authored GUID");
+            return failure(
+                context, "Material Instance parent is missing, is not a Material, or does not match the authored GUID");
 
         auto parent_source = read_text_file(parent->source_path);
-        if (!parent_source) return failure(context, "Material Instance parent could not be read: " + parent_source.error());
+        if (!parent_source)
+            return failure(context, "Material Instance parent could not be read: " + parent_source.error());
 
         auto authored = render::tools::parse_material_authoring_json(parent_source.value());
         if (!authored) return failure(context, "Material Instance parent is invalid: " + authored.error().message);
 
         // Value/resource-only instances must reuse the exact cooked parent program.
         // They never participate in shader specialization or compilation.
-        if (instance.value().function_overrides.empty())
-            return cook_parent_reuse(context, *parent, instance.value());
+        if (instance.value().function_overrides.empty()) return cook_parent_reuse(context, *parent, instance.value());
 
         std::vector<render::tools::material_function_slot_override> slot_overrides;
         slot_overrides.reserve(instance.value().function_overrides.size());
@@ -467,8 +463,8 @@ public:
         auto functions = material_function_sources(graph_context, parent_source.value());
         if (!functions) return failure(context, functions.error());
 
-        auto compiled_graph = render::tools::compile_material_graph_json(authored.value().graph_json, functions.value(),
-                                                                        slot_overrides);
+        auto compiled_graph =
+            render::tools::compile_material_graph_json(authored.value().graph_json, functions.value(), slot_overrides);
         if (!compiled_graph) return failure(context, compiled_graph.error().message);
 
         if (auto error = validate_overrides(instance.value(), compiled_graph.value().descriptor); !error.empty())
@@ -549,15 +545,15 @@ public:
                                  .bytes = std::move(bytes).value()});
         }
 
-        render::tools::material_package_v4 specialized_material{
-            .compiled = std::move(program),
-            .parameters = std::move(parameters),
-            .canonical_document_json = authored.value().canonical_json};
-        render::tools::material_instance_package_v1 package{
-            .parent_guid = instance.value().parent.guid,
-            .function_specialization_key = compiled_graph.value().function_specialization_key,
-            .material = std::move(specialized_material),
-            .canonical_instance_json = instance.value().canonical_json};
+        render::tools::material_package_v4 specialized_material{.compiled = std::move(program),
+                                                                .parameters = std::move(parameters),
+                                                                .canonical_document_json =
+                                                                    authored.value().canonical_json};
+        render::tools::material_instance_package_v1 package{.parent_guid = instance.value().parent.guid,
+                                                            .function_specialization_key =
+                                                                compiled_graph.value().function_specialization_key,
+                                                            .material = std::move(specialized_material),
+                                                            .canonical_instance_json = instance.value().canonical_json};
         artifacts.push_back({.name = context.source.source_path.stem().string(),
                              .extension = ".arcmatinstc",
                              .schema = descriptor_.schema,
@@ -586,9 +582,8 @@ private:
     {
         for (const auto& override_value : instance.parameter_overrides)
         {
-            const auto parameter =
-                std::ranges::find(descriptor.parameters, override_value.parameter_id,
-                                  &render::shader_parameter_descriptor::id);
+            const auto parameter = std::ranges::find(descriptor.parameters, override_value.parameter_id,
+                                                     &render::shader_parameter_descriptor::id);
             if (parameter == descriptor.parameters.end())
                 return "Material Instance references a parameter absent from the specialized parent";
             if (!instance_value_matches_parameter(override_value.value_json, parameter->type))
@@ -599,17 +594,15 @@ private:
         {
             const auto slot = std::ranges::find(descriptor.function_slots, function_override.slot_id,
                                                 &render::tools::material_function_slot_descriptor::id);
-            if (slot == descriptor.function_slots.end())
-                return "Material Instance references an unknown Function Slot";
+            if (slot == descriptor.function_slots.end()) return "Material Instance references an unknown Function Slot";
             for (const auto& input_override : function_override.input_overrides)
             {
                 const auto selected = std::ranges::find(slot->selected_parameters, input_override.pin_id,
                                                         &render::tools::material_function_slot_parameter::pin_id);
                 if (selected == slot->selected_parameters.end())
                     return "Material Instance references an input not exposed by the selected Function";
-                const auto parameter =
-                    std::ranges::find(descriptor.parameters, selected->parameter_id,
-                                      &render::shader_parameter_descriptor::id);
+                const auto parameter = std::ranges::find(descriptor.parameters, selected->parameter_id,
+                                                         &render::shader_parameter_descriptor::id);
                 if (parameter == descriptor.parameters.end() ||
                     !instance_value_matches_parameter(input_override.value_json, parameter->type))
                     return "Material Instance Function input override has an incompatible value type";
@@ -622,9 +615,8 @@ private:
     cook_parent_reuse(const assets::asset_cook_context& context, const assets::asset_snapshot& parent,
                       const render::tools::material_instance_authoring_document& instance) const
     {
-        const auto artifact =
-            std::ranges::find_if(parent.artifacts, [](const assets::asset_artifact_snapshot& value)
-                                 { return value.path.extension() == ".arcmatc"; });
+        const auto artifact = std::ranges::find_if(parent.artifacts, [](const assets::asset_artifact_snapshot& value)
+                                                   { return value.path.extension() == ".arcmatc"; });
         if (artifact == parent.artifacts.end())
             return failure(context, "Material Instance parent has no cooked Material artifact to reuse");
         std::ifstream input(artifact->path, std::ios::binary);
@@ -638,20 +630,18 @@ private:
 
         for (const auto& override_value : instance.parameter_overrides)
         {
-            const auto parameter =
-                std::ranges::find(parent_package.value().parameters, override_value.parameter_id,
-                                  &render::shader_parameter_descriptor::id);
+            const auto parameter = std::ranges::find(parent_package.value().parameters, override_value.parameter_id,
+                                                     &render::shader_parameter_descriptor::id);
             if (parameter == parent_package.value().parameters.end())
                 return failure(context, "Material Instance references a parameter absent from its parent");
             if (!instance_value_matches_parameter(override_value.value_json, parameter->type))
                 return failure(context, "Material Instance parameter override has an incompatible value type");
         }
 
-        render::tools::material_instance_package_v1 package{
-            .parent_guid = instance.parent.guid,
-            .function_specialization_key = 0,
-            .material = std::move(parent_package).value(),
-            .canonical_instance_json = instance.canonical_json};
+        render::tools::material_instance_package_v1 package{.parent_guid = instance.parent.guid,
+                                                            .function_specialization_key = 0,
+                                                            .material = std::move(parent_package).value(),
+                                                            .canonical_instance_json = instance.canonical_json};
         return {.artifacts = {{.name = context.source.source_path.stem().string(),
                                .extension = ".arcmatinstc",
                                .schema = descriptor_.schema,

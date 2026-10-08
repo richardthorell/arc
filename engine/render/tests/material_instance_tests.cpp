@@ -96,7 +96,6 @@ TEST_CASE("material instance can reset multiple overrides without reordering sur
     REQUIRE(instance.overrides.size() == 2);
 }
 
-
 TEST_CASE("material instance specialization validates its runtime payload", "[render][material-instance]")
 {
     material_instance_descriptor instance;
@@ -111,7 +110,8 @@ TEST_CASE("material instance specialization validates its runtime payload", "[re
     REQUIRE(validate_material_instance(instance).valid());
 }
 
-TEST_CASE("material instance resolves overrides against specialized reflected parameters", "[render][material-instance]")
+TEST_CASE("material instance resolves overrides against specialized reflected parameters",
+          "[render][material-instance]")
 {
     material_definition_descriptor parent;
     parent.material.handle = material_handle{31};

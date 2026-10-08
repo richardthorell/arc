@@ -157,8 +157,7 @@ material_instance_result resolve_material_instance(const material_definition_des
     const auto& parameter_layout = instance.specialized_parameter_layout.empty()
                                        ? definition.parameter_layout
                                        : instance.specialized_parameter_layout;
-    if (instance.specialized_runtime_program)
-        result.runtime_program = instance.specialized_runtime_program;
+    if (instance.specialized_runtime_program) result.runtime_program = instance.specialized_runtime_program;
     for (const auto& override_value : instance.overrides)
     {
         if (!override_value.id.valid())
