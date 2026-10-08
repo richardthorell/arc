@@ -93,6 +93,7 @@ TEST_CASE("material math codegen covers the complete core math catalog")
         {"id":"if","type":"if","values":{}},
         {"id":"distance","type":"distance","values":{}},
         {"id":"length","type":"length","values":{}},
+        {"id":"dot","type":"dot","values":{}},
         {"id":"sum","type":"add","values":{}}
       ],
       "connections":[
@@ -139,7 +140,10 @@ TEST_CASE("material math codegen covers the complete core math catalog")
         {"id":"41","from":{"nodeId":"if","pin":"result"},"to":{"nodeId":"length","pin":"value"}},
         {"id":"42","from":{"nodeId":"distance","pin":"result"},"to":{"nodeId":"sum","pin":"a"}},
         {"id":"43","from":{"nodeId":"length","pin":"result"},"to":{"nodeId":"sum","pin":"b"}},
-        {"id":"44","from":{"nodeId":"sum","pin":"result"},"to":{"nodeId":"material-output","pin":"roughness"}}
+        {"id":"44","from":{"nodeId":"sum","pin":"result"},"to":{"nodeId":"material-output","pin":"roughness"}},
+        {"id":"45","from":{"nodeId":"v","pin":"value"},"to":{"nodeId":"dot","pin":"a"}},
+        {"id":"46","from":{"nodeId":"v","pin":"value"},"to":{"nodeId":"dot","pin":"b"}},
+        {"id":"47","from":{"nodeId":"dot","pin":"result"},"to":{"nodeId":"material-output","pin":"metallic"}}
       ]
     })";
 
@@ -152,7 +156,7 @@ TEST_CASE("material math codegen covers the complete core math catalog")
     for (const auto intrinsic :
          {"abs(",  "ceil(",  "floor(",      "round(", "trunc(", "frac(",     "fmod(",  "min(",  "max(",
           "pow(",  "sqrt(",  "log(",        "log2(",  "log10(", "sin(",      "cos(",   "asin(", "acos(",
-          "atan(", "atan2(", "smoothstep(", "step(",  "sign(",  "distance(", "length("})
+          "atan(", "atan2(", "smoothstep(", "step(",  "sign(",  "distance(", "length(", "dot("})
         REQUIRE(contains(source, intrinsic));
     REQUIRE(contains(source, "arc_node_oneMinus_result"));
     REQUIRE(contains(source, "arc_node_if_result"));
