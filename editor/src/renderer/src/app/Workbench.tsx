@@ -2122,8 +2122,10 @@ export function ExplorerPanel({
 
   const createMenuQuery = createMenuSearch.trim().toLocaleLowerCase();
   const matchesCreateMenu = (label: string) => !createMenuQuery || label.toLocaleLowerCase().includes(createMenuQuery);
+  const emptyEntityMatches = matchesCreateMenu('Empty Entity');
+  const terrainMatches = matchesCreateMenu('Terrain');
   const basicShapeKinds = (['cube', 'sphere', 'cylinder', 'cone', 'capsule', 'plane'] as const).filter((kind) =>
-    matchesCreateMenu(kind === 'cube' ? 'Box' : kind),
+    matchesCreateMenu(`${kind === 'cube' ? 'Box' : kind} ${kind}`),
   );
   const waterKinds = (['ocean', 'lake', 'river'] as const).filter((kind) => matchesCreateMenu(kind));
 
@@ -2159,7 +2161,7 @@ export function ExplorerPanel({
                   setCreateMenuSearch('');
                 }}
               >
-                {matchesCreateMenu('Empty Entity') && (
+                {emptyEntityMatches && (
                   <UiContextMenuItem
                     leading={<Plus size={14} />}
                     onClick={() => {
@@ -2173,7 +2175,7 @@ export function ExplorerPanel({
                 )}
                 {basicShapeKinds.length > 0 && (
                   <>
-                    <div className="hierarchy-create-menu-separator" role="separator" />
+                    {emptyEntityMatches && <div className="hierarchy-create-menu-separator" role="separator" />}
                     <div className="hierarchy-create-menu-heading">Basic Shapes</div>
                   </>
                 )}
@@ -2190,9 +2192,11 @@ export function ExplorerPanel({
                     {kind === 'cube' ? 'Box' : kind[0].toUpperCase() + kind.slice(1)}
                   </UiContextMenuItem>
                 ))}
-                {matchesCreateMenu('Terrain') && (
+                {terrainMatches && (
                   <>
-                    <div className="hierarchy-create-menu-separator" role="separator" />
+                    {(emptyEntityMatches || basicShapeKinds.length > 0) && (
+                      <div className="hierarchy-create-menu-separator" role="separator" />
+                    )}
                     <div className="hierarchy-create-menu-heading">Landscape</div>
                     <UiContextMenuItem
                       leading={<Mountain size={14} />}
@@ -2208,7 +2212,9 @@ export function ExplorerPanel({
                 )}
                 {waterKinds.length > 0 && (
                   <>
-                    <div className="hierarchy-create-menu-separator" role="separator" />
+                    {(emptyEntityMatches || basicShapeKinds.length > 0 || terrainMatches) && (
+                      <div className="hierarchy-create-menu-separator" role="separator" />
+                    )}
                     <div className="hierarchy-create-menu-heading">Water</div>
                   </>
                 )}
@@ -2226,9 +2232,9 @@ export function ExplorerPanel({
                   </UiContextMenuItem>
                 ))}
                 {createMenuQuery &&
-                  !matchesCreateMenu('Empty Entity') &&
+                  !emptyEntityMatches &&
                   basicShapeKinds.length === 0 &&
-                  !matchesCreateMenu('Terrain') &&
+                  !terrainMatches &&
                   waterKinds.length === 0 && <div className="hierarchy-create-menu-empty">No entities found</div>}
               </UiContextMenu>
             )}
