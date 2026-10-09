@@ -86,7 +86,7 @@ export type InspectorMeshRenderer = {
   assetBackedMaterial: boolean;
   materialName: string;
   materialPath: string;
-  materialError: string;
+  materialError?: string;
 };
 
 export type InspectorTerrain = {
