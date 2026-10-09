@@ -212,10 +212,9 @@ function_parse_result parse_function(std::string_view source, std::string_view s
                 return function_parse_result::failure(
                     validation_error(concatenate({label, " references unknown function input '", input, "'"})));
         }
-        const auto parameter = node.value("parameter", json::object());
-        if (parameter.value("exposed", false))
-            return function_parse_result::failure(
-                validation_error(label + " contains an exposed parameter; expose it as a function input instead"));
+        // Graph-backed functions may own exposed parameters. When the function is
+        // inlined into a parent Material, the call-site namespace becomes part of the
+        // parameter node id, keeping the reflected runtime parameter identity stable.
     }
     if (output_nodes != 1)
         return function_parse_result::failure(
@@ -406,33 +405,74 @@ slot_specialization_result specialize_function_slots(json graph,
 
     for (auto& node : graph["nodes"])
     {
-        if (!node.is_object() || node.value("type", "") != "functionSlot") continue;
-        const auto node_id = node.value("id", "");
+        if (!node.is_object()) continue;
+        const auto authored_type = node.value("type", "");
         auto values = node.value("values", json::object());
+        const auto authored_functions = values.value("functions", json::array());
+        const bool selectable_call =
+            authored_type == "functionCall" && authored_functions.is_array() && !authored_functions.empty();
+        const bool legacy_slot = authored_type == "functionSlot";
+        if (!selectable_call && !legacy_slot) continue;
+
+        const auto node_id = node.value("id", "");
         const auto slot_id = values.value("slotId", "");
         const auto slot_name = values.value("name", slot_id);
         const auto default_path = values.value("path", "");
         if (node_id.empty() || slot_id.empty() || slot_name.empty() || default_path.empty() ||
             !authored_slots.insert(slot_id).second)
             return slot_specialization_result::failure(
-                validation_error("Material Function Slot has a missing or duplicate stable slot id"));
+                validation_error("Material Function Call has a missing or duplicate stable slot id"));
+
+        std::set<std::string> allowed_paths;
+        if (selectable_call)
+        {
+            for (const auto& reference : authored_functions)
+            {
+                if (!reference.is_object()) continue;
+                const auto path = reference.value("path", "");
+                if (!path.empty()) allowed_paths.insert(normalize_path(path));
+            }
+            if (!allowed_paths.contains(normalize_path(default_path)))
+                return slot_specialization_result::failure(validation_error(
+                    "Material Function Call '" + slot_id + "' default function is not in its authored function list"));
+        }
 
         const auto* base = find_function(functions, default_path);
         if (!base)
             return slot_specialization_result::failure(validation_error(
-                "Material Function Slot '" + slot_id + "' has a missing or ambiguous default function"));
+                "Material Function Call '" + slot_id + "' has a missing or ambiguous default function"));
+
+        if (selectable_call)
+        {
+            for (const auto& allowed_path : allowed_paths)
+            {
+                const auto* candidate = find_function(functions, allowed_path);
+                if (!candidate)
+                    return slot_specialization_result::failure(validation_error(
+                        "Material Function Call '" + slot_id + "' references a missing or ambiguous function"));
+                std::string compatibility_reason;
+                if (!function_slot_compatible(*base, *candidate, compatibility_reason))
+                    return slot_specialization_result::failure(validation_error(concatenate(
+                        {"Material Function Call '", slot_id, "' contains an incompatible function: ",
+                         compatibility_reason})));
+            }
+        }
 
         const auto selected_it = selections.find(slot_id);
         const auto selected_path = selected_it == selections.end() ? normalize_path(default_path) : selected_it->second;
+        if (selectable_call && !allowed_paths.contains(selected_path))
+            return slot_specialization_result::failure(validation_error(
+                "Material Function Call '" + slot_id + "' selects a function that is not authored on the node"));
+
         const auto* selected = find_function(functions, selected_path);
         if (!selected)
             return slot_specialization_result::failure(
-                validation_error("Material Function Slot '" + slot_id + "' selects a missing or ambiguous function"));
+                validation_error("Material Function Call '" + slot_id + "' selects a missing or ambiguous function"));
 
         std::string compatibility_reason;
         if (!function_slot_compatible(*base, *selected, compatibility_reason))
             return slot_specialization_result::failure(validation_error(
-                concatenate({"Material Function Slot '", slot_id, "' is incompatible: ", compatibility_reason})));
+                concatenate({"Material Function Call '", slot_id, "' is incompatible: ", compatibility_reason})));
 
         material_function_slot_descriptor descriptor{
             .id = slot_id,
@@ -460,7 +500,7 @@ slot_specialization_result specialize_function_slots(json graph,
         }
 
         values["path"] = selected->path;
-        values["name"] = selected->name;
+        values["functionName"] = selected->name;
         node["type"] = "functionCall";
         node["values"] = std::move(values);
         descriptors.push_back(std::move(descriptor));
