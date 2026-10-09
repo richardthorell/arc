@@ -549,6 +549,66 @@ std::filesystem::path resolve_texture_path(const editor_scene_state& scene, cons
     return (directory / authored).lexically_normal();
 }
 
+std::filesystem::path resolve_asset_reference_path(const editor_scene_state& scene,
+                                                   const editor_material_record& material,
+                                                   const assets::asset_reference& reference)
+{
+    if (reference.guid.valid())
+    {
+        if (!scene.asset_registry) return {};
+        const auto asset = scene.asset_registry->find(reference);
+        if (!asset) return {};
+
+        auto source = std::filesystem::path{asset->source_path};
+        const auto normalized = assets::normalize_asset_path(source);
+        if (asset->read_only)
+        {
+            auto relative = source;
+            if (normalized == "builtin") return {};
+            if (normalized.starts_with("builtin/"))
+                relative = std::filesystem::path{normalized}.lexically_relative("builtin");
+            for (const auto& root : scene.builtin_asset_roots)
+            {
+                const auto candidate = (root / relative).lexically_normal();
+                std::error_code ec;
+                if (std::filesystem::is_regular_file(candidate, ec) && !ec) return candidate;
+            }
+            return {};
+        }
+        return resolve_texture_path(scene, material, source.generic_string());
+    }
+
+    return reference.path_hint.empty() ? std::filesystem::path{}
+                                       : resolve_texture_path(scene, material, reference.path_hint);
+}
+
+render::texture_handle ensure_override_texture(editor_scene_state& scene, render::renderer& renderer,
+                                               const editor_material_record& material,
+                                               const assets::asset_reference& reference)
+{
+    auto resolved = resolve_asset_reference_path(scene, material, reference);
+    if (resolved.empty()) return {};
+    std::error_code ec;
+    auto key = std::filesystem::absolute(resolved, ec).lexically_normal();
+    if (ec) key = resolved.lexically_normal();
+    key += "#material-parameter";
+    for (const auto& [texture_path, handle] : scene.material_library.textures)
+        if (texture_path == key) return handle;
+
+    auto loaded = render::load_texture_asset(resolved);
+    if (!loaded.succeeded())
+    {
+        arc::diagnostics::warn("editor.materials", "Material instance texture could not be loaded: " +
+                                                       resolved.generic_string() + " (" + loaded.message + ")");
+        return {};
+    }
+    loaded.texture.semantic = render::texture_semantic::generic_color;
+    loaded.texture.color_space = render::required_color_space(loaded.texture.semantic);
+    const auto handle = renderer.create_texture(std::move(loaded.texture));
+    if (handle.valid()) scene.material_library.textures.push_back({std::move(key), handle});
+    return handle;
+}
+
 render::texture_handle ensure_override_texture(editor_scene_state& scene, render::renderer& renderer,
                                                const editor_material_record& material, std::string_view path)
 {
@@ -599,8 +659,16 @@ std::optional<render::material_parameter_value> override_value(editor_scene_stat
             if (finite(values, 4u)) return math::vector4f{values[0], values[1], values[2], values[3]};
             break;
         case render::shader_parameter_type::texture_2d:
+        {
+            if (const auto found = authored.find("textureReference"); found != authored.end())
+            {
+                const auto reference = asset_reference_from_json(*found);
+                if (!reference) return std::nullopt;
+                return render::resource_handle{ensure_override_texture(scene, renderer, base, *reference)};
+            }
             return render::resource_handle{
                 ensure_override_texture(scene, renderer, base, authored.value("texture", std::string{}))};
+        }
         default:
             break;
     }
