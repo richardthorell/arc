@@ -157,6 +157,7 @@ const viewportVisualizationModes = [
   ['albedo', 'Base Color'],
   ['gloss', 'Roughness'],
   ['metalness', 'Metallic'],
+  ['emission', 'Emission'],
   ['lightingHitDistance', 'Depth'],
   ['virtualOverdraw', 'Overdraw'],
   ['lightComplexity', 'Lighting Complexity'],
