@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  defaultBottomPanelHeight,
   defaultHierarchyPanelHeight,
   defaultSceneRightColumnWidth,
   editorWorkspaceStorageKey,
@@ -16,13 +17,14 @@ describe('WorkspaceDock document workspaces', () => {
   });
 
   it('uses a new workspace key so existing scene layouts pick up the new defaults', () => {
-    expect(editorWorkspaceStorageKey('project', 'level')).toBe('arc.editor.workspace.v9.project.editor-level');
-    expect(editorWorkspaceStorageKey('project', 'flow')).toBe('arc.editor.workspace.v9.project.editor-flow-v2');
+    expect(editorWorkspaceStorageKey('project', 'level')).toBe('arc.editor.workspace.v10.project.editor-level');
+    expect(editorWorkspaceStorageKey('project', 'flow')).toBe('arc.editor.workspace.v10.project.editor-flow-v2');
   });
 
-  it('uses the wider stacked scene-details proportions by default', () => {
-    expect(defaultSceneRightColumnWidth).toBe(560);
+  it('uses compact right-side details and a taller Content Browser by default', () => {
+    expect(defaultSceneRightColumnWidth).toBe(360);
     expect(defaultHierarchyPanelHeight).toBe(360);
+    expect(defaultBottomPanelHeight).toBe(300);
   });
 
   it('keeps scene-only dock panels out of Flow while preserving global utilities', () => {
