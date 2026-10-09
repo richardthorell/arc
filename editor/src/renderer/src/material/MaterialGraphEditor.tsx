@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronRight, Copy, ExternalLink, Magnet, Minus, Plus, RotateCcw, Scan, Search, WandSparkles } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, ExternalLink, Magnet, Minus, Plus, RotateCcw, Scan, Search, Trash2, WandSparkles } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
 import { AssetPicker, AssetThumbnail, type AssetPickerItem } from '../inspector/AssetPicker';
