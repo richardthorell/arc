@@ -166,6 +166,9 @@ type MaterialFunctionAssetOption = {
   document: MaterialFunctionAssetJson;
 };
 
+const materialFunctionReferencePath = (path: string, scope: 'builtin' | 'project') =>
+  scope === 'builtin' ? path.replaceAll('\\', '/').replace(/^builtin\//i, '') : path;
+
 const functionReferences = (node: MaterialGraphNode) =>
   Array.isArray(node.values.functions)
     ? node.values.functions.flatMap((reference) => {
@@ -211,7 +214,7 @@ function MaterialFunctionReferenceEditor({
                     ? asset.title
                     : (authoringPath.split('/').at(-1) ?? authoringPath),
                 title: typeof asset.title === 'string' ? asset.title : undefined,
-                path: authoringPath,
+                path: materialFunctionReferencePath(authoringPath, scope),
                 sourcePath,
                 kind: 'materialFunction',
                 status:
