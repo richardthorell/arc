@@ -65,6 +65,7 @@ import {
 import {
   autoArrangeMaterialGraph,
   frameMaterialGraphViewport,
+  materialGraphGroupRect,
   materialNodeHeight,
   materialNodeWidth,
   snapMaterialGraphPoint,
@@ -1247,6 +1248,22 @@ export function MaterialGraphEditor({
       </div>
 
       <GraphViewportLayer className="material-graph-transform" viewport={viewport}>
+        {(graph.groups ?? [])
+          .slice()
+          .sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.name.localeCompare(right.name))
+          .map((group) => {
+            const rect = materialGraphGroupRect(graph, group);
+            if (!rect) return null;
+            return (
+              <div
+                className="material-graph-group"
+                key={group.id}
+                style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
+              >
+                <span>{group.name}</span>
+              </div>
+            );
+          })}
         <GraphWireLayer className="material-graph-wires" pendingPath={pendingPath} wires={wirePaths} />
         {graph.nodes.map((node) => {
           const definition = materialGraphDomain.getNodeDefinition(node);
@@ -1364,15 +1381,30 @@ export function MaterialGraphEditor({
               {editableValueNode(node) && (
                 <MaterialNodeParameterControl
                   enabled={Boolean(node.parameter?.exposed)}
+                  group={node.parameter?.group}
                   name={node.parameter?.name ?? definition.title}
+                  order={node.parameter?.order}
                   readOnly={document.readOnly}
                   onEnabledChange={(enabled) =>
                     mutate((next) => {
                       const target = next.nodes.find((candidate) => candidate.id === node.id);
                       if (!target) return;
                       target.parameter = {
+                        ...target.parameter,
                         exposed: enabled,
                         name: target.parameter?.name ?? definition.title,
+                      };
+                    })
+                  }
+                  onGroupChange={(group) =>
+                    mutate((next) => {
+                      const target = next.nodes.find((candidate) => candidate.id === node.id);
+                      if (!target) return;
+                      target.parameter = {
+                        ...target.parameter,
+                        exposed: Boolean(target.parameter?.exposed),
+                        name: target.parameter?.name ?? definition.title,
+                        group,
                       };
                     })
                   }
@@ -1381,9 +1413,23 @@ export function MaterialGraphEditor({
                       const target = next.nodes.find((candidate) => candidate.id === node.id);
                       if (!target) return;
                       target.parameter = {
+                        ...target.parameter,
                         exposed: Boolean(target.parameter?.exposed),
                         name,
                       };
+                    })
+                  }
+                  onOrderChange={(order) =>
+                    mutate((next) => {
+                      const target = next.nodes.find((candidate) => candidate.id === node.id);
+                      if (!target) return;
+                      target.parameter = {
+                        ...target.parameter,
+                        exposed: Boolean(target.parameter?.exposed),
+                        name: target.parameter?.name ?? definition.title,
+                        ...(order === undefined ? {} : { order }),
+                      };
+                      if (order === undefined) delete target.parameter.order;
                     })
                   }
                 />
