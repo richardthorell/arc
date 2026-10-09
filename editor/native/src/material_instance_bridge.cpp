@@ -52,6 +52,7 @@ struct material_parameter_edit
     material_parameter_edit_kind kind{material_parameter_edit_kind::scalar};
     std::vector<float> value;
     std::string texture;
+    std::optional<assets::asset_reference> texture_reference;
     bool reset{};
 };
 
@@ -125,6 +126,37 @@ std::string encode_hex(std::string_view text)
         result[index * 2u + 1u] = digits[value & 0xfu];
     }
     return result;
+}
+
+std::optional<assets::asset_reference> asset_reference_from_json(const json& value)
+{
+    if (!value.is_object()) return std::nullopt;
+    assets::asset_reference reference;
+    const auto guid_text = value.value("guid", std::string{});
+    if (!guid_text.empty())
+    {
+        const auto guid = assets::parse_asset_guid(guid_text);
+        if (!guid) return std::nullopt;
+        reference.guid = *guid;
+    }
+    const auto type_text = value.value("expectedType", std::string{});
+    if (!type_text.empty())
+    {
+        const auto type = assets::parse_asset_type_id(type_text);
+        if (!type) return std::nullopt;
+        reference.expected_type = *type;
+    }
+    reference.path_hint = value.value("pathHint", std::string{});
+    if (!reference.guid.valid() && reference.path_hint.empty()) return std::nullopt;
+    return reference;
+}
+
+json asset_reference_json(const assets::asset_reference& reference)
+{
+    json value = {{"guid", reference.guid.valid() ? assets::to_string(reference.guid) : std::string{}},
+                  {"pathHint", reference.path_hint}};
+    if (reference.expected_type.valid()) value["expectedType"] = assets::to_string(reference.expected_type);
+    return value;
 }
 
 std::optional<render::shader_parameter_type> material_parameter_type_from_string(std::string_view value) noexcept
@@ -239,6 +271,11 @@ std::optional<material_parameter_edit> parse_material_parameter(std::string_view
     edit.type = typed_type;
     edit.kind = typed_kind;
     edit.texture = payload.value("texture", std::string{});
+    if (const auto found = payload.find("textureReference"); found != payload.end())
+    {
+        edit.texture_reference = asset_reference_from_json(*found);
+        if (!edit.texture_reference) return std::nullopt;
+    }
     edit.reset = payload.value("reset", false);
     if (const auto found = payload.find("value"); found != payload.end())
     {
@@ -347,7 +384,11 @@ json edit_to_json(const material_parameter_edit& edit)
     if (edit.parameter_id != 0u) value["parameterId"] = std::to_string(edit.parameter_id);
     if (!edit.slot_id.empty()) value["slotId"] = edit.slot_id;
     if (!edit.value.empty()) value["value"] = edit.value;
-    if (edit.kind == material_parameter_edit_kind::texture) value["texture"] = edit.texture;
+    if (edit.kind == material_parameter_edit_kind::texture)
+    {
+        value["texture"] = edit.texture;
+        if (edit.texture_reference) value["textureReference"] = asset_reference_json(*edit.texture_reference);
+    }
     return value;
 }
 
