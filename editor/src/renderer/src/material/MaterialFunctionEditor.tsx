@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 
 import type { EditorDocument } from '../editors/editorTypes';
 import { UiButton, UiPanelCard, UiPanelCardRow, UiSelect } from '../ui';
-import { MaterialGraphEditor } from './MaterialGraphEditor';
+import { MaterialGraphWithInteractions } from './MaterialGraphInteractions';
+import { MaterialGraphWorkspace } from './MaterialGraphWorkspace';
 import {
   redoMaterialFunctionGraph,
   replaceMaterialFunctionAsset,
@@ -121,27 +122,28 @@ export function MaterialFunctionEditor({ document }: { document: EditorDocument 
   );
 
   return (
-    <section className="material-editor" style={{ gridTemplateColumns: 'minmax(520px, 1fr) 5px 420px' }}>
-      <div className="material-editor-graph-region">
-        <MaterialGraphEditor
-          document={document}
-          graph={state.graph}
-          loaded={state.loaded}
-          onGraphChange={(graph, options) => replaceMaterialFunctionGraph(document, graph, options)}
-          onViewportChange={(viewport) => replaceMaterialFunctionViewport(document, viewport)}
-          onUndo={() => undoMaterialFunctionGraph(document)}
-          onRedo={() => redoMaterialFunctionGraph(document)}
-        />
-        {state.message && (
-          <div className="material-editor-message" role="status">
-            {state.message}
-          </div>
-        )}
-      </div>
-
-      <div className="material-editor-divider" aria-hidden="true" />
-
-      <aside className="material-editor-sidebar editor-property-panel">
+    <MaterialGraphWorkspace
+      className="material-function-editor"
+      sidebarWidth={420}
+      graph={
+        <>
+          <MaterialGraphWithInteractions
+            document={document}
+            graph={state.graph}
+            loaded={state.loaded}
+            onGraphChange={(graph, options) => replaceMaterialFunctionGraph(document, graph, options)}
+            onViewportChange={(viewport) => replaceMaterialFunctionViewport(document, viewport)}
+            onUndo={() => undoMaterialFunctionGraph(document)}
+            onRedo={() => redoMaterialFunctionGraph(document)}
+          />
+          {state.message && (
+            <div className="material-editor-message" role="status">
+              {state.message}
+            </div>
+          )}
+        </>
+      }
+      sidebar={
         <div className="material-settings-region">
           <UiPanelCard className="material-settings-card" title="Material Function">
             <UiPanelCardRow label="Name">
@@ -240,7 +242,7 @@ export function MaterialFunctionEditor({ document }: { document: EditorDocument 
             </UiPanelCard>
           ))}
         </div>
-      </aside>
-    </section>
+      }
+    />
   );
 }
