@@ -43,7 +43,7 @@ describe('UI Lab material galleries', () => {
     expect(texture).toHaveTextContent('T_Moss_Albedo');
 
     const colorParameterName = screen.getByLabelText('Material node parameter name');
-    const parameterToggles = screen.getAllByRole('checkbox');
+    const parameterToggles = screen.getAllByRole('switch', { name: 'Parameter' });
     expect(colorParameterName).toBeEnabled();
     fireEvent.click(parameterToggles[0]);
     expect(colorParameterName).toBeDisabled();
