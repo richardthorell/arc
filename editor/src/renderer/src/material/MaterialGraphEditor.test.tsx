@@ -222,11 +222,28 @@ describe('MaterialGraphEditor', () => {
     const scalarNode = container.querySelector<HTMLElement>(`[data-node-id="${scalar.id}"]`);
     expect(scalarNode).not.toBeNull();
 
-    fireEvent.click(within(scalarNode!).getByRole('checkbox', { name: /Range/ }));
+    fireEvent.click(within(scalarNode!).getByRole('switch', { name: /Range/ }));
     expect(materialState.replaceMaterialGraph).toHaveBeenCalled();
     const nextGraph = materialState.replaceMaterialGraph.mock.calls.at(-1)![1];
     const nextScalar = nextGraph.nodes.find((node: { id: string }) => node.id === scalar.id);
     expect(nextScalar.values).toMatchObject({ value: 1, min: 0, max: 1 });
+  });
+
+  it('uses the shared parameter control for editable value nodes', () => {
+    const graph = createDefaultMaterialGraph();
+    const scalar = createMaterialNode('constant', [900, 500], { value: 0.5 });
+    graph.nodes.push(scalar);
+
+    const { container } = render(<MaterialGraphEditor document={document} graph={graph} />);
+    const scalarNode = container.querySelector<HTMLElement>(`[data-node-id="${scalar.id}"]`);
+    expect(scalarNode).not.toBeNull();
+
+    const parameter = within(scalarNode!).getByRole('switch', { name: 'Parameter' });
+    expect(parameter).toHaveClass('ui-toggle-button');
+    expect(within(scalarNode!).queryByRole('checkbox')).not.toBeInTheDocument();
+
+    fireEvent.click(parameter);
+    expect(materialState.replaceMaterialGraph).toHaveBeenCalled();
   });
 
   it('renders the default base color as a dedicated color node with a picker', () => {
