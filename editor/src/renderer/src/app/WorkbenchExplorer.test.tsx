@@ -3,10 +3,19 @@ import '@testing-library/jest-dom/vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ExplorerPanel } from './Workbench';
+import { assetKindFromHost, ExplorerPanel } from './Workbench';
 import type { ProjectSnapshot } from '../services/editorHostTypes';
 
 afterEach(() => document.body.replaceChildren());
+
+describe('Workbench asset kind mapping', () => {
+  it('preserves Material Function and Material Instance asset kinds for inspector discovery', () => {
+    expect(assetKindFromHost('materialFunction')).toBe('materialFunction');
+    expect(assetKindFromHost('materialInstance')).toBe('materialInstance');
+    expect(assetKindFromHost('material')).toBe('material');
+    expect(assetKindFromHost('environment')).toBe('texture');
+  });
+});
 
 describe('ExplorerPanel', () => {
   it('renders entity creation as a compact dropdown context menu', () => {

@@ -348,11 +348,12 @@ export function MaterialParameterSubsection({
               .map(async (asset): Promise<DisplayFunctionOption | null> => {
                 try {
                   const scope = asset.scope === 'builtin' ? 'builtin' : 'project';
-                  const path = await projectRelativeMaterialPath(asset.sourcePath || asset.path, scope);
+                  const authoringPath = scope === 'builtin' ? asset.path : asset.sourcePath || asset.path;
+                  const path = await projectRelativeMaterialPath(authoringPath, scope);
                   const source = await window.arc.projects.readText(path, scope);
                   const document = JSON.parse(source.text) as MaterialFunctionAssetJson;
                   if (document.kind !== 'materialFunction' || document.version !== 1 || !asset.guid) return null;
-                  return { guid: asset.guid, path: asset.sourcePath || asset.path, name: document.name, document };
+                  return { guid: asset.guid, path: authoringPath, name: document.name, document };
                 } catch {
                   return null;
                 }

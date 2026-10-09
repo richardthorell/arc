@@ -3158,7 +3158,32 @@ host_response arc_host::execute(const host_command_envelope& command)
                 }
                 if (payload.domain == "materialGraph")
                 {
-                    auto lowered = render::tools::lower_material_graph_json(payload.source);
+                    std::vector<render::tools::material_function_source> functions;
+                    if (state_->asset_registry)
+                    {
+                        for (const auto& asset : state_->asset_registry->search())
+                        {
+                            if (asset.type != assets::asset_types::material_function) continue;
+                            const auto function_path = state_->project.root / asset.source_path;
+                            std::ifstream stream(function_path, std::ios::binary);
+                            if (!stream) continue;
+                            std::ostringstream text;
+                            text << stream.rdbuf();
+                            functions.push_back({.path = assets::normalize_asset_path(asset.source_path),
+                                                 .identity = assets::to_string(asset.guid),
+                                                 .source = text.str()});
+                        }
+                    }
+
+                    auto compiled_graph = render::tools::compile_material_graph_json(payload.source, functions);
+                    if (!compiled_graph)
+                    {
+                        nlohmann::json response{{"succeeded", false},
+                                                {"message", compiled_graph.error().message},
+                                                {"diagnostics", nlohmann::json::array()}};
+                        return success(response.dump());
+                    }
+                    auto lowered = render::tools::generate_material_slang(compiled_graph.value());
                     if (!lowered)
                     {
                         nlohmann::json response{{"succeeded", false},
