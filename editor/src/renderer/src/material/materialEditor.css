@@ -175,6 +175,20 @@
   cursor: default;
 }
 
+.material-graph-group-resize {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  background:
+    linear-gradient(135deg, transparent 0 45%, rgba(177, 198, 209, 0.45) 46% 53%, transparent 54% 65%, rgba(177, 198, 209, 0.45) 66% 73%, transparent 74%);
+  pointer-events: auto;
+  cursor: nwse-resize;
+}
+
 .material-graph-wires {
   position: absolute;
   inset: 0;
