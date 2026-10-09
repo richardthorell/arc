@@ -211,7 +211,7 @@ function MaterialFunctionReferenceEditor({
                     ? asset.title
                     : (authoringPath.split('/').at(-1) ?? authoringPath),
                 title: typeof asset.title === 'string' ? asset.title : undefined,
-                path: sourcePath || path,
+                path: authoringPath,
                 sourcePath,
                 kind: 'materialFunction',
                 status:
