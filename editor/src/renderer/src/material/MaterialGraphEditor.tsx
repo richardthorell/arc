@@ -1,6 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronRight, Copy, ExternalLink, Magnet, Minus, Plus, RotateCcw, Scan, Search, Trash2, WandSparkles } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  ExternalLink,
+  Magnet,
+  Minus,
+  Plus,
+  RotateCcw,
+  Scan,
+  Search,
+  Trash2,
+  WandSparkles,
+} from 'lucide-react';
 
 import { openAssetEditorDocument } from '../editors/editorRegistry';
 import type { EditorDocument } from '../editors/editorTypes';
@@ -480,7 +493,9 @@ function MaterialFunctionReferenceEditor({
                     <AssetThumbnail asset={option?.asset} path={option?.asset.path || reference.path} />
                     <span className="asset-reference-copy">
                       <strong>{label}</strong>
-                      <small>{option?.asset.scope === 'builtin' ? 'Engine Material Function' : 'Material Function'}</small>
+                      <small>
+                        {option?.asset.scope === 'builtin' ? 'Engine Material Function' : 'Material Function'}
+                      </small>
                     </span>
                     <ChevronDown size={13} />
                   </button>
