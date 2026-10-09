@@ -486,7 +486,7 @@ std::filesystem::path resolve_texture_path(const editor_scene_state& scene, cons
 
             const auto root_name = root.filename().generic_string();
             if (!root_name.empty() && authored.begin() != authored.end() &&
-                authored.begin()->generic_string() == root_name)
+                (*authored.begin()).generic_string() == root_name)
             {
                 auto relative = authored.lexically_relative(std::filesystem::path{root_name});
                 const auto rooted_candidate = (root / relative).lexically_normal();
