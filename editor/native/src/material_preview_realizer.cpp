@@ -507,6 +507,24 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
         return {};
     }
 
+    // Runtime backends cache pipelines by program generation. Preview/material-instance
+    // specialization recompiles can change shader bytecode while reusing the same material
+    // handle, so derive a stable non-zero generation from the compiled passes.
+    constexpr std::uint64_t generation_offset = 14695981039346656037ull;
+    constexpr std::uint64_t generation_prime = 1099511628211ull;
+    std::uint64_t generation = generation_offset;
+    for (const auto& pass : program->passes)
+    {
+        generation ^= static_cast<std::uint8_t>(pass.pass);
+        generation *= generation_prime;
+        for (const auto byte : pass.compiled.bytecode)
+        {
+            generation ^= byte;
+            generation *= generation_prime;
+        }
+    }
+    program->generation = generation == 0u ? 1u : generation;
+
     program->parameter_defaults.assign(program->parameter_block_size, std::byte{});
     for (const auto& parameter : program->parameters)
     {
