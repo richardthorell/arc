@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { ChevronRight, Copy, Magnet, Plus, RotateCcw, Scan, Search, Trash2, WandSparkles } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
+import { AssetPicker, type AssetPickerItem } from '../inspector/AssetPicker';
 import {
   GraphDiagnosticBadge,
   GraphPin,
@@ -35,6 +36,7 @@ import {
   type UiColorValue,
 } from '../ui';
 import { materialGraphDomain } from './materialGraphDomain';
+import { materialFunctionCompatibleWithSlot } from './materialInstanceAuthoring';
 import {
   clampMaterialScalarValue,
   cloneMaterialGraph,
@@ -160,11 +162,18 @@ const colorValue = (value: unknown): UiColorValue => {
 };
 
 type MaterialFunctionAssetOption = {
-  label: string;
-  path: string;
-  sourcePath: string;
-  scope: 'builtin' | 'project';
+  asset: AssetPickerItem;
+  document: MaterialFunctionAssetJson;
 };
+
+const functionReferences = (node: MaterialGraphNode) =>
+  Array.isArray(node.values.functions)
+    ? node.values.functions.flatMap((reference) => {
+        if (!reference || typeof reference !== 'object') return [];
+        const path = (reference as { path?: unknown }).path;
+        return typeof path === 'string' && path.trim() ? [{ path }] : [];
+      })
+    : [];
 
 function MaterialFunctionReferenceEditor({
   node,
@@ -181,31 +190,61 @@ function MaterialFunctionReferenceEditor({
     let cancelled = false;
     void window.arc.host
       .query('project.assets')
-      .then((response: unknown) => {
+      .then(async (response: unknown) => {
         if (cancelled || !response || typeof response !== 'object') return;
         const payload = (response as { payload?: { assets?: Array<Record<string, unknown>> } }).payload;
-        const next = (payload?.assets ?? []).flatMap((asset) => {
+        const candidates = (payload?.assets ?? []).flatMap((asset) => {
           if (asset.kind !== 'materialFunction') return [];
           const path = typeof asset.path === 'string' ? asset.path : '';
           const sourcePath = typeof asset.sourcePath === 'string' ? asset.sourcePath : path;
-          if (!sourcePath) return [];
+          if (!path && !sourcePath) return [];
+          const scope = asset.scope === 'builtin' ? ('builtin' as const) : ('project' as const);
+          const authoringPath = scope === 'builtin' ? path : sourcePath || path;
           return [
             {
-              label:
-                typeof asset.title === 'string' && asset.title.trim()
-                  ? asset.title
-                  : (sourcePath
-                      .split('/')
-                      .at(-1)
-                      ?.replace(/\.arcmatfn$/i, '') ?? sourcePath),
-              path,
-              sourcePath,
-              scope: asset.scope === 'builtin' ? ('builtin' as const) : ('project' as const),
+              asset: {
+                id: typeof asset.guid === 'string' && asset.guid ? asset.guid : authoringPath,
+                guid: typeof asset.guid === 'string' ? asset.guid : undefined,
+                typeId: typeof asset.typeId === 'string' ? asset.typeId : undefined,
+                name:
+                  typeof asset.title === 'string' && asset.title.trim()
+                    ? asset.title
+                    : (authoringPath.split('/').at(-1) ?? authoringPath),
+                title: typeof asset.title === 'string' ? asset.title : undefined,
+                path: sourcePath || path,
+                sourcePath,
+                kind: 'materialFunction',
+                status:
+                  asset.state === 'ready' ||
+                  asset.state === 'stale' ||
+                  asset.state === 'failed' ||
+                  asset.state === 'importing'
+                    ? asset.state
+                    : 'unknown',
+                scope,
+                readOnly: Boolean(asset.readOnly),
+              } satisfies AssetPickerItem,
+              scope,
+              authoringPath,
             },
           ];
         });
-        next.sort((left, right) => left.label.localeCompare(right.label));
-        setFunctions(next);
+        const loaded = (
+          await Promise.all(
+            candidates.map(async (candidate): Promise<MaterialFunctionAssetOption | null> => {
+              try {
+                const file = await window.arc.projects.readText(candidate.authoringPath, candidate.scope);
+                const document = JSON.parse(file.text) as MaterialFunctionAssetJson;
+                if (document.kind !== 'materialFunction' || document.version !== 1) return null;
+                return { asset: candidate.asset, document };
+              } catch {
+                return null;
+              }
+            }),
+          )
+        ).filter((option): option is MaterialFunctionAssetOption => option !== null);
+        loaded.sort((left, right) => left.document.name.localeCompare(right.document.name));
+        if (!cancelled) setFunctions(loaded);
       })
       .catch(() => {
         if (!cancelled) setFunctions([]);
@@ -215,61 +254,180 @@ function MaterialFunctionReferenceEditor({
     };
   }, []);
 
+  const references = functionReferences(node);
   const selectedPath = typeof node.values.path === 'string' ? node.values.path : '';
-  const options = [
-    { value: '', label: 'Select function…' },
-    ...functions.map((asset) => ({ value: asset.sourcePath, label: asset.label })),
-  ];
+  const inputPins = Array.isArray(node.values.inputPins) ? node.values.inputPins : [];
+  const outputPins = Array.isArray(node.values.outputPins) ? node.values.outputPins : [];
+  const selectable = node.type === 'functionCall';
+  const selectedDocument = functions.find((option) => option.asset.path === selectedPath)?.document;
+  const contractInputs =
+    inputPins.length > 0 ? inputPins : selectedDocument?.inputs ?? functions.find((option) => option.asset.path === references[0]?.path)?.document.inputs ?? [];
+  const contractOutputs =
+    outputPins.length > 0
+      ? outputPins
+      : selectedDocument?.outputs ?? functions.find((option) => option.asset.path === references[0]?.path)?.document.outputs ?? [];
 
-  return (
-    <div className="material-node-inline-value">
-      {node.type === 'functionSlot' && (
+  if (!selectable) {
+    const options = [
+      { value: '', label: 'Select function…' },
+      ...functions.map((option) => ({ value: option.asset.path, label: option.document.name })),
+    ];
+    return (
+      <div className="material-node-inline-value">
         <input
           aria-label="Function Slot name"
           disabled={readOnly}
           value={typeof node.values.name === 'string' ? node.values.name : 'Function Slot'}
           onChange={(event) => onChange({ ...node, values: { ...node.values, name: event.target.value } })}
         />
-      )}
-      <UiSelect
-        ariaLabel={node.type === 'functionSlot' ? 'Default Material Function' : 'Material Function'}
-        disabled={readOnly}
-        options={options}
-        value={selectedPath}
-        onValueChange={(value) => {
-          const asset = functions.find((candidate) => candidate.sourcePath === value);
-          if (!asset) {
+        <UiSelect
+          ariaLabel="Default Material Function"
+          disabled={readOnly}
+          options={options}
+          value={selectedPath}
+          onValueChange={(value) => {
+            const option = functions.find((candidate) => candidate.asset.path === value);
+            if (!option) return;
             onChange({
               ...node,
               values: {
                 ...node.values,
-                path: '',
-                ...(node.type === 'functionCall' ? { name: 'Material Function' } : { functionName: '' }),
-                inputPins: [],
-                outputPins: [],
+                path: option.asset.path,
+                functionName: option.document.name,
+                inputPins: option.document.inputs,
+                outputPins: option.document.outputs,
               },
             });
-            return;
-          }
-          void window.arc.projects
-            .readText(asset.sourcePath, asset.scope)
-            .then((file) => {
-              const parsed = JSON.parse(file.text) as MaterialFunctionAssetJson;
-              if (parsed.kind !== 'materialFunction' || parsed.version !== 1) return;
-              onChange({
-                ...node,
-                values: {
-                  ...node.values,
-                  path: asset.sourcePath,
-                  ...(node.type === 'functionCall' ? { name: parsed.name } : { functionName: parsed.name }),
-                  inputPins: parsed.inputs,
-                  outputPins: parsed.outputs,
-                },
-              });
-            })
-            .catch(() => undefined);
-        }}
+          }}
+        />
+      </div>
+    );
+  }
+
+  const referenced = references.flatMap((reference) => {
+    const option = functions.find((candidate) => candidate.asset.path === reference.path);
+    return option ? [{ reference, option }] : [{ reference, option: null }];
+  });
+  const referencedPaths = new Set(references.map((reference) => reference.path));
+  const pickerAssets = functions.filter((option) => !referencedPaths.has(option.asset.path)).map((option) => option.asset);
+  const compatibility = (asset: AssetPickerItem) => {
+    const option = functions.find((candidate) => candidate.asset.path === asset.path);
+    if (!option) return 'Material Function metadata is unavailable';
+    return materialFunctionCompatibleWithSlot(
+      contractInputs as MaterialFunctionAssetJson['inputs'],
+      contractOutputs as MaterialFunctionAssetJson['outputs'],
+      option.document,
+    )
+      ? null
+      : 'Function signature does not match this Function Call';
+  };
+
+  const setActive = (path: string, document?: MaterialFunctionAssetJson) => {
+    onChange({
+      ...node,
+      values: {
+        ...node.values,
+        path,
+        functionName: document?.name ?? node.values.functionName,
+        ...(contractInputs.length === 0 && document ? { inputPins: document.inputs } : {}),
+        ...(contractOutputs.length === 0 && document ? { outputPins: document.outputs } : {}),
+      },
+    });
+  };
+
+  const addFunction = (path: string) => {
+    const option = functions.find((candidate) => candidate.asset.path === path);
+    if (!option || compatibility(option.asset)) return;
+    const nextReferences = [...references, { path: option.asset.path }];
+    const first = references.length === 0;
+    onChange({
+      ...node,
+      values: {
+        ...node.values,
+        functions: nextReferences,
+        ...(first
+          ? {
+              path: option.asset.path,
+              functionName: option.document.name,
+              inputPins: option.document.inputs,
+              outputPins: option.document.outputs,
+            }
+          : {}),
+      },
+    });
+  };
+
+  const removeFunction = (path: string) => {
+    const nextReferences = references.filter((reference) => reference.path !== path);
+    const removedActive = selectedPath === path;
+    const nextActive = removedActive ? nextReferences[0]?.path ?? '' : selectedPath;
+    const nextDocument = functions.find((option) => option.asset.path === nextActive)?.document;
+    onChange({
+      ...node,
+      values: {
+        ...node.values,
+        functions: nextReferences,
+        path: nextActive,
+        functionName: nextDocument?.name ?? '',
+        ...(nextReferences.length === 0 ? { inputPins: [], outputPins: [] } : {}),
+      },
+    });
+  };
+
+  return (
+    <div className="material-function-call-editor">
+      <UiTextInput
+        aria-label="Function Call name"
+        disabled={readOnly}
+        value={typeof node.values.name === 'string' ? node.values.name : 'Material Function'}
+        onChange={(event) => onChange({ ...node, values: { ...node.values, name: event.target.value } })}
       />
+      <div className="material-function-call-list">
+        {referenced.map(({ reference, option }) => {
+          const active = reference.path === selectedPath;
+          const label = option?.document.name ?? reference.path.split('/').at(-1) ?? reference.path;
+          return (
+            <div className={`material-function-call-entry${active ? ' is-active' : ''}`} key={reference.path}>
+              <button
+                aria-label={`Use ${label}`}
+                aria-pressed={active}
+                className="material-function-call-select"
+                disabled={readOnly}
+                onClick={() => setActive(reference.path, option?.document)}
+                type="button"
+              >
+                <span className="material-function-call-radio" aria-hidden="true" />
+                <span>{label}</span>
+              </button>
+              {!readOnly && references.length > 1 && (
+                <UiIconButton
+                  label={`Remove ${label}`}
+                  onClick={() => removeFunction(reference.path)}
+                  title={`Remove ${label}`}
+                >
+                  <Trash2 size={12} />
+                </UiIconButton>
+              )}
+            </div>
+          );
+        })}
+        {!readOnly && (
+          <div className="material-function-call-add">
+            <AssetPicker
+              allowEmpty={false}
+              assetCompatibility={compatibility}
+              assetKinds={['materialFunction']}
+              assets={pickerAssets}
+              assetTypeLabel="Material Function"
+              label="Material Function"
+              showLabel={false}
+              triggerMode="add"
+              value=""
+              onChange={addFunction}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
