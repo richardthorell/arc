@@ -86,6 +86,47 @@ describe('Mesh Renderer asset picker', () => {
     expect(onValue).toHaveBeenCalledWith('meshRenderer.materialPath', '__arc_primitive__/cube', true);
   });
 
+  it('keeps canonical built-in material paths matched to their Engine asset identity', () => {
+    render(
+      <InspectorComponentCard
+        assets={[
+          {
+            id: 'standard-lit',
+            name: 'standard_lit.arcmat',
+            title: 'Standard Lit',
+            path: 'builtin/materials/standard_lit.arcmat',
+            kind: 'material',
+            status: 'ready',
+            scope: 'builtin',
+            readOnly: true,
+          },
+        ]}
+        collapsed={false}
+        context={{ meshRenderer: { materialPath: 'builtin/materials/standard_lit.arcmat' } }}
+        schema={{
+          id: 'meshRenderer',
+          title: 'Mesh Renderer',
+          fields: [
+            {
+              id: 'material',
+              label: 'Material',
+              path: 'meshRenderer.materialPath',
+              type: 'asset',
+              assetKind: 'material',
+              allowedExtensions: ['.arcmat', '.arcmatinst'],
+              allowEmpty: false,
+            },
+          ],
+        }}
+        onToggle={() => undefined}
+        onValue={() => undefined}
+      />,
+    );
+
+    expect(screen.getByLabelText('Choose Material asset')).toHaveTextContent('Standard Lit');
+    expect(screen.getByLabelText('Choose Material asset')).toHaveTextContent('Engine Material');
+  });
+
   it('keeps a failed Material Instance visible and marks the assignment as an error', () => {
     render(
       <InspectorComponentCard
@@ -93,7 +134,7 @@ describe('Mesh Renderer asset picker', () => {
           {
             id: 'floor-material',
             name: 'Floor',
-            path: 'materials/floor.arcmatinst',
+            path: 'builtin/materials/floor.arcmatinst',
             kind: 'materialInstance',
             status: 'ready',
             scope: 'builtin',
@@ -102,7 +143,7 @@ describe('Mesh Renderer asset picker', () => {
         collapsed={false}
         context={{
           meshRenderer: {
-            materialPath: 'materials/floor.arcmatinst',
+            materialPath: 'builtin/materials/floor.arcmatinst',
             materialError: 'Floor failed to load or realize. Rendering with Error Material.',
           },
         }}
