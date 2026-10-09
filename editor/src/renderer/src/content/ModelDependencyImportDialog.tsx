@@ -14,7 +14,13 @@ type Props = {
 };
 
 const DependencyIcon = ({ kind }: { kind: ExternalModelImportPlan['dependencies'][number]['kind'] }) =>
-  kind === 'texture' ? <FileImage aria-hidden="true" size={17} /> : kind === 'material' ? <FileText aria-hidden="true" size={17} /> : <FileBox aria-hidden="true" size={17} />;
+  kind === 'texture' ? (
+    <FileImage aria-hidden="true" size={17} />
+  ) : kind === 'material' ? (
+    <FileText aria-hidden="true" size={17} />
+  ) : (
+    <FileBox aria-hidden="true" size={17} />
+  );
 
 export function ModelDependencyImportDialog({ plan, destination, onCancel, onImport }: Props) {
   const availablePaths = useMemo(
@@ -43,7 +49,9 @@ export function ModelDependencyImportDialog({ plan, destination, onCancel, onImp
           <UiButton onClick={onCancel}>Cancel</UiButton>
           <UiButton
             variant="primary"
-            onClick={() => onImport(plan.dependencies.filter((item) => selected.has(item.path)).map((item) => item.path))}
+            onClick={() =>
+              onImport(plan.dependencies.filter((item) => selected.has(item.path)).map((item) => item.path))
+            }
           >
             Import
           </UiButton>
@@ -77,10 +85,7 @@ export function ModelDependencyImportDialog({ plan, destination, onCancel, onImp
 
       <div className="model-dependency-import-list">
         {plan.dependencies.map((dependency) => (
-          <label
-            className={`model-dependency-import-row ${dependency.exists ? '' : 'missing'}`}
-            key={dependency.path}
-          >
+          <label className={`model-dependency-import-row ${dependency.exists ? '' : 'missing'}`} key={dependency.path}>
             <input
               aria-label={dependency.path}
               checked={dependency.exists && selected.has(dependency.path)}

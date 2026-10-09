@@ -140,10 +140,7 @@ describe('external model import', () => {
       'Content/Props',
       plan.dependencies.map((dependency) => dependency.path),
     );
-    expect(imported.importedDependencies).toEqual([
-      'Content/Props/crate.mtl',
-      'Content/Props/textures/crate.png',
-    ]);
+    expect(imported.importedDependencies).toEqual(['Content/Props/crate.mtl', 'Content/Props/textures/crate.png']);
   });
 
   it('reports missing referenced files without attempting to copy them', () => {

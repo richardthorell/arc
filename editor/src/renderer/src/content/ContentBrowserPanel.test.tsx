@@ -22,7 +22,11 @@ const analyzeModelImport = vi.fn().mockImplementation(async (file: File) => ({
 }));
 const importModel = vi
   .fn()
-  .mockResolvedValue({ path: 'Content/imported.glb', sourcePath: 'D:/Test/Content/imported.glb', importedDependencies: [] });
+  .mockResolvedValue({
+    path: 'Content/imported.glb',
+    sourcePath: 'D:/Test/Content/imported.glb',
+    importedDependencies: [],
+  });
 const importTexture = vi
   .fn()
   .mockResolvedValue({ path: 'Content/imported.png', sourcePath: 'D:/Test/Content/imported.png' });
@@ -37,13 +41,11 @@ beforeEach(() => {
     fileName: file.name,
     dependencies: [],
   }));
-  importModel
-    .mockReset()
-    .mockResolvedValue({
-      path: 'Content/imported.glb',
-      sourcePath: 'D:/Test/Content/imported.glb',
-      importedDependencies: [],
-    });
+  importModel.mockReset().mockResolvedValue({
+    path: 'Content/imported.glb',
+    sourcePath: 'D:/Test/Content/imported.glb',
+    importedDependencies: [],
+  });
   importTexture
     .mockReset()
     .mockResolvedValue({ path: 'Content/imported.png', sourcePath: 'D:/Test/Content/imported.png' });
@@ -322,9 +324,7 @@ describe('ContentBrowserPanel', () => {
     fireEvent.click(view.getByRole('checkbox', { name: 'textures/bark.png' }));
     fireEvent.click(view.getByRole('button', { name: 'Import' }));
 
-    await waitFor(() =>
-      expect(importModel).toHaveBeenCalledWith(model, 'Content/Props', ['textures/bark.png']),
-    );
+    await waitFor(() => expect(importModel).toHaveBeenCalledWith(model, 'Content/Props', ['textures/bark.png']));
   });
 
   it('imports dropped files into folder cards without navigating into them', async () => {

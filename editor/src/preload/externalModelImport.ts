@@ -117,7 +117,11 @@ export const analyzeExternalModel = (sourcePath: string): ExternalModelImportPla
 
   const extension = path.extname(sourcePath).toLocaleLowerCase();
   const dependencies =
-    extension === '.gltf' ? scanGltfDependencies(sourcePath) : extension === '.obj' ? scanObjDependencies(sourcePath) : [];
+    extension === '.gltf'
+      ? scanGltfDependencies(sourcePath)
+      : extension === '.obj'
+        ? scanObjDependencies(sourcePath)
+        : [];
   return { sourcePath, fileName: path.basename(sourcePath), dependencies };
 };
 
@@ -166,7 +170,9 @@ export const importExternalModel = (
   fs.copyFileSync(sourcePath, destination, fs.constants.COPYFILE_EXCL);
 
   const plan = analyzeExternalModel(sourcePath);
-  const selected = new Set(selectedDependencies ?? plan.dependencies.filter((item) => item.exists).map((item) => item.path));
+  const selected = new Set(
+    selectedDependencies ?? plan.dependencies.filter((item) => item.exists).map((item) => item.path),
+  );
   const importedDependencies: string[] = [];
   for (const dependency of plan.dependencies) {
     if (!dependency.exists || !selected.has(dependency.path)) continue;
