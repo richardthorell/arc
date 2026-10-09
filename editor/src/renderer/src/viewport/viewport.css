@@ -444,7 +444,6 @@
   pointer-events: none;
 }
 
-
 .arc-viewport-floating-menu.ui-context-menu {
   max-height: min(70vh, 640px);
   overflow-y: auto;
