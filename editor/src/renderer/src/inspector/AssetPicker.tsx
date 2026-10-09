@@ -44,7 +44,6 @@ export type AssetPickerProps = {
   onChange: (value: string, asset?: AssetPickerItem) => void;
   showLabel?: boolean;
   triggerMode?: 'default' | 'add';
-  disabled?: boolean;
 };
 
 const thumbnailCaches = new WeakMap<AssetThumbnailProvider, Map<string, Promise<string | null>>>();
@@ -224,33 +223,6 @@ function thumbnailRequest(provider: AssetThumbnailProvider, path: string): Promi
   return request;
 }
 
-const openKnownAsset = (asset: AssetPickerItem) => {
-  if (asset.scope === 'procedural') return;
-  const kind =
-    asset.kind === 'materialInstance'
-      ? 'materialInstance'
-      : asset.kind === 'materialFunction'
-        ? 'materialFunction'
-        : asset.kind === 'material'
-          ? 'material'
-          : asset.kind === 'flow'
-            ? 'flow'
-            : null;
-  if (!kind) return;
-  openAssetEditorDocument({
-    id: asset.id,
-    guid: asset.guid,
-    typeId: asset.typeId,
-    name: asset.name,
-    title: asset.title,
-    path: asset.sourcePath || asset.path,
-    kind,
-    status: asset.status,
-    scope: asset.scope,
-    readOnly: asset.readOnly,
-  });
-};
-
 export function AssetPicker({
   assets,
   value,
@@ -271,7 +243,6 @@ export function AssetPicker({
   onChange,
   showLabel = true,
   triggerMode = 'default',
-  disabled = false,
 }: AssetPickerProps) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
@@ -300,7 +271,6 @@ export function AssetPicker({
     (createAssetKind ? (name: string) => createProjectAsset(createAssetKind, name, assets, assetTypeLabel) : undefined);
 
   const acceptDrop = (event: React.DragEvent) => {
-    if (disabled) return;
     const dropped = readArcAssetDragPayload(event.dataTransfer);
     if (!dropped) return;
     const candidate = candidates.find(
@@ -316,17 +286,8 @@ export function AssetPicker({
     onChange(valueFor(candidate), candidate);
   };
 
-  const defaultOpen =
-    selected &&
-    (selected.kind === 'material' ||
-      selected.kind === 'materialInstance' ||
-      selected.kind === 'materialFunction' ||
-      selected.kind === 'flow')
-      ? (asset: AssetPickerItem) => openKnownAsset(asset)
-      : undefined;
-  const openSelected = onOpen ?? defaultOpen;
-  const canOpen = Boolean(selected && openSelected && !mixed);
-  const canClear = Boolean(!disabled && allowEmpty && value && !mixed);
+  const canOpen = Boolean(selected && onOpen && !mixed);
+  const canClear = Boolean(allowEmpty && value && !mixed);
 
   const control = (
     <>
@@ -335,7 +296,6 @@ export function AssetPicker({
           aria-expanded={open}
           aria-label={triggerMode === 'add' ? `Add ${label}` : `Choose ${label} asset`}
           className={`asset-reference-main${triggerMode === 'add' ? ' asset-reference-add' : ''}`}
-          disabled={disabled}
           onClick={() => setOpen((current) => !current)}
           ref={anchorRef}
           type="button"
@@ -367,11 +327,11 @@ export function AssetPicker({
         </button>
         {(canOpen || canClear) && (
           <span style={{ display: 'flex', alignItems: 'center' }}>
-            {canOpen && selected && openSelected && (
+            {canOpen && selected && onOpen && (
               <button
                 aria-label={`Open ${displayNameOf(selected, value)} in ${assetTypeLabel} Editor`}
                 className="asset-reference-clear"
-                onClick={() => openSelected(selected)}
+                onClick={() => onOpen(selected)}
                 title={`Open in ${assetTypeLabel} Editor`}
                 type="button"
               >
