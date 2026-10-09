@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronRight, Copy, Magnet, Plus, RotateCcw, Scan, Search, Trash2, WandSparkles } from 'lucide-react';
+import { ChevronRight, Copy, Magnet, Minus, Plus, RotateCcw, Scan, Search, WandSparkles } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
-import { AssetPicker, type AssetPickerItem } from '../inspector/AssetPicker';
+import { MaterialFunctionPicker, type AssetPickerItem } from '../inspector/AssetPicker';
 import {
   GraphDiagnosticBadge,
   GraphPin,
@@ -380,6 +380,31 @@ function MaterialFunctionReferenceEditor({
     });
   };
 
+  const replaceFunction = (currentPath: string, nextPath: string) => {
+    if (currentPath === nextPath) return;
+    const option = functions.find((candidate) => candidate.asset.path === nextPath);
+    if (!option || compatibility(option.asset) || referencedPaths.has(nextPath)) return;
+    const nextReferences = references.map((reference) =>
+      reference.path === currentPath ? { path: option.asset.path } : reference,
+    );
+    const replacingActive = selectedPath === currentPath;
+    onChange({
+      ...node,
+      values: {
+        ...node.values,
+        functions: nextReferences,
+        ...(replacingActive
+          ? {
+              path: option.asset.path,
+              functionName: option.document.name,
+              ...(contractInputs.length === 0 ? { inputPins: option.document.inputs } : {}),
+              ...(contractOutputs.length === 0 ? { outputPins: option.document.outputs } : {}),
+            }
+          : {}),
+      },
+    });
+  };
+
   const removeFunction = (path: string) => {
     const nextReferences = references.filter((reference) => reference.path !== path);
     const removedActive = selectedPath === path;
@@ -409,26 +434,40 @@ function MaterialFunctionReferenceEditor({
         {referenced.map(({ reference, option }) => {
           const active = reference.path === selectedPath;
           const label = option?.document.name ?? reference.path.split('/').at(-1) ?? reference.path;
+          const rowAssets = functions
+            .filter(
+              (candidate) =>
+                candidate.asset.path === reference.path || !referencedPaths.has(candidate.asset.path),
+            )
+            .map((candidate) => candidate.asset);
           return (
             <div className={`material-function-call-entry${active ? ' is-active' : ''}`} key={reference.path}>
-              <button
-                aria-label={`Use ${label}`}
-                aria-pressed={active}
-                className="material-function-call-select"
+              <input
+                aria-label={`Set ${label} as default`}
+                checked={active}
+                className="material-function-call-radio"
                 disabled={readOnly}
-                onClick={() => setActive(reference.path, option?.document)}
-                type="button"
-              >
-                <span className="material-function-call-radio" aria-hidden="true" />
-                <span>{label}</span>
-              </button>
+                name={`material-function-default-${node.id}`}
+                onChange={() => setActive(reference.path, option?.document)}
+                type="radio"
+              />
+              <MaterialFunctionPicker
+                allowEmpty={false}
+                assetCompatibility={compatibility}
+                assets={rowAssets}
+                disabled={readOnly}
+                label={label}
+                showLabel={false}
+                value={reference.path}
+                onChange={(path) => replaceFunction(reference.path, path)}
+              />
               {!readOnly && references.length > 1 && (
                 <UiIconButton
                   label={`Remove ${label}`}
                   onClick={() => removeFunction(reference.path)}
                   title={`Remove ${label}`}
                 >
-                  <Trash2 size={12} />
+                  <Minus size={12} />
                 </UiIconButton>
               )}
             </div>
@@ -436,12 +475,10 @@ function MaterialFunctionReferenceEditor({
         })}
         {!readOnly && (
           <div className="material-function-call-add">
-            <AssetPicker
+            <MaterialFunctionPicker
               allowEmpty={false}
               assetCompatibility={compatibility}
-              assetKinds={['materialFunction']}
               assets={pickerAssets}
-              assetTypeLabel="Material Function"
               label="Material Function"
               showLabel={false}
               triggerMode="add"
