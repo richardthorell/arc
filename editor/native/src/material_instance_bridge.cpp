@@ -2,6 +2,7 @@
 
 #include <arc/editor/editor_state.h>
 #include <arc/editor/material_library.h>
+#include <arc/editor/material_preview_realizer.h>
 #include <arc/diagnostics/diagnostics.h>
 #include <arc/render/texture.h>
 #include <arc/scene/scene.h>
@@ -14,7 +15,10 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <optional>
+#include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -26,6 +30,7 @@ namespace
 using json = nlohmann::json;
 
 constexpr std::string_view material_parameter_prefix = "__arc_material_parameter__";
+constexpr std::string_view material_function_prefix = "__arc_material_function__";
 constexpr std::string_view instance_name_marker = "__arc_instance_overrides__";
 constexpr std::string_view mesh_renderer_component_name = "MeshRenderer";
 constexpr std::string_view persisted_override_field = "materialParameterOverrides";
@@ -40,11 +45,20 @@ enum class material_parameter_edit_kind : std::uint8_t
 
 struct material_parameter_edit
 {
+    std::uint64_t parameter_id{};
     std::string name;
     render::shader_parameter_type type{render::shader_parameter_type::float32};
     material_parameter_edit_kind kind{material_parameter_edit_kind::scalar};
     std::vector<float> value;
     std::string texture;
+    bool reset{};
+};
+
+struct material_function_edit
+{
+    std::string slot_id;
+    std::string function_guid;
+    std::string function_path;
     bool reset{};
 };
 
@@ -54,6 +68,7 @@ struct pending_parameter_edit
     ecs::entity entity{};
     procedural_mesh_component dummy{};
     std::optional<material_parameter_edit> material;
+    std::optional<material_function_edit> function;
 };
 
 struct runtime_material_instance
@@ -200,6 +215,17 @@ std::optional<material_parameter_edit> parse_material_parameter(std::string_view
     if (!material_parameter_edit_metadata_matches(typed_type, typed_kind)) return std::nullopt;
 
     material_parameter_edit edit;
+    if (const auto found = payload.find("parameterId"); found != payload.end() && found->is_string())
+    {
+        try
+        {
+            edit.parameter_id = std::stoull(found->get<std::string>());
+        }
+        catch (...)
+        {
+            return std::nullopt;
+        }
+    }
     edit.name = payload["name"].get<std::string>();
     edit.type = typed_type;
     edit.kind = typed_kind;
@@ -217,6 +243,51 @@ std::optional<material_parameter_edit> parse_material_parameter(std::string_view
         }
     }
     return edit.name.empty() ? std::nullopt : std::optional<material_parameter_edit>{std::move(edit)};
+}
+
+std::optional<material_function_edit> parse_material_function(std::string_view parameter)
+{
+    if (!parameter.starts_with(material_function_prefix)) return std::nullopt;
+    const auto decoded = decode_hex(parameter.substr(material_function_prefix.size()));
+    if (!decoded) return std::nullopt;
+    const auto payload = json::parse(*decoded, nullptr, false);
+    if (!payload.is_object()) return std::nullopt;
+
+    material_function_edit edit;
+    edit.slot_id = payload.value("slotId", std::string{});
+    edit.reset = payload.value("reset", false);
+    if (const auto found = payload.find("function"); found != payload.end() && found->is_object())
+    {
+        edit.function_guid = found->value("guid", std::string{});
+        edit.function_path = found->value("pathHint", std::string{});
+    }
+    if (edit.slot_id.empty()) return std::nullopt;
+    if (!edit.reset && (edit.function_guid.empty() || edit.function_path.empty())) return std::nullopt;
+    return edit;
+}
+
+std::string read_text_file(const std::filesystem::path& path)
+{
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream) return {};
+    std::ostringstream output;
+    output << stream.rdbuf();
+    return output.str();
+}
+
+bool collect_function_paths(const json& graph, std::vector<std::string>& paths)
+{
+    if (!graph.is_object() || !graph.contains("nodes") || !graph["nodes"].is_array()) return false;
+    for (const auto& node : graph["nodes"])
+    {
+        if (!node.is_object()) continue;
+        const auto type = node.value("type", std::string{});
+        if (type != "functionCall" && type != "functionSlot") continue;
+        const auto values = node.value("values", json::object());
+        const auto path = values.value("path", std::string{});
+        if (!path.empty()) paths.push_back(path);
+    }
+    return true;
 }
 
 json persisted_overrides(const editor_scene_state& scene, ecs::entity_guid entity)
@@ -254,6 +325,7 @@ json edit_to_json(const material_parameter_edit& edit)
     json value = {{"name", edit.name},
                   {"type", std::string(material_parameter_type_name(edit.type))},
                   {"kind", std::string(material_parameter_kind_name(edit.kind))}};
+    if (edit.parameter_id != 0u) value["parameterId"] = std::to_string(edit.parameter_id);
     if (!edit.value.empty()) value["value"] = edit.value;
     if (edit.kind == material_parameter_edit_kind::texture) value["texture"] = edit.texture;
     return value;
@@ -262,10 +334,35 @@ json edit_to_json(const material_parameter_edit& edit)
 json apply_edit(json overrides, const material_parameter_edit& edit)
 {
     if (!overrides.is_array()) overrides = json::array();
-    overrides.erase(std::remove_if(overrides.begin(), overrides.end(), [&](const json& entry)
-                                   { return entry.is_object() && entry.value("name", std::string{}) == edit.name; }),
-                    overrides.end());
+    overrides.erase(
+        std::remove_if(overrides.begin(), overrides.end(),
+                       [&](const json& entry)
+                       {
+                           if (!entry.is_object() || entry.value("kind", std::string{}) == "function") return false;
+                           if (edit.parameter_id != 0u)
+                               return entry.value("parameterId", std::string{}) == std::to_string(edit.parameter_id);
+                           return entry.value("name", std::string{}) == edit.name;
+                       }),
+        overrides.end());
     if (!edit.reset) overrides.push_back(edit_to_json(edit));
+    return overrides;
+}
+
+json apply_function_edit(json overrides, const material_function_edit& edit)
+{
+    if (!overrides.is_array()) overrides = json::array();
+    overrides.erase(
+        std::remove_if(overrides.begin(), overrides.end(),
+                       [&](const json& entry)
+                       {
+                           return entry.is_object() && entry.value("kind", std::string{}) == "function" &&
+                                  entry.value("slotId", std::string{}) == edit.slot_id;
+                       }),
+        overrides.end());
+    if (!edit.reset)
+        overrides.push_back({{"kind", "function"},
+                             {"slotId", edit.slot_id},
+                             {"function", {{"guid", edit.function_guid}, {"pathHint", edit.function_path}}}});
     return overrides;
 }
 
@@ -415,6 +512,78 @@ std::optional<render::material_parameter_value> override_value(editor_scene_stat
     return std::nullopt;
 }
 
+std::optional<material_preview_descriptor_result>
+realize_function_specialization(editor_scene_state& scene, render::renderer& renderer,
+                                const editor_material_record& base, const json& overrides)
+{
+    std::vector<render::tools::material_function_slot_override> slot_overrides;
+    struct selected_function
+    {
+        std::string guid;
+        std::string path;
+    };
+    std::vector<selected_function> selected;
+    for (const auto& entry : overrides)
+    {
+        if (!entry.is_object() || entry.value("kind", std::string{}) != "function") continue;
+        const auto slot_id = entry.value("slotId", std::string{});
+        const auto function = entry.value("function", json::object());
+        const auto guid = function.value("guid", std::string{});
+        const auto path = function.value("pathHint", std::string{});
+        if (slot_id.empty() || guid.empty() || path.empty()) continue;
+        slot_overrides.push_back({.slot_id = slot_id, .function_path = path});
+        selected.push_back({.guid = guid, .path = path});
+    }
+    if (slot_overrides.empty()) return std::nullopt;
+
+    const auto source = read_text_file(base.path);
+    const auto document = json::parse(source, nullptr, false);
+    if (source.empty() || document.is_discarded() || !document.is_object() || !document.contains("graph"))
+        return material_preview_descriptor_result{.message = "Material source is unavailable for Function specialization"};
+
+    std::vector<std::string> pending;
+    if (!collect_function_paths(document["graph"], pending))
+        return material_preview_descriptor_result{.message = "Material graph is malformed while resolving Functions"};
+    for (const auto& replacement : selected)
+        pending.push_back(replacement.path);
+
+    std::vector<render::tools::material_function_source> functions;
+    std::set<std::string> visited;
+    for (std::size_t index = 0; index < pending.size(); ++index)
+    {
+        const auto source_path = resolve_texture_path(base, pending[index]);
+        auto key = source_path.lexically_normal().generic_string();
+        std::transform(key.begin(), key.end(), key.begin(),
+                       [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+        if (!visited.insert(key).second) continue;
+
+        const auto function_source = read_text_file(source_path);
+        const auto function_document = json::parse(function_source, nullptr, false);
+        if (function_source.empty() || function_document.is_discarded() || !function_document.is_object())
+            return material_preview_descriptor_result{.message = "Material Function could not be loaded: " + key};
+
+        std::string identity = key;
+        for (const auto& replacement : selected)
+            if (same_path_suffix(source_path, replacement.path))
+            {
+                identity = replacement.guid;
+                break;
+            }
+
+        functions.push_back({.path = source_path.generic_string(), .identity = std::move(identity), .source = function_source});
+        if (function_document.contains("graph")) collect_function_paths(function_document["graph"], pending);
+    }
+
+    auto realized = realize_material_preview_descriptor(source, base.asset.name + " Instance", functions, slot_overrides);
+    if (realized.succeeded)
+    {
+        const auto asset_root = base.path.parent_path().parent_path();
+        resolve_material_runtime_textures(scene.material_library, renderer, asset_root, base.path,
+                                          realized.texture_sources, realized.material);
+    }
+    return realized;
+}
+
 bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity, const json& overrides)
 {
     auto* component = scene.scene.try_get<scene::mesh_renderer_component>(entity);
@@ -434,7 +603,18 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
         return true;
     }
 
-    if (!base.asset.material.runtime_program)
+    render::material_descriptor specialized_material = base.asset.material;
+    if (const auto specialized = realize_function_specialization(scene, renderer, base, overrides))
+    {
+        if (!specialized->succeeded)
+        {
+            arc::diagnostics::warn("editor.materials", "Material Function specialization failed: " + specialized->message);
+            return false;
+        }
+        specialized_material = specialized->material;
+    }
+
+    if (!specialized_material.runtime_program)
     {
         arc::diagnostics::warn("editor.materials",
                                "Material instance requires a compiled parameter layout for '" + base.asset.name + "'");
@@ -446,11 +626,26 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
     instance.name = base.asset.name + " Instance";
     for (const auto& authored : overrides)
     {
-        if (!authored.is_object()) continue;
+        if (!authored.is_object() || authored.value("kind", std::string{}) == "function") continue;
         const auto name = authored.value("name", std::string{});
-        const auto layout = std::ranges::find(base.asset.material.runtime_program->parameters, name,
-                                              &render::shader_parameter_descriptor::name);
-        if (layout == base.asset.material.runtime_program->parameters.end())
+        const auto parameter_id_text = authored.value("parameterId", std::string{});
+        std::uint64_t parameter_id{};
+        if (!parameter_id_text.empty())
+        {
+            try
+            {
+                parameter_id = std::stoull(parameter_id_text);
+            }
+            catch (...)
+            {
+                parameter_id = 0u;
+            }
+        }
+        const auto& parameters = specialized_material.runtime_program->parameters;
+        const auto layout = parameter_id != 0u
+                                ? std::ranges::find(parameters, parameter_id, &render::shader_parameter_descriptor::id)
+                                : std::ranges::find(parameters, name, &render::shader_parameter_descriptor::name);
+        if (layout == parameters.end())
         {
             arc::diagnostics::warn("editor.materials", "Ignoring stale material instance parameter '" + name + "'");
             continue;
@@ -466,8 +661,8 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
     }
 
     render::material_definition_descriptor definition;
-    definition.material = base.asset.material;
-    definition.parameter_layout = base.asset.material.runtime_program->parameters;
+    definition.material = specialized_material;
+    definition.parameter_layout = specialized_material.runtime_program->parameters;
     auto resolved = render::resolve_material_instance(definition, instance);
     if (!resolved)
     {
@@ -523,6 +718,17 @@ bool apply_material_edit(editor_scene_state& scene, render::renderer& renderer, 
     return true;
 }
 
+bool apply_function_edit(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity,
+                         const material_function_edit& edit)
+{
+    const auto guid = entity_guid_of(scene, entity);
+    if (!guid.valid()) return false;
+    auto overrides = apply_function_edit(persisted_overrides(scene, guid), edit);
+    if (!realize_overrides(scene, renderer, entity, overrides)) return false;
+    store_persisted_overrides(scene, guid, overrides);
+    return true;
+}
+
 } // namespace
 
 procedural_mesh_component* ensure_procedural_or_material_parameter_component(editor_scene_state& scene,
@@ -544,6 +750,11 @@ bool set_procedural_or_material_parameter(procedural_mesh_component& component, 
         pending_edit.material = parse_material_parameter(parameter);
         return pending_edit.material.has_value();
     }
+    if (pending_edit.scene && parameter.starts_with(material_function_prefix))
+    {
+        pending_edit.function = parse_material_function(parameter);
+        return pending_edit.function.has_value();
+    }
     return set_procedural_mesh_parameter(component, parameter, value);
 }
 
@@ -555,6 +766,12 @@ bool regenerate_procedural_or_material_parameter(editor_scene_state& scene, rend
         const auto edit = std::move(*pending_edit.material);
         pending_edit = {};
         return apply_material_edit(scene, renderer, entity, edit);
+    }
+    if (pending_edit.scene == &scene && pending_edit.entity == entity && pending_edit.function)
+    {
+        const auto edit = std::move(*pending_edit.function);
+        pending_edit = {};
+        return apply_function_edit(scene, renderer, entity, edit);
     }
     pending_edit = {};
     return regenerate_procedural_mesh(scene, renderer, entity);
