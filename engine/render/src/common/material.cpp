@@ -140,9 +140,7 @@ void synchronize_standard_lit_emissive(material_descriptor& material)
     if (!material.runtime_program) return;
     const auto& program = *material.runtime_program;
     const auto find_parameter = [&](std::string_view name)
-    {
-        return std::ranges::find(program.parameters, name, &shader_parameter_descriptor::name);
-    };
+    { return std::ranges::find(program.parameters, name, &shader_parameter_descriptor::name); };
     const auto color = find_parameter("Emissive Color");
     const auto strength = find_parameter("Emissive Strength");
     if (color == program.parameters.end() || strength == program.parameters.end() ||
@@ -155,8 +153,7 @@ void synchronize_standard_lit_emissive(material_descriptor& material)
         const auto found = std::ranges::find(material.parameters, parameter.id, &material_parameter_override::id);
         return found == material.parameters.end() ? nullptr : &found->value;
     };
-    const auto default_floats = [&](const shader_parameter_descriptor& parameter, float* destination,
-                                    std::size_t count)
+    const auto default_floats = [&](const shader_parameter_descriptor& parameter, float* destination, std::size_t count)
     {
         const auto bytes = count * sizeof(float);
         const auto offset = static_cast<std::size_t>(parameter.offset);
@@ -170,7 +167,8 @@ void synchronize_standard_lit_emissive(material_descriptor& material)
     math::vector3f rgb = material.emissive_factor;
     if (const auto* value = value_for(*color))
     {
-        if (const auto* typed = std::get_if<math::vector3f>(value)) rgb = *typed;
+        if (const auto* typed = std::get_if<math::vector3f>(value))
+            rgb = *typed;
         else if (const auto* typed = std::get_if<math::vector4f>(value))
             rgb = {(*typed)[0], (*typed)[1], (*typed)[2]};
     }

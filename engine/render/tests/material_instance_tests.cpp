@@ -168,10 +168,16 @@ TEST_CASE("emissive overrides update both compiled and bindless material represe
     runtime_program->parameter_block_size = 32u;
     runtime_program->parameter_defaults.resize(32u);
     runtime_program->parameters = {
-        {.id = shader_parameter_id{801}, .name = "Emissive Color",
-         .type = shader_parameter_type::float4, .offset = 0, .size = 16},
-        {.id = shader_parameter_id{802}, .name = "Emissive Strength",
-         .type = shader_parameter_type::float32, .offset = 16, .size = 4},
+        {.id = shader_parameter_id{801},
+         .name = "Emissive Color",
+         .type = shader_parameter_type::float4,
+         .offset = 0,
+         .size = 16},
+        {.id = shader_parameter_id{802},
+         .name = "Emissive Strength",
+         .type = shader_parameter_type::float32,
+         .offset = 16,
+         .size = 4},
     };
     const std::array<float, 4> default_color{1.0f, 1.0f, 1.0f, 1.0f};
     std::memcpy(runtime_program->parameter_defaults.data(), default_color.data(), sizeof(default_color));
@@ -181,8 +187,7 @@ TEST_CASE("emissive overrides update both compiled and bindless material represe
     material_instance_descriptor instance;
     instance.parent = parent.material.handle;
     instance.overrides = {
-        {.id = shader_parameter_id{801}, .name = "Emissive Color",
-         .value = math::vector4f{0.0f, 0.0f, 1.0f, 1.0f}},
+        {.id = shader_parameter_id{801}, .name = "Emissive Color", .value = math::vector4f{0.0f, 0.0f, 1.0f, 1.0f}},
         {.id = shader_parameter_id{802}, .name = "Emissive Strength", .value = 5.557f},
     };
     const auto bright = resolve_material_instance(parent, instance);
@@ -208,8 +213,7 @@ TEST_CASE("emissive overrides update both compiled and bindless material represe
     CHECK(strength_only.value().emissive_strength == 5.0f);
 
     instance.overrides = {
-        {.id = shader_parameter_id{801}, .name = "Emissive Color",
-         .value = math::vector4f{0.0f, 0.0f, 1.0f, 1.0f}},
+        {.id = shader_parameter_id{801}, .name = "Emissive Color", .value = math::vector4f{0.0f, 0.0f, 1.0f, 1.0f}},
         {.id = shader_parameter_id{802}, .name = "Emissive Strength", .value = 0.0f},
     };
     const auto disabled = resolve_material_instance(parent, instance);
