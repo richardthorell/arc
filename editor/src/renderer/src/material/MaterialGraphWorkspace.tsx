@@ -1,4 +1,4 @@
-import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from 'react';
+import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode, Ref } from 'react';
 
 export type MaterialGraphWorkspaceProps = {
   graph: ReactNode;
@@ -16,6 +16,7 @@ export type MaterialGraphWorkspaceProps = {
   onDividerDoubleClick?: () => void;
   onDividerKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void;
   className?: string;
+  rootRef?: Ref<HTMLElement>;
 };
 
 /**
@@ -41,6 +42,7 @@ export function MaterialGraphWorkspace({
   onDividerDoubleClick,
   onDividerKeyDown,
   className,
+  rootRef,
 }: MaterialGraphWorkspaceProps) {
   const hasSidebar = sidebar !== undefined && sidebar !== null;
   const style: CSSProperties = hasSidebar
@@ -48,7 +50,11 @@ export function MaterialGraphWorkspace({
     : { gridTemplateColumns: 'minmax(0, 1fr)' };
 
   return (
-    <section className={['material-editor', 'material-graph-workspace', className].filter(Boolean).join(' ')} style={style}>
+    <section
+      ref={rootRef}
+      className={['material-editor', 'material-graph-workspace', className].filter(Boolean).join(' ')}
+      style={style}
+    >
       <div className="material-editor-graph-region">{graph}</div>
 
       {hasSidebar && (
