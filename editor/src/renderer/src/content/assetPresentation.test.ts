@@ -45,6 +45,20 @@ describe('model asset presentation', () => {
     expect(assetDragType(value)).toBe('materialInstance');
   });
 
+  it('presents authored Sounds separately from raw WAV sources', () => {
+    const sound = asset('Content/Audio/Footstep.arcsound', 'sound');
+    expect(assetPresentationKind(sound)).toBe('sound');
+    expect(assetPresentationLabel(sound)).toBe('Sound');
+    expect(assetPresentationIcon(sound)).toBe('audio');
+    expect(assetDragType(sound)).toBe('sound');
+
+    const wav = asset('Content/Audio/footstep.wav', 'audio');
+    expect(assetPresentationKind(wav)).toBe('audio');
+    expect(assetPresentationLabel(wav)).toBe('Audio Source');
+    expect(assetPresentationIcon(wav)).toBe('audio');
+    expect(assetDragType(wav)).toBe('audio');
+  });
+
   it('presents native Water presets as dedicated authoring assets', () => {
     const value = asset('builtin/water/presets/open_ocean.arcwater', 'water');
     expect(assetPresentationKind(value)).toBe('water');
