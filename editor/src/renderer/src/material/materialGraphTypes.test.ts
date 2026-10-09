@@ -345,6 +345,16 @@ describe('material graph compile fingerprint', () => {
     expect(materialGraphCompileFingerprint(moved)).toBe(materialGraphCompileFingerprint(graph));
   });
 
+  it('ignores graph groups and parameter presentation metadata', () => {
+    const graph = createDefaultMaterialGraph();
+    const grouped = structuredClone(graph);
+    const roughness = grouped.nodes.find((node) => node.parameter?.name === 'Roughness')!;
+    roughness.parameter = { ...roughness.parameter!, group: 'surface', order: 20 };
+    grouped.groups = [{ id: 'surface', name: 'Surface', nodeIds: [roughness.id], order: 10 }];
+
+    expect(materialGraphCompileFingerprint(grouped)).toBe(materialGraphCompileFingerprint(graph));
+  });
+
   it('changes for values, parameters, and graph connections', () => {
     const graph = createDefaultMaterialGraph();
 
