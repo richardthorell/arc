@@ -152,3 +152,31 @@
   min-width: 0;
   margin: 0 0 4px;
 }
+
+
+.inspector-material-function-list {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+
+.inspector-material-function {
+  display: grid;
+  gap: 3px;
+  padding: 5px 0 4px;
+  border-bottom: 1px solid var(--inspector-border-soft);
+}
+
+.inspector-material-function-selector {
+  display: grid;
+  grid-template-columns: var(--inspector-row-label) minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.inspector-material-function-parameters {
+  display: grid;
+  padding-left: 12px;
+  border-left: 1px solid #303b44;
+}
