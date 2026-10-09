@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Filter, Globe2, MoreVertical, Search } from 'lucide-react';
 
 import type { SceneEntity } from '../services/editorHostTypes';
+import { hostAssetReference } from '../services/assetReferences';
 import { UiPanel } from '../ui';
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
 import { AddComponentPicker } from './AddComponentPicker';
@@ -215,6 +216,7 @@ export function InspectorPanel({
     path: string,
     next: InspectorEntitySnapshot,
     settled: boolean,
+    selectedAsset?: AssetPickerItem,
   ) => {
     const transactionKey = `${component}:${path}`;
     const transactionLabel =
@@ -276,6 +278,7 @@ export function InspectorPanel({
           {
             ...entityPayload(next),
             path: next.meshRenderer.materialPath,
+            ...(selectedAsset ? { asset: hostAssetReference(selectedAsset) ?? undefined } : {}),
           },
           proceduralParameter ? settled : true,
           proceduralParameter ? transactionKey : undefined,
@@ -322,6 +325,7 @@ export function InspectorPanel({
             ...entityPayload(next),
             layer: Number(layerMatch[1]),
             path: next.terrain.layers[Number(layerMatch[1])].baseColorPath,
+            ...(selectedAsset ? { asset: hostAssetReference(selectedAsset) ?? undefined } : {}),
           },
           true,
         );
@@ -747,7 +751,7 @@ export function InspectorPanel({
               thumbnailProvider={thumbnailProvider}
               onToggle={() => setCollapsed((value) => ({ ...value, [schema.id]: !(value[schema.id] ?? false) }))}
               onAction={(action) => runComponentAction(schema.id, action)}
-              onValue={(path, value, settled) => {
+              onValue={(path, value, settled, selectedAsset) => {
                 if (path === 'terrain.activeLayer') value = Number(value);
                 let next: InspectorEntitySnapshot;
                 if (
@@ -768,7 +772,7 @@ export function InspectorPanel({
                 if (path === 'transform.rotationDegrees' && next.transform && coordinateSpace !== 'world') {
                   next = { ...next, transform: { ...next.transform, rotationDegrees: value as Vec3 } };
                 }
-                updateComponent(schema.id, path, next, settled);
+                updateComponent(schema.id, path, next, settled, selectedAsset);
               }}
             />
           ))}
