@@ -71,8 +71,7 @@ wav_parse_result parse_wav(std::span<const std::byte> bytes)
             const std::uint16_t raw_encoding = read_u16(bytes, payload);
             if (raw_encoding != static_cast<std::uint16_t>(wav_encoding::pcm) &&
                 raw_encoding != static_cast<std::uint16_t>(wav_encoding::ieee_float))
-                return failure(wav_error_code::unsupported_encoding,
-                               "WAV encoding is not PCM or IEEE floating point");
+                return failure(wav_error_code::unsupported_encoding, "WAV encoding is not PCM or IEEE floating point");
 
             info.encoding = static_cast<wav_encoding>(raw_encoding);
             info.channels = read_u16(bytes, payload + 2);
@@ -106,9 +105,8 @@ wav_parse_result parse_wav(std::span<const std::byte> bytes)
     if (info.data_size % info.block_align != 0)
         return failure(wav_error_code::invalid_format, "WAV data size is not aligned to complete sample frames");
 
-    if (info.encoding == wav_encoding::pcm &&
-        info.bits_per_sample != 8 && info.bits_per_sample != 16 && info.bits_per_sample != 24 &&
-        info.bits_per_sample != 32)
+    if (info.encoding == wav_encoding::pcm && info.bits_per_sample != 8 && info.bits_per_sample != 16 &&
+        info.bits_per_sample != 24 && info.bits_per_sample != 32)
         return failure(wav_error_code::unsupported_encoding, "PCM WAV must use 8, 16, 24, or 32 bits per sample");
     if (info.encoding == wav_encoding::ieee_float && info.bits_per_sample != 32 && info.bits_per_sample != 64)
         return failure(wav_error_code::unsupported_encoding, "Float WAV must use 32 or 64 bits per sample");

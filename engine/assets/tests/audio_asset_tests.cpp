@@ -111,8 +111,7 @@ TEST_CASE(".arcsound schema captures source playback and spatial authoring")
 
 TEST_CASE(".arcsound schema rejects unsafe or non-WAV source references")
 {
-    const auto missing =
-        arc::assets::parse_sound_asset_json(R"({"kind":"sound","version":1,"source":""})");
+    const auto missing = arc::assets::parse_sound_asset_json(R"({"kind":"sound","version":1,"source":""})");
     CHECK_FALSE(missing.succeeded());
     CHECK(missing.code == arc::assets::sound_asset_error_code::missing_source);
 
@@ -126,7 +125,6 @@ TEST_CASE(".arcsound schema rejects unsafe or non-WAV source references")
     CHECK_FALSE(compressed.succeeded());
     CHECK(compressed.code == arc::assets::sound_asset_error_code::unsupported_source);
 }
-
 
 TEST_CASE("Sound and WAV paths have distinct first-class asset classifications")
 {

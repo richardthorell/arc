@@ -379,7 +379,8 @@ public:
         }
         if (context.metadata.type == asset_types::sound)
         {
-            const std::string source(reinterpret_cast<const char*>(context.source_bytes.data()), context.source_bytes.size());
+            const std::string source(reinterpret_cast<const char*>(context.source_bytes.data()),
+                                     context.source_bytes.size());
             const auto parsed = parse_sound_asset_json(source);
             if (!parsed.succeeded())
                 return {.error = {.code = asset_error_code::import_failed,
