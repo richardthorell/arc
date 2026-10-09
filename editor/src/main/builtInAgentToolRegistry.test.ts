@@ -86,10 +86,12 @@ describe('BuiltInAgentToolRegistry', () => {
     const edit = definitions.find((tool) => tool.name === 'edit.apply');
     const batch = definitions.find((tool) => tool.name === 'editor.applyBatch');
 
-    expect(assets?.description).toContain('authoritative project-local asset inventory');
-    expect(assets?.description).toContain('before creating or importing reusable content');
-    expect(batch?.description).toContain('Prefer existing asset bindings and lightweight overrides');
-    expect(batch?.description).toContain('material.create only when no suitable project asset or override');
+    expect(assets?.description).toContain('authoritative current project and engine asset inventory');
+    expect(assets?.description).toContain('before planning edits');
+    expect(assets?.description).toContain('Material Functions');
+    expect(batch?.description).toContain('reuse compatible existing assets');
+    expect(batch?.description).toContain('verify the rendered output');
+    expect(batch?.description).toContain('Create new assets only when existing assets cannot satisfy');
 
     const editSchema = JSON.stringify(edit?.inputSchema);
     expect(editSchema).toContain('prefer binding an existing project material');
