@@ -6,6 +6,7 @@ import {
   type HTMLAttributes,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 
 import { UiButton } from './UiButton';
 import { UiFloatingSurface } from './UiFloatingSurface';
@@ -24,6 +25,7 @@ export type UiContextMenuProps = Omit<HTMLAttributes<HTMLDivElement>, 'children'
   searchPlaceholder?: string;
   searchAriaLabel?: string;
   onRequestClose?: () => void;
+  portal?: boolean;
 };
 
 export function UiContextMenu({
@@ -33,6 +35,7 @@ export function UiContextMenu({
   onKeyDown,
   onRequestClose,
   onSearchValueChange,
+  portal = false,
   searchAriaLabel = 'Search menu',
   searchPlaceholder = 'Search...',
   searchValue,
@@ -49,10 +52,15 @@ export function UiContextMenu({
     if (searchable) searchRef.current?.focus();
   }, [searchable]);
 
-  return (
+  const menu = (
     <UiFloatingSurface
       {...props}
-      className={['ui-context-menu', searchable ? 'ui-context-menu-searchable' : undefined, className]
+      className={[
+        'ui-context-menu',
+        portal ? 'ui-context-menu-portal' : undefined,
+        searchable ? 'ui-context-menu-searchable' : undefined,
+        className,
+      ]
         .filter(Boolean)
         .join(' ')}
       maxHeight={maxHeight}
@@ -91,6 +99,8 @@ export function UiContextMenu({
       {children}
     </UiFloatingSurface>
   );
+
+  return portal ? createPortal(menu, document.body) : menu;
 }
 
 export type UiContextMenuItemProps = ButtonHTMLAttributes<HTMLButtonElement> & {
