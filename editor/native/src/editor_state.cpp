@@ -88,7 +88,6 @@ render::material_handle ensure_error_material(editor_scene_state& scene, render:
     return scene.error_material;
 }
 
-
 render::material_handle ensure_terrain_material(editor_scene_state& scene, render::renderer& renderer)
 {
     if (scene.terrain_material.valid()) return scene.terrain_material;
@@ -429,9 +428,8 @@ render::material_handle create_default_floor_material(editor_scene_state& scene,
         return floor;
     }
 
-    scene.floor_material_error = source_found
-                                     ? "Floor failed to load or realize. Rendering with Error Material."
-                                     : "Floor Material Instance is missing. Rendering with Error Material.";
+    scene.floor_material_error = source_found ? "Floor failed to load or realize. Rendering with Error Material."
+                                              : "Floor Material Instance is missing. Rendering with Error Material.";
     arc::diagnostics::error("editor.materials", scene.floor_material_error);
     scene.floor_material = ensure_error_material(scene, renderer);
     return scene.floor_material;
