@@ -214,11 +214,12 @@ describe('MaterialPicker exported parameters', () => {
       />,
     );
 
-    const selector = await screen.findByLabelText('Base Color Source function');
-    expect(selector).toHaveValue('default-base-color-guid');
+    const selector = await screen.findByRole('combobox', { name: 'Base Color Source function' });
+    expect(selector).toHaveTextContent('Default Base Color');
     expect(screen.queryByLabelText('Cell Size')).not.toBeInTheDocument();
 
-    fireEvent.change(selector, { target: { value: 'checker-guid' } });
+    fireEvent.click(selector);
+    fireEvent.click(await screen.findByRole('option', { name: 'Checker' }));
 
     await waitFor(() => expect(command).toHaveBeenCalledTimes(1));
     expect(command).toHaveBeenCalledWith(
