@@ -1,0 +1,12 @@
+{
+  "format": "arc.asset-meta",
+  "formatVersion": 1,
+  "guid": "eea27d5e-eab1-47e6-a8d1-bb8dc537ac2a",
+  "importer": "a7ca55e7-0000-0002-0000-000000000012",
+  "settings": {},
+  "settingsVersion": 1,
+  "subassets": [],
+  "type": "a7ca55e7-0000-0001-0000-000000000011",
+  "title": "Channel Mask",
+  "description": "Extract a selected or blended channel from an RGBA value. A one-hot mask chooses R, G, B or A, with R selected by default."
+}

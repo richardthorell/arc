@@ -1,0 +1,12 @@
+{
+  "format": "arc.asset-meta",
+  "formatVersion": 1,
+  "guid": "0e4413b8-bbca-45c9-a7d1-e0810e0e18b9",
+  "importer": "a7ca55e7-0000-0002-0000-000000000012",
+  "settings": {},
+  "settingsVersion": 1,
+  "subassets": [],
+  "type": "a7ca55e7-0000-0001-0000-000000000011",
+  "title": "Unpack ORM",
+  "description": "Decode packed AO/Roughness/Metallic from an ORM texture sample in R/G/B channels. Supply a sampled RGBA pixel, not a texture path."
+}
