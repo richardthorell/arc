@@ -113,6 +113,40 @@ describe('AssetPicker', () => {
     expect(onChange).toHaveBeenCalledWith('albedo-guid');
   });
 
+  it('uses the authoritative project source path when assigning imported textures', async () => {
+    const onChange = vi.fn();
+    const thumbnailProvider = vi.fn().mockResolvedValue('data:image/png;base64,AA');
+    render(
+      <TexturePicker
+        assets={[
+          {
+            id: 'bricks-guid',
+            guid: 'bricks-guid',
+            name: 'Bricks071_4K_JPG_Color.jpg',
+            path: 'Bricks071_4K_JPG_Color.jpg',
+            sourcePath: 'Content/Bricks071_4K_JPG_Color.jpg',
+            kind: 'texture',
+            scope: 'project',
+            status: 'ready',
+          },
+        ]}
+        label="Base Color"
+        thumbnailProvider={thumbnailProvider}
+        value=""
+        onChange={onChange}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Choose Base Color asset' }));
+    await waitFor(() =>
+      expect(thumbnailProvider).toHaveBeenCalledWith('Bricks071_4K_JPG_Color.jpg'),
+    );
+    await user.click(screen.getByRole('button', { name: 'Select Bricks071_4K_JPG_Color' }));
+
+    expect(onChange).toHaveBeenCalledWith('Content/Bricks071_4K_JPG_Color.jpg');
+  });
+
   it('filters reflected asset types and commits the stable GUID', async () => {
     const onChange = vi.fn();
     render(
