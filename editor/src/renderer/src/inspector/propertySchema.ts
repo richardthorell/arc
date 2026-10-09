@@ -54,7 +54,7 @@ export type ColorFieldSchema<TContext = object> = FieldBase<TContext> & {
 };
 export type AssetReferenceFieldSchema<TContext = object> = FieldBase<TContext> & {
   type: 'asset';
-  assetKind: 'texture' | 'material' | 'prefab' | 'asset';
+  assetKind: 'texture' | 'material' | 'prefab' | 'audio' | 'asset';
   assetTypeId?: string;
   assetTypeLabel?: string;
   createAssetKind?: 'material' | 'flow';

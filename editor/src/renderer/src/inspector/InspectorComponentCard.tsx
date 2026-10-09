@@ -694,6 +694,25 @@ function SchemaField<TContext extends object>({
     );
   }
   if (field.type === 'asset') {
+    if (field.assetKind === 'audio') {
+      return (
+        <AssetPicker
+          allowEmpty={field.allowEmpty}
+          allowedExtensions={field.allowedExtensions ?? ['.wav']}
+          assetKinds={['audio']}
+          assetTypeIds={field.assetTypeId ? [field.assetTypeId] : undefined}
+          assetTypeLabel={field.assetTypeLabel ?? 'Audio'}
+          assets={assets}
+          label={field.label}
+          mixed={mixed}
+          referenceMode={field.referenceMode}
+          showLabel={false}
+          thumbnailProvider={thumbnailProvider}
+          value={(value as string) || ''}
+          onChange={(next) => onValue(next, true)}
+        />
+      );
+    }
     if (field.assetKind === 'asset') {
       if (field.createAssetKind === 'flow') {
         return (
