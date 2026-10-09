@@ -67,8 +67,9 @@ TEST_CASE("asset assignment commands round trip GUID references")
     };
     const arc::editor::host_command_envelope source{
         .request_id = 41,
-        .payload = arc::editor::host_set_environment_hdri_command{
-            .entity = {.index = 4, .generation = 2}, .path = "legacy.hdr", .asset = reference},
+        .payload = arc::editor::host_set_environment_hdri_command{.entity = {.index = 4, .generation = 2},
+                                                                  .path = "legacy.hdr",
+                                                                  .asset = reference},
     };
 
     const auto json = arc::editor::to_json(source);

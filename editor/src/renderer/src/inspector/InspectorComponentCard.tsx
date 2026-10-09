@@ -190,7 +190,8 @@ export function InspectorComponentCard<TContext extends object>({
 
     const linked = field.type === 'vector3' && Boolean(field.linked) && !unlinkedFields.has(field.path);
     const value = getPathValue(context, field.path);
-    const fieldValue = (next: unknown, settled: boolean, asset?: AssetPickerItem) => onValue(field.path, next, settled, asset);
+    const fieldValue = (next: unknown, settled: boolean, asset?: AssetPickerItem) =>
+      onValue(field.path, next, settled, asset);
     const label =
       field.type === 'number' ? (
         <NumberControlLabel

@@ -784,8 +784,8 @@ std::optional<material_preview_descriptor_result> realize_function_specializatio
                 if (source_path.empty()) continue;
                 if (!selections.contains(slot_id))
                     selections[slot_id] = {
-                        .guid = reference->guid.valid() ? assets::to_string(reference->guid)
-                                                       : source_path.generic_string(),
+                        .guid =
+                            reference->guid.valid() ? assets::to_string(reference->guid) : source_path.generic_string(),
                         .path = source_path.generic_string(),
                     };
             }
