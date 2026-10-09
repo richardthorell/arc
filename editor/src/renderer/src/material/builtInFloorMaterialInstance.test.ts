@@ -27,7 +27,6 @@ describe('built-in Floor Material Instance', () => {
     });
 
     expect(floor?.parameterOverrides).toEqual([
-      { parameterId: materialParameterId('base-color-tint'), value: [1, 1, 1, 1] },
       { parameterId: materialParameterId('metallic'), value: 0 },
       { parameterId: materialParameterId('roughness'), value: 0.8 },
     ]);

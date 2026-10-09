@@ -1,15 +1,9 @@
 {
   "kind": "materialFunction",
   "version": 1,
-  "name": "Default Base Color",
-  "description": "Pass-through base color source used as the default implementation for composable lit materials.",
-  "inputs": [
-    {
-      "id": "baseColor",
-      "name": "Base Color",
-      "type": "vec3"
-    }
-  ],
+  "name": "Color",
+  "description": "Texture-and-tint color source for material base color.",
+  "inputs": [],
   "outputs": [
     {
       "id": "color",
@@ -21,24 +15,56 @@
     "version": 1,
     "nodes": [
       {
-        "id": "input-baseColor",
-        "type": "functionInput",
+        "id": "base-color-tint",
+        "type": "colorRgba",
         "position": [
-          80,
-          120
+          60,
+          80
         ],
         "values": {
-          "input": "baseColor",
-          "name": "Base Color",
-          "valueType": "vec3"
+          "value": [
+            0.82,
+            0.84,
+            0.78,
+            1
+          ]
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Base Color Tint"
         }
+      },
+      {
+        "id": "base-color-texture",
+        "type": "textureSample2D",
+        "position": [
+          60,
+          240
+        ],
+        "values": {
+          "texture": "",
+          "dimension": "2d"
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Base Color Texture"
+        }
+      },
+      {
+        "id": "base-color-multiply",
+        "type": "multiply",
+        "position": [
+          380,
+          160
+        ],
+        "values": {}
       },
       {
         "id": "function-output",
         "type": "functionOutput",
         "position": [
-          500,
-          120
+          620,
+          160
         ],
         "values": {
           "pins": [
@@ -53,10 +79,32 @@
     ],
     "connections": [
       {
-        "id": "base-color-output",
+        "id": "tint-out",
         "from": {
-          "nodeId": "input-baseColor",
-          "pin": "value"
+          "nodeId": "base-color-tint",
+          "pin": "rgb"
+        },
+        "to": {
+          "nodeId": "base-color-multiply",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "texture-out",
+        "from": {
+          "nodeId": "base-color-texture",
+          "pin": "rgb"
+        },
+        "to": {
+          "nodeId": "base-color-multiply",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "color-out",
+        "from": {
+          "nodeId": "base-color-multiply",
+          "pin": "result"
         },
         "to": {
           "nodeId": "function-output",
@@ -65,8 +113,8 @@
       }
     ],
     "viewport": {
-      "x": 40,
-      "y": 40,
+      "x": 32,
+      "y": 32,
       "zoom": 1
     }
   }

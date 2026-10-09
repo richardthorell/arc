@@ -109,7 +109,9 @@ const contributingMaterialNodeIds = (graph: MaterialGraph): Set<string> => {
   }
 
   const contributing = new Set<string>();
-  const pending = graph.nodes.filter((node) => node.type === 'output').map((node) => node.id);
+  const pending = graph.nodes
+    .filter((node) => node.type === 'output' || node.type === 'functionOutput')
+    .map((node) => node.id);
   while (pending.length > 0) {
     const nodeId = pending.pop()!;
     if (contributing.has(nodeId)) continue;

@@ -2,13 +2,8 @@
   "kind": "materialFunction",
   "version": 1,
   "name": "Checker",
-  "description": "World-space XZ checker source with physically meaningful cell sizing.",
+  "description": "World-space XZ checker base color source with physically meaningful cell sizing.",
   "inputs": [
-    {
-      "id": "baseColor",
-      "name": "Base Color",
-      "type": "vec3"
-    },
     {
       "id": "colorA",
       "name": "Color A",
@@ -46,19 +41,6 @@
   "graph": {
     "version": 1,
     "nodes": [
-      {
-        "id": "input-baseColor",
-        "type": "functionInput",
-        "position": [
-          40,
-          40
-        ],
-        "values": {
-          "input": "baseColor",
-          "name": "Base Color",
-          "valueType": "vec3"
-        }
-      },
       {
         "id": "input-colorA",
         "type": "functionInput",
@@ -186,15 +168,6 @@
         "type": "lerp",
         "position": [
           1140,
-          300
-        ],
-        "values": {}
-      },
-      {
-        "id": "tinted-color",
-        "type": "multiply",
-        "position": [
-          1340,
           300
         ],
         "values": {}
@@ -362,39 +335,6 @@
         }
       },
       {
-        "id": "tint-a",
-        "from": {
-          "nodeId": "checker-color",
-          "pin": "result"
-        },
-        "to": {
-          "nodeId": "tinted-color",
-          "pin": "a"
-        }
-      },
-      {
-        "id": "tint-b",
-        "from": {
-          "nodeId": "input-baseColor",
-          "pin": "value"
-        },
-        "to": {
-          "nodeId": "tinted-color",
-          "pin": "b"
-        }
-      },
-      {
-        "id": "out",
-        "from": {
-          "nodeId": "tinted-color",
-          "pin": "result"
-        },
-        "to": {
-          "nodeId": "function-output",
-          "pin": "color"
-        }
-      },
-      {
         "id": "lerp-t",
         "from": {
           "nodeId": "absolute-parity",
@@ -403,6 +343,17 @@
         "to": {
           "nodeId": "checker-color",
           "pin": "t"
+        }
+      },
+      {
+        "id": "out",
+        "from": {
+          "nodeId": "checker-color",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "function-output",
+          "pin": "color"
         }
       }
     ],

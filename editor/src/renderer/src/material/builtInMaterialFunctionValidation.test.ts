@@ -35,10 +35,18 @@ describe('built-in Material Functions', () => {
     expect(asset.version).toBe(1);
     expect(isMaterialGraph(asset.graph)).toBe(true);
     expect(asset.outputs).toEqual([{ id: 'color', name: 'Color', type: 'vec3' }]);
-    expect(asset.inputs[0]).toEqual({ id: 'baseColor', name: 'Base Color', type: 'vec3' });
     expect(asset.graph.nodes.filter((node) => node.type === 'functionOutput')).toHaveLength(1);
     expect(asset.graph.nodes.some((node) => node.type === 'functionSlot')).toBe(false);
-    expect(asset.graph.nodes.some((node) => node.parameter?.exposed === true)).toBe(false);
+  });
+
+  it('lets the default base-color function own its tint and texture parameters', () => {
+    const baseColor = readFunction('default_base_color.arcmatfn');
+    expect(baseColor.inputs).toEqual([]);
+    expect(
+      baseColor.graph.nodes.filter((node) => node.parameter?.exposed === true).map((node) => node.parameter?.name),
+    ).toEqual(['Base Color Tint', 'Base Color Texture']);
+    expect(baseColor.graph.nodes.some((node) => node.type === 'textureSample2D')).toBe(true);
+    expect(baseColor.graph.nodes.some((node) => node.type === 'multiply')).toBe(true);
   });
 
   it('gives every built-in a stable unique Material Function identity', () => {
@@ -64,7 +72,7 @@ describe('built-in Material Functions', () => {
       .filter((connection) => connection.from.nodeId === worldPosition?.id)
       .map((connection) => connection.from.pin);
     expect(sourcePins).toEqual(expect.arrayContaining(['x', 'z']));
-    expect(checker.inputs.map((input) => input.id)).toEqual(['baseColor', 'colorA', 'colorB', 'cellSize']);
+    expect(checker.inputs.map((input) => input.id)).toEqual(['colorA', 'colorB', 'cellSize']);
   });
 
   it('authors Gradient and Noise from backend-neutral world-space graph operations', () => {
@@ -74,7 +82,6 @@ describe('built-in Material Functions', () => {
       expect(asset.graph.nodes.some((node) => node.type === 'dot')).toBe(true);
     }
     expect(readFunction('gradient.arcmatfn').inputs.map((input) => input.id)).toEqual([
-      'baseColor',
       'colorA',
       'colorB',
       'direction',
@@ -82,7 +89,6 @@ describe('built-in Material Functions', () => {
       'offset',
     ]);
     expect(readFunction('noise.arcmatfn').inputs.map((input) => input.id)).toEqual([
-      'baseColor',
       'scale',
       'seed',
       'contrast',

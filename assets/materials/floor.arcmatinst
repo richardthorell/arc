@@ -7,15 +7,6 @@
   },
   "parameterOverrides": [
     {
-      "parameterId": "17091113340554865608",
-      "value": [
-        1,
-        1,
-        1,
-        1
-      ]
-    },
-    {
       "parameterId": "16113330016842241480",
       "value": 0
     },

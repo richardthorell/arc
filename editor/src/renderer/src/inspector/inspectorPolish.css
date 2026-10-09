@@ -70,6 +70,27 @@
   line-height: 1.35;
 }
 
+.inspector-subsection-error {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 3px 0 4px;
+  color: var(--arc-color-danger, #d66f6f);
+  font-size: var(--arc-text-xxs);
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.inspector-subsection-error svg {
+  display: block;
+  flex: 0 0 auto;
+  transform: translateY(1px);
+}
+
+.inspector-subsection-error span {
+  min-width: 0;
+}
+
 .inspector-material-parameter-list {
   display: grid;
   width: 100%;

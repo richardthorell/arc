@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { EditorDocument } from '../editors/editorTypes';
@@ -257,6 +257,81 @@ describe('MaterialGraphEditor', () => {
     const baseColor = screen.getAllByText('Color', { selector: '.ui-node-card-title' })[0]!.closest('article');
     expect(baseColor).not.toBeNull();
     expect(within(baseColor!).getByRole('button', { name: 'Open Color color picker' })).toBeEnabled();
+  });
+
+  it('adds compatible Material Function references through the Function Call list picker', async () => {
+    const defaultPath = 'Content/functions/default.arcmatfn';
+    const checkerPath = 'Content/functions/checker.arcmatfn';
+    const functionDocument = (name: string) =>
+      JSON.stringify({
+        kind: 'materialFunction',
+        version: 1,
+        name,
+        inputs: [],
+        outputs: [{ id: 'color', name: 'Color', type: 'vec3' }],
+        graph: { version: 1, nodes: [], connections: [] },
+      });
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        host: {
+          query: vi.fn(async () => ({
+            succeeded: true,
+            payload: {
+              assets: [
+                {
+                  guid: 'default-guid',
+                  path: defaultPath,
+                  sourcePath: defaultPath,
+                  scope: 'project',
+                  readOnly: false,
+                  kind: 'materialFunction',
+                  state: 'ready',
+                },
+                {
+                  guid: 'checker-guid',
+                  path: checkerPath,
+                  sourcePath: checkerPath,
+                  scope: 'project',
+                  readOnly: false,
+                  kind: 'materialFunction',
+                  state: 'ready',
+                },
+              ],
+            },
+          })),
+        },
+        projects: {
+          readText: vi.fn(async (path: string) => ({
+            text: path === checkerPath ? functionDocument('Checker') : functionDocument('Default Base Color'),
+          })),
+        },
+      },
+    });
+
+    const graph = createDefaultMaterialGraph();
+    const call = createMaterialNode('functionCall', [720, 160], {
+      name: 'Base Color Source',
+      path: defaultPath,
+      functions: [{ path: defaultPath }],
+      inputPins: [],
+      outputPins: [{ id: 'color', name: 'Color', type: 'vec3' }],
+    });
+    graph.nodes.push(call);
+
+    const { container } = render(<MaterialGraphEditor document={document} graph={graph} />);
+    const callNode = container.querySelector<HTMLElement>(`[data-node-id="${call.id}"]`);
+    expect(callNode).not.toBeNull();
+
+    const add = await within(callNode!).findByRole('button', { name: 'Add Material Function' });
+    fireEvent.click(add);
+    fireEvent.click(await screen.findByRole('button', { name: 'Select Checker' }));
+
+    await waitFor(() => expect(materialState.replaceMaterialGraph).toHaveBeenCalled());
+    const nextGraph = materialState.replaceMaterialGraph.mock.calls.at(-1)![1];
+    const nextCall = nextGraph.nodes.find((node: { id: string }) => node.id === call.id);
+    expect(nextCall.values.functions).toEqual([{ path: defaultPath }, { path: checkerPath }]);
+    expect(nextCall.values.path).toBe(defaultPath);
   });
 
   it('uses the material graph domain to protect the output node from deletion', () => {

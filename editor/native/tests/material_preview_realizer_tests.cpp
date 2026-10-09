@@ -63,6 +63,35 @@ TEST_CASE("material preview realizes authored base color through native Material
     }
 }
 
+TEST_CASE("runtime program generation changes when compiled material shader changes")
+{
+    const std::string green_source = R"({
+  "version": 4,
+  "name": "Preview Green",
+  "domain": "surface",
+  "blendMode": "opaque",
+  "shadingModel": "standard",
+  "doubleSided": false,
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {"id":"output","type":"output","position":[0,0],"values":{}},
+      {"id":"base","type":"vector3","position":[0,0],"values":{"value":[0.0,1.0,0.0]}}
+    ],
+    "connections": [
+      {"id":"base-output","from":{"nodeId":"base","pin":"value"},"to":{"nodeId":"output","pin":"baseColor"}}
+    ]
+  }
+})";
+
+    const auto red = arc::editor::realize_material_preview_descriptor(red_material_source, "Preview Red");
+    const auto green = arc::editor::realize_material_preview_descriptor(green_source, "Preview Green");
+    REQUIRE(red.succeeded);
+    REQUIRE(green.succeeded);
+    if (red.material.runtime_program && green.material.runtime_program)
+        CHECK(red.material.runtime_program->generation != green.material.runtime_program->generation);
+}
+
 TEST_CASE("transmission material preview compiles the canonical forward pass")
 {
     const std::string source = R"({

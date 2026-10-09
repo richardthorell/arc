@@ -110,6 +110,29 @@ describe('native material compiler editor adapter', () => {
     );
   });
 
+  it('exposes parameters that contribute to a Material Function output', () => {
+    const color = createMaterialNode('colorRgba', [0, 0], { value: [0.8, 0.8, 0.8, 1] });
+    color.parameter = { exposed: true, name: 'Base Color Tint' };
+    const output = createMaterialNode('functionOutput', [300, 0], {
+      pins: [{ id: 'color', name: 'Color', type: 'vec3' }],
+    });
+    const graph = {
+      version: 1 as const,
+      nodes: [color, output],
+      connections: [
+        {
+          id: 'color-out',
+          from: { nodeId: color.id, pin: 'rgb' },
+          to: { nodeId: output.id, pin: 'color' },
+        },
+      ],
+    };
+
+    expect(materialEditorParameters(graph)).toContainEqual(
+      expect.objectContaining({ name: 'Base Color Tint', editorKind: 'color' }),
+    );
+  });
+
   it('omits exposed nodes that cannot affect Material Output', () => {
     const graph = createDefaultMaterialGraph();
     const disconnected = createMaterialNode('constant', [160, 160], { value: 0.5 });

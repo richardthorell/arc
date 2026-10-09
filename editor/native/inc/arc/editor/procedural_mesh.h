@@ -112,6 +112,7 @@ bool set_procedural_or_material_parameter(procedural_mesh_component& component, 
                                           double value);
 bool regenerate_procedural_or_material_parameter(editor_scene_state& scene, render::renderer& renderer,
                                                  ecs::entity entity);
+const std::string& last_material_instance_bridge_error() noexcept;
 void synchronize_procedural_and_material_instances(editor_scene_state& scene, render::renderer& renderer);
 #endif
 

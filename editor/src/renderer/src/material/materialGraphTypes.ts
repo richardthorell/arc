@@ -538,7 +538,7 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     subcategory: 'Composition',
     inputs: [],
     outputs: [],
-    defaultValues: { path: '', name: 'Material Function', inputPins: [], outputPins: [] },
+    defaultValues: { slotId: '', path: '', name: 'Material Function', functions: [], inputPins: [], outputPins: [] },
   },
   functionSlot: {
     type: 'functionSlot',
@@ -730,7 +730,7 @@ export const createMaterialNode = (
     position,
     values: {
       ...materialNodeDefinitions[type].defaultValues,
-      ...(type === 'functionSlot' ? { slotId: `slot-${id}` } : {}),
+      ...(type === 'functionSlot' || type === 'functionCall' ? { slotId: `slot-${id}` } : {}),
       ...values,
     },
   };

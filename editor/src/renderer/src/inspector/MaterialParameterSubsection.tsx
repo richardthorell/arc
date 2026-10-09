@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, TriangleAlert } from 'lucide-react';
 
 import { materialEditorParameters, type MaterialEditorParameterKind } from '../material/materialCompiler';
 import { materialFunctionCompatibleWithSlot } from '../material/materialInstanceAuthoring';
@@ -70,6 +70,7 @@ type DisplayFunctionSlot = {
   inputs: MaterialFunctionPin[];
   outputs: MaterialFunctionPin[];
   defaultGuid: string;
+  resetGuid: string;
   selectedGuid: string;
   options: DisplayFunctionOption[];
   parameters: DisplayParameter[];
@@ -107,6 +108,8 @@ const normalizePath = (value: string) =>
     .replace(/\/+/g, '/')
     .replace(/^\.\//, '')
     .replace(/^\/|\/$/g, '');
+
+const builtinReferencePath = (value: string) => normalizePath(value).replace(/^builtin\//i, '');
 
 const projectRelativeMaterialPath = async (materialPath: string, scope: 'builtin' | 'project') => {
   const normalized = normalizePath(materialPath);
@@ -333,6 +336,7 @@ export function MaterialParameterSubsection({
                 : '';
           return {
             ...parameter,
+            nodeId: materialParameterId(parameter.nodeId),
             values: authoredValues,
             texture: authoredTexture,
           };
@@ -349,11 +353,13 @@ export function MaterialParameterSubsection({
                 try {
                   const scope = asset.scope === 'builtin' ? 'builtin' : 'project';
                   const authoringPath = scope === 'builtin' ? asset.path : asset.sourcePath || asset.path;
+                  const referencePath =
+                    scope === 'builtin' ? builtinReferencePath(authoringPath) : asset.sourcePath || asset.path;
                   const path = await projectRelativeMaterialPath(authoringPath, scope);
                   const source = await window.arc.projects.readText(path, scope);
                   const document = JSON.parse(source.text) as MaterialFunctionAssetJson;
                   if (document.kind !== 'materialFunction' || document.version !== 1 || !asset.guid) return null;
-                  return { guid: asset.guid, path: authoringPath, name: document.name, document };
+                  return { guid: asset.guid, path: referencePath, name: document.name, document };
                 } catch {
                   return null;
                 }
@@ -362,7 +368,16 @@ export function MaterialParameterSubsection({
         ).filter((option): option is DisplayFunctionOption => option !== null);
 
         const functionSlots = graph.nodes.flatMap((node): DisplayFunctionSlot[] => {
-          if (node.type !== 'functionSlot') return [];
+          const authoredReferences =
+            node.type === 'functionCall' && Array.isArray(node.values.functions)
+              ? node.values.functions.flatMap((reference) => {
+                  if (!reference || typeof reference !== 'object') return [];
+                  const path = (reference as { path?: unknown }).path;
+                  return typeof path === 'string' && path.trim() ? [path] : [];
+                })
+              : [];
+          const selectableCall = node.type === 'functionCall' && authoredReferences.length > 0;
+          if (node.type !== 'functionSlot' && !selectableCall) return [];
           const id = typeof node.values.slotId === 'string' ? node.values.slotId.trim() : '';
           const name =
             typeof node.values.name === 'string' && node.values.name.trim() ? node.values.name.trim() : 'Function';
@@ -372,8 +387,10 @@ export function MaterialParameterSubsection({
             ? (node.values.outputPins as MaterialFunctionPin[])
             : [];
           if (!id || !defaultPath) return [];
-          const compatible = functionOptions.filter((option) =>
-            materialFunctionCompatibleWithSlot(inputs, outputs, option.document),
+          const compatible = functionOptions.filter(
+            (option) =>
+              materialFunctionCompatibleWithSlot(inputs, outputs, option.document) &&
+              (!selectableCall || authoredReferences.some((reference) => pathMatches(option.path, reference))),
           );
           const defaultOption = compatible.find((option) => pathMatches(option.path, defaultPath));
           if (!defaultOption) return [];
@@ -384,7 +401,7 @@ export function MaterialParameterSubsection({
           const selectedOption = compatible.find((option) => option.guid === selectedGuid) ?? defaultOption;
           const authoredInputs = new Map((authored?.inputOverrides ?? []).map((entry) => [entry.pinId, entry.value]));
           const baseInputs = new Set(inputs.map((input) => input.id));
-          const extraParameters = selectedOption.document.inputs.flatMap((pin): DisplayParameter[] => {
+          const inputParameters = selectedOption.document.inputs.flatMap((pin): DisplayParameter[] => {
             if (baseInputs.has(pin.id) || pin.default === undefined) return [];
             const parameterId = materialFunctionSlotParameterId(id, selectedOption.guid, pin.id);
             const runtimeOverride = overridesFromMaterialName(runtimeMaterialName).find(
@@ -403,6 +420,20 @@ export function MaterialParameterSubsection({
               },
             ];
           });
+          const graphParameters = materialEditorParameters(selectedOption.document.graph).map((parameter) => {
+            const functionNode = selectedOption.document.graph.nodes.find(
+              (candidate) => candidate.id === parameter.nodeId,
+            );
+            const parameterId = materialParameterId(`${id}::${parameter.nodeId}`);
+            return {
+              ...parameter,
+              nodeId: parameterId,
+              slotId: id,
+              values: functionNode ? parameterValues(functionNode) : [],
+              texture: functionNode ? parameterTexture(functionNode) : '',
+            };
+          });
+          const extraParameters = [...graphParameters, ...inputParameters];
 
           return [
             {
@@ -411,6 +442,7 @@ export function MaterialParameterSubsection({
               inputs,
               outputs,
               defaultGuid: defaultOption.guid,
+              resetGuid: authored?.guid || defaultOption.guid,
               selectedGuid: selectedOption.guid,
               options: compatible,
               parameters: extraParameters,
@@ -490,20 +522,33 @@ export function MaterialParameterSubsection({
                 : {
                     ...candidate,
                     selectedGuid: option.guid,
-                    parameters: option.document.inputs.flatMap((pin): DisplayParameter[] => {
-                      if (candidate.inputs.some((input) => input.id === pin.id) || pin.default === undefined) return [];
-                      return [
-                        {
-                          nodeId: materialFunctionSlotParameterId(candidate.id, option.guid, pin.id),
+                    parameters: [
+                      ...materialEditorParameters(option.document.graph).map((parameter) => {
+                        const functionNode = option.document.graph.nodes.find((node) => node.id === parameter.nodeId);
+                        return {
+                          ...parameter,
+                          nodeId: materialParameterId(`${candidate.id}::${parameter.nodeId}`),
                           slotId: candidate.id,
-                          name: pin.name,
-                          type: pin.type,
-                          editorKind: functionEditorKind(pin),
-                          values: functionParameterValues(pin.default),
-                          texture: '',
-                        },
-                      ];
-                    }),
+                          values: functionNode ? parameterValues(functionNode) : [],
+                          texture: functionNode ? parameterTexture(functionNode) : '',
+                        };
+                      }),
+                      ...option.document.inputs.flatMap((pin): DisplayParameter[] => {
+                        if (candidate.inputs.some((input) => input.id === pin.id) || pin.default === undefined)
+                          return [];
+                        return [
+                          {
+                            nodeId: materialFunctionSlotParameterId(candidate.id, option.guid, pin.id),
+                            slotId: candidate.id,
+                            name: pin.name,
+                            type: pin.type,
+                            editorKind: functionEditorKind(pin),
+                            values: functionParameterValues(pin.default),
+                            texture: '',
+                          },
+                        ];
+                      }),
+                    ],
                   },
             ),
           },
@@ -521,7 +566,7 @@ export function MaterialParameterSubsection({
       const payload = {
         slotId: slot.id,
         function: { guid: option.guid, pathHint: option.path },
-        reset: option.guid === slot.defaultGuid,
+        reset: option.guid === slot.resetGuid,
       };
       const path = `${functionCommandPrefix}${bytesToHex(JSON.stringify(payload))}/0`;
       const response = (await window.arc.host.command('entity.setMaterial', {
@@ -588,6 +633,30 @@ export function MaterialParameterSubsection({
                           <RotateCcw aria-hidden="true" size={12} />
                         </button>
                       ) : null;
+
+                      if (parameter.editorKind === 'texture') {
+                        const textureValue = effectiveTexture(parameter);
+                        return (
+                          <div className="inspector-material-parameter" key={parameter.nodeId}>
+                            <TexturePicker
+                              allowEmpty
+                              assets={assets}
+                              label={parameter.name}
+                              value={textureValue}
+                              onChange={(texture) =>
+                                void commitOverride(parameter, {
+                                  parameterId: parameter.nodeId,
+                                  name: parameter.name,
+                                  type: parameter.type,
+                                  kind: parameter.editorKind,
+                                  texture,
+                                })
+                              }
+                            />
+                            {reset}
+                          </div>
+                        );
+                      }
 
                       if (parameter.editorKind === 'color') {
                         const rgba: Vec4 = {
@@ -838,7 +907,12 @@ export function MaterialParameterSubsection({
           })}
         </div>
       )}
-      {mutationError && <p className="inspector-subsection-empty">{mutationError}</p>}
+      {mutationError && (
+        <p className="inspector-subsection-error" role="alert">
+          <TriangleAlert aria-hidden="true" size={10} />
+          <span>{mutationError}</span>
+        </p>
+      )}
       {state.status === 'ready' && state.parameters.length === 0 && state.functionSlots.length === 0 && (
         <p className="inspector-subsection-empty">No exported parameters.</p>
       )}

@@ -129,12 +129,13 @@ describe('MaterialPicker exported parameters', () => {
     expect(screen.getByRole('button', { name: 'Choose Albedo asset' })).toHaveTextContent('default');
   });
 
-  it('shows Function Slots as dropdowns and swaps function-specific parameters', async () => {
+  it('shows authored Function Call choices and swaps function-specific parameters', async () => {
     const defaultFunction = {
       id: 'default-base-color',
       guid: 'default-base-color-guid',
       name: 'default_base_color.arcmatfn',
-      path: 'assets/material_functions/default_base_color.arcmatfn',
+      path: 'material_functions/default_base_color.arcmatfn',
+      sourcePath: 'assets/material_functions/default_base_color.arcmatfn',
       kind: 'materialFunction',
       status: 'ready' as const,
       scope: 'builtin' as const,
@@ -143,7 +144,8 @@ describe('MaterialPicker exported parameters', () => {
       id: 'checker',
       guid: 'checker-guid',
       name: 'checker.arcmatfn',
-      path: 'assets/material_functions/checker.arcmatfn',
+      path: 'material_functions/checker.arcmatfn',
+      sourcePath: 'assets/material_functions/checker.arcmatfn',
       kind: 'materialFunction',
       status: 'ready' as const,
       scope: 'builtin' as const,
@@ -155,7 +157,34 @@ describe('MaterialPicker exported parameters', () => {
         name,
         inputs,
         outputs: [{ id: 'color', name: 'Color', type: 'vec3' }],
-        graph: { version: 1, nodes: [], connections: [] },
+        graph:
+          name === 'Color'
+            ? {
+                version: 1,
+                nodes: [
+                  {
+                    id: 'base-color-texture',
+                    type: 'textureSample2D',
+                    position: [0, 0],
+                    values: { texture: '', dimension: '2d' },
+                    parameter: { exposed: true, name: 'Base Color Texture' },
+                  },
+                  {
+                    id: 'function-output',
+                    type: 'functionOutput',
+                    position: [300, 0],
+                    values: { pins: [{ id: 'color', name: 'Color', type: 'vec3' }] },
+                  },
+                ],
+                connections: [
+                  {
+                    id: 'texture-out',
+                    from: { nodeId: 'base-color-texture', pin: 'rgb' },
+                    to: { nodeId: 'function-output', pin: 'color' },
+                  },
+                ],
+              }
+            : { version: 1, nodes: [], connections: [] },
       });
     const materialWithSlot = JSON.stringify({
       version: 4,
@@ -164,21 +193,18 @@ describe('MaterialPicker exported parameters', () => {
         version: 1,
         nodes: [
           {
-            id: 'base-color',
-            type: 'colorRgba',
-            position: [0, 0],
-            values: { value: [1, 1, 1, 1] },
-            parameter: { exposed: true, name: 'Base Color Tint' },
-          },
-          {
             id: 'base-color-source',
-            type: 'functionSlot',
+            type: 'functionCall',
             position: [100, 0],
             values: {
               slotId: 'base-color-source',
               name: 'Base Color Source',
               path: 'material_functions/default_base_color.arcmatfn',
-              inputPins: [{ id: 'baseColor', name: 'Base Color', type: 'vec3' }],
+              functions: [
+                { path: 'material_functions/default_base_color.arcmatfn' },
+                { path: 'material_functions/checker.arcmatfn' },
+              ],
+              inputPins: [],
               outputPins: [{ id: 'color', name: 'Color', type: 'vec3' }],
             },
           },
@@ -191,12 +217,11 @@ describe('MaterialPicker exported parameters', () => {
     readText.mockImplementation(async (path: string) => {
       if (path.endsWith('default_base_color.arcmatfn'))
         return {
-          text: functionDocument('Default Base Color', [{ id: 'baseColor', name: 'Base Color', type: 'vec3' }]),
+          text: functionDocument('Color', []),
         };
       if (path.endsWith('checker.arcmatfn'))
         return {
           text: functionDocument('Checker', [
-            { id: 'baseColor', name: 'Base Color', type: 'vec3' },
             { id: 'colorA', name: 'Color A', type: 'vec3', default: [0.8, 0.8, 0.8] },
             { id: 'colorB', name: 'Color B', type: 'vec3', default: [0.2, 0.2, 0.2] },
             { id: 'cellSize', name: 'Cell Size', type: 'float', default: 1 },
@@ -215,8 +240,9 @@ describe('MaterialPicker exported parameters', () => {
     );
 
     const selector = await screen.findByRole('combobox', { name: 'Base Color Source function' });
-    expect(selector).toHaveTextContent('Default Base Color');
+    expect(selector).toHaveTextContent('Color');
     expect(screen.queryByLabelText('Cell Size')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Choose Base Color Texture asset' })).toBeVisible();
 
     fireEvent.click(selector);
     fireEvent.click(await screen.findByRole('option', { name: 'Checker' }));
@@ -228,6 +254,14 @@ describe('MaterialPicker exported parameters', () => {
         path: expect.stringMatching(/^__arc_primitive_parameter__\/__arc_material_function__[0-9a-f]+\/0$/),
       }),
     );
+    const functionPath = command.mock.calls[0]?.[1]?.path as string;
+    const encodedFunction = functionPath.match(/__arc_material_function__([0-9a-f]+)\/0$/)?.[1] ?? '';
+    const decodedFunction = JSON.parse(
+      new TextDecoder().decode(
+        new Uint8Array(encodedFunction.match(/../g)?.map((byte) => Number.parseInt(byte, 16)) ?? []),
+      ),
+    );
+    expect(decodedFunction.function.pathHint).toBe('material_functions/checker.arcmatfn');
     expect(await screen.findByRole('button', { name: 'Open Color A color picker' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Open Color B color picker' })).toBeVisible();
     expect(screen.getByLabelText('Cell Size')).toHaveValue('1.000');
@@ -267,6 +301,16 @@ describe('MaterialPicker exported parameters', () => {
         path: expect.stringMatching(/^__arc_primitive_parameter__\/__arc_material_parameter__[0-9a-f]+\/0$/),
       }),
     );
+    const parameterPath = command.mock.calls[0]?.[1]?.path as string;
+    const encodedParameter = parameterPath.match(/__arc_material_parameter__([0-9a-f]+)\/0$/)?.[1] ?? '';
+    const decodedParameter = JSON.parse(
+      new TextDecoder().decode(
+        new Uint8Array(encodedParameter.match(/../g)?.map((byte) => Number.parseInt(byte, 16)) ?? []),
+      ),
+    );
+    expect(decodedParameter.parameterId).toMatch(/^\d+$/);
+    expect(decodedParameter.parameterId).not.toBe('roughness');
+    expect(decodedParameter.name).toBe('Roughness');
     expect(await screen.findByRole('button', { name: 'Reset Roughness' })).toBeVisible();
   });
 
