@@ -2619,6 +2619,15 @@ host_response arc_host::open_project(const host_open_project_command& command, c
         ::arc::water::register_water_asset_importer(*state_->asset_registry);
         framework::runtime_service_context context(state_->simulation.services());
         state_->asset_registry->on_start(context);
+
+        // The standalone asset manager is intentionally lazy, but an editor project should
+        // complete the first import of newly discovered writable assets. This also repairs
+        // sources copied by older editor builds that were registered as stale but never
+        // produced a last-good generation.
+        for (const auto& asset : state_->asset_registry->search())
+            if (!asset.read_only && asset.state == assets::asset_state::stale && !asset.has_last_good)
+                [[maybe_unused]] const auto initial_import =
+                    state_->asset_registry->reimport(asset.guid, assets::asset_streaming_priority::normal);
     }
     state_->asset_event_cursor = 0;
     // Project opening never synthesizes sample content. Rendering samples are
