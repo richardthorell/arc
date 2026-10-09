@@ -15,9 +15,14 @@ const createAsset = vi.fn().mockImplementation(async ({ path, kind }: { path: st
 }));
 const readText = vi.fn().mockRejectedValue(new Error('missing metadata'));
 const writeText = vi.fn().mockResolvedValue({ succeeded: true });
+const analyzeModelImport = vi.fn().mockImplementation(async (file: File) => ({
+  sourcePath: `D:/Drop/${file.name}`,
+  fileName: file.name,
+  dependencies: [],
+}));
 const importModel = vi
   .fn()
-  .mockResolvedValue({ path: 'Content/imported.glb', sourcePath: 'D:/Test/Content/imported.glb' });
+  .mockResolvedValue({ path: 'Content/imported.glb', sourcePath: 'D:/Test/Content/imported.glb', importedDependencies: [] });
 const importTexture = vi
   .fn()
   .mockResolvedValue({ path: 'Content/imported.png', sourcePath: 'D:/Test/Content/imported.png' });
@@ -27,9 +32,18 @@ beforeEach(() => {
   createAsset.mockClear();
   readText.mockReset().mockRejectedValue(new Error('missing metadata'));
   writeText.mockReset().mockResolvedValue({ succeeded: true });
+  analyzeModelImport.mockReset().mockImplementation(async (file: File) => ({
+    sourcePath: `D:/Drop/${file.name}`,
+    fileName: file.name,
+    dependencies: [],
+  }));
   importModel
     .mockReset()
-    .mockResolvedValue({ path: 'Content/imported.glb', sourcePath: 'D:/Test/Content/imported.glb' });
+    .mockResolvedValue({
+      path: 'Content/imported.glb',
+      sourcePath: 'D:/Test/Content/imported.glb',
+      importedDependencies: [],
+    });
   importTexture
     .mockReset()
     .mockResolvedValue({ path: 'Content/imported.png', sourcePath: 'D:/Test/Content/imported.png' });
@@ -38,7 +52,7 @@ beforeEach(() => {
     configurable: true,
     value: {
       assetSources: { list: vi.fn().mockResolvedValue([]) },
-      projects: { createAsset, readText, writeText, importModel, importTexture },
+      projects: { createAsset, readText, writeText, analyzeModelImport, importModel, importTexture },
     },
   });
 });
@@ -277,6 +291,40 @@ describe('ContentBrowserPanel', () => {
 
     await waitFor(() => expect(importModel).toHaveBeenCalledWith(model, 'Content/Props'));
     expect(importTexture).toHaveBeenCalledWith(texture, 'Content/Props');
+  });
+
+  it('reviews referenced model assets before copying them into the selected folder', async () => {
+    analyzeModelImport.mockResolvedValueOnce({
+      sourcePath: 'D:/Drop/tree.gltf',
+      fileName: 'tree.gltf',
+      dependencies: [
+        { path: 'tree.bin', sourcePath: 'D:/Drop/tree.bin', kind: 'buffer', exists: true },
+        { path: 'textures/bark.png', sourcePath: 'D:/Drop/textures/bark.png', kind: 'texture', exists: true },
+        { path: 'textures/missing.png', sourcePath: 'D:/Drop/textures/missing.png', kind: 'texture', exists: false },
+      ],
+    });
+    const view = renderBrowser();
+    fireEvent.click(view.getByRole('button', { name: 'Props' }));
+    const model = new File(['model'], 'tree.gltf');
+
+    fireEvent.drop(view.getByRole('listbox'), {
+      dataTransfer: { files: [model], types: ['Files'], dropEffect: 'none' },
+    });
+
+    expect(await view.findByRole('dialog', { name: 'Import tree.gltf' })).toBeInTheDocument();
+    expect(view.getByRole('checkbox', { name: 'tree.bin' })).toBeChecked();
+    expect(view.getByRole('checkbox', { name: 'textures/bark.png' })).toBeChecked();
+    expect(view.getByRole('checkbox', { name: 'textures/missing.png' })).toBeDisabled();
+    expect(importModel).not.toHaveBeenCalled();
+
+    fireEvent.click(view.getByRole('button', { name: 'Clear' }));
+    expect(view.getByRole('checkbox', { name: 'tree.bin' })).not.toBeChecked();
+    fireEvent.click(view.getByRole('checkbox', { name: 'textures/bark.png' }));
+    fireEvent.click(view.getByRole('button', { name: 'Import' }));
+
+    await waitFor(() =>
+      expect(importModel).toHaveBeenCalledWith(model, 'Content/Props', ['textures/bark.png']),
+    );
   });
 
   it('imports dropped files into folder cards without navigating into them', async () => {
