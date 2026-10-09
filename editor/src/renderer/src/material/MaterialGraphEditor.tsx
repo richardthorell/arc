@@ -239,7 +239,14 @@ function MaterialFunctionReferenceEditor({
                 const file = await window.arc.projects.readText(candidate.authoringPath, candidate.scope);
                 const document = JSON.parse(file.text) as MaterialFunctionAssetJson;
                 if (document.kind !== 'materialFunction' || document.version !== 1) return null;
-                return { asset: candidate.asset, document };
+                return {
+                  asset: {
+                    ...candidate.asset,
+                    name: document.name,
+                    title: document.name,
+                  },
+                  document,
+                };
               } catch {
                 return null;
               }
