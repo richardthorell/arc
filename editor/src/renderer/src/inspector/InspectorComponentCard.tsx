@@ -222,6 +222,20 @@ export function InspectorComponentCard<TContext extends object>({
         onAction={(action) => onAction?.(action)}
       />
     );
+    const materialError =
+      schema.id === 'meshRenderer' && field.id === 'material'
+        ? ((context as { meshRenderer?: { materialError?: string } | null }).meshRenderer?.materialError ?? '')
+        : '';
+    const displayedFieldControl = materialError ? (
+      <div className="inspector-material-error-control">
+        {fieldControl}
+        <div className="inspector-material-error-message" role="alert" title={materialError}>
+          Material failed to load. Using Error Material.
+        </div>
+      </div>
+    ) : (
+      fieldControl
+    );
     const inheritanceActive = field.inheritance?.active(context) ?? false;
     const inheritedOverride = inheritanceActive && (field.inheritance?.overridden(context) ?? false);
 
@@ -237,7 +251,7 @@ export function InspectorComponentCard<TContext extends object>({
         : undefined,
       control: inheritanceActive ? (
         <div className="inspector-inherited-property-control">
-          {fieldControl}
+          {displayedFieldControl}
           {inheritedOverride && (
             <UiButton
               className="inspector-inherited-property-revert"
@@ -250,7 +264,7 @@ export function InspectorComponentCard<TContext extends object>({
           )}
         </div>
       ) : (
-        fieldControl
+        displayedFieldControl
       ),
     });
 
@@ -259,14 +273,15 @@ export function InspectorComponentCard<TContext extends object>({
       const materialValue = (value as string) || '';
       const selectedMaterial = assets.find(
         (asset) =>
-          asset.kind === 'material' &&
+          (asset.kind === 'material' || asset.kind === 'materialInstance') &&
           (field.referenceMode === 'guid' ? (asset.guid || asset.id) === materialValue : asset.path === materialValue),
       );
       const canShowMaterialParameters =
         Boolean(materialValue) &&
         !mixed &&
         selectedMaterial?.scope !== 'procedural' &&
-        Boolean(selectedMaterial || (field.referenceMode !== 'guid' && /\.arcmat$/i.test(materialValue)));
+        !materialError &&
+        Boolean(selectedMaterial || (field.referenceMode !== 'guid' && /\.arcmat(?:inst)?$/i.test(materialValue)));
 
       if (canShowMaterialParameters) {
         propertyFields.push({
