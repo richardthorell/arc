@@ -682,6 +682,7 @@ export function MaterialGraphEditor({
     groupSize: GraphPoint;
     nodes: Map<string, GraphPoint>;
   } | null>(null);
+  const [groupResize, setGroupResize] = useState<{ start: GraphPoint; groupId: string; size: GraphPoint } | null>(null);
   const [pan, setPan] = useState<{ start: GraphPoint; viewport: GraphPoint } | null>(null);
   const [box, setBox] = useState<GraphSelection | null>(null);
   const [addMenu, setAddMenu] = useState<{ screen: GraphPoint; graph: GraphPoint } | null>(null);
@@ -879,7 +880,7 @@ export function MaterialGraphEditor({
   }, [document.id, frameAll, graph.nodes.length, loaded]);
 
   useEffect(() => {
-    if (!drag && !groupDrag && !pan && !box) return;
+    if (!drag && !groupDrag && !groupResize && !pan && !box) return;
     const move = (event: PointerEvent) => {
       const point = graphPoint(event.clientX, event.clientY);
       setPointerGraph(point);
@@ -914,6 +915,18 @@ export function MaterialGraphEditor({
             if (origin) node.position = [origin[0] + movedDeltaX, origin[1] + movedDeltaY];
           }
         }, false);
+      } else if (groupResize) {
+        const deltaX = point[0] - groupResize.start[0];
+        const deltaY = point[1] - groupResize.start[1];
+        mutate((next) => {
+          const group = next.groups?.find((candidate) => candidate.id === groupResize.groupId);
+          if (!group) return;
+          const rawSize: GraphPoint = [
+            Math.max(240, groupResize.size[0] + deltaX),
+            Math.max(160, groupResize.size[1] + deltaY),
+          ];
+          group.size = snapEnabled ? snapMaterialGraphPoint(rawSize) : rawSize;
+        }, false);
       } else if (pan) {
         updateViewport({
           x: pan.viewport[0] + (event.clientX - pan.start[0]),
@@ -924,7 +937,7 @@ export function MaterialGraphEditor({
       }
     };
     const up = () => {
-      if (drag || groupDrag) commitGraph(graph, { recordHistory: true });
+      if (drag || groupDrag || groupResize) commitGraph(graph, { recordHistory: true });
       if (box) {
         const bounds = graphSelectionBounds(box);
         setSelectedNodes(
@@ -943,6 +956,7 @@ export function MaterialGraphEditor({
       }
       setDrag(null);
       setGroupDrag(null);
+      setGroupResize(null);
       setPan(null);
       setBox(null);
     };
@@ -952,7 +966,20 @@ export function MaterialGraphEditor({
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
     };
-  }, [box, commitGraph, document, drag, graph, graphPoint, groupDrag, mutate, pan, snapEnabled, updateViewport]);
+  }, [
+    box,
+    commitGraph,
+    document,
+    drag,
+    graph,
+    graphPoint,
+    groupDrag,
+    groupResize,
+    mutate,
+    pan,
+    snapEnabled,
+    updateViewport,
+  ]);
 
   const deleteSelected = () => {
     if (document.readOnly || selectedNodes.size === 0) return;
@@ -1139,11 +1166,11 @@ export function MaterialGraphEditor({
       const memberIds = new Set(members.map((node) => node.id));
       // A node belongs to at most one movable group. Re-grouping selected nodes
       // removes them from an older group before adding the new container.
-      for (const group of next.groups ?? [])
-        if (group.nodeIds) group.nodeIds = group.nodeIds.filter((nodeId) => !memberIds.has(nodeId));
-      next.groups = (next.groups ?? []).filter(
-        (group) => (group.nodeIds?.length ?? 0) > 0 || (group.position && group.size),
-      );
+      next.groups = (next.groups ?? []).flatMap((group) => {
+        if (!group.nodeIds) return [group];
+        const nodeIds = group.nodeIds.filter((nodeId) => !memberIds.has(nodeId));
+        return nodeIds.length > 0 ? [{ ...group, nodeIds }] : [];
+      });
       next.groups.push({
         id,
         name,
@@ -1371,6 +1398,23 @@ export function MaterialGraphEditor({
                 >
                   {group.name}
                 </button>
+                {!document.readOnly && (
+                  <button
+                    aria-label={`Resize ${group.name} group`}
+                    className="material-graph-group-resize"
+                    onPointerDown={(event) => {
+                      if (event.button !== 0) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setGroupResize({
+                        start: graphPoint(event.clientX, event.clientY),
+                        groupId: group.id,
+                        size: [rect.width, rect.height],
+                      });
+                    }}
+                    type="button"
+                  />
+                )}
               </div>
             );
           })}
