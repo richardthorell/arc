@@ -258,7 +258,8 @@ function ViewportDropdown({
           x={position.x}
           y={position.y}
           onClick={(event) => {
-            if ((event.target as Element).closest('button')) setOpen(false);
+            const target = event.target;
+            if (target instanceof Element && target.closest('button')) setOpen(false);
           }}
           onRequestClose={() => setOpen(false)}
         >
