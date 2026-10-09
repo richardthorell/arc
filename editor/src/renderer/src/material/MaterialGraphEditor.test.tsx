@@ -76,6 +76,34 @@ describe('MaterialGraphEditor', () => {
     expect(nextRoughness.position[1] - origin[1]).toBe(nextGroup.position[1] - 40);
   });
 
+  it('creates groups from the toolbar and context menu', () => {
+    const graph = createDefaultMaterialGraph();
+    const onGraphChange = vi.fn();
+
+    render(<MaterialGraphEditor document={document} graph={graph} onGraphChange={onGraphChange} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Group' }));
+    expect(onGraphChange).toHaveBeenCalled();
+    const emptyGroupGraph = onGraphChange.mock.calls.at(-1)![0];
+    expect(emptyGroupGraph.groups).toHaveLength(1);
+    expect(emptyGroupGraph.groups[0]).toMatchObject({ name: 'Group 1', size: [520, 320] });
+
+    onGraphChange.mockClear();
+    const roughness = graph.nodes.find((node) => node.parameter?.name === 'Roughness')!;
+    const roughnessNode = document.querySelector<HTMLElement>(`[data-node-id="${roughness.id}"]`);
+    expect(roughnessNode).not.toBeNull();
+    fireEvent.pointerDown(roughnessNode!, { button: 0 });
+    fireEvent.contextMenu(screen.getByRole('application', { name: 'Material graph' }), {
+      clientX: 300,
+      clientY: 300,
+    });
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Group Selected Nodes' }));
+
+    expect(onGraphChange).toHaveBeenCalled();
+    const selectedGroupGraph = onGraphChange.mock.calls.at(-1)![0];
+    expect(selectedGroupGraph.groups[0].nodeIds).toEqual([roughness.id]);
+  });
+
   it('renders shared diagnostic details and focuses the affected node', () => {
     const graph = createDefaultMaterialGraph();
     const roughness = graph.nodes.find((node) => node.parameter?.name === 'Roughness');
