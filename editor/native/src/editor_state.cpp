@@ -73,6 +73,22 @@ render::material_handle ensure_default_material(editor_scene_state& scene, rende
     return scene.primitive_material;
 }
 
+render::material_handle ensure_error_material(editor_scene_state& scene, render::renderer& renderer)
+{
+    if (scene.error_material.valid()) return scene.error_material;
+
+    render::material_descriptor material;
+    material.name = "Error Material";
+    material.shading_model = render::material_shading_model::unlit;
+    material.base_color = math::vector4f{1.0f, 0.0f, 0.65f, 1.0f};
+    material.emissive_factor = math::vector3f{1.0f, 0.0f, 0.65f};
+    material.emissive_strength = 3.0f;
+    material.roughness = 1.0f;
+    scene.error_material = renderer.create_material(material);
+    return scene.error_material;
+}
+
+
 render::material_handle ensure_terrain_material(editor_scene_state& scene, render::renderer& renderer)
 {
     if (scene.terrain_material.valid()) return scene.terrain_material;
@@ -391,10 +407,18 @@ render::material_handle create_default_floor_material(editor_scene_state& scene,
 {
     remember_builtin_asset_roots(scene, editor_assets);
     scene.floor_material_asset = {};
+    scene.floor_material_asset.expected_type = assets::asset_types::material_instance;
+    if (const auto guid = assets::parse_asset_guid("6a8c7339-3a9f-49d5-9d4f-1b5a73d02a91"))
+        scene.floor_material_asset.guid = *guid;
+    scene.floor_material_asset.path_hint = "builtin/materials/floor.arcmatinst";
+    scene.floor_material_error.clear();
+
+    bool source_found{};
     for (const auto& builtin_root : editor_assets.builtin_roots)
     {
         const auto floor_path = builtin_root / "materials" / "floor.arcmatinst";
         if (!std::filesystem::is_regular_file(floor_path)) continue;
+        source_found = true;
 
         material_asset authored;
         const auto floor =
@@ -402,14 +426,14 @@ render::material_handle create_default_floor_material(editor_scene_state& scene,
         if (!floor.valid()) continue;
 
         scene.floor_material = floor;
-        scene.floor_material_asset.expected_type = assets::asset_types::material_instance;
-        if (const auto guid = assets::parse_asset_guid("6a8c7339-3a9f-49d5-9d4f-1b5a73d02a91"))
-            scene.floor_material_asset.guid = *guid;
-        scene.floor_material_asset.path_hint = "builtin/materials/floor.arcmatinst";
         return floor;
     }
 
-    scene.floor_material = ensure_default_material(scene, renderer);
+    scene.floor_material_error = source_found
+                                     ? "Floor failed to load or realize. Rendering with Error Material."
+                                     : "Floor Material Instance is missing. Rendering with Error Material.";
+    arc::diagnostics::error("editor.materials", scene.floor_material_error);
+    scene.floor_material = ensure_error_material(scene, renderer);
     return scene.floor_material;
 }
 
@@ -592,14 +616,15 @@ ecs::entity add_default_floor_to_scene(editor_scene_state& scene, render::render
     scene::mesh_renderer_component renderer_component;
     renderer_component.mesh = mesh_handle;
     renderer_component.material =
-        scene.floor_material.valid() ? scene.floor_material : ensure_default_material(scene, renderer);
+        scene.floor_material.valid() ? scene.floor_material : ensure_error_material(scene, renderer);
     scene.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
     scene.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
     scene.scene.emplace<scene::hierarchy_component>(entity);
     scene.asset_bindings.push_back({.entity = scene.scene.get<scene::persistent_id_component>(entity).value,
                                     .source_kind = "primitive",
                                     .subresource = primitive_type_name(editor_primitive_type::plane),
-                                    .material = scene.floor_material_asset});
+                                    .material = scene.floor_material_asset,
+                                    .material_error = scene.floor_material_error});
     scene.primitive_entities.push_back(entity);
     select_entity(scene.scene, entity, scene.selected_entity);
     return entity;
