@@ -1,0 +1,682 @@
+{
+  "kind": "materialFunction",
+  "version": 1,
+  "name": "UV Transform",
+  "description": "Reusable UV0 tiling, rotation (radians), and offset around a configurable pivot. Defaults preserve the original UV coordinates.",
+  "inputs": [
+    {
+      "id": "tiling",
+      "name": "Tiling",
+      "type": "vec2",
+      "default": [
+        1,
+        1
+      ]
+    },
+    {
+      "id": "offset",
+      "name": "Offset",
+      "type": "vec2",
+      "default": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "pivot",
+      "name": "Pivot",
+      "type": "vec2",
+      "default": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "rotation",
+      "name": "Rotation (radians)",
+      "type": "float",
+      "default": 0
+    }
+  ],
+  "outputs": [
+    {
+      "id": "uv",
+      "name": "UV",
+      "type": "vec2"
+    }
+  ],
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "input-tiling",
+        "type": "functionInput",
+        "position": [
+          30,
+          90
+        ],
+        "values": {
+          "input": "tiling",
+          "name": "Tiling",
+          "valueType": "vec2"
+        }
+      },
+      {
+        "id": "input-offset",
+        "type": "functionInput",
+        "position": [
+          30,
+          200
+        ],
+        "values": {
+          "input": "offset",
+          "name": "Offset",
+          "valueType": "vec2"
+        }
+      },
+      {
+        "id": "input-pivot",
+        "type": "functionInput",
+        "position": [
+          30,
+          310
+        ],
+        "values": {
+          "input": "pivot",
+          "name": "Pivot",
+          "valueType": "vec2"
+        }
+      },
+      {
+        "id": "input-rotation",
+        "type": "functionInput",
+        "position": [
+          30,
+          420
+        ],
+        "values": {
+          "input": "rotation",
+          "name": "Rotation (radians)",
+          "valueType": "float"
+        }
+      },
+      {
+        "id": "texcoord",
+        "type": "texCoord",
+        "position": [
+          40,
+          550
+        ],
+        "values": {}
+      },
+      {
+        "id": "axis-x",
+        "type": "vector2",
+        "position": [
+          350,
+          650
+        ],
+        "values": {
+          "value": [
+            1,
+            0
+          ]
+        }
+      },
+      {
+        "id": "axis-y",
+        "type": "vector2",
+        "position": [
+          350,
+          760
+        ],
+        "values": {
+          "value": [
+            0,
+            1
+          ]
+        }
+      },
+      {
+        "id": "tiled",
+        "type": "multiply",
+        "position": [
+          300,
+          100
+        ],
+        "values": {}
+      },
+      {
+        "id": "centered",
+        "type": "subtract",
+        "position": [
+          530,
+          100
+        ],
+        "values": {}
+      },
+      {
+        "id": "project-x",
+        "type": "dot",
+        "position": [
+          710,
+          190
+        ],
+        "values": {}
+      },
+      {
+        "id": "project-y",
+        "type": "dot",
+        "position": [
+          710,
+          310
+        ],
+        "values": {}
+      },
+      {
+        "id": "cos",
+        "type": "cosine",
+        "position": [
+          570,
+          100
+        ],
+        "values": {}
+      },
+      {
+        "id": "sin",
+        "type": "sine",
+        "position": [
+          570,
+          450
+        ],
+        "values": {}
+      },
+      {
+        "id": "xcos",
+        "type": "multiply",
+        "position": [
+          925,
+          150
+        ],
+        "values": {}
+      },
+      {
+        "id": "ysin",
+        "type": "multiply",
+        "position": [
+          925,
+          270
+        ],
+        "values": {}
+      },
+      {
+        "id": "xsin",
+        "type": "multiply",
+        "position": [
+          925,
+          390
+        ],
+        "values": {}
+      },
+      {
+        "id": "ycos",
+        "type": "multiply",
+        "position": [
+          925,
+          510
+        ],
+        "values": {}
+      },
+      {
+        "id": "rotated-x",
+        "type": "subtract",
+        "position": [
+          1130,
+          200
+        ],
+        "values": {}
+      },
+      {
+        "id": "rotated-y",
+        "type": "add",
+        "position": [
+          1130,
+          440
+        ],
+        "values": {}
+      },
+      {
+        "id": "vector-x",
+        "type": "multiply",
+        "position": [
+          1330,
+          220
+        ],
+        "values": {}
+      },
+      {
+        "id": "vector-y",
+        "type": "multiply",
+        "position": [
+          1330,
+          410
+        ],
+        "values": {}
+      },
+      {
+        "id": "combined",
+        "type": "add",
+        "position": [
+          1520,
+          300
+        ],
+        "values": {}
+      },
+      {
+        "id": "restored-pivot",
+        "type": "add",
+        "position": [
+          1710,
+          300
+        ],
+        "values": {}
+      },
+      {
+        "id": "translated",
+        "type": "add",
+        "position": [
+          1900,
+          300
+        ],
+        "values": {}
+      },
+      {
+        "id": "function-output",
+        "type": "functionOutput",
+        "position": [
+          2110,
+          300
+        ],
+        "values": {
+          "pins": [
+            {
+              "id": "uv",
+              "name": "UV",
+              "type": "vec2"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "texcoord-tiled-a",
+        "from": {
+          "nodeId": "texcoord",
+          "pin": "uv"
+        },
+        "to": {
+          "nodeId": "tiled",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "input-tiling-tiled-b",
+        "from": {
+          "nodeId": "input-tiling",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "tiled",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "tiled-centered-a",
+        "from": {
+          "nodeId": "tiled",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "centered",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "input-pivot-centered-b",
+        "from": {
+          "nodeId": "input-pivot",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "centered",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "centered-project-x-a",
+        "from": {
+          "nodeId": "centered",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "project-x",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "axis-x-project-x-b",
+        "from": {
+          "nodeId": "axis-x",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "project-x",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "centered-project-y-a",
+        "from": {
+          "nodeId": "centered",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "project-y",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "axis-y-project-y-b",
+        "from": {
+          "nodeId": "axis-y",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "project-y",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "input-rotation-cos-value",
+        "from": {
+          "nodeId": "input-rotation",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "cos",
+          "pin": "value"
+        }
+      },
+      {
+        "id": "input-rotation-sin-value",
+        "from": {
+          "nodeId": "input-rotation",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "sin",
+          "pin": "value"
+        }
+      },
+      {
+        "id": "project-x-xcos-a",
+        "from": {
+          "nodeId": "project-x",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "xcos",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "cos-xcos-b",
+        "from": {
+          "nodeId": "cos",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "xcos",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "project-y-ysin-a",
+        "from": {
+          "nodeId": "project-y",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "ysin",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "sin-ysin-b",
+        "from": {
+          "nodeId": "sin",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "ysin",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "project-x-xsin-a",
+        "from": {
+          "nodeId": "project-x",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "xsin",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "sin-xsin-b",
+        "from": {
+          "nodeId": "sin",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "xsin",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "project-y-ycos-a",
+        "from": {
+          "nodeId": "project-y",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "ycos",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "cos-ycos-b",
+        "from": {
+          "nodeId": "cos",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "ycos",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "xcos-rotated-x-a",
+        "from": {
+          "nodeId": "xcos",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "rotated-x",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "ysin-rotated-x-b",
+        "from": {
+          "nodeId": "ysin",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "rotated-x",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "xsin-rotated-y-a",
+        "from": {
+          "nodeId": "xsin",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "rotated-y",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "ycos-rotated-y-b",
+        "from": {
+          "nodeId": "ycos",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "rotated-y",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "rotated-x-vector-x-a",
+        "from": {
+          "nodeId": "rotated-x",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "vector-x",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "axis-x-vector-x-b",
+        "from": {
+          "nodeId": "axis-x",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "vector-x",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "rotated-y-vector-y-a",
+        "from": {
+          "nodeId": "rotated-y",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "vector-y",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "axis-y-vector-y-b",
+        "from": {
+          "nodeId": "axis-y",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "vector-y",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "vector-x-combined-a",
+        "from": {
+          "nodeId": "vector-x",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "combined",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "vector-y-combined-b",
+        "from": {
+          "nodeId": "vector-y",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "combined",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "combined-restored-pivot-a",
+        "from": {
+          "nodeId": "combined",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "restored-pivot",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "input-pivot-restored-pivot-b",
+        "from": {
+          "nodeId": "input-pivot",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "restored-pivot",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "restored-pivot-translated-a",
+        "from": {
+          "nodeId": "restored-pivot",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "translated",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "input-offset-translated-b",
+        "from": {
+          "nodeId": "input-offset",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "translated",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "translated-function-output-uv",
+        "from": {
+          "nodeId": "translated",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "function-output",
+          "pin": "uv"
+        }
+      }
+    ],
+    "viewport": {
+      "x": 20,
+      "y": 20,
+      "zoom": 0.65
+    }
+  }
+}
