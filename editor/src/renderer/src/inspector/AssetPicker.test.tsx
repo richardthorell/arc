@@ -312,7 +312,7 @@ describe('AssetPicker', () => {
     expect(screen.getByRole('button', { name: 'Open Game Startup in Flow Graph Editor' })).toBeVisible();
   });
 
-  it('rejects cubemaps in Texture2D fields and accepts them in TextureCube fields', async () => {
+  it('rejects cubemaps in 2D Texture fields and accepts them in Cube Texture fields', async () => {
     const assets = [
       {
         id: 'albedo-guid',
@@ -340,7 +340,7 @@ describe('AssetPicker', () => {
     expect(screen.getByRole('button', { name: 'Select Studio Sky' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Select Studio Sky' })).toHaveAttribute(
       'title',
-      'Expected Texture2D · TextureCube provided',
+      'Expected 2D Texture · Cube Texture provided',
     );
     unmount();
 

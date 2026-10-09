@@ -379,7 +379,7 @@ export function AssetPicker({
 export type TextureDimension = '2d' | 'cube' | '3d';
 
 const textureDimensionLabel = (dimension: TextureDimension) =>
-  dimension === 'cube' ? 'TextureCube' : dimension === '3d' ? 'Texture3D' : 'Texture2D';
+  dimension === 'cube' ? 'Cube Texture' : dimension === '3d' ? '3D Texture' : '2D Texture';
 
 const textureAssetDimension = (asset: AssetPickerItem): TextureDimension =>
   asset.textureDimension ?? (asset.kind === 'environment' ? 'cube' : '2d');
