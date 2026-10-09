@@ -350,7 +350,7 @@ export function MaterialParameterSubsection({
                 try {
                   const scope = asset.scope === 'builtin' ? 'builtin' : 'project';
                   const authoringPath = scope === 'builtin' ? asset.path : asset.sourcePath || asset.path;
-                  const referencePath = asset.sourcePath || asset.path;
+                  const referencePath = scope === 'builtin' ? authoringPath : asset.sourcePath || asset.path;
                   const path = await projectRelativeMaterialPath(authoringPath, scope);
                   const source = await window.arc.projects.readText(path, scope);
                   const document = JSON.parse(source.text) as MaterialFunctionAssetJson;
@@ -629,6 +629,30 @@ export function MaterialParameterSubsection({
                           <RotateCcw aria-hidden="true" size={12} />
                         </button>
                       ) : null;
+
+                      if (parameter.editorKind === 'texture') {
+                        const textureValue = effectiveTexture(parameter);
+                        return (
+                          <div className="inspector-material-parameter" key={parameter.nodeId}>
+                            <TexturePicker
+                              allowEmpty
+                              assets={assets}
+                              label={parameter.name}
+                              value={textureValue}
+                              onChange={(texture) =>
+                                void commitOverride(parameter, {
+                                  parameterId: parameter.nodeId,
+                                  name: parameter.name,
+                                  type: parameter.type,
+                                  kind: parameter.editorKind,
+                                  texture,
+                                })
+                              }
+                            />
+                            {reset}
+                          </div>
+                        );
+                      }
 
                       if (parameter.editorKind === 'color') {
                         const rgba: Vec4 = {
