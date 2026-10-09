@@ -82,7 +82,7 @@ TEST_CASE("WAV parser rejects malformed and unsupported sources")
     CHECK(not_riff.code == arc::assets::wav_error_code::invalid_riff);
 
     auto truncated = pcm_wav();
-    truncated.resize(40);
+    truncated.resize(20);
     const auto truncated_result = arc::assets::parse_wav(truncated);
     CHECK_FALSE(truncated_result.succeeded());
     CHECK(truncated_result.code == arc::assets::wav_error_code::truncated);
