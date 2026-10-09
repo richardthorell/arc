@@ -350,14 +350,22 @@ export function InspectorPanel({
         );
       }
     } else if (component === 'flow' && next.flow) {
+      const flowReference = selectedAsset ? hostAssetReference(selectedAsset) : null;
+      const normalizedFlow =
+        flowReference && path === 'flow.graphGuid'
+          ? { ...next.flow, graphGuid: flowReference.guid, graphPathHint: flowReference.pathHint || '' }
+          : next.flow;
+      const normalizedNext =
+        normalizedFlow === next.flow ? next : ({ ...next, flow: normalizedFlow } as InspectorEntitySnapshot);
       void runMutation(
-        next,
+        normalizedNext,
         'entity.setFlow',
         {
-          ...entityPayload(next),
-          graphGuid: next.flow.graphGuid,
-          graphPathHint: next.flow.graphPathHint,
-          enabled: next.flow.enabled,
+          ...entityPayload(normalizedNext),
+          graphGuid: normalizedFlow.graphGuid,
+          graphPathHint: normalizedFlow.graphPathHint,
+          ...(flowReference ? { asset: flowReference } : {}),
+          enabled: normalizedFlow.enabled,
         },
         settled,
         transactionKey,
@@ -376,7 +384,7 @@ export function InspectorPanel({
       } else if (path === 'water.presetPath') {
         normalizedWater = {
           ...normalizedWater,
-          presetGuid: '',
+          presetGuid: selectedAsset?.guid || selectedAsset?.id || '',
           presetOverrideMask: next.water.presetPath
             ? draft?.water?.presetPath
               ? next.water.presetOverrideMask
@@ -395,7 +403,8 @@ export function InspectorPanel({
         normalizedWater === next.water ? next : ({ ...next, water: normalizedWater } as InspectorEntitySnapshot);
       const water = {
         ...normalizedWater,
-        materialGuid: path === 'water.materialPath' ? '' : normalizedWater.materialGuid,
+        materialGuid:
+          path === 'water.materialPath' ? selectedAsset?.guid || selectedAsset?.id || '' : normalizedWater.materialGuid,
         absorption: [normalizedWater.absorption.x, normalizedWater.absorption.y, normalizedWater.absorption.z],
         scattering: [normalizedWater.scattering.x, normalizedWater.scattering.y, normalizedWater.scattering.z],
         shapePoints: normalizedWater.shapePoints.map((point) => ({
