@@ -129,6 +129,109 @@ describe('MaterialPicker exported parameters', () => {
     expect(screen.getByRole('button', { name: 'Choose Albedo asset' })).toHaveTextContent('default');
   });
 
+  it('shows Function Slots as dropdowns and swaps function-specific parameters', async () => {
+    const defaultFunction = {
+      id: 'default-base-color',
+      guid: 'default-base-color-guid',
+      name: 'default_base_color.arcmatfn',
+      path: 'assets/material_functions/default_base_color.arcmatfn',
+      kind: 'materialFunction',
+      status: 'ready' as const,
+      scope: 'builtin' as const,
+    };
+    const checkerFunction = {
+      id: 'checker',
+      guid: 'checker-guid',
+      name: 'checker.arcmatfn',
+      path: 'assets/material_functions/checker.arcmatfn',
+      kind: 'materialFunction',
+      status: 'ready' as const,
+      scope: 'builtin' as const,
+    };
+    const functionDocument = (name: string, inputs: unknown[]) =>
+      JSON.stringify({
+        kind: 'materialFunction',
+        version: 1,
+        name,
+        inputs,
+        outputs: [{ id: 'color', name: 'Color', type: 'vec3' }],
+        graph: { version: 1, nodes: [], connections: [] },
+      });
+    const materialWithSlot = JSON.stringify({
+      version: 4,
+      name: 'Standard Lit',
+      graph: {
+        version: 1,
+        nodes: [
+          {
+            id: 'base-color',
+            type: 'colorRgba',
+            position: [0, 0],
+            values: { value: [1, 1, 1, 1] },
+            parameter: { exposed: true, name: 'Base Color Tint' },
+          },
+          {
+            id: 'base-color-source',
+            type: 'functionSlot',
+            position: [100, 0],
+            values: {
+              slotId: 'base-color-source',
+              name: 'Base Color Source',
+              path: 'material_functions/default_base_color.arcmatfn',
+              inputPins: [{ id: 'baseColor', name: 'Base Color', type: 'vec3' }],
+              outputPins: [{ id: 'color', name: 'Color', type: 'vec3' }],
+            },
+          },
+          { id: 'material-output', type: 'output', position: [300, 0], values: {} },
+        ],
+        connections: [],
+      },
+    });
+
+    readText.mockImplementation(async (path: string) => {
+      if (path.endsWith('default_base_color.arcmatfn'))
+        return {
+          text: functionDocument('Default Base Color', [{ id: 'baseColor', name: 'Base Color', type: 'vec3' }]),
+        };
+      if (path.endsWith('checker.arcmatfn'))
+        return {
+          text: functionDocument('Checker', [
+            { id: 'baseColor', name: 'Base Color', type: 'vec3' },
+            { id: 'colorA', name: 'Color A', type: 'vec3', default: [0.8, 0.8, 0.8] },
+            { id: 'colorB', name: 'Color B', type: 'vec3', default: [0.2, 0.2, 0.2] },
+            { id: 'cellSize', name: 'Cell Size', type: 'float', default: 1 },
+          ]),
+        };
+      return { text: materialWithSlot };
+    });
+
+    render(
+      <MaterialPicker
+        assets={[material, defaultFunction, checkerFunction]}
+        label="Material"
+        value={material.path}
+        onChange={() => undefined}
+      />,
+    );
+
+    const selector = await screen.findByLabelText('Base Color Source function');
+    expect(selector).toHaveValue('default-base-color-guid');
+    expect(screen.queryByLabelText('Cell Size')).not.toBeInTheDocument();
+
+    fireEvent.change(selector, { target: { value: 'checker-guid' } });
+
+    await waitFor(() => expect(command).toHaveBeenCalledTimes(1));
+    expect(command).toHaveBeenCalledWith(
+      'entity.setMaterial',
+      expect.objectContaining({
+        path: expect.stringMatching(/^__arc_primitive_parameter__\/__arc_material_function__[0-9a-f]+\/0$/),
+      }),
+    );
+    expect(await screen.findByRole('button', { name: 'Open Color A color picker' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Open Color B color picker' })).toBeVisible();
+    expect(screen.getByLabelText('Cell Size')).toHaveValue('1.000');
+  });
+
   it('uses the shared texture asset picker for texture overrides', async () => {
     render(
       <MaterialPicker assets={[material, texture]} label="Material" value={material.path} onChange={() => undefined} />,
