@@ -224,7 +224,7 @@ function thumbnailRequest(provider: AssetThumbnailProvider, path: string): Promi
   return request;
 }
 
-const openKnownAsset = (asset: AssetPickerItem, assetTypeLabel: string) => {
+const openKnownAsset = (asset: AssetPickerItem) => {
   if (asset.scope === 'procedural') return;
   const kind =
     asset.kind === 'materialInstance'
@@ -322,7 +322,7 @@ export function AssetPicker({
       selected.kind === 'materialInstance' ||
       selected.kind === 'materialFunction' ||
       selected.kind === 'flow')
-      ? (asset: AssetPickerItem) => openKnownAsset(asset, assetTypeLabel)
+      ? (asset: AssetPickerItem) => openKnownAsset(asset)
       : undefined;
   const openSelected = onOpen ?? defaultOpen;
   const canOpen = Boolean(selected && openSelected && !mixed);
