@@ -340,6 +340,64 @@ describe('MaterialGraphEditor', () => {
     expect(nextCall.values.path).toBe(defaultPath);
   });
 
+  it('renders read-only Function Call references without mounting editable row pickers', async () => {
+    const defaultPath = 'material_functions/default_base_color.arcmatfn';
+    const functionDocument = JSON.stringify({
+      kind: 'materialFunction',
+      version: 1,
+      name: 'Color',
+      inputs: [],
+      outputs: [{ id: 'color', name: 'Color', type: 'vec3' }],
+      graph: { version: 1, nodes: [], connections: [] },
+    });
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        host: {
+          query: vi.fn(async () => ({
+            succeeded: true,
+            payload: {
+              assets: [
+                {
+                  guid: 'default-guid',
+                  path: defaultPath,
+                  sourcePath: defaultPath,
+                  scope: 'builtin',
+                  readOnly: true,
+                  kind: 'materialFunction',
+                  state: 'ready',
+                },
+              ],
+            },
+          })),
+        },
+        projects: {
+          readText: vi.fn(async () => ({ text: functionDocument })),
+        },
+      },
+    });
+
+    const graph = createDefaultMaterialGraph();
+    const call = createMaterialNode('functionCall', [720, 160], {
+      name: 'Base Color Source',
+      path: defaultPath,
+      functions: [{ path: defaultPath }],
+      inputPins: [],
+      outputPins: [{ id: 'color', name: 'Color', type: 'vec3' }],
+    });
+    graph.nodes.push(call);
+
+    const readOnlyDocument = { ...document, readOnly: true };
+    const { container } = render(<MaterialGraphEditor document={readOnlyDocument} graph={graph} />);
+    const callNode = container.querySelector<HTMLElement>(`[data-node-id="${call.id}"]`);
+    expect(callNode).not.toBeNull();
+
+    expect(await within(callNode!).findByText('Color')).toBeInTheDocument();
+    expect(within(callNode!).getByRole('radio', { name: 'Set Color as default' })).toBeDisabled();
+    expect(within(callNode!).getByRole('button', { name: 'Open Color in Material Function Editor' })).toBeEnabled();
+    expect(within(callNode!).queryByRole('button', { name: 'Add Material Function' })).not.toBeInTheDocument();
+  });
+
   it('uses the material graph domain to protect the output node from deletion', () => {
     render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
     const output = screen.getByText('Material Output').closest('article');
