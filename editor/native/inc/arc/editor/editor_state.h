@@ -95,6 +95,10 @@ struct editor_scene_state
     // Original known-component objects are retained so future fields survive
     // editing, history, duplication, prefab operations, and resaving.
     std::vector<preserved_component_record> preserved_component_records;
+    /** Active project root used to resolve project-relative authored asset references. */
+    std::filesystem::path project_root;
+    /** Writable project asset roots used to resolve content-root-relative authored asset references. */
+    std::vector<std::filesystem::path> project_asset_roots;
     /** Built-in asset roots retained so world-feature helpers can resolve authored engine assets. */
     std::vector<std::filesystem::path> builtin_asset_roots;
     /** Per-Water authored material bases used to preserve compiled pass programs across appearance updates. */
