@@ -38,6 +38,19 @@ describe('MaterialGraphEditor', () => {
     expect(container.querySelectorAll('[data-graph-pin-key]').length).toBeGreaterThan(0);
   });
 
+  it('renders authored material graph groups behind their nodes', () => {
+    const graph = createDefaultMaterialGraph();
+    const roughness = graph.nodes.find((node) => node.parameter?.name === 'Roughness')!;
+    graph.groups = [{ id: 'surface', name: 'Surface', nodeIds: [roughness.id], order: 10 }];
+
+    const { container } = render(<MaterialGraphEditor document={document} graph={graph} />);
+
+    const group = container.querySelector('.material-graph-group');
+    expect(group).not.toBeNull();
+    expect(group).toHaveTextContent('Surface');
+    expect(group).toHaveStyle({ position: 'absolute' });
+  });
+
   it('renders shared diagnostic details and focuses the affected node', () => {
     const graph = createDefaultMaterialGraph();
     const roughness = graph.nodes.find((node) => node.parameter?.name === 'Roughness');
