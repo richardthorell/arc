@@ -14,7 +14,7 @@ export type AssetReferenceSource = {
 };
 
 export const hostAssetReference = (asset: AssetReferenceSource): HostAssetReference | null => {
-  const guid = asset.guid || asset.id;
+  const guid = asset.guid;
   if (!guid || asset.scope === 'procedural') return null;
   return {
     guid,
