@@ -459,7 +459,7 @@ const editor_material_record* base_material_record(editor_scene_state& scene, ec
 }
 
 std::filesystem::path resolve_texture_path(const editor_scene_state& scene, const editor_material_record& material,
-                                                   std::string_view path)
+                                           std::string_view path)
 {
     if (path.empty()) return {};
     std::filesystem::path authored{path};
@@ -786,10 +786,7 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
         if (std::ranges::find(parameter_layout, binding.parameter_id, &render::shader_parameter_descriptor::id) !=
             parameter_layout.end())
             continue;
-        parameter_layout.push_back({.id = binding.parameter_id,
-                                    .name = "Texture",
-                                    .type = binding.type,
-                                    .size = 0});
+        parameter_layout.push_back({.id = binding.parameter_id, .name = "Texture", .type = binding.type, .size = 0});
     }
 
     render::material_instance_descriptor instance;

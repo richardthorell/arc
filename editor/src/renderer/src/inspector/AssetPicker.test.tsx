@@ -139,9 +139,7 @@ describe('AssetPicker', () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Choose Base Color asset' }));
-    await waitFor(() =>
-      expect(thumbnailProvider).toHaveBeenCalledWith('Bricks071_4K_JPG_Color.jpg'),
-    );
+    await waitFor(() => expect(thumbnailProvider).toHaveBeenCalledWith('Bricks071_4K_JPG_Color.jpg'));
     await user.click(screen.getByRole('button', { name: 'Select Bricks071_4K_JPG_Color' }));
 
     expect(onChange).toHaveBeenCalledWith('Content/Bricks071_4K_JPG_Color.jpg');

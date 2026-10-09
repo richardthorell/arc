@@ -304,7 +304,11 @@ export function AssetPicker({
             <Plus size={14} />
           ) : (
             <>
-              <AssetThumbnail asset={selected} path={mixed ? '' : selected?.path || value} provider={thumbnailProvider} />
+              <AssetThumbnail
+                asset={selected}
+                path={mixed ? '' : selected?.path || value}
+                provider={thumbnailProvider}
+              />
               <span className="asset-reference-copy">
                 <strong>{mixed ? 'Mixed' : value ? displayNameOf(selected, value) : 'None'}</strong>
                 <small>
