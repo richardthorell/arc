@@ -712,6 +712,7 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
     }
 
     render::material_descriptor specialized_material = base.asset.material;
+    bool function_specialized = false;
     if (const auto specialized = realize_function_specialization(scene, renderer, base, overrides))
     {
         if (!specialized->succeeded)
@@ -721,6 +722,7 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
             return false;
         }
         specialized_material = specialized->material;
+        function_specialized = true;
     }
 
     if (!specialized_material.runtime_program)
@@ -737,7 +739,7 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
     auto base_extension = base.path.extension().string();
     std::transform(base_extension.begin(), base_extension.end(), base_extension.begin(),
                    [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
-    if (base_extension == ".arcmatinst")
+    if (function_specialized && base_extension == ".arcmatinst")
     {
         const auto authored_instance = json::parse(read_text_file(base.path), nullptr, false);
         if (authored_instance.is_object())
