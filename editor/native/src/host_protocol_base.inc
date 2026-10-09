@@ -1491,7 +1491,8 @@ std::string to_json(const host_mesh_renderer_snapshot& mesh_renderer)
            ",\"hasMaterial\":" + bool_json(mesh_renderer.has_material) +
            ",\"assetBackedMaterial\":" + bool_json(mesh_renderer.asset_backed_material) +
            ",\"materialName\":" + quote(mesh_renderer.material_name) +
-           ",\"materialPath\":" + quote(mesh_renderer.material_path) + '}';
+           ",\"materialPath\":" + quote(mesh_renderer.material_path) +
+           ",\"materialError\":" + quote(mesh_renderer.material_error) + '}';
 }
 
 std::string to_json(const host_terrain_snapshot& terrain)

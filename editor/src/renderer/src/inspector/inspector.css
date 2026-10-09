@@ -924,6 +924,30 @@
   background: #141e25;
 }
 
+.inspector-material-error-control {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 4px;
+}
+
+.inspector-material-error-control .asset-reference-main {
+  border-color: #b84a55;
+  box-shadow: 0 0 0 1px rgba(184, 74, 85, 0.2);
+}
+
+.inspector-material-error-control .asset-reference-main:hover,
+.inspector-material-error-control .asset-reference-main[aria-expanded='true'] {
+  border-color: #e16370;
+}
+
+.inspector-material-error-message {
+  padding: 0 2px;
+  color: #e57b84;
+  font-size: var(--arc-text-xxs);
+  line-height: 1.35;
+}
+
 .asset-reference-copy {
   display: grid;
   min-width: 0;

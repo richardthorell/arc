@@ -86,6 +86,51 @@ describe('Mesh Renderer asset picker', () => {
     expect(onValue).toHaveBeenCalledWith('meshRenderer.materialPath', '__arc_primitive__/cube', true);
   });
 
+  it('keeps a failed Material Instance visible and marks the assignment as an error', () => {
+    render(
+      <InspectorComponentCard
+        assets={[
+          {
+            id: 'floor-material',
+            name: 'Floor',
+            path: 'materials/floor.arcmatinst',
+            kind: 'materialInstance',
+            status: 'ready',
+            scope: 'builtin',
+          },
+        ]}
+        collapsed={false}
+        context={{
+          meshRenderer: {
+            materialPath: 'materials/floor.arcmatinst',
+            materialError: 'Floor failed to load or realize. Rendering with Error Material.',
+          },
+        }}
+        schema={{
+          id: 'meshRenderer',
+          title: 'Mesh Renderer',
+          fields: [
+            {
+              id: 'material',
+              label: 'Material',
+              path: 'meshRenderer.materialPath',
+              type: 'asset',
+              assetKind: 'material',
+              allowedExtensions: ['.arcmat', '.arcmatinst'],
+              allowEmpty: false,
+            },
+          ],
+        }}
+        onToggle={() => undefined}
+        onValue={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText('Floor')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Material failed to load. Using Error Material.');
+    expect(screen.getByLabelText('Choose Material asset').closest('.inspector-material-error-control')).not.toBeNull();
+  });
+
   it('shows shape-specific procedural controls and routes subdivision edits to the native host', async () => {
     const onValue = vi.fn();
     render(

@@ -42,8 +42,10 @@ struct editor_scene_state
     render::material_handle default_material;
     render::material_handle primitive_material;
     render::material_handle floor_material;
+    render::material_handle error_material;
     assets::asset_reference primitive_material_asset;
     assets::asset_reference floor_material_asset;
+    std::string floor_material_error;
     render::material_handle terrain_material;
     render::material_descriptor terrain_material_descriptor;
     std::array<std::filesystem::path, 4> terrain_layer_paths{};
@@ -77,6 +79,7 @@ struct editor_scene_state
         assets::asset_reference source;
         std::string subresource;
         assets::asset_reference material;
+        std::string material_error;
     };
     ecs::entity_guid scene_guid{};
     std::string scene_name{"Untitled"};

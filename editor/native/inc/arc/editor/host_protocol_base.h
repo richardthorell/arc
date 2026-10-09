@@ -472,6 +472,7 @@ struct host_mesh_renderer_snapshot
     bool asset_backed_material{};
     std::string material_name;
     std::string material_path;
+    std::string material_error;
 
     friend constexpr bool operator==(const host_mesh_renderer_snapshot&,
                                      const host_mesh_renderer_snapshot&) noexcept = default;

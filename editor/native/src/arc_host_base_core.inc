@@ -1692,6 +1692,16 @@ host_mesh_renderer_snapshot mesh_renderer_snapshot(const editor_scene_state& sta
     snapshot.distance_field_resolution_bias = mesh_renderer.distance_field_resolution_bias;
     snapshot.visible_in_hardware_tracing = mesh_renderer.visible_in_hardware_tracing;
     snapshot.has_material = mesh_renderer.material.valid();
+
+    const auto* binding = find_asset_binding(state, entity_guid_of(state, entity));
+    const auto inspector_material_path = [](std::string path)
+    {
+        constexpr std::string_view builtin_prefix = "builtin/";
+        if (path.starts_with(builtin_prefix)) path.erase(0, builtin_prefix.size());
+        return arc::assets::normalize_asset_path(path);
+    };
+    if (binding) snapshot.material_error = binding->material_error;
+
     for (const auto& record : state.material_library.materials)
     {
         if (record.material != mesh_renderer.material) continue;
@@ -1705,17 +1715,32 @@ host_mesh_renderer_snapshot mesh_renderer_snapshot(const editor_scene_state& sta
             snapshot.material_path = arc::assets::normalize_asset_path(relative_to_primary);
         else if (!project_root.empty() && stays_within(relative_to_project))
             snapshot.material_path = arc::assets::normalize_asset_path(relative_to_project);
-        else if (const auto* binding = find_asset_binding(state, entity_guid_of(state, entity));
-                 binding && !binding->material.path_hint.empty())
-            snapshot.material_path = arc::assets::normalize_asset_path(binding->material.path_hint);
+        else if (binding && !binding->material.path_hint.empty())
+            snapshot.material_path = inspector_material_path(binding->material.path_hint);
         else
             snapshot.material_path = asset_relative_path(assets.root, record.path);
         return snapshot;
     }
+
+    // A failed asset must remain visible as the authored assignment even while the runtime
+    // renders the conspicuous Error Material. "None" is reserved for genuinely unassigned materials.
+    if (binding && !binding->material.path_hint.empty())
+    {
+        snapshot.asset_backed_material = true;
+        snapshot.material_path = inspector_material_path(binding->material.path_hint);
+        snapshot.material_name = std::filesystem::path{snapshot.material_path}.stem().string();
+        if (!snapshot.material_name.empty())
+            snapshot.material_name.front() =
+                static_cast<char>(std::toupper(static_cast<unsigned char>(snapshot.material_name.front())));
+        return snapshot;
+    }
+
     if (mesh_renderer.material == state.default_material)
         snapshot.material_name = "Default Mesh Material";
     else if (mesh_renderer.material == state.primitive_material)
         snapshot.material_name = "Primitive Material";
+    else if (mesh_renderer.material == state.error_material)
+        snapshot.material_name = "Error Material";
     else if (mesh_renderer.material == state.terrain_material)
         snapshot.material_name = "Terrain Material";
     else if (mesh_renderer.material == state.water_material)
