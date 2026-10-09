@@ -218,15 +218,13 @@ std::optional<asset_snapshot> asset_manager::find(const asset_reference& referen
     if (reference.guid.valid())
     {
         const auto found = find(reference.guid);
-        if (!found || (reference.expected_type.valid() && found->type != reference.expected_type))
-            return std::nullopt;
+        if (!found || (reference.expected_type.valid() && found->type != reference.expected_type)) return std::nullopt;
         return found;
     }
 
     if (reference.path_hint.empty()) return std::nullopt;
     const auto found = find(reference.path_hint);
-    if (!found || (reference.expected_type.valid() && found->type != reference.expected_type))
-        return std::nullopt;
+    if (!found || (reference.expected_type.valid() && found->type != reference.expected_type)) return std::nullopt;
     return found;
 }
 
