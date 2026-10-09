@@ -436,8 +436,7 @@ function MaterialFunctionReferenceEditor({
           const label = option?.document.name ?? reference.path.split('/').at(-1) ?? reference.path;
           const rowAssets = functions
             .filter(
-              (candidate) =>
-                candidate.asset.path === reference.path || !referencedPaths.has(candidate.asset.path),
+              (candidate) => candidate.asset.path === reference.path || !referencedPaths.has(candidate.asset.path),
             )
             .map((candidate) => candidate.asset);
           return (

@@ -473,9 +473,7 @@ export function MaterialPicker({
   );
 }
 
-export function MaterialFunctionPicker(
-  props: Omit<AssetPickerProps, 'assetKinds' | 'assetTypeLabel' | 'onOpen'>,
-) {
+export function MaterialFunctionPicker(props: Omit<AssetPickerProps, 'assetKinds' | 'assetTypeLabel' | 'onOpen'>) {
   const openMaterialFunction = (asset: AssetPickerItem) => {
     if (asset.kind !== 'materialFunction' || asset.scope === 'procedural') return;
     openAssetEditorDocument({
