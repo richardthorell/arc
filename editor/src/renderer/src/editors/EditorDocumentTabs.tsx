@@ -13,6 +13,7 @@ const documentIconKinds: Record<EditorDocumentKind, DocumentTypeIconKind> = {
   material: 'material',
   materialInstance: 'material',
   materialFunction: 'material',
+  sound: 'audio',
   flow: 'script',
   texture: 'texture',
   model: 'model',
