@@ -85,8 +85,11 @@ export type MaterialGraphParameter = {
 export type MaterialGraphGroup = {
   id: string;
   name: string;
-  position: MaterialGraphPosition;
-  size: MaterialGraphPosition;
+  /** Nodes contained by this semantic group. The editor derives the frame bounds from them. */
+  nodeIds?: string[];
+  /** Optional freeform comment-frame bounds when the group does not own nodes. */
+  position?: MaterialGraphPosition;
+  size?: MaterialGraphPosition;
   order?: number;
 };
 
@@ -984,12 +987,17 @@ export const isMaterialGraph = (value: unknown): value is MaterialGraph => {
             typeof group.id === 'string' &&
             Boolean(group.id.trim()) &&
             typeof group.name === 'string' &&
-            Array.isArray(group.position) &&
-            group.position.length === 2 &&
-            group.position.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate)) &&
-            Array.isArray(group.size) &&
-            group.size.length === 2 &&
-            group.size.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate) && coordinate > 0) &&
+            ((Array.isArray(group.nodeIds) &&
+              group.nodeIds.length > 0 &&
+              group.nodeIds.every((nodeId) => typeof nodeId === 'string' && Boolean(nodeId.trim()))) ||
+              (Array.isArray(group.position) &&
+                group.position.length === 2 &&
+                group.position.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate)) &&
+                Array.isArray(group.size) &&
+                group.size.length === 2 &&
+                group.size.every(
+                  (coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate) && coordinate > 0,
+                ))) &&
             (group.order === undefined || (typeof group.order === 'number' && Number.isFinite(group.order))),
         )))
   );
