@@ -31,8 +31,9 @@ describe('ExplorerPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Add entity' }));
     const menu = screen.getByRole('menu', { name: 'Add entity' });
-    expect(menu).toHaveClass('ui-context-menu', 'hierarchy-create-dropdown');
-    expect(view.container.querySelector('.hierarchy-create-menu')?.contains(menu)).toBe(true);
+    expect(menu).toHaveClass('ui-context-menu', 'ui-context-menu-portal', 'hierarchy-create-dropdown');
+    expect(view.container.querySelector('.hierarchy-create-menu')?.contains(menu)).toBe(false);
+    expect(menu.parentElement).toBe(document.body);
     expect(screen.getByRole('menuitem', { name: 'Empty Entity' })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Box' })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Terrain...' })).toBeInTheDocument();
