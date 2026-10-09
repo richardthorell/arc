@@ -779,6 +779,19 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
         return false;
     }
 
+    auto parameter_layout = specialized_material.runtime_program->parameters;
+    for (const auto& binding : specialized_material.runtime_program->texture_bindings)
+    {
+        if (!binding.parameter_id.valid()) continue;
+        if (std::ranges::find(parameter_layout, binding.parameter_id, &render::shader_parameter_descriptor::id) !=
+            parameter_layout.end())
+            continue;
+        parameter_layout.push_back({.id = binding.parameter_id,
+                                    .name = "Texture",
+                                    .type = binding.type,
+                                    .size = 0});
+    }
+
     render::material_instance_descriptor instance;
     instance.parent = base.material;
     instance.name = base.asset.name + " Instance";
@@ -807,10 +820,9 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
                     {
                         continue;
                     }
-                    const auto& parameters = specialized_material.runtime_program->parameters;
-                    const auto layout = std::ranges::find(parameters, render::shader_parameter_id{parameter_id},
+                    const auto layout = std::ranges::find(parameter_layout, render::shader_parameter_id{parameter_id},
                                                           &render::shader_parameter_descriptor::id);
-                    if (layout == parameters.end()) continue;
+                    if (layout == parameter_layout.end()) continue;
                     const auto value = authored_instance_value(scene, renderer, base, *layout, authored["value"]);
                     if (!value) continue;
                     instance.overrides.push_back({.id = layout->id, .name = layout->name, .value = *value});
@@ -836,12 +848,11 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
                 parameter_id = 0u;
             }
         }
-        const auto& parameters = specialized_material.runtime_program->parameters;
         const auto layout = parameter_id != 0u
-                                ? std::ranges::find(parameters, render::shader_parameter_id{parameter_id},
+                                ? std::ranges::find(parameter_layout, render::shader_parameter_id{parameter_id},
                                                     &render::shader_parameter_descriptor::id)
-                                : std::ranges::find(parameters, name, &render::shader_parameter_descriptor::name);
-        if (layout == parameters.end())
+                                : std::ranges::find(parameter_layout, name, &render::shader_parameter_descriptor::name);
+        if (layout == parameter_layout.end())
         {
             arc::diagnostics::warn("editor.materials", "Ignoring stale material instance parameter '" + name + "'");
             continue;
@@ -858,7 +869,7 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
 
     render::material_definition_descriptor definition;
     definition.material = specialized_material;
-    definition.parameter_layout = specialized_material.runtime_program->parameters;
+    definition.parameter_layout = parameter_layout;
     auto resolved = render::resolve_material_instance(definition, instance);
     if (!resolved)
     {
