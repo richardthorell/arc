@@ -1,6 +1,9 @@
 import { createElement } from 'react';
-import { Bone, Box, Circle, FileCode2, Globe2, Image, Workflow } from 'lucide-react';
+import { Bone, Box, Circle, FileAudio2, FileCode2, Globe2, Image, Workflow } from 'lucide-react';
 
+import { SoundEditor } from '../audio/SoundEditor';
+import { SoundEditorToolbar } from '../audio/SoundEditorToolbar';
+import { disposeSoundDocument, saveSoundDocument } from '../audio/soundDocumentState';
 import { isModelAsset } from '../content/assetPresentation';
 import { FlowEditor } from '../flow/FlowEditor';
 import { FlowEditorToolbar } from '../flow/FlowEditorToolbar';
@@ -269,6 +272,31 @@ const materialFunctionRegistration: EditorRegistration = {
   onClosed: (document) => disposeMaterialFunctionDocument(document.id),
 };
 
+const soundRegistration: EditorRegistration = {
+  kind: 'sound',
+  title: 'Sound Editor',
+  icon: FileAudio2,
+  allowMultiple: true,
+  closeable: true,
+  canOpenAsset: (asset) => asset.kind === 'sound' || asset.path.toLocaleLowerCase().endsWith('.arcsound'),
+  createDocument: (asset) => ({
+    id: `sound:${asset.guid ?? asset.path}`,
+    kind: 'sound',
+    title: asset.title?.trim() || asset.name,
+    path: asset.sourcePath ?? asset.path,
+    assetId: asset.id,
+    assetGuid: asset.guid,
+    assetScope: asset.scope,
+    assetSnapshot: asset,
+    dirty: false,
+    readOnly: asset.scope === 'builtin' || Boolean(asset.readOnly),
+  }),
+  render: (document) => createElement(SoundEditor, { document }),
+  renderToolbar: (document) => createElement(SoundEditorToolbar, { document }),
+  save: saveSoundDocument,
+  onClosed: (document) => disposeSoundDocument(document.id),
+};
+
 const flowRegistration: EditorRegistration = {
   kind: 'flow',
   title: 'Flow Graph Editor',
@@ -361,6 +389,7 @@ export const createEditorRegistry = (registrations: EditorRegistrySeed): EditorR
     material: registrations.material ?? materialRegistration,
     materialInstance: registrations.materialInstance ?? materialInstanceRegistration,
     materialFunction: registrations.materialFunction ?? materialFunctionRegistration,
+    sound: registrations.sound ?? soundRegistration,
     flow: registrations.flow ?? flowRegistration,
     texture: registrations.texture ?? textureRegistration,
     model: registrations.model ?? modelRegistration,
@@ -400,6 +429,7 @@ export const openAssetEditorDocument = (asset: AssetItem, registry: EditorRegist
     (asset.kind === 'material' ||
       asset.kind === 'materialInstance' ||
       asset.kind === 'materialFunction' ||
+      asset.kind === 'sound' ||
       asset.kind === 'shader' ||
       asset.kind === 'flow');
   if (!needsCanonicalProjectIdentity || typeof window === 'undefined' || !window.arc?.host?.query) {
