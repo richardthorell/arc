@@ -336,6 +336,7 @@ export function MaterialParameterSubsection({
                 : '';
           return {
             ...parameter,
+            nodeId: materialParameterId(parameter.nodeId),
             values: authoredValues,
             texture: authoredTexture,
           };
