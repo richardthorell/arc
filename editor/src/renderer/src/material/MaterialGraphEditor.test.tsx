@@ -80,7 +80,9 @@ describe('MaterialGraphEditor', () => {
     const graph = createDefaultMaterialGraph();
     const onGraphChange = vi.fn();
 
-    render(<MaterialGraphEditor document={document} graph={graph} onGraphChange={onGraphChange} />);
+    const { container } = render(
+      <MaterialGraphEditor document={document} graph={graph} onGraphChange={onGraphChange} />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Add Group' }));
     expect(onGraphChange).toHaveBeenCalled();
@@ -90,7 +92,7 @@ describe('MaterialGraphEditor', () => {
 
     onGraphChange.mockClear();
     const roughness = graph.nodes.find((node) => node.parameter?.name === 'Roughness')!;
-    const roughnessNode = document.querySelector<HTMLElement>(`[data-node-id="${roughness.id}"]`);
+    const roughnessNode = container.querySelector<HTMLElement>(`[data-node-id="${roughness.id}"]`);
     expect(roughnessNode).not.toBeNull();
     fireEvent.pointerDown(roughnessNode!, { button: 0 });
     fireEvent.contextMenu(screen.getByRole('application', { name: 'Material graph' }), {
