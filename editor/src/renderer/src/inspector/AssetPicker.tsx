@@ -259,7 +259,12 @@ export function AssetPicker({
       ),
     [allowedExtensions, assetKinds, assetTypeIds, assets],
   );
-  const valueFor = (asset: AssetPickerItem) => (referenceMode === 'guid' ? asset.guid || asset.id : asset.path);
+  const valueFor = (asset: AssetPickerItem) =>
+    referenceMode === 'guid'
+      ? asset.guid || asset.id
+      : asset.scope === 'project' && asset.sourcePath
+        ? asset.sourcePath
+        : asset.path;
   const selected = assets.find((asset) => valueFor(asset) === value);
   const createNew =
     onCreateNew ??
@@ -451,6 +456,7 @@ export function MaterialPicker({
           assets={props.assets}
           mixed={props.mixed}
           referenceMode={props.referenceMode}
+          thumbnailProvider={props.thumbnailProvider}
           value={props.value}
         />
       )}
