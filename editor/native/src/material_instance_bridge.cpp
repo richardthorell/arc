@@ -574,7 +574,8 @@ authored_instance_value(editor_scene_state& scene, render::renderer& renderer, c
             break;
         case render::shader_parameter_type::texture_2d:
             if (value.is_string())
-                return render::resource_handle{ensure_override_texture(scene, renderer, base, value.get<std::string>())};
+                return render::resource_handle{
+                    ensure_override_texture(scene, renderer, base, value.get<std::string>())};
             break;
         default:
             break;
@@ -647,7 +648,8 @@ std::optional<material_preview_descriptor_result> realize_function_specializatio
     }
 
     if (source.empty() || document.is_discarded() || !document.is_object() || !document.contains("graph"))
-        return material_preview_descriptor_result{.message = "Material source is unavailable for Function specialization"};
+        return material_preview_descriptor_result{.message =
+                                                      "Material source is unavailable for Function specialization"};
 
     std::vector<std::string> pending;
     if (!collect_function_paths(document["graph"], pending))
@@ -778,9 +780,8 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
                         continue;
                     }
                     const auto& parameters = specialized_material.runtime_program->parameters;
-                    const auto layout =
-                        std::ranges::find(parameters, render::shader_parameter_id{parameter_id},
-                                          &render::shader_parameter_descriptor::id);
+                    const auto layout = std::ranges::find(parameters, render::shader_parameter_id{parameter_id},
+                                                          &render::shader_parameter_descriptor::id);
                     if (layout == parameters.end()) continue;
                     const auto value = authored_instance_value(scene, renderer, base, *layout, authored["value"]);
                     if (!value) continue;
