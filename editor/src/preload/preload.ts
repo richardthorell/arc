@@ -195,6 +195,7 @@ export type ArcAiGatewayStatus = {
 type ImportedHostAsset = {
   guid: string;
   path: string;
+  sourcePath?: string;
   typeId: string;
   state: 'unknown' | 'queued' | 'importing' | 'ready' | 'stale' | 'failed';
   diagnostic?: string;
