@@ -89,6 +89,9 @@ describe('BuiltInAgentToolRegistry', () => {
     expect(assets?.description).toContain('authoritative ARC asset inventory');
     expect(assets?.description).toContain('engine built-ins and project content');
     expect(assets?.description).toContain('before authoring or assigning materials');
+    expect(assets?.description).toContain('before planning edits');
+    expect(assets?.description).toContain('hardcoded material/function catalogs');
+    expect(batch?.description).toContain('verify resolved material assignments and rendered results');
     expect(batch?.description).toContain('Prefer existing asset bindings and lightweight overrides');
     expect(batch?.description).toContain('material.create only when no suitable project asset or override');
 
