@@ -675,6 +675,13 @@ export function MaterialGraphEditor({
   const [pointerGraph, setPointerGraph] = useState<GraphPoint>([0, 0]);
   const [pinPositions, setPinPositions] = useState<Map<string, GraphPoint>>(() => new Map());
   const [drag, setDrag] = useState<{ start: GraphPoint; nodes: Map<string, GraphPoint> } | null>(null);
+  const [groupDrag, setGroupDrag] = useState<{
+    start: GraphPoint;
+    groupId: string;
+    groupPosition: GraphPoint;
+    groupSize: GraphPoint;
+    nodes: Map<string, GraphPoint>;
+  } | null>(null);
   const [pan, setPan] = useState<{ start: GraphPoint; viewport: GraphPoint } | null>(null);
   const [box, setBox] = useState<GraphSelection | null>(null);
   const [addMenu, setAddMenu] = useState<{ screen: GraphPoint; graph: GraphPoint } | null>(null);
@@ -872,7 +879,7 @@ export function MaterialGraphEditor({
   }, [document.id, frameAll, graph.nodes.length, loaded]);
 
   useEffect(() => {
-    if (!drag && !pan && !box) return;
+    if (!drag && !groupDrag && !pan && !box) return;
     const move = (event: PointerEvent) => {
       const point = graphPoint(event.clientX, event.clientY);
       setPointerGraph(point);
@@ -888,6 +895,25 @@ export function MaterialGraphEditor({
             }
           }
         }, false);
+      } else if (groupDrag) {
+        const deltaX = point[0] - groupDrag.start[0];
+        const deltaY = point[1] - groupDrag.start[1];
+        mutate((next) => {
+          const group = next.groups?.find((candidate) => candidate.id === groupDrag.groupId);
+          if (!group) return;
+          const rawPosition: GraphPoint = [
+            groupDrag.groupPosition[0] + deltaX,
+            groupDrag.groupPosition[1] + deltaY,
+          ];
+          group.position = snapEnabled ? snapMaterialGraphPoint(rawPosition) : rawPosition;
+          group.size = groupDrag.groupSize;
+          const movedDeltaX = group.position[0] - groupDrag.groupPosition[0];
+          const movedDeltaY = group.position[1] - groupDrag.groupPosition[1];
+          for (const node of next.nodes) {
+            const origin = groupDrag.nodes.get(node.id);
+            if (origin) node.position = [origin[0] + movedDeltaX, origin[1] + movedDeltaY];
+          }
+        }, false);
       } else if (pan) {
         updateViewport({
           x: pan.viewport[0] + (event.clientX - pan.start[0]),
@@ -898,7 +924,7 @@ export function MaterialGraphEditor({
       }
     };
     const up = () => {
-      if (drag) commitGraph(graph, { recordHistory: true });
+      if (drag || groupDrag) commitGraph(graph, { recordHistory: true });
       if (box) {
         const bounds = graphSelectionBounds(box);
         setSelectedNodes(
@@ -916,6 +942,7 @@ export function MaterialGraphEditor({
         );
       }
       setDrag(null);
+      setGroupDrag(null);
       setPan(null);
       setBox(null);
     };
@@ -925,7 +952,7 @@ export function MaterialGraphEditor({
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
     };
-  }, [box, commitGraph, document, drag, graph, graphPoint, mutate, pan, snapEnabled, updateViewport]);
+  }, [box, commitGraph, document, drag, graph, graphPoint, groupDrag, mutate, pan, snapEnabled, updateViewport]);
 
   const deleteSelected = () => {
     if (document.readOnly || selectedNodes.size === 0) return;
@@ -1260,7 +1287,30 @@ export function MaterialGraphEditor({
                 key={group.id}
                 style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
               >
-                <span>{group.name}</span>
+                <button
+                  className="material-graph-group-title"
+                  disabled={document.readOnly}
+                  onPointerDown={(event) => {
+                    if (document.readOnly || event.button !== 0) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const origins = new Map<string, GraphPoint>();
+                    for (const nodeId of group.nodeIds ?? []) {
+                      const node = graph.nodes.find((candidate) => candidate.id === nodeId);
+                      if (node) origins.set(node.id, [...node.position]);
+                    }
+                    setGroupDrag({
+                      start: graphPoint(event.clientX, event.clientY),
+                      groupId: group.id,
+                      groupPosition: [rect.left, rect.top],
+                      groupSize: [rect.width, rect.height],
+                      nodes: origins,
+                    });
+                  }}
+                  type="button"
+                >
+                  {group.name}
+                </button>
               </div>
             );
           })}
