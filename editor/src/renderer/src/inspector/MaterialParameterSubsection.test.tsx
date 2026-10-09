@@ -188,7 +188,7 @@ describe('MaterialPicker exported parameters', () => {
     readText.mockImplementation(async (path: string) => {
       if (path.endsWith('default_base_color.arcmatfn'))
         return {
-          text: functionDocument('Default Base Color', []),
+          text: functionDocument('Color', []),
         };
       if (path.endsWith('checker.arcmatfn'))
         return {
@@ -211,7 +211,7 @@ describe('MaterialPicker exported parameters', () => {
     );
 
     const selector = await screen.findByRole('combobox', { name: 'Base Color Source function' });
-    expect(selector).toHaveTextContent('Default Base Color');
+    expect(selector).toHaveTextContent('Color');
     expect(screen.queryByLabelText('Cell Size')).not.toBeInTheDocument();
 
     fireEvent.click(selector);
