@@ -172,20 +172,18 @@ const persistedRuntimeStateFromMaterialName = (name: string | undefined): unknow
 };
 
 const overridesFromMaterialName = (name: string | undefined): InstanceOverride[] =>
-  persistedRuntimeStateFromMaterialName(name).filter(
-    (entry): entry is InstanceOverride =>
-      Boolean(entry && typeof entry === 'object' && typeof (entry as InstanceOverride).name === 'string'),
+  persistedRuntimeStateFromMaterialName(name).filter((entry): entry is InstanceOverride =>
+    Boolean(entry && typeof entry === 'object' && typeof (entry as InstanceOverride).name === 'string'),
   );
 
 const functionOverridesFromMaterialName = (name: string | undefined): RuntimeFunctionOverride[] =>
-  persistedRuntimeStateFromMaterialName(name).filter(
-    (entry): entry is RuntimeFunctionOverride =>
-      Boolean(
-        entry &&
-          typeof entry === 'object' &&
-          (entry as RuntimeFunctionOverride).kind === 'function' &&
-          typeof (entry as RuntimeFunctionOverride).slotId === 'string',
-      ),
+  persistedRuntimeStateFromMaterialName(name).filter((entry): entry is RuntimeFunctionOverride =>
+    Boolean(
+      entry &&
+      typeof entry === 'object' &&
+      (entry as RuntimeFunctionOverride).kind === 'function' &&
+      typeof (entry as RuntimeFunctionOverride).slotId === 'string',
+    ),
   );
 
 const pathMatches = (candidate: string, hint: string) => {
@@ -366,12 +364,12 @@ export function MaterialParameterSubsection({
           if (node.type !== 'functionSlot') return [];
           const id = typeof node.values.slotId === 'string' ? node.values.slotId.trim() : '';
           const name =
-            typeof node.values.name === 'string' && node.values.name.trim()
-              ? node.values.name.trim()
-              : 'Function';
+            typeof node.values.name === 'string' && node.values.name.trim() ? node.values.name.trim() : 'Function';
           const defaultPath = typeof node.values.path === 'string' ? node.values.path : '';
           const inputs = Array.isArray(node.values.inputPins) ? (node.values.inputPins as MaterialFunctionPin[]) : [];
-          const outputs = Array.isArray(node.values.outputPins) ? (node.values.outputPins as MaterialFunctionPin[]) : [];
+          const outputs = Array.isArray(node.values.outputPins)
+            ? (node.values.outputPins as MaterialFunctionPin[])
+            : [];
           if (!id || !defaultPath) return [];
           const compatible = functionOptions.filter((option) =>
             materialFunctionCompatibleWithSlot(inputs, outputs, option.document),
@@ -431,7 +429,9 @@ export function MaterialParameterSubsection({
   }, [assets, materialPath, materialScope, mixed, procedural, selected?.kind, value]);
 
   const overrideFor = (parameter: DisplayParameter) =>
-    overrides.find((entry) => entry.parameterId === parameter.nodeId || (!entry.parameterId && entry.name === parameter.name));
+    overrides.find(
+      (entry) => entry.parameterId === parameter.nodeId || (!entry.parameterId && entry.name === parameter.name),
+    );
   const effectiveValues = (parameter: DisplayParameter) => overrideFor(parameter)?.value ?? parameter.values;
   const effectiveTexture = (parameter: DisplayParameter) => overrideFor(parameter)?.texture ?? parameter.texture;
 
@@ -512,7 +512,9 @@ export function MaterialParameterSubsection({
     );
     if (!window.arc?.host) return;
     try {
-      const selectedResponse = (await window.arc.host.query('entity.selected')) as HostResponse<SelectedMaterialSnapshot>;
+      const selectedResponse = (await window.arc.host.query(
+        'entity.selected',
+      )) as HostResponse<SelectedMaterialSnapshot>;
       if (!selectedResponse.succeeded || !selectedResponse.payload)
         throw new Error(selectedResponse.error || 'Selected entity is unavailable');
       const payload = {
@@ -599,9 +601,7 @@ export function MaterialParameterSubsection({
                           type: parameter.type,
                           kind: parameter.editorKind,
                           value:
-                            parameter.type === 'vec4'
-                              ? [next.x, next.y, next.z, next.w]
-                              : [next.x, next.y, next.z],
+                            parameter.type === 'vec4' ? [next.x, next.y, next.z, next.w] : [next.x, next.y, next.z],
                         });
                         return (
                           <div className="inspector-material-parameter" key={parameter.nodeId}>

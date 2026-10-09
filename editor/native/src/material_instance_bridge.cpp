@@ -337,16 +337,17 @@ json edit_to_json(const material_parameter_edit& edit)
 json apply_edit(json overrides, const material_parameter_edit& edit)
 {
     if (!overrides.is_array()) overrides = json::array();
-    overrides.erase(
-        std::remove_if(overrides.begin(), overrides.end(),
-                       [&](const json& entry)
-                       {
-                           if (!entry.is_object() || entry.value("kind", std::string{}) == "function") return false;
-                           if (edit.parameter_id != 0u)
-                               return entry.value("parameterId", std::string{}) == std::to_string(edit.parameter_id);
-                           return entry.value("name", std::string{}) == edit.name;
-                       }),
-        overrides.end());
+    overrides.erase(std::remove_if(overrides.begin(), overrides.end(),
+                                   [&](const json& entry)
+                                   {
+                                       if (!entry.is_object() || entry.value("kind", std::string{}) == "function")
+                                           return false;
+                                       if (edit.parameter_id != 0u)
+                                           return entry.value("parameterId", std::string{}) ==
+                                                  std::to_string(edit.parameter_id);
+                                       return entry.value("name", std::string{}) == edit.name;
+                                   }),
+                    overrides.end());
     if (!edit.reset) overrides.push_back(edit_to_json(edit));
     return overrides;
 }
@@ -354,15 +355,15 @@ json apply_edit(json overrides, const material_parameter_edit& edit)
 json apply_function_edit(json overrides, const material_function_edit& edit)
 {
     if (!overrides.is_array()) overrides = json::array();
-    overrides.erase(
-        std::remove_if(overrides.begin(), overrides.end(),
-                       [&](const json& entry)
-                       {
-                           if (!entry.is_object() || entry.value("slotId", std::string{}) != edit.slot_id) return false;
-                           return entry.value("kind", std::string{}) == "function" ||
-                                  !entry.value("parameterId", std::string{}).empty();
-                       }),
-        overrides.end());
+    overrides.erase(std::remove_if(overrides.begin(), overrides.end(),
+                                   [&](const json& entry)
+                                   {
+                                       if (!entry.is_object() || entry.value("slotId", std::string{}) != edit.slot_id)
+                                           return false;
+                                       return entry.value("kind", std::string{}) == "function" ||
+                                              !entry.value("parameterId", std::string{}).empty();
+                                   }),
+                    overrides.end());
     if (!edit.reset)
         overrides.push_back({{"kind", "function"},
                              {"slotId", edit.slot_id},
@@ -516,9 +517,10 @@ std::optional<render::material_parameter_value> override_value(editor_scene_stat
     return std::nullopt;
 }
 
-std::optional<material_preview_descriptor_result>
-realize_function_specialization(editor_scene_state& scene, render::renderer& renderer,
-                                const editor_material_record& base, const json& overrides)
+std::optional<material_preview_descriptor_result> realize_function_specialization(editor_scene_state& scene,
+                                                                                  render::renderer& renderer,
+                                                                                  const editor_material_record& base,
+                                                                                  const json& overrides)
 {
     std::vector<render::tools::material_function_slot_override> slot_overrides;
     struct selected_function
@@ -543,7 +545,8 @@ realize_function_specialization(editor_scene_state& scene, render::renderer& ren
     const auto source = read_text_file(base.path);
     const auto document = json::parse(source, nullptr, false);
     if (source.empty() || document.is_discarded() || !document.is_object() || !document.contains("graph"))
-        return material_preview_descriptor_result{.message = "Material source is unavailable for Function specialization"};
+        return material_preview_descriptor_result{.message =
+                                                      "Material source is unavailable for Function specialization"};
 
     std::vector<std::string> pending;
     if (!collect_function_paths(document["graph"], pending))
@@ -574,11 +577,13 @@ realize_function_specialization(editor_scene_state& scene, render::renderer& ren
                 break;
             }
 
-        functions.push_back({.path = source_path.generic_string(), .identity = std::move(identity), .source = function_source});
+        functions.push_back(
+            {.path = source_path.generic_string(), .identity = std::move(identity), .source = function_source});
         if (function_document.contains("graph")) collect_function_paths(function_document["graph"], pending);
     }
 
-    auto realized = realize_material_preview_descriptor(source, base.asset.name + " Instance", functions, slot_overrides);
+    auto realized =
+        realize_material_preview_descriptor(source, base.asset.name + " Instance", functions, slot_overrides);
     if (realized.succeeded)
     {
         const auto asset_root = base.path.parent_path().parent_path();
@@ -612,7 +617,8 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
     {
         if (!specialized->succeeded)
         {
-            arc::diagnostics::warn("editor.materials", "Material Function specialization failed: " + specialized->message);
+            arc::diagnostics::warn("editor.materials",
+                                   "Material Function specialization failed: " + specialized->message);
             return false;
         }
         specialized_material = specialized->material;
