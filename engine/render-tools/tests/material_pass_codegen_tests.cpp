@@ -91,6 +91,11 @@ void require_compiles(arc::render::tools::slang_shader_compiler& compiler,
         {
             const auto found =
                 std::ranges::find(resources, names[index], &arc::render::shader_resource_descriptor::name);
+            if (!generated.virtual_shadow_sampling)
+            {
+                REQUIRE(found == resources.end());
+                continue;
+            }
             REQUIRE(found != resources.end());
             CHECK(found->set == 2u);
             CHECK(found->binding == 10u + index);
@@ -104,6 +109,31 @@ void require_compiles(arc::render::tools::slang_shader_compiler& compiler,
 }
 
 } // namespace
+
+TEST_CASE("forward shadow variants have distinct identities and conventional shaders omit VSM resources")
+{
+    using namespace arc::render;
+    using namespace arc::render::tools;
+    const auto evaluator = make_custom_material_evaluator(transmission_material_shader);
+    REQUIRE(evaluator);
+    material_descriptor material;
+    material.alpha_mode = material_alpha_mode::blend;
+    const auto conventional =
+        generate_material_pass_slang(evaluator.value(), material, material_pass::forward, 0, false, false);
+    const auto virtualized =
+        generate_material_pass_slang(evaluator.value(), material, material_pass::forward, 0, false, true);
+    REQUIRE(conventional);
+    REQUIRE(virtualized);
+    CHECK(conventional.value().permutation != virtualized.value().permutation);
+    CHECK_FALSE(conventional.value().virtual_shadow_sampling);
+    CHECK(virtualized.value().virtual_shadow_sampling);
+    slang_shader_compiler compiler;
+    if (compiler.available())
+    {
+        require_compiles(compiler, conventional.value(), material_pass::forward);
+        require_compiles(compiler, virtualized.value(), material_pass::forward);
+    }
+}
 
 TEST_CASE("Material IR composes deterministic engine-owned pass shaders")
 {

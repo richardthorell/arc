@@ -2,6 +2,21 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+TEST_CASE("runtime forward selection respects shadow capability and retains conventional fallback")
+{
+    using namespace arc::render;
+    material_runtime_program program;
+    program.passes.push_back({.pass = material_pass::forward, .permutation = {1}, .virtual_shadow_sampling = true});
+    REQUIRE(find_material_runtime_pass(program, material_pass::forward, false) == nullptr);
+    program.passes.push_back({.pass = material_pass::forward, .permutation = {2}});
+    CHECK(find_material_runtime_pass(program, material_pass::forward, true) == &program.passes[0]);
+    CHECK(find_material_runtime_pass(program, material_pass::forward, false) == &program.passes[1]);
+    program.passes.erase(program.passes.begin());
+    CHECK(find_material_runtime_pass(program, material_pass::forward, true) == &program.passes[0]);
+    program.contract_version = material_pass_contract_version - 1;
+    CHECK(find_material_runtime_pass(program, material_pass::forward, false) == nullptr);
+}
+
 TEST_CASE("material pass permutations are stable and pass-specific")
 {
     arc::render::material_descriptor material;

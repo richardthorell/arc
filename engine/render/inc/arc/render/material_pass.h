@@ -32,6 +32,7 @@ struct material_pass_permutation_key
     shader_permutation_key material;
     bool evaluates_material{};
     bool writes_motion{};
+    bool virtual_shadow_sampling{};
 
     friend bool operator==(const material_pass_permutation_key&,
                            const material_pass_permutation_key&) noexcept = default;
@@ -75,10 +76,9 @@ struct material_compiled_program
 [[nodiscard]] bool material_pass_evaluates_surface(material_pass pass, material_alpha_mode alpha_mode) noexcept;
 
 /** @brief Build the complete backend-neutral permutation key for one material/pass combination. */
-[[nodiscard]] material_pass_permutation_key make_material_pass_permutation_key(const material_descriptor& material,
-                                                                               material_pass pass,
-                                                                               std::uint8_t debug_view = 0,
-                                                                               bool wireframe = false) noexcept;
+[[nodiscard]] material_pass_permutation_key
+make_material_pass_permutation_key(const material_descriptor& material, material_pass pass, std::uint8_t debug_view = 0,
+                                   bool wireframe = false, bool virtual_shadow_sampling = true) noexcept;
 
 /** @brief Return a stable cross-process hash for a material-pass permutation key. */
 [[nodiscard]] std::uint64_t hash_material_pass_permutation_key(const material_pass_permutation_key& key) noexcept;
@@ -89,7 +89,13 @@ make_material_pass_permutation_id(const material_pass_permutation_key& key) noex
 
 /** @brief Find the compiled binding for one pass, if the material implementation provides it. */
 [[nodiscard]] const material_pass_binding* find_material_pass_binding(const material_compiled_program& program,
-                                                                      material_pass pass) noexcept;
+                                                                      material_pass pass,
+                                                                      shader_permutation_id permutation = {}) noexcept;
+
+/** @brief Choose an executable pass; unsupported VSM never selects a VSM-only program. */
+[[nodiscard]] const material_runtime_pass* find_material_runtime_pass(const material_runtime_program& program,
+                                                                      material_pass pass,
+                                                                      bool virtual_shadow_sampling) noexcept;
 
 /** @brief Return whether a cooked compiled material program is valid for the requested pass. */
 [[nodiscard]] inline bool material_program_supports_pass(const material_compiled_program& program,

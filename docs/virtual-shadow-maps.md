@@ -57,8 +57,15 @@ The canonical compiled Slang forward/transparent and Water passes bind the same 
 depth atlases as deferred lighting. The lookup is embedded into the pass composer at build time, not loaded from a
 runtime source-tree path. Empty descriptor layouts replace unused legacy material sets in the forward pipeline.
 Directional VSM routing requires the common scene resources and caster pipeline to be initialized successfully.
-The engine-owned compiled material pass contract is v2 and code generation is v7. Old compiled programs must be
+The engine-owned compiled material pass contract is v3 and code generation is v8. Old compiled programs must be
 rebuilt rather than interpreted with the new lighting-buffer stride; authoring and package container schemas are unchanged.
+
+Preview compilation and cooking emit both conventional-only and VSM forward permutations, including transparent
+and Water materials. Conventional compilation removes VSM resource declarations, not merely their runtime branch.
+The backend selects the VSM permutation only when its immutable sampling capability supports the larger layout;
+otherwise it selects the conventional permutation and the ten-binding scene layout. A missing VSM permutation may
+fall back to a conventional program, never the reverse. Cooked pass entries are keyed by `(pass, permutation)` and
+serialized in deterministic order; exact duplicates remain invalid.
 
 The resolved renderer configuration owns the physical-pool contract. It selects D16 when depth attachment and sampled
 image support are both available, otherwise D32, and derives one square atlas extent from the memory budget and

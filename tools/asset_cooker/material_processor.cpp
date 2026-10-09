@@ -23,10 +23,11 @@ namespace
 {
 using json = nlohmann::json;
 
-constexpr std::array material_passes{render::material_pass::depth,    render::material_pass::shadow,
-                                     render::material_pass::gbuffer,  render::material_pass::forward,
-                                     render::material_pass::motion,   render::material_pass::object_id,
-                                     render::material_pass::selection};
+constexpr std::array material_passes{
+    std::pair{render::material_pass::depth, false},     std::pair{render::material_pass::shadow, false},
+    std::pair{render::material_pass::gbuffer, false},   std::pair{render::material_pass::forward, false},
+    std::pair{render::material_pass::forward, true},    std::pair{render::material_pass::motion, false},
+    std::pair{render::material_pass::object_id, false}, std::pair{render::material_pass::selection, false}};
 
 std::string_view pass_name(render::material_pass pass) noexcept
 {
@@ -771,18 +772,19 @@ public:
 
         program.package = {.high = context.asset.guid.high, .low = context.asset.guid.low};
 
-        for (const auto pass : material_passes)
+        for (const auto [pass, virtual_shadows] : material_passes)
         {
             if (!render::material_supports_pass(pass_material, pass)) continue;
 
-            auto generated = render::tools::generate_material_pass_slang(evaluator, pass_material, pass);
+            auto generated =
+                render::tools::generate_material_pass_slang(evaluator, pass_material, pass, 0, false, virtual_shadows);
             if (!generated)
                 return {.error = {.code = assets::asset_error_code::import_failed,
                                   .guid = context.asset.guid,
                                   .path = context.source.source_path,
                                   .message = generated.error().message}};
 
-            const std::string pass_label{pass_name(pass)};
+            const std::string pass_label = std::string(pass_name(pass)) + (virtual_shadows ? ".vsm" : "");
             render::shader_compile_request request{
                 .source_path = handwritten
                                    ? custom_shader_path.generic_string()

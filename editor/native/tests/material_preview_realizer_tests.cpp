@@ -120,9 +120,12 @@ TEST_CASE("transmission material preview compiles the canonical forward pass")
     CHECK(result.material.render_path == arc::render::material_render_path::clustered_forward);
     if (result.material.runtime_program)
     {
-        REQUIRE(result.material.runtime_program->passes.size() == 1u);
+        REQUIRE(result.material.runtime_program->passes.size() == 2u);
         CHECK(result.material.runtime_program->passes.front().pass == arc::render::material_pass::forward);
         CHECK_FALSE(result.material.runtime_program->passes.front().compiled.bytecode.empty());
+        CHECK_FALSE(result.material.runtime_program->passes.front().virtual_shadow_sampling);
+        CHECK(result.material.runtime_program->passes.back().virtual_shadow_sampling);
+        CHECK_FALSE(result.material.runtime_program->passes.back().compiled.bytecode.empty());
     }
 }
 

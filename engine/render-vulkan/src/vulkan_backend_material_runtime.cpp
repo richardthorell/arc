@@ -100,8 +100,9 @@ bool vulkan_render_backend::ensure_forward_scene_resources()
         VkDescriptorSetLayoutBinding{13u, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
         VkDescriptorSetLayoutBinding{14u, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
         VkDescriptorSetLayoutBinding{15u, VK_DESCRIPTOR_TYPE_SAMPLER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}};
-    const VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0u,
-                                                 static_cast<std::uint32_t>(bindings.size()), bindings.data()};
+    const VkDescriptorSetLayoutCreateInfo layout{
+        VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0u,
+        capabilities_.virtual_shadow_sampling ? static_cast<std::uint32_t>(bindings.size()) : 10u, bindings.data()};
     if (vkCreateDescriptorSetLayout(device_, &layout, nullptr, &forward_scene_descriptor_set_layout_) != VK_SUCCESS)
         return false;
 
@@ -252,7 +253,9 @@ void vulkan_render_backend::update_forward_scene_resources()
     }
     writes[15].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
     writes[15].pImageInfo = &vsm_sampler;
-    vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0u, nullptr);
+    vkUpdateDescriptorSets(device_,
+                           capabilities_.virtual_shadow_sampling ? static_cast<std::uint32_t>(writes.size()) : 10u,
+                           writes.data(), 0u, nullptr);
 }
 
 VkDescriptorSet vulkan_render_backend::current_forward_scene_descriptor_set() const noexcept
@@ -339,9 +342,7 @@ const material_runtime_pass* vulkan_render_backend::runtime_material_pass(const 
 {
     if (!material.data.runtime_program) return nullptr;
     const auto& program = *material.data.runtime_program;
-    if (!material_runtime_program_compatible(program)) return nullptr;
-    const auto found = std::ranges::find(program.passes, requested, &material_runtime_pass::pass);
-    return found == program.passes.end() ? nullptr : &*found;
+    return find_material_runtime_pass(program, requested, capabilities_.virtual_shadow_sampling);
 }
 
 const material_runtime_pass* vulkan_render_backend::runtime_gbuffer_pass(const gpu_material& material) const noexcept

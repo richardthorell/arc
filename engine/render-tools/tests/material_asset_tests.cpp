@@ -257,6 +257,24 @@ TEST_CASE("material packages reject the obsolete directional lighting pass ABI")
     REQUIRE(decoded.error().code == arc::render::tools::material_asset_error_code::unsupported_version);
 }
 
+TEST_CASE("material packages retain distinct forward permutations and reject exact duplicates")
+{
+    auto package = compiled_package();
+    auto variant = package.compiled.passes.front();
+    variant.permutation = {300};
+    package.compiled.passes.push_back(variant);
+    const auto bytes = arc::render::tools::serialize_material_package_v4(package);
+    const auto decoded = arc::render::tools::deserialize_material_package_v4(bytes);
+    REQUIRE(decoded);
+    CHECK(decoded.value().compiled.passes.size() == 3);
+    CHECK(arc::render::find_material_pass_binding(decoded.value().compiled, variant.pass, {300}) != nullptr);
+    std::ranges::reverse(package.compiled.passes);
+    CHECK(arc::render::tools::serialize_material_package_v4(package) == bytes);
+    package.compiled.passes.push_back(variant);
+    CHECK_FALSE(arc::render::tools::deserialize_material_package_v4(
+        arc::render::tools::serialize_material_package_v4(package)));
+}
+
 TEST_CASE("surface material package v4 rejects missing compiled passes")
 {
     arc::render::tools::material_package_v4 package;

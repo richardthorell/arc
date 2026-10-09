@@ -335,6 +335,7 @@ struct material_runtime_pass
     material_pass pass{material_pass::forward};
     shader_permutation_id permutation{};
     shader_compile_output compiled;
+    bool virtual_shadow_sampling{};
 };
 
 /**
@@ -354,7 +355,7 @@ struct material_runtime_texture_binding
 };
 
 /** @brief Engine-owned pass/resource ABI; v2 adds per-light directional shadow routing. */
-inline constexpr std::uint32_t material_pass_contract_version = 2;
+inline constexpr std::uint32_t material_pass_contract_version = 3;
 
 struct material_runtime_program
 {

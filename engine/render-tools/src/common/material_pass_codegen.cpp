@@ -429,7 +429,7 @@ int arcForwardShadowCascade(float cameraDistance)
 }
 
 )";
-    source << virtual_shadow_sampling_adapter << virtual_shadow_sampling_lookup;
+    source << "#if ARC_VIRTUAL_SHADOW_SAMPLING\n" << virtual_shadow_sampling_adapter << virtual_shadow_sampling_lookup;
     source << R"(
 #undef vec2
 #undef vec3
@@ -447,6 +447,7 @@ int arcForwardShadowCascade(float cameraDistance)
 #undef shadow_identity
 #undef shadow_parameters
 #undef shadow_routing
+#endif
 
 float arcForwardSampleDirectionalCascade(int cascade, float3 worldPosition, float3 surfaceNormal,
                                          float3 lightDirection)
@@ -480,6 +481,7 @@ float arcForwardDirectionalShadow(ArcForwardDirectionalLight light, float3 world
                                   float3 surfaceNormal, float3 lightDirection)
 {
     if (light.shadowRouting.x == 0u) return 1.0;
+#if ARC_VIRTUAL_SHADOW_SAMPLING
     if (light.shadowRouting.x == 2u)
     {
         float virtualVisibility = 1.0;
@@ -487,6 +489,7 @@ float arcForwardDirectionalShadow(ArcForwardDirectionalLight light, float3 world
                                                        lightDirection, virtualVisibility))
             return virtualVisibility;
     }
+#endif
     if (arcForwardShadows.params.x <= 0.0 || arcForwardShadows.configuration.x < 0.5) return 1.0;
     float3 cameraPosition = arcForwardScene.cameraPositionViewportWidth.xyz;
     float3 cameraForward = normalize(arcForwardShadows.configuration.yzw);
@@ -733,7 +736,8 @@ material_evaluator_result make_custom_material_evaluator(std::string_view source
 
 material_pass_codegen_result generate_material_pass_slang(const material_evaluator_source& evaluator,
                                                           const material_descriptor& material, material_pass pass,
-                                                          std::uint8_t debug_view, bool wireframe)
+                                                          std::uint8_t debug_view, bool wireframe,
+                                                          bool virtual_shadow_sampling)
 {
     if (!material_supports_pass(material, pass))
         return material_pass_codegen_result::failure(
@@ -746,6 +750,8 @@ material_pass_codegen_result generate_material_pass_slang(const material_evaluat
 
     std::ostringstream pass_source;
     pass_source << evaluator.source;
+    pass_source << "\n#define ARC_VIRTUAL_SHADOW_SAMPLING "
+                << (pass == material_pass::forward && virtual_shadow_sampling ? 1 : 0) << '\n';
     pass_source << "// ARC engine material pass contract v" << material_pass_contract_version << "; codegen v"
                 << material_pass_codegen_version << ".\n";
     append_pass_input(pass_source);
@@ -775,22 +781,25 @@ material_pass_codegen_result generate_material_pass_slang(const material_evaluat
             break;
     }
 
-    const auto key = make_material_pass_permutation_key(material, pass, debug_view, wireframe);
+    const auto key = make_material_pass_permutation_key(material, pass, debug_view, wireframe, virtual_shadow_sampling);
     return material_pass_codegen_result::success({.pass = pass,
                                                   .permutation = make_material_pass_permutation_id(key),
                                                   .source = std::move(pass_source).str(),
                                                   .generated_line_nodes = evaluator.generated_line_nodes,
                                                   .parameters = evaluator.parameters,
-                                                  .diagnostics = evaluator.diagnostics});
+                                                  .diagnostics = evaluator.diagnostics,
+                                                  .virtual_shadow_sampling = key.virtual_shadow_sampling});
 }
 
 material_pass_codegen_result generate_material_pass_slang(const material_graph_compilation& compilation,
                                                           const material_descriptor& material, material_pass pass,
-                                                          std::uint8_t debug_view, bool wireframe)
+                                                          std::uint8_t debug_view, bool wireframe,
+                                                          bool virtual_shadow_sampling)
 {
     auto evaluator = make_graph_material_evaluator(compilation);
     if (!evaluator) return material_pass_codegen_result::failure(evaluator.error());
-    return generate_material_pass_slang(evaluator.value(), material, pass, debug_view, wireframe);
+    return generate_material_pass_slang(evaluator.value(), material, pass, debug_view, wireframe,
+                                        virtual_shadow_sampling);
 }
 
 } // namespace arc::render::tools
