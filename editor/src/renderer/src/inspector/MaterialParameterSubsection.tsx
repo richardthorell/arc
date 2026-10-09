@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, TriangleAlert } from 'lucide-react';
 
 import { materialEditorParameters, type MaterialEditorParameterKind } from '../material/materialCompiler';
 import { materialFunctionCompatibleWithSlot } from '../material/materialInstanceAuthoring';
@@ -903,7 +903,12 @@ export function MaterialParameterSubsection({
           })}
         </div>
       )}
-      {mutationError && <p className="inspector-subsection-empty">{mutationError}</p>}
+      {mutationError && (
+        <p className="inspector-subsection-error" role="alert">
+          <TriangleAlert aria-hidden="true" size={10} />
+          <span>{mutationError}</span>
+        </p>
+      )}
       {state.status === 'ready' && state.parameters.length === 0 && state.functionSlots.length === 0 && (
         <p className="inspector-subsection-empty">No exported parameters.</p>
       )}
