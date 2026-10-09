@@ -117,6 +117,72 @@ class MockHost implements AgentHarnessHost {
   }
 }
 
+class AssetInventoryHost extends MockHost {
+  override async query(type: string, payload: Record<string, unknown> = {}): Promise<AgentHostResponse> {
+    if (type === 'project.assets') {
+      this.queries.push({ type, payload });
+      return response({
+        assets: [
+          {
+            id: 'brick-guid',
+            guid: 'brick-guid',
+            name: 'Bricks.jpg',
+            path: 'Textures/Bricks.jpg',
+            sourcePath: 'Textures/Bricks.jpg',
+            kind: 'texture',
+            scope: 'project',
+            status: 'ready',
+            typeId: 'texture-type',
+            importerId: 'image-importer',
+            generation: 3,
+            dependencies: [],
+            reverseDependencies: ['brick-material-guid'],
+          },
+          {
+            id: 'brick-material-guid',
+            guid: 'brick-material-guid',
+            title: 'Brick Wall',
+            name: 'BrickWall.arcmat',
+            path: 'Materials/BrickWall.arcmat',
+            sourcePath: 'Materials/BrickWall.arcmat',
+            kind: 'material',
+            scope: 'project',
+            status: 'ready',
+            typeId: 'material-type',
+            importerId: 'material-importer',
+            generation: 7,
+            dependencies: ['brick-guid'],
+            reverseDependencies: [],
+          },
+          {
+            id: 'checker-guid',
+            guid: 'checker-guid',
+            title: 'Checker',
+            path: 'builtin/material-functions/checker.arcmatfn',
+            sourcePath: 'builtin/material-functions/checker.arcmatfn',
+            kind: 'materialFunction',
+            scope: 'builtin',
+            state: 'ready',
+            readOnly: true,
+            generation: 2,
+          },
+          {
+            id: 'glass-guid',
+            guid: 'glass-guid',
+            title: 'Glass',
+            path: 'builtin/materials/glass.arcmat',
+            kind: 'material',
+            scope: 'builtin',
+            status: 'ready',
+            readOnly: true,
+          },
+        ],
+      });
+    }
+    return super.query(type, payload);
+  }
+}
+
 class MemoryAssets implements AgentAssetWorkspace {
   readonly files = new Map<string, string>();
 
@@ -177,6 +243,69 @@ describe('EditorAgentHarness', () => {
     await expect(harness.invoke('agent.presentChoices', payload, 'reader')).resolves.toEqual(payload);
     expect(host.commands).toHaveLength(0);
     expect(host.queries).toHaveLength(0);
+  });
+
+  it('searches and bounds the authoritative asset inventory with stable capability metadata', async () => {
+    const host = new AssetInventoryHost();
+    const harness = new EditorAgentHarness(host);
+
+    const first = (await harness.invoke(
+      'assets.list',
+      { kinds: ['material', 'materialFunction'], limit: 2 },
+      'reader',
+    )) as Record<string, unknown>;
+
+    expect(first).toMatchObject({
+      contract: { name: 'arc.asset-inventory', version: 1 },
+      total: 3,
+      returned: 2,
+      hasMore: true,
+      query: {
+        search: '',
+        kinds: ['material', 'materialFunction'],
+        offset: 0,
+        limit: 2,
+      },
+    });
+    expect(first.assets).toEqual([
+      expect.objectContaining({
+        guid: 'brick-material-guid',
+        name: 'Brick Wall',
+        kind: 'material',
+        scope: 'project',
+        status: 'ready',
+        dependencies: ['brick-guid'],
+        capabilities: expect.objectContaining({
+          authoredMaterial: true,
+          assignableSurface: true,
+          inspectableMaterialDefinition: true,
+        }),
+      }),
+      expect.objectContaining({
+        guid: 'checker-guid',
+        name: 'Checker',
+        kind: 'materialFunction',
+        scope: 'builtin',
+        readOnly: true,
+        capabilities: expect.objectContaining({
+          materialFunction: true,
+          assignableSurface: false,
+          inspectableMaterialDefinition: true,
+        }),
+      }),
+    ]);
+
+    const searched = (await harness.invoke(
+      'assets.list',
+      { search: 'glass', scopes: ['builtin'], limit: 20 },
+      'reader',
+    )) as Record<string, unknown>;
+    expect(searched).toMatchObject({ total: 1, returned: 1, hasMore: false });
+    expect(searched.assets).toEqual([expect.objectContaining({ guid: 'glass-guid', name: 'Glass' })]);
+    expect(host.queries).toEqual([
+      { type: 'project.assets', payload: {} },
+      { type: 'project.assets', payload: {} },
+    ]);
   });
 
   it('reports native authority revisions on GUID-first reads', async () => {

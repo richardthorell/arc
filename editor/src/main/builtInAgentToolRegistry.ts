@@ -172,8 +172,20 @@ const registryEntries = [
   {
     method: 'assets.list',
     description:
-      'List the authoritative project-local asset inventory for reuse decisions and validated scene/material bindings. Inspect this before creating or importing reusable content when the supplied asset context is insufficient.',
-    schema: empty,
+      'Search the authoritative ARC asset inventory, including engine built-ins and project content. Use this before authoring or assigning materials, textures, functions, shaders, prefabs, or other reusable assets. Results are bounded and include stable identity, readiness, provenance, dependency relations, and typed capability hints derived from the registered asset kind.',
+    schema: z
+      .object({
+        search: z.string().max(240).optional(),
+        kinds: z.array(z.string().min(1).max(64)).max(16).optional(),
+        scopes: z
+          .array(z.enum(['builtin', 'project', 'user', 'organization', 'procedural']))
+          .max(5)
+          .optional(),
+        statuses: z.array(z.string().min(1).max(32)).max(12).optional(),
+        offset: z.number().int().nonnegative().optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+      })
+      .strict(),
   },
   {
     method: 'viewport.state',

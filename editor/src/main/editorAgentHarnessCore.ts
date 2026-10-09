@@ -193,6 +193,76 @@ const assetName = (path: string): string => {
   return filename.slice(0, filename.lastIndexOf('.')) || 'New Asset';
 };
 
+const assetInventoryContract = Object.freeze({ name: 'arc.asset-inventory', version: 1 });
+
+const assetString = (asset: Record<string, unknown>, key: string): string =>
+  typeof asset[key] === 'string' ? String(asset[key]) : '';
+
+const assetArray = (asset: Record<string, unknown>, key: string): string[] =>
+  Array.isArray(asset[key])
+    ? (asset[key] as unknown[]).filter((value): value is string => typeof value === 'string')
+    : [];
+
+const assetCapabilities = (kind: string) => ({
+  authoredMaterial: kind === 'material',
+  materialFunction: kind === 'materialFunction',
+  materialInstance: kind === 'materialInstance',
+  textureSource: kind === 'texture',
+  shaderSource: kind === 'shader',
+  assignableSurface: kind === 'material' || kind === 'materialInstance',
+  inspectableMaterialDefinition: kind === 'material' || kind === 'materialFunction' || kind === 'materialInstance',
+});
+
+const normalizedAssetInventoryEntry = (value: unknown): Record<string, unknown> => {
+  const asset = asObject(value);
+  const kind = assetString(asset, 'kind');
+  return {
+    guid: assetString(asset, 'guid') || assetString(asset, 'id'),
+    name: assetString(asset, 'title') || assetString(asset, 'name'),
+    kind,
+    scope: assetString(asset, 'scope'),
+    path: assetString(asset, 'path'),
+    sourcePath: assetString(asset, 'sourcePath'),
+    status: assetString(asset, 'status') || assetString(asset, 'state'),
+    readOnly: asset.readOnly === true,
+    typeId: assetString(asset, 'typeId'),
+    importerId: assetString(asset, 'importerId'),
+    generation: Number.isSafeInteger(asset.generation) ? Number(asset.generation) : 0,
+    dependencies: assetArray(asset, 'dependencies'),
+    reverseDependencies: assetArray(asset, 'reverseDependencies'),
+    capabilities: assetCapabilities(kind),
+  };
+};
+
+const assetInventoryMatches = (
+  asset: Record<string, unknown>,
+  search: string,
+  kinds: ReadonlySet<string>,
+  scopes: ReadonlySet<string>,
+  statuses: ReadonlySet<string>,
+): boolean => {
+  const kind = assetString(asset, 'kind');
+  const scope = assetString(asset, 'scope');
+  const status = assetString(asset, 'status') || assetString(asset, 'state');
+  if (kinds.size > 0 && !kinds.has(kind)) return false;
+  if (scopes.size > 0 && !scopes.has(scope)) return false;
+  if (statuses.size > 0 && !statuses.has(status)) return false;
+  if (!search) return true;
+  const haystack = [
+    assetString(asset, 'guid'),
+    assetString(asset, 'id'),
+    assetString(asset, 'name'),
+    assetString(asset, 'title'),
+    assetString(asset, 'path'),
+    assetString(asset, 'sourcePath'),
+    kind,
+    scope,
+  ]
+    .join('\n')
+    .toLocaleLowerCase();
+  return haystack.includes(search);
+};
+
 const defaultMaterialDefinition = (name: string): Record<string, unknown> => ({
   version: 4,
   name,
@@ -611,8 +681,48 @@ export class EditorAgentHarness {
           ? { sceneRevision: response.sceneRevision, worldEpoch: response.worldEpoch, changes: [] }
           : { ...snapshot, changes: [], fullSnapshotRequired: true, sinceSceneRevision: since };
       }
-      case 'assets.list':
-        return this.expect(await this.host.query('project.assets'));
+      case 'assets.list': {
+        const snapshot = asObject(this.expect(await this.host.query('project.assets')));
+        const sourceAssets = Array.isArray(snapshot.assets) ? snapshot.assets : [];
+        const search = typeof params.search === 'string' ? params.search.trim().toLocaleLowerCase() : '';
+        const kinds = new Set(
+          Array.isArray(params.kinds) ? params.kinds.filter((value): value is string => typeof value === 'string') : [],
+        );
+        const scopes = new Set(
+          Array.isArray(params.scopes)
+            ? params.scopes.filter((value): value is string => typeof value === 'string')
+            : [],
+        );
+        const statuses = new Set(
+          Array.isArray(params.statuses)
+            ? params.statuses.filter((value): value is string => typeof value === 'string')
+            : [],
+        );
+        const offset = Number.isSafeInteger(params.offset) ? Math.max(0, Number(params.offset)) : 0;
+        const limit = Number.isSafeInteger(params.limit) ? Math.min(200, Math.max(1, Number(params.limit))) : 50;
+        const filtered = sourceAssets
+          .map((asset) => asObject(asset))
+          .filter((asset) => assetInventoryMatches(asset, search, kinds, scopes, statuses));
+        const assets = filtered.slice(offset, offset + limit).map(normalizedAssetInventoryEntry);
+        return {
+          contract: assetInventoryContract,
+          query: {
+            search,
+            kinds: [...kinds],
+            scopes: [...scopes],
+            statuses: [...statuses],
+            offset,
+            limit,
+          },
+          total: filtered.length,
+          returned: assets.length,
+          hasMore: offset + assets.length < filtered.length,
+          assets,
+          sceneRevision: snapshot.sceneRevision,
+          worldEpoch: snapshot.worldEpoch,
+          frameRevision: snapshot.frameRevision,
+        };
+      }
       case 'diagnostics.get':
         return this.diagnostics();
       case 'events.wait':
