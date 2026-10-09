@@ -527,18 +527,62 @@ std::optional<render::material_parameter_value> override_value(editor_scene_stat
     return std::nullopt;
 }
 
+std::optional<render::material_parameter_value>
+authored_instance_value(editor_scene_state& scene, render::renderer& renderer, const editor_material_record& base,
+                        const render::shader_parameter_descriptor& parameter, const json& value)
+{
+    const auto number_array = [&](std::size_t count) -> std::optional<std::vector<float>>
+    {
+        if (!value.is_array() || value.size() != count) return std::nullopt;
+        std::vector<float> result;
+        result.reserve(count);
+        for (const auto& component : value)
+        {
+            if (!component.is_number()) return std::nullopt;
+            const auto number = component.get<float>();
+            if (!std::isfinite(number)) return std::nullopt;
+            result.push_back(number);
+        }
+        return result;
+    };
+
+    switch (parameter.type)
+    {
+        case render::shader_parameter_type::float32:
+            if (value.is_number()) return value.get<float>();
+            break;
+        case render::shader_parameter_type::float2:
+            if (const auto values = number_array(2u)) return math::vector2f{(*values)[0], (*values)[1]};
+            break;
+        case render::shader_parameter_type::float3:
+            if (const auto values = number_array(3u)) return math::vector3f{(*values)[0], (*values)[1], (*values)[2]};
+            break;
+        case render::shader_parameter_type::float4:
+            if (const auto values = number_array(4u))
+                return math::vector4f{(*values)[0], (*values)[1], (*values)[2], (*values)[3]};
+            break;
+        case render::shader_parameter_type::texture_2d:
+            if (value.is_string())
+                return render::resource_handle{ensure_override_texture(scene, renderer, base, value.get<std::string>())};
+            break;
+        default:
+            break;
+    }
+    return std::nullopt;
+}
+
 std::optional<material_preview_descriptor_result> realize_function_specialization(editor_scene_state& scene,
                                                                                   render::renderer& renderer,
                                                                                   const editor_material_record& base,
                                                                                   const json& overrides)
 {
-    std::vector<render::tools::material_function_slot_override> slot_overrides;
     struct selected_function
     {
         std::string guid;
         std::string path;
     };
-    std::vector<selected_function> selected;
+
+    std::map<std::string, selected_function> selections;
     for (const auto& entry : overrides)
     {
         if (!entry.is_object() || entry.value("kind", std::string{}) != "function") continue;
@@ -547,28 +591,73 @@ std::optional<material_preview_descriptor_result> realize_function_specializatio
         const auto guid = function.value("guid", std::string{});
         const auto path = function.value("pathHint", std::string{});
         if (slot_id.empty() || guid.empty() || path.empty()) continue;
-        slot_overrides.push_back({.slot_id = slot_id, .function_path = path});
-        selected.push_back({.guid = guid, .path = path});
+        selections[slot_id] = {.guid = guid, .path = path};
     }
-    if (slot_overrides.empty()) return std::nullopt;
+    if (selections.empty()) return std::nullopt;
 
-    const auto source = read_text_file(base.path);
-    const auto document = json::parse(source, nullptr, false);
+    editor_material_record source_base = base;
+    auto source = read_text_file(base.path);
+    auto document = json::parse(source, nullptr, false);
+
+    auto extension = base.path.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    if (extension == ".arcmatinst")
+    {
+        const auto instance = document;
+        if (source.empty() || instance.is_discarded() || !instance.is_object())
+            return material_preview_descriptor_result{.message = "Material Instance source is unavailable"};
+
+        const auto parent = instance.value("parent", json::object());
+        const auto parent_hint = parent.value("pathHint", std::string{});
+        if (parent_hint.empty())
+            return material_preview_descriptor_result{.message = "Material Instance parent path is unavailable"};
+
+        source_base.path = resolve_texture_path(base, parent_hint);
+        source = read_text_file(source_base.path);
+        document = json::parse(source, nullptr, false);
+        if (source.empty() || document.is_discarded() || !document.is_object() || !document.contains("graph"))
+            return material_preview_descriptor_result{.message = "Material Instance parent source is unavailable"};
+
+        const auto authored_functions = instance.value("functionOverrides", json::array());
+        if (authored_functions.is_array())
+        {
+            for (const auto& authored : authored_functions)
+            {
+                if (!authored.is_object()) continue;
+                const auto slot_id = authored.value("slotId", std::string{});
+                const auto function = authored.value("function", json::object());
+                const auto guid = function.value("guid", std::string{});
+                const auto path = function.value("pathHint", std::string{});
+                if (slot_id.empty() || guid.empty() || path.empty()) continue;
+                if (!selections.contains(slot_id)) selections[slot_id] = {.guid = guid, .path = path};
+            }
+        }
+    }
+
     if (source.empty() || document.is_discarded() || !document.is_object() || !document.contains("graph"))
-        return material_preview_descriptor_result{.message =
-                                                      "Material source is unavailable for Function specialization"};
+        return material_preview_descriptor_result{.message = "Material source is unavailable for Function specialization"};
 
     std::vector<std::string> pending;
     if (!collect_function_paths(document["graph"], pending))
         return material_preview_descriptor_result{.message = "Material graph is malformed while resolving Functions"};
-    for (const auto& replacement : selected)
-        pending.push_back(replacement.path);
+
+    std::vector<render::tools::material_function_slot_override> slot_overrides;
+    std::vector<selected_function> selected;
+    slot_overrides.reserve(selections.size());
+    selected.reserve(selections.size());
+    for (const auto& [slot_id, function] : selections)
+    {
+        slot_overrides.push_back({.slot_id = slot_id, .function_path = function.path});
+        selected.push_back(function);
+        pending.push_back(function.path);
+    }
 
     std::vector<render::tools::material_function_source> functions;
     std::set<std::string> visited;
     for (std::size_t index = 0; index < pending.size(); ++index)
     {
-        const auto source_path = resolve_texture_path(base, pending[index]);
+        const auto source_path = resolve_texture_path(source_base, pending[index]);
         auto key = source_path.lexically_normal().generic_string();
         std::transform(key.begin(), key.end(), key.begin(),
                        [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
@@ -596,8 +685,8 @@ std::optional<material_preview_descriptor_result> realize_function_specializatio
         realize_material_preview_descriptor(source, base.asset.name + " Instance", functions, slot_overrides);
     if (realized.succeeded)
     {
-        const auto asset_root = base.path.parent_path().parent_path();
-        resolve_material_runtime_textures(scene.material_library, renderer, asset_root, base.path,
+        const auto asset_root = source_base.path.parent_path().parent_path();
+        resolve_material_runtime_textures(scene.material_library, renderer, asset_root, source_base.path,
                                           realized.texture_sources, realized.material);
     }
     return realized;
@@ -644,6 +733,44 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
     render::material_instance_descriptor instance;
     instance.parent = base.material;
     instance.name = base.asset.name + " Instance";
+
+    auto base_extension = base.path.extension().string();
+    std::transform(base_extension.begin(), base_extension.end(), base_extension.begin(),
+                   [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    if (base_extension == ".arcmatinst")
+    {
+        const auto authored_instance = json::parse(read_text_file(base.path), nullptr, false);
+        if (authored_instance.is_object())
+        {
+            const auto parameter_overrides = authored_instance.value("parameterOverrides", json::array());
+            if (parameter_overrides.is_array())
+            {
+                for (const auto& authored : parameter_overrides)
+                {
+                    if (!authored.is_object() || !authored.contains("parameterId") || !authored.contains("value"))
+                        continue;
+                    std::uint64_t parameter_id{};
+                    try
+                    {
+                        parameter_id = std::stoull(authored["parameterId"].get<std::string>());
+                    }
+                    catch (...)
+                    {
+                        continue;
+                    }
+                    const auto& parameters = specialized_material.runtime_program->parameters;
+                    const auto layout =
+                        std::ranges::find(parameters, render::shader_parameter_id{parameter_id},
+                                          &render::shader_parameter_descriptor::id);
+                    if (layout == parameters.end()) continue;
+                    const auto value = authored_instance_value(scene, renderer, base, *layout, authored["value"]);
+                    if (!value) continue;
+                    instance.overrides.push_back({.id = layout->id, .name = layout->name, .value = *value});
+                }
+            }
+        }
+    }
+
     for (const auto& authored : overrides)
     {
         if (!authored.is_object() || authored.value("kind", std::string{}) == "function") continue;
