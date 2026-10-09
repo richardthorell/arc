@@ -375,13 +375,13 @@ describe('ViewportPanel', () => {
 
     fireEvent.click(view.getByText('Show'));
     const grid = await view.findByRole('menuitemcheckbox', { name: /Grid/ });
-    expect(grid).toHaveAttribute('aria-checked', 'false');
+    expect(grid).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(grid);
 
     await waitFor(() =>
       expect(command).toHaveBeenCalledWith(
         'viewport.setRenderOptions',
-        expect.objectContaining({ grid: true, renderMode: 'shaded' }),
+        expect.objectContaining({ grid: false, renderMode: 'shaded' }),
       ),
     );
   });
@@ -423,9 +423,11 @@ describe('ViewportPanel', () => {
     );
     expect(view.getByRole('menuitemcheckbox', { name: /Hover Outline/ })).toHaveAttribute('aria-checked', 'true');
     const bounds = view.getByRole('menuitemcheckbox', { name: /Selection Bounds/ });
-    const wireframe = view.getByRole('menuitemcheckbox', { name: /Selection Wireframe/ });
     expect(bounds).toHaveAttribute('aria-checked', 'false');
-    expect(wireframe).toHaveAttribute('aria-checked', 'false');
+    expect(view.getByRole('menuitemcheckbox', { name: /Selection Wireframe/ })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
 
     fireEvent.click(bounds);
     await waitFor(() =>
@@ -434,6 +436,9 @@ describe('ViewportPanel', () => {
         expect.objectContaining({ selectionBounds: true, overlay: 'none' }),
       ),
     );
+
+    fireEvent.click(view.getByRole('button', { name: 'Show' }));
+    const wireframe = await view.findByRole('menuitemcheckbox', { name: /Selection Wireframe/ });
     fireEvent.click(wireframe);
     await waitFor(() =>
       expect(command).toHaveBeenCalledWith(
