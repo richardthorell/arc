@@ -261,11 +261,17 @@ function MaterialFunctionReferenceEditor({
   const selectable = node.type === 'functionCall';
   const selectedDocument = functions.find((option) => option.asset.path === selectedPath)?.document;
   const contractInputs =
-    inputPins.length > 0 ? inputPins : selectedDocument?.inputs ?? functions.find((option) => option.asset.path === references[0]?.path)?.document.inputs ?? [];
+    inputPins.length > 0
+      ? inputPins
+      : (selectedDocument?.inputs ??
+        functions.find((option) => option.asset.path === references[0]?.path)?.document.inputs ??
+        []);
   const contractOutputs =
     outputPins.length > 0
       ? outputPins
-      : selectedDocument?.outputs ?? functions.find((option) => option.asset.path === references[0]?.path)?.document.outputs ?? [];
+      : (selectedDocument?.outputs ??
+        functions.find((option) => option.asset.path === references[0]?.path)?.document.outputs ??
+        []);
 
   if (!selectable) {
     const options = [
@@ -309,7 +315,9 @@ function MaterialFunctionReferenceEditor({
     return option ? [{ reference, option }] : [{ reference, option: null }];
   });
   const referencedPaths = new Set(references.map((reference) => reference.path));
-  const pickerAssets = functions.filter((option) => !referencedPaths.has(option.asset.path)).map((option) => option.asset);
+  const pickerAssets = functions
+    .filter((option) => !referencedPaths.has(option.asset.path))
+    .map((option) => option.asset);
   const compatibility = (asset: AssetPickerItem) => {
     const option = functions.find((candidate) => candidate.asset.path === asset.path);
     if (!option) return 'Material Function metadata is unavailable';
@@ -360,7 +368,7 @@ function MaterialFunctionReferenceEditor({
   const removeFunction = (path: string) => {
     const nextReferences = references.filter((reference) => reference.path !== path);
     const removedActive = selectedPath === path;
-    const nextActive = removedActive ? nextReferences[0]?.path ?? '' : selectedPath;
+    const nextActive = removedActive ? (nextReferences[0]?.path ?? '') : selectedPath;
     const nextDocument = functions.find((option) => option.asset.path === nextActive)?.document;
     onChange({
       ...node,

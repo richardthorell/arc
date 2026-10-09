@@ -452,9 +452,9 @@ slot_specialization_result specialize_function_slots(json graph,
                         "Material Function Call '" + slot_id + "' references a missing or ambiguous function"));
                 std::string compatibility_reason;
                 if (!function_slot_compatible(*base, *candidate, compatibility_reason))
-                    return slot_specialization_result::failure(validation_error(concatenate(
-                        {"Material Function Call '", slot_id, "' contains an incompatible function: ",
-                         compatibility_reason})));
+                    return slot_specialization_result::failure(
+                        validation_error(concatenate({"Material Function Call '", slot_id,
+                                                      "' contains an incompatible function: ", compatibility_reason})));
             }
         }
 
