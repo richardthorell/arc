@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronRight, Copy, Magnet, Minus, Plus, RotateCcw, Scan, Search, WandSparkles } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, ExternalLink, Magnet, Minus, Plus, RotateCcw, Scan, Search, WandSparkles } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
-import { AssetPicker, type AssetPickerItem } from '../inspector/AssetPicker';
+import { AssetPicker, AssetThumbnail, type AssetPickerItem } from '../inspector/AssetPicker';
 import {
   GraphDiagnosticBadge,
   GraphPin,
@@ -345,6 +345,24 @@ function MaterialFunctionReferenceEditor({
       : 'Function signature does not match this Function Call';
   };
 
+  const openFunction = (asset?: AssetPickerItem) => {
+    if (!asset || asset.scope === 'procedural') return;
+    void import('../editors/editorRegistry').then(({ openAssetEditorDocument }) => {
+      openAssetEditorDocument({
+        id: asset.id,
+        guid: asset.guid,
+        typeId: asset.typeId,
+        name: asset.name,
+        title: asset.title,
+        path: asset.sourcePath || asset.path,
+        kind: 'materialFunction',
+        status: asset.status,
+        scope: asset.scope,
+        readOnly: asset.readOnly,
+      });
+    });
+  };
+
   const setActive = (path: string, document?: MaterialFunctionAssetJson) => {
     onChange({
       ...node,
@@ -450,18 +468,49 @@ function MaterialFunctionReferenceEditor({
                 onChange={() => setActive(reference.path, option?.document)}
                 type="radio"
               />
-              <AssetPicker
-                allowEmpty={false}
-                assetCompatibility={compatibility}
-                assetKinds={['materialFunction']}
-                assetTypeLabel="Material Function"
-                assets={rowAssets}
-                disabled={readOnly}
-                label={label}
-                showLabel={false}
-                value={reference.path}
-                onChange={(path) => replaceFunction(reference.path, path)}
-              />
+              {readOnly ? (
+                <div className="asset-reference-control material-function-call-readonly-resource">
+                  <button
+                    aria-label={`${label} Material Function`}
+                    className="asset-reference-main"
+                    disabled
+                    type="button"
+                  >
+                    <AssetThumbnail asset={option?.asset} path={option?.asset.path || reference.path} />
+                    <span className="asset-reference-copy">
+                      <strong>{label}</strong>
+                      <small>{option?.asset.scope === 'builtin' ? 'Engine Material Function' : 'Material Function'}</small>
+                    </span>
+                    <ChevronDown size={13} />
+                  </button>
+                  {option && (
+                    <span style={{ display: 'flex', alignItems: 'center' }}>
+                      <button
+                        aria-label={`Open ${label} in Material Function Editor`}
+                        className="asset-reference-clear"
+                        onClick={() => openFunction(option.asset)}
+                        title="Open in Material Function Editor"
+                        type="button"
+                      >
+                        <ExternalLink size={13} />
+                      </button>
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <AssetPicker
+                  allowEmpty={false}
+                  assetCompatibility={compatibility}
+                  assetKinds={['materialFunction']}
+                  assetTypeLabel="Material Function"
+                  assets={rowAssets}
+                  label={label}
+                  onOpen={openFunction}
+                  showLabel={false}
+                  value={reference.path}
+                  onChange={(path) => replaceFunction(reference.path, path)}
+                />
+              )}
               {!readOnly && references.length > 1 && (
                 <UiIconButton
                   label={`Remove ${label}`}
