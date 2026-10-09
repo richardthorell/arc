@@ -2071,6 +2071,7 @@ export function ExplorerPanel({
   const selectedCount = selectedEntityIds.size;
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [createMenuSearch, setCreateMenuSearch] = useState('');
+  const [createMenuPosition, setCreateMenuPosition] = useState({ x: 0, y: 0 });
   const createMenuRef = useRef<HTMLDivElement | null>(null);
   const [kindFilter, setKindFilter] = useState<'all' | SceneEntity['kind']>('all');
   const [onlyVisible, setOnlyVisible] = useState(false);
@@ -2092,10 +2093,15 @@ export function ExplorerPanel({
   useEffect(() => {
     if (!createMenuOpen) return;
     const closeOnPointerDown = (event: PointerEvent) => {
-      if (!createMenuRef.current?.contains(event.target as Node)) {
-        setCreateMenuOpen(false);
-        setCreateMenuSearch('');
-      }
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        (createMenuRef.current?.contains(target) ||
+          (target instanceof Element && target.closest('.hierarchy-create-dropdown')))
+      )
+        return;
+      setCreateMenuOpen(false);
+      setCreateMenuSearch('');
     };
     document.addEventListener('pointerdown', closeOnPointerDown);
     return () => {
@@ -2128,11 +2134,19 @@ export function ExplorerPanel({
               active={createMenuOpen}
               disabled={readOnly}
               label={createMenuOpen ? 'Close add entity menu' : 'Add entity'}
-              onClick={() =>
-                setCreateMenuOpen((open) => {
-                  if (open) setCreateMenuSearch('');
-                  return !open;
-                })
+              onClick={(event) => {
+                const open = !createMenuOpen;
+                if (open) {
+                  const bounds = event.currentTarget.getBoundingClientRect();
+                  const width = 220;
+                  setCreateMenuPosition({
+                    x: Math.max(8, Math.min(bounds.right - width, window.innerWidth - width - 8)),
+                    y: bounds.bottom + 4,
+                  });
+                } else {
+                  setCreateMenuSearch('');
+                }
+                setCreateMenuOpen(open);
               }
             >
               <Plus size={13} />
@@ -2141,7 +2155,10 @@ export function ExplorerPanel({
               <UiContextMenu
                 className="hierarchy-create-dropdown"
                 aria-label="Add entity"
+                portal
                 width={220}
+                x={createMenuPosition.x}
+                y={createMenuPosition.y}
                 searchValue={createMenuSearch}
                 onSearchValueChange={setCreateMenuSearch}
                 searchAriaLabel="Search entities"
