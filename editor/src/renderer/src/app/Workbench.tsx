@@ -2147,7 +2147,7 @@ export function ExplorerPanel({
                   setCreateMenuSearch('');
                 }
                 setCreateMenuOpen(open);
-              }
+              }}
             >
               <Plus size={13} />
             </UiIconButton>
