@@ -2,14 +2,21 @@ import { useEffect, useMemo, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 
 import { materialEditorParameters, type MaterialEditorParameterKind } from '../material/materialCompiler';
-import { deserializeMaterialInstanceAsset, materialParameterId } from '../material/materialInstancePersistence';
+import { materialFunctionCompatibleWithSlot } from '../material/materialInstanceAuthoring';
+import {
+  deserializeMaterialInstanceAsset,
+  materialFunctionSlotParameterId,
+  materialParameterId,
+} from '../material/materialInstancePersistence';
 import {
   materialGraphFromAsset,
   type MaterialAssetJson,
+  type MaterialFunctionAssetJson,
+  type MaterialFunctionPin,
   type MaterialGraphNode,
   type MaterialGraphValueType,
 } from '../material/materialGraphTypes';
-import { UiColorControl, UiNumericInput, UiSlider } from '../ui';
+import { UiColorControl, UiNumericInput, UiSelect, UiSlider } from '../ui';
 import { TexturePicker } from './AssetPicker';
 import type { HostEntityId, HostResponse, Vec4 } from './inspectorTypes';
 import { NumberControl } from './InspectorControls';
@@ -22,6 +29,7 @@ type MaterialParameterAsset = {
   typeId?: string;
   name: string;
   path: string;
+  sourcePath?: string;
   kind: string;
   status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'source' | 'stale' | 'importing' | 'failed' | 'missing';
   scope?: 'builtin' | 'project' | 'user' | 'organization' | 'procedural';
@@ -29,6 +37,8 @@ type MaterialParameterAsset = {
 };
 
 type InstanceOverride = {
+  parameterId?: string;
+  slotId?: string;
   name: string;
   type: MaterialGraphValueType;
   kind: MaterialEditorParameterKind;
@@ -38,6 +48,7 @@ type InstanceOverride = {
 
 type DisplayParameter = {
   nodeId: string;
+  slotId?: string;
   name: string;
   type: MaterialGraphValueType;
   editorKind: MaterialEditorParameterKind;
@@ -46,12 +57,36 @@ type DisplayParameter = {
   texture: string;
 };
 
+type DisplayFunctionOption = {
+  guid: string;
+  path: string;
+  name: string;
+  document: MaterialFunctionAssetJson;
+};
+
+type DisplayFunctionSlot = {
+  id: string;
+  name: string;
+  inputs: MaterialFunctionPin[];
+  outputs: MaterialFunctionPin[];
+  defaultGuid: string;
+  selectedGuid: string;
+  options: DisplayFunctionOption[];
+  parameters: DisplayParameter[];
+};
+
+type RuntimeFunctionOverride = {
+  kind: 'function';
+  slotId: string;
+  function: { guid: string; pathHint: string };
+};
+
 type ParameterState =
-  | { status: 'idle'; parameters: DisplayParameter[] }
-  | { status: 'loading'; parameters: DisplayParameter[] }
-  | { status: 'ready'; parameters: DisplayParameter[] }
-  | { status: 'custom'; parameters: DisplayParameter[] }
-  | { status: 'error'; parameters: DisplayParameter[] };
+  | { status: 'idle'; parameters: DisplayParameter[]; functionSlots: DisplayFunctionSlot[] }
+  | { status: 'loading'; parameters: DisplayParameter[]; functionSlots: DisplayFunctionSlot[] }
+  | { status: 'ready'; parameters: DisplayParameter[]; functionSlots: DisplayFunctionSlot[] }
+  | { status: 'custom'; parameters: DisplayParameter[]; functionSlots: DisplayFunctionSlot[] }
+  | { status: 'error'; parameters: DisplayParameter[]; functionSlots: DisplayFunctionSlot[] };
 
 type SelectedMaterialSnapshot = {
   entity: HostEntityId;
@@ -59,10 +94,11 @@ type SelectedMaterialSnapshot = {
   meshRenderer?: { materialName?: string };
 };
 
-const emptyState: ParameterState = { status: 'idle', parameters: [] };
+const emptyState: ParameterState = { status: 'idle', parameters: [], functionSlots: [] };
 const componentLabels = ['X', 'Y', 'Z', 'W'];
 const instanceMarker = '__arc_instance_overrides__';
 const parameterCommandPrefix = '__arc_primitive_parameter__/__arc_material_parameter__';
+const functionCommandPrefix = '__arc_primitive_parameter__/__arc_material_function__';
 
 const normalizePath = (value: string) =>
   value
@@ -124,16 +160,51 @@ const hexToText = (hex: string) => {
   return new TextDecoder().decode(bytes);
 };
 
-const overridesFromMaterialName = (name: string | undefined): InstanceOverride[] => {
+const persistedRuntimeStateFromMaterialName = (name: string | undefined): unknown[] => {
   const marker = name?.indexOf(instanceMarker) ?? -1;
   if (!name || marker < 0) return [];
   try {
     const parsed = JSON.parse(hexToText(name.slice(marker + instanceMarker.length)) || '[]');
-    return Array.isArray(parsed) ? (parsed as InstanceOverride[]) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 };
+
+const overridesFromMaterialName = (name: string | undefined): InstanceOverride[] =>
+  persistedRuntimeStateFromMaterialName(name).filter((entry): entry is InstanceOverride =>
+    Boolean(entry && typeof entry === 'object' && typeof (entry as InstanceOverride).name === 'string'),
+  );
+
+const functionOverridesFromMaterialName = (name: string | undefined): RuntimeFunctionOverride[] =>
+  persistedRuntimeStateFromMaterialName(name).filter((entry): entry is RuntimeFunctionOverride =>
+    Boolean(
+      entry &&
+      typeof entry === 'object' &&
+      (entry as RuntimeFunctionOverride).kind === 'function' &&
+      typeof (entry as RuntimeFunctionOverride).slotId === 'string',
+    ),
+  );
+
+const pathMatches = (candidate: string, hint: string) => {
+  const left = normalizePath(candidate).toLocaleLowerCase();
+  const right = normalizePath(hint).toLocaleLowerCase();
+  return Boolean(left && right && (left === right || left.endsWith(`/${right}`) || right.endsWith(`/${left}`)));
+};
+
+const functionEditorKind = (pin: MaterialFunctionPin): MaterialEditorParameterKind =>
+  /^colou?r\b/i.test(pin.name) && (pin.type === 'vec3' || pin.type === 'vec4')
+    ? 'color'
+    : pin.type === 'float'
+      ? 'scalar'
+      : 'vector';
+
+const functionParameterValues = (value: unknown): number[] =>
+  typeof value === 'number'
+    ? [value]
+    : Array.isArray(value)
+      ? value.map((component) => (typeof component === 'number' && Number.isFinite(component) ? component : 0))
+      : [];
 
 const numericField = (label: string, range?: { min: number; max: number }) => ({
   label,
@@ -184,7 +255,7 @@ export function MaterialParameterSubsection({
       };
     }
 
-    setState({ status: 'loading', parameters: [] });
+    setState({ status: 'loading', parameters: [], functionSlots: [] });
     void (async () => {
       try {
         const resolvedMaterialPath = await projectRelativeMaterialPath(materialPath, materialScope);
@@ -195,6 +266,10 @@ export function MaterialParameterSubsection({
         if (!active) return;
         let materialAsset: MaterialAssetJson;
         let instanceDefaults = new Map<string, unknown>();
+        const instanceFunctionOverrides = new Map<
+          string,
+          { guid: string; pathHint: string; inputOverrides: Array<{ pinId: string; value: unknown }> }
+        >();
         if (selected?.kind === 'materialInstance' || /\.arcmatinst$/i.test(materialPath)) {
           const instance = deserializeMaterialInstanceAsset(file.text);
           if (!instance) throw new Error('Material Instance metadata is unavailable');
@@ -218,13 +293,19 @@ export function MaterialParameterSubsection({
           );
           materialAsset = JSON.parse(parentFile.text) as MaterialAssetJson;
           instanceDefaults = new Map(instance.parameterOverrides.map((entry) => [entry.parameterId, entry.value]));
+          for (const entry of instance.functionOverrides)
+            instanceFunctionOverrides.set(entry.slotId, {
+              guid: entry.function.guid,
+              pathHint: entry.function.pathHint,
+              inputOverrides: entry.inputOverrides,
+            });
         } else {
           materialAsset = JSON.parse(file.text) as MaterialAssetJson;
         }
 
         const customShader = typeof materialAsset.shaderPath === 'string' ? materialAsset.shaderPath.trim() : '';
         if (customShader) {
-          setState({ status: 'custom', parameters: [] });
+          setState({ status: 'custom', parameters: [], functionSlots: [] });
           return;
         }
 
@@ -256,12 +337,89 @@ export function MaterialParameterSubsection({
             texture: authoredTexture,
           };
         });
-        setOverrides(
-          selection?.succeeded ? overridesFromMaterialName(selection.payload?.meshRenderer?.materialName) : [],
-        );
-        setState({ status: 'ready', parameters });
+        const runtimeMaterialName = selection?.succeeded ? selection.payload?.meshRenderer?.materialName : undefined;
+        const runtimeFunctions = functionOverridesFromMaterialName(runtimeMaterialName);
+        setOverrides(selection?.succeeded ? overridesFromMaterialName(runtimeMaterialName) : []);
+
+        const functionOptions = (
+          await Promise.all(
+            assets
+              .filter((asset) => asset.kind === 'materialFunction' && asset.guid)
+              .map(async (asset): Promise<DisplayFunctionOption | null> => {
+                try {
+                  const scope = asset.scope === 'builtin' ? 'builtin' : 'project';
+                  const path = await projectRelativeMaterialPath(asset.sourcePath || asset.path, scope);
+                  const source = await window.arc.projects.readText(path, scope);
+                  const document = JSON.parse(source.text) as MaterialFunctionAssetJson;
+                  if (document.kind !== 'materialFunction' || document.version !== 1 || !asset.guid) return null;
+                  return { guid: asset.guid, path: asset.sourcePath || asset.path, name: document.name, document };
+                } catch {
+                  return null;
+                }
+              }),
+          )
+        ).filter((option): option is DisplayFunctionOption => option !== null);
+
+        const functionSlots = graph.nodes.flatMap((node): DisplayFunctionSlot[] => {
+          if (node.type !== 'functionSlot') return [];
+          const id = typeof node.values.slotId === 'string' ? node.values.slotId.trim() : '';
+          const name =
+            typeof node.values.name === 'string' && node.values.name.trim() ? node.values.name.trim() : 'Function';
+          const defaultPath = typeof node.values.path === 'string' ? node.values.path : '';
+          const inputs = Array.isArray(node.values.inputPins) ? (node.values.inputPins as MaterialFunctionPin[]) : [];
+          const outputs = Array.isArray(node.values.outputPins)
+            ? (node.values.outputPins as MaterialFunctionPin[])
+            : [];
+          if (!id || !defaultPath) return [];
+          const compatible = functionOptions.filter((option) =>
+            materialFunctionCompatibleWithSlot(inputs, outputs, option.document),
+          );
+          const defaultOption = compatible.find((option) => pathMatches(option.path, defaultPath));
+          if (!defaultOption) return [];
+
+          const authored = instanceFunctionOverrides.get(id);
+          const runtime = runtimeFunctions.find((entry) => entry.slotId === id);
+          const selectedGuid = runtime?.function.guid || authored?.guid || defaultOption.guid;
+          const selectedOption = compatible.find((option) => option.guid === selectedGuid) ?? defaultOption;
+          const authoredInputs = new Map((authored?.inputOverrides ?? []).map((entry) => [entry.pinId, entry.value]));
+          const baseInputs = new Set(inputs.map((input) => input.id));
+          const extraParameters = selectedOption.document.inputs.flatMap((pin): DisplayParameter[] => {
+            if (baseInputs.has(pin.id) || pin.default === undefined) return [];
+            const parameterId = materialFunctionSlotParameterId(id, selectedOption.guid, pin.id);
+            const runtimeOverride = overridesFromMaterialName(runtimeMaterialName).find(
+              (entry) => entry.parameterId === parameterId,
+            );
+            const value = runtimeOverride?.value ?? authoredInputs.get(pin.id) ?? pin.default;
+            return [
+              {
+                nodeId: parameterId,
+                slotId: id,
+                name: pin.name,
+                type: pin.type,
+                editorKind: functionEditorKind(pin),
+                values: functionParameterValues(value),
+                texture: '',
+              },
+            ];
+          });
+
+          return [
+            {
+              id,
+              name,
+              inputs,
+              outputs,
+              defaultGuid: defaultOption.guid,
+              selectedGuid: selectedOption.guid,
+              options: compatible,
+              parameters: extraParameters,
+            },
+          ];
+        });
+
+        setState({ status: 'ready', parameters, functionSlots });
       } catch {
-        if (active) setState({ status: 'error', parameters: [] });
+        if (active) setState({ status: 'error', parameters: [], functionSlots: [] });
       }
     })();
 
@@ -270,13 +428,18 @@ export function MaterialParameterSubsection({
     };
   }, [assets, materialPath, materialScope, mixed, procedural, selected?.kind, value]);
 
-  const overrideFor = (parameter: DisplayParameter) => overrides.find((entry) => entry.name === parameter.name);
+  const overrideFor = (parameter: DisplayParameter) =>
+    overrides.find(
+      (entry) => entry.parameterId === parameter.nodeId || (!entry.parameterId && entry.name === parameter.name),
+    );
   const effectiveValues = (parameter: DisplayParameter) => overrideFor(parameter)?.value ?? parameter.values;
   const effectiveTexture = (parameter: DisplayParameter) => overrideFor(parameter)?.texture ?? parameter.texture;
 
   const updateLocalOverride = (parameter: DisplayParameter, next: InstanceOverride | null) => {
     setOverrides((current) => {
-      const filtered = current.filter((entry) => entry.name !== parameter.name);
+      const filtered = current.filter(
+        (entry) => entry.parameterId !== parameter.nodeId && (entry.parameterId || entry.name !== parameter.name),
+      );
       return next ? [...filtered, next] : filtered;
     });
   };
@@ -291,7 +454,16 @@ export function MaterialParameterSubsection({
       )) as HostResponse<SelectedMaterialSnapshot>;
       if (!selectedResponse.succeeded || !selectedResponse.payload)
         throw new Error(selectedResponse.error || 'Selected entity is unavailable');
-      const payload = next ?? { name: parameter.name, type: parameter.type, kind: parameter.editorKind, reset: true };
+      const payload = next
+        ? { ...next, parameterId: parameter.nodeId, ...(parameter.slotId ? { slotId: parameter.slotId } : {}) }
+        : {
+            parameterId: parameter.nodeId,
+            ...(parameter.slotId ? { slotId: parameter.slotId } : {}),
+            name: parameter.name,
+            type: parameter.type,
+            kind: parameter.editorKind,
+            reset: true,
+          };
       const path = `${parameterCommandPrefix}${bytesToHex(JSON.stringify(payload))}/0`;
       const response = (await window.arc.host.command('entity.setMaterial', {
         entity: selectedResponse.payload.entity,
@@ -299,6 +471,64 @@ export function MaterialParameterSubsection({
         path,
       })) as HostResponse;
       if (!response.succeeded) throw new Error(response.error || 'Material parameter override failed');
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const commitFunction = async (slot: DisplayFunctionSlot, option: DisplayFunctionOption) => {
+    setMutationError('');
+    setState((current) =>
+      current.status !== 'ready'
+        ? current
+        : {
+            ...current,
+            functionSlots: current.functionSlots.map((candidate) =>
+              candidate.id !== slot.id
+                ? candidate
+                : {
+                    ...candidate,
+                    selectedGuid: option.guid,
+                    parameters: option.document.inputs.flatMap((pin): DisplayParameter[] => {
+                      if (candidate.inputs.some((input) => input.id === pin.id) || pin.default === undefined) return [];
+                      return [
+                        {
+                          nodeId: materialFunctionSlotParameterId(candidate.id, option.guid, pin.id),
+                          slotId: candidate.id,
+                          name: pin.name,
+                          type: pin.type,
+                          editorKind: functionEditorKind(pin),
+                          values: functionParameterValues(pin.default),
+                          texture: '',
+                        },
+                      ];
+                    }),
+                  },
+            ),
+          },
+    );
+    setOverrides((current) =>
+      current.filter((entry) => !slot.parameters.some((parameter) => parameter.nodeId === entry.parameterId)),
+    );
+    if (!window.arc?.host) return;
+    try {
+      const selectedResponse = (await window.arc.host.query(
+        'entity.selected',
+      )) as HostResponse<SelectedMaterialSnapshot>;
+      if (!selectedResponse.succeeded || !selectedResponse.payload)
+        throw new Error(selectedResponse.error || 'Selected entity is unavailable');
+      const payload = {
+        slotId: slot.id,
+        function: { guid: option.guid, pathHint: option.path },
+        reset: option.guid === slot.defaultGuid,
+      };
+      const path = `${functionCommandPrefix}${bytesToHex(JSON.stringify(payload))}/0`;
+      const response = (await window.arc.host.command('entity.setMaterial', {
+        entity: selectedResponse.payload.entity,
+        applyToSelection: (selectedResponse.payload.selectionCount ?? 1) > 1,
+        path,
+      })) as HostResponse;
+      if (!response.succeeded) throw new Error(response.error || 'Material function override failed');
     } catch (error) {
       setMutationError(error instanceof Error ? error.message : String(error));
     }
@@ -321,6 +551,146 @@ export function MaterialParameterSubsection({
         <span>Material Parameters</span>
         {summary && <small>{summary}</small>}
       </header>
+      {state.status === 'ready' && state.functionSlots.length > 0 && (
+        <div className="inspector-material-function-list">
+          {state.functionSlots.map((slot) => {
+            const selectedOption =
+              slot.options.find((option) => option.guid === slot.selectedGuid) ??
+              slot.options.find((option) => option.guid === slot.defaultGuid);
+            return (
+              <div className="inspector-material-function" key={slot.id}>
+                <div className="inspector-material-function-selector">
+                  <span className="inspector-property-label">{slot.name}</span>
+                  <UiSelect
+                    ariaLabel={`${slot.name} function`}
+                    options={slot.options.map((option) => ({ value: option.guid, label: option.name }))}
+                    value={selectedOption?.guid ?? slot.defaultGuid}
+                    onValueChange={(guid) => {
+                      const option = slot.options.find((candidate) => candidate.guid === guid);
+                      if (option) void commitFunction(slot, option);
+                    }}
+                  />
+                </div>
+                {slot.parameters.length > 0 && (
+                  <div className="inspector-material-function-parameters">
+                    {slot.parameters.map((parameter) => {
+                      const override = overrideFor(parameter);
+                      const values = effectiveValues(parameter);
+                      const reset = override ? (
+                        <button
+                          aria-label={`Reset ${slot.name} ${parameter.name}`}
+                          className="inspector-field-reset"
+                          onClick={() => void commitOverride(parameter, null)}
+                          title="Revert to function default"
+                          type="button"
+                        >
+                          <RotateCcw aria-hidden="true" size={12} />
+                        </button>
+                      ) : null;
+
+                      if (parameter.editorKind === 'color') {
+                        const rgba: Vec4 = {
+                          x: values[0] ?? 0,
+                          y: values[1] ?? 0,
+                          z: values[2] ?? 0,
+                          w: parameter.type === 'vec4' ? (values[3] ?? 1) : 1,
+                        };
+                        const colorOverride = (next: Vec4): InstanceOverride => ({
+                          parameterId: parameter.nodeId,
+                          name: parameter.name,
+                          type: parameter.type,
+                          kind: parameter.editorKind,
+                          value:
+                            parameter.type === 'vec4' ? [next.x, next.y, next.z, next.w] : [next.x, next.y, next.z],
+                        });
+                        return (
+                          <div className="inspector-material-parameter" key={parameter.nodeId}>
+                            <span className="inspector-property-label">{parameter.name}</span>
+                            <UiColorControl
+                              allowAlpha={parameter.type === 'vec4'}
+                              label={parameter.name}
+                              value={rgba}
+                              onPreview={(next) => updateLocalOverride(parameter, colorOverride(next))}
+                              onCommit={(next) => void commitOverride(parameter, colorOverride(next))}
+                            />
+                            {reset}
+                          </div>
+                        );
+                      }
+
+                      if (parameter.editorKind === 'scalar') {
+                        const nextOverride = (next: number): InstanceOverride => ({
+                          parameterId: parameter.nodeId,
+                          name: parameter.name,
+                          type: parameter.type,
+                          kind: parameter.editorKind,
+                          value: [next],
+                        });
+                        return (
+                          <div className="inspector-material-parameter" key={parameter.nodeId}>
+                            <div className="inspector-material-scalar-control">
+                              <NumberControl
+                                field={numericField(parameter.name)}
+                                value={values[0] ?? 0}
+                                onPreview={(next) => updateLocalOverride(parameter, nextOverride(next))}
+                                onCommit={(next) => void commitOverride(parameter, nextOverride(next))}
+                              />
+                            </div>
+                            {reset}
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="inspector-material-parameter" key={parameter.nodeId}>
+                          <span className="inspector-property-label">{parameter.name}</span>
+                          <div className="inspector-material-parameter-values">
+                            {values.map((parameterValue, index) => (
+                              <UiNumericInput
+                                ariaLabel={`${slot.name} ${parameter.name} ${componentLabels[index]}`}
+                                key={index}
+                                precision={3}
+                                scrubClassName={`axis-${componentLabels[index].toLocaleLowerCase()}`}
+                                scrubLabel={componentLabels[index]}
+                                scrubSensitivity={0.005}
+                                step={0.01}
+                                value={parameterValue}
+                                onCommit={(next) => {
+                                  const nextValues = [...values];
+                                  nextValues[index] = next;
+                                  void commitOverride(parameter, {
+                                    parameterId: parameter.nodeId,
+                                    name: parameter.name,
+                                    type: parameter.type,
+                                    kind: parameter.editorKind,
+                                    value: nextValues,
+                                  });
+                                }}
+                                onPreview={(next) => {
+                                  const nextValues = [...values];
+                                  nextValues[index] = next;
+                                  updateLocalOverride(parameter, {
+                                    parameterId: parameter.nodeId,
+                                    name: parameter.name,
+                                    type: parameter.type,
+                                    kind: parameter.editorKind,
+                                    value: nextValues,
+                                  });
+                                }}
+                              />
+                            ))}
+                          </div>
+                          {reset}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
       {state.status === 'ready' && state.parameters.length > 0 && (
         <div className="inspector-material-parameter-list">
           {state.parameters.map((parameter) => {
@@ -468,7 +838,7 @@ export function MaterialParameterSubsection({
         </div>
       )}
       {mutationError && <p className="inspector-subsection-empty">{mutationError}</p>}
-      {state.status === 'ready' && state.parameters.length === 0 && (
+      {state.status === 'ready' && state.parameters.length === 0 && state.functionSlots.length === 0 && (
         <p className="inspector-subsection-empty">No exported parameters.</p>
       )}
       {state.status === 'custom' && (
