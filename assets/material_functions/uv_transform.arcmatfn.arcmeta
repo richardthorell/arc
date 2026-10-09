@@ -1,0 +1,12 @@
+{
+  "format": "arc.asset-meta",
+  "formatVersion": 1,
+  "guid": "c2d49cd7-18b7-4ea2-9e10-8a719474f672",
+  "importer": "a7ca55e7-0000-0002-0000-000000000012",
+  "settings": {},
+  "settingsVersion": 1,
+  "subassets": [],
+  "type": "a7ca55e7-0000-0001-0000-000000000011",
+  "title": "UV Transform",
+  "description": "Reusable UV tiling, rotation, pivot and offset material function."
+}
