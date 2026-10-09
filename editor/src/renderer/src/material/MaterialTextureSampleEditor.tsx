@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { TexturePicker, type AssetPickerItem } from '../inspector/AssetPicker';
-import { UiTextInput, UiToggleButton } from '../ui';
+import { MaterialNodeParameterControl } from './MaterialNodeParameterControl';
 import { materialTextureDimension, type MaterialGraphNode } from './materialGraphTypes';
 import './materialTextureSample.css';
 
@@ -116,36 +116,29 @@ export function MaterialTextureSampleEditor({
         />
         {readOnly && <span className="material-node-texture-readonly" aria-hidden="true" />}
       </div>
-      <div className="material-node-parameter-toggle">
-        <UiToggleButton
-          checked={parameterEnabled}
-          disabled={readOnly}
-          label="Parameter"
-          onCheckedChange={(checked) =>
-            onChange({
-              ...node,
-              parameter: {
-                exposed: checked,
-                name: parameterName,
-              },
-            })
-          }
-        />
-        <UiTextInput
-          aria-label="Parameter name"
-          disabled={readOnly || !parameterEnabled}
-          value={parameterName}
-          onChange={(event) =>
-            onChange({
-              ...node,
-              parameter: {
-                exposed: parameterEnabled,
-                name: event.target.value,
-              },
-            })
-          }
-        />
-      </div>
+      <MaterialNodeParameterControl
+        enabled={parameterEnabled}
+        name={parameterName}
+        readOnly={readOnly}
+        onEnabledChange={(enabled) =>
+          onChange({
+            ...node,
+            parameter: {
+              exposed: enabled,
+              name: parameterName,
+            },
+          })
+        }
+        onNameChange={(name) =>
+          onChange({
+            ...node,
+            parameter: {
+              exposed: parameterEnabled,
+              name,
+            },
+          })
+        }
+      />
     </>
   );
 }
