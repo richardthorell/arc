@@ -143,7 +143,7 @@ std::filesystem::path resolve_prefab_path(const std::filesystem::path& project_r
 {
     if (asset_registry && guid.valid())
     {
-        if (const auto current = asset_registry->find({guid.high, guid.low});
+        if (const auto current = asset_registry->find(assets::asset_guid{guid.high, guid.low});
             current && current->type == assets::asset_types::prefab)
             return (project_root / current->source_path).lexically_normal();
     }
