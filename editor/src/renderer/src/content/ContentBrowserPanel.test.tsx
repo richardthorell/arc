@@ -20,13 +20,11 @@ const analyzeModelImport = vi.fn().mockImplementation(async (file: File) => ({
   fileName: file.name,
   dependencies: [],
 }));
-const importModel = vi
-  .fn()
-  .mockResolvedValue({
-    path: 'Content/imported.glb',
-    sourcePath: 'D:/Test/Content/imported.glb',
-    importedDependencies: [],
-  });
+const importModel = vi.fn().mockResolvedValue({
+  path: 'Content/imported.glb',
+  sourcePath: 'D:/Test/Content/imported.glb',
+  importedDependencies: [],
+});
 const importTexture = vi
   .fn()
   .mockResolvedValue({ path: 'Content/imported.png', sourcePath: 'D:/Test/Content/imported.png' });
