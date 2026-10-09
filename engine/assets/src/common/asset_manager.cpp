@@ -211,6 +211,25 @@ std::optional<asset_snapshot> asset_manager::find(asset_guid guid) const
     return result;
 }
 
+std::optional<asset_snapshot> asset_manager::find(const asset_reference& reference) const
+{
+    // Stable identity always wins. A stale path hint must never redirect a valid
+    // GUID to a different asset after a move, rename, or content-root change.
+    if (reference.guid.valid())
+    {
+        const auto found = find(reference.guid);
+        if (!found || (reference.expected_type.valid() && found->type != reference.expected_type))
+            return std::nullopt;
+        return found;
+    }
+
+    if (reference.path_hint.empty()) return std::nullopt;
+    const auto found = find(reference.path_hint);
+    if (!found || (reference.expected_type.valid() && found->type != reference.expected_type))
+        return std::nullopt;
+    return found;
+}
+
 std::optional<asset_snapshot> asset_manager::find(std::string_view project_relative_path) const
 {
     std::shared_lock lock(implementation_->mutex);
