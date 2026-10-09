@@ -172,8 +172,20 @@ const registryEntries = [
   {
     method: 'assets.list',
     description:
-      'Discover the authoritative current project and engine asset inventory, including available materials, textures and Material Functions. For scene construction, surface styling, or appearance changes, inspect this inventory before planning edits; do not assume the project lacks assets or rely on a hardcoded catalog. Use only returned references and distinguish assets from capabilities.',
-    schema: empty,
+      'Search the authoritative ARC asset inventory, including engine built-ins and project content. Use this before authoring or assigning materials, textures, functions, shaders, prefabs, or other reusable assets. Results are bounded and include stable identity, readiness, provenance, dependency relations, and typed capability hints derived from the registered asset kind. For scene construction or appearance changes, inspect the current inventory before planning edits; do not assume the project lacks assets or rely on hardcoded material/function catalogs. Use returned references and distinguish capabilities from available assets.',
+    schema: z
+      .object({
+        search: z.string().max(240).optional(),
+        kinds: z.array(z.string().min(1).max(64)).max(16).optional(),
+        scopes: z
+          .array(z.enum(['builtin', 'project', 'user', 'organization', 'procedural']))
+          .max(5)
+          .optional(),
+        statuses: z.array(z.string().min(1).max(32)).max(12).optional(),
+        offset: z.number().int().nonnegative().optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+      })
+      .strict(),
   },
   {
     method: 'viewport.state',
@@ -284,7 +296,7 @@ const registryEntries = [
   {
     method: 'editor.applyBatch',
     description:
-      'Apply multiple validated editor mutations in one active transaction. Use tempId to reference entities created earlier in the same batch. When assigning appearance, inspect assets.list and reuse compatible existing assets before creating a material. Do not claim an appearance change succeeded merely because the batch succeeded: read the resulting entity/material state and verify the rendered output. Create new assets only when existing assets cannot satisfy the request.',
+      'Apply multiple validated editor mutations in one active transaction. Use tempId to reference entities created earlier in the same batch. Prefer existing asset bindings and lightweight overrides; include material.create only when no suitable project asset or override can satisfy the request, or when a new reusable asset was explicitly requested. Inspect assets.list for appearance edits, and verify resolved material assignments and rendered results before claiming success; a successful batch alone does not prove the requested appearance changed.',
     schema: agentEditorBatchRequestSchema,
     mutating: true,
   },
