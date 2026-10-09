@@ -1112,6 +1112,52 @@ export function MaterialGraphEditor({
     resetAddMenuPath();
   };
 
+  const addGroup = (fallbackPosition?: GraphPoint) => {
+    if (document.readOnly) return;
+    const members = graph.nodes.filter((node) => selectedNodes.has(node.id));
+    const existingCount = graph.groups?.length ?? 0;
+    const id = materialGraphId('group');
+    const name = `Group ${existingCount + 1}`;
+    const padding = { left: 36, right: 36, top: 54, bottom: 36 };
+
+    let position: GraphPoint;
+    let size: GraphPoint;
+    if (members.length > 0) {
+      const left = Math.min(...members.map((node) => node.position[0]));
+      const top = Math.min(...members.map((node) => node.position[1]));
+      const right = Math.max(...members.map((node) => node.position[0] + materialNodeWidth(node.type)));
+      const bottom = Math.max(...members.map((node) => node.position[1] + materialNodeHeight(node)));
+      position = [left - padding.left, top - padding.top];
+      size = [right - left + padding.left + padding.right, bottom - top + padding.top + padding.bottom];
+    } else {
+      const origin = fallbackPosition ?? pointerGraph;
+      position = snapEnabled ? snapMaterialGraphPoint(origin) : origin;
+      size = [520, 320];
+    }
+
+    mutate((next) => {
+      const memberIds = new Set(members.map((node) => node.id));
+      // A node belongs to at most one movable group. Re-grouping selected nodes
+      // removes them from an older group before adding the new container.
+      for (const group of next.groups ?? [])
+        if (group.nodeIds) group.nodeIds = group.nodeIds.filter((nodeId) => !memberIds.has(nodeId));
+      next.groups = (next.groups ?? []).filter(
+        (group) => (group.nodeIds?.length ?? 0) > 0 || (group.position && group.size),
+      );
+      next.groups.push({
+        id,
+        name,
+        ...(members.length > 0 ? { nodeIds: members.map((node) => node.id) } : {}),
+        position,
+        size,
+        order: existingCount + 1,
+      });
+    });
+    setAddMenu(null);
+    setNodeSearch('');
+    resetAddMenuPath();
+  };
+
   const availableNodes = useMemo(() => {
     const query = nodeSearch.trim().toLocaleLowerCase();
     return materialGraphDomain
@@ -1221,6 +1267,20 @@ export function MaterialGraphEditor({
           variant="ghost"
         >
           <Plus size={13} /> Add Node
+        </UiButton>
+        <UiButton
+          disabled={document.readOnly}
+          onClick={() => {
+            const rect = canvasRef.current?.getBoundingClientRect();
+            const center = rect
+              ? graphPoint(rect.left + rect.width * 0.5, rect.top + rect.height * 0.5)
+              : pointerGraph;
+            addGroup(center);
+          }}
+          title={selectedNodes.size ? 'Group selected nodes' : 'Add an empty material graph group'}
+          variant="ghost"
+        >
+          <Plus size={13} /> Add Group
         </UiButton>
         <UiButton disabled={!selectedNodes.size} onClick={copySelected} variant="ghost">
           <Copy size={13} /> Copy
@@ -1517,6 +1577,11 @@ export function MaterialGraphEditor({
             />
           </div>
           <div className="material-node-menu-items">
+            {!searchingNodes && (
+              <UiContextMenuItem onClick={() => addGroup(addMenu.graph)}>
+                <strong>{selectedNodes.size ? 'Group Selected Nodes' : 'Add Group'}</strong>
+              </UiContextMenuItem>
+            )}
             {searchingNodes
               ? availableNodes.map((definition) => (
                   <UiContextMenuItem
