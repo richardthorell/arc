@@ -2597,13 +2597,13 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     state_->asset_registry.reset();
     state_->derived_cache.reset();
     state_->asset_files.reset();
+    std::vector<std::filesystem::path> content_roots = command.content_roots;
+    if (content_roots.empty() && !command.root.empty())
+        content_roots.push_back(assets.root.empty() ? command.root / "Content" : assets.root);
     if (!command.root.empty())
     {
         const auto cache_root =
             command.cache_root.empty() ? command.root / "Intermediate" / "Cache" : command.cache_root;
-        std::vector<std::filesystem::path> content_roots = command.content_roots;
-        if (content_roots.empty())
-            content_roots.push_back(assets.root.empty() ? command.root / "Content" : assets.root);
         state_->derived_cache = std::make_unique<arc::assets::derived_data_cache>(
             arc::assets::derived_data_cache_config{.root = cache_root});
         state_->asset_files = std::make_unique<io::async_file_service>(state_->simulation.jobs());
