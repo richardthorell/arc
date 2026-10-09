@@ -8,6 +8,7 @@ import type { EditorDocument } from '../editors/editorTypes';
 import { UiPanelCard, UiPanelCardRow, UiSelect, UiToggleButton } from '../ui';
 import { replaceMaterialSettings, useMaterialDocumentState } from './materialDocumentState';
 import { MaterialGraphWithInteractions } from './MaterialGraphInteractions';
+import { MaterialGraphWorkspace } from './MaterialGraphWorkspace';
 import { materialGraphDiagnostics } from './materialCompiler';
 import type { MaterialBlendMode, MaterialDomain, MaterialShadingModel } from './materialGraphTypes';
 import { materialGraphOutputSource, materialRenderPathLabel } from './materialSettingsPresentation';
@@ -187,14 +188,22 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
   };
 
   return (
-    <section
-      ref={editorRef}
-      className="material-editor"
-      style={{
-        gridTemplateColumns: `minmax(${minimumMaterialGraphWidth}px, 1fr) ${materialEditorDividerWidth}px ${sidebarWidth}px`,
-      }}
-    >
-      <div className="material-editor-graph-region">
+    <MaterialGraphWorkspace
+      rootRef={editorRef}
+      sidebarWidth={sidebarWidth}
+      minimumGraphWidth={minimumMaterialGraphWidth}
+      dividerWidth={materialEditorDividerWidth}
+      dividerLabel="Resize material preview panel"
+      dividerValueMin={minimumMaterialSidebarWidth}
+      dividerValueMax={maximumMaterialSidebarWidth}
+      onDividerPointerDown={onSidebarResizeStart}
+      onDividerPointerMove={onSidebarResizeMove}
+      onDividerPointerUp={finishSidebarResize}
+      onDividerPointerCancel={finishSidebarResize}
+      onDividerDoubleClick={() => resizeSidebar(defaultMaterialSidebarWidth)}
+      onDividerKeyDown={onSidebarResizeKeyDown}
+      graph={
+        <>
         {customShader ? (
           <section className="material-custom-shader">
             <Code2 size={30} />
@@ -247,33 +256,10 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
             {toast.message}
           </div>
         )}
-      </div>
-
-      <div
-        className="material-editor-divider"
-        role="separator"
-        aria-label="Resize material preview panel"
-        aria-orientation="vertical"
-        aria-valuemin={minimumMaterialSidebarWidth}
-        aria-valuemax={maximumMaterialSidebarWidth}
-        aria-valuenow={sidebarWidth}
-        tabIndex={0}
-        style={{
-          cursor: 'col-resize',
-          touchAction: 'none',
-          borderLeft: '1px solid rgba(102, 132, 146, 0.14)',
-          borderRight: '1px solid rgba(102, 132, 146, 0.22)',
-          background: '#0e171c',
-        }}
-        onPointerDown={onSidebarResizeStart}
-        onPointerMove={onSidebarResizeMove}
-        onPointerUp={finishSidebarResize}
-        onPointerCancel={finishSidebarResize}
-        onDoubleClick={() => resizeSidebar(defaultMaterialSidebarWidth)}
-        onKeyDown={onSidebarResizeKeyDown}
-      />
-
-      <aside className="material-editor-sidebar editor-property-panel">
+        </>
+      }
+      sidebar={
+        <>
         <AssetPreviewPanel
           title="Material Preview"
           showHeader={false}
@@ -446,7 +432,8 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
             </UiPanelCard>
           )}
         </div>
-      </aside>
-    </section>
+        </>
+      }
+    />
   );
 }
