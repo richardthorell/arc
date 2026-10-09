@@ -160,7 +160,9 @@ export function InspectorComponentCard<TContext extends object>({
             const assignment = path.startsWith(primitiveMeshUriPrefix)
               ? `${primitiveAssignmentPrefix}${path.slice(primitiveMeshUriPrefix.length)}`
               : `${meshAssignmentPrefix}${path}`;
-            onValue('meshRenderer.materialPath', assignment, true, asset);
+            if (asset?.guid && asset.scope !== 'procedural')
+              onValue('meshRenderer.materialPath', assignment, true, asset);
+            else onValue('meshRenderer.materialPath', assignment, true);
           }}
         />
       ),
@@ -190,8 +192,10 @@ export function InspectorComponentCard<TContext extends object>({
 
     const linked = field.type === 'vector3' && Boolean(field.linked) && !unlinkedFields.has(field.path);
     const value = getPathValue(context, field.path);
-    const fieldValue = (next: unknown, settled: boolean, asset?: AssetPickerItem) =>
-      onValue(field.path, next, settled, asset);
+    const fieldValue = (next: unknown, settled: boolean, asset?: AssetPickerItem) => {
+      if (asset) onValue(field.path, next, settled, asset);
+      else onValue(field.path, next, settled);
+    };
     const label =
       field.type === 'number' ? (
         <NumberControlLabel
