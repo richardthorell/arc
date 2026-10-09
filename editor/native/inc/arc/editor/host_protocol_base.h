@@ -1276,6 +1276,7 @@ struct host_set_terrain_layer_command
     host_entity_id entity{};
     std::uint32_t layer{};
     std::filesystem::path path;
+    std::optional<host_asset_reference> asset;
 };
 
 struct host_terrain_stroke_command
@@ -1300,6 +1301,7 @@ struct host_set_entity_material_command
 {
     host_entity_id entity{};
     std::filesystem::path path;
+    std::optional<host_asset_reference> asset;
     bool apply_to_selection{};
 };
 
@@ -1338,6 +1340,7 @@ struct host_set_environment_hdri_command
 {
     host_entity_id entity{};
     std::filesystem::path path;
+    std::optional<host_asset_reference> asset;
 };
 
 struct host_set_camera_projection_command

@@ -58,6 +58,33 @@ TEST_CASE("host asset references serialize as GUID-authoritative protocol values
     CHECK_FALSE(arc::editor::from_json(R"({"guid":"","expectedType":"","pathHint":""})", parsed, error));
 }
 
+TEST_CASE("asset assignment commands round trip GUID references")
+{
+    const auto reference = arc::editor::host_asset_reference{
+        .guid = "00112233445566778899aabbccddeeff",
+        .expected_type = "a7ca55e7000000010000000000000005",
+        .path_hint = "Content/Textures/Bricks.jpg",
+    };
+    const arc::editor::host_command_envelope source{
+        .request_id = 41,
+        .payload = arc::editor::host_set_environment_hdri_command{.entity = {.index = 4, .generation = 2},
+                                                                  .path = "legacy.hdr",
+                                                                  .asset = reference},
+    };
+
+    const auto json = arc::editor::to_json(source);
+    CHECK(json.find("\"asset\":{\"guid\":\"00112233445566778899aabbccddeeff\"") != std::string::npos);
+
+    arc::editor::host_command_envelope parsed;
+    std::string error;
+    REQUIRE(arc::editor::from_json(json, parsed, error));
+    const auto* command = std::get_if<arc::editor::host_set_environment_hdri_command>(&parsed.payload);
+    REQUIRE(command);
+    REQUIRE(command->asset);
+    CHECK(*command->asset == reference);
+    CHECK(command->path == "legacy.hdr");
+}
+
 TEST_CASE("arc host protocol serializes command and query envelopes")
 {
     const arc::editor::host_entity_id entity{.index = 7, .generation = 3};

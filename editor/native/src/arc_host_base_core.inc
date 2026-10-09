@@ -533,10 +533,7 @@ std::optional<resolved_editor_asset> resolve_editor_asset(const editor_asset_sta
     return std::nullopt;
 }
 
-std::optional<resolved_editor_asset> resolve_editor_asset(const editor_asset_state& asset_state,
-                                                          const assets::asset_manager* registry,
-                                                          const std::filesystem::path& project_root,
-                                                          const host_asset_reference& host_reference)
+std::optional<assets::asset_reference> parse_host_asset_reference(const host_asset_reference& host_reference)
 {
     assets::asset_reference reference{.path_hint = host_reference.path_hint};
     if (!host_reference.guid.empty())
@@ -551,18 +548,29 @@ std::optional<resolved_editor_asset> resolve_editor_asset(const editor_asset_sta
         if (!type) return std::nullopt;
         reference.expected_type = *type;
     }
+    if (!reference.guid.valid() && reference.path_hint.empty()) return std::nullopt;
+    return reference;
+}
+
+std::optional<resolved_editor_asset> resolve_editor_asset(const editor_asset_state& asset_state,
+                                                          const assets::asset_manager* registry,
+                                                          const std::filesystem::path& project_root,
+                                                          const host_asset_reference& host_reference)
+{
+    const auto reference = parse_host_asset_reference(host_reference);
+    if (!reference) return std::nullopt;
 
     if (registry)
     {
-        const auto snapshot = registry->find(reference);
+        const auto snapshot = registry->find(*reference);
         if (!snapshot) return std::nullopt;
         return resolve_editor_asset(asset_state, registry, project_root, snapshot->source_path);
     }
 
     // A GUID cannot be safely resolved without the asset registry. Retain path
     // fallback only for legacy path-only references during the migration.
-    if (reference.guid.valid() || reference.path_hint.empty()) return std::nullopt;
-    return resolve_editor_asset(asset_state, registry, project_root, reference.path_hint);
+    if (reference->guid.valid() || reference->path_hint.empty()) return std::nullopt;
+    return resolve_editor_asset(asset_state, registry, project_root, reference->path_hint);
 }
 
 std::optional<std::filesystem::path> resolve_project_document(const std::filesystem::path& project_root,
@@ -2669,6 +2677,7 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     state_->terrain_preview_dirty.clear();
     state_->scene.terrain_render_proxies.clear(*state_->renderer);
     state_->scene = create_blank_scene(*state_->renderer, command.default_scene.empty(), &state_->assets);
+    state_->scene.asset_registry = state_->asset_registry.get();
     state_->scene.project_root = command.root;
     state_->scene.project_asset_roots = content_roots;
     if (state_->asset_registry)
@@ -4975,18 +4984,23 @@ host_response arc_host::execute(const host_command_envelope& command)
                     return fail("Terrain layer assignment requires a valid terrain and layer 0-3", entity);
                 render::texture_handle texture;
                 std::filesystem::path resolved_path;
-                if (!payload.path.empty())
+                if (payload.asset || !payload.path.empty())
                 {
-                    const auto path = resolve_project_asset(state_->assets.root, payload.path);
-                    if (!path || !render::is_supported_texture_asset(*path))
-                        return fail("Terrain layer must reference a supported project texture", entity);
-                    auto loaded = render::load_texture_asset(*path);
+                    const auto resolved =
+                        payload.asset
+                            ? resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
+                                                   *payload.asset)
+                            : resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
+                                                   payload.path);
+                    if (!resolved || !render::is_supported_texture_asset(resolved->path))
+                        return fail("Terrain layer must reference a supported texture asset", entity);
+                    auto loaded = render::load_texture_asset(resolved->path);
                     if (!loaded.succeeded())
                         return fail("Terrain layer texture failed to load: " + loaded.message, entity);
                     texture = state_->renderer->create_texture(std::move(loaded.texture));
                     if (!texture.valid()) return fail("Terrain layer texture could not be uploaded", entity);
                     state_->scene.default_textures.push_back(texture);
-                    resolved_path = *path;
+                    resolved_path = resolved->path;
                 }
                 state_->scene.terrain_material_descriptor.domain = render::material_domain::terrain;
                 state_->scene.terrain_material_descriptor.terrain_layers[payload.layer].base_color_texture = texture;
@@ -5270,10 +5284,14 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (std::any_of(targets.begin(), targets.end(), [&](ecs::entity target)
                                 { return !state_->scene.scene.has<scene::mesh_renderer_component>(target); }))
                     return fail("Every selected entity must have an editable mesh renderer component", entity);
-                const auto resolved_material = resolve_editor_asset(state_->assets, state_->asset_registry.get(),
-                                                                    state_->project.root, payload.path);
+                const auto resolved_material =
+                    payload.asset
+                        ? resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
+                                               *payload.asset)
+                        : resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
+                                               payload.path);
                 if (!resolved_material || !is_material_asset_path(resolved_material->path))
-                    return fail("Material must be an .arcmat or .arcmatinst project or built-in asset", entity);
+                    return fail("Material must reference an .arcmat or .arcmatinst project or built-in asset", entity);
                 std::string message;
                 for (const auto target : targets)
                 {
@@ -5283,18 +5301,28 @@ host_response arc_host::execute(const host_command_envelope& command)
                         return fail(message.empty() ? "Material assignment failed" : message, target);
                 }
                 ensure_scene_authoring_metadata(state_->scene);
-                const auto registry_path = arc::assets::normalize_asset_path(payload.path);
                 auto material_extension = resolved_material->path.extension().string();
                 std::transform(material_extension.begin(), material_extension.end(), material_extension.begin(),
                                [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
                 const auto expected_material_type = material_extension == ".arcmatinst"
                                                         ? arc::assets::asset_types::material_instance
                                                         : arc::assets::asset_types::material;
-                const auto material =
-                    state_->asset_registry
-                        ? state_->asset_registry->resolve(registry_path, expected_material_type)
-                        : arc::assets::asset_reference{.expected_type = expected_material_type,
-                                                       .path_hint = registry_path};
+                arc::assets::asset_reference material;
+                if (payload.asset)
+                {
+                    const auto parsed = parse_host_asset_reference(*payload.asset);
+                    if (!parsed) return fail("Material asset reference is invalid", entity);
+                    material = *parsed;
+                    if (!material.expected_type.valid()) material.expected_type = expected_material_type;
+                }
+                else
+                {
+                    const auto registry_path = arc::assets::normalize_asset_path(payload.path);
+                    material = state_->asset_registry
+                                   ? state_->asset_registry->resolve(registry_path, expected_material_type)
+                                   : arc::assets::asset_reference{.expected_type = expected_material_type,
+                                                                  .path_hint = registry_path};
+                }
                 for (const auto target : targets)
                 {
                     const auto guid = entity_guid_of(state_->scene, target);
@@ -5545,7 +5573,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     environment.diffuse_intensity = lighting->diffuse_intensity;
                     state_->renderer->update_environment(lighting->environment, std::move(environment));
                 };
-                if (payload.path.empty())
+                if (!payload.asset && payload.path.empty())
                 {
                     world->hdri_texture = {};
                     lighting->hdri_texture = {};
@@ -5556,15 +5584,20 @@ host_response arc_host::execute(const host_command_envelope& command)
                     return success("{\"entity\":" + to_json(payload.entity) + '}');
                 }
 
-                const auto path = resolve_project_asset(state_->assets.root, payload.path);
-                if (!path || !render::is_supported_texture_asset(*path))
-                    return fail("Environment texture must be a supported project asset", entity);
-                const auto loaded = render::load_texture_asset(*path);
+                const auto resolved =
+                    payload.asset
+                        ? resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
+                                               *payload.asset)
+                        : resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
+                                               payload.path);
+                if (!resolved || !render::is_supported_texture_asset(resolved->path))
+                    return fail("Environment texture must reference a supported texture asset", entity);
+                const auto loaded = render::load_texture_asset(resolved->path);
                 if (!loaded.succeeded())
                     return fail(loaded.message.empty() ? "Failed to load environment texture" : loaded.message, entity);
 
                 auto texture = loaded.texture;
-                texture.name = path->filename().string();
+                texture.name = resolved->path.filename().string();
                 if (world->hdri_texture.valid())
                     state_->renderer->update_texture(world->hdri_texture, std::move(texture));
                 else
@@ -5572,8 +5605,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 lighting->hdri_texture = world->hdri_texture;
                 std::error_code relative_error;
                 state_->scene.world_environment_hdri_path =
-                    std::filesystem::relative(*path, state_->assets.root, relative_error);
-                if (relative_error) state_->scene.world_environment_hdri_path = path->filename();
+                    std::filesystem::relative(resolved->path, resolved->asset_root, relative_error);
+                if (relative_error) state_->scene.world_environment_hdri_path = resolved->path.filename();
                 update_environment_resource();
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
                            "World environment HDRI changed", entity);

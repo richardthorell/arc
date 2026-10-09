@@ -143,7 +143,16 @@ describe('schema-driven WorldEnvironmentInspector', () => {
         thumbnailProvider={thumbnailProvider}
         assets={[
           { id: 'day', name: 'Day HDRI', path: 'environments/day.hdr', kind: 'texture', status: 'ready' },
-          { id: 'night', name: 'Night HDRI', path: 'environments/night.hdr', kind: 'texture', status: 'ready' },
+          {
+            id: 'night',
+            guid: '00112233445566778899aabbccddeeff',
+            typeId: 'a7ca55e7000000010000000000000005',
+            name: 'Night HDRI',
+            path: 'environments/night.hdr',
+            sourcePath: 'Content/environments/night.hdr',
+            kind: 'texture',
+            status: 'ready',
+          },
           { id: 'albedo', name: 'Rock Albedo', path: 'textures/rock.jpg', kind: 'texture', status: 'ready' },
         ]}
       />,
@@ -158,7 +167,10 @@ describe('schema-driven WorldEnvironmentInspector', () => {
     await waitFor(() => expect(thumbnailProvider).toHaveBeenCalled());
 
     await userEvent.click(screen.getByLabelText('Select Night HDRI'));
-    expect(onHdri).toHaveBeenCalledWith('environments/night.hdr');
+    expect(onHdri).toHaveBeenCalledWith(
+      'environments/night.hdr',
+      expect.objectContaining({ guid: '00112233445566778899aabbccddeeff' }),
+    );
     expect(screen.getByText('Night HDRI')).toBeInTheDocument();
   });
 });

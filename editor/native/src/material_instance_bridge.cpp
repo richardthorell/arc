@@ -52,14 +52,14 @@ struct material_parameter_edit
     material_parameter_edit_kind kind{material_parameter_edit_kind::scalar};
     std::vector<float> value;
     std::string texture;
+    std::optional<assets::asset_reference> texture_reference;
     bool reset{};
 };
 
 struct material_function_edit
 {
     std::string slot_id;
-    std::string function_guid;
-    std::string function_path;
+    assets::asset_reference function;
     bool reset{};
 };
 
@@ -125,6 +125,37 @@ std::string encode_hex(std::string_view text)
         result[index * 2u + 1u] = digits[value & 0xfu];
     }
     return result;
+}
+
+std::optional<assets::asset_reference> asset_reference_from_json(const json& value)
+{
+    if (!value.is_object()) return std::nullopt;
+    assets::asset_reference reference;
+    const auto guid_text = value.value("guid", std::string{});
+    if (!guid_text.empty())
+    {
+        const auto guid = assets::parse_asset_guid(guid_text);
+        if (!guid) return std::nullopt;
+        reference.guid = *guid;
+    }
+    const auto type_text = value.value("expectedType", std::string{});
+    if (!type_text.empty())
+    {
+        const auto type = assets::parse_asset_type_id(type_text);
+        if (!type) return std::nullopt;
+        reference.expected_type = *type;
+    }
+    reference.path_hint = value.value("pathHint", std::string{});
+    if (!reference.guid.valid() && reference.path_hint.empty()) return std::nullopt;
+    return reference;
+}
+
+json asset_reference_json(const assets::asset_reference& reference)
+{
+    json value = {{"guid", reference.guid.valid() ? assets::to_string(reference.guid) : std::string{}},
+                  {"pathHint", reference.path_hint}};
+    if (reference.expected_type.valid()) value["expectedType"] = assets::to_string(reference.expected_type);
+    return value;
 }
 
 std::optional<render::shader_parameter_type> material_parameter_type_from_string(std::string_view value) noexcept
@@ -239,6 +270,11 @@ std::optional<material_parameter_edit> parse_material_parameter(std::string_view
     edit.type = typed_type;
     edit.kind = typed_kind;
     edit.texture = payload.value("texture", std::string{});
+    if (const auto found = payload.find("textureReference"); found != payload.end())
+    {
+        edit.texture_reference = asset_reference_from_json(*found);
+        if (!edit.texture_reference) return std::nullopt;
+    }
     edit.reset = payload.value("reset", false);
     if (const auto found = payload.find("value"); found != payload.end())
     {
@@ -265,13 +301,13 @@ std::optional<material_function_edit> parse_material_function(std::string_view p
     material_function_edit edit;
     edit.slot_id = payload.value("slotId", std::string{});
     edit.reset = payload.value("reset", false);
-    if (const auto found = payload.find("function"); found != payload.end() && found->is_object())
+    if (const auto found = payload.find("function"); found != payload.end())
     {
-        edit.function_guid = found->value("guid", std::string{});
-        edit.function_path = found->value("pathHint", std::string{});
+        const auto reference = asset_reference_from_json(*found);
+        if (reference) edit.function = *reference;
     }
     if (edit.slot_id.empty()) return std::nullopt;
-    if (!edit.reset && (edit.function_guid.empty() || edit.function_path.empty())) return std::nullopt;
+    if (!edit.reset && !edit.function.guid.valid() && edit.function.path_hint.empty()) return std::nullopt;
     return edit;
 }
 
@@ -347,7 +383,11 @@ json edit_to_json(const material_parameter_edit& edit)
     if (edit.parameter_id != 0u) value["parameterId"] = std::to_string(edit.parameter_id);
     if (!edit.slot_id.empty()) value["slotId"] = edit.slot_id;
     if (!edit.value.empty()) value["value"] = edit.value;
-    if (edit.kind == material_parameter_edit_kind::texture) value["texture"] = edit.texture;
+    if (edit.kind == material_parameter_edit_kind::texture)
+    {
+        value["texture"] = edit.texture;
+        if (edit.texture_reference) value["textureReference"] = asset_reference_json(*edit.texture_reference);
+    }
     return value;
 }
 
@@ -382,9 +422,8 @@ json apply_function_edit(json overrides, const material_function_edit& edit)
                                    }),
                     overrides.end());
     if (!edit.reset)
-        overrides.push_back({{"kind", "function"},
-                             {"slotId", edit.slot_id},
-                             {"function", {{"guid", edit.function_guid}, {"pathHint", edit.function_path}}}});
+        overrides.push_back(
+            {{"kind", "function"}, {"slotId", edit.slot_id}, {"function", asset_reference_json(edit.function)}});
     return overrides;
 }
 
@@ -508,6 +547,66 @@ std::filesystem::path resolve_texture_path(const editor_scene_state& scene, cons
     return (directory / authored).lexically_normal();
 }
 
+std::filesystem::path resolve_asset_reference_path(const editor_scene_state& scene,
+                                                   const editor_material_record& material,
+                                                   const assets::asset_reference& reference)
+{
+    if (reference.guid.valid())
+    {
+        if (!scene.asset_registry) return {};
+        const auto asset = scene.asset_registry->find(reference);
+        if (!asset) return {};
+
+        auto source = std::filesystem::path{asset->source_path};
+        const auto normalized = assets::normalize_asset_path(source);
+        if (asset->read_only)
+        {
+            auto relative = source;
+            if (normalized == "builtin") return {};
+            if (normalized.starts_with("builtin/"))
+                relative = std::filesystem::path{normalized}.lexically_relative("builtin");
+            for (const auto& root : scene.builtin_asset_roots)
+            {
+                const auto candidate = (root / relative).lexically_normal();
+                std::error_code ec;
+                if (std::filesystem::is_regular_file(candidate, ec) && !ec) return candidate;
+            }
+            return {};
+        }
+        return resolve_texture_path(scene, material, source.generic_string());
+    }
+
+    return reference.path_hint.empty() ? std::filesystem::path{}
+                                       : resolve_texture_path(scene, material, reference.path_hint);
+}
+
+render::texture_handle ensure_override_texture(editor_scene_state& scene, render::renderer& renderer,
+                                               const editor_material_record& material,
+                                               const assets::asset_reference& reference)
+{
+    auto resolved = resolve_asset_reference_path(scene, material, reference);
+    if (resolved.empty()) return {};
+    std::error_code ec;
+    auto key = std::filesystem::absolute(resolved, ec).lexically_normal();
+    if (ec) key = resolved.lexically_normal();
+    key += "#material-parameter";
+    for (const auto& [texture_path, handle] : scene.material_library.textures)
+        if (texture_path == key) return handle;
+
+    auto loaded = render::load_texture_asset(resolved);
+    if (!loaded.succeeded())
+    {
+        arc::diagnostics::warn("editor.materials", "Material instance texture could not be loaded: " +
+                                                       resolved.generic_string() + " (" + loaded.message + ")");
+        return {};
+    }
+    loaded.texture.semantic = render::texture_semantic::generic_color;
+    loaded.texture.color_space = render::required_color_space(loaded.texture.semantic);
+    const auto handle = renderer.create_texture(std::move(loaded.texture));
+    if (handle.valid()) scene.material_library.textures.push_back({std::move(key), handle});
+    return handle;
+}
+
 render::texture_handle ensure_override_texture(editor_scene_state& scene, render::renderer& renderer,
                                                const editor_material_record& material, std::string_view path)
 {
@@ -558,8 +657,16 @@ std::optional<render::material_parameter_value> override_value(editor_scene_stat
             if (finite(values, 4u)) return math::vector4f{values[0], values[1], values[2], values[3]};
             break;
         case render::shader_parameter_type::texture_2d:
+        {
+            if (const auto found = authored.find("textureReference"); found != authored.end())
+            {
+                const auto reference = asset_reference_from_json(*found);
+                if (!reference) return std::nullopt;
+                return render::resource_handle{ensure_override_texture(scene, renderer, base, *reference)};
+            }
             return render::resource_handle{
                 ensure_override_texture(scene, renderer, base, authored.value("texture", std::string{}))};
+        }
         default:
             break;
     }
@@ -628,10 +735,14 @@ std::optional<material_preview_descriptor_result> realize_function_specializatio
         if (!entry.is_object() || entry.value("kind", std::string{}) != "function") continue;
         const auto slot_id = entry.value("slotId", std::string{});
         const auto function = entry.value("function", json::object());
-        const auto guid = function.value("guid", std::string{});
-        const auto path = function.value("pathHint", std::string{});
-        if (slot_id.empty() || guid.empty() || path.empty()) continue;
-        selections[slot_id] = {.guid = guid, .path = path};
+        const auto reference = asset_reference_from_json(function);
+        if (slot_id.empty() || !reference) continue;
+        const auto source_path = resolve_asset_reference_path(scene, base, *reference);
+        if (source_path.empty()) continue;
+        selections[slot_id] = {
+            .guid = reference->guid.valid() ? assets::to_string(reference->guid) : source_path.generic_string(),
+            .path = source_path.generic_string(),
+        };
     }
     if (selections.empty()) return std::nullopt;
 
@@ -667,10 +778,16 @@ std::optional<material_preview_descriptor_result> realize_function_specializatio
                 if (!authored.is_object()) continue;
                 const auto slot_id = authored.value("slotId", std::string{});
                 const auto function = authored.value("function", json::object());
-                const auto guid = function.value("guid", std::string{});
-                const auto path = function.value("pathHint", std::string{});
-                if (slot_id.empty() || guid.empty() || path.empty()) continue;
-                if (!selections.contains(slot_id)) selections[slot_id] = {.guid = guid, .path = path};
+                const auto reference = asset_reference_from_json(function);
+                if (slot_id.empty() || !reference) continue;
+                const auto source_path = resolve_asset_reference_path(scene, source_base, *reference);
+                if (source_path.empty()) continue;
+                if (!selections.contains(slot_id))
+                    selections[slot_id] = {
+                        .guid =
+                            reference->guid.valid() ? assets::to_string(reference->guid) : source_path.generic_string(),
+                        .path = source_path.generic_string(),
+                    };
             }
         }
     }

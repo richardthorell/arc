@@ -95,6 +95,8 @@ struct editor_scene_state
     // Original known-component objects are retained so future fields survive
     // editing, history, duplication, prefab operations, and resaving.
     std::vector<preserved_component_record> preserved_component_records;
+    /** Active authoring asset registry. Non-owning; lifetime is managed by the host project state. */
+    assets::asset_manager* asset_registry{};
     /** Active project root used to resolve project-relative authored asset references. */
     std::filesystem::path project_root;
     /** Writable project asset roots used to resolve content-root-relative authored asset references. */

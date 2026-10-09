@@ -1545,8 +1545,12 @@ host_response arc_host::execute(const host_command_envelope& command)
     }
 
     const auto resolved =
-        resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root, *mesh_reference);
-    if (!resolved) return fail("Mesh must be a project or built-in scene asset", entity);
+        material_command->asset
+            ? resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
+                                   *material_command->asset)
+            : resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
+                                   *mesh_reference);
+    if (!resolved) return fail("Mesh must reference a project or built-in scene asset", entity);
 
     render::scene_import_options options;
     options.asset_root = resolved->asset_root;
@@ -1575,19 +1579,31 @@ host_response arc_host::execute(const host_command_envelope& command)
     auto before = state_->scene;
     ensure_scene_authoring_metadata(state_->scene);
 
-    std::filesystem::path binding_path = *mesh_reference;
-    if (binding_path.is_absolute()) binding_path = binding_path.lexically_relative(state_->project.root);
-    const auto normalized_path = arc::assets::normalize_asset_path(binding_path);
-    arc::assets::asset_reference source_reference{
-        .expected_type = arc::assets::asset_types::imported_scene,
-        .path_hint = normalized_path,
-    };
-    if (state_->asset_registry)
+    arc::assets::asset_reference source_reference;
+    if (material_command->asset)
     {
-        auto resolved_reference =
-            state_->asset_registry->resolve(normalized_path, arc::assets::asset_types::imported_scene);
-        if (resolved_reference.guid.valid() || !resolved_reference.path_hint.empty())
-            source_reference = std::move(resolved_reference);
+        const auto parsed = parse_host_asset_reference(*material_command->asset);
+        if (!parsed) return fail("Mesh asset reference is invalid", entity);
+        source_reference = *parsed;
+        if (!source_reference.expected_type.valid())
+            source_reference.expected_type = arc::assets::asset_types::imported_scene;
+    }
+    else
+    {
+        std::filesystem::path binding_path = *mesh_reference;
+        if (binding_path.is_absolute()) binding_path = binding_path.lexically_relative(state_->project.root);
+        const auto normalized_path = arc::assets::normalize_asset_path(binding_path);
+        source_reference = {
+            .expected_type = arc::assets::asset_types::imported_scene,
+            .path_hint = normalized_path,
+        };
+        if (state_->asset_registry)
+        {
+            auto resolved_reference =
+                state_->asset_registry->resolve(normalized_path, arc::assets::asset_types::imported_scene);
+            if (resolved_reference.guid.valid() || !resolved_reference.path_hint.empty())
+                source_reference = std::move(resolved_reference);
+        }
     }
 
     for (const auto target : targets)

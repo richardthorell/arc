@@ -600,7 +600,17 @@ describe('data-driven InspectorPanel', () => {
             kind: 'material',
             status: 'ready',
           },
-          { id: 'bronze', name: 'Bronze', path: 'materials/bronze.arcmat', kind: 'material', status: 'ready' },
+          {
+            id: 'bronze',
+            guid: '11112222333344445555666677778888',
+            typeId: 'a7ca55e7000000010000000000000002',
+            name: 'Bronze',
+            path: 'materials/bronze.arcmat',
+            sourcePath: 'Content/materials/bronze.arcmat',
+            kind: 'material',
+            status: 'ready',
+            scope: 'project',
+          },
           { id: 'rock', name: 'Rock Albedo', path: 'textures/rock.png', kind: 'texture', status: 'ready' },
         ]}
         thumbnailProvider={thumbnailProvider}
@@ -616,7 +626,12 @@ describe('data-driven InspectorPanel', () => {
     await waitFor(() =>
       expect(command).toHaveBeenCalledWith('entity.setMaterial', {
         entity: { index: 3, generation: 1 },
-        path: 'materials/bronze.arcmat',
+        path: 'Content/materials/bronze.arcmat',
+        asset: {
+          guid: '11112222333344445555666677778888',
+          expectedType: 'a7ca55e7000000010000000000000002',
+          pathHint: 'Content/materials/bronze.arcmat',
+        },
       }),
     );
 

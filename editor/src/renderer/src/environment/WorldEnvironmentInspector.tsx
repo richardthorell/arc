@@ -15,7 +15,7 @@ export type WorldEnvironmentInspectorProps = {
   thumbnailProvider?: AssetThumbnailProvider;
   onChange: (environment: HostWorldEnvironment) => void;
   onPreset: (preset: string) => void;
-  onHdri: (path: string) => Promise<boolean> | boolean | void;
+  onHdri: (path: string, asset?: AssetPickerItem) => Promise<boolean> | boolean | void;
 };
 
 const environmentPresets = [
@@ -53,11 +53,11 @@ export function WorldEnvironmentInspector({
     );
   }, [draft, filter]);
 
-  const update = (path: string, value: unknown) => {
+  const update = (path: string, value: unknown, asset?: AssetPickerItem) => {
     const next = setPathValue(draft, path, value);
     setDraft(next);
     if (path === 'hdriPath') {
-      void Promise.resolve(onHdri(value as string)).then((accepted) => {
+      void Promise.resolve(onHdri(value as string, asset)).then((accepted) => {
         if (accepted === false) setDraft(environment);
       });
       return;
@@ -103,7 +103,7 @@ export function WorldEnvironmentInspector({
             schema={schema}
             thumbnailProvider={thumbnailProvider}
             onToggle={() => setCollapsed((current) => ({ ...current, [schema.id]: !(current[schema.id] ?? false) }))}
-            onValue={(path, value) => update(path, value)}
+            onValue={(path, value, _settled, asset) => update(path, value, asset)}
           />
         ))}
         {!schemas.length && <div className="inspector-state compact">No world settings match “{filter}”.</div>}
