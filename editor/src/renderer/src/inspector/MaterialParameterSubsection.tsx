@@ -820,7 +820,10 @@ export function MaterialParameterSubsection({
       )}
       {state.status === 'ready' && state.parameters.length > 0 && (
         <div className="inspector-material-parameter-list">
-          {state.parameters.map((parameter) => {
+          {parameterGroups.map((group) => (
+            <div className="inspector-material-parameter-group" key={group.id || '__all'}>
+              {group.label && <div className="inspector-material-parameter-group-title">{group.label}</div>}
+              {group.parameters.map((parameter) => {
             const override = overrideFor(parameter);
             const values = effectiveValues(parameter);
             const reset = override ? (
@@ -963,7 +966,10 @@ export function MaterialParameterSubsection({
                 {reset}
               </div>
             );
-          })}
+
+              })}
+            </div>
+          ))}
         </div>
       )}
       {mutationError && (
