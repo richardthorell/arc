@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { DragEvent, KeyboardEvent, PointerEvent, ReactNode, WheelEvent } from 'react';
 import { Box, Camera, Eye, EyeOff, Focus, Maximize2, RefreshCw } from 'lucide-react';
 
@@ -18,6 +18,7 @@ import { toViewportPixels } from './viewportCoordinates';
 import { viewportFlyMovement, viewportFlyMovementCodes } from './viewportFlyNavigation';
 import { normalizeViewportWheel } from './viewportWheel';
 import { useEditorSurfaceActive } from '../editors/EditorSurfaceActivity';
+import { UiContextMenu } from '../ui';
 
 type ViewportPanelProps = {
   viewportId?: string;
@@ -101,7 +102,7 @@ const defaultRenderOptions: ViewportRenderOptions = {
   componentGizmos: true,
   selectionHierarchy: false,
   shadows: true,
-  grid: true,
+  grid: false,
   skeletons: false,
   realtime: true,
   cameraSpeed: 4,
@@ -151,6 +152,123 @@ const formatNumber = (value: number) => Math.max(0, value).toLocaleString();
 const formatFps = (value: number) => (Number.isFinite(value) && value > 0 ? value.toFixed(0) : '--');
 const formatFrameTime = (value: number) => (Number.isFinite(value) && value > 0 ? value.toFixed(2) : '--');
 
+const viewportVisualizationModes = [
+  ['worldNormal', 'Normals'],
+  ['albedo', 'Base Color'],
+  ['gloss', 'Roughness'],
+  ['metalness', 'Metallic'],
+  ['lightingHitDistance', 'Depth'],
+  ['virtualOverdraw', 'Overdraw'],
+  ['lightComplexity', 'Lighting Complexity'],
+  ['shadowMask', 'Shadows'],
+  ['indirectDiffuse', 'GI'],
+  ['reflections', 'Reflections'],
+  ['terrainPatchBoundaries', 'Terrain Patches'],
+  ['terrainLodLevel', 'Terrain LOD'],
+  ['terrainHierarchyNodes', 'Terrain Hierarchy'],
+  ['terrainGeometricError', 'Terrain Error'],
+  ['terrainCulledNodes', 'Terrain Culling'],
+  ['terrainTriangleDensity', 'Terrain Density'],
+  ['terrainBounds', 'Terrain Bounds'],
+  ['hzbMinimumDepth', 'HZB Minimum Depth'],
+  ['hzbMaximumDepth', 'HZB Maximum Depth'],
+  ['motionVectors', 'Motion Vectors'],
+  ['temporalReactiveMask', 'Reactive Mask'],
+  ['temporalDisocclusion', 'Disocclusion'],
+  ['temporalConfidence', 'History Confidence'],
+  ['temporalRejection', 'History Rejection'],
+  ['temporalSampleWeight', 'Temporal Weight'],
+  ['textureDesiredMip', 'Texture Desired Mip'],
+  ['textureResidentMip', 'Texture Resident Mip'],
+  ['virtualTexturePageResidency', 'Virtual Texture Residency'],
+  ['virtualTextureRecentRequests', 'Virtual Texture Requests'],
+] as const;
+
+const viewportVisualizationLabel = (renderMode: ViewportRenderOptions['renderMode'], visualization: string) => {
+  if (renderMode === 'wireframe') return 'Wireframe';
+  if (visualization === 'lighting') return 'Unlit';
+  if (visualization === 'standard' || visualization === 'none') return 'Lit';
+  return viewportVisualizationModes.find(([mode]) => mode === visualization)?.[1] ?? 'Lit';
+};
+
+function ViewportDropdown({
+  label,
+  children,
+  className,
+  width = 200,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+  className?: string;
+  width?: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (triggerRef.current?.contains(target) || target.closest(`[data-viewport-menu="${menuId}"]`)) return;
+      setOpen(false);
+    };
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('focusin', dismiss);
+    return () => {
+      document.removeEventListener('pointerdown', dismiss);
+      document.removeEventListener('focusin', dismiss);
+    };
+  }, [menuId, open]);
+
+  return (
+    <div className="arc-viewport-show-menu">
+      <button
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="arc-viewport-menu-trigger"
+        ref={triggerRef}
+        type="button"
+        onClick={() => {
+          const next = !open;
+          if (next) {
+            const bounds = triggerRef.current?.getBoundingClientRect();
+            if (bounds) {
+              setPosition({
+                x: Math.max(8, Math.min(bounds.left, window.innerWidth - width - 8)),
+                y: bounds.bottom + 7,
+              });
+            }
+          }
+          setOpen(next);
+        }}
+      >
+        {label}
+      </button>
+      {open && (
+        <UiContextMenu
+          aria-label={typeof label === 'string' ? `${label} menu` : 'Viewport menu'}
+          className={['arc-viewport-show-popup', 'arc-viewport-floating-menu', className].filter(Boolean).join(' ')}
+          data-viewport-menu={menuId}
+          portal
+          width={width}
+          x={position.x}
+          y={position.y}
+          onClick={(event) => {
+            const target = event.target;
+            if (target instanceof Element && target.closest('button')) setOpen(false);
+          }}
+          onRequestClose={() => setOpen(false)}
+        >
+          {children}
+        </UiContextMenu>
+      )}
+    </div>
+  );
+}
+
 export function ViewportPanel({
   viewportId = 'viewport-1',
   project,
@@ -190,7 +308,7 @@ export function ViewportPanel({
   const [viewportStats, setViewportStats] = useState<ViewportStats>(() => fallbackStats(project));
   const renderOptionsRef = useRef<ViewportRenderOptions>(defaultRenderOptions);
   const gridColorRef = useRef(defaultGridColor);
-  const [localGridVisible, setLocalGridVisible] = useState(true);
+  const [localGridVisible, setLocalGridVisible] = useState(false);
   const [projection, setProjection] = useState('perspective');
   const [cameraSourceId, setCameraSourceId] = useState('editor');
   const editorCameraRef = useRef<NonNullable<ViewportStats['camera']> | null>(null);
@@ -905,12 +1023,7 @@ export function ViewportPanel({
     ...viewportStats.renderOptions,
     environment: { ...defaultRenderOptions.environment, ...viewportStats.renderOptions?.environment },
   };
-  const viewModeLabel =
-    renderOptions.renderMode === 'wireframe'
-      ? 'Wireframe'
-      : renderOptions.visualization === 'lighting'
-        ? 'Unlit'
-        : 'Lit';
+  const viewModeLabel = viewportVisualizationLabel(renderOptions.renderMode, renderOptions.visualization);
   const cameraSourceLabel =
     cameraSourceId === 'editor'
       ? 'Editor Camera'
@@ -942,161 +1055,121 @@ export function ViewportPanel({
           <span>{viewportId === 'viewport-1' ? 'Viewport 1' : viewportId.replace('viewport-', 'Viewport ')}</span>
         </div>
         <div className="arc-viewport-view-options">
-          <details className="arc-viewport-show-menu">
-            <summary>{cameraSourceLabel}</summary>
-            <div className="arc-viewport-show-popup viewport-camera-source-menu">
-              <button onClick={() => void selectCameraSource('editor')}>Editor Camera</button>
-              {sceneCameras.map((camera) => (
-                <button key={camera.id} onClick={() => void selectCameraSource(camera.id)}>
-                  {camera.name}
-                </button>
-              ))}
-              {sceneCameras.length === 0 && <span className="arc-viewport-menu-empty">No scene cameras</span>}
-            </div>
-          </details>
-          <details className="arc-viewport-show-menu">
-            <summary>
-              {projection === 'perspective' ? 'Perspective' : projection[0].toUpperCase() + projection.slice(1)}
-            </summary>
-            <div className="arc-viewport-show-popup viewport-projection-menu">
-              {['perspective', 'top', 'bottom', 'front', 'back', 'left', 'right'].map((mode) => (
-                <button key={mode} onClick={() => void setProjectionMode(mode)}>
-                  {mode[0].toUpperCase() + mode.slice(1)}
-                </button>
-              ))}
-            </div>
-          </details>
-          <details className="arc-viewport-show-menu">
-            <summary>{viewModeLabel}</summary>
-            <div className="arc-viewport-show-popup viewport-mode-menu">
-              <button onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: 'standard' })}>
-                Lit
+          <ViewportDropdown label={cameraSourceLabel} className="viewport-camera-source-menu" width={200}>
+            <button onClick={() => void selectCameraSource('editor')}>Editor Camera</button>
+            {sceneCameras.map((camera) => (
+              <button key={camera.id} onClick={() => void selectCameraSource(camera.id)}>
+                {camera.name}
               </button>
-              <button onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: 'lighting' })}>
-                Unlit
+            ))}
+            {sceneCameras.length === 0 && <span className="arc-viewport-menu-empty">No scene cameras</span>}
+          </ViewportDropdown>
+          <ViewportDropdown
+            label={projection === 'perspective' ? 'Perspective' : projection[0].toUpperCase() + projection.slice(1)}
+            className="viewport-projection-menu"
+            width={180}
+          >
+            {['perspective', 'top', 'bottom', 'front', 'back', 'left', 'right'].map((mode) => (
+              <button key={mode} onClick={() => void setProjectionMode(mode)}>
+                {mode[0].toUpperCase() + mode.slice(1)}
               </button>
-              <button onClick={() => void updateRenderOptions({ renderMode: 'wireframe', visualization: 'standard' })}>
-                Wireframe
+            ))}
+          </ViewportDropdown>
+          <ViewportDropdown label={viewModeLabel} className="viewport-mode-menu" width={230}>
+            <button onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: 'standard' })}>
+              Lit
+            </button>
+            <button onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: 'lighting' })}>
+              Unlit
+            </button>
+            <button onClick={() => void updateRenderOptions({ renderMode: 'wireframe', visualization: 'standard' })}>
+              Wireframe
+            </button>
+            <hr />
+            {viewportVisualizationModes.map(([mode, label]) => (
+              <button
+                key={mode}
+                onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: mode })}
+              >
+                {label}
               </button>
-              <hr />
-              {[
-                ['worldNormal', 'Normals'],
-                ['albedo', 'Base Color'],
-                ['gloss', 'Roughness'],
-                ['metalness', 'Metallic'],
-                ['lightingHitDistance', 'Depth'],
-                ['virtualOverdraw', 'Overdraw'],
-                ['lightComplexity', 'Lighting Complexity'],
-                ['shadowMask', 'Shadows'],
-                ['indirectDiffuse', 'GI'],
-                ['reflections', 'Reflections'],
-                ['terrainPatchBoundaries', 'Terrain Patches'],
-                ['terrainLodLevel', 'Terrain LOD'],
-                ['terrainHierarchyNodes', 'Terrain Hierarchy'],
-                ['terrainGeometricError', 'Terrain Error'],
-                ['terrainCulledNodes', 'Terrain Culling'],
-                ['terrainTriangleDensity', 'Terrain Density'],
-                ['terrainBounds', 'Terrain Bounds'],
-                ['hzbMinimumDepth', 'HZB Minimum Depth'],
-                ['hzbMaximumDepth', 'HZB Maximum Depth'],
-                ['motionVectors', 'Motion Vectors'],
-                ['temporalReactiveMask', 'Reactive Mask'],
-                ['temporalDisocclusion', 'Disocclusion'],
-                ['temporalConfidence', 'History Confidence'],
-                ['temporalRejection', 'History Rejection'],
-                ['temporalSampleWeight', 'Temporal Weight'],
-                ['textureDesiredMip', 'Texture Desired Mip'],
-                ['textureResidentMip', 'Texture Resident Mip'],
-                ['virtualTexturePageResidency', 'Virtual Texture Residency'],
-                ['virtualTextureRecentRequests', 'Virtual Texture Requests'],
-              ].map(([mode, label]) => (
+            ))}
+          </ViewportDropdown>
+          <ViewportDropdown label="Show" className="viewport-show-menu-popup" width={240}>
+            {[
+              ['selectionOutline', 'Selection Outline'],
+              ['hoverOutline', 'Hover Outline'],
+              ['selectionBounds', 'Selection Bounds'],
+              ['componentGizmos', 'Component Gizmos'],
+              ['selectionHierarchy', 'Selection Hierarchy'],
+            ].map(([option, label]) => {
+              const enabled = renderOptions[option as keyof ViewportRenderOptions] as boolean;
+              return (
                 <button
-                  key={mode}
-                  onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: mode })}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </details>
-          <details className="arc-viewport-show-menu">
-            <summary>Show</summary>
-            <div className="arc-viewport-show-popup">
-              {[
-                ['selectionOutline', 'Selection Outline'],
-                ['hoverOutline', 'Hover Outline'],
-                ['selectionBounds', 'Selection Bounds'],
-                ['componentGizmos', 'Component Gizmos'],
-                ['selectionHierarchy', 'Selection Hierarchy'],
-              ].map(([option, label]) => {
-                const enabled = renderOptions[option as keyof ViewportRenderOptions] as boolean;
-                return (
-                  <button
-                    key={option}
-                    type="button"
-                    role="menuitemcheckbox"
-                    aria-checked={enabled}
-                    onClick={() => void updateRenderOptions({ [option]: !enabled })}
-                  >
-                    <span className="arc-viewport-menu-check">{enabled ? '✓' : ''}</span>
-                    {label}
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                role="menuitemcheckbox"
-                aria-checked={renderOptions.overlay === 'selectedWireframe'}
-                onClick={() =>
-                  void updateRenderOptions({
-                    overlay: renderOptions.overlay === 'selectedWireframe' ? 'none' : 'selectedWireframe',
-                  })
-                }
-              >
-                <span className="arc-viewport-menu-check">
-                  {renderOptions.overlay === 'selectedWireframe' ? '✓' : ''}
-                </span>
-                Selection Wireframe
-              </button>
-              <hr />
-              <button
-                type="button"
-                role="menuitemcheckbox"
-                aria-checked={gridVisible}
-                onClick={() => void setGridVisibility(!gridVisible)}
-              >
-                <span className="arc-viewport-menu-check">{gridVisible ? '✓' : ''}</span>
-                Grid
-              </button>
-              <button
-                role="menuitemcheckbox"
-                aria-checked={renderOptions.skeletons}
-                onClick={() => void updateRenderOptions({ skeletons: !renderOptions.skeletons })}
-              >
-                <span className="arc-viewport-menu-check">{renderOptions.skeletons ? '✓' : ''}</span>Skeletons
-              </button>
-              <button
-                role="menuitemcheckbox"
-                aria-checked={renderOptions.shadows}
-                onClick={() => void updateRenderOptions({ shadows: !renderOptions.shadows })}
-              >
-                <span className="arc-viewport-menu-check">{renderOptions.shadows ? '✓' : ''}</span>Shadows
-              </button>
-              {Object.entries(renderOptions.environment).map(([flag, enabled]) => (
-                <button
-                  key={flag}
+                  key={option}
+                  type="button"
                   role="menuitemcheckbox"
                   aria-checked={enabled}
-                  onClick={() =>
-                    void updateRenderOptions({ environment: { ...renderOptions.environment, [flag]: !enabled } })
-                  }
+                  onClick={() => void updateRenderOptions({ [option]: !enabled })}
                 >
                   <span className="arc-viewport-menu-check">{enabled ? '✓' : ''}</span>
-                  {flag[0].toUpperCase() + flag.slice(1)}
+                  {label}
                 </button>
-              ))}
-            </div>
-          </details>
+              );
+            })}
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={renderOptions.overlay === 'selectedWireframe'}
+              onClick={() =>
+                void updateRenderOptions({
+                  overlay: renderOptions.overlay === 'selectedWireframe' ? 'none' : 'selectedWireframe',
+                })
+              }
+            >
+              <span className="arc-viewport-menu-check">
+                {renderOptions.overlay === 'selectedWireframe' ? '✓' : ''}
+              </span>
+              Selection Wireframe
+            </button>
+            <hr />
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={gridVisible}
+              onClick={() => void setGridVisibility(!gridVisible)}
+            >
+              <span className="arc-viewport-menu-check">{gridVisible ? '✓' : ''}</span>
+              Grid
+            </button>
+            <button
+              role="menuitemcheckbox"
+              aria-checked={renderOptions.skeletons}
+              onClick={() => void updateRenderOptions({ skeletons: !renderOptions.skeletons })}
+            >
+              <span className="arc-viewport-menu-check">{renderOptions.skeletons ? '✓' : ''}</span>Skeletons
+            </button>
+            <button
+              role="menuitemcheckbox"
+              aria-checked={renderOptions.shadows}
+              onClick={() => void updateRenderOptions({ shadows: !renderOptions.shadows })}
+            >
+              <span className="arc-viewport-menu-check">{renderOptions.shadows ? '✓' : ''}</span>Shadows
+            </button>
+            {Object.entries(renderOptions.environment).map(([flag, enabled]) => (
+              <button
+                key={flag}
+                role="menuitemcheckbox"
+                aria-checked={enabled}
+                onClick={() =>
+                  void updateRenderOptions({ environment: { ...renderOptions.environment, [flag]: !enabled } })
+                }
+              >
+                <span className="arc-viewport-menu-check">{enabled ? '✓' : ''}</span>
+                {flag[0].toUpperCase() + flag.slice(1)}
+              </button>
+            ))}
+          </ViewportDropdown>
         </div>
         <div className="arc-viewport-header-spacer" />
         <div className="arc-viewport-view-options compact">

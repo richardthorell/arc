@@ -85,6 +85,22 @@ describe('UiContextMenu', () => {
     expect(onRequestClose).toHaveBeenCalledTimes(1);
   });
 
+  it('can portal above clipping ancestors while preserving viewport positioning', () => {
+    const view = render(
+      <div data-testid="clipped-parent" style={{ overflow: 'hidden' }}>
+        <UiContextMenu aria-label="Floating menu" portal x={48} y={72}>
+          <UiContextMenuItem>Box</UiContextMenuItem>
+        </UiContextMenu>
+      </div>,
+    );
+
+    const menu = screen.getByRole('menu', { name: 'Floating menu' });
+    expect(view.container.contains(menu)).toBe(false);
+    expect(menu.parentElement).toBe(document.body);
+    expect(menu).toHaveClass('ui-context-menu-portal');
+    expect(menu).toHaveStyle({ left: '48px', top: '72px' });
+  });
+
   it('only reserves a leading column when an item has leading content', () => {
     render(
       <UiContextMenu aria-label="Compact menu">

@@ -61,7 +61,8 @@
   position: relative;
 }
 
-.arc-viewport-show-menu summary {
+.arc-viewport-show-menu summary,
+.arc-viewport-menu-trigger {
   display: flex;
   align-items: center;
   height: 34px;
@@ -83,6 +84,8 @@
 
 .arc-viewport-show-menu[open] summary,
 .arc-viewport-show-menu summary:hover,
+.arc-viewport-menu-trigger[aria-expanded='true'],
+.arc-viewport-menu-trigger:hover,
 .arc-viewport-view-options button:hover {
   border-color: rgba(255, 255, 255, 0.2);
   background: rgba(31, 40, 49, 0.82);
@@ -118,6 +121,7 @@
   background: transparent;
   box-shadow: none;
   text-align: left;
+  white-space: nowrap;
   backdrop-filter: none;
 }
 
@@ -438,4 +442,13 @@
   left: 14px;
   max-width: calc(100% - 28px);
   pointer-events: none;
+}
+
+.arc-viewport-floating-menu.ui-context-menu {
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+}
+
+.viewport-show-menu-popup {
+  min-width: 240px;
 }
