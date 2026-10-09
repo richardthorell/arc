@@ -86,10 +86,23 @@ describe('BuiltInAgentToolRegistry', () => {
     const edit = definitions.find((tool) => tool.name === 'edit.apply');
     const batch = definitions.find((tool) => tool.name === 'editor.applyBatch');
 
-    expect(assets?.description).toContain('authoritative project-local asset inventory');
-    expect(assets?.description).toContain('before creating or importing reusable content');
+    expect(assets?.description).toContain('authoritative ARC asset inventory');
+    expect(assets?.description).toContain('engine built-ins and project content');
+    expect(assets?.description).toContain('before authoring or assigning materials');
     expect(batch?.description).toContain('Prefer existing asset bindings and lightweight overrides');
     expect(batch?.description).toContain('material.create only when no suitable project asset or override');
+
+    expect(assets?.inputSchema).toMatchObject({
+      type: 'object',
+      additionalProperties: false,
+      properties: expect.objectContaining({
+        search: expect.objectContaining({ type: 'string' }),
+        kinds: expect.objectContaining({ type: 'array' }),
+        scopes: expect.objectContaining({ type: 'array' }),
+        offset: expect.objectContaining({ type: 'integer', minimum: 0 }),
+        limit: expect.objectContaining({ type: 'integer', minimum: 1, maximum: 200 }),
+      }),
+    });
 
     const editSchema = JSON.stringify(edit?.inputSchema);
     expect(editSchema).toContain('prefer binding an existing project material');
