@@ -82,6 +82,13 @@ struct runtime_material_instance
 
 thread_local pending_parameter_edit pending_edit;
 thread_local std::vector<runtime_material_instance> runtime_instances;
+thread_local std::string pending_material_edit_error;
+
+void set_material_edit_error(std::string message)
+{
+    pending_material_edit_error = std::move(message);
+    arc::diagnostics::warn("editor.materials", pending_material_edit_error);
+}
 
 std::optional<std::string> decode_hex(std::string_view hex)
 {
@@ -695,10 +702,18 @@ std::optional<material_preview_descriptor_result> realize_function_specializatio
 bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity, const json& overrides)
 {
     auto* component = scene.scene.try_get<scene::mesh_renderer_component>(entity);
-    if (!component) return false;
+    if (!component)
+    {
+        set_material_edit_error("Material override target has no mesh renderer");
+        return false;
+    }
     const auto guid = entity_guid_of(scene, entity);
     const auto* base_pointer = base_material_record(scene, entity);
-    if (!base_pointer) return false;
+    if (!base_pointer)
+    {
+        set_material_edit_error("Could not resolve the entity's authored base material");
+        return false;
+    }
     const editor_material_record base = *base_pointer;
 
     if (!overrides.is_array() || overrides.empty())
@@ -717,8 +732,7 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
     {
         if (!specialized->succeeded)
         {
-            arc::diagnostics::warn("editor.materials",
-                                   "Material Function specialization failed: " + specialized->message);
+            set_material_edit_error("Material Function specialization failed: " + specialized->message);
             return false;
         }
         specialized_material = specialized->material;
@@ -727,8 +741,7 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
 
     if (!specialized_material.runtime_program)
     {
-        arc::diagnostics::warn("editor.materials",
-                               "Material instance requires a compiled parameter layout for '" + base.asset.name + "'");
+        set_material_edit_error("Material instance requires a compiled parameter layout for '" + base.asset.name + "'");
         return false;
     }
 
@@ -816,8 +829,7 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
     auto resolved = render::resolve_material_instance(definition, instance);
     if (!resolved)
     {
-        arc::diagnostics::warn("editor.materials",
-                               "Material instance could not be resolved: " + resolved.error().message);
+        set_material_edit_error("Material instance could not be resolved: " + resolved.error().message);
         return false;
     }
 
@@ -826,13 +838,21 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
     if (runtime && renderer.material_alive(runtime->instance))
     {
         instance_handle = runtime->instance;
-        if (!renderer.update_material(instance_handle, std::move(resolved).value())) return false;
+        if (!renderer.update_material(instance_handle, std::move(resolved).value()))
+        {
+            set_material_edit_error("Renderer rejected the updated material instance");
+            return false;
+        }
         runtime->parent = base.material;
     }
     else
     {
         instance_handle = renderer.create_material(std::move(resolved).value());
-        if (!instance_handle.valid()) return false;
+        if (!instance_handle.valid())
+        {
+            set_material_edit_error("Renderer could not create the material instance");
+            return false;
+        }
         runtime_instances.push_back(
             {.scene = &scene, .entity = guid, .parent = base.material, .instance = instance_handle});
     }
@@ -860,6 +880,7 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
 bool apply_material_edit(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity,
                          const material_parameter_edit& edit)
 {
+    pending_material_edit_error.clear();
     const auto guid = entity_guid_of(scene, entity);
     if (!guid.valid()) return false;
     auto overrides = apply_edit(persisted_overrides(scene, guid), edit);
@@ -871,6 +892,7 @@ bool apply_material_edit(editor_scene_state& scene, render::renderer& renderer, 
 bool apply_function_edit(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity,
                          const material_function_edit& edit)
 {
+    pending_material_edit_error.clear();
     const auto guid = entity_guid_of(scene, entity);
     if (!guid.valid()) return false;
     auto overrides = apply_function_edit(persisted_overrides(scene, guid), edit);
@@ -925,6 +947,11 @@ bool regenerate_procedural_or_material_parameter(editor_scene_state& scene, rend
     }
     pending_edit = {};
     return regenerate_procedural_mesh(scene, renderer, entity);
+}
+
+const std::string& last_material_instance_bridge_error() noexcept
+{
+    return pending_material_edit_error;
 }
 
 void synchronize_procedural_and_material_instances(editor_scene_state& scene, render::renderer& renderer)
