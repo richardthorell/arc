@@ -168,7 +168,7 @@ describe('schema-driven WorldEnvironmentInspector', () => {
 
     await userEvent.click(screen.getByLabelText('Select Night HDRI'));
     expect(onHdri).toHaveBeenCalledWith(
-      'Content/environments/night.hdr',
+      'environments/night.hdr',
       expect.objectContaining({ guid: '00112233445566778899aabbccddeeff' }),
     );
     expect(screen.getByText('Night HDRI')).toBeInTheDocument();
