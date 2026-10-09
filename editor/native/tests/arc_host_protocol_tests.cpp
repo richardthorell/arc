@@ -37,6 +37,27 @@ TEST_CASE("viewport grid defaults to disabled")
     REQUIRE_FALSE(request.grid);
 }
 
+TEST_CASE("host asset references serialize as GUID-authoritative protocol values")
+{
+    const arc::editor::host_asset_reference reference{
+        .guid = "00112233445566778899aabbccddeeff",
+        .expected_type = "a7ca55e7000000010000000000000005",
+        .path_hint = "Content/Textures/Bricks.jpg",
+    };
+
+    const auto json = arc::editor::to_json(reference);
+    CHECK(json.find("\"guid\":\"00112233445566778899aabbccddeeff\"") != std::string::npos);
+    CHECK(json.find("\"expectedType\":\"a7ca55e7000000010000000000000005\"") != std::string::npos);
+    CHECK(json.find("\"pathHint\":\"Content/Textures/Bricks.jpg\"") != std::string::npos);
+
+    arc::editor::host_asset_reference parsed;
+    std::string error;
+    REQUIRE(arc::editor::from_json(json, parsed, error));
+    CHECK(parsed == reference);
+
+    CHECK_FALSE(arc::editor::from_json(R"({"guid":"","expectedType":"","pathHint":""})", parsed, error));
+}
+
 TEST_CASE("arc host protocol serializes command and query envelopes")
 {
     const arc::editor::host_entity_id entity{.index = 7, .generation = 3};

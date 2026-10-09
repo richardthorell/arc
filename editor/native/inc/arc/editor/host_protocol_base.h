@@ -12,6 +12,21 @@
 namespace arc::editor
 {
 
+/**
+ * Stable asset reference used across the editor/host protocol.
+ *
+ * guid is authoritative when present. expected_type protects typed assignment,
+ * while path_hint exists for diagnostics and temporary legacy repair only.
+ */
+struct host_asset_reference
+{
+    std::string guid;
+    std::string expected_type;
+    std::string path_hint;
+
+    friend bool operator==(const host_asset_reference&, const host_asset_reference&) = default;
+};
+
 struct host_entity_id
 {
     std::uint32_t index{invalid_index};
@@ -1860,6 +1875,7 @@ std::string to_json(const host_scene_snapshot& snapshot);
 std::string to_json(const host_selected_entity_snapshot& snapshot);
 std::string to_json(const host_project_assets_snapshot& snapshot);
 std::string to_json(const host_asset_thumbnail_snapshot& snapshot);
+std::string to_json(const host_asset_reference& reference);
 std::string to_json(const host_entity_id& entity);
 std::string to_json(const host_transform& transform);
 std::string to_json(const host_camera_snapshot& camera);
@@ -1871,6 +1887,7 @@ std::string to_json(const host_runtime_snapshot& snapshot);
 std::string to_json(const host_terrain_tool_snapshot& snapshot);
 std::string to_json_string(std::string_view value);
 
+bool from_json(std::string_view json, host_asset_reference& reference, std::string& error);
 bool from_json(std::string_view json, host_command_envelope& envelope, std::string& error);
 bool from_json(std::string_view json, host_query_envelope& envelope, std::string& error);
 bool from_json(std::string_view json, host_world_environment_snapshot& environment, std::string& error);

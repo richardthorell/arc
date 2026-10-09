@@ -533,6 +533,38 @@ std::optional<resolved_editor_asset> resolve_editor_asset(const editor_asset_sta
     return std::nullopt;
 }
 
+std::optional<resolved_editor_asset> resolve_editor_asset(const editor_asset_state& asset_state,
+                                                          const assets::asset_manager* registry,
+                                                          const std::filesystem::path& project_root,
+                                                          const host_asset_reference& host_reference)
+{
+    assets::asset_reference reference{.path_hint = host_reference.path_hint};
+    if (!host_reference.guid.empty())
+    {
+        const auto guid = assets::parse_asset_guid(host_reference.guid);
+        if (!guid) return std::nullopt;
+        reference.guid = *guid;
+    }
+    if (!host_reference.expected_type.empty())
+    {
+        const auto type = assets::parse_asset_type_id(host_reference.expected_type);
+        if (!type) return std::nullopt;
+        reference.expected_type = *type;
+    }
+
+    if (registry)
+    {
+        const auto snapshot = registry->find(reference);
+        if (!snapshot) return std::nullopt;
+        return resolve_editor_asset(asset_state, registry, project_root, snapshot->source_path);
+    }
+
+    // A GUID cannot be safely resolved without the asset registry. Retain path
+    // fallback only for legacy path-only references during the migration.
+    if (reference.guid.valid() || reference.path_hint.empty()) return std::nullopt;
+    return resolve_editor_asset(asset_state, registry, project_root, reference.path_hint);
+}
+
 std::optional<std::filesystem::path> resolve_project_document(const std::filesystem::path& project_root,
                                                               const std::filesystem::path& authored, bool must_exist)
 {

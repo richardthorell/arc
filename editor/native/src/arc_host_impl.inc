@@ -538,8 +538,11 @@ bool refresh_asset_preview_material(HostState& host, viewport_surface_registry::
     const auto generation = asset->generation;
     if (surface.preview_material.valid() && generation == surface.preview_material_generation) return true;
 
+    const host_asset_reference reference{.guid = assets::to_string(asset->guid),
+                                         .expected_type = assets::to_string(asset->type),
+                                         .path_hint = assets::normalize_asset_path(asset->source_path)};
     const auto resolved =
-        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, asset->source_path);
+        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, reference);
     if (!resolved || !is_material_asset_path(resolved->path))
     {
         surface.preview_error =
@@ -609,8 +612,11 @@ bool apply_live_asset_preview_material(HostState& host, viewport_surface_registr
 
     const auto asset = host.asset_registry->find(surface.preview_guid);
     if (!asset || asset->type != assets::asset_types::material) return false;
+    const host_asset_reference reference{.guid = assets::to_string(asset->guid),
+                                         .expected_type = assets::to_string(asset->type),
+                                         .path_hint = assets::normalize_asset_path(asset->source_path)};
     const auto resolved =
-        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, asset->source_path);
+        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, reference);
     if (!resolved || !is_material_asset_path(resolved->path)) return false;
 
     auto realized = realize_material_preview_descriptor(source, resolved->path.stem().string());
@@ -685,8 +691,11 @@ bool refresh_asset_preview_texture(HostState& host, viewport_surface_registry::s
         surface.preview_asset_generation == asset->generation)
         return true;
 
+    const host_asset_reference reference{.guid = assets::to_string(asset->guid),
+                                         .expected_type = assets::to_string(asset->type),
+                                         .path_hint = assets::normalize_asset_path(asset->source_path)};
     const auto resolved =
-        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, asset->source_path);
+        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, reference);
     if (!resolved || !render::is_supported_texture_asset(resolved->path))
     {
         surface.preview_error =
@@ -866,8 +875,11 @@ bool refresh_asset_preview_model(HostState& host, viewport_surface_registry::sur
         !surface.preview_scene->imported_scene_entities.empty())
         return true;
 
+    const host_asset_reference reference{.guid = assets::to_string(asset->guid),
+                                         .expected_type = assets::to_string(asset->type),
+                                         .path_hint = assets::normalize_asset_path(asset->source_path)};
     const auto resolved =
-        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, asset->source_path);
+        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, reference);
     if (!resolved)
     {
         surface.preview_error =
@@ -1058,8 +1070,11 @@ void refresh_reimported_world_material(HostState& host, const host_asset_reimpor
     const auto asset = host.asset_registry->find(*guid);
     if (!asset || asset->type != assets::asset_types::material) return;
 
+    const host_asset_reference reference{.guid = assets::to_string(asset->guid),
+                                         .expected_type = assets::to_string(asset->type),
+                                         .path_hint = assets::normalize_asset_path(asset->source_path)};
     const auto resolved =
-        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, asset->source_path);
+        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, reference);
     if (!resolved || !is_material_asset_path(resolved->path)) return;
 
     auto realized = load_material_preview_descriptor(resolved->path);

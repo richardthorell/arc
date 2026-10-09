@@ -1389,6 +1389,12 @@ std::string to_json(const host_terrain_tool_snapshot& snapshot)
            ",\"activeLayer\":" + std::to_string(snapshot.active_layer) + '}';
 }
 
+std::string to_json(const host_asset_reference& reference)
+{
+    return "{\"guid\":" + quote(reference.guid) + ",\"expectedType\":" + quote(reference.expected_type) +
+           ",\"pathHint\":" + quote(reference.path_hint) + '}';
+}
+
 std::string to_json(const host_entity_id& entity)
 {
     return "{\"index\":" + std::to_string(entity.index) + ",\"generation\":" + std::to_string(entity.generation) + '}';
@@ -2277,6 +2283,22 @@ std::string to_json(const host_asset_thumbnail_snapshot& snapshot)
 {
     return "{\"path\":" + quote(snapshot.path) + ",\"width\":" + std::to_string(snapshot.width) +
            ",\"height\":" + std::to_string(snapshot.height) + ",\"dataUrl\":" + quote(snapshot.data_url) + '}';
+}
+
+bool from_json(std::string_view json, host_asset_reference& reference, std::string& error)
+{
+    host_asset_reference parsed;
+    string_value(json, "guid", parsed.guid);
+    string_value(json, "expectedType", parsed.expected_type);
+    string_value(json, "pathHint", parsed.path_hint);
+    if (parsed.guid.empty() && parsed.path_hint.empty())
+    {
+        error = "Asset reference requires guid or pathHint";
+        return false;
+    }
+    reference = std::move(parsed);
+    error.clear();
+    return true;
 }
 
 bool from_json(std::string_view json, host_command_envelope& envelope, std::string& error)
