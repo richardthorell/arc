@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { ChevronRight, Copy, Magnet, Minus, Plus, RotateCcw, Scan, Search, WandSparkles } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
-import { MaterialFunctionPicker, type AssetPickerItem } from '../inspector/AssetPicker';
+import { AssetPicker, type AssetPickerItem } from '../inspector/AssetPicker';
 import {
   GraphDiagnosticBadge,
   GraphPin,
@@ -450,9 +450,11 @@ function MaterialFunctionReferenceEditor({
                 onChange={() => setActive(reference.path, option?.document)}
                 type="radio"
               />
-              <MaterialFunctionPicker
+              <AssetPicker
                 allowEmpty={false}
                 assetCompatibility={compatibility}
+                assetKinds={['materialFunction']}
+                assetTypeLabel="Material Function"
                 assets={rowAssets}
                 disabled={readOnly}
                 label={label}
@@ -474,9 +476,11 @@ function MaterialFunctionReferenceEditor({
         })}
         {!readOnly && (
           <div className="material-function-call-add">
-            <MaterialFunctionPicker
+            <AssetPicker
               allowEmpty={false}
               assetCompatibility={compatibility}
+              assetKinds={['materialFunction']}
+              assetTypeLabel="Material Function"
               assets={pickerAssets}
               label="Material Function"
               showLabel={false}
