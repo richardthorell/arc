@@ -224,6 +224,33 @@ function thumbnailRequest(provider: AssetThumbnailProvider, path: string): Promi
   return request;
 }
 
+const openKnownAsset = (asset: AssetPickerItem, assetTypeLabel: string) => {
+  if (asset.scope === 'procedural') return;
+  const kind =
+    asset.kind === 'materialInstance'
+      ? 'materialInstance'
+      : asset.kind === 'materialFunction'
+        ? 'materialFunction'
+        : asset.kind === 'material'
+          ? 'material'
+          : asset.kind === 'flow'
+            ? 'flow'
+            : null;
+  if (!kind) return;
+  openAssetEditorDocument({
+    id: asset.id,
+    guid: asset.guid,
+    typeId: asset.typeId,
+    name: asset.name,
+    title: asset.title,
+    path: asset.sourcePath || asset.path,
+    kind,
+    status: asset.status,
+    scope: asset.scope,
+    readOnly: asset.readOnly,
+  });
+};
+
 export function AssetPicker({
   assets,
   value,
@@ -289,7 +316,16 @@ export function AssetPicker({
     onChange(valueFor(candidate), candidate);
   };
 
-  const canOpen = Boolean(selected && onOpen && !mixed);
+  const defaultOpen =
+    selected &&
+    (selected.kind === 'material' ||
+      selected.kind === 'materialInstance' ||
+      selected.kind === 'materialFunction' ||
+      selected.kind === 'flow')
+      ? (asset: AssetPickerItem) => openKnownAsset(asset, assetTypeLabel)
+      : undefined;
+  const openSelected = onOpen ?? defaultOpen;
+  const canOpen = Boolean(selected && openSelected && !mixed);
   const canClear = Boolean(!disabled && allowEmpty && value && !mixed);
 
   const control = (
@@ -331,11 +367,11 @@ export function AssetPicker({
         </button>
         {(canOpen || canClear) && (
           <span style={{ display: 'flex', alignItems: 'center' }}>
-            {canOpen && selected && onOpen && (
+            {canOpen && selected && openSelected && (
               <button
                 aria-label={`Open ${displayNameOf(selected, value)} in ${assetTypeLabel} Editor`}
                 className="asset-reference-clear"
-                onClick={() => onOpen(selected)}
+                onClick={() => openSelected(selected)}
                 title={`Open in ${assetTypeLabel} Editor`}
                 type="button"
               >
@@ -470,33 +506,6 @@ export function MaterialPicker({
         />
       )}
     </>
-  );
-}
-
-export function MaterialFunctionPicker(props: Omit<AssetPickerProps, 'assetKinds' | 'assetTypeLabel' | 'onOpen'>) {
-  const openMaterialFunction = (asset: AssetPickerItem) => {
-    if (asset.kind !== 'materialFunction' || asset.scope === 'procedural') return;
-    openAssetEditorDocument({
-      id: asset.id,
-      guid: asset.guid,
-      typeId: asset.typeId,
-      name: asset.name,
-      title: asset.title,
-      path: asset.sourcePath || asset.path,
-      kind: 'materialFunction',
-      status: asset.status,
-      scope: asset.scope,
-      readOnly: asset.readOnly,
-    });
-  };
-
-  return (
-    <AssetPicker
-      {...props}
-      assetKinds={['materialFunction']}
-      assetTypeLabel="Material Function"
-      onOpen={openMaterialFunction}
-    />
   );
 }
 
