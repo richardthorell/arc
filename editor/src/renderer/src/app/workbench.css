@@ -680,6 +680,12 @@
   z-index: 120;
 }
 
+.hierarchy-create-dropdown.ui-context-menu-portal {
+  top: auto;
+  right: auto;
+  z-index: 2000;
+}
+
 .hierarchy-create-menu-heading {
   padding: 7px 10px 4px;
   color: var(--arc-color-text-subtle);
