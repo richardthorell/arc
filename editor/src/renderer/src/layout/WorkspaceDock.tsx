@@ -38,10 +38,10 @@ type WorkspaceDockProps = {
   sidebarExpanded?: boolean;
 };
 
-// v9 keeps scene structure and details in one right column while moving
-// world/environment/lighting authoring into the Inspector. The new key prevents
-// existing v8 snapshots from restoring the obsolete Lighting / World Settings tabs.
-const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v9.${projectKey}.${name}`;
+// v10 keeps scene structure and details in one compact right column while giving
+// the bottom Content Browser more room. The version bump ensures existing saved
+// v9 geometry does not mask the updated Level Design defaults.
+const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v10.${projectKey}.${name}`;
 export const editorWorkspaceStorageKey = (projectKey: string, kind: EditorDocumentKind) => {
   const versionedKind =
     kind === 'texture'
@@ -55,8 +55,8 @@ export const editorWorkspaceStorageKey = (projectKey: string, kind: EditorDocume
 };
 const workbenchLayoutStorageKey = 'arc.editor.workbench.layout.v2';
 const panelTabComponent = 'arc-panel-tab';
-const defaultBottomPanelHeight = 220;
-export const defaultSceneRightColumnWidth = 560;
+export const defaultBottomPanelHeight = 300;
+export const defaultSceneRightColumnWidth = 360;
 export const defaultHierarchyPanelHeight = 360;
 const sidebarWidthStorageKey = 'arc.editor.utility-sidebar.width.v1';
 export const defaultSidebarWidth = 320;
