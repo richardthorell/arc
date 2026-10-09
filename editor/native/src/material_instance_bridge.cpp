@@ -464,6 +464,10 @@ std::filesystem::path resolve_texture_path(const editor_material_record& materia
     std::filesystem::path authored{path};
     if (authored.is_absolute()) return authored.lexically_normal();
 
+    auto authored_text = authored.generic_string();
+    if (authored_text.starts_with("builtin/"))
+        authored = std::filesystem::path{authored_text.substr(std::string_view{"builtin/"}.size())};
+
     auto directory = material.path.parent_path();
     for (auto current = directory; !current.empty(); current = current.parent_path())
     {
