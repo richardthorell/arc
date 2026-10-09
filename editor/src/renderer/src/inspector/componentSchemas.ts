@@ -594,7 +594,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         path: 'meshRenderer.materialPath',
         type: 'asset',
         assetKind: 'material',
-        allowedExtensions: ['.arcmat'],
+        allowedExtensions: ['.arcmat', '.arcmatinst'],
         allowEmpty: false,
       },
       { id: 'visible', label: 'Visible', path: 'meshRenderer.visible', type: 'boolean' },
