@@ -45,6 +45,8 @@ export const materialNodeWidth = (type: MaterialGraphNodeType) => {
       return 286;
     case 'output':
       return 236;
+    case 'functionCall':
+      return 420;
     case 'normalMap':
     case 'clamp':
       return 232;
@@ -66,11 +68,16 @@ export const materialNodeHeight = (node: MaterialGraphNode) => {
   let height = headerHeight + nodePaddingTop + pinRows * pinRowHeight + nodePaddingBottom;
 
   if (isMaterialTextureSampleNodeType(node.type)) height += textureEditorHeight;
-  else if (
+  else if (node.type === 'functionCall') {
+    const functionCount = Array.isArray(node.values.functions) ? Math.max(1, node.values.functions.length) : 1;
+    // Function Calls render a name control plus one asset-reference row per
+    // authored function. Keep graph framing/auto-arrange in sync with the
+    // actual editor instead of treating the whole list as one value row.
+    height += 38 + functionCount * 62 + 12;
+  } else if (
     editableValueNode(node) ||
     node.type === 'normalMap' ||
     node.type === 'clamp' ||
-    node.type === 'functionCall' ||
     node.type === 'functionSlot'
   )
     height += valueEditorHeight;
