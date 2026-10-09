@@ -560,7 +560,7 @@ describe('ViewportPanel', () => {
       />,
     );
     fireEvent.click(view.getByRole('button', { name: 'Lit' }));
-    fireEvent.click(await view.findByRole('button', { name: 'Texture Desired Mip' }));
+    fireEvent.click(await view.findByRole('menuitemradio', { name: 'Texture Desired Mip' }));
 
     await waitFor(() =>
       expect(command).toHaveBeenCalledWith(
