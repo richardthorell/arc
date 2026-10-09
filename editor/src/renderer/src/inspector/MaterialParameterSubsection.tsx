@@ -502,7 +502,9 @@ export function MaterialParameterSubsection({
             ),
           },
     );
-    setOverrides((current) => current.filter((entry) => !entry.parameterId?.startsWith('slot::')));
+    setOverrides((current) =>
+      current.filter((entry) => !slot.parameters.some((parameter) => parameter.nodeId === entry.parameterId)),
+    );
     if (!window.arc?.host) return;
     try {
       const selectedResponse = (await window.arc.host.query('entity.selected')) as HostResponse<SelectedMaterialSnapshot>;
