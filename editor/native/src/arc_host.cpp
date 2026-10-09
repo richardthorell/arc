@@ -303,7 +303,12 @@ void arc_append_model_preview_metadata(nlohmann::json& payload, const editor_sce
 #pragma warning(push)
 #pragma warning(disable : 4456)
 #endif
+// Route the host's procedural-parameter command path through the material-instance
+// bridge as well. The bridge keeps ordinary procedural edits working while
+// intercepting __arc_material_parameter__ / __arc_material_function__ payloads.
+#define ARC_EDITOR_HOST_MATERIAL_INSTANCE_BRIDGE 1
 #include "arc_host_impl.inc"
+#undef ARC_EDITOR_HOST_MATERIAL_INSTANCE_BRIDGE
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
