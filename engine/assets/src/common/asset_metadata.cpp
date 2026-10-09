@@ -209,6 +209,7 @@ classify_asset_path(const std::filesystem::path& path) noexcept
     if (extension == ".arcmat") return std::pair{asset_types::material, importer_ids::material};
     if (extension == ".arcmatfn") return std::pair{asset_types::material_function, importer_ids::material_function};
     if (extension == ".arcmatinst") return std::pair{asset_types::material_instance, importer_ids::material_instance};
+    if (extension == ".arcsound") return std::pair{asset_types::sound, importer_ids::sound};
     if (extension == ".arcflow") return std::pair{asset_types::flow_graph, importer_ids::flow};
     if (extension == ".terrain") return std::pair{asset_types::terrain, importer_ids::terrain};
     if (extension == ".arcwater") return std::pair{asset_types::water_preset, importer_ids::water_preset};
@@ -233,8 +234,7 @@ classify_asset_path(const std::filesystem::path& path) noexcept
     if (extension == ".arcanim") return std::pair{asset_types::animation_clip, importer_ids::animation};
     if (extension == ".arccollision") return std::pair{asset_types::collision, importer_ids::collision};
     if (extension == ".arcnav") return std::pair{asset_types::navigation, importer_ids::navigation};
-    if (extension == ".wav" || extension == ".ogg" || extension == ".mp3" || extension == ".flac")
-        return std::pair{asset_types::audio_clip, importer_ids::audio};
+    if (extension == ".wav") return std::pair{asset_types::audio_clip, importer_ids::audio};
     return std::nullopt;
 }
 
