@@ -59,8 +59,7 @@ struct material_parameter_edit
 struct material_function_edit
 {
     std::string slot_id;
-    std::string function_guid;
-    std::string function_path;
+    assets::asset_reference function;
     bool reset{};
 };
 
@@ -302,13 +301,13 @@ std::optional<material_function_edit> parse_material_function(std::string_view p
     material_function_edit edit;
     edit.slot_id = payload.value("slotId", std::string{});
     edit.reset = payload.value("reset", false);
-    if (const auto found = payload.find("function"); found != payload.end() && found->is_object())
+    if (const auto found = payload.find("function"); found != payload.end())
     {
-        edit.function_guid = found->value("guid", std::string{});
-        edit.function_path = found->value("pathHint", std::string{});
+        const auto reference = asset_reference_from_json(*found);
+        if (reference) edit.function = *reference;
     }
     if (edit.slot_id.empty()) return std::nullopt;
-    if (!edit.reset && (edit.function_guid.empty() || edit.function_path.empty())) return std::nullopt;
+    if (!edit.reset && !edit.function.guid.valid() && edit.function.path_hint.empty()) return std::nullopt;
     return edit;
 }
 
@@ -423,9 +422,8 @@ json apply_function_edit(json overrides, const material_function_edit& edit)
                                    }),
                     overrides.end());
     if (!edit.reset)
-        overrides.push_back({{"kind", "function"},
-                             {"slotId", edit.slot_id},
-                             {"function", {{"guid", edit.function_guid}, {"pathHint", edit.function_path}}}});
+        overrides.push_back(
+            {{"kind", "function"}, {"slotId", edit.slot_id}, {"function", asset_reference_json(edit.function)}});
     return overrides;
 }
 
