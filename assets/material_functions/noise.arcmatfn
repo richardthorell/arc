@@ -2,13 +2,8 @@
   "kind": "materialFunction",
   "version": 1,
   "name": "Noise",
-  "description": "Deterministic world-space procedural color noise.",
+  "description": "Deterministic world-space procedural noise base color source.",
   "inputs": [
-    {
-      "id": "baseColor",
-      "name": "Base Color",
-      "type": "vec3"
-    },
     {
       "id": "scale",
       "name": "Scale",
@@ -58,19 +53,6 @@
   "graph": {
     "version": 1,
     "nodes": [
-      {
-        "id": "input-baseColor",
-        "type": "functionInput",
-        "position": [
-          40,
-          40
-        ],
-        "values": {
-          "input": "baseColor",
-          "name": "Base Color",
-          "valueType": "vec3"
-        }
-      },
       {
         "id": "input-scale",
         "type": "functionInput",
@@ -239,15 +221,6 @@
         "type": "lerp",
         "position": [
           1780,
-          480
-        ],
-        "values": {}
-      },
-      {
-        "id": "tinted-color",
-        "type": "multiply",
-        "position": [
-          1980,
           480
         ],
         "values": {}
@@ -437,31 +410,9 @@
         }
       },
       {
-        "id": "tint-a",
-        "from": {
-          "nodeId": "noise-color",
-          "pin": "result"
-        },
-        "to": {
-          "nodeId": "tinted-color",
-          "pin": "a"
-        }
-      },
-      {
-        "id": "tint-b",
-        "from": {
-          "nodeId": "input-baseColor",
-          "pin": "value"
-        },
-        "to": {
-          "nodeId": "tinted-color",
-          "pin": "b"
-        }
-      },
-      {
         "id": "out",
         "from": {
-          "nodeId": "tinted-color",
+          "nodeId": "noise-color",
           "pin": "result"
         },
         "to": {
