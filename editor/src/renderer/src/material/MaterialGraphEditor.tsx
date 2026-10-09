@@ -32,6 +32,7 @@ import {
   UiSelect,
   UiSlider,
   UiTextInput,
+  UiToggleButton,
   type UiColorValue,
 } from '../ui';
 import { materialGraphDomain } from './materialGraphDomain';
@@ -66,6 +67,7 @@ import {
   materialNodeWidth,
   snapMaterialGraphPoint,
 } from './materialGraphLayout';
+import { MaterialNodeParameterControl } from './MaterialNodeParameterControl';
 import { MaterialTextureSampleEditor } from './MaterialTextureSampleEditor';
 
 const headerHeight = 34;
@@ -325,32 +327,30 @@ function MaterialNodeValueEditor({
             onValueChange={setValue}
           />
         )}
-        <label className="material-node-range-toggle">
-          <input
-            checked={Boolean(range)}
-            disabled={readOnly}
-            type="checkbox"
-            onChange={(event) => {
-              if (event.target.checked) {
-                const nextRange = { min: 0, max: 1 };
-                onChange({
-                  ...node,
-                  values: {
-                    ...node.values,
-                    ...nextRange,
-                    value: clampMaterialScalarValue(value, nextRange),
-                  },
-                });
-                return;
-              }
-              const values = { ...node.values };
-              delete values.min;
-              delete values.max;
-              onChange({ ...node, values });
-            }}
-          />
-          <span>Range</span>
-        </label>
+        <UiToggleButton
+          checked={Boolean(range)}
+          className="material-node-range-toggle"
+          disabled={readOnly}
+          label="Range"
+          onCheckedChange={(checked) => {
+            if (checked) {
+              const nextRange = { min: 0, max: 1 };
+              onChange({
+                ...node,
+                values: {
+                  ...node.values,
+                  ...nextRange,
+                  value: clampMaterialScalarValue(value, nextRange),
+                },
+              });
+              return;
+            }
+            const values = { ...node.values };
+            delete values.min;
+            delete values.max;
+            onChange({ ...node, values });
+          }}
+        />
         {range && (
           <div className="material-node-range-bounds">
             <label>
@@ -1183,39 +1183,31 @@ export function MaterialGraphEditor({
               />
 
               {editableValueNode(node) && (
-                <label className="material-node-parameter-toggle">
-                  <input
-                    checked={Boolean(node.parameter?.exposed)}
-                    disabled={document.readOnly}
-                    type="checkbox"
-                    onChange={(event) =>
-                      mutate((next) => {
-                        const target = next.nodes.find((candidate) => candidate.id === node.id);
-                        if (!target) return;
-                        target.parameter = {
-                          exposed: event.target.checked,
-                          name: target.parameter?.name ?? definition.title,
-                        };
-                      })
-                    }
-                  />
-                  <span>Parameter</span>
-                  <input
-                    aria-label="Parameter name"
-                    disabled={document.readOnly || !node.parameter?.exposed}
-                    value={node.parameter?.name ?? definition.title}
-                    onChange={(event) =>
-                      mutate((next) => {
-                        const target = next.nodes.find((candidate) => candidate.id === node.id);
-                        if (!target) return;
-                        target.parameter = {
-                          exposed: Boolean(target.parameter?.exposed),
-                          name: event.target.value,
-                        };
-                      })
-                    }
-                  />
-                </label>
+                <MaterialNodeParameterControl
+                  enabled={Boolean(node.parameter?.exposed)}
+                  name={node.parameter?.name ?? definition.title}
+                  readOnly={document.readOnly}
+                  onEnabledChange={(enabled) =>
+                    mutate((next) => {
+                      const target = next.nodes.find((candidate) => candidate.id === node.id);
+                      if (!target) return;
+                      target.parameter = {
+                        exposed: enabled,
+                        name: target.parameter?.name ?? definition.title,
+                      };
+                    })
+                  }
+                  onNameChange={(name) =>
+                    mutate((next) => {
+                      const target = next.nodes.find((candidate) => candidate.id === node.id);
+                      if (!target) return;
+                      target.parameter = {
+                        exposed: Boolean(target.parameter?.exposed),
+                        name,
+                      };
+                    })
+                  }
+                />
               )}
             </UiNodeCard>
           );
