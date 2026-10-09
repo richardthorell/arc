@@ -130,6 +130,68 @@ void apply_runtime_parameter_overrides(material_descriptor& material,
     if (changed) material.runtime_program = std::move(runtime_program);
 }
 
+// The bindless/legacy material renderer still reads the descriptor's emissive
+// factor and strength, while compiled material passes read reflected parameters.
+// Keep those two representations in sync for the canonical Standard Lit inputs
+// until bindless material shading consumes the compiled Surface ABI directly.
+void synchronize_standard_lit_emissive(material_descriptor& material)
+{
+    if (!material.runtime_program) return;
+    const auto& program = *material.runtime_program;
+    const auto find_parameter = [&](std::string_view name)
+    {
+        return std::ranges::find(program.parameters, name, &shader_parameter_descriptor::name);
+    };
+    const auto color = find_parameter("Emissive Color");
+    const auto strength = find_parameter("Emissive Strength");
+    if (color == program.parameters.end() || strength == program.parameters.end() ||
+        (color->type != shader_parameter_type::float3 && color->type != shader_parameter_type::float4) ||
+        strength->type != shader_parameter_type::float32)
+        return;
+
+    const auto value_for = [&](const shader_parameter_descriptor& parameter) -> const material_parameter_value*
+    {
+        const auto found = std::ranges::find(material.parameters, parameter.id, &material_parameter_override::id);
+        return found == material.parameters.end() ? nullptr : &found->value;
+    };
+    const auto default_floats = [&](const shader_parameter_descriptor& parameter, float* destination,
+                                    std::size_t count)
+    {
+        const auto bytes = count * sizeof(float);
+        const auto offset = static_cast<std::size_t>(parameter.offset);
+        if (parameter.size < bytes || offset > program.parameter_defaults.size() ||
+            bytes > program.parameter_defaults.size() - offset)
+            return false;
+        std::memcpy(destination, program.parameter_defaults.data() + offset, bytes);
+        return true;
+    };
+
+    math::vector3f rgb = material.emissive_factor;
+    if (const auto* value = value_for(*color))
+    {
+        if (const auto* typed = std::get_if<math::vector3f>(value)) rgb = *typed;
+        else if (const auto* typed = std::get_if<math::vector4f>(value))
+            rgb = {(*typed)[0], (*typed)[1], (*typed)[2]};
+    }
+    else
+    {
+        std::array<float, 4> channels{};
+        if (default_floats(*color, channels.data(), color->type == shader_parameter_type::float4 ? 4u : 3u))
+            rgb = {channels[0], channels[1], channels[2]};
+    }
+
+    float intensity = material.emissive_strength;
+    if (const auto* value = value_for(*strength))
+    {
+        if (const auto* typed = std::get_if<float>(value)) intensity = *typed;
+    }
+    else
+        (void)default_floats(*strength, &intensity, 1u);
+
+    material.emissive_factor = rgb;
+    material.emissive_strength = intensity;
+}
+
 } // namespace
 
 material_render_path resolve_material_render_path(const material_descriptor& material) noexcept
@@ -204,6 +266,7 @@ material_instance_result resolve_material_instance(const material_definition_des
             *existing = override_value;
     }
     apply_runtime_parameter_overrides(result, instance.overrides);
+    synchronize_standard_lit_emissive(result);
 
     if (result.runtime_program)
     {
