@@ -87,8 +87,11 @@ export const materialGraphDiagnostics = (diagnostics: readonly MaterialCompileDi
 
 export type MaterialGraphEditImpact = 'none' | 'parameter-values' | 'shader';
 
+const shaderParameterMetadata = (node: MaterialGraphNode) =>
+  node.parameter ? { exposed: node.parameter.exposed, name: node.parameter.name } : null;
+
 const sameParameterMetadata = (before: MaterialGraphNode, after: MaterialGraphNode): boolean =>
-  JSON.stringify(before.parameter ?? null) === JSON.stringify(after.parameter ?? null);
+  JSON.stringify(shaderParameterMetadata(before)) === JSON.stringify(shaderParameterMetadata(after));
 
 const parameterNodeTypes = new Set<MaterialGraphNodeType>([
   'constant',
