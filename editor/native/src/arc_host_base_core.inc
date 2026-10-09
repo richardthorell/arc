@@ -1695,11 +1695,7 @@ host_mesh_renderer_snapshot mesh_renderer_snapshot(const editor_scene_state& sta
 
     const auto* binding = find_asset_binding(state, entity_guid_of(state, entity));
     const auto inspector_material_path = [](std::string path)
-    {
-        constexpr std::string_view builtin_prefix = "builtin/";
-        if (path.starts_with(builtin_prefix)) path.erase(0, builtin_prefix.size());
-        return arc::assets::normalize_asset_path(path);
-    };
+    { return arc::assets::normalize_asset_path(path); };
     if (binding) snapshot.material_error = binding->material_error;
 
     for (const auto& record : state.material_library.materials)
@@ -1711,12 +1707,12 @@ host_mesh_renderer_snapshot mesh_renderer_snapshot(const editor_scene_state& sta
         const auto relative_to_project = record.path.lexically_relative(project_root);
         const auto stays_within = [](const std::filesystem::path& relative)
         { return !relative.empty() && *relative.begin() != std::filesystem::path(".."); };
-        if (!assets.root.empty() && stays_within(relative_to_primary))
+        if (binding && !binding->material.path_hint.empty())
+            snapshot.material_path = inspector_material_path(binding->material.path_hint);
+        else if (!assets.root.empty() && stays_within(relative_to_primary))
             snapshot.material_path = arc::assets::normalize_asset_path(relative_to_primary);
         else if (!project_root.empty() && stays_within(relative_to_project))
             snapshot.material_path = arc::assets::normalize_asset_path(relative_to_project);
-        else if (binding && !binding->material.path_hint.empty())
-            snapshot.material_path = inspector_material_path(binding->material.path_hint);
         else
             snapshot.material_path = asset_relative_path(assets.root, record.path);
         return snapshot;
