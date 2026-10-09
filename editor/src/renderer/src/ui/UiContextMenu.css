@@ -5,6 +5,11 @@
   overflow: hidden;
 }
 
+.ui-context-menu.ui-context-menu-portal {
+  position: fixed;
+  z-index: 2000;
+}
+
 .ui-context-menu .ui-context-menu-item.ui-button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
