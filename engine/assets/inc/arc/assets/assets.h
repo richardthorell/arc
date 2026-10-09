@@ -727,6 +727,14 @@ public:
     void poll();
 
     [[nodiscard]] std::optional<asset_snapshot> find(asset_guid guid) const;
+    /**
+     * Resolve a persisted asset reference.
+     *
+     * A valid GUID is authoritative and never falls back to path_hint when it is
+     * missing or has the wrong type. path_hint is only a transitional lookup for
+     * legacy references that do not yet contain a GUID.
+     */
+    [[nodiscard]] std::optional<asset_snapshot> find(const asset_reference& reference) const;
     [[nodiscard]] std::optional<asset_snapshot> find(std::string_view project_relative_path) const;
     [[nodiscard]] std::vector<asset_snapshot> search(std::string_view text = {},
                                                      std::optional<asset_type_id> type = std::nullopt) const;
