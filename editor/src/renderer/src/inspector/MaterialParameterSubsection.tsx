@@ -109,6 +109,8 @@ const normalizePath = (value: string) =>
     .replace(/^\.\//, '')
     .replace(/^\/|\/$/g, '');
 
+const builtinReferencePath = (value: string) => normalizePath(value).replace(/^builtin\//i, '');
+
 const projectRelativeMaterialPath = async (materialPath: string, scope: 'builtin' | 'project') => {
   const normalized = normalizePath(materialPath);
   if (scope !== 'project' || !normalized || /^[a-z]:\//i.test(normalized)) return normalized;
@@ -350,7 +352,8 @@ export function MaterialParameterSubsection({
                 try {
                   const scope = asset.scope === 'builtin' ? 'builtin' : 'project';
                   const authoringPath = scope === 'builtin' ? asset.path : asset.sourcePath || asset.path;
-                  const referencePath = scope === 'builtin' ? authoringPath : asset.sourcePath || asset.path;
+                  const referencePath =
+                    scope === 'builtin' ? builtinReferencePath(authoringPath) : asset.sourcePath || asset.path;
                   const path = await projectRelativeMaterialPath(authoringPath, scope);
                   const source = await window.arc.projects.readText(path, scope);
                   const document = JSON.parse(source.text) as MaterialFunctionAssetJson;
