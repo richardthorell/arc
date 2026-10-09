@@ -78,6 +78,16 @@ bool collect_material_function_paths(std::string_view graph_json, std::vector<st
         const auto values = node.value("values", nlohmann::json::object());
         const auto path = values.value("path", std::string{});
         if (!path.empty()) paths.push_back(path);
+        const auto authored_functions = values.find("functions");
+        if (authored_functions != values.end() && authored_functions->is_array())
+        {
+            for (const auto& reference : *authored_functions)
+            {
+                if (!reference.is_object()) continue;
+                const auto referenced_path = reference.value("path", std::string{});
+                if (!referenced_path.empty()) paths.push_back(referenced_path);
+            }
+        }
     }
     return true;
 }
